@@ -60,10 +60,11 @@ class ChecklistTests(XGed8Base):
         self.assertEqual(resultat[0]['statut'], 'manquant')
 
     def test_checklist_present_without_pending_demande(self):
+        # ADOC12 — sans demande ni document, une exigence est MANQUANTE.
         ExigenceDossier.objects.create(
             company=self.co_a, folder=self.folder_a, libelle='Diplôme')
         resultat = services.checklist_dossier(self.folder_a)
-        self.assertEqual(resultat[0]['statut'], 'present')
+        self.assertEqual(resultat[0]['statut'], 'manquant')
 
 
 class MatchingTests(XGed8Base):

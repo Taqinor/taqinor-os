@@ -8,7 +8,7 @@ import {
 } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    PACT132 — Règles de dossier : action automatique au dépôt (XGED19).
@@ -79,9 +79,10 @@ export default function ReglesDossierPage() {
     setError(null)
     try {
       const [r, d, t, u] = await Promise.all([
-        gedApi.getReglesDossier(),
-        gedApi.getDossiers(),
-        gedApi.getTags(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getReglesDossier),
+        toutesLesPages(gedApi.getDossiers),
+        toutesLesPages(gedApi.getTags),
         gedApi.getUsers(),
       ])
       setRegles(unpage(r.data))

@@ -19,6 +19,8 @@ const gedApi = {
   createDossier: (data) => api.post('/ged/dossiers/', data),
   // Renomme un dossier (PATCH partiel — seul `nom` change).
   renameDossier: (id, nom) => api.patch(`/ged/dossiers/${id}/`, { nom }),
+  // ADOC26 — mise à jour d'un dossier (nom + alias e-mail XGED9).
+  updateDossier: (id, data) => api.patch(`/ged/dossiers/${id}/`, data),
   // Déplace un dossier sous un nouveau parent (null = remise à la racine).
   // Le backend recalcule le chemin matérialisé du sous-arbre + refuse les cycles.
   moveDossier: (id, parent) =>
@@ -37,6 +39,22 @@ const gedApi = {
     if (nom) fd.append('nom', nom)
     if (description) fd.append('description', description)
     return api.post('/ged/documents/televerser/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  // ADOC20 — Geste « Modifier » d'un document (nom, description) : PATCH des
+  // seuls champs changés ; les refus (ACL lecture → 403) remontent tels quels.
+  updateDocument: (documentId, data) =>
+    api.patch(`/ged/documents/${documentId}/`, data),
+
+  // ADOC18 — Geste « Nouvelle version » : téléverse `file` comme NOUVELLE
+  // version du document (stockage, empreinte, gardes côté serveur ; aucune
+  // file_key fournie à la main). Renvoie la version créée.
+  nouvelleVersionDocument: (documentId, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post(`/ged/documents/${documentId}/nouvelle-version/`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
@@ -66,6 +84,17 @@ const gedApi = {
     fd.append('folder', folder)
     files.forEach((f) => fd.append('files', f))
     return api.post('/ged/documents/scan-lot/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  // ADOC27/XGED11 — Lot SÉPARÉ : les images d'un lot sont découpées en
+  // plusieurs documents PDF à chaque page séparatrice (page blanche / QR).
+  // Renvoie `{documents, …}` — un document par sous-lot détecté.
+  deposerLotScansSepare: ({ folder, files }) => {
+    const fd = new FormData()
+    fd.append('folder', folder)
+    files.forEach((f) => fd.append('files', f))
+    return api.post('/ged/documents/deposer-lot-scans-separe/', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
@@ -339,6 +368,9 @@ const gedApi = {
     `/api/django/ged/versions/${versionId}/apercu/`,
   // Versions d'un document (pour choisir la version à prévisualiser).
   getVersions: (params) => api.get('/ged/versions/', { params }),
+  // ADOC11 — nombre de pages d'une version PDF (`{ pages }`) : l'écran
+  // Caviarder propose les pages 1..N au lieu d'une saisie libre.
+  getVersionPages: (versionId) => api.get(`/ged/versions/${versionId}/pages/`),
 
   // XGED24 — Caviardage (rédaction) définitif de zones d'un PDF, sur une
   // COPIE publiée (l'original n'est JAMAIS modifié). `zones` : liste de

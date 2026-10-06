@@ -21,8 +21,11 @@ vi.mock('../../../api/gedApi', () => ({
     getDemandesApprobation: vi.fn(() => Promise.resolve({ data: [] })),
     getDemandesSignature: vi.fn(() => Promise.resolve({ data: [] })),
     getModelesDocument: vi.fn(() => Promise.resolve({ data: [
-      { id: 2, nom: 'Attestation maintenance', categorie: 'contrat', actif: true },
+      { id: 2, nom: 'Attestation maintenance', categorie: 'contrat', actif: true,
+        corps_html: '<p>Attestation {{ nom }}</p>' },
     ] })),
+    // ADOC13 — génération depuis un modèle avec le contexte saisi.
+    genererModele: vi.fn(() => Promise.resolve({ data: { document: 34, created: true } })),
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
     getRolesSignataire: vi.fn(() => Promise.resolve({ data: [] })),
     getLotsEnvoi: vi.fn(),
@@ -120,6 +123,21 @@ describe('PACT135 ApprobationPage — Envoi en masse', () => {
 
     expect(gedApi.envoyerLotSignature).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledWith('Choisissez un fichier CSV.')
+  })
+})
+
+describe('ADOC13 ApprobationPage — Générer depuis un modèle', () => {
+  it('Générer envoie le contexte saisi', async () => {
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Modèles' }))
+    await screen.findAllByText('Attestation maintenance')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Générer un document' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('nom'), 'ALPHA')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Générer' }))
+    await waitFor(() => {
+      expect(gedApi.genererModele).toHaveBeenCalledWith(2, { nom: 'ALPHA' })
+    })
   })
 })
 

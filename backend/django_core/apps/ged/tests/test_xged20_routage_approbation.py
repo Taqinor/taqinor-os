@@ -122,6 +122,7 @@ class ChaineSequentielleTests(XGed20Base):
         demande = services.request_review_avec_routage(doc, user=self.admin_a)
         self.assertFalse(
             ChaineApprobationGed.objects.filter(demande=demande).exists())
+        # ADOC14 — le demandeur (admin_a) ne décide jamais sa demande.
         dem = services.avancer_chaine_approbation_ged(
-            demande, user=self.admin_a)
+            demande, user=self.approbateur1)
         self.assertEqual(dem.statut, APPROBATION_APPROUVE)

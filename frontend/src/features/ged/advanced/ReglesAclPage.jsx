@@ -8,7 +8,7 @@ import {
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import rolesApi from '../../../api/rolesApi'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    PACT133 — Règles d'accès par métadonnée (XGED21, couche dynamique).
@@ -70,7 +70,8 @@ export default function ReglesAclPage() {
     setError(null)
     try {
       const [r, ro] = await Promise.all([
-        gedApi.getReglesAclMetadonnee(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getReglesAclMetadonnee),
         rolesApi.getRoles(),
       ])
       setRegles(unpage(r.data))

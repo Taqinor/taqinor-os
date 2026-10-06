@@ -16,7 +16,7 @@ import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
-import { StatutApprobation, StatutSignature, errMessage } from './shared.js'
+import { StatutApprobation, StatutSignature, errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    UX45 — Approbation & signature électronique.
@@ -58,13 +58,14 @@ export default function ApprobationPage() {
     setError(null)
     try {
       const [d, s, m, docs, r, l, a, k] = await Promise.all([
-        gedApi.getDemandesApprobation(),
-        gedApi.getDemandesSignature(),
-        gedApi.getModelesDocument({ actif: 1 }),
-        gedApi.getDocumentsList(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getDemandesApprobation),
+        toutesLesPages(gedApi.getDemandesSignature),
+        toutesLesPages(gedApi.getModelesDocument, { actif: 1 }),
+        toutesLesPages(gedApi.getDocumentsList),
         // ZGED1 — rôles réutilisables (dégrade en liste vide si indisponible).
-        gedApi.getRolesSignataire().catch(() => ({ data: [] })),
-        gedApi.getLotsEnvoi(),
+        toutesLesPages(gedApi.getRolesSignataire).catch(() => ({ data: [] })),
+        toutesLesPages(gedApi.getLotsEnvoi),
         // XGED26/ZGED3 — réservés responsable/admin : dégradent en `null`
         // (jamais bloquant) si le rôle courant n'y a pas accès (403).
         gedApi.getAnalytique().catch(() => ({ data: null })),
@@ -667,14 +668,34 @@ function DemanderSignatureDialog({ documents, preselect, onClose, onDone }) {
   )
 }
 
+// ADOC13 — jetons {{ champ }} du modèle (corps + sections), dans l'ordre.
+function jetonsDuModele(modele) {
+  const textes = [modele?.corps_html || '']
+  for (const section of (Array.isArray(modele?.sections) ? modele.sections : [])) {
+    textes.push(section?.titre || '', section?.corps_html || '')
+  }
+  const vus = []
+  for (const texte of textes) {
+    for (const m of String(texte).matchAll(/\{\{\s*(\w+)\s*\}\}/g)) {
+      if (!vus.includes(m[1])) vus.push(m[1])
+    }
+  }
+  return vus
+}
+
 function GenererModeleDialog({ modele, onClose, onDone }) {
   const [saving, setSaving] = useState(false)
+  // ADOC13 — un champ par jeton ; état local au dialogue (vide à chaque
+  // ouverture, jamais un état fantôme d'une génération précédente).
+  const jetons = useMemo(() => jetonsDuModele(modele), [modele])
+  const [valeurs, setValeurs] = useState({})
 
   const generer = async () => {
     setSaving(true)
     try {
-      const res = await gedApi.genererModele(modele.id, {})
-      toast.success(res.data?.created ? 'Document généré et classé.' : 'Document déjà généré.')
+      const contexte = Object.fromEntries(jetons.map((j) => [j, valeurs[j] ?? '']))
+      const res = await gedApi.genererModele(modele.id, contexte)
+      toast.success(res.data?.created ? 'Document généré et classé.' : 'Document mis à jour (nouvelle version si le modèle a changé).')
       onDone()
     } catch (err) { toast.error(errMessage(err, 'Génération indisponible (moteur PDF).')) } finally { setSaving(false) }
   }
@@ -686,6 +707,17 @@ function GenererModeleDialog({ modele, onClose, onDone }) {
         <p className="text-sm text-muted-foreground">
           Le modèle est fusionné et le PDF est déposé dans la GED (classement automatique).
         </p>
+        {jetons.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {jetons.map((j) => (
+              <div key={j}>
+                <Label htmlFor={`gen-${j}`}>{j}</Label>
+                <Input id={`gen-${j}`} value={valeurs[j] ?? ''}
+                  onChange={(e) => setValeurs((v) => ({ ...v, [j]: e.target.value }))} />
+              </div>
+            ))}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Annuler</Button>
           <Button onClick={generer} disabled={saving}>{saving ? 'Génération…' : 'Générer'}</Button>

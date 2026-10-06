@@ -65,7 +65,11 @@ class AnalytiqueApprobationsTests(XGed26Base):
         DemandeApprobation.objects.filter(pk=demande.pk).update(
             created_at=timezone.now() - datetime.timedelta(days=2))
         demande.refresh_from_db()
-        services.approve_demande(demande, user=self.admin_a)
+        # ADOC14 — un approbateur distinct du demandeur.
+        approbateur = User.objects.create_user(
+            username='xged26-appro', password='x', company=self.co_a,
+            role_legacy='admin')
+        services.approve_demande(demande, user=approbateur)
 
         result = selectors.analytique_approbations(self.co_a)
         self.assertEqual(result['total'], 1)

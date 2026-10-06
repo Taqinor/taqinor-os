@@ -19,6 +19,7 @@ import {
   MessageCircleQuestion,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import { PageHeader } from '../../ui/PageHeader'
 import { formatDate } from '../../lib/format'
@@ -60,6 +61,14 @@ const LIFECYCLE_LABELS = {
 // Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
 // tableau brut, comme partout dans le frontend.
 const rows = (r) => r?.data?.results ?? r?.data ?? []
+
+// ADOC30 — une liste GED paginée se lit EN ENTIER (StandardPagination : 50
+// par défaut, 200 max) : jamais la seule première page.
+const toutesLesPages = async (appel, params) => {
+  const res = await fetchAllPages(
+    (page) => appel({ ...params, page, page_size: 200 }).then((r) => r?.data))
+  return Array.isArray(res) ? res : (res?.results ?? [])
+}
 
 // Message d'erreur lisible à partir d'une réponse axios (premier champ d'erreur
 // DRF, ou message générique). Évite d'afficher un objet brut dans un toast.
@@ -151,8 +160,8 @@ export default function GedNavigator() {
   const loadFolders = (cid) => {
     if (!cid) return
     setLoadingTree(true)
-    gedApi.getDossiers({ cabinet: cid })
-      .then((r) => { setFolders(rows(r)); setError(null) })
+    toutesLesPages(gedApi.getDossiers, { cabinet: cid })
+      .then((list) => { setFolders(list); setError(null) })
       .catch(() => setError('Impossible de charger les dossiers. Réessayez.'))
       .finally(() => setLoadingTree(false))
   }
@@ -175,8 +184,8 @@ export default function GedNavigator() {
   const reloadDocuments = () => {
     if (!selected) return
     setLoadingDocs(true)
-    gedApi.getDocuments({ folder: selected.id })
-      .then((r) => setDocuments(rows(r)))
+    toutesLesPages(gedApi.getDocuments, { folder: selected.id })
+      .then((list) => setDocuments(list))
       .catch(() => setDocuments([]))
       .finally(() => setLoadingDocs(false))
   }
@@ -185,8 +194,8 @@ export default function GedNavigator() {
     let alive = true
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-select loading state
     setLoadingDocs(true)
-    gedApi.getDocuments({ folder: selected.id })
-      .then((r) => { if (alive) setDocuments(rows(r)) })
+    toutesLesPages(gedApi.getDocuments, { folder: selected.id })
+      .then((list) => { if (alive) setDocuments(list) })
       .catch(() => { if (alive) setDocuments([]) })
       .finally(() => { if (alive) setLoadingDocs(false) })
     return () => { alive = false }
@@ -306,6 +315,14 @@ export default function GedNavigator() {
   const ocrPieceAction = async (d) => {
     try {
       const res = await gedApi.ocrPiece(d.id)
+      // ADOC28 — dire la vérité : sans moteur OCR configuré, aucune
+      // extraction n'a eu lieu (jamais « OCR effectué »).
+      if (res?.data?.ocr_enabled === false) {
+        setOcrActif(false)
+        toast.message('OCR non configuré — aucune extraction faite.')
+        return
+      }
+      setOcrActif(true)
       const n = Object.keys(res?.data?.metadonnees || {}).length
       toast.success(n
         ? `${n} métadonnée${n > 1 ? 's' : ''} extraite${n > 1 ? 's' : ''}.`
@@ -349,6 +366,13 @@ export default function GedNavigator() {
 
   // GED17/WIR249 — cycle de vie documentaire (panneau dédié, voir CycleVieDialog).
   const [cycleVieDoc, setCycleVieDoc] = useState(null)
+  // ADOC18 — geste « Nouvelle version » (D-ADOC-2).
+  const [nouvelleVersionDoc, setNouvelleVersionDoc] = useState(null)
+  // ADOC20 — geste « Modifier » (nom, description).
+  const [modifierDoc, setModifierDoc] = useState(null)
+  // ADOC28 — le moteur OCR n'est annoncé actif que lorsqu'une extraction a
+  // réellement été faite (réponse `ocr_enabled` du serveur).
+  const [ocrActif, setOcrActif] = useState(false)
 
   const hasCabinet = cabinetId != null
 
@@ -390,7 +414,7 @@ export default function GedNavigator() {
           ZGED7/13 — favoris/récents ouvrent l'aperçu inline GED14. */}
       <div className="mb-4 flex items-start gap-2">
         <div className="flex-1">
-          <GedSearch onOpenDocument={setPreviewDoc} />
+          <GedSearch onOpenDocument={setPreviewDoc} ocrActif={ocrActif} />
         </div>
         {/* FG352/XKB20/WIR249 — DocQA : question en langage naturel → fragments
             GED+KB les plus proches (RAG, KEY-GATED). */}
@@ -486,6 +510,12 @@ export default function GedNavigator() {
                   <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
                     <FolderOpen className="size-4 text-primary" aria-hidden="true" />
                     <span className="text-sm font-medium">{selected.nom}</span>
+                    {/* ADOC30 — total réel (toutes les pages chargées). */}
+                    {!loadingDocs && (
+                      <span className="text-xs text-muted-foreground">
+                        {documents.length} document{documents.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                     <div className="ml-auto flex items-center gap-1">
                       <Button size="sm" variant="ghost"
                         onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>
@@ -520,7 +550,10 @@ export default function GedNavigator() {
                           Désélectionner
                         </Button>
                         {/* XGED10 — fusionne les PDF sélectionnés (≥2) en un seul document. */}
-                        {selectedIds.size >= 2 && (
+                        {/* ADOC22 — seulement si TOUS les documents sélectionnés sont des PDF. */}
+                        {selectedIds.size >= 2 && documents
+                          .filter((d) => selectedIds.has(d.id))
+                          .every((d) => d.derniere_mime === 'application/pdf') && (
                           <Button size="sm" variant="outline" onClick={() => setMergeDlg(true)}>
                             <FileText className="size-4" aria-hidden="true" /> Fusionner
                           </Button>
@@ -660,6 +693,12 @@ export default function GedNavigator() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => setModifierDoc(d)}>
+                                    <Pencil /> Modifier…
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => setNouvelleVersionDoc(d)}>
+                                    <FileUp /> Nouvelle version…
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onSelect={() => ocrPieceAction(d)}>
                                     <ScanText /> Extraire l'OCR
                                   </DropdownMenuItem>
@@ -737,7 +776,127 @@ export default function GedNavigator() {
           onDone={() => { setCycleVieDoc(null); reloadDocuments() }}
         />
       )}
+      {/* ADOC20 — modifier nom/description d'un document. */}
+      {modifierDoc && (
+        <ModifierDocumentDialog
+          document={modifierDoc}
+          onClose={() => setModifierDoc(null)}
+          onDone={() => { setModifierDoc(null); reloadDocuments() }}
+        />
+      )}
+      {/* ADOC18 — nouvelle version d'un document existant (D-ADOC-2). */}
+      {nouvelleVersionDoc && (
+        <NouvelleVersionDialog
+          document={nouvelleVersionDoc}
+          onClose={() => setNouvelleVersionDoc(null)}
+          onDone={() => { setNouvelleVersionDoc(null); reloadDocuments() }}
+        />
+      )}
     </div>
+  )
+}
+
+// ── ADOC20 — Dialogue : modifier un document (nom, description) ────────────
+// N'envoie QUE les champs changés ; enregistrer sans rien toucher ne fait
+// aucun appel. La liste est relue après succès (relecture à la réouverture).
+function ModifierDocumentDialog({ document: doc, onClose, onDone }) {
+  const [nom, setNom] = useState(doc.nom || '')
+  const [description, setDescription] = useState(doc.description || '')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    const changes = {}
+    if (nom.trim() && nom.trim() !== (doc.nom || '')) changes.nom = nom.trim()
+    if (description.trim() !== (doc.description || '')) changes.description = description.trim()
+    if (!Object.keys(changes).length) { onClose(); return }
+    setBusy(true)
+    try {
+      await gedApi.updateDocument(doc.id, changes)
+      toast.success('Document modifié.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Modification impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Modifier « {doc.nom} »</DialogTitle>
+          <DialogDescription>Nom et description du document.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-3">
+          <Input aria-label="Nom du document" value={nom}
+            onChange={(e) => setNom(e.target.value)} />
+          <Textarea aria-label="Description du document" rows={3} value={description}
+            onChange={(e) => setDescription(e.target.value)} />
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy || !nom.trim()}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── ADOC18 — Dialogue : nouvelle version d'un document ─────────────────────
+// Le serveur stocke le fichier, calcule empreinte et taille, et applique les
+// gardes (écriture, verrou, archivage, quota) ; l'historique garde v1.
+function NouvelleVersionDialog({ document: doc, onClose, onDone }) {
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!file || busy) return
+    setBusy(true)
+    try {
+      const res = await gedApi.nouvelleVersionDocument(doc.id, file)
+      toast.success(res?.data?.version
+        ? `Version ${res.data.version} déposée.` : 'Nouvelle version déposée.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Nouvelle version impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nouvelle version de « {doc.nom} »</DialogTitle>
+          <DialogDescription>
+            La version actuelle reste dans l&apos;historique ; le fichier déposé
+            devient la version en vigueur.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-3">
+          <FileUpload accept="application/pdf,image/png,image/jpeg,image/webp"
+            maxSize={10 * 1024 * 1024}
+            onFiles={(files) => setFile(files[0] || null)}
+            onReject={(rej) => toast.error(rej[0]?.error || 'Fichier refusé.')} />
+          {file && (
+            <p className="text-sm text-muted-foreground">
+              Fichier sélectionné : <span className="font-medium text-foreground">{file.name}</span>
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!file || busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <FileUp />}
+              Déposer la version
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -774,7 +933,8 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
         if (!alive) return
         const list = rows(r)
         setAllVersions(list)
-        const courante = [...list].sort((a, b) => (b.numero || 0) - (a.numero || 0))[0]
+        // ADOC34 — clé `version` du contrat (jamais `numero`).
+        const courante = [...list].sort((a, b) => (b.version || 0) - (a.version || 0))[0]
         if (courante) setVersion(courante)
         else setFailed(true)
       })
@@ -884,11 +1044,32 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
 // la page (même convention que les annotations XGED16). Le texte sous la
 // zone est SUPPRIMÉ côté serveur (PyMuPDF) — jamais un simple rectangle
 // visuel — sur une COPIE ; l'original n'est jamais modifié.
-const EMPTY_ZONE = { page: '0', x0: '0', y0: '0', x1: '20', y1: '10' }
+// ADOC11 — aucune zone par défaut n'est envoyée sans geste : les
+// coordonnées partent VIDES et « Caviarder » reste inactif tant qu'une zone
+// n'est pas complète et non vide ; la page se choisit parmi 1..N.
+const EMPTY_ZONE = { page: '0', x0: '', y0: '', x1: '', y1: '' }
+
+const zoneComplete = (z) => {
+  const v = ['x0', 'y0', 'x1', 'y1'].map((k) => (z[k] === '' ? NaN : Number(z[k])))
+  if (v.some((n) => Number.isNaN(n))) return false
+  return Math.abs(v[2] - v[0]) > 0 && Math.abs(v[3] - v[1]) > 0
+}
 
 function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
   const [zones, setZones] = useState([{ ...EMPTY_ZONE }])
   const [busy, setBusy] = useState(false)
+  const [nbPages, setNbPages] = useState(null)
+
+  useEffect(() => {
+    if (!versionId) return
+    let alive = true
+    gedApi.getVersionPages(versionId)
+      .then((r) => { if (alive) setNbPages(Number(r?.data?.pages) || 0) })
+      .catch(() => { if (alive) setNbPages(0) })
+    return () => { alive = false }
+  }, [versionId])
+  const pages = Array.from({ length: nbPages || 0 }, (_, i) => i)
+  const pret = pages.length > 0 && zones.length > 0 && zones.every(zoneComplete)
 
   const updateZone = (i, field, value) =>
     setZones((prev) => prev.map((z, idx) => (idx === i ? { ...z, [field]: value } : z)))
@@ -897,7 +1078,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (busy) return
+    if (busy || !pret) return
     setBusy(true)
     try {
       const payload = zones.map((z) => ({
@@ -921,7 +1102,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
           <DialogDescription>
             Une COPIE est créée avec les zones ci-dessous définitivement noircies
             (texte supprimé) ; l&apos;original reste intact. Coordonnées en % de
-            la page (page 0 = première page).
+            la page.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-3">
@@ -929,8 +1110,11 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
             <div key={i} className="flex items-end gap-1.5">
               <div className="flex flex-col gap-0.5">
                 <label className="text-xs text-muted-foreground" htmlFor={`z-page-${i}`}>Page</label>
-                <Input id={`z-page-${i}`} type="number" min={0} className="w-16"
-                  value={z.page} onChange={(e) => updateZone(i, 'page', e.target.value)} />
+                <select id={`z-page-${i}`} className="h-9 w-20 rounded-md border border-border bg-background px-2 text-sm"
+                  value={z.page} disabled={!pages.length}
+                  onChange={(e) => updateZone(i, 'page', e.target.value)}>
+                  {pages.map((p) => <option key={p} value={String(p)}>{p + 1}</option>)}
+                </select>
               </div>
               <div className="flex flex-col gap-0.5">
                 <label className="text-xs text-muted-foreground" htmlFor={`z-x0-${i}`}>X0 %</label>
@@ -965,7 +1149,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
           </Button>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || !pret}>
               {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <EyeOff />} Caviarder
             </Button>
           </DialogFooter>
@@ -1034,7 +1218,8 @@ function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
 
 // ── XGED17 — Dialogue : comparer deux versions d'un document ───────────────
 function CompareVersionsDialog({ documentId, versions, onClose }) {
-  const sorted = [...versions].sort((a, b) => (b.numero || 0) - (a.numero || 0))
+  // ADOC34 — clé `version` du contrat (jamais `numero`).
+  const sorted = [...versions].sort((a, b) => (b.version || 0) - (a.version || 0))
   const [v1, setV1] = useState(String(sorted[1]?.id ?? sorted[0]?.id ?? ''))
   const [v2, setV2] = useState(String(sorted[0]?.id ?? ''))
   const [diff, setDiff] = useState(null)
@@ -1066,7 +1251,7 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
               <SelectTrigger id="cmp-v1" aria-label="Version A" className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {sorted.map((v) => (
-                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.version}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1077,7 +1262,7 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
               <SelectTrigger id="cmp-v2" aria-label="Version B" className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {sorted.map((v) => (
-                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.version}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1600,12 +1785,15 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
   const [nom, setNom] = useState('')
   const [parentId, setParentId] = useState('') // '' = racine ; sinon id (string)
   const [busy, setBusy] = useState(false)
+  // ADOC26 — alias e-mail du dossier (ingestion « ged+<alias>@… »).
+  const [alias, setAlias] = useState('')
 
   useEffect(() => {
     if (!state) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
     setBusy(false)
     setNom(mode === 'rename' ? (target?.nom ?? '') : '')
+    setAlias(mode === 'rename' ? (target?.alias_email ?? '') : '')
     setParentId(
       mode === 'move'
         ? (target?.parent != null ? String(target.parent) : '')
@@ -1642,10 +1830,14 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
       if (mode === 'create') {
         const body = { cabinet: cabinetId, nom: nom.trim() }
         if (parentId) body.parent = Number(parentId)
+        if (alias.trim()) body.alias_email = alias.trim()
         await gedApi.createDossier(body)
         toast.success('Dossier créé.')
       } else if (mode === 'rename') {
-        const r = await gedApi.renameDossier(target.id, nom.trim())
+        const aliasChange = alias.trim() !== (target?.alias_email ?? '')
+        const r = aliasChange
+          ? await gedApi.updateDossier(target.id, { nom: nom.trim(), alias_email: alias.trim() })
+          : await gedApi.renameDossier(target.id, nom.trim())
         toast.success('Dossier renommé.')
         onClose()
         // ERR-QAH-GED-RENAME-STALE-HEADER — transmet le dossier PATCHé pour
@@ -1676,6 +1868,15 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
           {(mode === 'create' || mode === 'rename') && (
             <Input aria-label="Nom du dossier" placeholder="Ex. Contrats"
               value={nom} onChange={(e) => setNom(e.target.value)} autoFocus />
+          )}
+          {(mode === 'create' || mode === 'rename') && (
+            <label className="grid gap-1 text-sm">
+              <span className="text-muted-foreground">
+                Alias e-mail (optionnel) — un e-mail à « ged+alias@… » est classé ici
+              </span>
+              <Input aria-label="Alias e-mail du dossier" placeholder="Ex. compta"
+                value={alias} onChange={(e) => setAlias(e.target.value)} />
+            </label>
           )}
           {(mode === 'create' || mode === 'move') && (
             <label className="grid gap-1 text-sm">

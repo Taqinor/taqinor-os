@@ -12,7 +12,7 @@ import {
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    WIR164 — GED avancée, groupe (a) : checklist de pièces (XGED8), validation
@@ -59,14 +59,15 @@ export default function ChecklistPage() {
     setError(null)
     try {
       const [f, c, ex, de, ocr, ta, sd, docs] = await Promise.all([
-        gedApi.getDossiers(),
-        gedApi.getCabinets(),
-        gedApi.getExigences(),
-        gedApi.getDemandesDocument(),
-        gedApi.getValidationsOcr({ en_attente: 1 }),
-        gedApi.getTamponsSociete(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getDossiers),
+        toutesLesPages(gedApi.getCabinets),
+        toutesLesPages(gedApi.getExigences),
+        toutesLesPages(gedApi.getDemandesDocument),
+        toutesLesPages(gedApi.getValidationsOcr, { en_attente: 1 }),
+        toutesLesPages(gedApi.getTamponsSociete),
         gedApi.getStampsDisponibles(),
-        gedApi.getDocumentsList(),
+        toutesLesPages(gedApi.getDocumentsList),
       ])
       setFolders(unpage(f.data))
       setCabinets(unpage(c.data))

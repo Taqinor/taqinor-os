@@ -7,7 +7,7 @@ import {
   SelectItem, StatusPill, MultiSelect, Tag, toast,
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    PACT136 — Routage documentaire automatique (ZGED6).
@@ -54,9 +54,10 @@ export default function RoutagesPage() {
     setError(null)
     try {
       const [r, c, t] = await Promise.all([
-        gedApi.getRoutagesDocumentaires(),
-        gedApi.getCabinets(),
-        gedApi.getTags(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getRoutagesDocumentaires),
+        toutesLesPages(gedApi.getCabinets),
+        toutesLesPages(gedApi.getTags),
       ])
       setRoutages(unpage(r.data))
       setCabinets(unpage(c.data))

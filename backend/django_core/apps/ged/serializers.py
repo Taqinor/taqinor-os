@@ -18,7 +18,8 @@ from .models import (
 from . import services
 
 
-class DocumentTagSerializer(serializers.ModelSerializer):
+class DocumentTagSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
     """GED9 — Tag de la taxonomie documentaire (hiérarchique).
 
     `company` posée côté serveur. `chemin` expose le chemin lisible depuis la
@@ -34,6 +35,9 @@ class DocumentTagSerializer(serializers.ModelSerializer):
     # serveur (unique par société, suffixe -2, -3… en cas de collision).
     slug = serializers.SlugField(
         max_length=110, required=False, allow_blank=True)
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('parent',)
 
     class Meta:
         model = DocumentTag
@@ -91,12 +95,16 @@ class DocumentTagSerializer(serializers.ModelSerializer):
         return slug
 
 
-class DocumentTagAssignmentSerializer(serializers.ModelSerializer):
+class DocumentTagAssignmentSerializer(SameCompanyFKSerializerMixin,
+                                      serializers.ModelSerializer):
     """GED9 — Application d'un tag à un document. `document` et `tag` doivent
     appartenir à la société courante ; `company`/`created_by` posés serveur."""
     tag_nom = serializers.CharField(source='tag.nom', read_only=True)
     document_nom = serializers.CharField(
         source='document.nom', read_only=True)
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('document', 'tag')
 
     class Meta:
         model = DocumentTagAssignment
@@ -120,7 +128,8 @@ class DocumentTagAssignmentSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class CoffreSerializer(serializers.ModelSerializer):
+class CoffreSerializer(SameCompanyFKSerializerMixin,
+                       serializers.ModelSerializer):
     """GED8 — Coffre-fort par employé/client (ACL propriétaire + admin).
 
     `company` et `created_by` sont posés côté serveur. Le propriétaire est un
@@ -131,6 +140,9 @@ class CoffreSerializer(serializers.ModelSerializer):
     proprietaire_nom = serializers.CharField(
         source='proprietaire.username', read_only=True, default=None)
     document_count = serializers.SerializerMethodField()
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('proprietaire', 'client')
 
     class Meta:
         model = Coffre
@@ -169,20 +181,70 @@ class CabinetSerializer(serializers.ModelSerializer):
         fields = ['id', 'nom', 'description', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
+    def validate_nom(self, value):
+        """ADOC22 — doublon (société, nom) : 400 nommé, jamais une 500."""
+        request = self.context.get('request')
+        if request is not None:
+            qs = Cabinet.objects.filter(
+                company_id=request.user.company_id, nom=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Une armoire de ce nom existe déjà.")
+        return value
 
-class FolderSerializer(serializers.ModelSerializer):
+
+class FolderSerializer(SameCompanyFKSerializerMixin,
+                       serializers.ModelSerializer):
     cabinet_nom = serializers.CharField(source='cabinet.nom', read_only=True)
     parent_nom = serializers.CharField(
         source='parent.nom', read_only=True, default=None)
 
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('cabinet', 'parent')
+
     class Meta:
         model = Folder
         # `company` posée côté serveur ; `path` matérialisé côté serveur.
+        # ADOC26 — `alias_email` (XGED9) se saisit et se relit : un e-mail
+        # adressé à « ged+<alias>@… » est classé dans ce dossier.
         fields = [
             'id', 'cabinet', 'cabinet_nom', 'parent', 'parent_nom',
-            'nom', 'path', 'created_at', 'updated_at',
+            'nom', 'alias_email', 'path', 'created_at', 'updated_at',
         ]
         read_only_fields = ['path', 'created_at', 'updated_at']
+
+    def validate_alias_email(self, value):
+        """ADOC26 — alias normalisé (minuscules), unique par société."""
+        import re
+        alias = (value or '').strip().lower()
+        if not alias:
+            return ''
+        if not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', alias):
+            raise serializers.ValidationError(
+                "Alias invalide : lettres, chiffres, point, tiret ou "
+                "souligné uniquement.")
+        request = self.context.get('request')
+        if request is not None:
+            qs = Folder.objects.filter(
+                company_id=request.user.company_id, alias_email=alias)
+            if self.instance is not None and isinstance(self.instance, Folder):
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError("Alias déjà utilisé.")
+        return alias
+
+    def get_fields(self):
+        """ADOC21 — à la MISE À JOUR, `parent` et `cabinet` sont en lecture
+        seule : un dossier ne se déplace que par l'action `deplacer`
+        (`services.move_folder` : cycles refusés, chemins réécrits)."""
+        fields = super().get_fields()
+        if self.instance is not None and isinstance(self.instance, Folder):
+            for nom in ('parent', 'cabinet'):
+                if nom in fields:
+                    fields[nom].read_only = True
+        return fields
 
     def validate(self, attrs):
         """Cabinet et parent doivent appartenir à la société de l'utilisateur,
@@ -203,13 +265,17 @@ class FolderSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class DocumentVersionSerializer(serializers.ModelSerializer):
+class DocumentVersionSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
         source='uploaded_by.username', read_only=True, default=None)
     # GED15 — si la version est une restauration, `restored_from_version` expose
     # le numéro de version source (lisible, jamais écrit du corps de requête).
     restored_from_version = serializers.IntegerField(
         source='restored_from.version', read_only=True, default=None)
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('document',)
 
     class Meta:
         model = DocumentVersion
@@ -219,7 +285,13 @@ class DocumentVersionSerializer(serializers.ModelSerializer):
             'mime', 'checksum', 'uploaded_by', 'uploaded_by_nom',
             'restored_from', 'restored_from_version', 'created_at',
         ]
-        read_only_fields = ['version', 'uploaded_by', 'restored_from', 'created_at']
+        # ADOC8 — `mime` en lecture seule : jamais déclaré par le client
+        # (un text/html déclaré serait servi inline).
+        # ADOC23 — `size` en lecture seule : le quota ne lit jamais une
+        # taille déclarée par le client.
+        read_only_fields = [
+            'version', 'uploaded_by', 'restored_from', 'created_at', 'mime',
+            'size']
         # `version` est posé côté serveur (services.add_version). On retire le
         # UniqueTogetherValidator (document, version) auto-généré : il évaluerait
         # version à sa valeur par défaut (1) à chaque POST et rejetterait la 2e
@@ -233,12 +305,16 @@ class DocumentVersionSerializer(serializers.ModelSerializer):
         return value
 
 
-class DocumentSerializer(serializers.ModelSerializer):
+class DocumentSerializer(SameCompanyFKSerializerMixin,
+                         serializers.ModelSerializer):
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
     version_count = serializers.SerializerMethodField()
     derniere_version = serializers.SerializerMethodField()
+    derniere_mime = serializers.SerializerMethodField()
+    # ADOC35 — favori de l'utilisateur de la requête (ZGED7, personnel).
+    favori = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
     # GED16 — état du verrou (lecture seule, posé côté serveur).
     locked_by_nom = serializers.CharField(
@@ -270,6 +346,9 @@ class DocumentSerializer(serializers.ModelSerializer):
         source='verrou_avertissement_par.username', read_only=True, default=None)
     est_verrouille_avertissement = serializers.BooleanField(read_only=True)
 
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('folder', 'coffre')
+
     class Meta:
         model = Document
         # `company` + `created_by` posés côté serveur.
@@ -277,7 +356,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             'id', 'reference', 'folder', 'folder_nom', 'coffre', 'nom',
             'description',
             'custom_data', 'created_by', 'created_by_nom', 'version_count',
-            'derniere_version', 'tags',
+            'derniere_version', 'derniere_mime', 'favori', 'tags',
             'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
             'statut', 'statut_display', 'transitions_autorisees',
             # GED21 — contrôle de diffusion (filigrane à la diffusion).
@@ -324,6 +403,26 @@ class DocumentSerializer(serializers.ModelSerializer):
     def get_derniere_version(self, obj):
         last = obj.versions.order_by('-version').first()
         return last.version if last else None
+
+    def get_favori(self, obj):
+        """ADOC35 — True si l'utilisateur de la requête a mis ce document en
+        favori. Lit l'annotation `favori_utilisateur` posée par
+        DocumentViewSet (sans N+1) ; à défaut, une requête Exists."""
+        annote = getattr(obj, 'favori_utilisateur', None)
+        if annote is not None:
+            return bool(annote)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return False
+        return FavoriGed.objects.filter(
+            utilisateur=user, document_id=obj.pk).exists()
+
+    def get_derniere_mime(self, obj):
+        """ADOC22 — mime de la version en vigueur (l'écran ne propose les
+        opérations PDF — fusion — que pour des PDF)."""
+        last = obj.versions.order_by('-version').first()
+        return last.mime if last else None
 
     def get_tags(self, obj):
         # GED9 — tags de la taxonomie appliqués au document (id + nom).
@@ -407,7 +506,8 @@ class DocumentLienSerializer(serializers.ModelSerializer):
         return str(target)
 
 
-class DemandeApprobationSerializer(serializers.ModelSerializer):
+class DemandeApprobationSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """GED18 — Demande d'approbation / revue d'un document.
 
     Lecture seule pour l'essentiel : la demande est créée et décidée via les
@@ -429,16 +529,20 @@ class DemandeApprobationSerializer(serializers.ModelSerializer):
         source='document.statut', read_only=True)
     is_pending = serializers.BooleanField(read_only=True)
 
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('document',)
+
     class Meta:
         model = DemandeApprobation
         fields = [
             'id', 'document', 'document_nom', 'document_statut',
             'demandeur', 'demandeur_nom', 'approbateur', 'approbateur_nom',
             'statut', 'statut_display', 'commentaire', 'is_pending',
-            'decision_le', 'created_at', 'updated_at',
+            'decision_le', 'version', 'created_at', 'updated_at',
         ]
+        # ADOC14 — `version` (version relue) posée côté serveur.
         read_only_fields = [
-            'demandeur', 'approbateur', 'statut', 'decision_le',
+            'demandeur', 'approbateur', 'statut', 'decision_le', 'version',
             'created_at', 'updated_at',
         ]
 
@@ -480,10 +584,44 @@ class PartageGedSerializer(serializers.ModelSerializer):
             'watermark',
             'actif', 'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
+        # ADOC6 — `actif` en lecture seule : la révocation passe par
+        # /revoquer/ seulement (aucune réactivation par PATCH).
         read_only_fields = [
-            'token', 'telechargements', 'created_by',
+            'token', 'telechargements', 'created_by', 'actif',
             'created_at', 'updated_at',
         ]
+
+    def get_fields(self):
+        """ADOC6 — `document` borné aux documents VISIBLES de l'appelant
+        (id invisible = id absent) et non modifiable après création."""
+        fields = super().get_fields()
+        request = self.context.get('request')
+        champ = fields.get('document')
+        user = getattr(request, 'user', None)
+        if champ is not None and user is not None and user.is_authenticated:
+            from . import selectors
+            champ.queryset = selectors.documents_visible_to_user(user)
+            if self.instance is not None:
+                champ.read_only = True
+        return fields
+
+    def _voit_le_secret(self, obj):
+        """ADOC6 — le jeton (le secret d'accès) n'est montré qu'au créateur
+        du partage et à l'administrateur."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return False
+        if user.is_superuser or getattr(user, 'is_admin_role', False):
+            return True
+        return obj.created_by_id is not None and obj.created_by_id == user.id
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self._voit_le_secret(instance):
+            data.pop('token', None)
+            data.pop('public_url', None)
+        return data
 
     def get_public_url(self, obj):
         # Chemin public (relatif) — le jeton EST le secret d'accès.
@@ -522,7 +660,8 @@ class PartageGedSerializer(serializers.ModelSerializer):
         return instance
 
 
-class PolitiqueRetentionSerializer(serializers.ModelSerializer):
+class PolitiqueRetentionSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """GED22 — Politique de rétention documentaire (durée + action à l'échéance).
 
     `company` et `created_by` sont posés côté serveur (jamais lus du corps de
@@ -538,6 +677,9 @@ class PolitiqueRetentionSerializer(serializers.ModelSerializer):
         source='folder.nom', read_only=True, default=None)
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('cabinet', 'folder')
 
     class Meta:
         model = PolitiqueRetention
@@ -582,7 +724,8 @@ class PolitiqueRetentionSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ArchivageLegalSerializer(serializers.ModelSerializer):
+class ArchivageLegalSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """GED23 — Archivage légal à valeur probante (write-once / object-lock).
 
     En CRÉATION : seul `document` (et `motif`/`retain_until` optionnels) est lu
@@ -597,6 +740,9 @@ class ArchivageLegalSerializer(serializers.ModelSerializer):
         source='archive_par.username', read_only=True, default=None)
     version_numero = serializers.IntegerField(
         source='version.version', read_only=True, default=None)
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('document',)
 
     class Meta:
         model = ArchivageLegal
@@ -613,7 +759,8 @@ class ArchivageLegalSerializer(serializers.ModelSerializer):
         ]
 
 
-class LegalHoldSerializer(serializers.ModelSerializer):
+class LegalHoldSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
     """GED24 — Rétention légale / legal hold (gel anti-suppression).
 
     En CRÉATION : seuls `document` (et `motif` optionnel) sont lus du corps —
@@ -630,6 +777,9 @@ class LegalHoldSerializer(serializers.ModelSerializer):
     leve_par_nom = serializers.CharField(
         source='leve_par.username', read_only=True, default=None)
 
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('document',)
+
     class Meta:
         model = LegalHold
         fields = [
@@ -644,7 +794,8 @@ class LegalHoldSerializer(serializers.ModelSerializer):
         ]
 
 
-class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
+class DemandeSignatureDocumentSerializer(SameCompanyFKSerializerMixin,
+                                         serializers.ModelSerializer):
     """GED30 — Demande de signature électronique (point d'intégration + stub no-op).
 
     En CRÉATION : seuls `document`, `signataire_nom` et `signataire_email` sont
@@ -664,6 +815,9 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
     # Mono : jeton de la demande ; circuit multi : None (chaque destinataire a
     # SON lien, exposé sur `signataires[].lien_signature`).
     lien_signature = serializers.SerializerMethodField()
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('document',)
 
     class Meta:
         model = DemandeSignatureDocument
@@ -714,7 +868,8 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             obj.token, 'demande', request=self.context.get('request')) or None
 
 
-class ChampSignatureSerializer(serializers.ModelSerializer):
+class ChampSignatureSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """XGED3 — Champ positionné sur le PDF à signer (demande OU modèle,
     exactement l'un des deux). `company` posée CÔTÉ SERVEUR (jamais lue du
     corps). `valeur` reste modifiable par cette API de GESTION (édition d'un
@@ -726,6 +881,9 @@ class ChampSignatureSerializer(serializers.ModelSerializer):
     hauteur/placeholder/astuce pour le rendu public sans requête supplémentaire.
     """
     type_champ_ref_detail = serializers.SerializerMethodField()
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('demande', 'modele', 'type_champ_ref')
 
     class Meta:
         model = ChampSignature
@@ -802,11 +960,14 @@ class TypeChampSignatureSerializer(serializers.ModelSerializer):
         return value
 
 
-class RoutageDocumentaireSerializer(serializers.ModelSerializer):
+class RoutageDocumentaireSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
     """ZGED6 — Réglage de centralisation des fichiers d'un autre module.
 
     `company`/`created_by` posés côté serveur. `source` unique par société
-    (garde base + message FR clair)."""
+    (garde base + message FR clair). ADOC1 — cabinet, dossier et tags par
+    défaut bornés à la société de la requête (id d'ailleurs = id absent)."""
+    same_company_fields = ('cabinet_cible', 'dossier_cible', 'tags_defaut')
     cabinet_cible_nom = serializers.CharField(
         source='cabinet_cible.nom', read_only=True)
 
@@ -842,7 +1003,8 @@ class RoutageDocumentaireSerializer(serializers.ModelSerializer):
         return value
 
 
-class FavoriGedSerializer(serializers.ModelSerializer):
+class FavoriGedSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
     """ZGED7 — Favori d'un dossier ou document (personnel, jamais partagé).
 
     `company`/`utilisateur` posés côté serveur — jamais lus du corps."""
@@ -850,6 +1012,9 @@ class FavoriGedSerializer(serializers.ModelSerializer):
         source='folder.nom', read_only=True, default=None)
     document_nom = serializers.CharField(
         source='document.nom', read_only=True, default=None)
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('folder', 'document')
 
     class Meta:
         model = FavoriGed
@@ -1043,11 +1208,14 @@ class QuotaStockageSerializer(serializers.ModelSerializer):
         return services.quota_depasse(obj.company)
 
 
-class DepotPublicSerializer(serializers.ModelSerializer):
+class DepotPublicSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
     """XGED7 — Gestion (côté propriétaire) d'un lien de dépôt public.
 
     `company`/`created_by`/`token` posés côté serveur. `url_publique` expose le
-    chemin de dépôt (le frontend préfixe l'origine)."""
+    chemin de dépôt (le frontend préfixe l'origine). ADOC1 — `folder` borné à
+    la société de la requête et non modifiable après création."""
+    same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
@@ -1067,9 +1235,22 @@ class DepotPublicSerializer(serializers.ModelSerializer):
             'is_expired', 'is_accessible', 'created_at', 'updated_at',
         ]
 
+    def validate(self, attrs):
+        """ADOC1 — le dossier d'un lien existant ne se déplace plus."""
+        attrs = super().validate(attrs)
+        if (self.instance is not None and 'folder' in attrs
+                and attrs['folder'].pk != self.instance.folder_id):
+            raise serializers.ValidationError({
+                'folder': ["Le dossier d'un lien de dépôt n'est pas "
+                           "modifiable : créez un nouveau lien."]})
+        return attrs
 
-class ExigenceDossierSerializer(serializers.ModelSerializer):
+
+class ExigenceDossierSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """XGED8 — Modèle de checklist de pièces requises."""
+    same_company_fields = ('cabinet', 'folder')
+
     class Meta:
         model = ExigenceDossier
         fields = [
@@ -1079,8 +1260,10 @@ class ExigenceDossierSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class DemandeDocumentSerializer(serializers.ModelSerializer):
+class DemandeDocumentSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """XGED8 — Demande d'une pièce nommée (interne ou contact externe)."""
+    same_company_fields = ('folder', 'exigence', 'utilisateur')
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     utilisateur_nom = serializers.CharField(
         source='utilisateur.username', read_only=True, default=None)
@@ -1119,9 +1302,11 @@ class ValidationOcrDocumentSerializer(serializers.ModelSerializer):
         ]
 
 
-class AnnotationDocumentSerializer(serializers.ModelSerializer):
+class AnnotationDocumentSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """XGED16 — Annotation/tampon posé sur l'image d'une version (couche
     séparée — n'affecte jamais le fichier original)."""
+    same_company_fields = ('version',)
     auteur_nom = serializers.CharField(
         source='auteur.username', read_only=True, default=None)
 
@@ -1134,11 +1319,13 @@ class AnnotationDocumentSerializer(serializers.ModelSerializer):
         read_only_fields = ['auteur', 'created_at']
 
 
-class RegleDossierSerializer(serializers.ModelSerializer):
+class RegleDossierSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
     """XGED19 — Règle d'action automatique à l'upload dans un dossier.
 
     `condition_group` doit être un groupe `core.rules` valide — validé côté
     vue via `core.rules.validate_condition_group` avant persistance."""
+    same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
 
     class Meta:
@@ -1204,7 +1391,8 @@ class AclGedSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer
         source='document.nom', read_only=True, default=None)
     # Un id de client d'une AUTRE société ne doit jamais devenir un partage :
     # validation même-société du FK écrivable (check_fk_scoping).
-    same_company_fields = ('client',)
+    # ADOC36 — cible et principaux bornés à la société de la requête.
+    same_company_fields = ('client', 'folder', 'document', 'utilisateur', 'role')
 
     class Meta:
         model = AclGed
@@ -1259,13 +1447,30 @@ class TamponSocieteSerializer(serializers.ModelSerializer):
         fields = ['id', 'libelle', 'created_at']
         read_only_fields = ['created_at']
 
+    def validate_libelle(self, value):
+        """ADOC22 — doublon (société, libellé) : 400 nommé, jamais une 500."""
+        request = self.context.get('request')
+        if request is not None:
+            qs = TamponSociete.objects.filter(
+                company_id=request.user.company_id, libelle=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Un tampon de ce libellé existe déjà.")
+        return value
 
-class RegleAclMetadonneeSerializer(serializers.ModelSerializer):
+
+class RegleAclMetadonneeSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique,
     évaluée à chaque lecture par `selectors.acl_effective` — jamais de ligne
     `AclGed` matérialisée)."""
     role_nom = serializers.CharField(
         source='role.nom', read_only=True, default=None)
+
+    # ADOC36 — FK inscriptibles bornées à la société de la requête.
+    same_company_fields = ('role',)
 
     class Meta:
         model = RegleAclMetadonnee
@@ -1332,8 +1537,10 @@ class LotEnvoiSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class PlanificationDocumentSerializer(serializers.ModelSerializer):
+class PlanificationDocumentSerializer(SameCompanyFKSerializerMixin,
+                                      serializers.ModelSerializer):
     """XGED15 — Activité planifiée sur un document (« relancer le J+7 »)."""
+    same_company_fields = ('document', 'assigne_a')
     document_nom = serializers.CharField(source='document.nom', read_only=True)
     assigne_a_nom = serializers.CharField(
         source='assigne_a.username', read_only=True, default=None)

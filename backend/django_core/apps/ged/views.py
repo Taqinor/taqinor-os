@@ -108,10 +108,12 @@ GOUVERNANCE_ACTIONS = (
 # GED20 — Formats affichables inline (PDF, images, texte). Tout le reste →
 # téléchargement forcé (attachment). Partagé entre l'aperçu authentifié (GED14)
 # et le partage public tokenisé (GED20).
+# ADOC8 — `text/html` n'est JAMAIS servi inline (script exécuté sur l'origine
+# ERP) ; toute réponse binaire GED porte en plus une CSP « sandbox ».
 _INLINE_MIMES = {
     'application/pdf',
     'image/png', 'image/jpeg', 'image/webp', 'image/gif',
-    'text/plain', 'text/csv', 'text/html',
+    'text/plain', 'text/csv',
 }
 
 
@@ -149,6 +151,24 @@ def _permissions_effectives_csv(lignes, filename_suffix):
     return response
 
 
+def _refus_sous_arbre_non_vide(folder_ids):
+    """ADOC2 — 409 nommé si le sous-arbre contient au moins un document
+    (corbeille comprise) ; ``None`` si la suppression peut se faire.
+
+    Aucune cascade ne doit emporter un document — a fortiori archivé
+    légalement ou sous legal hold : on demande de vider le dossier d'abord."""
+    documents = Document.objects.filter(folder_id__in=list(folder_ids))
+    total = documents.count()
+    if not total:
+        return None
+    en_corbeille = documents.filter(supprime_le__isnull=False).count()
+    return Response(
+        {'detail': (f'Le dossier contient {total} document(s) (dont '
+                    f'{en_corbeille} en corbeille) : videz-le d\'abord.'),
+         'documents': total, 'en_corbeille': en_corbeille},
+        status=status.HTTP_409_CONFLICT)
+
+
 class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
     """Cabinets (armoires racines) d'une société."""
     queryset = Cabinet.objects.all()
@@ -161,6 +181,16 @@ class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+    def destroy(self, request, *args, **kwargs):
+        """ADOC2 — refuse (409) une armoire dont un dossier contient un
+        document ; une armoire vide se supprime toujours."""
+        cabinet = self.get_object()
+        refus = _refus_sous_arbre_non_vide(
+            Folder.objects.filter(cabinet=cabinet).values_list('pk', flat=True))
+        if refus is not None:
+            return refus
+        return super().destroy(request, *args, **kwargs)
 
 
 class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -199,11 +229,22 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(parent__isnull=True)
         elif parent:
             qs = qs.filter(parent_id=parent)
-        return qs
+        # ADOC5 — l'arbre ne montre que les dossiers lisibles (ACL GED19).
+        return selectors.folders_visibles(qs, self.request.user)
 
     def perform_create(self, serializer):
         # company posée côté serveur (jamais du corps).
         serializer.save(company=self.request.user.company)
+
+    def destroy(self, request, *args, **kwargs):
+        """ADOC2 — refuse (409) un dossier dont le sous-arbre contient un
+        document ; un dossier vide se supprime toujours (204)."""
+        folder = self.get_object()
+        ids = [folder.pk, *folder.descendants().values_list('pk', flat=True)]
+        refus = _refus_sous_arbre_non_vide(ids)
+        if refus is not None:
+            return refus
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['get'], url_path='descendants')
     def descendants(self, request, pk=None):
@@ -304,6 +345,19 @@ class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def destroy(self, request, *args, **kwargs):
+        """ADOC4 — supprimer un coffre qui contient des documents les
+        rendrait visibles de tous (SET_NULL) : refus 409 nommé."""
+        coffre = self.get_object()
+        nombre = Document.objects.filter(coffre=coffre).count()
+        if nombre:
+            return Response(
+                {'detail': f'Le coffre contient {nombre} document(s) : '
+                           f'videz-le avant de le supprimer.',
+                 'documents': nombre},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['get'], url_path='documents')
     def documents(self, request, pk=None):
         """Documents rattachés à ce coffre (l'accès au coffre est déjà filtré
@@ -366,10 +420,33 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
         return [HasPermissionOrLegacy(GED_GERER)()]
 
+    # ADOC5 — actions détaillées qui ÉCRIVENT le document : elles exigent le
+    # niveau ACL « écriture » (GED19) en plus du palier de rôle.
+    ACTIONS_ECRITURE_ACL = frozenset({
+        'update', 'partial_update', 'destroy', 'assigner', 'deplacer',
+        'mettre_en_corbeille', 'tagger', 'detagger', 'classer', 'restaurer',
+        'cycle_vie', 'check_out', 'check_in', 'office_sauvegarder',
+        'scinder', 'caviarder', 'ocr_piece', 'nouvelle_version',
+    })
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        if self.action in self.ACTIONS_ECRITURE_ACL:
+            from rest_framework.exceptions import PermissionDenied
+            try:
+                selectors.assert_acl_niveau(obj, request.user, 'ecriture')
+            except PermissionError as exc:
+                raise PermissionDenied(str(exc))
+
     def get_queryset(self):
         # GED8 — base : documents visibles selon l'ACL coffre-fort.
+        # ADOC35 — `favori_utilisateur` annoté (Exists, sans N+1).
+        from django.db.models import Exists, OuterRef
         qs = (selectors.documents_visible_to_user(self.request.user)
-              .select_related('folder', 'coffre', 'created_by'))
+              .select_related('folder', 'coffre', 'created_by')
+              .annotate(favori_utilisateur=Exists(FavoriGed.objects.filter(
+                  utilisateur_id=self.request.user.pk,
+                  document_id=OuterRef('pk')))))
         folder = self.request.query_params.get('folder')
         if folder:
             qs = qs.filter(folder_id=folder)
@@ -422,9 +499,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         """GED9 — Retire un tag de ce document. Body : `{"tag": <id>}`."""
         document = self.get_object()
         tag_id = request.data.get('tag')
-        DocumentTagAssignment.objects.filter(
-            company=request.user.company, document=document, tag_id=tag_id
-        ).delete()
+        # ADOC19 — retrait journalisé dans le chatter (old→new).
+        services.retirer_tag(document, tag_id, user=request.user)
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
@@ -438,7 +514,18 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         `apps.crm.selectors` (dégrade proprement si absent/autre société —
         aucun import du modèle crm)."""
         document = self.get_object()
+        # ADOC22 — document archivé légalement : 403 nommé, jamais une 500.
+        try:
+            services.assert_not_archive_legalement(document)
+        except ArchivageLegalError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         data = request.data
+        # ADOC19 — état AVANT pour le chatter old→new.
+        avant = {
+            'propriétaire': getattr(document.proprietaire, 'username', None),
+            'contact': document.contact_id,
+        }
         if 'proprietaire' in data:
             proprietaire_id = data.get('proprietaire')
             if proprietaire_id in (None, '', 'null'):
@@ -466,6 +553,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                         status=status.HTTP_404_NOT_FOUND)
                 document.contact_id = client.pk
         document.save(update_fields=['proprietaire', 'contact_id', 'updated_at'])
+        services.journaliser_modifications(document, avant, {
+            'propriétaire': getattr(document.proprietaire, 'username', None),
+            'contact': document.contact_id,
+        }, request.user)
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
@@ -504,7 +595,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             from .models import ARCHIVE_LEGALE_MESSAGE
             raise PermissionDenied(ARCHIVE_LEGALE_MESSAGE)
+        # ADOC19 — état AVANT pour le chatter old→new.
+        avant = {'nom': instance.nom, 'description': instance.description} \
+            if instance is not None else {}
         document = serializer.save()
+        services.journaliser_modifications(
+            document, avant,
+            {'nom': document.nom, 'description': document.description},
+            self.request.user)
         # GED11 — réindexe après modification (nom/description/métadonnées).
         services.update_search_vector(document)
         # GED12 — réindexe l'embedding sémantique (no-op sans clé).
@@ -545,9 +643,15 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
                   .filter(pk=folder_id).first())
-        if folder is None:
+        if folder is None or not selectors.folder_lisible(folder, request.user):
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
+        # ADOC5 — déposer dans un dossier exige l'écriture ACL sur lui.
+        try:
+            selectors.assert_acl_niveau(folder, request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         # 2) fichier : obligatoire, validé + stocké par records.storage.
         file = request.FILES.get('file')
         if not file:
@@ -561,6 +665,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except QuotaDepasseError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_403_FORBIDDEN)
+        # ADOC23 — empreinte SHA-256 et taille RÉELLES des octets déposés.
+        contenu = file.read()
+        file.seek(0)
         meta, err = store_attachment(file)
         if err:
             return Response({'file': err},
@@ -582,27 +689,26 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
         # 4) version 1 (numéro + uploaded_by + company posés côté serveur).
-        services.add_version(
-            document, file_key=meta['file_key'], company=company,
-            filename=meta['filename'], size=meta['size'], mime=meta['mime'],
-            uploaded_by=request.user)
+        try:
+            services.add_version(
+                document, file_key=meta['file_key'], company=company,
+                filename=meta['filename'], size=len(contenu),
+                mime=meta['mime'],
+                checksum=services.compute_checksum(contenu),
+                uploaded_by=request.user)
+        except QuotaDepasseError as exc:
+            # ADOC23 — quota atteint entre-temps : pas de document sans version.
+            document.delete()
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         # GED11/GED12 — indexe le document fraîchement créé.
         services.update_search_vector(document)
         services.index_embedding(document)
         # FG352 — indexe les fragments RAG/DocQA (no-op sans clé).
         services.index_document_chunks(document)
-        # XGED8 — un dépôt peut solder une demande de document en attente sur
-        # ce dossier (best-effort, jamais bloquant).
-        try:
-            services.matcher_depot_demandes(document)
-        except Exception:  # pragma: no cover - défensif.
-            pass
-        # XGED19 — règles automatiques du dossier (best-effort, ne bloque
-        # jamais l'upload lui-même même si une action échoue).
-        try:
-            services.appliquer_regles_dossier(document, user=request.user)
-        except Exception:  # pragma: no cover - défensif.
-            pass
+        # XGED8/XGED19/ADOC25 — post-dépôt commun (demandes de pièces +
+        # règles du dossier), best-effort, jamais bloquant.
+        services.apres_depot(document, request.user)
         return Response(
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -824,10 +930,18 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             from apps.customfields.serializers import validate_custom_data
             return validate_custom_data('document', company, data)
 
-        result = services.importer_en_masse(
-            company=company, folder=folder, lignes=lignes,
-            zip_bytes=zip_bytes, created_by=request.user,
-            valider_custom=_valider_custom)
+        # ADOC23 — quota appliqué par add_version : un lot qui le dépasse est
+        # refusé en entier (403), jamais à moitié importé.
+        from django.db import transaction as _tx
+        try:
+            with _tx.atomic():
+                result = services.importer_en_masse(
+                    company=company, folder=folder, lignes=lignes,
+                    zip_bytes=zip_bytes, created_by=request.user,
+                    valider_custom=_valider_custom)
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         ser = DocumentSerializer(
             result['documents'], many=True, context={'request': request})
         http = (status.HTTP_201_CREATED if result['crees']
@@ -1043,12 +1157,19 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         new_folder = (Folder.objects
                       .filter(company=request.user.company)
                       .filter(pk=raw_folder).first())
-        if new_folder is None:
+        if new_folder is None or not selectors.folder_lisible(
+                new_folder, request.user):
             return Response(
                 {'folder': 'Dossier inconnu.'},
                 status=status.HTTP_404_NOT_FOUND)
+        # ADOC5 — le dossier d'arrivée exige aussi l'écriture ACL.
         try:
-            services.move_document(document, new_folder)
+            selectors.assert_acl_niveau(new_folder, request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            services.move_document(document, new_folder, user=request.user)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1074,6 +1195,64 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = DocumentVersionSerializer(
             qs, many=True, context={'request': request}).data
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='nouvelle-version',
+            parser_classes=[MultiPartParser, FormParser])
+    def nouvelle_version(self, request, pk=None):
+        """ADOC18 — Geste « Nouvelle version » (D-ADOC-2) : téléverse un
+        fichier et l'ajoute comme NOUVELLE version de ce document.
+
+        `POST …/documents/<id>/nouvelle-version/` (multipart, champ `file`).
+        Stockage par `records.storage.store_attachment` (10 Mo, octets
+        magiques), empreinte SHA-256 et taille réelles, gardes : ACL écriture
+        (get_object), document-lien 400, archivé 403, quota 403, check-out
+        d'un autre 409 (add_version(user=)). Aucune `file_key` fournie à la
+        main. Écriture : responsable/admin."""
+        document = self.get_object()
+        try:
+            services.assert_not_document_lien(
+                document, action='ajout de version')
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.assert_not_archive_legalement(document)
+        except ArchivageLegalError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'file': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        company = request.user.company
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=getattr(file, 'size', 0))
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        contenu = file.read()
+        file.seek(0)
+        meta, err = store_attachment(file, company=company)
+        if err:
+            return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            version = services.add_version(
+                document, file_key=meta['file_key'], company=company,
+                filename=meta['filename'], size=len(contenu),
+                mime=meta['mime'],
+                checksum=services.compute_checksum(contenu),
+                uploaded_by=request.user, user=request.user)
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        except QuotaDepasseError as exc:  # ADOC23
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        services.update_search_vector(document)
+        return Response(
+            DocumentVersionSerializer(version, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='restaurer')
     def restaurer(self, request, pk=None):
@@ -1113,6 +1292,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             new_version = services.restore_version(
                 document, source_version, uploaded_by=request.user)
+        except PermissionError as exc:
+            # ADOC17 — document extrait (check-out GED16) par un autre.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        except QuotaDepasseError as exc:  # ADOC23
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ArchivageLegalError as exc:
             # GED23 — document archivé légalement : write-once, pas de restauration.
             return Response(
@@ -1207,7 +1393,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
                 status=status.HTTP_404_NOT_FOUND)
-        services.restaurer_de_corbeille(document)
+        try:
+            services.restaurer_de_corbeille(document, user=request.user)
+        except ArchivageLegalError as exc:  # ADOC22 — 403, jamais 500.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         document.refresh_from_db()
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
@@ -1290,8 +1480,12 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         `{"motif": "..."}`. 409 si déjà posé par un autre utilisateur."""
         document = self.get_object()
         try:
+            services.assert_not_archive_legalement(document)  # ADOC22
             doc = services.verrouiller_avertissement(
                 document, request.user, motif=request.data.get('motif', ''))
+        except ArchivageLegalError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
@@ -1306,7 +1500,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         est journalisé). Idempotent si déjà libre."""
         document = self.get_object()
         try:
+            services.assert_not_archive_legalement(document)  # ADOC22
             doc = services.deverrouiller_avertissement(document, request.user)
+        except ArchivageLegalError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1358,11 +1556,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             version = services.sauvegarder_depuis_editeur_office(
                 document, contenu_bytes=upload.read(), user=request.user,
-                filename=upload.name, mime=upload.content_type or '')
+                filename=upload.name)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except (ArchivageLegalError, LegalHoldError) as exc:
+        except (ArchivageLegalError, LegalHoldError, QuotaDepasseError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
@@ -1603,7 +1801,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         try:
             created = services.scinder_pdf(
-                version, request.data.get('points_de_coupe') or [])
+                version, request.data.get('points_de_coupe') or [],
+                created_by=request.user)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
@@ -1664,6 +1863,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 company=request.user.company,
                 nom=(request.data.get('nom') or '').strip(),
                 created_by=request.user)
+        except PermissionError as exc:
+            # ADOC17 — cible extraite (check-out GED16) par un autre.
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        except QuotaDepasseError as exc:  # ADOC23
+            return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
@@ -1794,7 +1998,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
-    côté serveur via `services.add_version` ; `checksum` permet la dédup."""
+    côté serveur via `services.add_version` ; `checksum` permet la dédup.
+
+    ADOC17 — l'historique est IMMUABLE : aucun PUT/PATCH (405) ; une
+    correction passe par une NOUVELLE version."""
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
     queryset = DocumentVersion.objects.select_related(
         'document', 'uploaded_by').all()
     serializer_class = DocumentVersionSerializer
@@ -1805,7 +2013,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # ``apercu`` est une opération de LECTURE (aperçu inline même-origine),
         # donc ouverte à tout rôle authentifié comme list/retrieve — même motif
         # que les actions de lecture custom des viewsets frères.
-        if self.action in READ_ACTIONS or self.action == 'apercu':
+        if self.action in READ_ACTIONS or self.action in ('apercu', 'pages'):
             return [IsAnyRole()]
         # AUD810 — effacer une VERSION est un effacement RÉEL (pas de
         # corbeille pour les versions) qui peut détruire une preuve sous
@@ -1817,7 +2025,9 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — versions des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -1831,9 +2041,17 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # (200) au lieu de dupliquer les octets (201).
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # ADOC10 — dédup bornée au document DEMANDÉ (jamais la version d'un
+        # autre document), après la garde de visibilité.
+        document = serializer.validated_data['document']
+        if not selectors.documents_visible_to_user(
+                request.user).filter(pk=document.pk).exists():
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Document inconnu.')
         checksum = serializer.validated_data.get('checksum', '')
         if checksum:
-            existing = services.find_duplicate(request.user.company, checksum)
+            existing = services.find_duplicate(
+                request.user.company, checksum, document=document)
             if existing is not None:
                 return Response(
                     self.get_serializer(existing).data,
@@ -1877,12 +2095,14 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         except ArchivageLegalError as exc:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(str(exc))
-        # GED16 — bloque l'ajout d'une version si le document est extrait par
-        # un autre utilisateur.
+        # ADOC5 — document visible ET écriture ACL requise.
+        from rest_framework.exceptions import NotFound, PermissionDenied
+        if not selectors.documents_visible_to_user(
+                self.request.user).filter(pk=document.pk).exists():
+            raise NotFound('Document inconnu.')
         try:
-            services.assert_not_locked_by_other(document, self.request.user)
+            selectors.assert_acl_niveau(document, self.request.user, 'ecriture')
         except PermissionError as exc:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(str(exc))
         # ADOC68 — aucune nouvelle version pendant qu'une demande de signature
         # est en attente sur le document (409).
@@ -1891,17 +2111,46 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         except services.SignatureEnCoursError as exc:
             raise _conflit(str(exc))
         v = serializer.validated_data
-        instance = services.add_version(
-            document,
-            file_key=v['file_key'],
-            company=self.request.user.company,
-            filename=v.get('filename', ''),
-            size=v.get('size', 0),
-            mime=v.get('mime', ''),
-            checksum=v.get('checksum', ''),
-            uploaded_by=self.request.user,
-        )
+        # GED16/ADOC17 — le check-out d'autrui est gardé par add_version(user=).
+        try:
+            instance = services.add_version(
+                document,
+                file_key=v['file_key'],
+                company=self.request.user.company,
+                filename=v.get('filename', ''),
+                size=v.get('size', 0),
+                mime=v.get('mime', ''),
+                checksum=v.get('checksum', ''),
+                uploaded_by=self.request.user,
+                user=self.request.user,
+            )
+        except PermissionError as exc:
+            raise PermissionDenied(str(exc))
+        except QuotaDepasseError as exc:  # ADOC23
+            raise PermissionDenied(str(exc))
         serializer.instance = instance
+
+    @action(detail=True, methods=['get'], url_path='pages')
+    def pages(self, request, pk=None):
+        """ADOC11 — Nombre de pages d'une version PDF (`{"pages": N}`), pour
+        que l'écran Caviarder propose les pages 1..N (jamais une saisie
+        libre). Version bornée aux documents visibles (get_queryset)."""
+        version = self.get_object()
+        data, err = fetch_attachment(version.file_key)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=data, filetype='pdf')
+        except Exception:
+            return Response(
+                {'detail': "Ce fichier n'est pas un PDF lisible."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            nombre = doc.page_count
+        finally:
+            doc.close()
+        return Response({'pages': nombre})
 
     @action(detail=True, methods=['get'], url_path='apercu')
     def apercu(self, request, pk=None):
@@ -1960,6 +2209,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         resp = HttpResponse(data, content_type=mime)
         resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
         resp['X-Content-Type-Options'] = 'nosniff'
+        resp['Content-Security-Policy'] = 'sandbox'  # ADOC8
         return resp
 
 
@@ -1986,7 +2236,9 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — liens des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2091,7 +2343,9 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — affectations des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2101,8 +2355,17 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
+        assignment = serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+        # ADOC19 — chatter : tag posé (old→new).
+        services.journaliser_modifications(
+            assignment.document, {f'tag {assignment.tag.nom}': 'absent'},
+            {f'tag {assignment.tag.nom}': 'posé'}, self.request.user)
+
+    def perform_destroy(self, instance):
+        # ADOC19 — chatter : tag retiré (old→new).
+        services.retirer_tag(
+            instance.document, instance.tag_id, user=self.request.user)
 
 
 class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -2131,7 +2394,9 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — demandes des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2219,9 +2484,11 @@ class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
+        # ADOC6 — partages des seuls documents visibles de l'appelant.
         qs = selectors.partages_for_company(
             self.request.user.company).select_related(
-            'document', 'created_by', 'company')
+            'document', 'created_by', 'company').filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2351,6 +2618,9 @@ class ArchivageLegalViewSet(TenantMixin,
     def get_queryset(self):
         qs = selectors.archivages_legaux_for_company(
             self.request.user.company)
+        # ADOC37 — archivages des seuls documents visibles de l'appelant.
+        qs = qs.filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2454,6 +2724,9 @@ class LegalHoldViewSet(TenantMixin,
 
     def get_queryset(self):
         qs = selectors.legal_holds_for_company(self.request.user.company)
+        # ADOC37 — holds des seuls documents visibles de l'appelant.
+        qs = qs.filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2662,6 +2935,9 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
 
     def get_queryset(self):
         qs = selectors.demandes_signature_for_company(self.request.user.company)
+        # ADOC37 — demandes des seuls documents visibles de l'appelant.
+        qs = qs.filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -3061,6 +3337,18 @@ class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, utilisateur=self.request.user)
 
+    def perform_update(self, serializer):
+        """ADOC15 — une vue (partagée) ne se modifie que par son créateur ou
+        un gestionnaire, comme sa suppression."""
+        instance = serializer.instance
+        is_owner = instance.utilisateur_id == self.request.user.id
+        is_manager = IsResponsableOrAdmin().has_permission(self.request, self)
+        if not (is_owner or is_manager):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Seul le créateur ou un gestionnaire peut modifier cette vue.")
+        serializer.save()
+
     def perform_destroy(self, instance):
         is_owner = instance.utilisateur_id == self.request.user.id
         is_manager = IsResponsableOrAdmin().has_permission(self.request, self)
@@ -3180,8 +3468,18 @@ class DepotPublicViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
+        """ADOC1 — création par LE service (garde folder.company_id), jamais
+        un save direct du sérialiseur."""
+        data = serializer.validated_data
+        serializer.instance = services.create_depot_public(
+            folder=data['folder'], company=self.request.user.company,
+            created_by=self.request.user, message=data.get('message', ''),
+            expires_at=data.get('expires_at'),
+            quota_fichiers=data.get('quota_fichiers'),
+            quota_octets=data.get('quota_octets'))
+        if 'actif' in data and data['actif'] != serializer.instance.actif:
+            serializer.instance.actif = data['actif']
+            serializer.instance.save(update_fields=['actif', 'updated_at'])
 
     @action(detail=True, methods=['post'], url_path='revoquer')
     def revoquer(self, request, pk=None):
@@ -3229,7 +3527,13 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC37 — une demande soldée par un document invisible de l'appelant
+        # (coffre d'un collègue, ACL, corbeille) ne lui est pas listée.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company).filter(
+            models.Q(document__isnull=True)
+            | models.Q(document_id__in=selectors.document_ids_visibles(
+                self.request.user)))
         folder = self.request.query_params.get('folder')
         if folder:
             qs = qs.filter(folder_id=folder)
@@ -3302,10 +3606,17 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
     ordering_fields = ['created_at', 'score_confiance']
 
     def get_permissions(self):
+        # ADOC9 — valider une extraction écrit les métadonnées du document :
+        # palier ged_gerer (la lecture de la file reste ouverte).
+        if self.action == 'valider':
+            return [HasPermissionOrLegacy(GED_GERER)()]
         return [IsAnyRole()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC3 — validations des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company,
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         en_attente = self.request.query_params.get('en_attente')
         if en_attente in ('1', 'true'):
             qs = qs.filter(valide=False)
@@ -3321,8 +3632,15 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
         champs = request.data.get('champs_corriges')
         if champs is None:
             champs = validation.champs_extraits
-        resultat = services.valider_extraction_ocr(
-            validation, champs_corriges=champs, user=request.user)
+        if not isinstance(champs, dict):
+            return Response({'champs_corriges': 'Format invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = services.valider_extraction_ocr(
+                validation, champs_corriges=champs, user=request.user)
+        except ArchivageLegalError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         return Response(
             ValidationOcrDocumentSerializer(
                 resultat, context={'request': request}).data)
@@ -3342,7 +3660,11 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC3 — annotations des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company,
+            version__document_id__in=selectors.document_ids_visibles(
+                self.request.user))
         version = self.request.query_params.get('version')
         if version:
             qs = qs.filter(version_id=version)
@@ -3364,8 +3686,11 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         `GET …/annotations/export-annote/?version=<id>`. Sans PyMuPDF : 400
         explicite."""
         version_id = request.query_params.get('version')
+        # ADOC3 — version d'un document VISIBLE de l'appelant, sinon 404.
         version = DocumentVersion.objects.filter(
-            company=request.user.company, pk=version_id).first()
+            company=request.user.company, pk=version_id,
+            document_id__in=selectors.document_ids_visibles(request.user),
+        ).first()
         if version is None:
             return Response(
                 {'version': 'Version inconnue.'}, status=status.HTTP_404_NOT_FOUND)
@@ -3499,7 +3824,12 @@ class AclGedViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC37 — les droits posés sur un document invisible de l'appelant
+        # (coffre d'un collègue, ACL refusée, corbeille) ne lui sont pas listés.
+        qs = super().get_queryset().filter(
+            models.Q(document__isnull=True)
+            | models.Q(document_id__in=selectors.document_ids_visibles(
+                self.request.user)))
         params = self.request.query_params
         folder = params.get('folder')
         if folder:
@@ -3512,9 +3842,47 @@ class AclGedViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(niveau=niveau)
         return qs
 
+    def _assert_gestion_cible(self, folder, document):
+        """ADOC5 — poser/modifier/retirer une ACL exige de VOIR la cible
+        (404 sinon, comme un id absent) et, si elle est déjà gouvernée, le
+        niveau « gestion » sur elle (403) : plus d'auto-octroi."""
+        from rest_framework.exceptions import NotFound, PermissionDenied
+        user = self.request.user
+        if document is not None:
+            visible = selectors.documents_visible_to_user(user).filter(
+                pk=document.pk).exists()
+            cible = document
+        elif folder is not None:
+            visible = selectors.folder_lisible(folder, user)
+            cible = folder
+        else:
+            return
+        if not visible:
+            raise NotFound('Cible inconnue.')
+        try:
+            selectors.assert_acl_niveau(cible, user, 'gestion')
+        except PermissionError as exc:
+            raise PermissionDenied(str(exc))
+
     def perform_create(self, serializer):
+        data = serializer.validated_data
+        self._assert_gestion_cible(data.get('folder'), data.get('document'))
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        self._assert_gestion_cible(instance.folder, instance.document)
+        data = serializer.validated_data
+        if 'folder' in data or 'document' in data:
+            self._assert_gestion_cible(
+                data.get('folder', instance.folder),
+                data.get('document', instance.document))
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._assert_gestion_cible(instance.folder, instance.document)
+        instance.delete()
 
 
 class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -3569,6 +3937,10 @@ class DemandeDispositionViewSet(TenantMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
+        # ADOC7 — approuver/exécuter une disposition (destruction définitive)
+        # relève du même palier que `purger` : ged_gouvernance.
+        if self.action in ('approuver', 'executer'):
+            return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3586,6 +3958,13 @@ class DemandeDispositionViewSet(TenantMixin,
         d'office ; `company`/`demandeur` posés côté serveur."""
         libelle = (request.data.get('libelle') or '').strip()
         action_disp = request.data.get('action') or 'detruire'
+        # ADOC7 — proposer une DESTRUCTION exige ged_gouvernance.
+        if action_disp == 'detruire':
+            garde = HasPermissionOrLegacy(GED_GOUVERNANCE)()
+            if not garde.has_permission(request, self):
+                return Response(
+                    {'detail': "Droit de gouvernance documentaire requis."},
+                    status=status.HTTP_403_FORBIDDEN)
         document_ids = request.data.get('documents') or []
         if not libelle or not document_ids:
             return Response(
@@ -3778,7 +4157,10 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC37 — planifications des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company,
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -3822,13 +4204,19 @@ def mes_favoris(request):
     favoris = FavoriGed.objects.filter(
         company=request.user.company, utilisateur=request.user
     ).select_related('folder', 'document')
+    # ADOC15 — seuls les documents VISIBLES (coffre, ACL, corbeille) et les
+    # dossiers lisibles ; le favori reste en base (il réapparaît si le
+    # document redevient visible).
+    visibles = set(selectors.documents_visible_to_user(
+        request.user).values_list('pk', flat=True))
     dossiers = [
         {'id': f.folder.pk, 'nom': f.folder.nom, 'favori_id': f.pk}
-        for f in favoris if f.folder_id
+        for f in favoris
+        if f.folder_id and selectors.folder_lisible(f.folder, request.user)
     ]
     documents = [
         {'id': f.document.pk, 'nom': f.document.nom, 'favori_id': f.pk}
-        for f in favoris if f.document_id
+        for f in favoris if f.document_id and f.document_id in visibles
     ]
     return Response({'dossiers': dossiers, 'documents': documents})
 
@@ -3988,6 +4376,7 @@ def public_partage(request, token):
     resp = HttpResponse(data, content_type=mime)
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
     resp['X-Content-Type-Options'] = 'nosniff'
+    resp['Content-Security-Policy'] = 'sandbox'  # ADOC8
     return _ged_noindex(resp)
 
 
@@ -4039,6 +4428,21 @@ def public_depot(request, token):
     if not file:
         return _ged_noindex(Response(
             {'file': 'Aucun fichier fourni.'}, status=status.HTTP_400_BAD_REQUEST))
+    # ADOC23 — quota du LIEN puis quota de la SOCIÉTÉ, AVANT tout stockage
+    # (un refus n'écrit jamais rien dans le stockage objet).
+    taille = int(getattr(file, 'size', 0) or 0)
+    if depot.quota_octets is not None and \
+            depot.octets_deposes + taille > depot.quota_octets:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de dépôt a atteint son quota d'octets."},
+            status=status.HTTP_410_GONE))
+    try:
+        services.assert_quota_disponible(
+            depot.company, octets_supplementaires=taille)
+    except QuotaDepasseError:
+        return _ged_noindex(Response(
+            {'detail': 'Quota de stockage atteint : dépôt impossible.'},
+            status=status.HTTP_403_FORBIDDEN))
     meta, err = store_attachment(file)
     if err:
         return _ged_noindex(Response(
@@ -4049,6 +4453,10 @@ def public_depot(request, token):
             size=meta['size'], mime=meta['mime'],
             uploader_nom=(request.data.get('nom') or '').strip(),
             uploader_email=(request.data.get('email') or '').strip())
+    except QuotaDepasseError:  # ADOC23 — course entre deux dépôts.
+        return _ged_noindex(Response(
+            {'detail': 'Quota de stockage atteint : dépôt impossible.'},
+            status=status.HTTP_403_FORBIDDEN))
     except ValueError as exc:
         return _ged_noindex(Response(
             {'detail': str(exc)}, status=status.HTTP_410_GONE))

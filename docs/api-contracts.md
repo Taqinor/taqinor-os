@@ -147,7 +147,9 @@
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo
     detail:texte, slug:inconnu
 - frontend/src/api/gedApi.js :: comparerVersions -> /api/django/ged/documents/<>/comparer
-    detail:texte, diff_texte:inconnu, message:texte, metadonnees:inconnu, texte_disponible:booleen
+    detail:texte, diff_texte:liste, message:texte, metadonnees:inconnu, texte_disponible:booleen
+- frontend/src/api/gedApi.js :: deposerLotScansSepare -> /api/django/ged/documents/deposer-lot-scans-separe
+    barcode_lib_disponible:inconnu, detail:texte, documents:inconnu, files:texte, folder:texte
 - frontend/src/api/gedApi.js :: docqa -> /api/django/ged/documents/docqa
     enabled:inconnu, results:inconnu
 - frontend/src/api/gedApi.js :: dossierPreuveArchivage -> /api/django/ged/archivages-legaux/<>/dossier-preuve
@@ -164,6 +166,8 @@
     depasse:inconnu, illimite:booleen, quota_octets:inconnu, restant_octets:inconnu, usage_octets:inconnu
 - frontend/src/api/gedApi.js :: getTableauBordSignatures -> /api/django/ged/demandes-signature/tableau-bord
     colonnes:inconnu, total:inconnu
+- frontend/src/api/gedApi.js :: getVersionPages -> /api/django/ged/versions/<>/pages
+    detail:inconnu, pages:inconnu
 - frontend/src/api/gedApi.js :: leverLegalHold -> /api/django/ged/legal-holds/<>/lever
     detail:texte, leves:inconnu
 - frontend/src/api/gedApi.js :: ocrPiece -> /api/django/ged/documents/<>/ocr-piece
@@ -801,7 +805,7 @@
 - frontend/src/api/gedApi.js :: createDepotPublic -> /api/django/ged/depots-publics  [DepotPublicSerializer]
     champs: actif, created_at, created_by, created_by_nom, depots_effectues, expires_at, folder, folder_nom, id, is_accessible, is_expired, message, octets_deposes, quota_fichiers, quota_octets, token, updated_at
 - frontend/src/api/gedApi.js :: createDossier -> /api/django/ged/dossiers  [FolderSerializer]
-    champs: cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
+    champs: alias_email, cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
 - frontend/src/api/gedApi.js :: createExigence -> /api/django/ged/exigences-dossier  [ExigenceDossierSerializer]
     champs: cabinet, created_at, created_by, description, folder, id, libelle, obligatoire, updated_at
 - frontend/src/api/gedApi.js :: createModeleDocument -> /api/django/ged/modeles-document  [ModeleDocumentSerializer]
@@ -861,17 +865,17 @@
 - frontend/src/api/gedApi.js :: getCoffres -> /api/django/ged/coffres  [CoffreSerializer]
     champs: client, created_at, created_by, description, document_count, id, nom, proprietaire, proprietaire_nom, updated_at
 - frontend/src/api/gedApi.js :: getDemandesApprobation -> /api/django/ged/demandes-approbation  [DemandeApprobationSerializer]
-    champs: approbateur, approbateur_nom, commentaire, created_at, decision_le, demandeur, demandeur_nom, document, document_nom, document_statut, id, is_pending, statut, statut_display, updated_at
+    champs: approbateur, approbateur_nom, commentaire, created_at, decision_le, demandeur, demandeur_nom, document, document_nom, document_statut, id, is_pending, statut, statut_display, updated_at, version
 - frontend/src/api/gedApi.js :: getDemandesDocument -> /api/django/ged/demandes-document  [DemandeDocumentSerializer]
     champs: created_at, created_by, derniere_relance_le, destinataire_email, destinataire_nom, document, echeance, exigence, folder, folder_nom, id, libelle, nombre_relances, statut, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: getDepotsPublics -> /api/django/ged/depots-publics  [DepotPublicSerializer]
     champs: actif, created_at, created_by, created_by_nom, depots_effectues, expires_at, folder, folder_nom, id, is_accessible, is_expired, message, octets_deposes, quota_fichiers, quota_octets, token, updated_at
 - frontend/src/api/gedApi.js :: getDocuments -> /api/django/ged/documents  [DocumentSerializer]
-    champs: coffre, contact_id, contact_label, created_at, created_by, created_by_nom, custom_data, derniere_version, description, est_dans_corbeille, est_document_lien, est_verrouille_avertissement, folder, folder_nom, id, is_locked, locked_at, locked_by, locked_by_nom, nom, proprietaire, proprietaire_nom, reference, statut, statut_display, supprime_le, supprime_par, supprime_par_nom, tags, transitions_autorisees, updated_at, url_externe, verrou_avertissement_le, verrou_avertissement_motif, verrou_avertissement_par, verrou_avertissement_par_nom, version_count, watermark_diffusion
+    champs: coffre, contact_id, contact_label, created_at, created_by, created_by_nom, custom_data, derniere_mime, derniere_version, description, est_dans_corbeille, est_document_lien, est_verrouille_avertissement, favori, folder, folder_nom, id, is_locked, locked_at, locked_by, locked_by_nom, nom, proprietaire, proprietaire_nom, reference, statut, statut_display, supprime_le, supprime_par, supprime_par_nom, tags, transitions_autorisees, updated_at, url_externe, verrou_avertissement_le, verrou_avertissement_motif, verrou_avertissement_par, verrou_avertissement_par_nom, version_count, watermark_diffusion
 - frontend/src/api/gedApi.js :: getDocumentsList -> /api/django/ged/documents  [DocumentSerializer]
-    champs: coffre, contact_id, contact_label, created_at, created_by, created_by_nom, custom_data, derniere_version, description, est_dans_corbeille, est_document_lien, est_verrouille_avertissement, folder, folder_nom, id, is_locked, locked_at, locked_by, locked_by_nom, nom, proprietaire, proprietaire_nom, reference, statut, statut_display, supprime_le, supprime_par, supprime_par_nom, tags, transitions_autorisees, updated_at, url_externe, verrou_avertissement_le, verrou_avertissement_motif, verrou_avertissement_par, verrou_avertissement_par_nom, version_count, watermark_diffusion
+    champs: coffre, contact_id, contact_label, created_at, created_by, created_by_nom, custom_data, derniere_mime, derniere_version, description, est_dans_corbeille, est_document_lien, est_verrouille_avertissement, favori, folder, folder_nom, id, is_locked, locked_at, locked_by, locked_by_nom, nom, proprietaire, proprietaire_nom, reference, statut, statut_display, supprime_le, supprime_par, supprime_par_nom, tags, transitions_autorisees, updated_at, url_externe, verrou_avertissement_le, verrou_avertissement_motif, verrou_avertissement_par, verrou_avertissement_par_nom, version_count, watermark_diffusion
 - frontend/src/api/gedApi.js :: getDossiers -> /api/django/ged/dossiers  [FolderSerializer]
-    champs: cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
+    champs: alias_email, cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
 - frontend/src/api/gedApi.js :: getExigences -> /api/django/ged/exigences-dossier  [ExigenceDossierSerializer]
     champs: cabinet, created_at, created_by, description, folder, id, libelle, obligatoire, updated_at
 - frontend/src/api/gedApi.js :: getJournalAcces -> /api/django/ged/journal-acces  [JournalAccesSerializer]
@@ -911,11 +915,15 @@
 - frontend/src/api/gedApi.js :: getVues -> /api/django/ged/vues  [VueGedEnregistreeSerializer]
     champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: renameDossier -> /api/django/ged/dossiers/<>  [FolderSerializer]
-    champs: cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
+    champs: alias_email, cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
 - frontend/src/api/gedApi.js :: setQuotaStockage -> /api/django/ged/quotas-stockage  [QuotaStockageSerializer]
     champs: created_at, depasse, id, quota_octets, updated_at, utilise_octets
 - frontend/src/api/gedApi.js :: updateAcl -> /api/django/ged/acls/<>  [AclGedSerializer]
     champs: client, client_nom, created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: updateDocument -> /api/django/ged/documents/<>  [DocumentSerializer]
+    champs: coffre, contact_id, contact_label, created_at, created_by, created_by_nom, custom_data, derniere_mime, derniere_version, description, est_dans_corbeille, est_document_lien, est_verrouille_avertissement, favori, folder, folder_nom, id, is_locked, locked_at, locked_by, locked_by_nom, nom, proprietaire, proprietaire_nom, reference, statut, statut_display, supprime_le, supprime_par, supprime_par_nom, tags, transitions_autorisees, updated_at, url_externe, verrou_avertissement_le, verrou_avertissement_motif, verrou_avertissement_par, verrou_avertissement_par_nom, version_count, watermark_diffusion
+- frontend/src/api/gedApi.js :: updateDossier -> /api/django/ged/dossiers/<>  [FolderSerializer]
+    champs: alias_email, cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
 - frontend/src/api/gedApi.js :: updatePlanificationDocument -> /api/django/ged/planifications/<>  [PlanificationDocumentSerializer]
     champs: assigne_a, assigne_a_nom, created_at, created_by, document, document_nom, echeance, faite, id, libelle, notifiee
 - frontend/src/api/gedApi.js :: updatePolitiqueRetention -> /api/django/ged/politiques-retention/<>  [PolitiqueRetentionSerializer]
