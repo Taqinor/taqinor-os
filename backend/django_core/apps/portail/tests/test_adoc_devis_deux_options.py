@@ -98,7 +98,7 @@ class DevisDeuxOptionsPortailTests(TestCase):
             format='json')
 
     def test_liste_conforme_au_contrat_deux_options(self):
-        self.assertEqual(CONTRAT['forme_serveur'], 'complète')
+        self.assertEqual(CONTRAT['forme_serveur'], 'complete')
         lignes = self._lignes()
         attendu_deux = CONTRAT['exemple_deux_options']['results'][0]
         attendu_mono = CONTRAT['exemple_deux_options']['results'][1]

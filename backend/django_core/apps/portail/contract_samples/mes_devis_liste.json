@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/portail/mes-devis/",
-  "forme_serveur": "complète",
+  "forme_serveur": "complete",
   "pourquoi": "QJR514 (M0 QJR5) — la liste « mes devis » du portail client dit quand le document a été corrigé. Aucun contrat portail-devis n'existait. La vue rend {results: [...]} ; un élément = les clés actuelles de devis_du_client_portail (ventes/selectors.py:1938-1960) + `mis_a_jour_le` (ISO|null) = date de etude_params.resync_apres_envoi, JAMAIS updated_at. Brouillons exclus ; jamais prix_achat.",
   "exemple": {
     "results": [
