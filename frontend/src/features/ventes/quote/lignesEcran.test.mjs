@@ -85,6 +85,25 @@ test('modèle appliqué (produit_id / prix_unit_ht) passe par le même mappeur',
   assert.equal(l.taux_tva, '10')
 })
 
+test('TVA-LIGNE : une ligne sans taux prend la TVA de son produit avant celle du devis', () => {
+  const [panneau, sansFiche, exoneree] = lignesServeurVersEcran([
+    { id: 1, produit: 7, designation: 'Panneau', prix_unitaire: '100.00',
+      taux_tva: null, produit_tva: '10.00' },
+    { id: 2, produit: 8, designation: 'Onduleur', prix_unitaire: '100.00',
+      taux_tva: null, produit_tva: null },
+    { id: 3, produit: 9, designation: 'Pompe', prix_unitaire: '100.00',
+      taux_tva: '0.00', produit_tva: '20.00', tva_base_legale: 'Art. 92' },
+  ], '20.00')
+  assert.equal(panneau.taux_tva, '10')
+  assert.equal(panneau.prix_unit_ttc, '110')
+  // Sans fiche produit, le taux du devis reste le repli.
+  assert.equal(sansFiche.taux_tva, '20')
+  // AGR216 — un 0 % explicite reste 0 %, jamais remplacé par la fiche.
+  assert.equal(exoneree.taux_tva, '0')
+  const payload = lignesEcranVersPayload([panneau, sansFiche, exoneree])
+  assert.deepEqual(payload.map((p) => p.taux_tva), ['10', '20', '0'])
+})
+
 test('lignes vides / sans produit / quantité nulle ne partent pas', () => {
   const payload = lignesEcranVersPayload([
     { produit: '', quantite: '2', prix_unit_ttc: '10', typeLigne: 'produit' },
