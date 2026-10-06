@@ -64,8 +64,11 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # LigneFacture, Paiement, Avoir et LigneAvoir insèrent des lignes AVANT ces
     # deux champs dans le même fichier. MÊME champ, déclaration byte-identique
     # avant/après (vérifiée contre 024a132c). Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:937",
-    "backend/django_core/apps/facturation/models.py:1139",
+    # Remappés 937->967 et 1139->1169 par CIQ214 : la retenue de garantie
+    # (2 champs + 2 propriétés, +30 lignes) est insérée dans Facture, AVANT
+    # ces deux champs. MÊME champ, déclaration byte-identique. Bug-class #34.
+    "backend/django_core/apps/facturation/models.py:967",
+    "backend/django_core/apps/facturation/models.py:1169",
     # Remappé 1251->1346 (lane CAD IK-MESURE 21/09 : +95 lignes insérées AVANT
     # NoteDebit dans ventes/models.py — le marqueur « signé au domicile » de
     # CAD122 sur BonCommande, sa constante de délai, son exception et ses deux

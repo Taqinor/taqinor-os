@@ -83,21 +83,27 @@ class TestModeChoiceExists(TestCase):
 
 
 class TestCommercialMaps(TestCase):
-    def test_payment_terms_commercial_50_40_10(self):
+    # CIQ212 — D-CIQ-13 (03/10/2026) remplace le 50/40/10 provisoire de QX43 :
+    # commercial 40/50/10, industriel 30/40/20/10, en jalons.
+    def test_payment_terms_commercial_40_50_10(self):
         self.assertEqual(
             PAYMENT_TERMS_BY_MODE['commercial'],
-            {'acompte': 50, 'materiel': 40, 'solde': 10})
+            [{'jalon': 'commande', 'pct': 40},
+             {'jalon': 'livraison_materiel', 'pct': 50},
+             {'jalon': 'mise_en_service', 'pct': 10}])
 
-    def test_payment_terms_industriel_unchanged(self):
+    def test_payment_terms_industriel_30_40_20_10(self):
         self.assertEqual(
-            PAYMENT_TERMS_BY_MODE['industriel'],
-            {'acompte': 50, 'materiel': 40, 'solde': 10})
+            [j['pct'] for j in PAYMENT_TERMS_BY_MODE['industriel']],
+            [30, 40, 20, 10])
 
     def test_payment_terms_for_commercial(self):
         company = make_company('qx43-pt')
         self.assertEqual(
-            payment_terms_for(company, 'commercial'),
-            {'acompte': 50, 'materiel': 40, 'solde': 10})
+            [(j['jalon'], j['pct'])
+             for j in payment_terms_for(company, 'commercial')],
+            [('commande', 40), ('livraison_materiel', 50),
+             ('mise_en_service', 10)])
 
 
 class TestCommercialBuildQuoteData(TestCase):
@@ -121,11 +127,11 @@ class TestCommercialBuildQuoteData(TestCase):
         self.assertEqual(data['inst_type'], 'Commerciale')
         self.assertEqual(data['mode_installation'], 'commercial')
 
-    def test_commercial_payment_terms_50_40_10(self):
+    def test_commercial_payment_terms_40_50_10(self):
         data = self._build('commercial', 'DEV-QX43-COM-2')
         self.assertEqual(
             data['payment_terms'],
-            {'acompte': 50, 'materiel': 40, 'solde': 10})
+            {'acompte': 40, 'materiel': 50, 'solde': 10})
 
     def test_industriel_inst_type_no_longer_slash_commerciale(self):
         data = self._build('industriel', 'DEV-QX43-IND-1')

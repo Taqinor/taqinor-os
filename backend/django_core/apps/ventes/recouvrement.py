@@ -60,7 +60,9 @@ def variables_relance(facture):
             f"{getattr(client, 'nom', '') or ''} "
             f"{getattr(client, 'prenom', '') or ''}").strip()
     try:
-        montant = quantize_mad(getattr(facture, 'montant_du', 0) or 0)
+        # CIQ214 — la relance ne réclame que l'EXIGIBLE (retenue de garantie
+        # non libérée exclue).
+        montant = quantize_mad(montant_exigible(facture) or 0)
     except Exception:  # pragma: no cover — facture sans montant exploitable
         montant = Decimal('0.00')
     jours = getattr(facture, 'jours_retard', 0) or 0
@@ -132,9 +134,18 @@ def facture_relancable(facture):
         return False, (
             f'Statut {libelle} : la relance ne concerne qu\'une facture '
             f'ouverte et due.')
-    if (getattr(facture, 'montant_du', 0) or 0) <= 0:
+    if (montant_exigible(facture) or 0) <= 0:
         return False, 'Facture soldée : plus rien à relancer.'
     return True, ''
+
+
+def montant_exigible(facture):
+    """CIQ214 — ce qu'une relance peut réclamer : ``Facture.
+    montant_exigible`` (``montant_du`` − retenue de garantie non libérée),
+    repli sur ``montant_du`` pour un objet qui ne la porte pas."""
+    if hasattr(facture, 'montant_exigible'):
+        return facture.montant_exigible
+    return getattr(facture, 'montant_du', 0)
 
 
 # ── Niveaux de relance par défaut — LA source unique (fondateur, 05/10/2026) ──
@@ -226,7 +237,7 @@ def apercu_relance(facture):
     return {
         'facture_id': facture.id,
         'facture_reference': facture.reference,
-        'montant_du': _s(facture.montant_du),
+        'montant_du': _s(montant_exigible(facture)),
         'jours_retard': jours,
         'niveaux': [_niveau_dict(n) for n in niveaux],
         'niveau_suivant': (_niveau_dict(suivant)
@@ -423,7 +434,8 @@ def relances_list(request):
         # fois : le filtre `facture_relancable`, `jours_retard`, la colonne
         # montant et le calcul de pénalité — chacune ré-agrégeant les six
         # relations).
-        du = f.montant_du
+        # CIQ214 — le tableau des relances réclame l'EXIGIBLE.
+        du = montant_exigible(f)
         jr = f.jours_retard
         # XFAC5 — promesse de paiement active/rompue (priorité haute), servie
         # par le `Prefetch` filtré de `_facture_due_rows` (AUD158) : plus de
@@ -690,7 +702,7 @@ def lettre_relance_pdf(request, facture_id):
                         status=status.HTTP_404_NOT_FOUND)
     levels = _levels(facture.company)
     niveau = _current_level(
-        facture.jours_retard, levels, montant_du=facture.montant_du)
+        facture.jours_retard, levels, montant_du=montant_exigible(facture))
     message = ''
     if niveau:
         lvl = next((x for x in levels if x.ordre == niveau['ordre']), None)

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from .models import (
@@ -159,6 +161,16 @@ class EcheancierTrancheSerializer(serializers.Serializer):
     # ``normaliser_tranche``, seule source de la règle ET du message FR
     # nommant ``echeancier[i].date_prevue``.
     date_prevue = serializers.JSONField(required=False, allow_null=True)
+    # CIQ212 / CIQ213 (contrat ``devis_replace_lines_entete.json``) — jalon,
+    # délai de règlement DÉCLARÉ, semaines indicatives et payeur, FACULTATIFS.
+    # JSONField : la valeur brute atteint ``normaliser_tranche``, seule source
+    # de la règle ET du message FR nommant ``echeancier[i].<champ>``.
+    jalon = serializers.JSONField(required=False, allow_null=True)
+    delai_reglement_jours = serializers.JSONField(
+        required=False, allow_null=True)
+    semaines_indicatives = serializers.JSONField(
+        required=False, allow_null=True)
+    payeur = serializers.JSONField(required=False, allow_null=True)
 
     def validate(self, attrs):
         from .utils.echeancier import EcheancierInvalide, normaliser_tranche
@@ -201,7 +213,95 @@ class EcheancierValidationMixin:
         return value
 
 
-class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
+class TiersPayeurValidationMixin:
+    """CIQ213 — ``tiers_payeur`` (organisme financeur) : un client de la
+    MÊME société que le devis, sinon 400 nommant ``tiers_payeur``."""
+
+    def validate_tiers_payeur(self, value):
+        if value is None:
+            return value
+        company = getattr(self.instance, 'company', None)
+        if company is None:
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None or value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Tiers payeur : client introuvable dans votre société.")
+        return value
+
+    # ── CIQ214 — retenue, pénalités, caution : SEULEMENT à la demande du
+    # client (D-CIQ-14), jamais de valeur par défaut ; formes normalisées
+    # (enregistrer → rouvrir → enregistrer sans toucher = entête identique).
+
+    @staticmethod
+    def _pct_ci(champ, brut, *, strict=True):
+        try:
+            if isinstance(brut, bool) or brut in (None, ''):
+                raise ValueError(brut)
+            valeur = Decimal(str(brut).replace(',', '.'))
+            if not valeur.is_finite():
+                raise ValueError(brut)
+        except (TypeError, ValueError, ArithmeticError):
+            raise serializers.ValidationError(
+                f"« {champ} » : un pourcentage numérique est attendu.")
+        if valeur < 0 or valeur > 100 or (strict and valeur == 0):
+            raise serializers.ValidationError(
+                f"« {champ} » doit être compris entre 0 et 100 %.")
+        return float(valeur)
+
+    def validate_retenue_garantie(self, value):
+        if value in (None, {}, ''):
+            return None
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Retenue de garantie : un objet {taux_pct, liberation} est "
+                "attendu.")
+        liberation = value.get('liberation') or 'reception_definitive'
+        if liberation != 'reception_definitive':
+            raise serializers.ValidationError(
+                "« retenue_garantie.liberation » : seule la réception "
+                "définitive libère la retenue (reception_definitive).")
+        return {'taux_pct': self._pct_ci('retenue_garantie.taux_pct',
+                                         value.get('taux_pct')),
+                'liberation': liberation}
+
+    def validate_penalites_retard_livraison(self, value):
+        if value in (None, {}, ''):
+            return None
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Pénalités de retard : un objet {taux_pct_par_semaine, "
+                "plafond_pct} est attendu.")
+        for cle, libelle in (('taux_pct_par_semaine', 'le taux par semaine'),
+                             ('plafond_pct', 'le plafond')):
+            if value.get(cle) in (None, ''):
+                raise serializers.ValidationError(
+                    f"Pénalités de retard : {libelle} "
+                    f"(penalites_retard_livraison.{cle}) est obligatoire — "
+                    "taux et plafond vont ensemble.")
+        return {
+            'taux_pct_par_semaine': self._pct_ci(
+                'penalites_retard_livraison.taux_pct_par_semaine',
+                value.get('taux_pct_par_semaine')),
+            'plafond_pct': self._pct_ci(
+                'penalites_retard_livraison.plafond_pct',
+                value.get('plafond_pct')),
+        }
+
+    def validate_caution(self, value):
+        if value in (None, {}, ''):
+            return None
+        if not isinstance(value, dict) or not str(
+                value.get('nature') or '').strip():
+            raise serializers.ValidationError(
+                "Caution : la nature (caution.nature) est obligatoire.")
+        return {'nature': str(value['nature']).strip(),
+                'montant_ou_pct': value.get('montant_ou_pct'),
+                'plafond': value.get('plafond')}
+
+
+class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
+                      serializers.ModelSerializer):
     lignes = LigneDevisSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -691,7 +791,8 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
-class DevisWriteSerializer(EcheancierValidationMixin,
+class DevisWriteSerializer(TiersPayeurValidationMixin,
+                           EcheancierValidationMixin,
                            serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -776,6 +877,11 @@ class DevisWriteSerializer(EcheancierValidationMixin,
             'company', 'client', 'lead', 'created_by', 'remise_approuvee_par',
             'version_parent', 'superseded_by', 'updated_by', 'variante_de',
             'devis_origine', 'entite',
+            # CIQ213 — payeur tiers (client de la même société, validé par
+            # ``TiersPayeurValidationMixin``).
+            'tiers_payeur',
+            # CIQ214 — conditions C&I à la demande du client (D-CIQ-14).
+            'retenue_garantie', 'penalites_retard_livraison', 'caution',
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais

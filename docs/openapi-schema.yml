@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4792, operations: 7594, components: 2202}
+counts: {paths: 4798, operations: 7598, components: 2201}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1269,6 +1269,7 @@ operations:
 - post /api/django/facturation/factures/{id}/facturer-penalites/ -> django_facturation_factures_facturer_penalites_create
 - post /api/django/facturation/factures/{id}/generer-pdf/ -> django_facturation_factures_generer_pdf_create
 - get /api/django/facturation/factures/{id}/historique/ -> django_facturation_factures_historique_retrieve
+- post /api/django/facturation/factures/{id}/liberer-retenue/ -> django_facturation_factures_liberer_retenue_create
 - post /api/django/facturation/factures/{id}/lien-paiement/ -> django_facturation_factures_lien_paiement_create
 - post /api/django/facturation/factures/{id}/marquer-payee/ -> django_facturation_factures_marquer_payee_create
 - get /api/django/facturation/factures/{id}/paiements/ -> django_facturation_factures_paiements_retrieve
@@ -2495,8 +2496,6 @@ operations:
 - get /api/django/portail/mes-chantiers/{id}/ -> django_portail_mes_chantiers_retrieve
 - get /api/django/portail/mes-chantiers/{id}/photo/{attachment_id}/ -> django_portail_mes_chantiers_photo_retrieve
 - get /api/django/portail/mes-chantiers/{id}/photos/ -> django_portail_mes_chantiers_photos_retrieve
-- get /api/django/portail/mes-chantiers/{id}/releves/ -> django_portail_mes_chantiers_releves_retrieve
-- post /api/django/portail/mes-chantiers/{id}/releves/ -> django_portail_mes_chantiers_releves_create
 - get /api/django/portail/mes-commissions/ -> django_portail_mes_commissions_list
 - get /api/django/portail/mes-commissions/pdf/ -> django_portail_mes_commissions_pdf_retrieve
 - get /api/django/portail/mes-contrats-maintenance/ -> django_portail_mes_contrats_maintenance_list
@@ -3553,6 +3552,7 @@ operations:
 - post /api/django/ventes/devis/{id}/dupliquer-variante-gamme/ -> django_ventes_devis_dupliquer_variante_gamme_create
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
+- get /api/django/ventes/devis/{id}/economie-ci/ -> django_ventes_devis_economie_ci_retrieve
 - get /api/django/ventes/devis/{id}/economie-pompage/ -> django_ventes_devis_economie_pompage_retrieve
 - get /api/django/ventes/devis/{id}/economie/ -> django_ventes_devis_economie_retrieve
 - post /api/django/ventes/devis/{id}/envoyer-email/ -> django_ventes_devis_envoyer_email_create
@@ -3618,6 +3618,7 @@ operations:
 - put /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_update
 - post /api/django/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> django_ventes_dossiers_reglementaires_generer_checklist_create
 - post /api/django/ventes/dossiers-reglementaires/{id}/generer-schema/ -> django_ventes_dossiers_reglementaires_generer_schema_create
+- post /api/django/ventes/economie-ci/preview/ -> django_ventes_economie_ci_preview_create
 - post /api/django/ventes/economie-pompage/preview/ -> django_ventes_economie_pompage_preview_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_retrieve
@@ -3660,6 +3661,7 @@ operations:
 - post /api/django/ventes/factures/{id}/facturer-penalites/ -> django_ventes_factures_facturer_penalites_create
 - post /api/django/ventes/factures/{id}/generer-pdf/ -> django_ventes_factures_generer_pdf_create
 - get /api/django/ventes/factures/{id}/historique/ -> django_ventes_factures_historique_retrieve
+- post /api/django/ventes/factures/{id}/liberer-retenue/ -> django_ventes_factures_liberer_retenue_create
 - post /api/django/ventes/factures/{id}/lien-paiement/ -> django_ventes_factures_lien_paiement_create
 - post /api/django/ventes/factures/{id}/marquer-payee/ -> django_ventes_factures_marquer_payee_create
 - get /api/django/ventes/factures/{id}/paiements/ -> django_ventes_factures_paiements_retrieve
@@ -5104,6 +5106,7 @@ operations:
 - post /api/v1/facturation/factures/{id}/facturer-penalites/ -> v1_facturation_factures_facturer_penalites_create
 - post /api/v1/facturation/factures/{id}/generer-pdf/ -> v1_facturation_factures_generer_pdf_create
 - get /api/v1/facturation/factures/{id}/historique/ -> v1_facturation_factures_historique_retrieve
+- post /api/v1/facturation/factures/{id}/liberer-retenue/ -> v1_facturation_factures_liberer_retenue_create
 - post /api/v1/facturation/factures/{id}/lien-paiement/ -> v1_facturation_factures_lien_paiement_create
 - post /api/v1/facturation/factures/{id}/marquer-payee/ -> v1_facturation_factures_marquer_payee_create
 - get /api/v1/facturation/factures/{id}/paiements/ -> v1_facturation_factures_paiements_retrieve
@@ -6330,8 +6333,6 @@ operations:
 - get /api/v1/portail/mes-chantiers/{id}/ -> v1_portail_mes_chantiers_retrieve
 - get /api/v1/portail/mes-chantiers/{id}/photo/{attachment_id}/ -> v1_portail_mes_chantiers_photo_retrieve
 - get /api/v1/portail/mes-chantiers/{id}/photos/ -> v1_portail_mes_chantiers_photos_retrieve
-- get /api/v1/portail/mes-chantiers/{id}/releves/ -> v1_portail_mes_chantiers_releves_retrieve
-- post /api/v1/portail/mes-chantiers/{id}/releves/ -> v1_portail_mes_chantiers_releves_create
 - get /api/v1/portail/mes-commissions/ -> v1_portail_mes_commissions_list
 - get /api/v1/portail/mes-commissions/pdf/ -> v1_portail_mes_commissions_pdf_retrieve
 - get /api/v1/portail/mes-contrats-maintenance/ -> v1_portail_mes_contrats_maintenance_list
@@ -7354,6 +7355,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/dupliquer-variante-gamme/ -> v1_ventes_devis_dupliquer_variante_gamme_create
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
+- get /api/v1/ventes/devis/{id}/economie-ci/ -> v1_ventes_devis_economie_ci_retrieve
 - get /api/v1/ventes/devis/{id}/economie-pompage/ -> v1_ventes_devis_economie_pompage_retrieve
 - get /api/v1/ventes/devis/{id}/economie/ -> v1_ventes_devis_economie_retrieve
 - post /api/v1/ventes/devis/{id}/envoyer-email/ -> v1_ventes_devis_envoyer_email_create
@@ -7419,6 +7421,7 @@ operations:
 - put /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_update
 - post /api/v1/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> v1_ventes_dossiers_reglementaires_generer_checklist_create
 - post /api/v1/ventes/dossiers-reglementaires/{id}/generer-schema/ -> v1_ventes_dossiers_reglementaires_generer_schema_create
+- post /api/v1/ventes/economie-ci/preview/ -> v1_ventes_economie_ci_preview_create
 - post /api/v1/ventes/economie-pompage/preview/ -> v1_ventes_economie_pompage_preview_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_retrieve
@@ -7461,6 +7464,7 @@ operations:
 - post /api/v1/ventes/factures/{id}/facturer-penalites/ -> v1_ventes_factures_facturer_penalites_create
 - post /api/v1/ventes/factures/{id}/generer-pdf/ -> v1_ventes_factures_generer_pdf_create
 - get /api/v1/ventes/factures/{id}/historique/ -> v1_ventes_factures_historique_retrieve
+- post /api/v1/ventes/factures/{id}/liberer-retenue/ -> v1_ventes_factures_liberer_retenue_create
 - post /api/v1/ventes/factures/{id}/lien-paiement/ -> v1_ventes_factures_lien_paiement_create
 - post /api/v1/ventes/factures/{id}/marquer-payee/ -> v1_ventes_factures_marquer_payee_create
 - get /api/v1/ventes/factures/{id}/paiements/ -> v1_ventes_factures_paiements_retrieve
@@ -8091,6 +8095,7 @@ components:
 - DrillRequeteRequest
 - EcheanceFactureFournisseur
 - EcheanceFactureFournisseurRequest
+- EconomieCiResponse
 - EconomiePompageResponse
 - ElectriciteSurPlaceEnum
 - ElementSupprime
@@ -8393,8 +8398,6 @@ components:
 - MesLivraisonsPortailLigne
 - MesLivraisonsPortailPreuve
 - MesProcessusResponse
-- MesRelevesPompagePortail
-- MesRelevesPompagePortailPostRequest
 - MesSauvegardesReponse
 - MesSoumissionsPortail
 - MesSoumissionsPortailLigne

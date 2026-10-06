@@ -147,6 +147,15 @@
       ]
     },
     {
+      "nom": "economie_ci",
+      "url_path": "economie-ci",
+      "url_name": "economie-ci",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "economie_pompage",
       "url_path": "economie-pompage",
       "url_name": "economie-pompage",
@@ -559,6 +568,7 @@
     "dupliquer_variante",
     "dupliquer_variante_gamme",
     "economie",
+    "economie_ci",
     "economie_pompage",
     "entite_field",
     "envoyer_email",

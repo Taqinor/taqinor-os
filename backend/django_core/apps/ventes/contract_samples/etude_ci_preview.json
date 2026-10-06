@@ -2960,7 +2960,7 @@
     "composition.lignes": "[{role (ROLES_CI), produit (id ou null), designation, quantite, unite, prix_connu, motif, a_confirmer_visite}] — un article C&I manquant = ligne `produit: null` « prix à renseigner », devis `incomplet`",
     "composition.options": "[{cle om|batterie, libelle, prix_connu, valeur ou 'valeur non chiffrée'}] — la batterie n'affiche que la valeur quantifiée",
     "regime_8221_suggere": "{regime declaration|accord_raccordement|autorisation, seuil, source} — lu par le dossier 82-21 (CIQ12)",
-    "alertes": "[{code, champ, message, niveau info|alerte|bloquant, interne}] — `interne: true` n'entre jamais dans une charge utile client",
+    "alertes": "[{code, champ, message, niveau info|alerte|bloquant, interne}] — `interne: true` n'entre jamais dans une charge utile client ; CIQ134 (MT seulement, moteur_ci/reactif.py, seule formule) : `cos_phi_apres_pv` (niveau alerte, interne : cos φ après PV sous le seuil ONEE 0,8 calculé depuis kWh + kvarh des registres MT ou un cos φ déclaré avec sa provenance ; seuil, source, date, « à confirmer auprès du distributeur », « estimation interne » et la question de visite « batterie de condensateurs existante, puissance, état » sont dans `message` ; aucun montant) ou `cos_phi_non_evalue` (niveau info : « facteur de puissance non déclaré / non évalué », jamais 1,0 supposé) ; relayée par economie_ci.alertes_internes, jamais servie par economie_ci_publique ni synthese_ci",
     "hypotheses": "[{cle, valeur, statut source|declare|estimation, source}]",
     "version_moteur": "texte — change à chaque évolution de formule"
   },
