@@ -1820,7 +1820,57 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             LigneFactureFournisseur.objects.create(facture=facture, **ligne)
         return facture
 
+    #: ASTK26 — champs verrouillés dès qu'un paiement, un acompte ou un avoir
+    #: est imputé sur la facture.
+    CHAMPS_VERROUILLES_SI_IMPUTEE = (
+        'montant_ht', 'montant_tva', 'montant_ttc', 'montant_ttc_devise',
+        'devise', 'taux_change', 'fournisseur',
+    )
+    _MSG_FACTURE_REGLEE = 'Facture réglée : montants verrouillés.'
+
+    @staticmethod
+    def _a_une_imputation(instance):
+        return (instance.paiements.exists()
+                or instance.acomptes_imputes.exists()
+                or instance.avoirs_imputes.exists())
+
+    def _verifier_verrou_imputation(self, instance, validated_data):
+        """ASTK26 — une facture qui porte un paiement, un acompte ou un avoir
+        imputé ne voit plus changer ses montants, son fournisseur, sa devise,
+        son lien BCF ni ses lignes (sinon solde_du/statut divergent du réglé)."""
+        if not self._a_une_imputation(instance):
+            return
+        changes = [
+            champ for champ in self.CHAMPS_VERROUILLES_SI_IMPUTEE
+            if champ in validated_data
+            and validated_data[champ] != getattr(instance, champ)
+        ]
+        # Le lien BCF d'une facture réglée ne se pose ni ne se retire (le
+        # retirer servait à contourner la garde DC16 ci-dessous).
+        if 'bon_commande' in validated_data:
+            changes.append('bon_commande')
+        if 'lignes' in validated_data:
+            changes.append('lignes')
+        if changes:
+            raise serializers.ValidationError({
+                'detail': self._MSG_FACTURE_REGLEE,
+                'champs': changes,
+            })
+
     def update(self, instance, validated_data):
+        self._verifier_verrou_imputation(instance, validated_data)
+        # ASTK26 — un PATCH du montant en devise / du taux ré-applique la
+        # contre-valeur MAD, comme à la création (XPUR3).
+        if {'montant_ttc_devise', 'devise', 'taux_change'} & set(
+                validated_data):
+            from .services import apply_devise_facture
+            mad = apply_devise_facture(
+                validated_data.get(
+                    'montant_ttc_devise', instance.montant_ttc_devise),
+                validated_data.get('devise', instance.devise),
+                validated_data.get('taux_change', instance.taux_change))
+            if mad is not None:
+                validated_data['montant_ttc'] = mad
         # DC16 — sur une FF déjà liée à un BCF (typiquement issue de FG56), les
         # montants restent ceux dérivés de la réception : on rejette toute
         # tentative de les écraser à la main.
@@ -1838,6 +1888,10 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             for ligne in lignes_data:
                 LigneFactureFournisseur.objects.create(
                     facture=instance, **ligne)
+        # ASTK26 — statut de règlement recalculé à toute édition permise
+        # (le TTC a pu changer : solde_du et statut restent cohérents).
+        from .services import recompute_facture_fournisseur_statut
+        recompute_facture_fournisseur_statut(instance)
         return instance
 
 
