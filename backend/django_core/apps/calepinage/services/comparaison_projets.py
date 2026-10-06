@@ -158,36 +158,25 @@ def _dict(valeur):
 def _mesures_du_calepinage(calepinage, *, simule=False):
     """``(modules, kwc)`` LUS, jamais recalculés — ``None`` quand inconnus.
 
-    Ordre de lecture : d'abord le résumé que l'atelier dépose dans la
-    conception COURANTE (``roof_layout.result`` — mêmes clés que
-    ``services/journal.py::_modules``), puis le bloc ``pose`` du résultat
-    (moteur), puis — seulement pour une simulation À JOUR (``simule``) — le
-    total de production (``production.total.kwc``). Une simulation périmée
-    décrit un autre toit : son kWc n'est jamais repris. Aucune valeur n'est
-    déduite d'une autre : un kWc sans modules reste un kWc sans modules.
+    ACAL259 — LA lecture du module (``mesures.mesures_du_document``) : le
+    document COURANT (pans de toit et surfaces de pose, résumé racine quand
+    aucun pan n'est mesuré) et le bloc ``pose`` du résultat (fiche du module)
+    quand il décrit ce document — le même total que la présentation, le
+    journal et l'export. Puis — seulement pour une simulation À JOUR
+    (``simule``) et un kWc encore inconnu — le total de production
+    (``production.total.kwc``). Une simulation périmée décrit un autre toit :
+    son kWc n'est jamais repris.
     """
-    resultat = _dict(getattr(calepinage, 'resultat', None))
-    atelier = _dict(_dict(getattr(calepinage, 'roof_layout', None))
-                    .get('result'))
-    pose = _dict(resultat.get('pose'))
-    total = (_dict(_dict(resultat.get('production')).get('total'))
-             if simule else {})
+    from .mesures import mesures_du_document
 
-    modules = None
-    for source, cles in ((atelier, ('panels', 'count', 'nb_panneaux')),
-                         (pose, ('total_modules',))):
-        for cle in cles:
-            modules = _nombre(source.get(cle))
-            if modules is not None:
-                break
-        if modules is not None:
-            break
-    kwc = None
-    for source in (atelier, pose, total):
-        kwc = _nombre(source.get('kwc'))
-        if kwc is not None:
-            break
-    return (int(modules) if modules is not None else None), kwc
+    resultat = _dict(getattr(calepinage, 'resultat', None))
+    mesures = mesures_du_document(getattr(calepinage, 'roof_layout', None),
+                                  resultat)
+    modules, kwc = mesures['modules'], mesures['kwc']
+    if kwc is None and simule:
+        kwc = _nombre(_dict(_dict(resultat.get('production'))
+                            .get('total')).get('kwc'))
+    return modules, kwc
 
 
 def _ligne_de_comparaison(calepinage):

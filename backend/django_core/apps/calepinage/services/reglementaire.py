@@ -262,27 +262,35 @@ def composer_dossiers(*, calepinage_id, pays, entrees, infos):
 
 # ── la couche qui lit la base ──────────────────────────────────────────────
 
-def infos_du_calepinage(calepinage):
+def infos_du_calepinage(calepinage, *, resultat=None):
     """Les données RÉELLES qu'un gabarit peut demander à préremplir.
 
     Aucune n'est calculée « au mieux » : une donnée absente vaut ``None`` et
     le champ qui la demandait sortira « à compléter ».
+
+    ACAL259 — modules et kWc sont ceux de ``mesures.mesures_du_document`` (LA
+    lecture du module), sur le résultat SERVI (``selectors.resultat_servi``,
+    bloc ``pose`` : la fiche du stock) quand ``resultat`` n'est pas fourni.
     """
-    from .production import pans_du_layout
+    from .mesures import mesures_du_document
 
     company = getattr(calepinage, 'company', None)
     client = getattr(calepinage, 'client', None)
-    pans = pans_du_layout(getattr(calepinage, 'roof_layout', None))
-    modules = sum(int(pan.get('modules') or 0) for pan in pans)
-    kwc = [pan.get('kwc') for pan in pans if pan.get('kwc') is not None]
+    layout = getattr(calepinage, 'roof_layout', None)
+    if resultat is None and isinstance(layout, dict) and layout:
+        from .. import selectors
+
+        resultat = selectors.resultat_servi(calepinage)
+    mesures = mesures_du_document(layout, resultat)
+    pans = mesures['pans']
     domine = max(pans, key=lambda pan: int(pan.get('modules') or 0),
                  default=None)
     return {
         'societe_nom': _valeur_reelle(getattr(company, 'nom', None)),
         'client_nom': _valeur_reelle(getattr(client, 'nom', None)),
         'adresse': _valeur_reelle(getattr(client, 'adresse', None)),
-        'puissance_kwc': (sum(kwc) if kwc else None),
-        'nombre_modules': (modules or None),
+        'puissance_kwc': mesures['kwc'],
+        'nombre_modules': (mesures['modules'] or None),
         'orientation_deg': (domine or {}).get('azimut_deg'),
         'inclinaison_deg': (domine or {}).get('inclinaison_deg'),
     }

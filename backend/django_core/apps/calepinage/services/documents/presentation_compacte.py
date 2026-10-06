@@ -11,8 +11,8 @@ cette présentation ne le remplace jamais.
 Ce que cette pièce fait, et ce qu'elle ne fait pas
 ====================================================
 * page 1 — le plan de pose (SVG « en regard », comme le document as-built) et
-  les totaux (modules, kWc, pans), LUS de la géométrie SEULE
-  (``services.production.pans_du_layout``) : AUCUNE simulation requise, donc
+  les totaux (modules, kWc, pans), LUS par ``services.mesures
+  .mesures_du_document`` (ACAL259) : AUCUNE simulation requise, donc
   cette page existe même pour un calepinage non simulé ;
 * page 2 — la production P50 mensuelle, le ratio de performance et le taux
   d'autoconsommation S'IL est publié — LUS du résultat de moteur ; sans
@@ -70,19 +70,20 @@ _LIBELLE_MOIS = {
 _LIRE = object()
 
 
-def totaux_de_pose(roof_layout):
-    """Modules, kWc et pans — LUS de la géométrie SEULE (``pans_du_layout``),
-    AUCUNE simulation requise : la même lecture que ``services/asbuilt.py``
-    pour le prévu."""
-    from ..production import pans_du_layout
+def totaux_de_pose(roof_layout, resultat=None):
+    """Modules, kWc et pans — ACAL259 : LUS par ``mesures.mesures_du_document``
+    (LA lecture du module), AUCUNE simulation requise. Le kWc est celui de la
+    FICHE du module de chaque pan (bloc ``pose`` du résultat servi, sinon la
+    fiche déclarée par le document) — jamais ``geometry.kwc`` ni
+    ``panelWatt`` (wattage de l'outil)."""
+    from ..mesures import mesures_du_document
 
-    pans = pans_du_layout(roof_layout)
-    kwc = [p.get('kwc') for p in pans if p.get('kwc') is not None]
+    mesures = mesures_du_document(roof_layout, resultat)
     return {
-        'pans': pans,
-        'total_modules': sum(p.get('modules') or 0 for p in pans),
-        'total_kwc': sum(kwc) if kwc else None,
-        'nombre_pans': len(pans),
+        'pans': mesures['pans'],
+        'total_modules': mesures['modules'] or 0,
+        'total_kwc': mesures['kwc'],
+        'nombre_pans': mesures['nombre_pans'],
     }
 
 
@@ -151,7 +152,8 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
 
     return {
         'code': CODE_DOCUMENT,
-        'totaux': totaux_de_pose(roof_layout),
+        # ACAL259 — le résultat SERVI porte le bloc ``pose`` (fiche du stock).
+        'totaux': totaux_de_pose(roof_layout, resultat),
         'svg_planche': svg_planche or '',
         'resultat': resultat,
         'motif_perime': motif_perime,
