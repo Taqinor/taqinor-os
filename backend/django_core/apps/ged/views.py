@@ -1927,7 +1927,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             document, utilisateur=request.user,
             type_acces=(ACCES_APERCU if disposition == 'inline'
                         else ACCES_TELECHARGEMENT),
-            adresse_ip=services._adresse_ip_requete(request))
+            adresse_ip=_ip_client(request))
 
         resp = HttpResponse(data, content_type=mime)
         resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
@@ -3913,7 +3913,7 @@ def public_partage(request, token):
     from .models import ACCES_PUBLIC
     services.journaliser_acces(
         partage.document, utilisateur=None, type_acces=ACCES_PUBLIC,
-        adresse_ip=services._adresse_ip_requete(request))
+        adresse_ip=_ip_client(request))
 
     resp = HttpResponse(data, content_type=mime)
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
@@ -4041,12 +4041,21 @@ def _signature_verrouillee_reponse():
         status=status.HTTP_429_TOO_MANY_REQUESTS))
 
 
+def _ip_client(request):
+    """ADOC66 — IP de preuve, de détection et de journal GED : TOUJOURS la
+    primitive canonique `core.throttling.ip_de_requete` (dernier saut de
+    confiance, `NUM_PROXIES`) — jamais `REMOTE_ADDR`, qui vaut le conteneur
+    nginx derrière le proxy. IP illisible → None (jamais '')."""
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request) or None
+
+
 def _signature_echec(request, token, reponse, *, document=None):
     """NTDOC9 — Trace la tentative échouée (compteur + `JournalAcces`) puis
     renvoie telle quelle la réponse d'erreur métier de l'appelant."""
     services.enregistrer_echec_signature_publique(
         token, document=document,
-        adresse_ip=services._adresse_ip_requete(request))
+        adresse_ip=_ip_client(request))
     return reponse
 
 
@@ -4113,7 +4122,7 @@ def public_signature(request, token):
              'statut': demande.statut},
             status=status.HTTP_410_GONE))
 
-    ip = services._adresse_ip_requete(request)
+    ip = _ip_client(request)
     # NTDOC9 — motif « une IP, plusieurs sociétés » : évalué sur un jeton
     # RÉSOLU (donc une société réelle), best-effort, n'altère jamais la réponse.
     services.surveiller_reutilisation_suspecte(ip, demande.company)
@@ -4305,7 +4314,7 @@ def public_signataire(request, token):
 
     # NTDOC9 — motif « une IP, plusieurs sociétés », best-effort.
     services.surveiller_reutilisation_suspecte(
-        services._adresse_ip_requete(request), demande.document.company)
+        _ip_client(request), demande.document.company)
 
     if request.method == 'GET':
         return _ged_noindex(
@@ -4358,7 +4367,7 @@ def public_signataire(request, token):
                 consentement=bool(request.data.get('consentement')),
                 signature_texte=request.data.get('signature_texte', ''),
                 signature_tracee=request.data.get('signature_tracee', ''),
-                adresse_ip=services._adresse_ip_requete(request),
+                adresse_ip=_ip_client(request),
                 user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512],
                 valeurs_champs=request.data.get('valeurs_champs'))
         except ValueError as exc:

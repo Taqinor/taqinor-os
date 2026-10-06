@@ -4532,16 +4532,6 @@ def journaliser_acces(document, *, utilisateur=None, type_acces=None,
         return None
 
 
-def _adresse_ip_requete(request):
-    """GED35 — Adresse IP best-effort d'une requête (ou None).
-
-    Lit `REMOTE_ADDR` (jamais d'en-tête X-Forwarded-For non fiable). Renvoie
-    None si indisponible — l'audit reste possible sans IP."""
-    if request is None:
-        return None
-    return (getattr(request, 'META', {}) or {}).get('REMOTE_ADDR') or None
-
-
 # ── GED36 — Quotas de stockage par société ──────────────────────────────────
 
 def usage_stockage_octets(company):
