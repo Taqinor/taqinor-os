@@ -43,8 +43,16 @@ class _Base(TestCase):
             statut=statut, taux_tva=Decimal('20.00'),
             mode_installation='commercial', echeancier=ECHEANCIER,
             reference_commande_client=reference_client)
+        from apps.stock.models import Produit
+        # Une ligne PRODUIT référence toujours un produit (l'API le refuse
+        # sinon, ``LigneDevisSerializer``) — et ``LigneFacture.produit`` est
+        # NOT NULL : sans lui, la facture de BC recopiant la ligne lève 500.
+        produit = Produit.objects.create(
+            company=self.company, nom='Centrale PV',
+            prix_vente=Decimal('50000'))
         LigneDevis.objects.create(
-            devis=devis, designation='Centrale PV', quantite=Decimal('1'),
+            devis=devis, produit=produit, designation='Centrale PV',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('50000'), remise=Decimal('0'),
             taux_tva=Decimal('20.00'))
         return devis
