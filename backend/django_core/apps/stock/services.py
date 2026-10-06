@@ -1002,13 +1002,21 @@ def valider_revalorisation(revalorisation):
     (statut VALIDEE + date_validation) — devient la nouvelle couche de
     départ du coût moyen (`average_cost_with_source`). Une revalorisation
     déjà validée lève ValueError (jamais re-validée, jamais modifiée)."""
+    from django.db import transaction
     from django.utils import timezone
     from .models import RevalorisationStock
-    if revalorisation.statut == RevalorisationStock.Statut.VALIDEE:
-        raise ValueError('Cette revalorisation est déjà validée.')
-    revalorisation.statut = RevalorisationStock.Statut.VALIDEE
-    revalorisation.date_validation = timezone.now()
-    revalorisation.save(update_fields=['statut', 'date_validation'])
+    # ASTK48 — le statut est relu SOUS verrou dans la transaction : une
+    # instance périmée (double clic, deux onglets) ne re-valide jamais.
+    with transaction.atomic():
+        verrou = (RevalorisationStock.objects.select_for_update()
+                  .get(pk=revalorisation.pk))
+        if verrou.statut == RevalorisationStock.Statut.VALIDEE:
+            raise ValueError('Cette revalorisation est déjà validée.')
+        verrou.statut = RevalorisationStock.Statut.VALIDEE
+        verrou.date_validation = timezone.now()
+        verrou.save(update_fields=['statut', 'date_validation'])
+    revalorisation.statut = verrou.statut
+    revalorisation.date_validation = verrou.date_validation
     return revalorisation
 
 
@@ -1088,6 +1096,12 @@ def apply_retour_fournisseur(retour, user):
     if not lignes:
         raise ValueError('Le retour ne contient aucune ligne.')
     with transaction.atomic():
+        # ASTK49 — le retour est relu SOUS verrou et son statut re-contrôlé :
+        # une 2e validation sur une instance périmée ne sort rien.
+        verrou = (RetourFournisseur.objects.select_for_update()
+                  .get(pk=retour.pk))
+        if verrou.statut != RetourFournisseur.Statut.BROUILLON:
+            raise ValueError('Seul un retour en brouillon peut être validé.')
         for ligne in lignes:
             # ERR24 — verrou de ligne produit dans la transaction pour que des
             # retours concurrents du même produit ne perdent pas de décrément.
@@ -1104,6 +1118,17 @@ def apply_retour_fournisseur(retour, user):
                 note=f'Retour fournisseur {retour.reference}'
                      + (f' — {ligne.motif}' if ligne.motif else ''),
                 created_by=user)
+            # ASTK54 — jumeau MVT-10 : un retour contre un BCF livré à un
+            # emplacement non principal débite cet emplacement (même helper
+            # d'inversion que l'annulation de réception).
+            bc_retour = retour.bon_commande if retour.bon_commande_id else None
+            _inverser_ventilation_entree(
+                retour.company, produit,
+                emplacement=(bc_retour.emplacement_destination
+                             if bc_retour is not None
+                             and bc_retour.emplacement_destination_id
+                             else None),
+                numero_lot=None, quantite=ligne.quantite)
             if retour.bon_commande_id:
                 _reouvrir_quantite_recue_bcf(
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
@@ -1134,6 +1159,52 @@ def bcf_refuse_reception(bon_commande):
             == BonCommandeFournisseur.Statut.BROUILLON):
         return MSG_BCF_NON_ENVOYE_RECEPTION
     return None
+
+
+def _verrouiller_ligne_bcf(ligne_cmd):
+    """ASTK49 — relit une ligne de BCF SOUS verrou (``select_for_update``)
+    dans la transaction de l'appelant ; renvoie l'instance fraîche."""
+    return type(ligne_cmd).objects.select_for_update().get(pk=ligne_cmd.pk)
+
+
+def _incrementer_quantite_recue(ligne_cmd, qte):
+    """ASTK49 — incrémente ``quantite_recue`` par une expression ``F()``
+    (jamais une valeur lue puis réécrite), puis relit la valeur."""
+    from django.db.models import F
+    ligne_cmd.quantite_recue = F('quantite_recue') + qte
+    ligne_cmd.save(update_fields=['quantite_recue'])
+    ligne_cmd.refresh_from_db(fields=['quantite_recue'])
+
+
+def quantite_entree_ligne_reception(ligne):
+    """ASTK59 — quantité RÉELLEMENT entrée par une ligne de réception
+    confirmée : ``quantite_appliquee`` (persistée à la confirmation, après
+    plafonnement au reste dû) ; repli sur ``quantite`` pour une ligne
+    antérieure à ASTK59 (NULL)."""
+    if ligne.quantite_appliquee is not None:
+        return int(ligne.quantite_appliquee)
+    return int(ligne.quantite or 0)
+
+
+def _poser_quantite_appliquee(ligne, qte):
+    """ASTK59 — persiste la quantité appliquée d'une ligne de réception."""
+    ligne.quantite_appliquee = qte
+    ligne.save(update_fields=['quantite_appliquee'])
+
+
+def reste_du_net_ligne_bcf(ligne_cmd, *, exclure_reception_id=None):
+    """ASTK59 — reste dû d'une ligne de BCF NET des réceptions BROUILLON
+    déjà saisies dessus (une 2e réception brouillon ne peut plus réclamer
+    les mêmes unités). Lecture seule."""
+    from django.db.models import Sum
+    from .models import LigneReceptionFournisseur, ReceptionFournisseur
+    qs = LigneReceptionFournisseur.objects.filter(
+        ligne_commande=ligne_cmd,
+        reception__statut=ReceptionFournisseur.Statut.BROUILLON)
+    if exclure_reception_id is not None:
+        qs = qs.exclude(reception_id=exclure_reception_id)
+    en_brouillon = qs.aggregate(t=Sum('quantite'))['t'] or 0
+    return max(ligne_cmd.quantite_restante - en_brouillon, 0)
 
 
 def confirm_reception_fournisseur(reception, user):
@@ -1172,22 +1243,37 @@ def confirm_reception_fournisseur(reception, user):
     today = timezone.now().date()
     bc = reception.bon_commande
     with transaction.atomic():
+        # ASTK49 — la réception est relue SOUS verrou et son statut
+        # re-contrôlé DANS la transaction : une 2e confirmation sur une
+        # instance périmée (double clic) n'ajoute rien (patron AUD217).
+        verrou = (ReceptionFournisseur.objects.select_for_update()
+                  .get(pk=reception.pk))
+        if verrou.statut != ReceptionFournisseur.Statut.BROUILLON:
+            raise ValueError(
+                'Seule une réception en brouillon peut être confirmée '
+                '(déjà confirmée ou annulée).')
+        applique_total = 0
         for ligne in lignes:
             qte = int(ligne.quantite or 0)
             if qte <= 0:
+                _poser_quantite_appliquee(ligne, 0)
                 continue
             # Plafonne au reste dû de la ligne de commande (jamais plus que
             # commandé — protège contre une saisie incohérente, idempotence).
-            ligne_cmd = ligne.ligne_commande
-            ligne_cmd.refresh_from_db()
+            # ASTK49 — ligne de BCF relue SOUS verrou (plus de simple
+            # refresh_from_db) : le reste dû est décidé sur une valeur sûre.
+            ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
             qte = min(qte, ligne_cmd.quantite_restante)
+            # ASTK59 — la quantité RÉELLEMENT appliquée est persistée : la
+            # facturation et l'annulation la relisent (jamais `quantite`).
+            _poser_quantite_appliquee(ligne, max(qte, 0))
             if qte <= 0:
                 continue
+            applique_total += qte
             # XPUR16 — ligne libre/service (sans_stock ou produit=null) :
             # aucun MouvementStock, la quantité reçue est simplement actée.
             if ligne_cmd.sans_stock or ligne.produit_id is None:
-                ligne_cmd.quantite_recue += qte
-                ligne_cmd.save(update_fields=['quantite_recue'])
+                _incrementer_quantite_recue(ligne_cmd, qte)
                 continue
             # AUD216 — VERROU de ligne produit (patron ERR24 déjà appliqué à
             # `apply_retour_fournisseur` juste au-dessus). Un
@@ -1207,8 +1293,7 @@ def confirm_reception_fournisseur(reception, user):
                 note=f'Réception {reception.reference}'
                      + (f' (BCF {bc.reference})' if bc else ''),
                 created_by=user)
-            ligne_cmd.quantite_recue += qte
-            ligne_cmd.save(update_fields=['quantite_recue'])
+            _incrementer_quantite_recue(ligne_cmd, qte)
             # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.
             if bc is not None:
                 record_purchase_price(
@@ -1240,8 +1325,15 @@ def confirm_reception_fournisseur(reception, user):
                     quantite=qte,
                     reference_reception=reception.reference,
                     user=user)
+        if applique_total <= 0:
+            # ASTK59 — toutes les lignes tombent à 0 (reste dû déjà reçu) :
+            # confirmer créerait une réception « confirmée » qui n'a rien
+            # fait entrer — puis facturable. Refus (transaction annulée).
+            raise ValueError(
+                'Rien à recevoir : les quantités de cette réception sont '
+                'déjà entièrement reçues sur le bon de commande.')
         reception.statut = ReceptionFournisseur.Statut.CONFIRME
-        reception.recu_par = reception.recu_par or user
+        reception.recu_par = verrou.recu_par or user
         reception.save(update_fields=['statut', 'recu_par'])
         # Avance le statut du BCF selon ses quantités reçues existantes.
         if bc is not None:
@@ -1280,6 +1372,58 @@ def confirm_reception_fournisseur(reception, user):
     return reception
 
 
+def _inverser_ventilation_entree(company, produit, *, emplacement,
+                                 numero_lot, quantite):
+    """ASTK54 — défait la ventilation posée par une ENTRÉE fournisseur
+    (``credit_emplacement_destination`` + ``alimenter_lot_entrepot``) quand
+    ``quantite`` unités en ressortent (annulation de réception, retour
+    fournisseur). Débite la ligne ``StockEmplacement`` de l'emplacement non
+    principal et le ``LotEntrepot`` du lot, chacun plafonné à ce qu'il
+    détient (jamais négatif). Le principal reste dérivé (total − Σ non
+    principaux) : rien à écrire pour lui. À appeler dans la transaction de
+    l'appelant, APRÈS le mouvement de sortie."""
+    from .models import LotEntrepot, StockEmplacement
+    if quantite <= 0:
+        return
+    if emplacement is not None and not emplacement.is_principal:
+        se = (StockEmplacement.objects.select_for_update()
+              .filter(company=company, produit=produit,
+                      emplacement=emplacement).first())
+        if se is not None:
+            se.quantite = max((se.quantite or 0) - quantite, 0)
+            se.save(update_fields=['quantite'])
+    if numero_lot:
+        lot = (LotEntrepot.objects.select_for_update()
+               .filter(company=company, produit=produit,
+                       numero_lot=numero_lot).first())
+        if lot is not None:
+            lot.quantite_restante = max(lot.quantite_restante - quantite, 0)
+            lot.quantite_recue = max(lot.quantite_recue - quantite, 0)
+            lot.save(update_fields=['quantite_restante', 'quantite_recue'])
+
+
+def _lever_blocages_reception_annulee(reception, user):
+    """ASTK58 — lève les ``BlocageQualite`` EN_QUARANTAINE issus d'une
+    réception annulée (statut LEVEE, motif complété « réception annulée »).
+    Renvoie le nombre de blocages levés. Dans la transaction de l'appelant."""
+    from django.utils import timezone
+    from .models_wms import BlocageQualite
+
+    blocages = list(BlocageQualite.objects.select_for_update().filter(
+        company=reception.company, reception=reception,
+        statut=BlocageQualite.Statut.EN_QUARANTAINE))
+    for blocage in blocages:
+        blocage.statut = BlocageQualite.Statut.LEVEE
+        blocage.leve_par = user
+        blocage.date_levee = timezone.now()
+        blocage.motif = (
+            f'{blocage.motif} — réception annulée'.strip(' —')
+            if blocage.motif else 'Réception annulée')
+        blocage.save(update_fields=[
+            'statut', 'leve_par', 'date_levee', 'motif'])
+    return len(blocages)
+
+
 def annuler_reception_confirmee(reception, user):
     """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
     (reversal référencé, jamais un blocage ni une suppression — pattern SAP
@@ -1305,9 +1449,45 @@ def annuler_reception_confirmee(reception, user):
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     bc = reception.bon_commande
     with transaction.atomic():
+        # ASTK49 — statut relu SOUS verrou : une 2e annulation sur une
+        # instance périmée ne contre-passe pas une seconde fois.
+        verrou = (ReceptionFournisseur.objects.select_for_update()
+                  .get(pk=reception.pk))
+        if verrou.statut != ReceptionFournisseur.Statut.CONFIRME:
+            raise ValueError(
+                'Seule une réception confirmée peut être annulée par '
+                'contre-passation (déjà annulée).')
+
+        def _est_stockee(ligne):
+            # XPUR16 — une ligne libre/service n'a JAMAIS produit d'ENTREE à
+            # la confirmation : rien à contre-passer côté stock.
+            return (ligne.produit_id is not None
+                    and not (ligne.ligne_commande is not None
+                             and ligne.ligne_commande.sans_stock))
+
+        # ASTK54 — livraison DIRECTE chantier : la marchandise est sortie
+        # vers le chantier dès la confirmation (entrée + sortie). Annuler
+        # ressortirait du stock LIBRE qui n'a jamais reçu ces unités : refus,
+        # le chemin correct est un retour.
+        if (bc is not None and bc.chantier_livraison_id
+                and any(_est_stockee(lg)
+                        and quantite_entree_ligne_reception(lg) > 0
+                        for lg in lignes)):
+            raise ValueError(
+                'Marchandise livrée au chantier — passer par un retour.')
         for ligne in lignes:
-            qte = int(ligne.quantite or 0)
-            if qte <= 0 or ligne.produit_id is None:
+            # ASTK59 — on défait ce qui est RÉELLEMENT entré, pas la saisie.
+            qte = quantite_entree_ligne_reception(ligne)
+            if qte <= 0:
+                continue
+            if not _est_stockee(ligne):
+                # ASTK54 — ligne service : seule la quantité reçue de la
+                # ligne de BCF est défaite (le BCF est rouvert plus bas).
+                if ligne.ligne_commande_id is not None:
+                    ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
+                    ligne_cmd.quantite_recue = max(
+                        ligne_cmd.quantite_recue - qte, 0)
+                    ligne_cmd.save(update_fields=['quantite_recue'])
                 continue
             # AUD216 — VERROU de ligne produit : la contre-passation calcule
             # `min(qte, stock en main)`, donc une lecture non verrouillée
@@ -1331,12 +1511,28 @@ def annuler_reception_confirmee(reception, user):
                     note=(f'Contre-passation annulation réception '
                           f'{reception.reference}'),
                     created_by=user)
-            ligne_cmd = ligne.ligne_commande
-            if ligne_cmd is not None:
-                ligne_cmd.refresh_from_db()
+                # ASTK54 — miroir exact de la confirmation : la ventilation
+                # d'emplacement et le lot crédités sont débités d'autant.
+                _inverser_ventilation_entree(
+                    reception.company, produit,
+                    emplacement=(bc.emplacement_destination
+                                 if bc is not None
+                                 and bc.emplacement_destination_id
+                                 else None),
+                    numero_lot=getattr(ligne, 'numero_lot', None),
+                    quantite=qte_sortie)
+            if ligne.ligne_commande_id is not None:
+                # ASTK49 — ligne de BCF relue SOUS verrou avant décrément.
+                ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
                 ligne_cmd.quantite_recue = max(
                     ligne_cmd.quantite_recue - qte, 0)
                 ligne_cmd.save(update_fields=['quantite_recue'])
+        # ASTK58 — la quarantaine posée par le routage qualité de CETTE
+        # réception (NTWMS34) porte sur une marchandise qui vient d'être
+        # contre-passée : le blocage est levé avec le motif « réception
+        # annulée » (sinon quantite_disponible_hors_quarantaine retranche
+        # un blocage fantôme d'un stock qui ne le contient plus).
+        _lever_blocages_reception_annulee(reception, user)
         reception.statut = ReceptionFournisseur.Statut.ANNULE
         reception.note = (
             f'{reception.note}\n[{timezone.now().date().isoformat()}] '
@@ -2149,10 +2345,56 @@ def mouvement_type_rebut():
 # (jamais l'inverse) : le service reste ici (comme `apply_inventory_count`,
 # FG63, le comptage one-shot) — la diff EST le mouvement.
 
+def appliquer_ecart_inventaire(*, company, produit_id, ecart, reference,
+                               note, user):
+    """ASTK38 — UNIQUE application d'un écart d'inventaire au stock LIVE.
+
+    Sert les deux chemins de comptage : la session d'inventaire
+    (``valider_inventaire_session``, AUD206) et le comptage cyclique YSTCK1
+    (``appliquer_ecarts_comptage``). L'écart constaté (compté − théorique) est
+    appliqué en DELTA à la quantité verrouillée : un mouvement légitime
+    survenu après le snapshot du théorique (réception, sortie) est CONSERVÉ —
+    l'ancien comptage cyclique posait le niveau compté et effaçait ces
+    mouvements (sonde MVT-7). Le mouvement AJUSTEMENT est cohérent avec
+    lui-même : |après − avant| == quantite. À appeler dans la transaction de
+    l'appelant. Renvoie le mouvement, ou None si écart nul / produit absent
+    (ou d'une autre société)."""
+    from .models import MouvementStock, Produit
+
+    if not ecart:
+        return None
+    produit = Produit.objects.select_for_update().filter(
+        id=produit_id, company=company).first()
+    if produit is None:
+        return None
+    avant = produit.quantite_stock
+    apres = avant + ecart
+    return record_stock_movement(
+        company=company, produit=produit,
+        type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+        quantite=abs(ecart), quantite_avant=avant, quantite_apres=apres,
+        reference=reference, note=note, created_by=user)
+
+
+def theorique_a_la_saisie(company, produit_id):
+    """ASTK39 — règle fondateur D-ASTK (ASTK37, 06/10/2026) « stock à la
+    saisie » : l'écart d'inventaire = compté − stock AU MOMENT où la quantité
+    comptée est saisie. Renvoie ce stock (``quantite_stock`` live du produit
+    de la société, 0 si inconnu) ; c'est le snapshot à poser dans
+    ``quantite_theorique`` au moment de la saisie, pour les DEUX chemins
+    (session d'inventaire et comptage cyclique). Lecture seule."""
+    from .models import Produit
+
+    valeur = (Produit.objects.filter(pk=produit_id, company=company)
+              .values_list('quantite_stock', flat=True).first())
+    return valeur or 0
+
+
 def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     """YSTCK1 — poste UN `MouvementStock` AJUSTEMENT par ligne dont
     `quantite_comptee != quantite_theorique` (attribut ``ecart`` non nul, non
-    None), cale `Produit.quantite_stock` sur le compté.
+    None) et applique cet ÉCART en delta au stock live (ASTK38 — jamais le
+    niveau compté : les mouvements survenus depuis le snapshot sont gardés).
 
     ``lignes`` : itérable de ``ComptageLigne`` (ou tout objet portant
     ``produit_id``/``quantite_theorique``/``quantite_comptee``/``ecart``).
@@ -2168,7 +2410,6 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     (``installations.views.comptage.terminer`` le fait, sous
     ``select_for_update()`` + ``transaction.atomic()``)."""
     from django.db import transaction
-    from .models import MouvementStock, Produit
 
     count = 0
     with transaction.atomic():
@@ -2180,12 +2421,10 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
             ecart = ligne.quantite_comptee - (ligne.quantite_theorique or 0)
             if ecart == 0:
                 continue
-            produit = Produit.objects.select_for_update().filter(
-                id=ligne.produit_id, company=company).first()
-            if produit is None:
-                continue
-            avant = produit.quantite_stock
-            apres = ligne.quantite_comptee
+            # ASTK38 — l'écart est appliqué en DELTA au stock live (comme
+            # AUD206) par le helper unique `appliquer_ecart_inventaire` ;
+            # l'ancien `apres = ligne.quantite_comptee` effaçait les
+            # mouvements survenus depuis le snapshot du théorique (MVT-7).
             # AUD320 — LA RÉFÉRENCE DU MOUVEMENT EST CELLE DU DOCUMENT SOURCE,
             # TELLE QUELLE. `f'CYC-{reference}'` re-préfixait une référence de
             # session qui porte DÉJÀ son préfixe (`create_with_reference(...,
@@ -2198,14 +2437,13 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
             # convention de la maison. Les lignes historiques doublement
             # préfixées restent lisibles (aucune migration : le champ est un
             # libellé de traçabilité, jamais une clé).
-            record_stock_movement(
-                company=company, produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
-                quantite=abs(ecart), quantite_avant=avant,
-                quantite_apres=apres, reference=reference,
+            mouvement = appliquer_ecart_inventaire(
+                company=company, produit_id=ligne.produit_id, ecart=ecart,
+                reference=reference,
                 note=f'Comptage cyclique {reference} — écart {ecart}',
-                created_by=user)
-            count += 1
+                user=user)
+            if mouvement is not None:
+                count += 1
     return count
 
 
@@ -2838,21 +3076,18 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
     from apps.ventes.utils.references import create_with_reference
     from .models import FactureFournisseur, LigneFactureFournisseur
 
-    taux_tva_defaut = Decimal('20')
-    montant_ht = Decimal('0')
-    montant_tva = Decimal('0')
     lignes_data = []
+    totaux = []
     for designation, quantite, pu, produit in lignes:
         pu = pu or Decimal('0')
-        total = Decimal(str(quantite)) * pu
-        montant_ht += total
-        taux_ligne = (produit.tva
-                      if produit is not None and produit.tva is not None
-                      else taux_tva_defaut)
-        montant_tva += (total * taux_ligne / Decimal('100')).quantize(
-            Decimal('0.01'))
-        lignes_data.append((designation, quantite, pu, taux_ligne))
-    montant_ttc = montant_ht + montant_tva
+        totaux.append((Decimal(str(quantite)) * pu, produit))
+        lignes_data.append(
+            (designation, quantite, pu, taux_tva_achat(produit)))
+    # ASTK65 — même ventilation TVA que le PDF du BCF (helper unique).
+    ventilation = ventiler_tva_achats(totaux)
+    montant_ht = ventilation['total_ht']
+    montant_tva = ventilation['total_tva']
+    montant_ttc = ventilation['total_ttc']
     created = {}
 
     def _save(ref):
@@ -2889,6 +3124,50 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
     return FactureFournisseur.objects.get(pk=facture.pk)
+
+
+# ── ASTK65 — Ventilation TVA des documents d'achat (helper UNIQUE) ─────────
+# Le PDF du BCF, la facture née d'une réception (FG56), la facture sur
+# commande (ZPUR1) et l'avoir préparé depuis un retour (XPUR9) ventilent la
+# TVA de la MÊME façon : par ligne, au taux du produit (`Produit.tva`), 20 %
+# à défaut, arrondi par ligne. Le TTC du BCF envoyé = le TTC de la facture.
+
+TAUX_TVA_ACHAT_DEFAUT = Decimal('20')
+
+
+def taux_tva_achat(produit):
+    """ASTK65 — taux de TVA d'une ligne d'achat : celui du produit, sinon le
+    défaut 20 % (ligne libre/service ou produit sans taux)."""
+    if produit is not None and getattr(produit, 'tva', None) is not None:
+        return Decimal(str(produit.tva))
+    return TAUX_TVA_ACHAT_DEFAUT
+
+
+def ventiler_tva_achats(lignes):
+    """ASTK65 — ``lignes`` : itérable de ``(montant_ht, produit)``. Renvoie
+    ``{lignes: [(montant_ht, taux, tva)], par_taux: [(taux, ht, tva)],
+    total_ht, total_tva, total_ttc}`` — TVA arrondie au centime PAR LIGNE
+    (règle historique de ``facturer_reception``). Pur calcul."""
+    detail, par_taux = [], {}
+    total_ht = Decimal('0')
+    total_tva = Decimal('0')
+    for montant_ht, produit in lignes:
+        montant_ht = Decimal(str(montant_ht or 0))
+        taux = taux_tva_achat(produit)
+        tva = (montant_ht * taux / Decimal('100')).quantize(Decimal('0.01'))
+        detail.append((montant_ht, taux, tva))
+        cumul = par_taux.setdefault(taux, [Decimal('0'), Decimal('0')])
+        cumul[0] += montant_ht
+        cumul[1] += tva
+        total_ht += montant_ht
+        total_tva += tva
+    return {
+        'lignes': detail,
+        'par_taux': [(t, ht, tva) for t, (ht, tva) in sorted(par_taux.items())],
+        'total_ht': total_ht,
+        'total_tva': total_tva,
+        'total_ttc': total_ht + total_tva,
+    }
 
 
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
@@ -2932,6 +3211,11 @@ def facturer_reception(company, user, reception):
 
     lignes = []
     for ligne in lignes_reception:
+        # ASTK59 — facture ce qui est RÉELLEMENT entré (quantite_appliquee),
+        # jamais la saisie : une ligne plafonnée à 0 ne facture rien.
+        qte_facturee = quantite_entree_ligne_reception(ligne)
+        if qte_facturee <= 0:
+            continue
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
         # XPUR16 — une ligne libre/service reprend sa désignation d'origine
         # (BCF) plutôt que le nom d'un produit catalogue absent.
@@ -2941,7 +3225,12 @@ def facturer_reception(company, user, reception):
             designation = ligne.ligne_commande.designation
         else:
             designation = 'Produit'
-        lignes.append((designation, ligne.quantite, pu, ligne.produit))
+        lignes.append((designation, qte_facturee, pu, ligne.produit))
+
+    if not lignes:
+        raise ValueError(
+            f"Rien à facturer : la réception {reception.reference} n'a fait "
+            'entrer aucune quantité.')
 
     # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
     return _construire_facture_fournisseur(
@@ -3007,6 +3296,36 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
 # BROUILLON neuf (nouvelle référence, quantités reçues à zéro, statut
 # réinitialisé) — la source n'est jamais modifiée.
 
+# ASTK66 — LISTE DÉCLARATIVE des champs d'en-tête qu'un BCF dérivé (copie
+# ZPUR4, fusion ZPUR6) porte depuis sa/ses source(s). Les RATTACHEMENTS
+# (chantier d'origine/de livraison, destination, devise, taux) doivent être
+# identiques entre sources fusionnées ; les autres sont repris tels quels
+# (acheteur : le plus récent renseigné ; date prévue : la plus proche).
+CHAMPS_RATTACHEMENT_BCF = (
+    ('chantier_origine_id', 'chantier'),
+    ('chantier_livraison_id', 'chantier de livraison'),
+    ('emplacement_destination_id', 'destination'),
+    ('devise', 'devise'),
+    ('taux_change', 'taux de change'),
+)
+CHAMPS_PORTES_BCF = tuple(c for c, _ in CHAMPS_RATTACHEMENT_BCF) + (
+    'acheteur_id', 'date_livraison_prevue',
+)
+
+
+def _champs_portes_bcf(sources):
+    """ASTK66 — valeurs d'en-tête portées par un BCF dérivé de ``sources``
+    (triées de la plus ancienne à la plus récente)."""
+    derniere = sources[-1]
+    valeurs = {c: getattr(derniere, c) for c, _ in CHAMPS_RATTACHEMENT_BCF}
+    acheteurs = [bc.acheteur_id for bc in sources if bc.acheteur_id]
+    valeurs['acheteur_id'] = acheteurs[-1] if acheteurs else None
+    dates = [bc.date_livraison_prevue for bc in sources
+             if bc.date_livraison_prevue]
+    valeurs['date_livraison_prevue'] = min(dates) if dates else None
+    return valeurs
+
+
 def dupliquer_bcf(company, user, bon_commande):
     """ZPUR4 — crée un nouveau BCF BROUILLON copiant fournisseur + lignes
     (produit, quantité, prix d'achat) du BCF source. Référence neuve via
@@ -3021,20 +3340,22 @@ def dupliquer_bcf(company, user, bon_commande):
     created = {}
 
     def _save(ref):
+        # ASTK66 — même liste déclarative que la fusion (rattachements,
+        # devise, acheteur, date prévue) : la copie ne perd plus son chantier.
         clone = BonCommandeFournisseur.objects.create(
             company=company, reference=ref,
             fournisseur=bon_commande.fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
             date_commande=timezone.now().date(),
-            devise=bon_commande.devise, taux_change=bon_commande.taux_change,
             note=f'Dupliqué depuis {bon_commande.reference}',
-            created_by=user)
+            created_by=user, **_champs_portes_bcf([bon_commande]))
         for ligne in lignes_source:
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=clone, produit=ligne.produit,
                 designation=ligne.designation, sans_stock=ligne.sans_stock,
                 quantite=ligne.quantite,
                 prix_achat_unitaire=ligne.prix_achat_unitaire,
+                prix_achat_unitaire_devise=ligne.prix_achat_unitaire_devise,
                 # ZPUR4 — quantité reçue TOUJOURS à zéro sur le clone (jamais
                 # copiée : un clone brouillon n'a par construction rien reçu).
                 quantite_recue=0,
@@ -3082,6 +3403,14 @@ def fusionner_bcf(company, user, bon_commande_ids):
         raise ValueError(
             'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
             f'({non_brouillon[0].reference} ne l\'est pas).')
+    # ASTK66 — des BCF rattachés à des chantiers / destinations / devises
+    # différents ne se fusionnent pas : la cible perdrait le rattachement
+    # (réservation chantier à la réception, contre-valeur MAD).
+    for champ, libelle in CHAMPS_RATTACHEMENT_BCF:
+        valeurs = {getattr(bc, champ) for bc in bcs}
+        if len(valeurs) > 1:
+            raise ValueError(
+                f'Fusion impossible : rattachements différents ({libelle}).')
 
     # Cumule les quantités par produit ; garde le prix du BCF le plus RÉCENT
     # (date_creation) portant ce produit. Une ligne sans produit (libre/
@@ -3101,11 +3430,19 @@ def fusionner_bcf(company, user, bon_commande_ids):
                     'produit': ligne.produit,
                     'quantite': ligne.quantite,
                     'prix_achat_unitaire': ligne.prix_achat_unitaire,
+                    # ASTK66 — PU devise et frais annexes portés.
+                    'prix_achat_unitaire_devise': (
+                        ligne.prix_achat_unitaire_devise),
+                    'frais_annexes': ligne.frais_annexes or Decimal('0'),
                 }
             else:
                 existante['quantite'] += ligne.quantite
                 # bcs_par_date est croissant : le dernier vu = le plus récent.
                 existante['prix_achat_unitaire'] = ligne.prix_achat_unitaire
+                existante['prix_achat_unitaire_devise'] = (
+                    ligne.prix_achat_unitaire_devise)
+                existante['frais_annexes'] += (
+                    ligne.frais_annexes or Decimal('0'))
 
     fournisseur = bcs[0].fournisseur
     created = {}
@@ -3115,18 +3452,23 @@ def fusionner_bcf(company, user, bon_commande_ids):
         cible = BonCommandeFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
-            note=f'Fusion de {references_sources}', created_by=user)
+            note=f'Fusion de {references_sources}', created_by=user,
+            **_champs_portes_bcf(bcs_par_date))
         for data in lignes_par_produit.values():
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=cible, produit=data['produit'],
                 quantite=data['quantite'],
-                prix_achat_unitaire=data['prix_achat_unitaire'])
+                prix_achat_unitaire=data['prix_achat_unitaire'],
+                prix_achat_unitaire_devise=data['prix_achat_unitaire_devise'],
+                frais_annexes=data['frais_annexes'])
         for ligne in lignes_libres:
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=cible, produit=None,
                 designation=ligne.designation, sans_stock=True,
                 quantite=ligne.quantite,
-                prix_achat_unitaire=ligne.prix_achat_unitaire)
+                prix_achat_unitaire=ligne.prix_achat_unitaire,
+                prix_achat_unitaire_devise=ligne.prix_achat_unitaire_devise,
+                frais_annexes=ligne.frais_annexes or Decimal('0'))
         created['bon'] = cible
         return cible
 
@@ -3409,17 +3751,21 @@ def valider_inventaire_session(session, user):
     chaque ligne en écart. Idempotent : une session déjà validée lève ValueError.
     Retourne {ajustes, inchanges}."""
     from django.db import transaction
-    from .models import MouvementStock, InventaireSession
-
-    if session.statut == InventaireSession.Statut.VALIDE:
-        raise ValueError("Cette session d'inventaire est déjà validée.")
-    if session.statut == InventaireSession.Statut.ANNULE:
-        raise ValueError("Cette session d'inventaire est annulée.")
+    from .models import InventaireSession
 
     ajustes, inchanges = 0, 0
 
     with transaction.atomic():
-        for ligne in session.lignes.select_related('produit').all():
+        # ASTK48 — session relue SOUS verrou et statut re-contrôlé dans la
+        # transaction : deux validations (instances périmées, double clic)
+        # n'appliquent l'écart qu'une fois (patron AUD217).
+        verrou = (InventaireSession.objects.select_for_update()
+                  .get(pk=session.pk))
+        if verrou.statut == InventaireSession.Statut.VALIDE:
+            raise ValueError("Cette session d'inventaire est déjà validée.")
+        if verrou.statut == InventaireSession.Statut.ANNULE:
+            raise ValueError("Cette session d'inventaire est annulée.")
+        for ligne in verrou.lignes.select_related('produit').all():
             ecart = ligne.quantite_comptee - ligne.quantite_theorique
             if ecart == 0:
                 inchanges += 1
@@ -3430,27 +3776,18 @@ def valider_inventaire_session(session, user):
             # tôt par `generer_comptages_tournants`) et cette validation, des
             # mouvements légitimes ont pu passer. On applique donc l'écart
             # constaté à la quantité LIVE verrouillée, ce qui les préserve.
-            produit = ligne.produit
-            # Verrou anti-concurrence
-            from .models import Produit
-            produit = Produit.objects.select_for_update().get(pk=produit.pk)
-            qte_avant = produit.quantite_stock
-            qte_apres = qte_avant + ecart
-
-            record_stock_movement(
-                company=session.company,
-                produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
-                quantite=abs(ecart),
-                quantite_avant=qte_avant,
-                quantite_apres=qte_apres,
-                reference=session.reference,
+            # ASTK38 — même helper que le comptage cyclique (verrou produit
+            # + delta sur le stock live).
+            appliquer_ecart_inventaire(
+                company=session.company, produit_id=ligne.produit_id,
+                ecart=ecart, reference=session.reference,
                 note=f'Inventaire {session.reference} — écart {ecart:+d}',
-                created_by=user)
+                user=user)
             ajustes += 1
 
-        session.statut = InventaireSession.Statut.VALIDE
-        session.save(update_fields=['statut'])
+        verrou.statut = InventaireSession.Statut.VALIDE
+        verrou.save(update_fields=['statut'])
+    session.statut = verrou.statut
 
     return {'ajustes': ajustes, 'inchanges': inchanges}
 
@@ -4968,17 +5305,17 @@ def preparer_avoir_depuis_retour(retour):
     pour 0 — jamais d'erreur bloquante). TVA 20 % (même taux par défaut que
     ``facturer_reception``). Renvoie un dict ``{montant_ht, montant_tva,
     montant_ttc}`` — NE CRÉE RIEN (pur calcul)."""
-    montant_ht = Decimal('0')
+    # ASTK65 — TVA ventilée par ligne au taux du produit (helper unique),
+    # plus de 20 % fixe : l'avoir reprend la TVA de la facture d'origine.
+    totaux = []
     for ligne in retour.lignes.select_related('produit'):
         pu = _prix_ligne_retour(retour.bon_commande, ligne.produit)
-        montant_ht += Decimal(str(ligne.quantite)) * pu
-    taux_tva = Decimal('20')
-    montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(
-        Decimal('0.01'))
+        totaux.append((Decimal(str(ligne.quantite)) * pu, ligne.produit))
+    ventilation = ventiler_tva_achats(totaux)
     return {
-        'montant_ht': montant_ht,
-        'montant_tva': montant_tva,
-        'montant_ttc': montant_ht + montant_tva,
+        'montant_ht': ventilation['total_ht'],
+        'montant_tva': ventilation['total_tva'],
+        'montant_ttc': ventilation['total_ttc'],
     }
 
 
@@ -6033,6 +6370,63 @@ def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres)
         return False
 
 
+def _valider_revision_ligne_bcf(bc, ligne, ligne_data):
+    """ASTK63 — contrôle (SANS rien écrire) une révision de ligne de BCF et
+    renvoie ``{champ: nouvelle_valeur}`` normalisé. Lève ValueError si :
+    quantité non entière, ≤ 0 ou inférieure au déjà reçu ; prix modifié sur
+    une ligne dont une quantité est déjà reçue (coût figé — passer par une
+    revalorisation). Le PU devise est recalculé depuis le PU MAD (ou
+    l'inverse) quand le document est en devise."""
+    from .models import DeviseAchat
+
+    valeurs = {}
+    if 'quantite' in ligne_data:
+        try:
+            quantite = int(Decimal(str(ligne_data['quantite'])))
+        except (ArithmeticError, TypeError, ValueError):
+            raise ValueError(f'Ligne {ligne.id} — quantité invalide.')
+        if quantite <= 0:
+            raise ValueError(
+                f'Ligne {ligne.id} — la quantité doit être strictement '
+                'positive.')
+        if quantite < (ligne.quantite_recue or 0):
+            raise ValueError(
+                f'Ligne {ligne.id} — la quantité ({quantite}) ne peut pas '
+                f'être inférieure à la quantité déjà reçue '
+                f'({ligne.quantite_recue}).')
+        valeurs['quantite'] = quantite
+    if 'designation' in ligne_data:
+        valeurs['designation'] = ligne_data['designation']
+
+    en_devise = bool(bc.devise and bc.devise != DeviseAchat.MAD
+                     and bc.taux_change)
+    prix_mad = None
+    if en_devise and ligne_data.get('prix_achat_unitaire_devise') is not None:
+        prix_devise = _dec(ligne_data['prix_achat_unitaire_devise'])
+        if prix_devise is None:
+            raise ValueError(f'Ligne {ligne.id} — prix devise invalide.')
+        prix_mad = contre_valeur_mad(prix_devise, bc.taux_change)
+    elif 'prix_achat_unitaire' in ligne_data:
+        prix_mad = _dec(ligne_data['prix_achat_unitaire'])
+        if prix_mad is None:
+            raise ValueError(f'Ligne {ligne.id} — prix invalide.')
+        prix_mad = prix_mad.quantize(Decimal('0.01'))
+    if prix_mad is not None:
+        if prix_mad < 0:
+            raise ValueError(f'Ligne {ligne.id} — prix négatif.')
+        if prix_mad != (ligne.prix_achat_unitaire or Decimal('0')):
+            if (ligne.quantite_recue or 0) > 0:
+                raise ValueError(
+                    f'Ligne {ligne.id} — le prix d\'une quantité déjà '
+                    'reçue est figé : passer par une revalorisation.')
+            valeurs['prix_achat_unitaire'] = prix_mad
+            if en_devise:
+                valeurs['prix_achat_unitaire_devise'] = (
+                    prix_mad / _dec(bc.taux_change)).quantize(
+                        Decimal('0.01'))
+    return valeurs
+
+
 def reviser_bcf(
         company, user, bc, *, lignes=None, date_commande=None,
         date_livraison_prevue=None, note=None):
@@ -6041,64 +6435,88 @@ def reviser_bcf(
     (ancien→nouveau), incrémente `revision`, ré-exige une approbation FG312
     si le montant augmente au-delà du seuil en vigueur. Lève ValueError si le
     BCF est en brouillon/reçu/annulé (rien à réviser — utiliser l'édition
-    normale ou c'est déjà figé)."""
+    normale ou c'est déjà figé).
+
+    ASTK63 — TOUT OU RIEN, dans une transaction, BCF et lignes verrouillés :
+    toutes les lignes sont d'abord validées (quantité > 0 et ≥ reçu, prix
+    figé une fois reçu), puis écrites ; une seule ligne invalide n'écrit
+    RIEN. Le statut du BCF est recalculé (une hausse de quantité sur un BCF
+    reçu le repasse à ENVOYE, recevable) et le PU devise suit le PU MAD."""
+    from django.db import transaction
     from .models import BonCommandeFournisseur
 
-    if bc.statut not in (
-        BonCommandeFournisseur.Statut.ENVOYE,
-        BonCommandeFournisseur.Statut.RECU,
-    ):
-        raise ValueError(
-            'Seul un BCF envoyé (ou partiellement reçu) peut être révisé.')
+    with transaction.atomic():
+        bc = BonCommandeFournisseur.objects.select_for_update().get(pk=bc.pk)
+        if bc.statut not in (
+            BonCommandeFournisseur.Statut.ENVOYE,
+            BonCommandeFournisseur.Statut.RECU,
+        ):
+            raise ValueError(
+                'Seul un BCF envoyé (ou partiellement reçu) peut être '
+                'révisé.')
 
-    montant_avant = bc.total_achat
-    changements = []
+        montant_avant = bc.total_achat
+        changements = []
 
-    # ── En-tête (date_commande / date_livraison_prevue / note) ─────────────
-    for champ, nouvelle_valeur in (
-        ('date_commande', date_commande),
-        ('date_livraison_prevue', date_livraison_prevue),
-        ('note', note),
-    ):
-        if nouvelle_valeur is None:
-            continue
-        ancienne = getattr(bc, champ)
-        if str(ancienne) != str(nouvelle_valeur):
-            changements.append(
-                f'{champ} : {ancienne!r} → {nouvelle_valeur!r}')
-            setattr(bc, champ, nouvelle_valeur)
-
-    # ── Lignes (quantité, prix, désignation) ────────────────────────────────
-    if lignes is not None:
-        existantes = {ligne.id: ligne for ligne in bc.lignes.all()}
-        for ligne_data in lignes:
-            ligne_id = ligne_data.get('id')
-            ligne = existantes.get(ligne_id)
-            if ligne is None:
+        # ── En-tête (date_commande / date_livraison_prevue / note) ─────────
+        for champ, nouvelle_valeur in (
+            ('date_commande', date_commande),
+            ('date_livraison_prevue', date_livraison_prevue),
+            ('note', note),
+        ):
+            if nouvelle_valeur is None:
                 continue
-            for champ in _LIGNE_CHAMPS_SUIVIS:
-                if champ not in ligne_data:
+            ancienne = getattr(bc, champ)
+            if str(ancienne) != str(nouvelle_valeur):
+                changements.append(
+                    f'{champ} : {ancienne!r} → {nouvelle_valeur!r}')
+                setattr(bc, champ, nouvelle_valeur)
+
+        # ── Lignes : 1) tout valider, 2) tout écrire ────────────────────────
+        a_ecrire = []
+        if lignes is not None:
+            existantes = {
+                ligne.id: ligne
+                for ligne in bc.lignes.select_for_update().all()}
+            for ligne_data in lignes:
+                ligne = existantes.get(ligne_data.get('id'))
+                if ligne is None:
                     continue
+                valeurs = _valider_revision_ligne_bcf(bc, ligne, ligne_data)
+                a_ecrire.append((ligne, valeurs))
+        for ligne, valeurs in a_ecrire:
+            modifie = False
+            for champ, nouvelle in valeurs.items():
                 ancienne = getattr(ligne, champ)
-                nouvelle = ligne_data[champ]
                 if str(ancienne) != str(nouvelle):
                     changements.append(
-                        f'Ligne {ligne_id} — {champ} : '
+                        f'Ligne {ligne.id} — {champ} : '
                         f'{ancienne!r} → {nouvelle!r}')
                     setattr(ligne, champ, nouvelle)
-            ligne.save()
+                    modifie = True
+            if modifie:
+                ligne.save()
 
-    if not changements:
-        return bc, False
+        if not changements:
+            return bc, False
 
-    bc.revision += 1
-    bc.save()
-    bc.refresh_from_db()
-    montant_apres = bc.total_achat
+        bc.revision += 1
+        bc.save()
+        bc.refresh_from_db()
+        # ASTK63 — statut recalculé sur les quantités révisées.
+        if (bc.statut == BonCommandeFournisseur.Statut.RECU
+                and not bc.est_entierement_recu):
+            bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+            bc.save(update_fields=['statut'])
+        elif (bc.statut == BonCommandeFournisseur.Statut.ENVOYE
+                and bc.est_entierement_recu):
+            bc.statut = BonCommandeFournisseur.Statut.RECU
+            bc.save(update_fields=['statut'])
+        montant_apres = bc.total_achat
 
-    _log_revision_change(company, bc, user, changements)
-    reapprobation_requise = _invalidate_approbation_si_hausse(
-        company, bc, montant_avant, montant_apres)
+        _log_revision_change(company, bc, user, changements)
+        reapprobation_requise = _invalidate_approbation_si_hausse(
+            company, bc, montant_avant, montant_apres)
 
     return bc, reapprobation_requise
 
