@@ -65,11 +65,47 @@ from .valeurs import nombre as _nombre
 __all__ = [
     'CLE_SIMULATION', 'COLONNE_ENTREE_CHAINE', 'DETAIL_DEJA_CALCULE',
     'MOTIF_PLUSIEURS_PANS', 'MOTIF_SANS_PAN_EQUIPE', 'MOTIF_SANS_POINT',
-    'SOURCE_ENTREE_CHAINE', 'SimulationRefusee', 'construire_contexte',
+    'SOURCE_ENTREE_CHAINE', 'SimulationRefusee', 'VERSION_SIMULATION',
+    'construire_contexte', 'empreinte_simulation',
     'simuler_calepinage',
 ]
 
 logger = logging.getLogger(__name__)
+
+#: ACAL48 — la version du MODÈLE de simulation du calepinage. Elle entre dans
+#: :func:`empreinte_simulation` : la bumper périme TOUTES les simulations
+#: stockées (défaut gravé « bump + version dans l'empreinte »), sans toucher
+#: ``core/electrique/version.VERSION_MOTEUR`` (le moteur ÉLECTRIQUE, qui a sa
+#: propre vie). Journal des bumps (une ligne par changement de chiffre publié) :
+#:
+#: * ``sim-1`` (ACAL48, 06/10/2026) — empreinte de simulation unique : document
+#:   (hors volatils) + entrées hors ``roof_layout`` + cette version.
+VERSION_SIMULATION = 'sim-1'
+
+#: ACAL48 — les saisies de l'entrée électrique enregistrée qui ENTRENT dans
+#: la simulation (câbles, affectation, polystring, optimiseur, températures
+#: SAISIES, batterie et mode hors réseau déclarés, transformateur). Les
+#: options du noyau (longueurs, phases, régime…) s'y ajoutent par
+#: ``services/electrique.py::_options_entree``. Les décisions de check-list
+#: (protections, terre), l'exigence de marché et les dérogations n'y sont PAS :
+#: aucune étape de la chaîne ne les lit.
+ENTREES_ELECTRIQUES_SIMULEES = (
+    'module_produit', 'onduleur_produit', 'optimiseur_produit',
+    'cheminement', 'affectation_manuelle', 'polystring',
+    'temperature_min_c', 'temperature_max_c',
+    'batterie', 'hors_reseau', 'transformateur',
+)
+
+#: ACAL48 — les sections de réglages société que la simulation LIT (D-ACAL-8).
+SECTIONS_REGLAGES_SIMULEES = ('simulation', 'electrique_societe',
+                              'norme_electrique')
+
+#: ACAL48 — les sections dont chaque clé ``{valeur, source, reference}`` est
+#: FIGÉE dans ``resultat.simulation.reglages_utilises`` (D-ACAL-8). La section
+#: ``simulation`` garde ses noms nus (forme du contrat) ; les autres sont
+#: préfixées par leur section.
+SECTIONS_REGLAGES_FIGEES = (('simulation', ''),
+                            ('electrique_societe', 'electrique_societe.'))
 
 #: La clé d'en-tête écrite dans ``Calepinage.resultat`` (CALX4). Elle vient de
 #: ``services/electrique.py`` : un seul nom pour l'écrivain et pour le lecteur
@@ -307,6 +343,159 @@ def _declaration_consommation(document):
     return declaration
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ACAL48 — L'EMPREINTE DE SIMULATION (D-ACAL-21), UNE SEULE, PARTOUT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _canonique(valeur):
+    """Le JSON canonique (clés triées) d'une valeur, ``str`` pour l'exotique."""
+    import json
+
+    return json.dumps(valeur, sort_keys=True, ensure_ascii=False,
+                      separators=(',', ':'), default=str)
+
+
+def _reglages_utilises(reglages):
+    """ACAL48 / D-ACAL-8 — les réglages société FIGÉS dans le résultat.
+
+    ``{cle: {valeur, source, reference}}`` pour chaque clé SAISIE des sections
+    :data:`SECTIONS_REGLAGES_FIGEES` (une clé absente n'est jamais inventée).
+    Le résultat garde ainsi la valeur avec laquelle il a été calculé, même
+    quand la société change ensuite son réglage (la simulation devient alors
+    « périmée », jamais réécrite).
+    """
+    fige = {}
+    reglages = reglages if isinstance(reglages, dict) else {}
+    for section, prefixe in SECTIONS_REGLAGES_FIGEES:
+        contenu = reglages.get(section)
+        if not isinstance(contenu, dict):
+            continue
+        for cle in sorted(contenu):
+            entree = contenu[cle]
+            if not isinstance(entree, dict) or 'valeur' not in entree:
+                continue
+            fige[prefixe + str(cle)] = {
+                'valeur': entree.get('valeur'),
+                'source': entree.get('source'),
+                'reference': entree.get('reference'),
+            }
+    return fige
+
+
+def _piece_meteo_deposee(calepinage):
+    """La ``records.Attachment`` du DERNIER fichier météo déposé, ou ``None``.
+
+    Un pivot jamais enregistré (``pk`` absent) ou un double de calcul qui
+    n'est pas un modèle n'a aucune pièce jointe : rien n'est lu.
+    """
+    if (getattr(calepinage, 'pk', None) is None
+            or not hasattr(type(calepinage), '_meta')):
+        return None
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+
+    return (Attachment.objects
+            .filter(content_type=ContentType.objects.get_for_model(
+                type(calepinage)),
+                object_id=calepinage.pk,
+                file_key__startswith='meteo/')
+            .order_by('-id')
+            .first())
+
+
+def _signature_meteo_deposee(calepinage):
+    """ACAL48 — ce qui IDENTIFIE le fichier météo retenu, ou ``None``.
+
+    L'identifiant de la pièce, sa clé de stockage et sa taille : un nouveau
+    dépôt (nouvelle pièce), un retrait (retour à PVGIS) ou un autre contenu
+    changent la signature. Le contenu n'est PAS relu ici — l'empreinte est
+    calculée à chaque ``GET resultat/`` et ne va pas chercher le fichier dans
+    le magasin d'objets à chaque lecture.
+    """
+    piece = _piece_meteo_deposee(calepinage)
+    if piece is None:
+        return None
+    return {'piece_jointe': piece.pk, 'cle': piece.file_key or '',
+            'taille': getattr(piece, 'size', None)}
+
+
+def empreinte_simulation(calepinage, *, document, donnees, materiel,
+                         reglages):
+    """ACAL48 — L'empreinte de SIMULATION (D-ACAL-21) : SHA-256 hex.
+
+    = l'empreinte « document » (``services/layout.py::empreinte_document``,
+    hors volatils : horizon, ombrage dessiné, environnement, obstacles,
+    consommation, stratégie batterie, épingle… y sont déjà) + les entrées
+    HORS ``roof_layout`` :
+
+    * les postes de pertes SAISIS du calepinage (IAM comprise) ;
+    * les réglages société LUS par la simulation
+      (:data:`SECTIONS_REGLAGES_SIMULEES`) ;
+    * les fiches module / onduleur / optimiseur ENTIÈRES et leurs
+      désignations ;
+    * les saisies électriques simulées (:data:`ENTREES_ELECTRIQUES_SIMULEES`)
+      et les options du noyau (longueurs, phases, régime…) ;
+    * la saisie de raccordement (cos φ, plafond d'injection) ;
+    * le site (lat/lon arrondis à 5 décimales, altitude, fuseau effectif) ;
+    * la signature du fichier météo retenu ;
+    * la grille horaire TOU de la société ;
+    * :data:`VERSION_SIMULATION`.
+
+    ``document`` est un PARAMÈTRE : la même fonction sert une variante
+    (D-ACAL-17). Les températures de REPLI (PVGIS TMY en panne) n'y entrent
+    pas — seules les températures SAISIES comptent, une panne réseau ne
+    périme rien. ``empreinte_entree`` (``services/chaines.py``) reste
+    l'empreinte d'AFFECTATION et n'est plus jamais comparée à
+    ``resultat.simulation``.
+
+    Lecture seule : rien n'est écrit.
+    """
+    import hashlib
+
+    from .batterie import heures_tarif_societe
+    from .electrique import _options_entree
+    from .layout import empreinte_document
+    from .raccordement import saisie_du_calepinage
+
+    reglages = reglages if isinstance(reglages, dict) else {}
+    donnees = donnees if isinstance(donnees, dict) else {}
+    materiel = materiel if isinstance(materiel, dict) else {}
+    site = _site_du_calepinage(calepinage, document,
+                               dict(reglages.get('imagerie') or {}))
+    for cle in ('lat', 'lon'):
+        if site.get(cle) is not None:
+            site[cle] = round(float(site[cle]), 5)
+    charge = {
+        'version_simulation': VERSION_SIMULATION,
+        'document': empreinte_document(document),
+        # Les postes STOCKÉS, tels quels : l'empreinte constate un changement,
+        # elle ne valide pas (un poste devenu illisible ne fait pas tomber
+        # ``GET resultat/`` ; la simulation, elle, le refuse en le nommant).
+        'postes': getattr(calepinage, 'pertes', None) or [],
+        # Une section absente et une section vide disent la même chose
+        # (« rien de saisi ») : elles ne doivent pas périmer l'une l'autre.
+        'reglages': {section: reglages.get(section) or {}
+                     for section in SECTIONS_REGLAGES_SIMULEES},
+        'materiel': {
+            'module': materiel.get('module'),
+            'onduleur': materiel.get('onduleur'),
+            'optimiseur': materiel.get('optimiseur'),
+            'designations': materiel.get('designations'),
+        },
+        'entree': {cle: donnees.get(cle)
+                   for cle in ENTREES_ELECTRIQUES_SIMULEES
+                   if donnees.get(cle) is not None},
+        'options': _options_entree(donnees),
+        'raccordement': saisie_du_calepinage(calepinage),
+        'site': site,
+        'meteo_fichier': _signature_meteo_deposee(calepinage),
+        'tou_heures': heures_tarif_societe(getattr(calepinage, 'company',
+                                                   None)),
+    }
+    return hashlib.sha256(_canonique(charge).encode('utf-8')).hexdigest()
+
+
 def construire_contexte(calepinage, *, entree=None, layout=None,
                         materiel=None, reglages=None):
     """Le contexte PARTAGÉ de la simulation, et ce qu'il a fallu lire.
@@ -329,10 +518,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     """
     from .agregation_electrique import affectation_du_calepinage
     from .cables import cables_du_calepinage
-    from .chaines import bloc_electrique, bloc_pose, empreinte_entree
-    from .electrique import (
-        _options_entree, conception_du_calepinage, parametres_societe,
-    )
+    from .chaines import bloc_electrique, bloc_pose
+    from .electrique import conception_du_calepinage, parametres_societe
     from .norme import norme_applicable
     from .pertes import postes_du_calepinage
     from .raccordement import saisie_du_calepinage
@@ -416,14 +603,17 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         # CALX271 — les batteries du STOCK, pour comparer leurs capacités.
         'capacites_batterie_stock': _capacites_batterie_du_stock(company),
     }
-    contexte['hash_entree'] = empreinte_entree(
-        document, module_specs=materiel_resolu['module'],
-        onduleur_specs=materiel_resolu['onduleur'],
-        temperatures=conception.temperatures,
-        options=_options_entree(donnees))
+    # ACAL48 — l'empreinte de SIMULATION (D-ACAL-21), plus l'empreinte
+    # d'affectation : c'est elle que l'en-tête porte et que la fraîcheur
+    # compare, ici, dans la vue ``simuler/`` et dans ``GET resultat/``.
+    contexte['hash_entree'] = empreinte_simulation(
+        calepinage, document=document, donnees=donnees,
+        materiel=materiel_resolu, reglages=reglages)
 
     meta = {
         'hash_entree': contexte['hash_entree'],
+        # ACAL48 / D-ACAL-8 — les réglages FIGÉS dans l'en-tête du résultat.
+        'reglages_utilises': _reglages_utilises(reglages),
         'document': document,
         'pose': pose,
         'plans_equipes': plans_equipes,
@@ -449,22 +639,11 @@ def _serie_meteo_deposee(calepinage):
     fichier illisible (objet effacé du magasin, contenu devenu invalide) rend
     ``None`` — la simulation repart alors sur PVGIS plutôt que de s'arrêter.
     """
-    from django.contrib.contenttypes.models import ContentType
-
-    from apps.records.models import Attachment
     from apps.ventes import services as ventes_services
 
     from .meteo_fichier import MeteoFichierRefuse, lire_serie_meteo
 
-    if getattr(calepinage, 'pk', None) is None:
-        return None
-    piece = (Attachment.objects
-             .filter(content_type=ContentType.objects.get_for_model(
-                 type(calepinage)),
-                 object_id=calepinage.pk,
-                 file_key__startswith='meteo/')
-             .order_by('-id')
-             .first())
+    piece = _piece_meteo_deposee(calepinage)
     if piece is None:
         return None
     contenu = ventes_services.lire_fichier_toiture(piece.file_key)
@@ -974,6 +1153,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     calcule_le = _horodatage(maintenant)
     blocs[CLE_SIMULATION] = {
         'hash_entree': empreinte,
+        # ACAL48 — la version du modèle de simulation et les réglages FIGÉS
+        # (D-ACAL-8) : le résultat dit avec quoi il a été calculé.
+        'version_simulation': VERSION_SIMULATION,
+        'reglages_utilises': meta['reglages_utilises'],
         'version_moteur': _version_moteur(),
         'calcule_le': calcule_le,
         'duree_s': round(time.monotonic() - depart, 3),

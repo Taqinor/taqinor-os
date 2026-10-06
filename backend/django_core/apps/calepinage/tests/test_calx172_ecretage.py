@@ -28,11 +28,10 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import etapes
-from apps.calepinage.services.chaines import empreinte_entree
 from apps.calepinage.services.electrique import (
-    METHODE_ECRETAGE_SERIE, MOTIF_ECRETAGE_SANS_SERIE, _options_entree,
-    temperatures_site,
+    METHODE_ECRETAGE_SERIE, MOTIF_ECRETAGE_SANS_SERIE,
 )
+from apps.calepinage.services.simulation import empreinte_simulation
 from apps.calepinage.services.etapes import ecretage
 from apps.calepinage.services.etapes.ecretage import (
     CHAMP_PUISSANCE_AC, COLONNE_ECRETAGE, MENTION_COS_PHI_ABSENT,
@@ -234,11 +233,10 @@ class _Calepinage:
         self.company = None
         entree = {'temperature_min_c': -5.0, 'temperature_max_c': 70.0}
         self.resultat = {'entree_electrique': entree}
-        empreinte = empreinte_entree(
-            LAYOUT, module_specs=materiel['module'],
-            onduleur_specs=materiel['onduleur'],
-            temperatures=temperatures_site(saisie=entree),
-            options=_options_entree(entree))
+        # ACAL48 — la fraîcheur se juge sur l'empreinte de SIMULATION.
+        empreinte = empreinte_simulation(
+            self, document=LAYOUT, donnees=entree, materiel=materiel,
+            reglages={})
         self.resultat['simulation'] = {'hash_entree': empreinte,
                                        'calcule_le': '2026-09-21T10:00:00'}
         if avec_serie:

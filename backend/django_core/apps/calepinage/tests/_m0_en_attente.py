@@ -83,8 +83,6 @@ EN_ATTENTE_DETAIL = {
 #: un état de ``calepinage_simulation.json`` OU de ``calepinage_resultat.json``
 #: (les deux échantillons publient les mêmes blocs).
 EN_ATTENTE_SIMULATION = {
-    'simulation.version_simulation': 'ACAL48',
-    'simulation.reglages_utilises': 'ACAL48',
     'simulation.meteo_fichier': 'ACAL146',
     'cascade.etapes_omises': 'ACAL49',
     'cascade.irradiation_incidente_kwh_m2': 'ACAL128',
@@ -110,7 +108,6 @@ EN_ATTENTE_SIMULATION = {
 EN_ATTENTE_RESULTAT = {
     **EN_ATTENTE_SIMULATION,
     'production.annees': 'ACAL54',
-    'simulation': 'ACAL48',
     'ecart_devis': 'ACAL104',
     'pose.pans[].cle': 'ACAL265',
     'pose.pans[].module_id': 'ACAL264',

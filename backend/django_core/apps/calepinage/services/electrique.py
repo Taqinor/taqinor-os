@@ -1616,7 +1616,7 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None):
 
 
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
-                        materiel=None):
+                        materiel=None, reglages=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
 
     Les blocs de simulation (``production``, ``pertes``, ``cascade``,
@@ -1630,12 +1630,17 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     toiture ne produit rien »), et l'avertissement le dit.
     """
     from .chaines import (
-        AffectationInvalide, bloc_electrique, bloc_pose, empreinte_entree,
+        AffectationInvalide, bloc_electrique, bloc_pose,
         normaliser_affectation_imposee,
     )
+    from .simulation import empreinte_simulation
 
     conception, materiel, donnees, document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
+    # ACAL48 — ``reglages`` est, comme ``materiel``, un seam réservé aux
+    # APPELS INTERNES et aux tests (aucune vue ne l'expose).
+    if reglages is None:
+        reglages = parametres_societe(calepinage)
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
     verdicts = verdicts_electriques(
@@ -1679,13 +1684,16 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
                                              nom_optimiseur)
     if optimiseurs is not None:
         electrique[CLE_OPTIMISEURS] = optimiseurs
-    # CALX70 — l'empreinte du document AUJOURD'HUI : c'est elle qui dit si la
-    # simulation déposée dans ``Calepinage.resultat`` décrit encore CE toit.
-    empreinte = empreinte_entree(
-        document, module_specs=materiel['module'],
-        onduleur_specs=materiel['onduleur'],
-        temperatures=conception.temperatures,
-        options=_options_entree(donnees))
+    # CALX70 / ACAL48 — l'empreinte de SIMULATION d'AUJOURD'HUI (D-ACAL-21 :
+    # document hors volatils + entrées hors ``roof_layout`` +
+    # VERSION_SIMULATION), calculée par LA fonction de la simulation — plus
+    # aucun recalcul parallèle ici. C'est elle qui dit si la simulation
+    # déposée dans ``Calepinage.resultat`` décrit encore CE dossier ;
+    # l'empreinte d'AFFECTATION (``empreinte_entree``) n'est plus jamais
+    # comparée à ``resultat.simulation``.
+    empreinte = empreinte_simulation(
+        calepinage, document=document, donnees=donnees, materiel=materiel,
+        reglages=reglages)
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
@@ -1701,7 +1709,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     from .cables import cables_du_calepinage
     from .norme import norme_applicable
 
-    norme = norme_applicable(parametres_societe(calepinage))
+    norme = norme_applicable(reglages)
     cables = cables_du_calepinage(
         conception, cheminement=donnees.get('cheminement'), norme=norme,
         layout=document,
@@ -1896,12 +1904,38 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'validation': blocs['validation'],
         'simulation_perimee': perimee,
         'motif': motif,
+        # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
+        # simulation, réglages figés, date, durée), servi même périmé : il dit
+        # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
+        # d'aujourd'hui et des valeurs nulles.
+        CLE_SIMULATION: _entete_servie(calepinage, empreinte),
         'avertissements': messages,
         # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
         # recalculés), listes vides jamais absentes — y compris quand la
         # simulation est périmée.
         'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
         'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
+    }
+
+
+def _entete_servie(calepinage, empreinte):
+    """ACAL48 — l'en-tête ``simulation`` publié par ``GET resultat/``."""
+    stocke = getattr(calepinage, 'resultat', None)
+    stocke = stocke if isinstance(stocke, dict) else {}
+    entete = stocke.get(CLE_SIMULATION)
+    entete = entete if isinstance(entete, dict) else {}
+    if not entete.get('hash_entree'):
+        return {'hash_entree': empreinte, 'version_simulation': None,
+                'reglages_utilises': {}, 'calcule_le': None,
+                'duree_s': None}
+    reglages = entete.get('reglages_utilises')
+    return {
+        'hash_entree': entete.get('hash_entree'),
+        'version_simulation': entete.get('version_simulation'),
+        'reglages_utilises': (dict(reglages) if isinstance(reglages, dict)
+                              else {}),
+        'calcule_le': entete.get('calcule_le'),
+        'duree_s': entete.get('duree_s'),
     }
 
 

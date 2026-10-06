@@ -461,7 +461,10 @@ class ServiParResultatTest(SimpleTestCase):
         stocke = dict(blocs)
         stocke[service.CLE_SIMULATION] = entete
         calepinage = _Calepinage(resultat=stocke)
-        return resultat_calepinage(calepinage, materiel=MATERIEL)
+        # ACAL48 — les réglages société entrent dans l'empreinte de
+        # simulation : la lecture voit les MÊMES réglages que le calcul.
+        return resultat_calepinage(calepinage, materiel=MATERIEL,
+                                   reglages=REGLAGES)
 
     def test_une_simulation_fraiche_est_servie_telle_quelle(self):
         rendu = _simuler()
