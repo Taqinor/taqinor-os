@@ -5073,3 +5073,22 @@ def message_commentaire_requis(ecart):
     texte = ('%.1f' % ecart).replace('.', ',')
     return ("Écart de %s %% au-delà du seuil de la société : commentaire "
             "requis" % texte)
+
+
+def vue_portail_recette_pompage(recette, comparaison=None):
+    """AGR608/AGR612 — le sous-objet ``vue_portail`` du contrat
+    ``recette_pompage.json`` : ce que le CLIENT voit (date, HMT et débit
+    mesurés, débit promis, écart, commentaire, résultat). LISTE BLANCHE —
+    jamais l'instrument, le technicien, un prix ni ``prix_achat``."""
+    if comparaison is None:
+        comparaison = comparer_recette_pompage(recette)
+    return {
+        'date_essai': (recette.date_essai.isoformat()
+                       if recette.date_essai else None),
+        'hmt_mesuree_m': recette.hmt_mesuree_m,
+        'debit_mesure_m3h': recette.debit_mesure_m3h,
+        'debit_promis_m3h': comparaison['promesse'].get('debit_hmt_m3h'),
+        'ecart_debit_pct': comparaison['ecart_debit_pct'],
+        'commentaire_ecart': recette.commentaire_ecart,
+        'resultat': recette.resultat,
+    }
