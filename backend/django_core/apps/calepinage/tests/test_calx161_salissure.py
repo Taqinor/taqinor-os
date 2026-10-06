@@ -190,6 +190,25 @@ class DansLaChaineTest(unittest.TestCase):
         self.assertTrue(etape['motif_omission'])
         self.assertIsNone(etape['perte_pct'])
 
+    def test_le_poste_mensuel_du_calepinage_prime_et_reste_mensuel(self):
+        # ACAL135 — un poste « salissure » MENSUEL saisi et sourcé prime sur
+        # le réglage société (2 %) et s'applique mois par mois : janvier
+        # intact, juillet −12 %.
+        mensuel = [0.0] * 6 + [12.0, 12.0] + [0.0] * 4
+        contexte = contexte_de(2.0)
+        contexte['postes_saisis'] = [{
+            'poste': 'salissure', 'pct': 2.0, 'mensuel': mensuel,
+            'source': 'saisie', 'reference': 'Relevé de rinçage'}]
+        sortie, cascade = appliquer_chaine(SERIE, contexte)
+        janvier, juillet = sortie['points']
+        self.assertAlmostEqual(janvier['p_w'], 1000.0)
+        self.assertAlmostEqual(juillet['p_w'], 4000.0 * 0.88)
+        etape = next(e for e in cascade['etapes']
+                     if e['etape'] == 'salissure')
+        self.assertEqual(etape['entree']['origine_du_reglage'], 'calepinage')
+        self.assertEqual(etape['entree']['valeurs_pct'], mensuel)
+        self.assertNotIn('saisie_ecartee', etape['entree'])
+
 
 if __name__ == '__main__':
     unittest.main()

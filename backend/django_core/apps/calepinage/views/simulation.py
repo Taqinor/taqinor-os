@@ -60,11 +60,21 @@ def publication_des_pertes(calepinage):
     D-ACAL-7). Une liste vide n'empêche donc rien : ``simulable`` vaut vrai
     et ``motif_non_simulable`` est vide.
     """
+    from ..services.chaine_pertes import statuts_des_postes
+
     postes = postes_du_calepinage(calepinage)
     total = sum(poste['pct'] for poste in postes)
+    statuts = statuts_des_postes(postes, _cascade_fraiche(calepinage))
     return {
         'calepinage': calepinage.pk,
         'pertes': postes,
+        # ACAL135 — chaque poste et SON STATUT (contrat calepinage_pertes.json)
+        # lu sur la dernière cascade FRAÎCHE : appliqué, écarté par une
+        # étape (nommée), hors chaîne, sans source, ou non simulé.
+        'postes': [dict(poste, force=bool(poste.get('force')),
+                        motif_force=poste.get('motif_force') or '',
+                        **statuts.get(poste['poste'], {}))
+                   for poste in postes],
         'total_pct': round(total, 3) if postes else None,
         'postes_non_sources': [poste['poste'] for poste in postes
                                if poste['source'] is None],
@@ -72,6 +82,22 @@ def publication_des_pertes(calepinage):
         'motif_non_simulable': '',
         'catalogue': [dict(entree) for entree in CATALOGUE],
     }
+
+
+def _cascade_fraiche(calepinage):
+    """ACAL135 — la cascade de la DERNIÈRE simulation, si elle est FRAÎCHE
+    (même verdict que ``GET resultat/``), sinon ``None``. Un objet qui n'est
+    pas un calepinage enregistré n'a pas de simulation servie."""
+    if (getattr(calepinage, 'pk', None) is None
+            or not hasattr(type(calepinage), '_meta')):
+        return None
+    from ..selectors import resultat_servi
+
+    servi = resultat_servi(calepinage)
+    if servi.get('simulation_perimee'):
+        return None
+    cascade = servi.get('cascade')
+    return cascade if isinstance(cascade, dict) else None
 
 
 @extend_schema(responses={200: PertesCalepinageSerializer})
@@ -99,8 +125,10 @@ def enregistrer_pertes(self, request, pk=None):
     """
     calepinage = self.get_object()
     corps = request.data if isinstance(request.data, dict) else {}
+    # ACAL135 — le contrat nomme la liste ``postes`` ; ``pertes`` reste lu.
+    saisie = corps.get('postes') if 'postes' in corps else corps.get('pertes')
     try:
-        persister_pertes(calepinage, corps.get('pertes'))
+        persister_pertes(calepinage, saisie)
     except PertesInvalides as refus:
         return Response({refus.champ or 'pertes': [str(refus)]},
                         status=status.HTTP_400_BAD_REQUEST)

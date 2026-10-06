@@ -398,6 +398,10 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            # ACAL49 — la complétude (D-ACAL-7).
            'SOCLE_PHYSIQUE', 'MENTION_BORNE_HAUTE', 'MOTIF_SOCLE_MANQUANT',
            'AVERTISSEMENT_BORNE_HAUTE', 'completude_de_la_chaine',
+           # ACAL135 — préséance projet, forçage signé, statut par poste.
+           'SOURCE_SAISIE_FORCEE', 'STATUT_APPLIQUE', 'STATUT_ECARTE',
+           'STATUT_HORS_CHAINE', 'STATUT_NON_SOURCE', 'STATUT_NON_SIMULE',
+           'statuts_des_postes',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -574,6 +578,61 @@ def _publier(resultat, serie, contexte, cascade):
         resultat, serie, contexte, cascade, decision, orientations)
     resultat['ombrage'] = _bloc_ombrage(contexte, orientations, cascade)
     resultat['serie_horaire'] = _bloc_serie_horaire(serie)
+    # ACAL135 — un poste saisi HORS CHAÎNE (vieillissement…) n'agit pas sur
+    # l'année 1 : il est publié comme tel, et DIT.
+    for saisi in contexte.get('postes_saisis') or ():
+        poste = (saisi or {}).get('poste') if isinstance(saisi, dict) else None
+        if poste in POSTES_HORS_CHAINE:
+            _ajouter_avertissement(resultat, AVERTISSEMENT_HORS_CHAINE.format(
+                poste=poste, raison=POSTES_HORS_CHAINE[poste]))
+
+
+def statuts_des_postes(postes, cascade=None):
+    """ACAL135 — le STATUT de chaque poste saisi, lu sur la DERNIÈRE cascade
+    fraîche (``None`` ⇒ ``non_simule`` + la règle statique).
+
+    Rend ``{poste: {statut, etape, raison}}`` : ``applique`` (entré dans la
+    chaîne, forçage signé compris), ``ecarte_par_etape`` (une étape calculée
+    le remplace — ``etape`` la nomme), ``hors_chaine`` (n'agit pas sur la
+    production de l'année 1), ``non_source`` (sans source, refusé),
+    ``non_simule``.
+    """
+    etapes = {etape.get('etape'): etape
+              for etape in ((cascade or {}).get('etapes') or ())
+              if isinstance(etape, dict)}
+    etape_du_poste = {poste: nom for nom, poste in POSTE_PAR_ETAPE.items()}
+    statuts = {}
+    for saisi in postes or ():
+        poste = (saisi or {}).get('poste')
+        nom = etape_du_poste.get(poste)
+        if poste in POSTES_HORS_CHAINE:
+            statuts[poste] = {'statut': STATUT_HORS_CHAINE, 'etape': None,
+                              'raison': POSTES_HORS_CHAINE[poste]}
+            continue
+        if not str((saisi or {}).get('source') or '').strip():
+            statuts[poste] = {
+                'statut': STATUT_NON_SOURCE, 'etape': nom,
+                'raison': 'Aucune source : le poste n’entre pas dans la '
+                          'chaîne.'}
+            continue
+        etape = etapes.get(nom) if nom else None
+        if cascade is None or etape is None:
+            statuts[poste] = {'statut': STATUT_NON_SIMULE, 'etape': nom,
+                              'raison': RAISON_NON_SIMULE}
+            continue
+        entree = etape.get('entree')
+        ecartee = (entree.get('saisie_ecartee')
+                   if isinstance(entree, dict) else None)
+        if ecartee:
+            statuts[poste] = {'statut': STATUT_ECARTE, 'etape': nom,
+                              'raison': ecartee.get('motif') or ''}
+        elif etape.get('motif_omission'):
+            statuts[poste] = {'statut': STATUT_NON_SIMULE, 'etape': nom,
+                              'raison': etape['motif_omission']}
+        else:
+            statuts[poste] = {'statut': STATUT_APPLIQUE, 'etape': nom,
+                              'raison': ''}
+    return statuts
 
 
 def publier_resultat_de_chaine(resultat, serie, contexte, cascade):
@@ -1668,12 +1727,21 @@ def _executer(nom, serie, contexte):
        ``source`` inchangée ;
     4. une saisie SANS SOURCE ne s'applique jamais : l'étape reste omise et
        le nom du poste part dans ``postes_non_sources``.
+
+    ACAL135 — deux précisions : un poste FORCÉ (``force`` + ``motif_force``
+    non vide — forçage SIGNÉ) s'applique À LA PLACE de l'étape, source
+    ``saisie_forcee`` ; un poste qui prime sur un réglage société
+    (``etapes.POSTE_DE_REGLAGE``) est CONSOMMÉ par l'étape elle-même — il
+    n'est donc pas « écarté ».
     """
     saisi = _poste_saisi(contexte, nom)
 
     exclusivite = EXCLUSIVITES.get(nom)
     if exclusivite is not None and exclusivite[0](contexte):
         return serie, _etapes.etape_omise(_libelle(nom), exclusivite[1])
+
+    if _est_forcee(saisi):
+        return _appliquer_saisie(nom, serie, saisi, forcee=True)
 
     motif = TOUJOURS_OMISES.get(nom, '')
     if not motif:
@@ -1691,8 +1759,9 @@ def _executer(nom, serie, contexte):
                     etape=nom)
             rendue, etape = rendu[0], _normaliser(nom, rendu[1])
             if not etape['motif_omission']:
-                etape['entree'] = _avec_saisie_ecartee(
-                    nom, etape['entree'], saisi)
+                if not _consomme_par_l_etape(nom, contexte):
+                    etape['entree'] = _avec_saisie_ecartee(
+                        nom, etape['entree'], saisi)
                 return rendue, etape
             # Le module s'est omis : la série qu'il rend doit être INTACTE,
             # que la saisie prenne ensuite le relais ou non.
@@ -2122,6 +2191,23 @@ MOTIF_SAISIE_ECARTEE = (
     'compterait la même perte deux fois. Le poste reste servi en LECTURE '
     'SEULE au panneau de saisie, avec le nom de l\'étape qui l\'a calculé.')
 
+#: ACAL135 — la source publiée d'un poste FORCÉ (forçage signé).
+SOURCE_SAISIE_FORCEE = 'saisie_forcee'
+
+#: ACAL135 — les STATUTS publiés d'un poste saisi (contrat
+#: ``calepinage_pertes.json``).
+STATUT_APPLIQUE = 'applique'
+STATUT_ECARTE = 'ecarte_par_etape'
+STATUT_HORS_CHAINE = 'hors_chaine'
+STATUT_NON_SOURCE = 'non_source'
+STATUT_NON_SIMULE = 'non_simule'
+RAISON_NON_SIMULE = (
+    'Aucune simulation fraîche : le statut de ce poste sera connu au '
+    'prochain calcul (une étape calculable le remplace, un poste sans source '
+    'n’entre jamais).')
+AVERTISSEMENT_HORS_CHAINE = (
+    'Poste « {poste} » saisi mais HORS CHAÎNE : {raison}')
+
 #: Ce qui est ajouté au motif d'omission quand la saisie n'a pas de source.
 MOTIF_SAISIE_SANS_SOURCE = (
     ' Le poste saisi « {poste} » porte bien un pourcentage, mais SANS '
@@ -2162,15 +2248,48 @@ def _est_sourcee(saisi):
     return bool(source) and _pourcentage(saisi) is not None
 
 
-def _appliquer_saisie(nom, serie, saisi):
-    """Le poste saisi s'applique lui-même, avec sa ``source`` INCHANGÉE."""
+def _appliquer_saisie(nom, serie, saisi, *, forcee=False):
+    """Le poste saisi s'applique lui-même, avec sa ``source`` INCHANGÉE.
+
+    ACAL135 — un poste MENSUEL s'applique mois par mois (la machinerie de
+    ``etapes/salissure.py``), jamais à plat ; un poste FORCÉ porte la source
+    ``saisie_forcee`` et son motif signé dans ``entree``.
+    """
+    from .etapes.salissure import appliquer_mensuel
+
     pct = _pourcentage(saisi)
-    suite = _etapes.mettre_a_l_echelle(serie, 1.0 - pct / 100.0)
+    mensuel = saisi.get('mensuel')
+    suite = (appliquer_mensuel(serie, mensuel)
+             if isinstance(mensuel, (list, tuple)) and mensuel else None)
+    if suite is None:
+        suite = _etapes.mettre_a_l_echelle(serie, 1.0 - pct / 100.0)
+    entree = f'poste_saisi:{POSTE_PAR_ETAPE[nom]}'
+    if forcee:
+        entree = {'champ': entree, 'force': True,
+                  'motif_force': str(saisi.get('motif_force') or '').strip(),
+                  'source_saisie': saisi.get('source')}
     return suite, _normaliser(nom, _etapes.etape_appliquee(
         saisi.get('libelle') or _libelle(nom),
-        source=saisi.get('source'),
-        entree=f'poste_saisi:{POSTE_PAR_ETAPE[nom]}',
+        source=SOURCE_SAISIE_FORCEE if forcee else saisi.get('source'),
+        entree=entree,
         reference=saisi.get('reference') or ''))
+
+
+def _est_forcee(saisi):
+    """ACAL135 — un forçage SIGNÉ : ``force`` vrai, un motif non vide et un
+    pourcentage lisible."""
+    return (isinstance(saisi, dict) and saisi.get('force') is True
+            and bool(str(saisi.get('motif_force') or '').strip())
+            and _pourcentage(saisi) is not None)
+
+
+def _consomme_par_l_etape(nom, contexte):
+    """ACAL135 — l'étape ``nom`` a-t-elle lu le poste du calepinage À LA
+    PLACE du réglage société (préséance projet, ``etapes.reglage``) ?"""
+    poste = POSTE_PAR_ETAPE.get(nom)
+    return any(_etapes.poste_qui_prime(contexte, cle) is not None
+               for cle, nom_poste in _etapes.POSTE_DE_REGLAGE.items()
+               if nom_poste == poste)
 
 
 def _avec_saisie_ecartee(nom, entree, saisi):

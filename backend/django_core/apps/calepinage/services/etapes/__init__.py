@@ -250,6 +250,43 @@ def etape_appliquee(libelle, *, source, entree, reference='', gain=False):
     }
 
 
+#: ACAL135 / D-ACAL-8 — les réglages société qu'un poste SAISI et SOURCÉ du
+#: calepinage recouvre : ``{clé de réglage: nom du poste}``, déclarés UNE
+#: fois. Le poste du calepinage PRIME sur le réglage société (le projet est
+#: plus précis que la société) ; un poste mensuel garde ses douze mois.
+POSTE_DE_REGLAGE = {
+    'salissure_mensuelle_pct': 'salissure',
+    'mismatch_fabricant_pct': 'mismatch',
+}
+
+#: La provenance publiée d'un réglage repris d'un poste du calepinage.
+ORIGINE_POSTE_CALEPINAGE = 'calepinage'
+
+
+def poste_qui_prime(contexte, cle):
+    """ACAL135 — le poste SOURCÉ du calepinage qui prime sur le réglage
+    ``cle``, à la forme d'un réglage ``{valeur, source, reference, origine}``,
+    ou ``None``. ``valeur`` = les douze mois d'un poste mensuel, sinon son
+    pourcentage. Un poste sans source n'est jamais repris (D-CALX 7)."""
+    nom = POSTE_DE_REGLAGE.get(cle)
+    if not nom:
+        return None
+    for saisi in (contexte or {}).get('postes_saisis') or ():
+        if not isinstance(saisi, dict) or saisi.get('poste') != nom:
+            continue
+        if not str(saisi.get('source') or '').strip():
+            return None
+        mensuel = saisi.get('mensuel')
+        valeur = (list(mensuel) if isinstance(mensuel, (list, tuple))
+                  and mensuel else saisi.get('pct'))
+        if valeur is None:
+            return None
+        return {'valeur': valeur, 'source': saisi.get('source'),
+                'reference': saisi.get('reference') or '',
+                'origine': ORIGINE_POSTE_CALEPINAGE}
+    return None
+
+
 def reglage(contexte, cle):
     """Le réglage société ``cle`` de la section « simulation », ou ``None``.
 
@@ -257,6 +294,9 @@ def reglage(contexte, cle):
     une faute de frappe de l'étape, pas une absence de saisie — elle est donc
     refusée en la nommant. Une clé du registre jamais saisie rend ``None`` :
     l'étape s'omet alors en nommant la clé, sans rien supposer.
+
+    ACAL135 — un poste SOURCÉ du calepinage qui recouvre la clé
+    (:data:`POSTE_DE_REGLAGE`) PRIME sur le réglage société.
     """
     from apps.calepinage.services.parametres_cles import (
         SECTION_SIMULATION, registre)
@@ -267,6 +307,9 @@ def reglage(contexte, cle):
             f'La clé de réglage « {cle} » ne figure pas au registre de la '
             f'section « {SECTION_SIMULATION} » (CALX145) : ajoutez-la EN FIN '
             f'de CLES_SIMULATION avant de la lire.')
+    prime = poste_qui_prime(contexte, cle)
+    if prime is not None:
+        return prime
     valeurs = (contexte or {}).get('reglages_simulation') or {}
     saisie = valeurs.get(cle)
     if not isinstance(saisie, dict):

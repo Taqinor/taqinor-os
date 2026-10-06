@@ -121,14 +121,15 @@ class ArbitrageAvecLePosteSaisiTest(unittest.TestCase):
     def test_une_seule_soustraction(self):
         self.assertAlmostEqual(self.ligne['perte_pct'], 2.5, places=3)
 
-    def test_la_saisie_est_publiee_ecartee(self):
-        ecartee = self.ligne['entree']['saisie_ecartee']
-        self.assertEqual(ecartee['poste'], 'mismatch')
-        self.assertEqual(ecartee['etape'], 'mismatch_fabricant')
-        self.assertTrue(ecartee['motif'])
+    def test_la_saisie_du_calepinage_prime_et_n_est_pas_ecartee(self):
+        # ACAL135 / D-ACAL-8 — le poste SOURCÉ du calepinage prime sur le
+        # réglage société : l'étape le LIT (une seule soustraction, 2,5 %),
+        # il n'est donc pas « écarté ».
+        self.assertNotIn('saisie_ecartee', self.ligne['entree'])
+        self.assertAlmostEqual(self.ligne['entree']['pct'], 2.5, places=3)
 
     def test_le_calcul_reste_celui_de_l_etape(self):
-        self.assertEqual(self.ligne['entree']['champ']['champ'],
+        self.assertEqual(self.ligne['entree']['champ'],
                          mismatch_fabricant.ENTREE_REGLAGE)
 
 
