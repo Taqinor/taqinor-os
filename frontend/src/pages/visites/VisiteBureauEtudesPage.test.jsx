@@ -6,9 +6,10 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
-const { getVisites, getVisite } = vi.hoisted(() => ({
+const { getVisites, getVisite, renvoyerVisite } = vi.hoisted(() => ({
   getVisites: vi.fn(),
   getVisite: vi.fn(),
+  renvoyerVisite: vi.fn(),
 }))
 
 vi.mock('../../api/visitesApi', () => ({
@@ -16,7 +17,7 @@ vi.mock('../../api/visitesApi', () => ({
     getVisites: (...a) => getVisites(...a),
     getVisite: (...a) => getVisite(...a),
     validerVisite: vi.fn(),
-    renvoyerVisite: vi.fn(),
+    renvoyerVisite: (...a) => renvoyerVisite(...a),
   },
 }))
 
@@ -133,5 +134,33 @@ describe('VisiteBureauEtudesPage — AGR422 (gabarit point_eau)', () => {
     await user.click(await screen.findByText('Lead A'))
     expect(await screen.findByRole('button', { name: /atelier 3d/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Lead A' })).toBeInTheDocument()
+  })
+})
+
+/* Renvoi — le corps suit le contrat serveur (VisiteRenvoiSerializer /
+   renvoyer_visite) : `photos` = ids des médias, `mesures` = [{categorie, code}].
+   Avant : l'écran envoyait les CODES d'emplacement et `champ` → 400 / mesure
+   ignorée. Données : `exemple` du contrat partagé `visite_terrain.json`. */
+describe('VisiteBureauEtudesPage — renvoi au contrat serveur', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const VISITE = contrat.exemple
+
+  it('envoie les ids des photos de l’emplacement choisi et {categorie, code} des mesures', async () => {
+    getVisite.mockResolvedValue({ data: { ...VISITE, statut: 'terminee' } })
+    renvoyerVisite.mockResolvedValue({ data: {} })
+    const slot = VISITE.checklist[0].slots[0]
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    await user.click(await screen.findByRole('button', { name: /renvoyer/i }))
+    await user.click(await screen.findByRole('checkbox', { name: `${VISITE.checklist[0].libelle} — ${slot.libelle}` }))
+    await user.click(screen.getByRole('checkbox', { name: 'Toiture — Longueur de la zone utile' }))
+    await user.type(screen.getByLabelText(/Motif/), 'Photo floue')
+    await user.click(screen.getByRole('button', { name: /^renvoyer$/i }))
+    expect(renvoyerVisite).toHaveBeenCalledWith(VISITE.id, {
+      photos: slot.photos.map((p) => p.id),
+      mesures: [{ categorie: 'toiture', code: 'longueur_m' }],
+      motif: 'Photo floue',
+    })
   })
 })

@@ -106,7 +106,18 @@ function RenvoyerDialog({ open, onOpenChange, visite, onRenvoye }) {
   const envoyer = async () => {
     setEnvoi(true)
     try {
-      await visitesApi.renvoyerVisite(visite.id, { photos, mesures, motif })
+      // Contrat serveur (VisiteRenvoiSerializer / renvoyer_visite) : `photos`
+      // = ids des médias de la visite, `mesures` = [{categorie, code}]. On
+      // sélectionne par EMPLACEMENT à l'écran ; on envoie les ids de toutes
+      // ses photos (un emplacement sans photo n'a rien à marquer).
+      const idsPhotos = toutSlots
+        .filter((s) => photos.includes(s.code))
+        .flatMap((s) => (s.photos ?? []).map((p) => p.id))
+      await visitesApi.renvoyerVisite(visite.id, {
+        photos: idsPhotos,
+        mesures: mesures.map(({ categorie, champ }) => ({ categorie, code: champ })),
+        motif,
+      })
       toast.success('Visite renvoyée au commercial.')
       onRenvoye?.()
       onOpenChange(false)
