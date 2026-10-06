@@ -1423,7 +1423,8 @@ class GoogleAdsWebhookTests(TestCase):
             HTTP_X_WEBHOOK_SECRET=SECRET)
 
     def _lead(self, **extra):
-        res = self.post(payload_site(fbclid=None, utm={}, **extra))
+        extra.setdefault('utm', {})
+        res = self.post(payload_site(fbclid=None, **extra))
         self.assertEqual(res.status_code, 201, res.content)
         return Lead.objects.get(pk=res.json()['lead_id'])
 

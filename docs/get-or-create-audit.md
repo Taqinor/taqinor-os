@@ -67,7 +67,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/views.py:3303` | get_or_create | LeadTag.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:3317` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:3329` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3386` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/views.py:3387` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |

@@ -58,7 +58,7 @@ describe('GoogleTag.astro', () => {
 
   it('consentement : refus ⇒ pas de chargement ; refus tardif ⇒ consent update denied', () => {
     expect(src).toContain("localStorage.getItem('tq_consent') === 'denied'");
-    expect(src).toContain("if (denied) return;");
+    expect(src).toContain("if (consent === 'denied') return;");
     expect(src).toContain("window.gtag('consent', 'update'");
     for (const k of ['ad_storage', 'analytics_storage', 'ad_user_data', 'ad_personalization']) {
       expect(src).toContain(`${k}: 'denied'`);

@@ -28,11 +28,12 @@ const leadSendTo = parseLeadSendTo(import.meta.env.PUBLIC_GOOGLE_ADS_LEAD_SEND_T
 {tagIds.length > 0 && (
   <script is:inline define:vars={{ tqGoogleTagIds: tagIds, tqGoogleLeadSendTo: leadSendTo }}>
     (function () {
-      var denied = false;
+      /* Refus explicite ⇒ rien ne se charge (stockage indisponible ⇒ tag actif). */
+      var consent = null;
       try {
-        denied = localStorage.getItem('tq_consent') === 'denied';
+        consent = localStorage.getItem('tq_consent');
       } catch (e) {}
-      if (denied) return;
+      if (consent === 'denied') return;
       var s = document.createElement('script');
       s.async = true;
       s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(tqGoogleTagIds[0]);
