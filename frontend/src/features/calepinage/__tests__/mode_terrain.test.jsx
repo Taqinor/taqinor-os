@@ -35,12 +35,14 @@ function racineDepot() {
 
 const layout = vi.fn()
 const enregistrerLayoutCalepinage = vi.fn()
+const enregistrerSectionLayout = vi.fn()
 const pose = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       enregistrerLayoutCalepinage: (...a) => enregistrerLayoutCalepinage(...a),
+      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
     },
     moteur: { pose: (...a) => pose(...a) },
   },
@@ -147,8 +149,9 @@ const SAISIE = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'PAN-A' }] } } })
+  layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'PAN-A' }] }, empreinte_document: 'E0' } })
   enregistrerLayoutCalepinage.mockResolvedValue({ data: {} })
+  enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
   pose.mockResolvedValue({ data: REPONSE })
 })
 afterEach(() => { cleanup() })
@@ -281,7 +284,7 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
     expect(screen.getByTestId('cal-terrain-taux').textContent).toContain('%')
   })
 
-  it('l’enregistrement AJOUTE `poseSurfaces` sans toucher `zones` (mode toiture intact)', async () => {
+  it('l’enregistrement écrit SEULEMENT `poseSurfaces` par section (la toiture n’est pas envoyée)', async () => {
     monter()
     await waitFor(() => expect(layout).toHaveBeenCalled())
     for (const [cle, valeur] of Object.entries(SAISIE)) {
@@ -291,11 +294,46 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
     fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
     await waitFor(() => expect(pose).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
-    await waitFor(() => expect(enregistrerLayoutCalepinage).toHaveBeenCalled())
-    const doc = enregistrerLayoutCalepinage.mock.calls[0][1]
-    expect(doc.zones).toEqual([{ id: 'PAN-A' }]) // la toiture est intacte
-    expect(doc.poseSurfaces).toHaveLength(1)
-    expect(doc.poseSurfaces[0].kind).toBe('sol')
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalled())
+    const [id, corps] = enregistrerSectionLayout.mock.calls[0]
+    expect(id).toBe(7)
+    expect(Object.keys(corps).sort()).toEqual(['base_empreinte', 'cle', 'valeur'])
+    expect(corps.cle).toBe('poseSurfaces')
+    expect(corps.base_empreinte).toBe('E0')
+    expect(corps.valeur).toHaveLength(1)
+    expect(corps.valeur[0].kind).toBe('sol')
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled() // aucun document entier
+  })
+
+  it('lecture en échec → Enregistrer désactivé, message affiché, aucun POST', async () => {
+    layout.mockRejectedValue(new Error('500'))
+    monter()
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('Conception illisible : rien n’est enregistré')
+    const bouton = screen.getByTestId('cal-terrain-enregistrer')
+    expect(bouton).toBeDisabled()
+    fireEvent.click(bouton)
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+  })
+
+  it('pousse la section écrite dans l’atelier vivant', async () => {
+    const documentVivant = { empreinte: 'EATELIER', appliquerSection: vi.fn() }
+    monter({ documentVivant })
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    for (const [cle, valeur] of Object.entries(SAISIE)) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    await waitFor(() => expect(documentVivant.appliquerSection).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('EATELIER')
+    const [cle, valeur, empreinte] = documentVivant.appliquerSection.mock.calls[0]
+    expect(cle).toBe('poseSurfaces')
+    expect(valeur[0].kind).toBe('sol')
+    expect(empreinte).toBe('E1')
   })
 
   it('RECHARGE un champ déjà enregistré : saisie et plan reviennent', async () => {
@@ -527,5 +565,157 @@ describe('ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module survit
     expect(screen.getByTestId('cal-terrain-moduleCourtM').value).toBe('1.134')
     expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
     expect(screen.getByTestId('cal-terrain-modulesParTable').value).toBe('2')
+  })
+})
+
+/* ── ACAL25 — invalidation du plan, surfaces remplacées par id, suppression ── */
+
+describe('ACAL25 — le plan calculé ne survit pas à une entrée changée', () => {
+  const remplirTerrain = () => {
+    for (const [cle, valeur] of Object.entries(SAISIE)) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+  }
+
+  it('changer la largeur après Calculer désactive Enregistrer (« recalculez le plan »)', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplirTerrain()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.change(screen.getByTestId('cal-terrain-largeurM'), { target: { value: '80' } })
+    expect(screen.getByTestId('cal-terrain-enregistrer')).toBeDisabled()
+    expect(screen.getByTestId('cal-terrain-message').textContent).toMatch(/recalculez/i)
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('l’allée change aussi le plan : même invalidation', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplirTerrain()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.change(screen.getByTestId('cal-terrain-alleeM'), { target: { value: '0' } })
+    expect(screen.getByTestId('cal-terrain-enregistrer')).toBeDisabled()
+  })
+
+  it('la pente du terrain n’entre pas dans le moteur : le plan reste valable', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplirTerrain()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.change(screen.getByTestId('cal-terrain-penteTerrainDeg'), { target: { value: '5' } })
+    expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled()
+  })
+
+  it('le module et l’allée sont persistés puis relus (allée 0 conservée)', async () => {
+    const s = documentTerrain({ ...SAISIE, alleeM: '0' }, REPONSE)
+    expect(s.alleeM).toBe(0)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [s] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-alleeM').value).toBe('0')
+    })
+    expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher ⇒ surface octet-identique', async () => {
+    const premiere = documentTerrain({ ...SAISIE, alleeM: '0' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [premiere] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-alleeM').value).toBe('0')
+    })
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const seconde = enregistrerSectionLayout.mock.calls[0][1].valeur[0]
+    expect(JSON.stringify(seconde)).toBe(JSON.stringify(premiere))
+  })
+
+  it('deux surfaces sol : en enregistrer une conserve l’autre', async () => {
+    const A = documentTerrain({ ...SAISIE, repere: 'S-A', label: 'Sol A' }, REPONSE)
+    const B = documentTerrain({ ...SAISIE, repere: 'S-B', label: 'Sol B', tiltDeg: '30' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [A, B] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sol B (S-B)' }))
+    expect(screen.getByTestId('cal-terrain-tiltDeg').value).toBe('30')
+    fireEvent.change(screen.getByTestId('cal-terrain-tiltDeg'), { target: { value: '32' } })
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const { valeur } = enregistrerSectionLayout.mock.calls[0][1]
+    expect(valeur).toHaveLength(2)
+    expect(valeur[0]).toEqual(A)
+    expect(valeur[1].id).toBe('S-B')
+    expect(valeur[1].tiltDeg).toBe(32)
+  })
+
+  it('« Supprimer cette surface » : la surface quitte poseSurfaces (écriture par section)', async () => {
+    const A = documentTerrain({ ...SAISIE, repere: 'S-A' }, REPONSE)
+    const B = documentTerrain({ ...SAISIE, repere: 'S-B' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [A, B] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+    })
+    fireEvent.click(screen.getByText('Supprimer cette surface'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const corps = enregistrerSectionLayout.mock.calls[0][1]
+    expect(corps.cle).toBe('poseSurfaces')
+    expect(corps.valeur).toEqual([B])
+  })
+})
+
+/* ── ACAL75 — la pente du terrain n'entre pas dans le calcul, et l'écran le dit ── */
+
+describe('ACAL75 — champ pente du terrain grisé avec la mention', () => {
+  it('champ pente du terrain grisé avec la mention', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    const champ = screen.getByTestId('cal-terrain-penteTerrainDeg')
+    expect(champ.closest('label').className).toContain('opacity-60')
+    const mention = document.getElementById(champ.getAttribute('aria-describedby'))
+    expect(mention).toHaveTextContent('non prise en compte par le calcul — terrain supposé plat')
+    // Les autres champs, eux, comptent : ni grisés ni décrits comme ignorés.
+    expect(screen.getByTestId('cal-terrain-tiltDeg').closest('label').className)
+      .not.toContain('opacity-60')
+  })
+
+  it('la valeur reste saisissable et persistée (rendu 3D), mais n’entre jamais dans la demande', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    for (const [cle, valeur] of Object.entries({ ...SAISIE, penteTerrainDeg: '15' })) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+    expect(screen.getByTestId('cal-terrain-penteTerrainDeg').value).toBe('15')
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    expect(pose.mock.calls[0][0].demande.surfaces[0].pente_deg).toBe(0)
+    expect(documentTerrain({ ...SAISIE, penteTerrainDeg: '15' }, REPONSE).terrainSlopeDeg).toBe(15)
+  })
+
+  it('le champ terrain ne force PAS d’allée : vide ⇒ politique du moteur (aucun allee_m)', () => {
+    expect(demandeMoteur({ ...SAISIE, alleeM: '' }).parametres.allee_m).toBeUndefined()
+    expect(demandeMoteur({ ...SAISIE, alleeM: '0' }).parametres.allee_m).toBe(0)
   })
 })

@@ -208,6 +208,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.decisionSuggestionPente": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/suggestions-pente/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.declencherDocument": [
     {
       "config": {
@@ -434,6 +442,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/entree-electrique/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.envoyerFondPlan": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/fond-plan/",
+      "verbe": "post"
     }
   ],
   "calepinages.envoyerImage": [

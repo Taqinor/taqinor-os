@@ -35,12 +35,14 @@ function racineDepot() {
 
 const layout = vi.fn()
 const enregistrerLayoutCalepinage = vi.fn()
+const enregistrerSectionLayout = vi.fn()
 const pose = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       enregistrerLayoutCalepinage: (...a) => enregistrerLayoutCalepinage(...a),
+      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
     },
     moteur: { pose: (...a) => pose(...a) },
   },
@@ -125,8 +127,11 @@ vi.mock('@roofpro/scene3d', () => ({
 }))
 
 const {
-  default: Ombriere, documentOmbriere, totauxParBatiment, coupeOmbriere,
+  default: Ombriere, totauxParBatiment, coupeOmbriere,
 } = await import('../Ombriere')
+const { documentSurfacePose } = await import('../surfacePose')
+/** ACAL25 — un seul survivant : l'ombrière est `documentSurfacePose(…, 'ombriere')`. */
+const documentOmbriere = (saisie, reponse) => documentSurfacePose(saisie, reponse, 'ombriere')
 const { formatCote } = await import('../plan2d')
 
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
@@ -166,9 +171,11 @@ beforeEach(() => {
           { id: 'PAN-B', buildingId: 'BAT-B', geometry: { count: 10 } },
         ],
       },
+      empreinte_document: 'E0',
     },
   })
   enregistrerLayoutCalepinage.mockResolvedValue({ data: {} })
+  enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
   pose.mockResolvedValue({ data: REPONSE })
 })
 afterEach(() => { cleanup() })
@@ -334,18 +341,50 @@ describe('CAL91 — l’écran pose l’ombrière et la montre dans les totaux',
     expect(screen.getByTestId('cal-ombriere-total-BAT-B').textContent).toContain('10')
   })
 
-  it('l’enregistrement AJOUTE `poseSurfaces` sans toucher `zones`', async () => {
+  it('l’enregistrement écrit SEULEMENT `poseSurfaces` par section (la toiture n’est pas envoyée)', async () => {
     monter()
     await waitFor(() => expect(layout).toHaveBeenCalled())
     remplir()
     fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
     await waitFor(() => expect(pose).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId('cal-ombriere-enregistrer'))
-    await waitFor(() => expect(enregistrerLayoutCalepinage).toHaveBeenCalled())
-    const doc = enregistrerLayoutCalepinage.mock.calls[0][1]
-    expect(doc.zones).toHaveLength(2)
-    expect(doc.poseSurfaces).toHaveLength(1)
-    expect(doc.poseSurfaces[0].kind).toBe('ombriere')
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalled())
+    const [id, corps] = enregistrerSectionLayout.mock.calls[0]
+    expect(id).toBe(9)
+    expect(Object.keys(corps).sort()).toEqual(['base_empreinte', 'cle', 'valeur'])
+    expect(corps.cle).toBe('poseSurfaces')
+    expect(corps.base_empreinte).toBe('E0')
+    expect(corps.valeur).toHaveLength(1)
+    expect(corps.valeur[0].kind).toBe('ombriere')
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled() // aucun document entier
+  })
+
+  it('lecture en échec → Enregistrer désactivé, message affiché, aucun POST', async () => {
+    layout.mockRejectedValue(new Error('500'))
+    monter()
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('Conception illisible : rien n’est enregistré')
+    const bouton = screen.getByTestId('cal-ombriere-enregistrer')
+    expect(bouton).toBeDisabled()
+    fireEvent.click(bouton)
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+  })
+
+  it('pousse la section écrite dans l’atelier vivant', async () => {
+    const documentVivant = { empreinte: 'EATELIER', appliquerSection: vi.fn() }
+    monter({ documentVivant })
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir()
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('cal-ombriere-enregistrer'))
+    await waitFor(() => expect(documentVivant.appliquerSection).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('EATELIER')
+    const [cle, valeur, empreinte] = documentVivant.appliquerSection.mock.calls[0]
+    expect(cle).toBe('poseSurfaces')
+    expect(valeur[0].kind).toBe('ombriere')
+    expect(empreinte).toBe('E1')
   })
 
   it('RECHARGE une ombrière enregistrée : saisie et plan reviennent', async () => {
@@ -480,5 +519,156 @@ describe('CAL91 — la route est déclarée dans le module', () => {
     expect(route).toBeTruthy()
     expect(route.component).toBeTruthy()
     expect(route.roles).toContain('normal')
+  })
+})
+
+/* ── ACAL25 — module, allée, invalidation, surfaces par id ─────────────────── */
+
+describe('ACAL25 — une seule fonction de surface de pose (module et allée persistés)', () => {
+  const SAISIE_620 = {
+    ...SAISIE,
+    largeurM: '30',
+    profondeurM: '10',
+    moduleLongM: '2.38',
+    moduleCourtM: '1.13',
+    puissanceWc: '620',
+    modulesParTable: '4',
+    alleeM: '0',
+  }
+
+  it('l’ombrière 30×10, module 620 Wc, 4 modules/travée, allée 0 persiste module et allée', () => {
+    const s = documentOmbriere(SAISIE_620, REPONSE)
+    expect(s.moduleWc).toBe(620)
+    expect(s.moduleLongM).toBe(2.38)
+    expect(s.moduleCourtM).toBe(1.13)
+    expect(s.modulesParTable).toBe(4)
+    expect(s.alleeM).toBe(0) // 0 est une allée imposée, jamais « absente »
+  })
+
+  it('rouvrir une ombrière enregistrée remplit module et allée', async () => {
+    layout.mockResolvedValue({
+      data: {
+        roof_layout: { zones: [], poseSurfaces: [documentOmbriere(SAISIE_620, REPONSE)] },
+        empreinte_document: 'E0',
+      },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-ombriere-puissanceWc').value).toBe('620')
+    })
+    expect(screen.getByTestId('cal-ombriere-moduleLongM').value).toBe('2.38')
+    expect(screen.getByTestId('cal-ombriere-moduleCourtM').value).toBe('1.13')
+    expect(screen.getByTestId('cal-ombriere-modulesParTable').value).toBe('4')
+    expect(screen.getByTestId('cal-ombriere-alleeM').value).toBe('0')
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher ⇒ surface octet-identique', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir(SAISIE_620)
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('cal-ombriere-enregistrer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const premiere = enregistrerSectionLayout.mock.calls[0][1].valeur[0]
+    cleanup()
+
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [premiere] }, empreinte_document: 'E1' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-ombriere-puissanceWc').value).toBe('620')
+    })
+    fireEvent.click(screen.getByTestId('cal-ombriere-enregistrer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(2))
+    const seconde = enregistrerSectionLayout.mock.calls[1][1].valeur[0]
+    expect(JSON.stringify(seconde)).toBe(JSON.stringify(premiere))
+  })
+
+  it('changer la largeur après Calculer invalide le plan et désactive Enregistrer', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir(SAISIE_620)
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-ombriere-enregistrer')).not.toBeDisabled())
+    fireEvent.change(screen.getByTestId('cal-ombriere-largeurM'), { target: { value: '80' } })
+    expect(screen.getByTestId('cal-ombriere-enregistrer')).toBeDisabled()
+    expect(screen.getByTestId('cal-ombriere-message').textContent).toMatch(/recalculez/i)
+    fireEvent.click(screen.getByTestId('cal-ombriere-enregistrer'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('deux ombrières : en enregistrer une conserve l’autre ; la liste choisit celle rééditée', async () => {
+    const A = documentOmbriere({ ...SAISIE_620, repere: 'OMB-A', label: 'Parking A' }, REPONSE)
+    const B = documentOmbriere({ ...SAISIE_620, repere: 'OMB-B', label: 'Parking B', tiltDeg: '5' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [A, B] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-ombriere-puissanceWc').value).toBe('620')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Parking B (OMB-B)' }))
+    expect(screen.getByTestId('cal-ombriere-tiltDeg').value).toBe('5')
+    fireEvent.change(screen.getByTestId('cal-ombriere-tiltDeg'), { target: { value: '9' } })
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-ombriere-enregistrer')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('cal-ombriere-enregistrer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const { valeur } = enregistrerSectionLayout.mock.calls[0][1]
+    expect(valeur).toHaveLength(2)
+    expect(valeur[0]).toEqual(A)
+    expect(valeur[1].id).toBe('OMB-B')
+    expect(valeur[1].tiltDeg).toBe(9)
+  })
+
+  it('« Supprimer cette surface » retire la surface par section', async () => {
+    const A = documentOmbriere({ ...SAISIE_620, repere: 'OMB-A' }, REPONSE)
+    const B = documentOmbriere({ ...SAISIE_620, repere: 'OMB-B' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [A, B] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-ombriere-puissanceWc').value).toBe('620')
+    })
+    fireEvent.click(screen.getByText('Supprimer cette surface'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const corps = enregistrerSectionLayout.mock.calls[0][1]
+    expect(corps.cle).toBe('poseSurfaces')
+    expect(corps.valeur).toEqual([B])
+  })
+})
+
+/* ── ACAL75 — l'ombrière est une couverture continue : allée vide = pose jointive ── */
+
+describe('ACAL75 — allée vide : pose jointive (allee_m 0), politique affichée', () => {
+  it('allée vide → demande moteur allee_m 0 et mention pose jointive', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir({ ...SAISIE, alleeM: '' })
+    expect(screen.getByText(/Pose jointive \(allée 0\) — saisissez une allée pour en imposer une/))
+      .toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    // Le moteur reçoit la couverture continue, pas son allée de circulation (0,60 m).
+    expect(pose.mock.calls[0][0].demande.parametres.allee_m).toBe(0)
+  })
+
+  it('allée saisie → envoyée telle quelle, et la mention pose jointive disparaît', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir({ ...SAISIE, alleeM: '1.2' })
+    expect(screen.queryByText(/Pose jointive/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    expect(pose.mock.calls[0][0].demande.parametres.allee_m).toBe(1.2)
+  })
+
+  it('l’allée vide reste persistée null (le défaut jointif n’est pas une saisie)', () => {
+    expect(documentOmbriere({ ...SAISIE, alleeM: '' }, REPONSE).alleeM).toBeNull()
   })
 })

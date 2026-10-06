@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
-   `documentOmbriere`, `totauxParBatiment` et `coupeOmbriere` sont des fonctions
-   PURES (une saisie + un plan du moteur → le document persisté, les totaux
-   affichés et la mise en page de la coupe). Le test jumeau les exerce sans
+   `totauxParBatiment` et `coupeOmbriere` sont des fonctions PURES (les totaux
+   affichés et la mise en page de la coupe ; le document persisté vient de
+   `surfacePose.js`, ACAL25). Le test jumeau les exerce sans
    monter l'écran, parce que ce sont ELLES qui garantissent qu'aucune charge
    n'est calculée, qu'aucun total n'est inventé et qu'aucune hauteur n'est
    supposée. Même dérogation que `module.config.jsx` du même module. */
@@ -9,10 +9,15 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import RetourAtelier from './atelier/RetourAtelier'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
 import {
-  nombre, pasMesure, tauxOccupation, contourTerrain, demandeMoteur, planVue2D,
-  motifChampVide, motifRefus,
+  demandeMoteur, planVue2D, motifChampVide, motifRefus,
 } from './ModeTerrain'
+import {
+  nombre, pasMesure, contourTerrain, documentSurfacePose,
+  saisieDepuisSurface, reponseDepuisSurface, entreeMoteurChangee, surfacesDuGenre,
+  remplacerSurface, retirerSurface, repereLibre, KIND_OMBRIERE,
+} from './surfacePose'
 import { formatCote, milieu } from './plan2d'
 import { formatNumber } from '../../lib/format'
 
@@ -44,39 +49,6 @@ import { formatNumber } from '../../lib/format'
    levée et l'écran le dit. Une ombrière « à 2,50 m par défaut » serait un
    chiffre inventé sur lequel un client signerait.
    ========================================================================== */
-
-/**
- * CAL91 — la surface de pose OMBRIÈRE persistée dans le document v2
- * (`poseSurfaces[]`, `kind: "ombriere"`). Aucune clé de structure, de charge
- * ni de prix : le contrat n'en déclare aucune, et cette fonction n'en écrit
- * aucune.
- */
-export function documentOmbriere(saisie, reponse) {
-  const contour = contourTerrain(saisie.largeurM, saisie.profondeurM)
-  const aire = contour ? nombre(saisie.largeurM) * nombre(saisie.profondeurM) : null
-  const plan = (reponse?.plans ?? [])[0] ?? null
-  const tables = plan?.tables ?? []
-  return {
-    kind: 'ombriere',
-    id: saisie.repere || 'OMBRIERE',
-    label: saisie.label || 'Ombrière',
-    buildingId: saisie.buildingId || '',
-    contourM: contour ?? [],
-    areaM2: aire,
-    tiltDeg: nombre(saisie.tiltDeg),
-    clearHeightM: nombre(saisie.clearHeightM),
-    flowAzimuthDeg: nombre(saisie.flowAzimuthDeg),
-    rowAzimuthDeg: nombre(saisie.flowAzimuthDeg),
-    engine: {
-      modules: Number.isFinite(Number(plan?.modules)) ? Number(plan.modules) : null,
-      rowPitchM: pasMesure(plan?.rangees),
-      tables,
-      groundCoverageRatio: tauxOccupation(tables, aire),
-      versionMoteur: reponse?.version_moteur ?? null,
-      hashEntree: reponse?.hash_entree ?? null,
-    },
-  }
-}
 
 /**
  * CAL91 — LES TOTAUX PAR BÂTIMENT : les pans de toiture (`zones[]`, compte
@@ -219,12 +191,14 @@ function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
 }
 
-export default function Ombriere({ calepinageId: idPropose = null, persister = true }) {
+export default function Ombriere({ calepinageId: idPropose = null, persister = true, documentVivant = null }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
   const [saisie, setSaisie] = useState(SAISIE_VIDE)
-  const [layout, setLayout] = useState(null)
+  // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
+  // un document vide ; l'écriture ne porte que la clé `poseSurfaces`.
+  const doc = useDocumentCalepinage(calepinageId, { actif: persister })
   const [reponse, setReponse] = useState(null)
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState(null)
@@ -251,47 +225,56 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
     return () => { annule = true }
   }, [])
 
-  // RELECTURE — une ombrière déjà enregistrée revient telle quelle.
-  useEffect(() => {
-    if (!calepinageId || !persister) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const doc = res?.data?.roof_layout ?? null
-        setLayout(doc)
-        const omb = (doc?.poseSurfaces ?? []).find((s) => s?.kind === 'ombriere')
-        if (!omb) return
-        const contour = omb.contourM ?? []
-        const texte = (v) => (v === null || v === undefined ? '' : String(v))
-        setSaisie((s) => ({
-          ...s,
-          repere: omb.id ?? s.repere,
-          label: omb.label ?? s.label,
-          buildingId: omb.buildingId ?? s.buildingId,
-          largeurM: contour.length === 4 ? String(contour[1][0]) : s.largeurM,
-          profondeurM: contour.length === 4 ? String(contour[2][1]) : s.profondeurM,
-          clearHeightM: texte(omb.clearHeightM) || s.clearHeightM,
-          tiltDeg: texte(omb.tiltDeg) || s.tiltDeg,
-          flowAzimuthDeg: texte(omb.flowAzimuthDeg) || s.flowAzimuthDeg,
-        }))
-        setReponse({
-          plans: [{ modules: omb.engine?.modules ?? null, tables: omb.engine?.tables ?? [] }],
-          version_moteur: omb.engine?.versionMoteur ?? null,
-          hash_entree: omb.engine?.hashEntree ?? null,
-          _pasRecharge: omb.engine?.rowPitchM ?? null,
-        })
-      })
-      .catch(() => { if (!annule) setLayout(null) })
-    return () => { annule = true }
-  }, [calepinageId, persister])
+  // RELECTURE — une ombrière déjà enregistrée revient telle quelle (une fois par
+  // lecture serveur, jamais à une application locale d'une section écrite).
+  const [lectureHydratee, setLectureHydratee] = useState(null)
+  if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
+    setLectureHydratee(doc.generation)
+    const omb = surfacesDuGenre(doc.document?.poseSurfaces, KIND_OMBRIERE)[0]
+    if (omb) {
+      setSaisie((s) => ({ ...s, ...saisieDepuisSurface(omb) }))
+      setReponse(reponseDepuisSurface(omb))
+    }
+  }
 
-  const majChamp = (cle, brut) => setSaisie((s) => ({ ...s, [cle]: brut }))
+  const surfaces = surfacesDuGenre(doc.document?.poseSurfaces, KIND_OMBRIERE)
+  const repereCourant = saisie.repere || 'OMBRIERE'
+  const dejaEnregistree = surfaces.some((s) => s.id === repereCourant)
+
+  const majChamp = (cle, brut) => {
+    setSaisie((s) => ({ ...s, [cle]: brut }))
+    // ACAL25 — le plan calculé ne vaut que pour la saisie qui l'a produit : dès
+    // qu'une entrée du moteur change, il est invalidé (jamais un document mixte).
+    if (reponse && entreeMoteurChangee(cle)) {
+      setReponse(null)
+      setMessage('Une entrée du moteur a changé : recalculez le plan avant d’enregistrer.')
+    }
+  }
+
+  // Une ombrière déjà enregistrée est rééditée (liste) ; « Nouvelle ombrière » en
+  // ouvre une autre, sous un repère libre.
+  const choisirSurface = (surface) => {
+    setSaisie((s) => ({ ...s, ...saisieDepuisSurface(surface) }))
+    setReponse(reponseDepuisSurface(surface))
+    setMessage(null)
+  }
+  const nouvelleSurface = () => {
+    setSaisie((s) => ({
+      ...s, repere: repereLibre(doc.document?.poseSurfaces, KIND_OMBRIERE), label: '',
+    }))
+    setReponse(null)
+    setMessage(null)
+  }
 
   const calculer = () => {
     // Le SENS D'ÉCOULEMENT est l'azimut d'empilement : une seule grandeur,
     // saisie une seule fois, passée telle quelle à la demande de CAL89.
-    const demande = demandeMoteur({ ...saisie, rowAzimuthDeg: saisie.flowAzimuthDeg })
+    // ACAL75 — une ombrière est une couverture CONTINUE : sans allée saisie, la pose
+    // est jointive (`allee_m: 0`), pas l'allée de circulation du moteur (0,60 m).
+    const demande = demandeMoteur(
+      { ...saisie, rowAzimuthDeg: saisie.flowAzimuthDeg },
+      { alleeParDefautM: 0 },
+    )
     if (!demande) {
       setMessage('Emprise et module incomplets : rien n’est envoyé au moteur, '
         + 'et surtout aucune valeur par défaut inventée.')
@@ -313,21 +296,44 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
       })
   }
 
-  const enregistrer = () => {
+  const enregistrer = async () => {
+    if (doc.etat !== 'ok') return
     if (!reponse) {
       setMessage('Aucun plan du moteur : il n’y a rien à enregistrer.')
       return
     }
-    const surface = documentOmbriere(saisie, reponse)
-    const autres = (layout?.poseSurfaces ?? [])
-      .filter((s) => !(s?.kind === 'ombriere' && (s?.id ?? '') === surface.id))
-    const doc = { ...(layout ?? {}), poseSurfaces: [...autres, surface] }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, doc))
-      .then(() => {
-        setLayout(doc)
-        setMessage('Ombrière enregistrée dans la conception.')
-      })
-      .catch(() => setMessage('L’ombrière n’a pas pu être enregistrée.'))
+    const surface = documentSurfacePose(saisie, reponse, KIND_OMBRIERE)
+    // ACAL25 — remplacée PAR id : les autres surfaces (et ombrières) restent.
+    const valeur = remplacerSurface(doc.document?.poseSurfaces, surface)
+    const res = await ecrireSection({
+      calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
+    })
+    if (res.ok) {
+      doc.appliquerSection('poseSurfaces', valeur, res.empreinte)
+      setMessage('Ombrière enregistrée dans la conception.')
+    } else if (res.conflit) {
+      setMessage('La conception a changé ailleurs : elle est relue, enregistrez de nouveau.')
+      doc.recharger()
+    } else {
+      setMessage(res.motif || 'L’ombrière n’a pas pu être enregistrée.')
+    }
+  }
+
+  const supprimer = async () => {
+    if (doc.etat !== 'ok' || !dejaEnregistree) return
+    const valeur = retirerSurface(doc.document?.poseSurfaces, KIND_OMBRIERE, repereCourant)
+    const res = await ecrireSection({
+      calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
+    })
+    if (res.ok) {
+      doc.appliquerSection('poseSurfaces', valeur, res.empreinte)
+      setMessage('Ombrière supprimée de la conception.')
+    } else if (res.conflit) {
+      setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
+      doc.recharger()
+    } else {
+      setMessage(res.motif || 'L’ombrière n’a pas pu être supprimée.')
+    }
   }
 
   const plan = (reponse?.plans ?? [])[0] ?? null
@@ -370,15 +376,12 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
   // enregistrées — sinon le total mentirait jusqu'au prochain enregistrement.
   const layoutAffiche = plan
     ? {
-      ...(layout ?? {}),
-      poseSurfaces: [
-        ...((layout?.poseSurfaces ?? []).filter(
-          (s) => !(s?.kind === 'ombriere' && (s?.id ?? '') === (saisie.repere || 'OMBRIERE')),
-        )),
-        documentOmbriere(saisie, reponse),
-      ],
+      ...(doc.document ?? {}),
+      poseSurfaces: remplacerSurface(
+        doc.document?.poseSurfaces, documentSurfacePose(saisie, reponse, KIND_OMBRIERE),
+      ),
     }
-    : layout
+    : doc.document
   const totaux = totauxParBatiment(layoutAffiche)
 
   return (
@@ -417,6 +420,11 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             </label>
           ))}
         </div>
+        {nombre(saisie.alleeM) === null && (
+          <p className="mt-2 text-xs text-lune-faint">
+            Pose jointive (allée 0) — saisissez une allée pour en imposer une.
+          </p>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -432,6 +440,8 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             <button
               type="button"
               onClick={enregistrer}
+              disabled={doc.etat !== 'ok' || !reponse}
+              title={reponse ? undefined : 'Calculez le plan avant d’enregistrer'}
               data-testid="cal-ombriere-enregistrer"
               className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
             >
@@ -439,6 +449,49 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             </button>
           )}
         </div>
+
+        {persister && surfaces.length > 0 && (
+          <div className="mt-4" role="group" aria-label="Ombrières enregistrées">
+            <p className="tech-label text-lune-faint">Ombrières enregistrées</p>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {surfaces.map((surface) => (
+                <li key={surface.id}>
+                  <button
+                    type="button"
+                    onClick={() => choisirSurface(surface)}
+                    aria-pressed={surface.id === repereCourant}
+                    className="rounded border border-white/15 px-3 py-1 text-sm text-white aria-pressed:bg-white/10"
+                  >
+                    {`${surface.label || 'Ombrière'} (${surface.id})`}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={nouvelleSurface}
+              className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white"
+            >
+              Nouvelle ombrière
+            </button>
+          </div>
+        )}
+
+        {persister && dejaEnregistree && (
+          <button
+            type="button"
+            onClick={supprimer}
+            disabled={doc.etat !== 'ok'}
+            className="mt-3 rounded border border-red-300/40 px-3 py-1 text-sm text-red-300"
+          >
+            Supprimer cette surface
+          </button>
+        )}
+
+        {persister && doc.etat === 'erreur' && (
+          <p className="mt-3 text-sm text-red-300" role="alert"
+           >{MESSAGE_ILLISIBLE}</p>
+        )}
 
         {message && (
           <p className="mt-3 text-sm text-lune-soft" role="status"

@@ -8,6 +8,7 @@ import { useParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage, { ecrireSection } from './useDocumentCalepinage'
 import {
   Button, Card, FileUpload, Input, Label, Select, SelectContent, SelectItem,
   SelectTrigger, SelectValue, Spinner,
@@ -63,6 +64,10 @@ const GENRES_PHOTO = [
 ]
 const TAILLE_MAX_OCTETS = 15 * 1024 * 1024 // MAX_OCTETS, services/photos.py
 
+/* ACAL67 — l'opacité de départ du fond posé depuis une photo calée (confort de
+   dessin, `$defs/underlay.opacite` ; la valeur du curseur de l'aperçu n'en est pas une). */
+const OPACITE_FOND = 0.6
+
 /**
  * Les 4 positions `[lat, lng]` de départ des poignées : celles d'un calage
  * déjà enregistré (relecture EXACTE, jamais recalculée), sinon un petit carré
@@ -97,7 +102,7 @@ function numeroteIcon(n) {
   })
 }
 
-export default function PhotoSiteCalage({ calepinageId: idPropose } = {}) {
+export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivant = null } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
@@ -108,6 +113,8 @@ export default function PhotoSiteCalage({ calepinageId: idPropose } = {}) {
   const [enregistrement, setEnregistrement] = useState(false)
   const [message, setMessage] = useState(null)
   const [chargement, setChargement] = useState(true)
+  // ACAL67 — le document (jeton d'écriture + fond actuel) : l'UNIQUE lecture (hook).
+  const doc = useDocumentCalepinage(calepinageId)
 
   // CALX38 — le dépôt d'une photo de site.
   const [genreDepot, setGenreDepot] = useState('')
@@ -276,6 +283,47 @@ export default function PhotoSiteCalage({ calepinageId: idPropose } = {}) {
       .finally(() => setEnregistrement(false))
   }
 
+  // ACAL67 — « Utiliser comme fond de l'atelier » / « Retirer le fond » : le fond est
+  // `underlay` (clé racine du document), écrit PAR SECTION puis posé dans l'atelier
+  // vivant (`documentVivant.appliquerSection`). Jamais d'écriture du document entier.
+  const fondActuel = doc.document?.underlay ?? null
+  const fondEstUnePhoto = fondActuel?.kind === 'photo'
+  const cettePhotoEstLeFond = fondEstUnePhoto && photo && fondActuel.photoSiteId === photo.id
+
+  const ecrireFond = async (valeur, succes, echec) => {
+    if (doc.etat !== 'ok') return
+    setEnregistrement(true)
+    setMessage(null)
+    const res = await ecrireSection({
+      calepinageId, cle: 'underlay', valeur, empreinte: doc.empreinte, documentVivant,
+    })
+    setEnregistrement(false)
+    if (res.ok) {
+      doc.appliquerSection('underlay', valeur, res.empreinte)
+      setMessage(succes)
+    } else if (res.conflit) {
+      setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
+      doc.recharger()
+    } else {
+      setMessage(res.motif || echec)
+    }
+  }
+
+  const utiliserCommeFond = () => {
+    if (!photo?.calage) return
+    ecrireFond(
+      { kind: 'photo', photoSiteId: photo.id, opacite: OPACITE_FOND },
+      'Photo posée comme fond de l’atelier.',
+      'Le fond n’a pas pu être enregistré.',
+    )
+  }
+
+  const retirerLeFond = () => ecrireFond(
+    null,
+    'Fond de l’atelier retiré.',
+    'Le fond n’a pas pu être retiré.',
+  )
+
   if (chargement) {
     return (
       <div className="page max-w-[900px]" data-testid="cal-photo-calage">
@@ -434,6 +482,18 @@ export default function PhotoSiteCalage({ calepinageId: idPropose } = {}) {
               <Button type="button" variant="ghost" onClick={effacer}
                 disabled={enregistrement} data-testid="cal-photo-calage-effacer">
                 Effacer le calage
+              </Button>
+            )}
+            {photo.calage && !cettePhotoEstLeFond && (
+              <Button type="button" variant="outline" onClick={utiliserCommeFond}
+                disabled={enregistrement || doc.etat !== 'ok'}>
+                Utiliser comme fond de l’atelier
+              </Button>
+            )}
+            {fondEstUnePhoto && (
+              <Button type="button" variant="ghost" onClick={retirerLeFond}
+                disabled={enregistrement || doc.etat !== 'ok'}>
+                Retirer le fond
               </Button>
             )}
           </div>
