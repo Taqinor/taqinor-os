@@ -134,7 +134,10 @@ class TestNonRegressionDossierChiffre(SimpleTestCase):
 
     def test_industriel_garde_sa_baseline_et_ses_kpis(self):
         txt = _visible(i_render.build_html(self.ind))
-        self.assertIn("Baseline énergétique — 12 mois", txt)
+        # CIQ341 — la baseline est titrée par sa SOURCE servie (synthese_ci) ;
+        # sans source, plus de « 12 mois » affirmé.
+        self.assertIn("Baseline énergétique", txt)
+        self.assertNotIn("— 12 mois", txt)
         self.assertIn("Facture électrique actuelle", txt)
         # CIQ301 — plus aucune économie reprise du modèle BT : la carte et la
         # page finance attendent ``synthese_ci.argent`` (CIQ307).

@@ -1548,7 +1548,10 @@ class TestPdfFormats4(TestPdfFormats):
                 'prod_mensuelle': [13081] * 12, 'conso_mensuelle': [20000] * 12,
             })
         devis.refresh_from_db()
-        html, doc = self._render(devis=devis)
+        # CIQ340 — le builder ne force plus l'étude C&I (le premium 4 pages
+        # l'intègre) : le moteur legacy, interrupteur de secours, ne rend la
+        # page d'étude que sur la demande EXPLICITE ``include_etude``.
+        html, doc = self._render({'include_etude': True}, devis=devis)
         self.assertEqual(len(doc.pages), 4)  # 1 proposition, 2 équipements, 3 étude, 4 signature
         # option unique : pas de boilerplate « Onduleur hybride Deye »,
         # pas de batterie inventée, cases à deux options absentes
