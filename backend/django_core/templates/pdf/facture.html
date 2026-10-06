@@ -130,6 +130,8 @@
         {% if facture.client.email %}{{ facture.client.email }}<br />{% endif %}
         {% if facture.client.telephone %}{{ facture.client.telephone }}<br />{% endif %}
         {% if facture.client.adresse %}{{ facture.client.adresse }}{% endif %}
+        {# CIQ216 — numéro de commande du client, seulement s'il est rempli. #}
+        {% if facture.reference_commande_client %}<br />Votre commande : {{ facture.reference_commande_client }}{% endif %}
       </div>
     </div>
   </div>

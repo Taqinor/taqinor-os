@@ -875,6 +875,9 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             montant_ttc=tr['ttc'],
             taux_tva=blended_tva_pct(devis),
             ventilation_tva=ventilation,
+            # CIQ216 — la référence de commande du client suit le devis.
+            reference_commande_client=(
+                getattr(devis, 'reference_commande_client', '') or ''),
             created_by=user,
             company=company,
         )
