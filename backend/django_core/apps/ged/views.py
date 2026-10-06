@@ -4249,7 +4249,10 @@ def _signataire_publique_payload(signataire):
         'statut': signataire.statut,
         'demande_statut': demande.statut,
         'auth_extra': signataire.auth_extra_effective,
+        # ADOC64 — vrai dès le chargement quand un code est exigé ; seule la
+        # dégradation explicite (passerelle absente) le lève sans code.
         'otp_requis': signataire.otp_requis_et_non_valide,
+        'otp_degrade': signataire.otp_degrade,
     }
 
 

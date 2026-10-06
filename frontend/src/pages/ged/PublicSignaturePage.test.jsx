@@ -117,3 +117,39 @@ describe('XGED2 PublicSignaturePage (signataire d’un circuit)', () => {
     expect(screen.getByRole('button', { name: /Signer le document/i })).toBeInTheDocument()
   })
 })
+
+describe('ADOC64 PublicSignaturePage — code exigé dès le chargement', () => {
+  it('le bloc code s’affiche au chargement quand otp_requis', async () => {
+    // Payload de forme réelle (`_signataire_publique_payload`).
+    gedApi.getSignatairePublique.mockResolvedValue({
+      data: {
+        document_nom: 'Bail.pdf', document_id: 12, nom: 'Sofia',
+        role: 'signataire', ordre: 1, statut: 'notifie',
+        demande_statut: 'en_attente', auth_extra: 'sms',
+        otp_requis: true, otp_degrade: false,
+      },
+    })
+    renderAt('/ged/signataire/sig-otp', <PublicSignaturePage mode="signataire" />)
+    expect(await screen.findByRole('button', { name: 'Recevoir un code' })).toBeInTheDocument()
+    // Le formulaire de signature n'est pas proposé tant que le code n'est pas validé.
+    expect(screen.queryByRole('button', { name: /Signer le document/i })).not.toBeInTheDocument()
+  })
+
+  it('passerelle absente : relit la cérémonie et propose la signature', async () => {
+    const base = {
+      document_nom: 'Bail.pdf', document_id: 12, nom: 'Sofia', role: 'signataire',
+      ordre: 1, statut: 'notifie', demande_statut: 'en_attente', auth_extra: 'sms',
+    }
+    gedApi.getSignatairePublique
+      .mockResolvedValueOnce({ data: { ...base, otp_requis: true, otp_degrade: false } })
+      .mockResolvedValueOnce({ data: { ...base, otp_requis: false, otp_degrade: true } })
+    gedApi.envoyerCodeSignataire.mockResolvedValue({ data: {
+      envoye: false, mode: 'aucune', degrade: true,
+      detail: 'Passerelle SMS indisponible : authentification dégradée, signature sans OTP.',
+    } })
+    renderAt('/ged/signataire/sig-deg', <PublicSignaturePage mode="signataire" />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Recevoir un code' }))
+    expect(await screen.findByRole('button', { name: /Signer le document/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Code reçu')).not.toBeInTheDocument()
+  })
+})

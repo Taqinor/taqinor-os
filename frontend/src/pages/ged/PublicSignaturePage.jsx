@@ -90,8 +90,16 @@ export default function PublicSignaturePage({ mode = 'signature' }) {
   const envoyerCode = async () => {
     setError(null)
     try {
-      await gedApi.envoyerCodeSignataire(token)
-      setCodeEnvoye(true)
+      const res = await gedApi.envoyerCodeSignataire(token)
+      if (res?.data?.envoye) {
+        setCodeEnvoye(true)
+      } else {
+        // ADOC64 — passerelle absente : le serveur a posé une dégradation
+        // EXPLICITE (`otp_degrade`) ; on relit l'état réel de la cérémonie
+        // (otp_requis redevenu faux) plutôt que d'afficher un faux champ code.
+        if (res?.data?.detail) setError(res.data.detail)
+        await consulter()
+      }
     } catch (err) {
       setError(errMessage(err, 'Impossible d’envoyer le code — réessayez.'))
     }

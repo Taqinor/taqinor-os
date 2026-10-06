@@ -3247,6 +3247,20 @@ def _hash_otp(code):
     return hashlib.sha256(code.encode('utf-8')).hexdigest()
 
 
+def _degrader_otp(signataire, detail):
+    """ADOC64 — Pose la dégradation EXPLICITE de l'authentification extra
+    (passerelle absente / envoi impossible) et la journalise. Seul état qui
+    laisse signer sans code un destinataire dont l'OTP est requis."""
+    if not signataire.otp_degrade:
+        signataire.otp_degrade = True
+        signataire.save(update_fields=['otp_degrade', 'updated_at'])
+    logger.warning(
+        'ADOC64 — authentification extra dégradée pour le destinataire %s '
+        '(demande %s) : %s', signataire.pk, signataire.demande_id, detail)
+    return {'envoye': False, 'mode': 'aucune', 'degrade': True,
+            'detail': detail}
+
+
 def envoyer_code_otp_signataire(signataire, *, telephone_override='',
                                 email_override=''):
     """ZGED2 — Envoie (ou dégrade proprement) le code d'authentification
@@ -3284,27 +3298,29 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
         company = signataire.demande.company
         telephone = telephone_override or signataire.telephone
         if not telephone:
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': "Aucun téléphone renseigné : authentification "
-                              "SMS dégradée (signature sans OTP)."}
+            return _degrader_otp(
+                signataire, "Aucun téléphone renseigné : authentification "
+                            "SMS dégradée (signature sans OTP).")
         code = _generer_code_otp()
         resultat = send_sms(
             company, telephone,
             f'{_nom_societe(company)} — votre code de signature : {code}')
         if not resultat.sent:
-            # Passerelle absente/non configurée → dégrade proprement en
-            # « aucune » (jamais bloquant, jamais un faux OTP requis).
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': f'Passerelle SMS indisponible ({resultat.detail}) '
-                              ': authentification dégradée, signature sans OTP.'}
+            # ADOC64 — passerelle absente/non configurée → dégradation
+            # EXPLICITE posée et journalisée (seule voie sans code).
+            return _degrader_otp(
+                signataire,
+                f'Passerelle SMS indisponible ({resultat.detail}) '
+                ': authentification dégradée, signature sans OTP.')
         signataire.otp_code_hash = _hash_otp(code)
         signataire.otp_expires_at = (
             timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
         signataire.otp_essais = 0
         signataire.otp_valide = False
+        signataire.otp_degrade = False
         signataire.save(update_fields=[
             'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
-            'updated_at'])
+            'otp_degrade', 'updated_at'])
         return {'envoye': True, 'mode': 'sms', 'detail': 'Code SMS envoyé.'}
 
     if mode == 'email_otp':
@@ -3312,9 +3328,9 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
         from django.core.mail import send_mail
         email = email_override or signataire.email
         if not email:
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': "Aucun email renseigné : authentification "
-                              "dégradée, signature sans OTP."}
+            return _degrader_otp(
+                signataire, "Aucun email renseigné : authentification "
+                            "dégradée, signature sans OTP.")
         code = _generer_code_otp()
         from_email = getattr(
             settings, 'DEFAULT_FROM_EMAIL', 'no-reply@taqinor.ma')
@@ -3324,21 +3340,21 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
                 'signature', f'Votre code : {code}',
                 from_email, [email], fail_silently=False)
         except Exception as exc:  # noqa: BLE001 — dégrade, jamais bloquant.
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': f"Envoi email échoué ({exc}) : authentification "
-                              "dégradée, signature sans OTP."}
+            return _degrader_otp(
+                signataire, f"Envoi email échoué ({exc}) : authentification "
+                            "dégradée, signature sans OTP.")
         signataire.otp_code_hash = _hash_otp(code)
         signataire.otp_expires_at = (
             timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
         signataire.otp_essais = 0
         signataire.otp_valide = False
+        signataire.otp_degrade = False
         signataire.save(update_fields=[
             'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
-            'updated_at'])
+            'otp_degrade', 'updated_at'])
         return {'envoye': True, 'mode': 'email_otp', 'detail': 'Code email envoyé.'}
 
-    return {'envoye': False, 'mode': 'aucune',
-            'detail': f'Mode inconnu : {mode!r} — dégradé.'}
+    return _degrader_otp(signataire, f'Mode inconnu : {mode!r} — dégradé.')
 
 
 def valider_code_otp_signataire(signataire, code):

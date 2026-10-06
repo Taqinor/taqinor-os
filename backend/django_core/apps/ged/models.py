@@ -2003,6 +2003,12 @@ class SignataireDemande(models.Model):
         default=False, verbose_name='authentification extra validée')
     otp_valide_le = models.DateTimeField(
         null=True, blank=True, verbose_name='authentification extra validée le')
+    # ADOC64 — dégradation EXPLICITE (passerelle SMS/email absente ou en
+    # échec) posée par `envoyer_code_otp_signataire` et journalisée : SEULE
+    # elle laisse signer sans code un destinataire dont l'authentification
+    # extra est requise — jamais un simple « aucun code émis ».
+    otp_degrade = models.BooleanField(
+        default=False, verbose_name='authentification extra dégradée')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2042,18 +2048,16 @@ class SignataireDemande(models.Model):
 
     @property
     def otp_requis_et_non_valide(self):
-        """ZGED2 — True si une authentification extra est requise pour CE
-        destinataire ET qu'un code a effectivement été émis
-        (`otp_code_hash` posé par `envoyer_code_otp_signataire`), mais pas
-        encore validé (bloque la signature).
+        """ZGED2 / ADOC64 — True si une authentification extra est requise
+        pour CE destinataire et qu'aucun code n'a encore été VALIDÉ (bloque
+        la signature), dès le chargement de la cérémonie — qu'un code ait été
+        émis ou non.
 
-        Si la passerelle SMS/email est absente/non configurée,
-        `envoyer_code_otp_signataire` dégrade proprement et NE POSE JAMAIS
-        `otp_code_hash` — dans ce cas la signature ne doit PAS être bloquée
-        (comportement XGED1 inchangé, no-op)."""
+        Seule exception : la dégradation EXPLICITE `otp_degrade` (passerelle
+        absente, posée et journalisée par `envoyer_code_otp_signataire`)."""
         return self.auth_extra_effective != ROLE_AUTH_EXTRA_AUCUNE \
-            and bool(self.otp_code_hash) \
-            and not self.otp_valide
+            and not self.otp_valide \
+            and not self.otp_degrade
 
     def __str__(self):
         return f'{self.nom} (#{self.ordre}) → {self.demande_id} ({self.statut})'
