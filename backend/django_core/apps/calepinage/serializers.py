@@ -49,6 +49,43 @@ def _lead_apercu(lead):
     return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville}
 
 
+def peremption_du_calepinage(devis, calepinage):
+    """ACAL47 (C-ACAL-112) — ``{layout_stale, layout_nb_panneaux}`` du badge du
+    MODULE, lus sur LE sélecteur ventes ``peremption_layout_devis`` AVEC le
+    calepinage (jamais une seconde règle) :
+
+    * ``layout_stale`` — périmé si la règle des comptes le dit OU si la
+      conception imprimée du calepinage a divergé du devis
+      (``conception_divergente``, empreintes) : un calepinage passé de 12 à
+      16 panneaux sans resynchronisation n'est plus « à jour » ;
+    * ``layout_nb_panneaux`` — le compte du DOCUMENT DU CALEPINAGE (ce que
+      l'écran du module montre), pas celui de la copie du devis ; repli sur
+      celui du devis seulement quand le calepinage n'en porte aucun.
+
+    Clés et forme INCHANGÉES (seules les valeurs) ; le devis est déjà borné
+    société par l'appelant.
+    """
+    from apps.ventes.selectors import peremption_layout_devis
+
+    brut = peremption_layout_devis(devis, calepinage=calepinage)
+    stale_comptes = brut.get('layout_stale')
+    divergente = brut.get('conception_divergente')
+    if stale_comptes is None and divergente is None:
+        layout_stale = None
+    else:
+        layout_stale = bool(stale_comptes) or bool(divergente)
+    nb_calepinage = brut.get('calepinage_nb_panneaux')
+    document = getattr(calepinage, 'roof_layout', None)
+    if not (isinstance(document, dict) and document):
+        # Aucun document sur le calepinage : rien à compter de son côté.
+        nb_calepinage = None
+    return {
+        'layout_stale': layout_stale,
+        'layout_nb_panneaux': (nb_calepinage if nb_calepinage is not None
+                               else brut.get('layout_nb_panneaux')),
+    }
+
+
 class _CalepinageListSerializer(serializers.ListSerializer):
     """CALX407 — la PAGE précharge tous ses leads en UNE requête.
 
@@ -228,8 +265,6 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         cinq requêtes PAR LIGNE de la liste. La garde de société compare les
         identifiants, sans charger la société.
         """
-        from apps.ventes.selectors import peremption_layout_devis
-
         memo = getattr(calepinage, '_calx390_peremption', None)
         if memo is not None:
             return memo
@@ -243,7 +278,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                                  and devis.company_id != company_id):
                 memo = vide
             else:
-                memo = peremption_layout_devis(devis)
+                memo = peremption_du_calepinage(devis, calepinage)
         try:
             calepinage._calx390_peremption = memo
         except AttributeError:  # objet figé (essais) : pas de mémo, rien de faux

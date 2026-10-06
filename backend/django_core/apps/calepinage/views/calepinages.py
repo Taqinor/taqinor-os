@@ -1126,7 +1126,9 @@ def _peremption_calepinage(calepinage, company):
     liste calepinages (``CalepinageSerializer._peremption``). Sans devis lié,
     la péremption est INCONNUE (``None``), jamais ``False`` : il n'y a rien à
     quoi comparer la conception (CAL188 — l'écran affiche « — »)."""
-    from apps.ventes.selectors import get_devis_by_pk, peremption_layout_devis
+    from apps.ventes.selectors import get_devis_by_pk
+
+    from ..serializers import peremption_du_calepinage
 
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id:
@@ -1135,7 +1137,9 @@ def _peremption_calepinage(calepinage, company):
     if devis is None or (company is not None
                          and devis.company_id != company.pk):
         return {'layout_stale': None, 'layout_nb_panneaux': None}
-    return peremption_layout_devis(devis)
+    # ACAL47 — le calepinage est passé au sélecteur : divergence de conception
+    # et compte du DOCUMENT du calepinage (même helper que la liste).
+    return peremption_du_calepinage(devis, calepinage)
 
 
 def _texte(valeur):
