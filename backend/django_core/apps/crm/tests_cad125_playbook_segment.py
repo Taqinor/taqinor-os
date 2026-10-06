@@ -338,7 +338,7 @@ class Ciq517Tests(TestCase):
         import importlib
         from django.apps import apps as django_apps
         migration = importlib.import_module(
-            'apps.crm.migrations.0127_ciq517_playbook_8221_condition')
+            'apps.crm.migrations.0128_ciq517_playbook_8221_condition')
         from apps.crm.models import PlaybookEtape, PlaybookTache
         ancienne = Company.objects.create(slug='ciq517-anc', nom='anc')
         pb = Playbook.objects.create(

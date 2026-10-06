@@ -76,7 +76,7 @@ def restreindre(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0126_ciq408_tranche_meta_ouverte'),
+        ('crm', '0127_lead_gclid_canal_google_ads'),
     ]
 
     operations = [
