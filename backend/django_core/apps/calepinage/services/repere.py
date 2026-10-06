@@ -172,7 +172,7 @@ def etat_derive(roof_layout, repere_lead, *, devis_statut=None):
     return resultat
 
 
-def libelle_distance(metres):
+def _libelle_distance(metres):
     """« ≈ 780 m » / « ≈ 2,4 km » / « ≈ 240 km »."""
     if metres < 1000:
         return f'≈ {int(round(metres))} m'
@@ -189,7 +189,7 @@ def avertissement_derive(geometrie):
     if derive.get('etat') in (None, ETAT_AUCUNE) or ecart is None:
         return None
     return ('Le GPS du lead a été corrigé depuis le tracé '
-            f'({libelle_distance(ecart)}).')
+            f'({_libelle_distance(ecart)}).')
 
 
 # ── Translation (pure) ────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ def _translater_en_place(document, chemin, forme, ordre, deplacer):
                                for c in valeur]
 
 
-def translater_document(document, ancien, nouveau):
+def _translater_document(document, ancien, nouveau):
     """Copie de ``document`` dont CHAQUE coordonnée passe de A à B.
 
     Chaque point est projeté en mètres autour de ``ancien`` (A) puis
@@ -305,7 +305,7 @@ def recentrer_sur_lead(calepinage, *, user=None, base_empreinte=None):
         raise RepereRefuse(
             "La conception n'a pas encore d'épingle : rien à recentrer.",
             champ='pin')
-    nouveau = translater_document(document, epingle, repere)
+    nouveau = _translater_document(document, epingle, repere)
     nouveau['pin'] = {'lat': repere['lat'], 'lng': repere['lng']}
     # L'épingle suit désormais le GPS du lead (D-QJR5-15 pour la suite).
     nouveau['pinSource'] = 'lead'

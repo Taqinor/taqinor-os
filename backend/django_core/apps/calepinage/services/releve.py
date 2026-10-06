@@ -454,7 +454,7 @@ def _sommets_du_pan(zone):
     return points if len(points) >= 3 else None
 
 
-def homothetie_le_long_du_cote(sommets_m, cote_index, longueur_m):
+def _homothetie_le_long_du_cote(sommets_m, cote_index, longueur_m):
     """Le pan (mètres locaux) dont le côté ``i → i+1`` mesure ``longueur_m``.
 
     Homothétie de facteur ``k = longueur / longueur actuelle`` LE LONG de la
@@ -587,7 +587,7 @@ def appliquer_cote_au_pan(calepinage, *, zone_id, cote_index, longueur_m,
         raise ReleveRefuse(
             f"Le pan « {zone_id} » est croisé : corrigez son contour avant "
             "d'appliquer une cote.", 'zone_id')
-    recales = homothetie_le_long_du_cote(sommets_m, index, longueur)
+    recales = _homothetie_le_long_du_cote(sommets_m, index, longueur)
     if not est_polygone_simple(recales):
         raise ReleveRefuse(
             f"Appliquer cette cote rendrait le pan « {zone_id} » croisé : "
