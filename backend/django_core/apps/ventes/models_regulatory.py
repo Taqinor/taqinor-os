@@ -160,6 +160,11 @@ class RegulatoryDossier(models.Model):
         verbose_name="Demande d'exploitation déposée le (art. 15-16)")
     accord_exploitation_le = models.DateField(
         null=True, blank=True, verbose_name="Accord d'exploitation reçu le")
+    # CIQ620 — équipements FIGÉS au dépôt (fabricant, modèle, quantité,
+    # puissance — décret 2.25.100 art. 12) ; une modification ultérieure
+    # avertit (loi 82-21 art. 8-9), jamais un blocage.
+    equipements_figes = models.JSONField(
+        default=list, blank=True, verbose_name='Équipements figés au dépôt')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='dossiers_reg_crees')

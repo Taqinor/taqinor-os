@@ -180,6 +180,8 @@ SURFACE_PUBLIQUE = (
     "extract_roof_config",
     "facturables_pour_devis",
     "facture_montant_du",
+    # CIQ620 — équipements figés au dépôt (domain/dossier_8221.py).
+    "figer_equipements_dossier_8221",
     "fusionner_kits",
     "gamme_envoi",
     "gamme_info",

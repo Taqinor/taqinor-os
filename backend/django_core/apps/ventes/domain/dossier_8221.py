@@ -77,3 +77,111 @@ def ouvrir_dossier_8221(devis, chantier_id, regime, user=None):
         created_by=user if getattr(user, 'pk', None) else None)
     _semer_pieces(dossier)
     return dossier, True
+
+
+# ── CIQ620 — équipements FIGÉS au dépôt (loi 82-21 art. 8-9) ──────────────
+#: Le dossier déposé contient fabricant et modèle (décret 2.25.100 art. 12) ;
+#: toute modification exige un accord préalable (loi 82-21 art. 9) ou devient
+#: une nouvelle demande (art. 8). Un AVERTISSEMENT, jamais un blocage.
+ALERTE_MODIFICATION = {
+    'code': 'equipement_modifie',
+    'message': ("modification du dossier — accord préalable requis "
+                "(loi 82-21 art. 9)"),
+    'base': 'loi 82-21 art. 8-9',
+}
+#: Statuts du dossier à partir desquels la liste d'équipements est déposée.
+STATUTS_DEPOSES = ('depose', 'en_instruction', 'complement_demande',
+                   'approuve', 'comptage_pose', 'refuse')
+_ROLES_DECLARES = ('panneau', 'onduleur_reseau', 'onduleur_hybride',
+                   'onduleur_offgrid', 'batterie')
+
+
+def _est_declare(nom):
+    from .catalogue import classer_produit
+    nom = nom or ''
+    return (classer_produit(nom) in _ROLES_DECLARES
+            or 'onduleur' in nom.lower())
+
+
+def _puissance(produit):
+    """Puissance lue sur la fiche technique (Wc d'un module, kW AC d'un
+    onduleur, kWh d'une batterie), ou None — jamais devinée."""
+    from apps.stock.selectors import specs_for_produit
+    specs = specs_for_produit(produit) or {}
+    for cle in ('pmax_wc', 'ac_kw', 'kwh_nominal'):
+        if specs.get(cle) is not None:
+            return float(specs[cle])
+    return None
+
+
+def equipements_du_devis(devis):
+    """Équipements déclarables (modules, onduleurs, batteries) des lignes
+    retenues du devis : ``[{produit_id, fabricant, modele, quantite,
+    puissance}]`` regroupés par produit, triés par produit."""
+    from ..utils.options import option_lines
+    par_produit = {}
+    for ligne in option_lines(devis):
+        produit = getattr(ligne, 'produit', None)
+        if produit is None or not _est_declare(produit.nom):
+            continue
+        entree = par_produit.setdefault(produit.pk, {
+            'produit_id': produit.pk,
+            'fabricant': getattr(produit, 'marque', None) or '',
+            'modele': produit.nom,
+            'quantite': 0.0,
+            'puissance': _puissance(produit),
+        })
+        try:
+            entree['quantite'] += float(ligne.quantite or 0)
+        except (TypeError, ValueError):
+            pass
+    return [par_produit[k] for k in sorted(par_produit)]
+
+
+def figer_equipements_dossier_8221(dossier):
+    """CIQ620 — au passage à ``depose`` (ou au-delà), fige UNE fois la liste
+    d'équipements depuis les lignes du devis ; jamais réécrite ensuite.
+    Aucun dépôt automatique. Renvoie True si elle vient d'être figée."""
+    if dossier.statut not in STATUTS_DEPOSES or dossier.equipements_figes:
+        return False
+    dossier.equipements_figes = equipements_du_devis(dossier.devis)
+    dossier.save(update_fields=['equipements_figes', 'updated_at'])
+    return True
+
+
+def _signature(equipements):
+    return {int(e['produit_id']): float(e.get('quantite') or 0)
+            for e in equipements or [] if e.get('produit_id')}
+
+
+def _derniere_revision(devis):
+    vus = set()
+    while getattr(devis, 'superseded_by_id', None) and devis.pk not in vus:
+        vus.add(devis.pk)
+        devis = devis.superseded_by
+    return devis
+
+
+def alertes_modification_dossier(dossier):
+    """CIQ620 — alertes si le matériel de la DERNIÈRE révision du devis ou
+    de la nomenclature du chantier (lue par ``installations.selectors``)
+    diffère des équipements figés au dépôt. Avant dépôt → aucune. Jamais un
+    blocage : la révision reste possible (décisions QJR5)."""
+    if dossier.statut not in STATUTS_DEPOSES or not dossier.equipements_figes:
+        return []
+    fige = _signature(dossier.equipements_figes)
+    alertes = []
+    revision = _derniere_revision(dossier.devis)
+    if _signature(equipements_du_devis(revision)) != fige:
+        alertes.append(dict(ALERTE_MODIFICATION, origine='devis'))
+    from apps.installations.selectors import installation_for_devis
+    chantier = installation_for_devis(revision, company=dossier.company)
+    bom = {}
+    for ligne in (getattr(chantier, 'bom', None) or []):
+        if (isinstance(ligne, dict) and ligne.get('produit_id')
+                and _est_declare(ligne.get('designation'))):
+            pid = int(ligne['produit_id'])
+            bom[pid] = bom.get(pid, 0.0) + float(ligne.get('quantite') or 0)
+    if bom and bom != fige:
+        alertes.append(dict(ALERTE_MODIFICATION, origine='chantier'))
+    return alertes

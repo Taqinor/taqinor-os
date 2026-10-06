@@ -72,6 +72,11 @@ def travaux_limite(dossier):
     return None
 
 
+def _alertes(dossier):
+    from .domain.dossier_8221 import alertes_modification_dossier
+    return alertes_modification_dossier(dossier)
+
+
 def resume_dossier_8221(dossier):
     """Bloc ``resume`` (contrat CIQ12) d'un ``RegulatoryDossier``."""
     manquantes = [
@@ -104,7 +109,9 @@ def resume_dossier_8221(dossier):
         'accord_exploitation_le': _iso(
             _champ(dossier, 'accord_exploitation_le')),
         'equipements_figes': list(_champ(dossier, 'equipements_figes') or []),
-        'alertes_modification': [],
+        # CIQ620 — avertissement (jamais un blocage) si le matériel a changé
+        # depuis le dépôt (loi 82-21 art. 8-9).
+        'alertes_modification': _alertes(dossier),
     }
 
 
