@@ -41,10 +41,10 @@ La forme rendue est celle du contrat committé
 from __future__ import annotations
 from .valeurs import nombre as _nombre
 
-__all__ = ['pans_du_layout']
+__all__ = []
 
 
-def pans_du_layout(layout):
+def _pans_du_layout(layout):
     """Les pans d'un document ``roof_layout`` v2, prêts à être interrogés.
 
     ACAL61 — adaptateur MINCE de ``apps.ventes.services.pans_du_document``

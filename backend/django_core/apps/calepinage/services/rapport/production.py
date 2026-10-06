@@ -36,7 +36,7 @@ from html import escape
 from . import nombre_tel_que_servi
 
 __all__ = ['CSS_SECTION', 'MENTION_QUANTILES_ANNUELS', 'MOTIF_PAR_DEFAUT',
-           'html_de_section', 'mention_borne_haute', 'resultat_incomplet',
+           'html_de_section', 'mention_borne_haute',
            'texte_non_publie']
 
 #: ACAL50 — le motif imprimé quand un résultat incomplet ne porte pas le sien
@@ -44,7 +44,7 @@ __all__ = ['CSS_SECTION', 'MENTION_QUANTILES_ANNUELS', 'MOTIF_PAR_DEFAUT',
 MOTIF_PAR_DEFAUT = 'résultat incomplet'
 
 
-def resultat_incomplet(total):
+def _resultat_incomplet(total):
     """ACAL50 / D-ACAL-7 — ``production.total.complete`` est-il FAUX ?
 
     La complétude est LUE (publiée par la simulation, ACAL49), jamais
@@ -57,7 +57,7 @@ def resultat_incomplet(total):
 def mention_borne_haute(total):
     """La mention « borne haute — N pertes non renseignées », mot pour mot,
     ou ``''`` sur un résultat complet."""
-    if not resultat_incomplet(total):
+    if not _resultat_incomplet(total):
         return ''
     return str(total.get('mention') or '')
 
@@ -67,7 +67,7 @@ def texte_non_publie(total, cle):
     sur un résultat incomplet ; ``None`` sinon (la valeur s'imprime comme
     avant). Jamais 100 %, jamais 0 : sur un résultat incomplet, la valeur
     n'est jamais imprimée."""
-    if not resultat_incomplet(total):
+    if not _resultat_incomplet(total):
         return None
     motif = total.get('%s_motif' % cle) or MOTIF_PAR_DEFAUT
     return 'non publié — %s' % motif

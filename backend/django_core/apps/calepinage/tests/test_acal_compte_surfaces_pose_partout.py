@@ -1,6 +1,6 @@
 """ACAL61 — le compte des surfaces de pose, partout le même.
 
-Constat : ``chaines.pans_poses`` et ``production.pans_du_layout`` relisaient
+Constat : ``chaines.pans_poses`` et ``production._pans_du_layout`` relisaient
 chacun ``zones[]`` à leur façon — un champ au sol (``poseSurfaces``) y valait
 0 module (la chaîne électrique, la bloc de pose et les livrables l'ignoraient)
 et le compte d'un pan non pavé pouvait diverger d'un lecteur à l'autre.
@@ -17,7 +17,7 @@ from __future__ import annotations
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.chaines import pans_poses
-from apps.calepinage.services.production import pans_du_layout
+from apps.calepinage.services.production import _pans_du_layout
 from apps.ventes.services import pans_du_document
 
 SOL_340 = {
@@ -52,7 +52,7 @@ class CompteSurfacesPosePartoutTest(SimpleTestCase):
         self.assertEqual(chaines[0].inclinaison_deg, 20.0)
         self.assertEqual(chaines[0].source_orientation, 'geometrie')
 
-        production = pans_du_layout(SOL_340)
+        production = _pans_du_layout(SOL_340)
         self.assertEqual(sum(p['modules'] for p in production), 340)
         self.assertEqual(production[0]['kwc'], 187.0)
         self.assertEqual(production[0]['azimut_deg'], 180.0)
@@ -68,7 +68,7 @@ class CompteSurfacesPosePartoutTest(SimpleTestCase):
         # neededPanels n'est JAMAIS un compte posé : rien à chaîner.
         self.assertEqual(pans_poses(PAN_NON_PAVE), ())
 
-        production = pans_du_layout(PAN_NON_PAVE)
+        production = _pans_du_layout(PAN_NON_PAVE)
         self.assertEqual([p['modules'] for p in production], [0])
         self.assertIsNone(production[0]['kwc'])
 
