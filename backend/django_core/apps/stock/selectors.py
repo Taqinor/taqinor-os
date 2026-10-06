@@ -806,7 +806,9 @@ def acomptes_fournisseur_ouverts(company):
     """XPUR8 — acomptes fournisseur PARTIELLEMENT/NON consommés de la
     société (montant_non_consomme > 0), pour la vue trésorerie/cash-flow
     existante (compta). Renvoie une liste de dicts triés par date de
-    versement. LECTURE SEULE, INTERNE."""
+    versement. LECTURE SEULE, INTERNE. ASTK106 — ``montant_consomme`` est
+    la somme des imputations plafonnées (``ImputationAcompteFournisseur``),
+    le reliquat d'un acompte plus gros que sa facture reste donc listé."""
     from decimal import Decimal
     from .models import AcompteFournisseur
     qs = (AcompteFournisseur.objects.filter(company=company)
@@ -1441,7 +1443,7 @@ def resume_portail_fournisseur(company, fournisseur_id):
     soldes = [
         f.solde_du for f in FactureFournisseur.objects.filter(
             company=company, fournisseur=fournisseur).prefetch_related(
-            'paiements', 'acomptes_imputes', 'avoirs_imputes')
+            'paiements', 'imputations_acompte', 'avoirs_imputes')
     ]
     soldes = [s for s in soldes if s > Decimal('0')]
     montant = sum(soldes, Decimal('0')).quantize(Decimal('0.01'))

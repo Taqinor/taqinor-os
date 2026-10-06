@@ -158,7 +158,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         # elle, la suppression effaçait l'imputation (CASCADE / SET_NULL) et
         # le crédit fournisseur disparaissait (avoir « consommé » à vide,
         # acompte détaché mais compté consommé).
-        nb_acomptes = instance.acomptes_imputes.count()
+        nb_acomptes = (instance.imputations_acompte.order_by()
+                       .values('acompte').distinct().count())
         if nb_acomptes:
             raise ValidationError({
                 'detail': (

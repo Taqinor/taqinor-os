@@ -139,6 +139,15 @@ class TestImputationOnFacture(Xpur8Base):
         facture = facturer_reception(self.company, self.user, rec)
         facture.refresh_from_db()
         self.assertGreaterEqual(facture.solde_du, Decimal('0'))
+        # ASTK106 — l'imputation est PLAFONNÉE au TTC de la facture : solde
+        # nul, imputé = TTC, et le reliquat (99 999 − TTC) reste ouvert.
+        self.assertEqual(facture.solde_du, Decimal('0'))
+        self.assertEqual(facture.total_acomptes_imputes, facture.montant_ttc)
+        rows = acomptes_fournisseur_ouverts(self.company)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(
+            rows[0]['montant_non_consomme'],
+            Decimal('99999') - facture.montant_ttc)
 
     def test_no_acompte_unchanged_behaviour(self):
         rec = self._confirm_reception()

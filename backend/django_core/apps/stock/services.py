@@ -4759,28 +4759,65 @@ def otd_stats(company, fournisseur):
 # ── XPUR8 — Acomptes / avances fournisseur sur BCF ──────────────────────────
 
 def imputer_acomptes_bcf(bon_commande):
-    """XPUR8 — impute les acomptes NON CONSOMMÉS du BCF sur sa PREMIÈRE
-    ``FactureFournisseur`` (par date de création). Idempotent : un acompte
-    déjà imputé (``facture_imputee`` déjà posé) n'est jamais réimputé,
-    même si la fonction est rappelée. No-op si le BCF n'a pas encore de
-    facture. Renvoie la liste des acomptes imputés lors de CET appel."""
-    from .models import AcompteFournisseur
-    facture = (bon_commande.factures_fournisseur
-               .order_by('date_creation').first())
-    if facture is None:
-        return []
-    acomptes = AcompteFournisseur.objects.filter(
-        bon_commande=bon_commande, facture_imputee__isnull=True)
-    imputed = []
-    for acompte in acomptes:
-        acompte.facture_imputee = facture
-        acompte.montant_consomme = acompte.montant
-        acompte.save(update_fields=['facture_imputee', 'montant_consomme'])
-        imputed.append(acompte)
-    if imputed:
-        # ASTK102 — le statut suit le solde (acompte imputé = règlement).
-        recompute_facture_fournisseur_statut(facture)
-    return imputed
+    """XPUR8/ASTK106 — impute les acomptes OUVERTS du BCF (reliquat > 0) sur
+    ses factures à SOLDE > 0, la plus ancienne d'abord, chaque imputation
+    PLAFONNÉE au solde de la facture cible (``ImputationAcompteFournisseur``,
+    comme pour les avoirs). Le reliquat d'un acompte plus gros que la
+    facture reste OUVERT (listé par ``acomptes_fournisseur_ouverts``) et
+    s'impute sur la facture suivante du BCF ; un acompte saisi après une
+    facture déjà soldée va sur la première facture NON soldée, jamais sur
+    une facture payée. Idempotent : un acompte entièrement consommé ou une
+    facture soldée ne bougent plus. ``montant_consomme`` = Σ imputations de
+    l'acompte ; ``facture_imputee`` (compatibilité de lecture) = la première
+    facture qui l'a reçu. No-op si le BCF n'a pas de facture. Renvoie la
+    liste des imputations créées lors de CET appel."""
+    from django.db import transaction
+    from .models import (
+        AcompteFournisseur, FactureFournisseur, ImputationAcompteFournisseur,
+    )
+    creees = []
+    touchees = {}
+    with transaction.atomic():
+        factures = list(
+            FactureFournisseur.objects.select_for_update()
+            .filter(bon_commande=bon_commande)
+            .order_by('date_creation', 'id'))
+        if not factures:
+            return []
+        acomptes = list(
+            AcompteFournisseur.objects.select_for_update()
+            .filter(bon_commande=bon_commande)
+            .order_by('date_versement', 'date_creation', 'id'))
+        for acompte in acomptes:
+            reste = acompte.montant_non_consomme
+            for facture in factures:
+                if reste <= 0:
+                    break
+                solde = FactureFournisseur.objects.get(pk=facture.pk).solde_du
+                if solde <= 0:
+                    continue
+                montant = min(reste, solde)
+                creees.append(ImputationAcompteFournisseur.objects.create(
+                    company=acompte.company or facture.company,
+                    acompte=acompte, facture=facture, montant=montant))
+                reste -= montant
+                acompte.montant_consomme = (
+                    (acompte.montant_consomme or Decimal('0')) + montant)
+                if acompte.facture_imputee_id is None:
+                    acompte.facture_imputee = facture
+                acompte.save(
+                    update_fields=['facture_imputee', 'montant_consomme'])
+                touchees[facture.pk] = facture
+        for facture in touchees.values():
+            # ASTK102 — le statut suit le solde (acompte imputé = règlement).
+            recompute_facture_fournisseur_statut(facture)
+    return creees
+
+
+def acompte_fournisseur_est_impute(acompte):
+    """ASTK106 — vrai si l'acompte porte au moins une imputation (son
+    ``montant`` n'est alors plus modifiable)."""
+    return acompte.imputations.exists()
 
 
 # ── XPUR9 — Avoir fournisseur (note de crédit AP) ───────────────────────────

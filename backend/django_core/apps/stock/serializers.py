@@ -2083,6 +2083,14 @@ class AcompteFournisseurSerializer(serializers.ModelSerializer):
     def validate_montant(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('Le montant doit être positif.')
+        # ASTK106 — un acompte déjà imputé sur une facture garde son montant
+        # (sinon le reliquat ouvert et le solde de la facture divergent).
+        instance = getattr(self, 'instance', None)
+        if (instance is not None and value != instance.montant
+                and instance.imputations.exists()):
+            raise serializers.ValidationError(
+                "Cet acompte est déjà imputé sur une facture : son montant "
+                "n'est plus modifiable.")
         return value
 
     def validate_bon_commande(self, value):
