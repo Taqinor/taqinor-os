@@ -131,6 +131,9 @@ from . import reprise_visite as _reprise_visite_action  # noqa: F401
 # CALX366 — même patron : rattache ``pose-reelle`` (GET/POST la pose réelle et
 # ses écarts, contrat CALX337, services/asbuilt.py).
 from . import asbuilt as _asbuilt_action  # noqa: F401
+# ACAL310 — même patron : rattache ``consommation/proposer`` (la
+# consommation PROPOSÉE par le serveur, ``services/consommation.py``).
+from . import consommation as _consommation_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -167,6 +170,7 @@ MODULES_RATTACHES = (
     'fixation',  # CALX359
     'reprise_visite',  # CALX364
     'asbuilt',  # CALX366
+    'consommation',  # ACAL310
 )
 
 __all__ = ['MODULES_RATTACHES']

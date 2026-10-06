@@ -22,8 +22,6 @@ backend/django_core/apps/calepinage/services/chaines.py::chaines_max_par_mppt
 backend/django_core/apps/calepinage/services/chaines.py::groupes_electriques
 backend/django_core/apps/calepinage/services/chaines.py::pans_poses
 backend/django_core/apps/calepinage/services/chaines.py::specs_onduleur
-backend/django_core/apps/calepinage/services/charges.py::courbe_climatisation
-backend/django_core/apps/calepinage/services/consommation.py::apercu_courbe_csv
 backend/django_core/apps/calepinage/services/consommation.py::appliquer_ramadan
 backend/django_core/apps/calepinage/services/consommation.py::courbe_appareils
 backend/django_core/apps/calepinage/services/consommation.py::interpoler_factures
@@ -125,7 +123,6 @@ backend/django_core/apps/calepinage/services/planche.py::verifier_absence_d_arge
 backend/django_core/apps/calepinage/services/presets.py::enregistrer_jeu
 backend/django_core/apps/calepinage/services/presets.py::retirer_jeu
 backend/django_core/apps/calepinage/services/profils_types.py::profil_de_repli
-backend/django_core/apps/calepinage/services/profils_types.py::profil_depuis_import
 backend/django_core/apps/calepinage/services/profils_types.py::profils_de_repli
 backend/django_core/apps/calepinage/services/provenance_document.py::document_de_provenance
 backend/django_core/apps/calepinage/services/rapport/annexe_hypotheses.py::html_de_section

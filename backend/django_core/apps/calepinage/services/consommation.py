@@ -38,7 +38,10 @@ __all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
            'PROVENANCES_APPAREIL', 'ProfilInvalide', 'SOURCES_MOIS', 'UNITES',
            'apercu_courbe_csv', 'appliquer_ramadan', 'courbe_appareils',
            'interpoler_factures', 'profil_depuis_lead',
-           'profil_depuis_layout', 'profil_mensuel', 'publier_kwh']
+           'profil_depuis_layout', 'profil_mensuel', 'publier_kwh',
+           # ACAL310 — la consommation proposée par le serveur.
+           'LeadIntrouvable', 'MOIS_ETE', 'SOURCES_PROPOSITION',
+           'proposer_consommation']
 
 #: D'où vient le montant d'un mois. ``None`` = mois vide (rien de connu).
 SOURCES_MOIS = ('facture', 'interpole', 'saisi')
@@ -962,3 +965,269 @@ def _a_lheure(valeurs, *, pas_minutes, unite):
         heures.append(round(sum(paquet) if unite == 'kwh'
                             else sum(paquet) / len(paquet), 4))
     return heures
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ACAL310 — LA CONSOMMATION PROPOSÉE PAR LE SERVEUR (D-ACAL-20)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# LE CONSTAT (C-ACAL-145 / C-ACAL-125) : le seul écrivain de
+# ``roof_layout.consumption`` était l'atelier TS, sur un barème REGIE_TARIFF
+# figé (``billToAnnualKwh``) — JUMEAU du barème SOCIÉTÉ
+# (``apps.parametres.tariff.kwh_depuis_facture``). Les fonctions serveur de ce
+# module (profil depuis le lead, kWh publiés, appareils, Ramadan, aperçu CSV)
+# n'avaient AUCUNE porte. :func:`proposer_consommation` les BRANCHE derrière
+# ``POST calepinages/<pk>/consommation/proposer/`` (contrat
+# ``calepinage_consommation_proposee.json``). LECTURE PURE : rien n'est écrit,
+# la persistance passe par le document.
+
+#: Les sources admises du corps de la proposition (contrat ACAL21).
+SOURCES_PROPOSITION = ('lead', 'factures', 'appareils', 'csv')
+
+#: Les mois d'ÉTÉ de la saisonnalité — la convention de l'ATELIER
+#: (``apps/web/src/lib/applianceConsumption.ts:487`` SUMMER_MONTHS : juin,
+#: juillet, août, septembre), reprise telle quelle pour que le serveur et
+#: l'atelier lisent ``consumption.saisons`` sur les MÊMES mois.
+MOIS_ETE = (6, 7, 8, 9)
+
+#: Les jours de chaque mois d'une année CIVILE non bissextile — le calendrier,
+#: pas une hypothèse : un montant MENSUEL se ramène au jour par lui.
+JOURS_DU_MOIS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+#: La classe tarifaire DÉCLARÉE du lead (``Lead.type_installation``) quand le
+#: corps ne la saisit pas : seules les deux correspondances SANS ambiguïté
+#: sont admises — un local commercial ou industriel peut relever de plusieurs
+#: tarifs, sa classe se saisit.
+CLASSE_DU_TYPE_INSTALLATION = {'residentiel': 'residentiel',
+                               'agricole': 'agricole'}
+
+#: Le synonyme du contrat (« domestique ») de la classe résidentielle.
+ALIAS_CLASSES = {'domestique': 'residentiel'}
+
+AVIS_FORME_UNIFORME = (
+    'Forme horaire UNIFORME : des factures mensuelles ne disent rien de la '
+    'journée — affinez la courbe dans l’atelier (appareils ou relevé).')
+AVIS_SAISONS_DES_FACTURES = (
+    'Saisons lues sur les factures : été (juin–septembre) ×{ete}, hiver '
+    '×{hiver} par rapport au jour moyen de l’année.')
+
+
+class LeadIntrouvable(LookupError):
+    """Le lead du calepinage est introuvable dans la société (404 nommé)."""
+
+
+def _classe_saisie(corps, lead=None):
+    """La classe tarifaire SAISIE (corps), sinon celle sans ambiguïté du lead."""
+    factures = corps.get('factures') if isinstance(corps.get('factures'),
+                                                   dict) else {}
+    classe = str(corps.get('classe') or factures.get('classe') or '').strip()
+    classe = ALIAS_CLASSES.get(classe, classe)
+    if not classe and lead is not None:
+        classe = CLASSE_DU_TYPE_INSTALLATION.get(
+            str(getattr(lead, 'type_installation', '') or ''), '')
+    if not classe:
+        raise ProfilInvalide(
+            'La classe tarifaire n’est pas saisie (« classe » : '
+            'residentiel, force_motrice ou agricole) : un même montant ne '
+            'vaut pas les mêmes kWh selon la classe — elle n’est jamais '
+            'supposée.', champ='classe')
+    return classe
+
+
+def _saisons_des_mois(kwh_par_mois):
+    """``{ete, hiver}`` — le jour moyen de chaque saison rapporté au jour
+    moyen de l'année, lus sur les kWh MENSUELS (``None`` si un mois manque)."""
+    if any(valeur is None for valeur in kwh_par_mois):
+        return None
+    annuel = sum(kwh_par_mois)
+    if annuel <= 0:
+        return None
+    jour_moyen = annuel / sum(JOURS_DU_MOIS)
+    ete = [kwh_par_mois[mois - 1] / JOURS_DU_MOIS[mois - 1]
+           for mois in MOIS_ETE]
+    hiver = [kwh_par_mois[mois - 1] / JOURS_DU_MOIS[mois - 1]
+             for mois in MOIS if mois not in MOIS_ETE]
+    return {'ete': round(sum(ete) / len(ete) / jour_moyen, 3),
+            'hiver': round(sum(hiver) / len(hiver) / jour_moyen, 3)}
+
+
+def _depuis_profil_mensuel(profil, company, classe):
+    """``(courbe24, kwh_annuel, saisons, avertissements)`` depuis douze
+    factures, converties par le barème de la SOCIÉTÉ (:func:`publier_kwh`)."""
+    publier_kwh(profil, company, classe=classe)
+    kwh = [ligne.get('kwh') for ligne in profil['mois']]
+    avertissements = list(profil.get('avertissements') or [])
+    if any(valeur is None for valeur in kwh):
+        return None, None, {}, avertissements
+    annuel = round(sum(kwh), 1)
+    jour_moyen = annuel / sum(JOURS_DU_MOIS)
+    courbe24 = [round(jour_moyen / 24.0, 4)] * 24
+    saisons = _saisons_des_mois(kwh) or {}
+    avertissements.append(AVIS_FORME_UNIFORME)
+    if saisons:
+        avertissements.append(AVIS_SAISONS_DES_FACTURES.format(**saisons))
+    return courbe24, annuel, saisons, avertissements
+
+
+def _depuis_factures(corps, company):
+    factures = corps.get('factures') if isinstance(corps.get('factures'),
+                                                   dict) else {}
+    if factures.get('hiver_mad') in (None, ''):
+        raise ProfilInvalide(
+            "La facture d'hiver n'est pas finie : saisissez un montant en "
+            'dirhams.', champ='factures.hiver_mad')
+    try:
+        profil = profil_mensuel(
+            facture_hiver=factures.get('hiver_mad'),
+            facture_ete=factures.get('ete_mad'),
+            ete_differente=bool(factures.get('ete_differente')))
+    except ProfilInvalide as refus:
+        renommes = {'facture_hiver': 'factures.hiver_mad',
+                    'facture_ete': 'factures.ete_mad'}
+        champ = renommes.get(refus.champ, refus.champ)
+        raise ProfilInvalide(refus.motif, champ=champ) from refus
+    return _depuis_profil_mensuel(profil, company,
+                                  _classe_saisie(corps)) + ('facture',)
+
+
+def _depuis_lead(corps, company, lead_id, lire_lead=None):
+    lead = (lire_lead or _lire_lead)(company, lead_id) if lead_id else None
+    if lead is None:
+        raise LeadIntrouvable('Introuvable.')
+    profil = profil_depuis_lead(company, lead_id,
+                                lire_lead=lambda *_: lead)
+    return _depuis_profil_mensuel(profil, company,
+                                  _classe_saisie(corps, lead)) + ('facture',)
+
+
+def _depuis_appareils(corps):
+    from .charges import (
+        ajouter_charges, courbe_climatisation, courbe_pac, courbe_vehicule,
+    )
+
+    rendu = courbe_appareils(corps.get('appareils') or [])
+    courbe = rendu.get('courbe')
+    avertissements = list(rendu.get('avertissements') or [])
+    if courbe is None:
+        return None, None, {}, avertissements, 'appareils'
+    fabriques = {'climatisation': courbe_climatisation, 'pac': courbe_pac,
+                 'vehicule': courbe_vehicule}
+    charges = corps.get('charges') if isinstance(corps.get('charges'),
+                                                 dict) else {}
+    blocs = []
+    for nom, parametres in charges.items():
+        fabrique = fabriques.get(nom)
+        if fabrique is None:
+            raise ProfilInvalide(
+                f'Charge inconnue : « {nom} » (admises : '
+                f'{", ".join(fabriques)}).', champ=f'charges.{nom}')
+        blocs.append(fabrique(**dict(parametres or {})))
+    if blocs:
+        cumul = ajouter_charges(courbe, blocs)
+        courbe = cumul['courbe']
+        avertissements.extend(cumul.get('hypotheses') or [])
+    courbe24 = [round(float(valeur), 4) for valeur in courbe]
+    annuel = round(sum(courbe24) * sum(JOURS_DU_MOIS), 1)
+    return courbe24, annuel, {}, avertissements, 'appareils'
+
+
+def _depuis_csv(corps):
+    bloc = corps.get('csv') if isinstance(corps.get('csv'), dict) else {}
+    try:
+        apercu = apercu_courbe_csv(
+            str(bloc.get('contenu') or ''), colonne=bloc.get('colonne'),
+            unite=str(bloc.get('unite') or 'kwh').lower(),
+            origine=str(bloc.get('origine') or 'csv'))
+    except ImportCourbeInvalide as refus:
+        raise ImportCourbeInvalide(str(refus), champ=f'csv.{refus.champ}'
+                                   if refus.champ else 'csv',
+                                   ligne=refus.ligne) from refus
+    valeurs = apercu['valeurs']
+    jours = len(valeurs) / 24.0
+    courbe24 = [round(sum(valeurs[heure::24]) / jours, 4)
+                for heure in range(24)]
+    avertissements = [avis for avis in apercu.get('avertissements') or []
+                      if 'Aperçu seulement' not in avis]
+    if apercu.get('pas_minutes') == 15:
+        avertissements.append("Pas de 15 minutes agrégé à l'heure.")
+    return (courbe24, apercu.get('total_annuel_kwh'), {}, avertissements,
+            'courbe')
+
+
+def proposer_consommation(calepinage, corps, *, company, maintenant=None,
+                          lire_lead=None):
+    """ACAL310 — la consommation PROPOSÉE par le serveur, LECTURE PURE.
+
+    Args:
+        calepinage: le pivot (son lead et son épingle sont lus).
+        corps: ``{source: lead|factures|appareils|csv, classe?, factures?,
+            appareils?, charges?, ramadan?: {actif, jour (date ISO)}, csv?}``.
+        company: la société de l'appelant (jamais lue du corps).
+        maintenant: l'instant de la proposition (``source.saisi_le``).
+        lire_lead: point d'injection du lecteur de lead (sélecteur CRM).
+
+    Returns:
+        ``{consumption, kwh_annuel, courbe24, saisons, avertissements}`` —
+        ``consumption`` à la forme de ``$defs/consumption`` (roof_layout v2),
+        ``None`` quand rien n'a pu être converti (le motif est publié).
+
+    Raises:
+        ProfilInvalide / ImportCourbeInvalide / charges.ChargeInvalide : refus
+            NOMMANT le champ ; LeadIntrouvable : lead absent de la société.
+    """
+    import datetime
+
+    corps = corps if isinstance(corps, dict) else {}
+    source = str(corps.get('source') or '').strip()
+    if source not in SOURCES_PROPOSITION:
+        raise ProfilInvalide(
+            f'Source inconnue : « {source} » (admises : '
+            f'{", ".join(SOURCES_PROPOSITION)}).', champ='source')
+    if source == 'lead':
+        rendu = _depuis_lead(corps, company,
+                             getattr(calepinage, 'lead_id', None), lire_lead)
+    elif source == 'factures':
+        rendu = _depuis_factures(corps, company)
+    elif source == 'appareils':
+        rendu = _depuis_appareils(corps)
+    else:
+        rendu = _depuis_csv(corps)
+    courbe24, kwh_annuel, saisons, avertissements, methode = rendu
+
+    ramadan = corps.get('ramadan') if isinstance(corps.get('ramadan'),
+                                                 dict) else {}
+    if courbe24 is not None and ramadan.get('actif'):
+        try:
+            jour = datetime.date.fromisoformat(str(ramadan.get('jour') or ''))
+        except ValueError as refus:
+            raise ProfilInvalide(
+                '« ramadan.jour » doit être une date (AAAA-MM-JJ) : la '
+                'fenêtre du Ramadan se lit à une date, jamais à un rang.',
+                champ='ramadan.jour') from refus
+        pin = ((getattr(calepinage, 'roof_layout', None) or {}).get('pin')
+               or {})
+        decale = appliquer_ramadan(courbe24, jour=jour, lat=pin.get('lat'),
+                                   lon=pin.get('lng', pin.get('lon')))
+        courbe24 = [round(float(valeur), 4) for valeur in decale['courbe24']]
+        avertissements.extend(decale.get('avertissements') or [])
+        methode = 'courbe'
+
+    instant = (maintenant or datetime.datetime.now(datetime.timezone.utc))
+    consumption = None
+    if courbe24 is not None:
+        consumption = {
+            'courbe24': courbe24,
+            'appareils': list(corps.get('appareils') or []),
+            'methode': methode,
+            'source': {
+                'origine': source,
+                'saisi_le': instant.replace(microsecond=0).isoformat()
+                .replace('+00:00', 'Z'),
+                'bareme': 'societe',
+            },
+        }
+        if saisons:
+            consumption['saisons'] = dict(saisons)
+    return {'consumption': consumption, 'kwh_annuel': kwh_annuel,
+            'courbe24': courbe24, 'saisons': dict(saisons or {}),
+            'avertissements': avertissements}
