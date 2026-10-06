@@ -150,6 +150,23 @@ def valider_retour_scanne(retour, user, *, bins_source=None):
     from .services import apply_retour_fournisseur
 
     bins_source = bins_source or {}
+    # ASTK7 — chaque casier source relevé au scan est relu BORNÉ à la société
+    # du retour, AVANT tout mouvement : un casier étranger est refusé comme
+    # un casier inexistant.
+    demandes = set()
+    for valeur in bins_source.values():
+        if valeur in (None, ''):
+            continue
+        try:
+            demandes.add(int(valeur))
+        except (TypeError, ValueError):
+            raise ValueError('Casier introuvable dans cette société.')
+    if demandes:
+        trouves = set(_modele_bin().objects.filter(
+            company_id=retour.company_id, id__in=demandes)
+            .values_list('id', flat=True))
+        if trouves != demandes:
+            raise ValueError('Casier introuvable dans cette société.')
     for ligne in retour.lignes.select_related('produit'):
         deplacer_vers_casier_retours(
             retour.company, user, produit=ligne.produit,

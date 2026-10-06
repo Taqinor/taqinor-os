@@ -15,6 +15,7 @@ from rest_framework.decorators import api_view, permission_classes
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import (
@@ -25,7 +26,8 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class DeclarationConsommationSerializer(serializers.ModelSerializer):
+class DeclarationConsommationSerializer(CompanyScopedRelationsMixin,
+                                        serializers.ModelSerializer):
     class Meta:
         model = DeclarationConsommation
         fields = ['id', 'depot', 'quantite', 'date_declaration', 'statut',
@@ -33,7 +35,8 @@ class DeclarationConsommationSerializer(serializers.ModelSerializer):
         read_only_fields = ['statut', 'document_reference', 'created_at']
 
 
-class DepotConsignationSerializer(serializers.ModelSerializer):
+class DepotConsignationSerializer(CompanyScopedRelationsMixin,
+                                  serializers.ModelSerializer):
     quantite_restante = serializers.IntegerField(read_only=True)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default='')
@@ -216,8 +219,12 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
             derniere = depot.declarations.order_by(
                 '-date_declaration', '-id').first()
             total_restant += depot.quantite_restante
+            # ASTK7 — défense en profondeur : un dépôt hérité qui pointe un
+            # client d'une AUTRE société n'imprime jamais son nom.
+            client_ok = getattr(depot.client, 'company_id', None) == (
+                depot.company_id)
             lignes.append([
-                getattr(depot.client, 'nom', '') or '',
+                (getattr(depot.client, 'nom', '') or '') if client_ok else '',
                 getattr(depot.produit, 'nom', '') or '',
                 getattr(depot.produit, 'sku', '') or '',
                 depot.adresse_site,
@@ -237,7 +244,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
 # NTDST5 — Remises arrière (RFA) fournisseurs
 # ═══════════════════════════════════════════════════════════════════════════
 
-class AccordRFAFournisseurSerializer(serializers.ModelSerializer):
+class AccordRFAFournisseurSerializer(CompanyScopedRelationsMixin,
+                                     serializers.ModelSerializer):
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     avoir_deja_genere = serializers.BooleanField(read_only=True)
@@ -426,7 +434,8 @@ def catalogue_b2b_view(request):
 # NTDST30 — Paramètres négoce par société (singleton)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class ParametresNegoceSerializer(serializers.ModelSerializer):
+class ParametresNegoceSerializer(CompanyScopedRelationsMixin,
+                                 serializers.ModelSerializer):
     class Meta:
         from ..models import ParametresNegoce as _ParametresNegoce
 

@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur
@@ -26,7 +27,8 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class IncidentQualiteFournisseurSerializer(serializers.ModelSerializer):
+class IncidentQualiteFournisseurSerializer(CompanyScopedRelationsMixin,
+                                           serializers.ModelSerializer):
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     est_bloquant = serializers.BooleanField(read_only=True)
