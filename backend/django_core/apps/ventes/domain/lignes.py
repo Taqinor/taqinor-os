@@ -514,7 +514,39 @@ def creer_ligne(devis, **champs):
                 'jamais par les deux.' % (objet, objet, cle))
     if 'role_devis' not in champs:
         champs['role_devis'] = _role_a_la_creation(champs)
+    if champs.get('taux_tva') is None:
+        taux_produit = _taux_tva_du_produit(champs)
+        if taux_produit is not None:
+            champs['taux_tva'] = taux_produit
     return LigneDevis.objects.create(devis=devis, **champs)
+
+
+def _taux_tva_du_produit(champs):
+    """TVA-LIGNE (06/10/2026) — le taux de TVA du PRODUIT d'une ligne créée
+    SANS taux, ou ``None``.
+
+    Constat en production : les lignes posées côté serveur (composition,
+    création auto, resynchronisation, imports…) naissaient avec
+    ``taux_tva`` NULL ; le PDF leur appliquait alors le taux GLOBAL du devis
+    (20 %) alors que la fiche produit dit 10 % (panneaux PV). DC7 :
+    ``Produit.tva`` fait foi PAR LIGNE. Un taux EXPLICITE (0 % compris —
+    AGR216 —, ou un 20 tapé) n'est jamais touché : cette fonction n'est
+    appelée que quand le taux est absent ou ``None``.
+
+    Seules les lignes PRODUIT sont concernées (une section/note ne porte pas
+    de taux). Coût : zéro requête avec un objet ``produit`` ; UNE requête
+    (une seule colonne) avec ``produit_id``. Ne lève jamais.
+    """
+    if str(champs.get('type_ligne') or 'produit') != 'produit':
+        return None
+    produit = champs.get('produit')
+    if produit is not None:
+        return getattr(produit, 'tva', None)
+    produit_id = champs.get('produit_id')
+    if produit_id is None:
+        return None
+    from apps.stock.selectors import taux_tva_produit
+    return taux_tva_produit(produit_id)
 
 
 def _role_a_la_creation(champs):

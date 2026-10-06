@@ -1237,6 +1237,14 @@ def rafraichir_etude_pompage_devis(devis, *, force=False):
         sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
                                  facture=facture)
         derivees = derivees_de_l_etude(sortie, pvgis_fige=fige or None)
+        # ``pvgis_fige`` est À LA FOIS une entrée de l'empreinte et une dérivée
+        # que CE rafraîchisseur écrit (premier appel : None → coordonnées
+        # figées). L'empreinte STOCKÉE décrit donc l'état APRÈS écriture —
+        # sinon le second appel, sans aucun changement, la verrait différente
+        # et relancerait le moteur (garde « mêmes entrées ⇒ zéro calcul »).
+        empreinte = _empreinte(
+            dict(etude, pvgis_fige=derivees.get('pvgis_fige')), facture,
+            getattr(lead, 'id', None))
         derivees['provenance_pompage']['_empreinte'] = empreinte
         a_ecrire = {cle: valeur for cle, valeur in derivees.items()
                     if etude.get(cle) != valeur}

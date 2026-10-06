@@ -1056,15 +1056,28 @@ def _scalaires_par_option(sans_lignes, avec_lignes) -> dict:
     CHOIX DOCUMENTÉ POUR LES CLÉS LEGACY ``nb_panneaux`` / ``puissance_kwc``
     (servies au rendu depuis toujours, et lues par tous les gabarits) :
 
-    * options ÉGALES (tout devis dont aucune ligne ne porte de variante — donc
-      la totalité de l'existant) : ``divergents`` vaut False, l'appelant ne
-      touche à RIEN et la sortie reste byte-identique ;
-    * options DIVERGENTES : l'appelant fait porter aux clés legacy la valeur de
-      l'option **AVEC** — l'option MISE EN AVANT du document (carte
-      « Recommandé », cible du ``recommended`` par défaut). Un scalaire unique
-      doit décrire l'option que le client lit en premier ; ni une moyenne (qui
-      ne décrit aucune option réelle), ni la somme des deux paniers (48
-      panneaux pour un devis 22/26 — le compte de personne).
+    * devis SANS AUCUNE ligne panneau variantée (toutes les lignes panneau
+      communes — la quasi-totalité de l'existant) : une ligne commune entre
+      dans LES DEUX paniers, donc ``nb_sans == nb_avec ==`` le compte global ;
+      le scalaire global ne compte rien deux fois, l'appelant ne touche à RIEN
+      et la sortie reste byte-identique ;
+    * ACAL-NB2OPT (06/10/2026, DEV-202610-0024) — lignes panneau VARIANTÉES à
+      comptes ÉGAUX (8 « sans » + 8 « avec ») : l'ancienne prémisse « options
+      égales ⇔ aucune variante » était FAUSSE. ``divergents`` vaut False, mais
+      le scalaire global (``panneaux_et_watt_lu`` sur TOUTES les lignes)
+      additionne les deux paniers : la couverture annonçait 16 panneaux et
+      11,36 kWc au-dessus d'un tableau qui en liste 8. ``divergents`` reste un
+      drapeau de COMPTES (il pilote les doubles colonnes d'économies et la
+      bande « sans · avec ») ; c'est l'appelant qui, dès qu'une ligne panneau
+      porte une variante, fait décrire UNE option aux clés legacy ;
+    * options DIVERGENTES, ou variantées à comptes égaux : l'appelant fait
+      porter aux clés legacy la valeur de l'option **AVEC** — l'option MISE EN
+      AVANT du document (carte « Recommandé », cible du ``recommended`` par
+      défaut) — ou celle de l'option RENDUE quand le document est rétréci à une
+      seule. Un scalaire unique doit décrire l'option que le client lit en
+      premier ; ni une moyenne (qui ne décrit aucune option réelle), ni la
+      somme des deux paniers (48 panneaux pour un devis 22/26, 16 pour un devis
+      8/8 — le compte de personne).
     """
     nb_sans, watt_sans = panneaux_et_watt_lu(sans_lignes)
     nb_avec, watt_avec = panneaux_et_watt_lu(avec_lignes)
@@ -1081,6 +1094,41 @@ def _scalaires_par_option(sans_lignes, avec_lignes) -> dict:
         "kwc_avec": _kwc(nb_avec, watt_avec),
         "divergents": bool(nb_sans and nb_avec and nb_sans != nb_avec),
     }
+
+
+def _panneaux_variantes(lignes) -> bool:
+    """ACAL-NB2OPT — une ligne PANNEAU au moins porte-t-elle une variante ?
+
+    Une ligne commune entre dans les deux paniers ; une ligne variantée dans
+    UN seul. Dès qu'un panneau est varianté, le compte global
+    (``panneaux_et_watt_lu`` sur toutes les lignes) additionne des panneaux
+    d'options DIFFÉRENTES — il ne décrit plus aucune option. Même classifieur
+    que le compte (désignation ET nom du produit lié).
+    """
+    for li in lignes:
+        if not _variante_de_ligne(li):
+            continue
+        produit = getattr(li, "produit", None)
+        if _is_panel(getattr(li, "designation", "") or "",
+                     getattr(produit, "nom", "") or ""):
+            return True
+    return False
+
+
+def _kwc_du_registre(devis):
+    """QJR63 — kWc imposé par le registre de surcharges (D12), sinon ``None``.
+
+    Un registre illisible ne casse jamais un PDF : ``None``, et la dérivation
+    des lignes reste.
+    """
+    try:
+        from apps.ventes.domain.overrides import effectif as _effectif
+        _kwc_impose, _source_kwc = _effectif(devis, 'taille.kwc', None)
+        if _source_kwc != 'auto' and _kwc_impose:
+            return round(float(_kwc_impose), 2)
+    except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge.
+        pass
+    return None
 
 
 # ── BAT-DIFF (ordre fondateur, 17/09/2026) — L'OPTION « AVEC » SANS BATTERIE ─
@@ -1590,15 +1638,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # (``services.puissance_kwc_du_devis``) : sans cela le rendu et la
         # donnée rangée pouvaient de nouveau diverger — le défaut même que
         # cette tâche ferme. Aucun override posé ⇒ la dérivation des lignes,
-        # byte-identique à avant.
-        try:
-            from apps.ventes.domain.overrides import effectif as _effectif
-            _kwc_impose, _source_kwc = _effectif(devis, 'taille.kwc', None)
-            if _source_kwc != 'auto' and _kwc_impose:
-                puissance_kwc = round(float(_kwc_impose), 2)
-        except Exception:  # noqa: BLE001 — un registre illisible ne casse
-            # jamais un PDF : on garde la dérivation des lignes.
-            pass
+        # byte-identique à avant. Un registre illisible ne casse jamais un
+        # PDF : on garde la dérivation des lignes (``_kwc_du_registre``).
+        _kwc_impose = _kwc_du_registre(devis)
+        if _kwc_impose:
+            puissance_kwc = _kwc_impose
     else:
         # M3 — des panneaux comptés mais aucune puissance unitaire LUE : le
         # compte reste vrai, le kWc devient inconnu. « 14 panneaux », sans
@@ -1861,15 +1905,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     puissance_kwc_sans = _scal["kwc_sans"]
     puissance_kwc_avec = _scal["kwc_avec"]
     panneaux_divergents = _scal["divergents"]
-    if panneaux_divergents:
+    # ACAL-NB2OPT (06/10/2026, DEV-202610-0024) — les comptes PAR OPTION font
+    # foi dès que les comptes divergent OU qu'une ligne panneau porte une
+    # variante (8 « sans » + 8 « avec » : comptes égaux, mais le compte global
+    # en additionne 16). Un devis aux seules lignes panneau COMMUNES ne passe
+    # jamais ici : ses deux paniers contiennent les mêmes lignes, son compte
+    # global ne double rien — byte-identique.
+    _legacy_par_option = bool(
+        nb_panneaux_sans and nb_panneaux_avec
+        and (panneaux_divergents or _panneaux_variantes(lignes)))
+    if _legacy_par_option:
         # Repli documenté (cf. ``_scalaires_par_option``) : les clés legacy
         # portent l'option AVEC, celle que le document met en avant. Sans cela
-        # elles porteraient la SOMME des deux paniers (22 + 26 = 48 panneaux),
-        # un compte qui n'existe sur aucune option.
+        # elles porteraient la SOMME des deux paniers (22 + 26 = 48 panneaux,
+        # ou 8 + 8 = 16), un compte qui n'existe sur aucune option.
         nb_panneaux = nb_panneaux_avec
         watt = _scal["watt_avec"] or watt
         puissance_kwc = puissance_kwc_avec
         puissance_des_lignes = True
+        if not panneaux_divergents:
+            # QJR63 — à comptes égaux, la taille du devis est UNE : le kWc
+            # imposé au registre reste souverain (comme sur un devis commun).
+            # Le cas divergent garde son comportement d'hier (deux tailles,
+            # aucun kWc unique à imposer).
+            puissance_kwc = _kwc_du_registre(devis) or puissance_kwc
 
     # ── QF6 — respecter le choix avec/sans-batterie STOCKÉ par le vendeur ─────
     # L'écran générateur persiste le scénario choisi dans etude_params
@@ -2038,10 +2097,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # mono-option (``residential.options`` : ``d["avec_items"] if avec_ok``).
     # Document à deux options ⇒ rien ne bouge ; côté AVEC ⇒ no-op (le repli
     # portait déjà ces valeurs) ; devis non divergent ⇒ byte-identique.
-    if panneaux_divergents and not deux_options:
+    # ACAL-NB2OPT — même condition que le repli : un devis aux panneaux
+    # variantés à comptes égaux rend lui aussi le compte de SON option.
+    if _legacy_par_option and not deux_options:
         _nb_rendu = nb_panneaux_avec if avec_ok else nb_panneaux_sans
         _kwc_rendu = puissance_kwc_avec if avec_ok else puissance_kwc_sans
         _watt_rendu = _scal["watt_avec"] if avec_ok else _scal["watt_sans"]
+        if not panneaux_divergents:
+            # QJR63 — comptes égaux : le registre reste souverain (cf. repli).
+            _kwc_rendu = _kwc_du_registre(devis) or _kwc_rendu
         # Valeur illisible (None) ⇒ on ne remplace RIEN par un repli : la
         # vignette correspondante s'omet déjà d'elle-même (M2).
         if _nb_rendu:
