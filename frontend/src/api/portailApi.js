@@ -61,6 +61,10 @@ const portailApi = {
     demander: (id, payload) =>
       api.post(`/portail/mes-contrats-maintenance/${id}/demander/`, payload),
   },
+  // ADOC140 — « Ma consommation » (contrat ma_consommation.json) : série de
+  // production + alertes ouvertes ; `params.chantier` borne les alertes.
+  consommation: (params) =>
+    api.get('/portail/client/ma-consommation/', { params }),
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),

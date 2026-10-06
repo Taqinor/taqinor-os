@@ -36,6 +36,8 @@ const NAV_CLIENT = [
   { to: '/portail/client/equipe', label: 'Équipe' },
   // ADOC139 — contrats de maintenance + demande de renouvellement/résiliation.
   { to: '/portail/client/contrats', label: 'Contrats' },
+  // ADOC140 — série de production + alertes de sous-performance ouvertes.
+  { to: '/portail/client/consommation', label: 'Consommation' },
 ]
 
 export default function PortalClientLayout({ children }) {
