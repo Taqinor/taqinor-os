@@ -2741,6 +2741,75 @@ def _politique_ligne(ligne):
     return produit.politique_facturation_achat
 
 
+def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
+                                    note):
+    """ASTK109 — constructeur UNIQUE des factures fournisseur nées d'un BCF
+    (FG56 ``facturer_reception`` et ZPUR1 ``facturer_bcf_sur_commande``).
+
+    ``lignes`` = [(designation, quantite, prix_unitaire_ht, produit|None)].
+    Calcule HT/TVA/TTC (XPUR17 : TVA par ligne au taux du produit, défaut
+    20 %), crée la facture (numérotation FF) AVEC ``date_facture`` = date du
+    jour (jamais None : l'écriture comptable auto 61xx/3455 → 4411 crashait
+    NOT NULL sans), évalue le rapprochement 3 voies (ASTK107), impute les
+    acomptes ouverts du BCF (ASTK106) et émet ``facture_fournisseur_creee``
+    une fois (YPROC3, best-effort : installations lettre ses GR/IR)."""
+    from django.utils import timezone
+    from apps.ventes.utils.references import create_with_reference
+    from .models import FactureFournisseur, LigneFactureFournisseur
+
+    taux_tva_defaut = Decimal('20')
+    montant_ht = Decimal('0')
+    montant_tva = Decimal('0')
+    lignes_data = []
+    for designation, quantite, pu, produit in lignes:
+        pu = pu or Decimal('0')
+        total = Decimal(str(quantite)) * pu
+        montant_ht += total
+        taux_ligne = (produit.tva
+                      if produit is not None and produit.tva is not None
+                      else taux_tva_defaut)
+        montant_tva += (total * taux_ligne / Decimal('100')).quantize(
+            Decimal('0.01'))
+        lignes_data.append((designation, quantite, pu, taux_ligne))
+    montant_ttc = montant_ht + montant_tva
+    created = {}
+
+    def _save(ref):
+        ff = FactureFournisseur.objects.create(
+            company=company, reference=ref,
+            fournisseur=bon_commande.fournisseur,
+            bon_commande=bon_commande,
+            montant_ht=montant_ht, montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            statut=FactureFournisseur.Statut.A_PAYER,
+            date_facture=timezone.now().date(),
+            note=note, created_by=user)
+        for designation, qte, pu, taux_ligne in lignes_data:
+            LigneFactureFournisseur.objects.create(
+                facture=ff, designation=designation,
+                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
+        created['ff'] = ff
+        return ff
+
+    create_with_reference(FactureFournisseur, 'FF', company, _save)
+    facture = created['ff']
+    # ASTK107 — rapprochement 3 voies à la création.
+    evaluer_rapprochement_3_voies(facture)
+    # XPUR8/ASTK106 — imputation des acomptes ouverts du BCF (plafonnée au
+    # solde, idempotente, no-op sans acompte).
+    imputer_acomptes_bcf(bon_commande)
+    # YPROC3 — événement de création (best-effort, ne casse jamais la
+    # facturation). stock n'importe jamais installations.
+    try:
+        from core.events import facture_fournisseur_creee
+        facture_fournisseur_creee.send(
+            sender=FactureFournisseur, instance=facture,
+            company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return FactureFournisseur.objects.get(pk=facture.pk)
+
+
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
 def facturer_reception(company, user, reception):
@@ -2751,8 +2820,7 @@ def facturer_reception(company, user, reception):
     Lance ValueError si déjà facturée ou si la réception n'est pas confirmée.
     """
     from decimal import Decimal
-    from apps.ventes.utils.references import create_with_reference
-    from .models import FactureFournisseur, LigneFactureFournisseur
+    from .models import FactureFournisseur
 
     if reception.statut != 'confirme':
         raise ValueError("Seule une réception confirmée peut être facturée.")
@@ -2781,14 +2849,9 @@ def facturer_reception(company, user, reception):
             f'{reception.reference} sont « sur commande » (facturées sur le '
             'bon de commande).')
 
-    taux_tva_defaut = Decimal('20')
-    montant_ht = Decimal('0')
-    montant_tva = Decimal('0')
-    lignes_data = []
+    lignes = []
     for ligne in lignes_reception:
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
-        total = Decimal(str(ligne.quantite)) * pu
-        montant_ht += total
         # XPUR16 — une ligne libre/service reprend sa désignation d'origine
         # (BCF) plutôt que le nom d'un produit catalogue absent.
         if ligne.produit:
@@ -2797,59 +2860,12 @@ def facturer_reception(company, user, reception):
             designation = ligne.ligne_commande.designation
         else:
             designation = 'Produit'
-        # XPUR17 — TVA par ligne : reprend le taux du produit (`Produit.tva`)
-        # quand connu, sinon le défaut 20 % (comportement historique de
-        # cette fonction, qui appliquait déjà 20 % globalement).
-        taux_ligne = (ligne.produit.tva
-                      if ligne.produit and ligne.produit.tva is not None
-                      else taux_tva_defaut)
-        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
-            Decimal('0.01'))
-        montant_tva += tva_ligne
-        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
+        lignes.append((designation, ligne.quantite, pu, ligne.produit))
 
-    montant_ttc = montant_ht + montant_tva
-
-    created = {}
-
-    def _save(ref):
-        from django.utils import timezone
-        ff = FactureFournisseur.objects.create(
-            company=company, reference=ref,
-            fournisseur=reception.bon_commande.fournisseur,
-            bon_commande=reception.bon_commande,
-            montant_ht=montant_ht, montant_tva=montant_tva,
-            montant_ttc=montant_ttc,
-            statut=FactureFournisseur.Statut.A_PAYER,
-            # Sans date, l'écriture comptable auto (61xx/3455 -> 4411) crashait
-            # NOT NULL en silence (bug préexistant attrapé par le test P2P).
-            date_facture=timezone.now().date(),
-            note=f'Facture réception {reception.reference}',
-            created_by=user)
-        for designation, qte, pu, taux_ligne in lignes_data:
-            LigneFactureFournisseur.objects.create(
-                facture=ff, designation=designation,
-                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
-        created['ff'] = ff
-        return ff
-
-    create_with_reference(FactureFournisseur, 'FF', company, _save)
-    # ASTK107 — rapprochement 3 voies à la création par réception.
-    evaluer_rapprochement_3_voies(created['ff'])
-    # XPUR8 — impute automatiquement les acomptes non consommés du BCF sur
-    # cette première facture (idempotent, no-op si aucun acompte).
-    imputer_acomptes_bcf(reception.bon_commande)
-    # YPROC3 — émet l'événement de création de facture fournisseur (best-effort,
-    # ne casse jamais la facturation) : installations peut lettrer sa provision
-    # GR/IR ouverte pour ce bon de commande. stock n'importe jamais installations.
-    try:
-        from core.events import facture_fournisseur_creee
-        facture_fournisseur_creee.send(
-            sender=FactureFournisseur, instance=created['ff'],
-            company=company, user=user)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
-    return created['ff']
+    # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
+    return _construire_facture_fournisseur(
+        company, user, reception.bon_commande, lignes,
+        note=f'Facture réception {reception.reference}')
 
 
 # ── ZPUR1 — Politique de facturation d'achat (Odoo « Bill Control ») ────────
@@ -2870,8 +2886,7 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     ce BCF est déjà entièrement facturé par ce chemin (idempotence : jamais
     deux factures pour la même quantité `sur_commande`)."""
     from decimal import Decimal
-    from apps.ventes.utils.references import create_with_reference
-    from .models import FactureFournisseur, LigneFactureFournisseur, Produit
+    from .models import FactureFournisseur, Produit
 
     lignes_eligibles = [
         ligne for ligne in bon_commande.lignes.select_related('produit').all()
@@ -2892,53 +2907,17 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
             f'Ce bon de commande ({bon_commande.reference}) est déjà '
             'facturé sur commande.')
 
-    taux_tva_defaut = Decimal('20')
-    montant_ht = Decimal('0')
-    montant_tva = Decimal('0')
-    lignes_data = []
-    for ligne in lignes_eligibles:
-        pu = ligne.prix_achat_unitaire or Decimal('0')
-        total = Decimal(str(ligne.quantite)) * pu
-        montant_ht += total
-        designation = (
-            ligne.produit.nom if ligne.produit_id else
-            (ligne.designation or 'Produit'))
-        taux_ligne = (ligne.produit.tva
-                      if ligne.produit_id and ligne.produit.tva is not None
-                      else taux_tva_defaut)
-        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
-            Decimal('0.01'))
-        montant_tva += tva_ligne
-        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
-
-    montant_ttc = montant_ht + montant_tva
-    created = {}
-
-    def _save(ref):
-        ff = FactureFournisseur.objects.create(
-            company=company, reference=ref,
-            fournisseur=bon_commande.fournisseur,
-            bon_commande=bon_commande,
-            montant_ht=montant_ht, montant_tva=montant_tva,
-            montant_ttc=montant_ttc,
-            statut=FactureFournisseur.Statut.A_PAYER,
-            note=marqueur, created_by=user)
-        for designation, qte, pu, taux_ligne in lignes_data:
-            LigneFactureFournisseur.objects.create(
-                facture=ff, designation=designation,
-                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
-        created['ff'] = ff
-        return ff
-
-    create_with_reference(FactureFournisseur, 'FF', company, _save)
-    try:
-        from core.events import facture_fournisseur_creee
-        facture_fournisseur_creee.send(
-            sender=FactureFournisseur, instance=created['ff'],
-            company=company, user=user)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
-    return created['ff']
+    lignes = [
+        (ligne.produit.nom if ligne.produit_id else
+         (ligne.designation or 'Produit'),
+         ligne.quantite, ligne.prix_achat_unitaire or Decimal('0'),
+         ligne.produit if ligne.produit_id else None)
+        for ligne in lignes_eligibles
+    ]
+    # ASTK109 — même constructeur que FG56 : date_facture posée, acomptes du
+    # BCF imputés, événement émis (le copier-coller sans date est supprimé).
+    return _construire_facture_fournisseur(
+        company, user, bon_commande, lignes, note=marqueur)
 
 
 # ── ZPUR4 — Duplication d'un bon de commande fournisseur ────────────────────

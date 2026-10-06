@@ -104,3 +104,62 @@ class SurCommandeTests(_Base):
             list(facture.lignes.values_list('designation', flat=True)),
             ['Câble'])
         self.assertEqual(self._total_ht_bcf(), Decimal('1500.00'))
+
+
+class BuilderUniqueTests(_Base):
+    """ASTK109 — un seul constructeur : la facture « sur commande » porte sa
+    date, impute les acomptes du BCF et émet l'événement une fois."""
+    slug = 'astk109'
+
+    def setUp(self):
+        super().setUp()
+        from core.events import facture_fournisseur_creee
+        self.recus = []
+
+        def _capte(sender, instance, company, user=None, **kwargs):
+            self.recus.append(instance.pk)
+        facture_fournisseur_creee.connect(
+            _capte, dispatch_uid='astk109-capte', weak=False)
+        self.addCleanup(
+            facture_fournisseur_creee.disconnect,
+            dispatch_uid='astk109-capte')
+
+    def test_sur_commande_porte_date_facture(self):
+        facture = facturer_bcf_sur_commande(
+            self.company, self.user, self.bcf)
+        facture = FactureFournisseur.objects.get(pk=facture.pk)
+        self.assertIsNotNone(facture.date_facture)
+        from django.utils import timezone
+        self.assertEqual(facture.date_facture, timezone.now().date())
+        self.assertEqual(self.recus, [facture.pk])
+
+    def test_sur_commande_impute_acompte(self):
+        from apps.stock.models import AcompteFournisseur
+        acompte = AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=self.bcf,
+            montant=Decimal('300'))
+        facture = facturer_bcf_sur_commande(
+            self.company, self.user, self.bcf)
+        facture = FactureFournisseur.objects.get(pk=facture.pk)
+        self.assertEqual(facture.total_acomptes_imputes, Decimal('300.00'))
+        self.assertEqual(
+            facture.solde_du, facture.montant_ttc - Decimal('300'))
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.montant_consomme, Decimal('300.00'))
+        self.assertEqual(acompte.imputations.get().facture_id, facture.pk)
+
+    def test_meme_forme_que_sur_reception(self):
+        l_reception = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=self.bcf, produit=self.p_reception, quantite=10,
+            prix_achat_unitaire=Decimal('100'))
+        f_cmd = facturer_bcf_sur_commande(self.company, self.user, self.bcf)
+        rec = self._reception([(l_reception, 10)])
+        f_rec = facturer_reception(self.company, self.user, rec)
+        for f in (f_cmd, f_rec):
+            f = FactureFournisseur.objects.get(pk=f.pk)
+            self.assertEqual(f.montant_ht, Decimal('1000.00'))
+            self.assertEqual(f.montant_tva, Decimal('200.00'))
+            self.assertEqual(f.montant_ttc, Decimal('1200.00'))
+            self.assertIsNotNone(f.date_facture)
+            self.assertEqual(f.lignes.count(), 1)
+        self.assertEqual(self.recus, [f_cmd.pk, f_rec.pk])
