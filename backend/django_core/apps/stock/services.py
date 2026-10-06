@@ -1409,24 +1409,35 @@ def sortir_lot_entrepot(
     ``AchatsParametres.bloquer_stock_perime`` (défaut ON) — sauf ``forcer=
     True`` avec un ``motif`` tracé (journalisé dans la note du mouvement).
     Lève ValueError si la quantité dépasse le restant ou si le lot est
-    périmé et non contourné."""
-    from .models import AchatsParametres
+    périmé et non contourné.
+
+    ASTK204 — le lot est RELU sous verrou (``select_for_update``) AVANT le
+    contrôle du restant : deux sorties concurrentes ne passent plus toutes
+    les deux sur une valeur périmée. La fonction reste « lot seul » (aucun
+    mouvement de stock) : c'est l'appelant qui pose son mouvement (action de
+    vue ``sortir``, découpe)."""
+    from django.db import transaction
+    from .models import AchatsParametres, LotEntrepot
     if quantite <= 0:
         raise ValueError('La quantité doit être positive.')
-    if quantite > lot.quantite_restante:
-        raise ValueError(
-            f'Quantité insuffisante dans le lot {lot.numero_lot} '
-            f'({lot.quantite_restante} restant).')
-    parametres = AchatsParametres.for_company(company)
-    if lot.est_perime and parametres.bloquer_stock_perime and not forcer:
-        raise ValueError(
-            f'Le lot {lot.numero_lot} est périmé '
-            f'({lot.date_peremption}) — sortie bloquée.')
-    if lot.est_perime and forcer and not motif:
-        raise ValueError(
-            'Un motif est requis pour contourner le blocage du lot périmé.')
-    lot.quantite_restante -= quantite
-    lot.save(update_fields=['quantite_restante'])
+    with transaction.atomic():
+        frais = LotEntrepot.objects.select_for_update().get(pk=lot.pk)
+        if quantite > frais.quantite_restante:
+            raise ValueError(
+                f'Quantité insuffisante dans le lot {frais.numero_lot} '
+                f'({frais.quantite_restante} restant).')
+        parametres = AchatsParametres.for_company(company)
+        if frais.est_perime and parametres.bloquer_stock_perime and not forcer:
+            raise ValueError(
+                f'Le lot {frais.numero_lot} est périmé '
+                f'({frais.date_peremption}) — sortie bloquée.')
+        if frais.est_perime and forcer and not motif:
+            raise ValueError(
+                'Un motif est requis pour contourner le blocage du lot '
+                'périmé.')
+        frais.quantite_restante -= quantite
+        frais.save(update_fields=['quantite_restante'])
+        lot.quantite_restante = frais.quantite_restante
     if lot.est_perime and forcer:
         logger.info(
             'XSTK6: sortie forcée du lot périmé %s (%s) par %s — motif: %s',

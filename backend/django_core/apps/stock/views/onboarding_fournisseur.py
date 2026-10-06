@@ -14,11 +14,11 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
@@ -26,7 +26,8 @@ from ..models import DocumentFournisseur, DossierOnboardingFournisseur
 from ..permissions import PeutValiderDossierFournisseur
 
 
-class DocumentFournisseurSerializer(serializers.ModelSerializer):
+class DocumentFournisseurSerializer(CompanyScopedRelationsMixin,
+                                    serializers.ModelSerializer):
     type_document_display = serializers.CharField(
         source='get_type_document_display', read_only=True, default=None)
     est_valide = serializers.SerializerMethodField()
@@ -47,7 +48,8 @@ class DocumentFournisseurSerializer(serializers.ModelSerializer):
         return obj.est_valide()
 
 
-class DossierOnboardingFournisseurSerializer(serializers.ModelSerializer):
+class DossierOnboardingFournisseurSerializer(CompanyScopedRelationsMixin,
+                                             serializers.ModelSerializer):
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -106,21 +108,9 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
-    def _check_tenant(self, serializer):
-        fournisseur = serializer.validated_data.get('fournisseur')
-        company = self.request.user.company
-        if fournisseur is not None and getattr(
-                fournisseur, 'company_id', None) != getattr(company, 'id', None):
-            raise ValidationError(
-                {'fournisseur': 'Fournisseur inconnu pour cette société.'})
-
-    def perform_create(self, serializer):
-        self._check_tenant(serializer)
-        super().perform_create(serializer)
-
-    def perform_update(self, serializer):
-        self._check_tenant(serializer)
-        super().perform_update(serializer)
+    # ASTK7 — l'ancien ``_check_tenant`` manuscrit est remplacé par le borne
+    # du champ ``fournisseur`` (CompanyScopedRelationsMixin) : un id d'une
+    # autre société répond « objet inexistant » avant toute écriture.
 
     @action(detail=True, methods=['post'], url_path='valider-dossier')
     def valider_dossier(self, request, pk=None):
@@ -187,22 +177,11 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(type_document=type_document)
         return qs
 
-    def _check_tenant(self, serializer):
-        dossier = serializer.validated_data.get('dossier')
-        company = self.request.user.company
-        if dossier is not None and getattr(
-                dossier, 'company_id', None) != getattr(company, 'id', None):
-            raise ValidationError(
-                {'dossier': 'Dossier inconnu pour cette société.'})
-
     def perform_create(self, serializer):
-        self._check_tenant(serializer)
+        # ASTK7 — ``dossier`` est borné société par le champ scopé (l'ancien
+        # ``_check_tenant`` manuscrit couvrait le même id).
         serializer.save(company=self.request.user.company,
                         televerse_par=self.request.user)
-
-    def perform_update(self, serializer):
-        self._check_tenant(serializer)
-        super().perform_update(serializer)
 
     @action(detail=True, methods=['post'])
     def televerser(self, request, pk=None):

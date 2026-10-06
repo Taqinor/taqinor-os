@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur
@@ -34,7 +35,8 @@ def _fenetre_mois_ou_400(valeur, valider):
         raise serializers.ValidationError({'fenetre_mois': [str(exc)]})
 
 
-class IncidentQualiteFournisseurSerializer(serializers.ModelSerializer):
+class IncidentQualiteFournisseurSerializer(CompanyScopedRelationsMixin,
+                                           serializers.ModelSerializer):
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     est_bloquant = serializers.BooleanField(read_only=True)
