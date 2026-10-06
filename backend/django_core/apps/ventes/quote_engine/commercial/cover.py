@@ -12,10 +12,17 @@ from ..figures import ancre
 from .. import premium_base
 # CIQ307 — bandeau, méthode, tuiles d'argent : lus sur ``synthese_ci``.
 from ..ci import couverture as ci_couverture
+# CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
+from ..ci import blocs as ci_blocs
 
 
 def build(ctx):
     d = ctx["d"]
+
+    # CIQ333 — libellés STRUCTURELS dans la langue du document.
+    def L(cle, fr, **valeurs):
+        return ci_blocs.libelle(d, cle, fr, **valeurs)
+
     C = ctx["C"]
     fmt = ctx["fmt"]
     # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — l'investissement TTC
@@ -27,21 +34,10 @@ def build(ctx):
     ident = ctx.get("ident") or {}
     brand = ident.get("brand_name") or "TAQINOR"
 
-    navy = C["navy"]
-    navy_900 = C.get("navy_900", "#0F1E35")
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    paper = C.get("paper", "#FFFFFF")
-    wash = C.get("wash", "#F7F9FC")
+    navy, navy_900, gold, green, green_bg, ink, muted, muted_2, line, paper, wash = premium_base.couleurs(
+        C, "navy navy_900 gold green green_bg ink muted muted_2 line paper wash")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
     ref = d["ref"]
     date = d["date"]
@@ -57,20 +53,21 @@ def build(ctx):
     # ``date_validite`` ou le réglage société ``quote_validity_days``).
     # Indéterminable ⇒ pastille OMISE : le portail client affichait la
     # vraie date, le PDF un « 30 jours » codé en dur.
+
     _vu = (d.get("valid_until") or "").strip()
     validity_pill = (
-        f'<div class="c1c-pill">Valable jusqu&#8217;au {_vu}</div>'
-        if _vu else "")
+        '<div class="c1c-pill">'
+        + L("ci_valable_jusqu", "Valable jusqu&#8217;au {date}", date=_vu)
+        + '</div>' if _vu else "")
 
     cat = d.get("com_category")
-    meta = categories.meta(cat)
+    # CIQ330 — libellé et accroche lus sur ``synthese_ci['categorie']``.
+    meta = categories.meta(cat, (d.get("com_synthese") or {}).get("categorie"))
     icon = meta["icon"]
     cat_label = meta["label"]
     accroche = meta["accroche"]
 
     kwc = premium_base.kwc_str(d.get("com_kwc"))
-    autoconso = d.get("com_autoconso")
-    couverture = d.get("com_couverture")
     invest = d.get("_invest_ttc") or 0
 
     # QJR651 — la cellule KPI est commune (premium_base.kpi) ; seul
@@ -78,28 +75,41 @@ def build(ctx):
     def kpi(val, unit, label, fig=None):
         return premium_base.kpi(val, unit, label, fig, prefixe="c1c")
 
-    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête", "puissance_kwc")]
-    if autoconso is not None:
-        cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                            "Autoconsommation", "autoconsommation_pct"))
-    if couverture is not None:
-        cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                            "Couverture conso", "couverture_pct"))
+    cellules = [kpi(kwc, "&nbsp;kWc",
+                    L("ci_puissance_crete", "Puissance crête"),
+                    "puissance_kwc")]
+    # CIQ331 — la production annuelle du moteur C&I (``synthese_ci``), ancrée
+    # pour la parité avec /proposition ; non servie ⇒ tuile omise.
+    production = d.get("com_production")
+    if production is not None:
+        cellules.append(kpi(fmt(round(production)),
+                            L("ci_unite_kwh_an", "&nbsp;kWh/an"),
+                            L("ci_production_annuelle", "Production annuelle"),
+                            "production_annuelle_kwh"))
+    cellules.extend(ci_couverture.tuiles_taux(d, "com", kpi))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
     # QJR119 — l'omission couvre aussi « valeur non chiffrable » : le garde ne
     # testait que le cas MT et laissait imprimer « 0 MAD — Économies / an ».
     # CIQ307 — tuiles d'argent lues sur ``synthese_ci.argent`` : « estimées »,
     # base HT/TTC dite, payback du flux ; absentes ⇒ omises.
-    cellules.extend(ci_couverture.tuiles_argent(d, "com", kpi, fmt))
     kpis = '<td class="c1c-kgap"></td>'.join(cellules)
+    # CIQ331 — l'argent sur sa propre rangée (économie de l'année 1, retour du
+    # flux) : lu sur ``synthese_ci.argent``, absent ⇒ rangée omise.
+    argent = ci_couverture.tuiles_argent(d, "com", kpi, fmt)
+    kpis_argent = ('<table class="c1c-kpirow" style="margin-top:9px;"><tr>'
+                   + '<td class="c1c-kgap"></td>'.join(argent)
+                   + '</tr></table>') if argent else ""
     bandeau = ci_couverture.bandeau_reserve(d, "com", "c1c")
     methode_line = ci_couverture.ligne_methode(d, "com", "c1c")
     note_pointe = ci_couverture.note_pointe(d, "com")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de
     # son absence. Vide hors dossier MT.
-    if d.get("com_masquer_economies"):
+    # CIQ331 — argent non servi ⇒ son motif (« ce qu'il nous manque »),
+    # jamais une tuile à « 0 » ni « votre répartition horaire ».
+    if d.get("com_masquer_economies") or (
+            d.get("com_motif_argent") and d.get("com_economies") is None):
         mt_line = ci_couverture.ligne_non_chiffre(d, "com", "c1c")
     elif d.get("com_mt_mention"):
         mt_line = f'<div class="c1c-mtsrc">{d["com_mt_mention"]}</div>'
@@ -158,13 +168,23 @@ def build(ctx):
 </style>
 """
 
+    # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
+    # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
+    note_autoconso = L(
+        "ci_note_autoconso_commercial",
+        "L'installation vise l'<b>autoconsommation</b> : la valeur porte "
+        "d'abord sur\n      la consommation de <b>journée</b> de votre "
+        "établissement.")
+    inv_html = ci_couverture.bloc_investissement(
+        d, d.get("com_synthese") or {}, "c1c", fmt_mad, ancre, invest=invest)
+
     html = f"""{css}
 <div class="c1c-root">
   <div class="c1c-hero">
     <div class="c1c-htop">
       <div class="c1c-hlogo"><img src="data:image/png;base64,{logo_dark}" alt="{brand}"></div>
       <div class="c1c-hmeta">
-        <div class="c1c-rl">Réf. devis</div>
+        <div class="c1c-rl">{L("ci_ref_devis", "Réf. devis")}</div>
         <div class="c1c-rv">{ref}</div>
         <div class="c1c-hd">{date}</div>
         {marques_correction}
@@ -172,7 +192,7 @@ def build(ctx):
       </div>
     </div>
     <div class="c1c-hbody">
-      <div class="c1c-kicker">Proposition — Autoconsommation solaire commerciale</div>
+      <div class="c1c-kicker">{L("ci_kicker_commercial", "Proposition — Autoconsommation solaire commerciale")}</div>
       <div class="c1c-catrow">
         <div class="c1c-caticon">{icon}</div>
         <div class="c1c-catlab"><div class="c1c-serif c1c-title">{cat_label}</div></div>
@@ -184,22 +204,17 @@ def build(ctx):
   <div class="c1c-client">
     <b>{client_full}</b>
     {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    <span class="c1c-tag">{cat_label}</span>
+    <span class="c1c-tag">{cat_label}</span>{ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"), doc=d)}
   </div>
 
   <div class="c1c-wrap">
     {bandeau}
-    <div class="c1c-kpirow">{kpis}</div>
+    <table class="c1c-kpirow"><tr>{kpis}</tr></table>{kpis_argent}
     {methode_line}
     {mt_line}
     <div class="c1c-note">
-      L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur
-      la consommation de <b>journée</b> de votre établissement. {note_pointe}
-    </div>
-    <div class="c1c-inv">
-      <div class="c1c-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="c1c-inv-v">{fmt_mad(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest))}
-    </div>
+      {note_autoconso} {note_pointe}
+    </div>{inv_html}
   </div>
 </div>
 """

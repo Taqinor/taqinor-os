@@ -6436,3 +6436,28 @@ def champs_devis_auto_manquants(lead):
     if lead is None:
         return []
     return champs_manquants_detail(lead)
+
+
+def lead_en_attente_ou_veille(lead_id, today, *, company):
+    """CIQ523 — le lead ``lead_id`` (de ``company`` seulement) attend-il une
+    décision déclarée ?
+
+    Vrai si le lead porte une étiquette d'attente POSÉE par la réponse
+    « En attente d'un accord » (une par raison, CIQ508/AGR520), OU une étape
+    de relance encore À FAIRE datée APRÈS ``today`` (manuelle, ou veille
+    datée par ``rappel_le``). Lu par le beat nocturne QJ5 de ``ventes`` pour
+    ne jamais parquer au Froid un lead qui attend. Lecture seule ; un lead
+    d'une autre société n'est jamais lu (``False``)."""
+    from .models import Lead, RelanceEtape
+    from .services import ETIQUETTES_RAISON_ATTENTE, _lead_porte_tag
+
+    if not lead_id or company is None:
+        return False
+    lead = Lead.objects.filter(pk=lead_id, company=company).first()
+    if lead is None:
+        return False
+    if any(_lead_porte_tag(lead, tag) for tag in ETIQUETTES_RAISON_ATTENTE):
+        return True
+    return RelanceEtape.objects.filter(
+        lead=lead, statut=RelanceEtape.Statut.A_FAIRE, due_date__gt=today,
+    ).exists()

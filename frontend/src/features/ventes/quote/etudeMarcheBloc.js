@@ -3,7 +3,7 @@
 // Déplacement PUR du corps de `blocEtudeMarche` (DevisGenerator.jsx) : une
 // seule fonction, sans état React, qui ne laisse sortir QUE des clés ECRAN
 // déclarées par `apps/ventes/domain/etude_schema.py` (le schéma refuse en 400
-// toute autre clé de tête). Les objets BRUTS de `computeEtudeIndustrielle`
+// toute autre clé de tête). Les objets BRUTS de l'ancienne étude C&I locale
 // (solar.js) et de `buildEtudePompage` (autoQuote.js) portent des clés hors
 // schéma (kwc, prix_kwc, economies_annuelles…) : ils ne doivent jamais partir
 // tels quels — ils passent par ici. Le générateur ET le devis automatique
@@ -11,12 +11,11 @@
 //
 // Entrées :
 //   mode               'industriel' | 'commercial' | 'agricole' | autre (résidentiel)
-//   etude              l'étude I/C calculée par l'écran (industriel / commercial)
 //   choix              les CHOIX de l'écran (scenario, recommended_option, nombre_proprietes)
 //   entrees            fonction (consoDejaConnue) => entrées réelles, ou objet déjà calculé
-//   partDiurne         part diurne du curseur industriel (%)
-//   tensionRaccordement, repartitionMt   raccordement et répartition horaire TELLE QUE SAISIE
 //   categorie, reponses                  catégorie commerciale + réponses du questionnaire
+//   ciEntrees          CIQ125 — les ENTRÉES C&I v2 déjà mises à la forme du contrat
+//                        (`entreesCiV2` de profilCi.js).
 //   pompageEntrees     AGR130 — l'état du corps de l'aperçu pompage (forme du contrat
 //                        etude_pompage_preview.json, nombres éventuellement en texte) ;
 //                        seules les ENTRÉES v2 partent (`entreesPompageV2`).
@@ -37,52 +36,28 @@ const resoudreEntrees = (entrees, consoDejaConnue) => (
   typeof entrees === 'function' ? entrees(consoDejaConnue) : (entrees || {})
 )
 
-// QXMT — la répartition horaire TELLE QUE SAISIE, ou `null` (règle Z2 : un
-// site repassé en BT n'a plus de répartition MT, on la RETIRE au lieu de
-// laisser traîner celle d'hier). Rien de rempli ⇒ `null` aussi : l'étude MT
-// omet alors économies et payback plutôt que d'inventer un barème.
-export const repartitionMtSaisie = (tensionRaccordement, repartitionMt) => {
-  if (tensionRaccordement !== 'mt') return null
-  const parts = {}
-  for (const creneau of ['pointe', 'pleines', 'creuses']) {
-    const n = parseFloat((repartitionMt || {})[creneau])
-    if (Number.isFinite(n)) parts[creneau] = n
-  }
-  return Object.keys(parts).length ? parts : null
-}
-
 export function projeterEtudeMarche(mode, {
-  etude, choix = {}, entrees, partDiurne,
-  tensionRaccordement, repartitionMt,
+  choix = {}, entrees,
   categorie, reponses = {},
-  pompageEntrees, exploitation = {},
+  pompageEntrees, exploitation = {}, ciEntrees, tarifDeclare, saisiesEcoCi,
 } = {}) {
   if (mode === 'industriel' || mode === 'commercial') {
-    const e = etude || {}
+    // CIQ126 — le navigateur n'envoie QUE les ENTRÉES C&I v2 (contrat
+    // `etude_ci_preview.json`, `cles_etude_params_ci_v2.entrees`) : les
+    // dérivées (`etude_ci`, `production_figee`) sont écrites par le serveur
+    // (propriétaire `moteur_ci`). Plus aucune clé ÉCRAN v1 (`a_retirer_v1` :
+    // taux_autoconso, taux_couverture, payback, part_diurne_pct,
+    // etude_kwc_base, injection_kwh_an, injection_dh_an), ni le raccordement
+    // et la répartition MT v1 (tension_raccordement, repartition_mt).
     const bloc = {
       ...choix,
-      ...resoudreEntrees(entrees, nombre(e.conso_annuelle)),
-      taux_autoconso: nombre(e.taux_autoconso),
-      taux_couverture: nombre(e.taux_couverture),
-      payback: nombre(e.payback),
-      injection_kwh_an: nombre(e.injection_kwh_an),
-      injection_dh_an: nombre(e.injection_dh_an),
-      // QJR579 (contrat QJR510) — le kWc pour lequel CES dérivées ont été
-      // calculées : base de la garde de fraîcheur (QJR625). Nul sans étude.
-      etude_kwc_base: nombre(e.kwc),
-      // QJR528 — la part diurne du curseur INDUSTRIEL (entrée de l'étude) :
-      // relue par `?edit=`, sinon la réouverture remettait le défaut et
-      // réécrivait taux / payback. Commercial : dérivée de la catégorie
-      // (`commercialDayShare`), rien à écrire.
-      part_diurne_pct: mode === 'industriel' ? nombre(partDiurne) : undefined,
-      // QXMT — raccordement du site + répartition horaire : le mappeur
-      // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
-      // devis MT rouvert repartait silencieusement au barème BT. On stocke
-      // ce que le vendeur a TAPÉ (l'entrée), pas la répartition normalisée
-      // par l'étude : c'est la forme que le formulaire réinjecte.
-      tension_raccordement: tensionRaccordement || null,
-      repartition_mt: repartitionMtSaisie(tensionRaccordement, repartitionMt),
+      ...(ciEntrees || {}),
     }
+    // CIQ222 — le tarif DÉCLARÉ de la facture (contrat `tarifs_ci.json`) ;
+    // `null` = rien de saisi, la clé est retirée (grille ONEE en repli).
+    if (tarifDeclare !== undefined) bloc.tarif_declare = tarifDeclare
+    // CIQ223 — les saisies de l'économie C&I (contrat `economie_ci.json`).
+    if (saisiesEcoCi !== undefined) bloc.saisies_economie_ci = saisiesEcoCi
     if (mode === 'commercial') {
       // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
       // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
@@ -132,6 +107,7 @@ export function projeterEtudeMarche(mode, {
 export const ECO_POMPAGE_VIDE = Object.freeze({
   energie: '', quantite: '', unite: '', periode: '', joursSemaine: '',
   prix: '', dateDeclaration: '', mois: null, moisProvenance: null,
+  energieProvenance: null,
   confirme: false, factureMontant: '', facturePeriodicite: '',
   facturePartFixe: '', entretien: '', coherenceConfirmee: false,
   interne: Object.freeze({ taux_actualisation: null, pret: null }),
@@ -195,7 +171,9 @@ export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui 
   const out = {}
   if (e.energie) {
     out.energie_actuelle = {
-      valeur: e.energie, provenance: { origine: 'saisie', detail: null, date },
+      valeur: e.energie,
+      // AGR420 — une énergie reprise du lead garde sa provenance `lead`.
+      provenance: e.energieProvenance || { origine: 'saisie', detail: null, date },
     }
   }
   out.consommation = carburant && !vide(e.quantite) ? {
@@ -229,6 +207,10 @@ export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui 
 
 const texte = (v) => (v === null || v === undefined ? '' : String(v))
 
+// AGR420 — seule une provenance AUTRE que « saisi » (lead…) est conservée.
+const provenanceNonSaisie = (p) => (
+  p && typeof p === 'object' && p.origine && p.origine !== 'saisie' ? p : null)
+
 /** Inverse : `saisies_economie_pompage` stocké → état d'écran (`?edit=`). */
 export function ecoDepuisSaisies(saisies) {
   const s = saisies && typeof saisies === 'object' ? saisies : null
@@ -238,6 +220,7 @@ export function ecoDepuisSaisies(saisies) {
   return {
     ...ECO_POMPAGE_VIDE,
     energie: s.energie_actuelle?.valeur || '',
+    energieProvenance: provenanceNonSaisie(s.energie_actuelle?.provenance),
     quantite: texte(c.quantite),
     unite: c.unite || '',
     periode: c.periode || '',
@@ -359,4 +342,105 @@ export function lignesDepuisKit(kit, produits) {
     })
   }
   return rows
+}
+
+// ── CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`, `tarif_declare`) ──
+// État d'écran (texte tel que tapé) → `etude_params.tarif_declare`. Aucun
+// défaut, aucun nombre corrigé ; rien de saisi ⇒ `null` (la clé est retirée :
+// le moteur retombe sur la grille officielle ONEE, annoncée sous la carte).
+export const TARIF_SAISIE_VIDE = Object.freeze({
+  contrat: '', baseTarifs: '', optionBiHoraire: false,
+  pointe: '', pleines: '', creuses: '', primeFixe: '', puissance: '',
+  dateFacture: '', provenance: '', saisiLe: '',
+})
+
+/** `true` si un prix ou un choix de contrat a été saisi. */
+export const tarifSaisi = (t) => Boolean(t) && Object.entries(TARIF_SAISIE_VIDE)
+  .some(([k, vide0]) => k !== 'saisiLe' && t[k] !== undefined && t[k] !== vide0)
+
+export function tarifDeclareDepuisSaisie(saisie, { aujourdhui = '' } = {}) {
+  const t = { ...TARIF_SAISIE_VIDE, ...(saisie || {}) }
+  if (!tarifSaisi(t)) return null
+  const mt = t.contrat === 'mt_general' ? {
+    tarif_pointe: nombreSaisi(t.pointe),
+    tarif_pleines: nombreSaisi(t.pleines),
+    tarif_creuses: nombreSaisi(t.creuses),
+    prime_fixe_kva_an: nombreSaisi(t.primeFixe),
+    puissance_souscrite_kva: nombreSaisi(t.puissance),
+  } : null
+  return {
+    contrat: t.contrat || null,
+    option_bi_horaire: t.contrat === 'bt_force_motrice' ? Boolean(t.optionBiHoraire) : false,
+    base_tarifs: t.baseTarifs || null,
+    mt,
+    bt: null,
+    date_facture: t.dateFacture || null,
+    provenance: t.provenance || null,
+    saisi_le: t.saisiLe || aujourdhui || null,
+  }
+}
+
+/**
+ * Le 400 du serveur (`detail` qui nomme « etude_params.tarif_declare.<champ> »)
+ * → `{ '<champ>': message }`, pour l'afficher SOUS le champ nommé.
+ */
+export function erreursTarifDeclare(detail) {
+  const messages = Array.isArray(detail) ? detail : (typeof detail === 'string' ? [detail] : [])
+  const out = {}
+  for (const brut of messages) {
+    for (const m of String(brut).matchAll(/etude_params\.tarif_declare\.([a-z_.0-9[\]]+)/g)) {
+      if (!out[m[1]]) out[m[1]] = String(brut)
+    }
+  }
+  return out
+}
+
+// ── CIQ223/CIQ224 — les saisies de l'économie C&I (contrat `economie_ci.json`,
+// `saisies_economie_ci`) : état d'écran (forme du contrat, nombres en texte tels
+// que tapés) → `etude_params.saisies_economie_ci`. Aucun défaut : ni taux, ni
+// parcours d'aide, ni TVA supposés ; rien de saisi ⇒ `null` (clé retirée).
+export const ECO_CI_VIDE = Object.freeze({
+  tva_recuperable: null,
+  taux_actualisation_client: null,
+  revente_demandee: false,
+  parcours_aide: null,
+  offre_financement: null,
+  offre_cse_concurrente: null,
+  fiscalite_client: null,
+})
+
+const NOMBRES_ECO_CI = new Set([
+  'valeur_pct', 'montant_finance_mad', 'apport_mad', 'duree_mois', 'echeance_mad',
+  'frais_mad', 'taux_annuel_pct', 'valeur_residuelle_mad', 'tarif_kwh_ht', 'duree_ans',
+  'indexation_pct_an', 'taux_is_pct', 'amortissement_coefficient',
+])
+
+// Un sous-objet saisi → forme du contrat ; entièrement vide ⇒ `null`.
+function objetEcoCi(o) {
+  if (!o || typeof o !== 'object') return null
+  const out = {}
+  let rempli = false
+  for (const [k, v] of Object.entries(o)) {
+    if (NOMBRES_ECO_CI.has(k)) out[k] = nombreSaisi(v)
+    else if (typeof v === 'boolean') out[k] = v
+    else out[k] = texteNet(v) || null
+    if (out[k] !== null && out[k] !== false && k !== 'saisi_le') rempli = true
+  }
+  return rempli ? out : null
+}
+
+export function saisiesEconomieCi(eco, { aujourdhui = '' } = {}) {
+  const e = { ...ECO_CI_VIDE, ...(eco || {}) }
+  const dater = (o) => (o ? { ...o, saisi_le: o.saisi_le || aujourdhui || null } : null)
+  const out = {
+    tva_recuperable: dater(objetEcoCi(e.tva_recuperable)),
+    taux_actualisation_client: dater(objetEcoCi(e.taux_actualisation_client)),
+    revente_demandee: Boolean(e.revente_demandee),
+    parcours_aide: texteNet(e.parcours_aide) || null,
+    offre_financement: objetEcoCi(e.offre_financement),
+    offre_cse_concurrente: objetEcoCi(e.offre_cse_concurrente),
+    fiscalite_client: objetEcoCi(e.fiscalite_client),
+  }
+  const declare = Object.entries(out).some(([, v]) => v !== null && v !== false)
+  return declare ? out : null
 }

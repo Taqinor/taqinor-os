@@ -242,3 +242,79 @@ def mentions_ci(data, *, sous_reserve=False):
     if sous_reserve:
         sortie.append(_entree("visite", TEXTES_VISITE, SOURCE_VISITE))
     return sortie
+
+
+# ── CIQ344 — décarbonation : CBAM seulement quand il s'applique ─────────────
+# Le règlement (UE) 2023/956 (art. 7.1, annexe II) ne compte les émissions
+# INDIRECTES — celles de l'électricité consommée — que pour le ciment et les
+# engrais ; pour le fer, l'acier, l'aluminium et l'hydrogène, seules les
+# émissions DIRECTES comptent. La phrase CBAM n'est donc imprimée que si le
+# client a DÉCLARÉ exporter vers l'UE (``export_ue_declare``, CIQ1) ET que
+# son activité déclarée (``secteur_industriel``) est le ciment ou les
+# engrais. Jamais « traçabilité », jamais un tonnage de CO₂ (facteur réseau
+# non sourcé, AGRM27), aucun mécanisme de certificat promis (W5-24).
+
+#: Référence réglementaire imprimée avec la phrase CBAM.
+SOURCE_CBAM = "Règlement (UE) 2023/956 du 10 mai 2023, annexe II"
+DATE_CBAM = "2023-05-10"
+#: Activités (déclarées en texte libre, sans accents) visées par l'annexe II
+#: pour les émissions de l'électricité : ciment et engrais.
+SECTEURS_CBAM_ELECTRICITE = ("ciment", "clinker", "engrais", "ammoniac",
+                             "uree", "acide nitrique", "fertilis")
+
+TEXTES_CBAM = {
+    "fr": ("Vous exportez du ciment ou des engrais vers l'Union européenne : "
+           "pour ces produits, le mécanisme d'ajustement carbone aux "
+           "frontières (CBAM) compte aussi les émissions de l'électricité "
+           "consommée — " + SOURCE_CBAM + "."),
+    "en": ("You export cement or fertilisers to the European Union: for "
+           "these goods, the carbon border adjustment mechanism (CBAM) also "
+           "counts the emissions of the electricity consumed — Regulation "
+           "(EU) 2023/956 of 10 May 2023, Annex II."),
+    "ar": ("تصدرون الإسمنت أو الأسمدة إلى الاتحاد الأوروبي: بالنسبة لهذه "
+           "المنتجات، تحتسب آلية تعديل الكربون على الحدود (CBAM) أيضا "
+           "انبعاثات الكهرباء المستهلكة — اللائحة (الاتحاد الأوروبي) "
+           "2023/956 المؤرخة في 10 ماي 2023، الملحق الثاني."),
+}
+TEXTES_DECARBONATION = {
+    "fr": ("Vos clients vous demandent de plus en plus le bilan carbone de "
+           "votre électricité : une part produite par le soleil sur votre "
+           "site est un élément de réponse."),
+    "en": ("Your customers increasingly ask for the carbon footprint of your "
+           "electricity: a share produced by the sun on your site is part of "
+           "the answer."),
+    "ar": ("يطلب منكم زبناؤكم بشكل متزايد البصمة الكربونية لكهربائكم: جزء "
+           "منتج بالطاقة الشمسية في موقعكم عنصر من عناصر الجواب."),
+}
+
+
+def _sans_accents(texte):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", texte)
+                   if unicodedata.category(c) != "Mn").lower()
+
+
+def _declare_lead(data, colonne):
+    """La valeur DÉCLARÉE d'une colonne du lead (CIQ405 :
+    ``_entrees_ci_lead`` › ``entrees`` / ``informations``), ou None."""
+    lead = _dict(data.get("_entrees_ci_lead"))
+    for groupe in ("entrees", "informations"):
+        for entree in lead.get(groupe) or []:
+            if isinstance(entree, dict) and entree.get("colonne") == colonne:
+                return entree.get("valeur")
+    return None
+
+
+def decarbonation_ci(data):
+    """``{cbam, textes{fr,en,ar}}`` (contrat ``proposal_data.json`` ›
+    ``synthese_ci.decarbonation``) : la phrase CBAM sourcée SEULEMENT pour un
+    exportateur UE déclaré de ciment ou d'engrais, sinon la phrase générique
+    sur le bilan carbone demandé par les clients."""
+    data = data if isinstance(data, dict) else {}
+    export = str(_declare_lead(data, "export_ue_declare") or "").strip()
+    secteur = _declare_lead(data, "secteur_industriel")
+    cbam = (export.lower() == "oui" and isinstance(secteur, str)
+            and any(mot in _sans_accents(secteur)
+                    for mot in SECTEURS_CBAM_ELECTRICITE))
+    return {"cbam": cbam,
+            "textes": dict(TEXTES_CBAM if cbam else TEXTES_DECARBONATION)}

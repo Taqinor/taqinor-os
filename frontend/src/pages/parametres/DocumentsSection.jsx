@@ -41,6 +41,63 @@ const DEFAULT_BULLETS = [
   'Tarifs de référence : barème ONEE/SRM',
 ]
 
+// CIQ313 — CGV commerciales et industrielles (`cgv_par_mode`), à côté des CGV
+// standard. Aucun texte suggéré : rédaction par un juriste, saisie manuelle.
+const MODES_CGV_PRO = [
+  ['commercial', 'CGV commerciales'],
+  ['industriel', 'CGV industrielles'],
+]
+const variantePro = (d, mode) => {
+  const v = d?.cgv_par_mode?.[mode]
+  return {
+    titre: typeof v?.titre === 'string' ? v.titre : '',
+    bullets: Array.isArray(v?.bullets) ? v.bullets.map(String) : [],
+  }
+}
+
+// Éditeur de puces d'une variante C&I (même présentation que les CGV standard).
+function EditeurCgvPro({ mode, libelle, variante, onChange }) {
+  const { titre, bullets } = variante
+  const vide = !titre.trim() && !bullets.some(b => b.trim())
+  const setBullet = (i, val) => onChange({
+    ...variante, bullets: bullets.map((x, j) => (j === i ? val : x)) })
+  return (
+    <div data-testid={`cgv-pro-${mode}`} className="space-y-2">
+      <span className="block text-[12.5px] font-medium text-foreground">{libelle}</span>
+      <Input value={titre} aria-label={`Titre — ${libelle}`}
+        placeholder="Titre (facultatif)"
+        onChange={e => onChange({ ...variante, titre: e.target.value })} />
+      <p className="text-[11px] text-muted-foreground">
+        Marqueurs admis : <code>{'{echeancier}'}</code>, <code>{'{retenue}'}</code>{' '}
+        et <code>{'{tva_note}'}</code>, remplis automatiquement sur le PDF.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {bullets.map((b, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <Input className="flex-1" value={b} aria-label={`Puce ${i + 1} — ${libelle}`}
+              onChange={e => setBullet(i, e.target.value)} />
+            <IconButton size="sm" variant="ghost"
+              label={`Supprimer la puce ${i + 1} — ${libelle}`}
+              onClick={() => onChange({ ...variante, bullets: bullets.filter((_, j) => j !== i) })}>
+              <Trash2 className="size-3.5" aria-hidden="true" />
+            </IconButton>
+          </div>
+        ))}
+      </div>
+      <Button type="button" size="sm" variant="outline"
+        aria-label={`Ajouter une puce — ${libelle}`}
+        onClick={() => onChange({ ...variante, bullets: [...bullets, ''] })}>
+        <Plus className="size-4" aria-hidden="true" /> Ajouter une puce
+      </Button>
+      {vide && (
+        <p className="text-[11px] text-muted-foreground" data-testid={`cgv-pro-${mode}-vide`}>
+          Variante vide : reprend les CGV standard.
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Un champ texte mono-ligne avec libellé + indice du défaut.
 function TextField({ label, value, hint, onChange, multiline }) {
   return (
@@ -63,6 +120,8 @@ function TextField({ label, value, hint, onChange, multiline }) {
 export default function DocumentsSection() {
   const [form, setForm] = useState(null) // null = chargement
   const [bullets, setBullets] = useState(null)
+  // CIQ313 — variantes C&I ; `null` = non servies (jamais renvoyées).
+  const [cgvPro, setCgvPro] = useState(null)
   const [version, setVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -84,6 +143,9 @@ export default function DocumentsSection() {
         })
         setBullets(Array.isArray(d.cgv_bullets) && d.cgv_bullets.length
           ? d.cgv_bullets : null)
+        setCgvPro('cgv_par_mode' in d
+          ? Object.fromEntries(MODES_CGV_PRO.map(([m]) => [m, variantePro(d, m)]))
+          : null)
         setVersion(d.version || 1)
       })
       .catch(() => {
@@ -115,8 +177,22 @@ export default function DocumentsSection() {
       // Puces : on envoie la liste seulement si elle a été personnalisée
       // (sinon null = repli sur les puces historiques côté moteur).
       payload.cgv_bullets = bullets && bullets.length ? bullets : null
+      // CIQ313 — seules les variantes saisies partent ; une variante vide
+      // reprend les CGV standard (le serveur écarte les lignes vides).
+      if (cgvPro) {
+        payload.cgv_par_mode = Object.fromEntries(MODES_CGV_PRO
+          .map(([m]) => [m, {
+            titre: cgvPro[m].titre.trim(),
+            bullets: cgvPro[m].bullets.filter(b => b.trim()),
+          }])
+          .filter(([, v]) => v.titre || v.bullets.length))
+      }
       const res = await parametresApi.updateDocumentTemplates(payload)
       setVersion(res.data?.version || version)
+      if (cgvPro && res.data && 'cgv_par_mode' in res.data) {
+        setCgvPro(Object.fromEntries(
+          MODES_CGV_PRO.map(([m]) => [m, variantePro(res.data, m)])))
+      }
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) {
@@ -228,6 +304,21 @@ export default function DocumentsSection() {
           </p>
         </CardContent>
       </Card>
+
+      {/* CIQ313 — CGV commerciales et industrielles (même écran) */}
+      {cgvPro && (
+        <Card>
+          <CardContent className="space-y-4 pt-4 sm:pt-5" data-testid="cgv-pro">
+            <SectionTitle label="Conditions générales commerciales et industrielles"
+              icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></>} />
+            {MODES_CGV_PRO.map(([mode, libelle]) => (
+              <EditeurCgvPro key={mode} mode={mode} libelle={libelle}
+                variante={cgvPro[mode]}
+                onChange={v => setCgvPro(c => ({ ...c, [mode]: v }))} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Button type="button" size="sm" onClick={save} loading={saving}
         disabled={saving} variant={saved ? 'success' : 'default'}>

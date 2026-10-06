@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from . import swappable
 from .models import (
-    ConsommationLigne, MaterielConsommation, SafetyCheckItem,
+    ConsommationLigne, Installation, MaterielConsommation, SafetyCheckItem,
     SafetyChecklistSlot, SafetySignoff,
 )
 
@@ -336,11 +336,58 @@ def seed_safety_slots(company):
             defaults={'libelle': libelle, 'ordre': i, 'protege': True})
 
 
+# CIQ624 — consignes C&I (site pro) : aucun chiffre, aucun article. Ajoutées
+# UNE fois (clés manquantes) ; une consigne supprimée ou désactivée n'est
+# jamais recréée tant qu'une autre consigne C&I existe.
+CONSIGNES_CI = [
+    ('ci_hauteur', 'Protections collectives ou harnais, et formation au '
+                   'travail en hauteur', None),
+    ('ci_levage', 'Levage (nacelle, grue) : périmètre balisé', None),
+    ('ci_toiture_fragile', 'Toiture fragile (fibrociment, lanterneaux) : '
+                           'cheminements protégés', None),
+    ('ci_coactivite', "Plan de prévention et coactivité avec l'exploitant",
+     None),
+    ('ci_habilitation', 'Habilitation électrique du personnel (référentiel à '
+                        'confirmer)', None),
+    ('ci_consignation_exploitant', "Coupure et consignation coordonnées avec "
+                                   "l'exploitant", None),
+    ('ci_permis_feu', 'Permis de feu en cas de point chaud', None),
+    ('ci_extincteur', 'Extincteur à portée', None),
+    ('ci_consignation_poste_mt', 'Consignation au poste par une personne '
+                                 'habilitée', 'mt'),
+]
+
+
+def ensure_consignes_ci(company):
+    """CIQ624 — ajoute UNE fois les consignes C&I manquantes (idempotent,
+    additif). Dès qu'une consigne C&I existe (active ou non), rien n'est
+    recréé : une consigne supprimée ou désactivée par la société est
+    respectée. Renvoie le nombre de consignes créées."""
+    cles = [cle for cle, _l, _n in CONSIGNES_CI]
+    if company is None or SafetyChecklistSlot.objects.filter(
+            company=company, cle__in=cles).exists():
+        return 0
+    depart = SafetyChecklistSlot.objects.filter(company=company).count()
+    for i, (cle, libelle, niveau) in enumerate(CONSIGNES_CI):
+        SafetyChecklistSlot.objects.create(
+            company=company, cle=cle, libelle=libelle, ordre=depart + i,
+            niveau_tension=niveau, protege=False)
+    return len(CONSIGNES_CI)
+
+
 def ensure_safety_signoff(intervention):
     """F18 — garantit le sign-off de l'intervention et matérialise ses points
-    depuis les consignes actives (création paresseuse, idempotente)."""
+    depuis les consignes actives (création paresseuse, idempotente).
+
+    CIQ624 — sur un chantier C&I, les consignes C&I sont ajoutées une fois ;
+    une consigne ``mt`` n'est matérialisée que sur un chantier MT."""
     company = intervention.company
     seed_safety_slots(company)
+    installation = getattr(intervention, 'installation', None)
+    niveau = getattr(installation, 'niveau_tension', None)
+    if (getattr(installation, 'type_installation', None)
+            == Installation.TypeInstallation.INDUSTRIEL):
+        ensure_consignes_ci(company)
     signoff, _ = SafetySignoff.objects.get_or_create(
         intervention=intervention, defaults={'company': company})
     if signoff.company_id is None and company is not None:
@@ -349,6 +396,8 @@ def ensure_safety_signoff(intervention):
     existing = {it.cle for it in signoff.items.all()}
     slots = SafetyChecklistSlot.objects.filter(company=company, actif=True)
     for slot in slots:
+        if slot.niveau_tension and slot.niveau_tension != niveau:
+            continue
         if slot.cle not in existing:
             SafetyCheckItem.objects.create(
                 company=company, signoff=signoff, cle=slot.cle,

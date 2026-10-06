@@ -174,6 +174,12 @@ def _playbook_correspond_au_lead(playbook, lead):
         # AGR525 — le playbook FDA vise le REMPLACEMENT DU BUTANE (Guide FDA
         # 2024, D-AGR-6) : l'énergie de la pompe actuelle est un critère.
         'pompe_alim_actuelle': getattr(lead, 'pompe_alim_actuelle', None),
+        # CIQ517 (D-CIQ-6) — le playbook « raccordement et autorisations du
+        # site » vise un site MT, une régularisation 82-21 ou un client qui
+        # veut revendre : ces trois critères sont lus.
+        'tension_raccordement': getattr(lead, 'tension_raccordement', None),
+        'regularisation_8221': getattr(lead, 'regularisation_8221', None),
+        'objectif_projet': getattr(lead, 'objectif_projet', None),
     }
     try:
         return evaluate_condition_group(playbook.condition, criteres)
@@ -1386,20 +1392,29 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             # cadence réactive, celle-ci est la PREMIÈRE touche, et la
             # proposition aurait expiré le jour même de son envoi.
             derniere = echeances[-1][1].astimezone(horaires.CASABLANCA).date()
-            # CAD57 — un dossier FINANCÉ À CRÉDIT ne peut pas, légalement,
-            # boucler dans cette fenêtre : la loi 31-08 impose 10 jours de
-            # réflexion PUIS 7 jours de rétractation une fois l'offre de
-            # crédit émise. Décision fondateur du 21/09/2026 : validité
-            # distincte et plus longue (le réglage société), J+14 sinon.
+            # CAD57 — un PARTICULIER financé à crédit ne peut pas, légalement,
+            # boucler dans cette fenêtre : la loi 31-08 (consommateur) impose
+            # 10 jours de réflexion PUIS 7 jours de rétractation une fois
+            # l'offre de crédit émise. CIQ510 — un PROFESSIONNEL n'est pas
+            # visé par la loi 31-08 : c'est le délai d'instruction de sa
+            # banque ou de l'organisme (financement pro déclaré) ou l'attente
+            # d'un accord déclarée qui allonge — sans conclusion juridique.
+            # Décision fondateur du 21/09/2026 : validité distincte et plus
+            # longue (le réglage société), J+14 sinon.
             fin_du_plan = derniere
             derniere = _validite_selon_financement(lead, devis, derniere)
             # AGR523 — la note dit d'où vient une validité allongée par un
             # dossier de subvention en instruction (le crédit garde la sienne).
-            motif = ('fin du plan de suivi'
-                     if (derniere == fin_du_plan
-                         or lead_finance_a_credit(lead)
-                         or not lead_dossier_subvention_en_instruction(lead))
-                     else MOTIF_VALIDITE_SUBVENTION)
+            # CIQ510 — idem pour une attente d'accord déclarée.
+            if derniere == fin_du_plan or lead_finance_a_credit(lead) \
+                    or lead_financement_pro_declare(lead):
+                motif = 'fin du plan de suivi'
+            elif lead_en_attente_d_accord(lead):
+                motif = MOTIF_VALIDITE_ATTENTE
+            elif lead_dossier_subvention_en_instruction(lead):
+                motif = MOTIF_VALIDITE_SUBVENTION
+            else:
+                motif = 'fin du plan de suivi'
             if poser_validite_devis(devis, derniere):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
@@ -5242,6 +5257,44 @@ def _resoudre_ou_creer_client(lead, _find_existing):
                 raise
 
     return client
+
+
+def completer_client_depuis_acceptation(client_id, company, *,
+                                        raison_sociale='', ice=''):
+    """CIQ319 (complément, contrat CIQ8) — l'identité d'entreprise déclarée à
+    l'acceptation en ligne d'un devis C&I remonte au Client, SANS JAMAIS
+    écraser ce qu'il porte déjà.
+
+    * ICE : écrit seulement si le Client n'en a aucun. Un ICE DIFFÉRENT déjà
+      présent reste intact (le cas est signalé par
+      ``ventes.domain.cycle_vie.divergence_ice``) ;
+    * raison sociale : remplace le nom seulement quand il est marqué « à
+      confirmer » (le nom de la personne posé faute de raison sociale,
+      CIQ403) ; le marqueur est alors levé ;
+    * un client qui reçoit une identité légale devient « Entreprise ».
+
+    Borné à la société. Rend la liste des champs écrits (``[]`` = rien)."""
+    raison = str(raison_sociale or '').strip()[:255]
+    ice_net = str(ice or '').strip()[:30]
+    if not client_id or not (raison or ice_net):
+        return []
+    client = Client.objects.filter(pk=client_id, company=company).first()
+    if client is None:
+        return []
+    ecrits = []
+    if ice_net and not _ice_normalise(client.ice):
+        client.ice = ice_net
+        ecrits.append('ice')
+    if raison and client.raison_sociale_a_confirmer:
+        client.nom = raison
+        client.raison_sociale_a_confirmer = False
+        ecrits += ['nom', 'raison_sociale_a_confirmer']
+    if ecrits and client.type_client != Client.TypeClient.ENTREPRISE:
+        client.type_client = Client.TypeClient.ENTREPRISE
+        ecrits.append('type_client')
+    if ecrits:
+        client.save(update_fields=[*ecrits, 'date_modification'])
+    return ecrits
 
 
 # ── QJR590 : l'identité client SUIT le lead tant qu'elle n'a pas divergé ─────
@@ -11649,6 +11702,67 @@ def appliquer_mesures_point_eau(lead, mesures, user):
     return ecrites
 
 
+# ── CIQ607 — LE RELEVÉ C&I REMPLACE LA DÉCLARATION ──────────────────────────
+#
+# Contrat CIQ5 (``visites/contract_samples/visite_terrain.json`` →
+# ``retour_lead_ci``) : à la VALIDATION d'une visite ``ci``, le constaté du
+# bloc ``releve_ci`` (``visites.selectors.releve_ci_de_visite``) est recopié
+# sur les colonnes du contrat CIQ1, avec la provenance ``mesure_visite`` sur
+# la colonne ``*_source`` quand elle existe. Le type de toiture arrive déjà
+# converti par la table CIQ603 (plusieurs couvertures ⇒ ``None``, non
+# recopié). Le type du lead n'est JAMAIS changé (convention 20).
+#: ``(cle du releve_ci, colonne Lead, colonne de provenance | None)``.
+RETOUR_LEAD_CI = (
+    ('niveau_tension', 'tension_raccordement', 'tension_source'),
+    ('puissance_souscrite_kva', 'compteur_puissance_kva',
+     'puissance_souscrite_source'),
+    ('type_toiture', 'type_toiture', None),
+    ('surface_utile', 'surface_toiture_m2', 'surface_source'),
+)
+#: La provenance posée par une mesure de visite (forme AGR2/CIQ1).
+ORIGINE_MESURE_VISITE = 'mesure_visite'
+
+
+def appliquer_releve_ci(lead, releve, user):
+    """CIQ607 — recopie sur le lead le relevé C&I d'une visite VALIDÉE.
+
+    La mesure REMPLACE la déclaration ; une mesure vide ou « non relevée »
+    n'efface JAMAIS rien ; le journal ancien→nouveau est automatique
+    (``activity.log_changes``), auteur = le valideur. Idempotent : re-valider
+    n'écrit rien. Rend ``{colonne: {valeur, provenance: {origine, detail,
+    date}}}`` des colonnes écrites (``{}`` = rien)."""
+    if lead is None or not isinstance(releve, dict) or not releve:
+        return {}
+    avant = Lead.objects.get(pk=lead.pk)
+    provenance = {
+        'origine': ORIGINE_MESURE_VISITE,
+        'detail': f"visite {releve.get('visite_id')}",
+        'date': releve.get('validee_le'),
+    }
+    ecrites, rendu = [], {}
+    for cle, colonne, source in RETOUR_LEAD_CI:
+        bloc = releve.get(cle)
+        if not isinstance(bloc, dict) or bloc.get('non_releve'):
+            continue
+        brute = bloc.get('constate')
+        if brute is None or (isinstance(brute, str) and not brute.strip()):
+            continue
+        valeur = _valeur_colonne_lead(colonne, brute)
+        if valeur is None:
+            continue
+        if getattr(lead, colonne) != valeur:
+            setattr(lead, colonne, valeur)
+            ecrites.append(colonne)
+            rendu[colonne] = {'valeur': valeur, 'provenance': provenance}
+        if source and getattr(lead, source) != ORIGINE_MESURE_VISITE:
+            setattr(lead, source, ORIGINE_MESURE_VISITE)
+            ecrites.append(source)
+    if ecrites:
+        lead.save(update_fields=ecrites + ['date_modification'])
+        activity.log_changes(avant, lead, user)
+    return rendu
+
+
 # ── AGR522 — DOSSIER DE SUBVENTION FDA : LE RAPPEL DES 3 MOIS ───────────────
 #
 # Guide FDA 2024 (p.22-23, tableau « Délais ») : « Demande de subvention —
@@ -11877,9 +11991,14 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
 #
 # [TRANCHÉ 21/09/2026] La validité était posée sur la DERNIÈRE touche de la
 # cadence, c'est-à-dire J+14 : le devis expirait le jour exact où le suivi
-# s'arrête. Or la loi 31-08 impose, une fois l'offre de crédit émise, 10 jours
-# de réflexion + 7 jours de rétractation avant déblocage : un client qui
-# finance ne peut pas, légalement, boucler dans la fenêtre qu'on lui annonce.
+# s'arrête. Pour un PARTICULIER, la loi 31-08 (consommateur) impose, une fois
+# l'offre de crédit émise, 10 jours de réflexion + 7 jours de rétractation
+# avant déblocage : il ne peut pas, légalement, boucler dans la fenêtre qu'on
+# lui annonce. CIQ510 — pour un PROFESSIONNEL (la loi 31-08 vise les besoins
+# non professionnels, art. 2), la même règle « financé » tient pour une autre
+# raison : le délai d'instruction de la banque ou de l'organisme, ou l'attente
+# d'un accord déclarée. Aucune conclusion juridique ici (avis d'un juriste :
+# tâche manuelle).
 #
 # Garde-fou : la DURÉE vient d'un réglage société
 # (``CompanyProfile.quote_validity_days``, lu par la façade de ventes), jamais
@@ -11912,6 +12031,31 @@ def lead_dossier_subvention_en_instruction(lead):
 #: dossier de subvention en instruction.
 MOTIF_VALIDITE_SUBVENTION = ('dossier de subvention en instruction (réglage '
                              'société)')
+#: CIQ510 — la fin de la note quand la validité vient d'une attente d'accord.
+MOTIF_VALIDITE_ATTENTE = "en attente d'un accord (réglage société)"
+
+#: CIQ510 (contrat CIQ1 ``lead_pro.json``, ``financing_intent``) — les
+#: financements PRO déclarés qui reçoivent la règle « financé » : crédit
+#: bancaire / offre de financement / ligne verte (``credit``) et crédit-bail
+#: (``credit_bail``, valeur interne). Comptant et indécis : jamais.
+FINANCEMENTS_PRO = ('credit', 'credit_bail')
+#: Les segments PRO (``Lead.type_installation``).
+SEGMENTS_PRO = ('commercial', 'industriel')
+
+
+def lead_financement_pro_declare(lead):
+    """CIQ510 — un lead commercial/industriel a-t-il DÉCLARÉ un financement
+    pro (contrat CIQ1) ? Jamais sur une supposition."""
+    return ((getattr(lead, 'type_installation', None) or '') in SEGMENTS_PRO
+            and (getattr(lead, 'financing_intent', None) or '')
+            in FINANCEMENTS_PRO)
+
+
+def lead_en_attente_d_accord(lead):
+    """CIQ510 — le lead porte-t-il une étiquette d'attente posée par la
+    réponse « En attente d'un accord » (CIQ508, une par raison) ?"""
+    return any(_lead_porte_tag(lead, tag)
+               for tag in ETIQUETTES_RAISON_ATTENTE)
 
 
 def _validite_selon_financement(lead, devis, date_fin_de_suivi):
@@ -11927,7 +12071,11 @@ def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     # AGR523 — un dossier de subvention DÉPOSÉ (en instruction) reçoit la
     # MÊME règle que le crédit : le réglage société, s'il est plus lointain.
     # Aucun nouveau nombre, aucune durée propre à la FDA.
+    # CIQ510 — même règle pour un financement PRO déclaré (contrat CIQ1) et
+    # pour un lead qui porte une étiquette d'attente d'accord (CIQ508).
     if not (lead_finance_a_credit(lead)
+            or lead_financement_pro_declare(lead)
+            or lead_en_attente_d_accord(lead)
             or lead_dossier_subvention_en_instruction(lead)):
         return date_fin_de_suivi
     try:
@@ -12060,11 +12208,23 @@ CAD124_PAS_D_AXE_SEGMENT = (
 #: `stage` vient de STAGES.py (règle #2), jamais d'un littéral.
 PLAYBOOKS_SEGMENT_CAD125 = (
     {
+        # Le NOM reste la clé d'idempotence du seed (jamais renommé : un
+        # nouveau nom doublerait le playbook des sociétés existantes).
         'nom': 'Segment — dossier d’autoproduction 82-21',
         'segments': ('industriel', 'commercial'),
+        # CIQ517 (D-CIQ-6) — seulement un site MT (contrat CIQ1), une
+        # régularisation 82-21 ou un client qui veut revendre : AU MOINS UN
+        # de ces critères. Un commerce en BT ne reçoit plus la question
+        # (Q9/CAD163 : on n'aborde jamais la loi 82-21 spontanément).
+        'criteres_un_parmi': (
+            ('tension_raccordement', 'mt'),
+            ('regularisation_8221', True),
+            ('objectif_projet', 'injection_8221'),
+        ),
         'cle_message': 'dossier_8221',
-        'tache': ('Demander où en est le dossier d’autoproduction 82-21 '
-                  '(texte « dossier_8221 » au catalogue des messages)'),
+        'tache': ('Demander où en sont le raccordement et les autorisations '
+                  'du site (texte « dossier_8221 » au catalogue des '
+                  'messages)'),
     },
     {
         'nom': 'Segment — dossier de subvention agricole (FDA)',
@@ -12082,10 +12242,22 @@ PLAYBOOKS_SEGMENT_CAD125 = (
 
 def _condition_playbook_segment(entree):
     """La condition `core.rules` d'un playbook de segment : ses segments, ET
-    ses critères supplémentaires (AGR525) quand il en porte."""
+    ses critères supplémentaires (AGR525, tous requis) ou alternatifs
+    (CIQ517, ``criteres_un_parmi`` : au moins un) quand il en porte."""
     criteres = entree.get('criteres') or ()
-    if not criteres:
+    un_parmi = entree.get('criteres_un_parmi') or ()
+    if not (criteres or un_parmi):
         return _condition_segment(entree['segments'])
+    if un_parmi:
+        return {
+            'op': 'and',
+            'conditions': [
+                _condition_segment(entree['segments']),
+                {'op': 'or', 'conditions': [
+                    {'field': champ, 'operator': 'eq', 'value': valeur}
+                    for champ, valeur in un_parmi]},
+            ],
+        }
     feuilles = [
         {'field': 'type_installation', 'operator': 'eq', 'value': segment}
         for segment in entree['segments']]
@@ -12100,6 +12272,10 @@ def _condition_playbook_segment(entree):
 
 
 def _lead_satisfait_criteres(lead, entree):
+    un_parmi = entree.get('criteres_un_parmi') or ()
+    if un_parmi and not any(getattr(lead, champ, None) == valeur
+                            for champ, valeur in un_parmi):
+        return False
     return all(getattr(lead, champ, None) == valeur
                for champ, valeur in (entree.get('criteres') or ()))
 
@@ -12177,12 +12353,36 @@ def rattraper_playbooks_pompe(lead):
     générées pour les étapes déjà atteintes. Idempotent (``get_or_create`` sur
     (lead, tâche)) ; jamais au Froid ni à « Nouveau ». Renvoie les
     progressions créées."""
-    from . import stages as _stages
-    from .models import LeadPlaybookProgress, Playbook
-
     if (getattr(lead, 'type_installation', None) or '') != 'agricole' \
             or getattr(lead, 'pompe_alim_actuelle', None) != 'butane':
         return []
+    return _rattraper_playbooks_lisant(lead, ('pompe_alim_actuelle',))
+
+
+#: CIQ517 — les champs du lead que lit le playbook « raccordement et
+#: autorisations du site ».
+CHAMPS_PLAYBOOK_8221 = ('tension_raccordement', 'regularisation_8221',
+                        'objectif_projet')
+
+
+def rattraper_playbooks_8221(lead):
+    """CIQ517 — un lead commercial/industriel déjà à la prise de contact (ou
+    au-delà) passe en MT, se déclare en régularisation 82-21 ou veut
+    revendre : la tâche « raccordement et autorisations du site » est
+    générée pour les étapes atteintes (idempotent, comme AGR525)."""
+    if (getattr(lead, 'type_installation', None) or '') \
+            not in ('commercial', 'industriel'):
+        return []
+    return _rattraper_playbooks_lisant(lead, CHAMPS_PLAYBOOK_8221)
+
+
+def _rattraper_playbooks_lisant(lead, champs):
+    """AGR525/CIQ517 — génère, pour les étapes DÉJÀ atteintes (prise de
+    contact incluse, jamais Froid), les tâches des playbooks ACTIFS dont la
+    condition lit l'un de ``champs`` ET matche le lead. Idempotent."""
+    from . import stages as _stages
+    from .models import LeadPlaybookProgress, Playbook
+
     ordre = [s for s in _stages.STAGES if s != _stages.COLD]
     if lead.stage not in ordre or ordre.index(lead.stage) < ordre.index(
             _stages.CONTACTED):
@@ -12191,7 +12391,8 @@ def rattraper_playbooks_pompe(lead):
     import json as _json
     created = []
     for playbook in Playbook.objects.filter(company=lead.company, actif=True):
-        if 'pompe_alim_actuelle' not in _json.dumps(playbook.condition or {}):
+        condition = _json.dumps(playbook.condition or {})
+        if not any(champ in condition for champ in champs):
             continue
         if not _playbook_correspond_au_lead(playbook, lead):
             continue
@@ -13737,6 +13938,88 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
     return reprise
 
 
+def prolonger_validite_attente_accord(lead, user=None):
+    """CIQ510 — à la réponse « En attente d'un accord », le dernier devis
+    ENVOYÉ du lead voit sa validité portée à ``max(validité actuelle,
+    date_validite_credit(devis))`` par la façade de ventes
+    ``prolonger_validite_devis`` ; une ligne d'historique par devis prolongé.
+    Accepté, refusé, expiré : intouché. Best-effort (jamais bloquant). Rend
+    la liste des ``(devis_id, date)`` prolongés."""
+    prolonges = []
+    try:
+        from apps.ventes.selectors import dernier_devis_envoye_par_lead
+        from apps.ventes.services import (
+            date_validite_credit, prolonger_validite_devis,
+        )
+        envoyes = dernier_devis_envoye_par_lead(lead.company, [lead.pk])
+        for devis in envoyes.values():
+            nouvelle = prolonger_validite_devis(
+                devis, date_validite_credit(devis))
+            if nouvelle is None:
+                continue
+            prolonges.append((devis.pk, nouvelle))
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=user,
+                kind=LeadActivity.Kind.NOTE,
+                body=(f'Validité prolongée au {nouvelle:%d/%m} — en attente '
+                      "d'un accord (réglage société)."))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('CIQ510 : validité non prolongée (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+    return prolonges
+
+
+#: CIQ512 — le libellé COURT de l'étape datée (≤ 150 car.) ; le texte complet
+#: va dans la note.
+LIBELLE_VALIDITE_A_RENOUVELER = 'Validité à renouveler — {reference}'
+
+
+def texte_validite_a_renouveler(reference, validite, decision):
+    """CIQ512 — le texte de l'étape « validité à renouveler »."""
+    return (f'La proposition {reference} expire le {validite:%d/%m}, avant '
+            f'la décision attendue le {decision:%d/%m} : prévenez le client '
+            '; après expiration, « Renouveler » crée une nouvelle version '
+            'que vous re-tarifez')
+
+
+def poser_etape_validite_a_renouveler(lead, decision):
+    """CIQ512 — la décision attendue (``decision``, une date) tombe APRÈS la
+    validité effective du dernier devis ENVOYÉ du lead (après prolongation
+    CIQ510) : une étape MANUELLE est posée au jour de la validité, hors
+    gabarit (le mécanisme de l'étape datée d'AGR522 — jamais une touche de
+    cadence, CAD124).
+
+    Aucun statut de devis, aucune étape de lead ne change (règle #4,
+    STAGES.py) : la bascule nocturne QJ5 reste seule à passer le devis en
+    ``expire``. Idempotente (retrouvée par son libellé). Rend l'étape, ou
+    ``None`` quand la décision tient dans la validité."""
+    if lead is None or decision is None:
+        return None
+    try:
+        from apps.ventes.selectors import (
+            date_validite_effective, dernier_devis_envoye_par_lead,
+        )
+        devis = dernier_devis_envoye_par_lead(
+            lead.company, [lead.pk]).get(lead.pk)
+        validite = date_validite_effective(devis)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('CIQ512 : validité illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return None
+    if devis is None or validite is None or decision <= validite:
+        return None
+    from . import horaires
+    libelle = LIBELLE_VALIDITE_A_RENOUVELER.format(reference=devis.reference)
+    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
+    if deja is not None:
+        return deja
+    vise = datetime.datetime.combine(
+        validite, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
+    return _poser_etape_de_filet(
+        lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL, vise=vise,
+        note=texte_validite_a_renouveler(devis.reference, validite, decision))
+
+
 # ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
 
 def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
@@ -13808,6 +14091,12 @@ def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
         company=lead.company, lead=lead, user=user,
         kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
         body=corps, outcome=spec['outcome'])
+    # CIQ510 — l'attente déclarée APRÈS l'envoi allonge la validité du
+    # devis ENVOYÉ du lead (réglage société), jamais ne la raccourcit.
+    prolonger_validite_attente_accord(lead, user)
+    # CIQ512 — une décision attendue APRÈS la validité (même prolongée) :
+    # une étape MANUELLE datée au jour de la validité, jamais un statut.
+    poser_etape_validite_a_renouveler(lead, jour)
     if reprise is None:
         etape.refresh_from_db()
         return etape
@@ -13962,6 +14251,28 @@ NOTES_DECISION_B2B = {
         'Décision à plusieurs — le bailleur des murs décide (un '
         'interlocuteur à changer)'),
 }
+
+
+#: CIQ513 — les valeurs de ``Lead.decideur`` qui disent « pas seul ».
+DECIDEURS_A_PLUSIEURS = ('conjoint_famille', 'associe_direction',
+                         'proprietaire_tiers')
+
+
+def poser_decision_a_plusieurs_depuis_decideur(lead, user):
+    """CIQ513 — « Qui décide » noté sur le lead (``conjoint_famille``,
+    ``associe_direction``, ``proprietaire_tiers``) pose l'étiquette « Décision
+    à plusieurs » par ``poser_tag_lead`` (idempotent, ligne d'historique) —
+    même effet que les deux réponses de touche (CAD9). La partition réactive
+    réinjecte alors la touche « dimanche famille » si son jour n'est pas
+    passé ; elle n'est jamais inventée. ``seul`` ne retire rien (geste
+    humain). Aucun barreau créé. Rend True si l'étiquette vient d'être
+    posée."""
+    if (getattr(lead, 'decideur', None) or '') not in DECIDEURS_A_PLUSIEURS:
+        return False
+    if _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS):
+        return False
+    poser_tag_lead(lead, user, TAG_DECISION_A_PLUSIEURS)
+    return True
 
 
 def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):

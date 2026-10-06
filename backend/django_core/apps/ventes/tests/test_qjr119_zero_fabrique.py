@@ -134,17 +134,22 @@ class TestNonRegressionDossierChiffre(SimpleTestCase):
 
     def test_industriel_garde_sa_baseline_et_ses_kpis(self):
         txt = _visible(i_render.build_html(self.ind))
-        self.assertIn("Baseline énergétique — 12 mois", txt)
+        # CIQ341 — la baseline est titrée par sa SOURCE servie (synthese_ci) ;
+        # sans source, plus de « 12 mois » affirmé.
+        self.assertIn("Baseline énergétique", txt)
+        self.assertNotIn("— 12 mois", txt)
         self.assertIn("Facture électrique actuelle", txt)
         # CIQ301 — plus aucune économie reprise du modèle BT : la carte et la
         # page finance attendent ``synthese_ci.argent`` (CIQ307).
         self.assertNotIn("Économies / an", txt)
         self.assertNotIn("Cashflow cumulé", txt)
-        # …mais une série SERVIE remplit toujours la page finance.
-        servie = dict(self.ind, **i_sample.serie_finance())
-        txt = _visible(i_render.build_html(servie))
-        self.assertIn("Cashflow cumulé", txt)
-        self.assertIn("Payback", txt)
+        # …mais un argent SERVI (``synthese_ci.argent``, CIQ342) remplit
+        # toujours la page finance.
+        data = i_sample.build()
+        data["economie_ci"] = i_sample.economie_ci()
+        txt = _visible(i_render.build_html(i_renderer._augment(data)))
+        self.assertIn("Cumul net de l'investissement", txt)
+        self.assertIn("Retour (même flux)", txt)
 
     def test_commercial_n_imprime_plus_l_economie_bt(self):
         # CIQ301 — la carte « Économies / an » ne reprend plus ``eco_s_ann``.

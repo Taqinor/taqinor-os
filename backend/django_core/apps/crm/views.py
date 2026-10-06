@@ -1124,6 +1124,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
                 logger.warning('AGR522: rappel FDA non posé (lead #%s)',
                                new_lead.pk, exc_info=True)
+        # CIQ513 — « Qui décide » noté au téléphone (conjoint/famille,
+        # associé/direction, propriétaire tiers) pose l'étiquette « Décision à
+        # plusieurs » (même effet que les réponses de touche). Idempotent ;
+        # repasser à « seul » ne retire rien. Jamais bloquant.
+        if old.decideur != new_lead.decideur:
+            from .services import poser_decision_a_plusieurs_depuis_decideur
+            try:
+                poser_decision_a_plusieurs_depuis_decideur(
+                    new_lead, self.request.user)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('CIQ513: étiquette non posée (lead #%s)',
+                               new_lead.pk, exc_info=True)
         # AGR525 — la pompe passe au butane sur un agricole déjà contacté :
         # la tâche FDA apparaît pour les étapes atteintes (idempotent).
         if (old.pompe_alim_actuelle != new_lead.pompe_alim_actuelle
@@ -1133,6 +1145,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 rattraper_playbooks_pompe(new_lead)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
                 logger.warning('AGR525: tâche FDA non générée (lead #%s)',
+                               new_lead.pk, exc_info=True)
+        # CIQ517 — un commercial/industriel déjà contacté passe en MT, en
+        # régularisation 82-21 ou veut revendre : la tâche « raccordement et
+        # autorisations du site » apparaît (idempotent, comme AGR525).
+        if any(getattr(old, champ) != getattr(new_lead, champ)
+               for champ in ('tension_raccordement', 'regularisation_8221',
+                             'objectif_projet')):
+            from .services import rattraper_playbooks_8221
+            try:
+                rattraper_playbooks_8221(new_lead)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('CIQ517: tâche 82-21 non générée (lead #%s)',
                                new_lead.pk, exc_info=True)
         # QJR590 — une correction d'identité du lead suit sur SA fiche Client
         # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.

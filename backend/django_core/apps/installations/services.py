@@ -204,6 +204,59 @@ def ensure_template_agricole(company):
     return template
 
 
+# CIQ611 — checklist d'exécution « Site professionnel (BT) » (chantier C&I,
+# socle commun + BT ; le supplément MT relève de CIQ662).
+# (cle, libelle, capture_serie, photo_obligatoire) — AUCUN chiffre dans les
+# libellés : les mesures vivent dans la recette, jamais dans une étape.
+CI_TEMPLATE_NOM = 'Site professionnel (BT)'
+CI_CHECKLIST_ETAPES = [
+    ('materiel_recu', 'Matériel reçu', False, False),
+    ('plan_prevention_signe',
+     'Plan de prévention et analyse de risques signés', False, True),
+    ('acces_protections',
+     'Accès et protections collectives en place', False, True),
+    ('structure_posee', 'Structure posée et étanchéité contrôlée',
+     False, True),
+    ('panneaux_poses', 'Panneaux posés', True, False),
+    ('chaines_dc_reperees', 'Chaînes DC repérées et étiquetées', False, True),
+    ('onduleurs_poses',
+     'Onduleurs posés (photo de la plaque signalétique)', True, True),
+    ('raccordement_tgbt', 'Raccordement au tableau général', False, True),
+    ('supervision_compteur',
+     'Supervision et compteur de production en service', False, False),
+    ('recette_enregistree', 'Recette enregistrée', False, False),
+    ('client_forme', 'Client formé', False, False),
+    ('photos_prises', 'Photos prises', False, False),
+    ('pv_reception_signe', 'PV de réception signé', False, False),
+    ('schema_electrique_valide', 'Schéma électrique validé', False, False),
+]
+
+
+def ensure_template_ci(company):
+    """CIQ611 — sème UNE SEULE FOIS le template « Site professionnel (BT) »
+    (type ``industriel``, niveau null = tous) de la société (idempotent,
+    additif). Jamais recréé dès qu'un template ``industriel`` sans niveau
+    existe, ACTIF OU NON : renommé, désactivé ou modifié par la société, il
+    est respecté. ``protege=False`` (le seul protégé reste le « Défaut »).
+    Renvoie le template créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    industriel = Installation.TypeInstallation.INDUSTRIEL
+    if ChecklistTemplate.objects.filter(
+            company=company, type_installation=industriel,
+            niveau_tension__isnull=True).exists():
+        return None
+    template = ChecklistTemplate.objects.create(
+        company=company, type_installation=industriel, niveau_tension=None,
+        nom=CI_TEMPLATE_NOM, ordre=1, protege=False, actif=True)
+    for i, (cle, libelle, capture, photo) in enumerate(CI_CHECKLIST_ETAPES):
+        ChecklistEtapeModele.objects.create(
+            company=company, template=template, cle=cle, libelle=libelle,
+            ordre=i, capture_serie=capture, photo_obligatoire=photo,
+            protege=True)
+    return template
+
+
 # AGR605 — plan d'interventions standard d'un chantier agricole : jamais de
 # « raccordement ». Repère des 30 premiers jours : Ignite, nextbillion.net
 # « Four key lessons for implementing PAYGo ».
@@ -249,10 +302,19 @@ def template_for_installation(installation):
     type_install = installation.type_installation
     if type_install == Installation.TypeInstallation.AGRICOLE:
         ensure_template_agricole(company)  # AGR605 — une seule fois.
+    elif type_install == Installation.TypeInstallation.INDUSTRIEL:
+        ensure_template_ci(company)  # CIQ611 — une seule fois.
     if type_install:
-        match = ChecklistTemplate.objects.filter(
+        candidats = ChecklistTemplate.objects.filter(
             company=company, type_installation=type_install, actif=True
-        ).order_by('ordre', 'id').first()
+        ).order_by('ordre', 'id')
+        # CIQ611 — d'abord (type, niveau du chantier), puis (type, tous).
+        niveau = getattr(installation, 'niveau_tension', None)
+        match = None
+        if niveau:
+            match = candidats.filter(niveau_tension=niveau).first()
+        if match is None:
+            match = candidats.filter(niveau_tension__isnull=True).first()
         if match is not None:
             return match
     return default
@@ -332,6 +394,30 @@ def _puissance_from(devis, lead, projet=False):
     if lead is not None and lead.taille_souhaitee_kwc:
         return lead.taille_souhaitee_kwc
     return None
+
+
+def _niveau_tension_from_lead(lead):
+    """CIQ610 — (niveau_tension, niveau_tension_source, puissance_souscrite_kva)
+    recopiés des colonnes CIQ1 du lead (déjà corrigées par la visite, CIQ607).
+
+    Niveau : seulement 'bt'/'mt' (« ne sait pas » → None). Provenance :
+    ``mesure_visite`` si le relevé vient de la visite, ``declare`` pour toute
+    réponse du client (fiche, appel, facture, site web saisi) ; un défaut
+    pré-coché du site jamais modifié par le client (``site_defaut_visible``)
+    n'est PAS une réponse → niveau None. Sans lead : tout None."""
+    if lead is None:
+        return None, None, None
+    niveau = getattr(lead, 'tension_raccordement', None)
+    source = getattr(lead, 'tension_source', None)
+    if (niveau not in set(Installation.NiveauTension.values)
+            or source == 'site_defaut_visible'):
+        niveau, source_chantier = None, None
+    elif source == Installation.NiveauTensionSource.MESURE_VISITE:
+        source_chantier = Installation.NiveauTensionSource.MESURE_VISITE
+    else:
+        source_chantier = Installation.NiveauTensionSource.DECLARE
+    return niveau, source_chantier, getattr(
+        lead, 'compteur_puissance_kva', None)
 
 
 def _freeze_bom(devis):
@@ -436,18 +522,31 @@ def create_installation_from_devis(devis, user, company):
         raccordement = None
 
     # N43 — régime loi 82-21 proposé comme DÉFAUT MODIFIABLE depuis la
-    # puissance (seuils éditables en Paramètres). Reste 'non_concerne' si la
-    # puissance est inconnue ; l'utilisateur peut toujours le changer ensuite.
+    # puissance. Résidentiel à puissance inconnue : 'non_concerne' ;
+    # l'utilisateur peut toujours le changer ensuite.
     # AGR602 — un chantier agricole (pompage) est suggéré HORS RÉSEAU
     # (modifiable) → régime « déclaration hors réseau » (loi 82-21, art. 3),
     # quelle que soit la puissance. Les autres types : inchangé (par kWc).
-    from .regime import suggest_for_company
+    # CIQ613 — le régime vient du noyau sourcé (core.reglementaire) avec les
+    # surcharges société : kWc DC, kW AC des onduleurs de la nomenclature
+    # gelée (C&I seulement), niveau de tension (CIQ610), hors réseau. Un
+    # chantier C&I à puissance inconnue reçoit « à qualifier ».
+    from .regime import kw_ac_onduleurs, suggest_for_company
     raccordement_reseau = (
         Installation.RaccordementReseau.HORS_RESEAU
         if type_install == Installation.TypeInstallation.AGRICOLE else None)
+    # CIQ610 — niveau de tension + puissance souscrite recopiés du lead (null
+    # si inconnus ; résidentiel sans colonnes pro → tout null, octet-identique).
+    niveau_tension, niveau_source, puissance_kva = _niveau_tension_from_lead(
+        None if type_install == Installation.TypeInstallation.RESIDENTIEL
+        else lead)
+    bom = _freeze_bom(devis)
+    est_ci = type_install == Installation.TypeInstallation.INDUSTRIEL
     regime_suggere = suggest_for_company(
         _puissance_from(devis, lead), company,
-        hors_reseau=raccordement_reseau is not None)
+        hors_reseau=raccordement_reseau is not None,
+        kw_ac=kw_ac_onduleurs(bom, company) if est_ci else None,
+        niveau=niveau_tension, type_installation=type_install)
 
     # Installateur par défaut (N66) : celui configuré en Paramètres, sinon le
     # créateur du chantier (comportement actuel). « Signé » est le 1er jalon de
@@ -471,11 +570,14 @@ def create_installation_from_devis(devis, user, company):
             puissance_installee_kwc=_puissance_from(devis, lead, projet=True),
             raccordement=raccordement,
             type_installation=type_install,
+            niveau_tension=niveau_tension,
+            niveau_tension_source=niveau_source,
+            puissance_souscrite_kva=puissance_kva,
             regime_8221=regime_suggere,
             raccordement_reseau=raccordement_reseau,
             statut=Installation.Statut.SIGNE,
             date_signature=date_signature,
-            bom=_freeze_bom(devis),
+            bom=bom,
             technicien_responsable=installer,
             created_by=user,
         )
@@ -1226,8 +1328,13 @@ DEFAULT_LIFECYCLE_GATES = [
      {'exige_dossier': True}),
     ('approvisionnement', 'Approvisionnement matériel', _S.MATERIEL_COMMANDE,
      True, {'exige_materiel': True}),
+    # CIQ623 — documents de sécurité exigés au montage, pour les NOUVEAUX
+    # amorçages seulement (AUD313 : rien n'est semé implicitement). L'étape
+    # reste NON bloquante par défaut (consultative, comportement historique
+    # du franchissement) : le Directeur la rend bloquante dans Paramètres ;
+    # pour un site pro, `_gardes_ci` exige ces documents dans tous les cas.
     ('montage_mecanique', 'Montage mécanique (structure & panneaux)',
-     _S.EN_COURS, False, {}),
+     _S.EN_COURS, False, {'exige_hse': True}),
     ('installation_electrique', 'Installation électrique', _S.EN_COURS,
      False, {}),
     ('mise_en_service', 'Mise en service & essais (IEC 62446-1)', _S.INSTALLE,
@@ -1394,14 +1501,16 @@ def compute_chantier_readiness(installation):
 
     # ── Dossier réglementaire loi 82-21 ──────────────────────────────────────
     regime = installation.regime_8221
-    dossier_statut = installation.dossier_statut
+    # CIQ617 — état UNIQUE : le dossier réglementaire s'il existe, sinon la
+    # saisie chantier ; un dossier refusé n'est jamais « en règle ».
+    dossier_statut, dossier_refuse, _resume = etat_dossier_8221(installation)
     NON_CONCERNE = Installation.Regime8221.NON_CONCERNE
     dossier_requis = regime != NON_CONCERNE
     # « Approuvé » ou « Compteur posé » = dossier en règle pour démarrer.
-    dossier_ok = (not dossier_requis) or dossier_statut in (
-        Installation.DossierStatut.APPROUVE,
-        Installation.DossierStatut.COMPTEUR_POSE,
-    )
+    dossier_ok = (not dossier_requis) or (
+        not dossier_refuse and dossier_statut in _STATUTS_CHANTIER_APPROUVES)
+    statut_label = (RAISON_DOSSIER_REFUSE if dossier_refuse
+                    else Installation.DossierStatut(dossier_statut).label)
     if not dossier_requis:
         checks.append({
             'cle': 'dossier',
@@ -1414,7 +1523,7 @@ def compute_chantier_readiness(installation):
             'cle': 'dossier',
             'libelle': 'Dossier réglementaire (loi 82-21)',
             'statut': 'ok',
-            'detail': installation.get_dossier_statut_display(),
+            'detail': statut_label,
         })
     else:
         checks.append({
@@ -1422,7 +1531,7 @@ def compute_chantier_readiness(installation):
             'libelle': 'Dossier réglementaire (loi 82-21)',
             'statut': 'bloquant',
             'detail': ('Dossier requis non approuvé '
-                       f'({installation.get_dossier_statut_display()}).'),
+                       f'({statut_label}).'),
         })
 
     # ── Planning ──────────────────────────────────────────────────────────────
@@ -1611,22 +1720,171 @@ def _gate_avertissements(installation, stage):
             and installation.regime_8221
             == Installation.Regime8221.DECLARATION_HORS_RESEAU):
         avertissements.append(AVERTISSEMENT_DECLARATION_HORS_RESEAU)
+    # CIQ621 — mise en service d'un site pro : le compteur intelligent est
+    # posé par le distributeur (loi 82-21 art. 18-19) ; avertissement tant
+    # que le comptage n'est pas posé, jamais un blocage.
+    if (getattr(stage, 'cle', None) == 'mise_en_service'
+            and est_chantier_ci_raccorde(installation)):
+        statut, _refuse, _resume = etat_dossier_8221(installation)
+        if statut != Installation.DossierStatut.COMPTEUR_POSE:
+            avertissements.append(AVERTISSEMENT_COMPTEUR_DISTRIBUTEUR)
     return avertissements
 
 
+#: CIQ613 — motif du gate dossier pour un régime 82-21 encore inconnu.
+RAISON_REGIME_A_QUALIFIER = "Régime 82-21 à qualifier."
+
+# ── CIQ617 — UN SEUL état du dossier 82-21 : le dossier réglementaire ──────
+# (``ventes.RegulatoryDossier``, 7 statuts) est la source ; le chantier n'en
+# garde qu'un MIROIR (5 statuts), écrit par ``refleter_dossier_8221`` à chaque
+# changement du dossier. Table de correspondance ÉCRITE ; un dossier REFUSÉ
+# ne se reflète JAMAIS en « approuvé » (le gate cite « Dossier refusé »).
+STATUT_DOSSIER_VERS_CHANTIER = {
+    'en_constitution': 'a_deposer',
+    'depose': 'depose',
+    'en_instruction': 'depose',
+    'complement_demande': 'depose',
+    'approuve': 'approuve',
+    'comptage_pose': 'compteur_pose',
+    'refuse': 'a_deposer',
+}
+RAISON_DOSSIER_REFUSE = "Dossier refusé."
+MESSAGE_STATUT_GERE_PAR_DOSSIER = (
+    "Le statut se gère dans le dossier réglementaire.")
+#: Champs du chantier en LECTURE SEULE tant qu'un dossier existe.
+CHAMPS_MIROIR_8221 = (
+    'regime_8221', 'dossier_statut', 'dossier_reference',
+    'dossier_operateur', 'dossier_date_depot', 'dossier_date_approbation')
+_STATUTS_DOSSIER_APPROUVES = ('approuve', 'comptage_pose')
+_STATUTS_CHANTIER_APPROUVES = (
+    Installation.DossierStatut.APPROUVE, Installation.DossierStatut.COMPTEUR_POSE)
+
+
+def resume_dossier_8221(installation):
+    """CIQ617 — état 82-21 du chantier : le ``resume`` du dossier
+    réglementaire de son devis (``ventes.selectors.dossier_8221_resume``),
+    sinon la saisie chantier (``source: 'saisie_chantier'``)."""
+    if installation.devis_id and installation.company_id:
+        from apps.ventes.selectors import dossier_8221_resume
+        resume = dossier_8221_resume(installation.company,
+                                     installation.devis_id)
+        if resume is not None:
+            return resume
+    return {
+        'source': 'saisie_chantier',
+        'statut': installation.dossier_statut,
+        'reference': installation.dossier_reference,
+        'operateur': installation.dossier_operateur,
+        'date_depot': (installation.dossier_date_depot.isoformat()
+                       if installation.dossier_date_depot else None),
+        'date_decision': (installation.dossier_date_approbation.isoformat()
+                          if installation.dossier_date_approbation else None),
+    }
+
+
+def etat_dossier_8221(installation):
+    """CIQ617 — (statut chantier effectif, refusé ?, résumé) lus du dossier
+    quand il existe, sinon de la saisie chantier (comportement historique)."""
+    resume = resume_dossier_8221(installation)
+    if resume.get('source') != 'dossier':
+        return installation.dossier_statut, False, resume
+    statut = STATUT_DOSSIER_VERS_CHANTIER.get(
+        resume.get('statut'), Installation.DossierStatut.A_DEPOSER)
+    return statut, resume.get('statut') == 'refuse', resume
+
+
+def _date_iso(valeur):
+    from datetime import date
+    if not valeur:
+        return None
+    try:
+        return date.fromisoformat(str(valeur)[:10])
+    except ValueError:
+        return None
+
+
+def refleter_dossier_8221(chantier_id, resume, company=None):
+    """CIQ617 — écrit le MIROIR du dossier 82-21 sur le chantier
+    (régime, statut via ``STATUT_DOSSIER_VERS_CHANTIER``, référence,
+    opérateur, dates). Appel de SERVICE depuis ``ventes`` (jamais un import
+    de modèle). ``company`` borne l'écriture : un chantier d'une autre
+    société n'est jamais touché. Renvoie le chantier mis à jour, ou None."""
+    if not chantier_id or not resume:
+        return None
+    qs = Installation.objects.filter(pk=chantier_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+    inst = qs.first()
+    if inst is None:
+        return None
+    statut_dossier = resume.get('statut')
+    valeurs = {
+        'dossier_statut': STATUT_DOSSIER_VERS_CHANTIER.get(
+            statut_dossier, Installation.DossierStatut.A_DEPOSER),
+        'dossier_reference': resume.get('reference'),
+        'dossier_operateur': resume.get('operateur'),
+        'dossier_date_depot': _date_iso(resume.get('date_depot')),
+        'dossier_date_approbation': (
+            _date_iso(resume.get('date_decision'))
+            if statut_dossier in _STATUTS_DOSSIER_APPROUVES else None),
+    }
+    regime = resume.get('regime')
+    if regime in set(Installation.Regime8221.values):
+        valeurs['regime_8221'] = regime
+    changes = [champ for champ, val in valeurs.items()
+               if getattr(inst, champ) != val]
+    if changes:
+        for champ in changes:
+            setattr(inst, champ, valeurs[champ])
+        inst.save(update_fields=changes + ['date_modification'])
+    return inst
+
+
 def _gate_check_dossier(installation, stage=None):
-    """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
+    """Dossier réglementaire loi 82-21 approuvé quand il est requis.
+
+    CIQ617 — lit l'état UNIQUE (``etat_dossier_8221``) : le dossier
+    réglementaire s'il existe, sinon la saisie chantier."""
     if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
         return None
+    if installation.regime_8221 == Installation.Regime8221.A_QUALIFIER:
+        # CIQ613 — régime inconnu = jamais approuvé, quel que soit le statut.
+        return RAISON_REGIME_A_QUALIFIER
     if (installation.regime_8221
             == Installation.Regime8221.DECLARATION_HORS_RESEAU):
         return None  # AGR625 — consultatif : voir `_gate_avertissements`.
-    if installation.dossier_statut in (
-            Installation.DossierStatut.APPROUVE,
-            Installation.DossierStatut.COMPTEUR_POSE):
+    statut, refuse, _resume = etat_dossier_8221(installation)
+    if refuse:
+        return RAISON_DOSSIER_REFUSE
+    if statut in _STATUTS_CHANTIER_APPROUVES:
         return None
     return ("Dossier loi 82-21 requis non approuvé "
-            f"({installation.get_dossier_statut_display()}).")
+            f"({Installation.DossierStatut(statut).label}).")
+
+
+#: CIQ623 — documents de sécurité chantier exigés (QHSE reste parqué).
+DOCUMENTS_HSE = (
+    DocumentProjet.TypeDoc.PLAN_PREVENTION,
+    DocumentProjet.TypeDoc.ANALYSE_RISQUES,
+    DocumentProjet.TypeDoc.PERMIS_TRAVAIL_HAUTEUR,
+)
+
+
+def _gate_check_hse(installation, stage=None):
+    """CIQ623 — plan de prévention, analyse de risques et permis de
+    travail en hauteur présents sur le chantier, chacun avec au moins une
+    révision ; sinon une raison FR les nomme. Aucun article ni montant."""
+    presents = set(
+        DocumentProjet.objects.filter(
+            installation=installation, type_doc__in=DOCUMENTS_HSE,
+            inst_revisions__isnull=False)
+        .values_list('type_doc', flat=True))
+    manquants = [DocumentProjet.TypeDoc(t).label for t in DOCUMENTS_HSE
+                 if t not in presents]
+    if manquants:
+        return ("Documents de sécurité manquants : "
+                + ", ".join(manquants) + ".")
+    return None
 
 
 def _gate_check_pack(installation, stage=None):
@@ -1651,6 +1909,7 @@ _GATE_CHECKS = [
     ('exige_materiel', _gate_check_materiel),
     ('exige_dossier', _gate_check_dossier),
     ('exige_pack', _gate_check_pack),
+    ('exige_hse', _gate_check_hse),
 ]
 
 
@@ -1908,9 +2167,9 @@ def appliquer_landed_cost_au_stock(dossier):
 # création est idempotente (un chantier ↔ une fiche). Un relevé I-V calcule
 # son écart de puissance mesuré vs attendu et lève un drapeau de défaut.
 
-# Tolérance d'écart de puissance (%) au-delà de laquelle un string est signalé
-# défectueux (dégradation/point chaud), valeur usuelle de terrain.
-IV_TOLERANCE_PMAX_PCT = 5
+# CIQ626 — plus AUCUNE tolérance codée : le défaut I-V est jugé contre le
+# seuil SAISI par la société (``recette_ecart_pmax_pct``, CIQ622) ; vide =
+# écart affiché, ``defaut_detecte`` null (aucun verdict).
 
 
 def ensure_commissioning_record(installation, user=None):
@@ -1920,24 +2179,153 @@ def ensure_commissioning_record(installation, user=None):
     record, _ = CommissioningRecord.objects.get_or_create(
         installation=installation,
         defaults={'company': installation.company, 'created_by': user})
+    figer_promesse_recette_ci(record)  # CIQ627
     return record
 
 
-def compute_iv_ecart(reading):
-    """Calcule l'écart relatif de Pmax (mesuré vs attendu) d'un relevé I-V et
-    positionne `defaut_detecte`. No-op silencieux si une valeur manque."""
+#: CIQ627 — motifs d'une comparaison omise (jamais un chiffre inventé).
+MOTIF_PROMESSE_ABSENTE = (
+    "Promesse de production absente : le devis n'a pas d'étude C&I.")
+MOTIF_MOINS_DE_12_MOIS = "Moins de 12 mois de relevés."
+
+
+def figer_promesse_recette_ci(record):
+    """CIQ627 — FIGE dans la fiche la promesse de production du devis
+    (``ventes.selectors.promesse_production_devis``) à la première écriture
+    où elle est disponible ; jamais réécrite ensuite (une V2 ne change pas
+    l'attendu). Renvoie True si elle vient d'être figée."""
+    from django.utils import timezone
+    if record.promesse_figee or record.pk is None:
+        return False
+    devis_id = getattr(record.installation, 'devis_id', None)
+    if not devis_id:
+        return False
+    from apps.ventes.selectors import promesse_production_devis
+    promesse = promesse_production_devis(devis_id, record.installation.company)
+    if not promesse:
+        return False
+    record.promesse_figee = dict(
+        promesse, figee_le=timezone.now().isoformat())
+    record.save(update_fields=['promesse_figee'])
+    return True
+
+
+def _reglage_recette(company, champ):
+    """CIQ626 — réglage de recette SAISI par la société (CIQ622), ou None."""
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        return getattr(CompanyProfile.get(company), champ, None)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def seuil_ecart_pmax(company):
+    """CIQ626 — écart de Pmax toléré (%) saisi par la société, ou None."""
+    return _reglage_recette(company, 'recette_ecart_pmax_pct')
+
+
+def compute_iv_ecart(reading, seuil=None):
+    """Calcule l'écart relatif de Pmax (mesuré vs attendu) d'un relevé I-V.
+
+    CIQ626 — ``defaut_detecte`` est jugé contre le seuil de la société
+    (``recette_ecart_pmax_pct``) : écart négatif au-delà du seuil = défaut ;
+    seuil non saisi (ou valeur manquante) → ``None`` (écart affiché, aucun
+    verdict). ``seuil`` explicite = surcharge (tests, appelant qui l'a lu)."""
     from decimal import Decimal
     mesure = reading.pmax_mesure_w
     attendu = reading.pmax_attendu_w
     if mesure is None or attendu in (None, 0):
         reading.ecart_pmax_pct = None
-        reading.defaut_detecte = False
+        reading.defaut_detecte = None
         return reading
     ecart = (Decimal(mesure) - Decimal(attendu)) / Decimal(attendu) * 100
     reading.ecart_pmax_pct = ecart.quantize(Decimal('0.01'))
-    # Un écart NÉGATIF au-delà de la tolérance = sous-performance/défaut.
-    reading.defaut_detecte = ecart <= Decimal(-IV_TOLERANCE_PMAX_PCT)
+    if seuil is None:
+        seuil = seuil_ecart_pmax(getattr(reading, 'company', None))
+    reading.defaut_detecte = (
+        None if seuil is None else ecart <= -Decimal(str(seuil)))
     return reading
+
+
+#: CIQ626 — libellé OBLIGATOIRE du PR mesuré : jamais un verdict (D-CIQ-12).
+LIBELLE_PR = "à titre d'information"
+
+
+def pr_mesure_recette(record):
+    """CIQ626 — PR mesuré = énergie ÷ (kWc × irradiation mesurée), ou None
+    si une valeur manque. Toujours « à titre d'information »."""
+    from decimal import Decimal
+    kwc = getattr(record.installation, 'puissance_installee_kwc', None)
+    energie = record.energie_mesuree_kwh
+    irradiation = record.irradiation_kwh_m2
+    if not kwc or energie is None or not irradiation:
+        return None
+    pr = Decimal(energie) / (Decimal(kwc) * Decimal(irradiation))
+    return float(pr.quantize(Decimal('0.001')))
+
+
+def etalonnage_expire(instrument):
+    """XFSM12/CIQ626 — étalonnage FG80 expiré d'un instrument (None si
+    l'instrument n'est pas soumis à calibration périodique)."""
+    import datetime
+    if instrument is None or not instrument.intervalle_calibration_mois:
+        return None
+    if instrument.date_prochaine_calibration is None:
+        return True
+    return instrument.date_prochaine_calibration <= datetime.date.today()
+
+
+def instruments_par_essai_detail(record):
+    """CIQ626 — ``{essai: {instrument_id, etalonnage_expire}}``."""
+    from apps.outillage.models import Outillage
+    ids = {essai: iid for essai, iid
+           in (record.instruments_par_essai or {}).items() if iid}
+    outils = {o.pk: o for o in Outillage.objects.filter(
+        pk__in=list(ids.values()), company=record.company)}
+    return {essai: {'instrument_id': iid,
+                    'etalonnage_expire': etalonnage_expire(outils.get(iid))}
+            for essai, iid in ids.items()}
+
+
+def comparaison_recette_ci(record):
+    """CIQ626 — bloc ``comparaison`` du contrat ``recette_ci.json`` (part
+    I-V, PR, avertissements d'étalonnage). Aucun seuil inventé."""
+    from decimal import Decimal
+    readings = list(record.iv_readings.all()) if record.pk else []
+    ecarts = [r.ecart_pmax_pct for r in readings
+              if r.ecart_pmax_pct is not None]
+    defauts = [r.defaut_detecte for r in readings
+               if r.defaut_detecte is not None]
+    seuil = seuil_ecart_pmax(record.company)
+    pr = pr_mesure_recette(record)
+    promesse = record.promesse_figee or None
+    comparaison = {
+        # CIQ627 — promesse FIGÉE du devis ; PR mesuré vs PR modélisé « à
+        # titre d'information » ; jamais des kWh annuels sur un jour d'essai.
+        'promesse_figee': promesse,
+        'pr_modelise': (promesse or {}).get('pr_modelise'),
+        'promesse_motif': None if promesse else MOTIF_PROMESSE_ABSENTE,
+        'comparaison_annuelle': None,
+        'comparaison_annuelle_motif': (
+            MOTIF_MOINS_DE_12_MOIS if promesse else MOTIF_PROMESSE_ABSENTE),
+        'ecart_iv_pmax_pct': float(min(ecarts)) if ecarts else None,
+        'seuil_ecart_pmax_pct': float(seuil) if seuil is not None else None,
+        'defaut_detecte': any(defauts) if defauts else None,
+        'pr_mesure': pr,
+        'pr_libelle': LIBELLE_PR,
+        'avertissements': [
+            f"Instrument de l'essai « {essai} » : étalonnage expiré."
+            for essai, detail in instruments_par_essai_detail(record).items()
+            if detail['etalonnage_expire']],
+    }
+    seuil_pr = _reglage_recette(record.company, 'recette_pr_seuil_interne')
+    if seuil_pr is not None and pr is not None:
+        # Drapeau INTERNE (jamais servi au portail client, D-CIQ-12).
+        comparaison['pr_sous_seuil_interne'] = (
+            Decimal(str(pr)) * 100 < Decimal(str(seuil_pr)))
+    return comparaison
 
 
 # ── XFSM13 — re-vérification périodique IEC 62446-2 vs baseline de recette ──
@@ -2109,15 +2497,18 @@ def assemble_handover_pieces(installation):
                         == Installation.Regime8221.DECLARATION_HORS_RESEAU)
     dossier_requis = (installation.regime_8221
                       != Installation.Regime8221.NON_CONCERNE)
-    dossier_present = bool(installation.dossier_reference) or (
-        installation.dossier_statut in (
-            Installation.DossierStatut.APPROUVE,
-            Installation.DossierStatut.COMPTEUR_POSE))
+    # CIQ617 — état UNIQUE (dossier réglementaire s'il existe) ; un dossier
+    # refusé n'est jamais une pièce présente.
+    statut_8221, refuse_8221, resume_8221 = etat_dossier_8221(installation)
+    reference_8221 = resume_8221.get('reference')
+    dossier_present = not refuse_8221 and (
+        bool(reference_8221)
+        or statut_8221 in _STATUTS_CHANTIER_APPROUVES)
     if hors_reseau_art3:
         pieces.append({
             'type': 'dossier_8221',
             'libelle': 'Dossier réglementaire loi 82-21',
-            'reference': (installation.dossier_reference
+            'reference': (reference_8221
                           or REFERENCE_DECLARATION_HORS_RESEAU),
             'present': dossier_present,
             'obligatoire': False,
@@ -2126,8 +2517,9 @@ def assemble_handover_pieces(installation):
         pieces.append({
             'type': 'dossier_8221',
             'libelle': 'Dossier réglementaire loi 82-21',
-            'reference': installation.dossier_reference or (
-                installation.get_dossier_statut_display()
+            'reference': reference_8221 or (
+                (RAISON_DOSSIER_REFUSE if refuse_8221
+                 else Installation.DossierStatut(statut_8221).label)
                 if dossier_requis else 'Non concerné'),
             'present': (not dossier_requis) or dossier_present,
             'obligatoire': dossier_requis,
@@ -3428,15 +3820,92 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
     return resume
 
 
+# ── CIQ621 — site pro : pas de pose avant l'accord et la convention ────────
+# Loi 82-21 art. 4-6 : l'accord ou la déclaration AVANT d'entamer la
+# réalisation (amendes art. 28-29) ; décret 2.25.100 art. 8, 13-14 : les
+# travaux démarrent après la convention. Garde TOUJOURS armée pour un chantier
+# C&I raccordé, même sans étapes configurées (AUD313 : rien n'est amorcé).
+RAISON_CI_SANS_CONVENTION = (
+    "Travaux refusés : convention de raccordement non signée ou décision "
+    "d'autorisation non reçue (loi 82-21 art. 4-6 ; décret 2.25.100 art. 8, "
+    "13-14). Dérogation possible par un Directeur, avec motif.")
+AVERTISSEMENT_COMPTEUR_DISTRIBUTEUR = (
+    "Compteur intelligent posé par le distributeur (loi 82-21 art. 18-19) : "
+    "comptage pas encore posé.")
+_STATUTS_TRAVAUX = (
+    Installation.Statut.EN_COURS, Installation.Statut.INSTALLE,
+    Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
+
+
+def est_chantier_ci_raccorde(installation):
+    """CIQ621 — chantier C&I raccordé au réseau, sous un régime qualifié
+    autre que « non concerné » (les gardes C&I s'y appliquent)."""
+    return (installation.type_installation
+            == Installation.TypeInstallation.INDUSTRIEL
+            and installation.regime_8221
+            != Installation.Regime8221.NON_CONCERNE
+            and not est_hors_reseau(installation))
+
+
+def autorisation_travaux_8221(installation):
+    """CIQ621 — la convention est-elle signée (accord ou déclaration), ou la
+    décision d'autorisation reçue ? Lu dans le ``resume`` unique (CIQ617)."""
+    _statut, refuse, resume = etat_dossier_8221(installation)
+    if refuse or resume.get('source') != 'dossier':
+        return False
+    if resume.get('convention_signee_le'):
+        return True
+    return (installation.regime_8221
+            == Installation.Regime8221.AUTORISATION_ANRE
+            and resume.get('statut') in _STATUTS_DOSSIER_APPROUVES
+            and bool(resume.get('date_decision')))
+
+
+def _gardes_ci(installation, nouveau_statut, user=None,
+               motif_derogation=None):
+    """CIQ621 — raisons FR qui refusent l'entrée en travaux (« En cours » ou
+    au-delà) d'un chantier C&I raccordé sans convention ni autorisation.
+    Résidentiel et agricole : jamais concernés. Dérogation Directeur avec
+    motif (même patron que la dérogation d'acompte YSERV1)."""
+    if not est_chantier_ci_raccorde(installation):
+        return []
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if canon_new not in _STATUTS_TRAVAUX or canon_old in _STATUTS_TRAVAUX:
+        return []
+    raisons = []
+    if not autorisation_travaux_8221(installation):
+        raisons.append(RAISON_CI_SANS_CONVENTION)
+    # CIQ623 — mêmes documents de sécurité avant « En cours » pour un site
+    # pro, même sans gates amorcés.
+    raison_hse = _gate_check_hse(installation)
+    if raison_hse:
+        raisons.append(raison_hse)
+    if raisons and (motif_derogation or '').strip() and est_directeur(user):
+        return []
+    return raisons
+
+
+def _derogation_ci_utilisee(installation, nouveau_statut, user,
+                            motif_derogation):
+    """CIQ621 — vrai quand la transition n'est autorisée QUE par la
+    dérogation Directeur (à journaliser)."""
+    return bool((motif_derogation or '').strip()) and bool(
+        _gardes_ci(installation, nouveau_statut, user, None))
+
+
 def _raisons_transition(installation, nouveau_statut, user,
-                        motif_override_acompte, motif_reouverture):
+                        motif_override_acompte, motif_reouverture,
+                        motif_derogation_8221=None):
     """AUD316 — la chaîne de gardes COMPLÈTE, en un seul endroit.
 
-    Ordre : gates CH2 (qui portent aussi le point d'arrêt DUERP QHSE22), puis
-    le verrou de clôture AUD326, puis le gate d'acompte YSERV1 — ce dernier
-    armé sur TOUTE arrivée à PLANIFIE, quel que soit le chemin (il n'était
-    testé que par le PATCH)."""
+    Ordre : gates CH2 (étapes configurées), puis le verrou de clôture AUD326,
+    puis le gate d'acompte YSERV1 — ce dernier armé sur TOUTE arrivée à
+    PLANIFIE, quel que soit le chemin (il n'était testé que par le PATCH) —
+    puis CIQ621 : site pro sans convention, même sans étapes amorcées."""
     raisons = list(verifier_transition_statut(installation, nouveau_statut))
+    raisons.extend(_gardes_ci(installation, nouveau_statut, user,
+                              motif_derogation_8221))
     raison_cloture = verifier_reouverture_cloture(
         installation, nouveau_statut, user, motif_reouverture)
     if raison_cloture:
@@ -3455,7 +3924,8 @@ def _raisons_transition(installation, nouveau_statut, user,
 def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
                             motif_override_acompte=None,
                             motif_reouverture=None, verifier_gates=True,
-                            champs_supplementaires=None, etat_avant=None):
+                            champs_supplementaires=None, etat_avant=None,
+                            motif_derogation_8221=None):
     """AUD316 — LE point d'écriture de `Installation.statut`.
 
     Applique, dans un ORDRE FIXE (celui du PATCH, le seul complet) :
@@ -3489,9 +3959,12 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
     if verifier_gates:
         raisons = _raisons_transition(
             old, nouveau_statut, user, motif_override_acompte,
-            motif_reouverture)
+            motif_reouverture, motif_derogation_8221)
         if raisons:
             raise TransitionRefusee(raisons)
+    # CIQ621 — la dérogation Directeur est journalisée au chatter.
+    derogation_8221 = _derogation_ci_utilisee(
+        old, nouveau_statut, user, motif_derogation_8221)
 
     canon_old = Installation.canonical_statut(ancien_statut)
     fields = []
@@ -3560,6 +4033,11 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
         activity.log_note(
             installation, user,
             f'Planifié sans acompte — motif : {motif_override_acompte.strip()}')
+    if derogation_8221:
+        activity.log_note(
+            installation, user,
+            'Travaux démarrés sans convention 82-21 (dérogation Directeur) '
+            f'— motif : {motif_derogation_8221.strip()}')
     return {'ancien': ancien_statut, 'nouveau': installation.statut,
             'effets': effets}
 
@@ -3595,6 +4073,39 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
 # calendrier et « Ma tournée » — qui la retire des vues. Ce choix est ré-affirmé
 # par `tests_parite_cascade.py`.
 
+def verifier_securite_avant_demarrage(intervention, nouveau_statut):
+    """CIQ624 — réglage société ``securite_obligatoire_avant_demarrage``
+    (CIQ622, défaut faux = comportement actuel) : refuse le démarrage
+    (« sur site ») et la fin (« terminée »/« validée ») tant que le sign-off
+    sécurité n'est pas signé. Renvoie la raison FR qui liste les points non
+    cochés, ou None."""
+    from .models_intervention import Intervention as _Intervention
+    if nouveau_statut not in (_Intervention.Statut.SUR_SITE,
+                              _Intervention.Statut.TERMINEE,
+                              _Intervention.Statut.VALIDEE):
+        return None
+    company = intervention.company
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+    if not getattr(profil, 'securite_obligatoire_avant_demarrage', False):
+        return None
+    from .field_capture import ensure_safety_signoff
+    signoff = ensure_safety_signoff(intervention)
+    if signoff.signe:
+        return None
+    non_coches = [it.libelle for it in signoff.items.all() if not it.coche]
+    detail = (' Points non cochés : ' + ' ; '.join(non_coches) + '.'
+              if non_coches else '')
+    return ("Consignes de sécurité non signées : démarrage et fin "
+            "d'intervention refusés (réglage société « sécurité signée "
+            "avant démarrage »)." + detail)
+
+
 def changer_statut_intervention(intervention, nouveau_statut, user):
     """AUD317 — LE point d'écriture de `Intervention.statut`.
 
@@ -3617,6 +4128,10 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
         intervention, nouveau_statut)
     if raison:
         raise TransitionRefusee([raison] if isinstance(raison, str) else raison)
+    raison_securite = verifier_securite_avant_demarrage(
+        intervention, nouveau_statut)
+    if raison_securite:
+        raise TransitionRefusee([raison_securite])
 
     old = _Intervention.objects.get(pk=intervention.pk)
     intervention.statut = nouveau_statut
@@ -5114,6 +5629,11 @@ def essais_recette(record, modifications=None):
     modifications = modifications or {}
     essais = [modifications.get(champ, getattr(record, champ, None))
               for champ in ESSAIS_RECETTE]
+    # CIQ626 — un essai C&I (limitation d'injection, découplage) déclaré non
+    # conforme est un essai faux ; « sans objet » ne compte pas.
+    for champ in ('limitation_injection_etat', 'decouplage_etat'):
+        if modifications.get(champ, getattr(record, champ, None)) == 'non_ok':
+            essais.append(False)
     if getattr(record, 'pk', None) is not None and \
             record.iv_readings.filter(defaut_detecte=True).exists():
         essais.append(False)

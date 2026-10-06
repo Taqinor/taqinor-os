@@ -99,6 +99,11 @@ beforeEach(() => {
 
 describe('QJR575 — catégorie commerciale « Non précisée » persistée null', () => {
   it('?edit= commercial sans catégorie → enregistrement avec categorie_commerciale null', async () => {
+    // CIQ125 — un devis C&I sans consommation ne s'enregistre pas : le devis
+    // rouvert porte sa consommation déclarée (entrée v2).
+    const rouvert575 = (await ventesApi.getDevisById()).data
+    ventesApi.getDevisById.mockResolvedValue({ data: { ...rouvert575,
+      etude_params: { ...rouvert575.etude_params, consommation: { kwh_annuel: 48000 } } } })
     render(
       <Provider store={makeStore()}>
         <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=575']}>

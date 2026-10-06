@@ -42,13 +42,20 @@ def build_ctx(data: dict) -> dict:
 
 def wrap_page(inner: str, n: int, data: dict, ident: dict, total: int = 3) -> str:
     # Le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
-    foot = (theme.page_footer(data, ident, total_pages=total)
+    # CIQ333 — « Réf. » suit la langue du document (français inchangé).
+    foot = (theme.page_footer(data, ident, total_pages=total, traduire=True)
             .replace("{page}", str(n)))
     return f'<div class="page">{inner}{foot}</div>'
 
 
 def build_html(data: dict, pages_fn) -> str:
-    """Assemble les pages rendues par ``pages_fn(ctx) -> list[str]``."""
+    """Assemble les pages rendues par ``pages_fn(ctx) -> list[str]``.
+
+    CIQ333 — un document en anglais ou en arabe porte ``lang`` (et
+    ``dir="rtl"`` en arabe, d'où WeasyPrint tire l'alignement à droite et
+    l'ordre miroir des tableaux) et la police arabe vendorisée, comme le
+    document agricole (AGR314) ; le français reste octet pour octet."""
+    from . import i18n_labels
     ctx = build_ctx(data)
     ident = ctx["ident"]
     pages = pages_fn(ctx)
@@ -56,8 +63,20 @@ def build_html(data: dict, pages_fn) -> str:
     body = "".join(
         wrap_page(inner, n, data, ident, total)
         for n, inner in enumerate(pages, start=1))
-    return (f"<!doctype html><html><head><meta charset='utf-8'>"
-            f"<style>{theme.base_css()}</style></head>"
+    langue = theme.langue_doc(data)
+    racine, css_langue = "<html>", ""
+    if langue != "fr":
+        racine = (f'<html lang="{langue}" '
+                  f'dir="{i18n_labels.direction(langue)}">')
+    if i18n_labels.est_rtl(langue):
+        # Rendu RÉEL mesuré : l'espacement de lettres (petites capitales,
+        # en-têtes) casse la liaison des lettres arabes, et la face 700
+        # vendorisée sort illisible en gras — l'arabe prend la police
+        # système (Noto Sans Arabic de l'image), sans espacement de lettres.
+        css_langue = (".i18n-rtl{unicode-bidi:isolate;}"
+                      "body *{letter-spacing:0 !important;}")
+    return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
+            f"<style>{theme.base_css()}{css_langue}</style></head>"
             f"<body>{body}</body></html>")
 
 
@@ -68,6 +87,28 @@ def render_pdf(out_path, html: str, base_dir) -> str:
     base = str(Path(base_dir).resolve())
     HTML(string=html, base_url=f"file://{base}/").write_pdf(str(out_path))
     return str(out_path)
+
+
+#: CIQ333 — la palette des pages premium C&I : teinte → repli littéral
+#: quand le thème ne la porte pas (``None`` = teinte obligatoire du thème).
+PALETTE = {"navy": None, "navy_900": "#0F1E35", "gold": None,
+           "green": None, "green_bg": "#E8F5EC", "ink": "#1F2937",
+           "muted": "#6B7280", "muted_2": "#9BA3AE", "line": "#E5E7EB",
+           "line_soft": "#EFF1F4", "paper": "#FFFFFF", "wash": "#F7F9FC",
+           "blue": "#2C5F8A"}
+
+
+def couleurs(C, noms: str) -> tuple:
+    """CIQ333 — les teintes ``noms`` (séparées par des espaces) de la
+    palette ``C``, dans cet ordre : UNE définition des replis au lieu d'un
+    bloc recopié dans chaque page (``check_duplicats_litteraux``)."""
+    return tuple(C[nom] if PALETTE[nom] is None else C.get(nom, PALETTE[nom])
+                 for nom in noms.split())
+
+
+def polices(fonts: dict) -> tuple:
+    """``(display, serif, sans)`` des pages premium."""
+    return fonts["display"], fonts["serif"], fonts["sans"]
 
 
 def kwc_str(v, defaut: str = "—") -> str:
@@ -87,3 +128,14 @@ def kpi(val, unit, label, fig=None, *, prefixe: str) -> str:
     return (f'<td class="{prefixe}-kpi"><div class="{prefixe}-kv">{val}'
             f'<span class="{prefixe}-ku">{unit}</span></div>{_a}'
             f'<div class="{prefixe}-kl">{label}</div></td>')
+
+
+def bande_legale(d: dict, ident: dict) -> str:
+    """CIQ310 — la bande légale du VENDEUR (RC, ICE, capital…), composée UNE
+    fois pour le résidentiel (``residential/trust``, sortie identique octet
+    pour octet) et les pages de confiance commerciale et industrielle.
+
+    La composition (profil société d'un tenant, sinon repli fondateur) vit
+    dans ``residential.theme.bande_legale``, à côté des autres replis de
+    marque du moteur (SCA29)."""
+    return theme.bande_legale(d, ident)

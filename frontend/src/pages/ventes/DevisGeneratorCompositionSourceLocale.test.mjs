@@ -4,8 +4,8 @@
 // documente lui-même divergent du serveur) : les lignes restent inchangées,
 // l'erreur est dite, et « Réessayer » rejoue le dry-run. (Ce fichier
 // verrouillait jusqu'ici l'inverse : bannière QJR36 + repli local.)
-// `composeLocalement` reste le composeur des marchés industriel / commercial
-// / agricole tant que QJR113 est GATED D10.
+// CIQ126 — `composeLocalement` est SUPPRIMÉ : le C&I compose par le moteur
+// serveur C&I (`etude-ci/preview`), l'agricole par son kit serveur (AGR130).
 //
 // DevisGenerator.jsx est du JSX non exécutable par `node --test` : lecture du
 // SOURCE (comportement rendu couvert par les tests vitest du générateur).
@@ -54,11 +54,12 @@ test('QJR577 — la bannière de composition de secours a disparu avec son derni
   assert.doesNotMatch(DG, /import \{ raisonRepli \}/)
 })
 
-test('QJR577 — composeLocalement reste le composeur des marchés sans dry-run serveur', () => {
-  // Branche de clôture de handleAutoFill (industriel / commercial).
-  assert.match(CODE, /if \(composeLocalement\(\)\) setCompositionErreur\(null\)/)
-  // Et elle n'est atteinte qu'APRÈS le `return` de la branche résidentielle.
+test('CIQ126 — plus aucun composeur JavaScript : le C&I passe par le moteur serveur', () => {
+  assert.doesNotMatch(CODE, /composeLocalement|autoFillLines\(/)
+  // Branche de clôture de handleAutoFill (industriel / commercial) : un appel
+  // à l'aperçu C&I puis les lignes de SA composition, APRÈS le résidentiel.
   const res = CODE.indexOf("if (modeInstallation === 'residentiel') {\n      if (kwp <= 0) {")
-  const cloture = CODE.indexOf('if (composeLocalement()) setCompositionErreur(null)')
-  assert.ok(res > -1 && cloture > res)
+  const ci = CODE.indexOf('await ventesApi.etudeCiPreview(corps)')
+  assert.ok(res > -1 && ci > res)
+  assert.match(CODE.slice(ci, ci + 300), /lignesDepuisCompositionCi\(data\?\.composition, produits\)/)
 })

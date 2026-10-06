@@ -13,6 +13,7 @@ import { filenameFromResponse } from '../../../utils/downloadBlob.js'
 import { openPdfBlob } from '../../../utils/pdfBlob.js'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf.js'
 // QJR624 — l'acompte personnalisé du dialogue PDF s'écrit dans l'échéancier.
+import parametresApi from '../../../api/parametresApi.js'
 import { echeancierAvecAcompte } from '../../../features/ventes/echeancierEdition.js'
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié : mêmes prédicats que la
@@ -194,9 +195,17 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       // correction est tracée par le serveur). Un refus (devis figé) arrête
       // la génération avec le message du serveur.
       if (devisFinal && paymentMode === 'custom' && customAcompte !== '') {
+        // CIQ225 — sans échéancier propre, le point de départ vient des jalons
+        // EFFECTIFS de la société (plus de pourcentages recopiés en JS).
+        let effectifs = null
+        if (!(d.echeancier || []).length) {
+          try {
+            effectifs = (await parametresApi.getProfile())?.data?.payment_terms_effectifs || null
+          } catch { /* profil indisponible : libellés seuls, valeurs vides */ }
+        }
         await ventesApi.patchDevis(d.id, {
           echeancier: echeancierAvecAcompte(
-            d.echeancier, customAcompte, d.total_ttc, d.mode_installation),
+            d.echeancier, customAcompte, d.total_ttc, d.mode_installation, effectifs),
         })
       }
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()

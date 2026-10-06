@@ -33,7 +33,9 @@ import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 // Module PUR (aucun JSX, aucune dépendance React) : rejoué avec la VRAIE
 // fonction, jamais une réplique qui pourrait diverger.
-import { arrondirAuPasKwc } from '../../features/ventes/solar.js'
+// CIQ128 — l'arrondi au palier de 5 kWc a quitté solar.js : le test le
+// rejoue ici pour son seul besoin (une taille HORS palier).
+const auPalier5 = (k) => Math.max(5, Math.round(k / 5) * 5)
 
 // APIs mockées (aucun appel réseau réel au montage).
 vi.mock('../../api/crmApi', () => ({
@@ -117,7 +119,7 @@ describe('QJR308 → QJR602 — runAutoQuote : plus aucun avis de palier, la tai
     // D-QJR5-13 (fondateur 30/09/2026) : une taille explicite n'est plus
     // ramenée au palier de 5 kWc — il n'y a donc plus de snap à annoncer.
     const kwcSaisi = 6.5
-    expect(arrondirAuPasKwc(kwcSaisi)).not.toBe(kwcSaisi)
+    expect(auPalier5(kwcSaisi)).not.toBe(kwcSaisi)
     ventesApi.creerDevisAuto.mockImplementation(
       () => Promise.resolve({ data: { id: 501, reference: 'DEV-2026-09-0501' } }))
 
@@ -137,7 +139,7 @@ describe('QJR308 → QJR602 — runAutoQuote : plus aucun avis de palier, la tai
 
   it('un kWc déjà aligné sur le palier : AUCUN avis ne s’affiche', async () => {
     const kwcSaisi = 5
-    expect(arrondirAuPasKwc(kwcSaisi)).toBe(kwcSaisi)
+    expect(auPalier5(kwcSaisi)).toBe(kwcSaisi)
 
     // `vi.clearAllMocks()` efface les APPELS, pas les implémentations : sans
     // ceci, la promesse EN ATTENTE posée par le test précédent resterait la

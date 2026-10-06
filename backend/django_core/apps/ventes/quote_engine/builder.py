@@ -3455,10 +3455,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "agricole": "Agricole",
     }.get(mode, "Résidentielle")
 
-    # Modes industriel ET commercial (QX43) : l'étude fait partie du document
-    # (page dédiée incluse d'office quand des données d'étude existent).
-    include_etude = opts['include_etude'] or (
-        mode in ("industriel", "commercial") and bool(etude))
+    # CIQ332 (D-CIQ-9) / CIQ340 (D-CIQ-10) — l'étude n'est plus forcée pour
+    # le C&I : elle est INTÉGRÉE aux pages premium (commercial 3, industriel
+    # 4) ; la forcer ici ne servait que le legacy « avec étude ».
+    include_etude = opts['include_etude']
 
     # ── PV77 — étude bancable (PV69/PV74) portée jusqu'au moteur de rendu ─────
     # ``Devis.etude_params['simulation']`` (P50/P90, ratio de performance et son
@@ -3883,9 +3883,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # CAD122 — marqueur « signé au domicile », lu SUR LE BON DE COMMANDE
         # (jamais une option du corps client : c'est un fait juridique, pas
         # une préférence de rendu). Absent ou faux ⇒ document inchangé.
+        # CIQ327 — la loi 31-08 vise les besoins NON professionnels (art. 2) :
+        # un devis commercial ou industriel ne joint JAMAIS l'annexe de
+        # rétractation, quel que soit le ``type_client`` de la fiche (un
+        # commerçant peut avoir une fiche « particulier »). Règle sur le MODE.
         "signe_au_domicile": bool(
-            getattr(getattr(devis, 'bon_commande', None),
-                    'signe_au_domicile', False)),
+            not _mode_ci
+            and getattr(getattr(devis, 'bon_commande', None),
+                        'signe_au_domicile', False)),
         "taux_tva": tva_pct,
         "tva_note": tva_note,
         "payment_terms": payment_terms,
@@ -4293,6 +4298,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
             logger.exception("jalons_paiement: échec (devis %s)",
                              getattr(devis, "reference", "?"))
+        # CIQ309 — identité de l'entreprise cliente (contrat client
+        # entreprise CIQ8) ; ABSENTE quand rien n'est à imprimer.
+        _entreprise = entreprise_client_du_client(client)
+        if _entreprise is not None:
+            data["entreprise_client"] = _entreprise
+        # CIQ314 — O&M et suivi de production : seulement ce que le devis
+        # porte (lignes du rôle ``om_ci``, CIQ7) et le délai d'intervention
+        # SAISI par la société (CIQ622, aucun défaut). Absent ⇒ clé absente.
+        # CIQ319 — l'identité d'entreprise enregistrée AVEC la signature en
+        # ligne (lecture seule) : la copie signée la porte. Absente sinon.
+        from apps.ventes.domain.cycle_vie import (
+            signature_entreprise as _signature_entreprise,
+        )
+        _sig_ent = _signature_entreprise(devis)
+        if _sig_ent:
+            data["signature_entreprise"] = _sig_ent
+        _om, _delai = services_ci_du_devis(devis)
+        if _om:
+            data["om_ci_lignes"] = _om
+        if _delai:
+            data["delai_intervention_suivi_heures"] = _delai
 
     # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
     # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre
@@ -4396,6 +4422,78 @@ def _references_pompage(devis):
             for r in refs or [] if isinstance(r, dict)]
 
 
+# ── CIQ309 — client entreprise (contrat CIQ8) ───────────────────────────────
+
+def _texte_client(client, champ):
+    return str(getattr(client, champ, "") or "").strip()
+
+
+def entreprise_client_du_client(client):
+    """La forme ``entreprise_client`` (contrat ``proposal_data.json``, CIQ4)
+    lue sur le Client (colonnes du contrat client entreprise CIQ8) :
+    ``{raison_sociale, ice, rc, if_fiscal, siege, interlocuteur, fonction}``.
+
+    Lecture seule, rien n'est deviné : la raison sociale n'est le ``nom``
+    que pour un client de type ``entreprise`` ; le siège n'est servi que
+    s'il diffère de l'adresse du site. ``None`` quand le client n'est ni une
+    entreprise ni porteur d'un identifiant légal. Aucune donnée de marge."""
+    if client is None:
+        return None
+    entreprise = _texte_client(client, "type_client") == "entreprise"
+    ice = _texte_client(client, "ice")
+    rc = _texte_client(client, "rc")
+    if_fiscal = _texte_client(client, "if_fiscal")
+    if not entreprise and not (ice or rc or if_fiscal):
+        return None
+    siege = _texte_client(client, "adresse_siege")
+    if siege and siege == _texte_client(client, "adresse"):
+        siege = ""
+    return {
+        "raison_sociale": _texte_client(client, "nom") if entreprise else "",
+        "ice": ice,
+        "rc": rc,
+        "if_fiscal": if_fiscal,
+        "siege": siege,
+        "interlocuteur": _texte_client(client, "contact_nom"),
+        "fonction": _texte_client(client, "contact_fonction"),
+    }
+
+
+# ── CIQ314 — services C&I (O&M, suivi de production) ────────────────────────
+
+def services_ci_du_devis(devis):
+    """``(om_lignes, delai_heures)`` d'un devis C&I, en lecture seule.
+
+    * ``om_lignes`` : les lignes du rôle produit ``om_ci`` (contrat CIQ7),
+      ``[{designation, ht, ttc, optionnelle}]`` aux totaux CLIENT
+      (``economie_ci.lignes_pour_economie_ci``), jamais ``prix_achat`` ;
+    * ``delai_heures`` : le délai d'intervention du suivi de production
+      saisi par la société (``CompanyProfile.delai_intervention_suivi_heures``,
+      CIQ622), ``None`` s'il n'est pas saisi — aucun défaut."""
+    om = []
+    try:
+        from apps.ventes.economie_ci import lignes_pour_economie_ci
+        om = [{"designation": li.get("designation") or "",
+               "ht": li.get("ht"), "ttc": li.get("ttc"),
+               "optionnelle": bool(li.get("optionnelle"))}
+              for li in lignes_pour_economie_ci(devis)
+              if li.get("role_ci") == "om_ci"]
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        logger.exception("services_ci: lignes O&M illisibles (devis %s)",
+                         getattr(devis, "reference", "?"))
+    delai = None
+    company = getattr(devis, "company", None)
+    if company is not None:
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            delai = (CompanyProfile.objects.filter(company=company)
+                     .values_list("delai_intervention_suivi_heures",
+                                  flat=True).first())
+        except Exception:  # noqa: BLE001
+            delai = None
+    return om, delai
+
+
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
 #: Champs texte d'une ligne rendus tels quels par les gabarits (les mêmes que
 #: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
@@ -4495,6 +4593,20 @@ def echapper_textes_client(data: dict) -> dict:
              if isinstance(c, dict) else c)
             for c in _clauses
         ]
+    # CIQ309 — identité de l'entreprise cliente : texte saisi (fiche client).
+    # CIQ319 — identité déclarée à la signature : texte saisi sur le LIEN
+    # PUBLIC (personne non authentifiée), échappé une seule fois ici.
+    for _cle in ("entreprise_client", "signature_entreprise"):
+        if isinstance(sortie.get(_cle), dict):
+            sortie[_cle] = {
+                cle: (_e(val) if isinstance(val, str) else val)
+                for cle, val in sortie[_cle].items()}
+    # CIQ314 — désignation des lignes O&M : texte saisi.
+    if isinstance(sortie.get("om_ci_lignes"), list):
+        sortie["om_ci_lignes"] = [
+            ({**li, "designation": _e(li.get("designation"))}
+             if isinstance(li, dict) else li)
+            for li in sortie["om_ci_lignes"]]
     # CIQ218 — conditions générales C&I : texte saisi par la société.
     if isinstance(sortie.get("cgv_ci"), list):
         sortie["cgv_ci"] = [_e(v) for v in sortie["cgv_ci"]]

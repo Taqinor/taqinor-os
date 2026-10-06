@@ -31,12 +31,19 @@ import {
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran,
 } from '../etudePompagePreviewPur.js'
-import { echeancierVersSaisie, saisieVersEcheancier } from '../echeancierEdition.js'
+import {
+  echeancierVersSaisie, saisieVersEcheancier, conditionsDepuisDevis, conditionsVersEntete,
+} from '../echeancierEdition.js'
+import { entreesCiV2, profilDepuisEtude } from './profilCi.js'
+import { tarifDeclareDepuisSaisie, saisiesEconomieCi } from './etudeMarcheBloc.js'
+import { saisieDepuisTarifDeclare, ecoCiDepuisSaisies } from './reouverture.js'
 
 //: Les options recommandées qu'un devis peut avoir FIGÉES (QJR524).
 const RECOS = ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
 
 const present = (v) => v !== undefined && v !== null && v !== ''
+// CIQ226 — une condition « vide » : null ou texte vide.
+const estVide = (v) => v === null || v === undefined || v === ''
 const texte = (v) => (present(v) ? String(v) : undefined)
 
 // ── AGR130 — pompage : ENTRÉES v2 ⇄ états d'écran (`?edit=` et enregistrer) ──
@@ -161,6 +168,13 @@ export function devisVersEtat(d) {
       ? devis.lead_valeurs_modifiees : [],
   }
   etat.echeancierAEnvoyer = etat.echeancier != null
+  // CIQ226 — conditions contractuelles déclarées (retenue, pénalités, caution,
+  // organisme financeur, référence de commande).
+  etat.conditions = conditionsDepuisDevis(devis)
+  // Les clés que le devis PORTE déjà : elles repartent même vidées (pour les
+  // effacer) ; une clé jamais posée et toujours vide n'est pas envoyée.
+  etat.conditionsServies = Object.keys(conditionsVersEntete(etat.conditions))
+    .filter((k) => !estVide(conditionsVersEntete(etat.conditions)[k]))
 
   // PVMRQ — gamme du devis.
   if (e.gamme && typeof e.gamme === 'object' && e.gamme.nom) etat.gammeNom = String(e.gamme.nom)
@@ -189,20 +203,15 @@ export function devisVersEtat(d) {
     etat.multiMode = 'villas'
   }
 
-  // QX50 / QXMT / QJR528 — étude réseau.
-  if (e.injection_82_21 || e.injection_dh_an != null) etat.injectionEnabled = true
-  if (e.tension_raccordement === 'mt') etat.tension = 'mt'
-  if (mode === 'industriel' && e.part_diurne_pct != null
-      && Number.isFinite(Number(e.part_diurne_pct))) {
-    etat.partDiurne = String(Number(e.part_diurne_pct))
-  }
-  if (e.repartition_mt && typeof e.repartition_mt === 'object') {
-    const r = e.repartition_mt
-    etat.repartitionMt = {
-      pointe: r.pointe != null ? String(r.pointe) : '',
-      pleines: r.pleines != null ? String(r.pleines) : '',
-      creuses: r.creuses != null ? String(r.creuses) : '',
-    }
+  // CIQ125 — C&I : le profil déclaré se relit de ses ENTRÉES v2 (jamais
+  // des dérivées `etude_ci`), la ville du site avec lui.
+  if (mode === 'industriel' || mode === 'commercial') {
+    etat.profilCi = profilDepuisEtude(e)
+    etat.villeCi = e.site?.ville || null
+    // CIQ222 — le tarif de la facture du client, tel que saisi.
+    etat.tarifSaisie = saisieDepuisTarifDeclare(e.tarif_declare)
+    // CIQ223 — les saisies de l'économie C&I, telles que saisies.
+    etat.ecoCi = ecoCiDepuisSaisies(e.saisies_economie_ci)
   }
   // QX44 — étude commerciale : catégorie + réponses.
   if (e.categorie_commerciale) {
@@ -210,6 +219,15 @@ export function devisVersEtat(d) {
     const reponses = {}
     for (const q of COMMERCIAL_CATEGORY_QUESTIONS[etat.categorieCommerciale] || []) {
       if (e[q.key] !== undefined && e[q.key] !== null) reponses[q.key] = e[q.key]
+    }
+    // CIQ131 — les réponses ENVOYÉES au moteur (entrée v2
+    // `rythme.reponses_categorie`), heures données comprises (cuisson,
+    // service, garde, dates de fermeture), se relisent telles quelles.
+    const v2 = e.rythme?.reponses_categorie
+    if (v2 && typeof v2 === 'object') {
+      for (const [cle, valeur] of Object.entries(v2)) {
+        if (valeur !== null && valeur !== undefined) reponses[cle] = valeur
+      }
     }
     etat.commercialAnswers = reponses
   }
@@ -293,7 +311,7 @@ export function entreesDeEtat(etat) {
  * @param {object} etat  état d'écran (celui de `devisVersEtat`, ou celui que
  *   l'écran assemble au moment d'enregistrer)
  * @param {object} [vif] valeurs CALCULÉES à l'écran que l'état ne porte pas :
- *   `etude` (étude I/C du moment), `pompage` (dimensionnement retenu),
+ *   `pompage` (dimensionnement retenu),
  *   `entrees` (entrées réelles de la session), `recommended` (option
  *   effective). Absentes → dérivées de l'état seul.
  * @returns {{lignes: Array, entete: object, etude: object|null}}
@@ -309,18 +327,35 @@ export function etatVersEcritures(etat, vif = {}) {
   }
   // QJR624 — l'échéancier ne part que s'il était propre au devis ou touché.
   if (etat.echeancierAEnvoyer) entete.echeancier = saisieVersEcheancier(etat.echeancier)
+  // CIQ226 — les conditions partent dans l'en-tête dès que l'écran les porte.
+  if (etat.conditions) {
+    const servies = new Set(etat.conditionsServies || [])
+    for (const [cle, valeur] of Object.entries(conditionsVersEntete(etat.conditions))) {
+      if (!estVide(valeur) || servies.has(cle)) entete[cle] = valeur
+    }
+  }
 
   const farm = etat.farm || {}
   const etude = projeterEtudeMarche(etat.mode, {
-    etude: vif.etude,
     choix: choixDeEtat(etat, { recommended: vif.recommended }),
     entrees: vif.entrees ?? entreesDeEtat(etat),
-    partDiurne: etat.partDiurne,
-    tensionRaccordement: etat.tension,
-    repartitionMt: etat.repartitionMt,
     categorie: etat.categorieCommerciale,
     reponses: etat.commercialAnswers || {},
     pompageEntrees: etat.mode === 'agricole' ? entreesPompageEcran(etat) : undefined,
+    ciEntrees: (etat.mode === 'industriel' || etat.mode === 'commercial') && etat.profilCi
+      ? entreesCiV2(etat.profilCi, etat.ctxCi || {
+        mode: etat.mode,
+        ville: etat.villeCi || null,
+        categorie: etat.mode === 'commercial' ? etat.categorieCommerciale : null,
+        reponses: etat.mode === 'commercial' ? etat.commercialAnswers : null,
+      })
+      : undefined,
+    tarifDeclare: (etat.mode === 'industriel' || etat.mode === 'commercial')
+      ? tarifDeclareDepuisSaisie(etat.tarifSaisie, { aujourdhui: etat.aujourdhui })
+      : undefined,
+    saisiesEcoCi: (etat.mode === 'industriel' || etat.mode === 'commercial')
+      ? saisiesEconomieCi(etat.ecoCi, { aujourdhui: etat.aujourdhui })
+      : undefined,
     exploitation: {
       attestation: farm.attestation,
       saisiesEconomie: saisiesEconomiePompage(etat.saisiesEco),

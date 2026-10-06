@@ -45,8 +45,10 @@ class ContratDEvenementTests(TestCase):
         """WIR139 — clés du catalogue == kwargs réellement envoyés."""
         self.assertEqual(
             set(event_catalog.entry('visite_validee')['payload']),
-            # AGR413 — + ``mesures_point_eau`` (mesures du point d'eau).
-            {'visite', 'lead_id', 'user', 'recap', 'mesures_point_eau'})
+            # AGR413 — + ``mesures_point_eau`` (mesures du point d'eau) ;
+            # CIQ607 — + ``releve_ci`` (relevé d'une visite C&I).
+            {'visite', 'lead_id', 'user', 'recap', 'mesures_point_eau',
+             'releve_ci'})
         self.assertNotIn(
             'visite_validee', event_coverage.catalog_payload_mismatches())
 

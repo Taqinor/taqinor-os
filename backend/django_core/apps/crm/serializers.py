@@ -856,13 +856,6 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     equip_clim_kw = _PuissanceKwField(
         max_digits=5, decimal_places=2, required=False, allow_null=True)
 
-    # AGR401 — ALIAS lecture seule DÉPRÉCIÉ de ``pompe_actuelle_cv`` (même
-    # valeur) tant que les lecteurs frontend (DevisGenerator, autoQuote) ne
-    # sont pas migrés (AGR126/AGR415/AGR420) ; AGR424 le retire. Jamais
-    # inscriptible : un PATCH ``pompe_cv`` est ignoré.
-    pompe_cv = serializers.DecimalField(
-        source='pompe_actuelle_cv', max_digits=6, decimal_places=2,
-        read_only=True)
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
@@ -1935,11 +1928,6 @@ class SiteProfileSerializer(serializers.ModelSerializer):
     multi-tenant). Le client référencé doit appartenir à la même société
     (validate_client). Une seule fiche par client (OneToOne)."""
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
-    # AGR401 — ALIAS lecture seule DÉPRÉCIÉ de ``pompe_actuelle_cv`` (même
-    # valeur) tant que ``SiteProfilePage.jsx`` le lit ; retiré par AGR424.
-    pompe_cv = serializers.DecimalField(
-        source='pompe_actuelle_cv', max_digits=6, decimal_places=2,
-        read_only=True)
 
     class Meta:
         model = SiteProfile
@@ -1948,7 +1936,7 @@ class SiteProfileSerializer(serializers.ModelSerializer):
             'facture_hiver', 'facture_ete', 'ete_differente',
             'conso_mensuelle_kwh', 'tranche_onee', 'raccordement',
             'regularisation_8221', 'type_installation',
-            'pompe_actuelle_cv', 'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+            'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
             'type_toiture', 'surface_toiture_m2', 'orientation',
             'inclinaison_deg', 'ombrage', 'ombrage_notes',
             'gps_lat', 'gps_lng',

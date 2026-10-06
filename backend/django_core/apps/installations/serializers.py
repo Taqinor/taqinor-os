@@ -455,6 +455,10 @@ class InstallationSerializer(serializers.ModelSerializer):
         source='get_raccordement_display', read_only=True, default=None)
     type_installation_display = serializers.CharField(
         source='get_type_installation_display', read_only=True, default=None)
+    # CIQ610 — niveau de tension recopié du lead (éditable via `niveau_tension`
+    # du `__all__`) ; libellé en lecture seule.
+    niveau_tension_display = serializers.CharField(
+        source='get_niveau_tension_display', read_only=True, default=None)
     # Position dans l'entonnoir — pour un tri non-alphabétique côté UI.
     statut_ordre = serializers.SerializerMethodField()
     # Statut rabattu sur sa colonne canonique (kanban/parc) — les valeurs
@@ -482,6 +486,10 @@ class InstallationSerializer(serializers.ModelSerializer):
     # sélecteur cross-app (jamais un champ : règle fondateur « le chantier ne
     # garde que son cœur », CAL209).
     calepinage = serializers.SerializerMethodField()
+    # CIQ617 — état UNIQUE du dossier 82-21 : le ``resume`` du dossier
+    # réglementaire (contrat ``dossier_8221.json``), sinon la saisie chantier
+    # (``source: 'saisie_chantier'``). Lecture seule.
+    dossier_8221_resume = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -518,7 +526,28 @@ class InstallationSerializer(serializers.ModelSerializer):
             }
             if errors:
                 raise serializers.ValidationError(errors)
+        # CIQ617 — tant qu'un dossier réglementaire existe, le régime et le
+        # statut 82-21 du chantier sont un MIROIR en lecture seule : ils se
+        # gèrent dans le dossier (``/ventes/dossiers-reglementaires``).
+        if self.instance is not None:
+            from .services import (
+                CHAMPS_MIROIR_8221, MESSAGE_STATUT_GERE_PAR_DOSSIER,
+                resume_dossier_8221)
+            modifies = [
+                champ for champ in CHAMPS_MIROIR_8221
+                if champ in attrs
+                and attrs[champ] != getattr(self.instance, champ)]
+            if modifies and resume_dossier_8221(
+                    self.instance).get('source') == 'dossier':
+                raise serializers.ValidationError({
+                    champ: MESSAGE_STATUT_GERE_PAR_DOSSIER
+                    for champ in modifies})
         return attrs
+
+    @extend_schema_field(serializers.DictField())
+    def get_dossier_8221_resume(self, obj):
+        from .services import resume_dossier_8221
+        return resume_dossier_8221(obj)
 
     def get_statut_ordre(self, obj):
         order = list(Installation.STATUT_ORDER)
@@ -531,11 +560,10 @@ class InstallationSerializer(serializers.ModelSerializer):
         return Installation.canonical_statut(obj.statut)
 
     def get_regime_suggere(self, obj):
-        from .regime import suggest_for_company
-        code = suggest_for_company(
-            obj.puissance_installee_kwc, obj.company,
-            hors_reseau=(obj.raccordement_reseau
-                         == Installation.RaccordementReseau.HORS_RESEAU))
+        # CIQ613 — noyau sourcé : kWc DC, kW AC des onduleurs (nomenclature
+        # gelée), niveau de tension, hors réseau ; C&I inconnu → à qualifier.
+        from .regime import suggest_for_installation
+        code = suggest_for_installation(obj)
         label = dict(Installation.Regime8221.choices).get(code, code)
         return {'code': code, 'label': label}
 

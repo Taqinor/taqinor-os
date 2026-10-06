@@ -201,23 +201,33 @@ class TestF_BaremeIndustriel(SimpleTestCase):
         d.update(surcharges)
         return render.build_html(renderer._augment(d))
 
+    # CIQ344 — la page 4 imprime l'échéancier de ``synthese_ci`` (N jalons,
+    # montants du builder) sous le titre « Échéancier de paiement ».
     def test_avec_bareme_servi_les_tranches_sont_rendues(self):
         html = self._html(payment_terms={"acompte": 40, "materiel": 50,
                                          "solde": 10})
-        self.assertIn("Tranches de paiement", html)
-        self.assertIn("40%", html)
-        self.assertIn("50%", html)
+        self.assertIn("Échéancier de paiement", html)
+        self.assertIn("40&#160;%", html)
+        self.assertIn("50&#160;%", html)
 
     def test_sans_bareme_servi_le_bloc_est_omis(self):
         """LE CONSTAT — le repli 50/40/10 refabriquait un échéancier dont la
         source canonique est le RÉGLAGE SOCIÉTÉ, et calculait des MONTANTS
         dessus."""
-        for absent in ({}, None, {"acompte": 50}):
+        for absent in ({}, None):
             with self.subTest(absent=absent):
                 html = self._html(payment_terms=absent)
-                self.assertNotIn("Tranches de paiement", html)
-                # Le reste de la page 3 est intact.
-                self.assertIn("Conformité", html)
+                self.assertNotIn("Échéancier de paiement", html)
+                # Le reste de la page 4 est intact.
+                self.assertIn("Valeur pour l'entreprise", html)
+
+    def test_bareme_partiel_jamais_complete(self):
+        """Un barème partiel n'est jamais complété par un repli : seul le
+        jalon servi est imprimé, aucun « 40 % » ni « 10 % » fabriqué."""
+        html = self._html(payment_terms={"acompte": 50})
+        self.assertIn("50&#160;%", html)
+        self.assertNotIn("40&#160;%", html)
+        self.assertNotIn("10&#160;%", html)
 
 
 class TestG_TotauxCommercial(SimpleTestCase):

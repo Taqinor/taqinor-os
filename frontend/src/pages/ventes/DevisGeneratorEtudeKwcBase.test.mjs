@@ -1,32 +1,25 @@
-// QJR579 (contrat QJR510) — le générateur enregistre, avec l'étude
-// industrielle / commerciale, le kWc pour lequel il l'a calculée
-// (`etude_kwc_base`) : sans lui, la garde de fraîcheur (QJR625) n'a aucune base
-// pour savoir qu'une modification de ligne ultérieure a périmé taux / payback.
-// Écrit par LA projection partagée (QJR542) : Édition complète ET devis
-// automatique (QJR543) l'envoient à l'identique.
+// CIQ126 (remplace QJR579) — `etude_kwc_base` était le kWc pour lequel
+// l'écran avait calculé SON étude C&I locale. L'étude est désormais calculée
+// et écrite par le serveur (`etude_ci`, propriétaire `moteur_ci`) : le
+// navigateur n'écrit plus jamais `etude_kwc_base` (contrat
+// `etude_ci_preview.json`, `a_retirer_v1`), ni l'Édition complète ni le devis
+// automatique (même projection partagée QJR542).
 // Run : node --test src/pages/ventes/DevisGeneratorEtudeKwcBase.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { computeEtudeIndustrielle } from '../../features/ventes/solar.js'
 import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc.js'
+import { documentContrat } from '../../test/fixtures/contractSamples.js'
 
-const etude = computeEtudeIndustrielle({
-  kwp: 42.6, consoMensuelleKwh: 9000, dayUsagePct: 80, totalTtc: 350000,
-  kwhPrice: 1.2, efficiency: 0.8,
-})
+const A_RETIRER = documentContrat('ventes', 'etude_ci_preview').cles_etude_params_ci_v2.a_retirer_v1
 
 for (const mode of ['industriel', 'commercial']) {
-  test(`${mode} : le bloc etude-params porte etude_kwc_base = kWc de l'étude`, () => {
-    const bloc = projeterEtudeMarche(mode, { etude, choix: {}, entrees: {} })
-    assert.equal(bloc.etude_kwc_base, etude.kwc)
-    assert.equal(bloc.etude_kwc_base, 42.6)
+  test(`${mode} : aucune clé v1 (dont etude_kwc_base) dans le bloc etude-params`, () => {
+    assert.ok(A_RETIRER.includes('etude_kwc_base'))
+    const bloc = projeterEtudeMarche(mode, { choix: {}, entrees: {}, ciEntrees: { mode } })
+    for (const k of A_RETIRER) assert.equal(k in bloc, false, k)
   })
 }
-
-test('sans étude calculée : etude_kwc_base nul (jamais un kWc inventé)', () => {
-  assert.equal(projeterEtudeMarche('industriel', { etude: null, choix: {}, entrees: {} }).etude_kwc_base, null)
-})
 
 test('agricole / résidentiel : aucune clé etude_kwc_base', () => {
   assert.ok(!('etude_kwc_base' in projeterEtudeMarche('agricole', { choix: {}, entrees: {} })))

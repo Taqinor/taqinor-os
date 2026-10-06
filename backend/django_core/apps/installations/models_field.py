@@ -475,6 +475,11 @@ class SafetyChecklistSlot(models.Model):
     ordre = models.PositiveIntegerField(default=0)
     actif = models.BooleanField(default=True)
     protege = models.BooleanField(default=False)
+    # CIQ624 — niveau de tension visé : null = tous les chantiers, « mt » =
+    # chantiers MT seulement (consignation au poste).
+    niveau_tension = models.CharField(
+        max_length=2, choices=Installation.NiveauTension.choices,
+        null=True, blank=True)
 
     class Meta:
         ordering = ['ordre', 'libelle']

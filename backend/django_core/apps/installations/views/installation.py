@@ -291,6 +291,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                           or '').strip()
         motif_reouverture = (self.request.data.get('motif_reouverture')
                              or '').strip()
+        # CIQ621 — dérogation Directeur (motif) aux travaux sans convention.
+        motif_derogation_8221 = (
+            self.request.data.get('motif_derogation_8221') or '').strip()
         with transaction.atomic():
             super().perform_update(serializer)
             inst = serializer.instance
@@ -319,6 +322,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                     inst, nouveau_statut, self.request.user,
                     motif_override_acompte=motif_override,
                     motif_reouverture=motif_reouverture,
+                    motif_derogation_8221=motif_derogation_8221,
                     # Instantané d'AVANT la sauvegarde des autres champs : le
                     # diff du chatter doit les voir, et les gates doivent
                     # s'évaluer sur l'état d'avant (comportement historique).
@@ -361,14 +365,22 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         seuils éditables de la société. ?kwc=<nombre>. Défaut modifiable.
 
         AGR602 — ``&hors_reseau=1`` : installation non raccordée → régime
-        « déclaration hors réseau » (loi 82-21, art. 3), sans seuil."""
+        « déclaration hors réseau » (loi 82-21, art. 3), sans seuil.
+
+        CIQ613 — noyau sourcé (``core.reglementaire``) : ``&kw_ac=`` (kW AC
+        des onduleurs), ``&niveau=bt|mt``, ``&type_installation=`` ; un
+        chantier ``industriel`` à puissance inconnue → ``a_qualifier``."""
         from ..regime import suggest_for_company, regime_thresholds
         from ..models import Installation
-        kwc = request.query_params.get('kwc')
-        hors_reseau = str(request.query_params.get('hors_reseau', '')).strip(
+        params = request.query_params
+        kwc = params.get('kwc')
+        hors_reseau = str(params.get('hors_reseau', '')).strip(
         ).lower() in ('1', 'true', 'oui', 'yes')
         company = request.user.company
-        code = suggest_for_company(kwc, company, hors_reseau=hors_reseau)
+        code = suggest_for_company(
+            kwc, company, hors_reseau=hors_reseau,
+            kw_ac=params.get('kw_ac'), niveau=params.get('niveau'),
+            type_installation=params.get('type_installation'))
         label = dict(Installation.Regime8221.choices).get(code, code)
         seuil_decl, seuil_anre = regime_thresholds(company)
         return Response({
@@ -1228,7 +1240,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         """CH2 — avance le chantier à l'étape demandée (corps {"etape": cle})
         ou à la suivante. Une étape BLOQUANTE ne se franchit pas tant que ses
         exigences (checklist/photos/séries/essais/matériel/dossier 82-21) et
-        les points d'arrêt QHSE ne sont pas levés — rejet 400 avec les raisons
+        les documents de sécurité (`exige_hse`) manquent — rejet 400 avec les raisons
         en français. Les étapes non bloquantes s'avancent librement. Le statut
         hérité est synchronisé, donc les effets de bord existants (stock à
         « Installé », garantie/parc à « Réceptionné ») tirent inchangés."""
@@ -1280,7 +1292,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         try:
             changer_statut_chantier(
                 inst, statut_cible, request.user, etape=cible,
-                motif_override_acompte=motif_override)
+                motif_override_acompte=motif_override,
+                motif_derogation_8221=(
+                    request.data.get('motif_derogation_8221') or '').strip())
         except TransitionRefusee as exc:
             return Response(
                 {'detail': 'Étape bloquée par un gate.',

@@ -28,7 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
 
 test('contrôle « Raccordement » : deux choix, id stable, importe isOffgridInverter', () => {
-  assert.match(gen, /isBattery, isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,/)
+  assert.match(gen, /isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,/)
   assert.match(gen, /<Label htmlFor="gen-raccordement">Raccordement<\/Label>/)
   assert.match(gen, /<SelectTrigger id="gen-raccordement">/)
   assert.match(gen, /<SelectItem value="reseau">Raccordé au réseau<\/SelectItem>/)
@@ -55,17 +55,13 @@ test('défaut dérivé du lead : raccordement === \'aucun\' → horsReseau, prot
     /if \(!horsReseauTouched\) setHorsReseau\(lead\.raccordement === 'aucun'\)/)
 })
 
-test('composeLocalement : `offgrid` transmis à autoFillLines, jamais la fusion L-2OPT ni la garde indus/commercial en hors réseau', () => {
-  assert.match(gen, /offgrid: horsReseau \|\| undefined,/)
-  // La fusion L-2OPT (deux optimiseurs sans/avec) ne s'active plus si horsReseau.
-  assert.match(gen,
-    /if \(!horsReseau && modeInstallation === 'residentiel'\s*\n\s*&& \(scenario === SCENARIO_LES_DEUX \|\| scenario === SCENARIO_AVEC\)\) \{/)
-  // La garde industriel/commercial (qui vide batterie/hybride) ne touche jamais
-  // une composition hors réseau — un site isolé porte TOUJOURS sa batterie.
-  assert.match(gen,
+test('CIQ126 — plus aucune composition JavaScript : le hors réseau ne passe que par le dry-run serveur', () => {
+  // `composeLocalement` (et sa garde indus/commercial qui vidait batterie et
+  // hybride) est supprimé : le résidentiel compose au serveur (hors_reseau),
+  // le C&I au moteur C&I serveur.
+  assert.doesNotMatch(gen, /const composeLocalement|offgrid: horsReseau \|\| undefined/)
+  assert.doesNotMatch(gen,
     /if \(!horsReseau && \(modeInstallation === 'industriel' \|\| modeInstallation === 'commercial'\)\) \{/)
-  // Erreur hors réseau (aucun repli silencieux sur l'hybride) remontée à l'écran.
-  assert.match(gen, /if \(horsReseau && generated\.offgridErreur\) \{/)
 })
 
 test('dry-run serveur : `hors_reseau: true` envoyé quand horsReseau est actif, jamais dimensionnement_avec', () => {

@@ -18,7 +18,20 @@ import { formatMAD, formatDate } from '../../../lib/format'
 
    Le consentement e-signature est EXPLICITE (QX9, loi 43-20) : la case n'est
    jamais pré-cochée et le bouton reste désactivé tant qu'elle ne l'est pas.
+
+   CIQ322 (D-CIQ-11, contrat `acceptation_entreprise.json`) — une ligne qui
+   porte `exige_identite_entreprise` (devis commercial / industriel) demande en
+   plus la raison sociale, la qualité du signataire et l'ICE, envoyés dans le
+   bloc `entreprise`. Le serveur valide (même règle que la page publique) ;
+   son 400 `{detail, champ}` s'affiche SOUS le champ fautif.
    ========================================================================== */
+
+const CHAMPS_ENTREPRISE = [
+  { cle: 'raison_sociale', label: 'Raison sociale', placeholder: 'Nom de la société' },
+  { cle: 'signataire_qualite', label: 'Qualité du signataire', placeholder: 'Ex. directeur général, gérant' },
+  { cle: 'ice', label: 'ICE', placeholder: '15 chiffres' },
+]
+const ENTREPRISE_VIDE = { raison_sociale: '', signataire_qualite: '', ice: '' }
 
 export default function PortailClientDevis() {
   const [rows, setRows] = useState([])
@@ -29,6 +42,8 @@ export default function PortailClientDevis() {
   const [consent, setConsent] = useState(false)
   const [option, setOption] = useState('')
   const [envoi, setEnvoi] = useState(false)
+  const [entreprise, setEntreprise] = useState(ENTREPRISE_VIDE)
+  const [erreurs, setErreurs] = useState({})
 
   const charger = () => {
     setLoading(true)
@@ -49,27 +64,44 @@ export default function PortailClientDevis() {
     setASigner(devis)
     setNom('')
     setConsent(false)
+    setEntreprise(ENTREPRISE_VIDE)
+    setErreurs({})
     setOption('')
   }
 
+  const exigeEntreprise = !!aSigner?.exige_identite_entreprise
+  const entrepriseComplete = !exigeEntreprise
+    || CHAMPS_ENTREPRISE.every(({ cle }) => entreprise[cle].trim())
+  const majEntreprise = (cle, valeur) => {
+    setEntreprise((e) => ({ ...e, [cle]: valeur }))
+    setErreurs((e) => ({ ...e, [`entreprise.${cle}`]: undefined }))
+  }
+
   const accepter = async () => {
-    if (!aSigner || !nom.trim() || !consent) return
+    if (!aSigner || !nom.trim() || !consent || !entrepriseComplete) return
     if (aSigner.deux_options && !option) return
     setEnvoi(true)
+    setErreurs({})
+    const corps = { nom: nom.trim(), consent_esign: true }
+    // ADOC114 — devis à deux options : le client choisit, le serveur
+    // refuse (400) un corps sans `option`.
+    if (aSigner.deux_options) corps.option = option
+    if (exigeEntreprise) {
+      corps.entreprise = Object.fromEntries(
+        CHAMPS_ENTREPRISE.map(({ cle }) => [cle, entreprise[cle].trim()]))
+    }
     try {
-      await portailApi.devis.accepter(aSigner.id, {
-        nom: nom.trim(),
-        consent_esign: true,
-        // ADOC114 — devis à deux options : le client choisit, le serveur
-        // refuse (400) un corps sans `option`.
-        ...(aSigner.deux_options ? { option } : {}),
-      })
+      await portailApi.devis.accepter(aSigner.id, corps)
       toast.success('Devis accepté. Merci !')
       setASigner(null)
       charger()
     } catch (err) {
-      toast.error(err?.response?.data?.detail
-        || "L'acceptation n'a pas abouti.")
+      const data = err?.response?.data
+      if (data?.champ && String(data.champ).startsWith('entreprise.')) {
+        setErreurs({ [data.champ]: data.detail })
+      } else {
+        toast.error(data?.detail || "L'acceptation n'a pas abouti.")
+      }
     } finally {
       setEnvoi(false)
     }
@@ -180,6 +212,26 @@ export default function PortailClientDevis() {
                 ))}
               </fieldset>
             )}
+            {exigeEntreprise && CHAMPS_ENTREPRISE.map(({ cle, label, placeholder }) => {
+              const id = `portail-entreprise-${cle}`
+              const erreurChamp = erreurs[`entreprise.${cle}`]
+              return (
+                <div key={cle} className="flex flex-col gap-1.5">
+                  <Label htmlFor={id}>{label}</Label>
+                  <Input id={id} value={entreprise[cle]} required
+                         aria-invalid={erreurChamp ? true : undefined}
+                         aria-describedby={erreurChamp ? `${id}-erreur` : undefined}
+                         onChange={(e) => majEntreprise(cle, e.target.value)}
+                         placeholder={placeholder} />
+                  {erreurChamp && (
+                    <p id={`${id}-erreur`} role="alert"
+                       className="text-xs text-destructive">
+                      {erreurChamp}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
             <label className="flex items-start gap-2 text-sm">
               <Checkbox checked={consent}
                         onCheckedChange={(v) => setConsent(v === true)} />
@@ -194,6 +246,7 @@ export default function PortailClientDevis() {
             </Button>
             <Button onClick={accepter}
                     disabled={envoi || !nom.trim() || !consent
+                      || !entrepriseComplete
                       || (aSigner?.deux_options && !option)}>
               {envoi ? 'Envoi…' : 'Confirmer l’acceptation'}
             </Button>

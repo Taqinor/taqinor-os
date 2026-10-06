@@ -13,7 +13,10 @@ from . import categories
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
 from ..ci.mentions import texte_revente
+# CIQ333 — libellés STRUCTURELS dans la langue du document.
+from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
+from .. import premium_base
 
 
 def _num(v, default=0.0):
@@ -24,28 +27,98 @@ def _num(v, default=0.0):
         return default
 
 
+# ── CIQ317 — densité adaptative de la page équipements ─────────────────────
+#: Paliers ``(police pt, padding vertical px, interligne)`` du tableau, des
+#: totaux et des blocs sous le tableau. Palier 0 = le rendu d'hier, octet pour
+#: octet. Le renderer choisit le premier palier qui TIENT, mesuré sur le rendu
+#: réel (``deborde``) ; si le dernier déborde encore, il refuse le devis
+#: (``Unsupported('nomenclature trop longue')``) et le dispatch prend le repli
+#: NOMMÉ (QJR235) — jamais une ligne, un total ou une option perdue.
+PALIERS_DENSITE = (None, (7.5, 4, 1.25), (6.8, 2.5, 1.15), (6.0, 1.2, 1.05))
+#: Bande de pied fixe des pages premium (``theme`` › ``.foot``, 13 mm).
+PIED_MM = 13.0
+_PX_PAR_MM = 96 / 25.4
+
+
+def css_densite(palier):
+    """Surcharge CSS du palier ``palier`` (``''`` au palier 0)."""
+    if not palier or palier >= len(PALIERS_DENSITE):
+        return ""
+    pt, pad, lh = PALIERS_DENSITE[palier]
+    return (
+        "<style>.c2-tot{display:block;}.c2-tot-sp{display:none;}"
+        ".c2-tot-box{display:block;width:45%;margin-left:55%;}"
+        f".c2-sec{{font-size:{pt + 5:g}pt;}}"
+        f".c2-tbl{{margin-top:4px;font-size:{pt:g}pt;line-height:{lh:g};}}"
+        f".c2-tbl th,.c2-tbl td{{padding:{pad:g}px 6px;}}"
+        f".c2-mq{{font-size:{max(pt - 1.5, 5):g}pt;"
+        + ("display:inline;margin-left:4px;" if palier >= 2 else "") + "}"
+        f".c2-tot{{margin-top:{pad:g}px;}}"
+        f".c2-tot-tbl{{font-size:{pt:g}pt;}}"
+        f".c2-tot-tbl td{{padding:{max(pad - 1, 1):g}px 8px;}}"
+        f".c2-tot-ttc td{{font-size:{pt + 3:g}pt;padding-top:{pad:g}px;}}"
+        f".c2-note,.c2-inj{{margin-top:{pad:g}px;font-size:{pt:g}pt;}}"
+        f".c2b{{margin-top:{pad + 2:g}px;padding:{pad + 2:g}px 10px;}}"
+        f".c2b-li{{font-size:{pt:g}pt;margin-top:1px;line-height:{lh:g};}}"
+        "</style>")
+
+
+def _boites_texte(boite, dans_pied=False):
+    element = getattr(boite, "element", None)
+    classes = ""
+    if element is not None and hasattr(element, "get"):
+        classes = element.get("class") or ""
+    pied = dans_pied or "foot" in classes.split()
+    if type(boite).__name__ == "TextBox" and not pied:
+        yield boite
+    for enfant in getattr(boite, "children", None) or []:
+        yield from _boites_texte(enfant, pied)
+
+
+def deborde(page):
+    """Vrai quand un TEXTE de la page (hors pied) descend sous le haut de la
+    bande de pied : la page fixe en ``overflow:hidden`` le couperait en
+    silence. ``page`` : une page de ``HTML(...).render().pages``."""
+    limite = page.height - PIED_MM * _PX_PAR_MM
+    for boite in _boites_texte(page._page_box):
+        if boite.position_y + boite.margin_height() > limite + 0.5:
+            return True
+    return False
+
+
+def pdf_adaptatif(d, build_html, rendre, index_page=1):
+    """Les octets PDF au PREMIER palier de densité qui tient, ou ``None``
+    quand même le dernier déborde (le renderer lève alors ``Unsupported``).
+    ``rendre(html)`` : le document WeasyPrint rendu par le RENDERER — aucun
+    import WeasyPrint ici (ARC11)."""
+    for palier in range(len(PALIERS_DENSITE)):
+        donnees = d if palier == 0 else dict(d, _palier_equip=palier)
+        html = build_html(donnees)
+        doc = rendre(html)
+        # Une page qui déborde peut aussi POUSSER une page de plus : le
+        # document ne tient que s'il a exactement ses pages et rien de coupé.
+        attendu = html.count('<div class="page">')
+        if len(doc.pages) == attendu and not deborde(doc.pages[index_page]):
+            return doc.write_pdf()
+    return None
+
+
 def build(ctx):
     d = ctx["d"]
+
+    def L(cle, fr, **valeurs):
+        return _libelle(d, cle, fr, **valeurs)
+
     C = ctx["C"]
     fmt = ctx["fmt"]
     # QJR614 — prix, totaux de ligne et chaîne de totaux au centime.
     fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
 
-    navy = C["navy"]
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    line_soft = C.get("line_soft", "#EFF1F4")
-    wash = C.get("wash", "#F7F9FC")
+    navy, gold, green, green_bg, ink, muted, muted_2, line, line_soft, wash = premium_base.couleurs(
+        C, "navy gold green green_bg ink muted muted_2 line line_soft wash")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
     items = [it for it in (d.get("all_items") or []) if _num(it.get("quantite")) > 0]
     # QJR619 — sections et notes intercalées à leur ``ordre`` par la MÊME
@@ -92,14 +165,14 @@ def build(ctx):
     # son ancre ``data-figure`` sont la même chaîne.
     _f_remise = fmt_mad(remise)
     remise_row = (
-        f'<tr><td>Remise{ancre("remise", _f_remise)}</td>'
+        f'<tr><td>{L("remise", "Remise")}{ancre("remise", _f_remise)}</td>'
         f'<td class="c2-tr">- {_f_remise} MAD</td></tr>'
         if remise > 0 else "")
     # ARRONDI-100 — la baisse au palier de 100 MAD inférieur, ligne visible.
     arrondi = _num(tot.get("arrondi"))
     _f_arrondi = fmt_mad(arrondi)
     arrondi_row = (
-        f'<tr><td>Arrondi commercial{ancre("arrondi", _f_arrondi)}</td>'
+        f'<tr><td>{L("arrondi", "Arrondi commercial")}{ancre("arrondi", _f_arrondi)}</td>'
         f'<td class="c2-tr">- {_f_arrondi} MAD</td></tr>'
         if arrondi > 0 else "")
     _f_ht_brut = fmt_mad(ht_brut)
@@ -114,10 +187,11 @@ def build(ctx):
     injection_html = ""
     if _inj and _inj > 0:
         injection_html = (
-            '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' MAD/an</b> — '
-            'surplus injecté. <span class="c2-inj-m">'
+            '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' '
+            + L("ci_mad_an", "MAD/an") + '</b> — '
+            + L("ci_surplus_injecte", "surplus injecté") + '. <span class="c2-inj-m">'
             # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
-            + texte_revente() + '.</span></div>')
+            + texte_revente(_langue(d)) + '.</span></div>')
 
     # QJR619 — « Options proposées (non incluses) » : le SEUL ``total_ttc`` du
     # builder (supplément canonique, QJR616), aucun recalcul. Sans option ⇒ ''.
@@ -128,17 +202,34 @@ def build(ctx):
         for _o in _opts:
             _oq = _num(_o.get("quantite"))
             _oq_txt = f"{_oq:g}× " if _oq and _oq != 1 else ""
+            # CIQ316 — en HT avec leur taux, comme le reste du tableau : les
+            # ``total_ht`` / ``taux_tva`` / ``total_ttc`` SERVIS par le builder
+            # (supplément canonique QJR616), aucun recalcul ici ; TTC en petit.
+            _o_taux = _num(_o.get("taux_tva"))
             _orows += (
                 f'<tr><td class="c2-d">{_oq_txt}{_o.get("designation", "")}</td>'
-                f'<td class="c2-t">{fmt_mad(_num(_o.get("total_ttc")))} MAD TTC</td></tr>')
+                f'<td class="c2-v">{_o_taux:g} %</td>'
+                f'<td class="c2-t">{fmt_mad(_num(_o.get("total_ht")))} MAD {L("ci_ht", "HT")}'
+                f'<div style="font-size:6.5pt;font-weight:400;">'
+                f'{fmt_mad(_num(_o.get("total_ttc")))} MAD {L("ci_ttc", "TTC")}</div></td></tr>')
         options_html = (
-            '<div style="margin-top:12px;"><div class="c2-kicker">Options propos&eacute;es '
-            '(non incluses dans le total)</div>'
-            f'<table class="c2-tbl">{_orows}</table></div>')
+            '<div style="margin-top:12px;"><div class="c2-kicker">'
+            + L("ci_options_proposees",
+                "Options propos&eacute;es (non incluses dans le total)")
+            + '</div>'
+            '<table class="c2-tbl"><tr><th>' + L("designation", "D&eacute;signation") + '</th>'
+            '<th class="c2-rr">' + L("ci_tva_pct", "TVA %") + '</th><th class="c2-rr">'
+            + L("total_ht", "Total HT") + '</th></tr>'
+            f'{_orows}</table></div>')
 
+    # CIQ330 — le bloc RENDU depuis ``synthese_ci['categorie']`` (table
+    # trilingue de ``ci/categories.py``), le même contenu que /proposition.
     block = categories.category_block(
         d.get("com_category"), d.get("etude"), C, fmt,
-        note_pointe=d.get("com_note_pointe") or d.get("ind_note_pointe"))
+        note_pointe=d.get("com_note_pointe") or d.get("ind_note_pointe"),
+        categorie=(d.get("com_synthese") or {}).get("categorie"),
+        langue=_langue(d),
+        synthese=d.get("com_synthese") or d.get("ind_synthese"))
 
     css = f"""
 <style>
@@ -193,19 +284,19 @@ def build(ctx):
     # QJR627 (D-QJR5-6) — le texte CLIENT du champ « Notes » (déjà échappé
     # par ``builder.echapper_textes_client``) ; vide → aucun bloc.
     _note_client = (d.get("note_client") or "").strip()
-    note_html = (f'<div class="c2-note"><b>Note</b>{_note_client}</div>'
+    note_html = (f'<div class="c2-note"><b>{L("ci_note", "Note")}</b>{_note_client}</div>'
                  if _note_client else "")
     # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
     from ..clauses_cgv import bloc_clauses_html
     clauses_html = bloc_clauses_html(
         d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
-    html = f"""{css}
+    html = f"""{css}{css_densite(d.get("_palier_equip"))}
 <div class="c2-root">
-  <div class="c2-kicker">Votre installation</div>
-  <div class="c2-sec">Équipements &amp; investissement</div>
+  <div class="c2-kicker">{L("ci_votre_installation", "Votre installation")}</div>
+  <div class="c2-sec">{L("ci_equipements_investissement", "Équipements &amp; investissement")}</div>
 
   <table class="c2-tbl">
-    <tr><th>Désignation</th><th class="c2-rr">Qté</th><th class="c2-rr">P.U. HT</th><th class="c2-rr">TVA %</th><th class="c2-rr">Total HT</th></tr>
+    <tr><th>{L("designation", "Désignation")}</th><th class="c2-rr">{L("qte", "Qté")}</th><th class="c2-rr">{L("pu_ht", "P.U. HT")}</th><th class="c2-rr">{L("ci_tva_pct", "TVA %")}</th><th class="c2-rr">{L("total_ht", "Total HT")}</th></tr>
     {rows}
   </table>
 
@@ -213,11 +304,11 @@ def build(ctx):
     <div class="c2-tot-sp"></div>
     <div class="c2-tot-box">
       <table class="c2-tot-tbl">
-        <tr><td>Sous-total HT{ancre("sous_total_ht", _f_ht_brut)}</td><td>{_f_ht_brut} MAD</td></tr>
+        <tr><td>{L("sous_total_ht", "Sous-total HT")}{ancre("sous_total_ht", _f_ht_brut)}</td><td>{_f_ht_brut} MAD</td></tr>
         {remise_row}{arrondi_row}
-        <tr><td>Total HT{ancre("total_ht", _f_ht_net)}</td><td>{_f_ht_net} MAD</td></tr>
-        <tr><td>TVA{ancre("tva", _f_tva)}</td><td>{_f_tva} MAD</td></tr>
-        <tr class="c2-tot-ttc"><td>Total TTC{ancre("total_ttc", _f_ttc)}</td><td>{_f_ttc} MAD</td></tr>
+        <tr><td>{L("total_ht", "Total HT")}{ancre("total_ht", _f_ht_net)}</td><td>{_f_ht_net} MAD</td></tr>
+        <tr><td>{L("tva", "TVA")}{ancre("tva", _f_tva)}</td><td>{_f_tva} MAD</td></tr>
+        <tr class="c2-tot-ttc"><td>{L("total_ttc", "Total TTC")}{ancre("total_ttc", _f_ttc)}</td><td>{_f_ttc} MAD</td></tr>
       </table>
     </div>
   </div>

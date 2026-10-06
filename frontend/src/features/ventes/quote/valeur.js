@@ -11,7 +11,7 @@
 //   · `saisie` — tapé par le vendeur à l'écran. Ne se fait JAMAIS écraser par
 //     un `moteur` arrivé après (invariant du reducer QJR87).
 //   · `apercu` — dérivé LOCALEMENT à l'écran (miroir JS : `computeROI`,
-//     `computeEtudeIndustrielle`, la moitié pompage…). C'est un repère de
+//     la moitié pompage…). C'est un repère de
 //     vente, PAS une mesure : il est rendu avec la puce « estimation
 //     d'exemple » (QJR35, rendu structurel par QJR89/QJR90).
 //   · `null` — RIEN à montrer, avec le `motif` FRANÇAIS **VERBATIM** du

@@ -639,3 +639,83 @@ class Ciq504DarijaB2BTests(SimpleTestCase):
         self.assertTrue(texte.strip())
         self.assertIn('[النهار]', texte)
         self.assertNotIn('العائلة', texte)
+
+
+# ── CIQ520 — base B2B partagée + surcharges commerciales (vides) ──────────
+
+def _surcharges_du_guide():
+    """``{'COMMERCIAL': {cle: texte}, 'COMMERCIAL DARIJA': {...}}`` du guide."""
+    lignes = _guide().read_text(
+        encoding='utf-8').replace('\r\n', '\n').split('\n')
+    trouvees = {'COMMERCIAL': {}, 'COMMERCIAL DARIJA': {}}
+    cle = None
+    for ligne in lignes:
+        if ligne.startswith('### '):
+            cle = ligne[4:].split(' ')[0].strip()
+            continue
+        for etiquette in trouvees:
+            prefixe = etiquette + ' : '
+            if cle and ligne.startswith(prefixe):
+                trouvees[etiquette][cle] = _convertir(
+                    ligne[len(prefixe):].strip())
+    return trouvees
+
+
+class SurchargesCommercialesTests(SimpleTestCase):
+
+    def test_a_surcharge_vide_meme_texte_commercial_et_industriel(self):
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL,
+            MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL_DARIJA,
+        )
+        self.assertEqual(MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL, {})
+        self.assertEqual(MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL_DARIJA, {})
+        for langue in ('fr', 'darija'):
+            for cle in MESSAGE_TEMPLATE_DEFAULTS:
+                with self.subTest(langue=langue, cle=cle):
+                    self.assertEqual(
+                        variante_segment(cle, 'commercial', langue),
+                        variante_segment(cle, 'industriel', langue))
+
+    def test_b_une_surcharge_injectee_ne_change_que_le_commercial(self):
+        from unittest import mock
+        cle = 'valeur_j1'
+        base = variante_segment(cle, 'industriel')
+        self.assertIsNotNone(base)
+        with mock.patch.dict(
+                'apps.parametres.models_messages.'
+                'MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL',
+                {cle: 'COMMERCE'}):
+            self.assertEqual(variante_segment(cle, 'commercial'), 'COMMERCE')
+            self.assertEqual(variante_segment(cle, 'industriel'), base)
+            self.assertIsNone(variante_segment(cle, 'residentiel'))
+            self.assertEqual(variante_segment(cle, 'commercial', 'darija'),
+                             variante_segment(cle, 'industriel', 'darija'))
+        with mock.patch.dict(
+                'apps.parametres.models_messages.'
+                'MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL_DARIJA',
+                {cle: 'TIJARA'}):
+            self.assertEqual(variante_segment(cle, 'commercial', 'darija'),
+                             'TIJARA')
+            self.assertEqual(variante_segment(cle, 'commercial'), base)
+
+    def test_c_guide_et_dicts_egaux(self):
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL,
+            MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL_DARIJA,
+        )
+        guide = _surcharges_du_guide()
+        self.assertEqual(guide['COMMERCIAL'],
+                         MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL)
+        self.assertEqual(guide['COMMERCIAL DARIJA'],
+                         MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL_DARIJA)
+        # La section est bien présente (anti-faux-vert).
+        self.assertIn('**Surcharges commerciales (CIQ520',
+                      _guide().read_text(encoding='utf-8'))
+
+    def test_cles_variantes_segment_inchangees(self):
+        self.assertEqual(
+            CLES_VARIANTES_SEGMENT,
+            frozenset(MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel'])
+            | frozenset(MESSAGE_TEMPLATE_VARIANTES_SEGMENT.get(
+                SEGMENT_POMPAGE, {})))

@@ -525,6 +525,18 @@ class DevisCycleActionsMixin:
         except ValueError:
             return Response({'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # CIQ323 — devis papier signé d'un C&I : raison sociale, qualité et
+        # ICE FACULTATIFS ici (D-CIQ-11 ne les exige qu'en ligne) ; un ICE
+        # saisi est validé par ``validate_ice_ma`` (400 qui nomme le champ).
+        from ..domain.cycle_vie import (
+            EntrepriseInvalide, lire_entreprise_acceptation,
+        )
+        try:
+            entreprise = lire_entreprise_acceptation(
+                devis, request.data.get('entreprise'), obligatoire=False)
+        except EntrepriseInvalide as exc:
+            return Response({'detail': exc.detail, 'champ': exc.champ},
+                            status=status.HTTP_400_BAD_REQUEST)
         # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op,
         # comportement FG41 intact (avertissement seul). Flag ON et client en
         # dépassement → 403, sauf override explicite responsable/admin
@@ -575,7 +587,7 @@ class DevisCycleActionsMixin:
             devis = accept_devis(
                 devis=devis, user=request.user, nom=nom,
                 date_acceptation=date_acc, option=option,
-                idempotent_reaccept=False)
+                idempotent_reaccept=False, entreprise=entreprise)
         except AcceptError as exc:
             return Response(
                 {'detail': exc.message},

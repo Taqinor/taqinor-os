@@ -26,7 +26,7 @@ import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
   formReglagesPompage, payloadReglagesPompage, formReperes, payloadReperes,
-  CHAMP_ECART_RECETTE, nombreOuNull,
+  CHAMP_ECART_RECETTE, nombreOuNull, payloadTermes,
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
@@ -617,7 +617,10 @@ export default function ParametresEntreprise() {
       couleur_principale: profile.couleur_principale ?? '#1d4ed8',
       responsable_defaut_leads: profile.responsable_defaut_leads ?? '',
       default_installer: profile.default_installer ?? '',
-      payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}) },
+      // CIQ225 — les jalons EFFECTIFS servis par le profil (réglage société, sinon
+      // défaut serveur) priment : plus de pourcentages recopiés côté écran.
+      payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}),
+                       ...(profile.payment_terms_effectifs || {}) },
       quote_validity_days: profile.quote_validity_days ?? 30,
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
       // AGR108 — vide reste vide (aucun repli numérique).
@@ -749,11 +752,7 @@ export default function ParametresEntreprise() {
     const pt = {}
     for (const mode of Object.keys(form.payment_terms || {})) {
       const t = form.payment_terms[mode]
-      pt[mode] = {
-        acompte: Number(t.acompte) || 0,
-        materiel: Number(t.materiel) || 0,
-        solde: Number(t.solde) || 0,
-      }
+      pt[mode] = payloadTermes(t)
     }
     // Coercition de la numérotation (D3) : largeur en nombre, période valide.
     const dn = {}

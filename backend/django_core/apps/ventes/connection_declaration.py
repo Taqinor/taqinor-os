@@ -52,8 +52,46 @@ def _site_block(chantier):
     }
 
 
+#: CIQ615 — pièce listée quand le niveau de tension n'est connu ni par la
+#: visite ni par une déclaration : jamais un « MT » deviné.
+PIECE_NIVEAU_A_RELEVER = {
+    'code': 'niveau_tension_a_relever',
+    'label': "Niveau de tension à relever (BT ou MT)",
+    'etape': 'depot', 'obligatoire': True, 'required': True,
+    'source': "à relever lors de la visite technique ou sur la facture",
+}
+
+_NIVEAUX = {'bt': 'BT', 'mt': 'MT'}
+
+
+def niveau_raccordement(niveau_chantier=None, lead=None):
+    """CIQ615 — niveau de raccordement déclaré au distributeur.
+
+    Plus AUCUNE règle « MT si triphasé et ≥ 50 kWc » (inventée). Ordre :
+    1. niveau du chantier MESURÉ en visite (CIQ610, lu par
+       ``installations.selectors``) → « BT » / « MT » ;
+    2. sinon niveau déclaré (chantier, ou colonne CIQ1 du lead) → « MT (à
+       confirmer) » ; un relevé de visite remonté au lead (CIQ607) vaut
+       mesure ;
+    3. sinon chaîne VIDE (la pièce « niveau à relever » est listée).
+    """
+    niveau_chantier = niveau_chantier or {}
+    code = _NIVEAUX.get(niveau_chantier.get('niveau') or '')
+    if code and niveau_chantier.get('source') == 'mesure_visite':
+        return code
+    if code:
+        return f'{code} (à confirmer)'
+    lead_code = _NIVEAUX.get(getattr(lead, 'tension_raccordement', None) or '')
+    source = getattr(lead, 'tension_source', None)
+    if lead_code and source == 'mesure_visite':
+        return lead_code
+    if lead_code and source != 'site_defaut_visible':
+        return f'{lead_code} (à confirmer)'
+    return ''
+
+
 def build_declaration_data(devis, *, chantier=None, diagram_params=None,
-                           regime_8221=None):
+                           regime_8221=None, niveau_chantier=None):
     """FG272 — données pré-remplies d'une déclaration de raccordement.
 
     Paramètres
@@ -64,6 +102,8 @@ def build_declaration_data(devis, *, chantier=None, diagram_params=None,
     diagram_params : dict déjà calculé (``diagram_params_from_devis``) ou None
         (calculé à la demande).
     regime_8221 : code régime pour la liste des pièces (optionnel).
+    niveau_chantier : CIQ615 — ``{niveau, source}`` du chantier lu par
+        ``installations.selectors.niveau_tension_chantier`` (ou None).
 
     Retourne un dict JSON-sérialisable ; ne lève pas sur données partielles.
     """
@@ -91,15 +131,20 @@ def build_declaration_data(devis, *, chantier=None, diagram_params=None,
                     pass
 
     phases = diagram_params.get('phases') or 1
-    raccordement = 'MT' if phases == 3 and (kwc or 0) >= 50 else 'BT'
+    # CIQ615 — le niveau vient de la visite, sinon de la déclaration (« à
+    # confirmer »), sinon il reste VIDE : jamais déduit des phases ni du kWc.
+    raccordement = niveau_raccordement(
+        niveau_chantier, getattr(devis, 'lead', None))
     regime_code = (regime_8221 or '').strip()
     if regime_code == 'declaration_hors_reseau':
         # AGR603 — loi 82-21 art. 3 : installation non raccordée, aucun
-        # point de livraison ONEE → ni « BT » ni « MT ».
+        # point de livraison chez le distributeur → ni « BT » ni « MT ».
         raccordement = 'hors réseau'
 
     pieces = (regulatory_docs.required_documents(regime_8221)
               if regime_8221 else [])
+    if not raccordement:
+        pieces = list(pieces) + [dict(PIECE_NIVEAU_A_RELEVER)]
 
     data = {
         'devis_reference': getattr(devis, 'reference', '') or '',
@@ -167,7 +212,9 @@ def render_declaration_html(data):
   th, td {{ border: 1px solid #ccc; padding: 6px 8px; text-align: left; }}
   th {{ background: #f3f4f6; width: 38%; }}
 </style></head><body>
-<h1>Demande de raccordement {escape(str(data.get('raccordement', 'BT')))}</h1>
+<h1>Demande de raccordement</h1>
+<p>Destinataire : distributeur (ONEE ou SRM régionale)</p>
+<p>Niveau de raccordement : {escape(str(data.get('raccordement') or '—'))}</p>
 <p>Devis de référence : {escape(str(data.get('devis_reference', '')))}
  — Régime : {escape(str(data.get('regime_label') or '—'))}</p>
 <h2>Client</h2>

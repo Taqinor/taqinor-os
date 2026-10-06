@@ -7,9 +7,7 @@
 // plus qu'au dimensionnement AUTOMATIQUE sans cible.
 //
 // Exécute le VRAI createAutoQuote ; seuls l'API et `autoFillLines` sont
-// espionnés (l'espion rend un catalogue vide pour que la création C&I
-// s'arrête sur sa garde « aucun panneau » APRÈS que la composition a reçu
-// ses arguments — les seuls que ce test lit).
+// espionnés (l'espion prouve qu'aucune composition JS n'a lieu).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../api/ventesApi', () => ({
@@ -51,12 +49,22 @@ describe('QJR602 — la taille explicite est souveraine (aucun palier de 5 kWc)'
     expect(panneauxPourKwc(8, PANEL_W_DEFAUT)).toBe(12)
   })
 
-  it.each(['industriel', 'commercial'])('%s, lead à 6,5 kWc : la composition reçoit 10 panneaux', async (type) => {
-    await expect(createAutoQuote({
+  // CIQ127 — le C&I part au serveur : la taille souhaitée du lead y est lue
+  // (souveraine, CIQ120) ; une cible tapée POUR CE devis part telle quelle.
+  it.each(['industriel', 'commercial'])('%s, lead à 6,5 kWc : aucune composition JS, le serveur lit la taille', async (type) => {
+    await createAutoQuote({
       lead: { id: 3, type_installation: type, taille_souhaitee_kwc: '6.5' },
       produits: [], discountStr: '0',
-    })).rejects.toBeTruthy()
-    expect(autoFillLines).toHaveBeenCalledTimes(1)
-    expect(autoFillLines.mock.calls[0][1].nbPanneaux).toBe(10)
+    })
+    expect(autoFillLines).not.toHaveBeenCalled()
+    expect(ventesApi.createDevisAtomic).not.toHaveBeenCalled()
+    expect(ventesApi.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 3, remise_globale: '0' })
+  })
+
+  it.each(['industriel', 'commercial'])('%s, cible 6,5 kWc pour CE devis : target_kwc 6,5 tel quel', async (type) => {
+    await createAutoQuote({
+      lead: { id: 4, type_installation: type }, produits: [], discountStr: '0', targetKwc: '6.5',
+    })
+    expect(ventesApi.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 4, remise_globale: '0', target_kwc: 6.5 })
   })
 })

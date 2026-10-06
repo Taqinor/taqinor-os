@@ -531,6 +531,532 @@ LIBELLES = {
     'agr_annexe_omis': {'fr': 'Non renseigné à ce jour.',
                         'en': 'Not provided to date.',
                         'ar': 'غير مدخل إلى حد الآن.'},
+    # ── Documents commercial et industriel (CIQ333, CIQ345) ────────────────
+    # Libellés STRUCTURELS des pages premium C&I et des blocs partagés
+    # (``ci/blocs.py``, ``ci/couverture.py``, ``commercial/equip.py``) —
+    # préfixe ``ci_``. Le français est le littéral historique du gabarit
+    # (un devis français reste octet pour octet celui d'hier : le gabarit
+    # passe son littéral à ``theme.libelle_doc``). Les gabarits ``{…}``
+    # reçoivent des valeurs DÉJÀ formatées. L'arabe est écrit maintenant et
+    # relu ensuite par un natif (tâche manuelle).
+    'ci_ref_devis': {'fr': 'Réf. devis', 'en': 'Quote ref.',
+                     'ar': 'مرجع العرض'},
+    'ci_valable_jusqu': {'fr': 'Valable jusqu&#8217;au {date}',
+                         'en': 'Valid until {date}',
+                         'ar': 'صالح إلى غاية {date}'},
+    'ci_kicker_commercial': {
+        'fr': 'Proposition — Autoconsommation solaire commerciale',
+        'en': 'Proposal — Commercial solar self-consumption',
+        'ar': 'عرض — الاستهلاك الذاتي للطاقة الشمسية للمحلات التجارية'},
+    'ci_puissance_crete': {'fr': 'Puissance crête', 'en': 'Peak power',
+                           'ar': 'القدرة القصوى'},
+    'ci_production_annuelle': {'fr': 'Production annuelle',
+                               'en': 'Annual production',
+                               'ar': 'الإنتاج السنوي'},
+    'ci_unite_kwh_an': {'fr': '&nbsp;kWh/an', 'en': '&nbsp;kWh/yr',
+                        'ar': '&nbsp;kWh/سنة'},
+    'ci_autoconsommation': {'fr': 'Autoconsommation',
+                            'en': 'Self-consumption',
+                            'ar': 'الاستهلاك الذاتي'},
+    'ci_couverture_conso': {'fr': 'Couverture conso',
+                            'en': 'Consumption coverage',
+                            'ar': 'تغطية الاستهلاك'},
+    'ci_note_autoconso_commercial': {
+        'fr': "L'installation vise l'<b>autoconsommation</b> : la valeur "
+              "porte d'abord sur la consommation de <b>journée</b> de votre "
+              "établissement.",
+        'en': 'The installation targets <b>self-consumption</b>: its value '
+              "lies first in your establishment's <b>daytime</b> "
+              'consumption.',
+        'ar': 'تستهدف المنشأة <b>الاستهلاك الذاتي</b>: تكمن قيمتها أولا في '
+              'استهلاك مؤسستكم خلال <b>النهار</b>.'},
+    'ci_economies_estimees': {'fr': 'Économies estimées / an',
+                              'en': 'Estimated savings / yr',
+                              'ar': 'الوفورات المقدرة / سنة'},
+    'ci_retour_estime': {'fr': 'Retour estimé', 'en': 'Estimated payback',
+                         'ar': 'مدة الاسترداد المقدرة'},
+    'ci_unite_ans': {'fr': '&nbsp;ans', 'en': '&nbsp;years',
+                     'ar': '&nbsp;سنوات'},
+    'ci_ht': {'fr': 'HT', 'en': 'excl. VAT', 'ar': 'دون احتساب الضريبة'},
+    'ci_ttc': {'fr': 'TTC', 'en': 'incl. VAT', 'ar': 'شامل الضريبة'},
+    'ci_a_confirmer': {'fr': 'À confirmer : ', 'en': 'To be confirmed: ',
+                       'ar': 'يجب تأكيده: '},
+    'ci_confirmer_tension': {
+        'fr': 'Tension de raccordement (BT ou MT), à relever à la visite',
+        'en': 'Connection voltage (LV or MV), to be checked at the visit',
+        'ar': 'جهد الربط (منخفض أو متوسط)، يُعاين أثناء الزيارة'},
+    'ci_confirmer_puissance_souscrite_kva': {
+        'fr': 'Puissance souscrite, à relever sur la facture ou à la visite',
+        'en': 'Subscribed power, to be read on the bill or at the visit',
+        'ar': 'القدرة المكتتبة، تُقرأ في الفاتورة أو أثناء الزيارة'},
+    'ci_confirmer_toit': {
+        'fr': 'Type et charge admissible de la toiture, à la visite',
+        'en': 'Roof type and permissible load, at the visit',
+        'ar': 'نوع السقف والحمولة المسموح بها، أثناء الزيارة'},
+    'ci_confirmer_etude_ci': {
+        'fr': "étude du moteur C&I à faire : chiffres préliminaires",
+        'en': 'C&I study still to be run: preliminary figures',
+        'ar': 'دراسة المحرك التجاري والصناعي لم تنجز بعد: أرقام أولية'},
+    'ci_confirmer_visite': {
+        'fr': 'Relevé du site à la visite technique',
+        'en': 'Site survey at the technical visit',
+        'ar': 'معاينة الموقع أثناء الزيارة التقنية'},
+    'ci_methode_horaire_declare': {
+        'fr': 'Taux calculés heure par heure sur vos horaires déclarés.',
+        'en': 'Rates calculated hour by hour on your declared schedule.',
+        'ar': 'نسب محسوبة ساعة بساعة على أساس أوقاتكم المصرح بها.'},
+    'ci_methode_horaire_mesure': {
+        'fr': 'Taux calculés heure par heure sur votre courbe de charge '
+              'mesurée.',
+        'en': 'Rates calculated hour by hour on your measured load curve.',
+        'ar': 'نسب محسوبة ساعة بساعة على أساس منحنى الحمل المقاس.'},
+    'ci_methode_registres_mt': {
+        'fr': 'Taux calculés sur vos registres de compteur MT.',
+        'en': 'Rates calculated on your MV meter registers.',
+        'ar': 'نسب محسوبة على أساس سجلات عداد الجهد المتوسط.'},
+    'ci_methode_archetype_estimation': {
+        'fr': 'Taux calculés sur un profil type de votre activité — '
+              'estimation.',
+        'en': 'Rates calculated on a typical profile of your activity — '
+              'estimate.',
+        'ar': 'نسب محسوبة على أساس نموذج نمطي لنشاطكم — تقدير.'},
+    'ci_methode_estimation': {'fr': 'Taux calculés par estimation.',
+                              'en': 'Rates calculated by estimate.',
+                              'ar': 'نسب محسوبة بالتقدير.'},
+    'ci_non_chiffre_mt': {
+        'fr': 'Dossier raccordé en MOYENNE TENSION : les économies et le '
+              'retour sur investissement ne sont pas chiffrés au barème '
+              'basse tension. Communiquez-nous {motif} et nous les calculons '
+              'sur le barème MT.',
+        'en': 'Site connected at MEDIUM VOLTAGE: savings and payback are not '
+              'calculated on the low-voltage tariff. Send us {motif} and we '
+              'calculate them on the MV tariff.',
+        'ar': 'موقع مربوط بالجهد المتوسط: لا تُحسب الوفورات ومدة الاسترداد '
+              'بتعريفة الجهد المنخفض. أرسلوا إلينا {motif} وسنحسبها بتعريفة '
+              'الجهد المتوسط.'},
+    'ci_non_chiffre': {
+        'fr': 'Économies et retour sur investissement non chiffrés à ce '
+              'stade : communiquez-nous {motif}.',
+        'en': 'Savings and payback not calculated at this stage: send us '
+              '{motif}.',
+        'ar': 'لم تُحسب الوفورات ومدة الاسترداد في هذه المرحلة: أرسلوا '
+              'إلينا {motif}.'},
+    'ci_motif_argent_bt': {'fr': 'vos 12 dernières factures',
+                           'en': 'your last 12 bills',
+                           'ar': 'فواتيركم الاثنتي عشرة الأخيرة'},
+    'ci_motif_argent_mt': {
+        'fr': 'vos 12 dernières factures MT : prix des trois postes, prime '
+              'fixe, puissance souscrite',
+        'en': 'your last 12 MV bills: prices of the three time bands, fixed '
+              'charge, subscribed power',
+        'ar': 'فواتيركم الاثنتي عشرة الأخيرة للجهد المتوسط: أسعار الفترات '
+              'الثلاث، الإتاوة الثابتة، القدرة المكتتبة'},
+    'ci_invest_ht': {'fr': 'Investissement HT (clé en main)',
+                     'en': 'Investment excl. VAT (turnkey)',
+                     'ar': 'الاستثمار دون احتساب الضريبة (تسليم مفتاح)'},
+    'ci_invest': {'fr': 'Investissement (clé en main)',
+                  'en': 'Investment (turnkey)',
+                  'ar': 'الاستثمار (تسليم مفتاح)'},
+    'ci_invest_ttc': {'fr': 'Investissement (TTC, clé en main)',
+                      'en': 'Investment (incl. VAT, turnkey)',
+                      'ar': 'الاستثمار (شامل الضريبة، تسليم مفتاح)'},
+    'ci_soit': {'fr': 'soit', 'en': 'i.e.', 'ar': 'أي'},
+    'ci_note_tva_recuperable': {
+        'fr': 'TVA récupérable selon votre régime fiscal — à confirmer avec '
+              'votre comptable.',
+        'en': 'VAT recoverable depending on your tax regime — to be '
+              'confirmed with your accountant.',
+        'ar': 'الضريبة على القيمة المضافة قابلة للاسترجاع حسب نظامكم '
+              'الضريبي — يُؤكد مع محاسبكم.'},
+    'ci_raison_sociale': {'fr': 'Raison sociale', 'en': 'Company name',
+                          'ar': 'الاسم التجاري'},
+    'ci_siege': {'fr': 'Siège', 'en': 'Head office',
+                 'ar': 'المقر الاجتماعي'},
+    'ci_a_l_attention': {'fr': "À l'attention de", 'en': 'For the attention of',
+                         'ar': 'لعناية'},
+    'ci_a_l_attention_fonction': {
+        'fr': "À l'attention de la fonction", 'en': 'For the attention of',
+        'ar': 'لعناية المسؤول عن'},
+    'ci_votre_installation': {'fr': 'Votre installation',
+                              'en': 'Your installation', 'ar': 'منشأتكم'},
+    'ci_equipements_investissement': {
+        'fr': 'Équipements &amp; investissement',
+        'en': 'Equipment &amp; investment',
+        'ar': 'المعدات والاستثمار'},
+    'ci_tva_pct': {'fr': 'TVA %', 'en': 'VAT %', 'ar': 'ض.ق.م %'},
+    'ci_note': {'fr': 'Note', 'en': 'Note', 'ar': 'ملاحظة'},
+    'ci_options_proposees': {
+        'fr': 'Options propos&eacute;es (non incluses dans le total)',
+        'en': 'Proposed options (not included in the total)',
+        'ar': 'خيارات مقترحة (غير مدرجة في المجموع)'},
+    'ci_surplus_injecte': {'fr': 'surplus injecté', 'en': 'surplus fed in',
+                           'ar': 'الفائض المحقون في الشبكة'},
+    'ci_mad_an': {'fr': 'MAD/an', 'en': 'MAD/yr', 'ar': 'درهم/سنة'},
+    'ci_kicker_etapes': {'fr': 'Votre projet, étape par étape',
+                         'en': 'Your project, step by step',
+                         'ar': 'مشروعكم، خطوة بخطوة'},
+    'ci_comment_nous_procedons': {'fr': 'Comment nous procédons',
+                                  'en': 'How we proceed',
+                                  'ar': 'كيف نعمل'},
+    'ci_etape_etude_t': {'fr': 'Étude &amp; validation',
+                         'en': 'Study &amp; validation',
+                         'ar': 'الدراسة والمصادقة'},
+    'ci_etape_etude_s': {
+        'fr': 'Dimensionnement, visite technique et validation du projet.',
+        'en': 'Sizing, technical visit and project validation.',
+        'ar': 'التحجيم والزيارة التقنية والمصادقة على المشروع.'},
+    'ci_etape_installation_t': {'fr': 'Installation', 'en': 'Installation',
+                                'ar': 'التركيب'},
+    'ci_etape_installation_s': {
+        'fr': 'Pose des équipements par nos équipes, sans interrompre votre '
+              'activité.',
+        'en': 'Equipment installed by our teams, without interrupting your '
+              'business.',
+        'ar': 'تركيب المعدات من طرف فرقنا دون توقيف نشاطكم.'},
+    'ci_etape_mes_t': {'fr': 'Mise en service', 'en': 'Commissioning',
+                       'ar': 'التشغيل'},
+    'ci_etape_mes_s': {
+        'fr': 'Raccordement, tests et réception — votre production démarre.',
+        'en': 'Connection, tests and acceptance — your production starts.',
+        'ar': 'الربط والاختبارات والتسلم — يبدأ إنتاجكم.'},
+    'ci_garanties': {'fr': 'Garanties', 'en': 'Warranties',
+                     'ar': 'الضمانات'},
+    'ci_garantie_installation': {'fr': 'Installation', 'en': 'Installation',
+                                 'ar': 'التركيب'},
+    'ci_garantie_onduleur': {'fr': 'Onduleur', 'en': 'Inverter',
+                             'ar': 'العاكس'},
+    'ci_garantie_panneaux': {'fr': 'Panneaux', 'en': 'Panels',
+                             'ar': 'الألواح'},
+    'ci_garantie_performance': {'fr': 'Performance', 'en': 'Performance',
+                                'ar': 'المردودية'},
+    'ci_garantie_batterie': {'fr': 'Batterie', 'en': 'Battery',
+                             'ar': 'البطارية'},
+    'ci_ans': {'fr': 'ans', 'en': 'years', 'ar': 'سنوات'},
+    'ci_legende_garanties': {
+        'fr': "Durées : garanties du fabricant (fiches produit) ; pose : "
+              "engagement de l'installateur.",
+        'en': "Durations: manufacturer warranties (product sheets); "
+              "installation: the installer's commitment.",
+        'ar': 'المدد: ضمانات الصانع (بطاقات المنتجات)؛ التركيب: التزام '
+              'المركِّب.'},
+    'ci_echeancier': {'fr': 'Échéancier de paiement',
+                      'en': 'Payment schedule', 'ar': 'جدول الأداء'},
+    'ci_jalon_commande': {'fr': 'À la commande', 'en': 'On order',
+                          'ar': 'عند الطلب'},
+    'ci_jalon_livraison': {'fr': 'À la livraison', 'en': 'On delivery',
+                           'ar': 'عند التسليم'},
+    'ci_jalon_mise_en_service': {'fr': 'À la mise en service',
+                                 'en': 'On commissioning',
+                                 'ar': 'عند التشغيل'},
+    'ci_jalon_reception_definitive': {'fr': 'À la réception définitive',
+                                      'en': 'On final acceptance',
+                                      'ar': 'عند التسلم النهائي'},
+    'ci_services': {'fr': 'Services', 'en': 'Services', 'ar': 'الخدمات'},
+    'ci_maintenance': {'fr': 'Maintenance (O&amp;M)',
+                       'en': 'Maintenance (O&amp;M)',
+                       'ar': 'الصيانة (التشغيل والصيانة)'},
+    'ci_prix_a_renseigner': {'fr': 'prix à renseigner',
+                             'en': 'price to be set',
+                             'ar': 'السعر في انتظار التحديد'},
+    'ci_propose_non_inclus': {'fr': ' (proposé, non inclus dans le total)',
+                              'en': ' (proposed, not included in the total)',
+                              'ar': ' (مقترح، غير مدرج في المجموع)'},
+    'ci_suivi_production': {'fr': 'Suivi de production',
+                            'en': 'Production monitoring',
+                            'ar': 'تتبع الإنتاج'},
+    'ci_intervention_sous': {'fr': 'intervention sous {heures}&#160;h',
+                             'en': 'intervention within {heures}&#160;h',
+                             'ar': 'التدخل في غضون {heures}&#160;ساعة'},
+    'ci_offre_financement': {'fr': 'Offre de financement',
+                             'en': 'Financing offer', 'ar': 'عرض التمويل'},
+    'ci_echeance_mensuelle': {'fr': 'Échéance mensuelle',
+                              'en': 'Monthly instalment',
+                              'ar': 'القسط الشهري'},
+    'ci_sur_mois': {'fr': 'sur {mois} mois', 'en': 'over {mois} months',
+                    'ar': 'على مدى {mois} شهرا'},
+    'ci_economie_mensuelle': {
+        'fr': 'Économie mensuelle moyenne estimée',
+        'en': 'Estimated average monthly saving',
+        'ar': 'متوسط الوفر الشهري المقدر'},
+    'ci_ecart_mensuel': {'fr': 'Écart mensuel', 'en': 'Monthly difference',
+                         'ar': 'الفارق الشهري'},
+    'ci_source': {'fr': 'Source', 'en': 'Source', 'ar': 'المصدر'},
+    'ci_cgv_titre': {'fr': 'Conditions générales du devis',
+                     'en': 'General terms of the quote',
+                     'ar': 'الشروط العامة للعرض'},
+    'ci_pour_la_societe': {'fr': 'pour la société', 'en': 'for the company',
+                           'ar': 'عن الشركة'},
+    'ci_signataire': {'fr': 'Nom et qualité du signataire',
+                      'en': "Signatory's name and position",
+                      'ar': 'اسم الموقع وصفته'},
+    'ci_signature': {'fr': 'Signature', 'en': 'Signature', 'ar': 'التوقيع'},
+    'ci_cachet': {'fr': 'Cachet de la société', 'en': 'Company stamp',
+                  'ar': 'ختم الشركة'},
+    'ci_bpa_mention': {
+        'fr': 'Lu et approuvé — Signature précédée de « Bon pour accord »',
+        'en': 'Read and approved — signature preceded by « Agreed and '
+              'accepted »',
+        'ar': 'قرئ وصودق عليه — التوقيع مسبوق بعبارة « موافق عليه »'},
+    'ci_pour': {'fr': 'Pour {marque}', 'en': 'For {marque}',
+                'ar': 'عن {marque}'},
+    'ci_le_date': {'fr': 'Le {date}', 'en': 'On {date}', 'ar': 'بتاريخ {date}'},
+    'ci_mad_mois': {'fr': 'MAD/mois', 'en': 'MAD/month', 'ar': 'درهم/شهر'},
+    # ── Document industriel (CIQ341, CIQ345) — préfixe ``ci_ind_`` ─────────
+    'ci_ind_kicker': {
+        'fr': 'Proposition — Autoconsommation solaire industrielle',
+        'en': 'Proposal — Industrial solar self-consumption',
+        'ar': 'عرض — الاستهلاك الذاتي للطاقة الشمسية الصناعية'},
+    'ci_ind_titre': {'fr': "Réduire votre coût de l'énergie",
+                     'en': 'Reduce your energy cost',
+                     'ar': 'خفض تكلفة الطاقة لديكم'},
+    'ci_ind_sous_titre': {
+        'fr': 'Analyse de rentabilité (CFO) — baseline, cashflow et payback.',
+        'en': 'Profitability analysis (CFO) — baseline, cash flow and '
+              'payback.',
+        'ar': 'تحليل المردودية (المدير المالي) — الاستهلاك المرجعي والتدفق '
+              'النقدي ومدة الاسترداد.'},
+    'ci_ind_tag': {'fr': 'Industrielle', 'en': 'Industrial',
+                   'ar': 'صناعية'},
+    'ci_ind_synthese': {'fr': 'Synthèse', 'en': 'Summary', 'ar': 'الخلاصة'},
+    'ci_ind_investissement': {'fr': 'Investissement', 'en': 'Investment',
+                              'ar': 'الاستثمار'},
+    'ci_ind_economie_an1': {'fr': "Économie de l'année 1",
+                            'en': 'Year-1 saving',
+                            'ar': 'وفر السنة الأولى'},
+    'ci_ind_tri_sur': {'fr': 'TRI sur {n} ans', 'en': 'IRR over {n} years',
+                       'ar': 'معدل العائد الداخلي على {n} سنة'},
+    'ci_ind_van': {'fr': 'VAN au taux déclaré de {taux} %',
+                   'en': 'NPV at the declared rate of {taux} %',
+                   'ar': 'القيمة الحالية الصافية بالمعدل المصرح به {taux} %'},
+    'ci_ind_financement': {'fr': 'Financement', 'en': 'Financing',
+                           'ar': 'التمويل'},
+    'ci_ind_rentabilite': {'fr': 'Rentabilité', 'en': 'Profitability',
+                           'ar': 'المردودية'},
+    'ci_ind_statut': {'fr': "Statut de l'étude", 'en': 'Study status',
+                      'ar': 'وضعية الدراسة'},
+    'ci_ind_offre_ferme': {'fr': 'offre ferme', 'en': 'firm offer',
+                           'ar': 'عرض نهائي'},
+    'ci_ind_baseline': {'fr': 'Baseline énergétique',
+                        'en': 'Energy baseline',
+                        'ar': 'الاستهلاك الطاقي المرجعي'},
+    'ci_ind_baseline_factures': {'fr': '12 factures', 'en': '12 bills',
+                                 'ar': '12 فاتورة'},
+    'ci_ind_baseline_interpoles': {
+        'fr': '{n} factures, mois interpolés — estimation',
+        'en': '{n} bills, interpolated months — estimate',
+        'ar': '{n} فواتير، أشهر مستكملة بالاستيفاء — تقدير'},
+    'ci_ind_baseline_interpoles_sans_n': {
+        'fr': 'mois interpolés — estimation',
+        'en': 'interpolated months — estimate',
+        'ar': 'أشهر مستكملة بالاستيفاء — تقدير'},
+    'ci_ind_baseline_kwh': {'fr': 'kWh déclarés', 'en': 'declared kWh',
+                            'ar': 'كيلوواط ساعة مصرح بها'},
+    'ci_ind_facture_actuelle': {'fr': 'Facture électrique actuelle',
+                                'en': 'Current electricity bill',
+                                'ar': 'فاتورة الكهرباء الحالية'},
+    'ci_ind_facture_estimee': {'fr': 'Facture électrique estimée',
+                               'en': 'Estimated electricity bill',
+                               'ar': 'فاتورة الكهرباء المقدرة'},
+    'ci_ind_facture_non_communiquee': {
+        'fr': 'Facture électrique actuelle non communiquée — transmettez 12 '
+              'mois de factures et la baseline se chiffre.',
+        'en': 'Current electricity bill not provided — send 12 months of '
+              'bills and the baseline is calculated.',
+        'ar': 'فاتورة الكهرباء الحالية غير مقدمة — أرسلوا فواتير 12 شهرا '
+              'ليُحسب الاستهلاك المرجعي.'},
+    'ci_ind_conso': {'fr': 'Consommation ≈ {kwh} kWh/an',
+                     'en': 'Consumption ≈ {kwh} kWh/yr',
+                     'ar': 'الاستهلاك ≈ {kwh} kWh/سنة'},
+    'ci_ind_conso_a_confirmer': {
+        'fr': 'Consommation à confirmer (facture 12 mois)',
+        'en': 'Consumption to be confirmed (12-month bill)',
+        'ar': 'الاستهلاك في انتظار التأكيد (فواتير 12 شهرا)'},
+    'ci_ind_production_estimee': {
+        'fr': 'Production estimée ≈ {kwh} kWh/an',
+        'en': 'Estimated production ≈ {kwh} kWh/yr',
+        'ar': 'الإنتاج المقدر ≈ {kwh} kWh/سنة'},
+    'ci_ind_note_autoconso': {
+        'fr': "L'installation vise l'<b>autoconsommation</b> : la valeur "
+              "porte d'abord sur les <b>heures pleines</b> (production en "
+              "journée).",
+        'en': 'The installation targets <b>self-consumption</b>: its value '
+              'lies first in the <b>peak-rate hours</b> (daytime '
+              'production).',
+        'ar': 'تستهدف المنشأة <b>الاستهلاك الذاتي</b>: تكمن قيمتها أولا في '
+              '<b>الساعات العادية</b> (الإنتاج خلال النهار).'},
+    # ── Page finance industrielle (CIQ342, CIQ343) ─────────────────────────
+    'ci_ind_analyse_financiere': {'fr': 'Analyse financière',
+                                  'en': 'Financial analysis',
+                                  'ar': 'التحليل المالي'},
+    'ci_ind_rentabilite_sur': {'fr': 'Rentabilité sur {n} ans',
+                               'en': 'Profitability over {n} years',
+                               'ar': 'المردودية على مدى {n} سنة'},
+    'ci_ind_lead': {
+        'fr': 'Projection du moteur C&amp;I sur {n} ans : flux, retour et TRI '
+              'tirés de la même série ; hypothèses détaillées ci-dessous.',
+        'en': 'C&amp;I engine projection over {n} years: cash flow, payback '
+              'and IRR drawn from the same series; assumptions detailed '
+              'below.',
+        'ar': 'إسقاط المحرك التجاري والصناعي على مدى {n} سنة: التدفق ومدة '
+              'الاسترداد ومعدل العائد الداخلي مستخرجة من نفس السلسلة؛ '
+              'الافتراضات مفصلة أدناه.'},
+    'ci_ind_lead_non_chiffre': {
+        'fr': "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
+              "calculée sur vos données.",
+        'en': 'No profitability is published until it is calculated on your '
+              'data.',
+        'ar': 'لا تُنشر أي مردودية ما لم تُحسب على أساس معطياتكم.'},
+    'ci_ind_non_chiffre_titre': {
+        'fr': 'Rentabilité non chiffrée sur ce dossier',
+        'en': 'Profitability not calculated for this file',
+        'ar': 'المردودية غير محسوبة في هذا الملف'},
+    'ci_ind_motif_mt': {
+        'fr': 'Votre installation est raccordée en <b>MOYENNE TENSION</b> : '
+              'ses économies se chiffrent sur le barème MT par poste '
+              "horaire, pas sur le barème basse tension. Nous préférons ne "
+              "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre.",
+        'en': 'Your installation is connected at <b>MEDIUM VOLTAGE</b>: its '
+              'savings are calculated on the MV tariff by time band, not on '
+              'the low-voltage tariff. We prefer to show nothing rather than '
+              'a figure that is not yours.',
+        'ar': 'منشأتكم مربوطة <b>بالجهد المتوسط</b>: تُحسب وفوراتها بتعريفة '
+              'الجهد المتوسط حسب الفترات الزمنية، لا بتعريفة الجهد المنخفض. '
+              'نفضل ألا نعرض شيئا بدل رقم لا يخصكم.'},
+    'ci_ind_motif_bt': {
+        'fr': "Les <b>économies annuelles</b> de cette installation n'ont pas "
+              "encore été calculées sur vos données. Nous préférons ne rien "
+              "afficher plutôt qu'un cashflow, un point mort ou un TRI qui ne "
+              "reposeraient sur aucune mesure.",
+        'en': 'The <b>annual savings</b> of this installation have not yet '
+              'been calculated on your data. We prefer to show nothing rather '
+              'than a cash flow, a break-even point or an IRR resting on no '
+              'measurement.',
+        'ar': 'لم تُحسب بعد <b>الوفورات السنوية</b> لهذه المنشأة على أساس '
+              'معطياتكم. نفضل ألا نعرض شيئا بدل تدفق نقدي أو نقطة تعادل أو '
+              'معدل عائد لا يستند إلى أي قياس.'},
+    'ci_ind_retour_flux': {'fr': 'Retour (même flux)',
+                           'en': 'Payback (same cash flow)',
+                           'ar': 'مدة الاسترداد (نفس التدفق)'},
+    'ci_ind_cumul_titre': {'fr': "Cumul net de l'investissement ({base})",
+                           'en': 'Net cumulative of the investment ({base})',
+                           'ar': 'الرصيد الصافي التراكمي للاستثمار ({base})'},
+    'ci_ind_jalon': {'fr': 'Jalon', 'en': 'Milestone', 'ar': 'المرحلة'},
+    'ci_ind_cumul_net': {'fr': 'Cumul net', 'en': 'Net cumulative',
+                         'ar': 'الرصيد الصافي'},
+    'ci_ind_annee': {'fr': 'Année {n}', 'en': 'Year {n}', 'ar': 'السنة {n}'},
+    'ci_ind_hypotheses': {'fr': 'Hypothèses du moteur',
+                          'en': 'Engine assumptions',
+                          'ar': 'افتراضات المحرك'},
+    'ci_ind_h_investissement': {'fr': 'Investissement', 'en': 'Investment',
+                                'ar': 'الاستثمار'},
+    'ci_ind_h_economie': {'fr': "Économie de l'année 1",
+                          'en': 'Year-1 saving', 'ar': 'وفر السنة الأولى'},
+    'ci_ind_h_production': {'fr': "Production de l'année 1",
+                            'en': 'Year-1 production',
+                            'ar': 'إنتاج السنة الأولى'},
+    'ci_ind_h_horizon': {'fr': 'Horizon', 'en': 'Horizon', 'ar': 'الأفق'},
+    'ci_ind_h_taux': {'fr': "Taux d'actualisation", 'en': 'Discount rate',
+                      'ar': 'معدل الخصم'},
+    'ci_ind_h_indexation': {'fr': 'Indexation du tarif',
+                            'en': 'Tariff indexation',
+                            'ar': 'فهرسة التعريفة'},
+    'ci_ind_h_degradation': {'fr': 'Dégradation des panneaux',
+                             'en': 'Panel degradation',
+                             'ar': 'تدهور الألواح'},
+    'ci_ind_n_ans': {'fr': '{n} ans', 'en': '{n} years', 'ar': '{n} سنة'},
+    'ci_ind_remplacement': {
+        'fr': 'Remplacement {composant} en année {annee}',
+        'en': 'Replacement of the {composant} in year {annee}',
+        'ar': 'استبدال {composant} في السنة {annee}'},
+    'ci_ind_om_deduite': {'fr': 'O&amp;M déduite du flux : {montant} MAD/an',
+                          'en': 'O&amp;M deducted from the cash flow: '
+                                '{montant} MAD/yr',
+                          'ar': 'الصيانة مخصومة من التدفق: {montant} درهم/سنة'},
+    'ci_ind_om_non_deduite': {
+        'fr': 'O&amp;M proposée, non déduite de ces montants',
+        'en': 'O&amp;M proposed, not deducted from these amounts',
+        'ar': 'الصيانة مقترحة، غير مخصومة من هذه المبالغ'},
+    'ci_ind_revente_hors_cashflow': {
+        'fr': 'revente du surplus, hors cashflow (non comptée dans le retour '
+              'ni le TRI).',
+        'en': 'sale of the surplus, outside the cash flow (not counted in '
+              'the payback or the IRR).',
+        'ar': 'بيع الفائض، خارج التدفق النقدي (غير محتسب في مدة الاسترداد '
+              'ولا في معدل العائد).'},
+    'ci_ind_methode_tri': {
+        'fr': 'TRI et retour lus sur le flux servi par le moteur C&amp;I '
+              '(méthode actuarielle) ; chiffres indicatifs.',
+        'en': 'IRR and payback read on the cash flow served by the C&amp;I '
+              'engine (actuarial method); indicative figures.',
+        'ar': 'معدل العائد ومدة الاسترداد مقروءان من التدفق الذي يقدمه المحرك '
+              'التجاري والصناعي (طريقة اكتوارية)؛ أرقام إرشادية.'},
+    'ci_ind_indicateurs': {
+        'fr': 'Indicateurs pour votre direction financière',
+        'en': 'Indicators for your finance department',
+        'ar': 'مؤشرات لإدارتكم المالية'},
+    'ci_ind_lcoe': {'fr': 'Coût du kWh solaire (LCOE, {base})',
+                    'en': 'Cost of the solar kWh (LCOE, {base})',
+                    'ar': 'تكلفة الكيلوواط ساعة الشمسي (LCOE، {base})'},
+    'ci_ind_tarif_client': {
+        'fr': 'prix moyen de votre kWh évité : {tarif} MAD/kWh',
+        'en': 'average price of your avoided kWh: {tarif} MAD/kWh',
+        'ar': 'متوسط ثمن الكيلوواط ساعة الذي تتجنبونه: {tarif} MAD/kWh'},
+    'ci_ind_van_omise': {'fr': 'VAN non calculée', 'en': 'NPV not calculated',
+                         'ar': 'القيمة الحالية الصافية غير محسوبة'},
+    'ci_ind_sens_indexation_tarif': {'fr': 'Indexation du tarif',
+                                     'en': 'Tariff indexation',
+                                     'ar': 'فهرسة التعريفة'},
+    'ci_ind_sens_degradation': {'fr': 'Dégradation', 'en': 'Degradation',
+                                'ar': 'التدهور'},
+    'ci_ind_sens_tarif_kwh': {'fr': 'Prix du kWh', 'en': 'kWh price',
+                              'ar': 'ثمن الكيلوواط ساعة'},
+    'ci_ind_sens_production': {'fr': 'Production', 'en': 'Production',
+                               'ar': 'الإنتاج'},
+    'ci_ind_sens_retour': {'fr': 'retour {n} ans', 'en': 'payback {n} years',
+                           'ar': 'مدة الاسترداد {n} سنة'},
+    'ci_ind_sens_tri': {'fr': 'TRI {t} %', 'en': 'IRR {t} %',
+                        'ar': 'معدل العائد {t} %'},
+    'ci_ind_sens_base': {
+        'fr': "Sensibilités saisies par la société ; base : 0 % "
+              "d'indexation du tarif.",
+        'en': 'Sensitivities entered by the company; base: 0 % tariff '
+              'indexation.',
+        'ar': 'حساسيات أدخلتها الشركة؛ الأساس: 0 % فهرسة للتعريفة.'},
+    'ci_ind_p90': {
+        'fr': 'Production à 90 % de probabilité (P90) : {kwh} kWh/an',
+        'en': 'Production at 90 % probability (P90): {kwh} kWh/yr',
+        'ar': 'الإنتاج باحتمال 90 % (P90): {kwh} kWh/سنة'},
+    # ── Page 4 industrielle (CIQ344, CIQ345) ───────────────────────────────
+    'ci_ind_deploiement': {'fr': 'Déploiement &amp; conditions',
+                           'en': 'Deployment &amp; terms',
+                           'ar': 'التنفيذ والشروط'},
+    'ci_ind_valeur_entreprise': {'fr': "Valeur pour l'entreprise",
+                                 'en': 'Value for the company',
+                                 'ar': 'القيمة بالنسبة للمقاولة'},
+    'ci_ind_iso_titre': {'fr': "ISO 50001 — management de l'énergie",
+                         'en': 'ISO 50001 — energy management',
+                         'ar': 'إيزو 50001 — تدبير الطاقة'},
+    'ci_ind_iso_texte': {
+        'fr': 'Les données de production et de consommation peuvent '
+              'alimenter votre <b>revue énergétique</b> — sans promesse de '
+              'conformité à la norme.',
+        'en': 'Production and consumption data can feed your <b>energy '
+              'review</b> — with no promise of compliance with the standard.',
+        'ar': 'يمكن لمعطيات الإنتاج والاستهلاك أن تغذي <b>مراجعتكم '
+              'الطاقية</b> — دون وعد بالمطابقة للمعيار.'},
+    'ci_ind_cbam_titre': {
+        'fr': 'CBAM — ajustement carbone aux frontières (UE)',
+        'en': 'CBAM — carbon border adjustment (EU)',
+        'ar': 'CBAM — تعديل الكربون على الحدود (الاتحاد الأوروبي)'},
+    'ci_ind_bilan_carbone_titre': {
+        'fr': 'Bilan carbone de votre électricité',
+        'en': 'Carbon footprint of your electricity',
+        'ar': 'البصمة الكربونية لكهربائكم'},
+    'ci_ind_van_motif': {
+        'fr': "aucun taux d'actualisation déclaré par le client",
+        'en': 'no discount rate declared by the client',
+        'ar': 'لم يصرح الزبون بأي معدل خصم'},
+    'ci_ind_pct_an': {'fr': '% / an', 'en': '% / yr', 'ar': '% / سنة'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

@@ -30,6 +30,14 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
     instrument_nom = serializers.SerializerMethodField()
     instrument_numero_serie = serializers.SerializerMethodField()
     instrument_etalonnage_expire = serializers.BooleanField(read_only=True)
+    # CIQ626 — sections du contrat ``recette_ci.json`` (lecture).
+    irradiance = serializers.SerializerMethodField()
+    energie = serializers.SerializerMethodField()
+    thermographie = serializers.SerializerMethodField()
+    limitation_injection = serializers.SerializerMethodField()
+    decouplage = serializers.SerializerMethodField()
+    echantillon_iv = serializers.SerializerMethodField()
+    comparaison = serializers.SerializerMethodField()
 
     class Meta:
         model = CommissioningRecord
@@ -45,7 +53,21 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             'securite_coupure_ok', 'securite_signalisation_ok',
             'resultat', 'resultat_display', 'passe', 'observations',
             'ventes_recette_id', 'iv_readings',
+            # CIQ626 — sections C&I (saisies à plat ; servies groupées).
+            'irradiance_poa_wm2', 'irradiance_source', 'temperature_module_c',
+            'irradiation_kwh_m2', 'energie_mesuree_kwh',
+            'energie_fenetre_debut', 'energie_fenetre_fin',
+            'terre_installation_ohm', 'thermographie_faite',
+            'thermographie_constats', 'limitation_injection_etat',
+            'limitation_injection_consigne', 'decouplage_etat',
+            'decouplage_piece', 'echantillon_iv_chaines',
+            'instruments_par_essai',
+            'irradiance', 'energie', 'thermographie', 'limitation_injection',
+            'decouplage', 'echantillon_iv', 'comparaison',
+            # CIQ627 — promesse figée (lecture seule).
+            'promesse_figee',
         ]
+        read_only_fields = ['promesse_figee']
 
     def validate(self, attrs):
         """CIQ625 — ``resultat`` est CALCULÉ par le serveur à chaque écriture
@@ -66,6 +88,89 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
         except ReservesRefusees as exc:
             raise serializers.ValidationError({'resultat': str(exc)})
         return attrs
+
+    def validate_instruments_par_essai(self, value):
+        """CIQ626 — ``{essai: instrument_id}`` ; chaque instrument doit
+        appartenir à l'outillage de la société (jamais une autre société)."""
+        from apps.outillage.models import Outillage
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Format attendu : {essai: identifiant d'instrument}.")
+        request = self.context.get('request')
+        company_id = getattr(getattr(request, 'user', None), 'company_id',
+                             None)
+        propre = {}
+        for essai, iid in value.items():
+            if iid in (None, ''):
+                continue
+            try:
+                iid = int(iid)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError(
+                    f"Instrument invalide pour l'essai « {essai} ».")
+            if not Outillage.objects.filter(
+                    pk=iid, company_id=company_id).exists():
+                raise serializers.ValidationError(
+                    f"Instrument inconnu pour l'essai « {essai} ».")
+            propre[str(essai)] = iid
+        return propre
+
+    def update(self, instance, validated_data):
+        """CIQ627 — la promesse du devis est figée à la première écriture
+        où elle est disponible (jamais réécrite)."""
+        from .services import figer_promesse_recette_ci
+        instance = super().update(instance, validated_data)
+        figer_promesse_recette_ci(instance)
+        return instance
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from .services import instruments_par_essai_detail
+        data['instruments_par_essai'] = instruments_par_essai_detail(instance)
+        return data
+
+    @extend_schema_field(serializers.DictField())
+    def get_irradiance(self, obj):
+        return {'irradiance_poa_wm2': obj.irradiance_poa_wm2,
+                'source': obj.irradiance_source,
+                'temperature_module_c': obj.temperature_module_c,
+                'irradiation_kwh_m2': obj.irradiation_kwh_m2}
+
+    @extend_schema_field(serializers.DictField())
+    def get_energie(self, obj):
+        from .services import LIBELLE_PR, pr_mesure_recette
+        return {'energie_mesuree_kwh': obj.energie_mesuree_kwh,
+                'fenetre_debut': obj.energie_fenetre_debut,
+                'fenetre_fin': obj.energie_fenetre_fin,
+                'pr_mesure': pr_mesure_recette(obj),
+                # CIQ627 — PR modélisé de la promesse FIGÉE du devis.
+                'pr_modele_devis': (obj.promesse_figee or {}).get(
+                    'pr_modelise'),
+                'libelle': LIBELLE_PR}
+
+    @extend_schema_field(serializers.DictField())
+    def get_thermographie(self, obj):
+        return {'faite': obj.thermographie_faite,
+                'constats': obj.thermographie_constats, 'photos': []}
+
+    @extend_schema_field(serializers.DictField())
+    def get_limitation_injection(self, obj):
+        return {'etat': obj.limitation_injection_etat,
+                'consigne': obj.limitation_injection_consigne}
+
+    @extend_schema_field(serializers.DictField())
+    def get_decouplage(self, obj):
+        return {'etat': obj.decouplage_etat, 'piece': obj.decouplage_piece}
+
+    @extend_schema_field(serializers.DictField())
+    def get_echantillon_iv(self, obj):
+        return {'essais_realises': obj.iv_readings.count() if obj.pk else 0,
+                'chaines': obj.echantillon_iv_chaines}
+
+    @extend_schema_field(serializers.DictField())
+    def get_comparaison(self, obj):
+        from .services import comparaison_recette_ci
+        return comparaison_recette_ci(obj)
 
     def get_instrument_nom(self, obj):
         instrument = obj.instrument

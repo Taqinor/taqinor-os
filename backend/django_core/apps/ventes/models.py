@@ -1342,12 +1342,60 @@ class ShareLink(models.Model):
         ADOC131 — même règle que ``is_valid`` : un lien RÉVOQUÉ n'est jamais
         réutilisé (un nouveau jeton est créé), un lien PROLONGÉ par le suivi
         l'est même passé ``expires_at``."""
+        # CIQ511 — le lien vit AU MOINS jusqu'à la fin du jour de validité
+        # effective du devis : à la création comme à la réutilisation (un lien
+        # qui expirerait avant est prolongé, jamais raccourci).
+        cible = cls.expiration_pour_devis(devis)
         link = cls.objects.filter(
             models.Q(expires_at__gt=timezone.now())
             | models.Q(suivi_prolonge_le__isnull=False),
             devis=devis, revoque_le__isnull=True,
         ).order_by('-expires_at').first()
-        return link or cls.objects.create(company=devis.company, devis=devis)
+        if link is None:
+            return cls.objects.create(
+                company=devis.company, devis=devis, expires_at=cible)
+        if link.suivi_prolonge_le is None and link.expires_at < cible:
+            link.expires_at = cible
+            link.save(update_fields=['expires_at'])
+        return link
+
+    @staticmethod
+    def expiration_pour_devis(devis):
+        """CIQ511 — ``max(maintenant + SHARE_LINK_TTL_DAYS, fin du jour
+        (Africa/Casablanca) de la validité effective du devis)``, lue par
+        ``utils.expiry.date_expiration`` (celle du PDF) quand une validité est
+        POSÉE ; aucune nouvelle durée n'est codée. Sans validité posée : la
+        durée de toujours (le repli « création + réglage » n'allonge rien)."""
+        import datetime as _dt
+        from core.dates import TZ_METIER
+        from apps.ventes.utils.expiry import date_expiration
+
+        base = timezone.now() + timedelta(days=SHARE_LINK_TTL_DAYS)
+        if devis is None or not getattr(devis, 'date_validite', None):
+            return base
+        try:
+            fin = date_expiration(devis)
+        except Exception:  # noqa: BLE001 — jamais une date inventée
+            fin = None
+        if fin is None:
+            return base
+        fin_du_jour = _dt.datetime.combine(
+            fin, _dt.time(23, 59, 59), tzinfo=TZ_METIER)
+        return max(base, fin_du_jour)
+
+    @classmethod
+    def prolonger_pour_devis(cls, devis):
+        """CIQ511 — la validité du devis a été prolongée : ses liens VIVANTS
+        (non révoqués, non expirés) reculent leur ``expires_at`` jusqu'à la
+        nouvelle fin — même jeton, jamais raccourci. Rend le nombre de liens
+        prolongés."""
+        if devis is None or not getattr(devis, 'pk', None):
+            return 0
+        cible = cls.expiration_pour_devis(devis)
+        return cls.objects.filter(
+            devis=devis, revoque_le__isnull=True,
+            expires_at__gt=timezone.now(), expires_at__lt=cible,
+        ).update(expires_at=cible)
 
     @classmethod
     def for_facture(cls, facture):
@@ -1467,6 +1515,19 @@ class DevisSignature(models.Model):
     on_behalf_of = models.CharField(
         max_length=150, blank=True, default='',
         verbose_name='Signe au nom de (facultatif)')
+    # ── CIQ319 — identité de l'ENTREPRISE signataire (D-CIQ-11, contrat
+    # ``acceptation_entreprise.json`` CIQ9). ADDITIFS et immuables comme le
+    # reste de l'enregistrement : vides hors C&I et sur toute signature
+    # antérieure (comportement inchangé). Aucun statut nouveau (règle #4).
+    raison_sociale = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Raison sociale de l\'entreprise signataire')
+    signataire_qualite = models.CharField(
+        max_length=150, blank=True, default='',
+        verbose_name='Qualité du signataire')
+    ice_declare = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='ICE déclaré à l\'acceptation')
 
     class Meta:
         verbose_name = 'Signature électronique'

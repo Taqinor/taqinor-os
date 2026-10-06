@@ -24,35 +24,7 @@
             "cle": "avec_batterie",
             "libelle": "Avec batterie"
           }
-        ]
-      },
-      {
-        "id": 400,
-        "reference": "DEV-202609-0003",
-        "statut": "accepte",
-        "statut_display": "Accepté",
-        "date_creation": "2026-09-01T08:00:00+00:00",
-        "date_validite": "2026-10-01",
-        "total_ttc": "36000.00",
-        "accepte": true,
-        "mis_a_jour_le": null,
-        "deux_options": false,
-        "options": null
-      }
-    ]
-  },
-  "exemple_ciq9": {
-    "results": [
-      {
-        "id": 413,
-        "reference": "DEV-202609-0012",
-        "statut": "envoye",
-        "statut_display": "Envoyé",
-        "date_creation": "2026-09-28T10:12:00+00:00",
-        "date_validite": "2026-10-28",
-        "total_ttc": "48500.00",
-        "accepte": false,
-        "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
+        ],
         "exige_identite_entreprise": true
       },
       {
@@ -65,6 +37,8 @@
         "total_ttc": "36000.00",
         "accepte": true,
         "mis_a_jour_le": null,
+        "deux_options": false,
+        "options": null,
         "exige_identite_entreprise": false
       }
     ]
@@ -92,7 +66,8 @@
             "cle": "avec_batterie",
             "libelle": "Avec batterie"
           }
-        ]
+        ],
+        "exige_identite_entreprise": true
       },
       {
         "id": 400,
@@ -105,7 +80,8 @@
         "accepte": true,
         "mis_a_jour_le": null,
         "deux_options": false,
-        "options": null
+        "options": null,
+        "exige_identite_entreprise": false
       }
     ]
   },
@@ -116,7 +92,8 @@
     "corps": {
       "nom": "str, requis",
       "consent_esign": "bool, requis (consentement explicite, QX9)",
-      "option": "'sans_batterie'|'avec_batterie', REQUIS quand `deux_options` est vrai, facultatif sinon (ADOC110)"
+      "option": "'sans_batterie'|'avec_batterie', REQUIS quand `deux_options` est vrai, facultatif sinon (ADOC110)",
+      "entreprise": "{raison_sociale, signataire_qualite, ice} — REQUIS (les trois, non vides) quand `exige_identite_entreprise` est vrai (CIQ321, même règle et même lecteur que la page publique : `lire_entreprise_acceptation`, ICE validé par `validate_ice_ma`) ; IGNORÉ sinon. Forme : `exemple_portail.corps.entreprise` de `apps/ventes/contract_samples/acceptation_entreprise.json`."
     },
     "exemple_corps_deux_options": {
       "nom": "Karim Alaoui",
@@ -137,6 +114,10 @@
       "409": "conflit d'acceptation (AcceptError.conflict)",
       "409_deja_accepte": {
         "detail": "Ce devis est déjà accepté."
+      },
+      "400_entreprise": {
+        "detail": "L'ICE de l'entreprise est requis pour accepter ce devis.",
+        "champ": "entreprise.ice"
       }
     },
     "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable).",

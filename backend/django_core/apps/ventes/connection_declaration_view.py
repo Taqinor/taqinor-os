@@ -53,7 +53,15 @@ def declaration_raccordement(request, pk):
     if not regime and chantier is not None:
         regime = getattr(chantier, 'regime_8221', None)
 
-    data = build_declaration_data(devis, chantier=chantier, regime_8221=regime)
+    # CIQ615 — niveau de tension du chantier lu par le sélecteur
+    # installations (mesuré en visite ou déclaré), jamais déduit des phases.
+    niveau_chantier = None
+    if chantier is not None:
+        from apps.installations.selectors import niveau_tension_chantier
+        niveau_chantier = niveau_tension_chantier(chantier)
+
+    data = build_declaration_data(devis, chantier=chantier, regime_8221=regime,
+                                  niveau_chantier=niveau_chantier)
 
     if request.query_params.get('format') == 'pdf':
         try:

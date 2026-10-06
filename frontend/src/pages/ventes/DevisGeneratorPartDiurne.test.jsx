@@ -1,10 +1,7 @@
-// QJR528 — la part diurne d'un devis INDUSTRIEL (curseur « Consommation
-// diurne ») est persistée (etude_params.part_diurne_pct) et restaurée. Avant :
-// elle n'était dans aucun payload ; la réouverture remettait le défaut du
-// marché (80 %) et un ré-enregistrement réécrivait en silence taux_autoconso /
-// taux_couverture / payback, imprimés au PDF.
-//
-// 65 % et non 80 % : 80 est le défaut industriel, il ne prouverait rien.
+// CIQ126 (remplace QJR528) — le C&I n'a plus de part diurne d'écran : le
+// profil de charge est DÉCLARÉ au moteur serveur (jours, plages, talon). Un
+// devis industriel v1 rouvert (part_diurne_pct 65) n'affiche aucun curseur et
+// ne renvoie jamais cette clé, ni aucune dérivée de l'étude locale.
 // Écran RÉEL rendu, charge envoyée lue sur les API mockées.
 // Run : npx vitest run src/pages/ventes/DevisGeneratorPartDiurne.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -101,8 +98,11 @@ beforeEach(() => {
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
 
-describe('QJR528 — part diurne industrielle : persistée et restaurée', () => {
-  it('?edit= industriel part_diurne_pct 65 → curseur à 65 et renvoyée telle quelle', async () => {
+describe('CIQ126 — part diurne industrielle : ni relue, ni affichée, ni renvoyée', () => {
+  it('?edit= industriel part_diurne_pct 65 → aucun curseur, aucune clé v1 renvoyée', async () => {
+    const devis528 = await ventesApi.getDevisById()
+    Object.assign(devis528.data.etude_params, { consommation: { kwh_annuel: 62000 } })
+    ventesApi.getDevisById.mockResolvedValue(devis528)
     render(
       <Provider store={makeStore()}>
         <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=528']}>
@@ -115,13 +115,15 @@ describe('QJR528 — part diurne industrielle : persistée et restaurée', () =>
     )
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: /Industriel/ })).toHaveAttribute('aria-checked', 'true'))
-    const curseur = screen.getByText('Consommation diurne (%)')
-      .parentElement.querySelector('input[type="range"]')
-    await waitFor(() => expect(curseur).toHaveValue('65'))
+    await screen.findByTestId('ci-profil')
+    expect(screen.queryByText('Consommation diurne (%)')).toBeNull()
     const bouton = await screen.findByRole('button', { name: /Enregistrer les modifications/ })
     await userEvent.click(bouton)
     await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalled())
     const etude = ventesApi.patchEtudeParams.mock.calls.at(-1)[1]
-    expect(etude.part_diurne_pct).toBe(65)
+    for (const k of ['part_diurne_pct', 'taux_autoconso', 'taux_couverture', 'payback', 'etude_kwc_base']) {
+      expect(etude).not.toHaveProperty(k)
+    }
+    expect(etude.consommation.kwh_annuel).toBe(62000)
   })
 })

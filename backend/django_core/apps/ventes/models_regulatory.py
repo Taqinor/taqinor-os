@@ -52,14 +52,18 @@ from django.db import models
 
 # Codes de régime alignés sur ``Installation.Regime8221`` (FG267). On NE
 # redéfinit pas l'énum installations (couche découplée) : on liste les libellés
-# localement pour les choix d'affichage.
+# localement pour les choix d'affichage. CIQ616 — ``autorisation_anre`` reste
+# le code STOCKÉ historique, mais l'ANRE n'est pas un guichet : libellé
+# « Autorisation (ministère) » ; ``a_qualifier`` (régime inconnu, CIQ613/618)
+# est un choix valide d'un dossier.
 REGIME_CHOICES = [
     ('non_concerne', "Non concerné (hors loi 82-21)"),
     ('declaration_bt', "Déclaration basse tension"),
     ('accord_raccordement', "Accord de raccordement"),
-    ('autorisation_anre', "Autorisation ANRE"),
+    ('autorisation_anre', "Autorisation (ministère)"),
     # AGR603 — loi 82-21 art. 3 : installation non raccordée = déclaration.
     ('declaration_hors_reseau', "Déclaration hors réseau (loi 82-21, art. 3)"),
+    ('a_qualifier', "À qualifier"),
 ]
 
 
@@ -116,6 +120,51 @@ class RegulatoryDossier(models.Model):
         verbose_name='Prochaine action')
     prochaine_action_date = models.DateField(
         null=True, blank=True, verbose_name='Date de la prochaine action')
+    # ── CIQ619 — étude du distributeur, capacité, convention et exploitation
+    # (décret 2.25.100). Tout est SAISI (additif, nullable) ; les échéances
+    # MAXIMALES du décret en sont DÉRIVÉES (``selectors_reglementaire``),
+    # jamais une date de fin promise au client.
+
+    class EtudeConclusion(models.TextChoices):
+        FAVORABLE = 'favorable', 'Favorable'
+        ALTERNATIVE = 'alternative', 'Solution alternative proposée'
+        REFUS = 'refus', 'Refus'
+
+    class CapaciteEtat(models.TextChoices):
+        # Décret 2.25.100 art. 13 : réservée provisoirement au paiement de
+        # l'étude, définitivement à la signature de la convention.
+        PROVISOIRE = 'provisoire', 'Réservée provisoirement'
+        DEFINITIVE = 'definitive', 'Réservée définitivement'
+
+    etude_frais_notifies_le = models.DateField(
+        null=True, blank=True,
+        verbose_name="Frais d'étude notifiés le (art. 13)")
+    etude_payee_le = models.DateField(
+        null=True, blank=True, verbose_name="Étude payée le (art. 13)")
+    etude_conclusion = models.CharField(
+        max_length=12, choices=EtudeConclusion.choices, null=True,
+        blank=True, verbose_name="Conclusion de l'étude (art. 27)")
+    etude_reglages_imposes = models.BooleanField(
+        null=True, blank=True,
+        verbose_name="Réglages imposés par l'étude (art. 27)")
+    capacite_etat = models.CharField(
+        max_length=12, choices=CapaciteEtat.choices, null=True, blank=True,
+        verbose_name='Capacité réservée (art. 13)')
+    capacite_date = models.DateField(
+        null=True, blank=True, verbose_name='Capacité réservée le')
+    convention_signee_le = models.DateField(
+        null=True, blank=True,
+        verbose_name='Convention de raccordement signée le (art. 14)')
+    demande_exploitation_le = models.DateField(
+        null=True, blank=True,
+        verbose_name="Demande d'exploitation déposée le (art. 15-16)")
+    accord_exploitation_le = models.DateField(
+        null=True, blank=True, verbose_name="Accord d'exploitation reçu le")
+    # CIQ620 — équipements FIGÉS au dépôt (fabricant, modèle, quantité,
+    # puissance — décret 2.25.100 art. 12) ; une modification ultérieure
+    # avertit (loi 82-21 art. 8-9), jamais un blocage.
+    equipements_figes = models.JSONField(
+        default=list, blank=True, verbose_name='Équipements figés au dépôt')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='dossiers_reg_crees')
@@ -148,6 +197,11 @@ class DossierChecklistItem(models.Model):
         ETUDE = 'etude', 'Étude'
         CONVENTION = 'convention', 'Convention'
         COMPTAGE = 'comptage', 'Comptage'
+        # CIQ616 — autres autorisations du site (décret 2.25.100 art. 26) et
+        # pièces exigées pour exploiter (art. 15 : organisme agréé, propriété,
+        # assurance — accord et autorisation seulement).
+        TRAVAUX = 'travaux', 'Travaux'
+        EXPLOITATION = 'exploitation', 'Exploitation'
 
     class Statut(models.TextChoices):
         A_FAIRE = 'a_faire', 'À faire'

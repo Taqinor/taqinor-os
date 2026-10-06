@@ -64,10 +64,6 @@ RE_REGEX_ASSERT = re.compile(r"assert\.match\(|\.match\(\s*/")
 # `solar.test.mjs` est le seul cas different : lecteur de MARKUP legitime
 # (noValidate/step="any"), explicitement exclu par l'enonce de QJR239.
 ALLOWLIST: dict[str, str] = {
-    "frontend/src/features/ventes/autoQuote.paliers.test.mjs":
-        "QJR109 verifie : 2 epingles lisent le SOURCE (garde de peremption "
-        "avant createDevis + message de bandeau) - createAutoQuote n'est "
-        "pas importable sous node --test (dispatch Redux reel).",
     "frontend/src/features/ventes/autoQuote.facturesReelles.test.mjs":
         "Verrouille par lecture de SOURCE la sequence "
         "factures_mensuelles_reelles de createAutoQuote (meme patron que "
@@ -104,9 +100,6 @@ ALLOWLIST: dict[str, str] = {
         "DevisGenerator.jsx + CarteMetrique.jsx non importables purs sous "
         "node --test - verifie l'exemple d'estimation par lecture de "
         "SOURCE.",
-    "frontend/src/pages/ventes/DevisGeneratorEtudeConsoReelle.test.mjs":
-        "DevisGenerator.jsx non importable pur sous node --test - verifie "
-        "le bloc etude conso reelle par lecture de SOURCE.",
     "frontend/src/pages/ventes/DevisGeneratorOrdreLignes.test.mjs":
         "DevisGenerator.jsx + autoQuote.js + LigneTable.jsx non "
         "importables purs sous node --test - verifie le cablage ordre des "

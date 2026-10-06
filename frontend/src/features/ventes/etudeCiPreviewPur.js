@@ -38,6 +38,14 @@ const objetOuNull = (v) => (v && typeof v === 'object' && !Array.isArray(v)
 /** Réponse de catégorie : booléen, nombre tapé, sinon texte tel quel. */
 const reponse = (v) => {
   if (typeof v === 'boolean') return v
+  // CIQ131 — heures données par le client à côté d'une réponse (cuisson
+  // nocturne, service du soir, garde de nuit) : `[[debut_h, fin_h], …]`,
+  // nombres lus tels quels ; une plage incomplète n'est pas envoyée.
+  if (Array.isArray(v)) {
+    const plages = v.filter(Array.isArray).map((p) => p.map(nombreOuNull))
+      .filter((p) => p.length === 2 && p.every((x) => x !== null))
+    return plages.length ? plages : null
+  }
   const n = nombreOuNull(v)
   return n !== null ? n : texteOuNull(v)
 }
@@ -120,7 +128,17 @@ export function construireCorpsCi(etat) {
   if (!etat || !MODES.includes(etat.mode)) return null
   const explicite = nombreOuNull(etat.taille_explicite_kwc)
   if (!consommationExprimee(etat) && !(explicite !== null && explicite > 0)) return null
-  const e = etat
+  return normaliserCorpsCi(etat)
+}
+
+/**
+ * CIQ125 — la forme du corps SANS la garde « essentiel présent » : c'est
+ * aussi la forme des ENTRÉES C&I v2 persistées dans `etude_params`
+ * (`cles_etude_params_ci_v2.entrees`), une seule normalisation pour les deux.
+ */
+export function normaliserCorpsCi(etat) {
+  const e = etat || {}
+  const explicite = nombreOuNull(e.taille_explicite_kwc)
   const site = e.site || {}
   const toit = e.toit || {}
   const contraintes = e.contraintes || {}

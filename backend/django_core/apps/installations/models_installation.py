@@ -76,6 +76,16 @@ class Installation(models.Model):
         INDUSTRIEL = 'industriel', 'Industriel / Commercial'
         AGRICOLE = 'agricole', 'Agricole (pompage)'
 
+    # CIQ610 — niveau de tension du site et sa provenance (vocabulaire du
+    # lead pro CIQ1 : ``tension_raccordement`` / ``tension_source``).
+    class NiveauTension(models.TextChoices):
+        BT = 'bt', 'Basse tension (BT)'
+        MT = 'mt', 'Moyenne tension (MT)'
+
+    class NiveauTensionSource(models.TextChoices):
+        MESURE_VISITE = 'mesure_visite', 'Mesuré en visite'
+        DECLARE = 'declare', 'Déclaré'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -138,6 +148,20 @@ class Installation(models.Model):
         max_length=12, choices=Raccordement.choices, blank=True, null=True)
     type_installation = models.CharField(
         max_length=20, choices=TypeInstallation.choices, blank=True, null=True)
+    # CIQ610 — niveau de tension du site (BT/MT) et puissance souscrite,
+    # recopiés du lead à la création (colonnes CIQ1, corrigées par la visite
+    # CIQ607) ; null = inconnu, jamais deviné. Éditables sur la fiche. Le
+    # régime, les pièces, la checklist et les essais en dépendent. Aucun 4e
+    # type d'installation : un site commercial reste ``industriel``.
+    niveau_tension = models.CharField(
+        max_length=2, choices=NiveauTension.choices, blank=True, null=True,
+        verbose_name='Niveau de tension')
+    niveau_tension_source = models.CharField(
+        max_length=14, choices=NiveauTensionSource.choices, blank=True,
+        null=True, verbose_name='Provenance du niveau de tension')
+    puissance_souscrite_kva = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance souscrite (kVA)')
 
     technicien_responsable = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -178,15 +202,21 @@ class Installation(models.Model):
     # ── Dossier réglementaire loi 82-21 / Article 33 (N40/N42) — additif,
     #    tout optionnel. Le régime et le statut pilotent les filtres (N41). ──
     class Regime8221(models.TextChoices):
+        # CIQ613 — libellés SANS seuil (le seuil vit dans le noyau sourcé
+        # ``core.reglementaire.regime_8221``) ; ``autorisation_anre`` reste
+        # le code STOCKÉ historique, l'ANRE n'est pas un guichet.
         NON_CONCERNE = 'non_concerne', 'Non concerné'
-        DECLARATION_BT = 'declaration_bt', 'Déclaration (< 11 kW, BT)'
+        DECLARATION_BT = 'declaration_bt', 'Déclaration'
         ACCORD_RACCORDEMENT = 'accord_raccordement', 'Accord de raccordement'
-        AUTORISATION_ANRE = 'autorisation_anre', 'Autorisation ANRE (> 1 MW)'
+        AUTORISATION_ANRE = 'autorisation_anre', 'Autorisation (ministère)'
         # AGR602 — loi 82-21, art. 3 : TOUTE installation non raccordée au
         # réseau relève d'une déclaration, sans seuil de puissance.
         DECLARATION_HORS_RESEAU = (
             'declaration_hors_reseau',
             'Déclaration hors réseau (loi 82-21, art. 3)')
+        # CIQ613 — chantier C&I à puissance ou niveau inconnu : jamais
+        # « non concerné » par défaut ; le gate dossier le bloque.
+        A_QUALIFIER = 'a_qualifier', 'À qualifier'
 
     # AGR602 — l'installation est-elle raccordée au réseau ? (null = non
     # renseigné → suggestion par kWc, comportement historique). Un chantier

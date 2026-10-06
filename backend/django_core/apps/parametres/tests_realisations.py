@@ -361,3 +361,60 @@ class SegmentApiTests(TestCase):
             format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('segment', resp.data)
+
+
+class PreuveProCIQ515Tests(TestCase):
+    """CIQ515 — preuve J4 d'un lead pro : une réalisation commerciale ou
+    industrielle de taille proche, sinon RIEN (jamais une villa)."""
+
+    def setUp(self):
+        self.company = _societe('real-ciq515')
+
+    def _lead(self, **kwargs):
+        kwargs.setdefault('nom', 'Hôtel Atlas')
+        kwargs.setdefault('telephone', '+212651971515')
+        return Lead.objects.create(company=self.company, **kwargs)
+
+    def test_a_lead_commercial_et_une_seule_villa_dans_sa_ville_rien(self):
+        _realisation(self.company, 'Casablanca', segment='residentiel',
+                     puissance_kwc=Decimal('6'))
+        lead = self._lead(ville='Casablanca', type_installation='commercial')
+        self.assertIsNone(realisation_pour_lead(lead))
+
+    def test_b_taille_du_devis_sans_calepinage_puis_distance(self):
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        commerciale = _realisation(
+            self.company, 'Agadir', segment='commercial',
+            puissance_kwc=Decimal('20'))
+        _realisation(self.company, 'Casablanca', segment='industriel',
+                     puissance_kwc=Decimal('250'))
+        lead = self._lead(ville='Casablanca', type_installation='commercial')
+        client = Client.objects.create(
+            company=self.company, nom='Hôtel', email='ciq515@example.com')
+        Devis.objects.create(
+            company=self.company, reference='DEV-CIQ515-10', client=client,
+            lead=lead, taux_tva=Decimal('20'),
+            etude_params={'etude_ci': {'taille': {'retenue_kwc': 30}}})
+        self.assertEqual(realisation_pour_lead(lead), commerciale)
+
+    def test_c_realisation_sans_segment_jamais_servie_a_un_pro(self):
+        _realisation(self.company, 'Casablanca', puissance_kwc=Decimal('50'))
+        lead = self._lead(ville='Casablanca', type_installation='industriel')
+        self.assertIsNone(realisation_pour_lead(lead))
+
+    def test_meme_segment_d_abord(self):
+        _realisation(self.company, 'Casablanca', segment='commercial',
+                     puissance_kwc=Decimal('300'))
+        usine = _realisation(self.company, 'Agadir', segment='industriel',
+                             puissance_kwc=Decimal('300'))
+        lead = self._lead(ville='Casablanca', type_installation='industriel')
+        self.assertEqual(realisation_pour_lead(lead), usine)
+
+    def test_d_residentiel_identique(self):
+        _realisation(self.company, 'Bouskoura')
+        meme = _realisation(self.company, 'Casablanca',
+                            segment='commercial')
+        self.assertEqual(realisation_pour_lead(
+            self._lead(ville='Casablanca', type_installation='residentiel')),
+            meme)

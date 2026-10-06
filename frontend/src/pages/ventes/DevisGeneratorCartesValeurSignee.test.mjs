@@ -43,9 +43,9 @@ test('QJR426 — unwrap() lève un TypeError si un nombre (ou toute valeur non s
 
 // ── Les 13 appels utilisent TOUS `valeur=`, plus jamais `value=` ────────────
 
+// CIQ126 — les 4 cartes de l'étude C&I locale sont supprimées : 9 sites.
 const TOUTES_LES_CARTES_LABELS = [
-  "Taux d'autoconsommation", 'Taux de couverture', 'Économies annuelles (étude)',
-  'Payback (étude)', 'Production annuelle', "Taux d'autoconsommation (sans)",
+  'Production annuelle', "Taux d'autoconsommation (sans)",
   'Taux de couverture (sans)', 'Économies', 'ROI', 'Coût',
 ]
 
@@ -62,9 +62,9 @@ function tousLesBlocsDeLabel(label) {
   return blocs
 }
 
-test('QJR426 — les 13 sites CarteMetrique du générateur portent `valeur=`, aucun `value=` littéral ne subsiste', () => {
+test('QJR426 — les 9 sites CarteMetrique du générateur portent `valeur=`, aucun `value=` littéral ne subsiste', () => {
   const total = (DG.match(/<CarteMetrique label=/g) || []).length
-  assert.equal(total, 13, 'le nombre de cartes CarteMetrique a changé — revoir le périmètre QJR426')
+  assert.equal(total, 9, 'le nombre de cartes CarteMetrique a changé — revoir le périmètre QJR426')
   for (const label of TOUTES_LES_CARTES_LABELS) {
     for (const bloc of tousLesBlocsDeLabel(label)) {
       assert.match(bloc, /\bvaleur=\{/, `carte "${label}" : doit porter la prop \`valeur=\``)
@@ -85,25 +85,18 @@ test('QJR426 — `moteur`/`apercu` sont importés de quote/valeur.js dans DevisG
 // ── Marque de provenance là où elle n'est pas évidente (et nulle part une
 // provenance INVENTÉE) ──────────────────────────────────────────────────────
 //
-// Les 4 cartes indus/commercial (étude locale `computeEtudeIndustrielle`,
-// QJR213/DV3) ne sont JAMAIS authoritatives : elles signent TOUJOURS avec
-// `apercu()`, dont `unwrap()` dérive AUTOMATIQUEMENT la puce `PUCE_APERCU`
-// (« estimation d'exemple ») — le même motif que l'ancien littéral
-// `badge="estimation locale"` qu'elles portaient (chiffre local, pas une
-// mesure), sous le libellé canonique de la primitive partagée plutôt qu'un
-// texte ad hoc à elles.
-const LABELS_TOUJOURS_APERCU = [
+// CIQ126 — les 4 cartes indus/commercial de l'étude LOCALE (QJR213/DV3) sont
+// SUPPRIMÉES : le résultat C&I vient du moteur serveur (`CarteResultatCi`).
+// La puce d'aperçu reste la primitive partagée, vérifiée par exécution.
+const LABELS_ETUDE_LOCALE_SUPPRIMEES = [
   "Taux d'autoconsommation", 'Taux de couverture',
   'Économies annuelles (étude)', 'Payback (étude)',
 ]
 
-test('QJR426 — les 4 cartes de l’étude locale (DV3) signent TOUJOURS avec apercu() : la puce PUCE_APERCU est due', () => {
-  for (const label of LABELS_TOUJOURS_APERCU) {
-    const [bloc] = tousLesBlocsDeLabel(label)
-    assert.match(bloc, /valeur=\{apercu\(/, `carte "${label}" : doit toujours signer apercu()`)
+test('CIQ126 — les 4 cartes de l’étude locale n’existent plus ; la puce PUCE_APERCU reste la primitive', () => {
+  for (const label of LABELS_ETUDE_LOCALE_SUPPRIMEES) {
+    assert.equal(DG.includes(`<CarteMetrique label="${label}"`), false, `carte "${label}" supprimée`)
   }
-  // La puce que `CarteMetrique`/`unwrap` posera est celle-ci, VÉRIFIÉE par
-  // exécution — jamais un texte réinventé à la volée par l'écran.
   assert.equal(unwrap(apercu('x')).puce, PUCE_APERCU)
   assert.equal(PUCE_APERCU, "estimation d'exemple")
 })
@@ -156,10 +149,6 @@ test('QJR426 — Économies/ROI conditionnent leur puce EXACTEMENT comme hier, v
 // `value={...}` pour cette carte (avant QJR426) ; le test affirme qu'elle vit
 // désormais, MOT POUR MOT, comme unique argument du signeur.
 const EXPRESSIONS_INCHANGEES = [
-  { label: "Taux d'autoconsommation", expr: '`${etudeCI.taux_autoconso} %`' },
-  { label: 'Taux de couverture', expr: '`${etudeCI.taux_couverture} %`' },
-  { label: 'Économies annuelles (étude)', expr: 'fmtNum(etudeCI.economies_annuelles)' },
-  { label: 'Payback (étude)', expr: '`${etudeCI.payback} ans`' },
   { label: 'Production annuelle', expr: 'fmtNum(Math.round(apercuProductionKwh))' },
   {
     label: "Taux d'autoconsommation (sans)",
@@ -199,8 +188,6 @@ test('QJR426 — Économies/ROI/Coût (Sans puis Avec) gardent leurs expressions
 // `unit`/`accent` (le reste du rendu visible d'une carte) ne bougent pas non
 // plus — vérifié sur un échantillon représentatif (unité + accent).
 test('QJR426 — unit/accent des cartes sont inchangés à l’octet', () => {
-  assert.ok(tousLesBlocsDeLabel("Taux d'autoconsommation")[0]
-    .includes('unit="part de la production consommée" accent'))
   assert.ok(tousLesBlocsDeLabel('Production annuelle')[0]
     .includes('unit="kWh / an" accent'))
   assert.ok(tousLesBlocsDeLabel('ROI')[0].includes('unit="retour sur invest." accent'))

@@ -105,10 +105,10 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/ventes/models.py:596` | LigneDevis.remise | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:617` | LigneDevis.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:924` | AvenantDevis.taux_remise_global | 6 | 2 |
-| `backend/django_core/apps/ventes/models.py:1712` | DevisPreset.taux_tva | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:1716` | DevisPreset.remise_globale | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:2031` | LignePrixListe.prix_unitaire | 10 | 2 |
-| `backend/django_core/apps/ventes/models.py:2135` | PalierRemiseVolume.remise_pct | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:1773` | DevisPreset.taux_tva | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:1777` | DevisPreset.remise_globale | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:2092` | LignePrixListe.prix_unitaire | 10 | 2 |
+| `backend/django_core/apps/ventes/models.py:2196` | PalierRemiseVolume.remise_pct | 5 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:113` | FactureSource.sous_total_ht | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:411` | AffectationPaiement.montant | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:451` | NoteDebit.taux_tva | 5 | 2 |
@@ -123,8 +123,8 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/ventes/models_facturation.py:591` | PromessePaiement.montant_promis | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:680` | PaymentLink.montant | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:757` | RemiseEncaissement.montant_declare | 12 | 2 |
-| `backend/django_core/apps/ventes/models_regulatory.py:282` | SubventionDossier.montant_demande | 12 | 2 |
-| `backend/django_core/apps/ventes/models_regulatory.py:285` | SubventionDossier.montant_accorde | 12 | 2 |
+| `backend/django_core/apps/ventes/models_regulatory.py:336` | SubventionDossier.montant_demande | 12 | 2 |
+| `backend/django_core/apps/ventes/models_regulatory.py:339` | SubventionDossier.montant_accorde | 12 | 2 |
 | `backend/django_core/core/models.py:1139` | MatriceApprobation.montant_min | 14 | 2 |
 | `backend/django_core/core/models.py:1143` | MatriceApprobation.montant_max | 14 | 2 |
 | `backend/django_core/core/models.py:1682` | PaymentTransaction.montant | 12 | 2 |

@@ -99,10 +99,11 @@ class AliasDepreciePompeCv(TestCase):
             pompe_actuelle_cv=Decimal('7.50'))
         self.url = f'/api/django/crm/leads/{self.lead.id}/'
 
-    def test_le_detail_sert_l_alias_egal_a_la_colonne(self):
+    def test_le_detail_sert_la_colonne_sans_alias(self):
+        # AGR424 — l'alias déprécié ``pompe_cv`` n'est plus servi.
         data = self.api.get(self.url).data
         self.assertEqual(data['pompe_actuelle_cv'], '7.50')
-        self.assertEqual(data['pompe_cv'], data['pompe_actuelle_cv'])
+        self.assertNotIn('pompe_cv', data)
 
     def test_l_alias_est_en_lecture_seule(self):
         resp = self.api.patch(self.url, {'pompe_cv': '12'}, format='json')

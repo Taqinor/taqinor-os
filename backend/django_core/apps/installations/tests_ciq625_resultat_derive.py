@@ -4,6 +4,8 @@ serveur, un essai raté ne laisse plus passer « conforme ».
 Run :
     python manage.py test apps.installations.tests_ciq625_resultat_derive
 """
+from decimal import Decimal
+
 from django.test import TestCase
 
 from apps.installations.models import CommissioningRecord, Installation
@@ -83,6 +85,12 @@ class ResultatDeriveTests(TestCase):
         self.assertEqual(r.data['resultat'], 'non_conforme')
 
     def test_un_string_iv_en_defaut_rend_la_fiche_non_conforme(self):
+        # CIQ626 — le défaut I-V est jugé contre le seuil SAISI par la
+        # société (aucune tolérance codée) : 5 % saisi ici explicitement.
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(self.rec.company)
+        profil.recette_ecart_pmax_pct = Decimal('5')
+        profil.save()
         self._patch(TOUS_VRAIS)
         r = self.api.post(f'{self.url}ajouter-iv/', {
             'string_label': 'S1', 'pmax_mesure_w': '700',

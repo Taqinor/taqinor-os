@@ -24,23 +24,17 @@ def is_commercial(devis, options=None) -> bool:
 
     Commercial market mode + the full/premium format. The one-page format stays
     on the legacy engine, exactly like the residential/agricole/industriel split.
-    The ``include_etude`` format ALSO stays on the legacy engine (see the guard
-    below), exactly like ``industriel.is_industrial`` / ``residential.is_residential``.
+
+    CIQ332 (D-CIQ-9) — ``include_etude`` est IGNORÉ : l'étude est déjà dans
+    les 3 pages (production, taux, argent et retour lus sur ``synthese_ci``).
+    Le garde QJR621 envoyait au legacy 4 pages tout devis commercial demandé
+    « avec l'étude » : un même devis avait DEUX documents (C3-06). Le legacy
+    ne reste que l'interrupteur de secours (règle #4) et le une-page.
     """
     mode = (getattr(devis, "mode_installation", None) or "").strip().lower()
     if mode != "commercial":
         return False
     opts = options or {}
-    # QJR621 — même garde que ``industriel.is_industrial`` (régression produit
-    # corrigée le 2026-08-14 côté industriel, recopiée ici) : un devis demandé
-    # avec ``include_etude`` est destiné au moteur legacy (« the legacy renderer
-    # serves every other market mode / format (…, étude) »). Sans ce garde, le
-    # renderer commercial interceptait la demande et la page d'étude
-    # d'autoconsommation DISPARAISSAIT (3 pages cover / equip / trust au lieu
-    # des 4 exigées par CLAUDE.md — « +include_etude = 4 »). Le renderer
-    # commercial garde tout son périmètre : commercial full/premium SANS étude.
-    if opts.get("include_etude"):
-        return False
     if (opts.get("pdf_mode") or "full") not in ("full", "premium"):
         return False
     return True
@@ -105,14 +99,21 @@ def _augment(data: dict) -> dict:
     # ``etude['kwc']`` n'est plus qu'un repli.
     d["com_kwc"] = chiffres["kwc"] or _num(d.get("puissance_kwc")) \
         or _num(etude.get("kwc"))
-    # QJR145 (g) — ``com_prod`` SUPPRIMÉ : calculé et lu par aucun gabarit
-    # commercial (la production s'affiche depuis ``com_kwc``/l'étude).
+    # CIQ331 — la production annuelle de la couverture : celle du moteur C&I
+    # (``synthese_ci.systeme``), jamais la production « par ville ».
+    d["com_production"] = chiffres["production_kwh_an"]
     d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
     d["com_autoconso"] = chiffres["taux_autoconso_pct"]
     d["com_couverture"] = chiffres["taux_couverture_pct"]
     d["com_methode"] = chiffres["libelle_methode"]
     d["com_sous_reserve"] = chiffres["sous_reserve"]
     d["com_a_confirmer"] = chiffres["a_confirmer"]
+    # CIQ333 — les CLÉS de la méthode et des points à confirmer : la langue
+    # du document choisit leur libellé (catalogue ``i18n_labels``).
+    d["com_methode_cle"] = chiffres["methode"]
+    d["com_a_confirmer_cles"] = [
+        a.get("cle") for a in synthese.get("a_confirmer") or []
+        if isinstance(a, dict) and a.get("libelle")]
     d["com_note_pointe"] = chiffres["note_pointe"]
     d["com_motif_argent"] = chiffres["motif_argent"]
     d["com_argent_mt"] = chiffres["argent_mt"]
@@ -138,7 +139,14 @@ def render_pdf_bytes(data: dict) -> bytes:
     """Render the premium commercial proposal to PDF bytes, or raise Unsupported."""
     from weasyprint import HTML
     from . import render as commercial_render
+    from ..commercial.equip import pdf_adaptatif
     d = _augment(data)
-    html = commercial_render.build_html(d)
     base = str(Path(commercial_render.__file__).resolve().parent)
-    return HTML(string=html, base_url=f"file://{base}/").write_pdf()
+    # CIQ317 — densité adaptative de la page équipements, mesurée sur le
+    # rendu réel ; trop longue même au dernier palier ⇒ repli NOMMÉ.
+    pdf = pdf_adaptatif(
+        d, commercial_render.build_html,
+        lambda html: HTML(string=html, base_url=f"file://{base}/").render())
+    if pdf is None:
+        raise Unsupported("nomenclature trop longue")
+    return pdf

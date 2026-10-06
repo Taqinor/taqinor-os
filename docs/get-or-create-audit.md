@@ -59,15 +59,15 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/calepinage/views/reglementaire.py:148` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/mesure_cadence.py:320` | get_or_create | GesteRelanceAppareil.objects | company, famille_appareil, geste, jour |
-| `backend/django_core/apps/crm/services.py:217` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:12139` | get_or_create | Playbook.objects | company, nom |
-| `backend/django_core/apps/crm/services.py:12146` | get_or_create | PlaybookEtape.objects | playbook, stage |
-| `backend/django_core/apps/crm/services.py:12148` | get_or_create | PlaybookTache.objects | etape, libelle |
-| `backend/django_core/apps/crm/services.py:12201` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/views.py:3303` | get_or_create | LeadTag.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3317` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3329` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3387` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/services.py:223` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
+| `backend/django_core/apps/crm/services.py:12315` | get_or_create | Playbook.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:12322` | get_or_create | PlaybookEtape.objects | playbook, stage |
+| `backend/django_core/apps/crm/services.py:12324` | get_or_create | PlaybookTache.objects | etape, libelle |
+| `backend/django_core/apps/crm/services.py:12402` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
+| `backend/django_core/apps/crm/views.py:3327` | get_or_create | LeadTag.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3341` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3353` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3411` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
@@ -86,27 +86,27 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/views.py:2277` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/installations/field_capture.py:79` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:334` | get_or_create | SafetyChecklistSlot.objects | cle, company |
-| `backend/django_core/apps/installations/field_capture.py:344` | get_or_create | SafetySignoff.objects | intervention |
+| `backend/django_core/apps/installations/field_capture.py:391` | get_or_create | SafetySignoff.objects | intervention |
 | `backend/django_core/apps/installations/field_services.py:54` | get_or_create | ShotListSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_services.py:156` | get_or_create | InterventionPreparation.objects | intervention |
 | `backend/django_core/apps/installations/field_services.py:357` | get_or_create | FicheInterventionReleve.objects | intervention |
 | `backend/django_core/apps/installations/services.py:112` | get_or_create | ChecklistEtapeModele.objects | cle, company, template |
-| `backend/django_core/apps/installations/services.py:542` | get_or_create | DocumentProjet.objects | installation, type_doc |
-| `backend/django_core/apps/installations/services.py:662` | get_or_create | StockReservation.objects | installation, produit_id |
-| `backend/django_core/apps/installations/services.py:929` | get_or_create | StockReservation.objects | installation, produit_id |
-| `backend/django_core/apps/installations/services.py:1017` | get_or_create | StockReservation.objects | installation, produit_id |
-| `backend/django_core/apps/installations/services.py:1267` | get_or_create | StageModele.objects | cle, company |
-| `backend/django_core/apps/installations/services.py:1920` | get_or_create | CommissioningRecord.objects | installation |
-| `backend/django_core/apps/installations/services.py:2159` | get_or_create | HandoverPack.objects | installation |
-| `backend/django_core/apps/installations/services.py:2221` | get_or_create | ReservationAssemblage.objects | ordre, produit_id |
-| `backend/django_core/apps/installations/services.py:3245` | get_or_create | SerieEntrepot.objects | company, numero_serie, produit_id |
-| `backend/django_core/apps/installations/services.py:3895` | get_or_create | JalonProjet.objects | installation, phase |
-| `backend/django_core/apps/installations/services.py:3984` | get_or_create | EmplacementStock.objects | company, nom |
+| `backend/django_core/apps/installations/services.py:644` | get_or_create | DocumentProjet.objects | installation, type_doc |
+| `backend/django_core/apps/installations/services.py:764` | get_or_create | StockReservation.objects | installation, produit_id |
+| `backend/django_core/apps/installations/services.py:1031` | get_or_create | StockReservation.objects | installation, produit_id |
+| `backend/django_core/apps/installations/services.py:1119` | get_or_create | StockReservation.objects | installation, produit_id |
+| `backend/django_core/apps/installations/services.py:1374` | get_or_create | StageModele.objects | cle, company |
+| `backend/django_core/apps/installations/services.py:2179` | get_or_create | CommissioningRecord.objects | installation |
+| `backend/django_core/apps/installations/services.py:2551` | get_or_create | HandoverPack.objects | installation |
+| `backend/django_core/apps/installations/services.py:2613` | get_or_create | ReservationAssemblage.objects | ordre, produit_id |
+| `backend/django_core/apps/installations/services.py:3637` | get_or_create | SerieEntrepot.objects | company, numero_serie, produit_id |
+| `backend/django_core/apps/installations/services.py:4410` | get_or_create | JalonProjet.objects | installation, phase |
+| `backend/django_core/apps/installations/services.py:4499` | get_or_create | EmplacementStock.objects | company, nom |
 | `backend/django_core/apps/installations/views/approbation_bcf.py:100` | update_or_create | ApprobationBCF.objects | bcf, company |
 | `backend/django_core/apps/installations/views/checklist_etape.py:103` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/checklist_template.py:103` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/installation.py:91` | get_or_create | TypeIntervention.objects | cle, company |
-| `backend/django_core/apps/installations/views/installation.py:676` | update_or_create | PhotoChecklistMeta.objects | attachment |
+| `backend/django_core/apps/installations/views/installation.py:688` | update_or_create | PhotoChecklistMeta.objects | attachment |
 | `backend/django_core/apps/installations/views/intervention.py:135` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/intervention.py:1028` | get_or_create | PhotoAnnotation.objects | attachment |
 | `backend/django_core/apps/installations/views/intervention.py:1575` | get_or_create | ToolReturn.objects | intervention, outil_id |
@@ -155,8 +155,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/portail/services.py:441` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/portail/services.py:617` | update_or_create | JalonChantierPortail.objects | chantier_id, cle_phase, company |
 | `backend/django_core/apps/portail/services.py:784` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/views_client.py:628` | get_or_create | AcceptationDevisPortail.objects | company, devis |
-| `backend/django_core/apps/portail/views_client.py:731` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
+| `backend/django_core/apps/portail/views_client.py:645` | get_or_create | AcceptationDevisPortail.objects | company, devis |
+| `backend/django_core/apps/portail/views_client.py:748` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
 | `backend/django_core/apps/portail/views_externes.py:495` | update_or_create | PreferencePortail.objects | utilisateur |
 | `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
 | `backend/django_core/apps/records/services.py:104` | get_or_create | Follower.objects | company, content_type, object_id, sous_type, user |

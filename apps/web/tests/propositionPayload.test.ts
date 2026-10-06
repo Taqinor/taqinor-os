@@ -564,6 +564,9 @@ const NON_LU: Readonly<Record<string, string>> = {
   // CIQ306 (06/10/2026) — la moitié serveur sert `synthese_ci` (nul hors C&I) ;
   // la page /proposition C&I qui la lira est la tâche web CIW301 (WEB_PLAN).
   'synthese_ci': 'Synthèse C&I servie par le serveur (CIQ306), nulle hors commercial/industriel : la page /proposition C&I qui la lira est CIW301 (docs/WEB_PLAN.md), pas encore construite.',
+  // CIQ319 (06/10/2026) — la moitié serveur sert `signature_entreprise` ;
+  // le formulaire de signature C&I qui la lira est la tâche web CIW305 (WEB_PLAN).
+  'signature_entreprise': 'Identité d’entreprise du signataire servie par le serveur (CIQ319) : le formulaire de signature C&I (raison sociale, nom, qualité, ICE) qui la lira est CIW305 (docs/WEB_PLAN.md), pas encore construit.',
 };
 
 /** La prose du contrat : jamais servie à un navigateur, mais elle se décide aussi. */

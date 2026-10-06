@@ -19,6 +19,8 @@ class StageModeleSerializer(serializers.ModelSerializer):
             'id', 'cle', 'libelle', 'ordre', 'bloquant',
             'exige_checklist', 'exige_photos', 'exige_series', 'exige_tests',
             'exige_materiel', 'exige_dossier', 'exige_pack',
+            # CIQ623 — documents de sécurité chantier.
+            'exige_hse',
             # CHT23 — exigences de comptage configurables (additif, défauts =
             # comportement historique octet pour octet).
             'photos_min', 'checklist_pct_min',

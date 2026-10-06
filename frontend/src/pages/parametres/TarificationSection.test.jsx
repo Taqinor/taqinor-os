@@ -267,3 +267,92 @@ describe('AGR210 — Pompage agricole (charges + règle FDA, usage interne)', ()
     expect(second.regle_fda_pompage).toEqual(REGLE_CONTRAT)
   })
 })
+
+// CIQ227 — études commerciales et industrielles.
+const SCENARIOS_CI = [
+  { cle: 'indexation_tarif', variation_pct: 3, source: 'Historique ONEE publié' },
+  { cle: 'degradation', variation_pct: 0.5, source: 'Garantie fabricant' },
+]
+
+async function rendreCi(scenarios = [], autorisee = false, avis = '') {
+  getTariffSettings.mockResolvedValue({ data: {
+    ...VIERGE, sensibilites_ci: scenarios,
+    mention_credit_bail_autorisee: autorisee, mention_credit_bail_source: avis,
+  } })
+  render(<TarificationSection />)
+  await waitFor(() => expect(screen.getByTestId('tarif-ci')).toBeInTheDocument())
+}
+
+describe('CIQ227 — Études commerciales et industrielles', () => {
+  it('vide par défaut : la phrase « aucun scénario » et l’interrupteur éteint', async () => {
+    await rendreCi()
+    expect(screen.getByTestId('tarif-ci-vide')).toHaveTextContent(
+      'le document n’affiche aucune sensibilité')
+    expect(screen.getByRole('switch', { name: /crédit-bail/ })).not.toBeChecked()
+    expect(champ('mention_credit_bail_source').value).toBe('')
+  })
+
+  it('scénario sans source ⇒ erreur sous le champ, rien envoyé', async () => {
+    const user = userEvent.setup()
+    await rendreCi()
+    await user.click(screen.getByRole('button', { name: /Ajouter un scénario/ }))
+    const variation = screen.getByLabelText('Variation du scénario 1 (%)')
+    expect(variation).toHaveAttribute('step', 'any')
+    await user.type(variation, '2.5')
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    expect(updateTariffSettings).not.toHaveBeenCalled()
+    expect(screen.getByTestId('erreur-sensibilites_ci')).toHaveTextContent('source')
+  })
+
+  it('au plus 4 scénarios', async () => {
+    const user = userEvent.setup()
+    await rendreCi()
+    for (let i = 0; i < 5; i += 1) {
+      const bouton = screen.getByRole('button', { name: /Ajouter un scénario/ })
+      if (!bouton.disabled) await user.click(bouton)
+    }
+    expect(screen.getAllByLabelText(/^Source du scénario/)).toHaveLength(4)
+    expect(screen.getByRole('button', { name: /Ajouter un scénario/ })).toBeDisabled()
+  })
+
+  it('interrupteur sans avis juridique ⇒ refus affiché sous le champ', async () => {
+    const user = userEvent.setup()
+    await rendreCi()
+    await user.click(screen.getByRole('switch', { name: /crédit-bail/ }))
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    expect(updateTariffSettings).not.toHaveBeenCalled()
+    expect(screen.getByTestId('erreur-mention_credit_bail_source'))
+      .toHaveTextContent('avis juridique')
+  })
+
+  it('le refus 400 du serveur s’affiche sous le champ qu’il nomme', async () => {
+    const user = userEvent.setup()
+    const message = 'sensibilites_ci[0].source : la source du scénario est obligatoire.'
+    updateTariffSettings.mockRejectedValue({
+      response: { status: 400, data: { sensibilites_ci: [message] } },
+    })
+    await rendreCi(SCENARIOS_CI)
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    expect(await screen.findByTestId('erreur-sensibilites_ci')).toHaveTextContent(message)
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = valeurs identiques', async () => {
+    const user = userEvent.setup()
+    const reponse = { ...VIERGE, sensibilites_ci: SCENARIOS_CI,
+      mention_credit_bail_autorisee: true,
+      mention_credit_bail_source: 'Avis cabinet X, 12/10/2026', version: 2 }
+    updateTariffSettings.mockResolvedValue({ data: reponse })
+    await rendreCi(SCENARIOS_CI, true, 'Avis cabinet X, 12/10/2026')
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    await waitFor(() => expect(updateTariffSettings).toHaveBeenCalledTimes(1))
+    const premier = updateTariffSettings.mock.calls[0][0]
+    expect(premier.sensibilites_ci).toEqual(SCENARIOS_CI)
+    expect(premier.mention_credit_bail_autorisee).toBe(true)
+    expect(premier.mention_credit_bail_source).toBe('Avis cabinet X, 12/10/2026')
+    await user.click(screen.getByRole('button', { name: /Enregistr/ }))
+    await waitFor(() => expect(updateTariffSettings).toHaveBeenCalledTimes(2))
+    const second = updateTariffSettings.mock.calls[1][0]
+    expect(second.sensibilites_ci).toEqual(SCENARIOS_CI)
+    expect(second.mention_credit_bail_source).toBe(premier.mention_credit_bail_source)
+  })
+})

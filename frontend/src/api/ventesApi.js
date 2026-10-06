@@ -298,6 +298,10 @@ const ventesApi = {
   // industriel, aucune écriture. Forme : `contract_samples/etude_ci_preview.json`.
   etudeCiPreview: (body, config = {}) =>
     api.post('/ventes/etude-ci/preview/', body, config),
+  // CIQ223 — aperçu de l'économie C&I (CIQ205-CIQ210), aucune écriture.
+  // Corps {sortie_etude_ci, saisies, lignes} ; forme : `contract_samples/economie_ci.json`.
+  economieCiPreview: (body, config = {}) =>
+    api.post('/ventes/economie-ci/preview/', body, config),
   // AGR213 — aperçu de l'économie DÉCLARÉE de pompage (AGR206), aucune
   // écriture. Forme : `contract_samples/economie_pompage.json`.
   economiePompagePreview: (body, config = {}) =>
@@ -390,6 +394,9 @@ const ventesApi = {
   getFacture: (id) => api.get(`/ventes/factures/${id}/`),
   createFacture: (data) => api.post('/ventes/factures/', data),
   updateFacture: (id, data) => api.put(`/ventes/factures/${id}/`, data),
+  // CIQ226 — libère la retenue de garantie (CIQ214) à la date SAISIE de la
+  // réception définitive ; rend la facture (montant_exigible à jour).
+  libererRetenueFacture: (id, date) => api.post(`/ventes/factures/${id}/liberer-retenue/`, { date }),
   patchFacture: (id, data) => api.patch(`/ventes/factures/${id}/`, data),
   genererPdfFacture: (id) => api.post(`/ventes/factures/${id}/generer-pdf/`),
   telechargerPdfFacture: (id) => api.get(`/ventes/factures/${id}/telecharger-pdf/`, { responseType: 'blob' }),

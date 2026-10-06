@@ -717,7 +717,7 @@
 - frontend/src/api/crmApi.js :: createSavedView -> /api/django/crm/vues-enregistrees  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
 - frontend/src/api/crmApi.js :: createSiteProfile -> /api/django/crm/site-profiles  [SiteProfileSerializer]
-    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
     raccordement ∈ {aucun, inconnu, monophase, triphase}
@@ -758,7 +758,7 @@
 - frontend/src/api/crmApi.js :: getPlansActivite -> /api/django/crm/plans-activite  [PlanActiviteSerializer]
     champs: actif, company, date_creation, etapes, id, nom
 - frontend/src/api/crmApi.js :: getSiteProfiles -> /api/django/crm/site-profiles  [SiteProfileSerializer]
-    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
     raccordement ∈ {aucun, inconnu, monophase, triphase}
@@ -776,7 +776,7 @@
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}
 - frontend/src/api/crmApi.js :: updateSiteProfile -> /api/django/crm/site-profiles/<>  [SiteProfileSerializer]
-    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
     raccordement ∈ {aucun, inconnu, monophase, triphase}
@@ -1056,7 +1056,7 @@
     champs: actif, autorise_depassement_budget, chantier, date_creation, id, libelle, montant_max, montant_min, niveau_approbation, niveau_approbation_display, nombre_approbateurs, priorite, programme
     niveau_approbation ∈ {administrateur, direction, responsable}
 - frontend/src/api/installationsApi.js :: deleteStageChantier -> /api/django/installations/etapes-chantier/<>  [StageModeleSerializer]
-    champs: actif, bloquant, checklist_pct_min, cle, exige_checklist, exige_dossier, exige_materiel, exige_pack, exige_photos, exige_series, exige_tests, id, libelle, ordre, photos_min, protege, statut_legacy, statut_legacy_display
+    champs: actif, bloquant, checklist_pct_min, cle, exige_checklist, exige_dossier, exige_hse, exige_materiel, exige_pack, exige_photos, exige_series, exige_tests, id, libelle, ordre, photos_min, protege, statut_legacy, statut_legacy_display
 - frontend/src/api/installationsApi.js :: deleteTransporteur -> /api/django/installations/transporteurs/<>  [TransporteurSerializer]
     champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
     type_transporteur ∈ {interne, tiers}
@@ -1176,7 +1176,10 @@
 - frontend/src/api/installationsApi.js :: getReceptionsNonFacturees -> /api/django/installations/receptions-non-facturees  [ReceptionNonFactureeSerializer]
     champs: bon_commande, created_by, date_creation, date_lettrage, date_modification, date_reception, facture, id, lettre, libelle, montant_a_provisionner, montant_provision, note, reception
 - frontend/src/api/installationsApi.js :: getRecetteRecord -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
-    champs: continuite_terre_ohm, continuite_terre_ok, date_essai, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, isolement_mohm, isolement_ok, iv_readings, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    champs: comparaison, continuite_terre_ohm, continuite_terre_ok, date_essai, decouplage, decouplage_etat, decouplage_piece, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, echantillon_iv, echantillon_iv_chaines, energie, energie_fenetre_debut, energie_fenetre_fin, energie_mesuree_kwh, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, instruments_par_essai, irradiance, irradiance_poa_wm2, irradiance_source, irradiation_kwh_m2, isolement_mohm, isolement_ok, iv_readings, limitation_injection, limitation_injection_consigne, limitation_injection_etat, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, promesse_figee, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, temperature_module_c, terre_installation_ohm, thermographie, thermographie_constats, thermographie_faite, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    decouplage_etat ∈ {a_faire, non_ok, ok, sans_objet}
+    irradiance_source ∈ {estimee, mesuree}
+    limitation_injection_etat ∈ {a_faire, non_ok, ok, sans_objet}
     resultat ∈ {conforme, en_cours, non_conforme, reserves}
 - frontend/src/api/installationsApi.js :: getReglesApprobationAchat -> /api/django/installations/regles-approbation-achat  [RegleApprobationAchatSerializer]
     champs: actif, autorise_depassement_budget, chantier, date_creation, id, libelle, montant_max, montant_min, niveau_approbation, niveau_approbation_display, nombre_approbateurs, priorite, programme
@@ -1192,7 +1195,7 @@
 - frontend/src/api/installationsApi.js :: getSeuilsApprobationBcf -> /api/django/installations/seuils-approbation-bcf  [SeuilApprobationBCFSerializer]
     champs: actif, date_creation, date_modification, id, seuil_responsable
 - frontend/src/api/installationsApi.js :: getStagesChantier -> /api/django/installations/etapes-chantier  [StageModeleSerializer]
-    champs: actif, bloquant, checklist_pct_min, cle, exige_checklist, exige_dossier, exige_materiel, exige_pack, exige_photos, exige_series, exige_tests, id, libelle, ordre, photos_min, protege, statut_legacy, statut_legacy_display
+    champs: actif, bloquant, checklist_pct_min, cle, exige_checklist, exige_dossier, exige_hse, exige_materiel, exige_pack, exige_photos, exige_series, exige_tests, id, libelle, ordre, photos_min, protege, statut_legacy, statut_legacy_display
 - frontend/src/api/installationsApi.js :: getTransporteurs -> /api/django/installations/transporteurs  [TransporteurSerializer]
     champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
     type_transporteur ∈ {interne, tiers}
@@ -1247,7 +1250,10 @@
 - frontend/src/api/installationsApi.js :: updatePreuveLivraison -> /api/django/installations/preuves-livraison/<>  [PreuveLivraisonSerializer]
     champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
 - frontend/src/api/installationsApi.js :: updateRecette -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
-    champs: continuite_terre_ohm, continuite_terre_ok, date_essai, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, isolement_mohm, isolement_ok, iv_readings, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    champs: comparaison, continuite_terre_ohm, continuite_terre_ok, date_essai, decouplage, decouplage_etat, decouplage_piece, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, echantillon_iv, echantillon_iv_chaines, energie, energie_fenetre_debut, energie_fenetre_fin, energie_mesuree_kwh, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, instruments_par_essai, irradiance, irradiance_poa_wm2, irradiance_source, irradiation_kwh_m2, isolement_mohm, isolement_ok, iv_readings, limitation_injection, limitation_injection_consigne, limitation_injection_etat, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, promesse_figee, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, temperature_module_c, terre_installation_ohm, thermographie, thermographie_constats, thermographie_faite, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    decouplage_etat ∈ {a_faire, non_ok, ok, sans_objet}
+    irradiance_source ∈ {estimee, mesuree}
+    limitation_injection_etat ∈ {a_faire, non_ok, ok, sans_objet}
     resultat ∈ {conforme, en_cours, non_conforme, reserves}
 - frontend/src/api/installationsApi.js :: updateSessionComptage -> /api/django/installations/sessions-comptage/<>  [SessionComptageSerializer]
     champs: classe_abc, classe_abc_display, created_by, date_creation, date_modification, date_planifiee, emplacement, id, intitule, lignes, note, reference, statut, statut_display

@@ -595,6 +595,22 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                 'statut': devis.statut,
             })
 
+        # CIQ321 (D-CIQ-11, contrat ``acceptation_entreprise.json``) — devis
+        # commercial / industriel : raison sociale, qualité du signataire et
+        # ICE OBLIGATOIRES, exactement comme la page publique (même lecteur
+        # ``lire_entreprise_acceptation`` de ``ventes``, ICE validé par
+        # ``validate_ice_ma``) — 400 {detail, champ} qui nomme le champ.
+        # Ignoré pour tout autre segment. Jamais une seconde validation.
+        from apps.ventes.domain.cycle_vie import (
+            EntrepriseInvalide, lire_entreprise_acceptation,
+        )
+        try:
+            entreprise = lire_entreprise_acceptation(
+                devis, request.data.get('entreprise'), obligatoire=True)
+        except EntrepriseInvalide as exc:
+            return Response({'detail': exc.detail, 'champ': exc.champ},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         try:
             accept_devis(
                 devis=devis,
@@ -604,6 +620,7 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                 ip=_ip(request),
                 user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
                 consentement=True,
+                entreprise=entreprise,
             )
         except AcceptError as exc:
             return Response(

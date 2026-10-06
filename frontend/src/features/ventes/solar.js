@@ -84,21 +84,18 @@ export function productibleForCity(city, override = null) {
 // Factures mensuelles affichées au chargement (initApp du simulateur)
 export const DEFAULT_MONTHLY_BILLS = [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480]
 
-// Autoconsommation par défaut selon le type d'installation
+// Autoconsommation par défaut selon le type d'installation. CIQ128 — plus
+// d'entrée commerciale ni industrielle : le profil de charge C&I est DÉCLARÉ
+// au moteur serveur (`etude-ci/preview`), jamais une part diurne d'écran.
 export const DAY_USAGE_DEFAULTS = {
   'Résidentielle': 60,
-  'Commerciale': 80,
-  'Industrielle': 80,
   'Agricole': 100,
 }
 
-// ── QX44 — Étude COMMERCIALE par catégorie ────────────────────────────────────
-// Chaque marché commercial a une signature de consommation DIURNE distincte : un
-// bureau consomme le jour (autoconsommation élevée), un hôtel/restaurant a un pic
-// du soir. Le « day-share » (part de la conso pendant les heures solaires)
-// remplace l'unique DAY_USAGE_DEFAULTS['Commerciale']=80 par une table par
-// catégorie. SOURCE = archétype de charge documenté ; EST. = estimation marché à
-// vérifier fondateur (QXG6 durcira ces valeurs). Réglable société (override).
+// ── QX44 — catégories commerciales et leurs questions (libellés de SAISIE) ──
+// CIQ128 — la part diurne par catégorie (table et fonction de day-share) est
+// SUPPRIMÉE : la catégorie et ses réponses partent au
+// moteur serveur C&I (`rythme.categorie_commerciale`), qui choisit l'archétype.
 // Miroir informatif du questionnaire webhook (QX51) — clés snake_case.
 export const COMMERCIAL_CATEGORIES = [
   { value: 'hotel', label: 'Hôtel / Riad' },
@@ -112,30 +109,6 @@ export const COMMERCIAL_CATEGORIES = [
   { value: 'froid', label: 'Entrepôt froid' },
   { value: 'autre', label: 'Autre commerce' },
 ]
-
-// Day-share (%) par catégorie — part de la consommation consommée en journée.
-export const COMMERCIAL_DAY_SHARE = {
-  bureau: 80,      // SOURCE archétype bureau : conso ~9h-18h alignée au solaire
-  ecole: 85,       // SOURCE école (période scolaire) : forte conso diurne
-  commerce: 75,    // EST. supermarché : froid + éclairage jour, pic soir modéré
-  sante: 70,       // EST. clinique : diurne dominant, garde de nuit résiduelle
-  restaurant: 70,  // EST. restaurant : services midi + soir → part solaire moyenne
-  hammam: 65,      // EST. hammam/spa/gym : chauffe jour + soirée
-  hotel: 55,       // EST. hôtel : occupation soir/nuit, base diurne (clim/piscine)
-  froid: 50,       // EST. entrepôt froid : base 24 h, part solaire ≈ heures de jour
-  boulangerie: 45, // EST. boulangerie : cuisson souvent nocturne → faible part solaire
-  autre: 80,       // repli = ancien défaut Commerciale
-}
-export const COMMERCIAL_DAY_SHARE_DEFAUT = 80
-
-// Day-share effectif d'une catégorie (override société optionnel, borné 10-100).
-export function commercialDayShare(category, { override } = {}) {
-  if (override && typeof override === 'object' && override[category] != null) {
-    const v = parseFloat(override[category])
-    if (Number.isFinite(v) && v > 0) return Math.min(100, Math.max(10, v))
-  }
-  return COMMERCIAL_DAY_SHARE[category] ?? COMMERCIAL_DAY_SHARE_DEFAUT
-}
 
 // Questions 2-4 par catégorie (recherche 2026-07-16). key = clé snake_case
 // stockée dans etude_params (et acceptée par le webhook QX51). type =
@@ -220,27 +193,10 @@ export function estimerMois(hiver, ete) {
   return interpolerFactures(hiver, ete).map(v => Math.round(v))
 }
 
-// QJR238 (30/08/2026) — `estimerPanneaux` (règle des 900 MAD, retirée comme
-// source de dimensionnement par l'ordre fondateur du 29/08/2026) a été
-// SUPPRIMÉE : elle n'avait plus aucun consommateur de production (grep
-// vérifié) et ses seuls tests étaient des épinglages des nombres que le
-// fondateur a explicitement retirés. `KWC_STEP`/`MAD_PAR_PALIER` ci-dessous
-// SONT CONSERVÉS : ils alimentent toujours la doctrine de paliers réelle
-// (`estimerKwcDepuisFacture`/`optimalKwcByPayback`).
-
-// ── Règle de dimensionnement fondateur (18/08, doctrine d'optimum sous
-//    HORIZON FIXE 25/08) ────────────────────────────────────────────────────
-// 1. Une installation se vend par PALIERS de 5 kWc — jamais une taille
-//    intermédiaire (5, 10, 15, 20 …).
-// 2. Le besoin se lit sur la facture d'hiver : 5 kWc par tranche de 900 MAD.
-// 3. La taille RETENUE n'est PLUS figée au seul palier de payback minimal :
-//    depuis ce palier, on grimpe vers la PLUS GRANDE taille atteignable dont
-//    CHAQUE pas marginal (Δcoût/Δéconomie_annuelle) se rembourse en ≤
-//    `HORIZON_MARGINAL_PV` ans, un horizon FIXE (plus une tolérance relative
-//    au meilleur payback — voir `optimalKwcByPayback`) — jamais la plus
-//    grosse qui rentre sur le toit non plus.
-export const KWC_STEP = 5
-export const MAD_PAR_PALIER = 900
+// CIQ128 — la doctrine de paliers ÉCRAN (pas de 5 kWc, tranche de 900 MAD,
+// besoin lu sur la facture, balayage au payback) est SUPPRIMÉE : le C&I est dimensionné par le moteur serveur (CIQ107-CIQ122,
+// pas de 5 kWc et horizon marginal côté `moteur_ci/taille.py`), le résidentiel
+// par le moteur horaire serveur (U3-MOTEUR).
 
 // ── Métrés de câble (règle fondateur 18/08, câble DC révisé 19/08 — PVCBL) ──
 // Câble de terre AC 6 mm² : 25 m de base + 15 m par palier de 5 kWc — soit 40 m
@@ -280,23 +236,6 @@ export function metreCableDcParPaires(nbPaires = 1) {
 export function metreCableTerre(paliers) {
   const n = Math.max(1, Math.round(Number(paliers) || 0))
   return CABLE_TERRE_M_BASE + n * CABLE_TERRE_M_PAR_PALIER
-}
-
-/** Besoin en kWc lu sur la facture d'hiver : 5 kWc par tranche de 900 MAD. */
-export function estimerKwcDepuisFacture(factureHiver, { step = KWC_STEP, madParPalier = MAD_PAR_PALIER } = {}) {
-  const f = Number(factureHiver)
-  if (!Number.isFinite(f) || f <= 0) return 0
-  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
-  const tranche = (Number.isFinite(Number(madParPalier)) && Number(madParPalier) > 0) ? Number(madParPalier) : MAD_PAR_PALIER
-  return Math.floor(f / tranche) * pas
-}
-
-/** Ramène une taille quelconque au PALIER de 5 kWc le plus proche (jamais 0). */
-export function arrondirAuPasKwc(kwc, step = KWC_STEP) {
-  const k = Number(kwc)
-  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
-  if (!Number.isFinite(k) || k <= 0) return pas
-  return Math.max(pas, Math.round(k / pas) * pas)
 }
 
 // Taux d'autoconsommation par option — miroir pricing.py AUTOCONSO_SANS/AVEC.
@@ -1764,8 +1703,8 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
 // ── L-2OPT — deux optimiseurs indépendants (fondateur 24/08) ─────────────────
 // Un devis résidentiel « Les deux (Sans + Avec) » ne dimensionne plus les
 // deux options sur le MÊME kWc : `autoFillLines` est appelé une fois par
-// optimum (sans-batterie / avec-batterie, chacun son propre kWc payback-
-// optimal — voir `optimalKwcByPayback({ avecBatterie })`) et les deux
+// optimum (sans-batterie / avec-batterie, chacun son propre kWc — le moteur
+// horaire serveur, `recommandation_avec`) et les deux
 // compositions résultantes sont FUSIONNÉES ici, ligne par ligne (les deux
 // tableaux partagent le même ordre de rôles canonique — `ordreLignes`/
 // `marques` identiques des deux côtés — donc un appariement POSITIONNEL est
@@ -2683,291 +2622,12 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   return lignes
 }
 
-// ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08,
-//    doctrine d'HORIZON FIXE 25/08 — miroir du backend, `services.py`) ───────
-// On ne vend plus « la plus grosse installation qui rentre » ni « la taille lue
-// sur la facture » : on BALAIE les paliers de 5 kWc, on chiffre CHAQUE palier
-// avec le catalogue réel (`autoFillLines` — jamais un barème au kWc inventé,
-// il n'en existe aucun), on calcule le payback 25 ans de chacun
-// (`computeCashflowPayback`, le MÊME que l'écran, le PDF et la proposition).
-//
-// Pourquoi un vrai optimum existe : en descendant, les coûts fixes (onduleur,
-// structure, pose) se diluent moins bien ; en montant, la production dépasse
-// l'autoconsommation et mord sur des tranches ONEE moins chères. Les deux
-// forces se croisent — c'est ce croisement qu'on cherche.
-//
-// DOCTRINE D'HORIZON FIXE (fondateur 25/08, RECALÉE depuis la tolérance
-// relative du même jour) — « chaque dirham ajouté à l'installation doit se
-// rembourser en ≤ `HORIZON_MARGINAL_PV` ans ». L'horizon RELATIF (tolérance
-// en % au-dessus du meilleur payback) punissait les meilleurs dossiers : un
-// meilleur payback à 3 ans ne tolérait qu'un pas marginal ≤ 3,6 ans (20 %),
-// refusant des pas qui se remboursent pourtant en 5 ans sur du matériel
-// garanti 30 ans. Un horizon FIXE traite chaque pas marginal sur son propre
-// mérite, indépendamment du reste du dossier. Précédent documenté : une
-// contrainte payback ≤ 10 ans couplée à la maximisation de valeur (MDPI
-// Energies 19(7):1803) — soit environ 10 %/an de rendement simple exigé sur
-// le pas marginal lui-même. (Le backend porte en plus, pour son propre
-// balayage conjoint PV+batterie, `HORIZON_MARGINAL_BATTERIE = 7` sur les pas
-// de stockage — hors périmètre de ce fichier, mentionné ici pour l'alignement
-// des deux moteurs.)
-//
-// On part du palier au meilleur payback, puis on GRIMPE vers la plus grande
-// taille atteignable par des pas ascendants dont CHAQUE pas MARGINAL (Δcoût
-// du pas / Δéconomie annuelle du pas — PAS le payback cumulé du palier) se
-// rembourse en ≤ `HORIZON_MARGINAL_PV`, un seuil FIXE qui ne dépend PLUS du
-// meilleur payback du dossier. Dès qu'un pas dépasse l'horizon (ou n'apporte
-// aucune économie marginale positive), l'ascension s'arrête — on ne saute
-// jamais un pas refusé pour en essayer un plus loin.
-//
-// Preuve sur le payback GLOBAL du palier retenu — notons C/E le coût/
-// l'économie annuelle CUMULÉS depuis le palier de départ (C0, E0, avec
-// C0/E0 = meilleur_payback, H = HORIZON_MARGINAL_PV). Chaque pas admis vérifie
-// ΔCi ≤ H·ΔEi ; en sommant sur tous les pas admis : Cn − C0 ≤ H·(En − E0),
-// donc Cn ≤ (C0 − H·E0) + H·En, donc Cn/En ≤ H + (C0 − H·E0)/En. Deux cas :
-// (1) meilleur_payback ≤ H — alors C0 − H·E0 ≤ 0, donc Cn/En ≤ H pour TOUT
-//     palier atteint : le payback global ne peut jamais dépasser l'horizon.
-// (2) meilleur_payback > H (dossier dont même le meilleur palier dépasse
-//     l'horizon) — alors C0 − H·E0 > 0, et le terme (C0 − H·E0)/En DÉCROÎT
-//     avec En (En ≥ E0 en montant) depuis sa valeur en E0, qui vaut
-//     exactement meilleur_payback − H ; donc Cn/En ≤ H + (meilleur_payback −
-//     H) = meilleur_payback. Ce cas est la GARDE meilleur-payback-hors-
-//     horizon : la doctrine ne peut jamais faire pire que le choix pur
-//     payback qu'elle remplace.
-// En combinant les deux cas, la preuve télescopique du commit 12927b2b (qui
-// garantissait payback global ≤ H) devient honnêtement, sous horizon fixe :
-// payback global du palier retenu ≤ max(meilleur_payback, HORIZON_MARGINAL_PV).
-//
-// `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
-// propose JAMAIS plus gros que le besoin lu sur la facture. `maxKwc` (surface
-// de toit réelle) resserre encore la borne.
-//
-// LE PLAFOND N'EST PAS UNE DOCTRINE DE DIMENSIONNEMENT (finding 25/08, mesuré).
-// Il a longtemps SERVI de garde-fou parce que le modèle d'économie hérité du
-// simulateur ne sature pas à la consommation réelle — mais un garde-fou qui
-// consiste à ne jamais s'arrêter avant le plafond N'EST PAS un choix : mesuré
-// sur le catalogue/les factures de solar.dimensionnement.test.mjs SANS
-// consommation, l'ascension finit TOUJOURS au plafond (besoin 40 → 40 kWc,
-// 100 → 100 kWc / 522 341 MAD, 200 → 200 kWc). La vraie réponse est la GARDE
-// DE SATURATION implémentée plus bas : l'ascension marginale n'est autorisée
-// que si l'économie sature réellement (consommation réelle fournie) ; sinon on
-// rend le choix PUR payback. Les deux appelants réels fournissent désormais la
-// consommation, dérivée des factures du client par le barème
-// (`consoAnnuelleDepuisFactures`).
-//
-// Retourne { kwcOptimal, nbPanneaux, paliers[] } — signature et forme du
-// retour INCHANGÉES ; `paliers` gagne (additif) `paybackMarginal`/
-// `admissibleMarginal` sur les candidats examinés pendant l'ascension, pour
-// que l'écran puisse JUSTIFIER le choix sans casser les lecteurs existants.
-export const HORIZON_MARGINAL_PV = 10 // fondateur 25/08 — ans, seuil FIXE (plus une tolérance relative)
-export function optimalKwcByPayback({
-  produits, factures, dayUsagePct, panelW = 710, structureType,
-  // STKCAT10 — le produit de structure choisi (ou celui épinglé sur le lead)
-  // traverse le balayage TEL QUEL : chaque palier est chiffré avec LA MÊME
-  // structure que l'auto-remplissage final, sinon le payback comparé ne
-  // décrirait pas le devis réellement composé. Absent ⇒ inchangé.
-  structureProduitId,
-  discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
-  besoinKwc, maxKwc, avecBatterie = false, step = KWC_STEP,
-  // PVMRQ — marques préférées par rôle (gamme active), transmises TELLES
-  // QUELLES à chaque palier chiffré : le balayage compare des paliers
-  // composés avec la MÊME contrainte de marque que l'auto-remplissage final.
-  marques,
-  // Doctrine d'horizon fixe (fondateur 25/08) — override RÉSERVÉ AUX TESTS.
-  // `horizonMarginal = meilleur_payback` (dynamique, calculé par l'appelant)
-  // reproduit exactement l'ancien choix relatif-zéro (aucun pas marginal ne
-  // peut alors dépasser le meilleur payback lui-même). Les DEUX appels réels
-  // (DevisGenerator, sans/avecBatterie) ne le passent jamais et héritent donc
-  // HORIZON_MARGINAL_PV (10 ans) — signature et comportement par défaut
-  // inchangés pour eux.
-  horizonMarginal = HORIZON_MARGINAL_PV,
-}) {
-  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
-  const besoin = Number(besoinKwc) > 0 ? Number(besoinKwc) : 0
-  // Plafond : le besoin lui-même (jamais au-dessus), resserré par le toit.
-  let plafond = besoin > 0 ? arrondirAuPasKwc(besoin, pas) : pas
-  if (Number(maxKwc) > 0) plafond = Math.min(plafond, Math.floor(Number(maxKwc) / pas) * pas)
-  plafond = Math.max(pas, plafond)
-
-  const paliers = []
-  // PVMRQ — rôles dont la marque épinglée n'a AUCUN candidat en stock, relevés
-  // sur l'ENSEMBLE du balayage (dédupliqués par rôle+marque). Un palier ainsi
-  // amputé porte des lignes PLACEHOLDER à 0 MAD : son total s'effondre et son
-  // payback est FABRIQUÉ (mesuré : 5 kWc à 39 720 MAD → 29 920 MAD, payback
-  // 6,1 ans → 4,6 ans, uniquement parce que les panneaux ont disparu). Un tel
-  // palier n'est PAS chiffrable et ne peut donc pas entrer dans la comparaison.
-  const marquesManquantes = []
-  const vuMarqueManquante = new Set()
-  for (let k = pas; k <= plafond + 1e-9; k += pas) {
-    const lignes = autoFillLines(produits, {
-      kwp: k, panelW, structureType, structureProduitId, marques,
-    })
-    if (!lignes || !lignes.length) continue
-    const manquantesPalier = lignes.marquesManquantes ?? []
-    for (const m of manquantesPalier) {
-      const cle = `${m.role}|${m.marque}`
-      if (vuMarqueManquante.has(cle)) continue
-      vuMarqueManquante.add(cle)
-      marquesManquantes.push(m)
-    }
-    const { totalSans, totalAvec } = optionTotalsTTC(lignes, discountPct)
-    const roi = computeROI({
-      kwp: lignes.kwcReel || k,
-      factures, dayUsagePct, totalSans, totalAvec,
-      batteryKwh: batteryKwhFromLines(lignes),
-      kwhPrice, efficiency, consoAnnuelleKwh, utility, productible,
-    })
-    const payback = avecBatterie ? roi.payback_avec : roi.payback_sans
-    paliers.push({
-      kwc: k,
-      kwcReel: lignes.kwcReel || k,
-      nbPanneaux: lignes.nbPanneaux,
-      totalTtc: avecBatterie ? totalAvec : totalSans,
-      economieAnnuelle: avecBatterie ? roi.eco_annuelle_avec : roi.eco_annuelle_sans,
-      payback,
-      // Ce palier est-il RÉELLEMENT chiffré ? Faux dès qu'une marque épinglée
-      // manque au stock : son prix est incomplet, on ne le classe pas.
-      chiffrable: manquantesPalier.length === 0,
-      marquesManquantes: manquantesPalier,
-    })
-  }
-
-  const chiffrables = paliers.filter(
-    p => p.chiffrable && Number.isFinite(p.payback) && p.payback > 0)
-  if (!chiffrables.length) {
-    // Aucun palier chiffrable (catalogue incomplet, marque épinglée absente du
-    // stock, pas de facture) : on retombe sur le besoin arrondi au palier —
-    // jamais sur un chiffre inventé. `repliMarqueManquante` dit POURQUOI, pour
-    // que l'écran l'annonce au lieu de présenter un classement fantôme.
-    const repli = besoin > 0 ? arrondirAuPasKwc(besoin, pas) : pas
-    return {
-      kwcOptimal: repli,
-      nbPanneaux: panneauxPourKwc(repli, panelW),
-      paliers,
-      marquesManquantes,
-      repliMarqueManquante: marquesManquantes.length > 0,
-    }
-  }
-  // Point de départ : le payback le plus court ; à égalité stricte on garde
-  // le palier le PLUS PETIT (même retour, moins d'argent immobilisé).
-  const meilleur = chiffrables.reduce((best, p) => (
-    p.payback < best.payback - 1e-9 ? p : best
-  ), chiffrables[0])
-
-  // Ascension sous horizon FIXE (doctrine fondateur 25/08 — voir le
-  // commentaire au-dessus de la fonction pour la preuve). `chiffrables`
-  // conserve l'ordre CROISSANT de `paliers` (filter ne réordonne jamais),
-  // donc grimper par index depuis `meilleur` grimpe bien en kWc. `H` ne
-  // dépend PLUS de `meilleur.payback` — c'est le seuil fixe lui-même (ou son
-  // override réservé aux tests).
-  const H = Number.isFinite(Number(horizonMarginal)) && Number(horizonMarginal) >= 0
-    ? Number(horizonMarginal) : HORIZON_MARGINAL_PV
-
-  // ── LES DEUX GARDES QUI AUTORISENT (OU NON) L'ASCENSION ──────────────────
-  //
-  // (1) GARDE DE SATURATION (finding 25/08 — mesurée). L'ascension marginale
-  //     n'a de sens que si l'économie SATURE quand la production dépasse ce
-  //     que le client peut consommer. Or `computeROI` ne plafonne l'économie
-  //     à la consommation réelle QUE si `consoAnnuelleKwh` lui est fourni :
-  //     sans elle, l'économie est un pourcentage de la seule PRODUCTION, donc
-  //     LINÉAIRE en kWc — ΔCoût/ΔÉconomie reste alors quasi constant palier
-  //     après palier, toujours sous l'horizon, et l'ascension ne peut
-  //     MÉCANIQUEMENT jamais s'arrêter : elle finit toujours au plafond du
-  //     balayage. Mesuré sur le catalogue et les factures de
-  //     solar.dimensionnement.test.mjs : besoin 40 → 40 kWc, 60 → 60, 100 →
-  //     100 kWc (522 341 MAD), 200 → 200 kWc — le « choix » ne dépendait plus
-  //     que du plafond. Avec la consommation réelle (17 870 kWh/an dérivée
-  //     des mêmes factures), l'économie sature à 29 000 MAD/an dès 25 kWc et
-  //     le pas 25→30 n'achète plus RIEN : l'ascension s'arrête d'elle-même.
-  //     Sans saturation on retombe donc sur le choix PUR payback — la règle
-  //     marginale sur-vend mécaniquement, elle ne peut pas être appliquée à
-  //     un modèle qui ne sature pas.
-  //
-  // (2) GARDE DÉPART-HORS-HORIZON (miroir de `depart_dans_horizon`,
-  //     apps/ventes/dimensionnement.py) : quand le palier de DÉPART dépasse
-  //     déjà l'horizon, lui ajouter des dirhams ne peut qu'aggraver son cas.
-  //     C'est le cas (2) de la preuve ci-dessus, rendu EXPLICITE ici comme
-  //     côté backend — la doctrine ne peut jamais rendre un dossier faible
-  //     plus mauvais que le choix pur qu'elle remplace.
-  const modeleSature = Number(consoAnnuelleKwh) > 0
-  const departDansHorizon = meilleur.payback > 0 && meilleur.payback <= H + 1e-9
-  if (!modeleSature || !departDansHorizon) {
-    return {
-      kwcOptimal: meilleur.kwc,
-      nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
-      paliers,
-      marquesManquantes,
-      repliMarqueManquante: false,
-      // Additif — dit POURQUOI l'ascension n'a pas eu lieu (aucun lecteur
-      // existant ne le lit ; l'écran peut le justifier sans deviner).
-      ascensionDesactivee: !modeleSature ? 'sans_saturation' : 'depart_hors_horizon',
-    }
-  }
-
-  const idxMeilleur = chiffrables.indexOf(meilleur)
-  let retenu = meilleur
-  for (let i = idxMeilleur + 1; i < chiffrables.length; i++) {
-    const candidat = chiffrables[i]
-    const deltaCout = candidat.totalTtc - retenu.totalTtc
-    const deltaEco = candidat.economieAnnuelle - retenu.economieAnnuelle
-    // Pas d'économie marginale positive ⇒ ce pas ne se rembourse JAMAIS —
-    // payback marginal infini, donc forcément inadmissible.
-    const paybackMarginal = deltaEco > 0 ? deltaCout / deltaEco : Infinity
-    candidat.paybackMarginal = Number.isFinite(paybackMarginal) ? paybackMarginal : null
-    candidat.admissibleMarginal = Number.isFinite(paybackMarginal) && paybackMarginal <= H + 1e-9
-    if (!candidat.admissibleMarginal) break
-    retenu = candidat
-  }
-
-  return {
-    kwcOptimal: retenu.kwc,
-    nbPanneaux: retenu.nbPanneaux ?? panneauxPourKwc(retenu.kwc, panelW),
-    paliers,
-    marquesManquantes,
-    repliMarqueManquante: false,
-    ascensionDesactivee: null,
-  }
-}
-
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
 
-// ── Étude industrielle / commerciale (autoconsommation) ──────────────────────
-// DC3 — kwhPrice/efficiency sont threadés EXACTEMENT comme computeROI : le tarif
-// ONEE et le rendement de la société (Paramètres → Avancé) pilotent l'étude à
-// l'écran, plus seulement le PDF. Sans valeur → constantes historiques
-// (parité simulateur garantie).
-// ── QX50 — Injection 82-21 (miroir de quote_engine/constants_82_21.py) ────────
-// Décret 82-21 (2-25-100, BO 09/03/2026, en vigueur 09/06/2026). TOUTES ces
-// valeurs sont ESTIMÉES (recherche 2026-07-16) et à VÉRIFIER FONDATEUR (QXG6) :
-// elles pilotent une ligne OFF par défaut, activée devis par devis, et ne
-// s'affichent JAMAIS sans la mention réglementaire INJECTION_82_21.MENTION.
-export const INJECTION_82_21 = {
-  TARIF_POINTE: 0.21,        // DH/kWh — à vérifier fondateur
-  TARIF_HORS_POINTE: 0.18,   // DH/kWh — à vérifier fondateur
-  FRAIS_RESEAU_C1: 6.07,     // c/kWh — à vérifier fondateur
-  FRAIS_RESEAU_C2: 6.38,     // c/kWh — à vérifier fondateur
-  PLAFOND_PCT: 20,           // % de la production — décret en révision (à vérifier)
-  MENTION: 'Tarif ANRE 03/2026-02/2027, plafond en révision',
-}
-INJECTION_82_21.FRAIS_RESEAU_DH = (INJECTION_82_21.FRAIS_RESEAU_C1 + INJECTION_82_21.FRAIS_RESEAU_C2) / 100
-
-// Tarif NET (rachat − frais réseau), DH/kWh, jamais négatif. Injection diurne →
-// tarif HORS POINTE net par défaut (prudent, jamais la pointe sans stockage).
-export function netTarif8221(pointe = false) {
-  const base = pointe ? INJECTION_82_21.TARIF_POINTE : INJECTION_82_21.TARIF_HORS_POINTE
-  return Math.max(0, base - INJECTION_82_21.FRAIS_RESEAU_DH)
-}
-
-// Surplus injectable (kWh) plafonné à 20 % de la prod + sa valeur nette (DH).
-// Retourne { kwh, dh }, ≥ 0, arrondis. Miroir de injection_annuelle().
-export function injection8221(productionKwh, autoconsommeKwh, pointe = false) {
-  const prod = Math.max(0, parseFloat(productionKwh) || 0)
-  const auto = Math.max(0, parseFloat(autoconsommeKwh) || 0)
-  const surplus = Math.max(0, prod - auto)
-  const plafond = prod * INJECTION_82_21.PLAFOND_PCT / 100
-  const kwh = Math.min(surplus, plafond)
-  const dh = kwh * netTarif8221(pointe)
-  return { kwh: Math.round(kwh), dh: Math.round(dh) }
-}
+// CIQ228 — la valorisation C&I écran (rachat 82-21 net, injection) est
+// SUPPRIMÉE : la revente MT et ses mentions viennent UNIQUEMENT du serveur
+// (`economie_ci.revente`). `KWH_PRICE` reste : le RÉSIDENTIEL le lit encore
+// (repli de `computeROI` et défaut `quoteLogic.kwhPrice` du générateur).
 
 // ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT) ═══════════════════
 // Miroir de quote_engine/constants_82_21.py `TARIF_MT_ONEE`, qui LIT la seule
@@ -3008,133 +2668,6 @@ export const TARIF_MT_ONEE = {
   MENTION: 'Barème ONEE « Tarif Général (MT) », prix TTC tels que publiés sur '
     + 'one.org.ma (relevé le 03/10/2026 ; la page indique TVA 18 %, taux légal '
     + '2026 : 20 %)',
-}
-
-// Le barème MT est-il exploitable ? true seulement si les TROIS postes horaires
-// portent un prix > 0 sourcé. Tant que c'est false, l'étude MT omet toute
-// valorisation monétaire plutôt que d'utiliser un chiffre de repli.
-export function tarifMtDisponible() {
-  return ['POINTE', 'PLEINES', 'CREUSES'].every((k) => {
-    const v = Number(TARIF_MT_ONEE[k])
-    return Number.isFinite(v) && v > 0
-  })
-}
-
-// Répartition horaire du client `{ pointe, pleines, creuses }` (en %, saisie
-// libre) → parts normalisées à 100 %. Retourne `null` si rien d'exploitable
-// n'est saisi : les plages MT officielles n'étant pas publiées, AUCUNE
-// répartition par défaut n'est inventée. Les valeurs non numériques ou
-// négatives comptent pour 0 (la saisie de l'utilisateur n'est jamais rejetée
-// ni corrigée à l'écran — seul le calcul les ignore).
-export function normaliserRepartitionMt(repartition) {
-  const part = (v) => {
-    const n = parseFloat(v)
-    return Number.isFinite(n) && n > 0 ? n : 0
-  }
-  const pointe = part(repartition?.pointe)
-  const pleines = part(repartition?.pleines)
-  const creuses = part(repartition?.creuses)
-  const somme = pointe + pleines + creuses
-  if (!(somme > 0)) return null
-  const pct = (v) => Math.round((v / somme) * 1000) / 10
-  return { pointe: pct(pointe), pleines: pct(pleines), creuses: pct(creuses) }
-}
-
-// Prix moyen pondéré (DH/kWh TTC) du barème MT pour une répartition horaire.
-// Retourne `null` — jamais un nombre de repli — si le barème n'est pas sourcé
-// ou si la répartition est absente/vide. C'est ce `null` qui fait OMETTRE le
-// calcul dans l'étude plutôt que d'inventer un tarif.
-export function tarifMtMoyen(repartition) {
-  if (!tarifMtDisponible()) return null
-  const parts = normaliserRepartitionMt(repartition)
-  if (!parts) return null
-  const moyen = (parts.pointe * TARIF_MT_ONEE.POINTE
-    + parts.pleines * TARIF_MT_ONEE.PLEINES
-    + parts.creuses * TARIF_MT_ONEE.CREUSES) / 100
-  return Number.isFinite(moyen) && moyen > 0 ? moyen : null
-}
-
-// QX50 — `injectionEnabled` (défaut false, OFF) ajoute la ligne d'injection
-// 82-21 SANS toucher l'étude d'autoconsommation : étude avec = étude sans + ligne.
-// QXMT — `tensionRaccordement` ('bt' par défaut) : tant qu'il vaut autre chose
-// que 'mt', CHAQUE sortie de cette fonction est identique à l'historique (le
-// comportement BT est strictement inchangé). En 'mt', l'énergie est valorisée
-// au barème MT pondéré par `repartitionMt` ; si ce barème OU cette répartition
-// manque, les économies et le payback sont OMIS (null) et l'étude porte le
-// motif — jamais un chiffre BT déguisé en chiffre MT.
-export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency, injectionEnabled = false, tensionRaccordement = 'bt', repartitionMt = null }) {
-  if (!kwp || kwp <= 0) return null
-  const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
-  const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
-  const prodM = GHI.map(g => g * kwp * EFF)
-  const prodA = prodM.reduce((a, b) => a + b, 0)
-  const consoMois = parseFloat(consoMensuelleKwh) || 0
-  const consoA = consoMois > 0 ? consoMois * 12 : 0
-  const dayPct = ((parseFloat(dayUsagePct) || 80)) / 100
-  let autoconsomme, tauxAuto, tauxCouv = null
-  if (consoA > 0) {
-    // énergie solaire réellement consommée sur site (part diurne de la conso)
-    autoconsomme = Math.min(prodA, consoA * dayPct)
-    tauxAuto = prodA > 0 ? (autoconsomme / prodA) * 100 : 0
-    tauxCouv = (autoconsomme / consoA) * 100
-  } else {
-    autoconsomme = prodA * dayPct
-    tauxAuto = dayPct * 100
-  }
-  // QXMT — valorisation de l'énergie autoconsommée.
-  //  · BT (défaut) : tarif ONEE historique — chemin STRICTEMENT inchangé, et
-  //    aucune clé MT n'est ajoutée à la sortie.
-  //  · MT : barème ONEE « Tarif Général (MT) » pondéré par la répartition
-  //    horaire du client. Sans répartition exploitable, le prix vaut `null` et
-  //    les économies + le payback sont OMIS (jamais un chiffre BT déguisé).
-  const estMt = String(tensionRaccordement || '').toLowerCase() === 'mt'
-  const prixMt = estMt ? tarifMtMoyen(repartitionMt) : null
-  const prixEnergie = estMt ? prixMt : PRICE
-  const economies = prixEnergie != null ? autoconsomme * prixEnergie : null
-  const payback = (economies > 0 && totalTtc > 0)
-    ? Math.round(totalTtc / economies * 10) / 10 : null
-  const out = {
-    kwc: Math.round(kwp * 100) / 100,
-    production_annuelle: Math.round(prodA),
-    conso_annuelle: consoA ? Math.round(consoA) : null,
-    taux_autoconso: Math.round(tauxAuto * 10) / 10,
-    taux_couverture: tauxCouv != null ? Math.round(tauxCouv * 10) / 10 : null,
-    economies_annuelles: economies != null ? Math.round(economies) : null,
-    payback,
-    prix_kwc: (kwp > 0 && totalTtc > 0) ? Math.round(totalTtc / kwp) : null,
-    prod_mensuelle: prodM.map(v => Math.round(v)),
-    conso_mensuelle: consoA ? Array(12).fill(Math.round(consoMois)) : null,
-  }
-  // QXMT — traçabilité MT : le barème, la répartition retenue et la mention
-  // réglementaire voyagent avec l'étude (etude_params → écran, PDF, proposition)
-  // pour qu'aucun chiffre MT ne circule jamais sans sa source.
-  if (estMt) {
-    out.tension_raccordement = 'mt'
-    out.tarif_mt_mention = TARIF_MT_ONEE.MENTION
-    out.tarif_mt_dh_kwh = prixMt != null ? Math.round(prixMt * 10000) / 10000 : null
-    const parts = normaliserRepartitionMt(repartitionMt)
-    if (parts) out.repartition_mt = parts
-    if (prixMt == null) {
-      // L'étude reste publiée (production, taux, prix/kWc) : SEUL le calcul qui
-      // dépend d'un tarif manquant est omis, avec son motif explicite.
-      out.etude_mt_incomplete = true
-      out.etude_mt_motif = tarifMtDisponible()
-        ? 'Raccordement MT : renseignez la répartition horaire (pointe / '
-          + 'pleines / creuses) — économies et payback omis sans elle, les '
-          + 'plages horaires MT officielles n’étant pas publiées.'
-        : 'Raccordement MT : barème MT ONEE indisponible en source officielle '
-          + '— économies et payback omis (à fournir par le fondateur).'
-    }
-  }
-  // QX50 — injection 82-21 : ligne SÉPARÉE (ne modifie pas l'étude ci-dessus).
-  // OFF par défaut ; activée par devis. La mention est portée par le renderer.
-  if (injectionEnabled) {
-    const inj = injection8221(prodA, autoconsomme)
-    out.injection_kwh_an = inj.kwh
-    out.injection_dh_an = inj.dh
-    out.injection_82_21 = true
-  }
-  return out
 }
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────

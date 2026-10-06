@@ -1,234 +1,339 @@
 # flake8: noqa
-"""quote_engine industriel — PAGE 2 (cashflow 15 ans, payback, TRI).
+"""quote_engine industriel — PAGE 3 (rentabilité : jalons 5/10/15/20/25,
+courbe du cumul sur tout l'horizon, TRI avec son horizon, payback ancré).
 
 ``build(ctx) -> str`` returns the INNER HTML of one A4 page (no wrapper/footer).
 CSS tables only. Classes prefixed ``i2-``.
 
-Hypothèse PRUDENTE et HONNÊTE : économies maintenues CONSTANTES (aucune escalade
-tarifaire inventée). Le cashflow est l'intégrale de ces économies nettes ; le TRI
-est un VRAI calcul (bisection) sur ce flux, pas un chiffre inventé.
+CIQ342 (D-CIQ-10) — la page REND ``synthese_ci['argent']`` tel que servi
+(bloc ``economie_ci`` du moteur C&I, CIQ3/CIQ304) : flux 25 ans de la base
+principale, jalons, indicateurs (TRI + horizon, retour), revente « hors
+cashflow » (le moteur ne l'additionne jamais au flux), O&M déduite
+SEULEMENT si l'option est chiffrée, hypothèses du moteur, pied de page sur la
+base servie (CIQ315). Plus AUCUNE arithmétique privée : ni solveur de TRI,
+ni troncature à 15 ans, ni flux reconstruit. Sans série servie, le motif.
+
+CIQ343 (D-CIQ-10, D-CIQ-15) — sous le tableau, un bloc compact pour la
+direction financière : LCOE face au prix du kWh du client, VAN seulement
+sur le taux DÉCLARÉ, sensibilités saisies par la société, P90 du bloc
+bancable (PDF seulement), offre de financement (CIQ318).
+Rendu seul — aucun statut touché (règle #4).
 """
-from ..ci.mentions import texte_revente
+from functools import partial
 
-_HORIZON = 15  # ans
+from ..ci import blocs as ci_blocs
+from .. import premium_base
+from ..ci import couverture as ci_couverture
+from ..figures import ancre
+from ..lecture_pure import nombre_ou_none
+
+#: Années des jalons (D-CIQ-10) — l'ordre d'impression, pas un calcul.
+JALONS_ANS = (5, 10, 15, 20, 25)
+
+#: Hypothèses du flux servi (``flux_*.hypotheses[].cle``) → libellé imprimé.
+LIBELLES_HYPOTHESES = {
+    "investissement_mad": ("ci_ind_h_investissement", "Investissement"),
+    "economie_annee1_mad": ("ci_ind_h_economie", "Économie de l'année 1"),
+    "production_annee1_kwh": ("ci_ind_h_production",
+                              "Production de l'année 1"),
+    "horizon_ans": ("ci_ind_h_horizon", "Horizon"),
+    "taux_actualisation_pct": ("ci_ind_h_taux", "Taux d'actualisation"),
+    "indexation_pct": ("ci_ind_h_indexation", "Indexation du tarif"),
+    "degradation_pct": ("ci_ind_h_degradation", "Dégradation des panneaux"),
+}
+UNITES_HYPOTHESES = {
+    "investissement_mad": "MAD", "economie_annee1_mad": "MAD",
+    "production_annee1_kwh": "kWh", "horizon_ans": None,
+    "taux_actualisation_pct": "%", "indexation_pct": "% / an",
+    "degradation_pct": "% / an",
+}
+
+_num = nombre_ou_none
 
 
-def irr_flat(invest, annual_net, years=_HORIZON):
-    """TRI (%) d'un flux [-invest, net, net, …] sur ``years`` ans (bisection).
-    Renvoie None si dégénéré. Aucune constante inventée : pure arithmétique."""
-    try:
-        invest = float(invest)
-        annual_net = float(annual_net)
-    except (TypeError, ValueError):
-        return None
-    if invest <= 0 or annual_net <= 0 or years <= 0:
-        return None
+def flux_principal(argent):
+    """``(clé, bloc)`` du flux de la base principale servie (``flux_ttc``
+    en base TTC, ``flux_ht`` sinon — la règle du moteur ``economie_ci``)."""
+    if not isinstance(argent, dict):
+        return None, {}
+    cle = "flux_ttc" if argent.get("base") == "ttc" else "flux_ht"
+    bloc = argent.get(cle)
+    return cle, bloc if isinstance(bloc, dict) else {}
 
-    def npv(r):
-        total = -invest
-        for t in range(1, years + 1):
-            total += annual_net / ((1 + r) ** t)
-        return total
 
-    lo, hi = -0.9, 5.0
-    if npv(lo) < 0:
-        return None  # pas de racine positive dans la plage
-    if npv(hi) > 0:
-        return None  # TRI > 500 % (invraisemblable) → on n'affiche pas
-    for _ in range(80):
-        mid = (lo + hi) / 2
-        v = npv(mid)
-        if abs(v) < 1e-6:
-            break
-        if v > 0:
-            lo = mid
+def _cumuls(jalons):
+    return {j.get("annee"): _num(j.get("cumul_mad")) for j in jalons or []
+            if isinstance(j, dict)}
+
+
+def _courbe(flux, couleurs):
+    """Courbe du cumul net, une barre par année sur TOUT l'horizon servi
+    (au-dessus de l'axe : positif ; en dessous : négatif). Seule la HAUTEUR
+    des barres est mise à l'échelle — aucun montant n'est calculé."""
+    points = [(_num(f.get("annee")), _num(f.get("cumul_mad")))
+              for f in flux if isinstance(f, dict)]
+    points = [(a, c) for a, c in points if a is not None and c is not None]
+    if len(points) < 2:
+        return ""
+    echelle = max(abs(c) for _a, c in points) or 1.0
+    haut, bas = "", ""
+    for annee, cumul in points:
+        h = round(abs(cumul) / echelle * 18.0, 1)
+        if cumul >= 0:
+            haut += (f'<td class="i2-cb"><div class="i2-bp" '
+                     f'style="height:{h}mm"></div></td>')
+            bas += '<td class="i2-ct"></td>'
         else:
-            hi = mid
-    return round((lo + hi) / 2 * 100, 1)
+            haut += '<td class="i2-cb"></td>'
+            bas += (f'<td class="i2-ct"><div class="i2-bn" '
+                    f'style="height:{h}mm"></div></td>')
+    etiquettes = "".join(
+        f'<td class="i2-ca">{int(a) if a in (0,) + JALONS_ANS else ""}</td>'
+        for a, _c in points)
+    return (f'<table class="i2-courbe"><tr>{haut}</tr>'
+            f'<tr class="i2-axe">{bas}</tr><tr>{etiquettes}</tr></table>')
 
 
-def _flux_annuels(cumule, invest):
-    """Flux ANNUELS déduits de la série CUMULÉE servie par le builder.
-
-    ``pricing`` publie le cumul NET d'investissement (année 1 = −invest + f1) :
-    le flux de chaque année est donc la différence avec l'année précédente,
-    la première se lisant depuis ``−invest``. Aucune hypothèse locale."""
-    flux, precedent = [], -float(invest or 0)
-    for valeur in (cumule or []):
-        try:
-            v = float(valeur)
-        except (TypeError, ValueError):
-            return []
-        flux.append(v - precedent)
-        precedent = v
-    return flux
-
-
-def irr_series(invest, flux, _bornes=(-0.9, 5.0)):
-    """TRI (%) d'un flux [-invest, f1, f2, …] RÉEL (bisection).
-
-    Même méthode que ``irr_flat``, mais sur les flux effectivement imprimés
-    (dégradation panneau et provision de remplacement onduleur comprises) —
-    plus un flux constant qui ne décrit aucune des lignes de la table."""
-    try:
-        invest = float(invest)
-        flux = [float(f) for f in (flux or [])]
-    except (TypeError, ValueError):
+def _valeur_hypothese(h, fmt, L):
+    valeur = h.get("valeur")
+    cle = h.get("cle")
+    if valeur is None:
         return None
-    if invest <= 0 or not flux or sum(flux) <= invest:
-        return None
+    unite = UNITES_HYPOTHESES.get(cle)
+    if isinstance(valeur, (int, float)):
+        if cle == "horizon_ans":
+            return L("ci_ind_n_ans", "{n} ans", n=f"{valeur:g}")
+        texte = fmt(valeur) if unite in ("MAD", "kWh") else \
+            f"{valeur:g}".replace(".", ",")
+        if unite == "% / an":
+            unite = L("ci_ind_pct_an", unite)
+        return f"{texte}&nbsp;{unite}" if unite else texte
+    return ci_blocs._txt(valeur)
 
-    def npv(r):
-        return -invest + sum(f / ((1 + r) ** t)
-                             for t, f in enumerate(flux, start=1))
 
-    lo, hi = _bornes
-    if npv(lo) < 0 or npv(hi) > 0:
-        return None
-    for _ in range(80):
-        mid = (lo + hi) / 2
-        v = npv(mid)
-        if abs(v) < 1e-6:
-            break
-        if v > 0:
-            lo = mid
-        else:
-            hi = mid
-    return round((lo + hi) / 2 * 100, 1)
+def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
+    """Les hypothèses DU MOTEUR (flux servi, valorisation, tarif,
+    remplacements), chacune avec sa source — aucune n'est écrite ici."""
+    lignes = []
+    for h in flux.get("hypotheses") or []:
+        if not isinstance(h, dict) or h.get("cle") not in LIBELLES_HYPOTHESES:
+            continue
+        valeur = _valeur_hypothese(h, fmt, L)
+        if valeur is None:
+            continue
+        cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
+        source = ci_blocs._txt(h.get("source"))
+        lignes.append(f"{L(cat, fr)}&#160;: {valeur}"
+                      + (f" — {source}" if source else ""))
+    for h in argent.get("hypotheses") or []:
+        if isinstance(h, dict) and h.get("valeur"):
+            source = ci_blocs._txt(h.get("source"))
+            lignes.append(ci_blocs._txt(h.get("valeur"))
+                          + (f" — {source}" if source else ""))
+    for r in argent.get("remplacements") or []:
+        if not isinstance(r, dict) or r.get("annee") is None:
+            continue
+        montant = r.get("montant_ttc_mad")
+        composant = ci_blocs._txt(r.get("composant"))
+        cle_composant = f"ci_garantie_{composant}"
+        if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
+            composant = L(cle_composant, composant)
+        lignes.append(
+            L("ci_ind_remplacement", "Remplacement {composant} en année {annee}",
+              composant=composant,
+              annee=f"{r['annee']:g}" if isinstance(r["annee"], (int, float))
+              else r["annee"])
+            + (f"&#160;: {fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
+               if montant is not None else "")
+            + (f" — {ci_blocs._txt(r.get('motif'))}" if r.get("motif") else ""))
+    return lignes
+
+
+def _ligne_om(argent, fmt_mad, L):
+    """CIQ342 — l'O&M n'est dite DÉDUITE que si l'option est chiffrée
+    (``argent.om`` souscrite avec un montant) ; proposée ou à chiffrer ⇒
+    « non déduite » ; absente du devis ⇒ rien (D-CIQ-12)."""
+    om = argent.get("om") if isinstance(argent, dict) else None
+    if not isinstance(om, dict):
+        return ""
+    montant = _num(om.get("montant_mad_an"))
+    if om.get("statut") == "souscrit" and montant:
+        return L("ci_ind_om_deduite", "O&amp;M déduite du flux : {montant} MAD/an",
+                 montant=fmt_mad(montant))
+    if om.get("statut") in ("propose", "tarif_a_renseigner"):
+        return L("ci_ind_om_non_deduite",
+                 "O&amp;M proposée, non déduite de ces montants")
+    return ""
+
+
+def _ligne_revente(argent, fmt, L, langue):
+    """Revente 82-21 (MT seulement) telle que servie : le moteur ne
+    l'additionne JAMAIS au flux — elle est dite « hors cashflow », avec sa
+    mention (CIQ305). Jamais « le surplus n'est pas rémunéré » à côté."""
+    revente = argent.get("revente") if isinstance(argent, dict) else None
+    if not isinstance(revente, dict) or revente.get("statut") != "calculee":
+        return ""
+    valeur = _num(revente.get("valeur_mad_an"))
+    if not valeur:
+        return ""
+    mentions = [m for m in revente.get("mentions") or [] if m]
+    if langue != "fr":
+        # CIQ345 — les mentions servies sont françaises : la langue du
+        # document lit la MÊME table trilingue (CIQ305).
+        from ..ci.mentions import TEXTES_82_21, TEXTES_ART13, texte
+        mentions = [texte(TEXTES_82_21, langue) + ".",
+                    texte(TEXTES_ART13, langue) + "."]
+    mention = (f' <span class="i2-mini">{" ".join(mentions)}</span>'
+               if mentions else "")
+    return (f'<div class="i2-inj"><b>+ {fmt(valeur)} '
+            f'{L("ci_mad_an", "MAD/an")}</b> — '
+            + L("ci_ind_revente_hors_cashflow",
+                "revente du surplus, hors cashflow (non comptée dans le "
+                "retour ni le TRI).")
+            + f'{mention}</div>')
+
+
+def _decimal_txt(valeur):
+    """« 0,1221 » — un nombre servi, sans arrondi propre."""
+    return f"{valeur:g}".replace(".", ",")
+
+
+def _p90_bancable(d):
+    """La P90 du bloc bancable du devis (``etude['bankable']``, PV77 —
+    la dispersion du moteur, aucune nouvelle), ou None. Permise sur le PDF,
+    jamais dans la charge utile publique (``_sans_internes_bancables``)."""
+    bank = (d.get("etude") or {}).get("bankable")
+    pr = bank.get("pr") if isinstance(bank, dict) else None
+    return _num((pr or {}).get("p90_kwh")) if isinstance(pr, dict) else None
+
+
+def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
+    """CIQ343 (D-CIQ-10, D-CIQ-15) — le bloc compact « Indicateurs » sous le
+    tableau, lu dans ``synthese_ci['argent']`` : coût du kWh solaire face au
+    prix du kWh du client (tous deux servis, avec leur base), VAN SEULEMENT
+    sur le taux déclaré par le client (sinon omise avec son motif),
+    sensibilités SAISIES par la société (aucune par défaut ; base = 0 %
+    d'indexation), P90 du bloc bancable, puis l'offre de financement
+    (CIQ318). Aucun nombre calculé ici."""
+    navy, ink = couleurs
+    indicateurs = argent.get("indicateurs") or {}
+    lignes = []
+    lcoe = _num(indicateurs.get("lcoe_mad_kwh"))
+    if lcoe is not None:
+        lcoe_txt = _decimal_txt(lcoe)
+        ligne = (L("ci_ind_lcoe", "Coût du kWh solaire (LCOE, {base})",
+                   base=base_txt)
+                 + f"&#160;: <b>{lcoe_txt}&#160;MAD/kWh</b>"
+                 + ancre("lcoe_mad_kwh", lcoe_txt))
+        tarif = _num(indicateurs.get("tarif_kwh_evite_moyen"))
+        if tarif is not None:
+            ligne += (" — " + L("ci_ind_tarif_client",
+                               "prix moyen de votre kWh évité : {tarif} "
+                               "MAD/kWh", tarif=_decimal_txt(tarif)))
+        lignes.append(ligne)
+    van = _num(indicateurs.get("van_mad"))
+    from .cover import _taux_declare
+    taux = _taux_declare(argent)
+    if van is not None and taux is not None:
+        lignes.append(L("ci_ind_van", "VAN au taux déclaré de {taux} %",
+                        taux=_decimal_txt(taux))
+                      + f"&#160;: <b>{fmt_mad(van)}&#160;MAD</b>")
+    else:
+        motif = ci_blocs._txt(indicateurs.get("van_motif"))
+        if motif and ci_blocs.langue(d) != "fr":
+            # La seule cause d'omission servie : aucun taux déclaré.
+            motif = L("ci_ind_van_motif", motif)
+        lignes.append(L("ci_ind_van_omise", "VAN non calculée")
+                      + (f"&#160;: {motif}" if motif else ""))
+    scenarios = [s for s in argent.get("sensibilites") or []
+                 if isinstance(s, dict)]
+    catalogue = _cles_catalogue()
+    for s in scenarios:
+        variation = _num(s.get("variation_pct"))
+        cle_sens = f"ci_ind_sens_{s.get('cle')}"
+        nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
+               else ci_blocs._txt(s.get("cle")))
+        tete = (f"{nom} {variation:+g}&#160;%".replace(".", ",")
+                if variation is not None else nom)
+        if s.get("motif") and s.get("retour_ans") is None:
+            lignes.append(f"{tete}&#160;: {ci_blocs._txt(s['motif'])}")
+            continue
+        morceaux = []
+        if _num(s.get("retour_ans")) is not None:
+            morceaux.append(L("ci_ind_sens_retour", "retour {n} ans",
+                              n=ci_couverture.ans(_num(s["retour_ans"]))))
+        if _num(s.get("tri_pct")) is not None:
+            morceaux.append(L("ci_ind_sens_tri", "TRI {t} %",
+                              t=f"{_num(s['tri_pct']):.1f}".replace(".", ",")))
+        lignes.append(f"{tete}&#160;: " + ", ".join(morceaux))
+    if scenarios:
+        lignes.append(L("ci_ind_sens_base",
+                        "Sensibilités saisies par la société ; base : 0 % "
+                        "d'indexation du tarif."))
+    p90 = _p90_bancable(d)
+    if p90 is not None:
+        lignes.append(L("ci_ind_p90",
+                        "Production à 90 % de probabilité (P90) : {kwh} kWh/an",
+                        kwh=fmt(p90)))
+    financement = ci_blocs.bloc_financement(
+        d.get("ind_synthese") or {}, "i2", navy, ink, doc=d)
+    if not lignes and not financement:
+        return ""
+    items = "".join(f'<div class="i2-cfo-i">{li}</div>' for li in lignes)
+    return (f'<div class="i2-cfo"><div class="i2-hyp-t">'
+            f'{L("ci_ind_indicateurs", "Indicateurs pour votre direction financière")}'
+            f'</div>{items}{financement}</div>')
+
+
+def _cles_catalogue():
+    from .. import i18n_labels
+    return i18n_labels.LIBELLES
+
+
+def _pied_investissement(d, argent, fmt_mad, L):
+    """CIQ315 — l'investissement du pied de page sur la base SERVIE."""
+    base = argent.get("base") if isinstance(argent, dict) else None
+    ht = (d.get("totaux_all") or {}).get("ht_net")
+    ttc = d.get("_invest_ttc") or 0
+    l_ht, l_ttc = L("ci_ht", "HT"), L("ci_ttc", "TTC")
+    if base == "ht" and ht is not None:
+        return (L("ci_invest_ht", "Investissement HT (clé en main)")
+                + f" : <b>{fmt_mad(ht)} MAD {l_ht}</b>")
+    if base == "deux" and ht is not None:
+        return (L("ci_invest", "Investissement (clé en main)")
+                + f" : <b>{fmt_mad(ttc)} MAD {l_ttc}</b> "
+                  f"({L('ci_soit', 'soit')} {fmt_mad(ht)} MAD {l_ht})")
+    return (L("ci_invest_ttc", "Investissement (TTC, clé en main)")
+            + f" : <b>{fmt_mad(ttc)} MAD</b>")
 
 
 def build(ctx):
     d = ctx["d"]
+    # CIQ345 — libellés STRUCTURELS dans la langue du document.
+    L = partial(ci_blocs.libelle, d)
     C = ctx["C"]
     fmt = ctx["fmt"]
-    # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — l'investissement TTC du
-    # pied de page s'imprime au centime (même chaîne que la couverture).
     fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
 
-    navy = C["navy"]
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    line_soft = C.get("line_soft", "#EFF1F4")
-    wash = C.get("wash", "#F7F9FC")
-    blue = C.get("blue", "#2C5F8A")
+    navy, gold, green, green_bg, ink, muted, muted_2, line, line_soft, wash, blue = premium_base.couleurs(
+        C, "navy gold green green_bg ink muted muted_2 line line_soft wash blue")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
-    invest = d.get("_invest_ttc") or 0
-    om = d.get("ind_om_annuel")
-    injection = d.get("ind_injection_dh")
-
-    # ── QJR120 — LE CASHFLOW AFFICHÉ EST LE CASHFLOW CANONIQUE ──────────────
-    # Le renderer sert la série CUMULÉE de ``pricing.compute_cashflow_payback``
-    # pour la branche dont le PRIX est rendu (voir ``renderer._augment``). Elle
-    # porte la dégradation panneau et la provision de remplacement onduleur —
-    # que la droite plate « t × économie − investissement » ignorait, alors que
-    # l'année 12 du remplacement tombe DANS les 15 années imprimées.
-    # QJR119 — sans série chiffrable, la page bascule sur son motif d'omission
-    # (jamais une table de 15 lignes à « 0 » ni un « Point mort > 15 ans »
-    # d'apparence calculée).
-    serie = d.get("ind_cashflow") or []
-    flux = _flux_annuels(serie, invest)
-    chiffrable = len(flux) >= 2 and invest > 0
-    horizon = min(_HORIZON, len(flux)) if chiffrable else 0
-
-    # Table cashflow — les cumulés SERVIS, pas un modèle local.
-    rows = ""
-    breakeven = None
-    payback = None
-    for t in range(1, horizon + 1):
-        cumul = round(serie[t - 1])
-        precedent = serie[t - 2] if t > 1 else -float(invest)
-        if breakeven is None and cumul >= 0:
-            breakeven = t
-            # QJR120 (c) — le payback sort du MÊME flux que le point mort
-            # (croisement à zéro interpolé dans l'année), plus d'un ratio
-            # année-1 calculé sur une AUTRE option et une économie brute.
-            span = serie[t - 1] - precedent
-            payback = round((t - 1) + ((0 - precedent) / span if span else 0), 1)
-        cls = "i2-pos" if cumul >= 0 else "i2-neg"
-        star = ' class="i2-be"' if t == breakeven else ""
-        rows += (
-            f'<tr{star}><td class="i2-y">Année {t}</td>'
-            f'<td class="i2-e">{fmt(round(flux[t - 1]))}</td>'
-            f'<td class="i2-c {cls}">{fmt(cumul)}</td></tr>')
-
-    # TRI sur le MÊME flux et le MÊME horizon que la table (méthode actuarielle).
-    tri = irr_series(invest, flux[:horizon]) if chiffrable else None
-    # Économie de l'ANNÉE 1 du flux servi — jamais une moyenne inventée.
-    eco_an1 = round(flux[0]) if chiffrable else None
-
-    # QJR119 — le payback n'est imprimé que s'il EXISTE ; QJR120 — et il vient
-    # désormais du croisement à zéro de la courbe imprimée juste dessous.
-    payback_txt = (f"{payback:.1f}".replace(".", ",") + " ans"
-                   if isinstance(payback, (int, float)) and payback > 0
-                   else None)
-    payback_phrase = (f"<b>Payback</b> (retour d'investissement) ≈ "
-                      f"{payback_txt} — c'est le croisement à zéro de la "
-                      f"courbe ci-dessus. " if payback_txt else "")
-    tri_txt = (f"{tri:.1f}".replace(".", ",") + " %"
-               if isinstance(tri, (int, float)) else "—")
-    be_txt = (f"Année {breakeven}" if breakeven else f"> {horizon or _HORIZON} ans")
-
-    # QJR120 (a) — LES HYPOTHÈSES DU MODÈLE SONT DÉCLARÉES, pas seulement
-    # appliquées : ``pricing.cashflow_assumptions`` les rédige (dégradation,
-    # provision onduleur et son montant réel, rendement batterie, tarif
-    # constant) et le renderer les sert. Absentes ⇒ bloc omis.
-    _notes = ((d.get("ind_cashflow_hypotheses") or {}).get("notes")
-              if chiffrable else None)
-    hypotheses_html = ""
-    if _notes:
-        hypotheses_html = (
-            '<div class="i2-hyp"><div class="i2-hyp-t">Nos hypothèses</div>'
-            + "".join(f'<div class="i2-hyp-i">{n}</div>' for n in _notes)
-            + '</div>')
-
-    # Ligne injection 82-21 — rendue UNIQUEMENT si l'étude la porte (QX50).
-    injection_row = ""
-    if injection:
-        injection_row = (
-            f'<div class="i2-inj">'
-            f'<b>+ {fmt(round(injection))} MAD/an</b> — surplus injecté. '
-            # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
-            f'<span class="i2-mini">{texte_revente()}.</span>'
-            f'</div>')
-
-    # QJR120 (b) — « inclus dans les économies nettes » était affirmé sur TOUT
-    # devis, alors qu'aucun producteur d'``om_annuel`` n'existe dans le dépôt :
-    # les montants ci-dessus ne déduisent RIEN. Le document le DIT.
-    om_txt = (f"O&amp;M déduit : {fmt(round(om))} MAD/an" if om
-              else ("O&amp;M (nettoyage, supervision) <b>non déduit</b> de ces "
-                    "montants — chiffré séparément"))
-
-    # QXMT — chapô + ligne SOURCE du barème MT (jamais un chiffre nu).
-    # QJR119 — troisième chapô : économies non chiffrables (hors MT). Le chapô
-    # « Hypothèse prudente » qualifiait un modèle qui n'avait aucune donnée.
-    if d.get("ind_masquer_economies"):
-        lead_txt = ("Le barème applicable à ce dossier est un barème MOYENNE "
-                    "TENSION : aucun chiffre n'est repris du barème basse "
-                    "tension.")
-    elif not chiffrable:
-        lead_txt = ("Les économies annuelles de ce dossier ne sont pas encore "
-                    "chiffrées : aucune rentabilité n'est publiée tant qu'elle "
-                    "n'est pas calculée sur vos données.")
-    else:
-        # QJR120 — le chapô décrit le modèle RÉELLEMENT appliqué (celui de
-        # ``pricing``), pas une droite plate qualifiée de « prudente » : les
-        # hypothèses détaillées sont rendues sous la table.
-        lead_txt = ("Projection au modèle de référence : dégradation panneau "
-                    "et provision de remplacement onduleur intégrées, aucune "
-                    "hausse du tarif électrique supposée (toute hausse réelle "
-                    "améliore le résultat). Hypothèses détaillées ci-dessous.")
-    mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
-                 if d.get("ind_mt_mention") else "")
+    synthese = d.get("ind_synthese") or {}
+    argent = synthese.get("argent") if isinstance(synthese, dict) else None
+    argent = argent if isinstance(argent, dict) else {}
+    _cle, flux = flux_principal(argent)
+    lignes_flux = [f for f in flux.get("flux") or [] if isinstance(f, dict)]
+    indicateurs = argent.get("indicateurs") or {}
+    horizon = _num(indicateurs.get("tri_horizon_ans")) or \
+        _num(flux.get("horizon_ans"))
+    chiffrable = (bool(lignes_flux) and not d.get("ind_masquer_economies")
+                  and horizon is not None)
+    horizon_txt = f"{horizon:g}" if horizon else "25"
+    base_txt = {"ttc": L("ci_ttc", "TTC")}.get(argent.get("base"),
+                                               L("ci_ht", "HT"))
 
     css = f"""
 <style>
@@ -239,132 +344,180 @@ def build(ctx):
   color:{muted_2};font-weight:700;}}
 .i2-sec{{font-family:{f_serif};font-weight:700;font-size:16pt;color:{navy};margin-top:2px;}}
 .i2-lead{{font-size:8.5pt;color:{muted};margin-top:4px;}}
-.i2-kpis{{display:table;width:100%;margin-top:11px;border-spacing:0;}}
-.i2-kpi{{display:table-cell;vertical-align:top;border:1px solid {line};
-  border-radius:12px;padding:12px 14px;background:{wash};}}
-.i2-kgap{{display:table-cell;width:12px;}}
-.i2-kpi.i2-hi{{border-left:4px solid {gold};background:#fff;}}
-.i2-kv{{font-family:{f_display};font-size:20pt;color:{navy};line-height:1;}}
+.i2-kpis{{width:100%;margin-top:10px;border-spacing:0;border-collapse:separate;}}
+.i2-kpi{{vertical-align:top;border:1px solid {line};border-left:4px solid {gold};
+  border-radius:12px;padding:11px 14px;background:#fff;}}
+.i2-kgap{{width:12px;}}
+.i2-kv{{font-family:{f_display};font-size:19pt;color:{navy};line-height:1;}}
 .i2-kl{{font-size:7.5pt;color:{muted};margin-top:4px;}}
-.i2-inj{{margin-top:11px;border:1px solid {green_bg};border-left:4px solid {green};
-  border-radius:12px;background:{green_bg};padding:9px 14px;font-size:8pt;color:{ink};}}
+.i2-inj{{margin-top:10px;border:1px solid {green_bg};border-left:4px solid {green};
+  border-radius:12px;background:{green_bg};padding:8px 14px;font-size:8pt;color:{ink};}}
 .i2-inj b{{color:{green};}}
 .i2-mini{{color:{muted};font-size:7pt;}}
-.i2-cfhead{{margin-top:13px;font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};}}
-.i2-tbl{{width:100%;border-collapse:collapse;margin-top:7px;font-size:8pt;}}
+.i2-cfhead{{margin-top:12px;font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};}}
+.i2-tbl{{width:100%;border-collapse:collapse;margin-top:6px;font-size:8pt;}}
 .i2-tbl th{{text-align:left;color:{muted};font-size:7pt;text-transform:uppercase;
   letter-spacing:.4px;padding:5px 8px;border-bottom:1px solid {line};}}
-.i2-tbl th.i2-r,.i2-tbl td.i2-e,.i2-tbl td.i2-c{{text-align:right;}}
+.i2-tbl th.i2-r,.i2-tbl td.i2-c{{text-align:right;}}
 .i2-tbl td{{padding:4px 8px;border-bottom:1px solid {line_soft};}}
-.i2-y{{color:{ink};}}
-.i2-e{{color:{muted};}}
 .i2-c{{font-weight:700;}}
 .i2-pos{{color:{green};}}
 .i2-neg{{color:{muted_2};}}
-.i2-be td{{background:{green_bg};}}
-.i2-be .i2-y{{font-weight:700;color:{navy};}}
-.i2-foot{{margin-top:10px;font-size:7.5pt;color:{muted};line-height:1.4;}}
+.i2-courbe{{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed;}}
+.i2-cb{{height:18mm;vertical-align:bottom;padding:0 1px;}}
+.i2-ct{{height:7mm;vertical-align:top;padding:0 1px;}}
+.i2-axe td{{border-top:1px solid {muted_2};}}
+.i2-bp{{background:{green};border-radius:2px 2px 0 0;}}
+.i2-bn{{background:{muted_2};border-radius:0 0 2px 2px;max-height:7mm;}}
+.i2-ca{{font-size:6pt;color:{muted};text-align:center;}}
+.i2-foot{{margin-top:9px;font-size:7.5pt;color:{muted};line-height:1.4;}}
 .i2-foot b{{color:{navy};}}
-/* QXMT — corps de remplacement quand la rentabilité n'est pas chiffrable au
-   barème du dossier (raccordement MT sans répartition horaire). */
 .i2-mt{{margin-top:13px;border:1px solid {line};border-left:4px solid {gold};
   border-radius:12px;background:{wash};padding:13px 16px;}}
 .i2-mt-t{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};}}
 .i2-mt-b{{margin-top:6px;font-size:8.5pt;color:{ink};line-height:1.45;}}
 .i2-mt-b b{{color:{navy};}}
-/* QJR120 — hypothèses DÉCLARÉES du modèle de cashflow (source : pricing). */
-.i2-hyp{{margin-top:9px;border:1px solid {line_soft};border-radius:10px;
-  background:{wash};padding:9px 12px;}}
+.i2-cfo{{margin-top:8px;border:1px solid {line};border-left:4px solid {navy};
+  border-radius:10px;padding:7px 12px;}}
+.i2-cfo-i{{font-size:7.5pt;color:{ink};line-height:1.35;margin-top:2px;}}
+.i2-cfo .i2-fin{{margin-top:5px !important;font-size:7.5pt !important;}}
+.i2-hyp{{margin-top:8px;border:1px solid {line_soft};border-radius:10px;
+  background:{wash};padding:8px 12px;}}
 .i2-hyp-t{{font-size:8pt;font-weight:700;color:{navy};}}
-.i2-hyp-i{{font-size:7pt;color:{muted};line-height:1.35;margin-top:4px;
+.i2-hyp-i{{font-size:6.8pt;color:{muted};line-height:1.3;margin-top:3px;
   padding-left:10px;position:relative;}}
 .i2-hyp-i:before{{content:'';position:absolute;left:0;top:4px;width:4px;
   height:4px;border-radius:50%;background:{blue};}}
 </style>
 """
 
-    # QXMT — DOSSIER MT SANS ÉCONOMIES D'ÉTUDE : cette page EST le bloc
-    # ROI/économies. Plutôt que d'imprimer un cashflow, un point mort, un TRI et
-    # un payback tous dérivés du tarif BASSE TENSION de l'ONEE — c.-à-d. des
-    # chiffres qui ne sont pas ceux du dossier — le corps chiffré est REMPLACÉ
-    # par le motif de l'omission et le geste qui la lève. La page reste (le
-    # nombre de pages ne bouge pas) et ne peut que RACCOURCIR : aucun risque de
-    # débordement.
-    if d.get("ind_masquer_economies"):
+    pied = _pied_investissement(d, argent, fmt_mad, L)
+    if not chiffrable:
+        # QJR119 / QXMT — sans série servie, le MOTIF remplace le corps
+        # chiffré (jamais une table de zéros) : la page ne peut que
+        # raccourcir. CIQ341 — un site MT demande ses 12 factures MT.
+        motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
+        if ci_couverture._argent_mt(d, "ind"):
+            corps_txt = L(
+                "ci_ind_motif_mt",
+                "Votre installation est raccordée en <b>MOYENNE TENSION</b> : "
+                "ses économies se chiffrent sur le barème MT par poste "
+                "horaire, pas sur le barème basse tension. Nous préférons ne "
+                "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre.")
+        else:
+            corps_txt = L(
+                "ci_ind_motif_bt",
+                "Les <b>économies annuelles</b> de cette installation n'ont "
+                "pas encore été calculées sur vos données. Nous préférons ne "
+                "rien afficher plutôt qu'un cashflow, un point mort ou un TRI "
+                "qui ne reposeraient sur aucune mesure.")
         corps = f"""
   <div class="i2-mt">
-    <div class="i2-mt-t">Rentabilité non chiffrée sur ce dossier</div>
-    <div class="i2-mt-b">
-      Votre installation est raccordée en <b>MOYENNE TENSION</b>. Les économies
-      et le retour sur investissement d'un dossier MT se calculent sur le barème
-      MT par poste horaire (pointe / heures pleines / heures creuses) — pas sur
-      le barème basse tension. Nous préférons ne rien afficher plutôt que
-      d'afficher un chiffre qui n'est pas le vôtre.
-      <br><br>
-      <b>Ce qu'il nous manque :</b> votre répartition horaire de consommation
-      (ou 12 mois de factures MT). Avec elle, nous chiffrons économies, point
-      mort, TRI et payback sur VOTRE barème, et cette page se remplit.
-    </div>
+    <div class="i2-mt-t">{L("ci_ind_non_chiffre_titre", "Rentabilité non chiffrée sur ce dossier")}</div>
+    <div class="i2-mt-b">{corps_txt}</div>
+    {motif}
   </div>
-  <div class="i2-foot">
-    {om_txt}. Investissement (TTC, clé en main) : <b>{fmt_mad(invest)} MAD</b>.
-    Chiffres indicatifs, hors financement.
-  </div>"""
-    elif not chiffrable:
-        # QJR119 — économies absentes de l'étude (hors MT) : même traitement
-        # que le dossier MT — le motif de l'omission remplace le corps chiffré,
-        # jamais une table de zéros. La page RACCOURCIT (pagination stable).
-        corps = f"""
-  <div class="i2-mt">
-    <div class="i2-mt-t">Rentabilité non chiffrée sur ce dossier</div>
-    <div class="i2-mt-b">
-      Les <b>économies annuelles</b> de cette installation n'ont pas encore été
-      calculées sur vos données. Nous préférons ne rien afficher plutôt que
-      d'afficher un cashflow, un point mort ou un TRI qui ne reposeraient sur
-      aucune mesure.
-      <br><br>
-      <b>Ce qu'il nous manque :</b> votre consommation réelle (12 mois de
-      factures ou votre profil horaire). Avec elle, nous chiffrons économies,
-      point mort, TRI et payback, et cette page se remplit.
-    </div>
-  </div>
-  <div class="i2-foot">
-    Investissement (TTC, clé en main) : <b>{fmt_mad(invest)} MAD</b>.
-    Chiffres indicatifs, hors financement.
-  </div>"""
+  <div class="i2-foot">{pied}.</div>"""
+        lead_txt = L("ci_ind_lead_non_chiffre",
+                     "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
+                     "calculée sur vos données.")
     else:
+        economie = d.get("ind_economies")
+        base_eco = d.get("ind_economie_base")
+        if base_eco in ("HT", "TTC"):
+            base_eco = L(f"ci_{base_eco.lower()}", base_eco)
+        payback = _num(indicateurs.get("retour_ans"))
+        tri = _num(indicateurs.get("tri_pct"))
+        tri_txt = f"{tri:.1f}".replace(".", ",") if tri is not None else None
+
+        def kpi(valeur, unite, libelle, cle_fig=None, texte_fig=None):
+            a = ancre(cle_fig, texte_fig) if cle_fig else ""
+            return (f'<td class="i2-kpi"><div class="i2-kv">{valeur}'
+                    f'<span class="i2-kl">{unite}</span></div>{a}'
+                    f'<div class="i2-kl">{libelle}</div></td>')
+
+        cellules = []
+        if economie is not None:
+            cellules.append(kpi(
+                fmt(economie), "&nbsp;MAD",
+                L("ci_ind_economie_an1", "Économie de l'année 1")
+                + (f" ({base_eco})" if base_eco else ""),
+                "economie_annuelle", fmt(economie)))
+        if payback is not None:
+            cellules.append(kpi(
+                ci_couverture.ans(payback), L("ci_unite_ans", "&nbsp;ans"),
+                L("ci_ind_retour_flux", "Retour (même flux)"),
+                "payback_ans", ci_couverture.ans(payback)))
+        if tri_txt is not None:
+            cellules.append(kpi(
+                tri_txt, "&nbsp;%",
+                L("ci_ind_tri_sur", "TRI sur {n} ans", n=horizon_txt),
+                "tri_pct", tri_txt))
+        kpis = ('<table class="i2-kpis"><tr>'
+                + '<td class="i2-kgap"></td>'.join(cellules)
+                + '</tr></table>') if cellules else ""
+
+        jalons = _cumuls(argent.get("jalons"))
+        jalons_ttc = (_cumuls(argent.get("jalons_ttc"))
+                      if argent.get("base") == "deux" else {})
+        entete_ttc = (f'<th class="i2-r">{L("ci_ind_cumul_net", "Cumul net")} '
+                      f'({L("ci_ttc", "TTC")})</th>' if jalons_ttc else "")
+        rangees = ""
+        for annee in JALONS_ANS:
+            cumul = jalons.get(annee)
+            if cumul is None:
+                continue
+            txt = fmt_mad(cumul)
+            fig = ancre("cumul_net_25_ans_mad", txt) if annee == 25 else ""
+            cls = "i2-pos" if cumul >= 0 else "i2-neg"
+            ttc_td = ""
+            if jalons_ttc:
+                cumul_ttc = jalons_ttc.get(annee)
+                ttc_td = (f'<td class="i2-c {cls}">{fmt_mad(cumul_ttc)}</td>'
+                          if cumul_ttc is not None else '<td></td>')
+            rangees += (
+                f'<tr><td>{L("ci_ind_annee", "Année {n}", n=annee)}</td>'
+                f'<td class="i2-c {cls}">{txt}{fig}</td>{ttc_td}</tr>')
+        table = (
+            f'<table class="i2-tbl"><tr><th>{L("ci_ind_jalon", "Jalon")}</th>'
+            f'<th class="i2-r">{L("ci_ind_cumul_net", "Cumul net")} '
+            f'({base_txt})</th>{entete_ttc}</tr>{rangees}</table>'
+            if rangees else "")
+        courbe = _courbe(lignes_flux, None)
+        lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L, d)
+        cfo_html = _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L,
+                             (navy, ink))
+        hypotheses_html = (
+            f'<div class="i2-hyp"><div class="i2-hyp-t">'
+            f'{L("ci_ind_hypotheses", "Hypothèses du moteur")}</div>'
+            + "".join(f'<div class="i2-hyp-i">{h}</div>' for h in lignes_hyp)
+            + '</div>') if lignes_hyp else ""
+        om_txt = _ligne_om(argent, fmt_mad, L)
+        revente_html = _ligne_revente(argent, fmt, L, ci_blocs.langue(d))
+        mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
+                     if d.get("ind_mt_mention") else "")
         corps = f"""
-  <div class="i2-kpis">
-    <div class="i2-kpi i2-hi"><div class="i2-kv">{fmt(eco_an1)}</div>
-      <div class="i2-kl">Économie année 1 (MAD, hors O&amp;M)</div></div>
-    <div class="i2-kgap"></div>
-    <div class="i2-kpi i2-hi"><div class="i2-kv">{be_txt}</div>
-      <div class="i2-kl">Point mort (cumul ≥ 0)</div></div>
-    <div class="i2-kgap"></div>
-    <div class="i2-kpi i2-hi"><div class="i2-kv">{tri_txt}</div>
-      <div class="i2-kl">TRI sur {horizon} ans</div></div>
-  </div>
-
-  {injection_row}
-
-  <div class="i2-cfhead">Cashflow cumulé</div>
-  <table class="i2-tbl">
-    <tr><th>Période</th><th class="i2-r">Économie de l'année</th><th class="i2-r">Cumul net (MAD)</th></tr>
-    {rows}
-  </table>
+  {kpis}
+  {revente_html}
+  <div class="i2-cfhead">{L("ci_ind_cumul_titre", "Cumul net de l'investissement ({base})", base=base_txt)}</div>
+  {courbe}
+  {table}
+  {cfo_html}
   {hypotheses_html}
-
   <div class="i2-foot">
-    {payback_phrase}{om_txt}.
-    Le TRI est calculé sur le flux d'économies ci-dessus (méthode actuarielle) ;
-    aucune escalade tarifaire n'est supposée. Chiffres indicatifs, hors financement.
+    {(om_txt + '. ') if om_txt else ''}{pied}.
+    {L("ci_ind_methode_tri", "TRI et retour lus sur le flux servi par le moteur C&amp;I (méthode actuarielle) ; chiffres indicatifs.")}
     {mt_source}
   </div>"""
+        lead_txt = L("ci_ind_lead",
+                     "Projection du moteur C&amp;I sur {n} ans : flux, retour "
+                     "et TRI tirés de la même série ; hypothèses détaillées "
+                     "ci-dessous.", n=horizon_txt)
 
     html = f"""{css}
 <div class="i2-root">
-  <div class="i2-kicker">Analyse financière</div>
-  <div class="i2-sec">Rentabilité sur {horizon or _HORIZON} ans</div>
+  <div class="i2-kicker">{L("ci_ind_analyse_financiere", "Analyse financière")}</div>
+  <div class="i2-sec">{L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans", n=horizon_txt)}</div>
   <div class="i2-lead">{lead_txt}</div>
 {corps}
 </div>

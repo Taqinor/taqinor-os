@@ -25,8 +25,16 @@ def is_industrial(devis, options=None) -> bool:
 
     Industriel market mode + the full/premium format. The industriel ONE-PAGE
     format stays on the legacy engine (fast field send), exactly like the
-    residential/agricole split. The ``include_etude`` format ALSO stays on the
-    legacy engine (see the guard below), exactly like ``residential.is_residential``.
+    residential/agricole split.
+
+    CIQ340 (convention 4, D-QJR5-12, D-CIQ-10) — ``include_etude`` est
+    IGNORÉ : le document industriel est TOUJOURS le premium 4 pages, étude
+    intégrée (synthèse, équipements + chaîne de totaux, rentabilité,
+    conditions et signature). Le garde du 2026-08-14 envoyait au legacy tout
+    devis demandé « avec l'étude » — dont la page d'étude, pour un devis
+    neuf, lisait des clés jamais persistées (C3-VA-04) — pendant que le lien
+    du client et la copie signée recevaient le premium (C3-06). Le legacy ne
+    reste que l'interrupteur de secours (règle #4) et le une-page.
     """
     mode = (getattr(devis, "mode_installation", None) or "").strip().lower()
     if mode != "industriel":
@@ -34,33 +42,12 @@ def is_industrial(devis, options=None) -> bool:
     opts = options or {}
     if (opts.get("pdf_mode") or "full") not in ("full", "premium"):
         return False
-    # 2026-08-14 — RÉGRESSION PRODUIT CORRIGÉE (format « étude », 4 pages).
-    # Ce garde manquait depuis QX45 (commit 6fcce23b, 16/07/2026) : le renderer
-    # CFO interceptait AUSSI les devis demandés avec ``include_etude``, que le
-    # dispatch destine explicitement au moteur legacy (cf. le commentaire de
-    # ``builder.generate_premium_devis_pdf`` : « the legacy renderer serves every
-    # other market mode / format (industriel, agricole, one-page, étude) ») et que
-    # ``residential.is_residential`` écarte déjà de la même façon.
-    # Conséquences mesurées sur le devis industriel + étude :
-    #   · la page d'étude d'autoconsommation disparaissait (3 pages au lieu des
-    #     4 exigées par CLAUDE.md — « premium 'full' = 3 pages, +include_etude = 4 ») ;
-    #   · la chaîne de totaux Sous-total HT → Remise → Total HT → TVA → Total TTC,
-    #     elle aussi exigée par CLAUDE.md, n'était plus imprimée du tout : les
-    #     pages CFO n'affichent qu'un « Investissement (TTC, clé en main) ».
-    # Les 4 baselines PNG ``industriel_full_etude_p1..p4`` (committées le
-    # 10/07/2026, AVANT QX45) prouvent le rendu attendu à 4 pages.
-    # Le renderer CFO garde tout son périmètre : industriel full/premium SANS étude.
-    if opts.get("include_etude"):
-        return False
     return True
 
 
-def _num(v):
-    try:
-        f = float(v)
-        return f if f == f else None
-    except (TypeError, ValueError):
-        return None
+# CIQ317 — le MÊME lecteur numérique que le renderer commercial (une
+# seule définition : la page équipements est partagée).
+from ..commercial.renderer import _num  # noqa: E402,F401
 
 
 def _augment(data: dict) -> dict:
@@ -118,6 +105,12 @@ def _augment(data: dict) -> dict:
     d["ind_methode"] = chiffres["libelle_methode"]
     d["ind_sous_reserve"] = chiffres["sous_reserve"]
     d["ind_a_confirmer"] = chiffres["a_confirmer"]
+    # CIQ333 / CIQ345 — les CLÉS de la méthode et des points à confirmer :
+    # la langue du document choisit leur libellé (``i18n_labels``).
+    d["ind_methode_cle"] = chiffres["methode"]
+    d["ind_a_confirmer_cles"] = [
+        a.get("cle") for a in synthese.get("a_confirmer") or []
+        if isinstance(a, dict) and a.get("libelle")]
     d["ind_note_pointe"] = chiffres["note_pointe"]
     d["ind_motif_argent"] = chiffres["motif_argent"]
     d["ind_argent_mt"] = chiffres["argent_mt"]
@@ -148,12 +141,9 @@ def _augment(data: dict) -> dict:
     d["ind_cashflow_branche"] = None
     d["ind_cashflow_hypotheses"] = None
 
-    # Injection 82-21 (QX50) — rendue UNIQUEMENT si l'étude la porte, avec la
-    # mention ``MENTION_82_21`` (CIQ305). Absente → aucune ligne inventée.
-    d["ind_injection_dh"] = _num(etude.get("injection_dh_an"))
-    d["ind_injection_kwh"] = _num(etude.get("injection_kwh_an"))
-    # O&M annuel : rendu seulement si fourni (sinon note « inclus »).
-    d["ind_om_annuel"] = _num(etude.get("om_annuel"))
+    # CIQ342 — la page finance lit la revente et l'O&M sur
+    # ``synthese_ci['argent']`` (revente « hors cashflow », O&M déduite
+    # seulement si chiffrée) : plus aucune clé d'étude écran reprise ici.
 
     # site + liens (repli résidentiel/théme).
     d["site_url"] = d.get("site_url") or "taqinor.ma"
@@ -164,7 +154,14 @@ def render_pdf_bytes(data: dict) -> bytes:
     """Render the premium industriel proposal to PDF bytes, or raise Unsupported."""
     from weasyprint import HTML
     from . import render as industriel_render
+    from ..commercial.equip import pdf_adaptatif
     d = _augment(data)
-    html = industriel_render.build_html(d)
     base = str(Path(industriel_render.__file__).resolve().parent)
-    return HTML(string=html, base_url=f"file://{base}/").write_pdf()
+    # CIQ317 — densité adaptative de la page équipements, mesurée sur le
+    # rendu réel ; trop longue même au dernier palier ⇒ repli NOMMÉ.
+    pdf = pdf_adaptatif(
+        d, industriel_render.build_html,
+        lambda html: HTML(string=html, base_url=f"file://{base}/").render())
+    if pdf is None:
+        raise Unsupported("nomenclature trop longue")
+    return pdf
