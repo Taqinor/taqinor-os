@@ -466,28 +466,12 @@ def feuille_de_lestage(section, *, surface_module_m2=None,
 #
 # * une fiche SANS ``poids_kg`` ⇒ la masse n'est PAS publiée pour ce produit,
 #   qui est LISTÉ comme manquant (jamais un poids « moyen » de catalogue) ;
-# * la masse par m² se calcule sur la surface RÉELLE DU PAN (``result.areaM2``
-#   du document), jamais sur l'emprise du bâtiment ; un pan sans surface
-#   connue ne publie pas de masse/m² et le dit ;
+# * la masse par m² se calcule sur la surface RÉELLE DU PAN (ACAL276 :
+#   ``apps.ventes.services.aire_du_pan`` — ``result.areaM2`` s'il est porté,
+#   sinon l'aire projetée des sommets dessinés), jamais sur l'emprise du
+#   bâtiment ; un pan sans surface connue ne publie pas de masse/m² et le dit ;
 # * chaque ligne CITE le poids unitaire employé et son ORIGINE (fiche produit
 #   pour le module, saisie société pour la structure du kit).
-
-def _surface_du_pan(zone):
-    """La surface du PAN telle que le document la porte, ou ``None``.
-
-    ``result.areaM2`` est l'aire du pan DESSINÉ. Aucune correction n'est
-    inventée ici : si le document ne la porte pas, la masse par m² n'est pas
-    publiée — c'est très exactement la règle « zéro chiffre inventé ».
-    """
-    resultat = zone.get('result') if isinstance(zone, dict) else None
-    if not isinstance(resultat, dict):
-        return None
-    aire = resultat.get('areaM2')
-    if isinstance(aire, bool) or not isinstance(aire, (int, float)):
-        return None
-    aire = float(aire)
-    return aire if aire > 0 else None
-
 
 def _surface_module_m2(cotes):
     """La surface d'un module depuis ses cotes de pose (mm), ou ``None``.
@@ -532,6 +516,8 @@ def masse_du_layout(layout, *, poids_module_kg=None,
         ``{'pans', 'total_modules', 'masse_totale_kg', 'poids_unitaire',
         'manquants'}``.
     """
+    from apps.ventes.services import aire_du_pan
+
     from .production import pans_du_layout
 
     section = section or {}
@@ -565,7 +551,7 @@ def masse_du_layout(layout, *, poids_module_kg=None,
         if not isinstance(zone, dict):
             continue
         cle = str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
-        surfaces[cle] = _surface_du_pan(zone)
+        surfaces[cle] = aire_du_pan(zone)
 
     pans, total_modules, masse_totale = [], 0, None
     for pan in pans_du_layout(layout):

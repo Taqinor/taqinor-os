@@ -176,8 +176,8 @@ def extract_roof_config(layout):
             geo = {}
         count = int(res.get('count') or geo.get('count') or 0)
         kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
-        surface = float(res.get('areaM2') or geo.get('areaM2')
-                        or a.get('areaM2') or 0.0)
+        # ACAL276 — un pan dessiné sans ``result`` a l'aire de ses sommets.
+        surface = float(aire_du_pan(a) or 0.0)
         # ── DEUX CONVENTIONS D'ANGLE, ET ELLES SONT OPPOSÉES ────────────────
         # ``facingAzimuthDeg`` est l'AZIMUT BOUSSOLE du builder (180 = Sud) —
         # c'est ce que ``newAreaRecord()`` pose par défaut et ce que le solveur
@@ -1253,6 +1253,42 @@ def aire_contour_m2(contour):
         aire2 += ax * by - bx * ay
     aire = abs(aire2) / 2.0
     return aire if aire > 0 else None
+
+
+def _aire_portee(valeur):
+    """Une aire PORTÉE par le document (> 0, nombre fini), ou ``None``."""
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    valeur = float(valeur)
+    if not math.isfinite(valeur) or valeur <= 0:
+        return None
+    return valeur
+
+
+def aire_du_pan(zone):
+    """ACAL276 — l'aire (m²) d'un pan, ou ``None``.
+
+    ``result.areaM2`` d'abord (zone synthétique d'auto-devis, pan pavé par le
+    builder), puis les replis DÉJÀ lus par ``extract_roof_config`` (bloc
+    ``geometry`` WJ24, ``areaM2`` à la racine de la zone) ; à défaut, l'aire
+    PROJETÉE du contour dessiné (``vertices`` ``[[lng, lat], …]`` ou
+    ``{lat, lng}``) par :func:`aire_contour_m2` — même projection que l'écran.
+    Un pan dessiné mais jamais pavé n'a donc plus une surface de 0.
+    """
+    if not isinstance(zone, dict):
+        return None
+    for bloc in (zone.get('result'), zone.get('geometry'), zone):
+        if isinstance(bloc, dict):
+            aire = _aire_portee(bloc.get('areaM2'))
+            if aire is not None:
+                return aire
+    sommets = []
+    for point in zone.get('vertices') or []:
+        if isinstance(point, dict):
+            point = [point.get('lng'), point.get('lat')]
+        if isinstance(point, (list, tuple)) and len(point) >= 2:
+            sommets.append([point[0], point[1]])
+    return aire_contour_m2(sommets)
 
 
 def plafond_physique_du_contour(contour, produit_panneau):
