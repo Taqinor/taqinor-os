@@ -27,7 +27,7 @@ from pathlib import Path
 
 __all__ = [
     'ImportLayoutRefuse', 'VERSION_SCHEMA', 'exporter_layout',
-    'valider_document', 'importer_layout',
+    'valider_document', 'importer_layout', 'module_du_pan',
 ]
 
 #: Numéro de version du schéma v2 publié (CAL232) — celui que ``exporter_
@@ -80,6 +80,27 @@ def exporter_layout(calepinage):
         'layout_hash': calepinage.layout_hash or '',
         'schema_version': VERSION_SCHEMA,
     }
+
+
+def module_du_pan(document, zone):
+    """ACAL263 — l'entrée de ``modules[]`` que désigne ``zone.geometry.moduleId``.
+
+    ``None`` quand le pan ne désigne aucun modèle, ou un modèle absent du
+    catalogue (``_refuser_module_inconnu`` refuse ce second cas à l'import) —
+    jamais un modèle deviné. SEULE fonction qui résout ce renvoi : la planche
+    et ses sorties la lisent, aucune ne le refait.
+    """
+    if not isinstance(document, dict) or not isinstance(zone, dict):
+        return None
+    geometrie = zone.get('geometry')
+    modele = geometrie.get('moduleId') if isinstance(geometrie, dict) else None
+    catalogue = document.get('modules')
+    if not isinstance(modele, str) or not isinstance(catalogue, list):
+        return None
+    for entree in catalogue:
+        if isinstance(entree, dict) and entree.get('id') == modele:
+            return entree
+    return None
 
 
 def _refuser_module_inconnu(document):

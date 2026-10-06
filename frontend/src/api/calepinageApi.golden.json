@@ -24,6 +24,20 @@
       "verbe": "post"
     }
   ],
+  "calepinages.apercuDocument": [
+    {
+      "config": {
+        "params": {
+          "code": 3,
+          "k": 1
+        },
+        "responseType": "text"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/apercu-document/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.appliquerFixation": [
     {
       "config": null,
@@ -184,6 +198,16 @@
       "verbe": "post"
     }
   ],
+  "calepinages.declencherDocument": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": 7,
+      "verbe": "post"
+    }
+  ],
   "calepinages.demarquerModele": [
     {
       "config": null,
@@ -260,17 +284,6 @@
       "data": {},
       "url": "/calepinage/calepinages/7/deverrouiller/",
       "verbe": "post"
-    }
-  ],
-  "calepinages.diagrammePertesSvg": [
-    {
-      "config": {
-        "params": 3,
-        "responseType": "blob"
-      },
-      "data": null,
-      "url": "/calepinage/calepinages/7/diagramme-pertes.svg/",
-      "verbe": "get"
     }
   ],
   "calepinages.documents": [

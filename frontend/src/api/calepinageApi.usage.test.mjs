@@ -150,10 +150,8 @@ export const EXCEPTIONS_SANS_APPELANT = {
   // 'calepinages.sorties' / 'calepinages.telechargerSortie' RETIRÉES (fold M5,
   // 24/09/2026) : Fixation.jsx (CALX360, onglet Fixation de l'atelier) les
   // appelle désormais toutes les deux — exceptions périmées.
-  'calepinages.composerPackTechnique': "23/09/2026 — la porte HTTP existe (CALX24) mais aucun écran ne compose encore le dossier technique depuis l'atelier",
   'calepinages.variantes': "23/09/2026 — la liste des variantes se lit via le comparatif comparer() ; l'endpoint brut n'a plus de consommateur direct",
   'calepinages.joindrePiece': "05/10/2026 — la porte joindre-piece/ existe (ACAL238) ; l'écran Dossiers réglementaires qui l'appelle arrive avec ACAL242 (bloquée en amont) — retirer cette entrée à ACAL242",
-  'calepinages.remettreDocument': "06/10/2026 — la porte remettre-document/ existe (ACAL222) ; le bouton « Remettre » du panneau Documents arrive avec ACAL223 — retirer cette entrée à ACAL223",
   'calepinages.enregistrerSectionLayout': "06/10/2026 — la porte layout/section/ existe (ACAL22) ; les onglets Horizon/Terrain/Ombrière qui l'appellent arrivent avec ACAL24 — retirer cette entrée à ACAL24",
 }
 

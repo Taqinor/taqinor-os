@@ -38,7 +38,7 @@ const GOLDEN_PATH = join(here, 'calepinageApi.golden.json')
 const API_PATH = join(here, 'calepinageApi.js')
 
 // Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`, puis +2 en vague B, +4 en vague C ACAL, +1 ACAL222 remettreDocument, +2 ACAL23 enregistrerLayoutCalepinageConditionnel/enregistrerSectionLayout).
-const NOMBRE_CLES_EXTRAITES = 97
+const NOMBRE_CLES_EXTRAITES = 98
 
 /* ── L'axios factice ENREGISTREUR (module autonome, servi en data: URL) ──── */
 const AXIOS_ENREGISTREUR = `

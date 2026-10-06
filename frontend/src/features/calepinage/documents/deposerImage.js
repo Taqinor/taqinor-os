@@ -88,40 +88,10 @@ export async function deposerCarteDeChaleur(calepinageId, builderApi, { scale = 
 }
 
 /* ============================================================================
-   CALX320 — LE DIAGRAMME DE PERTES : MÊME GESTE, SOURCE DIFFÉRENTE.
-   ----------------------------------------------------------------------------
-   La carte de chaleur ci-dessus vient de l'atelier 3D (``builderApi``), qui
-   n'est monté que sur l'onglet 3D — indisponible depuis le panneau
-   Documents. Le diagramme de pertes, lui, a déjà un SVG autonome rendu par
-   le SERVEUR (``GET diagramme-pertes.svg/``, CALX308, `services
-   /diagramme_pertes.py` — la MÊME cascade que la pièce imprimable, jamais un
-   second calcul ici) : on le récupère, on le RASTÉRISE ICI (D-CAL10, aucun
-   rasteriseur SVG côté serveur — même limite que `sorties/planche_png`,
-   CAL175), puis on le dépose comme n'importe quelle autre image.
+   ACAL225 — plus de dépôt du diagramme de pertes : le rapport embarque déjà le
+   SVG serveur, `sankey` n'est plus un genre d'image admis (400). Reste ici le
+   rastériseur SVG -> PNG, réutilisé par la planche PNG (ACAL228).
    ========================================================================== */
-
-/** Le corps d'un refus de requête BLOB (`diagrammePertesSvg`,
-    `responseType: 'blob'`) en `[{champ, message}]` — MÊME régime que
-    `PanneauDocuments.jsx::erreurDeTelechargement` (le corps d'erreur voyage
-    lui aussi en blob, il faut le relire en texte avant de le parser) : le
-    CHAMP fautif reste NOMMÉ, jamais réduit à une phrase anonyme. Sans
-    réponse du tout (réseau coupé), un motif générique — jamais un plantage
-    muet. */
-async function erreursDeRefusBlob(erreur) {
-  const donnees = erreur?.response?.data
-  let corps = donnees
-  if (typeof Blob !== 'undefined' && donnees instanceof Blob) {
-    try {
-      corps = JSON.parse(await donnees.text())
-    } catch {
-      return [{ champ: '', message: 'Réponse du serveur illisible.' }]
-    }
-  }
-  if (corps && typeof corps === 'object') {
-    return Object.entries(corps).map(([champ, message]) => ({ champ, message: String(message) }))
-  }
-  return [{ champ: '', message: 'Le serveur est resté injoignable.' }]
-}
 
 /**
  * Un texte SVG -> ``Blob`` PNG, rastérisé dans un ``<canvas>`` hors écran
@@ -165,35 +135,4 @@ export function svgTexteEnPng(svgTexte) {
     }
     img.src = url
   })
-}
-
-/**
- * Dépose le diagramme de pertes comme image ``genre: 'sankey'`` : récupère
- * le SVG autonome du SERVEUR, le rastérise dans CE navigateur, puis le
- * dépose. Un calepinage sans résultat refuse déjà côté serveur (`GET
- * diagramme-pertes.svg/` rend 400 en NOMMANT le champ) — le motif remonte
- * tel quel, même régime que ``deposerCarteDeChaleur`` ci-dessus.
- */
-export async function deposerDiagrammeDePertes(calepinageId) {
-  if (!calepinageId) {
-    return { ok: false, motif: 'Calepinage inconnu — rien à déposer.' }
-  }
-  let svgTexte
-  try {
-    const reponse = await calepinageApi.calepinages.diagrammePertesSvg(calepinageId)
-    svgTexte = await reponse.data.text()
-  } catch (erreur) {
-    const erreurs = await erreursDeRefusBlob(erreur)
-    return { ok: false, motif: erreurs[0]?.message || 'Le serveur a refusé la demande.', erreurs }
-  }
-  if (!svgTexte) {
-    return { ok: false, motif: 'Diagramme de pertes indisponible (réponse vide).' }
-  }
-  let blob
-  try {
-    blob = await svgTexteEnPng(svgTexte)
-  } catch (err) {
-    return { ok: false, motif: err?.message || 'Rendu du diagramme impossible sur ce navigateur.' }
-  }
-  return deposerImageDocument(calepinageId, { genre: 'sankey', blob })
 }

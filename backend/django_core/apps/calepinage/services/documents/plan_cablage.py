@@ -149,7 +149,9 @@ def modules_du_plan(roof_layout, geometrie):
         cle = _cle_de_pan(zone, rang_zone)
         for rang, centre in zip(_rangs_dessines(zone), pan['modules']):
             modules.append({'module': '%s#%d' % (cle, rang), 'pan': cle,
-                            'centre': centre})
+                            'centre': centre,
+                            # ACAL263 — les cotes du module de CE pan.
+                            'module_m': pan.get('module_m')})
     return modules
 
 
@@ -456,8 +458,10 @@ def svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
     if geometrie.get('etendue'):
         vers_feuille, _echelle = _transformation(geometrie['etendue'])
         for module in plan['modules']:
-            couche.append(_forme_de_module(module, vers_feuille,
-                                           geometrie.get('module_m')))
+            couche.append(_forme_de_module(
+                module, vers_feuille,
+                module['module_m'] if 'module_m' in module
+                else geometrie.get('module_m')))
         for module in plan['modules']:
             if module['manuel']:
                 couche.append(_marque_manuelle(module, vers_feuille))
