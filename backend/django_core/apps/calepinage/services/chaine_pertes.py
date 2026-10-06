@@ -573,7 +573,10 @@ SOUS_BLOCS_METEO = {
     'horizon': ('origine', 'hauteur_max_deg', 'base_horizon'),
     # ``motif`` (CALX59) est vide quand la ré-indexation a eu lieu, et porte
     # sinon la raison — un décalage non appliqué se DIT.
-    'heure': ('base', 'fuseau_site', 'decalage_minutes', 'motif'),
+    'heure': ('base', 'fuseau_site', 'decalage_minutes', 'motif',
+              # ACAL129 — d'où vient le fuseau : ``imagerie`` |
+              # ``profil_societe`` | ``None``.
+              'provenance_fuseau'),
 }
 
 
@@ -1917,11 +1920,15 @@ def _reindexer_sur_l_heure_du_site(serie, contexte):
 
 def _poser_verdict_horaire(contexte, base, fuseau, decalages, motif, champ):
     """Écrit le bloc ``meteo.heure`` ET le verdict que CALX5 lira."""
+    site = contexte.get('site') or {}
     contexte['meteo']['heure'] = {
         'base': base,
         'fuseau_site': fuseau,
         'decalage_minutes': list(decalages),
         'motif': motif,
+        # ACAL129 — la provenance du fuseau (imagerie | profil société).
+        'provenance_fuseau': (site.get('fuseau_source') if fuseau
+                              else None),
     }
     contexte[CLE_CROISEMENT_HORAIRE] = {
         'possible': not motif,

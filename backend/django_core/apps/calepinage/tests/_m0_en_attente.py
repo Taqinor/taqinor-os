@@ -85,7 +85,6 @@ EN_ATTENTE_DETAIL = {
 EN_ATTENTE_SIMULATION = {
     'simulation.meteo_fichier': 'ACAL146',
     'meteo.fichier': 'ACAL146',
-    'meteo.heure.provenance_fuseau': 'ACAL129',
 }
 
 #: Clés propres à ``calepinage_resultat.json`` posées par ACAL8 (M0), en plus

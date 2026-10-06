@@ -254,11 +254,16 @@ def _site_du_calepinage(calepinage, document, imagerie):
     lat = _nombre(epingle.get('lat'))
     lon = _nombre(epingle.get('lng') if epingle.get('lng') is not None
                   else epingle.get('lon'))
+    # ACAL129 — le fuseau des réglages d'imagerie, sinon celui du PROFIL de
+    # la société (repli déclaré), avec sa provenance.
+    fuseau = fuseau_du_site(imagerie,
+                            company=getattr(calepinage, 'company', None))
     return {
         'lat': lat,
         'lon': lon,
         'altitude_m': altitude_du_site(imagerie)['altitude_m'],
-        'fuseau': fuseau_du_site(imagerie)['fuseau'],
+        'fuseau': fuseau['fuseau'],
+        'fuseau_source': fuseau['provenance'],
     }
 
 

@@ -32,7 +32,8 @@
         "decalage_minutes": [
           60
         ],
-        "motif": ""
+        "motif": "",
+        "provenance_fuseau": "profil_societe"
       },
       "albedo_face_avant": {
         "valeur": null,
@@ -72,7 +73,8 @@
         "base": null,
         "fuseau_site": null,
         "decalage_minutes": [],
-        "motif": ""
+        "motif": "",
+        "provenance_fuseau": null
       },
       "albedo_face_avant": {
         "valeur": null,

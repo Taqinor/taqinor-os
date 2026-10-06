@@ -152,6 +152,20 @@ class ParametresCalepinageView(APIView):
         # écriture) : l'écran coche parmi CES sections, dans CET ordre.
         reponse['documents'] = dict(reponse.get('documents') or {},
                                     catalogue_rapport=_catalogue_rapport())
+        # ACAL129 — le fuseau EFFECTIF du site (imagerie, sinon profil
+        # société) et sa provenance, en LECTURE SEULE : jamais accepté en
+        # écriture.
+        from ..services.site import fuseau_du_site
+
+        effectif = fuseau_du_site(reponse.get('imagerie') or {},
+                                  company=company)
+        # Contrat ``site_imagerie.json`` : ``imagerie.site_effectif``, clé
+        # DÉRIVÉE de la section (jamais stockée, retirée d'un PUT).
+        reponse['imagerie'] = dict(reponse.get('imagerie') or {},
+                                   site_effectif={
+                                       'fuseau': effectif['fuseau'],
+                                       'source': effectif['provenance'],
+                                       'mention': effectif['mention']})
         return Response(reponse)
 
     @extend_schema(request=_forme_reglages('CalepinageParametresRequete'),
@@ -164,6 +178,13 @@ class ParametresCalepinageView(APIView):
                 {'detail': "Le corps attendu est un objet « section : "
                            "réglages »."},
                 status=status.HTTP_400_BAD_REQUEST)
+        imagerie = donnees.get('imagerie')
+        if isinstance(imagerie, dict) and 'site_effectif' in imagerie:
+            # ACAL129 — clé DÉRIVÉE servie par GET : un aller-retour GET → PUT
+            # la renvoie ; elle n'est jamais écrite.
+            donnees = dict(donnees, imagerie={
+                cle: valeur for cle, valeur in imagerie.items()
+                if cle != 'site_effectif'})
         documents = donnees.get('documents')
         if isinstance(documents, dict) and CLE_CATALOGUE in documents:
             # ACAL288 — clé DÉRIVÉE : refusée en la nommant, rien d'écrit.
