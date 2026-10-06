@@ -28,6 +28,15 @@ def url_layout(pk):
 
 
 class ActionLayoutTest(BaseApiCalepinage):
+    def _poster(self, pk, corps, api=None):
+        """ACAL316 — If-Match obligatoire : le jeton lu juste avant d'écrire
+        (``""`` pour un document encore vide)."""
+        reponse = self.api.get(url_layout(pk))
+        donnees = getattr(reponse, 'data', None) or {}
+        jeton = donnees.get('empreinte_document') or ''
+        return (api or self.api).post(url_layout(pk), corps, format='json',
+                                      HTTP_IF_MATCH=f'"{jeton}"')
+
     def setUp(self):
         super().setUp()
         self.calepinage = Calepinage.objects.create(
@@ -46,8 +55,7 @@ class ActionLayoutTest(BaseApiCalepinage):
         self.assertIsNone(reponse.data['layout_hash'])
 
     def test_post_nu_enregistre_et_historise(self):
-        reponse = self.api.post(url_layout(self.calepinage.pk), LAYOUT,
-                                format='json')
+        reponse = self._poster(self.calepinage.pk, LAYOUT)
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertFalse(reponse.data['inchange'])
         self.assertIsNotNone(reponse.data['version'])
@@ -59,29 +67,27 @@ class ActionLayoutTest(BaseApiCalepinage):
     def test_post_enveloppes_acceptees(self):
         for enveloppe in ('layout', 'roof_layout'):
             with self.subTest(enveloppe=enveloppe):
-                reponse = self.api.post(url_layout(self.calepinage.pk),
-                                        {enveloppe: LAYOUT}, format='json')
+                reponse = self._poster(self.calepinage.pk, {enveloppe: LAYOUT})
                 self.assertEqual(reponse.status_code, 200, reponse.data)
                 self.calepinage.refresh_from_db()
                 self.assertEqual(self.calepinage.roof_layout, LAYOUT)
 
     def test_renvoi_a_l_identique_est_inchange(self):
-        self.api.post(url_layout(self.calepinage.pk), LAYOUT, format='json')
-        reponse = self.api.post(url_layout(self.calepinage.pk), LAYOUT,
-                                format='json')
+        self._poster(self.calepinage.pk, LAYOUT)
+        reponse = self._poster(self.calepinage.pk, LAYOUT)
         self.assertEqual(reponse.status_code, 200)
         self.assertTrue(reponse.data['inchange'])
         self.assertIsNone(reponse.data['version'])
         self.assertEqual(self._versions(), 1)
 
     def test_layout_modifie_ajoute_une_version(self):
-        self.api.post(url_layout(self.calepinage.pk), LAYOUT, format='json')
-        self.api.post(url_layout(self.calepinage.pk), LAYOUT_2, format='json')
+        self._poster(self.calepinage.pk, LAYOUT)
+        self._poster(self.calepinage.pk, LAYOUT_2)
         self.assertEqual(self._versions(), 2)
 
     def test_aucun_statut_n_est_ecrit(self):
         avant = self.calepinage.statut
-        self.api.post(url_layout(self.calepinage.pk), LAYOUT, format='json')
+        self._poster(self.calepinage.pk, LAYOUT)
         self.calepinage.refresh_from_db()
         self.assertEqual(self.calepinage.statut, avant)
 
@@ -92,11 +98,9 @@ class ActionLayoutTest(BaseApiCalepinage):
         self.assertIn('roof_layout', reponse.data)
 
     def test_autre_societe_introuvable(self):
-        reponse = self.api.post(url_layout(self.etranger.pk), LAYOUT,
-                                format='json')
+        reponse = self._poster(self.etranger.pk, LAYOUT)
         self.assertEqual(reponse.status_code, 404)
 
     def test_sans_permission_d_ecriture_403(self):
-        reponse = self.api_sans.post(url_layout(self.calepinage.pk), LAYOUT,
-                                     format='json')
+        reponse = self._poster(self.calepinage.pk, LAYOUT, api=self.api_sans)
         self.assertEqual(reponse.status_code, 403)

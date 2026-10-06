@@ -65,11 +65,16 @@ class ContourCroiseApiTest(BaseApiCalepinage):
     def _lire(self):
         return self.api.get(self.url).data['roof_layout']
 
+    def _poster(self, document):
+        # ACAL316 — If-Match obligatoire : le jeton lu juste avant d'écrire.
+        jeton = self.api.get(self.url).data['empreinte_document'] or ''
+        return self.api.post(self.url, {'roof_layout': document},
+                             format='json', HTTP_IF_MATCH=f'"{jeton}"')
+
     def test_papillon_nouveau_refuse_400_nomme(self):
         document = copy.deepcopy(D0)
         document['zones'][0]['vertices'] = copy.deepcopy(PAPILLON)
-        reponse = self.api.post(self.url, {'roof_layout': document},
-                                format='json')
+        reponse = self._poster(document)
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('zones.0.vertices', reponse.data)
         self.assertIn('se croise', reponse.data['zones.0.vertices'])
@@ -79,8 +84,7 @@ class ContourCroiseApiTest(BaseApiCalepinage):
         document = dict(copy.deepcopy(D0), exclusionZones=[{
             'id': 'zx-1', 'nature': 'INTERDITE',
             'vertices': copy.deepcopy(PAPILLON)}])
-        reponse = self.api.post(self.url, {'roof_layout': document},
-                                format='json')
+        reponse = self._poster(document)
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('exclusionZones.0.vertices', reponse.data)
         self.assertEqual(self._lire(), D0)
@@ -93,8 +97,7 @@ class ContourCroiseApiTest(BaseApiCalepinage):
             roof_layout=ancien)
         document = copy.deepcopy(ancien)
         document['panelWatt'] = 580
-        reponse = self.api.post(self.url, {'roof_layout': document},
-                                format='json')
+        reponse = self._poster(document)
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(self._lire(), document)
 

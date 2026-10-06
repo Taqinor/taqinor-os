@@ -5,6 +5,10 @@ import { projet } from './calepinage/projet'
 import { simulation } from './calepinage/simulation'
 import { sorties } from './calepinage/sorties'
 
+// ACAL316 — l'en-tête If-Match d'une écriture COMPLÈTE du document (obligatoire côté serveur,
+// 428 sans lui) : l'empreinte « document » lue, ou l'ETag vide `""` quand le document est vide.
+const jetonIfMatch = (empreinte) => ({ headers: { 'If-Match': empreinte || '""' } })
+
 /* ============================================================================
    CAL33 — Client API du module Calepinage autonome (`apps/calepinage`).
    ----------------------------------------------------------------------------
@@ -82,7 +86,10 @@ const calepinageApi = {
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
     layout: (id) => api.get(`${pivot(id)}layout/`),
-    enregistrerLayoutCalepinage: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
+    // ACAL316 — If-Match OBLIGATOIRE (428 sans jeton) : `empreinte` est l'empreinte « document »
+    // lue avec le document (`GET layout/`, design-context) ou rendue par la dernière écriture ;
+    // un document encore vide n'en a pas, son jeton est l'ETag vide `""`.
+    enregistrerLayoutCalepinage: (id, corps, empreinte) => api.post(`${pivot(id)}layout/`, corps, jetonIfMatch(empreinte)),
 
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
     // ventes (MinIO + URL présignée) ; aucun second chemin de stockage.
@@ -277,10 +284,9 @@ const calepinageApi = {
     // ACAL23 — contrat calepinage_layout_section.json (ACAL1/ACAL22). L'écriture COMPLÈTE
     // porte l'empreinte « document » lue au boot (ou rendue par la dernière écriture) dans
     // l'en-tête If-Match : un document modifié ailleurs répond 409 `document_modifie`, rien
-    // n'est écrasé. Sans empreinte connue, aucun en-tête (toléré jusqu'en M3, D01-T37).
+    // n'est écrasé. Sans empreinte connue : l'ETag vide (ACAL316 — l'en-tête est obligatoire).
     enregistrerLayoutCalepinageConditionnel: (id, corps, empreinte) => api.post( // ACAL
-      `${pivot(id)}layout/`, corps,
-      empreinte ? { headers: { 'If-Match': empreinte } } : undefined),
+      `${pivot(id)}layout/`, corps, jetonIfMatch(empreinte)),
     // ACAL23 — l'écriture d'UNE section (`{cle, valeur | zone_id + champs, base_empreinte}`).
     enregistrerSectionLayout: (id, corps) => api.post(`${pivot(id)}layout/section/`, corps), // ACAL
     // ACAL192 (D-ACAL-13, contrat calepinage_design_context.json › geometrie.derive) — le GPS

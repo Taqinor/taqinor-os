@@ -134,8 +134,11 @@ class AppliquerCotePanTest(BaseApiCalepinage):
                          'Cote du relevé appliquée — côté 0')
         # Enregistrer sans toucher : inchangé, aucune version de plus.
         document = self._sommets_relus()
-        reponse = self.api.post(f'{url_detail(self.calepinage.pk)}layout/',
-                                document, format='json')
+        url = f'{url_detail(self.calepinage.pk)}layout/'
+        # ACAL316 — If-Match obligatoire : le jeton lu juste avant d'écrire.
+        jeton = self.api.get(url).data['empreinte_document']
+        reponse = self.api.post(url, document, format='json',
+                                HTTP_IF_MATCH=f'"{jeton}"')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertTrue(reponse.data['inchange'])
         self.assertEqual(versions.count(), avant + 1)

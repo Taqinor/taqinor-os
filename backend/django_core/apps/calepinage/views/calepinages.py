@@ -396,10 +396,17 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                 {'roof_layout': "Conception manquante ou invalide : le corps "
                                 "attendu est le document de conception."},
                 status=status.HTTP_400_BAD_REQUEST)
-        # ACAL22 — If-Match FACULTATIF à ce stade (obligation en M3,
-        # D01-T37) : fourni, il est comparé sous verrou de ligne à
-        # l'empreinte « document » stockée (jamais layout_hash).
+        # ACAL316 (C-ACAL-044) — If-Match OBLIGATOIRE : tous les écrivains HTTP
+        # du document envoient l'empreinte « document » qu'ils ont lue. Sans
+        # jeton, rien n'est écrit (428). Un document encore vide a pour jeton
+        # l'ETag vide ``""`` (« rien » n'a pas d'empreinte). Le jeton est
+        # comparé sous verrou de ligne à l'empreinte stockée (jamais
+        # layout_hash). Les écrivains serveur internes appellent
+        # ``enregistrer_layout`` directement : non concernés.
         base = _jeton_if_match(request)
+        if base is None:
+            return Response({'detail': MESSAGE_JETON_MANQUANT},
+                            status=status.HTTP_428_PRECONDITION_REQUIRED)
         try:
             resultat = enregistrer_layout(calepinage, payload,
                                           user=request.user,
@@ -780,17 +787,25 @@ def _corps_de_layout(donnees):
     return donnees
 
 
+#: ACAL316 — le 428 nommé d'une écriture complète sans jeton de version.
+MESSAGE_JETON_MANQUANT = ("Jeton de version manquant : rechargez la conception "
+                          "avant d'enregistrer.")
+
+
 def _jeton_if_match(request):
-    """ACAL22 — l'empreinte portée par l'en-tête ``If-Match``, ou ``None``.
+    """ACAL22/ACAL316 — l'empreinte portée par l'en-tête ``If-Match``.
 
     Les guillemets d'une ETag (``"abc"``) et le préfixe faible ``W/`` sont
-    tolérés ; un en-tête absent ou vide vaut ``None`` (pas de comparaison).
+    tolérés. En-tête absent ou blanc vaut ``None`` (428) ; l'ETag vide ``""``
+    vaut ``''`` : le jeton d'un document encore vide.
     """
-    brut = (request.headers.get('If-Match') or '').strip()
+    brut = request.headers.get('If-Match')
+    if brut is None or not brut.strip():
+        return None
+    brut = brut.strip()
     if brut.startswith('W/'):
         brut = brut[2:]
-    brut = brut.strip().strip('"').strip()
-    return brut or None
+    return brut.strip().strip('"').strip()
 
 
 def _reponse_ecriture(calepinage, resultat):

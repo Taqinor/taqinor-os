@@ -356,6 +356,7 @@ export default function AtelierPanneaux({
         lectureSeule={enLectureSeule}
         calepinageId={calepinageId}
         builderApi={builderApi}
+        documentVivant={documentVivant}
         contraintesSite={detail ? (detail.contraintes_site ?? null) : undefined}
         onContraintesEnregistrees={relire}
       />
