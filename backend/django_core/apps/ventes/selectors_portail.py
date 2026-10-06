@@ -70,7 +70,27 @@ def devis_du_client_portail(company, client_id, *, limit=200):
         # raison sociale, qualité du signataire et ICE (même règle, même
         # prédicat que la page publique).
         'exige_identite_entreprise': exige_identite_entreprise(d),
+        # ADOC113 (contrat ``mes_devis_liste.json``) — LE prédicat QJR55 que
+        # ``accept_devis`` relit : un devis à deux options s'accepte au
+        # portail avec l'option choisie (``options[].cle``), jamais sans.
+        **_options_portail(d),
     } for d in qs]
+
+
+def _options_portail(devis):
+    """ADOC113 — ``deux_options`` (``deux_options_declarees``) et ``options``
+    (null si mono-option, sinon les deux choix de ``Devis.OptionAcceptee``).
+    Aucun montant : le chiffrage par option reste le PDF /proposal."""
+    from .models import Devis
+    from .utils.options import deux_options_declarees
+
+    deux = bool(deux_options_declarees(devis))
+    return {
+        'deux_options': deux,
+        'options': ([{'cle': cle, 'libelle': libelle}
+                     for cle, libelle in Devis.OptionAcceptee.choices]
+                    if deux else None),
+    }
 
 
 def _date_correction_apres_envoi(devis):
@@ -92,8 +112,11 @@ def devis_du_client_portail_obj(company, client_id, devis_id):
 
     if company is None or not client_id or not devis_id:
         return None
+    # ADOC125 — même périmètre que la liste : une version REMPLACÉE
+    # (is_active=False) est introuvable, donc jamais acceptable au portail.
     return (Devis.objects
-            .filter(company=company, client_id=client_id, pk=devis_id)
+            .filter(company=company, client_id=client_id, pk=devis_id,
+                    is_active=True)
             .exclude(statut=Devis.Statut.BROUILLON)
             .first())
 
@@ -194,8 +217,10 @@ def resume_portail_client(company, client_id):
     if company is None or not client_id:
         return vide
 
+    # ADOC125 — is_active=True : périmètre EXACT de « Mes devis » (QJR520) ;
+    # une version remplacée par une révision ne compte plus.
     devis_en_attente = Devis.objects.filter(
-        company=company, client_id=client_id,
+        company=company, client_id=client_id, is_active=True,
         statut=Devis.Statut.ENVOYE).count()
 
     factures_impayees_qs = Facture.objects.filter(

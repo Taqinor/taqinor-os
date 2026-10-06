@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import gedApi from '../../api/gedApi'
+import { ThemeProvider } from '../../design/ThemeProvider'
 import GedSearch from './GedSearch.jsx'
 
 // Régression GED13 : l'état vide passait un ÉLÉMENT JSX (`icon={<Inbox/>}`) au
@@ -38,6 +40,69 @@ describe('GedSearch — état vide', () => {
       screen.getByText('Aucun document ne correspond à ces critères.'),
     ).toBeInTheDocument()
     expect(gedApi.searchDocuments).toHaveBeenCalledWith({ q: 'facture' })
+  })
+})
+
+describe('ADOC33 GedSearch — vues et ouverture des résultats', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('applique une vue enregistrée au premier clic', async () => {
+    gedApi.getTags.mockResolvedValue({ data: [{ id: 7, nom: 'Comptabilité' }] })
+    gedApi.getVues.mockResolvedValueOnce({ data: [{
+      id: 5, nom: 'Factures 2026',
+      criteres: { query: 'facture', tagId: 7, semantic: false }, partagee: false,
+    }] })
+    gedApi.searchDocuments.mockResolvedValueOnce({ data: [
+      { id: 1, nom: 'facture-1.pdf', tags: [{ id: 7, nom: 'Comptabilité' }] },
+    ] })
+    render(<MemoryRouter><ThemeProvider><GedSearch /></ThemeProvider></MemoryRouter>)
+
+    await userEvent.click(await screen.findByText('Factures 2026'))
+    expect(await screen.findByText('1 résultat')).toBeInTheDocument()
+    expect(gedApi.searchDocuments).toHaveBeenCalledTimes(1)
+    expect(gedApi.searchDocuments).toHaveBeenCalledWith({ q: 'facture' })
+  })
+
+  it('un clic sur un résultat ouvre le document', async () => {
+    const doc = { id: 2, nom: 'devis-9.pdf', tags: [] }
+    gedApi.searchDocuments.mockResolvedValueOnce({ data: [doc] })
+    const onOpenDocument = vi.fn()
+    render(<MemoryRouter><ThemeProvider>
+      <GedSearch onOpenDocument={onOpenDocument} />
+    </ThemeProvider></MemoryRouter>)
+
+    await userEvent.type(screen.getByLabelText('Recherche plein-texte'), 'devis')
+    await userEvent.click(screen.getByRole('button', { name: /^Rechercher$/i }))
+    const table = await screen.findByRole('table', { name: 'Résultats de recherche' })
+    await userEvent.click(within(table).getByText('devis-9.pdf'))
+    expect(onOpenDocument).toHaveBeenCalledWith(doc)
+  })
+})
+
+describe('ADOC30 GedSearch — liste par tag complète', () => {
+  it('filtre tag sur deux pages', async () => {
+    gedApi.getTags.mockResolvedValue({ data: [{ id: 4, nom: 'Compta' }] })
+    const docs = Array.from({ length: 60 }, (_, i) => ({
+      id: 400 + i, nom: `facture-${i + 1}.pdf`, tags: [{ id: 4, nom: 'Compta' }],
+    }))
+    gedApi.getDocuments.mockImplementation((params = {}) => {
+      const page = params.page || 1
+      const debut = (page - 1) * 50
+      return Promise.resolve({ data: {
+        count: docs.length,
+        next: debut + 50 < docs.length ? `?page=${page + 1}` : null,
+        results: docs.slice(debut, debut + 50),
+      } })
+    })
+    render(<MemoryRouter><ThemeProvider><GedSearch /></ThemeProvider></MemoryRouter>)
+
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Filtrer par tag' }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Compta'))
+    await userEvent.click(screen.getByRole('button', { name: /^Rechercher$/i }))
+
+    expect(await screen.findByText('60 résultats')).toBeInTheDocument()
+    expect(gedApi.getDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: 4, page: 2 }))
   })
 })
 

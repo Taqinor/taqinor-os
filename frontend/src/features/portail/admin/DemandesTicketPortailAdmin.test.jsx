@@ -8,11 +8,13 @@ import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
    vient de la réponse serveur, jamais un ticket fictif côté client. */
 
 vi.mock('../../../api/portailApi', () => ({
-  default: { admin: { demandesTicket: { liste: vi.fn(), prendreEnCharge: vi.fn() } } },
+  default: { admin: { demandesTicket: { liste: vi.fn(), prendreEnCharge: vi.fn(), lierTicket: vi.fn() } } },
 }))
 
 import portailApi from '../../../api/portailApi'
 import DemandesTicketPortailAdmin from './DemandesTicketPortailAdmin'
+import { enveloppe, pagine } from './paginationTest'
+
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -23,10 +25,10 @@ function renderPage(ui) {
 describe('DemandesTicketPortailAdmin — PACT101', () => {
   it('affiche la liste avec sujet et statut', async () => {
     portailApi.admin.demandesTicket.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 1, client_id: 5, chantier_id: null, sujet: 'Onduleur en panne',
         statut: 'soumise', ticket_id: null, date_creation: '2026-08-01T08:00:00Z',
-      }],
+      }]),
     })
     renderPage(<DemandesTicketPortailAdmin />)
     await waitFor(() => expect(screen.getAllByText('Onduleur en panne').length).toBeGreaterThan(0))
@@ -34,17 +36,17 @@ describe('DemandesTicketPortailAdmin — PACT101', () => {
   })
 
   it('affiche un état vide quand aucune demande', async () => {
-    portailApi.admin.demandesTicket.liste.mockResolvedValue({ data: [] })
+    portailApi.admin.demandesTicket.liste.mockResolvedValue({ data: enveloppe([]) })
     renderPage(<DemandesTicketPortailAdmin />)
     expect((await screen.findAllByText('Aucune demande')).length).toBeGreaterThan(0)
   })
 
   it("prend en charge une demande soumise en liant un ticket SAV existant", async () => {
     portailApi.admin.demandesTicket.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 3, client_id: 9, chantier_id: 21, sujet: 'Fuite au toit',
         statut: 'soumise', ticket_id: null, date_creation: '2026-08-01T08:00:00Z',
-      }],
+      }]),
     })
     portailApi.admin.demandesTicket.prendreEnCharge.mockResolvedValue({
       data: {
@@ -67,13 +69,59 @@ describe('DemandesTicketPortailAdmin — PACT101', () => {
 
   it("affiche le lien vers le ticket SAV réellement lié par le serveur", async () => {
     portailApi.admin.demandesTicket.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 4, client_id: 2, chantier_id: null, sujet: 'Coupure onduleur',
         statut: 'prise_en_charge', ticket_id: 55, date_creation: '2026-08-01T08:00:00Z',
-      }],
+      }]),
     })
     renderPage(<DemandesTicketPortailAdmin />)
     const liens = await screen.findAllByRole('link', { name: /Voir le ticket SAV #55/ })
     expect(liens[0]).toHaveAttribute('href', '/sav?id=55')
+  })
+})
+
+describe('ADOC32 — toutes les pages (demandes de ticket)', () => {
+  it('60 lignes sur deux pages', async () => {
+    portailApi.admin.demandesTicket.liste.mockImplementation(pagine(60, (n) => ({ id: n, client_id: 5, chantier_id: null, sujet: `Demande ${n}`, statut: 'soumise', ticket_id: null, date_creation: '2026-08-01T08:00:00Z' })))
+    renderPage(<DemandesTicketPortailAdmin />)
+    expect((await screen.findAllByText('1–25 sur 60')).length).toBeGreaterThan(0)
+    expect(portailApi.admin.demandesTicket.liste).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
+  })
+})
+
+describe('ADOC118 — modifier le ticket lié', () => {
+  it('modifier le ticket lié', async () => {
+    portailApi.admin.demandesTicket.liste.mockResolvedValue({
+      data: enveloppe([{
+        id: 8, client_id: 2, chantier_id: null, sujet: 'Mauvais ticket',
+        statut: 'prise_en_charge', ticket_id: 55, date_creation: '2026-08-01T08:00:00Z',
+      }]),
+    })
+    portailApi.admin.demandesTicket.lierTicket.mockResolvedValue({
+      data: {
+        id: 8, client_id: 2, chantier_id: null, sujet: 'Mauvais ticket',
+        statut: 'prise_en_charge', ticket_id: 56, date_creation: '2026-08-01T08:00:00Z',
+      },
+    })
+    renderPage(<DemandesTicketPortailAdmin />)
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Modifier le ticket lié' }))[0])
+    const champ = screen.getAllByLabelText(/N° de ticket SAV existant/)[0]
+    fireEvent.change(champ, { target: { value: '56' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /Confirmer/ })[0])
+    await waitFor(() => expect(portailApi.admin.demandesTicket.lierTicket)
+      .toHaveBeenCalledWith(8, { ticket_id: 56 }))
+    expect(portailApi.admin.demandesTicket.prendreEnCharge).not.toHaveBeenCalled()
+  })
+
+  it("ne propose pas la modification sur une demande résolue", async () => {
+    portailApi.admin.demandesTicket.liste.mockResolvedValue({
+      data: enveloppe([{
+        id: 9, client_id: 2, chantier_id: null, sujet: 'Close',
+        statut: 'resolue', ticket_id: 55, date_creation: '2026-08-01T08:00:00Z',
+      }]),
+    })
+    renderPage(<DemandesTicketPortailAdmin />)
+    await screen.findAllByRole('link', { name: /Voir le ticket SAV #55/ })
+    expect(screen.queryAllByRole('button', { name: 'Modifier le ticket lié' })).toHaveLength(0)
   })
 })

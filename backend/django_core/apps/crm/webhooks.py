@@ -1072,6 +1072,39 @@ def promouvoir_pro_du_sac(sac: dict, fields: dict) -> None:
         fields['cos_phi_source'] = 'site_web'
 
 
+#: utm_source (en minuscules) qui désignent une annonce Google / Meta.
+UTM_SOURCES_GOOGLE = frozenset({'google', 'adwords', 'googleads'})
+UTM_SOURCES_META = frozenset({'facebook', 'fb', 'instagram', 'ig', 'meta'})
+
+
+def _clic_id(value, max_length: int) -> str:
+    """Identifiant de clic publicitaire nettoyé ('' si absent)."""
+    if value is None or isinstance(value, (dict, list, bool)):
+        return ''
+    return str(value).strip()[:max_length]
+
+
+def _canal_site_web(*, gclid='', gbraid='', wbraid='', fbclid=None,
+                    utm_source=None) -> str:
+    """Canal d'origine d'un lead arrivé par le formulaire du site.
+
+    Un identifiant de clic Google (gclid/gbraid/wbraid) ou un utm_source
+    Google ⇒ ``google_ads`` ; un fbclid ou un utm_source Meta ⇒ ``meta_ads``
+    (la même valeur que les leads Meta Lead Ads) ; sinon ``site_web``
+    (comportement historique). L'identifiant de clic prime sur l'UTM : il est
+    posé par la régie elle-même, l'UTM par la main qui a écrit le lien."""
+    source = (utm_source or '').strip().lower()
+    if gclid or gbraid or wbraid:
+        return Lead.Canal.GOOGLE_ADS
+    if fbclid:
+        return Lead.Canal.META_ADS
+    if source in UTM_SOURCES_GOOGLE:
+        return Lead.Canal.GOOGLE_ADS
+    if source in UTM_SOURCES_META:
+        return Lead.Canal.META_ADS
+    return Lead.Canal.SITE_WEB
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -1108,12 +1141,24 @@ def _map_payload_to_fields(data: dict) -> dict:
         'whatsapp_opt_in': bool(data['whatsappOptIn']) if 'whatsappOptIn' in data else None,
         'consent_timestamp': consent_ts,
         'fbclid': (str(data.get('fbclid')).strip()[:500] if data.get('fbclid') else None),
+        # Google Ads — seul le gclid est stocké ; gbraid/wbraid (clics iOS)
+        # ne servent qu'à classer le canal ci-dessous.
+        'gclid': _clic_id(data.get('gclid'), 255),
         'canal': Lead.Canal.SITE_WEB,
         'source': Lead.Source.SITE_WEB,
     }
     for key in ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'):
         value = utm.get(key) or data.get(key)
         fields[key] = str(value).strip()[:300] if value else None
+    # Canal marketing d'ORIGINE du lead du site : Google / Meta / site_web,
+    # déduit des identifiants de clic et de utm_source (first-touch).
+    fields['canal'] = _canal_site_web(
+        gclid=fields['gclid'],
+        gbraid=_clic_id(data.get('gbraid'), 255),
+        wbraid=_clic_id(data.get('wbraid'), 255),
+        fbclid=fields['fbclid'],
+        utm_source=fields['utm_source'],
+    )
     # T-TRACE (25/08/2026) — clé ADDITIVE `appareil_id` : l'uuid que le SITE
     # pose dans le localStorage du visiteur (contrat
     # contract_samples/visite_externe.json). C'est ce qui relie la fiche aux

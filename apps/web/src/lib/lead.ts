@@ -130,6 +130,10 @@ export type RoofTypeId = (typeof ROOF_TYPES)[number]['id'];
 export const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
 export type UtmKey = (typeof UTM_KEYS)[number];
 
+/** Identifiants de clic Google Ads transmis au CRM (whitelist, ≤ 255 car.). */
+export const GOOGLE_CLICK_ID_KEYS = ['gclid', 'gbraid', 'wbraid'] as const;
+export type GoogleClickIdKey = (typeof GOOGLE_CLICK_ID_KEYS)[number];
+
 // ——— WJ30 : vocabulaires des champs FACULTATIFS élargis (pass-through webhook) ———
 // WJ121 — 4 vrais modes au départ du parcours : la carte « Professionnel » est
 // scindée en 'industriel' (usine, production) et 'commercial' (hôtel, commerce,
@@ -382,6 +386,12 @@ export interface ValidatedLead {
   //   contrat de fil inchangé octet pour octet pour elles.
   quickCallback?: true;
   fbclid: string | null;
+  // Identifiants de clic Google Ads (first-touch, capturés comme fbclid).
+  // Présents UNIQUEMENT si reçus : un lead sans clic Google garde un corps
+  // identique à avant (convention « absent plutôt que vide »).
+  gclid?: string;
+  gbraid?: string;
+  wbraid?: string;
   utm: Partial<Record<UtmKey, string>>;
   // — WJ30 : champs FACULTATIFS élargis. Présents UNIQUEMENT si la valeur reçue
   //   est valide : un champ facultatif malformé est ÉCARTÉ (jamais bloquant), et
@@ -1043,6 +1053,11 @@ export function validateLead(body: unknown): ValidationResult {
     if (v) utm[k] = v;
   }
   const fbclid = cleanStr(b.fbclid, 500) || null;
+  const googleClickIds: Partial<Record<GoogleClickIdKey, string>> = {};
+  for (const k of GOOGLE_CLICK_ID_KEYS) {
+    const v = cleanStr(b[k], 255);
+    if (v) googleClickIds[k] = v;
+  }
 
   return {
     ok: true,
@@ -1068,6 +1083,7 @@ export function validateLead(body: unknown): ValidationResult {
       ...(quickCallback ? { quickCallback: true as const } : {}),
       consent: true,
       fbclid,
+      ...googleClickIds,
       utm,
       // WJ30 — le webhook reçoit désormais TOUT ce que la capture a collecté
       // (facture exacte, GPS, contour, mode, raccordement, e-mail, langue…) :

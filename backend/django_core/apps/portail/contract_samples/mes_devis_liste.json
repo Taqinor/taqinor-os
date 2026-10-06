@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/portail/mes-devis/",
-  "forme_serveur": "partielle",
+  "forme_serveur": "complete",
   "pourquoi": "QJR514 (M0 QJR5) — la liste « mes devis » du portail client dit quand le document a été corrigé. Aucun contrat portail-devis n'existait. La vue rend {results: [...]} ; un élément = les clés actuelles de devis_du_client_portail (ventes/selectors.py:1938-1960) + `mis_a_jour_le` (ISO|null) = date de etude_params.resync_apres_envoi, JAMAIS updated_at. Brouillons exclus ; jamais prix_achat.",
   "exemple": {
     "results": [
@@ -14,6 +14,17 @@
         "total_ttc": "48500.00",
         "accepte": false,
         "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
+        "deux_options": true,
+        "options": [
+          {
+            "cle": "sans_batterie",
+            "libelle": "Sans batterie"
+          },
+          {
+            "cle": "avec_batterie",
+            "libelle": "Avec batterie"
+          }
+        ],
         "exige_identite_entreprise": true
       },
       {
@@ -26,11 +37,13 @@
         "total_ttc": "36000.00",
         "accepte": true,
         "mis_a_jour_le": null,
+        "deux_options": false,
+        "options": null,
         "exige_identite_entreprise": false
       }
     ]
   },
-  "exige_identite_entreprise": "CIQ9/CIQ321 — booléen ADDITIF sur chaque élément, SERVI par `devis_du_client_portail` (prédicat `apps.ventes.domain.cycle_vie.exige_identite_entreprise`, le même que la page publique) : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon. L'écran du portail affiche alors les trois champs.",
+  "exige_identite_entreprise": "CIQ9 — booléen ADDITIF sur chaque élément : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon. Tant que CIQ9 ne le sert pas, la clé vit dans `exemple_ciq9` (PAS dans `exemple`, que test_portail_devis_mis_a_jour compare clé à clé au sélecteur actuel) ; CIQ9 la verse dans `exemple` en même temps que le sélecteur qui l'émet.",
   "exemple_deux_options": {
     "results": [
       {
@@ -53,7 +66,8 @@
             "cle": "avec_batterie",
             "libelle": "Avec batterie"
           }
-        ]
+        ],
+        "exige_identite_entreprise": true
       },
       {
         "id": 400,
@@ -66,12 +80,13 @@
         "accepte": true,
         "mis_a_jour_le": null,
         "deux_options": false,
-        "options": null
+        "options": null,
+        "exige_identite_entreprise": false
       }
     ]
   },
-  "deux_options": "ADOC110 (C-ADOC-043) — booléen ADDITIF sur chaque élément : verdict de `apps.ventes.utils.options.deux_options_declarees(devis)`, LE prédicat QJR55 que `accept_devis` relit (ventes/domain/cycle_vie.py:1376-1381). Tant qu'ADOC113 ne le sert pas, la clé vit dans `exemple_deux_options` (PAS dans `exemple`, que test_portail_devis_mis_a_jour compare clé à clé au sélecteur actuel) ; ADOC113 la verse dans `exemple` en même temps que le sélecteur qui l'émet.",
-  "options": "ADOC110 — ADDITIF : null si mono-option (`deux_options` faux), sinon la liste fixe [{cle:'sans_batterie', libelle:'Sans batterie'}, {cle:'avec_batterie', libelle:'Avec batterie'}] ; la `cle` est la valeur à renvoyer dans `option` à l'acceptation. AUCUN montant : le chiffrage par option reste le PDF /proposal (règle #4). Même statut que `deux_options` (vit dans `exemple_deux_options` jusqu'à ADOC113).",
+  "deux_options": "ADOC110 (C-ADOC-043) — booléen ADDITIF sur chaque élément : verdict de `apps.ventes.utils.options.deux_options_declarees(devis)`, LE prédicat QJR55 que `accept_devis` relit (ventes/domain/cycle_vie.py:1376-1381). ADOC113 : SERVI par `devis_du_client_portail` (ventes/selectors_portail.py) — la clé est versée dans `exemple` (comparé clé à clé au sélecteur par test_portail_devis_mis_a_jour et test_adoc_devis_deux_options) ; `exemple_deux_options` reste l'illustration d'un devis à deux options.",
+  "options": "ADOC110 — ADDITIF : null si mono-option (`deux_options` faux), sinon la liste fixe [{cle:'sans_batterie', libelle:'Sans batterie'}, {cle:'avec_batterie', libelle:'Avec batterie'}] (= Devis.OptionAcceptee) ; la `cle` est la valeur à renvoyer dans `option` à l'acceptation. AUCUN montant : le chiffrage par option reste le PDF /proposal (règle #4). Servi par ADOC113 avec `deux_options`.",
   "acceptation": {
     "endpoint": "POST /api/django/portail/mes-devis/{id}/accepter/",
     "corps": {
@@ -97,11 +112,15 @@
       "403": "accès portail en lecture seule",
       "404": "devis introuvable (autre client/société)",
       "409": "conflit d'acceptation (AcceptError.conflict)",
+      "409_deja_accepte": {
+        "detail": "Ce devis est déjà accepté."
+      },
       "400_entreprise": {
         "detail": "L'ICE de l'entreprise est requis pour accepter ce devis.",
         "champ": "entreprise.ice"
       }
     },
-    "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable)."
+    "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable).",
+    "deja_accepte": "ADOC127 — un devis déjà au statut « accepte » SANS preuve d'acceptation portail (accepté AILLEURS, ex. par le commercial en interne) répond 409 {detail:'Ce devis est déjà accepté.'} sans créer ni signer d'AcceptationDevisPortail ni écrire d'audit ; un devis déjà accepté AU PORTAIL puis re-posté répond 200 (corps de « 200 »), preuve et horodatage d'origine inchangés."
   }
 }

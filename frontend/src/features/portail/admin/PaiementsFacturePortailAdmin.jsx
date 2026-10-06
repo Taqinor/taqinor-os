@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
 import { Check, Banknote } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import { formatMAD } from '../../../lib/format'
 import {
   Button, Card, EmptyState, Skeleton, StatusPill,
@@ -35,10 +36,11 @@ export default function PaiementsFacturePortailAdmin() {
   const [statutFiltre, setStatutFiltre] = useState('initie')
   const [busyId, setBusyId] = useState(null)
 
-  const fetchPaiements = useCallback(() => portailApi.admin.paiementsFacture.liste(statutFiltre ? { statut: statutFiltre } : {})
-    .then((r) => setRows(r.data?.results ?? r.data ?? []))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false)), [statutFiltre])
+  // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
+  const fetchPaiements = useCallback(() => chargerToutesLesPages(
+    (page) => portailApi.admin.paiementsFacture.liste(statutFiltre ? { statut: statutFiltre, page } : { page }),
+    { setRows, setLoadError, setLoading },
+  ), [statutFiltre])
 
   const load = () => {
     setLoading(true)

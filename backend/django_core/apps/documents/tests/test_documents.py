@@ -77,6 +77,7 @@ def _devis(company, user, client, produit):
 def _chantier(company, user, client, devis):
     return Installation.objects.create(
         company=company, reference='CH-DOC-0001', client=client, devis=devis,
+        statut=Installation.Statut.INSTALLE,  # ADOC72 — documents émis
         puissance_installee_kwc=Decimal('6.60'),
         type_installation=Installation.TypeInstallation.RESIDENTIEL,
         raccordement=Installation.Raccordement.MONOPHASE,

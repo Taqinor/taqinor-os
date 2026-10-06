@@ -60,6 +60,7 @@ const CANAL_OPTIONS = [
   ['meta_ads', 'Publicité Meta'],
   ['whatsapp_ctwa', 'WhatsApp/CTWA'],
   ['site_web', 'Site web'],
+  ['google_ads', 'Google Ads'],
   ['reference', 'Référence'],
   ['telephone', 'Téléphone'],
   ['walk_in', 'Visite/Walk-in'],

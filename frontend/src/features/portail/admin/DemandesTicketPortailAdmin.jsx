@@ -11,6 +11,7 @@ import { formatDateTime } from '../../../lib/format'
 import { Check, X, Ticket as TicketIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import portailApi from '../../../api/portailApi'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import {
   Button, Card, EmptyState, Skeleton, StatusPill, NumberInput, DataTable, toast,
 } from '../../../ui'
@@ -29,13 +30,14 @@ export default function DemandesTicketPortailAdmin() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
-  const [edit, setEdit] = useState(null) // { id, ticketId }
+  const [edit, setEdit] = useState(null) // { id, ticketId, mode: 'prise' | 'lier' }
   const [busyId, setBusyId] = useState(null)
 
-  const fetchDemandesTicket = () => portailApi.admin.demandesTicket.liste()
-    .then((r) => setRows(r.data?.results ?? r.data ?? []))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
+  // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
+  const fetchDemandesTicket = () => chargerToutesLesPages(
+    (page) => portailApi.admin.demandesTicket.liste({ page }),
+    { setRows, setLoadError, setLoading },
+  )
 
   const load = () => {
     setLoading(true)
@@ -49,17 +51,27 @@ export default function DemandesTicketPortailAdmin() {
     const ticketId = Number(edit?.ticketId)
     if (!ticketId) return
     setBusyId(row.id)
+    const lier = edit?.mode === 'lier'
     try {
-      await portailApi.admin.demandesTicket.prendreEnCharge(row.id, { ticket_id: ticketId })
+      if (lier) {
+        await portailApi.admin.demandesTicket.lierTicket(row.id, { ticket_id: ticketId })
+      } else {
+        await portailApi.admin.demandesTicket.prendreEnCharge(row.id, { ticket_id: ticketId })
+      }
       setEdit(null)
-      toast.success('Demande prise en charge')
+      toast.success(lier ? 'Ticket lié modifié' : 'Demande prise en charge')
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Prise en charge impossible.')
+      toast.error(e?.response?.data?.detail
+        ?? (lier ? 'Modification impossible.' : 'Prise en charge impossible.'))
     } finally {
       setBusyId(null)
     }
   }
+
+  // ADOC118 — la liaison reste corrigeable tant que la demande n'est ni
+  // résolue ni refusée (le serveur répond 409 au-delà).
+  const liaisonModifiable = (row) => !['resolue', 'refusee'].includes(row.statut)
 
   const columns = [
     { id: 'client', header: 'Client', width: 100, accessor: (r) => (r.client_id ? `#${r.client_id}` : '—') },
@@ -77,14 +89,22 @@ export default function DemandesTicketPortailAdmin() {
     {
       id: 'actions', header: 'Ticket SAV', width: 260, sortable: false, searchable: false, hideable: false,
       cell: (_v, row) => {
-        if (row.ticket_id) {
+        if (row.ticket_id && edit?.id !== row.id) {
           return (
-            <Link to={`/sav?id=${row.ticket_id}`} className="text-primary underline">
-              Voir le ticket SAV #{row.ticket_id}
-            </Link>
+            <span className="flex items-center gap-2">
+              <Link to={`/sav?id=${row.ticket_id}`} className="text-primary underline">
+                Voir le ticket SAV #{row.ticket_id}
+              </Link>
+              {liaisonModifiable(row) && (
+                <Button variant="ghost" size="sm"
+                        onClick={() => setEdit({ id: row.id, ticketId: String(row.ticket_id), mode: 'lier' })}>
+                  Modifier le ticket lié
+                </Button>
+              )}
+            </span>
           )
         }
-        if (row.statut !== 'soumise') return null
+        if (!row.ticket_id && row.statut !== 'soumise') return null
         if (edit?.id === row.id) {
           return (
             <span className="flex items-center gap-1.5">
@@ -101,7 +121,7 @@ export default function DemandesTicketPortailAdmin() {
           )
         }
         return (
-          <Button variant="outline" size="sm" onClick={() => setEdit({ id: row.id, ticketId: '' })}>
+          <Button variant="outline" size="sm" onClick={() => setEdit({ id: row.id, ticketId: '', mode: 'prise' })}>
             Prendre en charge
           </Button>
         )

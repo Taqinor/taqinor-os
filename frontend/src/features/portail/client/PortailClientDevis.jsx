@@ -40,6 +40,7 @@ export default function PortailClientDevis() {
   const [aSigner, setASigner] = useState(null)
   const [nom, setNom] = useState('')
   const [consent, setConsent] = useState(false)
+  const [option, setOption] = useState('')
   const [envoi, setEnvoi] = useState(false)
   const [entreprise, setEntreprise] = useState(ENTREPRISE_VIDE)
   const [erreurs, setErreurs] = useState({})
@@ -65,6 +66,7 @@ export default function PortailClientDevis() {
     setConsent(false)
     setEntreprise(ENTREPRISE_VIDE)
     setErreurs({})
+    setOption('')
   }
 
   const exigeEntreprise = !!aSigner?.exige_identite_entreprise
@@ -77,9 +79,13 @@ export default function PortailClientDevis() {
 
   const accepter = async () => {
     if (!aSigner || !nom.trim() || !consent || !entrepriseComplete) return
+    if (aSigner.deux_options && !option) return
     setEnvoi(true)
     setErreurs({})
     const corps = { nom: nom.trim(), consent_esign: true }
+    // ADOC114 — devis à deux options : le client choisit, le serveur
+    // refuse (400) un corps sans `option`.
+    if (aSigner.deux_options) corps.option = option
     if (exigeEntreprise) {
       corps.entreprise = Object.fromEntries(
         CHAMPS_ENTREPRISE.map(({ cle }) => [cle, entreprise[cle].trim()]))
@@ -193,6 +199,19 @@ export default function PortailClientDevis() {
                      onChange={(e) => setNom(e.target.value)}
                      placeholder="Nom et prénom du signataire" />
             </div>
+            {aSigner?.deux_options && Array.isArray(aSigner.options) && (
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="text-sm font-medium">Option choisie</legend>
+                {aSigner.options.map((o) => (
+                  <label key={o.cle} className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="portail-option" value={o.cle}
+                           checked={option === o.cle}
+                           onChange={() => setOption(o.cle)} />
+                    {o.libelle}
+                  </label>
+                ))}
+              </fieldset>
+            )}
             {exigeEntreprise && CHAMPS_ENTREPRISE.map(({ cle, label, placeholder }) => {
               const id = `portail-entreprise-${cle}`
               const erreurChamp = erreurs[`entreprise.${cle}`]
@@ -227,7 +246,8 @@ export default function PortailClientDevis() {
             </Button>
             <Button onClick={accepter}
                     disabled={envoi || !nom.trim() || !consent
-                      || !entrepriseComplete}>
+                      || !entrepriseComplete
+                      || (aSigner?.deux_options && !option)}>
               {envoi ? 'Envoi…' : 'Confirmer l’acceptation'}
             </Button>
           </DialogFooter>

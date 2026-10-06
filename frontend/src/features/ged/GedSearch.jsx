@@ -8,6 +8,7 @@ import {
   Search, FileText, Tag as TagIcon, Loader2, Inbox, X, Star, Clock, BookmarkPlus, Trash2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { formatDate } from '../../lib/format'
 import {
   Card, CardContent, Button, EmptyState, Badge, Input, Checkbox, toast,
@@ -17,6 +18,14 @@ import { DataTable } from '../../ui/datatable'
 import {
   rows, normalizeQuery, hasActiveSearch, filterDocuments,
 } from './search.js'
+
+// ADOC30 — une liste GED paginée se lit EN ENTIER (StandardPagination : 50
+// par défaut, 200 max) : jamais la seule première page.
+const toutesLesPages = async (appel, params) => {
+  const res = await fetchAllPages(
+    (page) => appel({ ...params, page, page_size: 200 }).then((r) => r?.data))
+  return Array.isArray(res) ? res : (res?.results ?? [])
+}
 
 // VX152 — les résultats de recherche rejoignent le moteur DataTable partagé
 // (fin de la table HTML héritée). Liste seule : résultats pré-filtrés/triés
@@ -55,7 +64,7 @@ const GED_SEARCH_COLUMNS = [
   },
 ]
 
-export default function GedSearch({ onOpenDocument } = {}) {
+export default function GedSearch({ onOpenDocument, ocrActif = false } = {}) {
   const [query, setQuery] = useState('')
   const [semantic, setSemantic] = useState(false)
   const [tagId, setTagId] = useState('')
@@ -99,32 +108,42 @@ export default function GedSearch({ onOpenDocument } = {}) {
   const active = useMemo(
     () => hasActiveSearch({ query, tag: tagId }), [query, tagId])
 
-  const runSearch = (e) => {
-    e?.preventDefault?.()
-    const q = normalizeQuery(query)
-    if (!active) return
+  // ADOC33 — la recherche reçoit SES critères (fonction pure) : une vue
+  // enregistrée lance la recherche avec les siens dès le premier clic,
+  // jamais avec des états React encore périmés.
+  const runSearchWith = ({ query: qBrut = '', tagId: tag = '', semantic: sem = false }) => {
+    const q = normalizeQuery(qBrut)
+    if (!hasActiveSearch({ query: qBrut, tag })) return
     setLoading(true)
     setError(null)
     setSearched(true)
     // Recherche serveur (plein-texte ou sémantique) si une requête texte
     // existe ; sinon, on liste par tag seul.
     const call = q
-      ? (semantic
+      ? (sem
         ? gedApi.semanticSearch({ q })
         : gedApi.searchDocuments({ q }))
-      : gedApi.getDocuments({ tag: tagId })
+      // ADOC30 — liste par tag lue EN ENTIER (toutes les pages).
+      : toutesLesPages(gedApi.getDocuments, { tag })
+        .then((list) => ({ data: list }))
     call
       .then((r) => {
-        setMode(q ? (r?.data?.mode || (semantic ? 'semantique' : 'plein-texte')) : null)
+        setMode(q ? (r?.data?.mode || (sem ? 'semantique' : 'plein-texte')) : null)
         // Filtre client complémentaire par tag (par-dessus le résultat texte).
         const list = rows(r)
-        const filtered = tagId
-          ? filterDocuments(list, { tagIds: [tagId] })
+        const filtered = tag
+          ? filterDocuments(list, { tagIds: [tag] })
           : list
         setResults(filtered)
       })
       .catch(() => { setError('La recherche a échoué. Réessayez.'); setResults([]) })
       .finally(() => setLoading(false))
+  }
+
+  const runSearch = (e) => {
+    e?.preventDefault?.()
+    if (!active) return
+    runSearchWith({ query, tagId, semantic })
   }
 
   const reset = () => {
@@ -138,9 +157,10 @@ export default function GedSearch({ onOpenDocument } = {}) {
     setQuery(c.query || '')
     setTagId(c.tagId || '')
     setSemantic(!!c.semantic)
-    // Laisse React commiter l'état avant de relancer (runSearch lit les
-    // valeurs courantes des états, pas celles en cours de mise à jour).
-    setTimeout(() => runSearch(), 0)
+    // ADOC33 — relance AVEC les critères de la vue (pas les états périmés).
+    runSearchWith({
+      query: c.query || '', tagId: c.tagId || '', semantic: !!c.semantic,
+    })
   }
 
   const saveVue = async (e) => {
@@ -186,7 +206,8 @@ export default function GedSearch({ onOpenDocument } = {}) {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)}
-                placeholder="Nom, description, texte OCR…" className="pl-8"
+                placeholder={ocrActif ? 'Nom, description, texte OCR…' : 'Nom, description, métadonnées…'}
+                className="pl-8"
                 aria-label="Recherche plein-texte" />
             </div>
           </div>
@@ -351,6 +372,8 @@ export default function GedSearch({ onOpenDocument } = {}) {
                 hidePagination
                 tableRole="table"
                 aria-label="Résultats de recherche"
+                // ADOC33 — un clic sur un résultat ouvre le document.
+                onRowClick={onOpenDocument ? (d) => onOpenDocument(d) : undefined}
               />
             </div>
           )

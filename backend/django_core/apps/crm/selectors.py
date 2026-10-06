@@ -4713,7 +4713,7 @@ def organic_referral_lead_series(company, *, date_start=None, date_end=None):
     if date_end is not None:
         qs = qs.filter(date_creation__date__lte=date_end)
 
-    paid_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    paid_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA, Lead.Canal.GOOGLE_ADS}
     referral_canaux = {Lead.Canal.REFERENCE}
 
     series = {}

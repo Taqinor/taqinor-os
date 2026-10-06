@@ -69,6 +69,22 @@ beforeEach(() => Object.values(H).forEach((f) => f.mockClear()))
 afterEach(() => cleanup())
 
 describe('WIR70 GedDocumentInsights', () => {
+  it('étoile pleine pour un favori à la réouverture', async () => {
+    H.toggleFavori.mockResolvedValueOnce({ data: { favori: false } })
+    const store = configureStore({ reducer: { auth: () => ({ user: { username: 'reda', role: 'admin' } }) } })
+    render(
+      <Provider store={store}>
+        <ThemeProvider>
+          <GedDocumentInsights document={{ ...doc, favori: true }} onClose={() => {}} />
+        </ThemeProvider>
+      </Provider>,
+    )
+    const etoile = await screen.findByRole('button', { name: 'Retirer des favoris' })
+    await userEvent.click(etoile)
+    expect(H.toggleFavori).toHaveBeenCalledWith(42, false)
+    expect(await screen.findByRole('button', { name: 'Ajouter aux favoris' })).toBeInTheDocument()
+  })
+
   it('charge la timeline du document', async () => {
     renderPanel()
     await waitFor(() => expect(H.getTimeline).toHaveBeenCalledWith(42))

@@ -43,6 +43,8 @@ class XGed23Base(TestCase):
     def setUp(self):
         self.co_a = make_company('xged23-a', 'Xged23 A')
         self.admin_a = make_user(self.co_a, 'xged23-admin-a', 'admin')
+        # ADOC7 — l'approbateur n'est jamais le demandeur (quatre yeux).
+        self.approbateur_a = make_user(self.co_a, 'xged23-appro-a', 'admin')
         self.cab_a = Cabinet.objects.create(company=self.co_a, nom='Admin')
         self.folder_a = Folder.objects.create(
             company=self.co_a, cabinet=self.cab_a, nom='Archives')
@@ -50,6 +52,16 @@ class XGed23Base(TestCase):
             company=self.co_a, folder=self.folder_a, nom='vieux-devis.pdf')
         self.doc2 = Document.objects.create(
             company=self.co_a, folder=self.folder_a, nom='vieux-bl.pdf')
+        # ADOC7 — une destruction ne vise que des documents ÉCHUS.
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.ged.models import PolitiqueRetention
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='Globale', duree_conservation_jours=30)
+        Document.objects.filter(pk__in=[self.doc1.pk, self.doc2.pk]).update(
+            created_at=timezone.now() - timedelta(days=400))
 
 
 class ServiceTests(XGed23Base):
@@ -82,7 +94,7 @@ class ServiceTests(XGed23Base):
         demande = services.creer_demande_disposition(
             self.co_a, libelle='Purge 2020', document_ids=[
                 self.doc1.pk, self.doc2.pk], user=self.admin_a)
-        services.approuver_demande_disposition(demande, user=self.admin_a)
+        services.approuver_demande_disposition(demande, user=self.approbateur_a)
         demande.refresh_from_db()
         self.assertEqual(demande.statut, 'approuvee')
 
@@ -110,7 +122,7 @@ class ServiceTests(XGed23Base):
         demande = services.creer_demande_disposition(
             self.co_a, libelle='Purge 2020', document_ids=[
                 self.doc1.pk, self.doc2.pk], user=self.admin_a)
-        services.approuver_demande_disposition(demande, user=self.admin_a)
+        services.approuver_demande_disposition(demande, user=self.approbateur_a)
         LegalHold.objects.create(
             company=self.co_a, document=self.doc1, place_par=self.admin_a,
             actif=True)
@@ -131,9 +143,9 @@ class ServiceTests(XGed23Base):
         demande = services.creer_demande_disposition(
             self.co_a, libelle='Purge 2020', document_ids=[
                 self.doc1.pk], user=self.admin_a)
-        services.approuver_demande_disposition(demande, user=self.admin_a)
+        services.approuver_demande_disposition(demande, user=self.approbateur_a)
         with self.assertRaises(DemandeDispositionError):
-            services.approuver_demande_disposition(demande, user=self.admin_a)
+            services.approuver_demande_disposition(demande, user=self.approbateur_a)
 
 
 class ViewTests(XGed23Base):
@@ -146,7 +158,7 @@ class ViewTests(XGed23Base):
         self.assertEqual(resp.status_code, 201, resp.data)
         demande_id = resp.data['id']
 
-        resp2 = api.post(
+        resp2 = auth(self.approbateur_a).post(
             f'/api/django/ged/demandes-disposition/{demande_id}/approuver/')
         self.assertEqual(resp2.status_code, 200, resp2.data)
         self.assertEqual(resp2.data['statut'], 'approuvee')
