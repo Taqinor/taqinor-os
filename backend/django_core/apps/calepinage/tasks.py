@@ -74,7 +74,7 @@ def resultat_du_job(job):
 
 @shared_task(name='calepinage.calculer')
 def calculer_calepinage(job_id=None, company_id=None, entree=None,
-                        entrees=None, tiroirs=True, suggestions=True):
+                        entrees=None, suggestions=True):
     """Calcule un (ou plusieurs) calepinage hors requête et publie l'issue.
 
     Deux issues, jamais une troisième silencieuse : ``done`` avec la charge
@@ -110,7 +110,7 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
         repere = document.get('repere') or f'#{index + 1}'
         try:
             resultat = calepinage_json(document, company=company,
-                                       user=job.user, tiroirs=tiroirs,
+                                       user=job.user,
                                        suggestions=suggestions)
         except (entree_invalide, incoherent) as erreur:
             elements.append({'index': index, 'repere': repere,
