@@ -2405,7 +2405,7 @@ def fournisseur_peut_recevoir_bcf(company, fournisseur_id):
 #   ponctualité (OTD)    -45   taux de retard sur les BCF datés
 #   documents légaux     -30   10 par pièce EXPIRÉE, 5 par pièce MANQUANTE
 #   retours              -15   taux de retours fournisseur / BCF
-#   litiges              -15   5 par réclamation ouverte
+#   incidents qualité    -30   10 par incident CRITIQUE non résolu (ASTK187)
 #   blocage              -25   statut de blocage du fournisseur
 #
 # Le barème est volontairement additif et borné : un fournisseur avec 3
@@ -2416,6 +2416,8 @@ PLAFOND_OTD = 45
 PLAFOND_DOCUMENTS = 30
 PLAFOND_RETOURS = 15
 PLAFOND_BLOCAGE = 25
+PLAFOND_INCIDENTS_QUALITE = 30
+PENALITE_PAR_INCIDENT_CRITIQUE = 10
 
 SEUIL_RISQUE_ELEVE = 50
 SEUIL_RISQUE_MODERE = 75
@@ -2498,6 +2500,23 @@ def _retours_fournisseur(company, fournisseur_id):
     }
 
 
+def incidents_critiques_ouverts(company, fournisseur_id):
+    """ASTK187 — nombre d'incidents qualité CRITIQUES non résolus (compteur
+    partagé : score de risque ET scorecard ``supplier_performance``)."""
+    from .models import IncidentQualiteFournisseur
+
+    return IncidentQualiteFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id, resolu=False,
+        gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
+
+
+def _incidents_qualite_fournisseur(company, fournisseur_id):
+    nb = incidents_critiques_ouverts(company, fournisseur_id)
+    return min(PLAFOND_INCIDENTS_QUALITE,
+               PENALITE_PAR_INCIDENT_CRITIQUE * nb), {
+        'incidents_critiques_ouverts': nb}
+
+
 def _blocage_fournisseur(fournisseur):
     from .models import Fournisseur
 
@@ -2527,6 +2546,7 @@ def score_risque_fournisseur(company, fournisseur_id):
     p_otd, d_otd = _ponctualite_fournisseur(company, fournisseur.pk)
     p_doc, d_doc = _documents_fournisseur(company, fournisseur.pk)
     p_ret, d_ret = _retours_fournisseur(company, fournisseur.pk)
+    p_inc, d_inc = _incidents_qualite_fournisseur(company, fournisseur.pk)
     p_blo, d_blo = _blocage_fournisseur(fournisseur)
 
     facteurs = [
@@ -2536,6 +2556,8 @@ def score_risque_fournisseur(company, fournisseur_id):
                  p_doc, PLAFOND_DOCUMENTS, d_doc),
         _facteur('retours', 'Retours fournisseur',
                  p_ret, PLAFOND_RETOURS, d_ret),
+        _facteur('incidents_qualite', 'Incidents qualité critiques ouverts',
+                 p_inc, PLAFOND_INCIDENTS_QUALITE, d_inc),
         _facteur('blocage', 'Statut de blocage',
                  p_blo, PLAFOND_BLOCAGE, d_blo),
     ]

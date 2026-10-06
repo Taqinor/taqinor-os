@@ -482,7 +482,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         """NTP2P8 — score de risque 0-100 (100 = risque nul) + facteurs.
 
         Calcul PUR côté serveur (aucun service externe) : ponctualité OTD,
-        documents légaux, retours, litiges ouverts, statut de blocage."""
+        documents légaux, retours, incidents qualité critiques ouverts
+        (ASTK187), statut de blocage."""
         from .. import selectors as stock_selectors
 
         fournisseur = self.get_object()

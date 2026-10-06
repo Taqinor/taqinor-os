@@ -3190,11 +3190,9 @@ def supplier_performance(company, fournisseur):
     # mesurable (jamais 0 %, qui se lirait comme un fournisseur catastrophique).
     from .selectors_fournisseur import otif_fournisseur
     otif = otif_fournisseur(company, fournisseur)
-    # NTSCM9 — un incident CRITIQUE non résolu doit sauter aux yeux ici.
-    from .models import IncidentQualiteFournisseur
-    incidents_critiques = IncidentQualiteFournisseur.objects.filter(
-        company=company, fournisseur=fournisseur, resolu=False,
-        gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
+    # NTSCM9 / ASTK187 — compteur partagé avec le score de risque.
+    from .selectors import incidents_critiques_ouverts
+    incidents_critiques = incidents_critiques_ouverts(company, fournisseur.id)
 
     return {
         'fournisseur_id': fournisseur.id,

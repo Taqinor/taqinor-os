@@ -89,7 +89,7 @@ class ScoreRisqueTests(TestCase):
         self.assertEqual(resultat['score'], 100)
         self.assertEqual(resultat['niveau'], 'faible')
         self.assertEqual(resultat['penalite_totale'], 0)
-        self.assertEqual(len(resultat['facteurs']), 4)
+        self.assertEqual(len(resultat['facteurs']), 5)
 
     def test_trois_retards_et_un_document_expire_score_sous_50(self):
         """CRITÈRE D'ACCEPTATION NTP2P8."""
@@ -206,7 +206,7 @@ class ScoreRisqueTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['score'], 100)
         self.assertEqual(resp.data['fournisseur_id'], self.fournisseur.pk)
-        self.assertEqual(len(resp.data['facteurs']), 4)
+        self.assertEqual(len(resp.data['facteurs']), 5)
 
     def test_fournisseur_dune_autre_societe_jamais_note(self):
         autre = make_company()
