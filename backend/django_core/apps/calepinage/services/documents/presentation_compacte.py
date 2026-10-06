@@ -31,6 +31,7 @@ from __future__ import annotations
 from html import escape
 
 from ..rapport import nombre_tel_que_servi, verifier_etancheite
+from ..rapport.production import mention_borne_haute, texte_non_publie
 
 __all__ = [
     'CODE_DOCUMENT', 'MENTION_PAS_UN_DEVIS', 'MOTIF_SANS_RESULTAT',
@@ -212,7 +213,18 @@ def _page2_html(resultat, motif_perime=''):
     blocs = []
     if mensuel:
         blocs.append(_table_mensuelle(mensuel))
-    if total.get('performance_ratio') is not None:
+    # ACAL50 / D-ACAL-7 — un résultat incomplet : la mention « borne haute »
+    # SOUS le P50, et le PR « non publié — <motif> » (jamais 100 %). La
+    # complétude est LUE (production.total.complete), jamais recalculée.
+    mention = mention_borne_haute(total)
+    if mention:
+        blocs.append('<p class="mention-borne-haute">%s</p>'
+                     % escape(mention))
+    pr_non_publie = texte_non_publie(total, 'performance_ratio')
+    if pr_non_publie is not None:
+        blocs.append('<p>Ratio de performance (PR) : %s</p>'
+                     % escape(pr_non_publie))
+    elif total.get('performance_ratio') is not None:
         blocs.append('<p>Ratio de performance (PR) : %s</p>'
                      % nombre_tel_que_servi(total.get('performance_ratio')))
     taux = (resultat.get('autoconsommation') or {}).get(

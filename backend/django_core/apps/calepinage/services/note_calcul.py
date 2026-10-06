@@ -330,6 +330,7 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
     electrique = _lire(resultat, 'electrique') or {}
 
     from .documents.gabarit_document import mentions_d_etat
+    from .rapport.production import mention_borne_haute, texte_non_publie
 
     note = {
         'mentions_etat': mentions_d_etat(etat),
@@ -372,7 +373,16 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
             'p50_kwh': total.get('p50_kwh'),
             'p75_kwh': total.get('p75_kwh'),
             'p90_kwh': total.get('p90_kwh'),
+            'p95_kwh': total.get('p95_kwh'),
             'performance_ratio': total.get('performance_ratio'),
+            # ACAL50 — la complétude PUBLIÉE (ACAL49), recopiée telle quelle :
+            # mention « borne haute » et « non publié — <motif> ».
+            'mention_borne_haute': mention_borne_haute(total),
+            'non_publies': {
+                cle: texte_non_publie(total, cle)
+                for cle in ('performance_ratio', 'p75_kwh', 'p90_kwh',
+                            'p95_kwh')
+                if texte_non_publie(total, cle) is not None},
             'specific_yield_kwh_kwc': total.get('specific_yield_kwh_kwc'),
             'par_pan': list(_lire(resultat, 'production.par_pan') or []),
         },
@@ -416,6 +426,24 @@ def _nombre_fr(valeur, decimales=2, unite=''):
 def _ligne(libelle, valeur):
     return ('<tr><th>%s</th><td>%s</td></tr>'
             % (escape(str(libelle)), escape(str(valeur))))
+
+
+def _publie(production, cle, decimales, unite=''):
+    """ACAL50 — la valeur, ou « non publié — <motif> » sur un résultat
+    incomplet (jamais 100 %, jamais 0)."""
+    texte = (production.get('non_publies') or {}).get(cle)
+    if texte is not None:
+        return texte
+    return _nombre_fr(production.get(cle), decimales, unite)
+
+
+def _ligne_mention(mention):
+    """ACAL50 — la mention « borne haute » imprimée mot pour mot SOUS le
+    P50 ; rien sur un résultat complet."""
+    if not mention:
+        return ''
+    return ('<tr><td colspan="2" class="note mention-borne-haute">%s</td>'
+            '</tr>' % escape(str(mention)))
 
 
 def _pied_de_page(provenance):
@@ -627,12 +655,15 @@ def html_de_note_calcul(note, *, garde=True):
         'production': ''.join([
             _ligne('Production annuelle P50',
                    _nombre_fr(production['p50_kwh'], 0, 'kWh')),
+            _ligne_mention(production.get('mention_borne_haute')),
             _ligne('Production annuelle P75',
-                   _nombre_fr(production['p75_kwh'], 0, 'kWh')),
+                   _publie(production, 'p75_kwh', 0, 'kWh')),
             _ligne('Production annuelle P90',
-                   _nombre_fr(production['p90_kwh'], 0, 'kWh')),
+                   _publie(production, 'p90_kwh', 0, 'kWh')),
+            _ligne('Production annuelle P95',
+                   _publie(production, 'p95_kwh', 0, 'kWh')),
             _ligne('Ratio de performance',
-                   _nombre_fr(production['performance_ratio'], 3)),
+                   _publie(production, 'performance_ratio', 3)),
             _ligne('Productible spécifique',
                    _nombre_fr(production['specific_yield_kwh_kwc'], 1,
                               'kWh/kWc')),
