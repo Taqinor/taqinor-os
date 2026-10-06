@@ -296,13 +296,25 @@ export default function SaisiePente({
       penteDeg: retenue.degres,
       penteSource: retenue.source,
     }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
-      .then(() => {
+    // ACAL316 — If-Match obligatoire : le jeton de l'atelier vivant s'il existe, sinon celui de la
+    // lecture. L'atelier n'est pas touché (il ne connaît pas la pente racine) : s'il enregistre
+    // ensuite avec son jeton d'avant, il reçoit un 409 plutôt que d'effacer cette pente.
+    const base = documentVivant?.empreinte || doc.empreinte
+    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document, base))
+      .then((res) => {
+        const apres = res?.data?.empreinte_document ?? null
         doc.appliquerSection('penteDeg', document.penteDeg, null)
-        doc.appliquerSection('penteSource', document.penteSource, null)
+        doc.appliquerSection('penteSource', document.penteSource, apres)
         setMessage('Pente enregistrée dans la conception.')
       })
-      .catch(() => setMessage('La pente n’a pas pu être enregistrée.'))
+      .catch((e) => {
+        if (e?.response?.status === 409 || e?.response?.status === 428) {
+          setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
+          doc.recharger()
+        } else {
+          setMessage('La pente n’a pas pu être enregistrée.')
+        }
+      })
   }
 
   return (

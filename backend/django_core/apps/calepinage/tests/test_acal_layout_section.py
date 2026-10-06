@@ -169,10 +169,35 @@ class LayoutSectionApiTest(BaseApiCalepinage):
         self.assertIsNone(second.data['version'])
         self.assertEqual(self.calepinage.versions.count(), versions)
 
-    def test_post_layout_sans_if_match_reste_accepte(self):
+    def test_post_layout_sans_if_match_428(self):
+        # ACAL316 — If-Match OBLIGATOIRE : rien n'est écrit sans jeton.
+        avant = self._lire()
+        versions = self.calepinage.versions.count()
         reponse = self._poster_layout(copy.deepcopy(D1))
-        self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(self._lire()['roof_layout'], D1)
+        self.assertEqual(reponse.status_code, 428, reponse.data)
+        self.assertEqual(
+            reponse.data['detail'],
+            'Jeton de version manquant : rechargez la conception avant '
+            'd\'enregistrer.')
+        apres = self._lire()
+        self.assertEqual(apres, avant)
+        self.assertEqual(apres['roof_layout'], D0)
+        self.assertEqual(self.calepinage.versions.count(), versions)
+
+    def test_post_layout_etag_vide_est_le_jeton_d_un_document_vide(self):
+        # Un document encore vide n'a pas d'empreinte : ``If-Match: ""``.
+        neuf = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL316')
+        url = f'{url_detail(neuf.pk)}layout/'
+        sans = self.api.post(url, {'roof_layout': copy.deepcopy(D1)},
+                             format='json')
+        self.assertEqual(sans.status_code, 428, sans.data)
+        vide = self.api.post(url, {'roof_layout': copy.deepcopy(D1)},
+                             format='json', HTTP_IF_MATCH='""')
+        self.assertEqual(vide.status_code, 200, vide.data)
+        perime = self.api.post(url, {'roof_layout': copy.deepcopy(D0)},
+                               format='json', HTTP_IF_MATCH='""')
+        self.assertEqual(perime.status_code, 409, perime.data)
 
     def test_verrou_reste_409_roof_layout(self):
         client = Client.objects.create(company=self.company, nom='Verrou 22')

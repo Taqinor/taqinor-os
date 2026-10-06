@@ -337,6 +337,9 @@ const corpsCirculation = (l) => ({
 
 export default function PanneauAllees({
   entree = null, lectureSeule = false, calepinageId = null, builderApi = null,
+  // ACAL316 — le document VIVANT de l'atelier ({empreinte, appliquerSection}) : son jeton est
+  // l'If-Match obligatoire de l'écriture complète.
+  documentVivant = null,
   // CIQ138 — sans `calepinageId` ni `contraintesSite` LUES du serveur (undefined
   // = détail pas encore chargé), la section « Contraintes du site » n'est pas montée.
   contraintesSite = undefined, onContraintesEnregistrees = null,
@@ -422,10 +425,18 @@ export default function PanneauAllees({
     setEnregistrement(true)
     setMessageCalepinage(null)
     builderApi.appliquerSection('alleeTechnique', { largeurM: largeur, source: sourceCalepinage })
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, builderApi.serializeLayout()))
-      .then(() => setMessageCalepinage(`Allée de ${largeur} m enregistrée pour ce calepinage.`))
+    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(
+      calepinageId, builderApi.serializeLayout(), documentVivant?.empreinte ?? null))
+      .then((res) => {
+        const apres = res?.data?.empreinte_document ?? null
+        if (apres) {
+          documentVivant?.appliquerSection?.('alleeTechnique', { largeurM: largeur, source: sourceCalepinage }, apres)
+        }
+        setMessageCalepinage(`Allée de ${largeur} m enregistrée pour ce calepinage.`)
+      })
       .catch((e) => setMessageCalepinage(
         e?.response?.data?.roof_layout?.[0] ?? e?.response?.data?.roof_layout
+        ?? e?.response?.data?.detail
         ?? 'L’allée n’a pas pu être enregistrée pour ce calepinage.'))
       .finally(() => setEnregistrement(false))
   }
