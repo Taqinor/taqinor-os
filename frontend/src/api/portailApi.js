@@ -190,14 +190,23 @@ const portailApi = {
     },
     jalonsChantier: {
       liste: (params) => api.get('/portail/jalons-chantier-portail/', { params }),
-      creer: (payload) => api.post('/portail/jalons-chantier-portail/', payload),
+      // ADOC129 — plus de création manuelle (POST 405 côté serveur) : on
+      // corrige un jalon synchronisé (tracé), on ne supprime qu'un hérité.
+      corriger: (id, payload) => api.patch(`/portail/jalons-chantier-portail/${id}/`, payload),
+      supprimer: (id) => api.delete(`/portail/jalons-chantier-portail/${id}/`),
       marquerAtteint: (id) =>
         api.post(`/portail/jalons-chantier-portail/${id}/marquer_atteint/`, {}),
+      marquerNonAtteint: (id) =>
+        api.post(`/portail/jalons-chantier-portail/${id}/marquer_non_atteint/`, {}),
     },
     demandesTicket: {
       liste: (params) => api.get('/portail/demandes-ticket-portail/', { params }),
       prendreEnCharge: (id, payload) =>
         api.post(`/portail/demandes-ticket-portail/${id}/prendre_en_charge/`, payload ?? {}),
+      // ADOC118 — corrige le ticket SAV lié (même borne serveur : ticket de
+      // CE client dans CETTE société ; 409 sur une demande résolue/refusée).
+      lierTicket: (id, payload) =>
+        api.post(`/portail/demandes-ticket-portail/${id}/lier-ticket/`, payload ?? {}),
     },
   },
 }

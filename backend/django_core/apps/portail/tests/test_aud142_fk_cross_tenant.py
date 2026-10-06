@@ -121,11 +121,13 @@ class FkCrossTenantPortailTests(TestCase):
         self.assertEqual(res.status_code, 400, res.content)
 
     def test_jalon_chantier_dun_autre_tenant_refuse(self):
-        """ROUGE avant AUD142 : 201."""
+        """ROUGE avant AUD142 : 201. ADOC129 — la création manuelle est
+        désormais fermée pour TOUS (405) : a fortiori sur un chantier d'un
+        autre tenant, aucune ligne n'est créée."""
         res = self.api.post('/api/django/portail/jalons-chantier-portail/', {
             'chantier_id': self.chantier_b.id, 'libelle': 'Installation',
         }, format='json')
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 405, res.content)
         self.assertFalse(JalonChantierPortail.objects.filter(
             chantier_id=self.chantier_b.id).exists())
 

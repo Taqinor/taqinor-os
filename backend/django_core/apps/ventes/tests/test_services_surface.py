@@ -59,6 +59,8 @@ from apps.ventes import services
 SURFACE_PUBLIQUE = (
     "AVERTISSEMENTS_KIT_ABSENT",
     "AcceptError",
+    # ADOC143 — garde loi 31-08 rattrapée par le portail (rapprochement).
+    "AcompteAvantDelaiLegal",
     "AutoDevisError",
     "BOQ_CATEGORIES",
     "BOQ_SUFFIXE_A_CHIFFRER",

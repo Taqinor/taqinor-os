@@ -541,6 +541,24 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                            'électronique est requis pour accepter le devis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # ADOC127 — statut lu AVANT ``accept_devis`` (qui rend un devis déjà
+        # accepté inchangé, sans erreur) : un devis accepté AILLEURS (par le
+        # commercial, en interne) ne reçoit JAMAIS de preuve d'e-signature
+        # portail fabriquée après coup (ni AcceptationDevisPortail, ni audit
+        # « accepté via le portail ») → 409. Un devis déjà accepté AU PORTAIL
+        # reste idempotent : 200, preuve et horodatage d'origine inchangés.
+        from .models import AcceptationDevisPortail
+        if devis.statut == 'accepte':  # Devis.Statut.ACCEPTE (ventes)
+            if not AcceptationDevisPortail.objects.filter(
+                    company=company, devis=devis, accepte=True).exists():
+                return Response({'detail': 'Ce devis est déjà accepté.'},
+                                status=status.HTTP_409_CONFLICT)
+            return Response({
+                'detail': 'Devis accepté. Merci !',
+                'reference': devis.reference,
+                'statut': devis.statut,
+            })
+
         try:
             accept_devis(
                 devis=devis,
@@ -569,7 +587,6 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
         # il RELIT la preuve du gagnant au lieu d'en fabriquer une seconde.
         from django.db import IntegrityError, transaction
 
-        from .models import AcceptationDevisPortail
         try:
             with transaction.atomic():
                 acceptation, _ = AcceptationDevisPortail.objects.get_or_create(
@@ -1308,8 +1325,11 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         role = request.data.get('role') or 'lecture'
         company, client_id = _scope(request)
+        # ADOC116 — le lien de l'e-mail pointe sur l'hôte ERP de CETTE
+        # requête (patron WIR216), jamais sur SITE_URL (site public).
         invitation = services.inviter_membre_portail(
-            company, client_id, email, role)
+            company, client_id, email, role,
+            base_url=request.build_absolute_uri('/'))
         if invitation is None:
             return Response(
                 {'detail': "Impossible de créer l'invitation."},

@@ -15,6 +15,10 @@ from . import recorder
 from .models import AuditLog
 from .modeles_suivis import MODELES_SANS_UPDATE_GENERIQUE, TRACKED_MODELS
 
+# ADOC129 — jalon portail : sa correction (libellé/date/atteint) est tracée
+# ancien→nouveau ; c'est la timeline lue par le client (D-ADOC-3).
+TRACKED_MODELS.append(('portail', 'JalonChantierPortail'))
+
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).
 _STATUS_FIELDS = ('statut', 'stage')
 
