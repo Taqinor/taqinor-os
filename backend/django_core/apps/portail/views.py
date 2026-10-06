@@ -300,10 +300,18 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def rapprocher(self, request, pk=None):
+        from apps.ventes.services import AcompteAvantDelaiLegal
+
         paiement = self.get_object()
         reference = request.data.get('reference') or None
-        services.rapprocher_paiement_facture(
-            paiement, reference=reference, user=request.user)
+        try:
+            paiement = services.rapprocher_paiement_facture(
+                paiement, reference=reference, user=request.user)
+        except AcompteAvantDelaiLegal as exc:
+            # ADOC143 — refus loi 31-08 NOMMÉ (le message dit la date) : le
+            # paiement reste INITIÉ, re-rapprochable après le délai.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(paiement).data)
 
 

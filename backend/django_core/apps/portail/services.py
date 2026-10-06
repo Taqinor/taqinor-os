@@ -99,39 +99,58 @@ def rapprocher_paiement_facture(paiement, *, reference=None, user=None):
     ``apps.ventes.services``, jamais un import de ses modèles. Le montant est
     borné au reste dû ; la facture ne bascule que si son résiduel retombe à
     zéro (garde interne à ``marquer_facture_soldee``).
+
+    ADOC143 — ATOMIQUE : sous ``transaction.atomic()`` avec le paiement
+    verrouillé (``select_for_update``), l'encaissement ventes passe D'ABORD
+    et le statut ``PAYE`` n'est posé qu'ENSUITE. Un refus ventes — notamment
+    ``AcompteAvantDelaiLegal`` (loi 31-08, acompte d'un bon signé à domicile
+    pendant le délai) — remonte à l'appelant et annule tout : le paiement
+    reste ``INITIE`` (sans ``paye_le``), donc re-rapprochable une fois le
+    délai passé. Avant, ``PAYE`` était posé en premier : le refus laissait un
+    paiement « payé » sans aucun encaissement, et le rejeu était un no-op.
+    Renvoie le paiement RELU sous verrou.
     """
     from decimal import Decimal
 
+    from django.db import transaction
+
     from .models import PaiementFacturePortail
 
-    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
-        return paiement
-    if reference:
-        paiement.reference = reference
-    paiement.statut = PaiementFacturePortail.Statut.PAYE
-    paiement.paye_le = timezone.now()
-    paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+    with transaction.atomic():
+        paiement = (PaiementFacturePortail.objects
+                    .select_for_update()
+                    .get(pk=paiement.pk))
+        if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+            return paiement
+        if reference:
+            paiement.reference = reference
 
-    if paiement.facture_id:
-        from apps.ventes.services import (
-            enregistrer_paiement, get_facture_or_none, marquer_facture_soldee,
-        )
-        facture = get_facture_or_none(
-            company=paiement.company, facture_id=paiement.facture_id)
-        if facture is not None:
-            montant = min(Decimal(str(paiement.montant)), facture.montant_du)
-            if montant > Decimal('0'):
-                mode = ('carte'
-                        if paiement.methode == PaiementFacturePortail.Methode.CARTE
-                        else 'virement')
-                enregistrer_paiement(
-                    facture=facture, montant=montant, mode=mode,
-                    date_paiement=timezone.localdate(), user=user,
-                    reference=paiement.reference or '',
-                    note='Paiement encaissé au portail client.')
-                marquer_facture_soldee(
-                    facture, montant=montant, user=user,
-                    source='portail_client')
+        if paiement.facture_id:
+            from apps.ventes.services import (
+                enregistrer_paiement, get_facture_or_none,
+                marquer_facture_soldee,
+            )
+            facture = get_facture_or_none(
+                company=paiement.company, facture_id=paiement.facture_id)
+            if facture is not None:
+                montant = min(Decimal(str(paiement.montant)),
+                              facture.montant_du)
+                if montant > Decimal('0'):
+                    mode = ('carte'
+                            if paiement.methode == PaiementFacturePortail.Methode.CARTE
+                            else 'virement')
+                    enregistrer_paiement(
+                        facture=facture, montant=montant, mode=mode,
+                        date_paiement=timezone.localdate(), user=user,
+                        reference=paiement.reference or '',
+                        note='Paiement encaissé au portail client.')
+                    marquer_facture_soldee(
+                        facture, montant=montant, user=user,
+                        source='portail_client')
+
+        paiement.statut = PaiementFacturePortail.Statut.PAYE
+        paiement.paye_le = timezone.now()
+        paiement.save(update_fields=['reference', 'statut', 'paye_le'])
     return paiement
 
 
