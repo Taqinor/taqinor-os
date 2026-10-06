@@ -520,6 +520,70 @@ export const MESURES_SCHEMA_CI = {
     { key: 'texte', label: 'Autres autorisations à confirmer avec le client (décret 2.25.100 art. 26)', unite: '', type: 'text' },
   ],
   general: [],
+  // CIQ661 — supplément d'un site raccordé en MOYENNE tension (contrat
+  // `gabarit_ci_supplement_mt`). Le serveur ne le sert que lorsque le relevé
+  // `comptage.niveau_tension_constate` vaut `mt` : l'écran n'ajoute ni ne
+  // retire jamais ces catégories de lui-même. Que des faits : aucun seuil,
+  // aucun verdict, aucune alerte cos φ.
+  poste_mt: [
+    { key: 'cellule_protection', label: 'Cellule et protection existantes', unite: '', type: 'text' },
+    {
+      key: 'transformateurs', label: 'Transformateurs', type: 'list',
+      itemLabel: 'Transformateur', addLabel: 'Ajouter un transformateur',
+      forme: [
+        { key: 'nb', label: 'Nombre', unite: '', type: 'number' },
+        { key: 'kva', label: 'Puissance', unite: 'kVA', type: 'number' },
+      ],
+    },
+    { key: 'tgbt_courant_assigne_a', label: 'TGBT : courant assigné (A)', unite: '', type: 'number' },
+    { key: 'tgbt_jeu_de_barres', label: 'TGBT : jeu de barres', unite: '', type: 'text' },
+  ],
+  factures_mt: [
+    {
+      key: 'registres', label: '12 factures : registres pointe / pleines / creuses (photos)', type: 'list',
+      itemLabel: 'Facture', addLabel: 'Ajouter une facture',
+      forme: [
+        { key: 'mois', label: 'Mois (AAAA-MM)', unite: '', type: 'text' },
+        { key: 'pointe_kwh', label: 'Pointe', unite: 'kWh', type: 'number' },
+        { key: 'pleines_kwh', label: 'Pleines', unite: 'kWh', type: 'number' },
+        { key: 'creuses_kwh', label: 'Creuses', unite: 'kWh', type: 'number' },
+      ],
+    },
+    { key: 'cos_phi_constate', label: 'cos φ constaté', unite: '', type: 'number' },
+    {
+      key: 'source_cos_phi', label: 'Source du cos φ', unite: '', type: 'select',
+      options: [
+        { value: 'facture', label: 'Facture' }, { value: 'mesure', label: 'Mesure' },
+        { value: 'inconnu', label: 'Inconnue' },
+      ],
+    },
+  ],
+  reactif_secours: [
+    { key: 'condensateurs_kvar', label: 'Batterie de condensateurs (kvar)', unite: '', type: 'number' },
+    { key: 'condensateurs_etat', label: 'État de la batterie de condensateurs', unite: '', type: 'text' },
+    { key: 'groupe_kva', label: 'Groupe électrogène (kVA)', unite: '', type: 'number' },
+    { key: 'groupe_inverseur', label: 'Inverseur de source', unite: '', ...OUI_NON },
+  ],
+  charges_principales: [
+    {
+      key: 'charges', label: 'Charges principales (moteurs, variateurs, fours, soudage)', type: 'list',
+      itemLabel: 'Charge', addLabel: 'Ajouter une charge',
+      forme: [
+        { key: 'libelle', label: 'Charge', unite: '', type: 'text' },
+        { key: 'puissance_kw', label: 'Puissance', unite: 'kW', type: 'number' },
+      ],
+    },
+  ],
+  reseau_assurance: [
+    { key: 'poste_source', label: 'Poste source', unite: '', type: 'text' },
+    // Saisie MANUELLE : aucun scraping de la plateforme (règle #5).
+    { key: 'capacite_poste_source', label: 'Capacité lue sur la plateforme ANRE (saisie manuelle, aucun scraping — règle #5)', unite: '', type: 'text' },
+    { key: 'capacite_consultee_le', label: 'Date de consultation de la plateforme', unite: '', type: 'date' },
+    { key: 'assureur', label: 'Assureur du site', unite: '', type: 'text' },
+    { key: 'exigences_assureur_piece', label: "Exigences écrites de l'assureur", unite: '', type: 'piece' },
+    { key: 'compartimentage_sprinklers', label: 'Compartimentage / sprinklers', unite: '', type: 'text' },
+    { key: 'profil_charge_mesure_fichier', label: 'Fichier de profil de charge mesuré (facultatif)', unite: '', type: 'piece' },
+  ],
 }
 
 // Le schéma d'affichage d'une catégorie SELON le gabarit de la visite : la

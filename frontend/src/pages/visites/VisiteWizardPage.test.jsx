@@ -664,3 +664,146 @@ describe('VisiteWizardPage — CIQ653 (site commerce)', () => {
     expect(patchVisiteMesures.mock.calls[1][2]).toEqual(p1)
   })
 })
+
+/* CIQ661 — supplément MT : le mock est l'`exemple_ci_mt` du contrat partagé
+   `visite_terrain.json` (check_api_shapes), jamais inventé. Les catégories du
+   supplément sont SERVIES par le serveur quand le niveau constaté vaut `mt`. */
+describe('VisiteWizardPage — CIQ661 (supplément MT)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const SUPPLEMENT = contrat.gabarit_ci_supplement_mt
+  const CATEGORIES_MT = Object.keys(SUPPLEMENT)
+  const MT = contrat.exemple_ci_mt
+  const tuile = (code) => ({
+    ...MT.checklist[0].slots[0], code, libelle: code, requis: true, etat: 'manquant', photos: [],
+  })
+  const bloc = (categorie) => ({
+    categorie,
+    libelle: categorie,
+    slots: Object.keys(SUPPLEMENT[categorie]?.photos ?? {}).map(tuile),
+  })
+  const SOCLE = Object.keys(contrat.gabarit_ci).map((categorie) => ({ categorie, libelle: categorie, slots: [] }))
+  const visiteMt = { ...MT, qualification: null, checklist: [...SOCLE, ...CATEGORIES_MT.map(bloc)] }
+  const visiteBt = {
+    ...visiteMt,
+    mesures: { ...MT.mesures, comptage: { ...MT.mesures.comptage, niveau_tension_constate: 'bt' } },
+    checklist: SOCLE,
+  }
+  const catId = (categorie, cle) => `visite-mesure-${categorie}-${cle}`
+
+  beforeEach(() => {
+    patchVisiteMesures.mockResolvedValue({ data: {} })
+    getVisite.mockResolvedValue({ data: visiteMt })
+  })
+
+  it('le schéma reprend les codes, libellés, choix et formes du contrat, tels quels', () => {
+    for (const [categorie, def] of Object.entries(SUPPLEMENT)) {
+      const schema = MESURES_SCHEMA_CI[categorie]
+      expect(schema, categorie).toBeTruthy()
+      expect(schema.map((c) => c.key), categorie).toEqual(Object.keys(def.mesures))
+      for (const champ of schema) {
+        const mesure = def.mesures[champ.key]
+        expect(champ.label, champ.key).toBe(mesure.libelle)
+        if (mesure.type === 'choix') expect(champ.options.map((o) => o.value), champ.key).toEqual(mesure.choix)
+        if (mesure.type === 'liste') {
+          expect(champ.forme.map((c) => c.key), champ.key).toEqual(Object.keys(mesure.forme))
+        }
+      }
+    }
+  })
+
+  it('MT servi : les catégories du supplément s’affichent, dans l’ordre servi', async () => {
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      ...Object.keys(contrat.gabarit_ci), ...CATEGORIES_MT,
+    ])
+  })
+
+  it('passer le niveau à MT fait apparaître le supplément (rechargé depuis le serveur)', async () => {
+    getVisite.mockResolvedValueOnce({ data: visiteBt }).mockResolvedValue({ data: visiteMt })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'comptage' }))
+    expect(screen.queryByRole('tab', { name: 'poste_mt' })).not.toBeInTheDocument()
+    await user.click(await screen.findByLabelText('Niveau de tension constaté'))
+    await user.click(await screen.findByRole('option', { name: 'Moyenne tension (MT)' }))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2].niveau_tension_constate).toBe('mt')
+    expect(await screen.findByRole('tab', { name: 'poste_mt' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'reseau_assurance' })).toBeInTheDocument()
+  })
+
+  it('les tuiles photo du poste (cellule, plaque) et des factures sont servies et prises en photo', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'poste_mt' }))
+    expect(await screen.findByTestId('visite-slot-cellule_mt')).toHaveTextContent('Ajouter une photo')
+    expect(screen.getByTestId('visite-slot-transformateur_plaque')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'factures_mt' }))
+    expect(await screen.findByTestId('visite-slot-factures_mt')).toHaveTextContent('Ajouter une photo')
+  })
+
+  it('la source du cos φ est obligatoire : l’erreur serveur s’affiche sous le champ', async () => {
+    patchVisiteMesures.mockRejectedValue({
+      response: { data: { erreurs: { source_cos_phi: '« Source du cos φ » est obligatoire dès que « cos φ constaté » est saisi.' } } },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'factures_mt' }))
+    const form = await screen.findByTestId('visite-mesures-factures_mt')
+    const cos = form.querySelector(`#${catId('factures_mt', 'cos_phi_constate')}`)
+    expect(cos).toHaveAttribute('step', 'any')
+    await user.type(cos, '0.82')
+    expect(cos).toHaveValue(0.82)
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(await screen.findByText('« Source du cos φ » est obligatoire dès que « cos φ constaté » est saisi.')).toBeInTheDocument()
+    expect(patchVisiteMesures.mock.calls[0][2].cos_phi_constate).toBe(0.82)
+  })
+
+  it('« non relevé » + motif sur une cellule : état du serveur repris, nouveau motif envoyé', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'reactif_secours' }))
+    const form = await screen.findByTestId('visite-mesures-reactif_secours')
+    expect(form.querySelector(`#${catId('reactif_secours', 'condensateurs_kvar')}-nr`)).toBeChecked()
+    expect(form.querySelector(`#${catId('reactif_secours', 'condensateurs_kvar')}`)).toBeDisabled()
+    await user.click(form.querySelector(`#${catId('reactif_secours', 'condensateurs_etat')}-nr`))
+    await user.click(form.querySelector(`#${catId('reactif_secours', 'condensateurs_etat')}-motif`))
+    await user.click(await screen.findByRole('option', { name: 'Dangereux' }))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2]._non_releves).toEqual({
+      condensateurs_kvar: 'acces_refuse', condensateurs_etat: 'dangereux',
+    })
+  })
+
+  it('un transformateur s’ajoute (nombre et kVA, jamais arrondis) ; la date ANRE est une date, les pièces des références', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'poste_mt' }))
+    const form = await screen.findByTestId('visite-mesures-poste_mt')
+    await user.click(screen.getByRole('button', { name: 'Ajouter un transformateur' }))
+    const kva = form.querySelector(`#${catId('poste_mt', 'transformateurs-1-kva')}`)
+    expect(kva).toHaveAttribute('step', 'any')
+    await user.type(kva, '630.5')
+    expect(kva).toHaveValue(630.5)
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2].transformateurs[1]).toMatchObject({ kva: 630.5, nb: null })
+    await user.click(screen.getByRole('tab', { name: 'reseau_assurance' }))
+    const reseau = await screen.findByTestId('visite-mesures-reseau_assurance')
+    expect(reseau.querySelector(`#${catId('reseau_assurance', 'capacite_consultee_le')}`)).toHaveAttribute('type', 'date')
+    expect(reseau.querySelector(`#${catId('reseau_assurance', 'profil_charge_mesure_fichier')}`)).toHaveAttribute('type', 'text')
+    expect(reseau.querySelector('form')).toHaveAttribute('novalidate')
+  })
+
+  it('terminer : activé dès que le serveur dit complet', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...visiteMt, completude: { complet: true, manquants: [] }, qualification: contrat.exemple.qualification },
+    })
+    terminerVisite.mockResolvedValue({ data: { ...visiteMt, statut: 'terminee' } })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('button', { name: /terminer la visite/i }))
+    expect(terminerVisite).toHaveBeenCalledWith('7')
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+  })
+})

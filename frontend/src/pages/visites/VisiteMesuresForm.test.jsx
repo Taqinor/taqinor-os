@@ -134,3 +134,32 @@ describe('VisiteMesuresForm — CIQ609 (aller-retour stable)', () => {
     expect(patchVisiteMesures.mock.calls[0][2]).not.toHaveProperty('_non_releves')
   })
 })
+
+// CIQ661 — supplément MT : même aller-retour stable, valeurs de `exemple_ci_mt`.
+describe('VisiteMesuresForm — CIQ661 (supplément MT)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const MT = contrat.exemple_ci_mt
+
+  it.each(Object.keys(contrat.gabarit_ci_supplement_mt))(
+    '%s : le 2e enregistrement sans toucher envoie exactement le même PATCH', async (categorie) => {
+      patchVisiteMesures.mockResolvedValue({ data: {} })
+      const user = userEvent.setup()
+      const premier = render(
+        <VisiteMesuresForm
+          visiteId={7} categorie={categorie} libelle={categorie} gabarit="ci"
+          valeurs={MT.mesures[categorie]} nonReleves={MT._non_releves} onSaved={() => {}}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+      const p1 = patchVisiteMesures.mock.calls[0][2]
+      premier.unmount()
+      render(
+        <VisiteMesuresForm
+          visiteId={7} categorie={categorie} libelle={categorie} gabarit="ci"
+          valeurs={JSON.parse(JSON.stringify(p1))} nonReleves={MT._non_releves} onSaved={() => {}}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+      expect(patchVisiteMesures.mock.calls[1][2]).toEqual(p1)
+    })
+})
