@@ -222,6 +222,11 @@ def build(ctx):
 </style>
 """
 
+    # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
+    # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
+    inv_html = ci_couverture.bloc_investissement(
+        d, d.get("ind_synthese") or {}, "i1", fmt_mad, ancre, invest=invest_centimes)
+
     html = f"""{css}
 <div class="i1-root">
   <div class="i1-hero">
@@ -270,10 +275,7 @@ def build(ctx):
       les <b>heures pleines</b> (production en journée). {note_pointe}
     </div>
 
-    <div class="i1-inv">
-      <div class="i1-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="i1-inv-v">{fmt_mad(invest_centimes)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest_centimes))}
-    </div>
+    {inv_html}
   </div>
 </div>
 """

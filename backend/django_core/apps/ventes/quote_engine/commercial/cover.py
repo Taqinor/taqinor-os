@@ -161,6 +161,11 @@ def build(ctx):
 </style>
 """
 
+    # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
+    # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
+    inv_html = ci_couverture.bloc_investissement(
+        d, d.get("com_synthese") or {}, "c1c", fmt_mad, ancre, invest=invest)
+
     html = f"""{css}
 <div class="c1c-root">
   <div class="c1c-hero">
@@ -199,10 +204,7 @@ def build(ctx):
       L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur
       la consommation de <b>journée</b> de votre établissement. {note_pointe}
     </div>
-    <div class="c1c-inv">
-      <div class="c1c-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="c1c-inv-v">{fmt_mad(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest))}
-    </div>
+    {inv_html}
   </div>
 </div>
 """
