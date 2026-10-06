@@ -466,6 +466,16 @@ def releve_ci_de_visite(visite, declare=None):
     commerce = saisies.get('site_commerce')
     commerce = commerce if isinstance(commerce, dict) else {}
     etats = commerce.get(checklist.CLE_NON_RELEVES)
+    # CIQ664 — le poste de livraison RELEVÉ (transformateurs, cellule), seulement
+    # pour un niveau de tension CONSTATÉ ``mt`` : c'est ce que le moteur
+    # électrique lit pour dessiner l'étage MT, jamais une déduction.
+    poste = saisies.get('poste_mt')
+    poste = poste if isinstance(poste, dict) else {}
+    releve['poste_mt'] = ({
+        'cellule_protection': poste.get('cellule_protection') or None,
+        'transformateurs': [t for t in (poste.get('transformateurs') or [])
+                            if isinstance(t, dict)],
+    } if constate['niveau_tension'] == 'mt' else None)
     releve['besoin_continuite_service'] = (
         None if isinstance(etats, dict)
         and 'besoin_continuite_service' in etats
