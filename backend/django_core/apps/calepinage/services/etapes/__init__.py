@@ -250,6 +250,88 @@ def etape_appliquee(libelle, *, source, entree, reference='', gain=False):
     }
 
 
+#: ACAL131 — la colonne posée PAR POINT par la ré-indexation sur l'heure
+#: légale du site (``chaine_pertes._reindexer_sur_l_heure_du_site``) : le
+#: décalage UTC (minutes) de CE point. Au Maroc il vaut 60 hors Ramadan et 0
+#: pendant — une seule valeur pour toute la série serait fausse une partie de
+#: l'année. Elle n'entre pas dans la série persistée.
+CLE_DECALAGE_POINT = 'decalage_utc_min'
+
+MOTIF_INSTANT_UTC_INCONNU = (
+    "L'instant UTC des heures de la série n'est pas connu : ni décalage par "
+    "point (ré-indexation sur l'heure légale du site), ni base UTC, ni "
+    'décalage unique déclaré (« meteo.heure »). La position du soleil ne se '
+    'date pas au jugé — jamais un décalage moyen.')
+
+
+def _nombre_simple(valeur):
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+def decalage_utc_du_point(point, meteo):
+    """ACAL131 — le décalage UTC (minutes) d'UN point, ou ``None``.
+
+    Dans l'ordre : le décalage PROPRE au point (:data:`CLE_DECALAGE_POINT`,
+    posé par la ré-indexation) ; une série déclarée en UTC (0) ; un décalage
+    UNIQUE déclaré (nombre, ou liste d'une seule valeur). Sinon ``None`` —
+    jamais une moyenne de décalages.
+    """
+    propre = _nombre_simple((point or {}).get(CLE_DECALAGE_POINT)
+                            if isinstance(point, dict) else None)
+    if propre is not None:
+        return propre
+    heure = (meteo or {}).get('heure') or {}
+    if str(heure.get('base') or '').strip().lower() == 'utc':
+        return 0.0
+    brut = heure.get('decalage_minutes')
+    nombre = _nombre_simple(brut)
+    if nombre is not None:
+        return nombre
+    if isinstance(brut, (list, tuple)):
+        valeurs = {_nombre_simple(valeur) for valeur in brut}
+        valeurs.discard(None)
+        if len(valeurs) == 1:
+            return valeurs.pop()
+    return None
+
+
+def instant_utc(point, meteo):
+    """ACAL131 — L'instant UTC d'un point de série, ou ``None``.
+
+    LE lecteur partagé par l'IAM, l'horizon et l'inter-rangées : l'heure
+    locale du point moins SON décalage (:func:`decalage_utc_du_point`).
+    """
+    import datetime
+
+    decalage = decalage_utc_du_point(point, meteo)
+    if decalage is None or not isinstance(point, dict):
+        return None
+    try:
+        moment = datetime.datetime(int(point['annee']), int(point['mois']),
+                                   int(point['jour']),
+                                   tzinfo=datetime.timezone.utc)
+        moment += datetime.timedelta(hours=float(point['heure']))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return moment - datetime.timedelta(minutes=decalage)
+
+
+def decalages_publies(points, meteo):
+    """ACAL131 — les décalages UTC réellement employés (liste triée des
+    valeurs distinctes ; un nombre seul quand il n'y en a qu'un), pour
+    l'``entree`` publiée d'une étape."""
+    valeurs = sorted({decalage_utc_du_point(point, meteo)
+                      for point in points or ()} - {None})
+    if len(valeurs) == 1:
+        return valeurs[0]
+    return valeurs
+
+
 #: ACAL135 / D-ACAL-8 — les réglages société qu'un poste SAISI et SOURCÉ du
 #: calepinage recouvre : ``{clé de réglage: nom du poste}``, déclarés UNE
 #: fois. Le poste du calepinage PRIME sur le réglage société (le projet est

@@ -1909,7 +1909,9 @@ def _reindexer_sur_l_heure_du_site(serie, contexte):
             return serie
         offsets.add(legal)
         applique = legal if base == BASE_HEURE_UTC else saisonnier
-        decales.append(_point_decale(point, moment, applique))
+        # ACAL131 — chaque point porte SON décalage UTC légal : c'est lui
+        # que l'IAM, l'horizon et l'inter-rangées lisent (Ramadan compris).
+        decales.append(_point_decale(point, moment, applique, legal))
 
     suite = dict(serie)
     suite['points'] = decales
@@ -1971,17 +1973,21 @@ def _part_saisonniere_minutes(fuseau, moment):
     return int(saison.total_seconds() // 60)
 
 
-def _point_decale(point, moment, minutes):
+def _point_decale(point, moment, minutes, decalage_utc=None):
     """Une COPIE du point ré-étiquetée — aucune valeur mesurée n'est touchée.
 
     Ré-indexer, c'est CHANGER L'ÉTIQUETTE d'une heure, jamais sa mesure :
     l'irradiance, la température et le vent du point restent exactement ceux
-    que PVGIS a servis.
+    que PVGIS a servis. ACAL131 — ``decalage_utc`` (minutes) est posé sur le
+    point (``etapes.CLE_DECALAGE_POINT``) : l'heure LÉGALE ré-étiquetée moins
+    ce décalage est son instant UTC.
     """
-    if not minutes:
-        return point
-    cible = moment + datetime.timedelta(minutes=minutes)
     copie = dict(point)
+    if decalage_utc is not None:
+        copie[_etapes.CLE_DECALAGE_POINT] = decalage_utc
+    if not minutes:
+        return copie
+    cible = moment + datetime.timedelta(minutes=minutes)
     copie['annee'] = cible.year
     copie['mois'] = cible.month
     copie['jour'] = cible.day
