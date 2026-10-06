@@ -17,34 +17,106 @@ import {
 } from '../../ui'
 import { toast } from '../../ui/confirm'
 import {
-  MESURES_SCHEMA, trierCategories, STATUT_VISITE_LABEL, ligneQualification, estVisitePointEau, titreVisite,
-  CATEGORIES_POINT_EAU,
+  trierCategories, STATUT_VISITE_LABEL, ligneQualification, estVisitePointEau, estVisiteCi, titreVisite,
+  CATEGORIES_POINT_EAU, schemaMesures, nonRelevesDeCategorie, libelleMotifNonReleve,
+  LIGNES_RELEVE_CI, valeurReleve, libelleEcart,
 } from './visiteHelpers'
 
-function MesuresRecap({ mesures, checklist }) {
+// Valeur lisible d'une mesure (le serveur reste la source : rien n'est calculé).
+function texteValeur(champ, valeur, categorie, gabarit) {
+  if (valeur == null || valeur === '') return '—'
+  if (champ.type === 'bool' || champ.type === 'tribool') return valeur ? 'Oui' : 'Non'
+  if (champ.type === 'select' && (gabarit === 'ci' || CATEGORIES_POINT_EAU.includes(categorie))) {
+    return champ.options.find((o) => o.value === valeur)?.label ?? valeur
+  }
+  return `${valeur}${champ.unite ? ` ${champ.unite}` : ''}`
+}
+
+// CIQ609 — une liste (zones de toiture, trajets…) : une ligne par élément.
+function ListeRecap({ champ, lignes }) {
+  if (!Array.isArray(lignes) || lignes.length === 0) {
+    return <p className="text-xs text-muted-foreground">{champ.label} : —</p>
+  }
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">{champ.label}</p>
+      {lignes.map((ligne, i) => (
+        <p key={ligne.id ?? i} className="text-xs" data-testid={`recap-ligne-${champ.key}-${ligne.id ?? i}`}>
+          {champ.forme
+            .filter((sous) => sous.type !== 'objet' && ligne[sous.key] != null && ligne[sous.key] !== '')
+            .map((sous) => `${sous.label} : ${texteValeur(sous, ligne[sous.key], '', 'ci')}`)
+            .join(' · ') || '—'}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+// CIQ609 / CIQ606 — le tableau déclaré / constaté / écart SERVI par le
+// serveur (`visite.releve_ci`) : aucun calcul ici, aucun verdict.
+function ReleveCiTable({ releve }) {
+  if (!releve) return null
+  return (
+    <Card className="p-3" data-testid="visite-releve-ci">
+      <p className="text-sm font-medium">Déclaré / constaté</p>
+      <table className="mt-1 w-full text-xs">
+        <thead>
+          <tr className="text-left text-muted-foreground">
+            <th className="font-normal">Fait</th>
+            <th className="font-normal">Déclaré</th>
+            <th className="font-normal">Constaté</th>
+            <th className="font-normal">Écart</th>
+          </tr>
+        </thead>
+        <tbody>
+          {LIGNES_RELEVE_CI.map((ligne) => {
+            const bloc = releve[ligne.key] ?? {}
+            return (
+              <tr key={ligne.key} data-testid={`releve-ci-${ligne.key}`}>
+                <td>{ligne.label}</td>
+                <td>{valeurReleve(bloc.declare, ligne.unite)}</td>
+                <td>
+                  {bloc.non_releve
+                    ? `Non vérifié (${libelleMotifNonReleve(bloc.non_releve).toLowerCase()})`
+                    : valeurReleve(bloc.constate, ligne.unite)}
+                </td>
+                <td>{libelleEcart(bloc.ecart)}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </Card>
+  )
+}
+
+function MesuresRecap({ mesures, checklist, gabarit, nonReleves }) {
   const categories = trierCategories(checklist)
   return (
     <div className="space-y-3">
       {categories.map((c) => {
-        const schema = MESURES_SCHEMA[c.categorie] ?? []
+        const schema = schemaMesures(c.categorie, gabarit)
         if (schema.length === 0) return null
         const valeurs = mesures?.[c.categorie] ?? {}
+        const etats = nonRelevesDeCategorie(nonReleves, c.categorie)
         return (
           <div key={c.categorie}>
             <p className="text-sm font-medium">{c.libelle}</p>
             <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-              {schema.map((champ) => (
+              {schema.map((champ) => (champ.type === 'list' ? (
+                <div key={champ.key} className="col-span-2">
+                  <ListeRecap champ={champ} lignes={valeurs[champ.key]} />
+                </div>
+              ) : (
                 <div key={champ.key} className="contents">
                   <dt className="text-muted-foreground">{champ.label}</dt>
                   <dd>
-                    {valeurs[champ.key] == null || valeurs[champ.key] === ''
-                      ? '—'
-                      : (champ.type === 'bool' || champ.type === 'tribool') ? (valeurs[champ.key] ? 'Oui' : 'Non')
-                        : (champ.type === 'select' && CATEGORIES_POINT_EAU.includes(c.categorie)) ? (champ.options.find((o) => o.value === valeurs[champ.key])?.label ?? valeurs[champ.key])
-                        : `${valeurs[champ.key]}${champ.unite ? ` ${champ.unite}` : ''}`}
+                    {etats[champ.key] && (valeurs[champ.key] == null || valeurs[champ.key] === '')
+                      ? `Non vérifié (${libelleMotifNonReleve(etats[champ.key]).toLowerCase()})`
+                      : texteValeur(champ, valeurs[champ.key], c.categorie, gabarit)}
                   </dd>
                 </div>
-              ))}
+              )))}
             </dl>
           </div>
         )
@@ -91,7 +163,7 @@ function RenvoyerDialog({ open, onOpenChange, visite, onRenvoye }) {
 
   const toutSlots = (visite?.checklist ?? []).flatMap((c) => c.slots.map((s) => ({ ...s, categorie: c.categorie, categorieLibelle: c.libelle })))
   const toutMesures = trierCategories(visite?.checklist ?? [])
-    .flatMap((c) => (MESURES_SCHEMA[c.categorie] ?? []).map((champ) => ({ ...champ, categorie: c.categorie, categorieLibelle: c.libelle })))
+    .flatMap((c) => schemaMesures(c.categorie, visite?.gabarit).map((champ) => ({ ...champ, categorie: c.categorie, categorieLibelle: c.libelle })))
 
   const togglePhoto = (code) => setPhotos((prev) => (
     prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
@@ -206,7 +278,7 @@ function DetailVisite({ visite, onRetour, onChanged }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-base font-semibold">{titreVisite(visite)}</h3>
-          {estVisitePointEau(visite) && (
+          {(estVisitePointEau(visite) || estVisiteCi(visite)) && (
             <p className="text-xs text-muted-foreground">{visite.client_panel?.lead_nom ?? `Visite #${visite.id}`}</p>
           )}
         </div>
@@ -214,7 +286,13 @@ function DetailVisite({ visite, onRetour, onChanged }) {
       </div>
 
       <Card className="p-3"><PhotosParCategorie checklist={visite.checklist} /></Card>
-      <Card className="p-3"><MesuresRecap mesures={visite.mesures} checklist={visite.checklist} /></Card>
+      <Card className="p-3">
+        <MesuresRecap
+          mesures={visite.mesures} checklist={visite.checklist}
+          gabarit={visite.gabarit} nonReleves={visite._non_releves}
+        />
+      </Card>
+      {estVisiteCi(visite) && <ReleveCiTable releve={visite.releve_ci} />}
       {/* VISITE-QUALIF — ligne compacte lecture seule (une seule ligne des
           libellés choisis), utile 24-48h au commercial closer sans rouvrir le
           wizard terrain. */}
