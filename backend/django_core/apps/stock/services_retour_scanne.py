@@ -167,11 +167,22 @@ def valider_retour_scanne(retour, user, *, bins_source=None):
             .values_list('id', flat=True))
         if trouves != demandes:
             raise ValueError('Casier introuvable dans cette société.')
-    for ligne in retour.lignes.select_related('produit'):
-        deplacer_vers_casier_retours(
-            retour.company, user, produit=ligne.produit,
-            quantite=ligne.quantite,
-            bin_source=bins_source.get(ligne.id) or bins_source.get(
-                str(ligne.id)),
-            reference=retour.reference)
-    return apply_retour_fournisseur(retour, user)
+    # ASTK51 — UNE transaction qui contrôle D'ABORD le statut du retour (relu
+    # sous verrou) puis déplace et valide : un second clic (ou deux clics
+    # concurrents) ne pose plus aucun transfert fantôme vers la zone de
+    # départs ; une validation qui échoue annule aussi les déplacements.
+    from django.db import transaction
+
+    with transaction.atomic():
+        frais = type(retour).objects.select_for_update().get(pk=retour.pk)
+        if frais.statut != type(retour).Statut.BROUILLON:
+            raise ValueError('Seul un retour en brouillon peut être validé.')
+        retour.statut = frais.statut
+        for ligne in retour.lignes.select_related('produit'):
+            deplacer_vers_casier_retours(
+                retour.company, user, produit=ligne.produit,
+                quantite=ligne.quantite,
+                bin_source=bins_source.get(ligne.id) or bins_source.get(
+                    str(ligne.id)),
+                reference=retour.reference)
+        return apply_retour_fournisseur(retour, user)
