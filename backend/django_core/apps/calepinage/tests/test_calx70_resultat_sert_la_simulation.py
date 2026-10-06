@@ -145,6 +145,11 @@ class SimulationFraicheTest(SimpleTestCase):
 
     def test_les_douze_blocs_declares_par_calx4_sont_servis(self):
         for cle in BLOCS_SIMULATION:
+            if cle == 'pertes':
+                # ACAL127 — la liste plate vient des postes SAISIS du
+                # calepinage, jamais d'une copie stockée dans ``resultat``.
+                self.assertEqual(self.resultat[cle], [])
+                continue
             self.assertEqual(self.resultat[cle],
                              SIMULATION['exemple'][cle],
                              f'le bloc « {cle} » n est pas servi tel quel.')

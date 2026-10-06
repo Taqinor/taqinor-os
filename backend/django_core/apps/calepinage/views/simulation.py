@@ -53,8 +53,12 @@ def publication_des_pertes(calepinage):
     ``total_pct`` est la somme RÉELLEMENT additionnée des postes saisis —
     aucune perte n'est passée à PVGIS (ACAL329 : la chaîne de pertes applique
     chaque poste à l'irradiance nue). Aucun poste n'est complété : une liste
-    vide reste vide, et ``simulable`` dit pourquoi aucune production ne peut
-    être demandée.
+    vide reste vide.
+
+    ACAL127 — ``simulable`` dit VRAI : la simulation ne dépend pas des postes
+    saisis (la chaîne tourne sans eux et publie alors un P50 « borne haute »,
+    D-ACAL-7). Une liste vide n'empêche donc rien : ``simulable`` vaut vrai
+    et ``motif_non_simulable`` est vide.
     """
     postes = postes_du_calepinage(calepinage)
     total = sum(poste['pct'] for poste in postes)
@@ -64,12 +68,8 @@ def publication_des_pertes(calepinage):
         'total_pct': round(total, 3) if postes else None,
         'postes_non_sources': [poste['poste'] for poste in postes
                                if poste['source'] is None],
-        'simulable': bool(postes),
-        'motif_non_simulable': (
-            '' if postes else
-            "Aucun poste de perte n'est renseigné : la chaîne de pertes du "
-            'module applique chaque poste SAISI à l’irradiance nue et ne '
-            'suppose jamais une perte par défaut.'),
+        'simulable': True,
+        'motif_non_simulable': '',
         'catalogue': [dict(entree) for entree in CATALOGUE],
     }
 

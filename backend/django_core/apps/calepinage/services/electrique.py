@@ -1824,8 +1824,13 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
                              'shading_annual_loss_pct': None}
                             for pan in pose['pans']],
             },
-            'pertes': [],
         })
+    # ACAL127 — ``pertes`` est la LISTE PLATE des postes SAISIS (D-CALX 11),
+    # servie depuis ``Calepinage.pertes`` (aucune copie stockée) : jamais
+    # simulé, frais ou périmé, ce sont les MÊMES postes que GET pertes/.
+    blocs['pertes'], motif_postes = _postes_servis(calepinage)
+    if motif_postes:
+        messages.append(motif_postes)
     if motif:
         # En tête des avertissements : c'est la phrase que l'écran affiche
         # quand il n'a rien à tracer, et elle doit NOMMER la péremption.
@@ -1916,6 +1921,21 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
         'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
     }
+
+
+def _postes_servis(calepinage):
+    """ACAL127 — ``(postes saisis normalisés, motif)`` — lecture TOLÉRANTE.
+
+    Un poste stocké devenu illisible ne fait pas tomber ``GET resultat/`` :
+    la liste servie est vide et le motif NOMME le refus (la simulation, elle,
+    refuse en le nommant).
+    """
+    from .pertes import PertesInvalides, postes_du_calepinage
+
+    try:
+        return postes_du_calepinage(calepinage), ''
+    except PertesInvalides as refus:
+        return [], 'Postes de pertes illisibles : %s' % refus
 
 
 def _entete_servie(calepinage, empreinte):

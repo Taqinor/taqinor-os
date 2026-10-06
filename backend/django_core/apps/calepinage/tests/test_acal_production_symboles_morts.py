@@ -114,9 +114,13 @@ class SymbolesMortsTest(unittest.TestCase):
             pk = 1
             pertes = []
 
-        motif = publication_des_pertes(SansPoste())['motif_non_simulable']
-        self.assertTrue(motif.strip())
+        publie = publication_des_pertes(SansPoste())
+        motif = publie['motif_non_simulable']
         self.assertNotIn('PVGIS', motif)
+        # ACAL127 — aucun poste n'empêche la simulation (borne haute,
+        # D-ACAL-7) : ``simulable`` dit vrai et aucun motif n'est inventé.
+        self.assertTrue(publie['simulable'])
+        self.assertEqual(motif, '')
 
 
 if __name__ == '__main__':  # pragma: no cover
