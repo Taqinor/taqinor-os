@@ -4,6 +4,8 @@ from django.db import IntegrityError, models, transaction
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+from core.serializers import CompanyScopedRelationsMixin
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
@@ -88,20 +90,15 @@ class CategorieSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ContactFournisseurSerializer(serializers.ModelSerializer):
+class ContactFournisseurSerializer(CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     class Meta:
         model = ContactFournisseur
         fields = [
             'id', 'fournisseur', 'nom', 'fonction', 'email', 'telephone',
         ]
-
-    def validate_fournisseur(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Fournisseur hors de votre entreprise.')
-        return value
 
 
 class CategorieFournisseurSerializer(serializers.ModelSerializer):
@@ -110,7 +107,10 @@ class CategorieFournisseurSerializer(serializers.ModelSerializer):
         fields = ['id', 'nom', 'archived']
 
 
-class PortailFournisseurTokenSerializer(serializers.ModelSerializer):
+class PortailFournisseurTokenSerializer(CompanyScopedRelationsMixin,
+                                        serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """XPUR22 — jeton portail fournisseur (INTERNE, admin/responsable
     uniquement). Le token en clair n'apparaît que dans cette réponse — le
     lien public complet est construit côté frontend."""
@@ -127,7 +127,10 @@ class PortailFournisseurTokenSerializer(serializers.ModelSerializer):
         ]
 
 
-class FournisseurSerializer(serializers.ModelSerializer):
+class FournisseurSerializer(CompanyScopedRelationsMixin,
+                            serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     # L699 — compteurs LECTURE SEULE : nombre de produits liés et de bons de
     # commande fournisseur associés. Affichés « X produits · Y bons de
     # commande » sur la fiche fournisseur. Annotés en amont quand disponibles
@@ -148,6 +151,11 @@ class FournisseurSerializer(serializers.ModelSerializer):
     class Meta:
         model = Fournisseur
         fields = '__all__'
+        # ASTK23 — `statut_validation` n'avance QUE par l'action admin
+        # `decider-candidature` (NTPRT25) ; `company` est posée côté serveur
+        # (perform_create) et `tiers` par le pont tiers (services) : aucun
+        # des trois ne s'écrit par PUT/PATCH.
+        read_only_fields = ['company', 'statut_validation', 'tiers']
 
     def get_nb_produits(self, obj):
         annotated = getattr(obj, 'nb_produits_annot', None)
@@ -170,7 +178,10 @@ class FournisseurSerializer(serializers.ModelSerializer):
         return value
 
 
-class MouvementStockSerializer(serializers.ModelSerializer):
+class MouvementStockSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True
@@ -266,7 +277,10 @@ def _company_du_contexte(serializer):
     return company
 
 
-class ProduitSerializer(serializers.ModelSerializer):
+class ProduitSerializer(CompanyScopedRelationsMixin,
+                        serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
         queryset=Categorie.objects.none(),
@@ -562,16 +576,51 @@ class ProduitSerializer(serializers.ModelSerializer):
                     {'nom': self.MSG_NOM_DOUBLON})
             raise
 
+    REFERENCE_STOCK_INITIAL = 'Stock initial'
+
+    def _poser_stock_initial(self, produit, quantite):
+        """ASTK32 — la quantité saisie à la création entre au registre par
+        le service unique de mouvement (ENTREE « stock initial ») : Σ registre
+        = stock dès la première ligne, comme l'import (ERR52)."""
+        from .models import MouvementStock
+        from .services import record_stock_movement
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        record_stock_movement(
+            company=produit.company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+            quantite=quantite, quantite_avant=0, quantite_apres=quantite,
+            reference=self.REFERENCE_STOCK_INITIAL,
+            note='Stock initial (création de la fiche produit)',
+            created_by=user if getattr(user, 'pk', None) else None)
+
     def create(self, validated_data):
-        return self._ecrire(lambda: super(
-            ProduitSerializer, self).create(validated_data))
+        # ASTK32 — le produit naît à 0 ; la quantité initiale éventuelle est
+        # posée par un mouvement, jamais écrite directement.
+        stock_initial = validated_data.pop('quantite_stock', 0) or 0
+
+        def _creer():
+            produit = super(ProduitSerializer, self).create(validated_data)
+            if stock_initial > 0:
+                self._poser_stock_initial(produit, stock_initial)
+            return produit
+        return self._ecrire(_creer)
 
     def update(self, instance, validated_data):
+        # ASTK32 — `quantite_stock` est en lecture seule en modification :
+        # seul le registre des mouvements change le stock (un formulaire
+        # ouvert avant une réception ne l'écrase plus).
+        validated_data.pop('quantite_stock', None)
         return self._ecrire(lambda: super(
             ProduitSerializer, self).update(instance, validated_data))
 
     def validate(self, attrs):
         self._valider_nom_sans_sku(attrs)
+        if (self.instance is None
+                and (attrs.get('quantite_stock') or 0) < 0):
+            raise serializers.ValidationError(
+                {'quantite_stock': 'Le stock initial ne peut pas être '
+                                   'négatif.'})
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # produit contre les définitions du module « produit », même chemin que
         # Lead. À la création on valide toujours (champs obligatoires) ; en
@@ -1108,7 +1157,10 @@ class EmplacementStockSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class TransfertStockSerializer(serializers.ModelSerializer):
+class TransfertStockSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     source_nom = serializers.CharField(source='source.nom', read_only=True)
     destination_nom = serializers.CharField(
@@ -1137,7 +1189,10 @@ class TransfertStockSerializer(serializers.ModelSerializer):
         ]
 
 
-class LigneRetourFournisseurSerializer(serializers.ModelSerializer):
+class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                       serializers.ModelSerializer):
+    # ASTK2 — produit d'une autre société = id absent (400).
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True)
 
@@ -1152,7 +1207,12 @@ class LigneRetourFournisseurSerializer(serializers.ModelSerializer):
         return value
 
 
-class RetourFournisseurSerializer(serializers.ModelSerializer):
+class RetourFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
+    # ASTK2 — fournisseur et BCF d'origine bornés à la société, en création
+    # ET en modification (remplace l'ancien `_validate_company`, création
+    # seule et message propre = oracle d'existence).
+    same_company_fields = ('fournisseur', 'bon_commande')
     lignes = LigneRetourFournisseurSerializer(many=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
@@ -1179,22 +1239,8 @@ class RetourFournisseurSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Au moins une ligne est requise.')
         return value
 
-    def _validate_company(self, fournisseur, lignes_data):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return
-        if fournisseur is not None and fournisseur.company_id != company.id:
-            raise serializers.ValidationError(
-                {'fournisseur': 'Fournisseur hors de votre entreprise.'})
-        for ligne in lignes_data:
-            if ligne['produit'].company_id != company.id:
-                raise serializers.ValidationError(
-                    {'lignes': 'Produit hors de votre entreprise.'})
-
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
-        self._validate_company(validated_data.get('fournisseur'), lignes_data)
         retour = RetourFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             LigneRetourFournisseur.objects.create(retour=retour, **ligne)
@@ -1207,7 +1253,10 @@ class PalierPrixFournisseurSerializer(serializers.ModelSerializer):
         fields = ['id', 'qte_min', 'prix']
 
 
-class PrixFournisseurSerializer(serializers.ModelSerializer):
+class PrixFournisseurSerializer(CompanyScopedRelationsMixin,
+                                serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """N17 — prix d'achat par (produit, fournisseur). INTERNE."""
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
@@ -1268,7 +1317,10 @@ CHAMPS_PRIX_ACHAT_LIGNE_BCF = (
 )
 
 
-class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
+class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
+                                            serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
     # ligne libre/service n'a pas de produit, `produit` peut être None.
     produit_nom = serializers.SerializerMethodField()
@@ -1330,7 +1382,15 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
+class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                       CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
+    # Champs cross-app déclarés pour la garde CI check_fk_scoping
+    # (SameCompanyFKSerializerMixin : borne + filet, même réponse).
+    same_company_fields = (
+        'fournisseur', 'emplacement_destination', 'chantier_livraison')
     lignes = LigneBonCommandeFournisseurSerializer(many=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
@@ -1427,50 +1487,9 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Au moins une ligne est requise.')
         return value
 
-    def validate_fournisseur(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Fournisseur hors de votre entreprise.')
-        return value
-
-    def validate_emplacement_destination(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if value is not None and company is not None \
-                and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Emplacement hors de votre entreprise.')
-        return value
-
-    def validate_chantier_livraison(self, value):
-        # XPUR23 — string-FK cross-app : on lit `company_id` (présent sur
-        # tout modèle installations.Installation) sans importer son modèle.
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if value is not None and company is not None \
-                and getattr(value, 'company_id', None) != company.id:
-            raise serializers.ValidationError(
-                'Chantier hors de votre entreprise.')
-        return value
-
-    def _validate_company_produits(self, lignes_data):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return
-        for ligne in lignes_data:
-            # XPUR16 — une ligne libre/service n'a pas de produit à vérifier.
-            produit = ligne.get('produit')
-            if produit is not None and produit.company_id != company.id:
-                raise serializers.ValidationError(
-                    {'lignes': 'Produit hors de votre entreprise.'})
-
     def create(self, validated_data):
         from .services import apply_devise_ligne_bcf, compute_date_livraison_prevue
         lignes_data = validated_data.pop('lignes')
-        self._validate_company_produits(lignes_data)
         devise = validated_data.get('devise')
         taux = validated_data.get('taux_change')
         # XPUR7 — pré-calcule date_livraison_prevue QUAND elle n'est pas
@@ -1500,7 +1519,6 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             if instance.statut != BonCommandeFournisseur.Statut.BROUILLON:
                 raise serializers.ValidationError(
                     'Les lignes ne sont modifiables qu\'en brouillon.')
-            self._validate_company_produits(lignes_data)
         # ASTK67 — en-tête et lignes dans UNE transaction : si les lignes
         # échouent (ligne protégée → 409, validation → 400), l'en-tête n'est
         # jamais écrit.
@@ -1554,7 +1572,10 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
 
 # ── G5 — Réception fournisseur (goods-in) ────────────────────────────────────
 
-class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
+class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
+                                          serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
     # ligne libre/service n'a pas de produit, `produit` peut être None.
     produit_nom = serializers.SerializerMethodField()
@@ -1595,7 +1616,10 @@ class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
         return value
 
 
-class ReceptionFournisseurSerializer(serializers.ModelSerializer):
+class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
+                                     serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     lignes = LigneReceptionFournisseurSerializer(many=True)
     bon_commande_reference = serializers.CharField(
         source='bon_commande.reference', read_only=True)
@@ -1628,11 +1652,6 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
         return value
 
     def validate_bon_commande(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Bon de commande hors de votre entreprise.')
         if value.statut == BonCommandeFournisseur.Statut.ANNULE:
             raise serializers.ValidationError(
                 'Ce bon de commande est annulé.')
@@ -1707,7 +1726,10 @@ CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
 )
 
 
-class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
+class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
+                                        serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     # produit est optionnel (ligne libre/service, XPUR16) — default=None
     # évite une AttributeError DRF quand produit est vide.
     produit_nom = serializers.CharField(
@@ -1736,7 +1758,10 @@ class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
         return fields
 
 
-class PaiementFournisseurSerializer(serializers.ModelSerializer):
+class PaiementFournisseurSerializer(CompanyScopedRelationsMixin,
+                                    serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     facture_reference = serializers.CharField(
@@ -1763,14 +1788,6 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
     def validate_montant(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('Le montant doit être positif.')
-        return value
-
-    def validate_facture(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Facture hors de votre entreprise.')
         return value
 
     def validate(self, attrs):
@@ -1813,7 +1830,10 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class EcheanceFactureFournisseurSerializer(serializers.ModelSerializer):
+class EcheanceFactureFournisseurSerializer(CompanyScopedRelationsMixin,
+                                           serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     class Meta:
         model = EcheanceFactureFournisseur
         fields = ['id', 'facture', 'pourcentage', 'montant', 'date_echeance',
@@ -1821,7 +1841,14 @@ class EcheanceFactureFournisseurSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
-class FactureFournisseurSerializer(serializers.ModelSerializer):
+class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                   CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
+    # Champs cross-app déclarés pour la garde CI check_fk_scoping
+    # (SameCompanyFKSerializerMixin : borne + filet, même réponse).
+    same_company_fields = ('fournisseur',)
     lignes = LigneFactureFournisseurSerializer(many=True, required=False)
     paiements = PaiementFournisseurSerializer(many=True, read_only=True)
     echeances = EcheanceFactureFournisseurSerializer(many=True, read_only=True)
@@ -1905,24 +1932,6 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
     def get_sous_totaux_par_taux(self, obj):
         from .selectors import sous_totaux_tva_facture_fournisseur
         return sous_totaux_tva_facture_fournisseur(obj)
-
-    def validate_fournisseur(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Fournisseur hors de votre entreprise.')
-        return value
-
-    def validate_bon_commande(self, value):
-        if value is None:
-            return value
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Bon de commande hors de votre entreprise.')
-        return value
 
     # DC16 — une facture rattachée à un bon de commande doit être créée via
     # « facturer une réception » (FG56) pour que ses montants soient DÉRIVÉS de
@@ -2042,7 +2051,10 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
 
 # ── FG63 — Session d'inventaire ───────────────────────────────────────────────
 
-class LigneInventaireSerializer(serializers.ModelSerializer):
+class LigneInventaireSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
+    # ASTK1 — un id de produit d'une autre société = id absent (400).
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     ecart = serializers.IntegerField(read_only=True)
 
@@ -2134,7 +2146,10 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
 
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
-class KitComposantSerializer(serializers.ModelSerializer):
+class KitComposantSerializer(CompanyScopedRelationsMixin,
+                             serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     produit_sku = serializers.CharField(
@@ -2170,7 +2185,10 @@ class KitComposantSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class KitProduitSerializer(serializers.ModelSerializer):
+class KitProduitSerializer(CompanyScopedRelationsMixin,
+                           serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     composants = KitComposantSerializer(many=True)
     nb_composants = serializers.SerializerMethodField()
     # ZMFG9 — disponibilité multi-niveaux (kits assemblables + goulots),
@@ -2222,21 +2240,6 @@ class KitProduitSerializer(serializers.ModelSerializer):
             ],
         }
 
-    def _validate_company(self, composants_data):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return
-        for c in composants_data:
-            if c.get('produit') is not None \
-                    and c['produit'].company_id != company.id:
-                raise serializers.ValidationError(
-                    {'composants': 'Produit hors de votre entreprise.'})
-            if c.get('composant_kit') is not None \
-                    and c['composant_kit'].company_id != company.id:
-                raise serializers.ValidationError(
-                    {'composants': 'Sous-kit hors de votre entreprise.'})
-
     def _validate_no_direct_self_reference(self, kit_id, composants_data):
         # XMFG17 — un kit ne peut pas se déclarer lui-même comme sous-kit
         # (garde immédiate ; les cycles indirects plus profonds sont
@@ -2261,7 +2264,6 @@ class KitProduitSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         composants_data = validated_data.pop('composants', [])
-        self._validate_company(composants_data)
         kit = KitProduit.objects.create(**validated_data)
         self._validate_no_direct_self_reference(kit.id, composants_data)
         for c in composants_data:
@@ -2272,7 +2274,6 @@ class KitProduitSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         composants_data = validated_data.pop('composants', None)
         if composants_data is not None:
-            self._validate_company(composants_data)
             self._validate_no_direct_self_reference(
                 instance.id, composants_data)
         for attr, val in validated_data.items():
@@ -2319,7 +2320,10 @@ class RevisionKitSerializer(serializers.ModelSerializer):
 
 # ── XPUR1 — conformité fournisseur & paramètres achats ──────────────────────
 
-class DocumentConformiteFournisseurSerializer(serializers.ModelSerializer):
+class DocumentConformiteFournisseurSerializer(CompanyScopedRelationsMixin,
+                                              serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     type_document_display = serializers.CharField(
         source='get_type_document_display', read_only=True)
     fournisseur_nom = serializers.CharField(
@@ -2340,14 +2344,6 @@ class DocumentConformiteFournisseurSerializer(serializers.ModelSerializer):
 
     def get_est_valide(self, obj):
         return obj.est_valide()
-
-    def validate_fournisseur(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Fournisseur hors de votre entreprise.')
-        return value
 
 
 class AchatsParametresSerializer(serializers.ModelSerializer):
@@ -2376,7 +2372,10 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation', 'date_modification']
 
 
-class ToleranceRapprochementCategorieSerializer(serializers.ModelSerializer):
+class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
+                                                serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """NTP2P9 — grille éditable Paramètres → Achats (override par catégorie
     des tolérances 3 voies XPUR10)."""
     categorie_nom = serializers.CharField(
@@ -2398,7 +2397,14 @@ class ToleranceRapprochementCategorieSerializer(serializers.ModelSerializer):
 
 # ── XPUR8 — acomptes fournisseur ─────────────────────────────────────────────
 
-class AcompteFournisseurSerializer(serializers.ModelSerializer):
+class AcompteFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                   CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
+    # Champs cross-app déclarés pour la garde CI check_fk_scoping
+    # (SameCompanyFKSerializerMixin : borne + filet, même réponse).
+    same_company_fields = ('bon_commande',)
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     bon_commande_reference = serializers.CharField(
@@ -2433,18 +2439,13 @@ class AcompteFournisseurSerializer(serializers.ModelSerializer):
                 "n'est plus modifiable.")
         return value
 
-    def validate_bon_commande(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Bon de commande hors de votre entreprise.')
-        return value
-
 
 # ── XPUR9 — avoir fournisseur (note de crédit AP) ────────────────────────────
 
-class ImputationAvoirFournisseurSerializer(serializers.ModelSerializer):
+class ImputationAvoirFournisseurSerializer(CompanyScopedRelationsMixin,
+                                           serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
 
@@ -2455,7 +2456,10 @@ class ImputationAvoirFournisseurSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
-class AvoirFournisseurSerializer(serializers.ModelSerializer):
+class AvoirFournisseurSerializer(CompanyScopedRelationsMixin,
+                                 serializers.ModelSerializer):
+    # ASTK4 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     retour_reference = serializers.CharField(
@@ -2478,18 +2482,12 @@ class AvoirFournisseurSerializer(serializers.ModelSerializer):
         ]
         # company + reference + montant_impute + statut posés côté serveur
         # (l'imputation avance le statut, jamais une écriture libre).
+        # ASTK24 — `statut` n'est plus inscriptible : un avoir naît en
+        # brouillon et n'avance que par `valider/` et `imputer/`.
         read_only_fields = [
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
-            'montant_impute',
+            'montant_impute', 'statut',
         ]
-
-    def validate_fournisseur(self, value):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                'Fournisseur hors de votre entreprise.')
-        return value
 
 
 class LotEntrepotSerializer(serializers.ModelSerializer):
@@ -2526,10 +2524,18 @@ class InventaireAnnuelSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RevalorisationStockSerializer(serializers.ModelSerializer):
+class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
     """XSTK14 — revalorisation manuelle du stock (document tracé). Créée en
     BROUILLON via `produit`/`nouveau_cout`/`motif` ; verrouillée après
-    validation (`valider/`)."""
+    validation (`valider/`).
+
+    ASTK1 — `produit` est borné à la société de la requête et, une fois le
+    document créé (par `services.creer_revalorisation`, qui a figé le
+    snapshot ancien coût/quantité/delta), `produit` et `nouveau_cout` ne se
+    modifient plus : seul le motif reste éditable sur un brouillon."""
+    same_company_fields = ('produit',)
+    CHAMPS_FIGES_APRES_CREATION = ('produit', 'nouveau_cout')
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
 
     class Meta:
@@ -2545,8 +2551,24 @@ class RevalorisationStockSerializer(serializers.ModelSerializer):
             'date_validation',
         ]
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            erreurs = {
+                champ: ['Champ en lecture seule après la création.']
+                for champ in self.CHAMPS_FIGES_APRES_CREATION
+                if champ in attrs
+                and attrs[champ] != getattr(self.instance, champ)
+            }
+            if erreurs:
+                raise serializers.ValidationError(erreurs)
+        return attrs
 
-class ConditionnementProduitSerializer(serializers.ModelSerializer):
+
+class ConditionnementProduitSerializer(CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """XSTK15 — conditionnement d'achat d'un produit (Touret/Carton…),
     convertit vers `Produit.unite_stock` via `facteur`."""
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -2568,8 +2590,11 @@ class ConditionnementProduitSerializer(serializers.ModelSerializer):
         return value
 
 
-class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
+class ModeleBonCommandeFournisseurLigneSerializer(
+        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
+    # ASTK2 — produit d'une autre société = id absent (400).
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True)
 
@@ -2578,8 +2603,11 @@ class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite']
 
 
-class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
+class ModeleBonCommandeFournisseurSerializer(
+        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZPUR3 — modèle de BCF réutilisable (purchase template)."""
+    # ASTK2 — fournisseur d'une autre société = id absent (400).
+    same_company_fields = ('fournisseur',)
     lignes = ModeleBonCommandeFournisseurLigneSerializer(many=True, required=False)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
@@ -2612,7 +2640,10 @@ class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         return instance
 
 
-class RegleCodeBarresSerializer(serializers.ModelSerializer):
+class RegleCodeBarresSerializer(CompanyScopedRelationsMixin,
+                                serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """ZSTK12 — règle d'une nomenclature de code-barres."""
 
     class Meta:
@@ -2622,7 +2653,10 @@ class RegleCodeBarresSerializer(serializers.ModelSerializer):
         ]
 
 
-class NomenclatureCodeBarresSerializer(serializers.ModelSerializer):
+class NomenclatureCodeBarresSerializer(CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """ZSTK12 — nomenclature de code-barres (Default/GS1) + ses règles."""
     regles = RegleCodeBarresSerializer(many=True, read_only=True)
 

@@ -45,9 +45,11 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 from .qualite_reception import ControleReceptionActionsMixin  # noqa: E402
 from .catch_weight import PeseeLigneActionsMixin  # noqa: E402
+from .document_fige import DocumentFigeMixin  # noqa: E402
 
 
-class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
+class ReceptionFournisseurViewSet(DocumentFigeMixin,
+                                  ControleReceptionActionsMixin,
                                   PeseeLigneActionsMixin,
                                   CompanyScopedModelViewSet):
     """G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
@@ -60,6 +62,13 @@ class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
         'bon_commande', 'bon_commande__fournisseur', 'recu_par', 'created_by',
     ).prefetch_related('lignes__produit').all()
     serializer_class = ReceptionFournisseurSerializer
+    # ASTK25 — confirmée (stock entré, BCF avancé) ou annulée : figée.
+    messages_document_fige = {
+        ReceptionFournisseur.Statut.CONFIRME:
+            'Réception confirmée : non modifiable.',
+        ReceptionFournisseur.Statut.ANNULE:
+            'Réception annulée : non modifiable.',
+    }
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'reference', 'bon_commande__reference',

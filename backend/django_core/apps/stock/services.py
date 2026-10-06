@@ -556,12 +556,16 @@ def average_cost_with_source(produit):
     antérieures sont supplantées par la revalorisation (comportement
     historique inchangé quand aucune revalorisation n'existe)."""
     from .models import LigneBonCommandeFournisseur, RevalorisationStock
+    # ASTK1 — seuls les documents de la SOCIÉTÉ du produit comptent : une
+    # revalorisation ou une ligne BCF d'une autre société pointant (à tort)
+    # ce produit ne déplace jamais son coût.
     revalo = (RevalorisationStock.objects
-              .filter(produit=produit,
+              .filter(produit=produit, company_id=produit.company_id,
                       statut=RevalorisationStock.Statut.VALIDEE)
               .order_by('-date_validation', '-id').first())
     lignes_qs = LigneBonCommandeFournisseur.objects.filter(
-        produit=produit, quantite_recue__gt=0)
+        produit=produit, bon_commande__company_id=produit.company_id,
+        quantite_recue__gt=0)
     if revalo is not None and revalo.date_validation is not None:
         # AUD210 — postériorité mesurée sur l'ENTRÉE EN STOCK réelle.
         lignes_qs = _annoter_date_entree_stock(lignes_qs).filter(
@@ -3778,11 +3782,15 @@ def valider_inventaire_session(session, user):
             # constaté à la quantité LIVE verrouillée, ce qui les préserve.
             # ASTK38 — même helper que le comptage cyclique (verrou produit
             # + delta sur le stock live).
-            appliquer_ecart_inventaire(
+            mvt = appliquer_ecart_inventaire(
                 company=session.company, produit_id=ligne.produit_id,
                 ecart=ecart, reference=session.reference,
                 note=f'Inventaire {session.reference} — écart {ecart:+d}',
                 user=user)
+            if mvt is None:
+                # ASTK1 — produit hors de la société de la session : refus
+                # (400), jamais un écart appliqué ailleurs ni ignoré en silence.
+                raise ValueError(f'Produit introuvable (ligne {ligne.pk}).')
             ajustes += 1
 
         verrou.statut = InventaireSession.Statut.VALIDE

@@ -56,6 +56,17 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
             )
         create_with_reference(AvoirFournisseur, 'AVF', company, _save)
 
+    def update(self, request, *args, **kwargs):
+        """ASTK24 — seul un avoir BROUILLON se modifie : validé ou imputé,
+        ses montants et son fournisseur sont figés (les imputations portent
+        déjà sur ces montants)."""
+        avoir = self.get_object()
+        if avoir.statut != AvoirFournisseur.Statut.BROUILLON:
+            return Response(
+                {'detail': 'Avoir validé : non modifiable.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
     def perform_destroy(self, instance):
         """ASTK85 — un avoir portant au moins une imputation sur une
         facture n'est jamais supprimable (la CASCADE effaçait l'imputation et
