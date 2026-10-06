@@ -19,7 +19,7 @@ import {
   MessageCircleQuestion,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
-import { fetchAllPages } from '../../utils/fetchAllPages'
+import { rows, toutesLesPages, errText } from './listesGed'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import { PageHeader } from '../../ui/PageHeader'
 import { formatDate } from '../../lib/format'
@@ -56,31 +56,6 @@ const GED_DOC_COLUMNS = [
 const LIFECYCLE_LABELS = {
   brouillon: 'Brouillon', revue: 'En revue', approuve: 'Approuvé',
   archive: 'Archivé', obsolete: 'Obsolète',
-}
-
-// Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
-// tableau brut, comme partout dans le frontend.
-const rows = (r) => r?.data?.results ?? r?.data ?? []
-
-// ADOC30 — une liste GED paginée se lit EN ENTIER (StandardPagination : 50
-// par défaut, 200 max) : jamais la seule première page.
-const toutesLesPages = async (appel, params) => {
-  const res = await fetchAllPages(
-    (page) => appel({ ...params, page, page_size: 200 }).then((r) => r?.data))
-  return Array.isArray(res) ? res : (res?.results ?? [])
-}
-
-// Message d'erreur lisible à partir d'une réponse axios (premier champ d'erreur
-// DRF, ou message générique). Évite d'afficher un objet brut dans un toast.
-const errText = (e, fallback) => {
-  const d = e?.response?.data
-  if (typeof d === 'string') return d
-  if (d && typeof d === 'object') {
-    const first = d.detail ?? Object.values(d)[0]
-    if (Array.isArray(first)) return String(first[0])
-    if (first) return String(first)
-  }
-  return fallback
 }
 
 export default function GedNavigator() {
