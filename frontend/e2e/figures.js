@@ -19,6 +19,7 @@ const KWH = 1
 const KWC = 0.01
 const ANS = 0.05
 const FIN = 0.1
+const LCOE = 0.0001
 
 // clé → { tolerance, absolu } — miroir de FIGURE_KEYS (figures.py).
 export const FIGURE_KEYS = {
@@ -43,6 +44,10 @@ export const FIGURE_KEYS = {
   reduction_facture_pct: { tolerance: POINT },
   couverture_pct: { tolerance: POINT },
   autoconsommation_pct: { tolerance: POINT },
+  // CIQ342/CIQ343 — rentabilité C&I (synthese_ci.argent), miroir de figures.py.
+  tri_pct: { tolerance: FIN },
+  cumul_net_25_ans_mad: { tolerance: ARGENT },
+  lcoe_mad_kwh: { tolerance: LCOE },
   pompe_hmt_m: { tolerance: FIN },
   pompe_debit_m3h: { tolerance: FIN },
   pompe_volume_m3_jour: { tolerance: POINT },

@@ -29,6 +29,9 @@ function serveur() {
   let accepte = false
   portailApi.devis.liste.mockImplementation(() => {
     const r = reponseContrat('portail', 'mes_devis_liste', 'exemple_deux_options')
+    // Le choix de l'option est testé SEUL : l'identité d'entreprise (CIQ322)
+    // que la ligne du contrat exige aussi a son propre fichier de test.
+    r.data.results[0] = { ...r.data.results[0], exige_identite_entreprise: false }
     if (accepte) {
       r.data.results[0] = { ...r.data.results[0], accepte: true, statut: 'accepte', statut_display: 'Accepté' }
     }
@@ -77,7 +80,7 @@ describe('PortailClientDevis — ADOC114 choix de l’option', () => {
     // valeurs mono-option de la seconde ligne du même contrat (false / null).
     const r = reponseContrat('portail', 'mes_devis_liste')
     const mono = r.data.results[1]
-    r.data.results = [{ ...r.data.results[0], deux_options: mono.deux_options, options: mono.options }]
+    r.data.results = [{ ...r.data.results[0], deux_options: mono.deux_options, options: mono.options, exige_identite_entreprise: false }]
     portailApi.devis.liste.mockResolvedValue(r)
     renderPage()
     await screen.findByText('DEV-202609-0012')

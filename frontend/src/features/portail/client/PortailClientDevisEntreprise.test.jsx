@@ -34,7 +34,10 @@ function renderPage() {
 function listeAvec(exige) {
   const liste = exempleContrat('portail', 'mes_devis_liste')
   const [envoye] = liste.results
-  return { data: { results: [{ ...envoye, exige_identite_entreprise: exige }] } }
+  // La ligne du contrat porte aussi `deux_options: true` (ADOC110) ; ce fichier
+  // teste l'identité d'entreprise SEULE : un devis mono-option (le choix de
+  // l'option a son propre test, PortailClientDevisOptions.test.jsx).
+  return { data: { results: [{ ...envoye, deux_options: false, options: null, exige_identite_entreprise: exige }] } }
 }
 
 async function ouvrirDialogue(reference) {
@@ -51,8 +54,10 @@ function signer() {
 describe('PortailClientDevis — CIQ322 identité d’entreprise', () => {
   it('devis industriel : trois champs requis, corps `entreprise` envoyé', async () => {
     const contrat = reponseContrat('portail', 'mes_devis_liste')
+    expect(contrat.data.results[0].exige_identite_entreprise).toBe(true)
+    // Mono-option : l'option a son propre test (ADOC114).
+    contrat.data.results[0] = { ...contrat.data.results[0], deux_options: false, options: null }
     const [envoye] = contrat.data.results
-    expect(envoye.exige_identite_entreprise).toBe(true)
     portailApi.devis.liste.mockResolvedValue(contrat)
     portailApi.devis.accepter.mockResolvedValue({ data: REPONSE.exemple })
     renderPage()
