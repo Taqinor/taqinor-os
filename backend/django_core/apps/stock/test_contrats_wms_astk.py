@@ -827,3 +827,150 @@ class ContratNegoceTests(WmsBase):
             '/api/django/public/stock/tiers/jeton-invalide/solde/')
         self.assertEqual(rep.status_code, 404)
         self.assertEqual(rep.json(), solde['exemple_erreur_404'])
+
+
+class ContratFournisseurJetonsTests(WmsBase):
+    """ASTK167 — fournisseur_portail_jetons.json."""
+
+    BASE = '/api/django/stock/'
+
+    def setUp(self):
+        from apps.stock.models import (
+            BonCommandeFournisseur, FactureFournisseur, Fournisseur,
+            PortailFournisseurToken, ReceptionFournisseur,
+        )
+
+        super().setUp()
+        self.fournisseur = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur ASTK',
+            email='contact@astk-fournisseur.ma')
+        self.autre = Fournisseur.objects.create(
+            company=self.company, nom='Autre fournisseur ASTK')
+        self.jeton = PortailFournisseurToken.objects.create(
+            company=self.company, fournisseur=self.fournisseur)
+        self.bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ASTK-1',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
+            date_livraison_prevue=datetime.date(2026, 10, 20),
+            created_by=self.admin)
+        self.bcf.lignes.create(
+            produit=self.produit, quantite=2,
+            prix_achat_unitaire=Decimal('1'))
+        self.bcf_autre = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ASTK-2',
+            fournisseur=self.autre,
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
+            created_by=self.admin)
+        ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-ASTK-1',
+            bon_commande=self.bcf, date_reception=datetime.date(2026, 10, 12))
+        FactureFournisseur.objects.create(
+            company=self.company, reference='FF-ASTK-1',
+            fournisseur=self.fournisseur, montant_ttc=Decimal('0'))
+        self.anonyme = APIClient()
+
+    def _public(self, suffixe='', token=None):
+        return ('/api/django/public/stock/portail-fournisseur/'
+                f'{token or self.jeton.token}/{suffixe}')
+
+    def test_jetons_liste_creation_et_revocation(self):
+        liste = route('fournisseur_portail_jetons', 'portail_tokens_liste')
+        url = f'{self.BASE}fournisseurs/{self.fournisseur.id}/portail-tokens/'
+        rep = self.api.get(url)
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertIsInstance(corps, list)
+        self.assertTrue(corps)
+        self.assertMemesCles(corps[0], liste['exemple']['jetons'][0], 'jeton')
+        self.assertMemesCles(corps[0], liste['exemple_element'], 'élément')
+
+        rep = self.api.post(url)
+        self.assertEqual(rep.status_code, 201, rep.content)
+        nouveau = rep.json()
+        self.assertMemesCles(nouveau, liste['exemple_element'], 'POST')
+
+        revoquer = route('fournisseur_portail_jetons',
+                         'portail_token_revoquer')
+        rep = self.api.post(f'{url}{nouveau["id"]}/revoquer/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), revoquer['exemple'], 'révoqué')
+        self.assertTrue(rep.json()['revoked'])
+        rep = self.api.post(f'{url}999999/revoquer/')
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), revoquer['exemple_erreur_404'])
+
+    def test_provisionner_et_revoquer_acces(self):
+        prov = route('fournisseur_portail_jetons',
+                     'fournisseur_provisionner_acces')
+        rev = route('fournisseur_portail_jetons',
+                    'fournisseur_revoquer_acces')
+        base = f'{self.BASE}fournisseurs/{self.fournisseur.id}/'
+
+        rep = self.api.post(f'{base}revoquer-acces/')
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), rev['exemple_erreur_404'])
+
+        rep = self.api.post(f'{base}provisionner-acces/')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), prov['exemple'], 'provisionnement')
+        self.assertTrue(rep.json()['cree'])
+        self.assertNotIn('mot_de_passe', rep.json())
+        rep = self.api.post(f'{base}provisionner-acces/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertFalse(rep.json()['cree'])
+
+        rep = self.api.post(f'{base}revoquer-acces/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), rev['exemple'], 'révocation')
+        # `jetons_revoques` (ASTK179) : sur-ensemble déclaré, pas encore servi.
+        self.assertEqual(
+            set(rev['exemple_nouveau_astk179']) - set(rev['exemple']),
+            set(rev['cles_nouvelles_astk179']))
+
+    def test_page_publique_a_jeton(self):
+        contrat = route('fournisseur_portail_jetons',
+                        'public_portail_fournisseur')
+        rep = self.anonyme.get(self._public())
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertIn('noindex', rep['X-Robots-Tag'])
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'page')
+        modele = contrat['exemple']
+        self.assertTrue(corps['bons_commande'])
+        self.assertMemesCles(corps['bons_commande'][0],
+                             modele['bons_commande'][0], 'BCF')
+        self.assertMemesCles(corps['bons_commande'][0]['lignes'][0],
+                             modele['bons_commande'][0]['lignes'][0],
+                             'ligne BCF')
+        self.assertTrue(corps['receptions'])
+        self.assertMemesCles(corps['receptions'][0], modele['receptions'][0],
+                             'réception')
+        self.assertTrue(corps['factures'])
+        self.assertMemesCles(corps['factures'][0], modele['factures'][0],
+                             'facture')
+        for cle in ('prix_vente', 'marge', 'note', 'note_interne',
+                    'prix_achat'):
+            self.assertNotIn(cle, corps['bons_commande'][0])
+            self.assertNotIn(cle, corps['bons_commande'][0]['lignes'][0])
+        rep = self.anonyme.get(self._public(token='jeton-invalide'))
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_404'])
+
+    def test_confirmer_bcf_public(self):
+        contrat = route('fournisseur_portail_jetons',
+                        'public_portail_confirmer_bcf')
+        url = self._public(f'bcf/{self.bcf.id}/confirmer/')
+        rep = self.anonyme.post(url, {}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+        rep = self.anonyme.post(url, contrat['exemple_corps'], format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'confirmation')
+        rep = self.anonyme.post(
+            self._public(f'bcf/{self.bcf_autre.id}/confirmer/'),
+            contrat['exemple_corps'], format='json')
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_404'])
+        for cle in ('nouveau_astk180', 'nouveau_astk181'):
+            self.assertIn('NOUVEAU', contrat[cle]['nouveau'])
