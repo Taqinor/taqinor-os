@@ -7,61 +7,23 @@
    document vient de l'`exemple` du contrat `roof_layout_v2.schema.json` (lu dans le dépôt).
    ========================================================================== */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { deplacerEpingleALaMain, hydrateFromDevis, oublierEpingleDeplacee } from './prefill';
-import { appliquerHydratationAuCtx, serialiserDocumentAtelier } from './hydratation';
-import { creerCoucheElectrique } from './electrique3d';
-import { uniformSetbacks } from '../../lib/roofPro2';
-import { emptyCurve } from '../../lib/applianceConsumption';
 import { reinitialiserNumerotation } from './numerotation';
 import { type Ctx } from './context';
-import { racineDepot } from './harnaisAtelier';
+import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';
 
-const EXEMPLE = (JSON.parse(readFileSync(join(
-  racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples', 'roof_layout_v2.schema.json',
-), 'utf8')) as { exemple: Record<string, unknown> }).exemple;
-
-/** L'état vivant d'un atelier qui vient de démarrer (défauts de roof-tool-pro11.ts). */
-function ctxNeuf(): Record<string, unknown> {
-  return {
-    areas: [], activeAreaId: '', vertices: [], obstacles: [], roofType: 'flat', pitchDeg: 22,
-    facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null,
-    layoutOptimalCount: 0, shadeObstructions: [], environment: [], exclusionZones: [], measurements: [],
-    setbacks: uniformSetbacks(), shadeFactors: null, shadeAnnualFactor: 1, prodPerKwc: null,
-    sunDay: 355, sunHour: 12, consCurve: emptyCurve(), consHandEdited: false, consAppliances: [],
-    consDailyTarget: 0, consSeasonal: false, consSummerFactor: 1.3, consWinterFactor: 0.9,
-    sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
-    pinned: new Set(), useRecommended: true, rec: null,
-  };
-}
+const EXEMPLE = exempleRoofLayoutV2();
 
 /** Boot (payload de la page) → hydratation : la scène prête, rien n'est encore enregistré. */
 function ouvrir(document: Record<string, unknown>): Ctx {
-  const h = hydrateFromDevis({ id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(document)) }, cibleVendue: false });
-  const ctx = ctxNeuf();
-  const zones = h.zones!;
-  const actif = zones.find((z) => z.id === h.activeAreaId) ?? zones[0];
-  Object.assign(ctx, {
-    areas: zones, activeAreaId: actif.id, vertices: actif.vertices, obstacles: actif.obstacles,
-    roofType: actif.roofType, pitchDeg: actif.pitchDeg, facingAzimuthDeg: actif.facingAzimuthDeg,
-    facingManual: actif.facingManual ?? false, neededPanels: actif.neededPanels, neededAuto: actif.neededAuto,
-  });
-  const c = ctx as unknown as Ctx;
-  appliquerHydratationAuCtx(c, h);
-  return c;
+  return ouvrirAtelier({
+    id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(document)) }, cibleVendue: false,
+  }).c;
 }
 
-/** « Enregistrer » : le sérialiseur câblé du wrapper. */
+/** « Enregistrer » : le sérialiseur câblé du wrapper (harnais ACAL345). */
 function enregistrer(c: Ctx): Record<string, unknown> {
-  return serialiserDocumentAtelier(c, null, {
-    devisOrigin: null,
-    solarAccess: null,
-    setbacks: c.setbacks!,
-    horizonProfile: c.horizonProfile as never,
-    modules: null,
-    coucheElectrique: creerCoucheElectrique(c),
-  }) as unknown as Record<string, unknown>;
+  return enregistrerAtelier(c) as unknown as Record<string, unknown>;
 }
 
 beforeEach(() => reinitialiserNumerotation());
