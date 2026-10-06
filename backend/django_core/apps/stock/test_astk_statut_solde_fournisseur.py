@@ -147,3 +147,36 @@ class StatutSoldeTests(_Base):
         self.assertEqual(Decimal(resp.data['total_du']), Decimal('600.00'))
         intacte = FactureFournisseur.objects.get(pk=intacte.pk)
         self.assertEqual(intacte.statut, FactureFournisseur.Statut.A_PAYER)
+
+
+class PortailMontantTests(_Base):
+    """ASTK103 — accueil du portail fournisseur = somme des soldes."""
+    slug = 'astk103'
+
+    def test_montant_a_payer_egal_somme_soldes(self):
+        from apps.stock.selectors import resume_portail_fournisseur
+        # Facture TTC 10 000 réglée 9 000 (paiement réel via l'API).
+        reglee = self._facture_simple(Decimal('10000'))
+        resp = self.api.post(
+            f'/api/django/stock/factures-fournisseur/{reglee.id}/paiements/',
+            {'montant': '9000', 'date_paiement': '2026-10-02'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        # Facture soldée par acompte (acompte = TTC 1 200).
+        bcf, rec = self._bcf_recu(quantite=1, pu=Decimal('1000'))
+        AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=bcf, montant=Decimal('1200'))
+        par_acompte = facturer_reception(self.company, self.user, rec)
+        par_acompte = FactureFournisseur.objects.get(pk=par_acompte.pk)
+        self.assertEqual(par_acompte.solde_du, Decimal('0.00'))
+
+        resume = resume_portail_fournisseur(
+            self.company, self.fournisseur.id)
+        self.assertEqual(resume['montant_a_payer'], '1000.00')
+        self.assertEqual(resume['factures_a_payer'], 1)
+        # Égal au total des soldes des factures de ce fournisseur.
+        total_soldes = sum(
+            (f.solde_du for f in FactureFournisseur.objects.filter(
+                company=self.company, fournisseur=self.fournisseur)),
+            Decimal('0'))
+        self.assertEqual(Decimal(resume['montant_a_payer']), total_soldes)

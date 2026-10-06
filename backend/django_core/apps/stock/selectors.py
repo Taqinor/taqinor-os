@@ -1434,11 +1434,17 @@ def resume_portail_fournisseur(company, fournisseur_id):
     bcf = (BonCommandeFournisseur.objects
            .filter(company=company, fournisseur=fournisseur)
            .exclude(statut=BonCommandeFournisseur.Statut.ANNULE))
-    factures = FactureFournisseur.objects.filter(
-        company=company, fournisseur=fournisseur).exclude(
-        statut=FactureFournisseur.Statut.PAYEE)
-    montant = sum((f.montant_ttc or Decimal('0') for f in factures),
-                  Decimal('0'))
+    # ASTK103 — reste à payer = Σ `solde_du` (TTC − paiements − acomptes −
+    # avoirs imputés) des factures à solde > 0 : la même règle que la liste
+    # « Mes factures » du portail, jamais Σ TTC (une facture réglée 9 000
+    # sur 10 000 compte 1 000 ; une facture soldée par acompte, 0).
+    soldes = [
+        f.solde_du for f in FactureFournisseur.objects.filter(
+            company=company, fournisseur=fournisseur).prefetch_related(
+            'paiements', 'acomptes_imputes', 'avoirs_imputes')
+    ]
+    soldes = [s for s in soldes if s > Decimal('0')]
+    montant = sum(soldes, Decimal('0')).quantize(Decimal('0.01'))
 
     return {
         'fournisseur_nom': fournisseur.nom,
@@ -1459,7 +1465,7 @@ def resume_portail_fournisseur(company, fournisseur_id):
                                 .filter(company=company,
                                         bon_commande__fournisseur=fournisseur)
                                 .count()),
-        'factures_a_payer': factures.count(),
+        'factures_a_payer': len(soldes),
         'montant_a_payer': str(montant),
     }
 
