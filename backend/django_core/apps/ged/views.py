@@ -3339,6 +3339,10 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
     ordering_fields = ['created_at', 'score_confiance']
 
     def get_permissions(self):
+        # ADOC9 — valider une extraction écrit les métadonnées du document :
+        # palier ged_gerer (la lecture de la file reste ouverte).
+        if self.action == 'valider':
+            return [HasPermissionOrLegacy(GED_GERER)()]
         return [IsAnyRole()]
 
     def get_queryset(self):
@@ -3361,8 +3365,15 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
         champs = request.data.get('champs_corriges')
         if champs is None:
             champs = validation.champs_extraits
-        resultat = services.valider_extraction_ocr(
-            validation, champs_corriges=champs, user=request.user)
+        if not isinstance(champs, dict):
+            return Response({'champs_corriges': 'Format invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = services.valider_extraction_ocr(
+                validation, champs_corriges=champs, user=request.user)
+        except ArchivageLegalError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         return Response(
             ValidationOcrDocumentSerializer(
                 resultat, context={'request': request}).data)

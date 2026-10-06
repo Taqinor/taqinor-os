@@ -358,10 +358,26 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     applique `champs_corriges` à `document.custom_data` (additif, jamais
     d'écrasement d'une clé non listée) puis solde la validation."""
     document = validation.document
-    data = dict(document.custom_data or {})
-    data.update(champs_corriges or {})
-    Document.objects.filter(pk=document.pk).update(custom_data=data)
+    # ADOC9 — jamais sur un document archivé légalement (write-once).
+    assert_not_archive_legalement(document)
+    corrections = {
+        k: v for k, v in (champs_corriges or {}).items()
+        if k not in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)}
+    existant = dict(document.custom_data or {})
+    data = dict(existant)
+    data.update(corrections)
+    # ADOC9 — les champs DÉFINIS (customfields) sont validés/typés ; les clés
+    # système (source_type, source_id) gardent leur valeur d'origine.
+    from apps.customfields.serializers import validate_custom_data
+    systeme = {k: existant[k] for k in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)
+               if k in existant}
+    hors_systeme = {k: v for k, v in data.items() if k not in systeme}
+    data.update(validate_custom_data('document', document.company,
+                                     hors_systeme))
+    data.update(systeme)
+    # Écriture par Document.save (gardes d'archivage), jamais un update().
     document.custom_data = data
+    document.save(update_fields=['custom_data', 'updated_at'])
     from django.utils import timezone as _tz
     validation.valide = True
     validation.champs_extraits = champs_corriges or validation.champs_extraits
