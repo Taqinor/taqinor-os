@@ -15,6 +15,17 @@ const fmtDate = (iso) => {
 }
 const fmtDateTime = (iso) => formatDateTime(iso)
 
+// AGR616 — unité réelle d'un relevé (index CUMULATIF du compteur).
+const UNITE_RELEVE = { heures: 'h', kwh: 'kWh', m3: 'm³' }
+
+// Date du relevé PRÉCÉDENT du même type (la liste serveur est triée du plus
+// récent au plus ancien) — pour « depuis le relevé du … ».
+const datePrecedente = (releves, index) => {
+  const type = releves[index].type
+  const precedent = releves.slice(index + 1).find((r) => r.type === type)
+  return precedent ? fmtDate(precedent.date) : null
+}
+
 /**
  * XSAV15/XSAV16/XSAV17 — Fiabilité (MTBF/MTTR/coût cumulé), disponibilité %,
  * journal d'immobilisation (downtime) et relevés compteur (heures/kWh) d'UN
@@ -35,6 +46,9 @@ export default function EquipementFiabilitePanel({ equipementId }) {
 
   const [releveForm, setReleveForm] = useState({ type: 'heures', valeur: '' })
   const [releveBusy, setReleveBusy] = useState(false)
+  // AGR616 — le 400 serveur (« le compteur ne peut pas reculer ») s'affiche
+  // sous le champ de saisie, pas dans un toast qui disparaît.
+  const [releveErreur, setReleveErreur] = useState(null)
   const [downtimeBusy, setDowntimeBusy] = useState(false)
 
   const load = () => Promise.all([
@@ -83,6 +97,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
   const addReleve = async () => {
     if (!releveForm.valeur) return
     setReleveBusy(true)
+    setReleveErreur(null)
     try {
       const r = await savApi.addEquipementReleve(equipementId, releveForm)
       setReleveForm({ type: releveForm.type, valeur: '' })
@@ -93,7 +108,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
       }
       charger()
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Relevé invalide.')
+      setReleveErreur(err?.response?.data?.detail ?? 'Relevé invalide.')
     } finally { setReleveBusy(false) }
   }
 
@@ -189,6 +204,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
             <SelectContent>
               <SelectItem value="heures">Heures</SelectItem>
               <SelectItem value="kwh">kWh</SelectItem>
+              <SelectItem value="m3">m³ (compteur d’eau)</SelectItem>
             </SelectContent>
           </Select>
           <Input type="number" step="any" placeholder="Valeur" className="w-32"
@@ -198,11 +214,22 @@ export default function EquipementFiabilitePanel({ equipementId }) {
             <Plus /> Enregistrer
           </Button>
         </div>
+        {releveErreur && (
+          <p className="form-error text-xs" role="alert" data-testid="releve-erreur">
+            {releveErreur}
+          </p>
+        )}
         {releves.length > 0 && (
           <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {releves.slice(0, 5).map((r) => (
+            {releves.slice(0, 5).map((r, i) => (
               <li key={r.id}>
-                {fmtDate(r.date)} — {r.valeur} {r.type === 'kwh' ? 'kWh' : 'h'}
+                {fmtDate(r.date)} — {r.valeur} {UNITE_RELEVE[r.type] ?? r.type}
+                {r.moyenne_jour_depuis_precedent != null && (
+                  <>
+                    {' '}(≈ {r.moyenne_jour_depuis_precedent} {UNITE_RELEVE[r.type] ?? r.type}/jour
+                    {datePrecedente(releves, i) ? ` depuis le relevé du ${datePrecedente(releves, i)}` : ''})
+                  </>
+                )}
               </li>
             ))}
           </ul>
