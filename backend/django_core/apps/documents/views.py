@@ -45,6 +45,55 @@ def _get_chantier_or_404(request, pk):
     return get_company_object(qs, pk, request.user, extra_scope=_scope_chantier)
 
 
+# ADOC72 — messages des refus d'état (409 {detail}), forme d'erreur DRF déjà
+# consommée par la fiche chantier (InstallationDetail.jsx, ADOC73).
+MSG_CHANTIER_ANNULE = 'Chantier annulé'
+MSG_PAS_INSTALLE = 'Disponible une fois le chantier installé'
+MSG_RECETTE_NON_CONFORME = (
+    "Attestation de fin de travaux impossible : recette non conforme")
+
+
+def _chantier_installe(chantier):
+    """ADOC72 — statut CANONIQUE (statuts hérités rabattus) au rang ≥
+    « installé » dans ``Installation.STATUT_ORDER`` — même règle que
+    ``pvReady`` de la fiche chantier. Un statut inconnu n'est pas installé."""
+    canonique = Installation.canonical_statut(chantier.statut)
+    ordre = [str(s) for s in Installation.STATUT_ORDER]
+    if canonique not in ordre:
+        return False
+    return ordre.index(canonique) >= ordre.index(
+        str(Installation.Statut.INSTALLE))
+
+
+def _recette_non_conforme(chantier):
+    record = getattr(chantier, 'commissioning_record', None)
+    if record is None:
+        return False
+    return record.resultat == record.Resultat.NON_CONFORME
+
+
+def _refus_etat(chantier, attestation_type=None):
+    """ADOC72 — garde d'état serveur des documents de chantier (la règle N6 ne
+    vit plus seulement dans l'écran). Renvoie une ``Response`` 409 nommée, ou
+    ``None`` si le document peut être émis :
+
+    * chantier annulé → 409 « Chantier annulé » (les quatre documents) ;
+    * chantier pas encore installé → 409 (les quatre documents) ;
+    * attestation « fin de travaux » d'un chantier à recette NON conforme →
+      409 (le PV, qui constate les réserves, reste autorisé).
+    """
+    if chantier.annule:
+        return Response({'detail': MSG_CHANTIER_ANNULE},
+                        status=status.HTTP_409_CONFLICT)
+    if not _chantier_installe(chantier):
+        return Response({'detail': MSG_PAS_INSTALLE},
+                        status=status.HTTP_409_CONFLICT)
+    if attestation_type == 'fin_travaux' and _recette_non_conforme(chantier):
+        return Response({'detail': MSG_RECETTE_NON_CONFORME},
+                        status=status.HTTP_409_CONFLICT)
+    return None
+
+
 def _pdf_response(pdf_bytes, filename):
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -61,6 +110,9 @@ class PVReceptionView(_BaseDocumentView):
 
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
+        refus = _refus_etat(chantier)
+        if refus is not None:
+            return refus
         pdf = builders.pv_reception_pour_client(chantier)
         return _pdf_response(pdf, f'pv-reception-{chantier.reference}.pdf')
 
@@ -70,6 +122,9 @@ class BonLivraisonView(_BaseDocumentView):
 
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
+        refus = _refus_etat(chantier)
+        if refus is not None:
+            return refus
         pdf = builders.bon_livraison_pour_client(chantier)
         return _pdf_response(pdf, f'bon-livraison-{chantier.reference}.pdf')
 
@@ -79,6 +134,9 @@ class DossierRemiseView(_BaseDocumentView):
 
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
+        refus = _refus_etat(chantier)
+        if refus is not None:
+            return refus
         pdf = builders.generate_dossier_remise(chantier)
         return _pdf_response(pdf, f'dossier-remise-{chantier.reference}.pdf')
 
@@ -100,6 +158,9 @@ class AttestationView(_BaseDocumentView):
                  'types': list(builders.ATTESTATION_TYPES.keys())},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        refus = _refus_etat(chantier, attestation_type)
+        if refus is not None:
+            return refus
         # ADOC70 — figée à la première émission ; ?regenerer=1 = nouvelle
         # version datée du jour (la vue est déjà réservée aux responsables).
         regenerer = str(request.query_params.get('regenerer', '')).lower() \

@@ -98,6 +98,10 @@ class NomenclatureVendueTests(TestCase):
         chantier, _ = create_installation_from_devis(
             devis, self.user, self.company)
         self.assertIsNotNone(chantier)
+        # ADOC72 — les documents ne sont émis qu'à un chantier installé.
+        Installation.objects.filter(pk=chantier.pk).update(
+            statut=Installation.Statut.INSTALLE)
+        chantier.refresh_from_db()
         return chantier
 
     def _get(self, chantier, route, **params):
@@ -160,7 +164,8 @@ class NomenclatureVendueTests(TestCase):
                 devis = self._devis_deux_options(nombre_proprietes=n)
                 chantier = Installation.objects.create(
                     company=self.company, reference=f'CH-ADOC60-{next(_seq)}',
-                    client=devis.client, devis=devis, bom=[])
+                    client=devis.client, devis=devis, bom=[],
+                    statut=Installation.Statut.INSTALLE)
                 for route in ('pv-reception', 'bon-livraison',
                               'dossier-remise'):
                     self._assert_vendu(
