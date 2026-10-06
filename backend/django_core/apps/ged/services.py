@@ -2364,7 +2364,33 @@ def purger_definitivement(document):
             "définitive.")
     # Les gardes légales (GED23/GED24) sont posées dans `Document.delete()` —
     # filet ultime ; on les laisse lever telles quelles (traduites en 403).
-    document.delete()
+    # ADOC29 — le binaire part avec le document (clés non partagées) ; un
+    # échec du stockage annule la suppression (rien de détruit à moitié).
+    cles = _cles_binaires_exclusives(document)
+    with transaction.atomic():
+        document.delete()
+        _supprimer_binaires(cles)
+
+
+def _cles_binaires_exclusives(document):
+    """ADOC29 — clés de stockage des versions de `document` qu'AUCUNE autre
+    version (d'un autre document) ne référence : seules celles-ci peuvent
+    être effacées du stockage objet."""
+    cles = set(DocumentVersion.objects.filter(document=document)
+               .exclude(file_key='').values_list('file_key', flat=True))
+    partagees = set(DocumentVersion.objects.filter(file_key__in=cles)
+                    .exclude(document=document)
+                    .values_list('file_key', flat=True))
+    return sorted(cles - partagees)
+
+
+def _supprimer_binaires(cles):
+    """ADOC29 — efface du stockage objet les clés données (via
+    `records.storage.delete_attachment`, jamais réimplémenté). Une exception
+    remonte à l'appelant (qui annule alors sa transaction)."""
+    from apps.records import storage
+    for cle in cles:
+        storage.delete_attachment(cle)
 
 
 # ── GED25 — Purge automatique de la corbeille (DRY-RUN par défaut) ────────────
@@ -5877,7 +5903,11 @@ def executer_demande_disposition(demande, *, user):
                 politique = None
             nom_doc = document.nom
             doc_pk = document.pk
+            # ADOC29 — binaire effacé (clés non partagées) AVANT le
+            # certificat ; un échec du stockage annule toute l'exécution.
+            cles = _cles_binaires_exclusives(document)
             document.delete()
+            _supprimer_binaires(cles)
             certificats.append(CertificatDestruction.objects.create(
                 company=demande.company, demande=demande,
                 document_id_origine=doc_pk, document_nom=nom_doc,
