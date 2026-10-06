@@ -5952,6 +5952,63 @@ def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres)
         return False
 
 
+def _valider_revision_ligne_bcf(bc, ligne, ligne_data):
+    """ASTK63 — contrôle (SANS rien écrire) une révision de ligne de BCF et
+    renvoie ``{champ: nouvelle_valeur}`` normalisé. Lève ValueError si :
+    quantité non entière, ≤ 0 ou inférieure au déjà reçu ; prix modifié sur
+    une ligne dont une quantité est déjà reçue (coût figé — passer par une
+    revalorisation). Le PU devise est recalculé depuis le PU MAD (ou
+    l'inverse) quand le document est en devise."""
+    from .models import DeviseAchat
+
+    valeurs = {}
+    if 'quantite' in ligne_data:
+        try:
+            quantite = int(Decimal(str(ligne_data['quantite'])))
+        except (ArithmeticError, TypeError, ValueError):
+            raise ValueError(f'Ligne {ligne.id} — quantité invalide.')
+        if quantite <= 0:
+            raise ValueError(
+                f'Ligne {ligne.id} — la quantité doit être strictement '
+                'positive.')
+        if quantite < (ligne.quantite_recue or 0):
+            raise ValueError(
+                f'Ligne {ligne.id} — la quantité ({quantite}) ne peut pas '
+                f'être inférieure à la quantité déjà reçue '
+                f'({ligne.quantite_recue}).')
+        valeurs['quantite'] = quantite
+    if 'designation' in ligne_data:
+        valeurs['designation'] = ligne_data['designation']
+
+    en_devise = bool(bc.devise and bc.devise != DeviseAchat.MAD
+                     and bc.taux_change)
+    prix_mad = None
+    if en_devise and ligne_data.get('prix_achat_unitaire_devise') is not None:
+        prix_devise = _dec(ligne_data['prix_achat_unitaire_devise'])
+        if prix_devise is None:
+            raise ValueError(f'Ligne {ligne.id} — prix devise invalide.')
+        prix_mad = contre_valeur_mad(prix_devise, bc.taux_change)
+    elif 'prix_achat_unitaire' in ligne_data:
+        prix_mad = _dec(ligne_data['prix_achat_unitaire'])
+        if prix_mad is None:
+            raise ValueError(f'Ligne {ligne.id} — prix invalide.')
+        prix_mad = prix_mad.quantize(Decimal('0.01'))
+    if prix_mad is not None:
+        if prix_mad < 0:
+            raise ValueError(f'Ligne {ligne.id} — prix négatif.')
+        if prix_mad != (ligne.prix_achat_unitaire or Decimal('0')):
+            if (ligne.quantite_recue or 0) > 0:
+                raise ValueError(
+                    f'Ligne {ligne.id} — le prix d\'une quantité déjà '
+                    'reçue est figé : passer par une revalorisation.')
+            valeurs['prix_achat_unitaire'] = prix_mad
+            if en_devise:
+                valeurs['prix_achat_unitaire_devise'] = (
+                    prix_mad / _dec(bc.taux_change)).quantize(
+                        Decimal('0.01'))
+    return valeurs
+
+
 def reviser_bcf(
         company, user, bc, *, lignes=None, date_commande=None,
         date_livraison_prevue=None, note=None):
@@ -5960,64 +6017,88 @@ def reviser_bcf(
     (ancien→nouveau), incrémente `revision`, ré-exige une approbation FG312
     si le montant augmente au-delà du seuil en vigueur. Lève ValueError si le
     BCF est en brouillon/reçu/annulé (rien à réviser — utiliser l'édition
-    normale ou c'est déjà figé)."""
+    normale ou c'est déjà figé).
+
+    ASTK63 — TOUT OU RIEN, dans une transaction, BCF et lignes verrouillés :
+    toutes les lignes sont d'abord validées (quantité > 0 et ≥ reçu, prix
+    figé une fois reçu), puis écrites ; une seule ligne invalide n'écrit
+    RIEN. Le statut du BCF est recalculé (une hausse de quantité sur un BCF
+    reçu le repasse à ENVOYE, recevable) et le PU devise suit le PU MAD."""
+    from django.db import transaction
     from .models import BonCommandeFournisseur
 
-    if bc.statut not in (
-        BonCommandeFournisseur.Statut.ENVOYE,
-        BonCommandeFournisseur.Statut.RECU,
-    ):
-        raise ValueError(
-            'Seul un BCF envoyé (ou partiellement reçu) peut être révisé.')
+    with transaction.atomic():
+        bc = BonCommandeFournisseur.objects.select_for_update().get(pk=bc.pk)
+        if bc.statut not in (
+            BonCommandeFournisseur.Statut.ENVOYE,
+            BonCommandeFournisseur.Statut.RECU,
+        ):
+            raise ValueError(
+                'Seul un BCF envoyé (ou partiellement reçu) peut être '
+                'révisé.')
 
-    montant_avant = bc.total_achat
-    changements = []
+        montant_avant = bc.total_achat
+        changements = []
 
-    # ── En-tête (date_commande / date_livraison_prevue / note) ─────────────
-    for champ, nouvelle_valeur in (
-        ('date_commande', date_commande),
-        ('date_livraison_prevue', date_livraison_prevue),
-        ('note', note),
-    ):
-        if nouvelle_valeur is None:
-            continue
-        ancienne = getattr(bc, champ)
-        if str(ancienne) != str(nouvelle_valeur):
-            changements.append(
-                f'{champ} : {ancienne!r} → {nouvelle_valeur!r}')
-            setattr(bc, champ, nouvelle_valeur)
-
-    # ── Lignes (quantité, prix, désignation) ────────────────────────────────
-    if lignes is not None:
-        existantes = {ligne.id: ligne for ligne in bc.lignes.all()}
-        for ligne_data in lignes:
-            ligne_id = ligne_data.get('id')
-            ligne = existantes.get(ligne_id)
-            if ligne is None:
+        # ── En-tête (date_commande / date_livraison_prevue / note) ─────────
+        for champ, nouvelle_valeur in (
+            ('date_commande', date_commande),
+            ('date_livraison_prevue', date_livraison_prevue),
+            ('note', note),
+        ):
+            if nouvelle_valeur is None:
                 continue
-            for champ in _LIGNE_CHAMPS_SUIVIS:
-                if champ not in ligne_data:
+            ancienne = getattr(bc, champ)
+            if str(ancienne) != str(nouvelle_valeur):
+                changements.append(
+                    f'{champ} : {ancienne!r} → {nouvelle_valeur!r}')
+                setattr(bc, champ, nouvelle_valeur)
+
+        # ── Lignes : 1) tout valider, 2) tout écrire ────────────────────────
+        a_ecrire = []
+        if lignes is not None:
+            existantes = {
+                ligne.id: ligne
+                for ligne in bc.lignes.select_for_update().all()}
+            for ligne_data in lignes:
+                ligne = existantes.get(ligne_data.get('id'))
+                if ligne is None:
                     continue
+                valeurs = _valider_revision_ligne_bcf(bc, ligne, ligne_data)
+                a_ecrire.append((ligne, valeurs))
+        for ligne, valeurs in a_ecrire:
+            modifie = False
+            for champ, nouvelle in valeurs.items():
                 ancienne = getattr(ligne, champ)
-                nouvelle = ligne_data[champ]
                 if str(ancienne) != str(nouvelle):
                     changements.append(
-                        f'Ligne {ligne_id} — {champ} : '
+                        f'Ligne {ligne.id} — {champ} : '
                         f'{ancienne!r} → {nouvelle!r}')
                     setattr(ligne, champ, nouvelle)
-            ligne.save()
+                    modifie = True
+            if modifie:
+                ligne.save()
 
-    if not changements:
-        return bc, False
+        if not changements:
+            return bc, False
 
-    bc.revision += 1
-    bc.save()
-    bc.refresh_from_db()
-    montant_apres = bc.total_achat
+        bc.revision += 1
+        bc.save()
+        bc.refresh_from_db()
+        # ASTK63 — statut recalculé sur les quantités révisées.
+        if (bc.statut == BonCommandeFournisseur.Statut.RECU
+                and not bc.est_entierement_recu):
+            bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+            bc.save(update_fields=['statut'])
+        elif (bc.statut == BonCommandeFournisseur.Statut.ENVOYE
+                and bc.est_entierement_recu):
+            bc.statut = BonCommandeFournisseur.Statut.RECU
+            bc.save(update_fields=['statut'])
+        montant_apres = bc.total_achat
 
-    _log_revision_change(company, bc, user, changements)
-    reapprobation_requise = _invalidate_approbation_si_hausse(
-        company, bc, montant_avant, montant_apres)
+        _log_revision_change(company, bc, user, changements)
+        reapprobation_requise = _invalidate_approbation_si_hausse(
+            company, bc, montant_avant, montant_apres)
 
     return bc, reapprobation_requise
 
