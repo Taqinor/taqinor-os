@@ -1237,10 +1237,15 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
-class BonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
+class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                       CompanyScopedRelationsMixin,
                                        serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
+    # Champs cross-app déclarés pour la garde CI check_fk_scoping
+    # (SameCompanyFKSerializerMixin : borne + filet, même réponse).
+    same_company_fields = (
+        'fournisseur', 'emplacement_destination', 'chantier_livraison')
     lignes = LigneBonCommandeFournisseurSerializer(many=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
@@ -1587,10 +1592,14 @@ class EcheanceFactureFournisseurSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['date_creation']
 
 
-class FactureFournisseurSerializer(CompanyScopedRelationsMixin,
+class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                   CompanyScopedRelationsMixin,
                                    serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
+    # Champs cross-app déclarés pour la garde CI check_fk_scoping
+    # (SameCompanyFKSerializerMixin : borne + filet, même réponse).
+    same_company_fields = ('fournisseur',)
     lignes = LigneFactureFournisseurSerializer(many=True, required=False)
     paiements = PaiementFournisseurSerializer(many=True, read_only=True)
     echeances = EcheanceFactureFournisseurSerializer(many=True, read_only=True)
@@ -2008,10 +2017,14 @@ class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
 
 # ── XPUR8 — acomptes fournisseur ─────────────────────────────────────────────
 
-class AcompteFournisseurSerializer(CompanyScopedRelationsMixin,
+class AcompteFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                   CompanyScopedRelationsMixin,
                                    serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
+    # Champs cross-app déclarés pour la garde CI check_fk_scoping
+    # (SameCompanyFKSerializerMixin : borne + filet, même réponse).
+    same_company_fields = ('bon_commande',)
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     bon_commande_reference = serializers.CharField(
