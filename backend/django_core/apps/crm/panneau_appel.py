@@ -30,7 +30,7 @@ import logging
 
 from django.db import models
 
-from . import questionnaire
+from . import cadence_temps, questionnaire
 from .models import Lead, RelanceEtape
 from .segment_suggere import segment_suggere
 
@@ -161,6 +161,30 @@ QUESTIONS_PRO = {
 }
 # Même question pour la facture en dirhams : « en dirhams ou en kWh ».
 QUESTIONS_PRO['facture_hiver'] = QUESTIONS_PRO['conso_mensuelle_kwh']
+
+#: CIQ427 — les questions de l'étape 5 « qui décide » quand la fiche n'a qu'un
+#: FIXE (même étape, même question : aucune sixième étape) et celle du mode de
+#: financement, posée au RAPPEL seulement. Textes ✎ dans
+#: ``docs/crm/messages_meryem.md`` (à valider par le fondateur). La question
+#: de financement ne dit jamais « crédit-bail » (D-CIQ-15) et ne promet aucun
+#: accord (Q22).
+QUESTION_MOBILE_DIRECT = ('« Sur quel mobile ou WhatsApp puis-je vous '
+                          'joindre directement ? »')
+QUESTION_CONTACT_SECONDAIRE = '« Qui décide avec vous, et à quel numéro ? »'
+QUESTION_FINANCEMENT = ('« Vous pensez régler comment : comptant, par un '
+                        "crédit, ou ce n'est pas encore décidé ? »")
+QUESTIONS_PRO['whatsapp'] = QUESTION_MOBILE_DIRECT
+QUESTIONS_PRO['contact_secondaire_nom'] = QUESTION_CONTACT_SECONDAIRE
+QUESTIONS_PRO['contact_secondaire_telephone'] = QUESTION_CONTACT_SECONDAIRE
+QUESTIONS_PRO['financing_intent'] = QUESTION_FINANCEMENT
+
+#: CIQ427 — choix de financement SERVIS : la valeur interne ``credit_bail``
+#: (D-CIQ-15, jamais imprimée avant l'avis juridique) n'est jamais proposée.
+FINANCEMENT_CHOIX_SERVIS = ('cash', 'credit', 'indecis')
+
+#: CIQ427 — qui décide → colonnes de complément (même étape).
+DECIDEUR_MOBILE_DIRECT = ('', 'seul')
+DECIDEUR_CONTACT_SECONDAIRE = ('associe_direction', 'proprietaire_tiers')
 
 #: CIQ410 — préfixe commun des questions orales (même forme que les
 #: ``help_text`` du modèle).
@@ -365,6 +389,9 @@ def _question(lead, champ, section):
         question = _question_pro(lead, champ, segment)
         if champ == 'decideur' and choix:
             choix = [c for c in choix if c['valeur'] in DECIDEUR_PRO]
+        if champ == 'financing_intent' and choix:
+            choix = [c for c in choix
+                     if c['valeur'] in FINANCEMENT_CHOIX_SERVIS]
         if champ == 'reponses_categorie':
             nature = 'objet'
     return {
@@ -400,7 +427,34 @@ def _champs_pro_du_lead(lead, segment):
     champs += ['jours_ouverture', 'heure_debut', 'heure_fin',
                'fermeture_mois', 'type_surface', 'type_toiture',
                'surface_toiture_m2', 'decideur']
+    # CIQ427 — en COMPLÉMENT de « qui décide » (même étape), puis le mode de
+    # financement (servi toujours, l'écran ne le pose qu'au rappel).
+    champs += _complements_decideur_pro(lead)
+    champs.append('financing_intent')
     return tuple(champs)
+
+
+def _fixe_seulement(lead):
+    """CIQ427 — la cadence ne joint la fiche que par un FIXE : le motif de
+    ``cadence_temps.whatsapp_improbable`` est celui du fixe (jamais « aucun
+    numéro », jamais un ``whatsapp`` déclaré — CIQ505)."""
+    improbable, motif = cadence_temps.whatsapp_improbable(lead)
+    return bool(improbable) and motif == cadence_temps.MOTIF_FIXE
+
+
+def _complements_decideur_pro(lead):
+    """CIQ427 — les colonnes servies avec « qui décide » sur une fiche pro
+    qui n'a qu'un fixe : ``whatsapp`` si le décideur est vide ou ``seul``,
+    ``contact_secondaire_*`` s'il décide avec la direction ou un tiers. Ce
+    second contact n'est JAMAIS lu par la cadence (CAD144)."""
+    if not _fixe_seulement(lead):
+        return ()
+    decideur = getattr(lead, 'decideur', None) or ''
+    if decideur in DECIDEUR_MOBILE_DIRECT:
+        return ('whatsapp',)
+    if decideur in DECIDEUR_CONTACT_SECONDAIRE:
+        return ('contact_secondaire_nom', 'contact_secondaire_telephone')
+    return ()
 
 
 #: CIQ410 — l'étape « facture » est répondue dès qu'UNE de ces colonnes
@@ -415,6 +469,10 @@ def _reponse_connue_panneau(lead, champ):
         return any(_reponse_connue(lead, c) for c in CHAMPS_FACTURE_PRO)
     if champ == 'reponses_categorie' and _segment_pro(lead):
         return not _cles_categorie_a_poser(lead)
+    if champ == 'whatsapp' and _segment_pro(lead):
+        # CIQ427 — un WhatsApp simple COPIE du téléphone n'est pas une
+        # réponse : seule une déclaration distincte (CIQ505) l'est.
+        return cadence_temps.whatsapp_declare(lead)
     return _reponse_connue(lead, champ)
 
 
@@ -498,6 +556,8 @@ def prefill_du_panneau(lead):
         if champ in CHAMPS_JAMAIS_DEMANDES or champ in out:
             continue
         if not _reponse_connue(lead, champ):
+            continue
+        if champ == 'whatsapp' and not _reponse_connue_panneau(lead, champ):
             continue
         out[champ] = _json(getattr(lead, champ, None))
     return out

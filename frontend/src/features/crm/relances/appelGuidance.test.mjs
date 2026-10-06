@@ -620,15 +620,22 @@ test('AGR418 — aucune clé d\'économie rendue par la guidance agricole', () =
   assert.doesNotMatch(cles, /econom|payback|gain/i)
 })
 
-test('CIQ420 — l\'ordre pro tient en cinq étapes : facture, raccordement, activité, surface, décideur', () => {
-  assert.deepEqual(guidance.ORDRE_PRO.map((e) => e.etape),
+test('CIQ420 — l\'ordre pro tient en cinq étapes à l\'appel 1 : facture, raccordement, activité, surface, décideur', () => {
+  const appel1 = guidance.ORDRE_PRO.filter((e) => !e.rappelSeulement)
+  assert.deepEqual(appel1.map((e) => e.etape),
     ['facture', 'raccordement', 'activite_rythme', 'surface', 'decideur'])
-  assert.equal(guidance.ORDRE_PRO.length, BUDGET_APPEL_1)
+  assert.equal(appel1.length, BUDGET_APPEL_1)
+  // CIQ427 — la seule étape de plus est celle du RAPPEL (financement).
+  assert.deepEqual(guidance.ORDRE_PRO.filter((e) => e.rappelSeulement).map((e) => e.etape),
+    ['financement'])
 })
 
 test('CIQ420 — chaque colonne des cinq étapes pro est servie par le contrat (commercial ou industriel)', () => {
   const servies = new Set()
-  for (const variante of ['exemple_commercial', 'exemple_industriel']) {
+  for (const variante of [
+    'exemple_commercial', 'exemple_industriel', 'exemple_industriel_fixe',
+    'exemple_commercial_associe',
+  ]) {
     for (const q of exemple(variante).champs_a_poser) servies.add(q.champ)
     for (const champ of Object.keys(exemple(variante).prefill)) servies.add(champ)
   }
@@ -763,4 +770,72 @@ test('CAD155 — jour non ouvré : aucun créneau ; horaire illisible : null', (
   assert.deepEqual(guidance.fenetreAppel(exemple('exemple_tout_repondu')).creneaux, [])
   assert.equal(guidance.fenetreAppel({ ...exemple(), fenetre_du_jour: null }), null)
   assert.equal(guidanceAppel(exemple('exemple_ramadan')).fenetre.plage, '10:00–14:00')
+})
+
+// ── CIQ427 — décideur : mobile direct / contact secondaire ; financement au rappel ──
+
+const toucheRappel = { id: 9, template_cle: 'appel_suivi_j2', canal: 'appel' }
+const toucheAppel1 = { id: 8, template_cle: 'appel_ouverture', canal: 'appel' }
+
+test('CIQ427 — fixe + décideur vide : « whatsapp » en COMPLÉMENT de « décideur » (même étape, même question)', () => {
+  const g = guidanceAppel(exemple('exemple_industriel_fixe'))
+  const decideur = g.questions.find((q) => q.etape === 'decideur')
+  assert.equal(decideur.champ, 'decideur')
+  assert.deepEqual(decideur.complements.map((q) => q.champ), ['whatsapp'])
+  // Aucune sixième étape à l'appel 1.
+  assert.equal(g.questions.length, 5)
+  assert.ok(g.questions.length <= BUDGET_APPEL_1)
+})
+
+test('CIQ427 — décideur « direction / associé » : contact secondaire servi, jamais « whatsapp »', () => {
+  const g = guidanceAppel(exemple('exemple_commercial_associe'))
+  const etape = g.questions.find((q) => q.etape === 'decideur')
+  assert.equal(etape.champ, 'contact_secondaire_nom')
+  assert.deepEqual(etape.complements.map((q) => q.champ), ['contact_secondaire_telephone'])
+  assert.ok(!g.questions.some((q) => q.champ === 'whatsapp'))
+})
+
+test('CIQ427 — sur mobile (exemple_industriel) : ni « whatsapp » ni contact secondaire', () => {
+  const g = guidanceAppel(exemple('exemple_industriel'))
+  const champs = g.questions.flatMap((q) => [q.champ, ...q.complements.map((c) => c.champ)])
+  assert.ok(!champs.includes('whatsapp'))
+  assert.ok(!champs.includes('contact_secondaire_nom'))
+})
+
+test('CIQ427 — le financement n\'est JAMAIS posé à l\'appel 1', () => {
+  for (const touche of [toucheAppel1, null]) {
+    const g = guidanceAppel(exemple('exemple_industriel_fixe'), { touche })
+    assert.equal(g.phase, 'appel_1')
+    assert.ok(!g.questions.some((q) => q.champ === 'financing_intent'), String(touche?.template_cle))
+  }
+})
+
+test('CIQ427 — au rappel, « financing_intent » vient APRÈS les cinq étapes', () => {
+  const g = guidanceAppel(exemple('exemple_industriel_fixe'), { touche: toucheRappel })
+  assert.equal(g.phase, 'rappel')
+  assert.deepEqual(g.questions.map((q) => q.etape),
+    ['facture', 'raccordement', 'activite_rythme', 'surface', 'decideur', 'financement'])
+  const financement = g.questions[g.questions.length - 1]
+  assert.equal(financement.champ, 'financing_intent')
+  assert.deepEqual(financement.choix.map((c) => c.valeur), ['cash', 'credit', 'indecis'])
+})
+
+test('CIQ427 — jamais « crédit-bail », aucune clé d\'économie', () => {
+  for (const variante of ['exemple_industriel_fixe', 'exemple_commercial_associe']) {
+    const g = guidanceAppel(exemple(variante), { touche: toucheRappel })
+    const texte = JSON.stringify(g.questions).toLowerCase()
+    assert.ok(!texte.includes('crédit-bail'), variante)
+    assert.ok(!texte.includes('credit_bail'), variante)
+    assert.doesNotMatch(JSON.stringify(Object.keys(g)), /econom|payback|gain/i)
+  }
+})
+
+test('CIQ427 — chaque colonne ajoutée est servie par le contrat', () => {
+  const servies = new Set()
+  for (const variante of ['exemple_industriel_fixe', 'exemple_commercial_associe']) {
+    for (const q of exemple(variante).champs_a_poser) servies.add(q.champ)
+  }
+  for (const champ of ['whatsapp', 'contact_secondaire_nom', 'contact_secondaire_telephone', 'financing_intent']) {
+    assert.ok(servies.has(champ), champ)
+  }
 })

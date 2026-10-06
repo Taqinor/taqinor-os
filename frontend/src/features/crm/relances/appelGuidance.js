@@ -257,7 +257,25 @@ export const ORDRE_PRO = Object.freeze([
     etape: 'surface',
     champs: Object.freeze(['type_surface', 'type_toiture', 'surface_toiture_m2']),
   }),
-  Object.freeze({ etape: 'decideur', champs: Object.freeze(['decideur']) }),
+  // CIQ427 — « qui décide » porte, en COMPLÉMENT (même étape, même question,
+  // aucune sixième étape), le mobile direct d'un décideur joint par un fixe
+  // (`whatsapp`) ou son contact secondaire. Le serveur ne sert que celles qui
+  // s'appliquent à la fiche ; le contact secondaire n'est jamais lu par la
+  // cadence (CAD144).
+  Object.freeze({
+    etape: 'decideur',
+    champs: Object.freeze([
+      'decideur', 'whatsapp', 'contact_secondaire_nom',
+      'contact_secondaire_telephone',
+    ]),
+  }),
+  // CIQ427 — le mode de financement : une question ORALE du RAPPEL, après les
+  // cinq étapes, jamais à l'appel 1 (`questionsDeLAppel` la filtre).
+  Object.freeze({
+    etape: 'financement',
+    champs: Object.freeze(['financing_intent']),
+    rappelSeulement: true,
+  }),
 ])
 
 /** Les étapes d'un panneau : résidentiel (appel 1 et rappel : les MÊMES
@@ -285,8 +303,11 @@ export function questionsDeLAppel(panneau) {
     }
   }
   const etapes = etapesDuPanneau(panneau)
+  const rappel = estToucheDeRappel(panneau?.touche)
   const out = []
-  for (const { etape, champs, selon } of etapes) {
+  for (const { etape, champs, selon, rappelSeulement } of etapes) {
+    // CIQ427 — une étape du RAPPEL ne se pose jamais à l'appel 1.
+    if (rappelSeulement && !rappel) continue
     // AGR418 — une étape conditionnelle ne pose que ses colonnes du cas.
     const liste = typeof selon === 'function' ? selon(dejaRenseigne) : champs
     const entrees = liste.map((champ) => aPoser.get(champ)).filter(Boolean)

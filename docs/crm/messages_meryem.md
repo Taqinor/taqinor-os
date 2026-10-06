@@ -588,6 +588,14 @@ financement restent des questions orales du rappel. En fin d'appel, si le serveu
 avant le devis (`devis_auto.visite_avant_devis`), le panneau la propose avec ses motifs. Aucun chiffre d'économie, la
 loi 82-21 n'est jamais abordée spontanément. ✎ Formulations à valider par le fondateur.
 
+CIQ427 (06/10/2026) — trois questions PRO ajoutées au serveur (`apps/crm/panneau_appel.py`, `QUESTIONS_PRO`), sans
+sixième étape. Étape 5 « qui décide », sur une fiche pro que la cadence ne joint que par un FIXE : si le décideur est
+vide ou seul, « Sur quel mobile ou WhatsApp puis-je vous joindre directement ? » (colonne `whatsapp`) ; s'il décide
+avec la direction ou un tiers, « Qui décide avec vous, et à quel numéro ? » (colonnes `contact_secondaire_nom` et
+`contact_secondaire_telephone`, jamais lues par la cadence). Mode de financement, au RAPPEL seulement (jamais à
+l'appel 1, jamais dans le questionnaire écrit) : « Vous pensez régler comment : comptant, par un crédit, ou ce n'est
+pas encore décidé ? » — la question ne dit jamais « crédit-bail » et ne promet aucun accord. ✎ À valider par Reda.
+
 AGR418 (05/10/2026) — l'appel AGRICOLE est réécrit en cinq étapes, dans l'ordre du serveur (AGR407) : l'énergie
 actuelle (puis, selon la réponse, bouteilles par jour et prix payé, litres par mois et prix payé, ou dépense par
 mois — prix DÉCLARÉ, Q17), l'eau (source, niveau, débit du forage), le besoin en m³ par jour (sinon la surface
