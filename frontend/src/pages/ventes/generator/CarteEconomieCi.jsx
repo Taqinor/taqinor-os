@@ -9,6 +9,8 @@
 // sont tapées telles quelles (`step="any"`, jamais corrigées).
 import { Input, Label } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
+// CIQ224 — le volet INTERNE (offre de financement, offre CSE), vendeur seulement.
+import VoletInterneEconomieCi from './VoletInterneEconomieCi'
 
 const SELECT = 'form-control form-control-sm'
 const mad = (v) => (v === null || v === undefined ? '—' : `${formatNumber(v, { decimals: 0 })} MAD`)
@@ -150,6 +152,7 @@ export default function CarteEconomieCi({ apercu, eco, setEcoChamp, children }) 
           )}
         </div>
       )}
+      {setEcoChamp && <VoletInterneEconomieCi apercu={apercu} eco={eco} setEcoChamp={setEcoChamp} />}
       {children}
     </div>
   )

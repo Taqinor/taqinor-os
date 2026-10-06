@@ -14,6 +14,8 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
   const [chargement, setChargement] = useState(false)
   const [erreur, setErreur] = useState(null)
   const [corpsServi, setCorpsServi] = useState(null)
+  // CIQ224 — le champ NOMMÉ par un 400 du serveur (`{detail, champ}`).
+  const [erreurChamp, setErreurChamp] = useState(null)
 
   useEffect(() => {
     if (!debouncedKey) {
@@ -22,6 +24,7 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
       setCorpsServi(null)
       setChargement(false)
       setErreur(null)
+      setErreurChamp(null)
       return undefined
     }
     let body
@@ -35,6 +38,7 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
     if (!promesse) return undefined
     setChargement(true)
     setErreur(null)
+    setErreurChamp(null)
     setDonnees(null)
     setCorpsServi(null)
     promesse
@@ -48,6 +52,7 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
         if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return
         const detail = err?.response?.data?.detail
         setErreur(typeof detail === 'string' && detail ? detail : erreurParDefaut)
+        setErreurChamp(err?.response?.data?.champ || null)
       })
       .finally(() => { if (!cancelled) setChargement(false) })
     return () => { cancelled = true; controller.abort() }
@@ -55,5 +60,5 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedKey])
 
-  return { donnees, chargement, erreur, corpsServi, corpsKey }
+  return { donnees, chargement, erreur, erreurChamp, corpsServi, corpsKey }
 }

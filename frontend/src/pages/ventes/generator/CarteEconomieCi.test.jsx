@@ -82,3 +82,43 @@ describe('CIQ223 — CarteEconomieCi', () => {
     expect(saisiesEconomieCi(ECO_CI_VIDE)).toBeNull()
   })
 })
+
+// ══ CIQ224 — volet INTERNE : offre de financement et offre CSE ══════════════
+describe('CIQ224 — VoletInterneEconomieCi', () => {
+  it('offre sans source ⇒ le 400 du serveur s’affiche sous le champ nommé', async () => {
+    const detail = 'offre_financement.source : le financement se construit seulement depuis une offre ÉCRITE.'
+    api.economieCiPreview.mockRejectedValue({ response: { status: 400, data: { detail, champ: 'offre_financement.source' } } })
+    function Harnais() {
+      const [eco, setEco] = useState({ ...ECO_CI_VIDE })
+      const ap = useApercuEconomieCi({ saisies: eco }, { delai: 0 })
+      return <CarteEconomieCi apercu={ap} eco={eco} setEcoChamp={(c, v) => setEco((e) => ({ ...e, [c]: v }))} />
+    }
+    render(<Harnais />)
+    expect(await screen.findByTestId('erreur-offre_financement.source')).toHaveTextContent('offre ÉCRITE')
+  })
+
+  it('taux vide ⇒ aucun taux affiché ; le volet lit la réponse INTERNE, jamais economie_ci_publique', () => {
+    const interne = exempleContrat('ventes', 'economie_ci', 'exemple_industriel_mt')
+    expect(interne.financement.taux_annuel_pct ?? null).toBeNull()
+    const donnees = { ...interne, economie_ci_publique: { financement: { echeance_mad: 999999 } } }
+    render(<CarteEconomieCi apercu={{ donnees }} eco={ECO_CI_VIDE} setEcoChamp={() => {}} />)
+    const f = screen.getByTestId('eco-ci-financement')
+    expect(f).toHaveTextContent(interne.financement.libelle_client)
+    expect(f).not.toHaveTextContent(/Taux écrit/)
+    expect(f).not.toHaveTextContent('999')
+  })
+
+  it('hors du générateur (aucune saisie possible) : le volet n’est pas rendu', () => {
+    render(<CarteEconomieCi apercu={apercu('exemple_industriel_mt')} />)
+    expect(screen.queryByTestId('eco-ci-volet-interne')).toBeNull()
+  })
+
+  it('enregistrer → rouvrir → enregistrer : offres de financement et CSE identiques', () => {
+    const stocke = {
+      ...CONTRAT.saisies_economie_ci.exemple_industriel_mt,
+      offre_cse_concurrente: { tarif_kwh_ht: 0.95, duree_ans: 20, indexation_pct_an: null, source: 'offre écrite du 01/09/2026' },
+    }
+    expect(saisiesEconomieCi(ecoCiDepuisSaisies(stocke), { aujourdhui: '2030-01-01' })).toEqual(stocke)
+  })
+})
+
