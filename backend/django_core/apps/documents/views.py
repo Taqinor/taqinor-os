@@ -56,20 +56,21 @@ class _BaseDocumentView(APIView):
 
 
 class PVReceptionView(_BaseDocumentView):
-    """N21 — PV de réception des travaux."""
+    """N21 — PV de réception des travaux (ADOC70 : figé en GED une fois
+    signé, servi tel quel ensuite)."""
 
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
-        pdf = builders.generate_pv_reception(chantier)
+        pdf = builders.pv_reception_pour_client(chantier)
         return _pdf_response(pdf, f'pv-reception-{chantier.reference}.pdf')
 
 
 class BonLivraisonView(_BaseDocumentView):
-    """N22 — Bon de livraison."""
+    """N22 — Bon de livraison (ADOC70 : figé en GED une fois signé)."""
 
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
-        pdf = builders.generate_bon_livraison(chantier)
+        pdf = builders.bon_livraison_pour_client(chantier)
         return _pdf_response(pdf, f'bon-livraison-{chantier.reference}.pdf')
 
 
@@ -99,6 +100,11 @@ class AttestationView(_BaseDocumentView):
                  'types': list(builders.ATTESTATION_TYPES.keys())},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        pdf = builders.generate_attestation(chantier, attestation_type)
+        # ADOC70 — figée à la première émission ; ?regenerer=1 = nouvelle
+        # version datée du jour (la vue est déjà réservée aux responsables).
+        regenerer = str(request.query_params.get('regenerer', '')).lower() \
+            in ('1', 'true', 'oui')
+        pdf = builders.attestation_pour_client(
+            chantier, attestation_type, regenerer=regenerer)
         return _pdf_response(
             pdf, f'attestation-{attestation_type}-{chantier.reference}.pdf')

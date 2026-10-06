@@ -17,10 +17,12 @@ déléguée au service partagé ``core.pdf.render_pdf`` ; les gabarits Django
 rendu est inchangé à l'octet près.
 """
 import hashlib
-from datetime import date, datetime
+import logging
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.template.loader import get_template
+from django.utils import timezone
 from django.utils.html import escape
 
 from apps.ventes.utils.pdf import _company_context
@@ -31,6 +33,8 @@ from apps.ventes.utils.pdf import _company_context
 # ci-dessus (déjà cross-app) — jamais un import de `apps.ventes.models`/`views`.
 from apps.ventes.utils.libelles_ar import arabic_font_face_css, document_langue
 from core.pdf import render_pdf
+
+logger = logging.getLogger(__name__)
 
 # Garantie par défaut (raisonnable) quand un produit n'a pas de texte garantie.
 DEFAULT_GARANTIE = "Garantie selon conditions constructeur."
@@ -414,7 +418,7 @@ def empreinte_signature(chantier):
     return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]
 
 
-def generate_pv_reception(chantier):
+def generate_pv_reception(chantier, fige_le=None):
     """N21 — Procès-verbal de réception des travaux.
 
     AUD306 — le PV réutilise désormais le patron de `generate_bon_livraison`
@@ -435,6 +439,10 @@ def generate_pv_reception(chantier):
         ctx['signataire_nom'] = chantier.signataire_nom or None
         ctx['signe_le'] = chantier.signe_le
         ctx['empreinte_signature'] = empreinte_signature(chantier)
+        # ADOC70 — gel tardif (chantier signé avant le gel en GED) : la mention
+        # « figé le …, après la signature du … » remplace l'empreinte.
+        if fige_le is not None:
+            ctx['fige_le'] = fige_le
     html = get_template('document_pv_reception.html').render(ctx)
     return _html_to_pdf(html)
 
@@ -652,8 +660,12 @@ ATTESTATION_TYPES = {
 }
 
 
-def generate_attestation(chantier, attestation_type):
-    """N24 — Attestation (type configurable)."""
+def generate_attestation(chantier, attestation_type, date_emission=None):
+    """N24 — Attestation (type configurable).
+
+    ADOC70 — « Fait … le » = ``date_emission`` (date de la PREMIÈRE émission,
+    figée en GED par :func:`attestation_pour_client`), jamais l'instant du
+    téléchargement."""
     cfg = ATTESTATION_TYPES.get(attestation_type)
     if cfg is None:
         raise ValueError(f"Type d'attestation inconnu : {attestation_type}")
@@ -679,5 +691,185 @@ def generate_attestation(chantier, attestation_type):
         site=site,
     )
     ctx['attestation'] = {'titre': cfg['titre'], 'corps': corps}
+    ctx['date_emission'] = date_emission or _aujourdhui()
     html = get_template('document_attestation.html').render(ctx)
     return _html_to_pdf(html)
+
+
+# ── ADOC70 — documents signés / émis FIGÉS en GED (D-ADOC-2) ─────────────────
+#
+# Un PV de réception ou un bon de livraison SIGNÉ est figé en GED : il est
+# ensuite servi TEL QUEL (octets de la version en vigueur), même si le chantier
+# est modifié après coup — plus jamais « Signé le … — empreinte » imprimé sur un
+# contenu changé depuis. Une re-signature motivée (AUD305, nouvelle empreinte)
+# crée une NOUVELLE VERSION du même Document GED, l'ancienne reste en
+# historique. L'attestation est figée à sa première émission (datée de cette
+# émission) ; ``regenerer`` en crée une nouvelle version datée du jour.
+#
+# Dépôt : ``ged.services.deposit_document(versionner_si_modifie=True)``
+# (ADOC61) en import fonction-local — cabinet « Chantiers », dossier = la
+# référence du chantier, source_id = chantier.pk.
+
+SOURCE_PV_RECEPTION = 'documents.pv_reception'
+SOURCE_BON_LIVRAISON = 'documents.bon_livraison'
+SOURCE_ATTESTATION = 'documents.attestation'
+GED_CABINET_CHANTIERS = 'Chantiers'
+# Au-delà de ce délai entre la signature et le gel, le PV ne peut plus
+# affirmer l'empreinte du contenu signé : il dit quand il a été figé.
+GEL_TARDIF_SEUIL = timedelta(hours=1)
+EMPREINTE_KEY = 'empreinte_signature'
+
+
+def _aujourdhui():
+    """ADOC70 — date du jour (fuseau du projet). Point unique, pour que la
+    date d'émission d'une attestation soit testable sans figer l'horloge du
+    stockage objet (MinIO refuse une requête signée à une date décalée)."""
+    return timezone.localdate()
+
+
+def _source_attestation(attestation_type):
+    """Source GED d'une attestation : une par type (installation /
+    fin_travaux) — sinon les deux types d'un même chantier (même source_id)
+    se versionneraient l'un sur l'autre."""
+    return f'{SOURCE_ATTESTATION}.{attestation_type}'
+
+
+def _document_ged(chantier, source_type):
+    """Document GED déjà déposé pour ce document de chantier, hors corbeille
+    (un document en corbeille n'est jamais servi), ou None."""
+    from apps.ged import services as ged_services
+    document = ged_services.find_document_by_source(
+        chantier.company, source_type=source_type, source_id=chantier.pk)
+    if document is None or getattr(document, 'supprime_le', None):
+        return None
+    return document
+
+
+def _octets_en_vigueur(document):
+    """Octets de la version en vigueur (la plus haute) d'un Document GED, ou
+    None si le contenu n'est pas récupérable (l'appelant re-rend alors le
+    document et le re-dépose)."""
+    version = document.versions.order_by('-version').first()
+    if version is None or not version.file_key:
+        return None
+    from apps.records.storage import fetch_attachment
+    data, err = fetch_attachment(version.file_key)
+    if err or not data:
+        return None
+    return data
+
+
+def _deposer_fige(chantier, *, source_type, nom, pdf, meta):
+    """Dépose ``pdf`` en GED (version 1, ou NOUVELLE VERSION du même Document
+    si le contenu diffère — ADOC61) et trace ``meta`` dans ``custom_data``.
+    Best-effort : une panne de stockage ne bloque jamais la remise du document
+    au client (journalisée)."""
+    from apps.ged import services as ged_services
+    try:
+        document, _created = ged_services.deposit_document(
+            company=chantier.company, nom=nom, source_type=source_type,
+            source_id=chantier.pk, contenu_bytes=pdf,
+            mime='application/pdf', filename=f'{nom}.pdf',
+            cabinet_nom=GED_CABINET_CHANTIERS,
+            folder_nom=chantier.reference or f'Chantier {chantier.pk}',
+            description='Document de chantier figé (ADOC70).',
+            versionner_si_modifie=True)
+        document.custom_data = {**(document.custom_data or {}), **meta}
+        document.save(update_fields=['custom_data'])
+        return document
+    except Exception:
+        logger.exception(
+            'ADOC70 — gel GED impossible (%s, chantier %s)',
+            source_type, chantier.pk)
+        return None
+
+
+def _servir_signe(chantier, *, source_type, nom, render, maintenant=None):
+    """PV / BL d'un chantier SIGNÉ : la version GED figée si elle correspond à
+    l'empreinte de signature courante ; sinon (jamais figé, ou re-signé) rendu
+    puis gel (nouvelle version du même Document)."""
+    empreinte = empreinte_signature(chantier)
+    document = _document_ged(chantier, source_type)
+    if document is not None and (
+            (document.custom_data or {}).get(EMPREINTE_KEY) == empreinte):
+        data = _octets_en_vigueur(document)
+        if data:
+            return data
+    maintenant = maintenant or timezone.now()
+    signe_le = getattr(chantier, 'signe_le', None)
+    tardif = bool(signe_le and maintenant - signe_le > GEL_TARDIF_SEUIL)
+    pdf = render(chantier, maintenant if tardif else None)
+    _deposer_fige(
+        chantier, source_type=source_type, nom=nom, pdf=pdf,
+        meta={EMPREINTE_KEY: empreinte, 'fige_le': maintenant.isoformat(),
+              'gel_tardif': tardif})
+    return pdf
+
+
+def _servir_pv(chantier, maintenant=None):
+    return _servir_signe(
+        chantier, source_type=SOURCE_PV_RECEPTION,
+        nom=f'PV de réception {chantier.reference}',
+        render=lambda c, fige_le: generate_pv_reception(c, fige_le=fige_le),
+        maintenant=maintenant)
+
+
+def _servir_bl(chantier, maintenant=None):
+    return _servir_signe(
+        chantier, source_type=SOURCE_BON_LIVRAISON,
+        nom=f'Bon de livraison {chantier.reference}',
+        render=lambda c, _fige_le: generate_bon_livraison(c),
+        maintenant=maintenant)
+
+
+def pv_reception_pour_client(chantier):
+    """PV de réception servi : figé en GED dès que le chantier est signé."""
+    if not chantier.signature_client:
+        return generate_pv_reception(chantier)
+    return _servir_pv(chantier)
+
+
+def bon_livraison_pour_client(chantier):
+    """Bon de livraison servi : figé en GED dès que le chantier est signé."""
+    if not chantier.signature_client:
+        return generate_bon_livraison(chantier)
+    return _servir_bl(chantier)
+
+
+def figer_documents_signes(chantier, maintenant=None):
+    """ADOC70 — fige en GED le PV de réception et le bon de livraison d'un
+    chantier signé (à appeler au geste de signature — ADOC71 — ; sinon le
+    premier téléchargement fige). Idempotent : une empreinte déjà figée
+    n'ajoute rien. Renvoie ``{'pv_reception': bytes, 'bon_livraison': bytes}``
+    ({} si le chantier n'est pas signé)."""
+    if not getattr(chantier, 'signature_client', None):
+        return {}
+    return {
+        'pv_reception': _servir_pv(chantier, maintenant=maintenant),
+        'bon_livraison': _servir_bl(chantier, maintenant=maintenant),
+    }
+
+
+def attestation_pour_client(chantier, attestation_type, regenerer=False):
+    """ADOC70 — attestation figée à sa PREMIÈRE émission (datée de cette
+    émission) puis servie telle quelle ; ``regenerer=True`` (réservé aux
+    responsables par la vue) crée une nouvelle version datée du jour."""
+    if attestation_type not in ATTESTATION_TYPES:
+        raise ValueError(f"Type d'attestation inconnu : {attestation_type}")
+    source_type = _source_attestation(attestation_type)
+    if not regenerer:
+        document = _document_ged(chantier, source_type)
+        if document is not None:
+            data = _octets_en_vigueur(document)
+            if data:
+                return data
+    date_emission = _aujourdhui()
+    pdf = generate_attestation(
+        chantier, attestation_type, date_emission=date_emission)
+    titre = ATTESTATION_TYPES[attestation_type]['titre']
+    _deposer_fige(
+        chantier, source_type=source_type,
+        nom=f'{titre} {chantier.reference}', pdf=pdf,
+        meta={'type': attestation_type,
+              'date_emission': date_emission.isoformat()})
+    return pdf
