@@ -797,6 +797,9 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
     C'est l'unique garde de verrou des chemins versions/restaurer/fusionner/
     office.
     """
+    # ADOC23 — LA garde de quota de stockage, sur toutes les routes (taille
+    # réelle des octets ajoutés) : `QuotaDepasseError` (→ 403 côté vues).
+    assert_quota_disponible(company, octets_supplementaires=size or 0)
     with transaction.atomic():
         if user is not None:
             courant = Document.objects.select_for_update().get(pk=document.pk)

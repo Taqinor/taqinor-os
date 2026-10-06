@@ -659,6 +659,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except QuotaDepasseError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_403_FORBIDDEN)
+        # ADOC23 — empreinte SHA-256 et taille RÉELLES des octets déposés.
+        contenu = file.read()
+        file.seek(0)
         meta, err = store_attachment(file)
         if err:
             return Response({'file': err},
@@ -680,10 +683,18 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
         # 4) version 1 (numéro + uploaded_by + company posés côté serveur).
-        services.add_version(
-            document, file_key=meta['file_key'], company=company,
-            filename=meta['filename'], size=meta['size'], mime=meta['mime'],
-            uploaded_by=request.user)
+        try:
+            services.add_version(
+                document, file_key=meta['file_key'], company=company,
+                filename=meta['filename'], size=len(contenu),
+                mime=meta['mime'],
+                checksum=services.compute_checksum(contenu),
+                uploaded_by=request.user)
+        except QuotaDepasseError as exc:
+            # ADOC23 — quota atteint entre-temps : pas de document sans version.
+            document.delete()
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         # GED11/GED12 — indexe le document fraîchement créé.
         services.update_search_vector(document)
         services.index_embedding(document)
@@ -922,10 +933,18 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             from apps.customfields.serializers import validate_custom_data
             return validate_custom_data('document', company, data)
 
-        result = services.importer_en_masse(
-            company=company, folder=folder, lignes=lignes,
-            zip_bytes=zip_bytes, created_by=request.user,
-            valider_custom=_valider_custom)
+        # ADOC23 — quota appliqué par add_version : un lot qui le dépasse est
+        # refusé en entier (403), jamais à moitié importé.
+        from django.db import transaction as _tx
+        try:
+            with _tx.atomic():
+                result = services.importer_en_masse(
+                    company=company, folder=folder, lignes=lignes,
+                    zip_bytes=zip_bytes, created_by=request.user,
+                    valider_custom=_valider_custom)
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         ser = DocumentSerializer(
             result['documents'], many=True, context={'request': request})
         http = (status.HTTP_201_CREATED if result['crees']
@@ -1230,6 +1249,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except PermissionError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
+        except QuotaDepasseError as exc:  # ADOC23
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         services.update_search_vector(document)
         return Response(
             DocumentVersionSerializer(version, context={'request': request}).data,
@@ -1270,6 +1292,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             # ADOC17 — document extrait (check-out GED16) par un autre.
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        except QuotaDepasseError as exc:  # ADOC23
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ArchivageLegalError as exc:
             # GED23 — document archivé légalement : write-once, pas de restauration.
             return Response(
@@ -1531,7 +1556,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except (ArchivageLegalError, LegalHoldError) as exc:
+        except (ArchivageLegalError, LegalHoldError, QuotaDepasseError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
@@ -1830,6 +1855,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except PermissionError as exc:
             # ADOC17 — cible extraite (check-out GED16) par un autre.
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        except QuotaDepasseError as exc:  # ADOC23
+            return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
@@ -2074,6 +2101,8 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
                 user=self.request.user,
             )
         except PermissionError as exc:
+            raise PermissionDenied(str(exc))
+        except QuotaDepasseError as exc:  # ADOC23
             raise PermissionDenied(str(exc))
         serializer.instance = instance
 
@@ -4307,6 +4336,21 @@ def public_depot(request, token):
     if not file:
         return _ged_noindex(Response(
             {'file': 'Aucun fichier fourni.'}, status=status.HTTP_400_BAD_REQUEST))
+    # ADOC23 — quota du LIEN puis quota de la SOCIÉTÉ, AVANT tout stockage
+    # (un refus n'écrit jamais rien dans le stockage objet).
+    taille = int(getattr(file, 'size', 0) or 0)
+    if depot.quota_octets is not None and \
+            depot.octets_deposes + taille > depot.quota_octets:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de dépôt a atteint son quota d'octets."},
+            status=status.HTTP_410_GONE))
+    try:
+        services.assert_quota_disponible(
+            depot.company, octets_supplementaires=taille)
+    except QuotaDepasseError:
+        return _ged_noindex(Response(
+            {'detail': 'Quota de stockage atteint : dépôt impossible.'},
+            status=status.HTTP_403_FORBIDDEN))
     meta, err = store_attachment(file)
     if err:
         return _ged_noindex(Response(
@@ -4317,6 +4361,10 @@ def public_depot(request, token):
             size=meta['size'], mime=meta['mime'],
             uploader_nom=(request.data.get('nom') or '').strip(),
             uploader_email=(request.data.get('email') or '').strip())
+    except QuotaDepasseError:  # ADOC23 — course entre deux dépôts.
+        return _ged_noindex(Response(
+            {'detail': 'Quota de stockage atteint : dépôt impossible.'},
+            status=status.HTTP_403_FORBIDDEN))
     except ValueError as exc:
         return _ged_noindex(Response(
             {'detail': str(exc)}, status=status.HTTP_410_GONE))
