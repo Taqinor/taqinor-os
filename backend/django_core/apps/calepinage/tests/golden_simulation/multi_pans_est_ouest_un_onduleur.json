@@ -1,0 +1,217 @@
+{
+ "_provenance": {
+  "tache": "ACAL53",
+  "produit_par": "python -m apps.calepinage.tests.test_acal_multi_pans --write",
+  "cas": "Est 10 modules (aspect -90) + ouest 6 modules (aspect +90), 710 Wc, onduleur 3 kW, crête 1000 W/m² rejouée, postes salissure 2 / mismatch 2 / onduleur 3 / indisponibilité 3 %, σ modèle 3 % et biais 1 %.",
+  "comment_regenerer": "Relancer la commande À LA MAIN, lire le diff, dire dans le message de commit POURQUOI la cascade a bougé."
+ },
+ "attendu": {
+  "total": {
+   "kwc": 11.36,
+   "p50_kwh": 195.1,
+   "p75_kwh": 190.9,
+   "p90_kwh": 187.2,
+   "performance_ratio": 0.556,
+   "specific_yield_kwh_kwc": 17.2,
+   "total_loss_pct": 44.4
+  },
+  "par_pan": [
+   {
+    "pan": "PAN-1",
+    "kwc": 7.1,
+    "p50_kwh": 113.8,
+    "p75_kwh": 111.3,
+    "p90_kwh": 109.1
+   },
+   {
+    "pan": "PAN-2",
+    "kwc": 4.26,
+    "p50_kwh": 81.3,
+    "p75_kwh": 79.6,
+    "p90_kwh": 78.0
+   }
+  ],
+  "cascade": [
+   {
+    "etape": "horizon",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "ombrage_proche",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "acces_module",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "inter_rangees",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "bifacial",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "iam",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "spectral",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "salissure",
+    "omise": false,
+    "kwh_avant": 351.128,
+    "kwh_apres": 344.104,
+    "perte_pct": 2.0
+   },
+   {
+    "etape": "neige",
+    "omise": true,
+    "kwh_avant": 344.104,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "niveau_irradiance",
+    "omise": true,
+    "kwh_avant": 344.104,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "thermique",
+    "omise": true,
+    "kwh_avant": 344.104,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "qualite_module",
+    "omise": true,
+    "kwh_avant": 344.104,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "lid",
+    "omise": true,
+    "kwh_avant": 344.104,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "mismatch_fabricant",
+    "omise": false,
+    "kwh_avant": 344.104,
+    "kwh_apres": 337.222,
+    "perte_pct": 2.0
+   },
+   {
+    "etape": "mismatch_ombrage",
+    "omise": true,
+    "kwh_avant": 337.222,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "diodes",
+    "omise": true,
+    "kwh_avant": 337.222,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "ohmique_dc",
+    "omise": true,
+    "kwh_avant": 337.222,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "mppt",
+    "omise": true,
+    "kwh_avant": 337.223,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "onduleur",
+    "omise": false,
+    "kwh_avant": 337.223,
+    "kwh_apres": 327.106,
+    "perte_pct": 3.0
+   },
+   {
+    "etape": "ecretage",
+    "omise": false,
+    "kwh_avant": 327.106,
+    "kwh_apres": 201.106,
+    "perte_pct": 38.52
+   },
+   {
+    "etape": "ohmique_ac",
+    "omise": true,
+    "kwh_avant": 201.106,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "transformateur",
+    "omise": true,
+    "kwh_avant": 201.106,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "auxiliaires",
+    "omise": true,
+    "kwh_avant": 201.106,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "indisponibilite",
+    "omise": false,
+    "kwh_avant": 201.106,
+    "kwh_apres": 195.073,
+    "perte_pct": 3.0
+   }
+  ],
+  "ombrage_par_pan": [
+   {
+    "pan": "PAN-1",
+    "perte_ombrage_pct": null,
+    "total_pct": 4.0
+   },
+   {
+    "pan": "PAN-2",
+    "perte_ombrage_pct": null,
+    "total_pct": 4.0
+   }
+  ]
+ }
+}

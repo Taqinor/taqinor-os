@@ -130,6 +130,28 @@ ORDRE_ETAPES = (
     'indisponibilite',
 )
 
+#: ACAL53 — LES TROIS PHASES de la chaîne, dans l'ordre de ``ORDRE_ETAPES``.
+#: Un toit à plusieurs pans passe chaque pan dans la phase PAN (son
+#: irradiance, ses ombres, son câblage DC), puis la SOMME DC des pans
+#: rattachés aux onduleurs dans la phase ONDULEUR (fenêtre MPPT, η(P),
+#: écrêtage, ohmique AC, transformateur : ils voient la puissance de TOUS les
+#: pans à la fois), puis le site dans la phase SITE. Un toit à UN pan passe
+#: les trois d'affilée — strictement le comportement d'avant.
+ETAPES_PAN = ORDRE_ETAPES[:ORDRE_ETAPES.index('mppt')]
+ETAPES_ONDULEUR = ('mppt', 'onduleur', 'ecretage', 'ohmique_ac',
+                   'transformateur')
+ETAPES_SITE = ('auxiliaires', 'indisponibilite')
+PHASES = {'pan': ETAPES_PAN, 'onduleur': ETAPES_ONDULEUR, 'site': ETAPES_SITE}
+
+#: ACAL53 — les étapes d'OMBRAGE d'un pan : leur perte cumulée est la
+#: ``perte_ombrage_pct`` publiée par pan dans ``resultat['ombrage']``.
+ETAPES_OMBRAGE = ('horizon', 'ombrage_proche', 'acces_module',
+                  'inter_rangees')
+
+#: ACAL53 — la clé sous laquelle l'appelant POSE la cascade de la phase PAN de
+#: chaque pan (``{clé du pan: cascade}``) ; ``_bloc_ombrage`` la publie.
+CLE_CASCADES_PAR_PAN = 'cascades_par_pan'
+
 #: Le libellé FRANÇAIS de chaque étape. Il vit ici parce qu'une étape non
 #: livrée doit quand même se NOMMER dans la cascade : un rang sans libellé
 #: serait une ligne muette dans le diagramme de pertes.
@@ -365,6 +387,10 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'JOURS_MAX_SERIE_PERSISTEE', 'PAS_JOURNALIER_MINUTES',
            'MOTIF_SERIE_AGREGEE',
            'CLE_CLIENT_PVGIS',  # CALX58
+           # ACAL53 — les phases de la chaîne et la cascade de la somme.
+           'ETAPES_PAN', 'ETAPES_ONDULEUR', 'ETAPES_SITE', 'PHASES',
+           'ETAPES_OMBRAGE', 'CLE_CASCADES_PAR_PAN', 'cascade_de_la_somme',
+           'publier_resultat_de_chaine',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -394,8 +420,19 @@ class MeteoIndecise(ValueError):
         self.motif = message
 
 
-def appliquer_chaine(serie, contexte=None, resultat=None):
+def appliquer_chaine(serie, contexte=None, resultat=None, *, phase=None,
+                     omettre=None):
     """Parcourt ``ORDRE_ETAPES`` et rend ``(serie, cascade)``.
+
+    ACAL53 — ``phase`` (``'pan'`` | ``'onduleur'`` | ``'site'``) ne parcourt
+    que les étapes de cette phase (:data:`PHASES`), chacune à son RANG global.
+    La phase ``pan`` reçoit la série d'irradiance : elle seule la ré-indexe
+    sur l'heure du site, et elle REFUSE (``ChaineInvalide``) un contexte sans
+    ``meteo.heure`` — une chaîne de pan sans météo omettrait en silence IAM,
+    horizon, inter-rangées et accès module. Les phases ``onduleur`` et
+    ``site`` reçoivent une série DÉJÀ ré-indexée. ``omettre`` (``{étape:
+    motif}``) omet une étape en publiant son motif (l'écrêtage sans table
+    d'affectation). ``phase=None`` : toute la chaîne, inchangée.
 
     Args:
         serie: le document horaire de CALX142 — ``{points, pas_minutes,
@@ -422,18 +459,37 @@ def appliquer_chaine(serie, contexte=None, resultat=None):
             saisi (CALX153) — la publication est refusée en nommant la clé.
     """
     contexte = contexte if isinstance(contexte, dict) else {}
-    _refuser_irradiance_horizontale(serie)
-    _installer_meteo_partagee(contexte)
-    serie = _reindexer_sur_l_heure_du_site(serie, contexte)
+    if phase is not None and phase not in PHASES:
+        raise ChaineInvalide(f'Phase de chaîne inconnue : « {phase} ».',
+                             etape=str(phase))
+    etapes = PHASES[phase] if phase is not None else ORDRE_ETAPES
+    omettre = omettre if isinstance(omettre, dict) else {}
+    if phase in (None, 'pan'):
+        if phase == 'pan' and 'heure' not in (contexte.get('meteo') or {}):
+            raise ChaineInvalide(
+                'Chaîne de pan sans « meteo.heure » : la météo doit être '
+                'posée AVANT les chaînes par pan, sinon IAM, horizon, '
+                'inter-rangées et accès module s\'omettent en silence.',
+                etape='meteo')
+        _refuser_irradiance_horizontale(serie)
+        _installer_meteo_partagee(contexte)
+        serie = _reindexer_sur_l_heure_du_site(serie, contexte)
+    else:
+        _installer_meteo_partagee(contexte)
     courante = serie
     premiere = _arrondi(_etapes.energie_kwh(courante))
     dernier_connu = premiere
     publiees = []
     appliquees = 0
 
-    for rang, nom in enumerate(ORDRE_ETAPES, start=1):
+    for nom in etapes:
+        rang = ORDRE_ETAPES.index(nom) + 1
         kwh_avant = dernier_connu
-        rendue, etape = _executer(nom, courante, contexte)
+        if nom in omettre:
+            rendue, etape = courante, _etapes.etape_omise(_libelle(nom),
+                                                          omettre[nom])
+        else:
+            rendue, etape = _executer(nom, courante, contexte)
 
         if etape['motif_omission']:
             apres = _arrondi(_etapes.energie_kwh(rendue))
@@ -506,8 +562,143 @@ def _publier(resultat, serie, contexte, cascade):
     orientations = _orientations_par_pan(serie, contexte)
     resultat['production'] = _bloc_production(
         resultat, serie, contexte, cascade, decision, orientations)
-    resultat['ombrage'] = _bloc_ombrage(contexte, orientations)
+    resultat['ombrage'] = _bloc_ombrage(contexte, orientations, cascade)
     resultat['serie_horaire'] = _bloc_serie_horaire(serie)
+
+
+def publier_resultat_de_chaine(resultat, serie, contexte, cascade):
+    """ACAL53 — publie ``meteo``, ``production``, ``ombrage`` et
+    ``serie_horaire`` d'une chaîne PASSÉE PAR PHASES (plusieurs pans).
+
+    ``serie`` est la série de SORTIE du site, ``cascade`` la cascade de la
+    SOMME (:func:`cascade_de_la_somme`), ``contexte`` porte les séries de
+    sortie par pan (:data:`CLE_SORTIES_PAR_PAN`) et leurs cascades de phase
+    PAN (:data:`CLE_CASCADES_PAR_PAN`). Le même chemin d'écriture que
+    ``appliquer_chaine(..., resultat)`` : rien n'est recodé.
+    """
+    _publier(resultat, serie, contexte, cascade)
+
+
+def cascade_de_la_somme(cascades_pan, cascade_onduleur, cascade_site,
+                        contexte=None):
+    """ACAL53 — LA cascade d'un toit à plusieurs pans : celle de la SOMME.
+
+    Phase PAN : les kWh de chaque étape sont SOMMÉS sur les pans (une étape
+    omise sur un pan y laisse passer son énergie inchangée) ; une étape est
+    « appliquée » dès qu'elle l'est sur un pan, et omise (avec le motif du
+    premier pan) quand elle l'est partout. Phases ONDULEUR et SITE : leur
+    cascade unique, puisqu'elles voient déjà la somme. ``total_pct`` est
+    recalculé de la première énergie de la somme à la dernière — jamais une
+    moyenne de pourcentages.
+    """
+    contexte = contexte if isinstance(contexte, dict) else {}
+    cascades_pan = [c for c in (cascades_pan or ()) if isinstance(c, dict)]
+    publiees = []
+    appliquees = 0
+    for nom in ETAPES_PAN:
+        lignes = [_etape_nommee(c, nom) for c in cascades_pan]
+        lignes = [ligne for ligne in lignes if ligne is not None]
+        if not lignes:
+            continue
+        somme = _etape_sommee(nom, lignes)
+        publiees.append(somme)
+        if not somme['motif_omission']:
+            appliquees += 1
+    for cascade in (cascade_onduleur, cascade_site):
+        for etape in ((cascade or {}).get('etapes') or ()):
+            publiees.append(dict(etape))
+            if not etape.get('motif_omission'):
+                appliquees += 1
+    premiere = publiees[0]['kwh_avant'] if publiees else None
+    derniere = premiere
+    for etape in publiees:
+        if not etape.get('motif_omission') and etape.get('kwh_apres') \
+                is not None:
+            derniere = etape['kwh_apres']
+    postes = []
+    for cascade in list(cascades_pan) + [cascade_onduleur or {},
+                                         cascade_site or {}]:
+        for poste in cascade.get('postes_non_sources') or ():
+            if poste not in postes:
+                postes.append(poste)
+    return {
+        'etapes': publiees,
+        'ordre': [etape['etape'] for etape in publiees],
+        'total_pct': _total_pct(premiere, derniere, appliquees),
+        'postes_non_sources': postes,
+        'hash_entree': contexte.get('hash_entree'),
+    }
+
+
+def _etape_nommee(cascade, nom):
+    for etape in cascade.get('etapes') or ():
+        if etape.get('etape') == nom:
+            return etape
+    return None
+
+
+def _etape_sommee(nom, lignes):
+    """Une étape de phase PAN, ses énergies sommées sur les pans."""
+    appliquees = [ligne for ligne in lignes if not ligne['motif_omission']]
+    modele = dict(appliquees[0] if appliquees else lignes[0])
+    avant = None
+    apres = None
+    for ligne in lignes:
+        avant = _ajouter(avant, ligne.get('kwh_avant'))
+        # Omise sur ce pan : son énergie traverse l'étape inchangée.
+        sortie = (ligne.get('kwh_avant') if ligne['motif_omission']
+                  else ligne.get('kwh_apres'))
+        apres = _ajouter(apres, sortie)
+    avant = _arrondi(avant)
+    if not appliquees:
+        modele.update(kwh_avant=avant, kwh_apres=None, perte_kwh=None,
+                      perte_pct=None)
+        return modele
+    apres = _arrondi(apres)
+    perte_kwh, perte_pct = _perte(nom, modele, avant, apres)
+    modele.update(kwh_avant=avant, kwh_apres=apres, perte_kwh=perte_kwh,
+                  perte_pct=perte_pct, motif_omission='')
+    return modele
+
+
+def _cascade_du_pan(cascade):
+    """ACAL53 — la cascade de la phase PAN, extraite d'une cascade complète.
+
+    ``{etapes, total_pct}`` : les étapes ``horizon … ohmique_dc`` et la perte
+    cumulée de la première énergie à la dernière appliquée.
+    """
+    etapes = [dict(etape) for etape in ((cascade or {}).get('etapes') or ())
+              if etape.get('etape') in ETAPES_PAN]
+    premiere = etapes[0].get('kwh_avant') if etapes else None
+    derniere = premiere
+    appliquees = 0
+    for etape in etapes:
+        if not etape.get('motif_omission'):
+            appliquees += 1
+            if etape.get('kwh_apres') is not None:
+                derniere = etape['kwh_apres']
+    return {'etapes': etapes,
+            'total_pct': _total_pct(premiere, derniere, appliquees)}
+
+
+def _perte_ombrage_pct(cascade):
+    """ACAL53 — la perte d'OMBRAGE d'un pan, en % de l'énergie qui l'atteint.
+
+    Somme des pertes des étapes :data:`ETAPES_OMBRAGE` APPLIQUÉES, rapportée
+    à l'énergie d'entrée de la cascade du pan. ``None`` quand aucune n'est
+    appliquée (une ombre non mesurée n'est pas une ombre nulle).
+    """
+    etapes = (cascade or {}).get('etapes') or []
+    if not etapes:
+        return None
+    entree = _flottant(etapes[0].get('kwh_avant'))
+    pertes = [_flottant(etape.get('perte_kwh')) for etape in etapes
+              if etape.get('etape') in ETAPES_OMBRAGE
+              and not etape.get('motif_omission')]
+    pertes = [perte for perte in pertes if perte is not None]
+    if not pertes or not entree:
+        return None
+    return round(sum(pertes) / entree * 100.0, 3)
 
 
 def _bloc_meteo_publie(contexte, decision):
@@ -934,7 +1125,8 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         if irradiation is not None and kwc:
             irradiation_ponderee = _ajouter(irradiation_ponderee,
                                             irradiation * kwc)
-        _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation)
+        _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation,
+                       contexte.get('reglages_simulation'))
         lignes.append(ligne)
 
     if not series:
@@ -1134,37 +1326,59 @@ def _orientations_par_pan(serie, contexte):
     return orientations
 
 
-def _bloc_ombrage(contexte, orientations):
+def _bloc_ombrage(contexte, orientations, cascade=None):
     """``resultat['ombrage']`` — TOF, TSRF et accès solaire, pan par pan.
 
     ``methode`` reste ``null`` tant qu'AUCUN pan n'a de TOF : annoncer une
     méthode qui n'a rien produit ferait lire un calcul là où chaque ligne
     porte son motif d'omission.
+
+    ACAL53 — chaque ligne porte aussi la cascade de la phase PAN de CE pan
+    (``cascade``) et sa ``perte_ombrage_pct``. Plusieurs pans : les cascades
+    POSÉES par l'appelant (:data:`CLE_CASCADES_PAR_PAN`) ; un seul pan
+    équipé : la phase PAN de la cascade publiée (c'est la sienne).
     """
+    posees = contexte.get(CLE_CASCADES_PAR_PAN)
+    posees = posees if isinstance(posees, dict) else {}
+    plans = [plan for plan in (contexte.get('plans') or ())
+             if isinstance(plan, dict)]
+    equipes = [plan for plan in plans if _est_equipe(plan)]
     par_pan = []
-    for plan in (contexte.get('plans') or ()):
-        if not isinstance(plan, dict):
-            continue
+    for plan in plans:
         bloc = orientations.get(_cle_de_pan(plan)) or {}
+        cascade_pan = posees.get(_cle_de_pan(plan))
+        if cascade_pan is None and not posees and len(equipes) == 1 \
+                and _cle_de_pan(equipes[0]) == _cle_de_pan(plan):
+            cascade_pan = cascade
+        cascade_pan = (_cascade_du_pan(cascade_pan)
+                       if isinstance(cascade_pan, dict) else None)
         par_pan.append({
             'pan': str(plan.get('pan') or plan.get('cle') or ''),
             'tof': bloc.get('tof'),
             'tsrf': bloc.get('tsrf'),
             'acces_solaire_moyen_pct': bloc.get('acces_solaire_moyen_pct'),
             'motif_omission': bloc.get('motif_omission') or '',
+            'perte_ombrage_pct': _perte_ombrage_pct(cascade_pan),
+            'cascade': cascade_pan,
         })
     mesure = any(ligne['tof'] is not None for ligne in par_pan)
     return {'par_pan': par_pan,
             'methode': _orientation.METHODE if mesure else None}
 
 
-def _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation):
-    """Les colonnes d'un pan, depuis SA propre série — jamais un prorata."""
+def _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation, reglages=None):
+    """Les colonnes d'un pan, depuis SA propre série — jamais un prorata.
+
+    ACAL53 — ``reglages`` : la section ``simulation`` de la société. Les σ
+    SAISIS (modèle, biais du site) s'appliquent à chaque pan comme au total :
+    un seul chemin vers ``bankable``.
+    """
     ligne['p50_kwh'] = _arrondi_kwh(kwh)
     ligne['specific_yield_kwh_kwc'] = _rendement(kwh, kwc)
     ligne['performance_ratio'] = _ratio(
         kwh, irradiation * kwc if irradiation is not None and kwc else None)
-    quantiles = bankable(kwh, totaux_par_annee=annuel_pan, kwc=kwc or None)
+    quantiles = bankable(kwh, totaux_par_annee=annuel_pan, kwc=kwc or None,
+                         reglages=reglages)
     ligne['p75_kwh'] = quantiles['p75_kwh']
     ligne['p90_kwh'] = quantiles['p90_kwh']
 

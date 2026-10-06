@@ -71,6 +71,10 @@ CHAMP_GAMMA = 'temp_coeff_pmax_pct_c'
 #: Le nom de la méthode publiée — nommée, jamais sous-entendue.
 METHODE = 'iec_61724_1'
 
+#: ACAL53 — sentinelle « PR non fourni : le calculer ici » (``None`` est une
+#: valeur légitime du PR fourni : non publié, avec son motif ailleurs).
+_PR_CALCULE = object()
+
 #: Les trois formes de période, publiées telles quelles.
 PERIODE_ANNUELLE = 'annuelle'
 
@@ -132,7 +136,7 @@ MOTIF_TEMPERATURE = (
     f'manquant : « serie_horaire.{COLONNE_TEMPERATURE} ».')
 
 
-def bloc_performance(serie, *, kwc, fiche_module=None):
+def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE):
     """Le bloc ``resultat['performance']`` — ou ses nulls, motivés.
 
     Args:
@@ -143,6 +147,12 @@ def bloc_performance(serie, *, kwc, fiche_module=None):
         fiche_module: les specs produit déjà résolues, ou ``{}``. Seul
             ``temp_coeff_pmax_pct_c`` y est lu, et seulement pour la variante
             corrigée en température.
+        pr: ACAL53 — LE ratio de performance publié par
+            ``production.total.performance_ratio`` (une seule définition :
+            énergie du site / irradiation pondérée par le kWc de chaque pan).
+            Fourni (même ``None``), il est publié TEL QUEL ; ce bloc ne garde
+            alors en propre que la variante corrigée en température. Absent,
+            le PR est calculé ici sur ``serie`` (appel historique).
 
     Returns:
         dict — ``pr``, ``pr_methode``, ``pr_reference``,
@@ -190,7 +200,10 @@ def bloc_performance(serie, *, kwc, fiche_module=None):
 
     reference_kwh = puissance * irradiation / (
         IRRADIANCE_REFERENCE_W_M2 / 1000.0)
-    bloc['pr'] = round(energie_kwh / reference_kwh, 4)
+    if pr is _PR_CALCULE:
+        bloc['pr'] = round(energie_kwh / reference_kwh, 4)
+    else:
+        bloc['pr'] = pr
     bloc['pr_methode'] = METHODE
     bloc['pr_reference'] = REFERENCE_IEC
 

@@ -159,7 +159,8 @@ __all__ = [
 
 
 def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
-                    resultat=None, maintenant=None):
+                    resultat=None, maintenant=None, sortie=None,
+                    cascade=None):
     """Rejoue la même installation des deux côtés et PUBLIE l'écart.
 
     D'un côté notre chaîne (``appliquer_chaine`` sur ``serie``), de l'autre
@@ -187,6 +188,10 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
             rejoint ``resultat['avertissements']``.
         maintenant: l'horodatage de la mesure (les tests le figent). À
             défaut, l'instant courant en UTC.
+        sortie / cascade: ACAL53 — la série de SORTIE du site et la cascade
+            de la SOMME déjà calculées par la simulation (plusieurs pans :
+            la chaîne d'un seul pan ne décrit pas le site). Fournies, la
+            chaîne n'est PAS rejouée sur ``serie``.
 
     Returns:
         dict — le bloc ``validation`` des clés :data:`CLES_VALIDATION`.
@@ -207,7 +212,8 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
             MOTIF_PUISSANCES_DIFFERENTES.format(
                 pvgis=mesure_pvgis['kwc'], locale=puissance)))
 
-    sortie, cascade = appliquer_chaine(serie, contexte)
+    if sortie is None or cascade is None:
+        sortie, cascade = appliquer_chaine(serie, contexte)
     total_local = _etapes.energie_kwh(sortie)
     if total_local is None:
         return _publier(resultat, _bloc_vide(MOTIF_CHAINE_SANS_ENERGIE))

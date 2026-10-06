@@ -2,8 +2,8 @@
  "_provenance": {
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
-  "produit_le": "2026-09-21",
-  "arbre_sha": "338bc64b734947bfdc56c27ef797216da39c77e4",
+  "produit_le": "2026-10-06",
+  "arbre_sha": "cb96ecdff0038d38e64c147e492cb669b12f62ed",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -417,7 +417,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Étape non livrée : le module « apps.calepinage.services.etapes.ecretage » n'existe pas encore dans le dépôt. La série ressort inchangée — aucun forfait n'est appliqué."
+     "motif_omission_non_compare": "Aucun onduleur au bloc « electrique.onduleurs » : ni puissance, ni nombre d'appareils, donc aucune borne d'écrêtage. Étape OMISE. Champ manquant : « electrique.onduleurs »."
     },
     {
      "omise": false,
@@ -560,8 +560,8 @@
      "azimut_deg": null,
      "inclinaison_deg": 15.0,
      "p50_kwh": 131.7,
-     "p75_kwh": 126.4,
-     "p90_kwh": 121.7,
+     "p75_kwh": 125.7,
+     "p90_kwh": 120.3,
      "performance_ratio": 0.87,
      "specific_yield_kwh_kwc": 21.9,
      "shading_annual_loss_pct": null,

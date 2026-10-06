@@ -19,10 +19,12 @@ L'ORDRE, ET POURQUOI C'EST CELUI-LÀ
 ------------------------------------
 1. ``decision_meteo`` — le mode météo est SAISI ou la simulation est REFUSÉE,
    avant le moindre appel réseau (CALX153).
-2. la chaîne de pertes, UNE PASSE PAR PLAN : chaque pan a sa propre irradiance,
-   donc sa propre cascade. Les séries de sortie sont posées sous
-   ``sorties_par_pan`` pour que la chaîne additionne les pans sans jamais
-   répartir un total au prorata.
+2. la chaîne de pertes. Un pan : la chaîne entière d'affilée. Plusieurs pans
+   (ACAL53) : la météo est posée AVANT, chaque pan passe la phase PAN avec
+   sa propre irradiance, la SOMME DC passe la phase ONDULEUR (écrêtage, η(P),
+   MPPT jugés sur tous les pans à la fois), puis la phase SITE ; la cascade
+   publiée est celle de la SOMME, et les sorties par pan sont posées sous
+   ``sorties_par_pan``.
 3. la simulation MODULE PAR MODULE (CALX182) quand le document porte un accès
    solaire par module ;
 4. la courbe de charge (CALX189), puis batterie → autoconsommation → hors
@@ -64,7 +66,8 @@ from .valeurs import nombre as _nombre
 
 __all__ = [
     'CLE_SIMULATION', 'COLONNE_ENTREE_CHAINE', 'DETAIL_DEJA_CALCULE',
-    'MOTIF_PLUSIEURS_PANS', 'MOTIF_SANS_PAN_EQUIPE', 'MOTIF_SANS_POINT',
+    'MOTIF_ECRETAGE_SANS_AFFECTATION', 'MOTIF_SANS_PAN_EQUIPE',
+    'MOTIF_SANS_POINT',
     'SOURCE_ENTREE_CHAINE', 'SimulationRefusee', 'VERSION_SIMULATION',
     'construire_contexte', 'empreinte_simulation',
     'simuler_calepinage',
@@ -137,12 +140,6 @@ MOTIF_SANS_POINT = (
     "Le site de ce calepinage n'a pas de point GPS : la météo se demande à "
     'une latitude et une longitude, elles ne se devinent pas. Posez '
     "l'épingle du site sur la carte (« roof_layout.pin »).")
-
-MOTIF_PLUSIEURS_PANS = (
-    'Plusieurs pans équipés : la cascade et la série horaire publiées sont '
-    'celles du pan « {pan} » (le plus puissant). La production, elle, est la '
-    'SOMME des pans — chacun a été passé dans la chaîne avec sa propre '
-    'irradiance.')
 
 MOTIF_FICHIER_PLUSIEURS_PANS = (
     'La série météo déposée décrit UN plan ; ce calepinage en porte '
@@ -1027,39 +1024,36 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     reference = max(plans_equipes, key=lambda plan: plan.get('kwc') or 0.0)
     reference = _plan_avec_le_site(reference, site)
 
-    # 2. LA CHAÎNE, UNE PASSE PAR PLAN.
-    sorties = {}
-    if len(plans_equipes) > 1:
-        for plan in plans_equipes:
-            avec_site = _plan_avec_le_site(plan, site)
-            contexte_plan = dict(contexte)
-            contexte_plan['plan'] = avec_site
-            contexte_plan['plans'] = [avec_site]
-            sortie, _cascade = appliquer_chaine(
-                fournisseur(avec_site), contexte_plan)
-            sorties[plan['cle']] = sortie
-        _ajouter_avertissement(
-            blocs, MOTIF_PLUSIEURS_PANS.format(pan=reference['cle']))
-        if fichier is not None:
-            _ajouter_avertissement(blocs, MOTIF_FICHIER_PLUSIEURS_PANS.format(
-                pans=len(plans_equipes)))
-
+    # 1 bis. LA MÉTÉO DE RÉFÉRENCE, AVANT TOUTE CHAÎNE (ACAL53) : sa
+    # provenance (``meteo.heure``) est ce que chaque chaîne de pan lit pour
+    # se ré-indexer et appliquer IAM, horizon, inter-rangées et accès module.
     try:
         serie_reference = fournisseur(reference)
     except (PvgisIndisponible, EntreeInvalide) as refus:
         raise SimulationRefusee(str(refus),
                                 champ=getattr(refus, 'champ', 'meteo') or
                                 'meteo') from refus
-
-    # La provenance de la série AVANT la chaîne : c'est elle que
-    # ``_reindexer_sur_l_heure_du_site`` lit (``meteo.heure.base``) et que
-    # l'ordonnanceur publie ensuite dans ``resultat['meteo']``.
     contexte['meteo'] = dict(provenance['provenance'] or {})
-    contexte[CLE_SORTIES_PAR_PAN] = sorties
     contexte['plan'] = reference
 
     ecrit = {}
-    sortie, cascade = appliquer_chaine(serie_reference, contexte, ecrit)
+    sorties = {}
+    if len(plans_equipes) > 1:
+        # 2. PLUSIEURS PANS (ACAL53) : phase PAN pan par pan, phase ONDULEUR
+        # sur la SOMME DC des pans rattachés, phase SITE sur le site.
+        try:
+            sortie, cascade, sorties = _chaine_par_phases(
+                contexte, plans_equipes, site, fournisseur, ecrit)
+        except (PvgisIndisponible, EntreeInvalide) as refus:
+            raise SimulationRefusee(str(refus),
+                                    champ=getattr(refus, 'champ', 'meteo')
+                                    or 'meteo') from refus
+        if fichier is not None:
+            _ajouter_avertissement(blocs, MOTIF_FICHIER_PLUSIEURS_PANS.format(
+                pans=len(plans_equipes)))
+    else:
+        # 2. UN SEUL PAN : la chaîne entière d'affilée (inchangé).
+        sortie, cascade = appliquer_chaine(serie_reference, contexte, ecrit)
     blocs['cascade'] = cascade
     blocs['meteo'] = ecrit['meteo']
     blocs['production'] = ecrit['production']
@@ -1089,7 +1083,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     _agregation_electrique(blocs, par_module, contexte, meta['affectation'])
 
     # 4. LA CHARGE, PUIS BATTERIE → AUTOCONSOMMATION → HORS RÉSEAU.
-    serie_site = _serie_du_site(sortie, sorties, plans_equipes)
+    # La série du SITE : sortie de la chaîne (un pan) ou de la phase SITE
+    # appliquée à la somme des pans (ACAL53). C'est elle qui croise la
+    # consommation, et c'est sur elle que se lisent PR et écart PVcalc.
+    serie_site = serie_production = sortie
     from .charges import ChargeInvalide
     from .courbe_charge import CourbeChargeInvalide, construire_courbe_charge
 
@@ -1120,19 +1117,26 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['incertitude'] = bloc_incertitude(
         total.get('p50_kwh'), totaux_par_annee=annuels,
         reglages=contexte['reglages_simulation'])
+    # ACAL53 — le PR est UNE définition : celui de ``production.total`` ;
+    # ``bloc_performance`` ne garde en propre que sa variante corrigée en
+    # température, lue sur la série du site au kWc total.
     blocs['performance'] = bloc_performance(
-        sortie, kwc=meta['kwc'], fiche_module=contexte['fiche_module'])
+        serie_production, kwc=meta['kwc'],
+        fiche_module=contexte['fiche_module'],
+        pr=total.get('performance_ratio'))
 
     reponse_pvgis = None
-    if fichier is None:
+    if fichier is None and _orientations_identiques(plans_equipes):
         # Une série DÉPOSÉE n'a pas de contrepartie « PVGIS a calculé la même
         # installation » : l'écart est alors publié SANS mesure, avec son
         # motif, plutôt que confronté à un autre point que celui du fichier.
+        # ACAL53 — PVcalc décrit UN plan : des pans d'orientations
+        # différentes ne s'y comparent pas (écart publié sans mesure).
         reponse_pvgis = _reponse_pvcalculation(
             client, reference, site, decision, cascade, meta['kwc'])
     blocs['validation'] = ecart_vs_pvcalc(
         serie_reference, contexte, reponse_pvgis, kwc=meta['kwc'],
-        maintenant=maintenant)
+        maintenant=maintenant, sortie=serie_production, cascade=cascade)
     _ajouter_avertissement(blocs, blocs['validation'].get('avertissement'))
 
     projection = tableau_pluriannuel(total.get('p50_kwh'), contexte)
@@ -1180,26 +1184,42 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     }
 
 
-def _serie_du_site(sortie_reference, sorties, plans_equipes):
-    """La série du SITE : la somme des séries de sortie, pan par pan.
+#: ACAL53 — l'écrêtage d'un toit à plusieurs pans se lit sur la SOMME DC des
+#: pans RATTACHÉS aux onduleurs : sans table d'affectation, on ne sait pas
+#: quels pans partagent quel onduleur, et l'étape est OMISE avec ce motif
+#: (jamais 0 %).
+MOTIF_ECRETAGE_SANS_AFFECTATION = (
+    "Aucune table d'affectation des pans aux onduleurs : l'écrêtage d'un toit "
+    'à plusieurs pans se lit sur la SOMME des pans rattachés à chaque '
+    "onduleur, et cette somme n'est pas connue — étape omise, aucune valeur "
+    'supposée.')
 
-    Un seul pan équipé ⇒ sa série EST celle du site. Plusieurs ⇒ l'énergie
-    s'additionne point à point sur la colonne déclarée ; les points sont
-    recopiés, les séries reçues ne bougent pas. C'est cette série qui croise
-    la consommation : croiser celle d'un seul pan sous-estimerait
-    l'autoconsommation de tous les autres.
+
+def _copier_meteo(provenance):
+    """Une copie PROFONDE du bloc météo : chaque chaîne de pan ré-indexe sa
+    série et réécrit ``meteo.heure`` — un dict partagé ferait sauter la
+    ré-indexation du pan suivant."""
+    import copy
+
+    return copy.deepcopy(provenance if isinstance(provenance, dict) else {})
+
+
+def _somme_des_series(series):
+    """La SOMME point à point de séries de même pas, sur leur colonne
+    d'énergie (la même pour toutes : elles sortent des mêmes étapes).
+
+    Les points sont RECOPIÉS depuis la première série (ses colonnes non
+    énergétiques — températures, irradiance — y restent) ; les séries reçues
+    ne bougent pas. ``None`` si aucune colonne n'est lisible.
     """
     from .etapes import colonne_energie
 
-    if len(plans_equipes) <= 1 or not sorties:
-        return sortie_reference
-    series = [sorties[plan['cle']] for plan in plans_equipes
-              if plan['cle'] in sorties]
+    series = [serie for serie in series if isinstance(serie, dict)]
     if not series:
-        return sortie_reference
+        return None
     colonne = colonne_energie(series[0])
     if colonne is None:
-        return sortie_reference
+        return None
     points = []
     for rang, point in enumerate(series[0].get('points') or []):
         copie = dict(point)
@@ -1216,6 +1236,123 @@ def _serie_du_site(sortie_reference, sorties, plans_equipes):
     return {'points': points,
             'pas_minutes': series[0].get('pas_minutes'),
             'colonne_energie': colonne}
+
+
+def _sorties_par_pan(series_dc, somme_dc, sortie_site):
+    """La sortie du SITE répartie HEURE PAR HEURE entre les pans, au prorata
+    de leur puissance DC À CETTE HEURE (celle qui est entrée dans l'onduleur).
+
+    Ce n'est pas une part supposée : à chaque pas, l'onduleur convertit la
+    somme de ce que les pans lui envoient, et chaque pan reçoit la part de la
+    sortie qu'il a fournie. Les points du pan gardent leurs colonnes propres
+    (irradiance de SON plan, pour son TOF et son PR).
+    """
+    from .etapes import colonne_energie
+
+    colonne_dc = colonne_energie(somme_dc)
+    colonne_sortie = colonne_energie(sortie_site)
+    points_somme = somme_dc.get('points') or []
+    points_sortie = sortie_site.get('points') or []
+    rendues = {}
+    for cle, serie in series_dc.items():
+        points = []
+        for rang, point in enumerate(serie.get('points') or []):
+            copie = dict(point)
+            dc_pan = _nombre(point.get(colonne_dc))
+            dc_total = (_nombre(points_somme[rang].get(colonne_dc))
+                        if rang < len(points_somme) else None)
+            sortie = (_nombre(points_sortie[rang].get(colonne_sortie))
+                      if rang < len(points_sortie) else None)
+            if sortie is None or dc_pan is None:
+                valeur = None
+            elif not dc_total:
+                valeur = 0.0
+            else:
+                valeur = sortie * dc_pan / dc_total
+            if colonne_sortie != colonne_dc:
+                copie.pop(colonne_dc, None)
+            copie[colonne_sortie] = valeur
+            points.append(copie)
+        rendues[cle] = {'points': points,
+                        'pas_minutes': serie.get('pas_minutes'),
+                        'colonne_energie': colonne_sortie}
+    return rendues
+
+
+def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit):
+    """ACAL53 — la chaîne d'un toit à PLUSIEURS pans, phase par phase.
+
+    1. phase PAN, pan par pan, chacun avec SA série d'irradiance et une copie
+       de la météo de référence (ré-indexation propre) ;
+    2. phase ONDULEUR sur la SOMME DC des pans rattachés : la table
+       d'affectation ne numérote un onduleur que quand il est seul (sinon
+       ``null`` : le noyau dimensionne un modèle, pas des exemplaires) — les
+       pans rattachés partagent donc l'ensemble des onduleurs, que les étapes
+       lisent déjà comme tel ; sans table, l'écrêtage est OMIS
+       (:data:`MOTIF_ECRETAGE_SANS_AFFECTATION`) ;
+    3. phase SITE sur la sortie de l'ensemble.
+
+    Publie dans ``ecrit`` (meteo, production, ombrage, série horaire) avec la
+    cascade de la SOMME et les sorties par pan. Rend ``(sortie du site,
+    cascade de la somme, {pan: sortie})``.
+    """
+    from .chaine_pertes import (
+        CLE_CASCADES_PAR_PAN, CLE_CROISEMENT_HORAIRE, cascade_de_la_somme,
+        publier_resultat_de_chaine,
+    )
+
+    provenance = contexte.get('meteo')
+    series_dc = {}
+    cascades_pan = {}
+    premier_contexte = None
+    for plan in plans_equipes:
+        avec_site = _plan_avec_le_site(plan, site)
+        contexte_plan = dict(contexte)
+        contexte_plan['meteo'] = _copier_meteo(provenance)
+        contexte_plan['plan'] = avec_site
+        contexte_plan['plans'] = [avec_site]
+        serie_dc, cascade_pan = appliquer_chaine(
+            fournisseur(avec_site), contexte_plan, phase='pan')
+        series_dc[plan['cle']] = serie_dc
+        cascades_pan[plan['cle']] = cascade_pan
+        if premier_contexte is None:
+            premier_contexte = contexte_plan
+    # Le verdict horaire est le même pour tous les pans (même série de
+    # référence, même fuseau) : celui du premier est publié.
+    contexte['meteo'] = premier_contexte['meteo']
+    if CLE_CROISEMENT_HORAIRE in premier_contexte:
+        contexte[CLE_CROISEMENT_HORAIRE] = premier_contexte[
+            CLE_CROISEMENT_HORAIRE]
+
+    somme_dc = _somme_des_series(
+        [series_dc[plan['cle']] for plan in plans_equipes])
+    kwc_total = sum((plan.get('kwc') or 0.0) for plan in plans_equipes)
+    contexte_onduleur = dict(contexte)
+    contexte_onduleur['plan'] = dict(
+        contexte.get('plan') or {}, kwc=kwc_total,
+        modules=sum(int(plan.get('modules') or 0) for plan in plans_equipes))
+    omettre = ({} if contexte.get('affectation')
+               else {'ecretage': MOTIF_ECRETAGE_SANS_AFFECTATION})
+    sortie_ac, cascade_onduleur = appliquer_chaine(
+        somme_dc, contexte_onduleur, phase='onduleur', omettre=omettre)
+    sortie, cascade_site = appliquer_chaine(
+        sortie_ac, contexte_onduleur, phase='site')
+
+    cascade = cascade_de_la_somme(
+        [cascades_pan[plan['cle']] for plan in plans_equipes],
+        cascade_onduleur, cascade_site, contexte)
+    sorties = _sorties_par_pan(series_dc, somme_dc, sortie)
+    contexte[CLE_SORTIES_PAR_PAN] = sorties
+    contexte[CLE_CASCADES_PAR_PAN] = cascades_pan
+    publier_resultat_de_chaine(ecrit, sortie, contexte, cascade)
+    return sortie, cascade, sorties
+
+
+def _orientations_identiques(plans_equipes):
+    """Tous les pans ont-ils la même inclinaison et le même azimut ?"""
+    angles = {(plan.get('inclinaison_deg'), plan.get('azimut_pvgis_deg'))
+              for plan in plans_equipes}
+    return len(angles) <= 1
 
 
 def _version_moteur():
