@@ -120,6 +120,46 @@ class RegulatoryDossier(models.Model):
         verbose_name='Prochaine action')
     prochaine_action_date = models.DateField(
         null=True, blank=True, verbose_name='Date de la prochaine action')
+    # ── CIQ619 — étude du distributeur, capacité, convention et exploitation
+    # (décret 2.25.100). Tout est SAISI (additif, nullable) ; les échéances
+    # MAXIMALES du décret en sont DÉRIVÉES (``selectors_reglementaire``),
+    # jamais une date de fin promise au client.
+
+    class EtudeConclusion(models.TextChoices):
+        FAVORABLE = 'favorable', 'Favorable'
+        ALTERNATIVE = 'alternative', 'Solution alternative proposée'
+        REFUS = 'refus', 'Refus'
+
+    class CapaciteEtat(models.TextChoices):
+        # Décret 2.25.100 art. 13 : réservée provisoirement au paiement de
+        # l'étude, définitivement à la signature de la convention.
+        PROVISOIRE = 'provisoire', 'Réservée provisoirement'
+        DEFINITIVE = 'definitive', 'Réservée définitivement'
+
+    etude_frais_notifies_le = models.DateField(
+        null=True, blank=True,
+        verbose_name="Frais d'étude notifiés le (art. 13)")
+    etude_payee_le = models.DateField(
+        null=True, blank=True, verbose_name="Étude payée le (art. 13)")
+    etude_conclusion = models.CharField(
+        max_length=12, choices=EtudeConclusion.choices, null=True,
+        blank=True, verbose_name="Conclusion de l'étude (art. 27)")
+    etude_reglages_imposes = models.BooleanField(
+        null=True, blank=True,
+        verbose_name="Réglages imposés par l'étude (art. 27)")
+    capacite_etat = models.CharField(
+        max_length=12, choices=CapaciteEtat.choices, null=True, blank=True,
+        verbose_name='Capacité réservée (art. 13)')
+    capacite_date = models.DateField(
+        null=True, blank=True, verbose_name='Capacité réservée le')
+    convention_signee_le = models.DateField(
+        null=True, blank=True,
+        verbose_name='Convention de raccordement signée le (art. 14)')
+    demande_exploitation_le = models.DateField(
+        null=True, blank=True,
+        verbose_name="Demande d'exploitation déposée le (art. 15-16)")
+    accord_exploitation_le = models.DateField(
+        null=True, blank=True, verbose_name="Accord d'exploitation reçu le")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='dossiers_reg_crees')

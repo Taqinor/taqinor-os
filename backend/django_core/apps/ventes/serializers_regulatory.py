@@ -43,6 +43,11 @@ class RegulatoryDossierSerializer(serializers.ModelSerializer):
             'id', 'devis', 'chantier', 'regime_8221', 'regime_label',
             'statut', 'statut_label', 'operateur', 'reference_dossier',
             'date_depot', 'date_decision', 'notes',
+            # CIQ619 — étude, capacité, convention, exploitation (saisis).
+            'etude_frais_notifies_le', 'etude_payee_le', 'etude_conclusion',
+            'etude_reglages_imposes', 'capacite_etat', 'capacite_date',
+            'convention_signee_le', 'demande_exploitation_le',
+            'accord_exploitation_le',
             'checklist_items', 'resume', 'created_at', 'updated_at',
         ]
         read_only_fields = [
