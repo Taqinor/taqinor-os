@@ -141,17 +141,9 @@ class RecettePompageSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.DictField())
     def get_vue_portail(self, obj):
-        comp = comparaison_recette_pompage(obj)
-        return {
-            'date_essai': (obj.date_essai.isoformat()
-                           if obj.date_essai else None),
-            'hmt_mesuree_m': obj.hmt_mesuree_m,
-            'debit_mesure_m3h': obj.debit_mesure_m3h,
-            'debit_promis_m3h': comp['promesse'].get('debit_hmt_m3h'),
-            'ecart_debit_pct': comp['ecart_debit_pct'],
-            'commentaire_ecart': obj.commentaire_ecart,
-            'resultat': obj.resultat,
-        }
+        # AGR612 — UNE liste blanche, partagée avec le portail client.
+        from .services import vue_portail_recette_pompage
+        return vue_portail_recette_pompage(obj)
 
 
 def recette_pompage_envelope(installation, recette, context=None):

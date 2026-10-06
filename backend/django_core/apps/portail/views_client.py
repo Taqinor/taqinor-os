@@ -1102,8 +1102,10 @@ class MesChantiersPortailJalonSerializer(serializers.Serializer):
 
 
 class MesChantiersPortailDetailSerializer(MesChantiersPortailLigneSerializer):
-    """Le détail d'un chantier + SA timeline de jalons."""
+    """Le détail d'un chantier + SA timeline de jalons + (AGR612) SA recette
+    pompage, réduite à la vue client du contrat ``recette_pompage.json``."""
     jalons = serializers.ListField(child=MesChantiersPortailJalonSerializer())
+    recette_pompage = serializers.DictField(allow_null=True)
 
 
 class MesChantiersPortailPhotoSerializer(serializers.Serializer):
@@ -1155,10 +1157,16 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
         if chantier is None:
             return Response({'detail': 'Introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        from apps.installations.selectors import recette_pompage_portail
         ligne = next(
             (c for c in chantiers_du_client_portail(company, client_id)
              if c['id'] == chantier.id), None)
-        return Response({**ligne, 'jalons': self._jalons(company, pk)})
+        # AGR612 — la recette pompage de SON chantier (lecture seule) : le
+        # sous-objet ``vue_portail`` du contrat partagé ; null sans fiche.
+        return Response({
+            **ligne, 'jalons': self._jalons(company, pk),
+            'recette_pompage': recette_pompage_portail(
+                company, client_id, chantier.id)})
 
     @staticmethod
     def _jalons(company, chantier_id):
