@@ -3,6 +3,7 @@
 ``company`` et ``created_by`` sont TOUJOURS forcés côté serveur dans les
 viewsets, jamais désérialisés. Aucun prix exposé.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -32,6 +33,9 @@ class RegulatoryDossierSerializer(serializers.ModelSerializer):
         source='get_regime_8221_display', read_only=True)
     statut_label = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # CIQ617 — bloc ``resume`` du contrat ``dossier_8221.json`` : l'état
+    # UNIQUE du dossier, reflété en miroir sur le chantier.
+    resume = serializers.SerializerMethodField()
 
     class Meta:
         model = RegulatoryDossier
@@ -39,12 +43,17 @@ class RegulatoryDossierSerializer(serializers.ModelSerializer):
             'id', 'devis', 'chantier', 'regime_8221', 'regime_label',
             'statut', 'statut_label', 'operateur', 'reference_dossier',
             'date_depot', 'date_decision', 'notes',
-            'checklist_items', 'created_at', 'updated_at',
+            'checklist_items', 'resume', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'regime_label', 'statut_label', 'checklist_items',
-            'created_at', 'updated_at',
+            'resume', 'created_at', 'updated_at',
         ]
+
+    @extend_schema_field(serializers.DictField())
+    def get_resume(self, obj):
+        from .selectors import resume_dossier_8221
+        return resume_dossier_8221(obj)
 
 
 class DossierExchangeSerializer(serializers.ModelSerializer):

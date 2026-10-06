@@ -24,9 +24,41 @@ class TestSuggestRegimePure(TestCase):
         self.assertEqual(suggest_regime_8221(500), 'accord_raccordement')
         self.assertEqual(suggest_regime_8221(1000), 'accord_raccordement')
 
-    def test_large_is_anre(self):
-        self.assertEqual(suggest_regime_8221(1000.01), 'autorisation_anre')
-        self.assertEqual(suggest_regime_8221(2500), 'autorisation_anre')
+    def test_large_is_autorisation_from_5_mw(self):
+        # CIQ613 — seuil sourcé (décret 2.25.100 art. 5, 18) : autorisation
+        # à partir de 5 MW ; 1 à 5 MW = accord de raccordement.
+        self.assertEqual(suggest_regime_8221(1000.01), 'accord_raccordement')
+        self.assertEqual(suggest_regime_8221(2500), 'accord_raccordement')
+        self.assertEqual(suggest_regime_8221(5000), 'autorisation_anre')
+
+    def test_industriel_inconnu_a_qualifier(self):
+        # CIQ613 — jamais « non concerné » par défaut pour un C&I.
+        self.assertEqual(
+            suggest_regime_8221(None, type_installation='industriel'),
+            'a_qualifier')
+        self.assertEqual(suggest_regime_8221(None), 'non_concerne')
+
+    def test_max_dc_ac(self):
+        # Puissance retenue = max(kWc DC, kW AC) (noyau CIQ612).
+        self.assertEqual(suggest_regime_8221(8, kw_ac=12),
+                         'accord_raccordement')
+
+    def test_mt_sous_seuil_a_qualifier(self):
+        self.assertEqual(
+            suggest_regime_8221(8, niveau='mt', type_installation='industriel'),
+            'a_qualifier')
+
+    def test_libelles_sans_seuil_ni_anre(self):
+        labels = dict(Installation.Regime8221.choices)
+        self.assertEqual(labels['declaration_bt'], 'Déclaration')
+        self.assertEqual(labels['accord_raccordement'],
+                         'Accord de raccordement')
+        self.assertEqual(labels['autorisation_anre'], 'Autorisation (ministère)')
+        self.assertEqual(labels['a_qualifier'], 'À qualifier')
+        for label in labels.values():
+            self.assertNotIn('ANRE', label)
+            # Aucun seuil dans un libellé (l'article de loi reste permis).
+            self.assertNotRegex(label, r'kW|MW|[<>]')
 
     def test_unknown_is_non_concerne(self):
         self.assertEqual(suggest_regime_8221(None), 'non_concerne')
@@ -83,6 +115,14 @@ class TestRegimeSuggestionEndpoint(TestCase):
         self.assertEqual(r2.data['code'], 'accord_raccordement')
         r3 = self.api.get(url, {'kwc': '5000'})
         self.assertEqual(r3.data['code'], 'autorisation_anre')
+
+    def test_endpoint_kw_ac_et_type(self):
+        url = '/api/django/installations/chantiers/regime-suggestion/'
+        r = self.api.get(url, {'kwc': '12', 'kw_ac': '10'})
+        self.assertEqual(r.data['code'], 'accord_raccordement')
+        r2 = self.api.get(url, {'type_installation': 'industriel'})
+        self.assertEqual(r2.data['code'], 'a_qualifier')
+        self.assertEqual(r2.data['label'], 'À qualifier')
 
     def test_serializer_exposes_regime_suggere(self):
         devis, _client, _lead = make_accepted_devis(
@@ -174,3 +214,70 @@ class TestRegimeHorsReseauAGR602(TestCase):
         self.assertEqual(r.data['code'], 'declaration_hors_reseau')
         r2 = self.api.get(url, {'kwc': '10'})
         self.assertEqual(r2.data['code'], 'declaration_bt')
+
+
+class TestRegimeCIQ613(TestCase):
+    """CIQ613 — chantier C&I : régime du noyau sourcé, « à qualifier » au lieu
+    de « non concerné », gate dossier bloqué tant que le régime est inconnu."""
+
+    def setUp(self):
+        self.company = make_company(slug='reg-ciq613', nom='Reg CIQ613')
+        self.user = User.objects.create_user(
+            username='reg_ciq613', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+
+    def _devis_industriel(self, etude):
+        devis, _client, lead = make_accepted_devis(self.company)
+        lead.type_installation = 'industriel'
+        lead.save()
+        devis.mode_installation = 'industriel'
+        devis.etude_params = etude
+        devis.save()
+        return devis
+
+    def test_industriel_1200_kwc_accord(self):
+        devis = self._devis_industriel({'puissance_kwc': 1200})
+        inst, created = create_installation_from_devis(
+            devis, self.user, self.company)
+        self.assertTrue(created)
+        self.assertEqual(inst.regime_8221, 'accord_raccordement')
+
+    def test_industriel_puissance_inconnue_a_qualifier_et_gate(self):
+        from apps.installations.services import (
+            RAISON_REGIME_A_QUALIFIER, _gate_check_dossier)
+        devis = self._devis_industriel({})
+        devis.lead.taille_souhaitee_kwc = None
+        devis.lead.save()
+        inst, _ = create_installation_from_devis(devis, self.user, self.company)
+        self.assertEqual(inst.regime_8221, 'a_qualifier')
+        self.assertEqual(_gate_check_dossier(inst), RAISON_REGIME_A_QUALIFIER)
+        # Même un statut « approuvé » saisi ne franchit pas un régime inconnu.
+        inst.dossier_statut = Installation.DossierStatut.APPROUVE
+        self.assertEqual(_gate_check_dossier(inst), RAISON_REGIME_A_QUALIFIER)
+        r = self.api.get(f'/api/django/installations/chantiers/{inst.id}/')
+        self.assertEqual(r.data['regime_suggere']['code'], 'a_qualifier')
+
+    def test_kw_ac_des_onduleurs_de_la_nomenclature(self):
+        from apps.stock.models import Produit
+        from apps.stock.models_fiche_technique import FicheTechnique
+        onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau', sku='OND-613',
+            prix_vente=Decimal('1000'), quantite_stock=5)
+        FicheTechnique.objects.create(
+            company=self.company, produit=onduleur, type_fiche='onduleur',
+            ond_ac_kw=Decimal('6'))
+        devis = self._devis_industriel({'puissance_kwc': 8})
+        inst, _ = create_installation_from_devis(devis, self.user, self.company)
+        inst.bom = [{'produit_id': onduleur.id, 'designation': 'Onduleur',
+                     'quantite': 2, 'marque': None}]
+        inst.save()
+        r = self.api.get(f'/api/django/installations/chantiers/{inst.id}/')
+        # max(8 kWc DC, 2 × 6 kW AC) = 12 kW → accord de raccordement.
+        self.assertEqual(r.data['regime_suggere']['code'],
+                         'accord_raccordement')
+
+    def test_residentiel_identique(self):
+        devis, _client, _lead = make_accepted_devis(self.company)
+        inst, _ = create_installation_from_devis(devis, self.user, self.company)
+        self.assertEqual(inst.regime_8221, 'declaration_bt')

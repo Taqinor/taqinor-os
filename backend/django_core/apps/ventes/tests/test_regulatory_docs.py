@@ -30,8 +30,9 @@ class RequiredDocumentsTest(SimpleTestCase):
         bt = rd.required_documents('declaration_bt')
         self.assertGreater(len(anre), len(bt))
         codes = {p['code'] for p in anre}
+        # Code stocké historique conservé ; libellé sans ANRE (CIQ616).
         self.assertIn('demande_autorisation_anre', codes)
-        self.assertIn('etude_impact_reseau', codes)
+        self.assertIn('attestation_assurance', codes)
 
     def test_non_concerne_has_no_pieces(self):
         self.assertEqual(rd.required_documents('non_concerne'), [])
@@ -39,7 +40,9 @@ class RequiredDocumentsTest(SimpleTestCase):
     def test_unknown_regime_returns_common_pieces_without_raising(self):
         pieces = rd.required_documents('inconnu_xyz')
         codes = {p['code'] for p in pieces}
-        self.assertIn('schema_unifilaire', codes)
+        # CIQ616 — pièces communes = décret 2.25.100 art. 1 + distributeur.
+        self.assertIn('cni_client', codes)
+        self.assertIn('contrat_onee', codes)
         self.assertNotIn('formulaire_declaration_bt', codes)
 
     def test_none_and_empty_never_raise(self):
@@ -65,7 +68,7 @@ class DocumentPackTest(SimpleTestCase):
 
     def test_regime_label_fallback(self):
         self.assertEqual(rd.regime_label('autorisation_anre'),
-                         "Autorisation ANRE")
+                         "Autorisation (ministère)")
         self.assertEqual(rd.regime_label('xyz'), 'xyz')
         self.assertEqual(rd.regime_label(None), '—')
 

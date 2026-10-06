@@ -100,7 +100,8 @@ class DeclarationEndpointTest(TestCase):
     def test_json_prefill(self):
         resp = self.api.get(self.url, {'regime': 'declaration_bt'})
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(resp.data['raccordement'], 'BT')
+        # CIQ615 — aucun niveau connu (ni chantier ni lead) : champ vide.
+        self.assertEqual(resp.data['raccordement'], '')
         self.assertAlmostEqual(resp.data['systeme']['kwc'], 9.9, places=1)
         # Le statut du devis n'a pas changé (lecture seule, RULE #4).
         self.devis.refresh_from_db()

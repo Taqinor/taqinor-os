@@ -46,6 +46,28 @@ def _company_or_none(user):
     return getattr(user, 'company', None)
 
 
+def _refleter_sur_chantier(dossier):
+    """CIQ617 — le dossier est la SEULE source de l'état 82-21 : à chaque
+    changement (statut, dates, référence, régime), son ``resume`` est reflété
+    sur le chantier lié par un appel de SERVICE installations (jamais un
+    import de modèle). Chantier = la FK chaîne du dossier, sinon le chantier
+    du devis (sélecteur installations) ; même société, toujours."""
+    from apps.installations.selectors import installation_for_devis
+    from apps.installations.services import refleter_dossier_8221
+    from ..selectors import dossier_8221_resume
+
+    chantier_id = dossier.chantier_id
+    if chantier_id is None and dossier.devis_id:
+        chantier = installation_for_devis(dossier.devis,
+                                          company=dossier.company)
+        chantier_id = chantier.pk if chantier is not None else None
+    if chantier_id is None:
+        return None
+    return refleter_dossier_8221(
+        chantier_id, dossier_8221_resume(dossier.company, dossier.devis_id),
+        company=dossier.company)
+
+
 class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique (idem pour les 5 viewsets
     # de ce module). get_queryset / perform_create / perform_update /
@@ -94,13 +116,16 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         devis = serializer.validated_data.get('devis')
         company = self._resolve_company(devis)
-        serializer.save(company=company, created_by=self.request.user)
+        dossier = serializer.save(company=company,
+                                  created_by=self.request.user)
+        _refleter_sur_chantier(dossier)  # CIQ617
 
     def perform_update(self, serializer):
         devis = serializer.validated_data.get(
             'devis', serializer.instance.devis)
         company = self._resolve_company(devis)
-        serializer.save(company=company)
+        dossier = serializer.save(company=company)
+        _refleter_sur_chantier(dossier)  # CIQ617
 
     @action(detail=True, methods=['post'], url_path='generer-checklist')
     def generer_checklist(self, request, pk=None):
@@ -120,7 +145,9 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
             DossierChecklistItem.objects.create(
                 company=dossier.company, dossier=dossier, code=code,
                 libelle=piece['label'], obligatoire=piece.get('required', True),
-                etape=_PIECE_ETAPE.get(code, 'depot'), ordre=ordre)
+                # CIQ616 — l'étape vient de la pièce sourcée (repli historique).
+                etape=piece.get('etape') or _PIECE_ETAPE.get(code, 'depot'),
+                ordre=ordre)
             created += 1
         dossier.refresh_from_db()
         return Response(
