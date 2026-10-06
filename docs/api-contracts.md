@@ -711,7 +711,7 @@
     metrique ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
 - frontend/src/api/crmApi.js :: createPointContact -> /api/django/crm/points-contact  [PointContactSerializer]
     champs: canal, canal_libelle, company, cout, date_contact, date_modification, detail, id, lead, lead_nom, ordre, saisi_le, saisi_par, saisi_par_nom, source
-    canal ∈ {autre, meta_ads, reference, site_web, telephone, walk_in, whatsapp_ctwa}
+    canal ∈ {autre, google_ads, meta_ads, reference, site_web, telephone, walk_in, whatsapp_ctwa}
 - frontend/src/api/crmApi.js :: createSavedView -> /api/django/crm/vues-enregistrees  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
 - frontend/src/api/crmApi.js :: createSiteProfile -> /api/django/crm/site-profiles  [SiteProfileSerializer]

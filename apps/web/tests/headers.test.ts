@@ -55,6 +55,14 @@ describe('applySecurityHeaders', () => {
     expect(CONTENT_SECURITY_POLICY).not.toContain('jrc.ec.europa.eu');
   });
 
+  it('la CSP autorise le pixel Meta (script fbevents.js + événements /tr)', () => {
+    const directive = (name: string) =>
+      CONTENT_SECURITY_POLICY.split(';').find((d) => d.trim().startsWith(name)) ?? '';
+    expect(directive('script-src')).toContain('https://connect.facebook.net');
+    expect(directive('img-src')).toContain('https://www.facebook.com');
+    expect(directive('connect-src')).toContain('https://www.facebook.com');
+  });
+
   it("l'en-tête HSTS couvre 1 an et les sous-domaines", () => {
     expect(STRICT_TRANSPORT_SECURITY).toContain('max-age=31536000');
     expect(STRICT_TRANSPORT_SECURITY).toContain('includeSubDomains');
