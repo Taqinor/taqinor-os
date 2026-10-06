@@ -202,7 +202,21 @@ def poser_validite_devis(devis, date_validite):
         return False
     devis.date_validite = date_validite
     devis.save(update_fields=['date_validite'])
+    _prolonger_liens(devis)
     return True
+
+
+def _prolonger_liens(devis):
+    """CIQ511 — une validité posée ou prolongée recule les liens publics
+    vivants du devis (jamais raccourcis). Best-effort : un incident ici ne
+    défait jamais l'écriture de la validité."""
+    try:
+        from apps.ventes.models import ShareLink
+        ShareLink.prolonger_pour_devis(devis)
+    except Exception:  # noqa: BLE001 — best-effort, journalisé
+        logger.warning(
+            'CIQ511 : liens non prolongés (devis #%s)',
+            getattr(devis, 'pk', '?'), exc_info=True)
 
 
 # ── CAD57 (21/09/2026) — validité d'un dossier FINANCÉ À CRÉDIT ────────────
@@ -279,6 +293,7 @@ def prolonger_validite_devis(devis, date_cible):
         return None
     devis.date_validite = date_cible
     devis.save(update_fields=['date_validite'])
+    _prolonger_liens(devis)
     return date_cible
 
 
