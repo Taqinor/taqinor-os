@@ -56,5 +56,73 @@
       }
     ]
   },
-  "exige_identite_entreprise": "CIQ9 — booléen ADDITIF sur chaque élément : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon. Tant que CIQ9 ne le sert pas, la clé vit dans `exemple_ciq9` (PAS dans `exemple`, que test_portail_devis_mis_a_jour compare clé à clé au sélecteur actuel) ; CIQ9 la verse dans `exemple` en même temps que le sélecteur qui l'émet."
+  "exige_identite_entreprise": "CIQ9 — booléen ADDITIF sur chaque élément : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon. Tant que CIQ9 ne le sert pas, la clé vit dans `exemple_ciq9` (PAS dans `exemple`, que test_portail_devis_mis_a_jour compare clé à clé au sélecteur actuel) ; CIQ9 la verse dans `exemple` en même temps que le sélecteur qui l'émet.",
+  "exemple_deux_options": {
+    "results": [
+      {
+        "id": 413,
+        "reference": "DEV-202609-0012",
+        "statut": "envoye",
+        "statut_display": "Envoyé",
+        "date_creation": "2026-09-28T10:12:00+00:00",
+        "date_validite": "2026-10-28",
+        "total_ttc": "48500.00",
+        "accepte": false,
+        "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
+        "deux_options": true,
+        "options": [
+          {
+            "cle": "sans_batterie",
+            "libelle": "Sans batterie"
+          },
+          {
+            "cle": "avec_batterie",
+            "libelle": "Avec batterie"
+          }
+        ]
+      },
+      {
+        "id": 400,
+        "reference": "DEV-202609-0003",
+        "statut": "accepte",
+        "statut_display": "Accepté",
+        "date_creation": "2026-09-01T08:00:00+00:00",
+        "date_validite": "2026-10-01",
+        "total_ttc": "36000.00",
+        "accepte": true,
+        "mis_a_jour_le": null,
+        "deux_options": false,
+        "options": null
+      }
+    ]
+  },
+  "deux_options": "ADOC110 (C-ADOC-043) — booléen ADDITIF sur chaque élément : verdict de `apps.ventes.utils.options.deux_options_declarees(devis)`, LE prédicat QJR55 que `accept_devis` relit (ventes/domain/cycle_vie.py:1376-1381). Tant qu'ADOC113 ne le sert pas, la clé vit dans `exemple_deux_options` (PAS dans `exemple`, que test_portail_devis_mis_a_jour compare clé à clé au sélecteur actuel) ; ADOC113 la verse dans `exemple` en même temps que le sélecteur qui l'émet.",
+  "options": "ADOC110 — ADDITIF : null si mono-option (`deux_options` faux), sinon la liste fixe [{cle:'sans_batterie', libelle:'Sans batterie'}, {cle:'avec_batterie', libelle:'Avec batterie'}] ; la `cle` est la valeur à renvoyer dans `option` à l'acceptation. AUCUN montant : le chiffrage par option reste le PDF /proposal (règle #4). Même statut que `deux_options` (vit dans `exemple_deux_options` jusqu'à ADOC113).",
+  "acceptation": {
+    "endpoint": "POST /api/django/portail/mes-devis/{id}/accepter/",
+    "corps": {
+      "nom": "str, requis",
+      "consent_esign": "bool, requis (consentement explicite, QX9)",
+      "option": "'sans_batterie'|'avec_batterie', REQUIS quand `deux_options` est vrai, facultatif sinon (ADOC110)"
+    },
+    "exemple_corps_deux_options": {
+      "nom": "Karim Alaoui",
+      "consent_esign": true,
+      "option": "avec_batterie"
+    },
+    "reponses": {
+      "200": {
+        "detail": "Devis accepté. Merci !",
+        "reference": "DEV-202609-0012",
+        "statut": "accepte"
+      },
+      "400_option_manquante": {
+        "detail": "Ce devis comporte deux options — précisez celle choisie par le client (« sans_batterie » ou « avec_batterie »)."
+      },
+      "403": "accès portail en lecture seule",
+      "404": "devis introuvable (autre client/société)",
+      "409": "conflit d'acceptation (AcceptError.conflict)"
+    },
+    "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable)."
+  }
 }
