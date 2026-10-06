@@ -116,6 +116,30 @@ describe('DiagrammePertes (CAL143)', () => {
     expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Recalculer')
   })
 
+  it('ACAL52 — résultat incomplet : bandeau borne haute avec lien réglages', async () => {
+    const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: {
+        ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+        production: borneHaute.production, simulation: borneHaute.simulation,
+      },
+    })
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    expect(screen.getByTestId('acal52-borne-haute')).toBeInTheDocument()
+    expect(screen.getByTestId('acal52-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
+    expect(screen.getAllByTestId('acal52-reglage').length).toBeGreaterThan(0)
+  })
+
+  it('ACAL52 — résultat complet : aucun bandeau', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    expect(screen.queryByTestId('acal52-borne-haute')).toBeNull()
+  })
+
   it('erreur réseau : message français, aucune valeur inventée', async () => {
     calepinageApi.calepinages.resultat.mockRejectedValue(new Error('boom'))
     rendre()

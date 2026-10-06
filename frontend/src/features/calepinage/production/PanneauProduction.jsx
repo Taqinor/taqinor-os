@@ -11,6 +11,7 @@ import RetourAtelier from '../atelier/RetourAtelier'
 import {
   LIBELLE_BOUTON, etatCalcul, issueDuJob, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
+import { BandeauBorneHaute, ReglagesUtilises, estIncomplet } from './BandeauProvenanceProduction'
 import TapisHoraire from './TapisHoraire'
 
 /* ============================================================================
@@ -40,6 +41,12 @@ import TapisHoraire from './TapisHoraire'
     ni `0` : c'est le vocabulaire que CAL236 impose (Done, PLAN2.md). */
 function nonCalculee(valeur, rendu) {
   return valeur === null || valeur === undefined ? 'non calculée' : rendu(valeur)
+}
+
+/** ACAL52 — PR / P75 / P90 / P95 d'un résultat INCOMPLET : « — non publié »,
+    motif du serveur en infobulle, jamais un nombre (jamais 100 %). */
+function nonPublie(motif) {
+  return <span title={motif || undefined} data-testid="acal52-non-publie">— non publié</span>
 }
 
 const kwh = (v) => nonCalculee(v, (x) => `${formatNumber(x, { decimals: 0 })} kWh`)
@@ -256,17 +263,23 @@ function BlocBase({ base }) {
 }
 
 function TotalKpis({ total }) {
+  const incomplet = estIncomplet(total)
+  const kwhPublie = (v, motif) => (incomplet ? nonPublie(motif) : kwh(v))
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="cal236-total">
       <Stat label="P50 (annuel)" value={kwh(total?.p50_kwh)} />
-      <Stat label="P75 (annuel)" value={kwh(total?.p75_kwh)} />
-      <Stat label="P90 (annuel)" value={kwh(total?.p90_kwh)} />
+      <Stat label="P75 (annuel)" value={kwhPublie(total?.p75_kwh, total?.p75_kwh_motif)} />
+      <Stat label="P90 (annuel)" value={kwhPublie(total?.p90_kwh, total?.p90_kwh_motif)} />
+      <Stat label="P95 (annuel)" value={kwhPublie(total?.p95_kwh, total?.p95_kwh_motif)} />
       <Stat
         label="Variabilité annuelle (σ)"
         value={nonCalculee(total?.annual_variability,
           (x) => formatPercent(x * 100, { decimals: 1 }))}
       />
-      <Stat label="Ratio de performance (PR)" value={pourcentagePerf(total?.performance_ratio)} />
+      <Stat
+        label="Ratio de performance (PR)"
+        value={incomplet ? nonPublie(total?.performance_ratio_motif) : pourcentagePerf(total?.performance_ratio)}
+      />
       <Stat label="Productible" value={kwhParKwc(total?.specific_yield_kwh_kwc)} />
       <Stat label="Puissance installée" value={nonCalculee(total?.kwc,
         (x) => `${formatNumber(x, { decimals: 2 })} kWc`)}
@@ -306,7 +319,8 @@ function TableauMensuel({ mensuel }) {
   )
 }
 
-function TableauParPan({ parPan }) {
+function TableauParPan({ parPan, total = null }) {
+  const incomplet = estIncomplet(total)
   if (!parPan?.length) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="cal236-par-pan-vide">
@@ -339,9 +353,15 @@ function TableauParPan({ parPan }) {
               {nonCalculee(pan.kwc, (x) => formatNumber(x, { decimals: 2 }))}
             </td>
             <td className="py-1 text-right tabular-nums">{kwh(pan.p50_kwh)}</td>
-            <td className="py-1 text-right tabular-nums">{kwh(pan.p75_kwh)}</td>
-            <td className="py-1 text-right tabular-nums">{kwh(pan.p90_kwh)}</td>
-            <td className="py-1 text-right tabular-nums">{pourcentagePerf(pan.performance_ratio)}</td>
+            <td className="py-1 text-right tabular-nums">
+              {incomplet ? nonPublie(total?.p75_kwh_motif) : kwh(pan.p75_kwh)}
+            </td>
+            <td className="py-1 text-right tabular-nums">
+              {incomplet ? nonPublie(total?.p90_kwh_motif) : kwh(pan.p90_kwh)}
+            </td>
+            <td className="py-1 text-right tabular-nums">
+              {incomplet ? nonPublie(total?.performance_ratio_motif) : pourcentagePerf(pan.performance_ratio)}
+            </td>
             <td className="py-1 text-right tabular-nums">{kwhParKwc(pan.specific_yield_kwh_kwc)}</td>
           </tr>
         ))}
@@ -404,8 +424,10 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000 })
         intervalleMs={intervalleMs}
         onTermine={refetch}
       />
+      <BandeauBorneHaute total={production?.total} />
       <BlocBase base={production?.base} />
       <TotalKpis total={production?.total} />
+      <ReglagesUtilises simulation={data?.simulation} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <p className="mb-1 text-xs font-medium text-muted-foreground">Production mensuelle</p>
@@ -413,7 +435,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000 })
         </div>
         <div>
           <p className="mb-1 text-xs font-medium text-muted-foreground">Par pan</p>
-          <TableauParPan parPan={production?.par_pan} />
+          <TableauParPan parPan={production?.par_pan} total={production?.total} />
         </div>
       </div>
     </Card>

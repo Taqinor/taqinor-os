@@ -298,3 +298,71 @@ describe('PanneauProduction — simulation périmée (ACAL218)', () => {
     expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
   })
 })
+
+/* ACAL52 — résultat INCOMPLET (borne haute) : réponse = `calepinage_resultat.json`
+   `exemple` dont `production` et `simulation` sont ceux de
+   `calepinage_simulation.json::exemple_borne_haute` (contrats partagés, ACAL8). */
+describe('PanneauProduction — borne haute (ACAL52)', () => {
+  const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+  const incomplet = () => ({
+    ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+    production: borneHaute.production,
+    simulation: borneHaute.simulation,
+  })
+
+  it('incomplet : bandeau borne haute et PR non publié', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: incomplet() })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    const bandeau = screen.getByTestId('acal52-borne-haute')
+    expect(bandeau).toHaveTextContent(borneHaute.production.total.mention)
+    for (const poste of borneHaute.production.total.socle_manquant) {
+      expect(within(bandeau).getByText(poste)).toBeInTheDocument()
+    }
+    expect(within(bandeau).getByTestId('acal52-lien-reglages'))
+      .toHaveAttribute('href', '/calepinage/reglages')
+
+    // PR, P75, P90, P95 : « non publié » (motif en infobulle), jamais un nombre.
+    const total = screen.getByTestId('cal236-total')
+    expect(within(total).getAllByTestId('acal52-non-publie')).toHaveLength(4)
+    expect(within(total).getAllByTestId('acal52-non-publie')[0])
+      .toHaveAttribute('title', borneHaute.production.total.p75_kwh_motif)
+    expect(within(total).queryByText(/79,9/)).toBeNull()
+    // Le P50 reste publié.
+    expect(within(total).getByText('13 000 kWh')).toBeInTheDocument()
+    // Par pan : les colonnes P75 / P90 / PR sont masquées aussi.
+    const ligne = within(screen.getByTestId('cal236-par-pan')).getByText('PAN-A').closest('tr')
+    expect(within(ligne).getAllByTestId('acal52-non-publie')).toHaveLength(3)
+  })
+
+  it('complet : ni bandeau ni masquage', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal52-borne-haute')).toBeNull()
+    expect(screen.queryByTestId('acal52-non-publie')).toBeNull()
+    expect(within(screen.getByTestId('cal236-total')).getByText('11 790 kWh')).toBeInTheDocument()
+  })
+
+  it('jamais simulé : pas de bandeau borne haute (rien n’a été calculé)', async () => {
+    servir('exemple_vide')
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal52-borne-haute')).toBeNull()
+  })
+
+  it('réglages utilisés : chaque clé, valeur et source figées au calcul', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    const lignes = screen.getAllByTestId('acal52-reglage')
+    expect(lignes).toHaveLength(2)
+    expect(lignes[0]).toHaveTextContent('mode_meteo')
+    expect(lignes[0]).toHaveTextContent('pluriannuel')
+    expect(lignes[0]).toHaveTextContent('societe')
+  })
+})
