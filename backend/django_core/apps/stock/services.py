@@ -2656,18 +2656,52 @@ def generer_bcf_reappro(company, user, fournisseur_id):
 
 # ── FG55 — PDF facture fournisseur ────────────────────────────────────────────
 
-def generate_facture_fournisseur_pdf(facture):
-    """Génère le PDF d'une facture fournisseur (INTERNE). Utilise WeasyPrint."""
-    from apps.ventes.utils.pdf import _company_context, _render_html, _html_to_pdf
+def _fmt_montant_pdf(montant):
+    """ASTK104 — montant au format français du PDF : « 12 000,00 »."""
+    from decimal import Decimal
+    valeur = Decimal(str(montant or 0)).quantize(Decimal('0.01'))
+    entier, _, decimales = f'{abs(valeur):,.2f}'.partition('.')
+    texte = entier.replace(',', ' ') + ',' + decimales
+    return ('-' + texte) if valeur < 0 else texte
+
+
+def render_facture_fournisseur_html(facture):
+    """FG55/ASTK104 — HTML du PDF facture fournisseur (INTERNE). La chaîne
+    de règlement est COMPLÈTE et boucle au centime : Total TTC − paiements −
+    acomptes imputés − avoirs imputés = solde dû ; le bloc est toujours
+    rendu (une facture sans règlement montre solde = TTC)."""
+    from apps.ventes.utils.pdf import _company_context, _render_html
+    from .models import FactureFournisseur
+    facture = FactureFournisseur.objects.get(pk=facture.pk)
     context = _company_context(company=facture.company)
+    total_paye = facture.total_paye
+    total_acomptes = facture.total_acomptes_imputes
+    total_avoirs = facture.total_avoirs_imputes
+    solde_du = facture.solde_du
     context['facture'] = facture
     context['fournisseur'] = facture.fournisseur
     context['lignes'] = list(facture.lignes.select_related('produit').all())
     context['paiements'] = list(facture.paiements.all())
-    context['solde_du'] = facture.solde_du
-    context['total_paye'] = facture.total_paye
-    html = _render_html('facture_fournisseur.html', context)
-    return _html_to_pdf(html)
+    context['solde_du'] = solde_du
+    context['total_paye'] = total_paye
+    context['total_acomptes_imputes'] = total_acomptes
+    context['total_avoirs_imputes'] = total_avoirs
+    context['montants_fmt'] = {
+        'ht': _fmt_montant_pdf(facture.montant_ht),
+        'tva': _fmt_montant_pdf(facture.montant_tva),
+        'ttc': _fmt_montant_pdf(facture.montant_ttc),
+        'paiements': _fmt_montant_pdf(total_paye),
+        'acomptes': _fmt_montant_pdf(total_acomptes),
+        'avoirs': _fmt_montant_pdf(total_avoirs),
+        'solde': _fmt_montant_pdf(solde_du),
+    }
+    return _render_html('facture_fournisseur.html', context)
+
+
+def generate_facture_fournisseur_pdf(facture):
+    """Génère le PDF d'une facture fournisseur (INTERNE). Utilise WeasyPrint."""
+    from apps.ventes.utils.pdf import _html_to_pdf
+    return _html_to_pdf(render_facture_fournisseur_html(facture))
 
 
 def _emettre_facture_creee(facture, user):
