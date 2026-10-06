@@ -1179,6 +1179,132 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
             'date_jalon': j.date_jalon,
         } for j in jalons_du_chantier(company, chantier_id)]
 
+    @extend_schema(
+        parameters=[_ID_CHANTIER],
+        request=inline_serializer(
+            name='MesRelevesPompagePortailPost',
+            fields={'equipement': serializers.IntegerField(),
+                    'type': serializers.CharField(),
+                    'valeur': serializers.CharField(),
+                    'date': serializers.DateField(required=False)}),
+        responses=inline_serializer(
+            name='MesRelevesPompagePortail',
+            fields={'equipements': serializers.ListField(
+                        child=serializers.DictField()),
+                    'releves': serializers.ListField(
+                        child=serializers.DictField()),
+                    'm3_jour_estime_devis': serializers.FloatField(
+                        allow_null=True),
+                    'omissions': serializers.ListField(
+                        child=serializers.DictField())}))
+    @action(detail=True, methods=['get', 'post'], url_path='releves')
+    def releves(self, request, pk=None):
+        """AGR617 — monitoring pompage phase 1, SANS dépendance payante : le
+        client saisit ses heures de pompage et l'index de son compteur d'eau
+        (contrat ``mes_releves_pompage.json``). GET : équipements admis (rôle
+        pompe / variateur / compteur d'eau, ``sav.selectors``), relevés (plus
+        récent d'abord) et le m³/jour imprimé sur le devis. POST : UN relevé,
+        écrit UNIQUEMENT par ``sav.services.enregistrer_releve_compteur``
+        (société et client du COMPTE connecté, ``created_by`` = l'utilisateur
+        portail), journalisé ``via_portail``. Chantier d'un autre client ⇒
+        404 ; recul, équipement étranger, type refusé (dont le kWh) ⇒ 400 FR.
+        Aucun fournisseur de monitoring, aucun abonnement."""
+        from apps.installations.selectors import chantier_du_client_portail_obj
+        from apps.sav import selectors as sav_selectors
+
+        company, client_id = _scope(request)
+        chantier = chantier_du_client_portail_obj(company, client_id, pk)
+        if chantier is None:
+            return Response({'detail': 'Chantier introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if request.method == 'POST':
+            return self._poster_releve(request, company, client_id, chantier)
+        equipements = sav_selectors.equipements_releve_portail(
+            company, client_id, chantier.id)
+        m3_jour, omissions = self._m3_jour_estime(company, chantier)
+        return Response({
+            'equipements': equipements,
+            'releves': sav_selectors.releves_portail(
+                company, [e['id'] for e in equipements]),
+            'm3_jour_estime_devis': m3_jour,
+            'omissions': omissions,
+        })
+
+    @staticmethod
+    def _m3_jour_estime(company, chantier):
+        """Le m³/jour imprimé sur le devis du chantier
+        (``ventes.selectors.promesse_pompage_devis``, AGR609), sinon null +
+        motif."""
+        promesse = None
+        if chantier.devis_id:
+            from apps.ventes.selectors import promesse_pompage_devis
+            promesse = promesse_pompage_devis(chantier.devis_id, company)
+        m3_jour = (promesse or {}).get('m3_jour')
+        if m3_jour is not None:
+            return m3_jour, []
+        return None, [{
+            'cle': 'm3_jour_estime_devis',
+            'motif': "le devis de ce chantier ne porte pas de m³/jour (pompe "
+                     "sans courbe constructeur)"}]
+
+    @staticmethod
+    def _poster_releve(request, company, client_id, chantier):
+        from datetime import date as _date
+        from decimal import Decimal, InvalidOperation
+
+        from apps.audit.models import AuditLog
+        from apps.sav import selectors as sav_selectors
+        from apps.sav.services import (
+            ReleveDecroissantError, enregistrer_releve_compteur,
+        )
+
+        corps = request.data if isinstance(request.data, dict) else {}
+        equipement = sav_selectors.equipement_releve_portail_obj(
+            company, client_id, chantier.id, corps.get('equipement'))
+        if equipement is None:
+            return Response(
+                {'detail': "Cet équipement n'appartient pas à ce chantier."},
+                status=status.HTTP_400_BAD_REQUEST)
+        admis = sav_selectors.TYPES_RELEVE_PORTAIL_PAR_ROLE[
+            equipement.produit.role_pompage]
+        type_releve = corps.get('type')
+        if type_releve not in admis:
+            return Response(
+                {'detail': 'Type de relevé refusé pour cet équipement : '
+                           'choisissez parmi %s.' % ', '.join(admis)},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            valeur = Decimal(str(corps.get('valeur')).replace(',', '.'))
+            if not valeur.is_finite() or valeur < 0:
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'detail': 'Valeur du relevé invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        date_brute = (str(corps.get('date') or '')).strip()
+        try:
+            date_releve = (_date.fromisoformat(date_brute) if date_brute
+                           else None)
+        except ValueError:
+            return Response({'detail': 'Date du relevé invalide '
+                                       '(AAAA-MM-JJ).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if date_releve is None:
+            from django.utils import timezone
+            date_releve = timezone.localdate()
+        try:
+            releve, _ticket = enregistrer_releve_compteur(
+                company=company, equipement=equipement,
+                type_releve=type_releve, valeur=valeur,
+                date_releve=date_releve, created_by=request.user)
+        except ReleveDecroissantError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        _auditer_portail(
+            AuditLog.Action.CREATE, request, instance=releve,
+            detail='Relevé %s saisi via le portail client' % type_releve)
+        return Response(sav_selectors.releve_portail(releve),
+                        status=status.HTTP_201_CREATED)
+
     @extend_schema(parameters=[_ID_CHANTIER], responses=inline_serializer(
         name='MesChantiersPortailPhotos',
         fields={'results': serializers.ListField(
