@@ -567,3 +567,120 @@ describe('ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module survit
     expect(screen.getByTestId('cal-terrain-modulesParTable').value).toBe('2')
   })
 })
+
+/* ── ACAL25 — invalidation du plan, surfaces remplacées par id, suppression ── */
+
+describe('ACAL25 — le plan calculé ne survit pas à une entrée changée', () => {
+  const remplirTerrain = () => {
+    for (const [cle, valeur] of Object.entries(SAISIE)) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+  }
+
+  it('changer la largeur après Calculer désactive Enregistrer (« recalculez le plan »)', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplirTerrain()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.change(screen.getByTestId('cal-terrain-largeurM'), { target: { value: '80' } })
+    expect(screen.getByTestId('cal-terrain-enregistrer')).toBeDisabled()
+    expect(screen.getByTestId('cal-terrain-message').textContent).toMatch(/recalculez/i)
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('l’allée change aussi le plan : même invalidation', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplirTerrain()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.change(screen.getByTestId('cal-terrain-alleeM'), { target: { value: '0' } })
+    expect(screen.getByTestId('cal-terrain-enregistrer')).toBeDisabled()
+  })
+
+  it('la pente du terrain n’entre pas dans le moteur : le plan reste valable', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplirTerrain()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.change(screen.getByTestId('cal-terrain-penteTerrainDeg'), { target: { value: '5' } })
+    expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled()
+  })
+
+  it('le module et l’allée sont persistés puis relus (allée 0 conservée)', async () => {
+    const s = documentTerrain({ ...SAISIE, alleeM: '0' }, REPONSE)
+    expect(s.alleeM).toBe(0)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [s] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-alleeM').value).toBe('0')
+    })
+    expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher ⇒ surface octet-identique', async () => {
+    const premiere = documentTerrain({ ...SAISIE, alleeM: '0' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [premiere] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-alleeM').value).toBe('0')
+    })
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const seconde = enregistrerSectionLayout.mock.calls[0][1].valeur[0]
+    expect(JSON.stringify(seconde)).toBe(JSON.stringify(premiere))
+  })
+
+  it('deux surfaces sol : en enregistrer une conserve l’autre', async () => {
+    const A = documentTerrain({ ...SAISIE, repere: 'S-A', label: 'Sol A' }, REPONSE)
+    const B = documentTerrain({ ...SAISIE, repere: 'S-B', label: 'Sol B', tiltDeg: '30' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [A, B] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sol B (S-B)' }))
+    expect(screen.getByTestId('cal-terrain-tiltDeg').value).toBe('30')
+    fireEvent.change(screen.getByTestId('cal-terrain-tiltDeg'), { target: { value: '32' } })
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-enregistrer')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const { valeur } = enregistrerSectionLayout.mock.calls[0][1]
+    expect(valeur).toHaveLength(2)
+    expect(valeur[0]).toEqual(A)
+    expect(valeur[1].id).toBe('S-B')
+    expect(valeur[1].tiltDeg).toBe(32)
+  })
+
+  it('« Supprimer cette surface » : la surface quitte poseSurfaces (écriture par section)', async () => {
+    const A = documentTerrain({ ...SAISIE, repere: 'S-A' }, REPONSE)
+    const B = documentTerrain({ ...SAISIE, repere: 'S-B' }, REPONSE)
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [A, B] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+    })
+    fireEvent.click(screen.getByText('Supprimer cette surface'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const corps = enregistrerSectionLayout.mock.calls[0][1]
+    expect(corps.cle).toBe('poseSurfaces')
+    expect(corps.valeur).toEqual([B])
+  })
+})

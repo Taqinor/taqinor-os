@@ -10,6 +10,11 @@ import { useParams } from 'react-router-dom'
 import RetourAtelier from './atelier/RetourAtelier'
 import calepinageApi from '../../api/calepinageApi'
 import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
+import {
+  nombre, pasMesure, tauxOccupation, contourTerrain, documentSurfacePose, saisieDepuisSurface, reponseDepuisSurface,
+  entreeMoteurChangee, surfacesDuGenre, remplacerSurface, retirerSurface, repereLibre,
+  KIND_SOL,
+} from './surfacePose'
 import { formatCote, milieu } from './plan2d'
 import { formatNumber } from '../../lib/format'
 
@@ -79,58 +84,12 @@ export function motifRefus(data) {
   return null
 }
 
-/** Une saisie numérique, ou `null` — jamais un 0 de remplacement. */
-export function nombre(brut) {
-  if (brut === null || brut === undefined || brut === '') return null
-  const v = Number(brut)
-  return Number.isFinite(v) ? v : null
-}
-
-/**
- * CAL89 — le PAS INTER-RANGÉES, MESURÉ sur les rangées que le moteur a posées.
- * Le plus petit écart entre deux `y0` consécutifs distincts. Moins de deux
- * rangées ⇒ `null` : non mesurable, et on ne le remplace pas.
- */
-export function pasMesure(rangees) {
-  const y = Array.from(
-    new Set((rangees ?? [])
-      .map((r) => Number(r?.y0))
-      .filter((v) => Number.isFinite(v))),
-  ).sort((a, b) => a - b)
-  if (y.length < 2) return null
-  let min = Infinity
-  for (let i = 1; i < y.length; i += 1) min = Math.min(min, y[i] - y[i - 1])
-  return Number.isFinite(min) && min > 0 ? min : null
-}
-
-/** Emprise totale (m²) des tables RENDUES par le moteur. */
-export function empriseTablesM2(tables) {
-  return (tables ?? []).reduce((acc, t) => {
-    const l = Math.abs(Number(t?.x1) - Number(t?.x0))
-    const p = Math.abs(Number(t?.y1) - Number(t?.y0))
-    return Number.isFinite(l) && Number.isFinite(p) ? acc + l * p : acc
-  }, 0)
-}
-
-/**
- * CAL89 — le TAUX D'OCCUPATION DU SOL (GCR), une SORTIE : emprises des tables
- * du moteur ÷ surface du terrain. L'un des deux termes manque ⇒ `null`.
- */
-export function tauxOccupation(tables, aireTerrainM2) {
-  const aire = nombre(aireTerrainM2)
-  if (aire === null || aire <= 0) return null
-  const emprise = empriseTablesM2(tables)
-  if (!emprise) return null
-  return emprise / aire
-}
-
-/** Le contour métrique du terrain, depuis les dimensions SAISIES. */
-export function contourTerrain(largeurM, profondeurM) {
-  const l = nombre(largeurM)
-  const p = nombre(profondeurM)
-  if (l === null || p === null || l <= 0 || p <= 0) return null
-  return [[0, 0], [l, 0], [l, p], [0, p]]
-}
+/* ACAL25 — les fonctions pures de mesure vivent dans `surfacePose.js` (une seule
+   copie, partagée avec l'ombrière) ; ré-exportées ici pour les appelants et les
+   tests existants. */
+export {
+  nombre, pasMesure, empriseTablesM2, tauxOccupation, contourTerrain,
+} from './surfacePose'
 
 /**
  * CAL89 — la DEMANDE envoyée au moteur (contrat `pose.json`, clé `demande`).
@@ -200,41 +159,12 @@ export function demandeMoteur(saisie) {
 
 /**
  * CAL89 — la surface de pose PERSISTÉE dans le document v2
- * (`poseSurfaces[]`, contrat `roof_layout_v2.schema.json`). Tout ce qui vient
- * du moteur est recopié tel quel sous `engine` ; rien n'y est recalculé.
+ * (`poseSurfaces[]`, contrat `roof_layout_v2.schema.json`). ACAL25 : un simple
+ * appel du survivant `surfacePose.js::documentSurfacePose` (le même que pour
+ * l'ombrière) — module et allée compris.
  */
 export function documentTerrain(saisie, reponse) {
-  const contour = contourTerrain(saisie.largeurM, saisie.profondeurM)
-  const aire = contour
-    ? nombre(saisie.largeurM) * nombre(saisie.profondeurM)
-    : null
-  const plan = (reponse?.plans ?? [])[0] ?? null
-  const tables = plan?.tables ?? []
-  return {
-    kind: 'sol',
-    id: saisie.repere || 'TERRAIN',
-    label: saisie.label || 'Champ au sol',
-    contourM: contour ?? [],
-    areaM2: aire,
-    terrainSlopeDeg: nombre(saisie.penteTerrainDeg),
-    rowAzimuthDeg: nombre(saisie.rowAzimuthDeg),
-    tiltDeg: nombre(saisie.tiltDeg),
-    // ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie MODULE voyageait
-    // vers le moteur mais n'était jamais persistée : à la réouverture, les
-    // quatre champs revenaient vides (et le kWc du champ restait inconnu).
-    moduleLongM: nombre(saisie.moduleLongM),
-    moduleCourtM: nombre(saisie.moduleCourtM),
-    moduleWc: nombre(saisie.puissanceWc),
-    modulesParTable: nombre(saisie.modulesParTable),
-    engine: {
-      modules: Number.isFinite(Number(plan?.modules)) ? Number(plan.modules) : null,
-      rowPitchM: pasMesure(plan?.rangees),
-      tables,
-      groundCoverageRatio: tauxOccupation(tables, aire),
-      versionMoteur: reponse?.version_moteur ?? null,
-      hashEntree: reponse?.hash_entree ?? null,
-    },
-  }
+  return documentSurfacePose(saisie, reponse, KIND_SOL)
 }
 
 /* ============================================================================
@@ -401,11 +331,6 @@ const CHAMPS = [
   ['alleeM', 'Allée imposée entre rangées (m) — vide = politique du moteur'],
 ]
 
-/** Valeur persistée → texte du champ ; absente ⇒ la saisie courante reste. */
-function relu(valeur, courant) {
-  return valeur === null || valeur === undefined ? courant : String(valeur)
-}
-
 function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
 }
@@ -447,38 +372,43 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
   const [lectureHydratee, setLectureHydratee] = useState(null)
   if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
     setLectureHydratee(doc.generation)
-    const sol = (doc.document?.poseSurfaces ?? []).find((s) => s?.kind === 'sol')
+    const sol = surfacesDuGenre(doc.document?.poseSurfaces, KIND_SOL)[0]
     if (sol) {
-      const contour = sol.contourM ?? []
-      setSaisie((s) => ({
-        ...s,
-        repere: sol.id ?? s.repere,
-        label: sol.label ?? s.label,
-        largeurM: contour.length === 4 ? String(contour[1][0]) : s.largeurM,
-        profondeurM: contour.length === 4 ? String(contour[2][1]) : s.profondeurM,
-        penteTerrainDeg: sol.terrainSlopeDeg === null || sol.terrainSlopeDeg === undefined
-          ? s.penteTerrainDeg : String(sol.terrainSlopeDeg),
-        rowAzimuthDeg: sol.rowAzimuthDeg === null || sol.rowAzimuthDeg === undefined
-          ? s.rowAzimuthDeg : String(sol.rowAzimuthDeg),
-        tiltDeg: sol.tiltDeg === null || sol.tiltDeg === undefined
-          ? s.tiltDeg : String(sol.tiltDeg),
-        // ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module revient.
-        moduleLongM: relu(sol.moduleLongM, s.moduleLongM),
-        moduleCourtM: relu(sol.moduleCourtM, s.moduleCourtM),
-        puissanceWc: relu(sol.moduleWc, s.puissanceWc),
-        modulesParTable: relu(sol.modulesParTable, s.modulesParTable),
-      }))
+      setSaisie((s) => ({ ...s, ...saisieDepuisSurface(sol) }))
       // Le plan RECHARGÉ est celui du moteur : on le réaffiche sans le refaire.
-      setReponse({
-        plans: [{ modules: sol.engine?.modules ?? null, tables: sol.engine?.tables ?? [] }],
-        version_moteur: sol.engine?.versionMoteur ?? null,
-        hash_entree: sol.engine?.hashEntree ?? null,
-        _pasRecharge: sol.engine?.rowPitchM ?? null,
-      })
+      setReponse(reponseDepuisSurface(sol))
     }
   }
 
-  const majChamp = (cle, brut) => setSaisie((s) => ({ ...s, [cle]: brut }))
+  const surfaces = surfacesDuGenre(doc.document?.poseSurfaces, KIND_SOL)
+  const repereCourant = saisie.repere || 'TERRAIN'
+  const dejaEnregistree = surfaces.some((s) => s.id === repereCourant)
+
+  const majChamp = (cle, brut) => {
+    setSaisie((s) => ({ ...s, [cle]: brut }))
+    // ACAL25 — le plan calculé ne vaut que pour la saisie qui l'a produit : dès
+    // qu'une entrée du moteur change, il est invalidé (jamais un document mixte
+    // contour 80 m / plan moteur 40 m).
+    if (reponse && entreeMoteurChangee(cle)) {
+      setReponse(null)
+      setMessage('Une entrée du moteur a changé : recalculez le plan avant d’enregistrer.')
+    }
+  }
+
+  // Une surface déjà enregistrée est rééditée (liste) ; « Nouvelle surface » en
+  // ouvre une autre, sous un repère libre.
+  const choisirSurface = (surface) => {
+    setSaisie((s) => ({ ...s, ...saisieDepuisSurface(surface) }))
+    setReponse(reponseDepuisSurface(surface))
+    setMessage(null)
+  }
+  const nouvelleSurface = () => {
+    setSaisie((s) => ({
+      ...s, repere: repereLibre(doc.document?.poseSurfaces, KIND_SOL), label: '',
+    }))
+    setReponse(null)
+    setMessage(null)
+  }
 
   const calculer = () => {
     const demande = demandeMoteur(saisie)
@@ -510,8 +440,8 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
       return
     }
     const surface = documentTerrain(saisie, reponse)
-    const autres = (doc.document?.poseSurfaces ?? []).filter((s) => s?.kind !== 'sol')
-    const valeur = [...autres, surface]
+    // ACAL25 — la surface est remplacée PAR id : les autres surfaces sol restent.
+    const valeur = remplacerSurface(doc.document?.poseSurfaces, surface)
     const res = await ecrireSection({
       calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
     })
@@ -523,6 +453,23 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
       doc.recharger()
     } else {
       setMessage(res.motif || 'Le champ au sol n’a pas pu être enregistré.')
+    }
+  }
+
+  const supprimer = async () => {
+    if (doc.etat !== 'ok' || !dejaEnregistree) return
+    const valeur = retirerSurface(doc.document?.poseSurfaces, KIND_SOL, repereCourant)
+    const res = await ecrireSection({
+      calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
+    })
+    if (res.ok) {
+      doc.appliquerSection('poseSurfaces', valeur, res.empreinte)
+      setMessage('Surface supprimée de la conception.')
+    } else if (res.conflit) {
+      setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
+      doc.recharger()
+    } else {
+      setMessage(res.motif || 'La surface n’a pas pu être supprimée.')
     }
   }
 
@@ -593,7 +540,8 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             <button
               type="button"
               onClick={enregistrer}
-              disabled={doc.etat !== 'ok'}
+              disabled={doc.etat !== 'ok' || !reponse}
+              title={reponse ? undefined : 'Calculez le plan avant d’enregistrer'}
               data-testid="cal-terrain-enregistrer"
               className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
             >
@@ -601,6 +549,44 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             </button>
           )}
         </div>
+
+        {persister && surfaces.length > 0 && (
+          <div className="mt-4" role="group" aria-label="Surfaces au sol enregistrées">
+            <p className="tech-label text-lune-faint">Surfaces enregistrées</p>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {surfaces.map((surface) => (
+                <li key={surface.id}>
+                  <button
+                    type="button"
+                    onClick={() => choisirSurface(surface)}
+                    aria-pressed={surface.id === repereCourant}
+                    className="rounded border border-white/15 px-3 py-1 text-sm text-white aria-pressed:bg-white/10"
+                  >
+                    {`${surface.label || 'Champ au sol'} (${surface.id})`}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={nouvelleSurface}
+              className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white"
+            >
+              Nouvelle surface
+            </button>
+          </div>
+        )}
+
+        {persister && dejaEnregistree && (
+          <button
+            type="button"
+            onClick={supprimer}
+            disabled={doc.etat !== 'ok'}
+            className="mt-3 rounded border border-red-300/40 px-3 py-1 text-sm text-red-300"
+          >
+            Supprimer cette surface
+          </button>
+        )}
 
         {persister && doc.etat === 'erreur' && (
           <p className="mt-3 text-sm text-red-300" role="alert"
