@@ -213,12 +213,18 @@ class EmpreinteLivrableTest(TestCase):
                             self._empreinte('fr', ['ombrage', 'pertes']))
 
     def test_insensible_aux_champs_volatils(self):
+        # Une consommation déjà saisie (sinon on ajouterait la clé
+        # `consumption.source` elle-même, qui, elle, est de la conception).
+        layout = copy.deepcopy(self.calepinage.roof_layout)
+        layout.setdefault('consumption', {}).setdefault('source', {})[
+            'saisi_le'] = '2026-01-01T00:00:00Z'
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            roof_layout=layout)
+        self.calepinage.refresh_from_db()
         avant = self._empreinte()
         # La date de saisie de la consommation (roof_layout) …
         layout = copy.deepcopy(self.calepinage.roof_layout)
-        consommation = layout.setdefault('consumption', {})
-        source = consommation.setdefault('source', {})
-        source['saisi_le'] = '2030-01-01T00:00:00Z'
+        layout['consumption']['source']['saisi_le'] = '2030-01-01T00:00:00Z'
         layout['activeAreaId'] = 'autre-pan'
         Calepinage.objects.filter(pk=self.calepinage.pk).update(
             roof_layout=layout)
