@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -39,8 +40,20 @@ def _api(user):
     return api
 
 
+def _inexistant(pk):
+    """Message DRF « objet inexistant » pour ``pk`` (langue active)."""
+    gabarit = PrimaryKeyRelatedField.default_error_messages['does_not_exist']
+    return str(gabarit).format(pk_value=pk)
+
+
 def _sans_id(corps, pk):
-    return str(corps).replace(str(pk), '<ID>')
+    """Le message DRF « objet inexistant » cite l'id : on le remplace par un
+    jeton pour comparer la réponse d'un id étranger à celle d'un id absent."""
+    if isinstance(corps, dict):
+        return {k: _sans_id(v, pk) for k, v in corps.items()}
+    if isinstance(corps, (list, tuple)):
+        return [_sans_id(v, pk) for v in corps]
+    return '<INEXISTANT>' if str(corps) == _inexistant(pk) else str(corps)
 
 
 class FkRetourModeleBcfTests(TestCase):
@@ -73,6 +86,7 @@ class FkRetourModeleBcfTests(TestCase):
     def _assert_comme_absent(self, r, r_absent, pk):
         self.assertEqual(r.status_code, 400, r.content)
         self.assertEqual(r_absent.status_code, 400, r_absent.content)
+        self.assertIn('<INEXISTANT>', str(_sans_id(r.json(), pk)))
         self.assertEqual(_sans_id(r.json(), pk),
                          _sans_id(r_absent.json(), ID_ABSENT))
         corps = r.content.decode()

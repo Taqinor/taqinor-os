@@ -16,6 +16,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.db.models import F
 from django.test import TestCase
+from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -44,10 +45,20 @@ def _nb(reponse):
     return data['count'] if isinstance(data, dict) else len(data)
 
 
+def _inexistant(pk):
+    """Message DRF « objet inexistant » pour ``pk`` (langue active)."""
+    gabarit = PrimaryKeyRelatedField.default_error_messages['does_not_exist']
+    return str(gabarit).format(pk_value=pk)
+
+
 def _sans_id(corps, pk):
-    """Le message DRF « objet inexistant » cite l'id : on le neutralise pour
-    comparer la réponse d'un id étranger à celle d'un id absent."""
-    return str(corps).replace(str(pk), '<ID>')
+    """Le message DRF « objet inexistant » cite l'id : on le remplace par un
+    jeton pour comparer la réponse d'un id étranger à celle d'un id absent."""
+    if isinstance(corps, dict):
+        return {k: _sans_id(v, pk) for k, v in corps.items()}
+    if isinstance(corps, (list, tuple)):
+        return [_sans_id(v, pk) for v in corps]
+    return '<INEXISTANT>' if str(corps) == _inexistant(pk) else str(corps)
 
 
 class FkInventaireRevaloTests(TestCase):
@@ -87,6 +98,7 @@ class FkInventaireRevaloTests(TestCase):
         r_absent = self._session(ID_ABSENT)
         r = self._session(self.pb.pk)
         self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('<INEXISTANT>', str(_sans_id(r.json(), self.pb.pk)))
         self.assertEqual(r_absent.status_code, 400, r_absent.content)
         self.assertEqual(_sans_id(r.json(), self.pb.pk),
                          _sans_id(r_absent.json(), ID_ABSENT))
@@ -121,6 +133,7 @@ class FkInventaireRevaloTests(TestCase):
         r = self.api.patch(
             url, {'produit': self.pb.pk, 'nouveau_cout': '1'}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('<INEXISTANT>', str(_sans_id(r.json(), self.pb.pk)))
         self.assertEqual(_sans_id(r.json(), self.pb.pk),
                          _sans_id(r_absent.json(), ID_ABSENT))
         self.assertNotIn('PRODUIT-B-SECRET', r.content.decode())
