@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { formatDate } from '../../lib/format'
+import { renderInstallationDetail } from '../../test/installationDetailHarness'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* ============================================================================
    CIQ637 — Fiche chantier : niveau de tension, régime sans seuil, section
@@ -17,38 +15,11 @@ import { formatDate } from '../../lib/format'
    Même mock Select natif que CHT22 (Radix ne s'ouvre pas sous jsdom).
    ========================================================================== */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children, disabled }) => {
-      const kids = Array.isArray(children) ? children : [children]
-      const id = kids.find((c) => c && c.props && c.props.id)?.props?.id
-      return (
-        <select role="combobox" id={id} value={value ?? ''} disabled={disabled}
-                onChange={(e) => onValueChange(e.target.value)}>
-          <option value="" />
-          {children}
-        </select>
-      )
-    },
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../ui', async (importActual) => (
+  (await import('../../test/selectNatif')).avecSelectNatif(await importActual())
+))
 
 vi.mock('../../features/installations/SignaturePad', () => ({
   default: ({ onChange }) => (
@@ -77,17 +48,8 @@ vi.mock('../../api/installationsApi', () => ({
   },
 }))
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
-
-vi.mock('../../api/crmApi', () => ({
-  default: { getAssignableUsers: () => Promise.resolve({ data: [] }) },
-}))
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
 
 vi.mock('../../api/ventesApi', () => ({
   default: {
@@ -115,25 +77,7 @@ import SignatureLivraisonDialog from './SignatureLivraisonDialog'
 const BT = exempleContrat('ventes', 'dossier_8221')
 const MT = exempleContrat('ventes', 'dossier_8221', 'exemple_mt')
 
-function makeStore() {
-  return configureStore({
-    reducer: {
-      stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state,
-    },
-  })
-}
-
-function renderDetail(installation) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={['/chantiers']}>
-        <ThemeProvider>
-          <InstallationDetail installation={installation} onClose={() => {}} onSaved={() => {}} />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderDetail = renderInstallationDetail
 
 const CHANTIER = {
   id: 701, reference: 'CH-CIQ637-701', statut: 'signe', annule: false,

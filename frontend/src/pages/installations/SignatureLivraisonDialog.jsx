@@ -21,7 +21,7 @@ export default function SignatureLivraisonDialog({
   const [sig, setSig] = useState(null) // data-URL PNG de la signature tracée
   const [nom, setNom] = useState(installation?.signataire_nom || '')
   // CIQ631/CIQ637 — signataire nommé (fonction, société) et co-signataire
-  // facultatif, repris du chantier à la re-signature.
+  // optionnel, préremplis depuis le chantier.
   const [sign, setSign] = useState({
     signataire_fonction: installation?.signataire_fonction || '',
     signataire_societe: installation?.signataire_societe || '',

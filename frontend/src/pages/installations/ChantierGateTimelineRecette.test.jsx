@@ -125,8 +125,7 @@ describe('ChantierGateTimeline — WIR202 fiche de recette IEC 62446-1', () => {
     await waitFor(() => expect(api.updateRecette).toHaveBeenCalledTimes(1))
     const [id, payload] = api.updateRecette.mock.calls[0]
     expect(id).toBe(9)
-    // CIQ636 — le résultat est CALCULÉ par le serveur : jamais envoyé, hors
-    // le seul choix « conforme avec réserves ».
+    // CIQ636 — résultat calculé côté serveur : jamais envoyé, sauf « reserves ».
     expect(payload).not.toHaveProperty('resultat')
     expect(payload.doc_dossier_ok).toBe(true)
     expect(payload.visuel_structure_ok).toBe(true)

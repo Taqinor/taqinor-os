@@ -182,8 +182,7 @@ function payloadDepuisEtat(etat, record, { industriel, mt }) {
     technicien: etat.technicien || null,
     observations: etat.observations || null,
   }
-  // Le résultat est CALCULÉ par le serveur : seul le choix « conforme avec
-  // réserves » part du client.
+  // Résultat calculé côté serveur : seule la valeur « reserves » part du client.
   if (etat.reserves_choisi) payload.resultat = 'reserves'
   for (const section of SECTIONS) {
     for (const [cle] of section.essais) payload[cle] = texteVersBool(etat[cle])

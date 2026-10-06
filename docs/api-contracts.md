@@ -211,7 +211,7 @@
 - frontend/src/api/installationsApi.js :: besoinMateriel -> /api/django/installations/chantiers/<>/besoin-materiel
     installation:inconnu, items:inconnu, nb_manques:nombre, reference:inconnu
 - frontend/src/api/installationsApi.js :: cocherChecklist -> /api/django/installations/chantiers/<>/cocher-checklist
-    completion:inconnu, detail:texte, equipements_crees:inconnu, items:inconnu
+    completion:inconnu, detail:texte, equipements_crees:inconnu, items:inconnu, resultats_series:inconnu
 - frontend/src/api/installationsApi.js :: confirmerToolReturn -> /api/django/installations/interventions/<>/confirmer-tool-return
     non_rendus:inconnu, tool_returns:inconnu
 - frontend/src/api/installationsApi.js :: creerInterventionsStandard -> /api/django/installations/chantiers/<>/creer-interventions-standard
@@ -252,6 +252,8 @@
     count:nombre, next:inconnu, previous:inconnu, results:inconnu
 - frontend/src/api/installationsApi.js :: getTourneeLivraison -> /api/django/installations/tournee-livraison
     depart:texte, jour:texte, sans_gps:inconnu, total:inconnu, tournee:inconnu
+- frontend/src/api/installationsApi.js :: leverReserveChantier -> /api/django/installations/chantiers/<>/reserves/<>/lever
+    bloquante:inconnu, date_echeance:inconnu, description:texte, id:inconnu, levee_le:inconnu, origine:inconnu, responsable:texte, statut:inconnu
 - frontend/src/api/installationsApi.js :: ouvrirRecettePompage -> /api/django/installations/chantiers/<>/recette-pompage
     detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
