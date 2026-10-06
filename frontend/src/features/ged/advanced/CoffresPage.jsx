@@ -8,7 +8,7 @@ import {
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    PACT131 — Coffres-forts documentaires (GED8).
@@ -40,7 +40,8 @@ export default function CoffresPage() {
     setError(null)
     try {
       const [c, cl, u] = await Promise.all([
-        gedApi.getCoffres(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getCoffres),
         crmApi.getClients().catch(() => ({ data: [] })),
         gedApi.getUsers().catch(() => ({ data: [] })),
       ])

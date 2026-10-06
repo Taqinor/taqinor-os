@@ -8,7 +8,7 @@ import {
 } from '../../../ui'
 import { formatDate } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    PACT137 — Planifications de document (XGED15).
@@ -49,8 +49,9 @@ export default function PlanificationsPage() {
     setError(null)
     try {
       const [p, docs, u] = await Promise.all([
-        gedApi.getPlanificationsDocument(),
-        gedApi.getDocumentsList(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getPlanificationsDocument),
+        toutesLesPages(gedApi.getDocumentsList),
         gedApi.getUsers(),
       ])
       setPlanifications(unpage(p.data))

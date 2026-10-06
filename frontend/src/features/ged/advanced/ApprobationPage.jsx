@@ -16,7 +16,7 @@ import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
-import { StatutApprobation, StatutSignature, errMessage } from './shared.js'
+import { StatutApprobation, StatutSignature, errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    UX45 — Approbation & signature électronique.
@@ -58,13 +58,14 @@ export default function ApprobationPage() {
     setError(null)
     try {
       const [d, s, m, docs, r, l, a, k] = await Promise.all([
-        gedApi.getDemandesApprobation(),
-        gedApi.getDemandesSignature(),
-        gedApi.getModelesDocument({ actif: 1 }),
-        gedApi.getDocumentsList(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getDemandesApprobation),
+        toutesLesPages(gedApi.getDemandesSignature),
+        toutesLesPages(gedApi.getModelesDocument, { actif: 1 }),
+        toutesLesPages(gedApi.getDocumentsList),
         // ZGED1 — rôles réutilisables (dégrade en liste vide si indisponible).
-        gedApi.getRolesSignataire().catch(() => ({ data: [] })),
-        gedApi.getLotsEnvoi(),
+        toutesLesPages(gedApi.getRolesSignataire).catch(() => ({ data: [] })),
+        toutesLesPages(gedApi.getLotsEnvoi),
         // XGED26/ZGED3 — réservés responsable/admin : dégradent en `null`
         // (jamais bloquant) si le rôle courant n'y a pas accès (403).
         gedApi.getAnalytique().catch(() => ({ data: null })),
