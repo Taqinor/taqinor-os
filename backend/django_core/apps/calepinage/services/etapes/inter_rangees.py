@@ -66,7 +66,8 @@ nommant le champ.
 from __future__ import annotations
 
 from apps.calepinage.services import etapes
-from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
+from apps.calepinage.services.pvgis_serie import (
+    FAMILLE_EST_OUEST, MOTIF_COMPOSANTES_ABSENTES, jambes_du_pan)
 from core.calepinage.ombre_rangees import (
     fraction_ombree, fraction_ombree_est_ouest)
 from core.calepinage.soleil import position_solaire
@@ -76,8 +77,8 @@ __all__ = ['CHAMPS_GEOMETRIE', 'CHAMP_KWC', 'CHAMP_PAS', 'FAMILLE_EST_OUEST',
            'REFERENCE', 'SOURCE', 'appliquer']
 
 #: Le nom de famille que le document donne à un châssis dos-à-dos
-#: (``zones[].geometry.family``, schéma ``roof_layout`` v2).
-FAMILLE_EST_OUEST = 'eastwest'
+#: (``zones[].geometry.family``, schéma ``roof_layout`` v2) — ACAL139 :
+#: déclaré UNE fois, dans ``pvgis_serie`` (``jambes_du_pan``).
 
 #: Les bases horaires que ``meteo.heure.base`` peut déclarer (CALX143).
 BASE_UTC = 'utc'
@@ -265,21 +266,26 @@ def _parts_est_ouest(plan):
     Les faces réellement posées (``geometry.panels[].face``, schéma v2) font
     foi ; à défaut, les deux pans d'un chevron portent la même table et sont
     comptés à parts égales — l'hypothèse est alors ANNONCÉE.
+
+    ACAL139 — les parts sont celles de ``pvgis_serie.jambes_du_pan`` (UNE
+    lecture des faces pour la simulation et l'ombre des rangées). Une JAMBE
+    déjà isolée par la simulation (``plan['jambe']`` 'E' ou 'W') ne porte
+    que sa face : sa série n'est que la sienne.
     """
-    geometrie = plan.get('geometry') if isinstance(plan, dict) else None
-    panneaux = (geometrie or {}).get('panels') if isinstance(
-        geometrie, dict) else None
-    est = ouest = 0
-    for panneau in panneaux or ():
-        face = (panneau or {}).get('face') if isinstance(panneau, dict) else None
-        if face == 'E':
-            est += 1
-        elif face == 'W':
-            ouest += 1
-    total = est + ouest
-    if total:
-        return est / total, ouest / total, False
-    return 0.5, 0.5, True
+    plan = plan if isinstance(plan, dict) else {}
+    if plan.get('jambe') == 'E':
+        return 1.0, 0.0, False
+    if plan.get('jambe') == 'W':
+        return 0.0, 1.0, False
+    geometrie = plan.get('geometry')
+    panneaux = (geometrie.get('panels')
+                if isinstance(geometrie, dict) else None)
+    jambes = jambes_du_pan({
+        'azimut_deg': 0.0, 'modules': 2,
+        'geometry': {'family': FAMILLE_EST_OUEST, 'panels': panneaux or []}})
+    parts = {jambe['face']: jambe['part'] for jambe in jambes}
+    return (parts.get('E', 0.0), parts.get('W', 0.0),
+            bool(jambes[0]['hypothese']))
 
 
 def _geometries_des_plans(contexte):

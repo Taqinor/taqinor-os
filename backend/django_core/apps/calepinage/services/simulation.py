@@ -60,8 +60,8 @@ from .incertitude import (
 )
 from .performance import bloc_performance
 from .pvgis_serie import (
-    BASE_PAR_DEFAUT, ClientPvgis, EntreeInvalide, PvgisIndisponible,
-    azimut_pvgis,
+    AVERTISSEMENT_EST_OUEST_SUPPOSE, BASE_PAR_DEFAUT, ClientPvgis,
+    EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
 from .horizon import profil_depuis_document
 from .simulation_modules import production_module_par_module
@@ -1203,7 +1203,13 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     contexte[CLE_CLIENT_PVGIS] = client
 
     blocs = {}
-    reference = max(plans_equipes, key=lambda plan: plan.get('kwc') or 0.0)
+    # ACAL139 — un pan est-ouest est simulé en DEUX jambes (face E, face O),
+    # chacune à son aspect PVGIS et pour sa part du kWc ; la météo de
+    # référence est celle de la jambe (ou du pan) la plus puissante.
+    plans_chaine, avertissements_jambes = _plans_de_chaine(plans_equipes)
+    for texte in avertissements_jambes:
+        _ajouter_avertissement(blocs, texte)
+    reference = max(plans_chaine, key=lambda plan: plan.get('kwc') or 0.0)
     reference = _plan_avec_le_site(reference, site)
 
     # 1 bis. LA MÉTÉO DE RÉFÉRENCE, AVANT TOUTE CHAÎNE (ACAL53) : sa
@@ -1219,12 +1225,13 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     ecrit = {}
     sorties = {}
     try:
-        if len(plans_equipes) > 1:
+        if len(plans_chaine) > 1:
             # 2. PLUSIEURS PANS (ACAL53) : phase PAN pan par pan, phase
             # ONDULEUR sur la SOMME DC des pans rattachés, phase SITE.
             sortie, cascade, sorties = _chaine_par_phases(
-                contexte, plans_equipes, site, fournisseur, ecrit)
-            if fichier is not None:
+                contexte, plans_equipes, site, fournisseur, ecrit,
+                plans_chaine=plans_chaine)
+            if fichier is not None and len(plans_equipes) > 1:
                 _ajouter_avertissement(
                     blocs, MOTIF_FICHIER_PLUSIEURS_PANS.format(
                         pans=len(plans_equipes)))
@@ -1329,7 +1336,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         irradiation_incidente=cascade.get('irradiation_incidente_kwh_m2'))
 
     reponse_pvgis = None
-    if fichier is None and _orientations_identiques(plans_equipes):
+    if fichier is None and _orientations_identiques(plans_chaine):
         # Une série DÉPOSÉE n'a pas de contrepartie « PVGIS a calculé la même
         # installation » : l'écart est alors publié SANS mesure, avec son
         # motif, plutôt que confronté à un autre point que celui du fichier.
@@ -1487,7 +1494,80 @@ def _sorties_par_pan(series_dc, somme_dc, sortie_site):
     return rendues
 
 
-def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit):
+def _plans_de_chaine(plans_equipes):
+    """ACAL139 — ``(plans simulés, avertissements)`` : un plan par JAMBE.
+
+    Un pan est-ouest donne deux jambes (``pvgis_serie.jambes_du_pan``) :
+    même pan au rapport (``parent``), mais chacune son azimut, son aspect
+    PVGIS, ses modules et sa part du kWc. Tout autre pan passe tel quel.
+    """
+    rendus = []
+    avertissements = []
+    for plan in plans_equipes:
+        jambes = jambes_du_pan(plan)
+        if len(jambes) == 1 and jambes[0]['face'] is None:
+            rendus.append(plan)
+            continue
+        if any(jambe['hypothese'] for jambe in jambes):
+            avertissements.append(AVERTISSEMENT_EST_OUEST_SUPPOSE.format(
+                pan=plan.get('pan') or plan.get('cle')))
+        for jambe in jambes:
+            azimut = jambe['azimut_face_deg']
+            rendus.append(dict(
+                plan, cle='%s#%s' % (plan.get('cle'), jambe['face']),
+                parent=plan.get('cle'), jambe=jambe['face'],
+                part=jambe['part'], modules=jambe['modules'],
+                kwc=(plan.get('kwc') or 0.0) * jambe['part'],
+                inclinaison_deg=jambe['inclinaison_deg'],
+                azimut_deg=azimut, azimut_pvgis_deg=azimut_pvgis(azimut)))
+    return rendus, avertissements
+
+
+#: ACAL139 — les colonnes d'irradiance d'une série de pan : celles d'un pan
+#: à deux jambes sont la moyenne de ses faces PONDÉRÉE par leur part du kWc.
+COLONNES_IRRADIANCE_PAN = ('gi_w_m2', 'gb_i_w_m2', 'gd_i_w_m2', 'gr_i_w_m2')
+
+
+def _fusionner_jambes(series, parts):
+    """La série d'UN pan à partir de ses jambes : énergie SOMMÉE, irradiance
+    pondérée par la part de kWc de chaque face (le plan « moyen » du pan)."""
+    somme = _somme_des_series(series)
+    if somme is None:
+        return None
+    for rang, point in enumerate(somme['points']):
+        for colonne in COLONNES_IRRADIANCE_PAN:
+            valeurs = []
+            for serie, part in zip(series, parts):
+                points = serie.get('points') or []
+                valeur = (_nombre(points[rang].get(colonne))
+                          if rang < len(points) else None)
+                valeurs.append(None if valeur is None else valeur * part)
+            if valeurs and all(valeur is not None for valeur in valeurs):
+                point[colonne] = sum(valeurs)
+    return somme
+
+
+def _cascade_des_jambes(cascades, plans):
+    """La cascade de PHASE PAN d'un pan à deux jambes : leurs kWh sommés
+    (``cascade_de_la_somme`` sans onduleur ni site), et l'irradiation
+    incidente pondérée par le kWc des jambes."""
+    from .chaine_pertes import cascade_de_la_somme
+
+    cascade = cascade_de_la_somme(cascades, None, None)
+    kwc = sum((plan.get('kwc') or 0.0) for plan in plans)
+    ponderee = None
+    for sienne, plan in zip(cascades, plans):
+        incidente = sienne.get('irradiation_incidente_kwh_m2')
+        if incidente is not None and kwc:
+            ponderee = (ponderee or 0.0) + incidente * (plan.get('kwc')
+                                                        or 0.0)
+    cascade['irradiation_incidente_kwh_m2'] = (
+        round(ponderee / kwc, 3) if ponderee is not None else None)
+    return cascade
+
+
+def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit,
+                       plans_chaine=None):
     """ACAL53 — la chaîne d'un toit à PLUSIEURS pans, phase par phase.
 
     1. phase PAN, pan par pan, chacun avec SA série d'irradiance et une copie
@@ -1510,10 +1590,11 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit):
     )
 
     provenance = contexte.get('meteo')
-    series_dc = {}
-    cascades_pan = {}
+    series_jambes = {}
+    cascades_jambes = {}
     premier_contexte = None
-    for plan in plans_equipes:
+    plans_chaine = plans_chaine or plans_equipes
+    for plan in plans_chaine:
         avec_site = _plan_avec_le_site(plan, site)
         contexte_plan = dict(contexte)
         contexte_plan['meteo'] = _copier_meteo(provenance)
@@ -1521,10 +1602,30 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit):
         contexte_plan['plans'] = [avec_site]
         serie_dc, cascade_pan = appliquer_chaine(
             fournisseur(avec_site), contexte_plan, phase='pan')
-        series_dc[plan['cle']] = serie_dc
-        cascades_pan[plan['cle']] = cascade_pan
+        series_jambes[plan['cle']] = serie_dc
+        cascades_jambes[plan['cle']] = cascade_pan
         if premier_contexte is None:
             premier_contexte = contexte_plan
+    # ACAL139 — les jambes d'un pan est-ouest se REJOIGNENT en UN pan : le
+    # rapport, les sorties et les cascades restent pan par pan.
+    series_dc = {}
+    cascades_pan = {}
+    for plan in plans_equipes:
+        jambes = [jambe for jambe in plans_chaine
+                  if jambe.get('parent') == plan['cle']]
+        if not jambes:
+            series_dc[plan['cle']] = series_jambes[plan['cle']]
+            cascades_pan[plan['cle']] = cascades_jambes[plan['cle']]
+            continue
+        series = [series_jambes[jambe['cle']] for jambe in jambes]
+        cascades = [cascades_jambes[jambe['cle']] for jambe in jambes]
+        if len(jambes) == 1:
+            series_dc[plan['cle']] = series[0]
+            cascades_pan[plan['cle']] = cascades[0]
+            continue
+        series_dc[plan['cle']] = _fusionner_jambes(
+            series, [jambe['part'] for jambe in jambes])
+        cascades_pan[plan['cle']] = _cascade_des_jambes(cascades, jambes)
     # Le verdict horaire est le même pour tous les pans (même série de
     # référence, même fuseau) : celui du premier est publié.
     contexte['meteo'] = premier_contexte['meteo']
