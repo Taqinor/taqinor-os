@@ -311,7 +311,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   <strong>Alertes du devis automatique :</strong>
                   <ul>
                     {alertes.map((a, i) => (
-                      <li key={`${a.code || 'alerte'}-${i}`}>{a.message || a.code}</li>
+                      <li key={`${a.code || 'alerte'}-${i}`}>
+                        {/* CIQ127 — une alerte INTERNE du moteur (C&I) n'atteint
+                            jamais le client : marquée pour le vendeur. */}
+                        {a.interne === true && <strong data-testid="ldp-alerte-interne">Vendeur seulement — </strong>}
+                        {a.message || a.code}
+                      </li>
                     ))}
                   </ul>
                 </div>

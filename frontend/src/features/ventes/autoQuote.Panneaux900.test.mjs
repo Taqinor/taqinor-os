@@ -32,12 +32,8 @@ test("autoQuote.js : n'appelle plus JAMAIS estimerPanneaux (aucune occurrence ex
     'un appel estimerPanneaux(...) subsiste — la règle des 900 MAD doit être totalement retirée')
 })
 
-test('autoQuote.js : le fallback sans besoinKwc/optimiseur laisse `panels` à 0, jamais un nombre deviné', () => {
-  const idx = SRC.indexOf('let panels = 0')
-  assert.ok(idx > -1, 'panels doit être initialisé à 0 (aucune supposition par défaut)')
-  const bloc = SRC.slice(idx, idx + 4800)
-  assert.match(bloc, /panels = opt\.nbPanneaux > 0 \? opt\.nbPanneaux : 0/,
-    "l'échec de l'optimiseur local doit laisser panels à 0, jamais un repli 900 MAD")
+test('CIQ127 — autoQuote.js : `panels` ne vient QUE d\'une taille explicite, jamais d\'un nombre deviné', () => {
+  assert.match(SRC, /const panels = tailleKwc > 0 \? panneauxPourKwc\(tailleKwc, PANEL_W_DEFAUT\) : 0/)
 })
 
 // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
@@ -45,22 +41,9 @@ test('autoQuote.js : le fallback sans besoinKwc/optimiseur laisse `panels` à 0,
 // devis auto RÉSIDENTIEL chiffrait lui-même les paliers de 5 kWc
 // (`optimalKwcByPayback`) et expédiait le résultat en `target_kwc` souverain,
 // si bien que ces devis-là ne touchaient jamais le moteur horaire.
-test('autoQuote.js : le balayage local par paliers est RÉSERVÉ aux marchés sans moteur serveur — le résidentiel ne dimensionne plus ici', () => {
-  const idx = SRC.indexOf('let panels = 0')
-  assert.ok(idx > -1, 'panels doit être initialisé à 0')
-  const bloc = SRC.slice(idx, idx + 4800)
-  // La branche « taille EXPLICITE » (cible tapée / taille souhaitée du lead)
-  // reste la PREMIÈRE et vaut pour TOUS les marchés : elle est souveraine.
-  assert.match(bloc, /if \(tailleKwc > 0\) \{\s*\n\s*panels = panneauxPourKwc\(tailleKwc, PANEL_W_DEFAUT\)/,
-    'une taille explicite doit rester souveraine, avant toute autre branche')
-  // Le balayage local ne s'exécute plus qu'en dehors du résidentiel.
-  assert.match(bloc, /\} else if \(mode !== 'residentiel'\) \{/,
-    "le balayage par paliers doit être gardé par `mode !== 'residentiel'`")
-  // Et il reste bien la seule source de taille des marchés sans moteur.
-  const gardeIdx = bloc.indexOf("} else if (mode !== 'residentiel') {")
-  const brancheLocale = bloc.slice(gardeIdx)
-  assert.match(brancheLocale, /optimalKwcByPayback\(\{/,
-    "industriel/commercial gardent le balayage local (aucun moteur serveur pour eux)")
+test('CIQ127 — autoQuote.js : plus AUCUN balayage local par paliers, pour aucun marché', () => {
+  assert.ok(!/optimalKwcByPayback\(|parametresBalayageCI\(|estimerKwcDepuisFacture\(/.test(SRC),
+    'le dimensionnement C&I est celui du moteur serveur (CIQ120), jamais un balayage écran')
 })
 
 test("autoQuote.js : le devis auto RÉSIDENTIEL sans taille explicite n'envoie AUCUN target_kwc calculé à l'écran", () => {
@@ -92,12 +75,11 @@ test('autoQuote.js : `target_kwc` est OMIS (pas envoyé à 0) quand aucune taill
     'target_kwc doit être un spread conditionnel — jamais envoyé quand kwpAuto est 0')
 })
 
-test('autoQuote.js : industriel/commercial refusent explicitement plutôt que de créer un devis sans panneau', () => {
+test('CIQ127 — autoQuote.js : industriel/commercial partent au serveur, qui refuse en nommant la donnée', () => {
   assert.match(SRC,
-    /if \(\(mode === 'industriel' \|\| mode === 'commercial'\) && panels <= 0\) \{/,
-    'la garde industriel/commercial sans taille locale est introuvable')
-  const idx = SRC.indexOf("if ((mode === 'industriel' || mode === 'commercial') && panels <= 0) {")
-  const bloc = SRC.slice(idx, idx + 300)
-  assert.match(bloc, /throw \{/)
-  assert.match(bloc, /detail:/)
+    /return creerDevisServeur\(\{ lead, discountStr, onAlertes, targetKwc, marche: mode \}\)/)
+  const idx = SRC.indexOf('async function creerDevisServeur(')
+  const bloc = SRC.slice(idx, idx + 1200)
+  assert.match(bloc, /ventesApi\.creerDevisAuto\(/)
+  assert.match(bloc, /\.\.\.\(data\.field \? \{ field: data\.field \} : \{\}\)/)
 })

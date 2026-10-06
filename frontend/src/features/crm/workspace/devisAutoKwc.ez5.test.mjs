@@ -92,7 +92,9 @@ test('la cible traverse le panneau jusqu’au calcul partagé', () => {
   // PVORD (19/08) — puis `ordreLignes` (ordre par défaut des lignes).
   // AGR126 — `pumpHours` a quitté la signature (plus de pompage JS) ;
   // `onAlertes` reçoit les alertes du devis créé par le serveur.
-  assert.match(autoQuote, /onEtude, onAlertes,\s*\n\s*targetKwc, marques, ordreLignes \}\)/)
+  // CIQ127 — tout part au serveur (qui lit marques et ordre de la société) :
+  // la signature ne garde que lead, remise, alertes et la cible.
+  assert.match(autoQuote, /createAutoQuote\(\{ lead, discountStr, onAlertes, targetKwc \}\)/)
 })
 
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {

@@ -90,31 +90,13 @@ test('DevisGenerator : le dry-run serveur n\'envoie JAMAIS l\'ordre des lignes d
     'l\'ordre des lignes est un réglage société lu par le serveur — jamais accepté du corps')
 })
 
-test('DevisGenerator : runAutoQuote (devis auto) transmet ordreLignes à createAutoQuote', () => {
+test('CIQ127 — runAutoQuote et createAutoQuote ne transmettent plus l’ordre : le serveur le lit', () => {
   const idx = DG.indexOf('const runAutoQuote = async')
   assert.ok(idx > -1, 'runAutoQuote introuvable')
-  // QJR308 a allongé le prologue de `runAutoQuote` (avis palier 5 kWc) :
-  // la fenêtre est bornée à l'appel réseau suivant, pas à un compte de
-  // caractères qui dérive à chaque ligne ajoutée en amont.
-  const finAppel = DG.indexOf('createAutoQuote({', idx)
-  assert.ok(finAppel > -1, 'appel createAutoQuote introuvable dans runAutoQuote')
-  const bloc = DG.slice(idx, finAppel + 1600)
-  assert.match(bloc, /marques:\s*marquesActives,/)
-  assert.match(bloc, /ordreLignes:\s*gammesConfig\?\.ordre_lignes,/)
-})
-
-test('autoQuote.js : createAutoQuote accepte ordreLignes et le transmet à autoFillLines', () => {
-  assert.match(AQ, /targetKwc,\s*marques,\s*ordreLignes\s*\}\)\s*\{/)
-  const idx = AQ.indexOf('rows = autoFillLines(produits, {')
-  assert.ok(idx > -1, 'appel autoFillLines introuvable dans autoQuote.js')
-  // STKCAT10 — fenêtre élargie 400 → 700 : l'appel a gagné une option
-  // (`structureProduitId`) et sa justification, et une fenêtre épinglée au
-  // caractère près se périme à chaque ligne ajoutée EN AMONT des deux clés
-  // cherchées (elles, inchangées). C'est la fenêtre qui s'adapte, jamais la
-  // garde qui se desserre : les deux `assert.match` sont identiques.
-  const bloc = AQ.slice(idx, idx + 700)
-  assert.match(bloc, /marques,/)
-  assert.match(bloc, /ordreLignes,/)
+  const appel = DG.indexOf('createAutoQuote({', idx)
+  assert.match(DG.slice(appel, appel + 60), /createAutoQuote\(\{ lead, discountStr \}\)/)
+  // Le devis auto ne compose plus rien à l'écran (aucun autoFillLines).
+  assert.doesNotMatch(AQ, /autoFillLines\(|ordreLignes,\s*\}\)\s*\{/)
 })
 
 // ── LA MOITIÉ EXÉCUTABLE (QJR109) ──────────────────────────────────────────

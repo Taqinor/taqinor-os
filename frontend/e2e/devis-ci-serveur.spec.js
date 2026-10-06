@@ -95,3 +95,27 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
     expect(apres.etude_params[cle], `etude_params.${cle} identique`).toEqual(etude[cle])
   }
 })
+
+// CIQ127 — bouton « Devis automatique » de la fiche d'un lead commercial :
+// UN appel `POST /ventes/devis/auto/` (autoQuote.js), le serveur crée le
+// brouillon avec les lignes de SON moteur C&I, aucune clé v1 écrite.
+test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon aux lignes du moteur', async ({ page, request }) => {
+  test.setTimeout(180_000)
+  const lead = await premierLead(request)
+  // Une taille explicite sur le lead garantit une composition chiffrable.
+  await json(await request.patch(`${API}/crm/leads/${lead.id}/`, {
+    data: { type_installation: 'commercial', taille_souhaitee_kwc: '20' },
+  }), 'lead commercial')
+  await page.goto(`/crm/leads/${lead.id}`)
+  const appel = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/devis\/auto\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 })
+  await page.getByRole('button', { name: /Devis automatique/ }).first().click()
+  const reponse = await appel
+  expect(reponse.status(), await reponse.text()).toBeLessThan(300)
+  const cree = await reponse.json()
+  devisIds.push(cree.id)
+  const devis = await json(await request.get(`${API}/ventes/devis/${cree.id}/`), 'devis auto')
+  expect(devis.statut).toBe('brouillon')
+  expect((devis.lignes || []).length).toBeGreaterThan(0)
+  for (const k of CLES_V1) expect(devis.etude_params || {}, `clé v1 ${k}`).not.toHaveProperty(k)
+})

@@ -2,7 +2,6 @@ import {
   Fragment, useCallback, useDeferredValue, useEffect, useMemo, useReducer,
   useRef, useState,
 } from 'react'
-import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
@@ -423,7 +422,6 @@ export default function DevisGenerator({
   onDone = null,
   onCancel = null,
 } = {}) {
-  const dispatch = useDispatch()
   const navigate = useNavigate()
   // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
   const { confirm } = useConfirmDialog()
@@ -775,21 +773,11 @@ export default function DevisGenerator({
   // avec le lead COURANT et rend la liste des champs qui ont bougé DEPUIS
   // (`lead_valeurs_modifiees` du GET devis). Liste vide ⇒ rien à dire.
   const [leadValeursModifiees, setLeadValeursModifiees] = useState([])
-  // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
-  // best-effort : une société sans réglage ou un rôle non responsable/admin
-  // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
-  // donc sur le comportement historique SANS préférence de marque).
-  const [gammesConfig, setGammesConfig] = useState(null)
   // PVORD (fondateur 19/08/2026) — bouton « Enregistrer cet ordre comme
   // ordre par défaut » (voir handleSaveOrdreLignes) : état de chargement
   // dédié, séparé de `saving` (l'enregistrement du DEVIS) — les deux actions
   // sont indépendantes et ne doivent pas se griser l'une l'autre.
   const [savingOrdreLignes, setSavingOrdreLignes] = useState(false)
-  // Gamme du devis rouvert (`etude_params.gamme.nom`, QJ29/services.gamme_nom) —
-  // round-trip minimal : le générateur ne construit PAS de choix de gamme,
-  // il lit seulement celle déjà posée par un devis existant pour résoudre la
-  // bonne carte de marques (slot Essentielle par défaut, voir marquesActives).
-  const [gammeNomDevis, setGammeNomDevis] = useState('')
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
@@ -1729,43 +1717,6 @@ export default function DevisGenerator({
     return `${selectedLead.nom} ${selectedLead.prenom || ''} (sera créé automatiquement depuis le lead)`.trim()
   }, [selectedLead, clients])
 
-  // ── PVMRQ — réglages « Gammes & marques » (Paramètres → Gammes & marques) ──
-  // Chargés UNE fois, en CRÉATION comme en ÉDITION (une marque épinglée
-  // s'applique à chaque auto-remplissage, pas seulement au premier chargement
-  // d'un devis neuf). Best-effort : la LECTURE est ouverte à tout utilisateur
-  // authentifié de la société (`IsAuthenticated` — l'épinglage doit s'appliquer
-  // aux devis de TOUS les commerciaux ; seule l'ÉCRITURE reste
-  // Admin/Responsable, cf. `views/parametres_gammes.py`). Un échec réseau
-  // retombe silencieusement sur `{}` (aucune préférence, comportement
-  // historique), jamais un blocage de l'écran. Déclaré AVANT
-  // `computeAutoSizing` ci-dessous : `marquesActives` entre dans sa clé de
-  // cache/dépendances, donc doit déjà être initialisé à ce point du rendu.
-  const gammesLoaded = useRef(false)
-  useEffect(() => {
-    if (gammesLoaded.current) return
-    gammesLoaded.current = true
-    ventesApi.getParametresGammes()
-      .then(({ data }) => setGammesConfig(data || {}))
-      .catch(() => setGammesConfig({}))
-  }, [])
-
-  // Carte de marques ACTIVE pour ce devis : la gamme du devis rouvert
-  // (`gammeNomDevis`, résolue contre les libellés `nom_essentielle`/
-  // `nom_premium` du réglage — MIROIR du backend `services.marque_preferee`)
-  // si elle correspond au libellé Premium, sinon le slot Essentielle par
-  // défaut (comportement pour un devis neuf/sans gamme, ou tant que le
-  // réglage n'est pas encore chargé). Les clés internes de `marques` sont
-  // TOUJOURS les slots fixes 'Essentielle'/'Premium', jamais le libellé
-  // renommé (voir ParametresGammes, apps/ventes/models.py).
-  const marquesActives = useMemo(() => {
-    const marques = gammesConfig?.marques
-    if (!marques || typeof marques !== 'object') return {}
-    const nomActuel = (gammeNomDevis || '').trim().toLowerCase()
-    const nomPremium = (gammesConfig?.nom_premium || '').trim().toLowerCase()
-    const slot = (nomActuel && nomActuel === nomPremium) ? 'Premium' : 'Essentielle'
-    return marques[slot] || {}
-  }, [gammesConfig, gammeNomDevis])
-
   // ── CIQ125 — profil déclaré C&I → aperçu du moteur serveur, en direct ──
   // Le corps part tel que tapé (aucun calcul, aucun défaut) ; le lead et le
   // devis voyagent pour que le serveur résolve ce qui n'est pas saisi
@@ -2019,26 +1970,11 @@ export default function DevisGenerator({
     // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
     // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
     try {
-      // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
-      // dupliqué : un seul endroit dimensionne le devis auto. On transmet les
-      // heures de pompage du réglage entreprise (pompeHeures) et un rappel qui
-      // affiche les chiffres d'étude industrielle avant la fin.
-      const devisId = await createAutoQuote({
-        lead, produits, discountStr, dispatch, quoteLogic,
-        pumpHours: parseFloat(pompeHeures) || HEURES_POMPAGE_DEFAUT,
-        onEtude: (et) => setWarnings(prev => ({
-          ...prev,
-          autoEtude: `Étude auto : autoconsommation ${et.taux_autoconso} %`
-            + ` · économies ${fmtNum(et.economies_annuelles)} MAD/an`
-            + (et.payback != null ? ` · retour ${et.payback} ans` : ''),
-        })),
-        // PVMRQ — marques préférées (gamme active) : même contrainte que
-        // l'auto-remplissage manuel (handleAutoFill).
-        marques: marquesActives,
-        // PVORD — ordre par défaut de la société, même contrainte que
-        // l'auto-remplissage manuel (handleAutoFill) ci-dessous.
-        ordreLignes: gammesConfig?.ordre_lignes,
-      })
+      // Chemin partagé avec le panneau devis inline (autoQuote.js). CIQ127 —
+      // les quatre marchés sont créés par le SERVEUR, qui lit lui-même le
+      // catalogue, les marques épinglées (PVMRQ) et l'ordre des lignes de la
+      // société (PVORD) : rien de cela ne part d'ici.
+      const devisId = await createAutoQuote({ lead, discountStr })
       finish(devisId)
     } catch (err) {
       const msg = typeof err?.detail === 'string'
@@ -2142,7 +2078,6 @@ export default function DevisGenerator({
       setHorsReseau(etat.reouverture.horsReseau)
       setHorsReseauTouched(true)
       setAccessoiresOnly(etat.reouverture.accessoiresOnly)
-      pose(etat.gammeNom, setGammeNomDevis)
       pose(etat.recommendedChoice, setRecommendedChoice)
       pose(etat.multiMode, setMultiMode)
       pose(etat.nombreProprietes, setNombreProprietes)
@@ -2556,8 +2491,9 @@ export default function DevisGenerator({
     const derived = deriveRoleOrderFromLines(lines)
     setSavingOrdreLignes(true)
     try {
-      const { data } = await ventesApi.updateParametresGammes({ ordre_lignes: derived })
-      setGammesConfig(prev => ({ ...(prev || {}), ordre_lignes: data?.ordre_lignes ?? derived }))
+      // CIQ127 — l'ordre enregistré est lu par le SERVEUR à chaque composition
+      // (dry-run résidentiel, moteur C&I, devis automatique) : rien à garder ici.
+      await ventesApi.updateParametresGammes({ ordre_lignes: derived })
       toast.success('Ordre des lignes enregistré comme ordre par défaut pour les prochains devis.')
     } catch (err) {
       const detail = err?.response?.data?.detail

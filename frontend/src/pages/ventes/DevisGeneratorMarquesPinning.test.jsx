@@ -12,7 +12,7 @@
 // PAS été exécuté ici — seule la vérification de syntaxe (esbuild) l'a été.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -128,9 +128,13 @@ beforeEach(() => {
 })
 
 describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
-  it('charge le réglage « Gammes & marques » au montage', async () => {
+  // CIQ127 — l'écran ne charge plus le réglage « Gammes & marques » : plus
+  // aucune composition locale ne l'appliquait (le dry-run serveur résidentiel
+  // et le moteur C&I lisent eux-mêmes les marques épinglées de la société).
+  it('l’écran ne charge plus le réglage : la préférence est appliquée par le serveur', async () => {
     renderGenerator()
-    await waitFor(() => expect(ventesApi.getParametresGammes).toHaveBeenCalled())
+    await screen.findByDisplayValue('Installation')
+    expect(ventesApi.getParametresGammes).not.toHaveBeenCalled()
   })
 
   it('bandeau « Marque épinglée introuvable » à l\'auto-remplissage, JAMAIS un repli sur Canadian Solar', async () => {
@@ -143,7 +147,6 @@ describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
     // montage, voir solar.js `defaultProductLines` — donc n'est PAS un anchor
     // valable avant le clic Auto-remplir).
     await screen.findByDisplayValue('Installation')
-    await waitFor(() => expect(ventesApi.getParametresGammes).toHaveBeenCalled())
 
     fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), { target: { value: '14' } })
     fireEvent.click(screen.getByRole('button', { name: /Auto-remplir depuis le stock/i }))
@@ -174,7 +177,6 @@ describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
     })
     renderGenerator()
     await screen.findByDisplayValue('Installation')
-    await waitFor(() => expect(ventesApi.getParametresGammes).toHaveBeenCalled())
 
     fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), { target: { value: '14' } })
     fireEvent.click(screen.getByRole('button', { name: /Auto-remplir depuis le stock/i }))
