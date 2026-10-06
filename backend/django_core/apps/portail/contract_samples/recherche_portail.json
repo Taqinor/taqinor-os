@@ -1,0 +1,61 @@
+{
+  "endpoint": "GET /api/django/portail/client/recherche/?q=<mot>",
+  "pourquoi": "ADOC111 (M0) — recherche globale scopée au portail CLIENT connecté, vue-fonction `recherche_portail_client` (views_client.py:406), enveloppe `RecherchePortailSerializer` (views_client.py:376-404) : {query, groups:[{type, label, results:[{id, label, sublabel}]}]}. Toujours QUATRE groupes dans cet ordre : devis, facture, ticket, document. Un `q` vide renvoie les quatre groupes avec `results` vides (jamais toutes les données). `sublabel` : statut lisible (devis/facture/ticket) ou référence (document, '' si aucune). Écran consommateur : ADOC141.",
+  "forme_serveur": "complete",
+  "exemple": {
+    "query": "DEV-2026",
+    "groups": [
+      {
+        "type": "devis",
+        "label": "Devis",
+        "results": [
+          {
+            "id": 413,
+            "label": "DEV-202609-0012",
+            "sublabel": "Envoyé"
+          }
+        ]
+      },
+      {
+        "type": "facture",
+        "label": "Factures",
+        "results": []
+      },
+      {
+        "type": "ticket",
+        "label": "Tickets",
+        "results": []
+      },
+      {
+        "type": "document",
+        "label": "Documents",
+        "results": []
+      }
+    ]
+  },
+  "exemple_vide": {
+    "query": "",
+    "groups": [
+      {
+        "type": "devis",
+        "label": "Devis",
+        "results": []
+      },
+      {
+        "type": "facture",
+        "label": "Factures",
+        "results": []
+      },
+      {
+        "type": "ticket",
+        "label": "Tickets",
+        "results": []
+      },
+      {
+        "type": "document",
+        "label": "Documents",
+        "results": []
+      }
+    ]
+  }
+}
