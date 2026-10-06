@@ -64,7 +64,27 @@ def devis_du_client_portail(company, client_id, *, limit=200):
         # dernière correction après envoi (``etude_params.resync_apres_envoi``),
         # null sinon — JAMAIS updated_at.
         'mis_a_jour_le': _date_correction_apres_envoi(d),
+        # ADOC113 (contrat ``mes_devis_liste.json``) — LE prédicat QJR55 que
+        # ``accept_devis`` relit : un devis à deux options s'accepte au
+        # portail avec l'option choisie (``options[].cle``), jamais sans.
+        **_options_portail(d),
     } for d in qs]
+
+
+def _options_portail(devis):
+    """ADOC113 — ``deux_options`` (``deux_options_declarees``) et ``options``
+    (null si mono-option, sinon les deux choix de ``Devis.OptionAcceptee``).
+    Aucun montant : le chiffrage par option reste le PDF /proposal."""
+    from .models import Devis
+    from .utils.options import deux_options_declarees
+
+    deux = bool(deux_options_declarees(devis))
+    return {
+        'deux_options': deux,
+        'options': ([{'cle': cle, 'libelle': libelle}
+                     for cle, libelle in Devis.OptionAcceptee.choices]
+                    if deux else None),
+    }
 
 
 def _date_correction_apres_envoi(devis):
