@@ -25,6 +25,8 @@ import math
 
 from core.calepinage.geo import deprojeteur_local, projeteur_local
 
+from .valeurs import nombre
+
 #: D-ACAL-13 — au-delà de cette distance (mètres) entre l'épingle du document
 #: et le repère du lead, la dérive est signalée. Constante NOMMÉE, pas un
 #: réglage société (contrat ``calepinage_design_context.json`` : ``seuil_m``).
@@ -95,21 +97,11 @@ class RepereRefuse(ValueError):
 
 # ── Lecture ───────────────────────────────────────────────────────────────
 
-def _nombre(valeur):
-    if isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return nombre if math.isfinite(nombre) else None
-
-
 def _point(valeur):
     """``{lat, lng}`` lisible, ou ``None``."""
     if not isinstance(valeur, dict):
         return None
-    lat, lng = _nombre(valeur.get('lat')), _nombre(valeur.get('lng'))
+    lat, lng = nombre(valeur.get('lat')), nombre(valeur.get('lng'))
     if lat is None or lng is None:
         return None
     return {'lat': lat, 'lng': lng}
@@ -219,7 +211,7 @@ def _porteurs(noeud, segments):
 def _translater_couple(couple, ordre, deplacer):
     if not isinstance(couple, (list, tuple)) or len(couple) < 2:
         return couple
-    a, b = _nombre(couple[0]), _nombre(couple[1])
+    a, b = nombre(couple[0]), nombre(couple[1])
     if a is None or b is None:
         return couple
     lng, lat = (a, b) if ordre == 'lng_lat' else (b, a)
@@ -238,7 +230,7 @@ def _translater_en_place(document, chemin, forme, ordre, deplacer):
         for objet in _porteurs(document, segments):
             if not isinstance(objet, dict):
                 continue
-            lng, lat = _nombre(objet.get(cle_lng)), _nombre(objet.get(cle_lat))
+            lng, lat = nombre(objet.get(cle_lng)), nombre(objet.get(cle_lat))
             if lng is None or lat is None:
                 continue
             objet[cle_lng], objet[cle_lat] = deplacer(lng, lat)
