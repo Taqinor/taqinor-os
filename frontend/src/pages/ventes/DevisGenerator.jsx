@@ -1366,27 +1366,42 @@ export default function DevisGenerator({
     ? [leadDuDevis, ...leads] : leads
   const selectedLead = leadsListe.find(l => String(l.id) === String(leadId))
 
-  // AGR421 (D-AGR-9) — devis agricole sur un lead non agricole : le bandeau
-  // PROPOSE, le commercial change le type à la main (jamais à l'enregistrement).
+  // AGR421 / CIQ423 (D-AGR-9) — devis agricole, commercial ou industriel sur un
+  // lead d'un autre type : le bandeau PROPOSE, le commercial change le type à la
+  // main (jamais à l'enregistrement ni à l'envoi). C&I : seul l'écart que le
+  // serveur signale (`incoherence_segment`) ou un lead d'une autre famille.
   const [typeLeadMisAJour, setTypeLeadMisAJour] = useState({})
+  const incoherenceSegment = selectedLead?.incoherence_segment || null
   const typeLeadEffectif = selectedLead
     ? (typeLeadMisAJour[selectedLead.id]
-      ?? selectedLead.incoherence_segment?.segment_lead
+      ?? incoherenceSegment?.segment_lead
       ?? selectedLead.type_installation ?? '')
     : ''
-  const bandeauSegment = Boolean(selectedLead) && modeInstallation === 'agricole'
-    && typeLeadEffectif !== 'agricole'
-  const changerTypeLeadEnAgricole = async () => {
+  const marcheSegment = ['agricole', 'commercial', 'industriel'].includes(modeInstallation)
+    ? modeInstallation : ''
+  const bandeauSegment = Boolean(selectedLead) && Boolean(marcheSegment)
+    && typeLeadEffectif !== marcheSegment
+    && (marcheSegment === 'agricole'
+      || Boolean(incoherenceSegment)
+      || (typeLeadEffectif !== '' && !['commercial', 'industriel'].includes(typeLeadEffectif)))
+  // CIQ423 (D-CIQ-11) — rappel NON bloquant : l'ICE d'un client entreprise.
+  const clientDuDevis = clients.find(c => String(c.id) === String(clientId))
+  const identiteEntreprise = clientDuDevis?.identite_entreprise
+    ?? selectedLead?.identite_entreprise ?? null
+  const rappelIce = ['commercial', 'industriel'].includes(modeInstallation)
+    && Array.isArray(identiteEntreprise?.manquants)
+    && identiteEntreprise.manquants.some(m => m === 'ice' || m === 'raison_sociale')
+  const changerTypeLead = async () => {
     if (!selectedLead) return
     const ok = await confirm({
       title: 'Changer le type du lead ?',
-      description: `Le lead passera en « agricole » : le script d'appel, le score et le suivi le traiteront comme un lead agricole.`,
-      confirmLabel: 'Passer en agricole',
+      description: `Le lead passera en « ${marcheSegment} » : le script d'appel, le score et le suivi le traiteront comme un lead ${marcheSegment}.`,
+      confirmLabel: `Passer en ${marcheSegment}`,
     })
     if (!ok) return
     try {
-      await crmApi.updateLead(selectedLead.id, { type_installation: 'agricole' })
-      setTypeLeadMisAJour(m => ({ ...m, [selectedLead.id]: 'agricole' }))
+      await crmApi.updateLead(selectedLead.id, { type_installation: marcheSegment })
+      setTypeLeadMisAJour(m => ({ ...m, [selectedLead.id]: marcheSegment }))
     } catch {
       toast.error('Le type du lead n’a pas pu être modifié.')
     }
@@ -4566,13 +4581,21 @@ export default function DevisGenerator({
             <span>
               Ce lead est typé « {typeLeadEffectif || 'non renseigné'} » : le script
               d’appel, le score et le suivi le traitent comme{' '}
-              {typeLeadEffectif || 'un lead sans type'}. Changer le type en Agricole ?
+              {typeLeadEffectif || 'un lead sans type'}. Changer le type
+              {marcheSegment === 'agricole' ? ' en Agricole' : ''} ?
             </span>
             <Button type="button" variant="outline" size="sm"
-                    onClick={changerTypeLeadEnAgricole}>
-              Passer en agricole
+                    onClick={changerTypeLead}>
+              Passer en {marcheSegment}
             </Button>
           </div>
+        )}
+        {rappelIce && (
+          <p role="status" data-testid="rappel-ice-manquant"
+             className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            ICE à demander au client — il sera obligatoire à l’acceptation en ligne
+            et à la facture.
+          </p>
         )}
         {modeInstallation === 'agricole' && provenancesLead.length > 0 && (
           <ul className="grid gap-0.5 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"

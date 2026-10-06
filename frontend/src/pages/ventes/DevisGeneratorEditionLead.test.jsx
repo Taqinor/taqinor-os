@@ -393,3 +393,62 @@ describe('AGR421 — le type du lead ne change qu\'à la main', () => {
     expect(screen.queryByTestId('bandeau-segment-lead')).toBeNull()
   })
 })
+
+// ── CIQ423 (D-CIQ-11) — devis C&I : bandeau de type et rappel « ICE manquant » ──
+// Fixtures des contrats partagés `crm/lead_pro.json` et `crm/client_entreprise.json`.
+const LEAD_PRO_INCOHERENT = exempleContrat('crm', 'lead_pro', 'exemple_incoherent')
+const LEAD_PRO_COHERENT = exempleContrat('crm', 'lead_pro')
+const CLIENT_SANS_ICE = exempleContrat('crm', 'client_entreprise', 'exemple_nom_propre')
+
+function devisCommercialSurLead(lead) {
+  const rouvert = devisRouvert({ lead: lead.id })
+  return { data: { ...rouvert.data, mode_installation: 'commercial' } }
+}
+
+describe('CIQ423 — bandeau de type du lead et rappel ICE en mode commercial', () => {
+  beforeEach(() => {
+    crmApi.updateLead = vi.fn(() => Promise.resolve({ data: {} }))
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...LEAD_PRO_INCOHERENT } })
+    ventesApi.getDevisById.mockResolvedValue(devisCommercialSurLead(LEAD_PRO_INCOHERENT))
+  })
+
+  it('lead typé résidentiel : bandeau visible, enregistrer sans clic n\'émet aucun PATCH du lead', async () => {
+    renderEdition()
+    expect(await screen.findByTestId('bandeau-segment-lead'))
+      .toHaveTextContent('Ce lead est typé « residentiel »')
+    await cliquerEnregistrer()
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('clic + confirmation : PATCH {type_installation} seul', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEdition()
+    await userEvent.click(await screen.findByRole('button', { name: 'Passer en commercial' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledTimes(1))
+    expect(crmApi.updateLead).toHaveBeenCalledWith(
+      LEAD_PRO_INCOHERENT.id, { type_installation: 'commercial' })
+    confirmSpy.mockRestore()
+  })
+
+  it('lead commercial cohérent : aucun bandeau', async () => {
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...LEAD_PRO_COHERENT } })
+    ventesApi.getDevisById.mockResolvedValue(devisCommercialSurLead(LEAD_PRO_COHERENT))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+    await screen.findAllByText(/Khalid Réouvert/)
+    expect(screen.queryByTestId('bandeau-segment-lead')).toBeNull()
+  })
+
+  it('ICE manquant : rappel visible, l\'enregistrement reste possible', async () => {
+    crmApi.getLead.mockResolvedValue({ data: {
+      ...LEAD, ...LEAD_PRO_COHERENT, identite_entreprise: CLIENT_SANS_ICE.identite_entreprise,
+    } })
+    ventesApi.getDevisById.mockResolvedValue(devisCommercialSurLead(LEAD_PRO_COHERENT))
+    renderEdition()
+    expect(await screen.findByTestId('rappel-ice-manquant'))
+      .toHaveTextContent('ICE à demander au client')
+    await cliquerEnregistrer()
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+  })
+})
