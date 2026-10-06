@@ -174,3 +174,59 @@ describe('AGR533 — libellés agricoles de la table du parcours', () => {
     expect(gestes().find((g) => g.id === 'piece_recue').label).toBe('Pièce reçue')
   })
 })
+
+/* CIQ509 — libellés PROS de la table (commercial / industriel) ; résidentiel
+   inchangé, octet pour octet. `message` d'une variante : l'accusé PROPOSÉ. */
+describe('CIQ509 — libellés pros de la table du parcours', () => {
+  const touche = exempleContrat('crm', 'relance_etape_v2').results[0]
+  const suiviAppel = PARCOURS.etapes.find((e) => e.id === 'suivi_appel')
+  const trouver = (etape, id) => reponsesDeLEtape(suiviAppel, etape).find((x) => x.id === id)
+
+  it('commercial et industriel : « Décision à plusieurs — direction / associés », même clé serveur', () => {
+    for (const lead_segment of ['commercial', 'industriel']) {
+      const r = trouver({ ...touche, canal: 'appel', lead_segment }, 'decision_famille')
+      expect(r.label).toBe('Décision à plusieurs — direction / associés')
+      expect(r.reponse).toBe('decision_famille')
+      const p = trouver({ ...touche, canal: 'appel', lead_segment }, 'decision_proprietaire')
+      expect(p.label).toBe('Décision à plusieurs — bailleur / propriétaire des murs')
+      expect(p.reponse).toBe('decision_proprietaire')
+    }
+  })
+
+  it('résidentiel : le libellé actuel', () => {
+    for (const lead_segment of ['residentiel', '', undefined]) {
+      const etape = { ...touche, canal: 'appel', lead_segment }
+      expect(trouver(etape, 'decision_famille').label).toBe('Décision à plusieurs — en famille')
+      expect(trouver(etape, 'decision_proprietaire').label).toBe('Décision à plusieurs — le propriétaire')
+      expect(trouver(etape, 'attente_accord').label).toBe("En attente d'un accord (DPA / banque)")
+      expect(trouver(etape, 'attente_accord').message).toBeUndefined()
+    }
+  })
+
+  it('« En attente d’un accord » pro : libellé neutre, accusé proposé, raisons de la table', () => {
+    for (const lead_segment of ['commercial', 'industriel']) {
+      const r = trouver({ ...touche, canal: 'appel', lead_segment }, 'attente_accord')
+      expect(r.label).toBe("En attente d'un accord")
+      expect(r.message).toBe('attente_accord_accuse')
+      expect(r.reponse).toBe('attente_accord')
+      expect(r.raison).toBe(true)
+      expect(r.raisons.map((x) => x.valeur)).toEqual([
+        'direction', 'financement', 'bailleur_murs', 'budget_exercice', 'consultation',
+        'administration',
+      ])
+    }
+  })
+
+  it('le geste « Pièce reçue » : factures, schéma, pièces de la société pour un pro', () => {
+    const effet = gestes('industriel').find((g) => g.id === 'piece_recue').effet
+    expect(effet).toContain('ses factures ou relevés, un schéma électrique ou les pièces de la société')
+    expect(gestes().find((g) => g.id === 'piece_recue').label).toBe('Pièce reçue')
+  })
+
+  it('une variante pro ne change ni la clé serveur ni la suite', () => {
+    const entree = { modele: 'attente_accord', suite: { type: 'meme_etape', jour: 'date_choisie' } }
+    const r = reponseComplete(entree, 'industriel')
+    expect(r.reponse).toBe('attente_accord')
+    expect(r.suite).toEqual({ type: 'meme_etape', jour: 'date_choisie' })
+  })
+})

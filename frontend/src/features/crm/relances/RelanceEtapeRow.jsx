@@ -507,6 +507,10 @@ export default function RelanceEtapeRow({
   const [gestePlanification, setGestePlanification] = useState('')
   // « Perdu — clore le dossier » : le motif de perte choisi (obligatoire).
   const [motifPerte, setMotifPerte] = useState('')
+  // CIQ509 — « En attente d'un accord » : la RAISON de l'attente (liste de la
+  // table du parcours, obligatoire) et le refus du serveur sous son champ.
+  const [raisonAttente, setRaisonAttente] = useState('')
+  const [erreurRaison, setErreurRaison] = useState('')
   // RLC3 — la confirmation explicite « marquer faite sans avoir ouvert le
   // message ? ». Jamais un blocage : la case est TOUJOURS disponible (la
   // commerciale peut avoir écrit depuis son téléphone) — elle rend seulement le geste
@@ -587,6 +591,7 @@ export default function RelanceEtapeRow({
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
     setSansOuverture(false); setReportMode(''); setErreurRappel('')
     setMotifRefus(''); setErreurMotif(''); setMotifPerte('')
+    setRaisonAttente(''); setErreurRaison('')
     setPerduJunk(false); setMotifJunk('')
     setQueDarija(false); setErreurLangue('')
     setTypePiece(''); setFichierPiece(null); setErreurPiece('')
@@ -665,6 +670,11 @@ export default function RelanceEtapeRow({
   const messageRappel = erreurRappel || (rappelPasse
     ? '« Rappeler le » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.'
     : '')
+  // CIQ509 — le message SOUS le champ « Raison de l'attente » : le refus du
+  // serveur, sinon l'invite tant qu'aucune raison n'est choisie.
+  const messageRaison = erreurRaison || (reponseChoisie?.raison && !raisonAttente
+    ? '« Raison de l’attente » : choisissez la raison de l’attente.'
+    : '')
   // CAD11 — les motifs JUNK de la société ; celui proposé par défaut est le
   // motif nommé par la réponse s'il existe, sinon le premier de la liste.
   const motifsJunk = (motifs ?? []).filter((m) => m.est_junk)
@@ -688,6 +698,8 @@ export default function RelanceEtapeRow({
     if (erreurs?.motif_refus) setErreurMotif(erreurs.motif_refus)
     if (erreurs?.perdu_junk) setErreurMotif(erreurs.perdu_junk)
     if (erreurs?.motif_perte) setErreurMotif(erreurs.motif_perte)
+    // CIQ509 — la raison d'attente refusée s'affiche SOUS son sélecteur.
+    if (erreurs?.raison_attente) setErreurRaison(erreurs.raison_attente)
     // CAD63 — la langue refusée s'affiche SOUS sa case.
     if (erreurs?.langue) setErreurLangue(erreurs.langue)
     // SUIVI-REFUS — Fait, Sauter et Reporter passent ici, et le parent ne
@@ -697,6 +709,7 @@ export default function RelanceEtapeRow({
     // le geste ; sans message du tout, la phrase claire du statut HTTP.
     const rangee = champ || erreurs?.rappel_le || erreurs?.motif_refus
       || erreurs?.perdu_junk || erreurs?.motif_perte || erreurs?.langue
+      || erreurs?.raison_attente
     if (!rangee) {
       const premier = erreurs
         ? Object.values(erreurs).flat().find((m) => typeof m === 'string' && m) : null
@@ -735,6 +748,7 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.date && !rappelLe) return 'Indiquez la date convenue.'
     if (reponseChoisie.date && rappelPasse) return 'La date est déjà passée.'
     if (reponseChoisie.motif_perte && !motifPerte) return 'Choisissez le motif de perte.'
+    if (reponseChoisie.raison && !raisonAttente) return 'Choisissez la raison de l’attente.'
     if (confirmationOuvertureRequise) return 'Cochez la case « message non ouvert » ci-dessus.'
     return ''
   })()
@@ -783,6 +797,9 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.outcome === 'refuse' && motifRefus) payload.motif_refus = motifRefus
     // « Perdu — clore le dossier » : le motif de perte est obligatoire.
     if (reponseChoisie.motif_perte && motifPerte) payload.motif_perte = motifPerte
+    // CIQ509 — « En attente d'un accord » : la raison de l'attente part avec
+    // la réponse (liste fermée du serveur, valeur lue dans la table).
+    if (reponseChoisie.raison && raisonAttente) payload.raison_attente = raisonAttente
     // CAD11 — « perdu, motif junk » seulement si la case est COCHÉE.
     if (reponseChoisie.junk && perduJunk && motifJunkEffectif) {
       payload.perdu_junk = motifJunkEffectif
@@ -1296,7 +1313,7 @@ export default function RelanceEtapeRow({
                 variant={reponseIdx === idx ? 'default' : 'outline'}
                 onClick={() => {
                   setReponseIdx((cur) => (cur === idx ? null : idx)); setErreurOutcome('')
-                  setErreurMotif('')
+                  setErreurMotif(''); setErreurRaison('')
                   if (r.outcome === 'refuse' || r.junk || r.motif_perte) chargerMotifs()
                 }}
               >
@@ -1350,6 +1367,32 @@ export default function RelanceEtapeRow({
             <p className="text-xs text-danger" role="alert" data-testid="erreur-rappel-le">
               {messageRappel}
             </p>
+          )}
+          {/* CIQ509 — « En attente d'un accord » : la RAISON de l'attente est
+              OBLIGATOIRE (liste de la table du parcours, la même que celle du
+              serveur) ; le refus s'affiche SOUS le champ (règle du 08/09). */}
+          {reponseChoisie?.raison && (
+            <div className="flex flex-col gap-1" data-testid="raison-attente">
+              <Label className="text-xs" htmlFor={`raison-attente-${etape.id}`}>
+                Raison de l’attente
+              </Label>
+              <select
+                id={`raison-attente-${etape.id}`}
+                className={messageRaison ? 'form-select is-invalid' : 'form-select'}
+                value={raisonAttente}
+                onChange={(e) => { setRaisonAttente(e.target.value); setErreurRaison('') }}
+              >
+                <option value="">— Choisir la raison —</option>
+                {(reponseChoisie.raisons ?? []).map((r) => (
+                  <option key={r.valeur} value={r.valeur}>{r.libelle}</option>
+                ))}
+              </select>
+              {messageRaison && (
+                <p className="text-xs text-danger" role="alert" data-testid="erreur-raison-attente">
+                  {messageRaison}
+                </p>
+              )}
+            </div>
           )}
           {/* CAD10 — le seul moment où la raison du refus est connue : la
               liste courte déjà paramétrée est PROPOSÉE, jamais exigée
