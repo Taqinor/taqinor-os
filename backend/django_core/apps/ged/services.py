@@ -904,19 +904,25 @@ def _store_bytes(data, *, mime='application/pdf'):
 
     from django.conf import settings
 
+    from apps.records.storage import _detect
     from apps.ventes.utils.minio_client import (
         ensure_uploads_bucket, get_minio_client,
     )
 
-    ext = 'pdf' if 'pdf' in (mime or '') else 'bin'
+    # ADOC8 — le mime est déterminé côté serveur par les OCTETS (table de
+    # `records.storage`), jamais par le nom ou le type déclaré : un octet non
+    # reconnu reste `application/octet-stream` (servi en pièce jointe).
+    detecte, ext = _detect(bytes(data[:12]))
+    mime = detecte or 'application/octet-stream'
+    ext = ext or 'bin'
     key = f'attachments/{uuid.uuid4().hex}.{ext}'
     client = get_minio_client()
     ensure_uploads_bucket()
     client.upload_fileobj(
         io.BytesIO(data), settings.MINIO_BUCKET_UPLOADS, key,
-        ExtraArgs={'ContentType': mime or 'application/octet-stream'})
+        ExtraArgs={'ContentType': mime})
     return key, {'filename': f'{key.rsplit("/", 1)[-1]}',
-                 'size': len(data), 'mime': mime or ''}
+                 'size': len(data), 'mime': mime}
 
 
 def deposit_document(*, company, nom, source_type, source_id,
@@ -970,7 +976,8 @@ def deposit_document(*, company, nom, source_type, source_id,
             contenu_bytes, mime=mime or 'application/pdf')
         filename = filename or store_meta.get('filename', '')
         size = size or store_meta.get('size', 0)
-        mime = mime or store_meta.get('mime', '')
+        # ADOC8 — mime détecté par les octets, jamais celui de l'appelant.
+        mime = store_meta.get('mime', '')
         checksum = checksum or compute_checksum(contenu_bytes)
 
     cabinet = ensure_cabinet(company, cabinet_nom)
@@ -1260,6 +1267,8 @@ def importer_en_masse(*, company, folder, lignes, zip_bytes=None,
             file_key, store_meta = _store_bytes(
                 contenu_bytes, mime=mime or 'application/octet-stream')
             size = store_meta.get('size', 0)
+            # ADOC8 — mime détecté par les octets (jamais l'extension).
+            mime = store_meta.get('mime', '')
             checksum = compute_checksum(contenu_bytes)
         add_version(
             document, file_key=file_key, company=company,
@@ -5849,10 +5858,11 @@ def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
     assert_not_legal_hold(document)
     assert_not_locked_by_other(document, user)
     key, meta = _store_bytes(contenu_bytes, mime=mime or 'application/octet-stream')
+    # ADOC8 — mime détecté par les octets, jamais le type déclaré.
     version = add_version(
         document, file_key=key, company=document.company,
         filename=filename or meta.get('filename', ''),
-        size=len(contenu_bytes), mime=mime or meta.get('mime', ''),
+        size=len(contenu_bytes), mime=meta.get('mime', ''),
         uploaded_by=user)
     update_search_vector(document)
     return version

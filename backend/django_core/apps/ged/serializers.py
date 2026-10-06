@@ -219,7 +219,10 @@ class DocumentVersionSerializer(serializers.ModelSerializer):
             'mime', 'checksum', 'uploaded_by', 'uploaded_by_nom',
             'restored_from', 'restored_from_version', 'created_at',
         ]
-        read_only_fields = ['version', 'uploaded_by', 'restored_from', 'created_at']
+        # ADOC8 — `mime` en lecture seule : jamais déclaré par le client
+        # (un text/html déclaré serait servi inline).
+        read_only_fields = [
+            'version', 'uploaded_by', 'restored_from', 'created_at', 'mime']
         # `version` est posé côté serveur (services.add_version). On retire le
         # UniqueTogetherValidator (document, version) auto-généré : il évaluerait
         # version à sa valeur par défaut (1) à chaque POST et rejetterait la 2e

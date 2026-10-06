@@ -107,10 +107,12 @@ GOUVERNANCE_ACTIONS = (
 # GED20 — Formats affichables inline (PDF, images, texte). Tout le reste →
 # téléchargement forcé (attachment). Partagé entre l'aperçu authentifié (GED14)
 # et le partage public tokenisé (GED20).
+# ADOC8 — `text/html` n'est JAMAIS servi inline (script exécuté sur l'origine
+# ERP) ; toute réponse binaire GED porte en plus une CSP « sandbox ».
 _INLINE_MIMES = {
     'application/pdf',
     'image/png', 'image/jpeg', 'image/webp', 'image/gif',
-    'text/plain', 'text/csv', 'text/html',
+    'text/plain', 'text/csv',
 }
 
 
@@ -1420,7 +1422,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             version = services.sauvegarder_depuis_editeur_office(
                 document, contenu_bytes=upload.read(), user=request.user,
-                filename=upload.name, mime=upload.content_type or '')
+                filename=upload.name)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -2013,6 +2015,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         resp = HttpResponse(data, content_type=mime)
         resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
         resp['X-Content-Type-Options'] = 'nosniff'
+        resp['Content-Security-Policy'] = 'sandbox'  # ADOC8
         return resp
 
 
@@ -4073,6 +4076,7 @@ def public_partage(request, token):
     resp = HttpResponse(data, content_type=mime)
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
     resp['X-Content-Type-Options'] = 'nosniff'
+    resp['Content-Security-Policy'] = 'sandbox'  # ADOC8
     return _ged_noindex(resp)
 
 
