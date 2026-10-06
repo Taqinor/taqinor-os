@@ -1526,40 +1526,25 @@ def _est_un_nombre(valeur):
     return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
 
 
-#: CALX172 — la colonne de la série persistée qui porte la puissance DC
-#: horaire (``contract_samples/calepinage_serie_horaire.json``, CALX142).
-COLONNE_SERIE_DC = 'p_dc_kw'
+def _ecretage_de_la_cascade(cascade):
+    """ACAL141 — le pourcentage d'écrêtage de l'étape « ecretage » de la
+    cascade SERVIE (fraîche), ou ``None``.
 
-
-def _serie_dc_persistee(calepinage, empreinte):
-    """La série horaire de puissance DC déjà calculée, ou ``None``.
-
-    CALX172 — ``ecretage_depuis_serie`` existe depuis CAL127 et n'a JAMAIS
-    reçu de série : son unique appelant était invoqué sans ``serie_dc_kw``,
-    si bien que ``ecretage_pct`` valait toujours ``null``. La série existe
-    pourtant : la chaîne de pertes la dépose dans
-    ``Calepinage.resultat['serie_horaire']`` (CALX193).
-
-    Elle n'est servie que si elle décrit ENCORE ce toit — même contrôle de
-    fraîcheur que les blocs de simulation (CALX70) : une puissance calculée
-    sur un autre document ne doit pas chiffrer l'écrêtage de celui-ci.
-    ``None`` quand rien n'a été simulé, quand l'empreinte a bougé, ou quand
-    la colonne DC n'a pas été produite — jamais une série approchée.
+    La cascade est celle de la simulation (phase ONDULEUR sur la somme DC des
+    pans, ACAL53) : son étape ``ecretage`` publie ``entree.ecretage_pct``
+    calculé heure par heure par ``ecretage_depuis_serie``. Jamais la colonne
+    ``p_dc_kw`` d'une série persistée — aucune étape ne l'écrit.
     """
-    stocke = getattr(calepinage, 'resultat', None)
-    stocke = stocke if isinstance(stocke, dict) else {}
-    simulation = stocke.get(CLE_SIMULATION)
-    simulation = simulation if isinstance(simulation, dict) else {}
-    if (simulation.get('hash_entree') or '') != empreinte:
-        return None
-    serie = stocke.get('serie_horaire')
-    if not isinstance(serie, dict):
-        return None
-    valeurs = [point.get(COLONNE_SERIE_DC)
-               for point in serie.get('points') or []
-               if isinstance(point, dict)]
-    valeurs = [valeur for valeur in valeurs if _est_un_nombre(valeur)]
-    return valeurs or None
+    for etape in ((cascade or {}).get('etapes') or ()):
+        if not isinstance(etape, dict) or etape.get('etape') != 'ecretage':
+            continue
+        if etape.get('motif_omission'):
+            return None
+        entree = etape.get('entree')
+        valeur = (entree or {}).get('ecretage_pct') if isinstance(
+            entree, dict) else None
+        return valeur if _est_un_nombre(valeur) else None
+    return None
 
 
 def _simulation_servie(calepinage, empreinte, *, defauts=None):
@@ -1695,14 +1680,17 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         calepinage, document=document, donnees=donnees, materiel=materiel,
         reglages=reglages)
     pose = bloc_pose(conception)
+    # CALX70 — la simulation persistée, servie si elle décrit ENCORE ce
+    # dossier ; lue ICI parce que le ratio DC/AC en tire son écrêtage.
+    blocs, perimee, motif, calcule_le = _simulation_servie(
+        calepinage, empreinte, defauts=_defauts_simulation(pose))
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
         parametres_societe=_parametres_electriques(calepinage),
-        # CALX172 — la série DC de la simulation PERSISTÉE, quand elle décrit
-        # encore CE toit : c'est le seul chemin par lequel
-        # ``ecretage_depuis_serie`` reçoit enfin une série.
-        serie_dc_kw=_serie_dc_persistee(calepinage, empreinte))
+        # ACAL141 — l'écrêtage de l'étape « ecretage » de la cascade FRAÎCHE
+        # (``None`` périmée ou jamais simulée : motif inchangé).
+        ecretage_pct=_ecretage_de_la_cascade(blocs.get('cascade')))
 
     # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
     # sans elle, sections et chutes de tension sont OMISES (règle D5).
@@ -1800,31 +1788,6 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     if conception.temperatures is not None and conception.temperatures.mention:
         messages.append(conception.temperatures.mention)
 
-    blocs, perimee, motif, calcule_le = _simulation_servie(
-        calepinage, empreinte, defauts={
-            # Le squelette servi tant qu'aucune simulation n'a tourné : la
-            # POSE est un fait (modules et kWc restent chiffrés), la
-            # production ne l'est pas (toutes ses grandeurs à ``null``).
-            'production': {
-                'base': {'source': None, 'fenetre_annees': None,
-                         'loss_passee_pct': None,
-                         'commentaire': "Aucune simulation lancée : aucune "
-                                        "perte n'a été passée à PVGIS."},
-                'total': {'kwc': pose['kwc'], 'p50_kwh': None,
-                          'p75_kwh': None, 'p90_kwh': None,
-                          'performance_ratio': None,
-                          'specific_yield_kwh_kwc': None,
-                          'annual_variability': None, 'total_loss_pct': None},
-                'mensuel': [],
-                'par_pan': [{'pan': pan['pan'], 'modules': pan['modules'],
-                             'kwc': pan['kwc'], 'p50_kwh': None,
-                             'p75_kwh': None, 'p90_kwh': None,
-                             'performance_ratio': None,
-                             'specific_yield_kwh_kwc': None,
-                             'shading_annual_loss_pct': None}
-                            for pan in pose['pans']],
-            },
-        })
     # ACAL127 — ``pertes`` est la LISTE PLATE des postes SAISIS (D-CALX 11),
     # servie depuis ``Calepinage.pertes`` (aucune copie stockée) : jamais
     # simulé, frais ou périmé, ce sont les MÊMES postes que GET pertes/.
@@ -1920,6 +1883,33 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # simulation est périmée.
         'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
         'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
+    }
+
+
+def _defauts_simulation(pose):
+    """Le squelette servi tant qu'aucune simulation n'a tourné : la POSE est
+    un fait (modules et kWc restent chiffrés), la production ne l'est pas
+    (toutes ses grandeurs à ``null``)."""
+    return {
+        'production': {
+            'base': {'source': None, 'fenetre_annees': None,
+                     'loss_passee_pct': None,
+                     'commentaire': "Aucune simulation lancée : aucune "
+                                    "perte n'a été passée à PVGIS."},
+            'total': {'kwc': pose['kwc'], 'p50_kwh': None,
+                      'p75_kwh': None, 'p90_kwh': None,
+                      'performance_ratio': None,
+                      'specific_yield_kwh_kwc': None,
+                      'annual_variability': None, 'total_loss_pct': None},
+            'mensuel': [],
+            'par_pan': [{'pan': pan['pan'], 'modules': pan['modules'],
+                         'kwc': pan['kwc'], 'p50_kwh': None,
+                         'p75_kwh': None, 'p90_kwh': None,
+                         'performance_ratio': None,
+                         'specific_yield_kwh_kwc': None,
+                         'shading_annual_loss_pct': None}
+                        for pan in pose['pans']],
+        },
     }
 
 
@@ -3663,12 +3653,16 @@ def ecretage_depuis_serie(serie_dc_kw, puissance_ac_kw):
 
 
 def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
-                     parametres_societe=None, serie_dc_kw=None):
+                     parametres_societe=None, ecretage_pct=None):
     """CAL127 — le ratio, SA borne, la SOURCE de sa borne, et l'écrêtage.
 
     Rend ``(bloc, avertissements)``. Hors bornes, l'avertissement CITE la
     borne ET sa source : « ratio DC/AC 1,52 au-dessus de la borne 1,35
     (borne usuelle du noyau électrique) ».
+
+    ACAL141 — ``ecretage_pct`` est celui de l'étape « ecretage » de la
+    cascade FRAÎCHE (calculé heure par heure par ``ecretage_depuis_serie``
+    dans la chaîne) ; ``None`` ⇒ publié ``null`` avec son motif.
     """
     from core.electrique.types import fr
 
@@ -3701,7 +3695,7 @@ def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
                 "surdimensionnement DC important"
                 % (fr(valeur, 2), fr(alerte, 2), source))
 
-    ecretage = ecretage_depuis_serie(serie_dc_kw, puissance_ac)
+    ecretage = ecretage_pct if _est_un_nombre(ecretage_pct) else None
     dc_kwc = (evaluation.puissance_dc_kwc if evaluation is not None else None)
     return ({
         'valeur': (round(valeur, 3) if valeur is not None else None),
