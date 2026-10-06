@@ -374,6 +374,8 @@ export default function AtelierPanneaux({
           onRelire={relire}
           enregistrerAvant={enregistrerAvant}
           aDesRetouches={aDesRetouches}
+          // ACAL93 — le verdict SERVEUR (design-context, ACAL36).
+          revisionPossible={!!contexte?.revision_possible}
         />
         {/* SOLMVP15 — le bouton « Reprendre le contour de l'affaire » (CAL242)
             était posé ici. Son endpoint est parti avec l'app d'appels d'offres,

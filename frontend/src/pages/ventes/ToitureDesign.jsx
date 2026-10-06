@@ -62,6 +62,7 @@ import { toastInfo } from '../../lib/toast'
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
 import { useConfirmDialog } from '../../ui/confirm'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
+import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 // L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
 // la carte du calepinage 3D (voir ToitClientOverlay.jsx pour le pourquoi).
 import { contourExploitable } from '../../features/crm/workspace/traceToit'
@@ -797,30 +798,35 @@ export default function ToitureDesign({ mode = 'lead' }) {
     }
   }
 
-  // PV21 — « Réviser (v2) » : le devis est déjà chez le client, on en crée une
-  // NOUVELLE version (brouillon) et on rouvre la conception dessus.
-  const reviser = async () => {
-    if (sending) return
+  // PV21 / ACAL93 — « Réviser (v2) » : le devis est déjà chez le client, on en
+  // crée une NOUVELLE version (brouillon) et on rouvre la conception dessus.
+  // UNE seule fonction de révision dans tout le produit : `reviserEtOuvrir`
+  // (avertit d'un chantier en cours, dit l'échec du serveur) — jamais masquée
+  // ni refusée (D-QJR5-2). Ici, la V2 s'ouvre sur sa CONCEPTION.
+  const reviser = async (idDevis = devisId, reference = '') => {
+    if (sending || !idDevis) return
     setSending(true)
     setGenError(null)
     setGenStatus('Création de la révision…')
+    let v2 = null
     try {
-      const res = await ventesApi.reviserDevis(devisId)
-      const nouveau = res?.data?.id
+      await reviserEtOuvrir({
+        devis: { id: idDevis, reference },
+        onApres: (nouveau) => { v2 = nouveau; setConflit(null) },
+        navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
+      })
+    } finally {
       setGenStatus(null)
       setSending(false)
-      if (!nouveau) {
-        setGenError('Révision créée sans identifiant — rouvrez le devis depuis la liste.')
-        return
-      }
-      setConflit(null)
-      navigate(`/ventes/devis/${nouveau}/design`)
-    } catch (err) {
-      setGenStatus(null)
-      setSending(false)
-      setGenError(httpMessage(err?.response?.status ?? 0, err?.response?.data))
     }
   }
+  // ACAL93 — le devis à réviser depuis le bandeau « Lecture seule » : celui du
+  // mode devis, ou le devis LIÉ du calepinage (contexte, ACAL36).
+  const devisARevise = estDevis
+    ? { id: devisId, reference: contexte?.devis?.reference ?? '' }
+    : (contexte?.calepinage?.devis_lie?.id != null
+      ? { id: contexte.calepinage.devis_lie.id, reference: contexte.calepinage.devis_lie.reference ?? '' }
+      : null)
 
   // Fondateur 18/08 — bouton Fermer (X, haut-droite) : cette fenêtre de
   // calepinage 3D n'avait aucune sortie visible une fois ouverte (lead,
@@ -1164,6 +1170,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
                 Voir en 3D
               </Link>
             )}
+            {/* ACAL93 — le serveur dit que la révision est possible : le
+                bandeau l'OFFRE (jamais masquée par rôle, jamais refusée). */}
+            {contexte?.revision_possible && devisARevise && (
+              <button
+                type="button"
+                onClick={() => reviser(devisARevise.id, devisARevise.reference)}
+                disabled={sending}
+                data-testid="acal-reviser-lecture-seule"
+                className="mt-4 ml-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Réviser (v2)
+              </button>
+            )}
           </div>
         )}
 
@@ -1384,7 +1403,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
             {conflit?.revision_possible && (
               <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
                 <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
-                <button type="button" onClick={reviser} disabled={sending}
+                <button type="button" onClick={() => reviser()} disabled={sending}
                   className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
                   Réviser (v2)
                 </button>

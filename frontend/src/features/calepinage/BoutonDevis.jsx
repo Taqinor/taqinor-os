@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import ventesApi from '../../api/ventesApi'
 import { toastWarning } from '../../lib/toast'
+import { reviserEtOuvrir } from '../ventes/reviserDevis'
 
 /* ============================================================================
    CAL38 — LA SORTIE VERS LE DEVIS d'un calepinage, et elle n'existait nulle
@@ -108,7 +108,7 @@ export const MESSAGE_RETOUCHES_NON_ENREGISTREES = 'Retouches non enregistrées :
 
 export default function BoutonDevis({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
-  enregistrerAvant = null, aDesRetouches = null,
+  enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
 }) {
   const navigate = useNavigate()
   const [enCours, setEnCours] = useState(false)
@@ -124,7 +124,9 @@ export default function BoutonDevis({
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
   // charger une seconde fois ferait deux appels pour la même vérité — et deux
   // vérités le jour où l'une des deux serait périmée.
-  if (!detail || lectureSeule) return null
+  // ACAL93 — en LECTURE SEULE, le seul geste offert est « Réviser (v2) », quand
+  // le serveur le dit possible (jamais masqué par rôle ni refusé).
+  if (!detail || (lectureSeule && !(revisionPossible && detail?.devis?.id))) return null
 
   const devisLie = detail.devis ?? null
   const variantes = detail.variantes ?? {}
@@ -235,10 +237,41 @@ export default function BoutonDevis({
     try { nonEnregistrees = typeof aDesRetouches === 'function' && !!aDesRetouches() } catch { nonEnregistrees = false }
     setRetouches(nonEnregistrees)
     if (nonEnregistrees) toastWarning(MESSAGE_RETOUCHES_NON_ENREGISTREES)
-    const res = await executer(() => ventesApi.reviserDevis(devisLie.id))
-    const nouveau = res?.data?.id
-    if (!nouveau) return
-    navigate(`/ventes/devis/${nouveau}/design`)
+    // ACAL93 — UNE seule fonction de révision (`reviserEtOuvrir`) ; la V2
+    // s'ouvre sur sa CONCEPTION.
+    if (enCours) return
+    setEnCours(true)
+    let v2 = null
+    try {
+      await reviserEtOuvrir({
+        devis: devisLie,
+        onApres: (nouveau) => { v2 = nouveau },
+        navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
+      })
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  if (lectureSeule) {
+    return (
+      <div className="space-y-2" data-testid="cal-bouton-devis">
+        <button
+          type="button"
+          onClick={reviser}
+          disabled={enCours}
+          data-testid="cal-devis-reviser-lecture-seule"
+          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Réviser (v2)
+        </button>
+        {retouches && (
+          <p className="text-xs text-brass-300" role="status" data-testid="cal-devis-retouches">
+            {MESSAGE_RETOUCHES_NON_ENREGISTREES}
+          </p>
+        )}
+      </div>
+    )
   }
 
   return (

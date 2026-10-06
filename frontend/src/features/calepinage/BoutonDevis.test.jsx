@@ -156,6 +156,20 @@ describe('BoutonDevis (CAL38)', () => {
 
     expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
   })
+
+  // ACAL93 — en lecture seule, « Réviser (v2) » reste OFFERT quand le serveur
+  // le dit possible (jamais masqué) ; aucun geste d'écriture n'apparaît.
+  it('lecture seule + revision_possible : seul « Réviser (v2) » est offert', async () => {
+    ventesApi.reviserDevis.mockResolvedValue({ data: { id: 81, reference: 'DEV-V2' } })
+    rendre({ lectureSeule: true, revisionPossible: true })
+
+    const bouton = await screen.findByTestId('cal-devis-reviser-lecture-seule')
+    expect(screen.queryByTestId('cal-resynchroniser-devis')).toBeNull()
+    expect(screen.queryByTestId('cal-generer-devis')).toBeNull()
+    await userEvent.click(bouton)
+    await waitFor(() => expect(ventesApi.reviserDevis).toHaveBeenCalledWith(DETAIL.devis.id))
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/81/design'))
+  })
 })
 
 /* ACAL95 — ce que la génération et la resynchro n'ont pas pu faire se LIT
