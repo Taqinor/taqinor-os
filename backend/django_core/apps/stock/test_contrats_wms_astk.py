@@ -285,3 +285,157 @@ class ContratWmsCasiersTests(WmsBase):
         rep = self.api.get(url, {'code': 'INCONNU-ASTK'})
         self.assertEqual(rep.status_code, 400)
         self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+
+
+class ContratWmsPickingTests(WmsBase):
+    """ASTK161 — wms_picking.json."""
+
+    URL = '/api/django/stock/vagues-picking/'
+
+    def _creer_vague(self, quantite=5):
+        rep = self.api.post(self.URL, {'besoins': [
+            {'produit_id': self.produit.id, 'quantite': quantite}]},
+            format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        return rep.json()
+
+    def test_vagues_picking_creation_et_liste(self):
+        contrat = route('wms_picking', 'vagues_picking')
+        vague = self._creer_vague()
+        self.assertMemesCles(vague, contrat['exemple_element'], 'vague')
+        self.assertTrue(vague['lignes'])
+        self.assertMemesCles(vague['lignes'][0], contrat['exemple_ligne'],
+                             'ligne')
+        rep = self.api.get(self.URL)
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'liste')
+        self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
+                             'vague de la liste')
+        rep = self.api.post(self.URL, {'besoins': []}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+
+    def test_lancer_et_prelever(self):
+        vague = self._creer_vague()
+        ligne = vague['lignes'][0]
+        url_vague = f'{self.URL}{vague["id"]}/'
+        contrat = route('wms_picking', 'vague_prelever_ligne')
+
+        non_lancee = self.api.post(
+            f'{url_vague}lignes/{ligne["id"]}/prelever/', {'quantite': 1},
+            format='json')
+        self.assertEqual(non_lancee.status_code, 400)
+        self.assertEqual(non_lancee.json(),
+                         contrat['exemple_erreur_400_non_lancee'])
+
+        rep = self.api.post(f'{url_vague}lancer/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(), route('wms_picking', 'vague_lancer')['exemple'],
+            'lancer')
+        self.assertEqual(rep.json()['statut'], 'lancee')
+
+        rep = self.api.post(
+            f'{url_vague}lignes/{ligne["id"]}/prelever/',
+            contrat['exemple_corps'], format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'prélever')
+
+        motif = (r'^Il ne reste que \d+ unité\(s\) à prélever sur '
+                 r'cette ligne\.$')
+        rep = self.api.post(
+            f'{url_vague}lignes/{ligne["id"]}/prelever/',
+            {'quantite': 99999}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertRegex(rep.json()['detail'], motif)
+        self.assertRegex(contrat['exemple_erreur_400']['detail'], motif)
+
+        rep = self.api.post(f'{url_vague}lignes/999999/prelever/',
+                            {'quantite': 1}, format='json')
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_404'])
+
+    def test_configurer_liberation(self):
+        contrat = route('wms_picking', 'vague_configurer_liberation')
+        vague = self._creer_vague()
+        url = f'{self.URL}{vague["id"]}/configurer-liberation/'
+        rep = self.api.post(url, contrat['exemple_corps'], format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'liberation')
+        self.api.post(f'{self.URL}{vague["id"]}/lancer/')
+        rep = self.api.post(url, contrat['exemple_corps'], format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+
+    def test_lancer_vague_vide_message(self):
+        from apps.stock.models_wms import VaguePicking
+
+        vide = VaguePicking.objects.create(
+            company=self.company, reference='VAG-ASTK-VIDE',
+            cree_par=self.admin)
+        rep = self.api.post(f'{self.URL}{vide.id}/lancer/')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(
+            rep.json(),
+            route('wms_picking', 'vague_lancer')['exemple_erreur_400'])
+
+    def test_tache_retour(self):
+        contrat = route('wms_picking', 'tache_retour')
+        vague = self._creer_vague()
+        self.api.post(f'{self.URL}{vague["id"]}/lancer/')
+        rep = self.api.get('/api/django/stock/tache-retour/', {'zone': 'P'})
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'tâche retour')
+        self.assertTrue(corps['suggestions'])
+        self.assertMemesCles(corps['suggestions'][0],
+                             contrat['exemple']['suggestions'][0], 'ligne')
+
+    def test_entrepot_productivite(self):
+        contrat = route('wms_picking', 'entrepot_productivite')
+        self._creer_vague()
+        rep = self.api.get('/api/django/stock/entrepot/productivite/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'productivité')
+        self.assertTrue(corps['operateurs'])
+        self.assertMemesCles(corps['operateurs'][0],
+                             contrat['exemple']['operateurs'][0], 'opérateur')
+        self.assertIsInstance(corps['operateurs'][0]['operations'], dict)
+
+    def test_entrepot_pertes(self):
+        from apps.stock.models_wms import MouvementRebut
+
+        contrat = route('wms_picking', 'entrepot_pertes')
+        MouvementRebut.objects.create(
+            company=self.company, produit=self.produit, quantite=3,
+            motif='casse', valeur_perte=Decimal('0'), declare_par=self.admin)
+        rep = self.api.get('/api/django/stock/entrepot/pertes/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'pertes')
+        self.assertTrue(corps['par_motif'])
+        self.assertMemesCles(corps['par_motif'][0],
+                             contrat['exemple']['par_motif'][0], 'motif')
+
+    def test_plans_comptage_tournant(self):
+        contrat = route('wms_picking', 'plans_comptage_tournant')
+        url = '/api/django/stock/plans-comptage-tournant/'
+        rep = self.api.get(url)
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'liste')
+        self.assertTrue(corps['results'])
+        self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
+                             'plan')
+        plan_id = corps['results'][0]['id']
+        rep = self.api.patch(f'{url}{plan_id}/', {'frequence_jours': 0},
+                             format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+
+        generer = route('wms_picking', 'plans_comptage_generer')
+        rep = self.api.post(f'{url}generer/')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), generer['exemple'], 'générer')
