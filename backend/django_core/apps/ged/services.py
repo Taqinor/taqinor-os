@@ -1079,6 +1079,7 @@ def deposit_document(*, company, nom, source_type, source_id,
         document, file_key=file_key or '', company=company,
         filename=filename or '', size=size or 0, mime=mime or '',
         checksum=checksum or '', uploaded_by=created_by)
+    apres_depot(document, created_by)  # ADOC25
     return document, True
 
 
@@ -1142,6 +1143,7 @@ def deposer_lot_scans(*, company, folder, fichiers, created_by=None):
             description=f.get('description', ''),
             created_by=created_by,
             contenu_bytes=f.get('contenu_bytes'))
+        apres_depot(document, created_by)  # ADOC25
         documents.append(document)
     return documents
 
@@ -1234,6 +1236,7 @@ def deposer_photos_assemblees(*, company, folder, images_bytes, nom='',
     update_search_vector(document)
     index_embedding(document)
     index_document_chunks(document)
+    apres_depot(document, created_by)  # ADOC25
     return document
 
 
@@ -1364,6 +1367,7 @@ def importer_en_masse(*, company, folder, lignes, zip_bytes=None,
         update_search_vector(document)
         index_embedding(document)
         index_document_chunks(document)
+        apres_depot(document, created_by)  # ADOC25
         documents.append(document)
     return {'documents': documents, 'erreurs': erreurs,
             'crees': len(documents)}
@@ -4607,16 +4611,28 @@ def deposer_via_lien_public(depot, *, file_key, filename='', size=0, mime='',
         d.octets_deposes += max(0, int(size or 0))
         d.save(update_fields=['depots_effectues', 'octets_deposes', 'updated_at'])
     update_search_vector(document)
-    # XGED8 — un dépôt sur ce dossier peut solder une demande de document
-    # correspondante (matching best-effort, jamais bloquant).
-    try:
-        matcher_depot_demandes(document)
-    except Exception:  # pragma: no cover - défensif, ne bloque jamais le dépôt.
-        pass
+    # XGED8/XGED19/ADOC25 — post-dépôt commun (demandes de pièces + règles).
+    apres_depot(document)
     return document
 
 
 # ── XGED8 — Checklist de pièces requises + demandes de documents ────
+
+def apres_depot(document, user=None):
+    """ADOC25 — LE post-dépôt commun à TOUTES les routes de dépôt (écran,
+    scan-lot, photos, import en masse, dépôt public, e-mail, routage,
+    deposit_document) : solde la demande de pièce correspondante (XGED8) puis
+    applique les règles du dossier (XGED19). Best-effort : jamais bloquant
+    pour le dépôt lui-même."""
+    try:
+        matcher_depot_demandes(document)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+    try:
+        appliquer_regles_dossier(document, user=user)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
 
 def matcher_depot_demandes(document):
     """XGED8 — Solde automatiquement une `DemandeDocument` en attente sur le
@@ -4889,6 +4905,7 @@ def importer_message_email(raw_bytes, *, company):
         update_search_vector(document)
         _appliquer_tag_expediteur(
             document, company=company, from_email=from_email, alias=alias)
+        apres_depot(document)  # ADOC25
         created.append(document)
     return created
 
@@ -5200,6 +5217,7 @@ def deposer_lot_scans_separe(*, company, folder, images, created_by=None,
             size=len(pdf_bytes), mime='application/pdf',
             uploaded_by=created_by)
         update_search_vector(document)
+        apres_depot(document, created_by)  # ADOC25
         created.append(document)
     return created
 
@@ -6253,6 +6271,7 @@ def router_document_module(source, *, company, file, filename='',
 
     for tag in routage.tags_defaut.all():
         assign_tag(document, tag, created_by=uploaded_by)
+    apres_depot(document, uploaded_by)  # ADOC25
 
     return document
 

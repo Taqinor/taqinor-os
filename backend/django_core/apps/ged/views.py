@@ -700,18 +700,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         services.index_embedding(document)
         # FG352 — indexe les fragments RAG/DocQA (no-op sans clé).
         services.index_document_chunks(document)
-        # XGED8 — un dépôt peut solder une demande de document en attente sur
-        # ce dossier (best-effort, jamais bloquant).
-        try:
-            services.matcher_depot_demandes(document)
-        except Exception:  # pragma: no cover - défensif.
-            pass
-        # XGED19 — règles automatiques du dossier (best-effort, ne bloque
-        # jamais l'upload lui-même même si une action échoue).
-        try:
-            services.appliquer_regles_dossier(document, user=request.user)
-        except Exception:  # pragma: no cover - défensif.
-            pass
+        # XGED8/XGED19/ADOC25 — post-dépôt commun (demandes de pièces +
+        # règles du dossier), best-effort, jamais bloquant.
+        services.apres_depot(document, request.user)
         return Response(
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
