@@ -1,0 +1,63 @@
+{
+  "endpoint": "GET /api/django/portail/mes-demandes-sav/",
+  "pourquoi": "ADOC111 (M0, C-ADOC-050) — « Mes demandes SAV » : surface CLIENT AUD525 servie par MesDemandesSavPortailViewSet (portail/views_client.py:924), sans écran ni contrat jusqu'ici (check_api_shapes : aucun contrat J6). Un élément = `MesDemandesSavPortailLigneSerializer` (views_client.py:894-911), reflet exact de `_ligne` : payload pauvre, aucune donnée interne. `statut` ∈ soumise|prise_en_charge|resolue|refusee ; `ticket_id` est null tant que la demande n'est pas prise en charge (le fil `fil/` est alors vide, voir mes_tickets_fil.json). Le POST ouvre une demande SOUMISE pour le client du COMPTE (company/client jamais lus du corps) ; un `chantier_id` étranger est ignoré. Écrans consommateurs : ADOC135/ADOC136.",
+  "forme_serveur": "complete",
+  "exemple": {
+    "results": [
+      {
+        "id": 31,
+        "sujet": "Onduleur en alarme",
+        "description": "Le voyant rouge clignote depuis ce matin.",
+        "statut": "soumise",
+        "statut_display": "Soumise",
+        "chantier_id": 12,
+        "ticket_id": null,
+        "date_creation": "2026-10-02T08:30:00+00:00"
+      },
+      {
+        "id": 28,
+        "sujet": "Nettoyage des panneaux",
+        "description": "",
+        "statut": "prise_en_charge",
+        "statut_display": "Prise en charge",
+        "chantier_id": null,
+        "ticket_id": 57,
+        "date_creation": "2026-09-20T10:00:00+00:00"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "results": []
+  },
+  "creation": {
+    "endpoint": "POST /api/django/portail/mes-demandes-sav/",
+    "corps": {
+      "sujet": "str, requis (200 car. max)",
+      "description": "str, facultatif (4000 car. max)",
+      "chantier_id": "int, facultatif (aussi accepté sous `chantier`) — ignoré s'il n'est pas un chantier du client"
+    },
+    "exemple_corps": {
+      "sujet": "Onduleur en alarme",
+      "description": "Le voyant rouge clignote depuis ce matin.",
+      "chantier_id": 12
+    },
+    "reponses": {
+      "201": {
+        "id": 31,
+        "sujet": "Onduleur en alarme",
+        "description": "Le voyant rouge clignote depuis ce matin.",
+        "statut": "soumise",
+        "statut_display": "Soumise",
+        "chantier_id": 12,
+        "ticket_id": null,
+        "date_creation": "2026-10-02T08:30:00+00:00"
+      },
+      "400": {
+        "sujet": "Ce champ est obligatoire."
+      },
+      "403": {
+        "detail": "Votre accès est en lecture seule : vous ne pouvez pas ouvrir de ticket."
+      }
+    }
+  }
+}
