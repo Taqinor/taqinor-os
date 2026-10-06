@@ -1,0 +1,388 @@
+{
+  "endpoint": "GET /api/django/stock/kits/?search=<texte>&ordering=nom&avec_disponibilite=1",
+  "pourquoi": "ASTK168 (M0, PACT10, C-ASTK-045) — contrat posé SEUL sur main avant l'écran des nomenclatures de stock (ASTK229 lit `exempleContrat('stock', 'kits_stock')` ; stockApi n'a aucun create/update/delete de kit aujourd'hui). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs 400 réelles). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; l'unique clé NOUVELLE est `composants[].taux_perte_pct` (modèle oui, serializer pas encore — déclarée, exigée comme écart exact par le test). `installations.Kit` (kits d'assemblage) garde ses écrans — non dupliqué ; l'insertion d'un kit dans un devis relève du propriétaire devis. Aucun prix d'achat (coûts à 0.00).",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `kits`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 6,
+        "nom": "Kit résidentiel 5 kWc",
+        "sku": "KIT5",
+        "description": "",
+        "is_archived": false,
+        "composants": [
+          {
+            "id": 31,
+            "produit": 88,
+            "produit_nom": "Panneau 550 W",
+            "produit_sku": "PV550",
+            "prix_vente": "600.00",
+            "composant_kit": null,
+            "composant_kit_nom": null,
+            "quantite": "9.00",
+            "taux_perte_pct": "5.00"
+          }
+        ],
+        "nb_composants": 1,
+        "disponibilite_potentielle": null,
+        "date_creation": "2026-10-01T09:00:00Z",
+        "date_mise_a_jour": "2026-10-01T09:00:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  },
+  "routes": {
+    "kits": {
+      "endpoint": "GET /api/django/stock/kits/?search=<texte>&ordering=nom&avec_disponibilite=1",
+      "pourquoi": "FG66/DC36 — nomenclatures de stock vendables (`KitProduitViewSet`, views/kit.py:26 ; KitProduitSerializer serializers.py:1855, KitComposantSerializer :1819). Un kit ne porte AUCUN prix/marque/TVA propre (tout est lu sur chaque Produit à l'explosion) ; `prix_vente` d'un composant est le prix de vente catalogue en lecture seule, jamais un prix d'achat. Liste paginée {count,next,previous,results} ; GET détail `/kits/<id>/` = CET objet kit. Lecture tout rôle ; POST/PUT/PATCH permission stock_modifier ; DELETE ADMIN seulement (204 sans corps). `disponibilite_potentielle` = null SAUF `?avec_disponibilite=1` : alors {kits_assemblables:n, goulots:[{designation, sku}]}. Corps POST/PUT : {nom, sku?, description?, is_archived?, composants:[{produit | composant_kit, quantite}]} — `composants` est OBLIGATOIRE à la création et au PUT (nested), un composant est SOIT un produit SOIT un sous-kit. `date_creation`/`date_mise_a_jour` en lecture seule. Chaque modification des composants crée une révision XMFG18 (idempotente). CLÉ NOUVELLE : `composants[].taux_perte_pct` (taux de perte planifié XMFG11, texte décimal, défaut 0.00) figure dans `exemple` comme forme CIBLE de l'écran ASTK229 mais N'EST PAS encore servie par KitComposantSerializer (fields = id, produit, produit_nom, produit_sku, prix_vente, composant_kit, composant_kit_nom, quantite) alors que le modèle KitComposant la porte déjà (models.py:2054) — à confirmer à la fusion (voir `nouveau_taux_perte_pct`).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 6,
+            "nom": "Kit résidentiel 5 kWc",
+            "sku": "KIT5",
+            "description": "",
+            "is_archived": false,
+            "composants": [
+              {
+                "id": 31,
+                "produit": 88,
+                "produit_nom": "Panneau 550 W",
+                "produit_sku": "PV550",
+                "prix_vente": "600.00",
+                "composant_kit": null,
+                "composant_kit_nom": null,
+                "quantite": "9.00",
+                "taux_perte_pct": "5.00"
+              }
+            ],
+            "nb_composants": 1,
+            "disponibilite_potentielle": null,
+            "date_creation": "2026-10-01T09:00:00Z",
+            "date_mise_a_jour": "2026-10-01T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 6,
+        "nom": "Kit résidentiel 5 kWc",
+        "sku": "KIT5",
+        "description": "",
+        "is_archived": false,
+        "composants": [
+          {
+            "id": 31,
+            "produit": 88,
+            "produit_nom": "Panneau 550 W",
+            "produit_sku": "PV550",
+            "prix_vente": "600.00",
+            "composant_kit": null,
+            "composant_kit_nom": null,
+            "quantite": "9.00",
+            "taux_perte_pct": "5.00"
+          }
+        ],
+        "nb_composants": 1,
+        "disponibilite_potentielle": null,
+        "date_creation": "2026-10-01T09:00:00Z",
+        "date_mise_a_jour": "2026-10-01T09:00:00Z"
+      },
+      "exemple_composant": {
+        "id": 31,
+        "produit": 88,
+        "produit_nom": "Panneau 550 W",
+        "produit_sku": "PV550",
+        "prix_vente": "600.00",
+        "composant_kit": null,
+        "composant_kit_nom": null,
+        "quantite": "9.00",
+        "taux_perte_pct": "5.00"
+      },
+      "nouveau_taux_perte_pct": "NOUVEAU — non servi aujourd'hui : `composants[].taux_perte_pct` est dans le modèle mais pas dans KitComposantSerializer ; la tâche porteuse (C-ASTK-027 / ASTK96) l'expose, ou ASTK229 l'ajoute. Tant que ce n'est pas fait, le test de forme exige exactement cet écart.",
+      "cles_nouvelles_composant": [
+        "taux_perte_pct"
+      ],
+      "corps_post": {
+        "nom": "Kit résidentiel 5 kWc",
+        "sku": "KIT5",
+        "description": "",
+        "composants": [
+          {
+            "produit": 88,
+            "quantite": 9
+          }
+        ]
+      },
+      "exemple_erreur_400_quantite": {
+        "composants": [
+          {
+            "quantite": [
+              "La quantité doit être positive."
+            ]
+          }
+        ]
+      },
+      "exemple_erreur_400_xor": {
+        "composants": [
+          {
+            "non_field_errors": [
+              "Un composant est soit un produit, soit un sous-kit (jamais les deux, jamais aucun)."
+            ]
+          }
+        ]
+      },
+      "exemple_erreur_400_auto_reference": {
+        "composants": "Un kit ne peut pas se contenir lui-même."
+      },
+      "exemple_erreur_400_composant_autre_societe": {
+        "avertissement": "Constat ASTK168 : la tâche attendait qu'un composant d'une AUTRE société renvoie la réponse d'un id absent ; aujourd'hui KitComposantSerializer utilise un PrimaryKeyRelatedField non scopé, le refus vient de `_validate_company` (400) avec le texte ci-dessous — qui distingue donc l'id étranger d'un id absent (oracle d'existence). Le comportement CIBLE (réponse identique à un id absent) est NOUVEAU et non construit.",
+        "exemple": {
+          "composants": "Produit hors de votre entreprise."
+        }
+      }
+    },
+    "kit_exploser": {
+      "endpoint": "GET /api/django/stock/kits/<id>/exploser/?quantite=<n>",
+      "pourquoi": "FG66/XMFG17 — explose le kit en lignes PRODUIT (récursif à travers les sous-kits, quantités cumulées par produit), pour `quantite` kits (défaut 1, ≤ 0 → 1). Lecture tout rôle. Prix de vente/TVA/marque lus sur le Produit ; le prix d'ACHAT n'est JAMAIS exposé. `quantite_kit` = nombre JSON (float) ; `quantite` d'une ligne = texte décimal. 400 {detail} sur cycle (« Nomenclature cyclique détectée : le kit \"<nom>\" se contient lui-même (directement ou via un sous-kit). ») ou profondeur excessive.",
+      "exemple": {
+        "kit_id": 6,
+        "kit_nom": "Kit résidentiel 5 kWc",
+        "quantite_kit": 1.0,
+        "lignes": [
+          {
+            "produit_id": 88,
+            "sku": "PV550",
+            "designation": "Panneau 550 W",
+            "quantite": "9.00",
+            "prix_vente_unitaire": "600.00",
+            "tva": "10.00",
+            "marque": "JA Solar",
+            "disponible": 40
+          }
+        ]
+      }
+    },
+    "kit_structure": {
+      "endpoint": "GET /api/django/stock/kits/<id>/structure/",
+      "pourquoi": "XMFG5/XMFG17 — nomenclature indentée + disponibilité + coût de revient roll-up (tout rôle ; INTERNE). Lignes `type` produit (porte `produit_id`) ou sous_kit (porte `composant_kit_id`, `prix_vente` null) avec `niveau` pour l'indentation. COÛT et MARGE réservés responsable/admin : pour les autres rôles `cout_unitaire`/`cout_total` des lignes et `cout_total_roll_up`/`marge` sont ABSENTS de la réponse. Les montants roll-up sont du texte à 2 décimales. Les valeurs de coût de l'exemple sont à 0.00 à dessein — aucun montant d'achat dans ce fichier. `disponibilite_potentielle` = nombre de kits assemblables.",
+      "exemple": {
+        "kit_id": 6,
+        "kit_nom": "Kit résidentiel 5 kWc",
+        "composants": [
+          {
+            "niveau": 0,
+            "type": "produit",
+            "produit_id": 88,
+            "sku": "PV550",
+            "designation": "Panneau 550 W",
+            "quantite": "9.00",
+            "quantite_disponible": 40,
+            "cout_unitaire": "0.00",
+            "cout_total": "0.00",
+            "prix_vente": "600.00"
+          }
+        ],
+        "cout_total_roll_up": "0.00",
+        "prix_vente_total": "5400.00",
+        "marge": "5400.00",
+        "disponibilite_potentielle": 4
+      },
+      "exemple_ligne_sous_kit": {
+        "niveau": 0,
+        "type": "sous_kit",
+        "composant_kit_id": 9,
+        "sku": "KIT-BAT",
+        "designation": "Kit batterie",
+        "quantite": "1.00",
+        "quantite_disponible": 2,
+        "cout_unitaire": "0.00",
+        "cout_total": "0.00",
+        "prix_vente": null
+      }
+    },
+    "kit_revisions": {
+      "endpoint": "GET /api/django/stock/kits/<id>/revisions/",
+      "pourquoi": "XMFG18 — historique des révisions de nomenclature, plus récente d'abord (tout rôle, lecture seule, AUCUN prix dans `composition`). CORPS = TABLEAU NU ; `exemple` l'enveloppe sous `revisions` UNIQUEMENT parce que ce fichier exige un objet — un test qui consomme cette fixture lit `.revisions`. `composition[].taux_perte_pct` est DÉJÀ servi ici (snapshot), contrairement à `composants[]` de la fiche kit.",
+      "exemple": {
+        "revisions": [
+          {
+            "id": 3,
+            "kit": 6,
+            "numero": 1,
+            "composition": [
+              {
+                "produit_id": 88,
+                "composant_kit_id": null,
+                "designation": "Panneau 550 W",
+                "sku": "PV550",
+                "quantite": "9.00",
+                "taux_perte_pct": "5.00"
+              }
+            ],
+            "user": 3,
+            "user_nom": "Reda Kasri",
+            "date_creation": "2026-10-01T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "revisions": []
+      },
+      "exemple_element": {
+        "id": 3,
+        "kit": 6,
+        "numero": 1,
+        "composition": [
+          {
+            "produit_id": 88,
+            "composant_kit_id": null,
+            "designation": "Panneau 550 W",
+            "sku": "PV550",
+            "quantite": "9.00",
+            "taux_perte_pct": "5.00"
+          }
+        ],
+        "user": 3,
+        "user_nom": "Reda Kasri",
+        "date_creation": "2026-10-01T09:00:00Z"
+      }
+    },
+    "kit_composition_au": {
+      "endpoint": "GET /api/django/stock/kits/<id>/composition-au/?date=JJ/MM/AAAA|AAAA-MM-JJ",
+      "pourquoi": "XMFG18 — la révision en vigueur à la date donnée (tout rôle). 200 = UNE révision (clés de `kit_revisions.exemple_element`). 400 {detail:'Paramètre date requis (JJ/MM/AAAA ou AAAA-MM-JJ).'} ; 404 {detail:'Aucune révision à cette date.'}.",
+      "exemple": {
+        "id": 3,
+        "kit": 6,
+        "numero": 1,
+        "composition": [
+          {
+            "produit_id": 88,
+            "composant_kit_id": null,
+            "designation": "Panneau 550 W",
+            "sku": "PV550",
+            "quantite": "9.00",
+            "taux_perte_pct": "5.00"
+          }
+        ],
+        "user": 3,
+        "user_nom": "Reda Kasri",
+        "date_creation": "2026-10-01T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "detail": "Paramètre date requis (JJ/MM/AAAA ou AAAA-MM-JJ)."
+      },
+      "exemple_erreur_404": {
+        "detail": "Aucune révision à cette date."
+      }
+    },
+    "kit_disponibilite": {
+      "endpoint": "GET /api/django/stock/kits/<id>/disponibilite/",
+      "pourquoi": "ZMFG9 — combien de kits COMPLETS sont assemblables avec le stock disponible (stock − réservations), explosion récursive, stock partagé jamais compté deux fois (tout rôle, lecture seule). `goulots` = composants limitants (mêmes clés que `composants`). Montants/quantités en texte décimal, `kits_possibles` entier. 400 {detail} sur cycle/profondeur.",
+      "exemple": {
+        "kit_id": 6,
+        "kit_nom": "Kit résidentiel 5 kWc",
+        "kits_assemblables": 4,
+        "composants": [
+          {
+            "produit_id": 88,
+            "sku": "PV550",
+            "designation": "Panneau 550 W",
+            "besoin_par_kit": "9.00",
+            "disponible": "40",
+            "kits_possibles": 4
+          }
+        ],
+        "goulots": [
+          {
+            "produit_id": 88,
+            "sku": "PV550",
+            "designation": "Panneau 550 W",
+            "besoin_par_kit": "9.00",
+            "disponible": "40",
+            "kits_possibles": 4
+          }
+        ]
+      }
+    },
+    "kit_dupliquer": {
+      "endpoint": "POST /api/django/stock/kits/<id>/dupliquer/",
+      "pourquoi": "XMFG18 — duplique le kit (en-tête « <nom> (copie) », sku vidé pour éviter la collision d'unicité, composants copiés — taux de perte compris) avec `facteur_echelle` optionnel sur les quantités (arrondi 2 décimales). Permission stock_modifier. 201 = le kit copié (mêmes clés que `kits.exemple_element`), révision n°1 créée. 400 {detail} réels : « Facteur d'échelle invalide. », « Le facteur d'échelle doit être positif. ».",
+      "exemple": {
+        "id": 7,
+        "nom": "Kit résidentiel 5 kWc (copie)",
+        "sku": null,
+        "description": "",
+        "is_archived": false,
+        "composants": [
+          {
+            "id": 31,
+            "produit": 88,
+            "produit_nom": "Panneau 550 W",
+            "produit_sku": "PV550",
+            "prix_vente": "600.00",
+            "composant_kit": null,
+            "composant_kit_nom": null,
+            "quantite": "9.00",
+            "taux_perte_pct": "5.00"
+          }
+        ],
+        "nb_composants": 1,
+        "disponibilite_potentielle": null,
+        "date_creation": "2026-10-01T09:00:00Z",
+        "date_mise_a_jour": "2026-10-01T09:00:00Z"
+      },
+      "exemple_corps": {
+        "facteur_echelle": 1.67
+      },
+      "exemple_erreur_400": {
+        "detail": "Le facteur d'échelle doit être positif."
+      }
+    },
+    "kits_remplacer_composant": {
+      "endpoint": "POST /api/django/stock/kits/remplacer-composant/",
+      "pourquoi": "XMFG19 — remplacement de MASSE d'un composant dans toutes les nomenclatures de la société (kits stock + kits de pré-assemblage installations). Corps {produit_ancien, produit_nouveau, ratio_quantite?, dry_run? (défaut TRUE = prévisualisation, rien n'est écrit)}. Permission stock_modifier. L'application (dry_run=false) est atomique, crée une révision par kit modifié et une ligne d'audit. Réponse 200 identique en prévisualisation et en application. 400 {detail} réels : « Le produit de remplacement doit être différent du produit remplacé. », « Produit introuvable pour cette société. », « Ratio de quantité invalide. », « Le ratio de quantité doit être positif. ».",
+      "exemple": {
+        "dry_run": true,
+        "produit_ancien": "Panneau 550 W",
+        "produit_nouveau": "Panneau 600 W",
+        "kits_stock": [
+          {
+            "kit_id": 6,
+            "kit_nom": "Kit résidentiel 5 kWc",
+            "quantite_avant": "9.00",
+            "quantite_apres": "9.00"
+          }
+        ],
+        "kits_installations": [],
+        "nb_total": 1
+      },
+      "exemple_corps": {
+        "produit_ancien": 88,
+        "produit_nouveau": 89,
+        "ratio_quantite": 1,
+        "dry_run": true
+      },
+      "exemple_erreur_400": {
+        "detail": "Le produit de remplacement doit être différent du produit remplacé."
+      }
+    }
+  }
+}

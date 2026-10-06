@@ -1,0 +1,432 @@
+{
+  "endpoint": "GET /api/django/stock/vagues-picking/?statut=<brouillon|lancee|terminee>",
+  "pourquoi": "ASTK161 (M0, PACT10, C-ASTK-045) — contrat posé SEUL sur main avant l'écran picking / vagues / comptage tournant (ASTK217, lisant `exempleContrat('stock', 'wms_picking')`). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs 400 RÉELLES mot pour mot). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py. Aucun montant d'achat (les valeurs de perte sont à zéro).",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `vagues_picking`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 14,
+        "reference": "VAG-2026-10-0001",
+        "statut": "brouillon",
+        "mode_liberation": "manuel",
+        "seuil_lignes": null,
+        "note": "",
+        "date_lancement": null,
+        "date_cloture": null,
+        "cree_par": 3,
+        "cree_par_username": "magasinier1",
+        "nb_lignes": 1,
+        "lignes": [
+          {
+            "id": 61,
+            "vague": 14,
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "produit_sku": "MC4-001",
+            "quantite_demandee": 5,
+            "quantite_prelevee": 0,
+            "reste_a_prelever": 5,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "lot": null,
+            "numero_lot": "",
+            "installation": null,
+            "bon_commande": null,
+            "ordre_parcours": 1
+          }
+        ],
+        "created_at": "2026-10-06T09:12:44.512000Z",
+        "updated_at": "2026-10-06T09:12:44.512000Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  },
+  "routes": {
+    "vagues_picking": {
+      "endpoint": "GET /api/django/stock/vagues-picking/?statut=<brouillon|lancee|terminee>",
+      "pourquoi": "NTWMS4 — vagues de prélèvement multi-source (`VaguePickingViewSet`, views/wms.py:35 ; VaguePickingSerializer serializers_wms.py:40). Lecture tout rôle, création/lancement/prélèvement responsable ou admin. La liste est paginée {count,next,previous,results}. POST (201) prend {besoins:[{produit_id, quantite, installation_id?, bon_commande_id?}], installations?:[ids], note?} : la référence VAG-… est posée par le serveur, les lignes sont triées en parcours serpentin ; la réponse est CE même objet `vague` (lignes incluses). Corps invalide → 400 {detail} (« Aucun besoin à regrouper dans cette vague. », « Aucun besoin valide à regrouper dans cette vague. »).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 14,
+            "reference": "VAG-2026-10-0001",
+            "statut": "brouillon",
+            "mode_liberation": "manuel",
+            "seuil_lignes": null,
+            "note": "",
+            "date_lancement": null,
+            "date_cloture": null,
+            "cree_par": 3,
+            "cree_par_username": "magasinier1",
+            "nb_lignes": 1,
+            "lignes": [
+              {
+                "id": 61,
+                "vague": 14,
+                "produit": 88,
+                "produit_nom": "Connecteur MC4",
+                "produit_sku": "MC4-001",
+                "quantite_demandee": 5,
+                "quantite_prelevee": 0,
+                "reste_a_prelever": 5,
+                "bin": 21,
+                "bin_code": "P-01-01",
+                "lot": null,
+                "numero_lot": "",
+                "installation": null,
+                "bon_commande": null,
+                "ordre_parcours": 1
+              }
+            ],
+            "created_at": "2026-10-06T09:12:44.512000Z",
+            "updated_at": "2026-10-06T09:12:44.512000Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 14,
+        "reference": "VAG-2026-10-0001",
+        "statut": "brouillon",
+        "mode_liberation": "manuel",
+        "seuil_lignes": null,
+        "note": "",
+        "date_lancement": null,
+        "date_cloture": null,
+        "cree_par": 3,
+        "cree_par_username": "magasinier1",
+        "nb_lignes": 1,
+        "lignes": [
+          {
+            "id": 61,
+            "vague": 14,
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "produit_sku": "MC4-001",
+            "quantite_demandee": 5,
+            "quantite_prelevee": 0,
+            "reste_a_prelever": 5,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "lot": null,
+            "numero_lot": "",
+            "installation": null,
+            "bon_commande": null,
+            "ordre_parcours": 1
+          }
+        ],
+        "created_at": "2026-10-06T09:12:44.512000Z",
+        "updated_at": "2026-10-06T09:12:44.512000Z"
+      },
+      "exemple_ligne": {
+        "id": 61,
+        "vague": 14,
+        "produit": 88,
+        "produit_nom": "Connecteur MC4",
+        "produit_sku": "MC4-001",
+        "quantite_demandee": 5,
+        "quantite_prelevee": 0,
+        "reste_a_prelever": 5,
+        "bin": 21,
+        "bin_code": "P-01-01",
+        "lot": null,
+        "numero_lot": "",
+        "installation": null,
+        "bon_commande": null,
+        "ordre_parcours": 1
+      },
+      "corps_post": {
+        "besoins": [
+          {
+            "produit_id": 88,
+            "quantite": 5
+          }
+        ],
+        "note": ""
+      },
+      "exemple_erreur_400": {
+        "detail": "Aucun besoin à regrouper dans cette vague."
+      }
+    },
+    "vague_lancer": {
+      "endpoint": "POST /api/django/stock/vagues-picking/<id>/lancer/",
+      "pourquoi": "NTWMS4 — passe la vague de brouillon à lancée (responsable/admin) ; IDEMPOTENT (une vague déjà lancée ou terminée est renvoyée telle quelle, jamais en erreur, jamais rétrogradée). Réponse = `vague` complète (clés de `vagues_picking.exemple_element`) avec statut `lancee` et `date_lancement` renseignée. 400 {detail:'Une vague sans ligne ne peut pas être lancée.'} sur vague vide. NB : « vague déjà lancée » se manifeste en 400 sur `configurer-liberation`, pas sur `lancer`.",
+      "exemple": {
+        "id": 14,
+        "reference": "VAG-2026-10-0001",
+        "statut": "lancee",
+        "mode_liberation": "manuel",
+        "seuil_lignes": null,
+        "note": "",
+        "date_lancement": "2026-10-06T09:20:00.000000Z",
+        "date_cloture": null,
+        "cree_par": 3,
+        "cree_par_username": "magasinier1",
+        "nb_lignes": 1,
+        "lignes": [
+          {
+            "id": 61,
+            "vague": 14,
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "produit_sku": "MC4-001",
+            "quantite_demandee": 5,
+            "quantite_prelevee": 0,
+            "reste_a_prelever": 5,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "lot": null,
+            "numero_lot": "",
+            "installation": null,
+            "bon_commande": null,
+            "ordre_parcours": 1
+          }
+        ],
+        "created_at": "2026-10-06T09:12:44.512000Z",
+        "updated_at": "2026-10-06T09:12:44.512000Z"
+      },
+      "exemple_erreur_400": {
+        "detail": "Une vague sans ligne ne peut pas être lancée."
+      }
+    },
+    "vague_configurer_liberation": {
+      "endpoint": "POST /api/django/stock/vagues-picking/<id>/configurer-liberation/",
+      "pourquoi": "NTWMS12 — règle de libération d'une vague EN BROUILLON (responsable/admin). Corps {mode: manuel|auto_heure|auto_seuil, seuil_lignes?} (seuil_lignes exigé > 0 pour auto_seuil, remis à null sinon). Réponse = `vague` complète. Erreurs 400 {detail} réelles : « Seule une vague en brouillon peut changer de mode de libération. » (vague déjà lancée ou terminée), « Mode de libération inconnu. », « Le mode AUTO_SEUIL exige un seuil de lignes positif. ».",
+      "exemple": {
+        "id": 14,
+        "reference": "VAG-2026-10-0001",
+        "statut": "brouillon",
+        "mode_liberation": "auto_seuil",
+        "seuil_lignes": 10,
+        "note": "",
+        "date_lancement": null,
+        "date_cloture": null,
+        "cree_par": 3,
+        "cree_par_username": "magasinier1",
+        "nb_lignes": 1,
+        "lignes": [
+          {
+            "id": 61,
+            "vague": 14,
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "produit_sku": "MC4-001",
+            "quantite_demandee": 5,
+            "quantite_prelevee": 0,
+            "reste_a_prelever": 5,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "lot": null,
+            "numero_lot": "",
+            "installation": null,
+            "bon_commande": null,
+            "ordre_parcours": 1
+          }
+        ],
+        "created_at": "2026-10-06T09:12:44.512000Z",
+        "updated_at": "2026-10-06T09:12:44.512000Z"
+      },
+      "exemple_corps": {
+        "mode": "auto_seuil",
+        "seuil_lignes": 10
+      },
+      "exemple_erreur_400": {
+        "detail": "Seule une vague en brouillon peut changer de mode de libération."
+      }
+    },
+    "vague_prelever_ligne": {
+      "endpoint": "POST /api/django/stock/vagues-picking/<id>/lignes/<ligne_id>/prelever/",
+      "pourquoi": "NTWMS4 — enregistre un prélèvement sur une ligne de CETTE vague (responsable/admin ; poste scanner). Corps {quantite: n}. Réponse = `vague` complète (la ligne voit `quantite_prelevee` et `reste_a_prelever` évoluer ; la vague passe `terminee` avec `date_cloture` quand tout est servi). 404 {detail:'Ligne introuvable dans cette vague.'} ; 400 {detail} réels : « Quantité invalide. », « La quantité prélevée doit être positive. », « La vague doit être lancée avant tout prélèvement. », « Il ne reste que <n> unité(s) à prélever sur cette ligne. » (dépassement du reste).",
+      "exemple": {
+        "id": 14,
+        "reference": "VAG-2026-10-0001",
+        "statut": "lancee",
+        "mode_liberation": "manuel",
+        "seuil_lignes": null,
+        "note": "",
+        "date_lancement": "2026-10-06T09:20:00.000000Z",
+        "date_cloture": null,
+        "cree_par": 3,
+        "cree_par_username": "magasinier1",
+        "nb_lignes": 1,
+        "lignes": [
+          {
+            "id": 61,
+            "vague": 14,
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "produit_sku": "MC4-001",
+            "quantite_demandee": 5,
+            "quantite_prelevee": 2,
+            "reste_a_prelever": 3,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "lot": null,
+            "numero_lot": "",
+            "installation": null,
+            "bon_commande": null,
+            "ordre_parcours": 1
+          }
+        ],
+        "created_at": "2026-10-06T09:12:44.512000Z",
+        "updated_at": "2026-10-06T09:12:44.512000Z"
+      },
+      "exemple_corps": {
+        "quantite": 2
+      },
+      "exemple_erreur_400": {
+        "detail": "Il ne reste que 3 unité(s) à prélever sur cette ligne."
+      },
+      "exemple_erreur_400_non_lancee": {
+        "detail": "La vague doit être lancée avant tout prélèvement."
+      },
+      "exemple_erreur_404": {
+        "detail": "Ligne introuvable dans cette vague."
+      }
+    },
+    "tache_retour": {
+      "endpoint": "GET /api/django/stock/tache-retour/?zone=<zone>&limite=<n>",
+      "pourquoi": "NTWMS36 — interleaving (`tache_retour_view`, views/entrepot.py:187, IsAnyRole) : après un rangement en zone `zone`, la ligne de vague LANCÉE encore à prélever la plus proche du trajet retour (même zone d'abord). LECTURE SEULE. `limite` défaut 1. `zone_courante` = la zone demandée ('' si absente).",
+      "exemple": {
+        "zone_courante": "C",
+        "suggestions": [
+          {
+            "ligne_id": 61,
+            "vague_id": 14,
+            "vague_reference": "VAG-2026-10-0001",
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "bin": 21,
+            "bin_code": "C-09-07",
+            "zone": "C",
+            "meme_zone": true,
+            "quantite_restante": 3,
+            "ordre_parcours": 1
+          }
+        ]
+      },
+      "exemple_vide": {
+        "zone_courante": "C",
+        "suggestions": []
+      }
+    },
+    "entrepot_productivite": {
+      "endpoint": "GET /api/django/stock/entrepot/productivite/?debut=YYYY-MM-DD&fin=YYYY-MM-DD",
+      "pourquoi": "NTWMS18 — classement de productivité entrepôt par opérateur (`entrepot_productivite_view`, views/wms.py:1214, responsable/admin ; selectors_wms.productivite_operateur). INDICATEUR de charge, jamais un instrument de sanction. `operations` = dictionnaire {type d'opération: nombre} — les types sont les `type_mouvement` des mouvements (entree, sortie, transfert, …) plus `colisage` et `vague` ; seuls les types présents figurent. `debut`/`fin` = dates ISO renvoyées telles que demandées (null si absentes ou illisibles).",
+      "exemple": {
+        "debut": "2026-10-01",
+        "fin": "2026-10-31",
+        "operateurs": [
+          {
+            "operateur_id": 3,
+            "operateur": "magasinier1",
+            "total": 14,
+            "operations": {
+              "sortie": 9,
+              "transfert": 4,
+              "vague": 1
+            }
+          }
+        ]
+      },
+      "exemple_vide": {
+        "debut": null,
+        "fin": null,
+        "operateurs": []
+      }
+    },
+    "entrepot_pertes": {
+      "endpoint": "GET /api/django/stock/entrepot/pertes/?debut=YYYY-MM-DD&fin=YYYY-MM-DD",
+      "pourquoi": "NTWMS24 — pertes par motif sur une période (`entrepot_pertes_view`, views/wms.py:1185, responsable/admin, JAMAIS client-facing). Ne compte que les déclarations de rebut motivées (MouvementRebut), pas les ajustements d'inventaire. `total_valeur` et `par_motif[].valeur` sont des valeurs INTERNES (coût d'achat, Decimal rendu en texte) : l'exemple les met à zéro à dessein — aucun montant d'achat dans ce fichier. `motif` ∈ casse / perime / vol / erreur_reception (+ valeurs éventuelles de MouvementRebut.Motif) ; `libelle` = libellé français.",
+      "exemple": {
+        "total_valeur": "0.00",
+        "total_quantite": 3,
+        "par_motif": [
+          {
+            "motif": "casse",
+            "libelle": "Casse",
+            "nb_declarations": 1,
+            "quantite": 3,
+            "valeur": "0.00"
+          }
+        ],
+        "debut": null,
+        "fin": null
+      },
+      "exemple_vide": {
+        "total_valeur": 0,
+        "total_quantite": 0,
+        "par_motif": [],
+        "debut": null,
+        "fin": null
+      }
+    },
+    "plans_comptage_tournant": {
+      "endpoint": "GET /api/django/stock/plans-comptage-tournant/",
+      "pourquoi": "NTWMS13 — plans de comptage tournant ABC (`PlanComptageTournantViewSet`, views/wms.py:662 ; PlanComptageTournantSerializer serializers_wms.py:202). Lecture tout rôle, écriture ADMIN. Le PREMIER GET amorce les trois plans par défaut (A=30 j, B=90 j, C=180 j), idempotent, sans écraser une fréquence personnalisée. Liste paginée. `date_dernier_comptage` en lecture seule (null tant que jamais compté). `frequence_jours` ≤ 0 → 400 {frequence_jours:['La fréquence doit être un nombre de jours positif.']}.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 1,
+            "classe_abc": "A",
+            "frequence_jours": 30,
+            "actif": true,
+            "date_dernier_comptage": null
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 1,
+        "classe_abc": "A",
+        "frequence_jours": 30,
+        "actif": true,
+        "date_dernier_comptage": null
+      },
+      "exemple_erreur_400": {
+        "frequence_jours": [
+          "La fréquence doit être un nombre de jours positif."
+        ]
+      }
+    },
+    "plans_comptage_generer": {
+      "endpoint": "POST /api/django/stock/plans-comptage-tournant/generer/",
+      "pourquoi": "NTWMS13 — génère MAINTENANT les sessions d'inventaire de comptage dues de la société (admin ; `generer_comptages_tournants`). 201 {sessions:[références d'InventaireSession créées], plans_dus:<n>}. IDEMPOTENT le même jour : rejoué, `sessions` est vide. Les quantités comptées sont pré-remplies au théorique : aucune session ne bouge le stock seule (règle d'écart du comptage tournant = ASTK37, hors contrat).",
+      "exemple": {
+        "sessions": [
+          "INV-2026-10-0003"
+        ],
+        "plans_dus": 1
+      },
+      "exemple_vide": {
+        "sessions": [],
+        "plans_dus": 0
+      }
+    }
+  }
+}

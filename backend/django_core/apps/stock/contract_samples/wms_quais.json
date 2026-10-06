@@ -1,0 +1,329 @@
+{
+  "endpoint": "GET /api/django/stock/rendez-vous-transporteur/?quai=<id>&date=YYYY-MM-DD&statut=<statut>",
+  "pourquoi": "ASTK162 (M0, PACT10, C-ASTK-045 / C-ASTK-044) — contrat posé SEUL sur main avant les écrans quais / rendez-vous / ASN / kiosque de quai (ASTK191, ASTK192 affirment leurs clés contre ce fichier ; ASTK218, ASTK219, ASTK228 en sont nourris). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; les entrées marquées NOUVEAU (clés fournisseur/bon_commande du rendez-vous ASTK192, 400 « créneau non proposé » ASTK191, quota ASTK192) sont hors de ce test. Le kiosque ne montre ni prix ni société. Les textes des NOUVEAUX 400 sont des PROPOSITIONS que ASTK191/ASTK192 figent à la construction.",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `rendez_vous_transporteur`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 17,
+        "quai": 2,
+        "quai_nom": "Quai R1",
+        "transporteur": null,
+        "transporteur_nom": "",
+        "reference_livraison": null,
+        "date_heure_debut": "2026-10-12T09:00:00Z",
+        "date_heure_fin": "2026-10-12T10:00:00Z",
+        "statut": "planifie",
+        "chauffeur_nom": "",
+        "immatriculation": "",
+        "note": null,
+        "date_arrivee": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  },
+  "routes": {
+    "quais": {
+      "endpoint": "GET /api/django/stock/quais/?type_quai=<reception|expedition|mixte>&actif=<true|false>",
+      "pourquoi": "NTWMS7 — quais de réception/expédition (`QuaiViewSet`, views/wms.py:371 ; QuaiSerializer serializers_wms.py:108). Lecture tout rôle, écriture ADMIN (paramétrage d'entrepôt). Liste paginée ; POST/PUT {nom, type_quai, emplacement, actif?} renvoie CET objet ; un emplacement d'une autre société → 400 {emplacement:['Emplacement introuvable dans cette société.']}.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 2,
+            "nom": "Quai R1",
+            "type_quai": "reception",
+            "emplacement": 3,
+            "emplacement_nom": "Dépôt principal",
+            "actif": true
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 2,
+        "nom": "Quai R1",
+        "type_quai": "reception",
+        "emplacement": 3,
+        "emplacement_nom": "Dépôt principal",
+        "actif": true
+      }
+    },
+    "quais_planning": {
+      "endpoint": "GET /api/django/stock/quais/planning/?date=YYYY-MM-DD&vue=jour|semaine&quai=<id>",
+      "pourquoi": "NTWMS7 — planning des rendez-vous par quai, vue jour ou semaine (`QuaiViewSet.planning`, selectors_wms.planning_quais, IsAnyRole). `date` est OBLIGATOIRE (le serveur ne devine jamais « aujourd'hui »). `date_debut`/`date_fin` = bornes de la vue (dates ISO) ; seuls les quais ACTIFS figurent, chacun avec ses `rendez_vous` (annulés compris, tels que stockés). LECTURE SEULE. 400 {detail} réels : « Paramètre date requis (AAAA-MM-JJ). », « Date invalide (format attendu AAAA-MM-JJ). », « Vue de planning inconnue (jour ou semaine). ».",
+      "exemple": {
+        "date_debut": "2026-10-12",
+        "date_fin": "2026-10-12",
+        "vue": "jour",
+        "quais": [
+          {
+            "quai_id": 2,
+            "quai_nom": "Quai R1",
+            "type_quai": "reception",
+            "rendez_vous": [
+              {
+                "id": 17,
+                "debut": "2026-10-12T09:00:00Z",
+                "fin": "2026-10-12T10:00:00Z",
+                "statut": "planifie",
+                "transporteur_id": null,
+                "transporteur_nom": "",
+                "chauffeur_nom": "",
+                "immatriculation": ""
+              }
+            ]
+          }
+        ]
+      },
+      "exemple_vide": {
+        "date_debut": "2026-10-12",
+        "date_fin": "2026-10-12",
+        "vue": "jour",
+        "quais": []
+      },
+      "exemple_erreur_400": {
+        "detail": "Paramètre date requis (AAAA-MM-JJ)."
+      }
+    },
+    "rendez_vous_transporteur": {
+      "endpoint": "GET /api/django/stock/rendez-vous-transporteur/?quai=<id>&date=YYYY-MM-DD&statut=<statut>",
+      "pourquoi": "NTWMS7 — créneaux transporteur sur un quai (`RendezVousTransporteurViewSet`, views/wms.py:411 ; RendezVousTransporteurSerializer serializers_wms.py:130). Lecture tout rôle, écriture responsable/admin. Liste paginée. `statut` ∈ planifie / arrive / en_cours / termine / no_show / annule. `date_arrivee` en lecture seule (posée par le kiosque de quai). Le CHEVAUCHEMENT est refusé par le serveur (400 {detail:'Ce créneau chevauche un rendez-vous déjà planifié sur ce quai.'}) ; fin ≤ début → 400 {date_heure_fin:['La fin doit être postérieure au début.']} ; quai d'une autre société → 400 {quai:['Quai introuvable dans cette société.']}. `code_checkin` n'est PAS exposé ici (il n'est remis qu'au fournisseur à la réservation). `exemple_element` = la forme ACTUELLE réelle ; `exemple_nouveau_astk192` = la forme cible NOUVELLE (clés ajoutées : fournisseur, fournisseur_nom, bon_commande, bon_commande_reference).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 17,
+            "quai": 2,
+            "quai_nom": "Quai R1",
+            "transporteur": null,
+            "transporteur_nom": "",
+            "reference_livraison": null,
+            "date_heure_debut": "2026-10-12T09:00:00Z",
+            "date_heure_fin": "2026-10-12T10:00:00Z",
+            "statut": "planifie",
+            "chauffeur_nom": "",
+            "immatriculation": "",
+            "note": null,
+            "date_arrivee": null
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 17,
+        "quai": 2,
+        "quai_nom": "Quai R1",
+        "transporteur": null,
+        "transporteur_nom": "",
+        "reference_livraison": null,
+        "date_heure_debut": "2026-10-12T09:00:00Z",
+        "date_heure_fin": "2026-10-12T10:00:00Z",
+        "statut": "planifie",
+        "chauffeur_nom": "",
+        "immatriculation": "",
+        "note": null,
+        "date_arrivee": null
+      },
+      "nouveau_astk192": "NOUVEAU — ASTK192 (clés fournisseur, fournisseur_nom, bon_commande, bon_commande_reference ; non construites, exclues du test de forme)",
+      "exemple_nouveau_astk192": {
+        "id": 17,
+        "quai": 2,
+        "quai_nom": "Quai R1",
+        "transporteur": null,
+        "transporteur_nom": "",
+        "reference_livraison": null,
+        "date_heure_debut": "2026-10-12T09:00:00Z",
+        "date_heure_fin": "2026-10-12T10:00:00Z",
+        "statut": "planifie",
+        "chauffeur_nom": "",
+        "immatriculation": "",
+        "note": null,
+        "date_arrivee": null,
+        "fournisseur": 5,
+        "fournisseur_nom": "Import Solar SARL",
+        "bon_commande": 47,
+        "bon_commande_reference": "BCF-2026-0047"
+      },
+      "cles_nouvelles_astk192": [
+        "fournisseur",
+        "fournisseur_nom",
+        "bon_commande",
+        "bon_commande_reference"
+      ],
+      "exemple_erreur_400_chevauchement": {
+        "detail": "Ce créneau chevauche un rendez-vous déjà planifié sur ce quai."
+      }
+    },
+    "unite_export_asn": {
+      "endpoint": "GET /api/django/stock/unites-logistiques/<id>/export-asn/?telecharger=1",
+      "pourquoi": "NTWMS27 — bordereau ASN (avis d'expédition anticipé) d'une unité logistique SCELLÉE (`UniteLogistiqueViewSet.export_asn`, services_wms.exporter_asn, IsAnyRole). JSON structuré prêt pour un futur mapping EDI (aucune connexion EDI). `?telecharger=1` renvoie le même contenu avec Content-Disposition attachment (asn-<sscc>.json). `poids_kg`, `volume_m3` = texte décimal ; `date_peremption` = date ISO ou null ; `sscc_parent` = SSCC de la palette ou null. 400 {detail:'Seule une unité scellée peut produire un ASN (son contenu doit être figé).'} si non scellée.",
+      "exemple": {
+        "version": "ASN-1",
+        "unite": {
+          "sscc": "000000000000000017",
+          "type_unite": "palette",
+          "statut": "scellee",
+          "poids_kg": "420.50",
+          "dimensions": "120 × 80 × 145",
+          "date_scellage": "2026-10-06T09:30:00+00:00",
+          "sscc_parent": null
+        },
+        "lignes": [
+          {
+            "sku": "MIC-001",
+            "designation": "Micro-onduleur",
+            "quantite": 10,
+            "numero_lot": "LOT-2026-07",
+            "date_peremption": "2027-06-30"
+          }
+        ],
+        "totaux": {
+          "nb_lignes": 1,
+          "quantite_totale": 10,
+          "volume_m3": "1.392"
+        }
+      },
+      "exemple_erreur_400": {
+        "detail": "Seule une unité scellée peut produire un ASN (son contenu doit être figé)."
+      }
+    },
+    "unites_import_asn": {
+      "endpoint": "POST /api/django/stock/unites-logistiques/import-asn/",
+      "pourquoi": "NTWMS27 — import MIROIR d'un bordereau ASN : valide la version (ASN-1), le SSCC (clé GS1) et les lignes, rapproche chaque SKU du catalogue de la société ; n'écrit RIEN (responsable/admin). Corps = le bordereau de `unite_export_asn`. Toujours 200 : `valide` false + `erreurs` (messages français) quand le bordereau est incohérent. `produit_id` null = SKU inconnu dans cette société.",
+      "exemple": {
+        "valide": true,
+        "erreurs": [],
+        "unite_connue": false,
+        "sscc": "000000000000000017",
+        "lignes": [
+          {
+            "sku": "MIC-001",
+            "produit_id": 88,
+            "designation": "Micro-onduleur",
+            "quantite": 10,
+            "numero_lot": "LOT-2026-07"
+          }
+        ]
+      },
+      "exemple_invalide": {
+        "valide": false,
+        "erreurs": [
+          "SSCC absent ou clé de contrôle GS1 invalide."
+        ],
+        "unite_connue": false,
+        "sscc": "",
+        "lignes": []
+      }
+    },
+    "public_quai_checkin": {
+      "endpoint": "POST /api/django/public/stock/quai-checkin/",
+      "pourquoi": "NTWMS8 — kiosque de quai PUBLIC (sans compte, AllowAny, 10 requêtes/min/IP, X-Robots-Tag noindex ; public_views.py:145). Corps {societe:<slug>, code:<code de rendez-vous, 8 caractères, insensible à la casse>}. La réponse ne porte QUE la confirmation et le quai assigné — jamais le client, le transporteur, le contenu, un identifiant interne ni un prix. Rejeu = même réponse (horodatage d'origine conservé). Code/société inconnus, rendez-vous annulé/terminé/non présenté → 404 INDISTINCT {detail:'Code de rendez-vous inconnu ou expiré.'}.",
+      "exemple": {
+        "quai": "Quai R1",
+        "type_quai": "reception",
+        "heure_rendez_vous": "2026-10-12T09:00:00Z",
+        "horodatage_arrivee": "2026-10-12T08:52:10.120000Z",
+        "message": "Arrivée enregistrée. Présentez-vous au quai indiqué."
+      },
+      "exemple_corps": {
+        "societe": "taqinor",
+        "code": "K7M2PQ9X"
+      },
+      "exemple_erreur_404": {
+        "detail": "Code de rendez-vous inconnu ou expiré."
+      }
+    },
+    "public_creneaux_disponibles": {
+      "endpoint": "GET /api/django/public/stock/portail-fournisseur/<token>/creneaux-disponibles/?quai=<id>&date_debut=YYYY-MM-DD&periode=<jours>",
+      "pourquoi": "NTWMS35 — créneaux LIBRES des quais de RÉCEPTION actifs de la société du jeton (public_views.py:244 ; services_creneaux.creneaux_disponibles). Jeton opaque d'UN fournisseur, 30 requêtes/min, noindex. Créneaux d'1 h de 8 h à 18 h, fenêtre plafonnée à 30 jours (`periode` défaut 7) ; un créneau occupé n'est jamais proposé. `date_debut` de la réponse = date du premier créneau ('' si aucun). Date illisible → 400 {detail:'Date invalide (format attendu AAAA-MM-JJ).'}. Jeton invalide/révoqué/expiré → 404 {detail}. Aucun prix, aucun nom de société.",
+      "exemple": {
+        "date_debut": "2026-10-12",
+        "periode_jours": 7,
+        "creneaux": [
+          {
+            "quai": 2,
+            "quai_nom": "Quai R1",
+            "date": "2026-10-12",
+            "debut": "2026-10-12T08:00:00+01:00",
+            "fin": "2026-10-12T09:00:00+01:00"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "date_debut": "",
+        "periode_jours": 7,
+        "creneaux": []
+      },
+      "exemple_erreur_400": {
+        "detail": "Date invalide (format attendu AAAA-MM-JJ)."
+      },
+      "exemple_erreur_404": {
+        "detail": "Ce lien du portail fournisseur est invalide, révoqué ou expiré."
+      }
+    },
+    "public_reserver_creneau": {
+      "endpoint": "POST /api/django/public/stock/portail-fournisseur/<token>/reserver-creneau/",
+      "pourquoi": "NTWMS35 — le fournisseur réserve LUI-MÊME un créneau entrant (public_views.py:289 ; services_creneaux.reserver_creneau_fournisseur). Corps {quai, debut (ISO), bon_commande?, chauffeur_nom?, immatriculation?}. 201 {id, quai, debut, fin, code_checkin} : le `code_checkin` est à remettre au chauffeur (kiosque NTWMS8). 400 {detail} réels : « Ce quai de réception n'est pas disponible. », « Créneau invalide (horodatage ISO attendu). », « Ce créneau est déjà passé. », « Bon de commande introuvable. » (BCF d'un autre fournisseur, jamais révélé), « Ce créneau vient d'être réservé, choisissez-en un autre. ». Jeton invalide → 404 {detail}.",
+      "exemple": {
+        "id": 17,
+        "quai": 2,
+        "debut": "2026-10-12T09:00:00+01:00",
+        "fin": "2026-10-12T10:00:00+01:00",
+        "code_checkin": "K7M2PQ9X"
+      },
+      "exemple_corps": {
+        "quai": 2,
+        "debut": "2026-10-12T09:00:00+01:00",
+        "bon_commande": 47,
+        "chauffeur_nom": "M. Alami",
+        "immatriculation": "12345-A-6"
+      },
+      "exemple_erreur_400": {
+        "detail": "Ce créneau vient d'être réservé, choisissez-en un autre."
+      },
+      "exemple_erreur_404": {
+        "detail": "Ce lien du portail fournisseur est invalide, révoqué ou expiré."
+      },
+      "nouveau_hors_grille_astk191": {
+        "nouveau": "NOUVEAU — ASTK191 (garde non construite : exclue du test de forme)",
+        "statut": 400,
+        "exemple": {
+          "debut": [
+            "Créneau non proposé : choisissez un créneau parmi ceux que le portail propose."
+          ]
+        }
+      },
+      "nouveau_quota_atteint_astk192": {
+        "nouveau": "NOUVEAU — ASTK192 (garde non construite : exclue du test de forme)",
+        "statut": 400,
+        "exemple": {
+          "detail": "Quota de rendez-vous atteint pour ce fournisseur sur cette période."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,240 @@
+{
+  "endpoint": "GET /api/django/public/stock/portail-fournisseur/<token>/",
+  "pourquoi": "ASTK167 (M0, PACT10, C-ASTK-045 / C-ASTK-040 / C-ASTK-041) — contrat posé SEUL sur main avant la gestion des accès fournisseur et la page publique à jeton (ASTK179-ASTK181 affirment leurs formes contre ce fichier ; ASTK227/ASTK228 en sont nourris). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; les entrées NOUVEAU (jetons_revoques ASTK179, 409 ASTK180, 400 de corps ASTK181, 404 fournisseur archivé/bloqué) sont hors de ce test. La page à jeton ne porte que les champs fournisseur — jamais prix de vente, marge ni note interne. Le portail COMPTE (apps/portail, /portail/fournisseur/commandes) a son propre contrat (propriétaire documents) — non dupliqué ; la réservation de créneau est dans `wms_quais`.",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `public_portail_fournisseur`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
+  "exemple": {
+    "fournisseur_nom": "Import Solar SARL",
+    "bons_commande": [
+      {
+        "id": 47,
+        "reference": "BCF-2026-0047",
+        "statut": "envoye",
+        "statut_display": "Envoyé",
+        "date_commande": "2026-10-01",
+        "date_livraison_prevue": "2026-10-20",
+        "date_confirmee_fournisseur": null,
+        "lignes": [
+          {
+            "produit_nom": "Onduleur 3 kW",
+            "quantite": 2,
+            "quantite_recue": 0
+          }
+        ]
+      }
+    ],
+    "receptions": [
+      {
+        "id": 9,
+        "reference": "REC-2026-0009",
+        "bon_commande_reference": "BCF-2026-0047",
+        "statut": "brouillon",
+        "date_reception": "2026-10-12"
+      }
+    ],
+    "factures": [
+      {
+        "id": 14,
+        "reference": "FF-2026-0014",
+        "date_facture": "2026-10-05",
+        "date_echeance": "2026-11-05",
+        "montant_ttc": "0.00",
+        "statut": "brouillon",
+        "statut_display": "Brouillon",
+        "solde_du": "0.00"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "fournisseur_nom": "Import Solar SARL",
+    "bons_commande": [],
+    "receptions": [],
+    "factures": []
+  },
+  "routes": {
+    "portail_tokens_liste": {
+      "endpoint": "GET /api/django/stock/fournisseurs/<id>/portail-tokens/",
+      "pourquoi": "XPUR22 — jetons du portail de CE fournisseur (action `portail_tokens`, views/fournisseur.py:348 ; PortailFournisseurTokenSerializer serializers.py:113 ; permission stock_modifier). CORPS = TABLEAU NU (pas d'enveloppe de pagination : `Response(Serializer(many=True).data)`), plus récent d'abord, révoqués et expirés compris (audit). `exemple` l'enveloppe sous `jetons` UNIQUEMENT parce que ce fichier exige un objet (scripts/check_api_shapes.py) ; un test qui consomme cette fixture lit `.jetons`. Le `token` en clair n'apparaît que dans cette réponse ; l'URL publique est construite côté frontend depuis le token (`/api/django/public/stock/portail-fournisseur/<token>/`). POST (même route) génère un NOUVEAU jeton : 201 = un seul objet `jeton` (`exemple_element`).",
+      "exemple": {
+        "jetons": [
+          {
+            "id": 4,
+            "fournisseur": 5,
+            "token": "tk_9f2c…",
+            "expires_at": "2026-11-05T09:00:00Z",
+            "revoked": false,
+            "est_valide": true,
+            "created_at": "2026-10-06T09:00:00Z",
+            "last_used_at": null
+          }
+        ]
+      },
+      "exemple_vide": {
+        "jetons": []
+      },
+      "exemple_element": {
+        "id": 4,
+        "fournisseur": 5,
+        "token": "tk_9f2c…",
+        "expires_at": "2026-11-05T09:00:00Z",
+        "revoked": false,
+        "est_valide": true,
+        "created_at": "2026-10-06T09:00:00Z",
+        "last_used_at": null
+      }
+    },
+    "portail_token_revoquer": {
+      "endpoint": "POST /api/django/stock/fournisseurs/<id>/portail-tokens/<token_id>/revoquer/",
+      "pourquoi": "XPUR22 — révoque un jeton (le lien cesse immédiatement de fonctionner ; permission stock_modifier). 200 = le jeton avec `revoked` true et `est_valide` false. 404 {detail:'Jeton introuvable.'} si le jeton n'est pas de ce fournisseur/cette société.",
+      "exemple": {
+        "id": 4,
+        "fournisseur": 5,
+        "token": "tk_9f2c…",
+        "expires_at": "2026-11-05T09:00:00Z",
+        "revoked": true,
+        "est_valide": false,
+        "created_at": "2026-10-06T09:00:00Z",
+        "last_used_at": null
+      },
+      "exemple_erreur_404": {
+        "detail": "Jeton introuvable."
+      }
+    },
+    "fournisseur_provisionner_acces": {
+      "endpoint": "POST /api/django/stock/fournisseurs/<id>/provisionner-acces/",
+      "pourquoi": "NTPRT3 — ouvre le compte portail RÉEL du fournisseur (ADMIN ; views/fournisseur.py:284). Idempotent : un 2e appel renvoie le compte existant sans réinitialiser son mot de passe ni réactiver un accès révoqué (`cree` false, 200). 201 à la création. Le mot de passe temporaire ne figure JAMAIS dans la réponse (il part par e-mail). 400 {detail:'Ce fournisseur n'a pas pu être résolu.'} si introuvable pour la société. `detail` : « Accès portail ouvert : les identifiants ont été envoyés par email. » (cree) ou « Ce fournisseur avait déjà un accès portail — rien n'a été modifié. ».",
+      "exemple": {
+        "fournisseur_id": 5,
+        "utilisateur_id": 41,
+        "username": "contact@import-solar.ma",
+        "email": "contact@import-solar.ma",
+        "cree": true,
+        "detail": "Accès portail ouvert : les identifiants ont été envoyés par email."
+      }
+    },
+    "fournisseur_revoquer_acces": {
+      "endpoint": "POST /api/django/stock/fournisseurs/<id>/revoquer-acces/",
+      "pourquoi": "NTPRT3 — ferme l'accès portail du fournisseur (ADMIN ; views/fournisseur.py:317) : le compte reste (traçabilité), l'accès cesse immédiatement (`actif` false + `is_active` false). 404 {detail:'Ce fournisseur n'a aucun accès portail à révoquer.'} sans compte. NB : AUJOURD'HUI la réponse porte {fournisseur_id, actif, comptes_desactives, detail} ; la clé `jetons_revoques` (nombre de jetons à lien public révoqués en même temps) est NOUVELLE — voir `exemple_nouveau_astk179`.",
+      "exemple": {
+        "fournisseur_id": 5,
+        "actif": false,
+        "comptes_desactives": 1,
+        "detail": "L'accès portail de ce fournisseur est fermé."
+      },
+      "exemple_erreur_404": {
+        "detail": "Ce fournisseur n'a aucun accès portail à révoquer."
+      },
+      "nouveau_astk179": "NOUVEAU — ASTK179 (clé jetons_revoques ; non construite, exclue du test de forme)",
+      "exemple_nouveau_astk179": {
+        "fournisseur_id": 5,
+        "actif": false,
+        "comptes_desactives": 1,
+        "jetons_revoques": 2,
+        "detail": "L'accès portail de ce fournisseur est fermé."
+      },
+      "cles_nouvelles_astk179": [
+        "jetons_revoques"
+      ]
+    },
+    "public_portail_fournisseur": {
+      "endpoint": "GET /api/django/public/stock/portail-fournisseur/<token>/",
+      "pourquoi": "XPUR22 — page publique à jeton : documents du SEUL fournisseur porteur du jeton (public_views.py:59 ; services.portail_fournisseur_documents). Sans compte (AllowAny), 30 requêtes/min par IP+jeton, X-Robots-Tag noindex. BCF non annulés (plus récent d'abord) avec lignes, réceptions, factures DE CE fournisseur avec statut de paiement. Ne porte JAMAIS prix de vente, marge ni note interne (vérifié par l'absence de ces clés) ; les montants de facture sont ceux que CE fournisseur nous facture (exemple à 0.00, aucun montant d'achat dans ce fichier). Dates = ISO (null si absente). Jeton inconnu/révoqué/expiré → 404 INDISTINCT {detail}. La clé `date_confirmee_fournisseur` d'un BCF est celle que la confirmation pose.",
+      "exemple": {
+        "fournisseur_nom": "Import Solar SARL",
+        "bons_commande": [
+          {
+            "id": 47,
+            "reference": "BCF-2026-0047",
+            "statut": "envoye",
+            "statut_display": "Envoyé",
+            "date_commande": "2026-10-01",
+            "date_livraison_prevue": "2026-10-20",
+            "date_confirmee_fournisseur": null,
+            "lignes": [
+              {
+                "produit_nom": "Onduleur 3 kW",
+                "quantite": 2,
+                "quantite_recue": 0
+              }
+            ]
+          }
+        ],
+        "receptions": [
+          {
+            "id": 9,
+            "reference": "REC-2026-0009",
+            "bon_commande_reference": "BCF-2026-0047",
+            "statut": "brouillon",
+            "date_reception": "2026-10-12"
+          }
+        ],
+        "factures": [
+          {
+            "id": 14,
+            "reference": "FF-2026-0014",
+            "date_facture": "2026-10-05",
+            "date_echeance": "2026-11-05",
+            "montant_ttc": "0.00",
+            "statut": "brouillon",
+            "statut_display": "Brouillon",
+            "solde_du": "0.00"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "fournisseur_nom": "Import Solar SARL",
+        "bons_commande": [],
+        "receptions": [],
+        "factures": []
+      },
+      "exemple_erreur_404": {
+        "detail": "Ce lien du portail fournisseur est invalide, révoqué ou expiré."
+      },
+      "nouveau_non_attribue": "NOUVEAU — non construit : un fournisseur ARCHIVÉ ou BLOQUÉ doit aussi recevoir ce même 404 indistinct (aujourd'hui seul un jeton révoqué/expiré est refusé : `PortailFournisseurToken.est_valide`). Tâche porteuse à confirmer par l'orchestrateur ; exclu du test de forme."
+    },
+    "public_portail_confirmer_bcf": {
+      "endpoint": "POST /api/django/public/stock/portail-fournisseur/<token>/bcf/<bcf_id>/confirmer/",
+      "pourquoi": "XPUR22 — le fournisseur confirme un BCF et propose une date d'arrivée (public_views.py:75 ; même cœur que l'action interne `confirmer`). Corps {date_confirmee_fournisseur:'YYYY-MM-DD', numero_confirmation_fournisseur?}. La date DEMANDÉE d'origine n'est jamais écrasée (OTD préservé) ; seul l'accusé fournisseur est posé. 200 {id, reference, date_confirmee_fournisseur, numero_confirmation_fournisseur}. 400 RÉEL {detail:'date_confirmee_fournisseur est requise.'} (date absente). 404 INDISTINCT {detail} pour un jeton invalide OU un BCF d'un autre fournisseur/société (jamais de fuite d'existence).",
+      "exemple": {
+        "id": 47,
+        "reference": "BCF-2026-0047",
+        "date_confirmee_fournisseur": "2026-10-18",
+        "numero_confirmation_fournisseur": "CONF-8841"
+      },
+      "exemple_corps": {
+        "date_confirmee_fournisseur": "2026-10-18",
+        "numero_confirmation_fournisseur": "CONF-8841"
+      },
+      "exemple_erreur_400": {
+        "detail": "date_confirmee_fournisseur est requise."
+      },
+      "exemple_erreur_404": {
+        "detail": "Ce lien du portail fournisseur est invalide, révoqué ou expiré."
+      },
+      "nouveau_astk181": {
+        "nouveau": "NOUVEAU — ASTK181 (validation de corps non construite : exclue du test de forme ; les textes sont des PROPOSITIONS que ASTK181 fige)",
+        "statut": 400,
+        "exemple_date": {
+          "date_confirmee_fournisseur": [
+            "Date invalide : utilisez le format AAAA-MM-JJ."
+          ]
+        },
+        "exemple_numero": {
+          "numero_confirmation_fournisseur": [
+            "Numéro de confirmation trop long (120 caractères maximum)."
+          ]
+        },
+        "exemple_corps": {
+          "detail": "Corps JSON attendu."
+        }
+      },
+      "nouveau_astk180": {
+        "nouveau": "NOUVEAU — ASTK180 (garde d'état non construite : exclue du test de forme ; texte = PROPOSITION que ASTK180 fige)",
+        "statut": 409,
+        "exemple": {
+          "detail": "Ce bon de commande ne peut plus être confirmé (statut non envoyé ou déjà reçu)."
+        }
+      }
+    }
+  }
+}
