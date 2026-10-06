@@ -114,8 +114,8 @@ def build(ctx):
     <div class="i3-blk-t">Garanties</div>
     <div class="i3-warr-row" style="margin-top:8px;">
       {_cells}
-      <div class="i3-warr-c"><div class="i3-warr-v">O&amp;M</div><div class="i3-warr-l">Maintenance &amp; supervision</div></div>
     </div>
+    <div class="i3-warr-l" style="margin-top:6px;">{ci_blocs.LEGENDE_GARANTIES}</div>
   </div>
 """
     else:
@@ -126,6 +126,9 @@ def build(ctx):
     # « Bon pour accord » éditables, lus par la même voie que le legacy.
     bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
     conditions_html = ci_blocs.bloc_conditions(d, "i3", navy, ink)
+    # CIQ314 — seulement les services que le devis porte.
+    services_html = ci_blocs.bloc_services(
+        d.get("ind_synthese") or {}, "i3", navy, ink)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -203,7 +206,6 @@ def build(ctx):
     <div class="i3-col"><div class="i3-blk">
       <div class="i3-blk-t">ISO 50001 — management de l'énergie</div>
       <div class="i3-li">Données de production/consommation exploitables pour la <b>revue énergétique</b> et les indicateurs de performance (IPE).</div>
-      <div class="i3-li">Supervision temps réel : base d'un <b>plan d'actions</b> d'efficacité énergétique.</div>
     </div></div>
     <div class="i3-col"><div class="i3-blk">
       <div class="i3-blk-t">CBAM — ajustement carbone aux frontières (UE)</div>
@@ -212,7 +214,7 @@ def build(ctx):
     </div></div>
   </div>
 
-  {warranties_html}{clauses_html}
+  {warranties_html}{services_html}{clauses_html}
 
   {conditions_html}
 

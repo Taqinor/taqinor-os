@@ -41,7 +41,6 @@ def build(ctx):
         ("1", "Étude &amp; validation", "Dimensionnement, visite technique et validation du projet."),
         ("2", "Installation", "Pose des équipements par nos équipes, sans interrompre votre activité."),
         ("3", "Mise en service", "Raccordement, tests et réception — votre production démarre."),
-        ("4", "Suivi &amp; O&amp;M", "Supervision temps réel + maintenance : performance garantie dans la durée."),
     ]
     steps_cells = ""
     for i, (n, t, s) in enumerate(steps):
@@ -70,8 +69,8 @@ def build(ctx):
   <div class="c3-warr">
     <div class="c3-warr-row">
       {_cells}
-      <div class="c3-warr-c"><div class="c3-warr-v">O&amp;M</div><div class="c3-warr-l">Maintenance &amp; supervision</div></div>
     </div>
+    <div class="c3-warr-l" style="margin-top:6px;">{ci_blocs.LEGENDE_GARANTIES}</div>
   </div>
 """
     else:
@@ -81,6 +80,11 @@ def build(ctx):
     # « Bon pour accord » éditables, lus par la même voie que le legacy.
     bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
     conditions_html = ci_blocs.bloc_conditions(d, "c3", navy, ink)
+    # CIQ314 — seulement les services que le devis porte (O&M nommée,
+    # délai saisi) : plus d'étape « supervision », ni de « performance
+    # garantie », ni de cellule O&M sans ligne derrière.
+    services_html = ci_blocs.bloc_services(
+        d.get("com_synthese") or {}, "c3", navy, ink)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -140,10 +144,7 @@ def build(ctx):
 
   {warranties_html}
 
-  <div class="c3-trust">
-    Un <b>interlocuteur unique</b> du devis à la mise en service, une <b>supervision
-    temps réel</b> de votre production et un engagement de <b>performance</b> dans la durée.
-  </div>
+  {services_html}
 
   {conditions_html}
 

@@ -356,6 +356,73 @@ def _bloc_argent(data, etude_ci, segment):
     return None, motif
 
 
+#: CIQ314 — libellé d'une garantie lue sur une fiche produit.
+LIBELLE_GARANTIE_FABRICANT = "garantie du fabricant"
+#: Composants dont la garantie vient du FABRICANT (``theme.warranties_for``) ;
+#: la pose (« Installation ») est un engagement de l'installateur, pas d'un
+#: fabricant.
+COMPOSANTS_FABRICANT = {"Onduleur": "onduleur", "Panneaux": "panneaux",
+                        "Performance": "panneaux_performance",
+                        "Batterie": "batterie"}
+
+
+def _om_option(data):
+    lignes = [li for li in data.get("om_ci_lignes") or []
+              if isinstance(li, dict)]
+    if not lignes:
+        return None
+    souscrites = [li for li in lignes if not li.get("optionnelle")]
+    retenues = souscrites or lignes
+    prix = [_num(li.get("ht")) for li in retenues]
+    sans_prix = any(p is None or p <= 0 for p in prix)
+    if sans_prix:
+        statut = "tarif_a_renseigner"
+    else:
+        statut = "souscrit" if souscrites else "propose"
+    return {
+        "statut": statut,
+        "libelle": " ; ".join(str(li.get("designation") or "")
+                              for li in retenues),
+        # Les montants des LIGNES, recopiés tels que le builder les sert.
+        "lignes": [{"designation": li.get("designation"),
+                    "total_ht": _num(li.get("ht")),
+                    "total_ttc": _num(li.get("ttc"))} for li in retenues],
+    }
+
+
+def _garanties(data):
+    try:
+        from ..residential import theme
+        bande = theme.warranties_for(data) or []
+    except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+        return []
+    sortie = []
+    for n, unite, libelle, _sous in bande:
+        composant = COMPOSANTS_FABRICANT.get(libelle)
+        if composant is None or not str(n).strip():
+            continue
+        sortie.append({"composant": composant,
+                       "texte": f"{libelle} : {n} {unite}",
+                       "source": LIBELLE_GARANTIE_FABRICANT})
+    return sortie
+
+
+def _services(data):
+    """``{om_option?, suivi_production?, garanties[]}`` (contrat CIQ4) :
+    l'O&M NOMMÉE du devis (prix saisi ou « à renseigner »), le délai
+    d'intervention SAISI par la société, les garanties des fabricants.
+    Clé absente quand le devis ne la porte pas — jamais un défaut."""
+    services = {}
+    om = _om_option(data)
+    if om is not None:
+        services["om_option"] = om
+    delai = _num(data.get("delai_intervention_suivi_heures"))
+    if delai:
+        services["suivi_production"] = {"delai_intervention": delai}
+    services["garanties"] = _garanties(data)
+    return services
+
+
 # ── la fonction publique ────────────────────────────────────────────────────
 
 def synthese_ci(data):
@@ -417,6 +484,8 @@ def synthese_ci(data):
     if segment == "commercial":
         from .categories import categorie_ci
         synthese["categorie"] = categorie_ci(data, synthese)
+    # CIQ314 — services : seulement ce que le devis porte (D-CIQ-12).
+    synthese["services"] = _services(data)
     synthese["echeancier"] = _echeancier(data, option)
     # CIQ309 — l'entreprise cliente, recopiée telle que le builder la sert.
     entreprise = data.get("entreprise_client")

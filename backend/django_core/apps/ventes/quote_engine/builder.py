@@ -4234,6 +4234,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _entreprise = entreprise_client_du_client(client)
         if _entreprise is not None:
             data["entreprise_client"] = _entreprise
+        # CIQ314 — O&M et suivi de production : seulement ce que le devis
+        # porte (lignes du rôle ``om_ci``, CIQ7) et le délai d'intervention
+        # SAISI par la société (CIQ622, aucun défaut). Absent ⇒ clé absente.
+        _om, _delai = services_ci_du_devis(devis)
+        if _om:
+            data["om_ci_lignes"] = _om
+        if _delai:
+            data["delai_intervention_suivi_heures"] = _delai
 
     # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
     # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre
@@ -4374,6 +4382,41 @@ def entreprise_client_du_client(client):
     }
 
 
+# ── CIQ314 — services C&I (O&M, suivi de production) ────────────────────────
+
+def services_ci_du_devis(devis):
+    """``(om_lignes, delai_heures)`` d'un devis C&I, en lecture seule.
+
+    * ``om_lignes`` : les lignes du rôle produit ``om_ci`` (contrat CIQ7),
+      ``[{designation, ht, ttc, optionnelle}]`` aux totaux CLIENT
+      (``economie_ci.lignes_pour_economie_ci``), jamais ``prix_achat`` ;
+    * ``delai_heures`` : le délai d'intervention du suivi de production
+      saisi par la société (``CompanyProfile.delai_intervention_suivi_heures``,
+      CIQ622), ``None`` s'il n'est pas saisi — aucun défaut."""
+    om = []
+    try:
+        from apps.ventes.economie_ci import lignes_pour_economie_ci
+        om = [{"designation": li.get("designation") or "",
+               "ht": li.get("ht"), "ttc": li.get("ttc"),
+               "optionnelle": bool(li.get("optionnelle"))}
+              for li in lignes_pour_economie_ci(devis)
+              if li.get("role_ci") == "om_ci"]
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        logger.exception("services_ci: lignes O&M illisibles (devis %s)",
+                         getattr(devis, "reference", "?"))
+    delai = None
+    company = getattr(devis, "company", None)
+    if company is not None:
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            delai = (CompanyProfile.objects.filter(company=company)
+                     .values_list("delai_intervention_suivi_heures",
+                                  flat=True).first())
+        except Exception:  # noqa: BLE001
+            delai = None
+    return om, delai
+
+
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
 #: Champs texte d'une ligne rendus tels quels par les gabarits (les mêmes que
 #: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
@@ -4478,6 +4521,12 @@ def echapper_textes_client(data: dict) -> dict:
         sortie["entreprise_client"] = {
             cle: (_e(val) if isinstance(val, str) else val)
             for cle, val in sortie["entreprise_client"].items()}
+    # CIQ314 — désignation des lignes O&M : texte saisi.
+    if isinstance(sortie.get("om_ci_lignes"), list):
+        sortie["om_ci_lignes"] = [
+            ({**li, "designation": _e(li.get("designation"))}
+             if isinstance(li, dict) else li)
+            for li in sortie["om_ci_lignes"]]
     # CIQ218 — conditions générales C&I : texte saisi par la société.
     if isinstance(sortie.get("cgv_ci"), list):
         sortie["cgv_ci"] = [_e(v) for v in sortie["cgv_ci"]]

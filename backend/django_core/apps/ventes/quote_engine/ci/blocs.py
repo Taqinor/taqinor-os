@@ -59,6 +59,55 @@ def bloc_client(entreprise, prefixe, nom_affiche=""):
             + " &#183; ".join(morceaux) + "</div>")
 
 
+# ── CIQ314 — services (O&M, suivi de production) ────────────────────────────
+
+LEGENDE_GARANTIES = ("Durées : garanties du fabricant (fiches produit) ; "
+                     "pose : engagement de l'installateur.")
+
+
+def _montant(valeur):
+    from ..montants import fmt_centimes
+    return fmt_centimes(valeur)
+
+
+def bloc_services(synthese, prefixe, couleur_titre, couleur_texte):
+    """``<div>`` des services RÉELLEMENT portés par le devis
+    (``synthese_ci['services']``) : la ligne O&M nommée et son prix (ou
+    « prix à renseigner »), le délai d'intervention saisi. Rien d'autre :
+    aucune « supervision », aucune « performance garantie » (D-CIQ-12).
+    '' quand le devis ne porte aucun service."""
+    services = synthese.get("services") if isinstance(synthese, dict) else None
+    if not isinstance(services, dict):
+        return ""
+    lignes = []
+    om = services.get("om_option")
+    if isinstance(om, dict):
+        detail = []
+        for li in om.get("lignes") or []:
+            ht = li.get("total_ht") if isinstance(li, dict) else None
+            nom = _txt(li.get("designation")) if isinstance(li, dict) else ""
+            prix = (f"{_montant(ht)} MAD HT" if ht and ht > 0
+                    else "prix à renseigner")
+            detail.append(f"{nom} — {prix}")
+        statut = om.get("statut")
+        suffixe = (" (proposé, non inclus dans le total)"
+                   if statut == "propose" else "")
+        lignes.append("Maintenance (O&amp;M)&#160;: " + " ; ".join(detail)
+                      + suffixe)
+    suivi = services.get("suivi_production")
+    if isinstance(suivi, dict) and suivi.get("delai_intervention"):
+        lignes.append("Suivi de production&#160;: intervention sous "
+                      f"{suivi['delai_intervention']:g}&#160;h")
+    if not lignes:
+        return ""
+    items = "".join(f'<div style="margin-top:2px;">{li}</div>'
+                    for li in lignes)
+    return (f'<div class="{prefixe}-svc" style="margin-top:12px;'
+            f'font-size:8pt;color:{couleur_texte};line-height:1.4;">'
+            f'<div style="font-size:9pt;font-weight:700;'
+            f'color:{couleur_titre};">Services</div>{items}</div>')
+
+
 # ── CIQ311 — bloc « Conditions » ────────────────────────────────────────────
 
 TITRE_CGV_DEFAUT = "Conditions générales du devis"
