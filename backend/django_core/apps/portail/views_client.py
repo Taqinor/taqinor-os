@@ -1299,10 +1299,17 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
     @extend_schema(responses=inline_serializer(
         name='MonEquipePortail',
         fields={'results': serializers.ListField(
-            child=MonEquipePortailLigneSerializer())}))
+            child=MonEquipePortailLigneSerializer()),
+            'peut_gerer': serializers.BooleanField()}))
     def list(self, request):
+        # ADOC137 (contrat ``mon_equipe.json``) — ``peut_gerer`` dit à l'écran
+        # s'il montre inviter/révoquer : vrai pour l'ADMIN portail seul. Le
+        # serveur reste la garde (create/revoquer répondent 403 sinon).
         return Response({
-            'results': [self._ligne(i) for i in self._invitations(request)]})
+            'results': [self._ligne(i) for i in self._invitations(request)],
+            'peut_gerer': bool(
+                services.est_admin_portail_client(request.user)),
+        })
 
     @extend_schema(request=inline_serializer(
         name='MonEquipePortailInviter',
