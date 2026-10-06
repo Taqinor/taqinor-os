@@ -24,6 +24,25 @@ export const TYPES_JOUR = [
 
 const plageVide = () => ({ debut: '', fin: '' })
 
+/** Équipes de travail (contrat `etude_ci_preview.json`, `rythme.equipes`). */
+export const EQUIPES = [
+  { value: '1x8', label: '1 × 8 h (journée)' },
+  { value: '2x8', label: '2 × 8 h' },
+  { value: '3x8', label: '3 × 8 h' },
+  { value: 'continu', label: 'Continu 24 h / 24' },
+]
+
+/** CIQ135 — les colonnes d'un mois de registre MT (état d'écran → clé du corps). */
+export const COLONNES_REGISTRE_MT = [
+  { cle: 'pointe', corps: 'pointe_kwh', libelle: 'Pointe (kWh)' },
+  { cle: 'pleines', corps: 'pleines_kwh', libelle: 'Pleines (kWh)' },
+  { cle: 'creuses', corps: 'creuses_kwh', libelle: 'Creuses (kWh)' },
+  { cle: 'puissance', corps: 'puissance_atteinte_kw', libelle: 'Puissance atteinte (kW)' },
+  { cle: 'kvarh', corps: 'kvarh', libelle: 'Réactif (kvarh)' },
+]
+
+const registreVide = () => ({ pointe: '', pleines: '', creuses: '', puissance: '', kvarh: '' })
+
 export const PROFIL_CI_VIDE = Object.freeze({
   // 'mensuel' (12 kWh) | 'annuel' (total kWh) | 'factures' (montants MAD)
   saisieConso: 'mensuel',
@@ -43,6 +62,14 @@ export const PROFIL_CI_VIDE = Object.freeze({
   puissanceSouscrite: '',
   revente: false,
   tailleExplicite: '',
+  // CIQ135 — industriel : équipes, registres MT, cos φ connu, courbe mesurée.
+  equipes: '',
+  debutEquipeH: '',
+  registresMt: Object.freeze(Array.from({ length: 12 }, registreVide)),
+  cosPhi: '',
+  cosPhiProvenance: '',
+  // L'objet `courbe_mesuree` du corps ({ contenu, source }) ou null.
+  courbe: null,
 })
 
 export const profilCiVide = () => JSON.parse(JSON.stringify(PROFIL_CI_VIDE))
@@ -66,9 +93,25 @@ export function poserProfilCi(profil, chemin, valeur) {
 const vide = (v) => v === '' || v === null || v === undefined
 const texte = (v) => (vide(v) ? '' : String(v))
 
+const registreRempli = (r) => COLONNES_REGISTRE_MT.some(({ cle }) => !vide((r || {})[cle]))
+
+/** CIQ135 — les 12 registres MT du corps, ou `null` tant qu'aucune cellule n'est saisie. */
+function registresEtat(p) {
+  const registres = Array.isArray(p.registresMt) ? p.registresMt : []
+  if (!registres.some(registreRempli)) return null
+  return Array.from({ length: 12 }, (_, i) => {
+    const r = registres[i] || {}
+    const mois = {}
+    for (const { cle, corps } of COLONNES_REGISTRE_MT) mois[corps] = r[cle]
+    if (!vide(p.cosPhi)) mois.cos_phi = p.cosPhi
+    return mois
+  })
+}
+
 function consommationEtat(p) {
+  const registres = registresEtat(p)
   if (p.saisieConso === 'annuel') {
-    return { kwh_mensuels: null, kwh_annuel: p.kwhAnnuel, factures_mad: [], registres_mt: null }
+    return { kwh_mensuels: null, kwh_annuel: p.kwhAnnuel, factures_mad: [], registres_mt: registres }
   }
   if (p.saisieConso === 'factures') {
     return {
@@ -77,10 +120,10 @@ function consommationEtat(p) {
       factures_mad: (p.factures || []).map((f) => ({
         mois: f?.mois, montant_ttc: f?.montant_ttc, kwh: f?.kwh,
       })),
-      registres_mt: null,
+      registres_mt: registres,
     }
   }
-  return { kwh_mensuels: [...(p.kwhMensuels || [])], kwh_annuel: null, factures_mad: [], registres_mt: null }
+  return { kwh_mensuels: [...(p.kwhMensuels || [])], kwh_annuel: null, factures_mad: [], registres_mt: registres }
 }
 
 function plagesEtat(p) {
@@ -114,8 +157,8 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
     rythme: {
       jours_ouverts: jours,
       plages: plagesEtat(p),
-      equipes: null,
-      debut_equipe_h: null,
+      equipes: p.equipes || null,
+      debut_equipe_h: p.debutEquipeH,
       fermetures: (p.fermetures || []).map((f) => ({ du: f?.du, au: f?.au, motif: f?.motif })),
       ramadan: null,
       talon: p.talonInconnu
@@ -124,7 +167,7 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
       categorie_commerciale: ctx.categorie || null,
       reponses_categorie: ctx.reponses && Object.keys(ctx.reponses).length ? ctx.reponses : null,
     },
-    courbe_mesuree: null,
+    courbe_mesuree: p.courbe || null,
     toit: {
       type_pose: p.typePose || null,
       surface_utile_m2: p.surfaceUtile,
@@ -196,7 +239,21 @@ export function profilDepuisEtude(e) {
       mois: texte(f?.mois), montant_ttc: texte(f?.montant_ttc), kwh: texte(f?.kwh),
     }))
   }
+  if (Array.isArray(c.registres_mt) && c.registres_mt.length === 12) {
+    p.registresMt = c.registres_mt.map((m) => {
+      const ligne = registreVide()
+      for (const { cle, corps } of COLONNES_REGISTRE_MT) ligne[cle] = texte((m || {})[corps])
+      return ligne
+    })
+    const cos = c.registres_mt.find((m) => !vide((m || {}).cos_phi))
+    if (cos) p.cosPhi = texte(cos.cos_phi)
+  }
+  if (etude.courbe_mesuree && typeof etude.courbe_mesuree === 'object') {
+    p.courbe = etude.courbe_mesuree
+  }
   const r = etude.rythme || {}
+  p.equipes = texte(r.equipes)
+  p.debutEquipeH = texte(r.debut_equipe_h)
   if (Array.isArray(r.jours_ouverts) && r.jours_ouverts.length === 7) {
     p.joursOuverts = r.jours_ouverts.map((j) => j === true)
   }
