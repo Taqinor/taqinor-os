@@ -123,8 +123,8 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/ventes/models_facturation.py:591` | PromessePaiement.montant_promis | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:680` | PaymentLink.montant | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:757` | RemiseEncaissement.montant_declare | 12 | 2 |
-| `backend/django_core/apps/ventes/models_regulatory.py:291` | SubventionDossier.montant_demande | 12 | 2 |
-| `backend/django_core/apps/ventes/models_regulatory.py:294` | SubventionDossier.montant_accorde | 12 | 2 |
+| `backend/django_core/apps/ventes/models_regulatory.py:336` | SubventionDossier.montant_demande | 12 | 2 |
+| `backend/django_core/apps/ventes/models_regulatory.py:339` | SubventionDossier.montant_accorde | 12 | 2 |
 | `backend/django_core/core/models.py:1139` | MatriceApprobation.montant_min | 14 | 2 |
 | `backend/django_core/core/models.py:1143` | MatriceApprobation.montant_max | 14 | 2 |
 | `backend/django_core/core/models.py:1682` | PaymentTransaction.montant | 12 | 2 |

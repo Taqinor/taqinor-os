@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4800, operations: 7602, components: 2203}
+counts: {paths: 4800, operations: 7602, components: 2208}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -7833,6 +7833,7 @@ components:
 - CanalOuvertureEnum
 - CanalRequest
 - CanalResolutionEnum
+- CapaciteEtatEnum
 - CatalogueAchat
 - Categorie
 - CategorieCommercialeEnum
@@ -8138,7 +8139,9 @@ components:
 - EtapePlanActivite
 - EtapePlanActiviteRequest
 - EtatConstateEnum
+- EtatEssaiRecetteEnum
 - EtudeCiPreviewResponse
+- EtudeConclusionEnum
 - EtudeHoraireConsommation
 - EtudeHorairePreviewErreur
 - EtudeHorairePreviewRequestRequest
@@ -8465,6 +8468,8 @@ components:
 - NiveauB3eEnum
 - NiveauCertificationEnum
 - NiveauStatiqueSourceEnum
+- NiveauTensionEnum
+- NiveauTensionSourceEnum
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
 - NoteDebit
@@ -9416,7 +9421,7 @@ components:
 - RecherchePortailResultat
 - ReconciliationSnapshot
 - ReconciliationSnapshotStatusEnum
-- Regime8221492Enum
+- Regime82219baEnum
 - RegimeEquipesEnum
 - RegionAgricoleEnum
 - Register

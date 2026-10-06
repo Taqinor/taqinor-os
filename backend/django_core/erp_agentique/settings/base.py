@@ -808,6 +808,12 @@ SPECTACULAR_SETTINGS = {
         'OuiNonEnum': 'apps.crm.models.Lead.OuiNon',
         # SPL113 — FicheTechnique vit dans stock/models_fiche_technique.py.
         'CoteAcDcEnum': 'apps.stock.models_fiche_technique.COTES_AC_DC',
+        # CIQ626 — recette C&I : un même jeu « état d'essai » pour la
+        # limitation d'injection ET le découplage, et un même jeu « source
+        # d'irradiance » sur la recette C&I et la recette pompage (AGR6).
+        # Nommage de schéma uniquement — aucun choix ne change.
+        'EtatEssaiRecetteEnum': 'apps.installations.models_chantier.CommissioningRecord.EtatEssai',
+        'SourceIrradianceEnum': 'apps.installations.models_chantier.CommissioningRecord.SourceIrradiance',
         # SOLMVP-sweep (2026-09-21) — `EtatGeneralPieceEnum`
         # (immobilier.PieceEtatLieux.EtatGeneral) est retiré : apps.immobilier
         # est sorti du MVP solaire (Groupe SOLMVP, coquille).
