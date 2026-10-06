@@ -786,6 +786,11 @@ def expire_stale_devis():
 _COLD_AFTER_FOLLOWUP_DAYS = 30
 
 
+#: CIQ523 — la ligne de journal quand le Froid est sauté.
+NOTE_EXPIRATION_EN_ATTENTE = ("expiration : lead en attente d'un accord — "
+                              'non parqué')
+
+
 def _advance_lead_on_expiry(lead, today):
     """Avance l'étape du lead lié à un devis expiré (QUOTE_SENT → FOLLOW_UP,
     puis FOLLOW_UP → COLD si inactif depuis COLD_AFTER_FOLLOWUP_DAYS jours).
@@ -834,6 +839,18 @@ def _advance_lead_on_expiry(lead, today):
             created_at__date__gte=cutoff,
         ).exists()
         if recent_activity:
+            return False, False
+        # CIQ523 — un lead qui ATTEND une décision déclarée (étiquette
+        # « En attente d'un accord », ou une relance datée à venir) n'est
+        # jamais parqué au Froid par l'expiration de son devis : le passage
+        # est SAUTÉ et journalisé. Aucune étape nouvelle (STAGES.py
+        # intouché) ; le statut ``expire`` du devis reste posé (règle #4).
+        from apps.crm.selectors import lead_en_attente_ou_veille
+        if lead_en_attente_ou_veille(lead.pk, today, company=lead.company):
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=NOTE_EXPIRATION_EN_ATTENTE)
             return False, False
         ancien = lead.stage
         moved_cold = appliquer_stage_lead(lead, stages.COLD, user=None)
