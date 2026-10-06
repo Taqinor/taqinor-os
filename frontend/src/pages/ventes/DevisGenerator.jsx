@@ -948,13 +948,6 @@ export default function DevisGenerator({
   // Valeurs COURANTES (la relecture du lead est asynchrone : une fermeture
   // périmée ne verrait pas ce que le vendeur vient de taper).
   const courantPompage = useRef({})
-  useEffect(() => {
-    courantPompage.current = {
-      pompeHmt, pompeDebit, farmHmtStatic, pompeProfondeur, pompeDistance,
-      pompeCv, pompeType, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
-      eco: ecoPompage,
-    }
-  })
   // AGR218 — attestation d'usage agricole (case + date + signataire).
   const [attestationAgricole, setAttestationAgricole] = useState(ATTESTATION_VIDE)
   const majAttestation = useCallback(
@@ -970,6 +963,13 @@ export default function DevisGenerator({
     (chemin, valeur) => setPompageSaisie((s) => poserSaisie(s, chemin, valeur)),
     [],
   )
+  useEffect(() => {
+    courantPompage.current = {
+      pompeHmt, pompeDebit, farmHmtStatic, pompeProfondeur, pompeDistance,
+      pompeCv, pompeType, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
+      eco: ecoPompage,
+    }
+  })
 
   // ── VX62 — Brouillon auto + garde de sortie ──
   // Le formulaire (2 300+ lignes, ~20 min de saisie) n'avait NI brouillon NI
@@ -1365,6 +1365,32 @@ export default function DevisGenerator({
     && !leads.some(l => String(l.id) === String(leadDuDevis.id)))
     ? [leadDuDevis, ...leads] : leads
   const selectedLead = leadsListe.find(l => String(l.id) === String(leadId))
+
+  // AGR421 (D-AGR-9) — devis agricole sur un lead non agricole : le bandeau
+  // PROPOSE, le commercial change le type à la main (jamais à l'enregistrement).
+  const [typeLeadMisAJour, setTypeLeadMisAJour] = useState({})
+  const typeLeadEffectif = selectedLead
+    ? (typeLeadMisAJour[selectedLead.id]
+      ?? selectedLead.incoherence_segment?.segment_lead
+      ?? selectedLead.type_installation ?? '')
+    : ''
+  const bandeauSegment = Boolean(selectedLead) && modeInstallation === 'agricole'
+    && typeLeadEffectif !== 'agricole'
+  const changerTypeLeadEnAgricole = async () => {
+    if (!selectedLead) return
+    const ok = await confirm({
+      title: 'Changer le type du lead ?',
+      description: `Le lead passera en « agricole » : le script d'appel, le score et le suivi le traiteront comme un lead agricole.`,
+      confirmLabel: 'Passer en agricole',
+    })
+    if (!ok) return
+    try {
+      await crmApi.updateLead(selectedLead.id, { type_installation: 'agricole' })
+      setTypeLeadMisAJour(m => ({ ...m, [selectedLead.id]: 'agricole' }))
+    } catch {
+      toast.error('Le type du lead n’a pas pu être modifié.')
+    }
+  }
 
   const roi = useMemo(() => {
     if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
@@ -4534,6 +4560,20 @@ export default function DevisGenerator({
           commercialAnswers={commercialAnswers}
           setCommercialAnswer={setCommercialAnswer}
         />
+        {bandeauSegment && (
+          <div role="status" data-testid="bandeau-segment-lead"
+               className="flex flex-wrap items-center gap-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+            <span>
+              Ce lead est typé « {typeLeadEffectif || 'non renseigné'} » : le script
+              d’appel, le score et le suivi le traitent comme{' '}
+              {typeLeadEffectif || 'un lead sans type'}. Changer le type en Agricole ?
+            </span>
+            <Button type="button" variant="outline" size="sm"
+                    onClick={changerTypeLeadEnAgricole}>
+              Passer en agricole
+            </Button>
+          </div>
+        )}
         {modeInstallation === 'agricole' && provenancesLead.length > 0 && (
           <ul className="grid gap-0.5 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
               data-testid="provenance-lead-pompage" aria-label="Valeurs reprises de la fiche lead">

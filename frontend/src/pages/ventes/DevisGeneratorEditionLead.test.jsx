@@ -339,3 +339,57 @@ describe('AGR420 — le pompage se pré-remplit des seules entrées du lead', ()
     expect(document.getElementById('gen-hmt').value).toBe('75')
   })
 })
+
+// ── AGR421 (D-AGR-9) — bandeau « devis agricole sur un lead non agricole » ──
+const LEAD_INCOHERENT = exempleContrat('crm', 'lead_pompage', 'exemple_incoherent')
+
+function devisAgricoleSurLead(lead) {
+  const rouvert = devisRouvert({ lead: lead.id })
+  return { data: { ...rouvert.data, mode_installation: 'agricole' } }
+}
+
+describe('AGR421 — le type du lead ne change qu\'à la main', () => {
+  beforeEach(() => {
+    crmApi.updateLead = vi.fn(() => Promise.resolve({ data: {} }))
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...LEAD_INCOHERENT } })
+    ventesApi.getDevisById.mockResolvedValue(devisAgricoleSurLead(LEAD_INCOHERENT))
+  })
+
+  it('bandeau visible pour un lead typé résidentiel, sans aucun PATCH à l\'enregistrement', async () => {
+    renderEdition()
+    const bandeau = await screen.findByTestId('bandeau-segment-lead')
+    expect(bandeau).toHaveTextContent('Ce lead est typé « residentiel »')
+    await cliquerEnregistrer()
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('clic + confirmation : PATCH {type_installation:\'agricole\'} seul, puis plus de bandeau', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEdition()
+    await userEvent.click(await screen.findByRole('button', { name: 'Passer en agricole' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledTimes(1))
+    expect(crmApi.updateLead).toHaveBeenCalledWith(LEAD_INCOHERENT.id, { type_installation: 'agricole' })
+    await waitFor(() => expect(screen.queryByTestId('bandeau-segment-lead')).toBeNull())
+    confirmSpy.mockRestore()
+  })
+
+  it('confirmation refusée : aucun PATCH', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderEdition()
+    await userEvent.click(await screen.findByRole('button', { name: 'Passer en agricole' }))
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('lead agricole : aucun bandeau', async () => {
+    const agricole = { ...LEAD_POMPAGE, id: LEAD.id }
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...agricole } })
+    ventesApi.getDevisById.mockResolvedValue(devisAgricoleSurLead(agricole))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+    await screen.findAllByText(/Khalid Réouvert/)
+    expect(screen.queryByTestId('bandeau-segment-lead')).toBeNull()
+  })
+})
