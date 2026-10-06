@@ -1003,12 +1003,26 @@ def html_de_planche(svg):
     )
 
 
-def nom_de_fichier(calepinage, extension):
-    """``calepinage-<pk>-<titre assaini>.<ext>`` — jamais un nom d'utilisateur brut."""
-    titre = (getattr(calepinage, 'titre', '') or '').strip().lower()
-    assaini = ''.join(c if c.isalnum() else '-' for c in titre).strip('-')
+def _assainir(texte):
+    """Lettres et chiffres gardés (arabe et accents compris), le reste en ``-``."""
+    texte = (texte or '').strip().lower()
+    assaini = ''.join(c if c.isalnum() else '-' for c in texte).strip('-')
     while '--' in assaini:
         assaini = assaini.replace('--', '-')
+    return assaini
+
+
+def nom_de_fichier(calepinage, extension, *, quoi=None):
+    """``calepinage-<pk>-<titre assaini>.<ext>`` — jamais un nom d'utilisateur brut.
+
+    ACAL234 — UN constructeur de nom pour tout le module : ``quoi`` (les
+    exports CSV, ``horaire``/``mensuel``…) remplace le titre —
+    ``calepinage-<pk>-<quoi>.<ext>``, le nom d'avant. Le nom peut porter de
+    l'arabe ou des accents : l'en-tête qui le transporte est
+    ``views/sorties.py::en_tete_de_telechargement`` (RFC 6266).
+    """
+    assaini = _assainir(quoi if quoi is not None
+                        else getattr(calepinage, 'titre', ''))
     base = 'calepinage-%s' % (getattr(calepinage, 'pk', '') or 'sans-numero')
     return '%s%s.%s' % (base, '-' + assaini[:60] if assaini else '', extension)
 

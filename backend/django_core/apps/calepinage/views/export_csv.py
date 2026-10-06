@@ -46,7 +46,6 @@ motif enregistré sous un nom donné.
 """
 from __future__ import annotations
 
-from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -56,7 +55,6 @@ from rest_framework.response import Response
 from ..permissions import PeutVoirCalepinage
 from ..services.export_csv import (
     EXPORTS, ExportImpossible, document_exportable, encoder_pour_tableur,
-    nom_de_fichier,
 )
 # Renommé à l'import : le service ``export_csv`` et l'action HTTP vivent dans
 # le même espace de noms, ils ne peuvent pas porter le même nom ici.
@@ -117,11 +115,14 @@ def export_csv_simulation(self, request, pk=None):
                          'exports_disponibles': list(EXPORTS)},
                         status=status.HTTP_400_BAD_REQUEST)
 
-    reponse = HttpResponse(encoder_pour_tableur(texte),
-                           content_type='text/csv; charset=utf-8')
-    reponse['Content-Disposition'] = (
-        f'attachment; filename="{nom_de_fichier(calepinage.pk, quoi)}"')
-    return reponse
+    # ACAL234 — LE nom (``planche.nom_de_fichier``, ``quoi`` sans titre :
+    # même nom qu'avant) et LA réponse de téléchargement du module.
+    from ..services.planche import nom_de_fichier
+    from .sorties import reponse_de_fichier
+
+    return reponse_de_fichier(
+        encoder_pour_tableur(texte), mime='text/csv; charset=utf-8',
+        nom_fichier=nom_de_fichier(calepinage, 'csv', quoi=quoi))
 
 
 # Rattachement au viewset PIVOT — voir la docstring du module. CALX7 :

@@ -371,8 +371,10 @@ def export_projet_json(self, request, pk=None):
     except ExportProjetRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
+    from .sorties import en_tete_de_telechargement
+
     reponse = Response(document)
-    reponse['Content-Disposition'] = 'attachment; filename="%s"' % (
+    reponse['Content-Disposition'] = en_tete_de_telechargement(
         nom_de_fichier(calepinage, 'export-projet.json'))
     return reponse
 
