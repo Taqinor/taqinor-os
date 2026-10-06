@@ -201,6 +201,11 @@ def _reponse(resp):
     return {'status': resp.status_code, 'corps': _figer(corps)}
 
 
+#: Instant auquel le golden de comportement a été capturé (c62516d95, 05/10).
+#: Une recapture (``SPLIT_GOLDEN_CAPTURE=1``) se fait sous ce même gel.
+JOUR_DE_CAPTURE = '2026-10-05T17:00:00Z'
+
+
 class ComportementPublicTests(TestCase):
     """Digests de comportement des vues publiques — identiques avant/après."""
 
@@ -274,7 +279,15 @@ class ComportementPublicTests(TestCase):
         return res
 
     def test_digests_identiques(self):
-        digests = {nom: sg.digest(val) for nom, val in self._scenarios().items()}
+        # Horloge figée au jour de la capture du golden : le payload public
+        # porte des dates JJ/MM/AAAA (``date``, ``valid_until``, « Validité de
+        # l'offre : jusqu'au … ») que ``_figer`` (ISO seulement) ne neutralise
+        # pas — sans ce gel, le digest change chaque jour (CI rouge le
+        # lendemain de la capture, 06/10/2026, code inchangé).
+        from freezegun import freeze_time
+        with freeze_time(JOUR_DE_CAPTURE):
+            scenarios = self._scenarios()
+        digests = {nom: sg.digest(val) for nom, val in scenarios.items()}
         if os.environ.get('SPLIT_GOLDEN_CAPTURE') == '1':
             golden = sg.charger_golden('split_pv_comportement')
             golden['comportement'] = digests
