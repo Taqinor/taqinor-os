@@ -90,6 +90,10 @@ class BlocClientEntreprise(SimpleTestCase):
             with self.subTest(gabarit=nom):
                 _d, html = _rendu(sample, renderer, render,
                                   _client(ice="", rc="", if_fiscal=""))
+                # La COUVERTURE (bloc client) : la case « Bon pour accord »
+                # de la dernière page (CIQ320) garde sa ligne « ICE » à
+                # remplir, qui n'est pas une donnée du client.
+                html = html.split('class="page"')[1]
                 self.assertNotIn("ICE&#160;:", html)
                 self.assertNotIn("RC&#160;:", html)
                 self.assertNotIn("IF&#160;:", html)

@@ -42,13 +42,20 @@ def build_ctx(data: dict) -> dict:
 
 def wrap_page(inner: str, n: int, data: dict, ident: dict, total: int = 3) -> str:
     # Le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
-    foot = (theme.page_footer(data, ident, total_pages=total)
+    # CIQ333 — « Réf. » suit la langue du document (français inchangé).
+    foot = (theme.page_footer(data, ident, total_pages=total, traduire=True)
             .replace("{page}", str(n)))
     return f'<div class="page">{inner}{foot}</div>'
 
 
 def build_html(data: dict, pages_fn) -> str:
-    """Assemble les pages rendues par ``pages_fn(ctx) -> list[str]``."""
+    """Assemble les pages rendues par ``pages_fn(ctx) -> list[str]``.
+
+    CIQ333 — un document en anglais ou en arabe porte ``lang`` (et
+    ``dir="rtl"`` en arabe, d'où WeasyPrint tire l'alignement à droite et
+    l'ordre miroir des tableaux) et la police arabe vendorisée, comme le
+    document agricole (AGR314) ; le français reste octet pour octet."""
+    from . import i18n_labels
     ctx = build_ctx(data)
     ident = ctx["ident"]
     pages = pages_fn(ctx)
@@ -56,8 +63,20 @@ def build_html(data: dict, pages_fn) -> str:
     body = "".join(
         wrap_page(inner, n, data, ident, total)
         for n, inner in enumerate(pages, start=1))
-    return (f"<!doctype html><html><head><meta charset='utf-8'>"
-            f"<style>{theme.base_css()}</style></head>"
+    langue = theme.langue_doc(data)
+    racine, css_langue = "<html>", ""
+    if langue != "fr":
+        racine = (f'<html lang="{langue}" '
+                  f'dir="{i18n_labels.direction(langue)}">')
+    if i18n_labels.est_rtl(langue):
+        # Rendu RÉEL mesuré : l'espacement de lettres (petites capitales,
+        # en-têtes) casse la liaison des lettres arabes, et la face 700
+        # vendorisée sort illisible en gras — l'arabe prend la police
+        # système (Noto Sans Arabic de l'image), sans espacement de lettres.
+        css_langue = (".i18n-rtl{unicode-bidi:isolate;}"
+                      "body *{letter-spacing:0 !important;}")
+    return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
+            f"<style>{theme.base_css()}{css_langue}</style></head>"
             f"<body>{body}</body></html>")
 
 

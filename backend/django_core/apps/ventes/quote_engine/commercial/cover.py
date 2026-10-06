@@ -59,10 +59,15 @@ def build(ctx):
     # ``date_validite`` ou le réglage société ``quote_validity_days``).
     # Indéterminable ⇒ pastille OMISE : le portail client affichait la
     # vraie date, le PDF un « 30 jours » codé en dur.
+    # CIQ333 — libellés STRUCTURELS dans la langue du document.
+    def L(cle, fr, **valeurs):
+        return ci_blocs.libelle(d, cle, fr, **valeurs)
+
     _vu = (d.get("valid_until") or "").strip()
     validity_pill = (
-        f'<div class="c1c-pill">Valable jusqu&#8217;au {_vu}</div>'
-        if _vu else "")
+        '<div class="c1c-pill">'
+        + L("ci_valable_jusqu", "Valable jusqu&#8217;au {date}", date=_vu)
+        + '</div>' if _vu else "")
 
     cat = d.get("com_category")
     # CIQ330 — libellé et accroche lus sur ``synthese_ci['categorie']``.
@@ -81,19 +86,25 @@ def build(ctx):
     def kpi(val, unit, label, fig=None):
         return premium_base.kpi(val, unit, label, fig, prefixe="c1c")
 
-    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête", "puissance_kwc")]
+    cellules = [kpi(kwc, "&nbsp;kWc",
+                    L("ci_puissance_crete", "Puissance crête"),
+                    "puissance_kwc")]
     # CIQ331 — la production annuelle du moteur C&I (``synthese_ci``), ancrée
     # pour la parité avec /proposition ; non servie ⇒ tuile omise.
     production = d.get("com_production")
     if production is not None:
-        cellules.append(kpi(fmt(round(production)), "&nbsp;kWh/an",
-                            "Production annuelle", "production_annuelle_kwh"))
+        cellules.append(kpi(fmt(round(production)),
+                            L("ci_unite_kwh_an", "&nbsp;kWh/an"),
+                            L("ci_production_annuelle", "Production annuelle"),
+                            "production_annuelle_kwh"))
     if autoconso is not None:
         cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                            "Autoconsommation", "autoconsommation_pct"))
+                            L("ci_autoconsommation", "Autoconsommation"),
+                            "autoconsommation_pct"))
     if couverture is not None:
         cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                            "Couverture conso", "couverture_pct"))
+                            L("ci_couverture_conso", "Couverture conso"),
+                            "couverture_pct"))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
     # QJR119 — l'omission couvre aussi « valeur non chiffrable » : le garde ne
@@ -177,6 +188,11 @@ def build(ctx):
 
     # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
     # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
+    note_autoconso = L(
+        "ci_note_autoconso_commercial",
+        "L'installation vise l'<b>autoconsommation</b> : la valeur porte "
+        "d'abord sur\n      la consommation de <b>journée</b> de votre "
+        "établissement.")
     inv_html = ci_couverture.bloc_investissement(
         d, d.get("com_synthese") or {}, "c1c", fmt_mad, ancre, invest=invest)
 
@@ -186,7 +202,7 @@ def build(ctx):
     <div class="c1c-htop">
       <div class="c1c-hlogo"><img src="data:image/png;base64,{logo_dark}" alt="{brand}"></div>
       <div class="c1c-hmeta">
-        <div class="c1c-rl">Réf. devis</div>
+        <div class="c1c-rl">{L("ci_ref_devis", "Réf. devis")}</div>
         <div class="c1c-rv">{ref}</div>
         <div class="c1c-hd">{date}</div>
         {marques_correction}
@@ -194,7 +210,7 @@ def build(ctx):
       </div>
     </div>
     <div class="c1c-hbody">
-      <div class="c1c-kicker">Proposition — Autoconsommation solaire commerciale</div>
+      <div class="c1c-kicker">{L("ci_kicker_commercial", "Proposition — Autoconsommation solaire commerciale")}</div>
       <div class="c1c-catrow">
         <div class="c1c-caticon">{icon}</div>
         <div class="c1c-catlab"><div class="c1c-serif c1c-title">{cat_label}</div></div>
@@ -206,7 +222,7 @@ def build(ctx):
   <div class="c1c-client">
     <b>{client_full}</b>
     {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    <span class="c1c-tag">{cat_label}</span>{ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"))}
+    <span class="c1c-tag">{cat_label}</span>{ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"), doc=d)}
   </div>
 
   <div class="c1c-wrap">
@@ -215,8 +231,7 @@ def build(ctx):
     {methode_line}
     {mt_line}
     <div class="c1c-note">
-      L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur
-      la consommation de <b>journée</b> de votre établissement. {note_pointe}
+      {note_autoconso} {note_pointe}
     </div>{inv_html}
   </div>
 </div>

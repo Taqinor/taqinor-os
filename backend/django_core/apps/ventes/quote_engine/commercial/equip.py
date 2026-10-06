@@ -13,6 +13,8 @@ from . import categories
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
 from ..ci.mentions import texte_revente
+# CIQ333 — libellés STRUCTURELS dans la langue du document.
+from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
 
 
@@ -123,6 +125,9 @@ def build(ctx):
     f_serif = fonts["serif"]
     f_sans = fonts["sans"]
 
+    def L(cle, fr, **valeurs):
+        return _libelle(d, cle, fr, **valeurs)
+
     items = [it for it in (d.get("all_items") or []) if _num(it.get("quantite")) > 0]
     # QJR619 — sections et notes intercalées à leur ``ordre`` par la MÊME
     # fonction pure que le une-page (QJR617). Sans structure ⇒ items tels quels.
@@ -168,14 +173,14 @@ def build(ctx):
     # son ancre ``data-figure`` sont la même chaîne.
     _f_remise = fmt_mad(remise)
     remise_row = (
-        f'<tr><td>Remise{ancre("remise", _f_remise)}</td>'
+        f'<tr><td>{L("remise", "Remise")}{ancre("remise", _f_remise)}</td>'
         f'<td class="c2-tr">- {_f_remise} MAD</td></tr>'
         if remise > 0 else "")
     # ARRONDI-100 — la baisse au palier de 100 MAD inférieur, ligne visible.
     arrondi = _num(tot.get("arrondi"))
     _f_arrondi = fmt_mad(arrondi)
     arrondi_row = (
-        f'<tr><td>Arrondi commercial{ancre("arrondi", _f_arrondi)}</td>'
+        f'<tr><td>{L("arrondi", "Arrondi commercial")}{ancre("arrondi", _f_arrondi)}</td>'
         f'<td class="c2-tr">- {_f_arrondi} MAD</td></tr>'
         if arrondi > 0 else "")
     _f_ht_brut = fmt_mad(ht_brut)
@@ -190,10 +195,11 @@ def build(ctx):
     injection_html = ""
     if _inj and _inj > 0:
         injection_html = (
-            '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' MAD/an</b> — '
-            'surplus injecté. <span class="c2-inj-m">'
+            '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' '
+            + L("ci_mad_an", "MAD/an") + '</b> — '
+            + L("ci_surplus_injecte", "surplus injecté") + '. <span class="c2-inj-m">'
             # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
-            + texte_revente() + '.</span></div>')
+            + texte_revente(_langue(d)) + '.</span></div>')
 
     # QJR619 — « Options proposées (non incluses) » : le SEUL ``total_ttc`` du
     # builder (supplément canonique, QJR616), aucun recalcul. Sans option ⇒ ''.
@@ -211,14 +217,17 @@ def build(ctx):
             _orows += (
                 f'<tr><td class="c2-d">{_oq_txt}{_o.get("designation", "")}</td>'
                 f'<td class="c2-v">{_o_taux:g} %</td>'
-                f'<td class="c2-t">{fmt_mad(_num(_o.get("total_ht")))} MAD HT'
+                f'<td class="c2-t">{fmt_mad(_num(_o.get("total_ht")))} MAD {L("ci_ht", "HT")}'
                 f'<div style="font-size:6.5pt;font-weight:400;">'
-                f'{fmt_mad(_num(_o.get("total_ttc")))} MAD TTC</div></td></tr>')
+                f'{fmt_mad(_num(_o.get("total_ttc")))} MAD {L("ci_ttc", "TTC")}</div></td></tr>')
         options_html = (
-            '<div style="margin-top:12px;"><div class="c2-kicker">Options propos&eacute;es '
-            '(non incluses dans le total)</div>'
-            '<table class="c2-tbl"><tr><th>D&eacute;signation</th>'
-            '<th class="c2-rr">TVA %</th><th class="c2-rr">Total HT</th></tr>'
+            '<div style="margin-top:12px;"><div class="c2-kicker">'
+            + L("ci_options_proposees",
+                "Options propos&eacute;es (non incluses dans le total)")
+            + '</div>'
+            '<table class="c2-tbl"><tr><th>' + L("designation", "D&eacute;signation") + '</th>'
+            '<th class="c2-rr">' + L("ci_tva_pct", "TVA %") + '</th><th class="c2-rr">'
+            + L("total_ht", "Total HT") + '</th></tr>'
             f'{_orows}</table></div>')
 
     # CIQ330 — le bloc RENDU depuis ``synthese_ci['categorie']`` (table
@@ -282,7 +291,7 @@ def build(ctx):
     # QJR627 (D-QJR5-6) — le texte CLIENT du champ « Notes » (déjà échappé
     # par ``builder.echapper_textes_client``) ; vide → aucun bloc.
     _note_client = (d.get("note_client") or "").strip()
-    note_html = (f'<div class="c2-note"><b>Note</b>{_note_client}</div>'
+    note_html = (f'<div class="c2-note"><b>{L("ci_note", "Note")}</b>{_note_client}</div>'
                  if _note_client else "")
     # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
     from ..clauses_cgv import bloc_clauses_html
@@ -290,11 +299,11 @@ def build(ctx):
         d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
     html = f"""{css}{css_densite(d.get("_palier_equip"))}
 <div class="c2-root">
-  <div class="c2-kicker">Votre installation</div>
-  <div class="c2-sec">Équipements &amp; investissement</div>
+  <div class="c2-kicker">{L("ci_votre_installation", "Votre installation")}</div>
+  <div class="c2-sec">{L("ci_equipements_investissement", "Équipements &amp; investissement")}</div>
 
   <table class="c2-tbl">
-    <tr><th>Désignation</th><th class="c2-rr">Qté</th><th class="c2-rr">P.U. HT</th><th class="c2-rr">TVA %</th><th class="c2-rr">Total HT</th></tr>
+    <tr><th>{L("designation", "Désignation")}</th><th class="c2-rr">{L("qte", "Qté")}</th><th class="c2-rr">{L("pu_ht", "P.U. HT")}</th><th class="c2-rr">{L("ci_tva_pct", "TVA %")}</th><th class="c2-rr">{L("total_ht", "Total HT")}</th></tr>
     {rows}
   </table>
 
@@ -302,11 +311,11 @@ def build(ctx):
     <div class="c2-tot-sp"></div>
     <div class="c2-tot-box">
       <table class="c2-tot-tbl">
-        <tr><td>Sous-total HT{ancre("sous_total_ht", _f_ht_brut)}</td><td>{_f_ht_brut} MAD</td></tr>
+        <tr><td>{L("sous_total_ht", "Sous-total HT")}{ancre("sous_total_ht", _f_ht_brut)}</td><td>{_f_ht_brut} MAD</td></tr>
         {remise_row}{arrondi_row}
-        <tr><td>Total HT{ancre("total_ht", _f_ht_net)}</td><td>{_f_ht_net} MAD</td></tr>
-        <tr><td>TVA{ancre("tva", _f_tva)}</td><td>{_f_tva} MAD</td></tr>
-        <tr class="c2-tot-ttc"><td>Total TTC{ancre("total_ttc", _f_ttc)}</td><td>{_f_ttc} MAD</td></tr>
+        <tr><td>{L("total_ht", "Total HT")}{ancre("total_ht", _f_ht_net)}</td><td>{_f_ht_net} MAD</td></tr>
+        <tr><td>{L("tva", "TVA")}{ancre("tva", _f_tva)}</td><td>{_f_tva} MAD</td></tr>
+        <tr class="c2-tot-ttc"><td>{L("total_ttc", "Total TTC")}{ancre("total_ttc", _f_ttc)}</td><td>{_f_ttc} MAD</td></tr>
       </table>
     </div>
   </div>

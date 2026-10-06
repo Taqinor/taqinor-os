@@ -108,6 +108,12 @@ def _augment(data: dict) -> dict:
     d["com_methode"] = chiffres["libelle_methode"]
     d["com_sous_reserve"] = chiffres["sous_reserve"]
     d["com_a_confirmer"] = chiffres["a_confirmer"]
+    # CIQ333 — les CLÉS de la méthode et des points à confirmer : la langue
+    # du document choisit leur libellé (catalogue ``i18n_labels``).
+    d["com_methode_cle"] = chiffres["methode"]
+    d["com_a_confirmer_cles"] = [
+        a.get("cle") for a in synthese.get("a_confirmer") or []
+        if isinstance(a, dict) and a.get("libelle")]
     d["com_note_pointe"] = chiffres["note_pointe"]
     d["com_motif_argent"] = chiffres["motif_argent"]
     d["com_argent_mt"] = chiffres["argent_mt"]

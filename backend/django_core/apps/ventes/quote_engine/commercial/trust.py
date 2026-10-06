@@ -37,10 +37,17 @@ def build(ctx):
     f_serif = fonts["serif"]
     f_sans = fonts["sans"]
 
+    # CIQ333 — libellés STRUCTURELS dans la langue du document.
+    def L(cle, fr, **valeurs):
+        return ci_blocs.libelle(d, cle, fr, **valeurs)
+
     steps = [
-        ("1", "Étude &amp; validation", "Dimensionnement, visite technique et validation du projet."),
-        ("2", "Installation", "Pose des équipements par nos équipes, sans interrompre votre activité."),
-        ("3", "Mise en service", "Raccordement, tests et réception — votre production démarre."),
+        ("1", L("ci_etape_etude_t", "Étude &amp; validation"),
+         L("ci_etape_etude_s", "Dimensionnement, visite technique et validation du projet.")),
+        ("2", L("ci_etape_installation_t", "Installation"),
+         L("ci_etape_installation_s", "Pose des équipements par nos équipes, sans interrompre votre activité.")),
+        ("3", L("ci_etape_mes_t", "Mise en service"),
+         L("ci_etape_mes_s", "Raccordement, tests et réception — votre production démarre.")),
     ]
     steps_cells = ""
     for i, (n, t, s) in enumerate(steps):
@@ -61,16 +68,16 @@ def build(ctx):
     if _warranties:
         _cells = "".join(
             f'<div class="c3-warr-c">'
-            f'<div class="c3-warr-v">{theme._esc(str(n))} {theme._esc(str(u))}</div>'
-            f'<div class="c3-warr-l">{theme._esc(str(label))}</div></div>'
+            f'<div class="c3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label)[0]}</div>'
+            f'<div class="c3-warr-l">{ci_blocs.textes_garantie(d, u, label)[1]}</div></div>'
             for n, u, label, _sub in _warranties)
         warranties_html = f"""
-  <div class="c3-h2">Garanties</div>
+  <div class="c3-h2">{L("ci_garanties", "Garanties")}</div>
   <div class="c3-warr">
     <div class="c3-warr-row">
       {_cells}
     </div>
-    <div class="c3-warr-l" style="margin-top:6px;">{ci_blocs.LEGENDE_GARANTIES}</div>
+    <div class="c3-warr-l" style="margin-top:6px;">{ci_blocs.legende_garanties(d)}</div>
   </div>
 """
     else:
@@ -88,13 +95,13 @@ def build(ctx):
     # délai saisi) : plus d'étape « supervision », ni de « performance
     # garantie », ni de cellule O&M sans ligne derrière.
     services_html = ci_blocs.bloc_services(
-        d.get("com_synthese") or {}, "c3", navy, ink)
+        d.get("com_synthese") or {}, "c3", navy, ink, doc=d)
     # CIQ331 — échéancier en N jalons (``synthese_ci['echeancier']``,
     # montants au centime) puis l'offre de financement (CIQ318) si servie.
     echeancier_html = ci_blocs.bloc_echeancier(
-        d.get("com_synthese") or {}, "c3", navy, ink, line)
+        d.get("com_synthese") or {}, "c3", navy, ink, line, doc=d)
     financement_html = ci_blocs.bloc_financement(
-        d.get("com_synthese") or {}, "c3", navy, ink)
+        d.get("com_synthese") or {}, "c3", navy, ink, doc=d)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -102,7 +109,7 @@ def build(ctx):
         # désormais ``accepte_par_nom`` pour les quatre renderers « maison ».
         # Ré-échapper ici sortait « &amp;amp; » sur un nom porteur d'un « & ».
         sign_client = (f'<div class="c3-sign-name">{accepte_nom}</div>'
-                       f'<div class="c3-sign-date">Le {date_accept}</div>')
+                       f'<div class="c3-sign-date">{L("ci_le_date", "Le {date}", date=date_accept)}</div>')
     else:
         sign_client = f'<div class="c3-sign-blank">{bpa_mention}</div>'
 
@@ -148,8 +155,8 @@ def build(ctx):
 
     html = f"""{css}
 <div class="c3-root">
-  <div class="c3-kicker">Votre projet, étape par étape</div>
-  <div class="c3-sec">Comment nous procédons</div>
+  <div class="c3-kicker">{L("ci_kicker_etapes", "Votre projet, étape par étape")}</div>
+  <div class="c3-sec">{L("ci_comment_nous_procedons", "Comment nous procédons")}</div>
   <table class="c3-steprow"><tr>{steps_cells}</tr></table>
 
   {warranties_html}
@@ -166,7 +173,7 @@ def build(ctx):
     </div>
     <div class="c3-sign-gap"></div>
     <div class="c3-sign-c">
-      <div class="c3-sign-h">Pour {brand}</div>
+      <div class="c3-sign-h">{L("ci_pour", "Pour {marque}", marque=brand)}</div>
       <div class="c3-sign-box"></div>
       <div class="c3-sign-co"><b>{brand}</b> &nbsp;·&nbsp; {ident.get('email','')} &nbsp;·&nbsp; {ident.get('phone','')}</div>
     </div>
