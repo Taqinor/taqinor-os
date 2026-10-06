@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { espions } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, SAISISSABLES,
@@ -24,26 +25,10 @@ const REGLAGES = exempleContrat('calepinage', 'parametres_calepinage')
 const REGLAGES_VIDES = exempleContrat('calepinage', 'parametres_calepinage', 'exemple_vide')
 const REGISTRE = REGLAGES.registre
 
-const mocks = vi.hoisted(() => ({
-  getParametres: vi.fn(),
-  putParametres: vi.fn(),
-  recalculer: vi.fn(),
-  hasPermission: vi.fn(),
-}))
-
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    parametres: {
-      get: (...a) => mocks.getParametres(...a),
-      update: (...a) => mocks.putParametres(...a),
-      recalculerSimulations: (...a) => mocks.recalculer(...a),
-    },
-  },
-}))
-
-vi.mock('../../../hooks/useHasPermission', () => ({
-  useHasPermission: (code) => mocks.hasPermission(code),
-}))
+// ACAL345 — la doublure partagée de `calepinageApi.parametres` et de la permission.
+const mocks = espions
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiParametres({ recalculer: true }))
+vi.mock('../../../hooks/useHasPermission', async () => (await import('../../../test/fixtures/calepinageApiMock')).permissionMock())
 
 const module_ = await import('./ReglagesSimulation')
 const ReglagesSimulation = module_.default

@@ -3,7 +3,11 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router-dom'
 import fs from 'node:fs'
 import path from 'node:path'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import {
+  espions, REPONSE_POSE, PAS_REPONSE_POSE, EMPRISE_REPONSE_POSE,
+  verifierSectionEcrite, verifierLectureEnEchec, verifierSectionPousseeDansAtelier,
+} from '../../../test/fixtures/calepinageApiMock'
+import { SAISIE_SOL } from '../../../test/fixtures/saisiesSurfacePose'
 
 /* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
    (que la configuration vitest fixe à `frontend/`) et on remonte jusqu'à la
@@ -33,20 +37,9 @@ function racineDepot() {
        n'est jamais touchée).
    ========================================================================== */
 
-const layout = vi.fn()
-const enregistrerLayoutCalepinage = vi.fn()
-const enregistrerSectionLayout = vi.fn()
-const pose = vi.fn()
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      layout: (...a) => layout(...a),
-      enregistrerLayoutCalepinage: (...a) => enregistrerLayoutCalepinage(...a),
-      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
-    },
-    moteur: { pose: (...a) => pose(...a) },
-  },
-}))
+// ACAL345 — la doublure partagée de `calepinageApi` (document + `moteur.pose`).
+const { layout, enregistrerLayoutCalepinage, enregistrerSectionLayout, pose } = espions
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiDocument({ moteur: true }))
 
 /* CALX50 — `@roofpro/scene3d` porte la couche WebGL (Three + MapLibre) : en CI
  * (job frontend-vitest-shard) seul `frontend/node_modules` est installé, donc
@@ -124,28 +117,12 @@ const { formatCote } = await import('../plan2d')
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
  *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
  *  `scripts/check_api_shapes.py` le refuse). */
-const REPONSE = exempleContrat('calepinage', 'pose')
-/** Le pas inter-rangées, MESURÉ sur les rangées de l'exemple — jamais retapé. */
-const PAS_REPONSE = REPONSE.plans[0].rangees[1].y0 - REPONSE.plans[0].rangees[0].y0
-/** L'emprise totale des tables de l'exemple, par la même formule que `empriseTablesM2`. */
-const EMPRISE_REPONSE = REPONSE.plans[0].tables.reduce(
-  (acc, t) => acc + Math.abs(t.x1 - t.x0) * Math.abs(t.y1 - t.y0), 0,
-)
+const REPONSE = REPONSE_POSE
+const PAS_REPONSE = PAS_REPONSE_POSE
+const EMPRISE_REPONSE = EMPRISE_REPONSE_POSE
 
-const SAISIE = {
-  repere: 'TERRAIN',
-  label: 'Champ au sol',
-  largeurM: '20',
-  profondeurM: '10',
-  penteTerrainDeg: '3',
-  rowAzimuthDeg: '180',
-  tiltDeg: '25',
-  moduleLongM: '2.278',
-  moduleCourtM: '1.134',
-  puissanceWc: '720',
-  modulesParTable: '2',
-  alleeM: '',
-}
+/** ACAL345 — la saisie de référence partagée avec `surfacePose.test.mjs`. */
+const SAISIE = SAISIE_SOL
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -295,26 +272,11 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
     await waitFor(() => expect(pose).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
     await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalled())
-    const [id, corps] = enregistrerSectionLayout.mock.calls[0]
-    expect(id).toBe(7)
-    expect(Object.keys(corps).sort()).toEqual(['base_empreinte', 'cle', 'valeur'])
-    expect(corps.cle).toBe('poseSurfaces')
-    expect(corps.base_empreinte).toBe('E0')
-    expect(corps.valeur).toHaveLength(1)
-    expect(corps.valeur[0].kind).toBe('sol')
-    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled() // aucun document entier
+    verifierSectionEcrite({ id: 7, kind: 'sol' })
   })
 
   it('lecture en échec → Enregistrer désactivé, message affiché, aucun POST', async () => {
-    layout.mockRejectedValue(new Error('500'))
-    monter()
-    expect(await screen.findByRole('alert'))
-      .toHaveTextContent('Conception illisible : rien n’est enregistré')
-    const bouton = screen.getByTestId('cal-terrain-enregistrer')
-    expect(bouton).toBeDisabled()
-    fireEvent.click(bouton)
-    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
-    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+    await verifierLectureEnEchec({ monter, prefixe: 'cal-terrain' })
   })
 
   it('pousse la section écrite dans l’atelier vivant', async () => {
@@ -325,15 +287,7 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
       const champ = screen.queryByTestId(`cal-terrain-${cle}`)
       if (champ) fireEvent.change(champ, { target: { value: valeur } })
     }
-    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
-    await waitFor(() => expect(pose).toHaveBeenCalled())
-    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
-    await waitFor(() => expect(documentVivant.appliquerSection).toHaveBeenCalledTimes(1))
-    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('EATELIER')
-    const [cle, valeur, empreinte] = documentVivant.appliquerSection.mock.calls[0]
-    expect(cle).toBe('poseSurfaces')
-    expect(valeur[0].kind).toBe('sol')
-    expect(empreinte).toBe('E1')
+    await verifierSectionPousseeDansAtelier({ documentVivant, prefixe: 'cal-terrain', kind: 'sol' })
   })
 
   it('RECHARGE un champ déjà enregistré : saisie et plan reviennent', async () => {

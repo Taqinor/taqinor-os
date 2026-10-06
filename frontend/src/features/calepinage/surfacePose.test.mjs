@@ -5,6 +5,7 @@ import {
   remplacerSurface, retirerSurface, repereLibre, surfacesDuGenre,
   entreeMoteurChangee, nombre, pasMesure, tauxOccupation, contourTerrain,
 } from './surfacePose.js'
+import { SAISIE_SOL } from '../../test/fixtures/saisiesSurfacePose.js'
 
 /* ACAL25 (C-ACAL-034) — UNE fonction pour Terrain ET Ombrière : module et allée
    persistés puis relus. Test-du-test : retirer `moduleWc` de
@@ -36,20 +37,8 @@ const OMBRIERE = {
   alleeM: '0',
 }
 
-const SOL = {
-  repere: 'TERRAIN',
-  label: 'Champ au sol',
-  largeurM: '20',
-  profondeurM: '10',
-  penteTerrainDeg: '3',
-  rowAzimuthDeg: '180',
-  tiltDeg: '25',
-  moduleLongM: '2.278',
-  moduleCourtM: '1.134',
-  puissanceWc: '720',
-  modulesParTable: '2',
-  alleeM: '',
-}
+/** ACAL345 — la saisie de référence partagée avec l'écran (`mode_terrain.test.jsx`). */
+const SOL = SAISIE_SOL
 
 test('documentSurfacePose(ombrière 620 Wc, allée 0) porte module et allée ; saisieDepuisSurface rend la saisie d’origine', () => {
   const s = documentSurfacePose(OMBRIERE, REPONSE, 'ombriere')

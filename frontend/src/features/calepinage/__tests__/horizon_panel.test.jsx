@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
+import { espions } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN : au moins deux points pour s'activer, jamais un
@@ -14,20 +15,9 @@ import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractS
    main). La saisie manuelle reste possible ensuite.
    ========================================================================== */
 
-const layout = vi.fn()
-const enregistrerLayoutCalepinage = vi.fn()
-const enregistrerSectionLayout = vi.fn()
-const horizon = vi.fn()
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      layout: (...a) => layout(...a),
-      enregistrerLayoutCalepinage: (...a) => enregistrerLayoutCalepinage(...a),
-      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
-      horizon: (...a) => horizon(...a),
-    },
-  },
-}))
+// ACAL345 — la doublure partagée de `calepinageApi` (document + `horizon`).
+const { layout, enregistrerLayoutCalepinage, enregistrerSectionLayout, horizon } = espions
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiDocument({ horizon: true }))
 
 const {
   default: HorizonPanel,

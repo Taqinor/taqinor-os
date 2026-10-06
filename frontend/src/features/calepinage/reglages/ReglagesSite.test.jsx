@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { espions } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
    ACAL130 — « SITE & IMAGERIE » : pays, fournisseur, attribution, altitude +
@@ -16,24 +17,10 @@ const SERVI = exempleContrat('calepinage', 'site_imagerie').imagerie
 const VIDE = exempleContrat('calepinage', 'site_imagerie', 'exemple_vide').imagerie
 const SANS_VALEUR = exempleContrat('calepinage', 'site_imagerie', 'exemple_section_declaree_sans_valeur').imagerie
 
-const mocks = vi.hoisted(() => ({
-  getParametres: vi.fn(),
-  putParametres: vi.fn(),
-  hasPermission: vi.fn(),
-}))
-
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    parametres: {
-      get: (...a) => mocks.getParametres(...a),
-      update: (...a) => mocks.putParametres(...a),
-    },
-  },
-}))
-
-vi.mock('../../../hooks/useHasPermission', () => ({
-  useHasPermission: (code) => mocks.hasPermission(code),
-}))
+// ACAL345 — la doublure partagée de `calepinageApi.parametres` et de la permission.
+const mocks = espions
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiParametres())
+vi.mock('../../../hooks/useHasPermission', async () => (await import('../../../test/fixtures/calepinageApiMock')).permissionMock())
 
 const { default: ReglagesSite } = await import('./ReglagesSite')
 
