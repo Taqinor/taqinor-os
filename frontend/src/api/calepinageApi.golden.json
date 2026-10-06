@@ -1028,6 +1028,14 @@
       "verbe": "get"
     }
   ],
+  "parametres.recalculerSimulations": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/parametres/recalculer-simulations/",
+      "verbe": "post"
+    }
+  ],
   "parametres.suggererPentesIGN": [
     {
       "config": null,
