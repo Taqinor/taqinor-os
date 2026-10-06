@@ -87,3 +87,48 @@ def kpi(val, unit, label, fig=None, *, prefixe: str) -> str:
     return (f'<td class="{prefixe}-kpi"><div class="{prefixe}-kv">{val}'
             f'<span class="{prefixe}-ku">{unit}</span></div>{_a}'
             f'<div class="{prefixe}-kl">{label}</div></td>')
+
+
+def bande_legale(d: dict, ident: dict) -> str:
+    """CIQ310 — la bande légale du VENDEUR (RC, ICE, capital…), composée UNE
+    fois pour le résidentiel (``residential/trust``, sortie identique octet
+    pour octet) et les pages de confiance commerciale et industrielle.
+
+    Profil société d'un TENANT (nom non-TAQINOR) → SES identifiants, champs
+    absents omis ; sinon le repli fondateur."""
+    # SCA27 (fix règle-#4-permis) — pour un TENANT (profil au nom non-TAQINOR),
+    # la bande se compose de SES identifiants (nom/RC/ICE/email/téléphone/site,
+    # champs absents omis — capital et gérant n'ont pas de champ profil). Le
+    # littéral fondateur reste le repli byte-identique (profil vide OU marque
+    # TAQINOR — même sémantique par-la-donnée que _footer_brand/DC1).
+    from html import escape as _esc
+    ent = d.get("entreprise") or {}
+    ent_nom = (ent.get("nom") or "").strip()
+    if ent_nom and "TAQINOR" not in ent_nom.upper():
+        parts = [f"<b>{_esc(ent_nom)}</b>"]
+        if (ent.get("rc") or "").strip():
+            parts.append("RC " + _esc(ent["rc"].strip()))
+        if (ent.get("ice") or "").strip():
+            parts.append("ICE " + _esc(ent["ice"].strip()))
+        if (ent.get("email") or "").strip():
+            parts.append(_esc(ent["email"].strip()))
+        if (ent.get("telephone") or "").strip():
+            parts.append(_esc(ent["telephone"].strip()))
+        _site_tenant = (d.get("site_url") or "").strip()
+        if _site_tenant and "taqinor" not in _site_tenant.lower():
+            parts.append(_esc(_site_tenant))
+        legal = " &middot; ".join(parts)
+    else:
+        legal = (
+            '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
+            ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
+            ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
+            # QRES10 — contact lu depuis l'identité RÉSOLUE (profil société →
+            # repli littéraux fondateur) : la bande légale affiche toujours LE
+            # MÊME email/téléphone que le pied de page (le PDF réel imprimait
+            # « contact@taqinor.ma » en pied et « contact@taqinor.com » ici).
+            f' &middot; {ident.get("email") or "contact@taqinor.com"}'
+            f' &middot; {ident.get("phone") or "+212 6 61 85 04 10"}'
+            ' &middot; taqinor.ma'
+        )
+    return legal

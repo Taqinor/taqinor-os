@@ -6,6 +6,11 @@ CSS tables only. Classes prefixed ``i3-``.
 """
 
 
+# CIQ310 — bande légale du vendeur (RC, ICE, capital) : UNE fonction
+# partagée avec le résidentiel.
+from ..premium_base import bande_legale
+
+
 def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
@@ -216,6 +221,7 @@ def build(ctx):
       <div class="i3-sign-co"><b>{brand}</b> &nbsp;·&nbsp; {ident.get('email','')} &nbsp;·&nbsp; {ident.get('phone','')}</div>
     </div>
   </div>
+  <div class="i3-legal" style="margin-top:10px;font-size:6.8pt;color:{muted};line-height:1.4;">{bande_legale(d, ident)}</div>
 </div>
 """
     return html
