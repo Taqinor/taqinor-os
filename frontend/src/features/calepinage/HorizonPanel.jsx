@@ -35,10 +35,24 @@ import RetourAtelier from './atelier/RetourAtelier'
    lui.
 
    ZÉRO CHIFFRE INVENTÉ : moins de deux points saisis ⇒ aucun horizon n'est
-   affiché ni appliqué (comportement d'aujourd'hui). La hauteur maximale et le
+   affiché. ACAL124 — la simulation (`services/horizon.py`) exige un TOUR
+   complet (au moins 8 directions, `DIRECTIONS_MINIMALES`) : en dessous,
+   « Enregistrer » est désactivé et le dit (le serveur garde son refus).
+   Tout geste sur un profil PVGIS (ajout OU retrait d'un point) le requalifie
+   en « saisie » : un profil corrigé n'est plus un profil mesuré. La hauteur maximale et le
    compte d'heures masquées affichés ici sont TOUJOURS recalculés depuis les
    points actuels, jamais mémorisés indépendamment.
    ========================================================================== */
+
+/** ACAL124 — miroir de `DIRECTIONS_MINIMALES` (services/horizon.py) : sous ce
+ * nombre de directions DISTINCTES, la simulation refuse le profil. */
+const DIRECTIONS_MINIMALES = 8
+const MESSAGE_TOUR_INCOMPLET = 'Le calcul exige un tour complet : au moins 8 directions'
+
+/** Le nombre de directions DISTINCTES (azimut ramené dans [0, 360[). */
+function directionsDistinctes(points) {
+  return new Set(sortedHorizonPoints(points).map((p) => p.azimuthDeg)).size
+}
 
 function nombre(brut) {
   if (brut === null || brut === undefined || brut === '') return null
@@ -80,6 +94,9 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   // dérate réellement appliquée à la production, en heures — plus de pas de 0,5 h.
   const heuresMasquees = typeof latitudeDeg === 'number' ? maskedHourCount(hourlyHorizonFactors(latitudeDeg, points)) : 0
   const exploitable = sortedHorizonPoints(points).length >= 2
+  // ACAL124 — un profil NON vide qui ne fait pas le tour ne s'enregistre pas
+  // (vide = retirer le profil, toujours permis).
+  const tourIncomplet = points.length > 0 && directionsDistinctes(points) < DIRECTIONS_MINIMALES
 
   function ajouterPoint() {
     const az = nombre(saisie.azimut)
@@ -96,6 +113,8 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
 
   function retirerPoint(index) {
     setPoints((prev) => sortedHorizonPoints(prev).filter((_, i) => i !== index))
+    // ACAL124 — un profil PVGIS dont on retire un point est un profil CORRIGÉ.
+    setSource('saisie')
   }
 
   function recupererDepuisPvgis() {
@@ -119,7 +138,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   }
 
   async function enregistrer() {
-    if (doc.etat !== 'ok') return
+    if (doc.etat !== 'ok' || tourIncomplet) return
     const propres = sortedHorizonPoints(points)
     // ACAL24 — UNE clé, par `layout/section/` ; `null` retire le profil.
     const valeur = propres.length >= 2
@@ -132,8 +151,8 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
       doc.appliquerSection('horizonProfile', valeur, res.empreinte)
       setMessage(
         propres.length >= 2
-          ? 'Profil d’horizon enregistré — appliqué à la production au prochain calcul de l’atelier.'
-          : 'Profil retiré (moins de deux points) — aucun horizon n’est appliqué.',
+          ? 'Profil d’horizon enregistré — appliqué au prochain calcul de la simulation (Production › Lancer).'
+          : 'Profil retiré — aucun horizon n’est appliqué.',
       )
     } else if (res.conflit) {
       setMessage('La conception a changé ailleurs : elle est relue, enregistrez de nouveau.')
@@ -160,8 +179,8 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
       <p className="mt-1 text-sm text-lune-faint">
         Le relief à distance (montagne, crête, immeuble éloigné) qui masque le soleil aux
         heures rasantes — un poste de perte SÉPARÉ de l’ombrage proche tracé sur le toit.
-        Saisissez au moins deux points (azimut, hauteur angulaire) pour l’activer ; sans
-        eux, rien ne change.
+        Saisissez au moins 8 directions réparties sur tout le tour (azimut, hauteur
+        angulaire) : le calcul exige un tour complet ; sans profil, rien ne change.
       </p>
 
       <div className="mt-3">
@@ -271,11 +290,16 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
         <button
           type="button"
           onClick={enregistrer}
-          disabled={doc.etat !== 'ok'}
+          disabled={doc.etat !== 'ok' || tourIncomplet}
           className="rounded border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-200 hover:bg-brass-400/10 disabled:opacity-50"
         >
           Enregistrer le profil
         </button>
+        {tourIncomplet && !illisible && (
+          <p className="text-sm text-amber-300">
+            {MESSAGE_TOUR_INCOMPLET} ({directionsDistinctes(points)} relevée(s)).
+          </p>
+        )}
         {illisible && (
           <p className="text-sm text-red-300" role="alert">
             {MESSAGE_ILLISIBLE}
