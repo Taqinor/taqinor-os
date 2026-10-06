@@ -52,14 +52,18 @@ from django.db import models
 
 # Codes de régime alignés sur ``Installation.Regime8221`` (FG267). On NE
 # redéfinit pas l'énum installations (couche découplée) : on liste les libellés
-# localement pour les choix d'affichage.
+# localement pour les choix d'affichage. CIQ616 — ``autorisation_anre`` reste
+# le code STOCKÉ historique, mais l'ANRE n'est pas un guichet : libellé
+# « Autorisation (ministère) » ; ``a_qualifier`` (régime inconnu, CIQ613/618)
+# est un choix valide d'un dossier.
 REGIME_CHOICES = [
     ('non_concerne', "Non concerné (hors loi 82-21)"),
     ('declaration_bt', "Déclaration basse tension"),
     ('accord_raccordement', "Accord de raccordement"),
-    ('autorisation_anre', "Autorisation ANRE"),
+    ('autorisation_anre', "Autorisation (ministère)"),
     # AGR603 — loi 82-21 art. 3 : installation non raccordée = déclaration.
     ('declaration_hors_reseau', "Déclaration hors réseau (loi 82-21, art. 3)"),
+    ('a_qualifier', "À qualifier"),
 ]
 
 
@@ -148,6 +152,11 @@ class DossierChecklistItem(models.Model):
         ETUDE = 'etude', 'Étude'
         CONVENTION = 'convention', 'Convention'
         COMPTAGE = 'comptage', 'Comptage'
+        # CIQ616 — autres autorisations du site (décret 2.25.100 art. 26) et
+        # pièces exigées pour exploiter (art. 15 : organisme agréé, propriété,
+        # assurance — accord et autorisation seulement).
+        TRAVAUX = 'travaux', 'Travaux'
+        EXPLOITATION = 'exploitation', 'Exploitation'
 
     class Statut(models.TextChoices):
         A_FAIRE = 'a_faire', 'À faire'

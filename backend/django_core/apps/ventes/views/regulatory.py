@@ -120,7 +120,9 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
             DossierChecklistItem.objects.create(
                 company=dossier.company, dossier=dossier, code=code,
                 libelle=piece['label'], obligatoire=piece.get('required', True),
-                etape=_PIECE_ETAPE.get(code, 'depot'), ordre=ordre)
+                # CIQ616 — l'étape vient de la pièce sourcée (repli historique).
+                etape=piece.get('etape') or _PIECE_ETAPE.get(code, 'depot'),
+                ordre=ordre)
             created += 1
         dossier.refresh_from_db()
         return Response(
