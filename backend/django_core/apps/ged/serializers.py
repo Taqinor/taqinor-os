@@ -686,6 +686,8 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             # (posée/réarmée par le sweep/`prolonger`, jamais mutée par un
             # PATCH direct).
             'emetteur_notifie_expiration_le',
+            # ADOC68 — PDF signé figé (posé une seule fois à la complétion).
+            'version_signee',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -697,6 +699,7 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'motif_refus', 'refuse_le',
             'annule_le', 'annule_par',
             'emetteur_notifie_expiration_le',
+            'version_signee',
             'created_by', 'created_at', 'updated_at',
         ]
 

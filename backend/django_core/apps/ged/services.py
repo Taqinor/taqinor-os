@@ -857,6 +857,14 @@ def versionner_si_modifie(document, contenu, *, filename='', mime='',
             'ADOC61 — document %s archivé légalement ou sous legal hold : '
             'nouvelle version refusée.', document.pk)
         return None, False
+    try:
+        # ADOC68 — jamais de nouvelle version sous une signature en attente.
+        assert_aucune_signature_en_attente(document)
+    except SignatureEnCoursError:
+        logger.warning(
+            'ADOC68 — document %s : signature en attente, nouvelle version '
+            'refusée.', document.pk)
+        return None, False
     if stocker is not None:
         meta = stocker() or {}
     else:
@@ -2952,6 +2960,9 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
     # total (try/except large) — un souci de rendu/stockage ne doit JAMAIS
     # empêcher la signature elle-même d'être enregistrée.
     if not etait_deja_signe:
+        # ADOC68 — PDF signé figé UNE fois, avant le certificat (dont
+        # l'empreinte reprend le hash du PDF figé) et le classement.
+        figer_pdf_signe(demande)
         try:
             classer_signature_completee(demande)
         except Exception:  # pragma: no cover - défensif, jamais bloquant.
@@ -3010,8 +3021,95 @@ def resolve_signature_publique(token):
 def version_a_signer(demande):
     """ADOC67 — Version du document que le signataire LIT avant de consentir
     (et que l'aperçu public par jeton sert) : la version en vigueur du
-    document de la demande."""
+    document de la demande ; ADOC68 — après signature, la version signée
+    FIGÉE (`version_signee`) une fois posée."""
+    if getattr(demande, 'version_signee_id', None):
+        return demande.version_signee
     return selectors_latest_version(demande.document)
+
+
+class SignatureEnCoursError(Exception):
+    """ADOC68 — Écriture refusée parce qu'une demande de signature est en
+    cours (`en_attente`) : traduite en 409 par les vues."""
+
+
+def assert_aucune_signature_en_attente(document):
+    """ADOC68 — Refuse l'ajout d'une version à un document dont une demande
+    de signature est `en_attente` : le signataire signerait un contenu qui
+    change sous ses yeux. Après signature, une nouvelle version reste
+    permise (le PDF signé est figé à part)."""
+    from .models import DemandeSignatureDocument, SIGNATURE_EN_ATTENTE
+    if document is None or document.pk is None:
+        return
+    if DemandeSignatureDocument.objects.filter(
+            document_id=document.pk, statut=SIGNATURE_EN_ATTENTE).exists():
+        raise SignatureEnCoursError(
+            "Une demande de signature est en cours sur ce document : "
+            "aucune nouvelle version tant qu'elle n'est pas close.")
+
+
+def assert_champs_signature_modifiables(demande):
+    """ADOC68 — Les champs d'une demande ne s'éditent que tant qu'elle est
+    `en_attente` (sinon 409) : une valeur signée ne se falsifie jamais."""
+    from .models import SIGNATURE_EN_ATTENTE
+    if demande is not None and demande.statut != SIGNATURE_EN_ATTENTE:
+        raise SignatureEnCoursError(
+            "Cette demande n'est plus en attente : ses champs de signature "
+            "ne sont plus modifiables.")
+
+
+def figer_pdf_signe(demande):
+    """ADOC68 — Produit UNE fois le PDF signé (champs aplatis + scellé) et le
+    stocke comme version FIGÉE du document, référencée par la demande
+    (`version_signee`) ; `hash_contenu` devient le SHA-256 de ce PDF figé.
+    Idempotent (une demande déjà figée est renvoyée telle quelle).
+    Best-effort : un souci de rendu/stockage n'empêche jamais la signature
+    d'être enregistrée (renvoie None)."""
+    from .models import DemandeSignatureDocument
+    if demande.version_signee_id:
+        return demande.version_signee
+    try:
+        pdf_bytes, _aplati = rendre_pdf_signe_avec_champs(demande)
+        if pdf_bytes is None:
+            return None
+        if pdf_bytes[:4] == b'%PDF':
+            pdf_bytes, _scelle = sceller_pdf(pdf_bytes, company=demande.company)
+        source = selectors_latest_version(demande.document)
+        checksum = compute_checksum(pdf_bytes)
+        if source is not None and (source.checksum or '') == checksum:
+            version = source
+        else:
+            key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+            version = add_version(
+                demande.document, file_key=key, company=demande.document.company,
+                filename=f'{(demande.document.nom or "document")[:200]}-signe.pdf',
+                size=len(pdf_bytes), mime='application/pdf', checksum=checksum)
+        DemandeSignatureDocument.objects.filter(
+            pk=demande.pk, version_signee__isnull=True).update(
+                version_signee=version, hash_contenu=checksum)
+        demande.version_signee = version
+        demande.hash_contenu = checksum
+        return version
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning(
+            'ADOC68 — gel du PDF signé impossible pour la demande %s',
+            demande.pk, exc_info=True)
+        return None
+
+
+def lire_pdf_signe(demande):
+    """ADOC68 — Octets du PDF signé FIGÉ (`version_signee`), toujours les
+    mêmes ; repli sur le rendu à la demande uniquement pour une demande
+    signée avant ADOC68 (aucune version figée). Renvoie None si introuvable."""
+    if demande.version_signee_id:
+        try:
+            from apps.records.storage import fetch_attachment
+            data, err = fetch_attachment(demande.version_signee.file_key)
+            return None if err else data
+        except Exception:  # pragma: no cover - défensif.
+            return None
+    pdf_bytes, _aplati = rendre_pdf_signe_avec_champs(demande)
+    return pdf_bytes
 
 
 def _hash_version_contenu(version):
@@ -3849,7 +3947,7 @@ def rendre_pdf_signe_avec_champs(demande):
     n'est pas récupérable, renvoie `(None, False)` sans lever.
 
     Renvoie `(pdf_bytes_ou_None, aplati)`."""
-    version = selectors_latest_version(demande.document)
+    version = version_a_signer(demande)
     if version is None:
         return None, False
     try:
@@ -4151,7 +4249,10 @@ def classer_signature_completee(demande, *, created_by=None):
 
     # 1) Le document signé lui-même : dépose la VERSION COURANTE (déjà
     #    signée/aplatie si XGED3 a produit un PDF final) dans « Signés ».
-    version = selectors_latest_version(document_source)
+    # ADOC68 — la version classée est la version FIGÉE (aplatie + scellée
+    # une seule fois par `figer_pdf_signe`), plus jamais la version brute.
+    version = (demande.version_signee if demande.version_signee_id
+               else selectors_latest_version(document_source))
     contenu = None
     if version is not None:
         try:
@@ -4162,8 +4263,9 @@ def classer_signature_completee(demande, *, created_by=None):
             contenu = None
 
     # XGED5 — Scellement cryptographique best-effort AVANT dépôt (no-op sans
-    # pyHanko — contenu byte-identique dans ce cas, flux XGED4 intact).
-    if contenu is not None and (contenu[:4] == b'%PDF'):
+    # pyHanko) — uniquement pour une demande sans version figée (déjà scellée).
+    if not demande.version_signee_id and contenu is not None \
+            and (contenu[:4] == b'%PDF'):
         contenu, _scelle = sceller_pdf(contenu, company=company)
 
     document_signe, created_doc = deposit_document(

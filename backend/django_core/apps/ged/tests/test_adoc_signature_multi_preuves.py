@@ -88,11 +88,11 @@ class SignatureMultiPreuvesTests(MultiPreuvesBase):
         self.assertEqual(relu.data['hash_contenu'], self.signataire.hash_contenu)
         self.assertEqual(relu.data['signature_tracee'], TRACE)
         self.assertTrue(relu.data['consentement_explicite'])
-        # Complétion : la demande reçoit ses preuves (hash non vide).
+        # Complétion : la demande reçoit ses preuves (hash non vide — celui
+        # du PDF signé figé, ADOC68).
         self.demande.refresh_from_db()
         self.assertEqual(self.demande.statut, SIGNATURE_SIGNE)
-        self.assertEqual(
-            self.demande.hash_contenu, hashlib.sha256(CONTENU).hexdigest())
+        self.assertEqual(len(self.demande.hash_contenu), 64)
 
     def test_champ_requis_exige_en_multi(self):
         resp = self._signer(avec_champs=False)
@@ -124,5 +124,5 @@ class SignatureMultiPreuvesTests(MultiPreuvesBase):
         resp = self.anon.get(
             f'/api/django/ged/verifier-certificat/{empreinte}/')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(
-            resp.data['hash_document'], hashlib.sha256(CONTENU).hexdigest())
+        self.assertEqual(len(resp.data['hash_document']), 64)
+        self.assertEqual(resp.data['hash_document'], self.demande.hash_contenu)

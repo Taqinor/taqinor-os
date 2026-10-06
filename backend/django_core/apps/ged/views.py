@@ -1102,6 +1102,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'version': 'Version inconnue ou inaccessible.'},
                 status=status.HTTP_404_NOT_FOUND)
+        # ADOC68 — jumeau de l'ajout de version : refusé (409) pendant une
+        # demande de signature en attente.
+        try:
+            services.assert_aucune_signature_en_attente(document)
+        except services.SignatureEnCoursError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         try:
             new_version = services.restore_version(
                 document, source_version, uploaded_by=request.user)
@@ -1643,6 +1650,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 return Response(
                     {'cible': 'Document cible inconnu.'},
                     status=status.HTTP_404_NOT_FOUND)
+            # ADOC68 — fusionner VERS une cible lui ajoute une version :
+            # refusé (409) pendant une demande de signature en attente.
+            try:
+                services.assert_aucune_signature_en_attente(cible)
+            except services.SignatureEnCoursError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         try:
             resultat = services.fusionner_pdf(
                 documents_ordonnes, cible=cible,
@@ -1833,11 +1847,18 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # : les deux gels (GED23 write-once, GED24 legal hold) restent 403,
         # jamais 500, même si ici `instance.delete()` est un effacement RÉEL
         # de la version (pas de corbeille pour les versions).
+        from django.db.models import ProtectedError, RestrictedError
         from rest_framework.exceptions import PermissionDenied
         try:
             instance.delete()
         except (ArchivageLegalError, LegalHoldError) as exc:
             raise PermissionDenied(str(exc))
+        except (ProtectedError, RestrictedError):
+            # ADOC68 — la version figée d'une demande signée ne se supprime
+            # jamais seule (409, jamais un 500).
+            raise _conflit(
+                "Cette version est le PDF signé figé d'une demande de "
+                "signature : elle ne peut pas être supprimée.")
 
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.
@@ -1862,6 +1883,12 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         except PermissionError as exc:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(str(exc))
+        # ADOC68 — aucune nouvelle version pendant qu'une demande de signature
+        # est en attente sur le document (409).
+        try:
+            services.assert_aucune_signature_en_attente(document)
+        except services.SignatureEnCoursError as exc:
+            raise _conflit(str(exc))
         v = serializer.validated_data
         instance = services.add_version(
             document,
@@ -2751,7 +2778,9 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             return Response(
                 {'detail': "Cette demande n'est pas encore signée."},
                 status=status.HTTP_409_CONFLICT)
-        pdf_bytes, _aplati = services.rendre_pdf_signe_avec_champs(demande)
+        # ADOC68 — sert le PDF signé FIGÉ (octet-identique à chaque appel,
+        # même après une nouvelle version du document) ; jamais re-rendu.
+        pdf_bytes = services.lire_pdf_signe(demande)
         if pdf_bytes is None:
             return Response(
                 {'detail': "Contenu du document introuvable."},
@@ -2922,6 +2951,29 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
         if modele:
             qs = qs.filter(modele_id=modele)
         return qs
+
+    # ADOC68 — les champs d'une demande ne s'éditent (création, modification,
+    # suppression) que tant qu'elle est `en_attente` : 409 sinon.
+    def _garde_demande(self, demande):
+        try:
+            services.assert_champs_signature_modifiables(demande)
+        except services.SignatureEnCoursError as exc:
+            raise _conflit(str(exc))
+
+    def perform_create(self, serializer):
+        self._garde_demande(serializer.validated_data.get('demande'))
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._garde_demande(serializer.instance.demande)
+        nouvelle = serializer.validated_data.get('demande')
+        if nouvelle is not None:
+            self._garde_demande(nouvelle)
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        self._garde_demande(instance.demande)
+        instance.delete()
 
 
 class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -3820,6 +3872,14 @@ class PublicPartageRateThrottle(SimpleRateThrottle):
             'scope': self.scope,
             'ident': f'{ident}:{token}',
         }
+
+
+def _conflit(detail):
+    """ADOC68 — exception DRF 409 nommée (pas de classe Conflict native)."""
+    from rest_framework.exceptions import APIException
+    exc = APIException(detail)
+    exc.status_code = status.HTTP_409_CONFLICT
+    return exc
 
 
 def _ged_noindex(response):

@@ -1751,6 +1751,17 @@ class DemandeSignatureDocument(models.Model):
     empreinte_certificat = models.CharField(
         max_length=64, blank=True, default='', db_index=True,
         verbose_name='empreinte du certificat (SHA-256)')
+    # ADOC68 — PDF signé FIGÉ (aplati + scellé) produit UNE fois à la
+    # complétion par `services.figer_pdf_signe` : c'est lui que `pdf-signe`
+    # sert, octet-identique, même si le document reçoit ensuite une nouvelle
+    # version. Posé une seule fois, jamais lu d'un corps de requête.
+    # RESTRICT (et non PROTECT) : la version figée ne se supprime jamais seule,
+    # mais la purge du document entier (qui emporte aussi la demande par
+    # CASCADE) reste possible.
+    version_signee = models.ForeignKey(
+        'DocumentVersion', on_delete=models.RESTRICT, null=True, blank=True,
+        related_name='demandes_signature_figees',
+        verbose_name='version signée figée')
     # Signature tapée (nom) ET/OU tracée (pattern FG69 `signature_client` —
     # data-URL/vecteur base64 d'un tracé). Au moins l'un des deux est requis
     # pour signer (garde côté service). Jamais lues du corps après signature.
