@@ -2031,9 +2031,22 @@ class KitProduitSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         if composants_data is not None:
-            instance.composants.all().delete()
-            for c in composants_data:
-                KitComposant.objects.create(kit=instance, **c)
+            with transaction.atomic():
+                # ASTK96 — ``taux_perte_pct`` n'est pas un champ du
+                # serializer : on le relit AVANT la suppression et on le
+                # reporte sur le composant recréé (même produit / sous-kit).
+                # Un composant retiré disparaît, un nouveau naît à 0.
+                pertes = {
+                    (k.produit_id, k.composant_kit_id): k.taux_perte_pct
+                    for k in instance.composants.all()}
+                instance.composants.all().delete()
+                for c in composants_data:
+                    cle = (getattr(c.get('produit'), 'pk', None),
+                           getattr(c.get('composant_kit'), 'pk', None))
+                    extra = ({'taux_perte_pct': pertes[cle]}
+                             if cle in pertes else {})
+                    KitComposant.objects.create(
+                        kit=instance, **{**extra, **c})
             self._snapshot(instance)
         return instance
 
