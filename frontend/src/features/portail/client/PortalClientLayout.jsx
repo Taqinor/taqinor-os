@@ -28,6 +28,8 @@ const NAV_CLIENT = [
   // `labelAr` volontairement absent : repli français documenté ci-dessus, le
   // libellé arabe de cet onglet reste à faire valider (jamais inventé ici).
   { to: '/portail/client/chantiers', label: 'Chantiers' },
+  // ADOC135 — documents partagés (version en vigueur) + dépôt de justificatifs.
+  { to: '/portail/client/documents', label: 'Documents' },
 ]
 
 export default function PortalClientLayout({ children }) {

@@ -97,6 +97,8 @@ const PortailClientFactures = lazy(() => import('../features/portail/client/Port
 const PortailClientLivraisons = lazy(() => import('../features/portail/client/PortailClientLivraisons'))
 // NTPRT14 — « Mes chantiers » : timeline (jalons portail) + galerie photos.
 const PortailClientChantiers = lazy(() => import('../features/portail/client/PortailClientChantiers'))
+// ADOC135 — « Mes documents » (version en vigueur, téléchargement, dépôt).
+const PortailClientDocuments = lazy(() => import('../features/portail/client/PortailClientDocuments'))
 // AUD139 — changement OBLIGATOIRE du mot de passe temporaire (portail client).
 // ADOC119 — écran COMMUN aux trois portées (fichier client = ré-export).
 const PortailMotDePasse = lazy(() => import('../features/portail/PortailMotDePasse'))
@@ -469,6 +471,12 @@ const router = createBrowserRouter([
     path: '/portail/partenaire/commissions',
     loader: portalLoader(PORTEE_PARTENAIRE),
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireCommissions /></WithPortal>,
+  },
+  // ADOC135 — « Mes documents » du portail client.
+  {
+    path: '/portail/client/documents',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientDocuments /></WithPortal>,
   },
   // ADOC119 — mot de passe TEMPORAIRE des portails fournisseur et partenaire
   // (même écran commun, même garde de portée que leur accueil).

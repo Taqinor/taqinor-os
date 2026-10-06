@@ -36,6 +36,16 @@ const portailApi = {
     accepter: (payload) =>
       api.post('/public/portail/invitations/accepter/', payload),
   },
+  // ADOC135 — « Mes documents » (contrat mes_documents.json). Le
+  // téléchargement est un lien direct (binaire, Content-Disposition attachment) ;
+  // le dépôt est un multipart `{fichier, type_document, libelle?}`.
+  documents: {
+    liste: () => api.get('/portail/mes-documents/'),
+    telechargerUrl: (id) => `/api/django/portail/mes-documents/${id}/telecharger/`,
+    deposer: (formData) => api.post('/portail/mes-documents/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  },
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),
