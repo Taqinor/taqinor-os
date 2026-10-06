@@ -67,8 +67,11 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # Remappés 937->967 et 1139->1169 par CIQ214 : la retenue de garantie
     # (2 champs + 2 propriétés, +30 lignes) est insérée dans Facture, AVANT
     # ces deux champs. MÊME champ, déclaration byte-identique. Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:967",
-    "backend/django_core/apps/facturation/models.py:1169",
+    # Remappés 967->980 et 1169->1182 par CIQ215/CIQ216 : ventilation_tva et
+    # reference_commande_client (+13 lignes) insérés dans Facture, AVANT ces
+    # deux champs. MÊME champ, déclaration byte-identique. Bug-class #34.
+    "backend/django_core/apps/facturation/models.py:980",
+    "backend/django_core/apps/facturation/models.py:1182",
     # Remappé 1251->1346 (lane CAD IK-MESURE 21/09 : +95 lignes insérées AVANT
     # NoteDebit dans ventes/models.py — le marqueur « signé au domicile » de
     # CAD122 sur BonCommande, sa constante de délai, son exception et ses deux

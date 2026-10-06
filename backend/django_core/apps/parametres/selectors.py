@@ -575,3 +575,43 @@ def cgv_bullets_societe(company):
         return None
     puces = [str(p) for p in puces if str(p or '').strip()]
     return puces or None
+
+
+#: CIQ218 — modes qui portent leurs propres conditions générales C&I.
+MODES_CGV_CI = ('commercial', 'industriel')
+
+
+def cgv_variante_ci(company, mode):
+    """CIQ218 — la variante C&I SAISIE pour ``mode`` (``{titre, bullets,
+    mode}``), sinon l'AUTRE variante C&I, sinon ``None``. Jamais les puces
+    société ici : voir :func:`cgv_mode_societe`. Lecture seule."""
+    if company is None or mode not in MODES_CGV_CI:
+        return None
+    from apps.parametres.models_documents import DocumentTemplates
+    modele = DocumentTemplates.objects.filter(company=company).first()
+    variantes = getattr(modele, 'cgv_par_mode', None)
+    if not isinstance(variantes, dict):
+        return None
+    autre = [m for m in MODES_CGV_CI if m != mode]
+    for cle in [mode] + autre:
+        variante = variantes.get(cle)
+        if not isinstance(variante, dict):
+            continue
+        puces = [str(p) for p in (variante.get('bullets') or [])
+                 if str(p or '').strip()]
+        if puces:
+            return {'titre': str(variante.get('titre') or ''),
+                    'bullets': puces, 'mode': cle}
+    return None
+
+
+def cgv_mode_societe(company, mode):
+    """CIQ218 — les conditions générales à geler pour un devis de ``mode`` :
+    la variante C&I du mode, sinon l'autre variante C&I, sinon les puces
+    société d'hier (``{'bullets': [...]}`` sans ``mode``), sinon ``None``.
+    Marqueurs conservés (le moteur les substitue au rendu)."""
+    variante = cgv_variante_ci(company, mode)
+    if variante is not None:
+        return variante
+    puces = cgv_bullets_societe(company)
+    return {'bullets': puces} if puces else None
