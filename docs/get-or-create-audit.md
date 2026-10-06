@@ -134,8 +134,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/fetes_mobiles.py:97` | update_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/parametres/models_company.py:1095` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:1100` | get_or_create | cls.objects | pk |
-| `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_documents.py:108` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_documents.py:110` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
 | `backend/django_core/apps/parametres/models_pos.py:72` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_relance.py:561` | get_or_create | cls.objects | cadence, company, ordre |
@@ -197,7 +197,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/uxviews/models.py:174` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/views.py:98` | update_or_create | EcranRecent.objects | company, ecran, owner |
 | `backend/django_core/apps/uxviews/views.py:585` | get_or_create | FavoriUtilisateur.objects | company, content_type, object_id, owner |
-| `backend/django_core/apps/ventes/domain/facturation_ops.py:1016` | get_or_create | Produit.objects | company, sku |
-| `backend/django_core/apps/ventes/domain/gammes.py:264` | get_or_create | ParametresGammes.objects | company |
+| `backend/django_core/apps/ventes/domain/facturation_ops.py:1041` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/domain/gammes.py:268` | get_or_create | ParametresGammes.objects | company |
 | `backend/django_core/apps/ventes/views/liste_prix.py:90` | update_or_create | LignePrixListe.objects | liste, produit |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:127` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
