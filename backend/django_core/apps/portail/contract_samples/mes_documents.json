@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/portail/mes-documents/",
   "pourquoi": "ADOC111 (M0, C-ADOC-049) — « Mes documents » : documents GED partagés EXPLICITEMENT avec le client (AclGed client=…), servis par MesDocumentsPortailViewSet (views_client.py:1360). Un élément = les clés actuelles de `_ligne` (id, nom, reference, taille, mime, date_creation) + DEUX clés NOUVELLES (D-ADOC-2 : le portail montre la VERSION EN VIGUEUR et sa date) : `version_numero` = `DocumentVersion.version` et `version_date` = `DocumentVersion.created_at` (ISO) de `ged.selectors.latest_version` ; null/null si le document n'a aucune version. `taille`/`mime` restent ceux de cette même version. Jamais de métadonnée interne (custom_data, ACL, verrous). Écrans consommateurs : ADOC138/ADOC134.",
-  "forme_serveur": "complète",
+  "forme_serveur": "complete",
   "cles_nouvelles": [
     "version_numero",
     "version_date"

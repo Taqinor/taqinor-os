@@ -66,7 +66,7 @@ class MesDocumentsVersionTests(TestCase):
                 mime='application/pdf')
 
     def test_ligne_conforme_contrat(self):
-        self.assertEqual(CONTRAT['forme_serveur'], 'complète')
+        self.assertEqual(CONTRAT['forme_serveur'], 'complete')
         cles = set(CONTRAT['exemple']['results'][0])
         liste = self.api.get(RACINE)
         self.assertEqual(liste.status_code, 200, liste.content)
