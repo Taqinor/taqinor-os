@@ -419,6 +419,57 @@ def _lignes_du_segment(lignes, lead):
     return [r for r in lignes if r.segment != agricole]
 
 
+#: CIQ515 — segments PROFESSIONNELS : une preuve J4 d'un lead pro est une
+#: réalisation commerciale/industrielle, jamais une villa.
+SEGMENTS_PRO = ('commercial', 'industriel')
+
+
+def _kwc_dernier_devis_pro(lead):
+    """CIQ515 — kWc du dernier devis du lead (taille C&I retenue, sinon
+    calepinage), lu par le sélecteur ``ventes`` (frontière M3)."""
+    try:
+        from apps.ventes.selectors import kwc_dernier_devis
+        return kwc_dernier_devis(lead, lead.company)
+    except Exception:  # noqa: BLE001 — un message ne casse jamais sur ce point
+        return None
+
+
+def _realisation_pro(lead, lignes):
+    """CIQ515 — preuve d'un lead ``commercial``/``industriel`` : seules les
+    réalisations ACTIVES d'un segment pro sont éligibles (même segment
+    d'abord), classées par écart de puissance au kWc du dernier devis du
+    lead, puis par distance, puis la plus récente. Rien d'éligible ⇒ None
+    (la J4 est retirée par AGR514). Jamais une villa, jamais une réalisation
+    sans segment."""
+    from apps.crm.selectors import ville_effective
+    from .villes_maroc import coordonnees_ville
+    from .villes_resolution import _haversine_km
+
+    eligibles = [r for r in lignes if r.segment in SEGMENTS_PRO]
+    if not eligibles:
+        return None
+    segment_lead = (getattr(lead, "type_installation", None) or "").strip()
+    cible = _kwc_dernier_devis_pro(lead)
+    ville_lead = _ville_canonique(ville_effective(lead))
+    origine = coordonnees_ville(ville_lead) if ville_lead else None
+    infini = float("inf")
+
+    def cle(rang_realisation):
+        rang, r = rang_realisation
+        ecart = (abs(float(r.puissance_kwc) - cible)
+                 if cible is not None and r.puissance_kwc is not None
+                 else infini)
+        distance = infini
+        if origine is not None:
+            coords = coordonnees_ville(r.ville)
+            if coords is not None:
+                distance = _haversine_km(origine, coords)
+        return (r.segment != segment_lead, ecart, distance, rang)
+
+    # ``eligibles`` est trié « la plus récente d'abord » : le rang départage.
+    return min(enumerate(eligibles), key=cle)[1]
+
+
 def realisation_pour_lead(lead):
     """La réalisation à MONTRER à ce lead, ou ``None``.
 
@@ -452,6 +503,10 @@ def realisation_pour_lead(lead):
     lignes = sorted(
         Realisation.objects.filter(company=company, actif=True),
         key=_cle_recence, reverse=True)
+    # CIQ515 — lead PRO : règle stricte (segment pro, taille, distance).
+    segment_du_lead = (getattr(lead, "type_installation", None) or "").strip()
+    if segment_du_lead in SEGMENTS_PRO:
+        return _realisation_pro(lead, lignes)
     # AGR513 (D-AGR-10) — filtre de SEGMENT, AVANT les trois règles : un lead
     # agricole ne voit qu'une réalisation `agricole` (jamais un toit à sa
     # place) ; un lead non agricole (ou sans type) voit tout SAUF l'agricole,

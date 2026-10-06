@@ -122,6 +122,34 @@ def production_attendue_pour_devis(devis_id):
     return val if val > 0 else None
 
 
+def kwc_dernier_devis(lead, company):
+    """CIQ515 — kWc du DERNIER devis du lead : la taille retenue du moteur
+    C&I (contrat CIQ2, ``etude_params['etude_ci']['taille']['retenue_kwc']``),
+    sinon la conception calepinée (``conception_pour_lead``). ``None`` si
+    rien n'est connu — jamais un chiffre fabriqué. Scopé société."""
+    from .models import Devis
+    lead_id = getattr(lead, 'pk', None)
+    if not lead_id or company is None:
+        return None
+    devis = (Devis.objects.filter(lead_id=lead_id, company=company)
+             .only('etude_params').order_by('-date_creation', '-id').first())
+    if devis is not None:
+        etude = (devis.etude_params or {}).get('etude_ci') or {}
+        taille = etude.get('taille') if isinstance(etude, dict) else None
+        kwc = (taille or {}).get('retenue_kwc') if isinstance(
+            taille, dict) else None
+        try:
+            if kwc not in (None, '') and float(kwc) > 0:
+                return float(kwc)
+        except (TypeError, ValueError):
+            pass
+    kwc = (conception_pour_lead(lead, company) or {}).get('kwc')
+    try:
+        return float(kwc) if kwc not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
+
+
 def promesse_production_devis(devis_id, company):
     """CIQ627 — promesse de production d'un devis C&I, lue dans la sortie du
     moteur serveur (contrat CIQ2, ``etude_params['etude_ci']``) :
