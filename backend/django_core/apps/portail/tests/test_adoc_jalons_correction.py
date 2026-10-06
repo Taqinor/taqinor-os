@@ -57,10 +57,12 @@ class JalonsCorrectionTests(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.resp)}')
 
     def _journal(self, jalon, action):
+        # ``AuditLog.Meta.ordering = ['-timestamp']`` : ``.last()`` rendrait
+        # la PLUS ANCIENNE ligne. Tri explicite, la plus récente d'abord.
         return AuditLog.objects.filter(
             content_type=ContentType.objects.get_for_model(
                 JalonChantierPortail),
-            object_id=str(jalon.id), action=action)
+            object_id=str(jalon.id), action=action).order_by('id')
 
     def test_creation_manuelle_refusee(self):
         res = self.api.post(RACINE, {

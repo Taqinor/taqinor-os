@@ -1762,16 +1762,27 @@ def _watermark_pdf(file_bytes, text):
     try:
         doc = fitz.open(stream=file_bytes, filetype='pdf')
         try:
+            # ADOC142 — `insert_textbox(rotate=45)` levait TOUJOURS
+            # « rotate must be multiple of 90 » (PyMuPDF n'accepte que des
+            # quarts de tour) : le repli silencieux renvoyait l'ORIGINAL, et
+            # AUCUN PDF n'était jamais filigrané (aperçu, partage, portail).
+            # La diagonale passe par une matrice de rotation (`morph`) autour
+            # du centre de la page. La police standard « helv » n'a pas le
+            # tiret cadratin : il est rendu en tiret simple.
+            texte = text.replace('—', '-')
+            taille = 28
             for page in doc:
                 rect = page.rect
-                # Filigrane diagonal centré, gris translucide, répété en bas.
-                page.insert_textbox(
-                    rect,
-                    text,
-                    fontsize=28,
+                centre = fitz.Point(rect.width / 2, rect.height / 2)
+                largeur = fitz.get_text_length(
+                    texte, fontname='helv', fontsize=taille)
+                page.insert_text(
+                    fitz.Point(centre.x - largeur / 2, centre.y),
+                    texte,
+                    fontsize=taille,
+                    fontname='helv',
                     color=(0.5, 0.5, 0.5),
-                    rotate=45,
-                    align=fitz.TEXT_ALIGN_CENTER,
+                    morph=(centre, fitz.Matrix(-45)),
                     overlay=True,
                 )
             out = doc.tobytes()
