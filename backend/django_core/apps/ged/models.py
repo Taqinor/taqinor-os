@@ -1005,6 +1005,11 @@ class DemandeApprobation(models.Model):
     # Horodatage de la décision (approbation/rejet) — NULL tant qu'en attente.
     decision_le = models.DateTimeField(
         null=True, blank=True, verbose_name='décidée le')
+    # ADOC14 — version RELUE par cette demande (posée côté serveur à la
+    # création : la dernière version du document à ce moment).
+    version = models.ForeignKey(
+        'DocumentVersion', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='demandes_approbation', verbose_name='version relue')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

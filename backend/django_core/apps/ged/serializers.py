@@ -438,10 +438,11 @@ class DemandeApprobationSerializer(serializers.ModelSerializer):
             'id', 'document', 'document_nom', 'document_statut',
             'demandeur', 'demandeur_nom', 'approbateur', 'approbateur_nom',
             'statut', 'statut_display', 'commentaire', 'is_pending',
-            'decision_le', 'created_at', 'updated_at',
+            'decision_le', 'version', 'created_at', 'updated_at',
         ]
+        # ADOC14 — `version` (version relue) posée côté serveur.
         read_only_fields = [
-            'demandeur', 'approbateur', 'statut', 'decision_le',
+            'demandeur', 'approbateur', 'statut', 'decision_le', 'version',
             'created_at', 'updated_at',
         ]
 

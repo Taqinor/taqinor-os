@@ -789,6 +789,17 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
     journaliser_evenement(
         document, type_evenement='nouvelle_version',
         message=f'Version {next_version} ajoutée.', utilisateur=uploaded_by)
+    # ADOC14 — une nouvelle version d'un document APPROUVÉ n'est pas
+    # approuvée : il repasse en revue (approbation à refaire).
+    from .models import LIFECYCLE_APPROUVE, LIFECYCLE_REVUE
+    if (next_version > 1 and Document.objects.filter(
+            pk=document.pk, statut=LIFECYCLE_APPROUVE).exists()):
+        Document.objects.filter(pk=document.pk).update(statut=LIFECYCLE_REVUE)
+        document.statut = LIFECYCLE_REVUE
+        journaliser_evenement(
+            document, type_evenement='changement_statut',
+            message='Nouvelle version — approbation à refaire.',
+            utilisateur=uploaded_by)
     return version
 
 
@@ -1468,7 +1479,8 @@ def deverrouiller_avertissement(document, user):
     return doc
 
 
-def change_lifecycle_status(document, target_status, *, user):
+def change_lifecycle_status(document, target_status, *, user,
+                            via_approbation=False):
     """GED17 — Fait avancer un document dans son cycle de vie (statut LOCAL).
 
     Garde la machine à états `LIFECYCLE_TRANSITIONS` : seule une transition
@@ -1508,6 +1520,14 @@ def change_lifecycle_status(document, target_status, *, user):
                 f"Le document est déjà au statut « {doc.statut} »."
             )
         autorisees = LIFECYCLE_TRANSITIONS.get(doc.statut, set())
+        # ADOC14 — « revue → approuvé » est la DÉCISION d'une demande
+        # d'approbation (approve_demande), jamais un geste cycle-vie direct.
+        from .models import LIFECYCLE_APPROUVE as _APPROUVE
+        from .models import LIFECYCLE_REVUE as _REVUE
+        if (target_status == _APPROUVE and doc.statut == _REVUE
+                and not via_approbation):
+            raise ValueError(
+                "L'approbation passe par une demande d'approbation.")
         if target_status not in autorisees:
             attendus = ', '.join(sorted(autorisees)) or 'aucun'
             raise ValueError(
@@ -1566,6 +1586,9 @@ def request_review(document, *, user, approbateur=None, commentaire=''):
             approbateur=approbateur,
             statut=APPROBATION_EN_ATTENTE,
             commentaire=commentaire or '',
+            # ADOC14 — la version relue (dernière version à la demande).
+            version=(DocumentVersion.objects.filter(document=doc)
+                     .order_by('-version', '-id').first()),
         )
         # Met le document « en revue » s'il est encore brouillon (transition
         # GED17 réutilisée — on ne duplique pas la machine à états).
@@ -1597,6 +1620,7 @@ def _decide_demande(demande, *, user, statut_cible, commentaire=''):
         if dem.statut != APPROBATION_EN_ATTENTE:
             raise ValueError(
                 f"La demande est déjà « {dem.statut} » — décision impossible.")
+        _assert_peut_decider(dem, user)
         dem.statut = statut_cible
         dem.approbateur = user
         dem.decision_le = timezone.now()
@@ -1610,6 +1634,20 @@ def _decide_demande(demande, *, user, statut_cible, commentaire=''):
     demande.decision_le = dem.decision_le
     demande.commentaire = dem.commentaire
     return dem
+
+
+def _assert_peut_decider(demande, user):
+    """ADOC14 — seul l'approbateur DÉSIGNÉ de l'étape courante (ou un admin)
+    tranche une demande ; JAMAIS le demandeur, admin compris. Sans
+    approbateur désigné, tout décideur autorisé par la vue (hors demandeur)."""
+    if demande.demandeur_id is not None and demande.demandeur_id == user.pk:
+        raise PermissionError(
+            "Le demandeur ne peut pas approuver sa propre demande.")
+    est_admin = getattr(user, 'is_admin_role', False) or user.is_superuser
+    if (demande.approbateur_id is not None
+            and demande.approbateur_id != user.pk and not est_admin):
+        raise PermissionError(
+            "Ce n'est pas votre étape d'approbation.")
 
 
 def approve_demande(demande, *, user, commentaire=''):
@@ -1630,7 +1668,8 @@ def approve_demande(demande, *, user, commentaire=''):
         commentaire=commentaire)
     document = dem.document
     if document.statut == LIFECYCLE_REVUE:
-        change_lifecycle_status(document, LIFECYCLE_APPROUVE, user=user)
+        change_lifecycle_status(document, LIFECYCLE_APPROUVE, user=user,
+                                via_approbation=True)
     return dem
 
 
@@ -5427,6 +5466,8 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
     from django.contrib.auth import get_user_model
     from django.utils import timezone as _tz
 
+    from .models import APPROBATION_EN_ATTENTE, DemandeApprobation
+
     try:
         chaine = demande.chaine_approbation
     except Exception:
@@ -5434,6 +5475,29 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
     if chaine is None:
         return approve_demande(demande, user=user, commentaire=commentaire)
 
+    # ADOC14 — sous verrou de ligne : seul l'approbateur de l'étape COURANTE
+    # (ou un admin) avance la chaîne, jamais le demandeur ; deux décisions
+    # concurrentes ne valident pas deux fois la même étape.
+    if demande.company_id != user.company_id:
+        raise PermissionError("Demande inaccessible.")
+    with transaction.atomic():
+        demande = (DemandeApprobation.objects.select_for_update()
+                   .get(pk=demande.pk))
+        if demande.statut != APPROBATION_EN_ATTENTE:
+            raise ValueError(
+                f"La demande est déjà « {demande.statut} » — décision "
+                f"impossible.")
+        _assert_peut_decider(demande, user)
+        chaine = type(chaine).objects.select_for_update().get(pk=chaine.pk)
+        return _avancer_chaine_verrouillee(
+            demande, chaine, user=user, commentaire=commentaire,
+            get_user_model=get_user_model, _tz=_tz)
+
+
+def _avancer_chaine_verrouillee(demande, chaine, *, user, commentaire,
+                                get_user_model, _tz):
+    """ADOC14 — corps de `avancer_chaine_approbation_ged`, appelé sous
+    verrou de ligne (demande + chaîne)."""
     etapes = list(chaine.etapes or [])
     idx = chaine.etape_courante
     if idx < len(etapes):
