@@ -17,6 +17,8 @@
 //   partDiurne         part diurne du curseur industriel (%)
 //   tensionRaccordement, repartitionMt   raccordement et répartition horaire TELLE QUE SAISIE
 //   categorie, reponses                  catégorie commerciale + réponses du questionnaire
+//   ciEntrees          CIQ125 — les ENTRÉES C&I v2 déjà mises à la forme du contrat
+//                        (`entreesCiV2` de profilCi.js).
 //   pompageEntrees     AGR130 — l'état du corps de l'aperçu pompage (forme du contrat
 //                        etude_pompage_preview.json, nombres éventuellement en texte) ;
 //                        seules les ENTRÉES v2 partent (`entreesPompageV2`).
@@ -55,12 +57,17 @@ export function projeterEtudeMarche(mode, {
   etude, choix = {}, entrees, partDiurne,
   tensionRaccordement, repartitionMt,
   categorie, reponses = {},
-  pompageEntrees, exploitation = {},
+  pompageEntrees, exploitation = {}, ciEntrees,
 } = {}) {
   if (mode === 'industriel' || mode === 'commercial') {
     const e = etude || {}
     const bloc = {
       ...choix,
+      // CIQ125 — les ENTRÉES C&I v2 (contrat `etude_ci_preview.json`,
+      // `cles_etude_params_ci_v2.entrees`) : le profil déclaré tel que tapé.
+      // Les DÉRIVÉES (`etude_ci`, `production_figee`) sont écrites par le
+      // serveur (propriétaire `moteur_ci`), jamais par le navigateur.
+      ...(ciEntrees || {}),
       ...resoudreEntrees(entrees, nombre(e.conso_annuelle)),
       taux_autoconso: nombre(e.taux_autoconso),
       taux_couverture: nombre(e.taux_couverture),

@@ -402,7 +402,13 @@ const CLIENT_SANS_ICE = exempleContrat('crm', 'client_entreprise', 'exemple_nom_
 
 function devisCommercialSurLead(lead) {
   const rouvert = devisRouvert({ lead: lead.id })
-  return { data: { ...rouvert.data, mode_installation: 'commercial' } }
+  // CIQ125 — consommation déclarée (entrée v2) : sinon l'enregistrement C&I est refusé.
+  return {
+    data: {
+      ...rouvert.data, mode_installation: 'commercial',
+      etude_params: { ...rouvert.data.etude_params, consommation: { kwh_annuel: 60000 } },
+    },
+  }
 }
 
 describe('CIQ423 — bandeau de type du lead et rappel ICE en mode commercial', () => {

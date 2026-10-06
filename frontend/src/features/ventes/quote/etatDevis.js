@@ -32,6 +32,7 @@ import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran,
 } from '../etudePompagePreviewPur.js'
 import { echeancierVersSaisie, saisieVersEcheancier } from '../echeancierEdition.js'
+import { entreesCiV2, profilDepuisEtude } from './profilCi.js'
 
 //: Les options recommandées qu'un devis peut avoir FIGÉES (QJR524).
 const RECOS = ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
@@ -204,6 +205,13 @@ export function devisVersEtat(d) {
       creuses: r.creuses != null ? String(r.creuses) : '',
     }
   }
+  // CIQ125 — C&I : le profil déclaré se relit de ses ENTRÉES v2 (jamais
+  // des dérivées `etude_ci`), la ville du site avec lui.
+  if (mode === 'industriel' || mode === 'commercial') {
+    etat.profilCi = profilDepuisEtude(e)
+    etat.villeCi = e.site?.ville || null
+    if (e.tension === 'mt') etat.tension = 'mt'
+  }
   // QX44 — étude commerciale : catégorie + réponses.
   if (e.categorie_commerciale) {
     etat.categorieCommerciale = String(e.categorie_commerciale)
@@ -321,6 +329,14 @@ export function etatVersEcritures(etat, vif = {}) {
     categorie: etat.categorieCommerciale,
     reponses: etat.commercialAnswers || {},
     pompageEntrees: etat.mode === 'agricole' ? entreesPompageEcran(etat) : undefined,
+    ciEntrees: (etat.mode === 'industriel' || etat.mode === 'commercial') && etat.profilCi
+      ? entreesCiV2(etat.profilCi, etat.ctxCi || {
+        mode: etat.mode,
+        ville: etat.villeCi || null,
+        categorie: etat.mode === 'commercial' ? etat.categorieCommerciale : null,
+        reponses: etat.mode === 'commercial' ? etat.commercialAnswers : null,
+      })
+      : undefined,
     exploitation: {
       attestation: farm.attestation,
       saisiesEconomie: saisiesEconomiePompage(etat.saisiesEco),

@@ -81,7 +81,7 @@ beforeEach(() => {
     data: {
       id: 575, reference: 'DEV-202609-0575', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, client: 9,
       mode_installation: 'commercial', taux_tva: '20.00', remise_globale: '0',
-      etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000 },
+      etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000, consommation: { kwh_annuel: 60000 } },
       lignes: [
         { id: 1, produit: PANNEAU.id, designation: PANNEAU.nom, quantite: '20',
           prix_unitaire: '1000.00', taux_tva: '10.00', ordre: 0,

@@ -136,7 +136,14 @@ beforeEach(() => {
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
 
-const enMode = (r, mode) => ({ data: { ...r.data, mode_installation: mode } })
+// CIQ125 — un devis C&I sans consommation ni taille ne s'enregistre pas : le
+// devis rouvert porte sa consommation déclarée (entrée v2).
+const enMode = (r, mode) => ({
+  data: {
+    ...r.data, mode_installation: mode,
+    etude_params: { ...r.data.etude_params, consommation: { kwh_annuel: 60000 } },
+  },
+})
 
 const EFFECTIFS = {
   residentiel: [

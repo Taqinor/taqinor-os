@@ -35,6 +35,8 @@ import {
 import CarteFacturesElectriques from './CarteFacturesElectriques'
 // QJR637 — conso / injection / raccordement BT-MT / bloc MT : module partagé.
 import BlocEtudeReseau from './BlocEtudeReseau'
+// CIQ125 — le résultat du moteur serveur C&I, affiché tel quel.
+import CarteResultatCi from './CarteResultatCi'
 
 // QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/
 // commercial.js, module supprimé faute de consommateur de production).
@@ -55,10 +57,8 @@ export default function PanneauCommercial({
   distributeur, setDistributeur, realBillMode, setRealBillMode,
   realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
   onRealBillPaste, consoAnnuelleReelle,
-  // ── Étude d'autoconsommation + raccordement (QX50 / QXMT) ──
-  consoMensuelle, setConsoMensuelle, injectionEnabled, setInjectionEnabled,
-  tensionRaccordement, dispatchSizing, estMt, repartitionMt, setPartMt,
-  tarifMtApplique,
+  // ── CIQ125 — profil déclaré C&I + résultat du moteur serveur ──
+  profilCi, setChampCi, apercuCi, repartitionMt, setPartMt, tarifMtApplique,
   // ── Catégorie commerciale et ses questions (QX44) ──
   categorieCommerciale, setCategorieCommerciale,
   commercialAnswers, setCommercialAnswer,
@@ -76,14 +76,16 @@ export default function PanneauCommercial({
       realBillMad={realBillMad} setRealBillMad={setRealBillMad}
       realBillKwh={realBillKwh} setRealBillKwh={setRealBillKwh}
       onRealBillPaste={onRealBillPaste} consoAnnuelleReelle={consoAnnuelleReelle}
+      marcheCi
     >
       <BlocEtudeReseau
-        consoMensuelle={consoMensuelle} setConsoMensuelle={setConsoMensuelle}
-        injectionEnabled={injectionEnabled} setInjectionEnabled={setInjectionEnabled}
-        tensionRaccordement={tensionRaccordement} dispatchSizing={dispatchSizing}
-        estMt={estMt} repartitionMt={repartitionMt} setPartMt={setPartMt}
-        tarifMtApplique={tarifMtApplique} erreurConso={errors?.conso}
+        profil={profilCi} setChamp={setChampCi}
+        resolues={apercuCi?.donnees?.entrees_resolues || null}
+        erreurConso={errors?.conso}
+        repartitionMt={repartitionMt} setPartMt={setPartMt}
+        tarifMtApplique={tarifMtApplique}
       />
+      <CarteResultatCi {...(apercuCi || {})} />
 
       {/* QX44 — étude commerciale par catégorie */}
       <div className="mt-3.5">

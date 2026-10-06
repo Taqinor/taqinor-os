@@ -120,7 +120,17 @@ export function construireCorpsCi(etat) {
   if (!etat || !MODES.includes(etat.mode)) return null
   const explicite = nombreOuNull(etat.taille_explicite_kwc)
   if (!consommationExprimee(etat) && !(explicite !== null && explicite > 0)) return null
-  const e = etat
+  return normaliserCorpsCi(etat)
+}
+
+/**
+ * CIQ125 — la forme du corps SANS la garde « essentiel présent » : c'est
+ * aussi la forme des ENTRÉES C&I v2 persistées dans `etude_params`
+ * (`cles_etude_params_ci_v2.entrees`), une seule normalisation pour les deux.
+ */
+export function normaliserCorpsCi(etat) {
+  const e = etat || {}
+  const explicite = nombreOuNull(e.taille_explicite_kwc)
   const site = e.site || {}
   const toit = e.toit || {}
   const contraintes = e.contraintes || {}

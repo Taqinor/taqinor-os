@@ -29,7 +29,6 @@ import {
   // avec le « Devis automatique »).
   parametresBalayageCI,
   // QJR665 — conso de l'étude C&I = celle du balayage (barème national).
-  consoMensuelleEtudeCI,
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
@@ -201,6 +200,11 @@ import {
 } from '../../features/ventes/quote/lignesEcran'
 // QJR658 — devis ⇄ état d'écran : un module pur.
 import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/etatDevis'
+// CIQ125 — profil déclaré C&I (corps de l'aperçu serveur + entrées v2).
+import { useEtudeCiPreview } from '../../features/ventes/etudeCiPreview'
+import {
+  profilCiVide, poserProfilCi, corpsCiDepuisProfil, profilCiAncre, entreesCiV2,
+} from '../../features/ventes/quote/profilCi'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -849,6 +853,10 @@ export default function DevisGenerator({
     setMultiAccordionOpen(modeInstallation !== 'agricole')
   }, [modeInstallation])
   const [consoMensuelle, setConsoMensuelle] = useState('')
+  // CIQ125 — LE profil déclaré C&I (commercial ET industriel) : la SEULE
+  // saisie de consommation de ces marchés, tapée telle quelle (texte), mise à
+  // la forme du contrat `etude_ci_preview.json` par `quote/profilCi.js`.
+  const [profilCi, setProfilCi] = useState(profilCiVide)
   // QX44 — étude commerciale par catégorie (mode commercial). categorie +
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
   const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
@@ -989,7 +997,7 @@ export default function DevisGenerator({
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
-    tensionRaccordement, repartitionMt,
+    tensionRaccordement, repartitionMt, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -1003,7 +1011,7 @@ export default function DevisGenerator({
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
-    tensionRaccordement, repartitionMt,
+    tensionRaccordement, repartitionMt, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -1126,6 +1134,7 @@ export default function DevisGenerator({
       dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: d.tensionRaccordement })
     }
     if (d.repartitionMt && typeof d.repartitionMt === 'object') setRepartitionMt(d.repartitionMt)
+    if (d.profilCi && typeof d.profilCi === 'object') setProfilCi({ ...profilCiVide(), ...d.profilCi })
     if (d.prixCible != null) setPrixCible(d.prixCible)
     if (d.remiseMax != null) setRemiseMax(d.remiseMax)
     if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
@@ -1463,6 +1472,7 @@ export default function DevisGenerator({
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)
+
 
   // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
   // les deux optimiseurs divergent, sinon `roi` (identique par construction).
@@ -1901,6 +1911,39 @@ export default function DevisGenerator({
     produits, quoteLogic, marquesActives, distributeur, distributeurChoisi,
     categorieCommerciale, consoAnnuelleReelle, villeCalculLead, selectedLead?.distributeur])
 
+  // ── CIQ125 — profil déclaré C&I → aperçu du moteur serveur, en direct ──
+  // Le corps part tel que tapé (aucun calcul, aucun défaut) ; le lead et le
+  // devis voyagent pour que le serveur résolve ce qui n'est pas saisi
+  // (`entrees_resolues`, priorité corps > devis > lead). AUCUN appel hors C&I.
+  const marcheCi = modeInstallation === 'commercial' || modeInstallation === 'industriel'
+  const ctxProfilCi = {
+    mode: modeInstallation,
+    lead: leadId ? Number(leadId) : null,
+    devis: editId ? Number(editId) : null,
+    ville: villeCalculLead || null,
+    categorie: modeInstallation === 'commercial' && categorieCommerciale !== CATEGORIE_NON_PRECISEE
+      ? categorieCommerciale : null,
+    reponses: modeInstallation === 'commercial' ? commercialAnswers : null,
+  }
+  const corpsCi = marcheCi ? corpsCiDepuisProfil(profilCi, ctxProfilCi) : null
+  const apercuCi = useEtudeCiPreview(corpsCi)
+  const resoluesCi = apercuCi.donnees?.entrees_resolues || {}
+  // Consommation connue : saisie dans le profil (ou taille explicite), ou
+  // reprise de la fiche lead par le serveur (valeur résolue non vide).
+  const consoCiConnue = profilCiAncre(profilCi)
+    || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur]
+      .some((v) => (Array.isArray(v) ? v.some((x) => Number(x) > 0) : Number(v) > 0))
+  const setChampCi = (chemin, valeur) => {
+    setProfilCi((p) => poserProfilCi(p, chemin, valeur))
+    // Transition (retirée avec le moteur C&I de l'écran, CIQ126) : la tension
+    // et la revente déclarées alimentent encore l'étude locale.
+    if (chemin === 'tension') {
+      dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: valeur === 'mt' ? 'mt' : 'bt' })
+      if (valeur !== 'mt') setInjectionEnabled(false)
+    }
+    if (chemin === 'revente') setInjectionEnabled(Boolean(valeur))
+  }
+
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
   // dès qu'il a répondu pour ce contexte ; repli local (même balayage
@@ -2280,6 +2323,8 @@ export default function DevisGenerator({
       pose(etat.pompe.debit, setPompeDebit)
       if (etat.pompageSaisie) setPompageSaisie(etat.pompageSaisie)
       pose(etat.consoMensuelle, setConsoMensuelle)
+      // CIQ125 — le profil déclaré C&I se relit de ses ENTRÉES v2.
+      pose(etat.profilCi, setProfilCi)
       pose(etat.distributeur, setDistributeur)
       pose(etat.distributeurChoisi, setDistributeurChoisi)
       pose(etat.monthly, setMonthly)
@@ -3371,10 +3416,12 @@ export default function DevisGenerator({
     const e = {}
     // QJR580 — en édition, le devis a déjà son client (lecture seule).
     if (!editId && !clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
-    // L'étude industrielle exige la consommation réelle du client
-    if (modeInstallation === 'industriel' && !(consoKwhDerivee > 0)) {
-      e.conso = 'Mode industriel : renseignez la consommation mensuelle (kWh) '
-        + 'ou les factures électriques — l\'étude en dépend.'
+    // CIQ125 — commercial ET industriel : sans consommation (saisie, ou
+    // reprise de la fiche lead par le serveur) ni taille explicite,
+    // l'enregistrement est refusé SOUS le champ.
+    if (marcheCi && !consoCiConnue) {
+      e.conso = 'Renseignez la consommation du site (12 mois, total annuel ou '
+        + 'factures) ou une taille explicite — l\'étude en dépend.'
     }
     // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026) —
     // le kWh mensuel DÉCLARÉ sur la fiche du lead (celui que le serveur chiffre
@@ -3642,6 +3689,7 @@ export default function DevisGenerator({
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
     lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
     partDiurne: dayUsage, tension: tensionRaccordement, repartitionMt,
+    profilCi, ctxCi: ctxProfilCi,
     // QJR575 — la sentinelle « Non précisée » se persiste null.
     categorieCommerciale: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
     commercialAnswers,
@@ -3987,12 +4035,17 @@ export default function DevisGenerator({
   // dérivation des factures quand le champ d'étude est vide : sinon validate()
   // bloquait un devis industriel où seule elle était remplie. La souveraineté
   // COUV-HOR (realBillSaisi, entreesReellesEcran) reste intacte.
-  const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
-    || (realBillSaisi && consoAnnuelleReelle > 0 ? Math.round(consoAnnuelleReelle / 12) : 0)
-    || (facturesSaisies ? consoMensuelleEtudeCI({
-      factures: monthly, mode: modeInstallation,
-      distributeurDeclare: distributeurChoisi ? distributeur : selectedLead?.distributeur,
-    }) : 0)
+  // CIQ125 (transition, retirée avec l'étude locale par CIQ126) : en C&I la
+  // seule saisie est le profil déclaré — sa moyenne mensuelle nourrit encore
+  // l'étude locale jusqu'à sa suppression.
+  // CIQ125 (TRANSITION — retirée avec l'étude locale par CIQ126) : en C&I la
+  // seule saisie est le profil déclaré ; sa moyenne mensuelle nourrit encore
+  // l'étude locale ci-dessous jusqu'à sa suppression.
+  const consoProfil = marcheCi ? entreesCiV2(profilCi).consommation : null
+  const consoKwhDerivee = !consoProfil ? 0
+    : Array.isArray(consoProfil.kwh_mensuels)
+      ? consoProfil.kwh_mensuels.reduce((s, v) => s + (v || 0), 0) / 12
+      : (consoProfil.kwh_annuel || 0) / 12
 
   // QJR568 — les deux études C&I (persistées) au kWc FACTURÉ des lignes.
   const etudeIndustrielle = (modeInstallation === 'industriel' && kwpLignes > 0
@@ -4111,10 +4164,9 @@ export default function DevisGenerator({
     onRealBillPaste, consoAnnuelleReelle,
   }
   // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.
+  // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
-    consoMensuelle, setConsoMensuelle, injectionEnabled, setInjectionEnabled,
-    tensionRaccordement, dispatchSizing, estMt, repartitionMt, setPartMt,
-    tarifMtApplique,
+    profilCi, setChampCi, apercuCi, repartitionMt, setPartMt, tarifMtApplique,
   }
 
   return (

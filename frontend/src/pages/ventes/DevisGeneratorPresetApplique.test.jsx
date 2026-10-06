@@ -6,7 +6,7 @@
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorPresetApplique.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -165,6 +165,8 @@ describe('QJR546 — un modèle appliqué remplace les lignes à l’écran', ()
     await userEvent.click(await screen.findByRole('button', { name: 'Appliquer' }))
     await waitFor(() => expect(avertir).toHaveBeenCalled())
     expect(avertir.mock.calls.at(-1)[0]).toMatch(/Panneau archivé 400W/)
+    // CIQ125 — un devis industriel exige une consommation ou une taille explicite.
+    fireEvent.change(await screen.findByLabelText(/Taille explicite/), { target: { value: '10' } })
 
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
     await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())

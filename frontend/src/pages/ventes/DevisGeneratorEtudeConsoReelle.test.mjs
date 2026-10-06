@@ -32,13 +32,11 @@ test('QJR34/QJR665 — consoKwhDerivee ne retombe sur les factures que si factur
   const idx = DG.indexOf('const consoKwhDerivee =')
   assert.ok(idx > -1, 'consoKwhDerivee introuvable')
   const bloc = DG.slice(idx, idx + 420)
-  // QJR582 — la facture réelle saisie (realBillSaisi) s'intercale AVANT la
-  // dérivation des factures ; celle-ci exige toujours facturesSaisies.
-  // QJR665 — la dérivation des factures est celle du balayage (barème
-  // national, consoMensuelleEtudeCI), plus jamais moyenne ÷ prix kWh.
-  assert.match(bloc,
-    /const consoKwhDerivee = \(parseFloat\(consoMensuelle\) \|\| 0\)\s*\n\s*\|\| \(realBillSaisi && consoAnnuelleReelle > 0 \? Math\.round\(consoAnnuelleReelle \/ 12\) : 0\)\s*\n\s*\|\| \(facturesSaisies \? consoMensuelleEtudeCI\(\{\s*\n\s*factures: monthly,/,
-    'consoKwhDerivee doit exiger facturesSaisies avant de retomber sur les factures')
+  // CIQ125 — en C&I la SEULE source est le profil déclaré (entrées v2) :
+  // jamais les factures d'exemple ni la facture réelle résidentielle.
+  assert.match(bloc, /const consoKwhDerivee = !consoProfil \? 0/,
+    'consoKwhDerivee ne lit que le profil déclaré C&I')
+  assert.doesNotMatch(bloc, /monthly|DEFAULT_MONTHLY_BILLS/)
   assert.doesNotMatch(DG, /avgBill \/ quoteLogic\.kwhPrice/)
 })
 

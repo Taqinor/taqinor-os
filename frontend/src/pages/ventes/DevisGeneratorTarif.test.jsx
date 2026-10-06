@@ -121,11 +121,12 @@ async function setupIndustriel() {
   renderGenerator()
   await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
   fireEvent.click(screen.getByRole('radio', { name: /Industriel/ }))
-  // `Consommation mensuelle` n'existe QUE en industriel/commercial : l'attendre
-  // prouve que la bascule de marché a bien eu lieu avant la suite.
-  fireEvent.change(await screen.findByLabelText(/Consommation mensuelle/), {
-    target: { value: '20000' },
-  })
+  // CIQ125 — le profil déclaré C&I (12 mois en kWh) n'existe QUE en
+  // industriel/commercial : l'attendre prouve que la bascule a eu lieu.
+  await screen.findByTestId('ci-profil')
+  for (let i = 0; i < 12; i += 1) {
+    fireEvent.change(document.querySelector(`#gen-ci-kwh-${i}`), { target: { value: '20000' } })
+  }
   fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), {
     target: { value: '100' },
   })
@@ -141,7 +142,7 @@ describe('QXMT — étude industrielle en moyenne tension', () => {
 
   it('MT sans répartition horaire : économies OMISES + motif explicite', async () => {
     await setupIndustriel()
-    fireEvent.click(screen.getByRole('radio', { name: /Moyenne tension/ }))
+    fireEvent.change(screen.getByTestId('gen-tension'), { target: { value: 'mt' } })
     expect(await screen.findByTestId('gen-mt-block')).toBeInTheDocument()
     // le motif est affiché, la carte « Économies » disparaît (pas de « 0 »)
     expect(await screen.findByTestId('etude-mt-motif')).toBeInTheDocument()
@@ -151,7 +152,7 @@ describe('QXMT — étude industrielle en moyenne tension', () => {
 
   it('MT avec répartition : tarif MT sourcé affiché et économies rétablies', async () => {
     await setupIndustriel()
-    fireEvent.click(screen.getByRole('radio', { name: /Moyenne tension/ }))
+    fireEvent.change(screen.getByTestId('gen-tension'), { target: { value: 'mt' } })
     await screen.findByTestId('gen-mt-block')
     fireEvent.change(screen.getByTestId('gen-mt-pointe'), { target: { value: '20' } })
     fireEvent.change(screen.getByTestId('gen-mt-pleines'), { target: { value: '40' } })
@@ -166,7 +167,7 @@ describe('QXMT — étude industrielle en moyenne tension', () => {
 
   it('les champs MT n\'imposent aucune contrainte de saisie (step any, pas de max)', async () => {
     await setupIndustriel()
-    fireEvent.click(screen.getByRole('radio', { name: /Moyenne tension/ }))
+    fireEvent.change(screen.getByTestId('gen-tension'), { target: { value: 'mt' } })
     for (const key of ['pointe', 'pleines', 'creuses']) {
       const input = await screen.findByTestId(`gen-mt-${key}`)
       expect(input).toHaveAttribute('step', 'any')
