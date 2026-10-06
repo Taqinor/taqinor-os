@@ -2772,8 +2772,77 @@ def esign_provider_name():
         or SIGNATURE_PROVIDER_AUCUN
 
 
+def url_publique_signature(jeton, mode='demande', *, request=None):
+    """ADOC63 — URL ABSOLUE de la cérémonie publique de signature, sur
+    l'origine de l'ERP (UNE seule fabrique pour tous les envois).
+
+    `mode` : 'demande' → `/ged/signature/<jeton>/` (mono, jeton de la demande) ;
+    'signataire' → `/ged/signataire/<jeton>/` (circuit multi, jeton PROPRE au
+    destinataire). Base : `settings.PUBLIC_BASE_URL` (origine de l'ERP, déjà lue
+    par les liens publics ventes) ; repli `request.build_absolute_uri`.
+    JAMAIS `PUBLIC_SITE_URL` (site Astro, où ces routes n'existent pas).
+    Renvoie '' si aucune base n'est connue (l'appelant n'envoie alors aucun
+    lien relatif)."""
+    from django.conf import settings
+    segment = 'signataire' if mode == 'signataire' else 'signature'
+    chemin = f'/ged/{segment}/{jeton}/'
+    base = (getattr(settings, 'PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
+    if base:
+        return f'{base}{chemin}'
+    if request is not None:
+        try:
+            return request.build_absolute_uri(chemin)
+        except Exception:  # pragma: no cover - requête sans hôte exploitable.
+            return ''
+    return ''
+
+
+def _envoyer_lien_signature(email, nom, demande, lien, *, relance=False,
+                            pour_signer=True):
+    """ADOC63 — Envoie (best-effort) le lien ABSOLU de cérémonie à un
+    destinataire. Sans lien absolu (aucune base connue), AUCUN mail ne part
+    (avertissement journalisé) — jamais un lien relatif. Renvoie True si
+    envoyé."""
+    if not email:
+        return False
+    if not lien:
+        logger.warning(
+            'ADOC63 — demande de signature %s : aucune base publique '
+            '(PUBLIC_BASE_URL) ni requête, lien non envoyé à %s.',
+            demande.pk, email)
+        return False
+    try:
+        from django.conf import settings
+        from django.core.mail import send_mail
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        sujet = (
+            f'Relance — document à signer : {demande.document.nom}'
+            if relance else f'Document à signer : {demande.document.nom}')
+        corps = (
+            f'Bonjour {nom},\n\n'
+            f'Un document « {demande.document.nom} » requiert votre '
+            f'{"signature" if pour_signer else "attention"}.\n'
+            f'Lien : {lien}\n\n'
+            f"Cordialement,\nL'équipe {_nom_societe(demande.company)}".rstrip()
+        )
+        send_mail(sujet, corps, from_email, [email], fail_silently=False)
+        return True
+    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
+        logger.warning('ADOC63: envoi du lien de signature échoué : %s', exc)
+        return False
+
+
+def notifier_demande_signature(demande, *, request=None, relance=False):
+    """ADOC63 — Notifie le signataire d'une demande MONO (jeton de la
+    demande) avec son lien absolu de cérémonie."""
+    return _envoyer_lien_signature(
+        demande.signataire_email, demande.signataire_nom, demande,
+        url_publique_signature(demande.token, 'demande', request=request),
+        relance=relance)
+
+
 def demander_signature(document, *, signataire_nom, signataire_email,
-                       company, created_by=None):
+                       company, created_by=None, notifier=True, request=None):
     """GED30 — Demande une signature électronique sur un document (STUB no-op).
 
     WIR138 — POINT DE BASCULE VERS LE SOCLE CANONIQUE. ``core.esign`` est le
@@ -2798,6 +2867,11 @@ def demander_signature(document, *, signataire_nom, signataire_email,
     founder), c'est ICI que l'appel fournisseur serait fait (squelette isolé
     ci-dessous, jamais exécuté tant qu'aucun provider concret n'est importé) et
     `provider`/`provider_ref` seraient renseignés.
+
+    ADOC63 — `notifier=True` (défaut) envoie au signataire le lien ABSOLU de
+    sa cérémonie (`url_publique_signature`) pour TOUS les appelants (création,
+    opération par lot, règle de dossier, envoi en masse) ; le circuit multi
+    passe `notifier=False` (il notifie chaque destinataire avec SON jeton).
 
     Renvoie la `DemandeSignatureDocument` créée.
     """
@@ -2827,7 +2901,7 @@ def demander_signature(document, *, signataire_nom, signataire_email,
                 signataire_email=signataire_email,
             ) or ''
 
-    return DemandeSignatureDocument.objects.create(
+    demande = DemandeSignatureDocument.objects.create(
         company=document.company,
         document=document,
         signataire_nom=(signataire_nom or '').strip(),
@@ -2837,6 +2911,9 @@ def demander_signature(document, *, signataire_nom, signataire_email,
         provider_ref=provider_ref,
         created_by=created_by,
     )
+    if notifier:
+        notifier_demande_signature(demande, request=request)
+    return demande
 
 
 def marquer_signe(demande, *, provider_ref=None, date_signature=None):
@@ -3027,42 +3104,25 @@ def selectors_latest_version(document):
 
 # ── XGED2 — Circuit multi-signataires (séquentiel/parallèle) ────────────────
 
-def _send_signataire_email(signataire, demande, *, relance=False):
+def _send_signataire_email(signataire, demande, *, relance=False,
+                           request=None):
     """XGED2 — Envoie (best-effort) le lien de signature à un destinataire.
 
-    Réutilise `django.core.mail.send_mail` (pattern `ventes._send_otp_email`) —
-    backend console en local, jamais bloquant : toute erreur d'envoi est
-    journalisée mais ne casse jamais le flux de notification/relance."""
-    if not signataire.email:
-        return False
-    try:
-        from django.conf import settings
-        from django.core.mail import send_mail
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
-        sujet = (
-            f'Relance — document à signer : {demande.document.nom}'
-            if relance else f'Document à signer : {demande.document.nom}')
-        corps = (
-            f'Bonjour {signataire.nom},\n\n'
-            f'Un document « {demande.document.nom} » requiert votre '
-            f'{"attention" if signataire.role != "signataire" else "signature"}.\n'
-            f'Lien : /ged/signature/{signataire.token}/\n\n'
-            f"Cordialement,\nL'équipe {_nom_societe(demande.company)}".rstrip()
-        )
-        send_mail(sujet, corps, from_email, [signataire.email], fail_silently=False)
-        return True
-    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
-        import logging
-        logging.getLogger(__name__).warning(
-            'XGED2: envoi email signataire échoué : %s', exc)
-        return False
+    ADOC63 — le lien est l'URL ABSOLUE de SA cérémonie
+    (`/ged/signataire/<jeton du signataire>/`, `url_publique_signature`) —
+    jamais le jeton de la demande globale, jamais un chemin relatif. Backend
+    console en local, jamais bloquant."""
+    return _envoyer_lien_signature(
+        signataire.email, signataire.nom, demande,
+        url_publique_signature(signataire.token, 'signataire', request=request),
+        relance=relance, pour_signer=signataire.role == 'signataire')
 
 
 @transaction.atomic
 def creer_demande_multi_signataires(document, *, destinataires, company,
                                     routage=None, expires_at=None,
                                     relance_cadence_jours=None,
-                                    created_by=None):
+                                    created_by=None, request=None):
     """XGED2 — Crée une demande de signature à PLUSIEURS destinataires.
 
     `destinataires` : liste ordonnée de dicts
@@ -3099,7 +3159,10 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
         signataire_nom=premier.get('nom', ''),
         signataire_email=premier.get('email', ''),
         company=company,
-        created_by=created_by)
+        created_by=created_by,
+        # ADOC63 — jamais le lien de la demande globale : chaque destinataire
+        # reçoit SON lien (`notifier_prochains_signataires`).
+        notifier=False)
     demande.routage = routage or ROUTAGE_SEQUENTIEL
     demande.expires_at = expires_at
     demande.relance_cadence_jours = relance_cadence_jours
@@ -3122,11 +3185,11 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
             role=dest.get('role', ROLE_SIGNATAIRE),
             role_signataire=role_signataire,
         )
-    notifier_prochains_signataires(demande)
+    notifier_prochains_signataires(demande, request=request)
     return demande
 
 
-def notifier_prochains_signataires(demande):
+def notifier_prochains_signataires(demande, *, request=None):
     """XGED2 — Notifie les destinataires dont c'est le tour (routage-aware).
 
     Parallèle : notifie tous les `SignataireDemande` encore `en_attente`.
@@ -3163,7 +3226,7 @@ def notifier_prochains_signataires(demande):
         signataire.statut = SIGNATAIRE_NOTIFIE
         signataire.notifie_le = now
         signataire.save(update_fields=['statut', 'notifie_le', 'updated_at'])
-        _send_signataire_email(signataire, demande)
+        _send_signataire_email(signataire, demande, request=request)
         notifies.append(signataire)
     return notifies
 

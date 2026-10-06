@@ -588,18 +588,49 @@ function DemanderSignatureDialog({ documents, preselect, onClose, onDone }) {
   const [nom, setNom] = useState('')
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
+  // ADOC63 — lien ABSOLU de la cérémonie renvoyé par le serveur
+  // (`lien_signature`) : l'émetteur peut le copier après création.
+  const [lien, setLien] = useState('')
 
   const submit = async () => {
     if (!documentId) { toast.error('Sélectionnez un document.'); return }
     if (!nom.trim() || !email.trim()) { toast.error('Nom et email du signataire requis.'); return }
     setSaving(true)
     try {
-      await gedApi.createDemandeSignature({
+      const res = await gedApi.createDemandeSignature({
         document: documentId, signataire_nom: nom.trim(), signataire_email: email.trim(),
       })
       toast.success('Demande de signature créée.')
-      onDone()
+      if (res?.data?.lien_signature) setLien(res.data.lien_signature)
+      else onDone()
     } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  const copier = async () => {
+    try {
+      await navigator.clipboard.writeText(lien)
+      toast.success('Lien de signature copié.')
+    } catch {
+      toast.error('Copie impossible : sélectionnez le lien et copiez-le.')
+    }
+  }
+
+  if (lien) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && onDone()}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Demande de signature créée</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Le signataire a reçu ce lien par email. Vous pouvez aussi le lui transmettre.
+          </p>
+          <Input readOnly value={lien} aria-label="Lien de signature" />
+          <DialogFooter>
+            <Button variant="outline" onClick={copier}>Copier le lien de signature</Button>
+            <Button onClick={onDone}>Terminer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   return (

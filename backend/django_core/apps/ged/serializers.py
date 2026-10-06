@@ -660,6 +660,10 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
         source='created_by.username', read_only=True, default=None)
 
     signataires = serializers.SerializerMethodField()
+    # ADOC63 — lien ABSOLU de la cérémonie (« Copier le lien de signature »).
+    # Mono : jeton de la demande ; circuit multi : None (chaque destinataire a
+    # SON lien, exposé sur `signataires[].lien_signature`).
+    lien_signature = serializers.SerializerMethodField()
 
     class Meta:
         model = DemandeSignatureDocument
@@ -671,7 +675,7 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             # XGED1 — lien public + preuves de cérémonie : TOUS en lecture
             # seule via l'API (posés côté serveur uniquement, jamais mutés par
             # une requête authentifiée après coup).
-            'token', 'expires_at', 'consentement_explicite',
+            'token', 'lien_signature', 'expires_at', 'consentement_explicite',
             'adresse_ip', 'user_agent', 'hash_contenu',
             'signature_texte', 'signature_tracee',
             'motif_refus', 'refuse_le',
@@ -698,7 +702,13 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
 
     def get_signataires(self, obj):
         return SignataireDemandeSerializer(
-            obj.signataires.all(), many=True).data
+            obj.signataires.all(), many=True, context=self.context).data
+
+    def get_lien_signature(self, obj):
+        if obj.signataires.exists():
+            return None
+        return services.url_publique_signature(
+            obj.token, 'demande', request=self.context.get('request')) or None
 
 
 class ChampSignatureSerializer(serializers.ModelSerializer):
@@ -914,6 +924,8 @@ class SignataireDemandeSerializer(serializers.ModelSerializer):
         source='role_signataire.couleur', read_only=True, default=None)
     role_auth_extra = serializers.CharField(
         source='role_signataire.auth_extra', read_only=True, default=None)
+    # ADOC63 — lien ABSOLU de la cérémonie de CE destinataire.
+    lien_signature = serializers.SerializerMethodField()
 
     class Meta:
         model = SignataireDemande
@@ -921,10 +933,15 @@ class SignataireDemandeSerializer(serializers.ModelSerializer):
             'id', 'demande', 'nom', 'email', 'telephone', 'ordre', 'role',
             'role_signataire', 'role_signataire_nom', 'role_couleur',
             'role_auth_extra', 'statut', 'notifie_le', 'derniere_relance_le',
-            'nb_relances', 'date_action', 'motif_refus', 'created_at',
-            'updated_at',
+            'nb_relances', 'date_action', 'motif_refus', 'lien_signature',
+            'created_at', 'updated_at',
         ]
         read_only_fields = fields
+
+    def get_lien_signature(self, obj):
+        return services.url_publique_signature(
+            obj.token, 'signataire',
+            request=self.context.get('request')) or None
 
 
 class ModeleDocumentSerializer(serializers.ModelSerializer):

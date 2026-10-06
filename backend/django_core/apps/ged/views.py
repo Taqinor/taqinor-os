@@ -2678,7 +2678,10 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 signataire_nom=nom,
                 signataire_email=email,
                 company=request.user.company,
-                created_by=request.user)
+                created_by=request.user,
+                # ADOC63 — notifie le signataire avec le lien ABSOLU (base
+                # publique, repli sur l'origine de la requête).
+                request=request)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -2792,7 +2795,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 routage=request.data.get('routage'),
                 expires_at=request.data.get('expires_at'),
                 relance_cadence_jours=request.data.get('relance_cadence_jours'),
-                created_by=request.user)
+                created_by=request.user, request=request)
         except (PermissionError, ValueError) as exc:
             code = (status.HTTP_403_FORBIDDEN
                     if isinstance(exc, PermissionError)
