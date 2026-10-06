@@ -203,8 +203,7 @@ def build(ctx):
     <div class="c1c-note">
       L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur
       la consommation de <b>journée</b> de votre établissement. {note_pointe}
-    </div>
-    {inv_html}
+    </div>{inv_html}
   </div>
 </div>
 """
