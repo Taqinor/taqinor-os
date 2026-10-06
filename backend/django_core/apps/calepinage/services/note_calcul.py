@@ -453,6 +453,10 @@ def _pied_de_page(provenance):
         termes.append('entrée %s' % provenance['hash_entree'][:12])
     if provenance.get('version_moteur'):
         termes.append('moteur %s' % provenance['version_moteur'])
+    if provenance.get('version_simulation'):
+        # ACAL145 — la version du modèle de simulation (en-tête
+        # ``resultat.simulation``), quand le livrable la porte.
+        termes.append('simulation %s' % provenance['version_simulation'])
     if provenance.get('calcule_le'):
         termes.append('calculé le %s' % provenance['calcule_le'])
     return ' · '.join(termes)

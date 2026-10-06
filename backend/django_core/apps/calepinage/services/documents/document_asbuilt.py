@@ -109,10 +109,16 @@ def construire_document(calepinage, *, ecarts=None, photos=None,
 
         site = selectors.contexte_geographique(calepinage)
     if provenance is None:
-        provenance = {
-            'hash_entree': getattr(calepinage, 'layout_hash', '') or '',
-            'version_moteur': getattr(calepinage, 'version_moteur', '') or '',
-        }
+        # ACAL145 — l'empreinte de la SIMULATION enregistrée
+        # (``resultat.simulation``), lue par ``provenance_document`` — plus
+        # ``layout_hash`` imprimé sous le nom ``hash_entree``.
+        from ..provenance_document import provenance_de_simulation
+
+        provenance = provenance_de_simulation(
+            getattr(calepinage, 'resultat', None))
+        if not provenance['version_moteur']:
+            provenance['version_moteur'] = (
+                getattr(calepinage, 'version_moteur', '') or '')
     if etat is None:
         etat = etat_de_conception(calepinage)
 
