@@ -532,7 +532,15 @@ def rafraichir_etudes_du_devis(devis, *, force=False):
         # CIQ119 — commercial / industriel : l'étude suit les LIGNES facturées
         # (taille donnée, aucun redimensionnement) ; no-op sur tout autre marché.
         'etude_ci': _rafraichir_etude_ci(devis, force=force),
+        # AGR123 — agricole : l'étude pompage suit la pompe FACTURÉE (kW
+        # plaque, courbe, variateur, panneaux des lignes) ; no-op ailleurs.
+        'etude_pompage': _rafraichir_etude_pompage(devis, force=force),
     }
+
+
+def _rafraichir_etude_pompage(devis, *, force=False):
+    from apps.ventes.domain.pompage import rafraichir_etude_pompage_devis
+    return rafraichir_etude_pompage_devis(devis, force=force)
 
 
 def _rafraichir_etude_ci(devis, *, force=False):
