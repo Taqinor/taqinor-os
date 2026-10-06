@@ -220,6 +220,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'reserver_stock',
             # CIQ628 — levée d'une réserve du chantier.
             'lever_reserve',
+            # CIQ629 — réception définitive.
+            'reception_definitive',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1265,6 +1267,26 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             reserve, request.user,
             resolution=(request.data.get('resolution') or '').strip())
         return Response(reserve_contrat(reserve))
+
+    # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──
+    @action(detail=True, methods=['post'], url_path='reception-definitive',
+            permission_classes=[IsResponsableOrAdmin])
+    def reception_definitive(self, request, pk=None):
+        """CIQ629 — prononce la réception définitive (Directeur ou
+        Responsable). Refusée (400 FR listant les réserves) avant la
+        provisoire ou tant qu'une réserve est ouverte. Rend le bloc
+        ``reception`` du contrat ``recette_ci.json``."""
+        from ..services import (
+            ReceptionDefinitiveRefusee, prononcer_reception_definitive,
+            reception_contrat,
+        )
+        inst = self.get_object()
+        try:
+            prononcer_reception_definitive(inst, request.user)
+        except ReceptionDefinitiveRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(reception_contrat(inst))
 
     # ── CH4 — pack de remise client (handover) ──────────────────────────────
     @action(detail=True, methods=['get', 'post'], url_path='pack-remise',

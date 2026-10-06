@@ -2021,6 +2021,81 @@ def lever_reserve_chantier(reserve, user, *, resolution=''):
     return reserve
 
 
+# ── CIQ629 — réception provisoire puis définitive ──────────────────────────
+RAISON_DEFINITIVE_SANS_PROVISOIRE = (
+    "Réception définitive impossible : la réception provisoire n'est pas "
+    "prononcée.")
+
+
+class ReceptionDefinitiveRefusee(Exception):
+    """CIQ629 — la réception définitive est refusée (raison FR)."""
+
+
+def date_definitive_prevue(installation):
+    """CIQ629 — provisoire + ``delai_reception_definitive_mois`` (réglage
+    société CIQ622, sans défaut) ; ``None`` si l'un des deux manque."""
+    if installation.date_reception is None:
+        return None
+    from dateutil.relativedelta import relativedelta
+    from apps.parametres.models import CompanyProfile
+    if installation.company_id is None:
+        return None
+    profil = CompanyProfile.get(installation.company)
+    delai = profil.delai_reception_definitive_mois
+    if not delai:
+        return None
+    return installation.date_reception + relativedelta(months=delai)
+
+
+def raison_refus_reception_definitive(installation):
+    """CIQ629 — raison FR qui refuse la définitive (pas de provisoire, ou
+    réserves ouvertes listées), sinon ``None``."""
+    if installation.date_reception is None:
+        return RAISON_DEFINITIVE_SANS_PROVISOIRE
+    ouvertes = reserves_ouvertes(installation)
+    if ouvertes:
+        return ("Réception définitive impossible : réserve(s) non "
+                "levée(s) : " + _descriptions_reserves(ouvertes) + ".")
+    return None
+
+
+def reception_contrat(installation):
+    """CIQ629 — bloc ``reception`` du contrat ``recette_ci.json``."""
+    def _iso(d):
+        return d.isoformat() if d else None
+    return {
+        'date_reception_provisoire': _iso(installation.date_reception),
+        'date_reception_definitive': _iso(
+            installation.date_reception_definitive),
+        'date_definitive_prevue': _iso(date_definitive_prevue(installation)),
+        'definitive_possible': (
+            installation.date_reception_definitive is None
+            and raison_refus_reception_definitive(installation) is None),
+    }
+
+
+def prononcer_reception_definitive(installation, user, *, date=None):
+    """CIQ629 — pose ``date_reception_definitive`` (journalisée) ; lève
+    :class:`ReceptionDefinitiveRefusee` avant la provisoire ou tant qu'une
+    réserve est ouverte. Aucune écriture financière ici (la partie D2 lit
+    le bloc ``reception``)."""
+    from django.utils import timezone
+
+    from . import activity
+    raison = raison_refus_reception_definitive(installation)
+    if raison:
+        raise ReceptionDefinitiveRefusee(raison)
+    if installation.date_reception_definitive is not None:
+        return installation
+    installation.date_reception_definitive = date or timezone.localdate()
+    installation.save(update_fields=['date_reception_definitive'])
+    activity.log_note(
+        installation, user,
+        "Réception définitive prononcée le "
+        f"{installation.date_reception_definitive:%d/%m/%Y}.")
+    return installation
+
+
 #: CIQ628 — refus FR d'un « conforme avec réserves » sans réserve de recette.
 RAISON_RESERVES_SANS_LISTE = (
     "« Conforme avec réserves » exige au moins une réserve de recette "

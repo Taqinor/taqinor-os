@@ -507,6 +507,9 @@ class InstallationSerializer(serializers.ModelSerializer):
             # l'entrée en CLOTURE, et à une réouverture Directeur motivée) :
             # jamais lu du corps, sinon la garde se désarme d'un PATCH.
             'cloture_verrouillee',
+            # CIQ629 — la réception définitive ne se prononce QUE par
+            # l'action `reception-definitive` (réserves toutes levées).
+            'date_reception_definitive',
         ]
 
     def validate(self, attrs):

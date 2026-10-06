@@ -264,7 +264,12 @@ class Installation(models.Model):
     duree_pose_jours = models.PositiveSmallIntegerField(null=True, blank=True)
     date_pose_reelle = models.DateField(null=True, blank=True)
     date_mise_en_service = models.DateField(null=True, blank=True)
-    date_reception = models.DateField(null=True, blank=True)
+    # CIQ629 — ``date_reception`` est la réception PROVISOIRE ; la
+    # définitive n'est prononcée qu'une fois toutes les réserves levées.
+    date_reception = models.DateField(
+        null=True, blank=True, verbose_name='Réception provisoire')
+    date_reception_definitive = models.DateField(
+        null=True, blank=True, verbose_name='Réception définitive')
     date_cloture = models.DateField(null=True, blank=True)
     # AUD326 — « Clôturé » est un ÉTAT GELÉ. Le drapeau est posé côté serveur
     # à l'entrée en CLOTURE (jamais lu du corps : `read_only_fields`) ; tant

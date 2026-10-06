@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4816, operations: 7612, components: 2207}
+counts: {paths: 4818, operations: 7614, components: 2207}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1692,6 +1692,7 @@ operations:
 - get /api/django/installations/chantiers/{id}/rapport-energie/ -> django_installations_chantiers_rapport_energie_retrieve
 - post /api/django/installations/chantiers/{id}/reactiver/ -> django_installations_chantiers_reactiver_create
 - get /api/django/installations/chantiers/{id}/readiness/ -> django_installations_chantiers_readiness_retrieve
+- post /api/django/installations/chantiers/{id}/reception-definitive/ -> django_installations_chantiers_reception_definitive_create
 - get /api/django/installations/chantiers/{id}/recette-pompage/ -> django_installations_chantiers_recette_pompage_retrieve
 - post /api/django/installations/chantiers/{id}/recette-pompage/ -> django_installations_chantiers_recette_pompage_create
 - get /api/django/installations/chantiers/{id}/recette/ -> django_installations_chantiers_recette_retrieve
@@ -5536,6 +5537,7 @@ operations:
 - get /api/v1/installations/chantiers/{id}/rapport-energie/ -> v1_installations_chantiers_rapport_energie_retrieve
 - post /api/v1/installations/chantiers/{id}/reactiver/ -> v1_installations_chantiers_reactiver_create
 - get /api/v1/installations/chantiers/{id}/readiness/ -> v1_installations_chantiers_readiness_retrieve
+- post /api/v1/installations/chantiers/{id}/reception-definitive/ -> v1_installations_chantiers_reception_definitive_create
 - get /api/v1/installations/chantiers/{id}/recette-pompage/ -> v1_installations_chantiers_recette_pompage_retrieve
 - post /api/v1/installations/chantiers/{id}/recette-pompage/ -> v1_installations_chantiers_recette_pompage_create
 - get /api/v1/installations/chantiers/{id}/recette/ -> v1_installations_chantiers_recette_retrieve

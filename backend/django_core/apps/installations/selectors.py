@@ -3025,6 +3025,22 @@ def chantier_du_client_portail_obj(company, client_id, chantier_id):
         company=company, client_id=client_id, pk=chantier_id).first()
 
 
+def reception_chantier(company, chantier_id):
+    """CIQ629 — bloc ``reception`` du contrat ``recette_ci.json`` d'un
+    chantier de la société (provisoire, définitive, date prévue,
+    définitive possible), ou ``None`` hors société. Lu par la partie D2
+    (dernier jalon, libération de la retenue) ; lecture seule."""
+    from .models import Installation
+    if company is None or not chantier_id:
+        return None
+    chantier = Installation.objects.filter(
+        company=company, pk=chantier_id).first()
+    if chantier is None:
+        return None
+    from .services import reception_contrat
+    return reception_contrat(chantier)
+
+
 def recette_pompage_portail(company, client_id, chantier_id):
     """AGR612 — la recette POMPAGE d'UN chantier du client, réduite au
     sous-objet ``vue_portail`` du contrat ``recette_pompage.json`` (lecture

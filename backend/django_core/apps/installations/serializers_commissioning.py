@@ -40,6 +40,8 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
     comparaison = serializers.SerializerMethodField()
     # CIQ628 — réserves du chantier (bloc ``reserves`` du contrat).
     reserves = serializers.SerializerMethodField()
+    # CIQ629 — bloc ``reception`` du contrat.
+    reception = serializers.SerializerMethodField()
 
     class Meta:
         model = CommissioningRecord
@@ -66,6 +68,7 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             'instruments_par_essai',
             'irradiance', 'energie', 'thermographie', 'limitation_injection',
             'decouplage', 'echantillon_iv', 'comparaison', 'reserves',
+            'reception',
             # CIQ627 — promesse figée (lecture seule).
             'promesse_figee',
         ]
@@ -189,6 +192,11 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
     def get_reserves(self, obj):
         from .services import reserves_contrat
         return reserves_contrat(obj.installation)
+
+    @extend_schema_field(serializers.DictField())
+    def get_reception(self, obj):
+        from .services import reception_contrat
+        return reception_contrat(obj.installation)
 
     def get_instrument_nom(self, obj):
         instrument = obj.instrument
