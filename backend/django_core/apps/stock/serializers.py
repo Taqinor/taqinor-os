@@ -151,6 +151,11 @@ class FournisseurSerializer(CompanyScopedRelationsMixin,
     class Meta:
         model = Fournisseur
         fields = '__all__'
+        # ASTK23 — `statut_validation` n'avance QUE par l'action admin
+        # `decider-candidature` (NTPRT25) ; `company` est posée côté serveur
+        # (perform_create) et `tiers` par le pont tiers (services) : aucun
+        # des trois ne s'écrit par PUT/PATCH.
+        read_only_fields = ['company', 'statut_validation', 'tiers']
 
     def get_nb_produits(self, obj):
         annotated = getattr(obj, 'nb_produits_annot', None)
