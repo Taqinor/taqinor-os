@@ -2662,13 +2662,16 @@ export function discountForTarget(cibleKwc, kwp, totalBrutTtc) {
   return Math.round(pct * 100) / 100
 }
 
-// Coût d'achat TTC des lignes dont le produit a un prix d'achat renseigné.
-// Retourne null si AUCUN prix d'achat n'existe (alors on n'affiche rien).
+// Coût d'achat TTC des lignes dont le produit a un prix d'achat renseigné,
+// ET le nombre de lignes CHIFFRÉES (prix de vente > 0) qui n'en ont pas
+// (AGR134) : la marge est alors PARTIELLE (le coût y est sous-estimé).
+// `cost` est null si AUCUN prix d'achat n'existe (alors on n'affiche rien).
 // Le TTC d'achat suit le taux TVA du produit (10 % panneaux, 20 % le reste).
-export function computeBuyCost(lines, produits) {
+export function computeBuyCostDetail(lines, produits) {
   const byId = new Map(produits.map(p => [String(p.id), p]))
   let cost = 0
   let any = false
+  let sansAchat = 0
   // QJR567 — même population que les totaux : ni optionnelle, ni section/note.
   for (const l of (lines || []).filter(ligneCompteDansTotaux)) {
     const p = byId.get(String(l.produit))
@@ -2676,9 +2679,16 @@ export function computeBuyCost(lines, produits) {
     if (achat > 0) {
       any = true
       cost += (parseFloat(l.quantite) || 0) * achat * (1 + tauxTvaOf(p) / 100)
+    } else if ((parseFloat(l.quantite) || 0) > 0 && (parseFloat(l.prix_unit_ttc) || 0) > 0) {
+      sansAchat += 1
     }
   }
-  return any ? Math.round(cost) : null
+  return { cost: any ? Math.round(cost) : null, sansAchat }
+}
+
+// Appelants inchangés : le seul coût (ou null).
+export function computeBuyCost(lines, produits) {
+  return computeBuyCostDetail(lines, produits).cost
 }
 
 // ── Disponibilité de l'option « avec batterie » ───────────────────────────────
