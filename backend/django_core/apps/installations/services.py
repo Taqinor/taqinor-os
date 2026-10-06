@@ -2638,14 +2638,27 @@ def assemble_handover_pieces(installation):
     docs = list(installation.inst_documents.all())
     schema = next((d for d in docs
                    if d.type_doc == 'schema_unifilaire'), None)
-    pieces.append({
-        'type': 'as_built',
-        'libelle': 'Dossier as-built / schéma unifilaire',
-        'reference': schema.titre if schema is not None else (
-            docs[0].titre if docs else None),
-        'present': bool(docs),
-        'obligatoire': True,
-    })
+    if est_chantier_industriel(installation):
+        # CIQ632 — site pro : as-built RÉEL = schéma unifilaire ou plan des
+        # chaînes dont une révision est POSTÉRIEURE à la pose réelle (le
+        # pointeur vers le schéma du devis semé à la création ne compte pas).
+        as_built = as_built_reel_ci(installation)
+        pieces.append({
+            'type': 'as_built',
+            'libelle': 'Dossier as-built / schéma unifilaire',
+            'reference': as_built.titre if as_built is not None else None,
+            'present': as_built is not None,
+            'obligatoire': True,
+        })
+    else:
+        pieces.append({
+            'type': 'as_built',
+            'libelle': 'Dossier as-built / schéma unifilaire',
+            'reference': schema.titre if schema is not None else (
+                docs[0].titre if docs else None),
+            'present': bool(docs),
+            'obligatoire': True,
+        })
 
     # ── Fiches techniques (datasheets) des équipements du parc (FG70) ──
     equipements = [eq for eq in installation.equipements.all()
@@ -2746,8 +2759,99 @@ def assemble_handover_pieces(installation):
         'obligatoire': False,
     })
 
+    if est_chantier_industriel(installation):
+        pieces.extend(pieces_remise_ci(installation, docs))
+
     complet = all(p['present'] for p in pieces if p['obligatoire'])
     return {'pieces': pieces, 'complet': complet}
+
+
+# ── CIQ632 — pack de remise C&I ─────────────────────────────────────────────
+#: Pièces C&I listées et FACULTATIVES (les rendre obligatoires = décision
+#: fondateur ou assureur).
+PIECES_CI_FACULTATIVES = (
+    'plan_chaines', 'reglages_protections', 'manuel_om',
+    'attestation_formation', 'pv_mise_sous_tension', 'note_structure',
+)
+#: Pièces exigées pour EXPLOITER en accord de raccordement ou autorisation
+#: (décret 2.25.100 art. 15) ; facultatives pour une déclaration (art. 9).
+PIECES_CI_EXPLOITATION = ('certificat_organisme_agree',
+                          'attestation_assurance')
+SOURCE_PIECES_EXPLOITATION = (
+    "décret 2.25.100 art. 15 (accord et autorisation seulement)")
+#: CIQ632 — phrase FIXE, sans chiffre, du dossier de remise d'un site
+#: raccordé sans batterie.
+PHRASE_ARRET_COUPURE = (
+    "Installation raccordée au réseau sans batterie : elle s'arrête "
+    "automatiquement pendant une coupure du réseau")
+
+
+def as_built_reel_ci(installation):
+    """CIQ632 — le document as-built RÉEL d'un site pro : un schéma
+    unifilaire ou un plan des chaînes portant une révision datée APRÈS
+    ``date_pose_reelle`` ; ``None`` sinon (pose non datée comprise)."""
+    if installation.date_pose_reelle is None:
+        return None
+    return (DocumentProjet.objects
+            .filter(installation=installation,
+                    type_doc__in=('schema_unifilaire', 'plan_chaines'),
+                    inst_revisions__date_revision__gt=(
+                        installation.date_pose_reelle))
+            .order_by('id').first())
+
+
+def regime_exige_pieces_exploitation(installation):
+    """CIQ632 — accord de raccordement ou autorisation : certificat
+    d'organisme agréé et assurance exigés (décret 2.25.100 art. 15)."""
+    regime = installation.regime_8221
+    resume = resume_dossier_8221(installation)
+    if resume.get('source') == 'dossier' and resume.get('regime'):
+        regime = resume['regime']
+    return regime in (
+        Installation.Regime8221.ACCORD_RACCORDEMENT,
+        Installation.Regime8221.AUTORISATION_ANRE)
+
+
+def pieces_remise_ci(installation, docs=None):
+    """CIQ632 — pièces C&I du pack : exploitation (obligatoires sous
+    accord/autorisation) puis pièces techniques facultatives."""
+    if docs is None:
+        docs = list(installation.inst_documents.all())
+    par_type = {}
+    for doc in docs:
+        par_type.setdefault(doc.type_doc, doc)
+    exige = regime_exige_pieces_exploitation(installation)
+    pieces = []
+    for code in PIECES_CI_EXPLOITATION + PIECES_CI_FACULTATIVES:
+        doc = par_type.get(code)
+        piece = {
+            'type': code,
+            'libelle': DocumentProjet.TypeDoc(code).label,
+            'reference': doc.titre if doc is not None else None,
+            'present': doc is not None,
+            'obligatoire': exige and code in PIECES_CI_EXPLOITATION,
+        }
+        if code in PIECES_CI_EXPLOITATION:
+            piece['source'] = SOURCE_PIECES_EXPLOITATION
+        pieces.append(piece)
+    return pieces
+
+
+def bom_avec_batterie(installation):
+    """CIQ632 — la nomenclature GELÉE contient-elle une batterie ?
+    (mot-clé aligné sur ``quote_engine/builder.py``)."""
+    return any('batter' in str((ligne or {}).get('designation') or '').lower()
+               for ligne in (installation.bom or []))
+
+
+def phrase_arret_coupure(installation):
+    """CIQ632 — la phrase fixe pour un site pro raccordé SANS batterie
+    dans sa nomenclature gelée, sinon ``None``."""
+    if (est_chantier_industriel(installation)
+            and not est_hors_reseau(installation)
+            and not bom_avec_batterie(installation)):
+        return PHRASE_ARRET_COUPURE
+    return None
 
 
 def generer_handover_pack(installation, user=None):
