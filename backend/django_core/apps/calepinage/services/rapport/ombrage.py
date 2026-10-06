@@ -89,30 +89,6 @@ def _table_orientation(ombrage_par_pan, production_par_pan):
             '</table>' % (entete, lignes))
 
 
-def _matrice_valide(roof_layout):
-    matrice = (roof_layout or {}).get('shading12x24')
-    if not (isinstance(matrice, list) and len(matrice) == 12
-            and all(isinstance(mois, list) and len(mois) == 24
-                    for mois in matrice)):
-        return None
-    return matrice
-
-
-def _table_matrice(matrice):
-    entete = '<th>Mois</th>' + ''.join(
-        '<th>%02dh</th>' % heure for heure in range(24))
-    lignes = []
-    for rang, mois in enumerate(matrice, start=1):
-        cellules = ''.join(
-            '<td class="valeur">%s</td>'
-            % (nombre_tel_que_servi(round(v, 2)) if isinstance(
-                v, (int, float)) else '—')
-            for v in mois)
-        lignes.append('<tr><td>%s</td>%s</tr>' % (rang, cellules))
-    return ('<table class="ombrage-matrice generique"><tr>%s</tr>%s</table>'
-            % (entete, ''.join(lignes)))
-
-
 def _calepinage_et_roof_layout(resultat):
     """Le calepinage QUI A PRODUIT ce résultat, relu pour SON
     ``roof_layout`` (``shading12x24`` n'est pas publié par ``resultat``,
@@ -133,20 +109,6 @@ def _calepinage_et_roof_layout(resultat):
         return None
 
 
-def _image_ombrage_data_uri(calepinage):
-    if calepinage is None:
-        return None
-    try:
-        from ..images_document import derniere_image_encodee
-
-        return derniere_image_encodee(calepinage, genre='ombrage')
-    except Exception:  # noqa: BLE001 — image omise, jamais rapport cassé
-        _logger().warning('CALX302 : relecture de la carte de chaleur '
-                          'impossible (calepinage %s)',
-                          getattr(calepinage, 'pk', None))
-        return None
-
-
 def _logger():
     import logging
 
@@ -155,7 +117,14 @@ def _logger():
 
 def html_de_section(contexte):
     """Le corps de la section ``ombrage`` (le titre est posé par
-    l'assembleur)."""
+    l'assembleur). ACAL224 — matrice et carte de chaleur viennent des
+    helpers SURVIVANTS du rapport d'ombrage (``services/rapport_ombrage``) :
+    les deux pièces impriment la même table et la même règle de fraîcheur."""
+    from ..rapport_ombrage import (
+        MOTIF_CARTE_ABSENTE, _matrice_12x24, _table_matrice,
+        html_carte_de_chaleur,
+    )
+
     resultat = contexte.get('resultat') or {}
     ombrage = resultat.get('ombrage') or {}
     ombrage_par_pan = [p for p in ombrage.get('par_pan') or ()
@@ -174,7 +143,7 @@ def html_de_section(contexte):
     calepinage = _calepinage_et_roof_layout(resultat)
     roof_layout = getattr(calepinage, 'roof_layout', None) \
         if calepinage is not None else None
-    matrice = _matrice_valide(roof_layout)
+    matrice = _matrice_12x24(roof_layout)
     if matrice is not None:
         blocs.append('<p class="grandeur">Matrice d’ombrage horaire '
                      '(12 mois × 24 h)</p>')
@@ -185,16 +154,11 @@ def html_de_section(contexte):
             'disponible : aucune ombre n’a été tracée sur ce toit, ou la '
             'matrice enregistrée est incomplète.</p>')
 
-    data_uri = (_image_ombrage_data_uri(calepinage)
-                if calepinage is not None else None)
-    if data_uri:
-        blocs.append(
-            '<p class="grandeur">Carte de chaleur (déposée depuis '
-            'l’atelier)</p><img class="ombrage-image" src="%s" '
-            'alt="Carte de chaleur d’ombrage">' % escape(data_uri, quote=True))
+    if calepinage is not None:
+        blocs.append('<p class="grandeur">Carte de chaleur (déposée depuis '
+                     'l’atelier)</p>')
+        blocs.append(html_carte_de_chaleur(calepinage))
     else:
-        blocs.append(
-            '<p class="note">Aucune carte de chaleur déposée : ouvrez '
-            'l’atelier et joignez l’image depuis le panneau Documents.</p>')
+        blocs.append('<p class="note">%s</p>' % escape(MOTIF_CARTE_ABSENTE))
 
     return ''.join(blocs)

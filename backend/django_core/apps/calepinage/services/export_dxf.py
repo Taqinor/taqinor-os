@@ -162,12 +162,62 @@ def document_dxf(geometrie, *, chaines=None, provenance=None):
                     dxfattribs={'layer': CALQUE_MODULES})
 
     _coter(espace, geometrie.get('etendue'))
+    _surfaces_de_pose(document, espace, geometrie)
     if chaines is not None:
         _calque_chaines(document, espace, chaines, module_m)
     if provenance is not None:
         _calque_provenance(document, espace, provenance,
                            geometrie.get('etendue'))
     return document
+
+
+#: ACAL260 — le calque des SURFACES DE POSE (champ au sol, ombrière…), posé
+#: seulement quand le document en porte une : sinon le DXF d'aujourd'hui.
+CALQUE_SURFACES = 'SURFACES_POSE'
+COULEUR_CALQUE_SURFACES = 30
+
+#: Écart (m) entre deux dessins juxtaposés (toit, puis chaque surface).
+ECART_SURFACES_M = 5.0
+
+
+def _surfaces_de_pose(document, espace, geometrie):
+    """ACAL260 — chaque surface de pose dessinée dans SON repère local (le
+    moteur), JUXTAPOSÉE à droite du toit (jamais superposée : un champ n'est
+    pas géoréférencé), cotée, avec ses tables et son libellé."""
+    from apps.calepinage.services.planche import LIBELLE_GENRE_SURFACE
+
+    surfaces = geometrie.get('surfaces_de_pose') or ()
+    if not surfaces:
+        return
+    document.layers.add(name=CALQUE_SURFACES, color=COULEUR_CALQUE_SURFACES)
+    attributs = {'layer': CALQUE_SURFACES}
+    etendue_toit = geometrie.get('etendue')
+    curseur_x = (etendue_toit[2] + ECART_SURFACES_M) if etendue_toit else 0.0
+    base_y = etendue_toit[1] if etendue_toit else 0.0
+    for surface in surfaces:
+        sx0, sy0, sx1, sy1 = surface['etendue']
+        dx, dy = curseur_x - sx0, base_y - sy0
+
+        def place(point, dx=dx, dy=dy):
+            return (point[0] + dx, point[1] + dy)
+
+        if len(surface['contour']) >= 3:
+            espace.add_lwpolyline([place(p) for p in surface['contour']],
+                                  close=True, dxfattribs=attributs)
+        for x0, y0, x1, y1 in surface['tables']:
+            espace.add_lwpolyline(
+                [place((x0, y0)), place((x1, y0)), place((x1, y1)),
+                 place((x0, y1))], close=True, dxfattribs=attributs)
+        modules = surface['modules']
+        espace.add_text(
+            '%s (%s) — %s module(s), repère local' % (
+                surface['libelle'],
+                LIBELLE_GENRE_SURFACE.get(surface['kind'], surface['kind']),
+                modules if modules is not None else 'non publié'),
+            height=HAUTEUR_TEXTE_M, dxfattribs=attributs).set_placement(
+                place((sx0, sy1 + HAUTEUR_TEXTE_M * 2.0)))
+        _coter(espace, (sx0 + dx, sy0 + dy, sx1 + dx, sy1 + dy))
+        curseur_x += (sx1 - sx0) + ECART_SURFACES_M
 
 
 def _calque_provenance(document, espace, lignes, etendue):

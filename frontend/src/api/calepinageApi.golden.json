@@ -695,6 +695,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.remettreDocument": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/remettre-document/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.remove": [
     {
       "config": null,

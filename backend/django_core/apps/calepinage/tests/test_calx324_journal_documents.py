@@ -12,9 +12,10 @@ Ce qui est prouvé ici :
 * ``enregistrer_version_document`` n'appelle JAMAIS le journal sur un refus
   de validation (calepinage non enregistré, code manquant, document vide —
   essais PURS, ``journaliser_document_produit`` espionné) ;
-* en base (CI) : un téléchargement écrit UNE ligne et une seule au fil du
-  calepinage, portant la version produite par CALX322 ; un refus (sans
-  résultat) n'en écrit aucune.
+* en base (CI) : une REMISE (``POST remettre-document``, ACAL222) écrit UNE
+  ligne et une seule au fil du calepinage, portant la version et l'empreinte
+  des entrées ; une remise dédoublonnée, un téléchargement (GET) ou un refus
+  (sans résultat) n'en écrivent aucune.
 
 Run (essais purs) :
     cd backend/django_core
@@ -158,7 +159,7 @@ from .test_calx308_diagramme_pertes_svg import RESULTAT  # noqa: E402
 
 
 class JournalEnBaseTest(BaseApiCalepinage):
-    """``GET …/rapport-etude.pdf/`` écrit UNE ligne au fil — CI."""
+    """``POST …/remettre-document/`` écrit UNE ligne au fil — CI."""
 
     def setUp(self):
         super().setUp()
@@ -177,19 +178,40 @@ class JournalEnBaseTest(BaseApiCalepinage):
             content_type=ct, object_id=calepinage.pk,
             field=journal.CHAMP_DOCUMENT_PRODUIT)
 
-    def test_un_telechargement_ecrit_une_ligne_et_une_seule(self):
+    def _remettre(self, calepinage):
+        with mock.patch(
+                'apps.calepinage.services.electrique.resultat_calepinage',
+                return_value=copy.deepcopy(RESULTAT)):
+            return self.api.post(
+                f'{url_detail(calepinage.pk)}remettre-document/',
+                {'code': 'rapport_etude', 'langue': 'fr'}, format='json')
+
+    def test_un_telechargement_n_ecrit_aucune_ligne(self):
+        """ACAL222 — une LECTURE n'est pas une remise : aucune ligne."""
         with mock.patch(
                 'apps.calepinage.services.electrique.resultat_calepinage',
                 return_value=copy.deepcopy(RESULTAT)):
             reponse = self.api.get(
                 f'{url_detail(self.calepinage.pk)}rapport-etude.pdf/')
         self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(self._lignes_document(self.calepinage).count(), 0)
+
+    def test_une_remise_ecrit_une_ligne_et_une_seule(self):
+        reponse = self._remettre(self.calepinage)
+        self.assertEqual(reponse.status_code, 201)
         lignes = self._lignes_document(self.calepinage)
         self.assertEqual(lignes.count(), 1)
         self.assertIn('version 1', lignes.first().new_value)
+        self.assertIn(reponse.data['empreinte'], lignes.first().new_value)
+
+    def test_une_remise_dedoublonnee_n_ecrit_pas_de_seconde_ligne(self):
+        self.assertEqual(self._remettre(self.calepinage).status_code, 201)
+        self.assertEqual(self._remettre(self.calepinage).status_code, 200)
+        self.assertEqual(self._lignes_document(self.calepinage).count(), 1)
 
     def test_un_refus_n_ecrit_aucune_ligne(self):
-        reponse = self.api.get(
-            f'{url_detail(self.sans_resultat.pk)}rapport-etude.pdf/')
+        reponse = self.api.post(
+            f'{url_detail(self.sans_resultat.pk)}remettre-document/',
+            {'code': 'rapport_etude'}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertEqual(self._lignes_document(self.sans_resultat).count(), 0)

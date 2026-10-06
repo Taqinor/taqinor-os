@@ -76,7 +76,7 @@ def reponse_de_fichier(contenu, *, mime, nom_fichier):
     from django.http import HttpResponse
 
     reponse = HttpResponse(contenu, content_type=mime)
-    reponse['Content-Disposition'] = 'attachment; filename="%s"' % nom_fichier
+    reponse['Content-Disposition'] = en_tete_de_telechargement(nom_fichier)
     return reponse
 
 
@@ -436,3 +436,19 @@ def _motif_note(calepinage):
     from ..services.note_calcul import motif_note_indisponible
 
     return motif_note_indisponible(calepinage)
+
+
+def en_tete_de_telechargement(nom_fichier):
+    """ACAL234 — LA valeur ``Content-Disposition`` d'un téléchargement du module.
+
+    RFC 6266 par ``django.utils.http.content_disposition_header`` : un nom
+    ASCII sort ``attachment; filename="…"`` (identique à avant), un nom portant
+    de l'arabe ou des accents sort ``attachment; filename*=utf-8''…`` — jamais
+    un mot encodé RFC 2047 (``=?utf-8?b?…?=``) qui remplaçait l'en-tête ENTIER
+    et faisait perdre au fichier son nom et son extension. Déclarée en FIN de
+    fichier : aucun ``@action`` ne se décale. UNE fonction pour toutes les
+    pièces (``reponse_de_fichier``, ``export-projet.json``, ``export-csv``).
+    """
+    from django.utils.http import content_disposition_header
+
+    return content_disposition_header(True, nom_fichier)

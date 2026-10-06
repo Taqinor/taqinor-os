@@ -215,11 +215,23 @@ def geometrie_de_planche(roof_layout):
     """``roof_layout`` -> géométrie PLANE en mètres, prête à dessiner.
 
     Rend ``{'contour', 'pans', 'obstacles', 'zones_interdites', 'etendue',
-    'module_m'}``. Lève ``PlancheRefusee`` si le document ne porte AUCUNE
-    géométrie exploitable — jamais une feuille blanche.
+    'module_m', 'parcelle', 'surfaces_de_pose'}``. Lève ``PlancheRefusee``
+    si le document ne porte AUCUNE géométrie exploitable — jamais une
+    feuille blanche.
+
+    ACAL260 (D-ACAL-5) — les SURFACES DE POSE (``poseSurfaces`` : champ au
+    sol, ombrière, façade) sont des pans à part entière : elles sont lues
+    dans LEUR repère local en mètres (``contourM`` et ``engine.tables``, le
+    repère du moteur — un champ n'est pas géoréférencé) et dessinées sur une
+    FEUILLE DÉDIÉE (``surfaces_de_pose``). Un champ au sol SEUL n'est plus
+    refusé : seule une conception sans toit NI surface l'est. Sans toit,
+    ``etendue`` vaut ``None`` (aucune feuille de toit).
     """
+    surfaces = _surfaces_de_pose(roof_layout)
     projection = _projection(roof_layout)
     if projection is None:
+        if surfaces:
+            return _geometrie_sans_toit(roof_layout, surfaces)
         raise PlancheRefusee(
             "Aucune géométrie enregistrée : la planche se compose du contour "
             "et des pans STOCKÉS, jamais d'un tracé reconstitué. Enregistrez "
@@ -288,15 +300,99 @@ def geometrie_de_planche(roof_layout):
         # déduit du bâtiment : une limite de parcelle est une affirmation
         # juridique, pas une estimation.
         'parcelle': _parcelle_du_layout(roof_layout, local),
+        'surfaces_de_pose': surfaces,
     }
     geometrie['etendue'] = _etendue(geometrie)
-    if geometrie['etendue'] is None:
+    if geometrie['etendue'] is None and not surfaces:
         raise PlancheRefusee(
             "La conception enregistrée ne porte aucun point exploitable : ni "
             "contour, ni pan, ni module posé. La planche ne se rend pas à "
             "partir d'une géométrie vide.",
             champ='roof_layout')
     return geometrie
+
+
+# ── ACAL260 — les SURFACES DE POSE, sur leur feuille dédiée ────────────────
+
+#: La mention gravée d'une feuille de surface : le repère est celui du
+#: moteur, en mètres, et le champ n'est pas géoréférencé (aucun nord).
+MENTION_REPERE_LOCAL = ("Repère local du moteur (m) — surface non "
+                        "géoréférencée, aucun nord dessiné.")
+
+#: Les libellés des genres de surface (``poseSurfaces[].kind``).
+LIBELLE_GENRE_SURFACE = {'sol': 'champ au sol', 'ombriere': 'ombrière',
+                         'facade': 'façade'}
+
+
+def _points_metres(brut):
+    """``[[x, y], …]`` en mètres -> ``[(x, y)]``, les points illisibles retirés."""
+    if not isinstance(brut, (list, tuple)):
+        return []
+    points = []
+    for point in brut:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        x, y = _nombre(point[0]), _nombre(point[1])
+        if x is not None and y is not None:
+            points.append((x, y))
+    return points
+
+
+def _surfaces_de_pose(roof_layout):
+    """Les surfaces de pose DESSINABLES : ``[{cle, kind, libelle, contour,
+    tables, modules, etendue}]`` — contour et tables dans le repère LOCAL du
+    moteur (mètres), ``modules`` = ``engine.modules`` RECOPIÉ (jamais
+    recompté), ``None`` quand le moteur ne l'a pas publié. Une surface sans
+    contour ni table n'a rien à dessiner : elle n'est pas rendue."""
+    brutes = (roof_layout or {}).get('poseSurfaces')
+    surfaces = []
+    for rang, surface in enumerate(
+            brutes if isinstance(brutes, (list, tuple)) else [], start=1):
+        if not isinstance(surface, dict):
+            continue
+        moteur = surface.get('engine')
+        moteur = moteur if isinstance(moteur, dict) else {}
+        contour = _points_metres(surface.get('contourM'))
+        tables = []
+        for table in moteur.get('tables') or ():
+            if not isinstance(table, dict):
+                continue
+            coins = [_nombre(table.get(cle))
+                     for cle in ('x0', 'y0', 'x1', 'y1')]
+            if None in coins:
+                continue
+            x0, y0, x1, y1 = coins
+            tables.append((min(x0, x1), min(y0, y1),
+                           max(x0, x1), max(y0, y1)))
+        if len(contour) < 3 and not tables:
+            continue
+        xs = [p[0] for p in contour] + [t[0] for t in tables] \
+            + [t[2] for t in tables]
+        ys = [p[1] for p in contour] + [t[1] for t in tables] \
+            + [t[3] for t in tables]
+        modules = _nombre(moteur.get('modules'))
+        kind = surface.get('kind')
+        surfaces.append({
+            'cle': str(surface.get('id') or 'surface-%d' % rang),
+            'kind': kind if kind in LIBELLE_GENRE_SURFACE else 'sol',
+            'libelle': str(surface.get('label') or surface.get('id')
+                           or 'Surface %d' % rang),
+            'contour': contour if len(contour) >= 3 else [],
+            'tables': tables,
+            'modules': int(modules) if modules is not None else None,
+            'etendue': (min(xs), min(ys), max(xs), max(ys)),
+        })
+    return surfaces
+
+
+def _geometrie_sans_toit(roof_layout, surfaces):
+    """La géométrie d'un site SANS toit dessiné : aucune feuille de toit,
+    seulement les feuilles des surfaces de pose."""
+    return {
+        'contour': [], 'pans': [], 'obstacles': [], 'zones_interdites': [],
+        'module_m': dimensions_module(roof_layout), 'parcelle': [],
+        'surfaces_de_pose': surfaces, 'etendue': None,
+    }
 
 
 def _parcelle_du_layout(roof_layout, local):
@@ -847,6 +943,120 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
         raise PlancheRefusee(
             "Contenu de planche inconnu : %r — contenus connus : %s."
             % (contenu, ', '.join(CONTENUS)), champ='contenu')
+    # ACAL260 — une feuille par surface de pose, APRÈS celle du toit. Le
+    # plan de MASSE (parcelle + emprise du bâtiment) n'en dessine aucune.
+    surfaces = () if contenu == CONTENU_MASSE \
+        else tuple(geometrie.get('surfaces_de_pose') or ())
+    feuilles = []
+    if geometrie.get('etendue') or not surfaces:
+        feuilles.append(_corps_feuille_toit(
+            geometrie, titre=titre, sous_titre=sous_titre, bandeau=bandeau,
+            pied=pied, contenu=contenu))
+    for surface in surfaces:
+        feuilles.append(_corps_feuille_surface(
+            surface, titre=titre, pied=pied, contenu=contenu))
+    if len(feuilles) == 1:
+        return _svg_a3(feuilles[0])
+    return _svg_empile(feuilles)
+
+
+#: ACAL260 — les marqueurs d'une feuille dans un SVG EMPILÉ (plusieurs
+#: feuilles A3) : ``html_de_planche`` les sépare en pages PDF distinctes.
+DEBUT_FEUILLE = '<!--feuille-->'
+FIN_FEUILLE = '<!--/feuille-->'
+
+
+def _svg_a3(corps):
+    """UNE feuille A3 : le document SVG d'aujourd'hui, à l'octet près."""
+    largeur, hauteur = FORMAT_A3_MM
+    morceaux = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+        'width="%smm" height="%smm" viewBox="0 0 %s %s">'
+        % (_n(largeur), _n(hauteur), _n(largeur), _n(hauteur)),
+    ] + list(corps) + ['</svg>']
+    return '\n'.join(m for m in morceaux if m)
+
+
+def _svg_empile(feuilles):
+    """Plusieurs feuilles A3 EMPILÉES dans UN document SVG valide (le
+    téléchargement ``planche.svg`` reste un seul fichier) ; chaque feuille
+    est bornée par :data:`DEBUT_FEUILLE` / :data:`FIN_FEUILLE`."""
+    largeur, hauteur = FORMAT_A3_MM
+    total = hauteur * len(feuilles)
+    morceaux = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+        'width="%smm" height="%smm" viewBox="0 0 %s %s" data-feuilles="%d">'
+        % (_n(largeur), _n(total), _n(largeur), _n(total), len(feuilles)),
+    ]
+    for rang, corps in enumerate(feuilles):
+        morceaux.append(DEBUT_FEUILLE)
+        morceaux.append('<svg x="0" y="%s" width="%s" height="%s" '
+                        'viewBox="0 0 %s %s">'
+                        % (_n(hauteur * rang), _n(largeur), _n(hauteur),
+                           _n(largeur), _n(hauteur)))
+        morceaux.extend(m for m in corps if m)
+        morceaux.append('</svg>')
+        morceaux.append(FIN_FEUILLE)
+    morceaux.append('</svg>')
+    return '\n'.join(m for m in morceaux if m)
+
+
+def _corps_feuille_surface(surface, *, titre='', pied='',
+                           contenu=CONTENU_IMPLANTATION):
+    """ACAL260 — la feuille DÉDIÉE d'une surface de pose : son contour, ses
+    tables posées par le moteur (sauf plan de toiture), cotée, à l'échelle,
+    dans le repère local du moteur — jamais projetée sur le toit."""
+    etendue = surface['etendue']
+    vers_feuille, echelle = _transformation(etendue)
+    largeur, hauteur = FORMAT_A3_MM
+    genre = LIBELLE_GENRE_SURFACE.get(surface['kind'], surface['kind'])
+    morceaux = [
+        '<title>%s</title>' % escape('%s — %s' % (
+            titre or 'Planche de calepinage', surface['libelle'])),
+        '<rect x="0" y="0" width="%s" height="%s" fill="#ffffff" />'
+        % (_n(largeur), _n(hauteur)),
+        _polygone(surface['contour'], vers_feuille, contour=NOIR,
+                  remplissage=GRIS_PAN, trait=TRAIT_CONTOUR),
+    ]
+    if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
+        for x0, y0, x1, y1 in surface['tables']:
+            morceaux.append(_polygone(
+                ((x0, y0), (x1, y0), (x1, y1), (x0, y1)), vers_feuille,
+                contour=VERT_MODULE, remplissage=VERT_MODULE_FOND,
+                trait=TRAIT_MODULE))
+    x0, y0, x1, y1 = etendue
+    morceaux.append(_cote_horizontale(x0, x1, y0, vers_feuille))
+    morceaux.append(_cote_verticale(y0, y1, x0, vers_feuille))
+    cadre = _cadre_de_dessin()
+    morceaux.append(_barre_echelle_svg(cadre[0] + 2.0,
+                                       cadre[1] + cadre[3] - 8.0, echelle))
+    morceaux.append(
+        '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+        % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 1.0), GRIS_TEXTE,
+           escape(mention_d_echelle(echelle))))
+    modules = surface['modules']
+    lignes = [
+        'Surface de pose : %s (%s)' % (surface['libelle'], genre),
+        'Modules posés (moteur) : %s' % (
+            modules if modules is not None else 'non publié'),
+        'Tables posées : %d' % len(surface['tables']),
+        MENTION_REPERE_LOCAL,
+    ]
+    morceaux.extend(_bandeau_svg(titre, TITRE_FEUILLE_SURFACE, lignes, {},
+                                 contenu))
+    morceaux.append(_pied_svg(pied))
+    return morceaux
+
+
+#: Le sous-titre d'une feuille de surface de pose.
+TITRE_FEUILLE_SURFACE = 'Surface de pose (feuille dédiée)'
+
+
+def _corps_feuille_toit(geometrie, *, titre='', sous_titre='', bandeau=(),
+                        pied='', contenu=CONTENU_IMPLANTATION):
+    """La feuille du TOIT — le dessin d'avant ACAL260, inchangé."""
     etendue = geometrie.get('etendue')
     if not etendue:
         raise PlancheRefusee(
@@ -856,10 +1066,6 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
     vers_feuille, echelle = _transformation(etendue)
     largeur, hauteur = FORMAT_A3_MM
     morceaux = [
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
-        'width="%smm" height="%smm" viewBox="0 0 %s %s">'
-        % (_n(largeur), _n(hauteur), _n(largeur), _n(hauteur)),
         '<title>%s</title>' % escape(titre or 'Planche de calepinage'),
         '<rect x="0" y="0" width="%s" height="%s" fill="#ffffff" />'
         % (_n(largeur), _n(hauteur)),
@@ -927,8 +1133,7 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
     morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie,
                                  contenu))
     morceaux.append(_pied_svg(pied))
-    morceaux.append('</svg>')
-    return '\n'.join(m for m in morceaux if m)
+    return morceaux
 
 
 def _bandeau_svg(titre, sous_titre, lignes, geometrie,
@@ -992,23 +1197,60 @@ def html_de_planche(svg):
 
     Aucune police distante, aucune image externe : le document est autonome,
     donc le rendu ne fait AUCUN accès réseau.
+
+    ACAL260 — un SVG EMPILÉ (toit + surfaces de pose) est découpé en UNE
+    page A3 par feuille ; un SVG d'une seule feuille rend le HTML d'avant.
     """
+    style = ''
+    if DEBUT_FEUILLE in svg:
+        svg = _pages_de_feuilles(svg)
+        style = ('.feuille{page-break-after:always;}'
+                 '.feuille:last-child{page-break-after:auto;}')
     return (
         '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
         '<title>Planche de calepinage</title><style>'
         '@page{size:A3 landscape;margin:0;}'
         'html,body{margin:0;padding:0;background:#fff;}'
         'svg{display:block;width:100%;height:auto;}'
-        '</style></head><body>' + svg + '</body></html>'
+        + style + '</style></head><body>' + svg + '</body></html>'
     )
 
 
-def nom_de_fichier(calepinage, extension):
-    """``calepinage-<pk>-<titre assaini>.<ext>`` — jamais un nom d'utilisateur brut."""
-    titre = (getattr(calepinage, 'titre', '') or '').strip().lower()
-    assaini = ''.join(c if c.isalnum() else '-' for c in titre).strip('-')
+def _pages_de_feuilles(svg):
+    """Chaque feuille d'un SVG empilé devient un ``<svg>`` A3 autonome, dans
+    sa propre ``div.feuille`` (une page)."""
+    import re
+
+    largeur, hauteur = FORMAT_A3_MM
+    ouverture = ('<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+                 'width="%smm" height="%smm" viewBox="0 0 %s %s">'
+                 % (_n(largeur), _n(hauteur), _n(largeur), _n(hauteur)))
+    motif = re.compile(re.escape(DEBUT_FEUILLE) + r'\n<svg [^>]*>\n(.*?)\n'
+                       r'</svg>\n' + re.escape(FIN_FEUILLE), re.DOTALL)
+    return ''.join('<div class="feuille">%s\n%s\n</svg></div>'
+                   % (ouverture, corps) for corps in motif.findall(svg))
+
+
+def _assainir(texte):
+    """Lettres et chiffres gardés (arabe et accents compris), le reste en ``-``."""
+    texte = (texte or '').strip().lower()
+    assaini = ''.join(c if c.isalnum() else '-' for c in texte).strip('-')
     while '--' in assaini:
         assaini = assaini.replace('--', '-')
+    return assaini
+
+
+def nom_de_fichier(calepinage, extension, *, quoi=None):
+    """``calepinage-<pk>-<titre assaini>.<ext>`` — jamais un nom d'utilisateur brut.
+
+    ACAL234 — UN constructeur de nom pour tout le module : ``quoi`` (les
+    exports CSV, ``horaire``/``mensuel``…) remplace le titre —
+    ``calepinage-<pk>-<quoi>.<ext>``, le nom d'avant. Le nom peut porter de
+    l'arabe ou des accents : l'en-tête qui le transporte est
+    ``views/sorties.py::en_tete_de_telechargement`` (RFC 6266).
+    """
+    assaini = _assainir(quoi if quoi is not None
+                        else getattr(calepinage, 'titre', ''))
     base = 'calepinage-%s' % (getattr(calepinage, 'pk', '') or 'sans-numero')
     return '%s%s.%s' % (base, '-' + assaini[:60] if assaini else '', extension)
 
