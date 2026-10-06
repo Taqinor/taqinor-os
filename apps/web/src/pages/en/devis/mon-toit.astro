@@ -4335,7 +4335,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // Exact mirror of DiagnosticForm.astro ~l.279. Only PRESENT keys are
   // joined (WJ30/WJ31 convention "absent rather than empty"): a visitor with
   // no tracking parameter sends a byte-identical body to before.
-  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+  const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
   function readTrackingParams(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const k of TRACK_KEYS) {
@@ -4629,6 +4629,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           // server CAPI relay: Meta deduplicates the two signals.
           (window as unknown as { tqPixelTrack?: (e: string, p?: object, id?: string) => void })
             .tqPixelTrack?.('Lead', {}, getOrCreateDedupTokens().eventId);
+          // Google Ads / GA4 — même eventId (transaction_id) ; no-op sans
+          // PUBLIC_GOOGLE_TAG_ID ou si refusé (tqGoogleTrack se gate seul).
+          (window as unknown as { tqGoogleTrack?: (id?: string) => void })
+            .tqGoogleTrack?.(getOrCreateDedupTokens().eventId);
           if (okEl) okEl.hidden = false;
           // WJ52 — display the reference generated when the state was read
           // (already included in the sent body — re-read here via

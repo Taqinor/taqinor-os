@@ -4,6 +4,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
 import MetaPixel from '../components/MetaPixel.astro';
+import GoogleTag from '../components/GoogleTag.astro';
 import { NAP, SAME_AS } from '../lib/nap';
 import { DEFAULT_LOCALE, isLocale, LOCALE_BCP47, LOCALE_DIR, type Locale } from '../i18n/config';
 import { localizePath, stripLocale } from '../i18n/utils';
@@ -240,7 +241,9 @@ const jsonLd = {
       (function () {
         try {
           var p = new URLSearchParams(location.search);
-          var keys = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+          // gclid/gbraid/wbraid : identifiants de clic Google Ads, capturés
+          // EXACTEMENT comme fbclid (first-touch, même gate de consentement).
+          var keys = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
           var captured = {};
           var hasAny = false;
           for (var i = 0; i < keys.length; i++) {
@@ -275,6 +278,9 @@ const jsonLd = {
          du tunnel. Gated comme le CAPI (QJW14) : « Refuser » explicite le
          bloque/révoque. Jamais sur les pages privées (noindex). -->
     {!noindex && <MetaPixel />}
+    <!-- Google tag (Google Ads + GA4) : rien sans PUBLIC_GOOGLE_TAG_ID ; mêmes
+         règles de consentement et même exclusion noindex que le pixel Meta. -->
+    {!noindex && <GoogleTag />}
   </head>
   <body class="bg-nuit font-sans text-lune antialiased">
     <!-- W216 — Lien d'évitement accessible : premier élément focusable du corps.

@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 225c5451c31c2625744077bc08f7c91b8ea258fce4d1883e0545aa1cce802e04
+Structure fingerprint: 956e619cf3365026a316680ebe4c225dbb5311af24e7fb9137e083934a0ac31b
 Plan fingerprint: eba67138f7321e124946ca7ae62ca5891af146146d28b29d4f099ccfe201fda0
 
 
@@ -340,6 +340,11 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **visites** : gabarit `ci` (CIQ600, migrations 0006-0007 : zones de toiture, relevé C&I, `validee_le`).
 - **core** : `core/reglementaire/` (`regime_8221.py` : régime loi 82-21) ; `core/calepinage/contenance_declaree.py` + `ilots.py` (contenance déclarée, îlots de toiture).
 - **frontend** : `features/crm/workspace/sections/SectionPro.jsx` (section PRO du lead), `features/ventes/etudePompagePreview.js` + `etudePompagePreviewPur.js` (client de l'aperçu serveur ; remplace le jumeau JS `agronomy.js`, SUPPRIMÉ — AGR131), `PanneauAgricole.jsx` consomme l'aperçu.
+
+### crm / apps/web — Suivi Google Ads (06/10/2026)
+
+- **crm** : `Lead.gclid` (first-touch du site, comme `fbclid`) + choix `Lead.Canal.GOOGLE_ADS` (`google_ads`, aussi sur `PointContact.canal`) — migration crm 0127 ; `webhooks.py::_canal_site_web` classe le canal d'un lead du site (gclid/gbraid/wbraid ou utm_source google ⇒ `google_ads`, fbclid ou utm_source Meta ⇒ `meta_ads`, sinon `site_web`) ; le webhook Meta Lead Ads est inchangé.
+- **apps/web** : `components/GoogleTag.astro` (gtag.js seulement si `PUBLIC_GOOGLE_TAG_ID`, mêmes règles de consentement que `MetaPixel.astro`, pont `window.tqGoogleTrack(eventId)` appelé là où part `tqPixelTrack('Lead')`) ; capture first-touch gclid/gbraid/wbraid (Layout) transmise au CRM.
 
 ### calepinage — Groupe CALX (lots 1 « rendre visible et opérant », 3 « simulation sourcée » et 4 « électrique pro », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
 - **Forme d'URL unique (CAL233)** : l'objet métier est servi sous `calepinages/<pk>/…` (sous-ressources en `@action` du routeur DRF, `SimpleRouter`), les réglages société sous `parametres/…`, et le moteur — un calcul SANS état — sous `moteur/calculer|pose|resultat/<job_id>/`. `tests/test_structure_urls.py` refuse toute quatrième famille.

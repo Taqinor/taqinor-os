@@ -3370,6 +3370,7 @@ _DEFAULT_CANAUX = [
     ('meta_ads', 'Publicité Meta', False),
     ('whatsapp_ctwa', 'WhatsApp/CTWA', False),
     ('site_web', 'Site web', True),
+    ('google_ads', 'Google Ads', False),
     ('reference', 'Référence', False),
     ('telephone', 'Téléphone', False),
     ('walk_in', 'Visite/Walk-in', False),

@@ -563,6 +563,9 @@ class Lead(SoftDeleteModel):
         META_ADS = 'meta_ads', 'Publicité Meta'
         WHATSAPP_CTWA = 'whatsapp_ctwa', 'WhatsApp/CTWA'
         SITE_WEB = 'site_web', 'Site web'
+        # Lead du site arrivé par une annonce Google (gclid/gbraid/wbraid ou
+        # utm_source google) — classé par le webhook du site, jamais saisi.
+        GOOGLE_ADS = 'google_ads', 'Google Ads'
         REFERENCE = 'reference', 'Référence'
         TELEPHONE = 'telephone', 'Téléphone'
         WALK_IN = 'walk_in', 'Visite/Walk-in'
@@ -1633,6 +1636,10 @@ class Lead(SoftDeleteModel):
     consent_timestamp = models.DateTimeField(null=True, blank=True)
     # Attribution publicitaire (capture first-touch du site)
     fbclid = models.CharField(max_length=500, blank=True, null=True)
+    # Identifiant de clic Google Ads (first-touch du site, comme fbclid).
+    # gbraid/wbraid (iOS) ne sont pas stockés : ils servent seulement à
+    # classer le canal `google_ads` dans le webhook du site.
+    gclid = models.CharField(max_length=255, blank=True, default='')
     utm_source = models.CharField(max_length=300, blank=True, null=True)
     utm_medium = models.CharField(max_length=300, blank=True, null=True)
     utm_campaign = models.CharField(max_length=300, blank=True, null=True)

@@ -174,6 +174,9 @@ const inputClass =
 
       <!-- fbclid + UTM persistés — remplis depuis sessionStorage au chargement -->
       <input type="hidden" name="fbclid" />
+      <input type="hidden" name="gclid" />
+      <input type="hidden" name="gbraid" />
+      <input type="hidden" name="wbraid" />
       <input type="hidden" name="utm_source" />
       <input type="hidden" name="utm_medium" />
       <input type="hidden" name="utm_campaign" />
@@ -357,7 +360,7 @@ const inputClass =
   }
 
   // Reprise fbclid + UTM depuis sessionStorage (capture first-touch du Layout)
-  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
   for (const k of TRACK_KEYS) {
     const input = form?.elements.namedItem(k) as HTMLInputElement | null;
     if (input) {

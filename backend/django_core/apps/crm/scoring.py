@@ -66,6 +66,7 @@ _CANAL_SCORES: dict[str, int] = {
     'walk_in': 13,          # Visite physique = fort
     'whatsapp_ctwa': 11,    # Click-to-WhatsApp = moyen-fort
     'site_web': 9,          # Formulaire web = moyen
+    'google_ads': 9,        # Formulaire web venu d'une annonce Google = site_web
     'meta_ads': 7,          # Pub Meta = moyen-bas
     'autre': 5,
 }

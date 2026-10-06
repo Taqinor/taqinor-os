@@ -4376,7 +4376,7 @@ _MERGE_FILL_FIELDS = [
     # Visite technique (légère) — préservée à la fusion.
     'visite_prevue_le', 'visite_effectuee', 'visite_notes',
     # Intake site web (taqinor.ma) — attribution + diagnostic préservés.
-    'bill_range_bucket', 'roi_band', 'consent_timestamp', 'fbclid',
+    'bill_range_bucket', 'roi_band', 'consent_timestamp', 'fbclid', 'gclid',
     'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
 ]
 

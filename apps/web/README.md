@@ -35,6 +35,27 @@ Auto-deploys: connected via Cloudflare Workers Builds, June 2026.
 
 Voir `.dev.vars.example`. Toutes optionnelles ; le site dégrade proprement.
 
+### Google Ads / Google tag (variables de BUILD, `PUBLIC_`)
+
+À poser par Reda dans le tableau de bord Cloudflare → Workers Builds →
+variables de build (jamais dans le code). Ce ne sont pas des secrets (visibles
+dans la page), mais elles sont inlinées AU BUILD : un changement demande un
+nouveau déploiement.
+
+- `PUBLIC_GOOGLE_TAG_ID` — un ou plusieurs ID séparés par des virgules
+  (`AW-…` Google Ads, `G-…` GA4), ex. `AW-123456789,G-ABCDEF1234`. Absente ⇒
+  aucun tag Google chargé (`components/GoogleTag.astro` ne rend rien).
+- `PUBLIC_GOOGLE_ADS_LEAD_SEND_TO` — l'action de conversion « Lead » de Google
+  Ads, format `AW-123456789/libellé` (Google Ads → Objectifs → Conversions →
+  « Installer le tag » → `send_to`). Absente ⇒ seul l'événement GA4
+  `generate_lead` part.
+
+Mêmes règles de consentement que le pixel Meta : « Refuser » ⇒ rien ne se
+charge (ou consentement Google passé à `denied`). La conversion part au même
+moment que l'événement Meta `Lead` (lead qualifié), avec le même eventId en
+`transaction_id`. `gclid`/`gbraid`/`wbraid` sont captés comme `fbclid` et
+transmis au CRM, qui classe le lead en canal « Google Ads ».
+
 ## Commandes
 
 ```sh

@@ -4549,7 +4549,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // Miroir exact de DiagnosticForm.astro ~l.279. Seules les clés PRÉSENTES sont
   // jointes (convention WJ30/WJ31 « absent plutôt que vide ») : un visiteur sans
   // paramètre de tracking envoie un corps byte-identique à avant.
-  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+  const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
   function readTrackingParams(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const k of TRACK_KEYS) {
@@ -4854,6 +4854,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           // No-op si le pixel est absent ou refusé (tqPixelTrack se gate seul).
           (window as unknown as { tqPixelTrack?: (e: string, p?: object, id?: string) => void })
             .tqPixelTrack?.('Lead', {}, getOrCreateDedupTokens().eventId);
+          // Google Ads / GA4 — même eventId (transaction_id) ; no-op sans
+          // PUBLIC_GOOGLE_TAG_ID ou si refusé (tqGoogleTrack se gate seul).
+          (window as unknown as { tqGoogleTrack?: (id?: string) => void })
+            .tqGoogleTrack?.(getOrCreateDedupTokens().eventId);
           if (okEl) okEl.hidden = false;
           // WJ52 — affiche la référence générée à la lecture de l'état (déjà
           // incluse dans le body envoyé — on la relit ici via
