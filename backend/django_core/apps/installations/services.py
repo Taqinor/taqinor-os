@@ -2179,7 +2179,35 @@ def ensure_commissioning_record(installation, user=None):
     record, _ = CommissioningRecord.objects.get_or_create(
         installation=installation,
         defaults={'company': installation.company, 'created_by': user})
+    figer_promesse_recette_ci(record)  # CIQ627
     return record
+
+
+#: CIQ627 — motifs d'une comparaison omise (jamais un chiffre inventé).
+MOTIF_PROMESSE_ABSENTE = (
+    "Promesse de production absente : le devis n'a pas d'étude C&I.")
+MOTIF_MOINS_DE_12_MOIS = "Moins de 12 mois de relevés."
+
+
+def figer_promesse_recette_ci(record):
+    """CIQ627 — FIGE dans la fiche la promesse de production du devis
+    (``ventes.selectors.promesse_production_devis``) à la première écriture
+    où elle est disponible ; jamais réécrite ensuite (une V2 ne change pas
+    l'attendu). Renvoie True si elle vient d'être figée."""
+    from django.utils import timezone
+    if record.promesse_figee or record.pk is None:
+        return False
+    devis_id = getattr(record.installation, 'devis_id', None)
+    if not devis_id:
+        return False
+    from apps.ventes.selectors import promesse_production_devis
+    promesse = promesse_production_devis(devis_id, record.installation.company)
+    if not promesse:
+        return False
+    record.promesse_figee = dict(
+        promesse, figee_le=timezone.now().isoformat())
+    record.save(update_fields=['promesse_figee'])
+    return True
 
 
 def _reglage_recette(company, champ):
@@ -2272,7 +2300,16 @@ def comparaison_recette_ci(record):
                if r.defaut_detecte is not None]
     seuil = seuil_ecart_pmax(record.company)
     pr = pr_mesure_recette(record)
+    promesse = record.promesse_figee or None
     comparaison = {
+        # CIQ627 — promesse FIGÉE du devis ; PR mesuré vs PR modélisé « à
+        # titre d'information » ; jamais des kWh annuels sur un jour d'essai.
+        'promesse_figee': promesse,
+        'pr_modelise': (promesse or {}).get('pr_modelise'),
+        'promesse_motif': None if promesse else MOTIF_PROMESSE_ABSENTE,
+        'comparaison_annuelle': None,
+        'comparaison_annuelle_motif': (
+            MOTIF_MOINS_DE_12_MOIS if promesse else MOTIF_PROMESSE_ABSENTE),
         'ecart_iv_pmax_pct': float(min(ecarts)) if ecarts else None,
         'seuil_ecart_pmax_pct': float(seuil) if seuil is not None else None,
         'defaut_detecte': any(defauts) if defauts else None,

@@ -299,6 +299,10 @@ class CommissioningRecord(models.Model):
         null=True, blank=True)
     # {essai: instrument_id} — validé contre l'outillage de la société.
     instruments_par_essai = models.JSONField(default=dict, blank=True)
+    # CIQ627 — promesse de production du devis FIGÉE à la première écriture
+    # ({production_annuelle_kwh, pr_modelise, source, figee_le}) ; une V2 ne
+    # la réécrit jamais. Null = pas encore figée (devis sans étude C&I).
+    promesse_figee = models.JSONField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='commissioning_records_crees')

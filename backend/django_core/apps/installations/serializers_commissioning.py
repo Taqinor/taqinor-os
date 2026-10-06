@@ -64,7 +64,10 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             'instruments_par_essai',
             'irradiance', 'energie', 'thermographie', 'limitation_injection',
             'decouplage', 'echantillon_iv', 'comparaison',
+            # CIQ627 — promesse figée (lecture seule).
+            'promesse_figee',
         ]
+        read_only_fields = ['promesse_figee']
 
     def validate(self, attrs):
         """CIQ625 — ``resultat`` est CALCULÉ par le serveur à chaque écriture
@@ -112,6 +115,14 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             propre[str(essai)] = iid
         return propre
 
+    def update(self, instance, validated_data):
+        """CIQ627 — la promesse du devis est figée à la première écriture
+        où elle est disponible (jamais réécrite)."""
+        from .services import figer_promesse_recette_ci
+        instance = super().update(instance, validated_data)
+        figer_promesse_recette_ci(instance)
+        return instance
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         from .services import instruments_par_essai_detail
@@ -132,8 +143,9 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
                 'fenetre_debut': obj.energie_fenetre_debut,
                 'fenetre_fin': obj.energie_fenetre_fin,
                 'pr_mesure': pr_mesure_recette(obj),
-                # CIQ627 pose la promesse figée du devis ; vide d'ici là.
-                'pr_modele_devis': None,
+                # CIQ627 — PR modélisé de la promesse FIGÉE du devis.
+                'pr_modele_devis': (obj.promesse_figee or {}).get(
+                    'pr_modelise'),
                 'libelle': LIBELLE_PR}
 
     @extend_schema_field(serializers.DictField())
