@@ -100,10 +100,8 @@ backend/django_core/apps/calepinage/services/lestage.py::masse_du_layout
 backend/django_core/apps/calepinage/services/lidar_ign.py::altimetre_ign
 backend/django_core/apps/calepinage/services/lidar_ign.py::libelle_source
 backend/django_core/apps/calepinage/services/modeles.py::est_modele
-backend/django_core/apps/calepinage/services/norme.py::coefficients_publies
 backend/django_core/apps/calepinage/services/note_calcul.py::construire_note_calcul
 backend/django_core/apps/calepinage/services/note_calcul.py::html_de_note_calcul
-backend/django_core/apps/calepinage/services/p50p90.py::variabilite_interannuelle
 backend/django_core/apps/calepinage/services/pack_technique.py::rendre_pieces
 backend/django_core/apps/calepinage/services/pertes.py::moyenne_mensuelle
 backend/django_core/apps/calepinage/services/planche.py::dimensions_module

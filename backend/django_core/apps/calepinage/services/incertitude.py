@@ -198,10 +198,19 @@ def _sigma_saisi(reglages, cle, libelle):
     return pourcent / 100.0, source, reference
 
 
-def _composante(nom, sigma_relatif, source, reference, annees):
+#: ACAL313 — ``composantes[].origine`` (contrat ``calepinage_incertitude
+#: .json``, ACAL8) : la variabilité MESURÉE sur les années observées de la
+#: fenêtre, ou une valeur SAISIE et sourcée par la société.
+ORIGINE_OBSERVEE = 'observee'
+ORIGINE_COMPOSANTE_SAISIE = 'saisie'
+
+
+def _composante(nom, sigma_relatif, source, reference, annees,
+                origine=ORIGINE_COMPOSANTE_SAISIE):
     """Une LIGNE de ``composantes[]``, à la forme arrêtée par CALX144."""
     return {'nom': nom, 'sigma_relatif': round(sigma_relatif, 6),
-            'source': source, 'reference': reference, 'annees': annees}
+            'source': source, 'reference': reference, 'annees': annees,
+            'origine': origine}
 
 
 def _composante_meteo(totaux_par_annee, reglages):
@@ -214,10 +223,16 @@ def _composante_meteo(totaux_par_annee, reglages):
     Returns:
         ``(composante | None, origine, annees_observees)``.
     """
-    sigma, origine, annees = sigma_mesure(totaux_par_annee)
+    # ACAL313 — LE point d'entrée de la variabilité observée
+    # (``p50p90.variabilite_interannuelle``, qui délègue à ``sigma_mesure`` :
+    # une seule formule). Import LOCAL : ``p50p90`` importe ce module.
+    from .p50p90 import variabilite_interannuelle
+
+    sigma, origine, annees = variabilite_interannuelle(totaux_par_annee)
     if sigma is not None:
         return (_composante(COMPOSANTE_METEO, sigma, SOURCE_PVGIS,
-                            f'seriescalc, {annees} années observées', annees),
+                            f'seriescalc, {annees} années observées', annees,
+                            origine=ORIGINE_OBSERVEE),
                 ORIGINE_MESUREE, annees)
     saisi, source, reference = _sigma_saisi(reglages, CLE_SIGMA_METEO_SAISI,
                                             LIBELLE_SIGMA_METEO_SAISI)

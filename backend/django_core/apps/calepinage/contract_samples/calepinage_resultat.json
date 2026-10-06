@@ -426,7 +426,8 @@
           "sigma_relatif": 0.048,
           "source": "pvgis",
           "reference": "seriescalc 2020-2021",
-          "annees": 2
+          "annees": 2,
+          "origine": "observee"
         }
       ],
       "sigma_total": 0.048,
@@ -1521,7 +1522,8 @@
           "sigma_relatif": 0.048,
           "source": "pvgis",
           "reference": "seriescalc 2020-2021",
-          "annees": 2
+          "annees": 2,
+          "origine": "observee"
         }
       ],
       "sigma_total": 0.048,

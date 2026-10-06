@@ -977,9 +977,17 @@ def troncons_du_calepinage(calepinage):
     ``troncons_de_la_conception``. Aucune écriture, aucun effet de bord.
     """
     from .electrique import conception_du_calepinage, parametres_societe
-    from .norme import norme_applicable
+    from .norme import coefficients_publies, norme_applicable
 
-    norme = norme_applicable(parametres_societe(calepinage))
+    parametres = parametres_societe(calepinage)
+    norme = norme_applicable(parametres)
+    if norme.get('applicable'):
+        # ACAL313 — les coefficients de section/chute sont LUS sur LA
+        # fonction du registre (saisi société avec référence > noyau) :
+        # aucune constante de norme recopiée ici.
+        coefficients, _refus = coefficients_publies(
+            parametres.get('norme_electrique') or {})
+        norme = dict(norme, coefficients=coefficients)
     conception, materiel, _donnees, document = conception_du_calepinage(
         calepinage)
     return troncons_de_la_conception(
