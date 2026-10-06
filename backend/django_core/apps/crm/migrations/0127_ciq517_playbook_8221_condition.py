@@ -67,9 +67,10 @@ def restreindre(apps, schema_editor):
             continue
         playbook.condition = NOUVELLE_CONDITION_8221
         playbook.save(update_fields=['condition'])
-        PlaybookTache.objects.filter(
-            etape__playbook=playbook, libelle=ANCIENNE_TACHE,
-        ).update(libelle=NOUVELLE_TACHE)
+        for tache in PlaybookTache.objects.filter(
+                etape__playbook=playbook, libelle=ANCIENNE_TACHE).iterator():
+            tache.libelle = NOUVELLE_TACHE
+            tache.save(update_fields=['libelle'])
 
 
 class Migration(migrations.Migration):
