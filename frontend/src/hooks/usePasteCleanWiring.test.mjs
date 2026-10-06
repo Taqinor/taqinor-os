@@ -32,8 +32,15 @@ const FACTURE_FORM = read('../pages/ventes/FactureForm.jsx')
 // dans l'écran porteur, chaque panneau les TRANSMET en props à la carte
 // partagée, et c'est la carte partagée qui pose `onPaste` — une seule fois,
 // pas trois).
+// CIQ125/CIQ126 — le C&I (industriel, commercial) ne monte PLUS la carte des
+// factures hiver/été/réelle : sa consommation est le profil déclaré (CarteProfilCi).
+// Seul le résidentiel relaie donc encore les trois gestes de collage ; la garde
+// vérifie aussi que les panneaux C&I ne les relaient plus (jamais un onPaste
+// orphelin sur un champ qui n'existe pas).
 const PANNEAUX_RESEAU = [
   ['PanneauResidentiel', read('../pages/ventes/generator/PanneauResidentiel.jsx')],
+]
+const PANNEAUX_CI = [
   ['PanneauIndustriel', read('../pages/ventes/generator/PanneauIndustriel.jsx')],
   ['PanneauCommercial', read('../pages/ventes/generator/PanneauCommercial.jsx')],
 ]
@@ -81,6 +88,9 @@ test('VX237 : DevisGenerator — Facture Hiver/Été/réelle posent onPaste (mon
     assert.match(src, /onHiverPaste=\{onHiverPaste\}/, nom)
     assert.match(src, /onEtePaste=\{onEtePaste\}/, nom)
     assert.match(src, /onRealBillPaste=\{onRealBillPaste\}/, nom)
+  }
+  for (const [nom, src] of PANNEAUX_CI) {
+    assert.doesNotMatch(src, /onHiverPaste|onEtePaste|onRealBillPaste/, nom)
   }
   // Moitié « pose » : c'est la carte partagée, SEULE, qui pose onPaste.
   assert.match(CARTE_FACTURES, /onPaste=\{onHiverPaste\}/)
