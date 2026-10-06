@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import calepinageApi from '../../api/calepinageApi'
+import { useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import useDocumentCalepinage from './useDocumentCalepinage'
 import SunDiagram, { COURBES_REPERE } from './SunDiagram'
 import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
@@ -41,6 +41,16 @@ import RetourAtelier from './atelier/RetourAtelier'
    provenance passe alors à « saisie ») ; sans saisie, la mention exacte
    accompagne chaque marqueur d'obstruction proche.
 
+   ACAL74 — LA HAUTEUR DU BÂTIMENT VIENT DU DOCUMENT, PAS D'UNE SAISIE D'ÉCRAN.
+   ----------------------------------------------------------------------------
+   Le champ « hauteur de toit » de cet écran était une saisie locale perdue au
+   rechargement, alors que l'atelier écrit déjà la hauteur du bâtiment
+   (`buildings[].hauteurM` + sa `source`, désigné par `zones[].buildingId`). Le
+   panneau lit désormais CETTE hauteur — document lu par `useDocumentCalepinage`
+   — et l'affiche avec sa provenance. Sans hauteur de bâtiment pour le pan,
+   l'hypothèse de 6 m reste affichée comme telle, avec un lien vers l'atelier
+   pour la saisir : il n'y a plus de second endroit où la saisir.
+
    CALX118 — LE SOLEIL DE SCÈNE, ENFIN VISIBLE DANS LE DIAGRAMME.
    ----------------------------------------------------------------------------
    Constat : le diagramme polaire existait déjà (`SunDiagram.jsx`) mais aucun
@@ -70,33 +80,18 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
-  const [layout, setLayout] = useState(null)
-  const [panId, setPanId] = useState(null)
-  const [chargement, setChargement] = useState(!!calepinageId)
-  const [erreur, setErreur] = useState(null)
-  // CALX52 — vide = l'hypothèse par défaut (6 m) ; une saisie valide la
-  // REMPLACE et fait passer la provenance à « saisie ».
-  const [hauteurToitSaisie, setHauteurToitSaisie] = useState('')
-
-  useEffect(() => {
-    if (!calepinageId) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const document = res?.data?.roof_layout ?? null
-        setLayout(document)
-        const zones = Array.isArray(document?.zones) ? document.zones : []
-        const active = zones.find((z) => z.id === document?.activeAreaId) ?? zones[0]
-        setPanId(active?.id ?? null)
-      })
-      .catch(() => { if (!annule) setErreur('Impossible de charger la conception.') })
-      .finally(() => { if (!annule) setChargement(false) })
-    return () => { annule = true }
-  }, [calepinageId])
+  // ACAL74 — l'UNIQUE lecture du document (hook) : un échec est une erreur, jamais
+  // un document vide.
+  const doc = useDocumentCalepinage(calepinageId)
+  const layout = doc.document
+  const chargement = doc.etat === 'chargement'
+  const erreur = doc.etat === 'erreur' ? 'Impossible de charger la conception.' : null
+  // Le pan CHOISI par l'utilisateur ; sinon le pan actif du document, sinon le premier.
+  const [panChoisi, setPanChoisi] = useState(null)
 
   const zones = Array.isArray(layout?.zones) ? layout.zones : []
-  const zone = zones.find((z) => z.id === panId) ?? zones[0] ?? null
+  const zone = zones.find((z) => z.id === panChoisi)
+    ?? zones.find((z) => z.id === layout?.activeAreaId) ?? zones[0] ?? null
   const latitudeDeg = typeof layout?.pin?.lat === 'number' ? layout.pin.lat : null
   const horizonPoints = Array.isArray(layout?.horizonProfile?.points) ? layout.horizonProfile.points : []
 
@@ -109,13 +104,22 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   const soleilCourant = latitudeDeg === null ? null : sunPosition(latitudeDeg, sceneSunDay, sceneSunHour)
   const soleilSousHorizon = soleilCourant !== null && soleilCourant.elevationDeg <= 0
 
-  // CALX52 — la hauteur RETENUE et sa provenance : une saisie numérique
-  // valide REMPLACE l'hypothèse (jamais un NaN qui glisserait dans la
-  // géométrie) ; sans saisie exploitable, l'hypothèse documentée s'applique.
-  const nombreSaisi = hauteurToitSaisie === '' ? null : Number(hauteurToitSaisie)
-  const hauteurToitSaisieValide = nombreSaisi !== null && Number.isFinite(nombreSaisi)
-  const provenanceHauteurToit = hauteurToitSaisieValide ? 'saisie' : 'hypothese'
-  const hauteurToitM = hauteurToitSaisieValide ? nombreSaisi : HAUTEUR_TOIT_HYPOTHESE_M
+  // ACAL74 — la hauteur RETENUE et sa provenance : celle du BÂTIMENT du pan
+  // (`buildings[].hauteurM`, avec sa `source`) quand le document la porte ; sinon
+  // l'hypothèse documentée, affichée comme telle. Jamais un NaN ni un 0 muet.
+  const batiments = Array.isArray(layout?.buildings) ? layout.buildings : []
+  const batiment = zone?.buildingId
+    ? batiments.find((b) => b?.id === zone.buildingId) ?? null
+    : null
+  const hauteurBatiment = typeof batiment?.hauteurM === 'number'
+    && Number.isFinite(batiment.hauteurM) && batiment.hauteurM > 0
+    ? batiment.hauteurM : null
+  const provenanceHauteurToit = hauteurBatiment === null ? 'hypothese' : 'batiment'
+  const hauteurToitM = hauteurBatiment ?? HAUTEUR_TOIT_HYPOTHESE_M
+  const sourceBatiment = batiment?.source === 'saisie' ? 'saisie atelier' : (batiment?.source ?? '')
+  const mentionHauteur = provenanceHauteurToit === 'batiment'
+    ? `hauteur du bâtiment : ${hauteurToitM} m${sourceBatiment ? ` (${sourceBatiment})` : ''}`
+    : MENTION_HYPOTHESE_TOIT
 
   const obstructions = useMemo(() => {
     if (!zone) return []
@@ -153,8 +157,8 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
           </label>
           <select
             id="cal-course-soleil-pan"
-            value={panId ?? ''}
-            onChange={(e) => setPanId(e.target.value)}
+            value={zone?.id ?? ''}
+            onChange={(e) => setPanChoisi(e.target.value)}
             className="mt-1 block rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
           >
             {zones.map((z, i) => (
@@ -210,23 +214,13 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
               : ''}
           </p>
 
-          {/* CALX52 — la hauteur de toit EMPLOYÉE et sa provenance, TOUJOURS
-              lisibles sous le diagramme (jamais une valeur muette). */}
+          {/* ACAL74 — la hauteur EMPLOYÉE et sa provenance, TOUJOURS lisibles sous le
+              diagramme : celle du bâtiment du pan (document), ou l'hypothèse. */}
           <div className="mt-3 border-t border-white/10 pt-3" data-testid="cal-course-soleil-hauteur-toit">
-            <label htmlFor="cal-course-soleil-hauteur-toit-champ" className="tech-label text-lune-faint">
+            <p className="tech-label text-lune-faint">
               Hauteur de toit employée pour les obstructions proches
-            </label>
+            </p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <input
-                id="cal-course-soleil-hauteur-toit-champ"
-                data-testid="cal-course-soleil-hauteur-toit-champ"
-                type="number"
-                step="any"
-                value={hauteurToitSaisie}
-                onChange={(e) => setHauteurToitSaisie(e.target.value)}
-                placeholder={String(HAUTEUR_TOIT_HYPOTHESE_M)}
-                className="w-24 rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
-              />
               <span className="fig text-sm text-white" data-testid="cal-course-soleil-hauteur-toit-valeur">
                 {`${hauteurToitM} m`}
               </span>
@@ -235,10 +229,15 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
               className="mt-1 text-xs text-lune-faint"
               data-testid="cal-course-soleil-hauteur-toit-provenance"
             >
-              {provenanceHauteurToit === 'saisie'
-                ? `Hauteur de toit saisie : ${hauteurToitM} m.`
-                : MENTION_HYPOTHESE_TOIT}
+              {mentionHauteur}
             </p>
+            {provenanceHauteurToit === 'hypothese' && (
+              <p className="mt-1 text-xs">
+                <Link to={`/calepinage/${calepinageId}`} className="font-semibold text-brass-300 underline">
+                  Saisir la hauteur dans l’atelier (Bâtiment)
+                </Link>
+              </p>
+            )}
           </div>
 
           {/* La mention accompagne CHAQUE marqueur d'obstruction proche
@@ -251,9 +250,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
                   key={`${o.label ?? 'obs'}-${i}`}
                   data-testid={`cal-course-soleil-obstruction-hauteur-${i}`}
                 >
-                  {`${o.label ?? 'Obstruction'} — ${provenanceHauteurToit === 'saisie'
-                    ? `hauteur de toit saisie : ${hauteurToitM} m`
-                    : MENTION_HYPOTHESE_TOIT}`}
+                  {`${o.label ?? 'Obstruction'} — ${mentionHauteur}`}
                 </li>
               ))}
             </ul>
