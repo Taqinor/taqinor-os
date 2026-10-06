@@ -730,6 +730,15 @@ class Ticket(models.Model):
     # Coût interne (jamais affiché côté client).
     cout = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # CIQ642 — la panne met le site à l'ARRÊT. Sur un chantier industriel dont
+    # le régime 82-21 est accord ou autorisation, le passage à vrai pose sur le
+    # dossier l'action « notifier l'arrêt au distributeur » (décret 2.25.100
+    # art. 28). Aucun envoi automatique, aucun délai : un simple fait déclaré.
+    arret_installation = models.BooleanField(
+        default=False,
+        help_text="La panne met l'installation à l'arrêt (notification du "
+                  "distributeur pour un site professionnel sous accord ou "
+                  "autorisation, décret 2.25.100 art. 28).")
 
     # ── XSAV14 — taxonomie panne / cause / remède (codifiés à la résolution) ──
     # Optionnels : NULL tant qu'un technicien ne les a pas saisis (comportement

@@ -116,6 +116,8 @@ SURFACE_PUBLIQUE = (
     "activate_optional_line",
     "affecter_encaissement_groupe",
     "aire_contour_m2",
+    # CIQ642 — action posée sur le dossier 82-21 d'un chantier (lue par sav).
+    "ajouter_action_dossier_8221",
     "ajouter_lignes_boq_electrique",
     "ajouter_lignes_devis_import",
     "ajouter_lignes_facture_import",
