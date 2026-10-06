@@ -529,10 +529,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
         return
       }
 
-      // 2) Persistance idempotente du layout finalisé (best-effort).
-      try {
-        await api.post(`/ventes/devis/${devis.id}/layout/`, layout)
-      } catch { /* on continue : la persistance est best-effort */ }
+      // 2) ACAL97 — PLUS de re-POST du layout BRUT sur /ventes/devis/<id>/layout/ :
+      //    from-layout (étape 1) range DÉJÀ la conception, ENRICHIE côté serveur
+      //    (`_pans_geometry`…) ; ce second envoi « best-effort » l'écrasait.
 
       // 3) Capture le PNG de la 3D et l'envoie (multipart, best-effort).
       setGenStatus('Capture de la vue 3D…')
