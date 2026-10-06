@@ -974,3 +974,201 @@ class ContratFournisseurJetonsTests(WmsBase):
         self.assertEqual(rep.json(), contrat['exemple_erreur_404'])
         for cle in ('nouveau_astk180', 'nouveau_astk181'):
             self.assertIn('NOUVEAU', contrat[cle]['nouveau'])
+
+
+class ContratKitsStockTests(WmsBase):
+    """ASTK168 — kits_stock.json."""
+
+    BASE = '/api/django/stock/kits/'
+
+    def setUp(self):
+        from apps.stock.models import KitComposant, KitProduit
+
+        super().setUp()
+        self.panneau = Produit.objects.create(
+            company=self.company, nom='Panneau 550 W', sku='PV550-ASTK',
+            prix_achat=Decimal('1'), prix_vente=Decimal('600'),
+            quantite_stock=40, tva=Decimal('10'), marque='JA Solar')
+        self.panneau2 = Produit.objects.create(
+            company=self.company, nom='Panneau 600 W', sku='PV600-ASTK',
+            prix_achat=Decimal('1'), prix_vente=Decimal('650'),
+            quantite_stock=10, tva=Decimal('10'), marque='JA Solar')
+        self.kit = KitProduit.objects.create(
+            company=self.company, nom='Kit résidentiel ASTK', sku='KIT-ASTK')
+        KitComposant.objects.create(
+            kit=self.kit, produit=self.panneau, quantite=Decimal('9'),
+            taux_perte_pct=Decimal('5'))
+
+    def _ecart_composant(self, reel, contrat):
+        """Le seul écart toléré = les clés NOUVELLES déclarées au contrat."""
+        self.assertEqual(
+            set(contrat['exemple_composant']) - set(reel),
+            set(contrat['cles_nouvelles_composant']),
+            'Les clés du composant divergent du contrat (hors NOUVEAU).')
+        self.assertFalse(set(reel) - set(contrat['exemple_composant']))
+
+    def test_liste_detail_et_composants(self):
+        contrat = route('kits_stock', 'kits')
+        rep = self.api.get(self.BASE)
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'liste')
+        self.assertTrue(corps['results'])
+        kit = corps['results'][0]
+        self.assertMemesCles(kit, contrat['exemple_element'], 'kit')
+        self._ecart_composant(kit['composants'][0], contrat)
+
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple_element'], 'détail')
+
+        rep = self.api.get(self.BASE, {'avec_disponibilite': 1})
+        dispo = rep.json()['results'][0]['disponibilite_potentielle']
+        self.assertEqual(sorted(dispo), ['goulots', 'kits_assemblables'])
+
+    def test_creation_modification_suppression(self):
+        contrat = route('kits_stock', 'kits')
+        corps = dict(contrat['corps_post'], sku='KIT-ASTK-NEUF',
+                     composants=[{'produit': self.panneau.id,
+                                  'quantite': 9}])
+        rep = self.api.post(self.BASE, corps, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        kit = rep.json()
+        self.assertMemesCles(kit, contrat['exemple_element'], 'POST')
+        self.assertMemesCles(contrat['corps_post'],
+                             {'nom': 0, 'sku': 0, 'description': 0,
+                              'composants': 0})
+
+        corps['nom'] = 'Kit modifié ASTK'
+        rep = self.api.put(f'{self.BASE}{kit["id"]}/', corps, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple_element'], 'PUT')
+
+        rep = self.api.delete(f'{self.BASE}{kit["id"]}/')
+        self.assertEqual(rep.status_code, 204, rep.content)
+
+    def test_erreurs_400_reelles(self):
+        from authentication.models import Company
+
+        contrat = route('kits_stock', 'kits')
+        base = {'nom': 'Kit erreur ASTK', 'sku': 'KIT-ERR-ASTK'}
+
+        rep = self.api.post(self.BASE, dict(base, composants=[
+            {'produit': self.panneau.id, 'quantite': 0}]), format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400_quantite'])
+
+        rep = self.api.post(self.BASE, dict(base, composants=[
+            {'quantite': 1}]), format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400_xor'])
+
+        rep = self.api.put(f'{self.BASE}{self.kit.id}/', {
+            'nom': self.kit.nom, 'sku': self.kit.sku,
+            'composants': [{'composant_kit': self.kit.id, 'quantite': 1}]},
+            format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(texte(rep.json()['composants']),
+                         contrat['exemple_erreur_400_auto_reference'][
+                             'composants'])
+
+        etrangere = Company.objects.get_or_create(
+            slug='astk-contrats-autre', defaults={'nom': 'ASTK autre'})[0]
+        etranger = Produit.objects.create(
+            company=etrangere, nom='Intrus ASTK', sku='INT-ASTK',
+            prix_achat=Decimal('1'), prix_vente=Decimal('2'))
+        rep = self.api.post(self.BASE, dict(base, composants=[
+            {'produit': etranger.id, 'quantite': 1}]), format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        attendu = contrat['exemple_erreur_400_composant_autre_societe']
+        self.assertEqual(texte(rep.json()['composants']),
+                         attendu['exemple']['composants'])
+
+    def test_exploser_et_structure(self):
+        exploser = route('kits_stock', 'kit_exploser')
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/exploser/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, exploser['exemple'], 'explosion')
+        self.assertMemesCles(corps['lignes'][0],
+                             exploser['exemple']['lignes'][0], 'ligne')
+        self.assertNotIn('prix_achat', corps['lignes'][0])
+
+        structure = route('kits_stock', 'kit_structure')
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/structure/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, structure['exemple'], 'structure')
+        self.assertMemesCles(corps['composants'][0],
+                             structure['exemple']['composants'][0],
+                             'ligne produit')
+
+    def test_revisions_composition_et_disponibilite(self):
+        from apps.stock.services import snapshot_revision_kit
+
+        snapshot_revision_kit(self.kit, user=self.admin)
+        revisions = route('kits_stock', 'kit_revisions')
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/revisions/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertIsInstance(corps, list)
+        self.assertMemesCles(corps[0], revisions['exemple_element'],
+                             'révision')
+        self.assertMemesCles(
+            corps[0]['composition'][0],
+            revisions['exemple_element']['composition'][0], 'composition')
+
+        au = route('kits_stock', 'kit_composition_au')
+        demain = (timezone.localdate()
+                  + datetime.timedelta(days=1)).isoformat()
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/composition-au/',
+                           {'date': demain})
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), au['exemple'], 'composition au')
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/composition-au/')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), au['exemple_erreur_400'])
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/composition-au/',
+                           {'date': '2000-01-01'})
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), au['exemple_erreur_404'])
+
+        dispo = route('kits_stock', 'kit_disponibilite')
+        rep = self.api.get(f'{self.BASE}{self.kit.id}/disponibilite/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, dispo['exemple'], 'disponibilité')
+        self.assertMemesCles(corps['composants'][0],
+                             dispo['exemple']['composants'][0], 'composant')
+        self.assertMemesCles(corps['goulots'][0],
+                             dispo['exemple']['goulots'][0], 'goulot')
+
+    def test_dupliquer_et_remplacer_composant(self):
+        dup = route('kits_stock', 'kit_dupliquer')
+        rep = self.api.post(f'{self.BASE}{self.kit.id}/dupliquer/',
+                            {'facteur_echelle': 2}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        copie = rep.json()
+        self.assertMemesCles(copie, dup['exemple'], 'copie')
+        self.assertIsNone(copie['sku'])
+        rep = self.api.post(f'{self.BASE}{self.kit.id}/dupliquer/',
+                            {'facteur_echelle': 0}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), dup['exemple_erreur_400'])
+
+        rempl = route('kits_stock', 'kits_remplacer_composant')
+        rep = self.api.post(f'{self.BASE}remplacer-composant/', {
+            'produit_ancien': self.panneau.id,
+            'produit_nouveau': self.panneau2.id, 'dry_run': True},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, rempl['exemple'], 'remplacement')
+        self.assertTrue(corps['kits_stock'])
+        self.assertMemesCles(corps['kits_stock'][0],
+                             rempl['exemple']['kits_stock'][0], 'kit touché')
+        rep = self.api.post(f'{self.BASE}remplacer-composant/', {
+            'produit_ancien': self.panneau.id,
+            'produit_nouveau': self.panneau.id}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), rempl['exemple_erreur_400'])
