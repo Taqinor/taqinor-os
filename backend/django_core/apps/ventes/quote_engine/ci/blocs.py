@@ -157,6 +157,53 @@ def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
             f'</div></div>')
 
 
+# ── CIQ331 — échéancier en N jalons ─────────────────────────────────────────
+
+TITRE_ECHEANCIER = "Échéancier de paiement"
+
+
+def _pct(valeur):
+    """« 40 » / « 33,5 » — le pourcentage servi, sans arrondi propre."""
+    if isinstance(valeur, (int, float)):
+        return f"{valeur:g}".replace(".", ",")
+    return _txt(valeur)
+
+
+def bloc_echeancier(synthese, prefixe, couleur_titre="#0F1E35",
+                    couleur_texte="#1F2937", couleur_ligne="#E5E7EB"):
+    """``<div>`` de l'échéancier servi par ``synthese_ci['echeancier']``
+    (N jalons, D-CIQ-13) : libellé, pourcentage et montant TTC au CENTIME
+    (montants du builder — le dernier jalon porte le reliquat, la somme
+    égale le total). Montant non servi ⇒ le pourcentage seul, jamais un
+    « 0 ». '' sans jalon."""
+    jalons = synthese.get("echeancier") if isinstance(synthese, dict) \
+        else None
+    jalons = [j for j in jalons or [] if isinstance(j, dict)]
+    if not jalons:
+        return ""
+    cellules = []
+    for j in jalons:
+        montant = j.get("montant_ttc")
+        montant_html = (
+            f'<div class="{prefixe}-ech-m" style="font-weight:700;'
+            f'color:{couleur_titre};margin-top:2px;">{_montant(montant)}'
+            f'&#160;MAD TTC</div>' if montant is not None else "")
+        cellules.append(
+            f'<td class="{prefixe}-ech-c" style="vertical-align:top;'
+            f'border:1px solid {couleur_ligne};border-radius:8px;'
+            f'padding:6px 8px;"><div style="font-size:11pt;'
+            f'color:{couleur_titre};">{_pct(j.get("pct"))}&#160;%</div>'
+            f'<div style="margin-top:1px;">{_txt(j.get("libelle"))}</div>'
+            f'{montant_html}</td>')
+    return (f'<div class="{prefixe}-ech" style="margin-top:12px;'
+            f'font-size:7.5pt;color:{couleur_texte};line-height:1.3;">'
+            f'<div style="font-size:9pt;font-weight:700;'
+            f'color:{couleur_titre};">{TITRE_ECHEANCIER}</div>'
+            f'<table style="width:100%;border-collapse:separate;'
+            f'border-spacing:5px 0;margin:4px -5px 0 -5px;table-layout:fixed;">'
+            f'<tr>{"".join(cellules)}</tr></table></div>')
+
+
 # ── CIQ318 — bloc « Offre de financement » ──────────────────────────────────
 
 TITRE_FINANCEMENT = "Offre de financement"

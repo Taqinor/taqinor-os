@@ -289,7 +289,42 @@ def _option_batterie(data):
             "motif": bloc.get("motif")}
 
 
+#: CIQ331 — jalon CIQ212 (``data['jalons_paiement']``) → (jalon, libellé)
+#: du contrat ``proposal_data.json`` › ``synthese_ci.echeancier``.
+JALONS_N = {
+    "commande": ("commande", "À la commande"),
+    "acompte": ("commande", "À la commande"),
+    "livraison_materiel": ("livraison", "À la livraison"),
+    "materiel": ("livraison", "À la livraison"),
+    "mise_en_service": ("mise_en_service", "À la mise en service"),
+    "solde": ("mise_en_service", "À la mise en service"),
+    "reception_definitive": ("reception_definitive",
+                             "À la réception définitive"),
+}
+
+
+def _echeancier_n(jalons):
+    """CIQ331 — les N jalons servis par le builder (CIQ212,
+    ``jalons_paiement_devis`` : montants au centime, le dernier reçoit le
+    reliquat) recopiés dans la forme du contrat — aucun recalcul."""
+    sortie = []
+    for j in jalons:
+        if not isinstance(j, dict) or _num(j.get("pct")) is None:
+            continue
+        cle = str(j.get("jalon") or "")
+        jalon, libelle = JALONS_N.get(cle, (cle, str(j.get("libelle") or cle)))
+        montant = _num(j.get("montant_ttc"))
+        sortie.append({"libelle": libelle, "pct": _num(j.get("pct")),
+                       "montant_ttc": montant, "jalon": jalon})
+    return sortie
+
+
 def _echeancier(data, option):
+    jalons = data.get("jalons_paiement")
+    if isinstance(jalons, list) and jalons:
+        sortie = _echeancier_n(jalons)
+        if sortie:
+            return sortie
     termes = _dict(data.get("payment_terms"))
     paires = [(cle, termes.get(cle)) for cle, _l, _j in JALONS
               if termes.get(cle) is not None]

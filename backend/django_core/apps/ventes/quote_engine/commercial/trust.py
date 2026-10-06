@@ -89,6 +89,12 @@ def build(ctx):
     # garantie », ni de cellule O&M sans ligne derrière.
     services_html = ci_blocs.bloc_services(
         d.get("com_synthese") or {}, "c3", navy, ink)
+    # CIQ331 — échéancier en N jalons (``synthese_ci['echeancier']``,
+    # montants au centime) puis l'offre de financement (CIQ318) si servie.
+    echeancier_html = ci_blocs.bloc_echeancier(
+        d.get("com_synthese") or {}, "c3", navy, ink, line)
+    financement_html = ci_blocs.bloc_financement(
+        d.get("com_synthese") or {}, "c3", navy, ink)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -144,9 +150,11 @@ def build(ctx):
 <div class="c3-root">
   <div class="c3-kicker">Votre projet, étape par étape</div>
   <div class="c3-sec">Comment nous procédons</div>
-  <div class="c3-steprow">{steps_cells}</div>
+  <table class="c3-steprow"><tr>{steps_cells}</tr></table>
 
   {warranties_html}
+
+  {echeancier_html}{financement_html}
 
   {services_html}
 

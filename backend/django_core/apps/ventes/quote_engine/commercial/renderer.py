@@ -105,8 +105,9 @@ def _augment(data: dict) -> dict:
     # ``etude['kwc']`` n'est plus qu'un repli.
     d["com_kwc"] = chiffres["kwc"] or _num(d.get("puissance_kwc")) \
         or _num(etude.get("kwc"))
-    # QJR145 (g) — ``com_prod`` SUPPRIMÉ : calculé et lu par aucun gabarit
-    # commercial (la production s'affiche depuis ``com_kwc``/l'étude).
+    # CIQ331 — la production annuelle de la couverture : celle du moteur C&I
+    # (``synthese_ci.systeme``), jamais la production « par ville ».
+    d["com_production"] = chiffres["production_kwh_an"]
     d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
     d["com_autoconso"] = chiffres["taux_autoconso_pct"]
     d["com_couverture"] = chiffres["taux_couverture_pct"]

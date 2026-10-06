@@ -82,6 +82,12 @@ def build(ctx):
         return premium_base.kpi(val, unit, label, fig, prefixe="c1c")
 
     cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête", "puissance_kwc")]
+    # CIQ331 — la production annuelle du moteur C&I (``synthese_ci``), ancrée
+    # pour la parité avec /proposition ; non servie ⇒ tuile omise.
+    production = d.get("com_production")
+    if production is not None:
+        cellules.append(kpi(fmt(round(production)), "&nbsp;kWh/an",
+                            "Production annuelle", "production_annuelle_kwh"))
     if autoconso is not None:
         cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
                             "Autoconsommation", "autoconsommation_pct"))
@@ -94,15 +100,23 @@ def build(ctx):
     # testait que le cas MT et laissait imprimer « 0 MAD — Économies / an ».
     # CIQ307 — tuiles d'argent lues sur ``synthese_ci.argent`` : « estimées »,
     # base HT/TTC dite, payback du flux ; absentes ⇒ omises.
-    cellules.extend(ci_couverture.tuiles_argent(d, "com", kpi, fmt))
     kpis = '<td class="c1c-kgap"></td>'.join(cellules)
+    # CIQ331 — l'argent sur sa propre rangée (économie de l'année 1, retour du
+    # flux) : lu sur ``synthese_ci.argent``, absent ⇒ rangée omise.
+    argent = ci_couverture.tuiles_argent(d, "com", kpi, fmt)
+    kpis_argent = ('<table class="c1c-kpirow" style="margin-top:9px;"><tr>'
+                   + '<td class="c1c-kgap"></td>'.join(argent)
+                   + '</tr></table>') if argent else ""
     bandeau = ci_couverture.bandeau_reserve(d, "com", "c1c")
     methode_line = ci_couverture.ligne_methode(d, "com", "c1c")
     note_pointe = ci_couverture.note_pointe(d, "com")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de
     # son absence. Vide hors dossier MT.
-    if d.get("com_masquer_economies"):
+    # CIQ331 — argent non servi ⇒ son motif (« ce qu'il nous manque »),
+    # jamais une tuile à « 0 » ni « votre répartition horaire ».
+    if d.get("com_masquer_economies") or (
+            d.get("com_motif_argent") and d.get("com_economies") is None):
         mt_line = ci_couverture.ligne_non_chiffre(d, "com", "c1c")
     elif d.get("com_mt_mention"):
         mt_line = f'<div class="c1c-mtsrc">{d["com_mt_mention"]}</div>'
@@ -197,7 +211,7 @@ def build(ctx):
 
   <div class="c1c-wrap">
     {bandeau}
-    <div class="c1c-kpirow">{kpis}</div>
+    <table class="c1c-kpirow"><tr>{kpis}</tr></table>{kpis_argent}
     {methode_line}
     {mt_line}
     <div class="c1c-note">
