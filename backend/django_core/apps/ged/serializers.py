@@ -184,6 +184,17 @@ class FolderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['path', 'created_at', 'updated_at']
 
+    def get_fields(self):
+        """ADOC21 — à la MISE À JOUR, `parent` et `cabinet` sont en lecture
+        seule : un dossier ne se déplace que par l'action `deplacer`
+        (`services.move_folder` : cycles refusés, chemins réécrits)."""
+        fields = super().get_fields()
+        if self.instance is not None and isinstance(self.instance, Folder):
+            for nom in ('parent', 'cabinet'):
+                if nom in fields:
+                    fields[nom].read_only = True
+        return fields
+
     def validate(self, attrs):
         """Cabinet et parent doivent appartenir à la société de l'utilisateur,
         et le parent doit vivre dans le même cabinet."""
