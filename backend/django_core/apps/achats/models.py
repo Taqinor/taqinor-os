@@ -428,6 +428,15 @@ class LigneReceptionFournisseur(models.Model):
         null=True, blank=True,
         related_name='lignes_reception_fournisseur')
     quantite = models.IntegerField()
+    # ASTK59 — quantité RÉELLEMENT entrée à la confirmation (plafonnée au
+    # reste dû de la ligne de BCF). Relue par la facturation et l'annulation
+    # au lieu de `quantite` (saisie). NULL = ligne antérieure à ASTK59 :
+    # repli sur `quantite`.
+    quantite_appliquee = models.IntegerField(
+        null=True, blank=True,
+        help_text='ASTK59 — quantité réellement entrée en stock à la '
+                  'confirmation (plafonnée au reste dû). NULL = '
+                  'ligne antérieure : repli sur `quantite`.')
 
     # ── FG61 — Numéros de série à la réception ────────────────────────────
     # Sériaux capturés à l'entrée en stock (pour réconciliation avec

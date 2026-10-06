@@ -1106,6 +1106,37 @@ def _incrementer_quantite_recue(ligne_cmd, qte):
     ligne_cmd.refresh_from_db(fields=['quantite_recue'])
 
 
+def quantite_entree_ligne_reception(ligne):
+    """ASTK59 — quantité RÉELLEMENT entrée par une ligne de réception
+    confirmée : ``quantite_appliquee`` (persistée à la confirmation, après
+    plafonnement au reste dû) ; repli sur ``quantite`` pour une ligne
+    antérieure à ASTK59 (NULL)."""
+    if ligne.quantite_appliquee is not None:
+        return int(ligne.quantite_appliquee)
+    return int(ligne.quantite or 0)
+
+
+def _poser_quantite_appliquee(ligne, qte):
+    """ASTK59 — persiste la quantité appliquée d'une ligne de réception."""
+    ligne.quantite_appliquee = qte
+    ligne.save(update_fields=['quantite_appliquee'])
+
+
+def reste_du_net_ligne_bcf(ligne_cmd, *, exclure_reception_id=None):
+    """ASTK59 — reste dû d'une ligne de BCF NET des réceptions BROUILLON
+    déjà saisies dessus (une 2e réception brouillon ne peut plus réclamer
+    les mêmes unités). Lecture seule."""
+    from django.db.models import Sum
+    from .models import LigneReceptionFournisseur, ReceptionFournisseur
+    qs = LigneReceptionFournisseur.objects.filter(
+        ligne_commande=ligne_cmd,
+        reception__statut=ReceptionFournisseur.Statut.BROUILLON)
+    if exclure_reception_id is not None:
+        qs = qs.exclude(reception_id=exclure_reception_id)
+    en_brouillon = qs.aggregate(t=Sum('quantite'))['t'] or 0
+    return max(ligne_cmd.quantite_restante - en_brouillon, 0)
+
+
 def confirm_reception_fournisseur(reception, user):
     """Confirme une réception fournisseur : crée un MouvementStock ENTREE par
     ligne reçue, incrémente le stock + `quantite_recue` du BCF, puis avance le
@@ -1151,9 +1182,11 @@ def confirm_reception_fournisseur(reception, user):
             raise ValueError(
                 'Seule une réception en brouillon peut être confirmée '
                 '(déjà confirmée ou annulée).')
+        applique_total = 0
         for ligne in lignes:
             qte = int(ligne.quantite or 0)
             if qte <= 0:
+                _poser_quantite_appliquee(ligne, 0)
                 continue
             # Plafonne au reste dû de la ligne de commande (jamais plus que
             # commandé — protège contre une saisie incohérente, idempotence).
@@ -1161,8 +1194,12 @@ def confirm_reception_fournisseur(reception, user):
             # refresh_from_db) : le reste dû est décidé sur une valeur sûre.
             ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
             qte = min(qte, ligne_cmd.quantite_restante)
+            # ASTK59 — la quantité RÉELLEMENT appliquée est persistée : la
+            # facturation et l'annulation la relisent (jamais `quantite`).
+            _poser_quantite_appliquee(ligne, max(qte, 0))
             if qte <= 0:
                 continue
+            applique_total += qte
             # XPUR16 — ligne libre/service (sans_stock ou produit=null) :
             # aucun MouvementStock, la quantité reçue est simplement actée.
             if ligne_cmd.sans_stock or ligne.produit_id is None:
@@ -1218,6 +1255,13 @@ def confirm_reception_fournisseur(reception, user):
                     quantite=qte,
                     reference_reception=reception.reference,
                     user=user)
+        if applique_total <= 0:
+            # ASTK59 — toutes les lignes tombent à 0 (reste dû déjà reçu) :
+            # confirmer créerait une réception « confirmée » qui n'a rien
+            # fait entrer — puis facturable. Refus (transaction annulée).
+            raise ValueError(
+                'Rien à recevoir : les quantités de cette réception sont '
+                'déjà entièrement reçues sur le bon de commande.')
         reception.statut = ReceptionFournisseur.Statut.CONFIRME
         reception.recu_par = verrou.recu_par or user
         reception.save(update_fields=['statut', 'recu_par'])
@@ -1356,12 +1400,14 @@ def annuler_reception_confirmee(reception, user):
         # ressortirait du stock LIBRE qui n'a jamais reçu ces unités : refus,
         # le chemin correct est un retour.
         if (bc is not None and bc.chantier_livraison_id
-                and any(_est_stockee(lg) and int(lg.quantite or 0) > 0
+                and any(_est_stockee(lg)
+                        and quantite_entree_ligne_reception(lg) > 0
                         for lg in lignes)):
             raise ValueError(
                 'Marchandise livrée au chantier — passer par un retour.')
         for ligne in lignes:
-            qte = int(ligne.quantite or 0)
+            # ASTK59 — on défait ce qui est RÉELLEMENT entré, pas la saisie.
+            qte = quantite_entree_ligne_reception(ligne)
             if qte <= 0:
                 continue
             if not _est_stockee(ligne):
@@ -2886,8 +2932,13 @@ def facturer_reception(company, user, reception):
     montant_tva = Decimal('0')
     lignes_data = []
     for ligne in reception.lignes.select_related('produit', 'ligne_commande').all():
+        # ASTK59 — facture ce qui est RÉELLEMENT entré (quantite_appliquee),
+        # jamais la saisie : une réception plafonnée à 0 ne facture rien.
+        qte_facturee = quantite_entree_ligne_reception(ligne)
+        if qte_facturee <= 0:
+            continue
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
-        total = Decimal(str(ligne.quantite)) * pu
+        total = Decimal(str(qte_facturee)) * pu
         montant_ht += total
         # XPUR16 — une ligne libre/service reprend sa désignation d'origine
         # (BCF) plutôt que le nom d'un produit catalogue absent.
@@ -2906,8 +2957,12 @@ def facturer_reception(company, user, reception):
         tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
             Decimal('0.01'))
         montant_tva += tva_ligne
-        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
+        lignes_data.append((designation, qte_facturee, pu, taux_ligne))
 
+    if not lignes_data:
+        raise ValueError(
+            f"Rien à facturer : la réception {reception.reference} n'a fait "
+            'entrer aucune quantité.')
     montant_ttc = montant_ht + montant_tva
 
     created = {}

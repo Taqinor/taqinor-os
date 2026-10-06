@@ -1408,13 +1408,15 @@ class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'ligne_commande', 'produit', 'produit_nom', 'produit_sku',
             'designation', 'quantite',
+            # ASTK59 — quantité réellement entrée à la confirmation (lecture).
+            'quantite_appliquee',
             # FG61 — numéros de série à la réception
             'numeros_serie',
             # FG64 — traçabilité lot / péremption
             'numero_lot', 'date_peremption',
         ]
         # produit est dérivé de la ligne de commande côté serveur.
-        read_only_fields = ['produit']
+        read_only_fields = ['produit', 'quantite_appliquee']
 
     def get_produit_nom(self, obj):
         return obj.produit.nom if obj.produit_id else None
@@ -1484,12 +1486,34 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
         # Les lignes de réception se rattachent aux lignes du BCF ; le produit
         # est dérivé de la ligne de commande (jamais du corps de requête).
         bcf_lignes = {ligne.id: ligne for ligne in bon.lignes.all()}
-        reception = ReceptionFournisseur.objects.create(**validated_data)
+        # ASTK59 — plafond à la CRÉATION : la quantité saisie ne peut pas
+        # dépasser le reste dû de la ligne de BCF NET des réceptions encore
+        # en brouillon (deux réceptions de 10 sur une ligne de 10 : la 2e
+        # est refusée ici, avant toute écriture). Une sur-livraison SEULE
+        # (12 saisis sur un reste de 10, aucune autre réception en attente)
+        # reste acceptée : la confirmation la plafonne au reste dû et
+        # persiste `quantite_appliquee` (comportement historique conservé).
+        from .services import reste_du_net_ligne_bcf
+        demande = {}
         for ligne in lignes_data:
             ligne_cmd = bcf_lignes.get(ligne['ligne_commande'].id)
             if ligne_cmd is None:
                 raise serializers.ValidationError(
                     {'lignes': 'Ligne de commande hors de ce bon de commande.'})
+            demande[ligne_cmd.id] = (
+                demande.get(ligne_cmd.id, 0) + ligne['quantite'])
+            reste = reste_du_net_ligne_bcf(ligne_cmd)
+            reste_brut = max(ligne_cmd.quantite_restante, 0)
+            if demande[ligne_cmd.id] > reste and (
+                    reste < reste_brut or reste <= 0):
+                libelle = (getattr(ligne_cmd.produit, 'nom', None)
+                           or ligne_cmd.designation or 'ligne')
+                raise serializers.ValidationError({'lignes': (
+                    f'La quantité reçue pour « {libelle} » dépasse le reste '
+                    f'dû ({reste}, réceptions en brouillon déduites).')})
+        reception = ReceptionFournisseur.objects.create(**validated_data)
+        for ligne in lignes_data:
+            ligne_cmd = bcf_lignes.get(ligne['ligne_commande'].id)
             LigneReceptionFournisseur.objects.create(
                 reception=reception, ligne_commande=ligne_cmd,
                 produit=ligne_cmd.produit, quantite=ligne['quantite'],
