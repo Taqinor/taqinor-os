@@ -57,7 +57,7 @@ class MonEquipePeutGererTests(TestCase):
         return res.json()
 
     def test_peut_gerer_conforme_contrat(self):
-        self.assertEqual(CONTRAT['forme_serveur'], 'complète')
+        self.assertEqual(CONTRAT['forme_serveur'], 'complete')
         admin = self._lire(self.admin)
         membre = self._lire(self.membre)
         for corps in (admin, membre):

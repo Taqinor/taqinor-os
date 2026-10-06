@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/portail/mon-equipe/",
   "pourquoi": "ADOC111 (M0, C-ADOC-049) — « Mon équipe » : invitations/membres du portail client, MonEquipePortailViewSet (views_client.py:1248). Un élément = `_ligne` (id, email, role ∈ lecture|ecriture, role_display, statut ∈ en_attente|acceptee|revoquee, statut_display, date_creation, date_acceptation) — jamais le token d'invitation. NOUVEAU : l'enveloppe porte `peut_gerer` (bool) = `services.est_admin_portail_client(request.user)` : l'écran n'affiche inviter/révoquer que si vrai (le serveur reste l'autorité : 403 sinon). Écrans consommateurs : ADOC137.",
-  "forme_serveur": "complète",
+  "forme_serveur": "complete",
   "cles_nouvelles": [
     "peut_gerer"
   ],
