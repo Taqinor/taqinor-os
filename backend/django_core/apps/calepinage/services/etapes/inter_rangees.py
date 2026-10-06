@@ -65,10 +65,9 @@ nommant le champ.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
 from apps.calepinage.services import etapes
-from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
+from apps.calepinage.services.pvgis_serie import (
+    FAMILLE_EST_OUEST, MOTIF_COMPOSANTES_ABSENTES, jambes_du_pan)
 from core.calepinage.ombre_rangees import (
     fraction_ombree, fraction_ombree_est_ouest)
 from core.calepinage.soleil import position_solaire
@@ -78,8 +77,8 @@ __all__ = ['CHAMPS_GEOMETRIE', 'CHAMP_KWC', 'CHAMP_PAS', 'FAMILLE_EST_OUEST',
            'REFERENCE', 'SOURCE', 'appliquer']
 
 #: Le nom de famille que le document donne à un châssis dos-à-dos
-#: (``zones[].geometry.family``, schéma ``roof_layout`` v2).
-FAMILLE_EST_OUEST = 'eastwest'
+#: (``zones[].geometry.family``, schéma ``roof_layout`` v2) — ACAL139 :
+#: déclaré UNE fois, dans ``pvgis_serie`` (``jambes_du_pan``).
 
 #: Les bases horaires que ``meteo.heure.base`` peut déclarer (CALX143).
 BASE_UTC = 'utc'
@@ -163,7 +162,10 @@ def appliquer(serie, contexte):
             '', _MOTIF_SITE,
             champ='site.lat / site.lon (point du calepinage)')
 
-    decalages, champ = _decalages(contexte, len(points))
+    # ACAL131 — LE lecteur d'instant UTC partagé (``etapes.instant_utc``) :
+    # le décalage de CHAQUE point (Ramadan compris), jamais un décalage moyen.
+    meteo = contexte.get('meteo') or {}
+    champ = _champ_heure_manquant(points, meteo)
     if champ:
         return serie, etapes.etape_omise('', _MOTIF_HEURE, champ=champ)
 
@@ -181,8 +183,7 @@ def appliquer(serie, contexte):
 
     suite = []
     for rang, point in enumerate(points):
-        facteur = _facteur(point, geometries, latitude, longitude,
-                           decalages[rang])
+        facteur = _facteur(point, geometries, latitude, longitude, meteo)
         valeur = point.get(colonne)
         if facteur >= 1.0 or valeur is None:
             suite.append(point)
@@ -265,21 +266,26 @@ def _parts_est_ouest(plan):
     Les faces réellement posées (``geometry.panels[].face``, schéma v2) font
     foi ; à défaut, les deux pans d'un chevron portent la même table et sont
     comptés à parts égales — l'hypothèse est alors ANNONCÉE.
+
+    ACAL139 — les parts sont celles de ``pvgis_serie.jambes_du_pan`` (UNE
+    lecture des faces pour la simulation et l'ombre des rangées). Une JAMBE
+    déjà isolée par la simulation (``plan['jambe']`` 'E' ou 'W') ne porte
+    que sa face : sa série n'est que la sienne.
     """
-    geometrie = plan.get('geometry') if isinstance(plan, dict) else None
-    panneaux = (geometrie or {}).get('panels') if isinstance(
-        geometrie, dict) else None
-    est = ouest = 0
-    for panneau in panneaux or ():
-        face = (panneau or {}).get('face') if isinstance(panneau, dict) else None
-        if face == 'E':
-            est += 1
-        elif face == 'W':
-            ouest += 1
-    total = est + ouest
-    if total:
-        return est / total, ouest / total, False
-    return 0.5, 0.5, True
+    plan = plan if isinstance(plan, dict) else {}
+    if plan.get('jambe') == 'E':
+        return 1.0, 0.0, False
+    if plan.get('jambe') == 'W':
+        return 0.0, 1.0, False
+    geometrie = plan.get('geometry')
+    panneaux = (geometrie.get('panels')
+                if isinstance(geometrie, dict) else None)
+    jambes = jambes_du_pan({
+        'azimut_deg': 0.0, 'modules': 2,
+        'geometry': {'family': FAMILLE_EST_OUEST, 'panels': panneaux or []}})
+    parts = {jambe['face']: jambe['part'] for jambe in jambes}
+    return (parts.get('E', 0.0), parts.get('W', 0.0),
+            bool(jambes[0]['hypothese']))
 
 
 def _geometries_des_plans(contexte):
@@ -352,43 +358,28 @@ def _composantes_disponibles(serie, points):
     return True
 
 
-def _decalages(contexte, nombre_points):
-    """``(décalages UTC en minutes, champ manquant)`` — jamais les deux."""
-    heure = (contexte.get('meteo') or {}).get('heure') or {}
+#: ACAL131 — les bases horaires qu'une série peut déclarer : une autre est
+#: refusée en nommant ``meteo.heure.base``.
+BASES_CONNUES = (BASE_UTC, BASE_LOCALE, 'locale_legale')
+
+
+def _champ_heure_manquant(points, meteo):
+    """Le champ qui empêche de dater les heures en UTC, ou ``''``."""
+    if etapes.decalage_utc_du_point(points[0], meteo) is not None:
+        return ''
+    heure = (meteo or {}).get('heure') or {}
     base = str(heure.get('base') or '').strip().lower()
-    if not base or base == BASE_UTC:
-        # PVGIS sert l'UTC quand « localtime » n'est pas demandé : c'est son
-        # défaut documenté, pas une hypothèse de notre part.
-        return [0.0] * nombre_points, ''
-    if base != BASE_LOCALE:
-        return [], 'meteo.heure.base (base horaire de la série)'
-
-    brut = heure.get('decalage_minutes')
-    unique = _nombre(brut)
-    if unique is not None:
-        return [unique] * nombre_points, ''
-    if isinstance(brut, (list, tuple)) and brut:
-        valeurs = [_nombre(valeur) for valeur in brut]
-        if None not in valeurs:
-            if len(valeurs) == 1:
-                return [valeurs[0]] * nombre_points, ''
-            if len(valeurs) == nombre_points:
-                return valeurs, ''
-    return [], 'meteo.heure.decalage_minutes (décalage UTC appliqué)'
+    if base and base not in BASES_CONNUES:
+        return 'meteo.heure.base (base horaire de la série)'
+    return 'meteo.heure.decalage_minutes (décalage UTC appliqué)'
 
 
-def _position(point, latitude, longitude, decalage_minutes):
+def _position(point, latitude, longitude, meteo):
     """La position du soleil à l'instant du point, ou ``None``."""
-    annee = point.get('annee')
-    mois = point.get('mois')
-    jour = point.get('jour')
-    heure = _nombre(point.get('heure'))
-    if heure is None:
+    moment = etapes.instant_utc(point, meteo)
+    if moment is None:
         return None
     try:
-        moment = (datetime(int(annee), int(mois), int(jour),
-                           tzinfo=timezone.utc)
-                  + timedelta(hours=heure, minutes=-float(decalage_minutes)))
         return position_solaire(
             latitude, longitude, annee=moment.year, mois=moment.month,
             jour=moment.day,
@@ -426,12 +417,12 @@ def _fraction_du_plan(geometrie, position):
         position.elevation_deg, position.azimut_depuis_sud_deg)
 
 
-def _facteur(point, geometries, latitude, longitude, decalage_minutes):
+def _facteur(point, geometries, latitude, longitude, meteo):
     """``1 − fraction ombrée × part directe`` pour cette heure."""
     part = _part_directe(point)
     if part <= 0.0:
         return 1.0
-    position = _position(point, latitude, longitude, decalage_minutes)
+    position = _position(point, latitude, longitude, meteo)
     if position is None or position.elevation_deg <= 0.0:
         return 1.0
     fraction = sum(geometrie['poids'] * _fraction_du_plan(geometrie, position)

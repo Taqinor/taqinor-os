@@ -71,6 +71,10 @@ CHAMP_GAMMA = 'temp_coeff_pmax_pct_c'
 #: Le nom de la méthode publiée — nommée, jamais sous-entendue.
 METHODE = 'iec_61724_1'
 
+#: ACAL53 — sentinelle « PR non fourni : le calculer ici » (``None`` est une
+#: valeur légitime du PR fourni : non publié, avec son motif ailleurs).
+_PR_CALCULE = object()
+
 #: Les trois formes de période, publiées telles quelles.
 PERIODE_ANNUELLE = 'annuelle'
 
@@ -132,7 +136,8 @@ MOTIF_TEMPERATURE = (
     f'manquant : « serie_horaire.{COLONNE_TEMPERATURE} ».')
 
 
-def bloc_performance(serie, *, kwc, fiche_module=None):
+def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE,
+                     irradiation_incidente=None):
     """Le bloc ``resultat['performance']`` — ou ses nulls, motivés.
 
     Args:
@@ -143,6 +148,15 @@ def bloc_performance(serie, *, kwc, fiche_module=None):
         fiche_module: les specs produit déjà résolues, ou ``{}``. Seul
             ``temp_coeff_pmax_pct_c`` y est lu, et seulement pour la variante
             corrigée en température.
+        pr: ACAL53 — LE ratio de performance publié par
+            ``production.total.performance_ratio`` (une seule définition :
+            énergie du site / irradiation pondérée par le kWc de chaque pan).
+            Fourni (même ``None``), il est publié TEL QUEL ; ce bloc ne garde
+            alors en propre que la variante corrigée en température. Absent,
+            le PR est calculé ici sur ``serie`` (appel historique).
+        irradiation_incidente: ACAL128 — l'irradiation INCIDENTE (kWh/m²)
+            capturée avant la chaîne : fournie, c'est elle qui est publiée
+            sous ``irradiation_plan_kwh_m2`` et qui sert de référence.
 
     Returns:
         dict — ``pr``, ``pr_methode``, ``pr_reference``,
@@ -161,7 +175,13 @@ def bloc_performance(serie, *, kwc, fiche_module=None):
 
     colonne = _etapes.colonne_energie(serie)
     heures = _heures(serie)
-    irradiation = _irradiation_kwh_m2(points, heures)
+    # ACAL128 — UNE mesure de l'irradiation (``chaine_pertes``), plus un
+    # jumeau ici.
+    from apps.calepinage.services.chaine_pertes import irradiation_kwh_m2
+
+    irradiation = (_nombre(irradiation_incidente)
+                   if irradiation_incidente is not None
+                   else irradiation_kwh_m2(serie))
     periode = _periode(points)
     puissance = _nombre(kwc)
 
@@ -190,7 +210,10 @@ def bloc_performance(serie, *, kwc, fiche_module=None):
 
     reference_kwh = puissance * irradiation / (
         IRRADIANCE_REFERENCE_W_M2 / 1000.0)
-    bloc['pr'] = round(energie_kwh / reference_kwh, 4)
+    if pr is _PR_CALCULE:
+        bloc['pr'] = round(energie_kwh / reference_kwh, 4)
+    else:
+        bloc['pr'] = pr
     bloc['pr_methode'] = METHODE
     bloc['pr_reference'] = REFERENCE_IEC
 
@@ -212,21 +235,6 @@ def _heures(serie):
     """La durée d'un point, en heures."""
     pas = _nombre(serie.get('pas_minutes')) or _etapes.PAS_MINUTES_PVGIS
     return float(pas) / 60.0
-
-
-def _irradiation_kwh_m2(points, heures):
-    """``Σ G(i) × Δt`` en kWh/m², ou ``None`` si la colonne est illisible."""
-    total = 0.0
-    lues = 0
-    for point in points:
-        valeur = _nombre(point.get(COLONNE_IRRADIANCE))
-        if valeur is None:
-            continue
-        total += valeur
-        lues += 1
-    if not lues:
-        return None
-    return round(total * heures / 1000.0, 3)
 
 
 def _motif_du_refus(points, colonne, irradiation, puissance):

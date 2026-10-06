@@ -58,15 +58,15 @@ COLLECTIONS = ('zones', 'buildings')
 #: (règle générique) et nommée par sa propre clé. Les messages sont ceux du
 #: contrat CALX334 (``refus_suggestions_en_attente``).
 EMPLACEMENTS = {
-    ('zones', 'pitchSuggestion'): (
-        'pitchDeg', 'Pente du pan', 'LiDAR IGN',
-        "Pente suggérée par le LiDAR IGN, jamais acceptée : acceptez-la ou "
-        "saisissez-la avant d'approuver."),
     ('buildings', 'hauteurSuggestion'): (
         'hauteurM', 'Hauteur du bâtiment', 'OpenStreetMap',
         "Hauteur proposée par OpenStreetMap, jamais acceptée : acceptez-la "
         "ou saisissez-la avant d'approuver."),
 }
+
+#: ACAL65 (D-ACAL-19) — emplacements qui ne bloquent JAMAIS l'approbation :
+#: la pente IGN est la pente du TERRAIN, jamais celle du pan.
+EMPLACEMENTS_NON_BLOQUANTS = (('zones', 'pitchSuggestion'),)
 
 __all__ = [
     'APPROUVE', 'REFUSE', 'DECISIONS', 'CLE_EXIGEE', 'ApprobationRefusee',
@@ -123,6 +123,8 @@ def _suggestions_en_attente(roof_layout):
             for cle in sorted(objet):
                 if not (isinstance(cle, str)
                         and cle.endswith(SUFFIXE_SUGGESTION)):
+                    continue
+                if (collection, cle) in EMPLACEMENTS_NON_BLOQUANTS:
                     continue
                 suggestion = objet[cle]
                 if not isinstance(suggestion, dict):

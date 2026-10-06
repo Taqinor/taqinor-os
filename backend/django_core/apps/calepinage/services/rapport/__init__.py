@@ -185,6 +185,12 @@ def resultat_du_rapport(calepinage):
     return servi, stocke
 
 
+def _provenance_de_simulation(resultat):
+    from ..provenance_document import provenance_de_simulation
+
+    return provenance_de_simulation(resultat)
+
+
 def _module_de_section(code):
     """Le module rédacteur de ``code``, ou ``None`` s'il n'existe pas ENCORE.
 
@@ -397,12 +403,9 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
         'identite': dict(identite or {}),
         'site': dict(site or {}),
         'styles': dict(styles or {}),
-        'provenance': {
-            'hash_entree': (resultat.get('hash_entree')
-                            or resultat.get('entree_hash') or ''),
-            'version_moteur': resultat.get('version_moteur') or '',
-            'calcule_le': resultat.get('calcule_le') or '',
-        },
+        # ACAL145 — l'empreinte de la SIMULATION (``resultat.simulation``),
+        # lue par ``provenance_document`` : jamais une clé racine.
+        'provenance': _provenance_de_simulation(resultat),
         'mentions': [m for m in pied if m],
         'etat': dict(etat or {}),
         'sections': lignes,

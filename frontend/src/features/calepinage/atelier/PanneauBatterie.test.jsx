@@ -9,7 +9,7 @@
    chiffre — seulement le motif du serveur — et la simulation périmée
    (CALX70) affiche le même bandeau de péremption que les autres panneaux. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
@@ -23,6 +23,9 @@ vi.mock('../../../api/calepinageApi', () => ({
     moteur: { resultat: vi.fn() },
   },
 }))
+
+/* ACAL125 — le bouton de calcul est sous `calepinage_gerer` (doublure : pas de Provider Redux). */
+vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
 
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauBatterie from './PanneauBatterie'
@@ -148,7 +151,7 @@ describe('PanneauBatterie (CALX14)', () => {
 
     await screen.findByTestId('calx14-panneau')
     expect(screen.getByTestId('calx14-non-simule')).toBeInTheDocument()
-    expect(screen.getByTestId('calx14-relancer-bouton')).toBeInTheDocument()
+    expect(screen.getByTestId('calx48-lancer-bouton')).toBeInTheDocument()
     expect(screen.queryByTestId('calx14-batterie')).toBeNull()
   })
 
@@ -293,6 +296,26 @@ describe('PanneauBatterie — déclarer la batterie (ACAL167)', () => {
 
     await screen.findByTestId('acal167-message')
     expect(poste()).toEqual({})
+  })
+
+  it('ACAL125 — suit queued → running → done (statuts réels) puis relit le résultat, sans refus', async () => {
+    const accuse = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_accepte')
+    servir('exemple')
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: accuse })
+    calepinageApi.moteur.resultat
+      .mockResolvedValueOnce({ data: { ...accuse, statut: 'queued' } })
+      .mockResolvedValueOnce({ data: { ...accuse, statut: 'running' } })
+      .mockResolvedValue({ data: { ...accuse, statut: 'done', progress_pct: 100 } })
+    render(<MemoryRouter><PanneauBatterie calepinageId={1} intervalleMs={5} /></MemoryRouter>)
+
+    await screen.findByTestId('calx14-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+
+    await waitFor(() => expect(calepinageApi.moteur.resultat).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2))
+    expect(screen.queryByTestId('calx48-refus')).toBeNull()
+    // Résultat frais : « Recalculer » envoie forcer:true.
+    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(1, { forcer: true })
   })
 
   it('« Enregistrer et relancer » enchaîne la relance de la simulation (forcer: true)', async () => {

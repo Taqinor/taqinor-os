@@ -57,17 +57,17 @@ def _modules(layout):
 
     Jamais ``0`` quand le document ne dit rien : « zéro module » et « on ne
     sait pas » ne se lisent pas de la même façon dans un journal.
+
+    ACAL259 — LA lecture du module (``mesures.mesures_du_document``) : un
+    champ au sol compte, un pan non pavé vaut 0 — le même total que la
+    présentation, l'export et le comparatif.
     """
+    from .mesures import mesures_du_document
+
     if not isinstance(layout, dict):
         return ''
-    resultat = layout.get('result')
-    if isinstance(resultat, dict):
-        for cle in ('panels', 'count', 'nb_panneaux'):
-            valeur = resultat.get(cle)
-            if isinstance(valeur, (int, float)) and not isinstance(valeur,
-                                                                   bool):
-                return str(int(valeur))
-    return ''
+    modules = mesures_du_document(layout)['modules']
+    return '' if modules is None else str(int(modules))
 
 
 def journaliser_creation(calepinage, *, user=None):

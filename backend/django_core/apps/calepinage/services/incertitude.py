@@ -48,7 +48,8 @@ __all__ = ['COMPOSANTE_BIAIS', 'COMPOSANTE_METEO', 'COMPOSANTE_MODELE',
            'DEPASSEMENTS', 'IncertitudeInvalide', 'METHODE_QUADRATURE',
            'ORIGINE_ABSENTE', 'ORIGINE_MESUREE', 'ORIGINE_SAISIE',
            'PORTEE_ANNUELLE', 'SOURCE_PVGIS', 'SOURCE_SOCIETE',
-           'SOURCE_TEXTE', 'bloc_incertitude', 'sigma_mesure']
+           'SOURCE_TEXTE', 'bloc_incertitude', 'masquer_depassements',
+           'sigma_mesure']
 
 #: σ a été MESURÉ sur les productions annuelles réellement observées.
 ORIGINE_MESUREE = 'mesuree'
@@ -96,6 +97,23 @@ REGLAGES_COMPOSANTES = {
 #: pas de le mesurer.
 CLE_SIGMA_METEO_SAISI = 'sigma_meteo_saisi_pct'
 LIBELLE_SIGMA_METEO_SAISI = 'Variabilité interannuelle saisie (σ météo)'
+
+
+def masquer_depassements(bloc, motif):
+    """ACAL49 / D-ACAL-7 — les TROIS dépassements (:data:`DEPASSEMENTS`)
+    masqués ENSEMBLE quand la production n'est qu'une borne haute.
+
+    Le P50 et σ restent publiés ; P75, P90 et P95 valent ``None`` et
+    ``motif_refus`` dit pourquoi. Modifie ``bloc`` en place et le rend.
+    """
+    if not motif or not isinstance(bloc, dict):
+        return bloc
+    quantiles = bloc.get('quantiles')
+    if isinstance(quantiles, dict):
+        for cle, _probabilite in DEPASSEMENTS:
+            quantiles[cle] = None
+    bloc['motif_refus'] = motif
+    return bloc
 
 
 class IncertitudeInvalide(ValueError):
@@ -180,10 +198,19 @@ def _sigma_saisi(reglages, cle, libelle):
     return pourcent / 100.0, source, reference
 
 
-def _composante(nom, sigma_relatif, source, reference, annees):
+#: ACAL313 — ``composantes[].origine`` (contrat ``calepinage_incertitude
+#: .json``, ACAL8) : la variabilité MESURÉE sur les années observées de la
+#: fenêtre, ou une valeur SAISIE et sourcée par la société.
+ORIGINE_OBSERVEE = 'observee'
+ORIGINE_COMPOSANTE_SAISIE = 'saisie'
+
+
+def _composante(nom, sigma_relatif, source, reference, annees,
+                origine=ORIGINE_COMPOSANTE_SAISIE):
     """Une LIGNE de ``composantes[]``, à la forme arrêtée par CALX144."""
     return {'nom': nom, 'sigma_relatif': round(sigma_relatif, 6),
-            'source': source, 'reference': reference, 'annees': annees}
+            'source': source, 'reference': reference, 'annees': annees,
+            'origine': origine}
 
 
 def _composante_meteo(totaux_par_annee, reglages):
@@ -196,10 +223,16 @@ def _composante_meteo(totaux_par_annee, reglages):
     Returns:
         ``(composante | None, origine, annees_observees)``.
     """
-    sigma, origine, annees = sigma_mesure(totaux_par_annee)
+    # ACAL313 — LE point d'entrée de la variabilité observée
+    # (``p50p90.variabilite_interannuelle``, qui délègue à ``sigma_mesure`` :
+    # une seule formule). Import LOCAL : ``p50p90`` importe ce module.
+    from .p50p90 import variabilite_interannuelle
+
+    sigma, origine, annees = variabilite_interannuelle(totaux_par_annee)
     if sigma is not None:
         return (_composante(COMPOSANTE_METEO, sigma, SOURCE_PVGIS,
-                            f'seriescalc, {annees} années observées', annees),
+                            f'seriescalc, {annees} années observées', annees,
+                            origine=ORIGINE_OBSERVEE),
                 ORIGINE_MESUREE, annees)
     saisi, source, reference = _sigma_saisi(reglages, CLE_SIGMA_METEO_SAISI,
                                             LIBELLE_SIGMA_METEO_SAISI)

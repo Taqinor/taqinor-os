@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
+import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
 
 /* ============================================================================
    CALX25 — LE RELEVÉ TERRAIN (CHAÎNES DE COTES) SUR UN PANNEAU.
@@ -268,6 +269,155 @@ function ChaineResolue({ index, resolue }) {
           {`Cote « ${c.nom} » déduite par fermeture (${c.valeur} m) — à confirmer à l’exécution.`}
         </p>
       ))}
+    </div>
+  )
+}
+
+/* ACAL207 (D-ACAL-28) — « Appliquer la cote au pan ». Le dessinateur choisit le pan, le
+   CÔTÉ i → i+1 (longueur actuelle affichée, mesurée par LA projection `repere.js`) et une
+   cote MESURÉE du relevé ; le SERVEUR recale ce côté par homothétie et dépose une version.
+   Aucune homothétie ici, aucune application automatique ; une cote « à confirmer » n'est
+   pas proposée. */
+function cotesDuPan(zone) {
+  const sommets = Array.isArray(zone?.vertices) ? zone.vertices : []
+  if (sommets.length < 3) return []
+  let repere
+  try {
+    repere = creerRepere({ origine_lnglat: sommets[0], ordre: ORDRE_LNGLAT })
+  } catch {
+    return []
+  }
+  const m = sommets.map((s) => lngLatVersMetres(repere, s, ORDRE_LNGLAT))
+  return m.map((a, i) => {
+    const b = m[(i + 1) % m.length]
+    return { index: i, longueur: Math.hypot(b.x - a.x, b.y - a.y) }
+  })
+}
+
+function mesuresDuReleve(releve) {
+  const saisies = Array.isArray(releve?.chaines) ? releve.chaines : []
+  const mesures = []
+  ;(releve?.geometrie?.chaines ?? []).forEach((chaine, rang) => {
+    const tolerance = Number(saisies[rang]?.tolerance_m)
+    const precision = Number.isFinite(tolerance) ? tolerance : null
+    if (Number(chaine.total_mesure) > 0) {
+      mesures.push({ cle: `${rang}-total`, libelle: `${chaine.nom} — total`,
+        longueur: Number(chaine.total_mesure), aConfirmer: false, precision })
+    }
+    for (const cote of chaine.cotes ?? []) {
+      if (!(Number(cote.valeur) > 0)) continue
+      mesures.push({ cle: `${rang}-${cote.nom}`, libelle: `${chaine.nom} / ${cote.nom}`,
+        longueur: Number(cote.valeur), aConfirmer: Boolean(cote.a_confirmer), precision })
+    }
+  })
+  return mesures
+}
+
+function premierMessage(data) {
+  if (typeof data?.detail === 'string' && data.detail) return data.detail
+  for (const valeur of Object.values(data && typeof data === 'object' ? data : {})) {
+    if (typeof valeur === 'string' && valeur) return valeur
+    if (Array.isArray(valeur) && typeof valeur[0] === 'string') return valeur[0]
+  }
+  return 'La cote n’a pas pu être appliquée — réessayez.'
+}
+
+function AppliquerCoteAuPan({ calepinageId, releve }) {
+  const [conception, setConception] = useState(null)
+  const [zoneId, setZoneId] = useState('')
+  const [coteIndex, setCoteIndex] = useState('')
+  const [mesureCle, setMesureCle] = useState('')
+  const [enCours, setEnCours] = useState(false)
+  const [retour, setRetour] = useState(null)
+
+  useEffect(() => {
+    if (!calepinageId) return undefined
+    let vivant = true
+    Promise.resolve(calepinageApi.calepinages.layout?.(calepinageId))
+      .then((res) => { if (vivant) setConception(res?.data?.roof_layout ?? null) })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [calepinageId])
+
+  const zones = (Array.isArray(conception?.zones) ? conception.zones : [])
+    .filter((z) => z && Array.isArray(z.vertices) && z.vertices.length >= 3)
+  const zone = zones.find((z) => String(z.id) === zoneId) ?? null
+  const cotes = cotesDuPan(zone)
+  const mesures = mesuresDuReleve(releve)
+  const mesure = mesures.find((m) => m.cle === mesureCle && !m.aConfirmer) ?? null
+  if (!releve?.id || zones.length === 0 || mesures.length === 0) return null
+
+  const appliquer = () => {
+    if (!zone || coteIndex === '' || !mesure) return
+    setEnCours(true)
+    setRetour(null)
+    Promise.resolve(calepinageApi.calepinages.appliquerCoteReleve(calepinageId, releve.id, {
+      zone_id: zone.id,
+      cote_index: Number(coteIndex),
+      longueur_m: mesure.longueur,
+    }))
+      .then((res) => {
+        if (res?.data?.roof_layout) setConception(res.data.roof_layout)
+        setRetour({ ok: true, texte: `Cote appliquée au côté ${coteIndex} — nouvelle version${
+          mesure.precision != null ? ` (précision ± ${mesure.precision} m)` : ''}.` })
+      })
+      .catch((err) => setRetour({ ok: false, texte: premierMessage(err?.response?.data) }))
+      .finally(() => setEnCours(false))
+  }
+
+  return (
+    <div className="mt-5 border-t border-white/10 pt-4" data-testid="cal-releve-appliquer-cote">
+      <p className="tech-label text-lune-faint">Appliquer la cote au pan</p>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <label className="text-sm text-lune-soft">
+          Pan
+          <select value={zoneId} data-testid="cal-releve-cote-pan"
+            onChange={(e) => { setZoneId(e.target.value); setCoteIndex('') }}
+            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            <option value="">— choisir —</option>
+            {zones.map((z) => <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>)}
+          </select>
+        </label>
+        <label className="text-sm text-lune-soft">
+          Côté
+          <select value={coteIndex} data-testid="cal-releve-cote-cote" disabled={!zone}
+            onChange={(e) => setCoteIndex(e.target.value)}
+            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            <option value="">— choisir —</option>
+            {cotes.map((c) => (
+              <option key={c.index} value={String(c.index)}>
+                {`Côté ${c.index} → ${(c.index + 1) % cotes.length} (${c.longueur.toFixed(2)} m)`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-lune-soft">
+          Cote mesurée
+          <select value={mesureCle} data-testid="cal-releve-cote-mesure"
+            onChange={(e) => setMesureCle(e.target.value)}
+            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            <option value="">— choisir —</option>
+            {mesures.map((m) => (
+              <option key={m.cle} value={m.cle} disabled={m.aConfirmer}>
+                {`${m.libelle} : ${m.longueur.toFixed(2)} m${
+                  m.precision != null ? ` ± ${m.precision} m` : ''}${m.aConfirmer ? ' (à confirmer)' : ''}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button type="button" onClick={appliquer}
+        disabled={enCours || !zone || coteIndex === '' || !mesure}
+        data-testid="cal-releve-cote-appliquer"
+        className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-brass-200 disabled:opacity-50">
+        Appliquer la cote au pan
+      </button>
+      {retour && (
+        <p role={retour.ok ? 'status' : 'alert'} data-testid="cal-releve-cote-retour"
+          className={`mt-2 text-sm ${retour.ok ? 'text-lune-soft' : 'text-red-300'}`}>
+          {retour.texte}
+        </p>
+      )}
     </div>
   )
 }
@@ -560,6 +710,10 @@ export default function PanneauReleve({ calepinageId: idPropose }) {
           ))}
         </div>
       )}
+
+      {/* ACAL207 — geste EXPLICITE : recaler un côté d'un pan sur une cote mesurée. */}
+      <AppliquerCoteAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null} />
+
     </div>
   )
 }

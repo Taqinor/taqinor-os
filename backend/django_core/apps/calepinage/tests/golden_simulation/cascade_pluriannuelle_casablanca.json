@@ -2,8 +2,8 @@
  "_provenance": {
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
-  "produit_le": "2026-09-21",
-  "arbre_sha": "338bc64b734947bfdc56c27ef797216da39c77e4",
+  "produit_le": "2026-10-06",
+  "arbre_sha": "e4698289780ee856f2e335a95ad646fc84869bcb",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -244,7 +244,45 @@
      "libelle": "Salissure",
      "gain": false,
      "source": "societe",
-     "entree": "poste_saisi:salissure",
+     "entree": {
+      "mode": "annuelle",
+      "valeurs_pct": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "mois": [
+       "janvier",
+       "février",
+       "mars",
+       "avril",
+       "mai",
+       "juin",
+       "juillet",
+       "août",
+       "septembre",
+       "octobre",
+       "novembre",
+       "décembre"
+      ],
+      "moyenne_pct": 2.0,
+      "source_du_reglage": "societe",
+      "origine_du_reglage": "calepinage",
+      "reference_saisie": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
+      "colonnes_appliquees": [
+       "p_w",
+       "gi_w_m2"
+      ]
+     },
      "kwh_avant": 151.368,
      "kwh_apres": 148.341,
      "perte_kwh": 3.027,
@@ -328,7 +366,10 @@
      "libelle": "Dispersion de fabrication (mismatch)",
      "gain": false,
      "source": "societe",
-     "entree": "poste_saisi:mismatch",
+     "entree": {
+      "champ": "reglages_simulation.mismatch_fabricant_pct",
+      "pct": 2.0
+     },
      "kwh_avant": 144.947,
      "kwh_apres": 142.048,
      "perte_kwh": 2.899,
@@ -417,7 +458,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Étape non livrée : le module « apps.calepinage.services.etapes.ecretage » n'existe pas encore dans le dépôt. La série ressort inchangée — aucun forfait n'est appliqué."
+     "motif_omission_non_compare": "Aucun onduleur au bloc « electrique.onduleurs » : ni puissance, ni nombre d'appareils, donc aucune borne d'écrêtage. Étape OMISE. Champ manquant : « electrique.onduleurs »."
     },
     {
      "omise": false,
@@ -480,20 +521,30 @@
   "production": {
    "total": {
     "kwc": 6.0,
-    "p50_kwh": 131.7,
-    "p75_kwh": 125.7,
-    "p90_kwh": 120.3,
+    "p50_kwh": 65.8,
+    "p75_kwh": 62.9,
+    "p90_kwh": 60.2,
+    "p95_kwh": 58.6,
     "performance_ratio": 0.87,
-    "specific_yield_kwh_kwc": 21.9,
+    "complete": true,
+    "socle_manquant": [],
+    "mention": "borne haute — 13 pertes non renseignées",
+    "performance_ratio_motif": "",
+    "p75_kwh_motif": "",
+    "p90_kwh_motif": "",
+    "p95_kwh_motif": "",
+    "specific_yield_kwh_kwc": 11.0,
     "annual_variability": 0.067,
     "annual_variability_source": "mesuree",
     "annual_variability_annees": 2,
-    "total_loss_pct": 13.0
+    "total_loss_pct": 13.0,
+    "portee": "annee_moyenne",
+    "annees_fenetre": 2
    },
    "mensuel": [
     {
      "mois": 1,
-     "p50_kwh": 49.3
+     "p50_kwh": 24.6
     },
     {
      "mois": 2,
@@ -517,7 +568,7 @@
     },
     {
      "mois": 7,
-     "p50_kwh": 82.4
+     "p50_kwh": 41.2
     },
     {
      "mois": 8,
@@ -544,12 +595,14 @@
     {
      "annee": 2019,
      "kwh": 63.1,
-     "source": "chaine_pertes"
+     "source": "chaine_pertes",
+     "observe": true
     },
     {
      "annee": 2020,
      "kwh": 68.6,
-     "source": "chaine_pertes"
+     "source": "chaine_pertes",
+     "observe": true
     }
    ],
    "par_pan": [
@@ -559,11 +612,11 @@
      "kwc": 6.0,
      "azimut_deg": null,
      "inclinaison_deg": 15.0,
-     "p50_kwh": 131.7,
-     "p75_kwh": 126.4,
-     "p90_kwh": 121.7,
+     "p50_kwh": 65.8,
+     "p75_kwh": 62.9,
+     "p90_kwh": 60.2,
      "performance_ratio": 0.87,
-     "specific_yield_kwh_kwc": 21.9,
+     "specific_yield_kwh_kwc": 11.0,
      "shading_annual_loss_pct": null,
      "tof": null,
      "tsrf": null,
@@ -580,30 +633,33 @@
      "sigma_relatif": 0.05906,
      "source": "pvgis",
      "reference": "seriescalc, 2 années observées",
-     "annees": 2
+     "annees": 2,
+     "origine": "observee"
     },
     {
      "nom": "modele_simulation",
      "sigma_relatif": 0.03,
      "source": "societe",
      "reference": "Réglage de simulation « sigma_modele_pct », provenance societe — Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
-     "annees": null
+     "annees": null,
+     "origine": "saisie"
     },
     {
      "nom": "biais_long_terme",
      "sigma_relatif": 0.01,
      "source": "societe",
      "reference": "Réglage de simulation « sigma_biais_meteo_pct », provenance societe — Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
-     "annees": null
+     "annees": null,
+     "origine": "saisie"
     }
    ],
    "sigma_total": 0.066993,
    "methode": "quadrature",
    "quantiles": {
-    "p50_kwh": 131.7,
-    "p75_kwh": 125.7,
-    "p90_kwh": 120.4,
-    "p95_kwh": 117.2
+    "p50_kwh": 65.8,
+    "p75_kwh": 62.8,
+    "p90_kwh": 60.2,
+    "p95_kwh": 58.5
    },
    "portee": "annuelle",
    "motif_refus": ""

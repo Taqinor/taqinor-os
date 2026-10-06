@@ -165,10 +165,59 @@ def _table_non_calcule(lignes):
     return '<table class="annexe-hypotheses">%s%s</table>' % (entete, corps)
 
 
+#: ACAL313 — la provenance d'un coefficient de norme, en clair.
+SOURCES_COEFFICIENT = {
+    'societe': 'saisi par la société',
+    'noyau': 'jeu du moteur (core.electrique)',
+}
+
+#: ACAL313 — la phrase imprimée quand aucune norme n'est applicable.
+MOTIF_SANS_NORME = ("aucune norme électrique applicable : aucun coefficient "
+                    "de section ni de chute n'a été employé")
+
+
+def _coefficients_appliques(resultat):
+    """``[(clé, valeur, référence, source)]`` des coefficients APPLIQUÉS.
+
+    ACAL313 — lus sur ``resultat['norme']['coefficients']``, c'est-à-dire la
+    sortie de ``services/norme.py::coefficients_publies`` (saisi société
+    avec référence, sinon noyau) telle que le résultat la publie : la même
+    vérité que celle qui a dimensionné les tronçons.
+    """
+    norme = resultat.get('norme')
+    norme = norme if isinstance(norme, dict) else {}
+    if not norme.get('applicable'):
+        return [], str(norme.get('motif') or MOTIF_SANS_NORME)
+    lignes = []
+    for cle, entree in sorted((norme.get('coefficients') or {}).items()):
+        if not isinstance(entree, dict):
+            continue
+        lignes.append((cle, entree.get('valeur'),
+                       str(entree.get('reference') or ''),
+                       SOURCES_COEFFICIENT.get(entree.get('source'),
+                                               str(entree.get('source') or ''))))
+    return lignes, ''
+
+
+def _table_coefficients(lignes, motif, langue):
+    entete = ('<tr><th>Coefficient</th><th>Valeur</th><th>Référence</th>'
+              '<th>Source</th></tr>')
+    if not lignes:
+        corps = '<tr><td colspan="4">%s</td></tr>' % escape(motif)
+    else:
+        corps = ''.join(
+            '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+            % (escape(cle), nombre_tel_que_servi(valeur, langue),
+               escape(reference), escape(source))
+            for cle, valeur, reference, source in lignes)
+    return '<table class="annexe-hypotheses">%s%s</table>' % (entete, corps)
+
+
 def html_de_section(contexte):
     """Le corps de la section ``hypotheses`` (le titre vient de l'assembleur).
 
-    Toujours DEUX tables — même sans grandeur employée ni grandeur omise,
+    Toujours TROIS tables (ACAL313 : + les coefficients de la norme, avec
+    leur référence) — même sans grandeur employée ni grandeur omise,
     chacune s'imprime avec son seul en-tête : l'annexe ``entrees_exigees:
     []`` du contrat est toujours ``disponible``, elle ne tombe jamais sur
     le rendu générique.
@@ -178,9 +227,13 @@ def html_de_section(contexte):
 
     postes = _postes_employes(resultat)
     non_calcule = _non_calcule(resultat)
+    coefficients, motif_norme = _coefficients_appliques(resultat)
 
     return (
         '<p class="grandeur">Hypothèses employées</p>%s'
+        '<p class="grandeur">Coefficients de la norme électrique</p>%s'
         '<p class="grandeur">Non calculé</p>%s'
-        % (_table_hypotheses(postes, langue), _table_non_calcule(non_calcule))
+        % (_table_hypotheses(postes, langue),
+           _table_coefficients(coefficients, motif_norme, langue),
+           _table_non_calcule(non_calcule))
     )

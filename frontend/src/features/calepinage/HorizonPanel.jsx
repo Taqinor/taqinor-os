@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
 import {
   sortedHorizonPoints, horizonMaxHeightDeg, hourlyHorizonFactors, maskedHourCount,
 } from '@rooflib/horizonEngine'
@@ -34,10 +35,24 @@ import RetourAtelier from './atelier/RetourAtelier'
    lui.
 
    ZÉRO CHIFFRE INVENTÉ : moins de deux points saisis ⇒ aucun horizon n'est
-   affiché ni appliqué (comportement d'aujourd'hui). La hauteur maximale et le
+   affiché. ACAL124 — la simulation (`services/horizon.py`) exige un TOUR
+   complet (au moins 8 directions, `DIRECTIONS_MINIMALES`) : en dessous,
+   « Enregistrer » est désactivé et le dit (le serveur garde son refus).
+   Tout geste sur un profil PVGIS (ajout OU retrait d'un point) le requalifie
+   en « saisie » : un profil corrigé n'est plus un profil mesuré. La hauteur maximale et le
    compte d'heures masquées affichés ici sont TOUJOURS recalculés depuis les
    points actuels, jamais mémorisés indépendamment.
    ========================================================================== */
+
+/** ACAL124 — miroir de `DIRECTIONS_MINIMALES` (services/horizon.py) : sous ce
+ * nombre de directions DISTINCTES, la simulation refuse le profil. */
+const DIRECTIONS_MINIMALES = 8
+const MESSAGE_TOUR_INCOMPLET = 'Le calcul exige un tour complet : au moins 8 directions'
+
+/** Le nombre de directions DISTINCTES (azimut ramené dans [0, 360[). */
+function directionsDistinctes(points) {
+  return new Set(sortedHorizonPoints(points).map((p) => p.azimuthDeg)).size
+}
 
 function nombre(brut) {
   if (brut === null || brut === undefined || brut === '') return null
@@ -45,44 +60,43 @@ function nombre(brut) {
   return Number.isFinite(v) ? v : null
 }
 
-export default function HorizonPanel({ calepinageId: idPropose } = {}) {
+export default function HorizonPanel({ calepinageId: idPropose, documentVivant = null } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
-  const [layout, setLayout] = useState(null)
+  // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
+  // un document vide sur lequel « Enregistrer » écraserait la conception.
+  const doc = useDocumentCalepinage(calepinageId)
   const [points, setPoints] = useState([])
   const [source, setSource] = useState('saisie')
   const [latitudeDeg, setLatitudeDeg] = useState(null)
   const [saisie, setSaisie] = useState({ azimut: '', hauteur: '' })
   const [message, setMessage] = useState(null)
-  const [chargement, setChargement] = useState(!!calepinageId)
   const [recuperation, setRecuperation] = useState(false)
+  const chargement = doc.etat === 'chargement'
+  const illisible = doc.etat === 'erreur'
 
-  useEffect(() => {
-    if (!calepinageId) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const document = res?.data?.roof_layout ?? null
-        setLayout(document)
-        setLatitudeDeg(nombre(document?.pin?.lat))
-        const profil = document?.horizonProfile
-        if (profil && Array.isArray(profil.points)) {
-          setPoints(sortedHorizonPoints(profil.points))
-          setSource(profil.source === 'pvgis' ? 'pvgis' : 'saisie')
-        }
-      })
-      .catch(() => { if (!annule) setLayout(null) })
-      .finally(() => { if (!annule) setChargement(false) })
-    return () => { annule = true }
-  }, [calepinageId])
+  // Hydratation de la saisie : UNE fois par lecture serveur (jamais à une
+  // application locale d'une section écrite).
+  const [lectureHydratee, setLectureHydratee] = useState(null)
+  if (doc.etat === 'ok' && lectureHydratee !== doc.generation) {
+    setLectureHydratee(doc.generation)
+    setLatitudeDeg(nombre(doc.document?.pin?.lat))
+    const profil = doc.document?.horizonProfile
+    if (profil && Array.isArray(profil.points)) {
+      setPoints(sortedHorizonPoints(profil.points))
+      setSource(profil.source === 'pvgis' ? 'pvgis' : 'saisie')
+    }
+  }
 
   const hauteurMaxDeg = horizonMaxHeightDeg(points)
   // ACAL254 — le MÊME compte que l'atelier : heures (mois × heure) de la matrice de
   // dérate réellement appliquée à la production, en heures — plus de pas de 0,5 h.
   const heuresMasquees = typeof latitudeDeg === 'number' ? maskedHourCount(hourlyHorizonFactors(latitudeDeg, points)) : 0
   const exploitable = sortedHorizonPoints(points).length >= 2
+  // ACAL124 — un profil NON vide qui ne fait pas le tour ne s'enregistre pas
+  // (vide = retirer le profil, toujours permis).
+  const tourIncomplet = points.length > 0 && directionsDistinctes(points) < DIRECTIONS_MINIMALES
 
   function ajouterPoint() {
     const az = nombre(saisie.azimut)
@@ -99,6 +113,8 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
 
   function retirerPoint(index) {
     setPoints((prev) => sortedHorizonPoints(prev).filter((_, i) => i !== index))
+    // ACAL124 — un profil PVGIS dont on retire un point est un profil CORRIGÉ.
+    setSource('saisie')
   }
 
   function recupererDepuisPvgis() {
@@ -121,24 +137,29 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
       .finally(() => setRecuperation(false))
   }
 
-  function enregistrer() {
+  async function enregistrer() {
+    if (doc.etat !== 'ok' || tourIncomplet) return
     const propres = sortedHorizonPoints(points)
-    const document = { ...(layout ?? {}) }
-    if (propres.length >= 2) {
-      document.horizonProfile = { source, points: propres, hauteurMaxDeg: horizonMaxHeightDeg(propres) }
+    // ACAL24 — UNE clé, par `layout/section/` ; `null` retire le profil.
+    const valeur = propres.length >= 2
+      ? { source, points: propres, hauteurMaxDeg: horizonMaxHeightDeg(propres) }
+      : null
+    const res = await ecrireSection({
+      calepinageId, cle: 'horizonProfile', valeur, empreinte: doc.empreinte, documentVivant,
+    })
+    if (res.ok) {
+      doc.appliquerSection('horizonProfile', valeur, res.empreinte)
+      setMessage(
+        propres.length >= 2
+          ? 'Profil d’horizon enregistré — appliqué au prochain calcul de la simulation (Production › Lancer).'
+          : 'Profil retiré — aucun horizon n’est appliqué.',
+      )
+    } else if (res.conflit) {
+      setMessage('La conception a changé ailleurs : elle est relue, enregistrez de nouveau.')
+      doc.recharger()
     } else {
-      delete document.horizonProfile
+      setMessage(res.motif || 'Le profil d’horizon n’a pas pu être enregistré.')
     }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
-      .then(() => {
-        setLayout(document)
-        setMessage(
-          propres.length >= 2
-            ? 'Profil d’horizon enregistré — appliqué à la production au prochain calcul de l’atelier.'
-            : 'Profil retiré (moins de deux points) — aucun horizon n’est appliqué.',
-        )
-      })
-      .catch(() => setMessage('Le profil d’horizon n’a pas pu être enregistré.'))
   }
 
   if (chargement) {
@@ -158,8 +179,8 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
       <p className="mt-1 text-sm text-lune-faint">
         Le relief à distance (montagne, crête, immeuble éloigné) qui masque le soleil aux
         heures rasantes — un poste de perte SÉPARÉ de l’ombrage proche tracé sur le toit.
-        Saisissez au moins deux points (azimut, hauteur angulaire) pour l’activer ; sans
-        eux, rien ne change.
+        Saisissez au moins 8 directions réparties sur tout le tour (azimut, hauteur
+        angulaire) : le calcul exige un tour complet ; sans profil, rien ne change.
       </p>
 
       <div className="mt-3">
@@ -269,10 +290,21 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
         <button
           type="button"
           onClick={enregistrer}
-          className="rounded border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-200 hover:bg-brass-400/10"
+          disabled={doc.etat !== 'ok' || tourIncomplet}
+          className="rounded border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-200 hover:bg-brass-400/10 disabled:opacity-50"
         >
           Enregistrer le profil
         </button>
+        {tourIncomplet && !illisible && (
+          <p className="text-sm text-amber-300">
+            {MESSAGE_TOUR_INCOMPLET} ({directionsDistinctes(points)} relevée(s)).
+          </p>
+        )}
+        {illisible && (
+          <p className="text-sm text-red-300" role="alert">
+            {MESSAGE_ILLISIBLE}
+          </p>
+        )}
         {message && <p className="text-sm text-lune-faint" role="status">{message}</p>}
       </div>
     </div>

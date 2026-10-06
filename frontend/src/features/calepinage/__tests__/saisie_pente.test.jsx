@@ -29,7 +29,7 @@ const {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  layout.mockResolvedValue({ data: { roof_layout: {} } })
+  layout.mockResolvedValue({ data: { roof_layout: {}, empreinte_document: 'EMPREINTE-LUE' } })
 })
 afterEach(() => { cleanup() })
 
@@ -158,7 +158,9 @@ describe('CAL58 — l’écran', () => {
     fireEvent.click(screen.getByTestId('cal-pente-enregistrer'))
 
     await waitFor(() => expect(enregistrerLayout).toHaveBeenCalledTimes(1))
-    const [, document] = enregistrerLayout.mock.calls[0]
+    const [, document, jeton] = enregistrerLayout.mock.calls[0]
+    // ACAL316 — l'écriture complète porte le jeton lu avec le document (If-Match obligatoire).
+    expect(jeton).toBe('EMPREINTE-LUE')
     expect(document.penteSource).toBe('pourcentage')
     expect(document.penteDeg).not.toBe(30)          // pas l'arrondi
     expect(document.penteDeg).toBeCloseTo(30, 3)

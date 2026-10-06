@@ -18,8 +18,9 @@ LES QUATRE RÈGLES QUI TIENNENT CE MODULE
    les appels d'un altimètre espion.
 2. **UNE SUGGESTION RESTE UNE SUGGESTION.** Rien n'est appliqué sans
    validation humaine : ``suggerer_pentes`` ne modifie AUCUN document, il rend
-   des propositions horodatées portant leur source. ``accepter`` écrit la
-   pente SUR le pan ; ``refuser`` ne touche à rien — la valeur saisie reste la
+   des propositions horodatées portant leur source. ``accepter`` garde la
+   trace ``validee`` SANS écrire la pente du pan (D-ACAL-19 : pente du
+   TERRAIN) ; ``refuser`` ne touche à rien — la valeur saisie reste la
    seule vérité.
 3. **AUCUNE CLÉ PAYANTE, AUCUNE DÉPENDANCE PROPRIÉTAIRE.** Le service
    d'altimétrie de la Géoplateforme IGN est public et gratuit
@@ -184,25 +185,23 @@ def suggerer_pentes(company, roof_layout, *, altimetre=None, maintenant=None):
 
 
 def accepter_suggestion(pan, suggestion, *, maintenant=None):
-    """Le dessinateur VALIDE : la pente suggérée devient celle du pan.
+    """Le dessinateur VALIDE la suggestion : elle garde sa trace, rien de plus.
 
-    Le pan est modifié SUR PLACE et rendu. La suggestion reste attachée, au
-    statut ``validee`` et datée : c'est elle qui permet d'afficher la
-    provenance à côté du chiffre. ``facingAzimuthDeg`` n'est écrit que si la
-    suggestion en porte un (un toit plat n'a pas d'azimut).
+    D-ACAL-19 (ACAL65) — la suggestion IGN est la pente du TERRAIN : elle
+    n'est JAMAIS recopiée dans le pan. ``pitchDeg``, ``facingAzimuthDeg`` et
+    ``facingManual`` ne sont PAS touchés (la production du devis ne dépend
+    donc jamais d'une donnée IGN) ; la suggestion reste attachée au pan, au
+    statut ``validee``, datée, avec sa ``valeurDeg`` : c'est elle qui permet
+    d'afficher la provenance « source IGN (suggestion validée le …) ».
     """
     pan = pan if isinstance(pan, dict) else {}
     trace = dict(suggestion or {})
     trace['status'] = VALIDEE
     trace['decidedAt'] = _horodatage(maintenant)
-
-    if isinstance(trace.get('pitchDeg'), (int, float)):
-        pan['pitchDeg'] = trace['pitchDeg']
-    if isinstance(trace.get('facingAzimuthDeg'), (int, float)):
-        pan['facingAzimuthDeg'] = trace['facingAzimuthDeg']
-        # La valeur ne vient PAS d'une saisie manuelle : le dire explicitement
-        # évite qu'un écran la présente comme une mesure du client.
-        pan['facingManual'] = False
+    valeur = trace.get('valeurDeg')
+    if (isinstance(trace.get('pitchDeg'), (int, float))
+            and not isinstance(valeur, (int, float))):
+        trace['valeurDeg'] = trace['pitchDeg']
     pan[CLE_SUGGESTION] = trace
     return pan
 
@@ -267,13 +266,14 @@ def _ajuster_plan(mesures):
     système est dégénéré (points alignés ou confondus) : un plan indéterminé
     ne produit AUCUNE suggestion.
     """
+    from core.calepinage.geo import projeteur_local
+
     lon0 = sum(m[0] for m in mesures) / len(mesures)
     lat0 = sum(m[1] for m in mesures) / len(mesures)
-    echelle_x = 111320.0 * math.cos(math.radians(lat0))
-    echelle_y = 110540.0
+    # ACAL281 — la projection UNIQUE (core.calepinage.geo, sphère).
+    projeter = projeteur_local((lon0, lat0))
 
-    points = [((lon - lon0) * echelle_x, (lat - lat0) * echelle_y, z)
-              for lon, lat, z in mesures]
+    points = [projeter((lon, lat)) + (z,) for lon, lat, z in mesures]
 
     sxx = sum(x * x for x, _, _ in points)
     sxy = sum(x * y for x, y, _ in points)

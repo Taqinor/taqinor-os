@@ -239,6 +239,7 @@ compte_moteur_du_layout = _geometrie.compte_moteur_du_layout
 arbitrer_compte_calepinage = _geometrie.arbitrer_compte_calepinage
 contour_client_lnglat = _geometrie.contour_client_lnglat
 aire_contour_m2 = _geometrie.aire_contour_m2
+aire_du_pan = _geometrie.aire_du_pan
 plafond_physique_du_contour = _geometrie.plafond_physique_du_contour
 zone_toit_depuis_contour = _geometrie.zone_toit_depuis_contour
 
@@ -529,6 +530,7 @@ __all__ = [
     'activate_optional_line',
     'affecter_encaissement_groupe',
     'aire_contour_m2',
+    'aire_du_pan',
     'ajouter_lignes_boq_electrique',
     'ajouter_lignes_devis_import',
     'ajouter_lignes_facture_import',

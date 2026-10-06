@@ -232,20 +232,27 @@ class TofDuPanTest(SimpleTestCase):
 class AccesSolaireMoyenTest(SimpleTestCase):
     """La moyenne ne porte QUE sur les modules CALCULÉS (contrat v2)."""
 
+    @staticmethod
+    def _pan(values):
+        """ACAL137 — l'accès du pan, dans SA géométrie (jamais racine)."""
+        layout = {'zones': [{'label': 'PAN-A', 'geometry': {
+            'solarAccess': {'values': values}}}]}
+        return {'layout': layout}, {'cle': 'A', 'pan': 'PAN-A'}
+
     def test_la_moyenne_exclut_les_modules_non_calcules(self):
         pct, motif = orientation.acces_solaire_moyen_pct(
-            {'solar_access': {'values': [1.0, 0.8, None]}})
+            *self._pan([1.0, 0.8, None]))
         self.assertEqual(pct, 90.0)
         self.assertEqual(motif, '')
 
     def test_une_valeur_hors_bornes_est_non_calculee(self):
         pct, _motif = orientation.acces_solaire_moyen_pct(
-            {'solar_access': {'values': [1.0, 4.2]}})
+            *self._pan([1.0, 4.2]))
         self.assertEqual(pct, 100.0)
 
     def test_aucun_module_calcule_est_omis_avec_son_motif(self):
         pct, motif = orientation.acces_solaire_moyen_pct(
-            {'solar_access': {'values': [None, None]}})
+            *self._pan([None, None]))
         self.assertIsNone(pct)
         self.assertEqual(motif, orientation.MOTIF_SANS_ACCES_SOLAIRE)
 
@@ -255,7 +262,7 @@ class AccesSolaireMoyenTest(SimpleTestCase):
              'geometry': {'solarAccess': {'values': [0.9, 1.0]}}},
             {'label': 'PAN-B',
              'geometry': {'solarAccess': {'values': [0.5, 0.5]}}}]}
-        ombrage = {'solar_access': {'method': {'horizon': False}}}
+        ombrage = {}
         pan_a, _ = orientation.acces_solaire_moyen_pct(
             ombrage, {'cle': 'A', 'pan': 'PAN-A'}, layout=layout)
         pan_b, _ = orientation.acces_solaire_moyen_pct(
@@ -299,8 +306,12 @@ class PublieParLaChaineTest(SimpleTestCase):
     """Les deux endroits où le contrat CALX4 attend TOF et TSRF."""
 
     def setUp(self):
-        self.resultat = simuler(ombrage={'solar_access': {
-            'par_pan': {'PAN-A': [1.0, 0.93], 'PAN-B': [0.8, 0.8]}}})
+        # ACAL137 — l'accès solaire lu dans la géométrie de chaque pan.
+        self.resultat = simuler(ombrage={'layout': {'zones': [
+            {'label': 'PAN-A',
+             'geometry': {'solarAccess': {'values': [1.0, 0.93]}}},
+            {'label': 'PAN-B',
+             'geometry': {'solarAccess': {'values': [0.8, 0.8]}}}]}})
 
     def test_les_cinq_colonnes_d_orientation_sont_sur_chaque_pan(self):
         modele = [ligne for ligne

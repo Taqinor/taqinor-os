@@ -47,9 +47,28 @@
    reste aussi appelable DIRECTEMENT par l'appelant pour tout geste qu'il sait
    détecter lui-même (même sémantique, écriture immédiate si le document a
    changé).
+
+   ACAL84 (C-ACAL-048) — QUATRE CORRECTIONS :
+   * AUCUNE écriture sans geste : `dernierHashEcrit` est AMORCÉ au hash de la
+     première sérialisation vue (au `demarrer()`, ou au premier appel qui
+     obtient un document) — la scène hydratée depuis le serveur n'est pas un
+     geste. La règle « écrire seulement si le document a changé » vaut dans
+     les DEUX modes (minuterie réglée ou repli) et pour `enregistrerMaintenant` ;
+   * la CLÉ porte l'empreinte « document » SERVEUR (`empreinte_document`,
+     design-context ou réponse d'écriture — contrats
+     `calepinage_design_context.json` / `calepinage_layout_section.json`),
+     jamais un djb2 de l'objet client (l'ordre des clés jsonb diffère de
+     celui de la sérialisation : la clé changeait sans changement réel) ;
+   * à l'ouverture, `purgerBrouillonsOrphelins` retire les autres clés
+     `calepinage_brouillon:<id>:<user>:*` (brouillons d'empreintes périmées) ;
+   * la reprise ne BLOQUE plus le chargement : l'atelier boote sur la
+     conception serveur, le bandeau reste non bloquant, et « Reprendre »
+     mémorise le brouillon (`memoriserReprise`, sessionStorage) puis recharge —
+     le boot suivant le consomme (`consommerReprise`) comme document de départ.
    ========================================================================== */
 
 const PREFIXE_CLE = 'calepinage_brouillon'
+const PREFIXE_REPRISE = 'calepinage_reprise'
 
 // Repli sans réglage utilisateur — granularité de DÉTECTION d'un changement,
 // PAS une cadence de sauvegarde annoncée à l'utilisateur (voir l'en-tête).
@@ -161,9 +180,10 @@ export function brouillonPertinent({
 /**
  * Le planificateur d'écriture. `demarrer()`/`arreter()` suffisent à
  * l'appelant : le module choisit lui-même son mode.
- *   - `intervalleSecondes` réglé (> 0) : minuterie toutes les N secondes,
- *     écriture INCONDITIONNELLE à chaque tic (parité PV*SOL, D-CALX 7 : ce
- *     nombre vient TOUJOURS de l'appelant, jamais deviné ici).
+ *   - `intervalleSecondes` réglé (> 0) : minuterie toutes les N secondes
+ *     (parité PV*SOL, D-CALX 7 : ce nombre vient TOUJOURS de l'appelant,
+ *     jamais deviné ici) ; ACAL84 : un tic n'écrit QUE si le document a
+ *     changé depuis la référence (amorcée à l'ouverture, jamais un geste).
  *   - sinon (repli, aucun réglage) : sondage à `PERIODE_SONDAGE_REPLI_MS`,
  *     écriture SEULEMENT si le document a changé depuis la dernière écriture
  *     — approxime « à chaque geste d'historique » sans canal d'événement
@@ -188,6 +208,8 @@ export function creerGestionnaireBrouillon({
   const cle = construireCle({ calepinageId, utilisateurId, hashBase })
   const intervalleActif = Number.isFinite(intervalleSecondes) && intervalleSecondes > 0
   let idMinuteur = null
+  // ACAL84 — `null` tant qu'aucune sérialisation n'a été vue : la PREMIÈRE
+  // vue AMORCE la référence (la scène telle qu'hydratée), jamais une écriture.
   let dernierHashEcrit = null
 
   const lireLayout = () => {
@@ -198,30 +220,40 @@ export function creerGestionnaireBrouillon({
     }
   }
 
-  const enregistrerMaintenant = () => {
+  /* La règle UNIQUE des trois chemins d'écriture : rien sans document, la
+     première vue amorce, et seul un document RÉELLEMENT changé s'écrit. */
+  const ecrireSiChange = () => {
     const layout = lireLayout()
     if (layout == null) return false
-    dernierHashEcrit = hacherLayout(layout)
+    const h = hacherLayout(layout)
+    if (dernierHashEcrit === null) {
+      dernierHashEcrit = h
+      return false
+    }
+    if (h === dernierHashEcrit) return false
+    dernierHashEcrit = h
     return ecrireBrouillon(storage, cle, layout)
   }
+
+  const enregistrerMaintenant = () => ecrireSiChange()
 
   const notifierGeste = () => {
     // La minuterie, quand elle est active, possède SEULE l'écriture — sans
     // quoi le même geste écrirait deux fois (une fois par le tic, une fois
     // par l'appel direct).
     if (intervalleActif) return false
-    const layout = lireLayout()
-    if (layout == null) return false
-    const h = hacherLayout(layout)
-    if (h === dernierHashEcrit) return false
-    dernierHashEcrit = h
-    return ecrireBrouillon(storage, cle, layout)
+    return ecrireSiChange()
   }
 
   return {
     cle,
     demarrer() {
       if (idMinuteur != null) return
+      // ACAL84 — amorce la référence sur la scène d'ouverture (aucune écriture).
+      if (dernierHashEcrit === null) {
+        const layout = lireLayout()
+        if (layout != null) dernierHashEcrit = hacherLayout(layout)
+      }
       idMinuteur = intervalleActif
         ? minuteur.definir(enregistrerMaintenant, intervalleSecondes * 1000)
         : minuteur.definir(notifierGeste, PERIODE_SONDAGE_REPLI_MS)
@@ -235,5 +267,65 @@ export function creerGestionnaireBrouillon({
     notifierGeste,
     enregistrerMaintenant,
     effacer: () => effacerBrouillon(storage, cle),
+  }
+}
+
+/**
+ * ACAL84 — retire les brouillons ORPHELINS de ce calepinage et de cet
+ * utilisateur : toute clé `calepinage_brouillon:<id>:<user>:*` autre que celle
+ * de l'empreinte serveur courante (`hashBase`). Rend le nombre de clés
+ * retirées ; `0` sur tout échec — jamais une exception. Le storage doit
+ * exposer `length`/`key(i)` (contrat Web Storage) ; sinon rien n'est purgé.
+ */
+export function purgerBrouillonsOrphelins({ storage, calepinageId, utilisateurId, hashBase }) {
+  const s = stockageUtilisable(storage)
+  if (!s || typeof s.key !== 'function') return 0
+  const courante = construireCle({ calepinageId, utilisateurId, hashBase })
+  const prefixe = courante.slice(0, courante.lastIndexOf(':') + 1)
+  try {
+    const aRetirer = []
+    for (let i = 0; i < s.length; i += 1) {
+      const cle = s.key(i)
+      if (typeof cle === 'string' && cle.startsWith(prefixe) && cle !== courante) {
+        aRetirer.push(cle)
+      }
+    }
+    for (const cle of aRetirer) s.removeItem(cle)
+    return aRetirer.length
+  } catch {
+    return 0
+  }
+}
+
+/** ACAL84 — la clé de la reprise demandée (sessionStorage, consommée au boot). */
+function cleReprise({ calepinageId, utilisateurId }) {
+  return `${PREFIXE_REPRISE}:${calepinageId ?? 'sans-id'}:${utilisateurId ?? 'anonyme'}`
+}
+
+/** ACAL84 — mémorise le document à reprendre au PROCHAIN boot. `false` sur échec. */
+export function memoriserReprise(storage, { calepinageId, utilisateurId }, layout) {
+  const s = stockageUtilisable(storage)
+  if (!s || layout == null) return false
+  try {
+    s.setItem(cleReprise({ calepinageId, utilisateurId }), JSON.stringify({ layout }))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** ACAL84 — lit ET retire la reprise mémorisée : `{layout}` ou `null`. */
+export function consommerReprise(storage, { calepinageId, utilisateurId }) {
+  const s = stockageUtilisable(storage)
+  if (!s) return null
+  const cle = cleReprise({ calepinageId, utilisateurId })
+  try {
+    const brut = s.getItem(cle)
+    s.removeItem(cle)
+    if (!brut) return null
+    const valeur = JSON.parse(brut)
+    return valeur && typeof valeur === 'object' && valeur.layout != null ? valeur : null
+  } catch {
+    return null
   }
 }

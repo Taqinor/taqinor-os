@@ -183,3 +183,46 @@ def calepiner_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
     sortie['panneaux'] = vers_panneaux(sortie['tables'], projection, kit,
                                        entree.parametres.axe_rangee)
     return sortie
+
+
+def calepiner_pan_traduit(layout, pan, *, produit_panneau=None,
+                          parametres=None):
+    """ACAL256 — calepine UN pan du document par l'entrée TRADUITE.
+
+    L'entrée du moteur est construite par ``services.traduction.
+    entree_depuis_layout`` — l'UNIQUE traducteur document → entrée moteur
+    côté serveur (D-ACAL-17) : retrait de rive, allée technique (celle du
+    document d'abord, sinon celle de la société) et dégagement par type
+    d'obstacle y sont appliqués avec leur phrase de provenance. Le compte
+    passe ensuite par ``calepiner_surface`` (le MÊME moteur que la villa),
+    avec la politique de pas propre au pan.
+
+    Args:
+        layout: le document ``roof_layout`` (pin, cotes, allée, exclusions).
+        pan: la zone à calepiner (``zones[i]`` du document).
+        produit_panneau: l'INSTANCE ``stock.Produit`` du panneau (ses cotes
+            de pose via ``apps.stock.selectors``), ou ``None`` : les cotes
+            viennent alors du document, sinon refus nommé.
+        parametres: les sections de réglages de la société
+            (``selectors.parametres_de_societe``).
+
+    Raises:
+        TraductionRefusee: document ou kit non traduisible — l'appelant
+            garde alors l'entrée villa d'aujourd'hui.
+    """
+    from core.calepinage.serialisation import EntreeCalepinage
+
+    from .services.traduction import entree_depuis_layout
+
+    document = dict(layout or {})
+    document['zones'] = [pan]
+    traduction = entree_depuis_layout(document, produit=produit_panneau,
+                                      parametres=parametres)
+    entree = EntreeCalepinage.depuis_dict(traduction.document)
+    sortie = calepiner_surface(
+        surface=entree.surfaces[0], kits=entree.kits,
+        parametres=entree.parametres, obstacles=entree.obstacles,
+        zones=entree.zones, politique=traduction.politique,
+        repere=entree.repere)
+    sortie['traduction'] = traduction
+    return sortie

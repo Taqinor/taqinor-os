@@ -74,7 +74,7 @@ LIBELLE = 'Salissure'
 
 __all__ = ['CLE_REGLAGE', 'COLONNE_IRRADIANCE', 'MODE_MENSUEL',
            'MODE_ANNUEL', 'REFERENCE', 'LIBELLE', 'valeurs_mensuelles',
-           'appliquer']
+           'appliquer', 'appliquer_mensuel']
 
 
 def valeurs_mensuelles(saisie, *, champ):
@@ -138,6 +138,9 @@ def appliquer(serie, contexte):
         'mois': list(MOIS_LIBELLES),
         'moyenne_pct': round(sum(valeurs) / 12.0, 3),
         'source_du_reglage': saisie.get('source'),
+        # ACAL135 — d'où vient la saisie : le poste du CALEPINAGE (qui prime)
+        # ou le réglage de la société.
+        'origine_du_reglage': saisie.get('origine') or 'societe',
         'reference_saisie': saisie.get('reference') or '',
         'colonnes_appliquees': _colonnes_touchees(serie),
     }
@@ -231,6 +234,17 @@ def _colonnes_touchees(serie):
         if nom in premier and nom not in colonnes:
             colonnes.append(nom)
     return colonnes
+
+
+def appliquer_mensuel(serie, valeurs):
+    """ACAL135 — douze pourcentages appliqués MOIS PAR MOIS, ou ``None``
+    quand une heure ne porte pas son mois. LA machinerie mensuelle, que
+    l'ordonnanceur emprunte pour un poste saisi mensuel (jamais à plat)."""
+    if not isinstance(valeurs, (list, tuple)) or len(valeurs) != 12:
+        return None
+    if _mois_absents(serie):
+        return None
+    return _appliquer_par_mois(serie, [float(valeur) for valeur in valeurs])
 
 
 def _appliquer_par_mois(serie, valeurs):

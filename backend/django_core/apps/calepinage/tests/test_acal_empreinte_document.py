@@ -142,14 +142,19 @@ class EmpreinteDocumentEnBaseTest(BaseApiCalepinage):
     def test_renvoi_identique_inchange(self):
         url = f'{url_detail(self.calepinage.pk)}layout/'
         d1 = dict(copy.deepcopy(D0), horizonProfile=HORIZON)
-        premier = self.api.post(url, {'roof_layout': d1}, format='json')
+        # ACAL316 — If-Match obligatoire : le jeton lu avant chaque écriture.
+        base = self.api.get(url).data['empreinte_document']
+        premier = self.api.post(url, {'roof_layout': d1}, format='json',
+                                HTTP_IF_MATCH=f'"{base}"')
         self.assertEqual(premier.status_code, 200, premier.data)
         self.assertFalse(premier.data['inchange'])
         relu = self.api.get(url)
         self.assertEqual(relu.status_code, 200)
         document = copy.deepcopy(relu.data['roof_layout'])
         versions, journal = self._versions(), self._journal()
-        second = self.api.post(url, {'roof_layout': document}, format='json')
+        jeton = relu.data['empreinte_document']
+        second = self.api.post(url, {'roof_layout': document}, format='json',
+                               HTTP_IF_MATCH=f'"{jeton}"')
         self.assertEqual(second.status_code, 200, second.data)
         self.assertTrue(second.data['inchange'])
         self.assertEqual(self._versions(), versions)

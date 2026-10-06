@@ -100,7 +100,7 @@ def _epingle(lead):
 
 
 def _document_transporte(lead):
-    """Le document v2 transporté par le lead, s'il en porte un de valide."""
+    """Le document v2 transporté par le lead, BRUT, s'il en porte un."""
     porteur = getattr(lead, CHAMP_PORTEUR, None)
     if not isinstance(porteur, dict):
         return None
@@ -113,37 +113,43 @@ def _document_transporte(lead):
     return document
 
 
-def document_public_du_lead(lead):
-    """Le document ``roof_layout`` v2 d'un lead public, ou ``None``.
+def _motif_refus_document(document):
+    """ACAL190 — ``None`` si le document transporté est VALIDE (schéma
+    ``roof_layout_v2`` par ``io_layout.valider_document``), sinon le motif
+    du refus, en français, champ fautif nommé."""
+    from .io_layout import ImportLayoutRefuse, valider_document
 
-    Deux sources, dans cet ordre — jamais une troisième inventée :
+    try:
+        valider_document(document)
+    except ImportLayoutRefuse as refus:
+        return str(refus)
+    return None
 
-    1. le DOCUMENT transporté par la page publique (clé ``roof_layout`` du
-       champ porteur, contrat ``lead_layout_public.json``) : il porte
-       PLUSIEURS zones, c'est tout l'objet de CAL110 ;
-    2. à défaut, le ``roof_outline`` du lead — le cas de tous les leads
-       existants — traduit en UNE zone. C'est une traduction de ce que le
-       visiteur a tracé, pas une géométrie supposée.
 
-    Rend ``None`` quand le lead ne porte aucun tracé exploitable : il ne faut
-    alors créer AUCUN calepinage.
-    """
+def _document_et_motif(lead):
+    """``(document, motif_ignore)`` — le document public du lead et, quand
+    le tracé MULTI-PANS transporté a été écarté, POURQUOI (sinon ``''``)."""
     if lead is None:
-        return None
+        return None, ''
 
     transporte = _document_transporte(lead)
     epingle = _epingle(lead)
+    motif = ''
     if transporte is not None:
         document = dict(transporte)
         # L'épingle du lead ne remplace jamais celle du document : c'est le
         # document qui fait foi sur sa propre géométrie.
         if document.get('pin') is None and epingle is not None:
             document['pin'] = epingle
-        return document
+        # ACAL190 (D-ACAL-27) — le document est VALIDÉ avant d'être repris :
+        # invalide ⇒ repli À UNE zone depuis ``roof_outline``, motif nommé.
+        motif = _motif_refus_document(document) or ''
+        if not motif:
+            return document, ''
 
     contour = latlng_vers_lnglat(getattr(lead, 'roof_outline', None) or [])
     if len(contour) < 3:
-        return None
+        return None, motif
     document = {
         'version': 2,
         'source': 'lead',
@@ -152,7 +158,26 @@ def document_public_du_lead(lead):
     }
     if epingle is not None:
         document['pin'] = epingle
-    return document
+    return document, motif
+
+
+def document_public_du_lead(lead):
+    """Le document ``roof_layout`` v2 d'un lead public, ou ``None``.
+
+    Deux sources, dans cet ordre — jamais une troisième inventée :
+
+    1. le DOCUMENT transporté par la page publique (clé ``roof_layout`` du
+       champ porteur, contrat ``lead_layout_public.json``) : il porte
+       PLUSIEURS zones, c'est tout l'objet de CAL110 — ACAL190 : repris
+       seulement s'il est VALIDE (schéma ``roof_layout_v2``) ;
+    2. à défaut (absent ou invalide), le ``roof_outline`` du lead — le cas
+       de tous les leads existants — traduit en UNE zone. C'est une
+       traduction de ce que le visiteur a tracé, pas une géométrie supposée.
+
+    Rend ``None`` quand le lead ne porte aucun tracé exploitable : il ne faut
+    alors créer AUCUN calepinage.
+    """
+    return _document_et_motif(lead)[0]
 
 
 def reprendre_trace_public(lead_id, company, *, user=None):
@@ -183,7 +208,7 @@ def reprendre_trace_public(lead_id, company, *, user=None):
     if lead is None:
         return None
 
-    document = document_public_du_lead(lead)
+    document, motif_ignore = _document_et_motif(lead)
     if document is None:
         return None
 
@@ -195,4 +220,10 @@ def reprendre_trace_public(lead_id, company, *, user=None):
         return None
     enregistrer_layout(calepinage, document, user=user,
                        libelle='Tracé repris du parcours public « mon toit »')
+    if motif_ignore:
+        # ACAL190 — le repli à une zone n'est jamais silencieux.
+        from .journal import noter
+
+        noter(calepinage, f'Tracé multi-pans ignoré : {motif_ignore}',
+              user=user)
     return calepinage

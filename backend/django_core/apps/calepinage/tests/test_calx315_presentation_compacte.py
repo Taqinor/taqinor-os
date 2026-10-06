@@ -3,8 +3,8 @@ aucun montant.
 
 Ce qui est prouvé ici :
 
-* les totaux (modules, kWc, pans) sont LUS de la géométrie SEULE
-  (``pans_du_layout``) : AUCUNE simulation requise ;
+* les totaux (modules, kWc, pans) sont LUS par ``mesures_du_document``
+  (ACAL259) : AUCUNE simulation requise, kWc à la fiche du module ;
 * la mention « ne vaut pas offre de prix » est présente, en toutes lettres ;
 * le texte imprimé ne contient AUCUN mot de la famille montant (MAD, €, prix,
   coût, marge, remise…) ;
@@ -78,29 +78,45 @@ def presentation(**options):
     return construire_presentation(NU, **options)
 
 
-def _layout_avec_kwc():
-    # ``LAYOUT`` (partagé avec ``test_cal171_planche``) ne porte pas de
-    # ``kwc`` sur sa géométrie (fixture de planche, pas de dimensionnement) —
-    # ce module y ajoute la SEULE clé qui manque, pour prouver que
-    # ``totaux_de_pose`` la lit quand elle est SOURCÉE.
+def _layout_avec_fiche():
+    # ``LAYOUT`` (partagé avec ``test_cal171_planche``) ne déclare pas la
+    # fiche de son module — ce module y ajoute ``modules[]`` (pmaxWc 710) et
+    # le renvoi du pan, plus un ``geometry.kwc`` d'OUTIL (720 W) qui ne doit
+    # JAMAIS être lu (ACAL259).
     donnees = copy.deepcopy(LAYOUT)
-    donnees['zones'][0]['geometry']['kwc'] = 8.64
+    donnees['modules'] = [{'id': 'm710', 'pmaxWc': 710}]
+    donnees['zones'][0]['geometry']['moduleId'] = 'm710'
+    donnees['zones'][0]['geometry']['kwc'] = 1.44
     return donnees
 
 
 class TotauxDePoseTest(unittest.TestCase):
-    def test_lus_de_la_geometrie_seule_aucune_simulation_requise(self):
-        totaux = totaux_de_pose(_layout_avec_kwc())
-        self.assertGreater(totaux['total_modules'], 0)
-        self.assertEqual(totaux['total_kwc'], 8.64)
+    def test_lus_du_document_seul_aucune_simulation_requise(self):
+        # ACAL259 — kWc = modules × pmax de la FICHE du module du pan, jamais
+        # ``geometry.kwc`` (le wattage de l'outil).
+        totaux = totaux_de_pose(_layout_avec_fiche())
+        self.assertEqual(totaux['total_modules'], 2)
+        self.assertEqual(totaux['total_kwc'], 1.42)
         self.assertGreaterEqual(totaux['nombre_pans'], 1)
 
-    def test_sans_kwc_source_le_total_kwc_n_est_pas_invente(self):
-        # ``LAYOUT`` seul, SANS ``kwc`` sur la géométrie : jamais un kWc
-        # deviné depuis le nombre de modules.
+    def test_sans_fiche_le_total_kwc_n_est_pas_invente(self):
+        # ACAL259 — ``LAYOUT`` ne porte que le wattage de l'OUTIL
+        # (``panelWatt``) : sans fiche du module, aucun kWc n'est publié —
+        # jamais modules × panelWatt.
         totaux = totaux_de_pose(LAYOUT)
         self.assertGreater(totaux['total_modules'], 0)
         self.assertIsNone(totaux['total_kwc'])
+        # Le bloc ``pose`` du résultat servi (fiche du stock) fait foi quand
+        # il décrit CE document (même compte).
+        pose = {'total_modules': totaux['total_modules'], 'kwc': 1.42,
+                'pans': [{'pan': 'Pan Sud', 'modules': 2, 'kwc': 1.42}]}
+        totaux = totaux_de_pose(LAYOUT, {'pose': pose})
+        self.assertEqual(totaux['total_kwc'], 1.42)
+        # Une pose qui décrit un AUTRE document (autre compte) n'est jamais
+        # reprise.
+        autre = dict(pose, total_modules=3)
+        self.assertIsNone(totaux_de_pose(LAYOUT, {'pose': autre})[
+            'total_kwc'])
 
     def test_sans_conception_les_totaux_sont_a_zero(self):
         totaux = totaux_de_pose(None)

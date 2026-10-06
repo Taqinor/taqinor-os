@@ -41,7 +41,6 @@ from apps.calepinage.permissions import (
     PeutLireOuApprouverCalepinage,
 )
 from apps.calepinage.services import approbation as service
-from apps.calepinage.services.lidar_ign import accepter_suggestion
 from apps.calepinage.tests._m0_en_attente import (
     affirmer_non_servies, sans,
 )
@@ -149,13 +148,13 @@ class SuggestionsEnAttenteTest(SimpleTestCase):
         self.assertEqual(service._suggestions_en_attente([]), [])
         self.assertEqual(service._suggestions_en_attente({'zones': 'x'}), [])
 
-    def test_pente_lidar_et_hauteur_osm_en_attente(self):
+    def test_seule_la_hauteur_osm_est_en_attente_pas_la_pente_lidar(self):
         en_attente = service._suggestions_en_attente(conception())
         champs = [ligne['champ'] for ligne in en_attente]
         # Le RANG dans la liste du document — la forme du contrat CALX334.
-        self.assertEqual(champs, ['zones[0].pitchDeg',
-                                  'buildings[0].hauteurM'])
-        osm = en_attente[1]
+        # ACAL65 (D-ACAL-19) : la pente IGN ne bloque plus l'approbation.
+        self.assertEqual(champs, ['buildings[0].hauteurM'])
+        osm = en_attente[0]
         self.assertEqual(osm['source'], 'openstreetmap')
         self.assertIn('Villa', osm['libelle'])
         self.assertIn('OpenStreetMap', osm['message'])
@@ -164,20 +163,19 @@ class SuggestionsEnAttenteTest(SimpleTestCase):
         document = conception(pente='refusee', hauteur='validee')
         self.assertEqual(service._suggestions_en_attente(document), [])
 
-    def test_acceptation_lidar_reelle_vaut_decision(self):
+    def test_pente_lidar_suggeree_ne_bloque_jamais(self):
         document = conception(hauteur='validee')
-        pan = document['zones'][0]
-        accepter_suggestion(pan, pan['pitchSuggestion'],
-                            maintenant=MAINTENANT)
+        self.assertEqual(service._suggestions_en_attente(document), [])
+        del document['zones'][0]['pitchSuggestion']['status']
         self.assertEqual(service._suggestions_en_attente(document), [])
 
-    def test_suggestion_sans_statut_reste_en_attente(self):
-        document = conception(hauteur='validee')
-        del document['zones'][0]['pitchSuggestion']['status']
+    def test_hauteur_sans_statut_reste_en_attente(self):
+        document = conception(pente='validee')
+        del document['buildings'][0]['hauteurSuggestion']['status']
         self.assertEqual(
             [ligne['champ']
              for ligne in service._suggestions_en_attente(document)],
-            ['zones[0].pitchDeg'])
+            ['buildings[0].hauteurM'])
 
     def test_source_automatique_inconnue_tenue_par_sa_cle(self):
         document = {'buildings': [{'id': 'b1'}, {
@@ -302,13 +300,17 @@ class ContratCommitteTest(SimpleTestCase):
                          self.contrat['refus_refus_sans_motif'])
 
     def test_suggestions_en_attente(self):
-        """Hauteur OSM du bâtiment 0 et pente LiDAR du pan 1 en attente."""
+        """Hauteur OSM du bâtiment 0 en attente ; la pente du pan 1, non
+        (ACAL65, D-ACAL-19)."""
         document = conception(hauteur='suggeree', pente='validee')
         document['zones'].append(copy.deepcopy(document['zones'][0]))
         document['zones'][1]['pitchSuggestion']['status'] = 'suggeree'
+        attendu = {cle: message for cle, message
+                   in self.contrat['refus_suggestions_en_attente'].items()
+                   if cle.startswith('buildings')}
         self.assertEqual(
             self._refus(faux_calepinage(document), decision='approuve'),
-            self.contrat['refus_suggestions_en_attente'])
+            attendu)
 
 
 # ── HTTP — exige l'ORM (la CI est la gate de ces classes) ─────────────────

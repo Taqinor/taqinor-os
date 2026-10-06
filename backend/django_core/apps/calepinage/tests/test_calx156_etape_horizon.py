@@ -34,6 +34,7 @@ from django.test import SimpleTestCase
 from apps.calepinage.services import etapes
 from apps.calepinage.services.chaine_pertes import LIBELLES, appliquer_chaine
 from apps.calepinage.services.etapes import horizon as etape_horizon
+from apps.calepinage.services.horizon import profil_depuis_document
 from apps.calepinage.services.pvgis_serie import (
     MOTIF_COMPOSANTES_ABSENTES, ClientPvgis, _Cache)
 
@@ -73,15 +74,19 @@ def serie_de(fixture, *, composantes):
 
 
 def profil_plat(hauteur_deg, *, directions=24, source='pvgis'):
-    """Un profil d'horizon à hauteur CONSTANTE, sur tout le tour."""
+    """Un profil d'horizon à hauteur CONSTANTE, sur tout le tour.
+
+    ACAL123 — écrit dans la forme du DOCUMENT (``roof_layout_v2
+    $defs/horizonProfile``, celle que l'onglet Horizon enregistre) puis lu
+    par LE lecteur que la simulation appelle (``profil_depuis_document``).
+    """
     pas = 360.0 / directions
-    return {
+    return profil_depuis_document({
         'source': source,
-        'hauteur_max_deg': hauteur_deg,
-        'points': [{'azimut_face_deg': rang * pas,
-                    'hauteur_deg': hauteur_deg}
+        'hauteurMaxDeg': hauteur_deg,
+        'points': [{'azimuthDeg': rang * pas, 'heightDeg': hauteur_deg}
                    for rang in range(directions)],
-    }
+    })
 
 
 def contexte_de(profil, **extra):

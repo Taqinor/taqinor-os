@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
+import { espions } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN : au moins deux points pour s'activer, jamais un
@@ -14,18 +15,9 @@ import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractS
    main). La saisie manuelle reste possible ensuite.
    ========================================================================== */
 
-const layout = vi.fn()
-const enregistrerLayoutCalepinage = vi.fn()
-const horizon = vi.fn()
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      layout: (...a) => layout(...a),
-      enregistrerLayoutCalepinage: (...a) => enregistrerLayoutCalepinage(...a),
-      horizon: (...a) => horizon(...a),
-    },
-  },
-}))
+// ACAL345 — la doublure partagée de `calepinageApi` (document + `horizon`).
+const { layout, enregistrerLayoutCalepinage, enregistrerSectionLayout, horizon } = espions
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiDocument({ horizon: true }))
 
 const {
   default: HorizonPanel,
@@ -38,7 +30,8 @@ const JOUR_EQUINOXE = 80
 
 beforeEach(() => {
   vi.clearAllMocks()
-  layout.mockResolvedValue({ data: { roof_layout: {} } })
+  layout.mockResolvedValue({ data: { roof_layout: {}, empreinte_document: 'E0' } })
+  enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
 })
 afterEach(() => { cleanup() })
 
@@ -91,6 +84,17 @@ const rendre = (props = {}) => render(
   <MemoryRouter><HorizonPanel calepinageId={7} {...props} /></MemoryRouter>,
 )
 
+function ajouter(azimut, hauteur) {
+  fireEvent.change(screen.getByLabelText(/Azimut/), { target: { value: String(azimut) } })
+  fireEvent.change(screen.getByLabelText(/Hauteur angulaire/), { target: { value: String(hauteur) } })
+  fireEvent.click(screen.getByText('Ajouter le point'))
+}
+
+/** ACAL124 — un tour complet : 8 directions (0…315 pas 45), hauteur 5 + rang. */
+function ajouterUnTour() {
+  for (let rang = 0; rang < 8; rang += 1) ajouter(rang * 45, 5 + rang)
+}
+
 describe('CAL93 — l’écran', () => {
   it('affiche le diagramme et « — » tant qu’aucun point n’est saisi', async () => {
     rendre()
@@ -100,37 +104,75 @@ describe('CAL93 — l’écran', () => {
     expect(screen.getByTestId('cal-horizon-heures-masquees')).toHaveTextContent('—')
   })
 
-  it('un seul point ne suffit pas à activer le profil', async () => {
+  it('un seul point ne suffit pas : Enregistrer reste désactivé (ACAL124)', async () => {
     rendre()
     await screen.findByTestId('cal-horizon')
-    fireEvent.change(screen.getByLabelText(/Azimut/), { target: { value: '180' } })
-    fireEvent.change(screen.getByLabelText(/Hauteur angulaire/), { target: { value: '15' } })
-    fireEvent.click(screen.getByText('Ajouter le point'))
-    fireEvent.click(screen.getByText('Enregistrer le profil'))
-    await waitFor(() => expect(enregistrerLayoutCalepinage).toHaveBeenCalledTimes(1))
-    const [, document] = enregistrerLayoutCalepinage.mock.calls[0]
-    expect(document.horizonProfile).toBeUndefined()
+    ajouter(180, 15)
+    const bouton = screen.getByText('Enregistrer le profil')
+    expect(bouton).toBeDisabled()
+    fireEvent.click(bouton)
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
   })
 
-  it('deux points ou plus activent le profil, persisté dans le document', async () => {
+  it('un tour complet (8 directions) active le profil, persisté dans le document', async () => {
     rendre()
     await screen.findByTestId('cal-horizon')
-    fireEvent.change(screen.getByLabelText(/Azimut/), { target: { value: '90' } })
-    fireEvent.change(screen.getByLabelText(/Hauteur angulaire/), { target: { value: '20' } })
-    fireEvent.click(screen.getByText('Ajouter le point'))
-    fireEvent.change(screen.getByLabelText(/Azimut/), { target: { value: '270' } })
-    fireEvent.change(screen.getByLabelText(/Hauteur angulaire/), { target: { value: '30' } })
-    fireEvent.click(screen.getByText('Ajouter le point'))
+    ajouterUnTour()
 
-    expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(2)
+    expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(8)
 
     fireEvent.click(screen.getByText('Enregistrer le profil'))
-    await waitFor(() => expect(enregistrerLayoutCalepinage).toHaveBeenCalledTimes(1))
-    const [id, document] = enregistrerLayoutCalepinage.mock.calls[0]
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const [id, corps] = enregistrerSectionLayout.mock.calls[0]
     expect(id).toBe(7)
-    expect(document.horizonProfile.source).toBe('saisie')
-    expect(document.horizonProfile.points).toHaveLength(2)
-    expect(document.horizonProfile.hauteurMaxDeg).toBe(30)
+    // ACAL24 — le corps est {cle, valeur, base_empreinte} : jamais le document.
+    expect(Object.keys(corps).sort()).toEqual(['base_empreinte', 'cle', 'valeur'])
+    expect(corps.cle).toBe('horizonProfile')
+    expect(corps.base_empreinte).toBe('E0')
+    expect(corps.valeur.source).toBe('saisie')
+    expect(corps.valeur.points).toHaveLength(8)
+    expect(corps.valeur.hauteurMaxDeg).toBe(12)
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+    expect(await screen.findByText(/prochain calcul de la simulation \(Production › Lancer\)/)).toBeInTheDocument()
+  })
+
+  it('lecture en échec → Enregistrer désactivé, message affiché, aucun POST', async () => {
+    layout.mockRejectedValue(new Error('500'))
+    rendre()
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('Conception illisible : rien n’est enregistré')
+    const bouton = screen.getByText('Enregistrer le profil')
+    expect(bouton).toBeDisabled()
+    fireEvent.click(bouton)
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+  })
+
+  it('pousse la clé écrite dans l’atelier vivant, avec le jeton de l’atelier', async () => {
+    const documentVivant = { empreinte: 'EATELIER', appliquerSection: vi.fn() }
+    rendre({ documentVivant })
+    await screen.findByTestId('cal-horizon')
+    ajouterUnTour()
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(documentVivant.appliquerSection).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('EATELIER')
+    const [cle, valeur, empreinte] = documentVivant.appliquerSection.mock.calls[0]
+    expect(cle).toBe('horizonProfile')
+    expect(valeur.points).toHaveLength(8)
+    expect(empreinte).toBe('E1')
+  })
+
+  it('jeton périmé (409) : la conception est relue, le message le dit', async () => {
+    enregistrerSectionLayout.mockRejectedValue({
+      response: { status: 409, data: { code: 'document_modifie' } },
+    })
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    ajouterUnTour()
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    expect(await screen.findByText(/changé ailleurs/)).toBeInTheDocument()
+    await waitFor(() => expect(layout).toHaveBeenCalledTimes(2))
   })
 
   it('retirer un point le fait disparaître de la liste', async () => {
@@ -168,6 +210,100 @@ describe('CAL93 — l’écran', () => {
     await screen.findByTestId('cal-horizon')
     expect(screen.getByLabelText(/Azimut/)).toHaveAttribute('step', 'any')
     expect(screen.getByLabelText(/Hauteur angulaire/)).toHaveAttribute('step', 'any')
+  })
+})
+
+/* ── 3. ACAL124 — tour complet exigé, provenance requalifiée ─────────────── */
+
+/** Un profil PVGIS de 9 directions, tel que le document l'a enregistré. */
+const PROFIL_PVGIS_9 = {
+  source: 'pvgis',
+  points: Array.from({ length: 9 }, (_, rang) => ({ azimuthDeg: rang * 40, heightDeg: 2 + rang / 2 })),
+  hauteurMaxDeg: 6,
+}
+
+describe('ACAL124 — onglet Horizon : tour complet et provenance', () => {
+  it('retirer un point d’un profil PVGIS l’enregistre en saisie', async () => {
+    layout.mockResolvedValue({
+      data: { roof_layout: { pin: { lat: 33.5731, lng: -7.5898 }, horizonProfile: PROFIL_PVGIS_9 }, empreinte_document: 'E0' },
+    })
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    await waitFor(() => expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(9))
+    fireEvent.click(screen.getAllByLabelText(/Retirer le point/)[0])
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const { valeur } = enregistrerSectionLayout.mock.calls[0][1]
+    expect(valeur.points).toHaveLength(8)
+    expect(valeur.source).toBe('saisie')
+  })
+
+  it('ajouter un point à un profil PVGIS l’enregistre aussi en saisie', async () => {
+    layout.mockResolvedValue({
+      data: { roof_layout: { horizonProfile: PROFIL_PVGIS_9 }, empreinte_document: 'E0' },
+    })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(9))
+    ajouter(350, 4)
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].valeur.source).toBe('saisie')
+  })
+
+  it('moins de 8 directions : Enregistrer désactivé et message nommé', async () => {
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    ajouter(0, 5)
+    ajouter(120, 5)
+    ajouter(240, 5)
+    const bouton = screen.getByText('Enregistrer le profil')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByText(/Le calcul exige un tour complet : au moins 8 directions/)).toBeInTheDocument()
+    fireEvent.click(bouton)
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    // Deux relevés au même azimut ne comptent qu'UNE direction.
+    for (const az of [60, 180, 300, 300]) ajouter(az, 6)
+    expect(screen.getByText('Enregistrer le profil')).toBeDisabled()
+    ajouter(30, 6) // 7 directions distinctes
+    expect(screen.getByText('Enregistrer le profil')).toBeDisabled()
+    ajouter(90, 6) // 8 : le tour est complet
+    expect(screen.getByText('Enregistrer le profil')).not.toBeDisabled()
+    expect(screen.queryByText(/Le calcul exige un tour complet/)).toBeNull()
+  })
+
+  it('aller-retour sans geste : horizonProfile identique', async () => {
+    // 1. Enregistrer un tour complet.
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    ajouterUnTour()
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const premier = enregistrerSectionLayout.mock.calls[0][1].valeur
+    cleanup()
+
+    // 2. Rouvrir l'onglet sur ce que le serveur a stocké, enregistrer sans toucher.
+    layout.mockResolvedValue({
+      data: { roof_layout: { horizonProfile: JSON.parse(JSON.stringify(premier)) }, empreinte_document: 'E1' },
+    })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(8))
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(2))
+    const second = enregistrerSectionLayout.mock.calls[1][1].valeur
+    expect(JSON.stringify(second)).toBe(JSON.stringify(premier))
+
+    // 3. Même aller-retour pour un profil PVGIS intact : la source reste « pvgis ».
+    cleanup()
+    layout.mockResolvedValue({
+      data: { roof_layout: { horizonProfile: PROFIL_PVGIS_9 }, empreinte_document: 'E2' },
+    })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(9))
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(3))
+    const troisieme = enregistrerSectionLayout.mock.calls[2][1].valeur
+    expect(troisieme.source).toBe('pvgis')
+    expect(troisieme.points).toEqual(PROFIL_PVGIS_9.points)
   })
 })
 

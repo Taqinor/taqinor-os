@@ -130,6 +130,28 @@ ORDRE_ETAPES = (
     'indisponibilite',
 )
 
+#: ACAL53 — LES TROIS PHASES de la chaîne, dans l'ordre de ``ORDRE_ETAPES``.
+#: Un toit à plusieurs pans passe chaque pan dans la phase PAN (son
+#: irradiance, ses ombres, son câblage DC), puis la SOMME DC des pans
+#: rattachés aux onduleurs dans la phase ONDULEUR (fenêtre MPPT, η(P),
+#: écrêtage, ohmique AC, transformateur : ils voient la puissance de TOUS les
+#: pans à la fois), puis le site dans la phase SITE. Un toit à UN pan passe
+#: les trois d'affilée — strictement le comportement d'avant.
+ETAPES_PAN = ORDRE_ETAPES[:ORDRE_ETAPES.index('mppt')]
+ETAPES_ONDULEUR = ('mppt', 'onduleur', 'ecretage', 'ohmique_ac',
+                   'transformateur')
+ETAPES_SITE = ('auxiliaires', 'indisponibilite')
+PHASES = {'pan': ETAPES_PAN, 'onduleur': ETAPES_ONDULEUR, 'site': ETAPES_SITE}
+
+#: ACAL53 — les étapes d'OMBRAGE d'un pan : leur perte cumulée est la
+#: ``perte_ombrage_pct`` publiée par pan dans ``resultat['ombrage']``.
+ETAPES_OMBRAGE = ('horizon', 'ombrage_proche', 'acces_module',
+                  'inter_rangees')
+
+#: ACAL53 — la clé sous laquelle l'appelant POSE la cascade de la phase PAN de
+#: chaque pan (``{clé du pan: cascade}``) ; ``_bloc_ombrage`` la publie.
+CLE_CASCADES_PAR_PAN = 'cascades_par_pan'
+
 #: Le libellé FRANÇAIS de chaque étape. Il vit ici parce qu'une étape non
 #: livrée doit quand même se NOMMER dans la cascade : un rang sans libellé
 #: serait une ligne muette dans le diagramme de pertes.
@@ -219,14 +241,23 @@ POSTES_HORS_CHAINE = {
 
 
 def _acces_module_disponible(contexte):
-    """Le document porte-t-il une lecture ``solarAccess`` par module ?"""
-    return bool(_acces_module(contexte))
+    """Le pan porte-t-il une lecture ``solarAccess`` que l'étape APPLIQUE ?
+
+    ACAL137 — même règle que l'étape (``refus_de_methode``) : un accès à
+    méthode texte, d'une autre période ou incluant l'horizon n'est pas
+    appliqué, et n'écarte donc pas la matrice 12×24.
+    """
+    from apps.calepinage.services.etapes.acces_module import refus_de_methode
+
+    acces = _acces_module(contexte)
+    return bool(acces) and refus_de_methode(acces) is None
 
 
 def _rangees_lues_par_acces_module(contexte):
     """``solarAccess`` dit-il couvrir l'ombre des rangées entre elles ?"""
-    acces = _acces_module(contexte)
-    methode = acces.get('method') or acces.get('methode') or {}
+    if not _acces_module_disponible(contexte):
+        return False
+    methode = _acces_module(contexte).get('method') or {}
     return isinstance(methode, dict) and methode.get('rangees') is True
 
 
@@ -237,9 +268,12 @@ def _horizon_deja_dans_la_meteo(contexte):
 
 
 def _acces_module(contexte):
-    ombrage = contexte.get('ombrage') or {}
-    acces = ombrage.get('solar_access') or ombrage.get('solarAccess') or {}
-    return acces if isinstance(acces, dict) else {}
+    """ACAL137 — l'accès solaire du PAN simulé, lu là où l'atelier l'écrit
+    (``zones[].geometry.solarAccess``) par LE lecteur de l'étape — jamais
+    une clé racine du document, qui n'existe pas."""
+    from apps.calepinage.services.etapes.acces_module import acces_du_pan
+
+    return acces_du_pan(contexte) or {}
 
 
 #: LES EXCLUSIVITÉS (D-CALX 16) : trois lectures d'un MÊME ombrage ne se
@@ -365,6 +399,27 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'JOURS_MAX_SERIE_PERSISTEE', 'PAS_JOURNALIER_MINUTES',
            'MOTIF_SERIE_AGREGEE',
            'CLE_CLIENT_PVGIS',  # CALX58
+           # ACAL53 — les phases de la chaîne et la cascade de la somme.
+           'ETAPES_PAN', 'ETAPES_ONDULEUR', 'ETAPES_SITE', 'PHASES',
+           'ETAPES_OMBRAGE', 'CLE_CASCADES_PAR_PAN', 'cascade_de_la_somme',
+           'publier_resultat_de_chaine',
+           # ACAL54 — l'année moyenne de la fenêtre météo.
+           'PORTEE_ANNEE_MOYENNE', 'CLE_ANNEES_FENETRE',
+           'RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC',
+           'MOTIF_RENDEMENT_INVRAISEMBLABLE', 'annees_de_la_fenetre',
+           # ACAL49 — la complétude (D-ACAL-7).
+           'SOCLE_PHYSIQUE', 'MENTION_BORNE_HAUTE', 'MOTIF_SOCLE_MANQUANT',
+           'AVERTISSEMENT_BORNE_HAUTE', 'completude_de_la_chaine',
+           # ACAL135 — préséance projet, forçage signé, statut par poste.
+           'SOURCE_SAISIE_FORCEE', 'STATUT_APPLIQUE', 'STATUT_ECARTE',
+           'STATUT_HORS_CHAINE', 'STATUT_NON_SOURCE', 'STATUT_NON_SIMULE',
+           'statuts_des_postes',
+           # ACAL128 — le PR sur l'irradiation incidente.
+           'irradiation_kwh_m2',
+           # ACAL142 — la série persistée après les blocs aval.
+           'bloc_serie_horaire',
+           # ACAL143 — la perte d'ombrage d'une cascade servie.
+           'perte_ombrage_de_la_cascade',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -394,8 +449,19 @@ class MeteoIndecise(ValueError):
         self.motif = message
 
 
-def appliquer_chaine(serie, contexte=None, resultat=None):
+def appliquer_chaine(serie, contexte=None, resultat=None, *, phase=None,
+                     omettre=None):
     """Parcourt ``ORDRE_ETAPES`` et rend ``(serie, cascade)``.
+
+    ACAL53 — ``phase`` (``'pan'`` | ``'onduleur'`` | ``'site'``) ne parcourt
+    que les étapes de cette phase (:data:`PHASES`), chacune à son RANG global.
+    La phase ``pan`` reçoit la série d'irradiance : elle seule la ré-indexe
+    sur l'heure du site, et elle REFUSE (``ChaineInvalide``) un contexte sans
+    ``meteo.heure`` — une chaîne de pan sans météo omettrait en silence IAM,
+    horizon, inter-rangées et accès module. Les phases ``onduleur`` et
+    ``site`` reçoivent une série DÉJÀ ré-indexée. ``omettre`` (``{étape:
+    motif}``) omet une étape en publiant son motif (l'écrêtage sans table
+    d'affectation). ``phase=None`` : toute la chaîne, inchangée.
 
     Args:
         serie: le document horaire de CALX142 — ``{points, pas_minutes,
@@ -422,18 +488,43 @@ def appliquer_chaine(serie, contexte=None, resultat=None):
             saisi (CALX153) — la publication est refusée en nommant la clé.
     """
     contexte = contexte if isinstance(contexte, dict) else {}
-    _refuser_irradiance_horizontale(serie)
-    _installer_meteo_partagee(contexte)
-    serie = _reindexer_sur_l_heure_du_site(serie, contexte)
+    if phase is not None and phase not in PHASES:
+        raise ChaineInvalide(f'Phase de chaîne inconnue : « {phase} ».',
+                             etape=str(phase))
+    etapes = PHASES[phase] if phase is not None else ORDRE_ETAPES
+    omettre = omettre if isinstance(omettre, dict) else {}
+    if phase in (None, 'pan'):
+        if phase == 'pan' and 'heure' not in (contexte.get('meteo') or {}):
+            raise ChaineInvalide(
+                'Chaîne de pan sans « meteo.heure » : la météo doit être '
+                'posée AVANT les chaînes par pan, sinon IAM, horizon, '
+                'inter-rangées et accès module s\'omettent en silence.',
+                etape='meteo')
+        _refuser_irradiance_horizontale(serie)
+        _installer_meteo_partagee(contexte)
+        serie = _reindexer_sur_l_heure_du_site(serie, contexte)
+        # ACAL128 — l'irradiation INCIDENTE, capturée UNE fois AVANT la
+        # première étape : les étapes optiques (horizon, ombrage, accès
+        # module, IAM, salissure) réécrivent ``gi_w_m2``, et un PR divisé par
+        # l'irradiation de la série FINALE vaudrait 1,0 quoi qu'il arrive.
+        irradiation_incidente = irradiation_kwh_m2(serie)
+    else:
+        _installer_meteo_partagee(contexte)
+        irradiation_incidente = None
     courante = serie
     premiere = _arrondi(_etapes.energie_kwh(courante))
     dernier_connu = premiere
     publiees = []
     appliquees = 0
 
-    for rang, nom in enumerate(ORDRE_ETAPES, start=1):
+    for nom in etapes:
+        rang = ORDRE_ETAPES.index(nom) + 1
         kwh_avant = dernier_connu
-        rendue, etape = _executer(nom, courante, contexte)
+        if nom in omettre:
+            rendue, etape = courante, _etapes.etape_omise(_libelle(nom),
+                                                          omettre[nom])
+        else:
+            rendue, etape = _executer(nom, courante, contexte)
 
         if etape['motif_omission']:
             apres = _arrondi(_etapes.energie_kwh(rendue))
@@ -464,6 +555,13 @@ def appliquer_chaine(serie, contexte=None, resultat=None):
         'total_pct': _total_pct(premiere, dernier_connu, appliquees),
         'postes_non_sources': _postes_non_sources(contexte),
         'hash_entree': contexte.get('hash_entree'),
+        # ACAL49 — les étapes OMISES de cette chaîne, dans l'ordre.
+        'etapes_omises': [etape['etape'] for etape in publiees
+                          if etape['motif_omission']],
+        # ACAL128 — Σ G(i) × Δt de la série d'ENTRÉE (kWh/m², fenêtre
+        # entière, comme les kWh de la cascade) ; ``None`` pour les phases
+        # onduleur et site, qui ne reçoivent plus d'irradiance.
+        'irradiation_incidente_kwh_m2': irradiation_incidente,
     }
     if isinstance(resultat, dict):
         _publier(resultat, courante, contexte, cascade)
@@ -482,6 +580,9 @@ CLES_METEO_PUBLIEES = (
     'service', 'base_rayonnement', 'base_meteo', 'mode', 'fenetre_annees',
     'annees', 'point', 'horizon', 'url', 'obtenue_le', 'depuis_cache',
     'convention_azimut', 'heure', 'albedo_face_avant',
+    # ACAL146 — le fichier météo déposé quand il est la source (``null`` :
+    # PVGIS) ; la simulation le publie sous la forme {nom, fournisseur}.
+    'fichier',
 )
 
 #: Les sous-blocs du bloc météo et leurs clés — un sous-bloc partiel se
@@ -491,7 +592,10 @@ SOUS_BLOCS_METEO = {
     'horizon': ('origine', 'hauteur_max_deg', 'base_horizon'),
     # ``motif`` (CALX59) est vide quand la ré-indexation a eu lieu, et porte
     # sinon la raison — un décalage non appliqué se DIT.
-    'heure': ('base', 'fuseau_site', 'decalage_minutes', 'motif'),
+    'heure': ('base', 'fuseau_site', 'decalage_minutes', 'motif',
+              # ACAL129 — d'où vient le fuseau : ``imagerie`` |
+              # ``profil_societe`` | ``None``.
+              'provenance_fuseau'),
 }
 
 
@@ -506,8 +610,222 @@ def _publier(resultat, serie, contexte, cascade):
     orientations = _orientations_par_pan(serie, contexte)
     resultat['production'] = _bloc_production(
         resultat, serie, contexte, cascade, decision, orientations)
-    resultat['ombrage'] = _bloc_ombrage(contexte, orientations)
+    resultat['ombrage'] = _bloc_ombrage(contexte, orientations, cascade)
     resultat['serie_horaire'] = _bloc_serie_horaire(serie)
+    # ACAL135 — un poste saisi HORS CHAÎNE (vieillissement…) n'agit pas sur
+    # l'année 1 : il est publié comme tel, et DIT.
+    for saisi in contexte.get('postes_saisis') or ():
+        poste = (saisi or {}).get('poste') if isinstance(saisi, dict) else None
+        if poste in POSTES_HORS_CHAINE:
+            _ajouter_avertissement(resultat, AVERTISSEMENT_HORS_CHAINE.format(
+                poste=poste, raison=POSTES_HORS_CHAINE[poste]))
+
+
+def statuts_des_postes(postes, cascade=None):
+    """ACAL135 — le STATUT de chaque poste saisi, lu sur la DERNIÈRE cascade
+    fraîche (``None`` ⇒ ``non_simule`` + la règle statique).
+
+    Rend ``{poste: {statut, etape, raison}}`` : ``applique`` (entré dans la
+    chaîne, forçage signé compris), ``ecarte_par_etape`` (une étape calculée
+    le remplace — ``etape`` la nomme), ``hors_chaine`` (n'agit pas sur la
+    production de l'année 1), ``non_source`` (sans source, refusé),
+    ``non_simule``.
+    """
+    etapes = {etape.get('etape'): etape
+              for etape in ((cascade or {}).get('etapes') or ())
+              if isinstance(etape, dict)}
+    etape_du_poste = {poste: nom for nom, poste in POSTE_PAR_ETAPE.items()}
+    statuts = {}
+    for saisi in postes or ():
+        poste = (saisi or {}).get('poste')
+        nom = etape_du_poste.get(poste)
+        if poste in POSTES_HORS_CHAINE:
+            statuts[poste] = {'statut': STATUT_HORS_CHAINE, 'etape': None,
+                              'raison': POSTES_HORS_CHAINE[poste]}
+            continue
+        if not str((saisi or {}).get('source') or '').strip():
+            statuts[poste] = {
+                'statut': STATUT_NON_SOURCE, 'etape': nom,
+                'raison': 'Aucune source : le poste n’entre pas dans la '
+                          'chaîne.'}
+            continue
+        etape = etapes.get(nom) if nom else None
+        if cascade is None or etape is None:
+            statuts[poste] = {'statut': STATUT_NON_SIMULE, 'etape': nom,
+                              'raison': RAISON_NON_SIMULE}
+            continue
+        entree = etape.get('entree')
+        ecartee = (entree.get('saisie_ecartee')
+                   if isinstance(entree, dict) else None)
+        if ecartee:
+            statuts[poste] = {'statut': STATUT_ECARTE, 'etape': nom,
+                              'raison': ecartee.get('motif') or ''}
+        elif etape.get('motif_omission'):
+            statuts[poste] = {'statut': STATUT_NON_SIMULE, 'etape': nom,
+                              'raison': etape['motif_omission']}
+        else:
+            statuts[poste] = {'statut': STATUT_APPLIQUE, 'etape': nom,
+                              'raison': ''}
+    return statuts
+
+
+def publier_resultat_de_chaine(resultat, serie, contexte, cascade):
+    """ACAL53 — publie ``meteo``, ``production``, ``ombrage`` et
+    ``serie_horaire`` d'une chaîne PASSÉE PAR PHASES (plusieurs pans).
+
+    ``serie`` est la série de SORTIE du site, ``cascade`` la cascade de la
+    SOMME (:func:`cascade_de_la_somme`), ``contexte`` porte les séries de
+    sortie par pan (:data:`CLE_SORTIES_PAR_PAN`) et leurs cascades de phase
+    PAN (:data:`CLE_CASCADES_PAR_PAN`). Le même chemin d'écriture que
+    ``appliquer_chaine(..., resultat)`` : rien n'est recodé.
+    """
+    _publier(resultat, serie, contexte, cascade)
+
+
+def cascade_de_la_somme(cascades_pan, cascade_onduleur, cascade_site,
+                        contexte=None):
+    """ACAL53 — LA cascade d'un toit à plusieurs pans : celle de la SOMME.
+
+    Phase PAN : les kWh de chaque étape sont SOMMÉS sur les pans (une étape
+    omise sur un pan y laisse passer son énergie inchangée) ; une étape est
+    « appliquée » dès qu'elle l'est sur un pan, et omise (avec le motif du
+    premier pan) quand elle l'est partout. Phases ONDULEUR et SITE : leur
+    cascade unique, puisqu'elles voient déjà la somme. ``total_pct`` est
+    recalculé de la première énergie de la somme à la dernière — jamais une
+    moyenne de pourcentages.
+    """
+    contexte = contexte if isinstance(contexte, dict) else {}
+    cascades_pan = [c for c in (cascades_pan or ()) if isinstance(c, dict)]
+    publiees = []
+    appliquees = 0
+    for nom in ETAPES_PAN:
+        lignes = [_etape_nommee(c, nom) for c in cascades_pan]
+        lignes = [ligne for ligne in lignes if ligne is not None]
+        if not lignes:
+            continue
+        somme = _etape_sommee(nom, lignes)
+        publiees.append(somme)
+        if not somme['motif_omission']:
+            appliquees += 1
+    for cascade in (cascade_onduleur, cascade_site):
+        for etape in ((cascade or {}).get('etapes') or ()):
+            publiees.append(dict(etape))
+            if not etape.get('motif_omission'):
+                appliquees += 1
+    premiere = publiees[0]['kwh_avant'] if publiees else None
+    derniere = premiere
+    for etape in publiees:
+        if not etape.get('motif_omission') and etape.get('kwh_apres') \
+                is not None:
+            derniere = etape['kwh_apres']
+    postes = []
+    for cascade in list(cascades_pan) + [cascade_onduleur or {},
+                                         cascade_site or {}]:
+        for poste in cascade.get('postes_non_sources') or ():
+            if poste not in postes:
+                postes.append(poste)
+    # ACAL49 — les omissions de TOUTES les chaînes : une étape omise sur un
+    # seul pan compte (elle est « appliquée » dans la somme, mais le pan
+    # qui l'a omise publie une borne haute).
+    omises = set()
+    for cascade in list(cascades_pan) + [cascade_onduleur or {},
+                                         cascade_site or {}]:
+        omises.update(etape.get('etape') for etape in
+                      (cascade.get('etapes') or ())
+                      if etape.get('motif_omission'))
+    omises.update(etape['etape'] for etape in publiees
+                  if etape.get('motif_omission'))
+    return {
+        'etapes': publiees,
+        'ordre': [etape['etape'] for etape in publiees],
+        'total_pct': _total_pct(premiere, derniere, appliquees),
+        'postes_non_sources': postes,
+        'hash_entree': contexte.get('hash_entree'),
+        'etapes_omises': [nom for nom in ORDRE_ETAPES if nom in omises],
+        # ACAL128 — l'irradiation incidente du SITE, pondérée par le kWc de
+        # chaque pan (posée par ``simulation._chaine_par_phases``).
+        'irradiation_incidente_kwh_m2': None,
+    }
+
+
+def _etape_nommee(cascade, nom):
+    for etape in cascade.get('etapes') or ():
+        if etape.get('etape') == nom:
+            return etape
+    return None
+
+
+def _etape_sommee(nom, lignes):
+    """Une étape de phase PAN, ses énergies sommées sur les pans."""
+    appliquees = [ligne for ligne in lignes if not ligne['motif_omission']]
+    modele = dict(appliquees[0] if appliquees else lignes[0])
+    avant = None
+    apres = None
+    for ligne in lignes:
+        avant = _ajouter(avant, ligne.get('kwh_avant'))
+        # Omise sur ce pan : son énergie traverse l'étape inchangée.
+        sortie = (ligne.get('kwh_avant') if ligne['motif_omission']
+                  else ligne.get('kwh_apres'))
+        apres = _ajouter(apres, sortie)
+    avant = _arrondi(avant)
+    if not appliquees:
+        modele.update(kwh_avant=avant, kwh_apres=None, perte_kwh=None,
+                      perte_pct=None)
+        return modele
+    apres = _arrondi(apres)
+    perte_kwh, perte_pct = _perte(nom, modele, avant, apres)
+    modele.update(kwh_avant=avant, kwh_apres=apres, perte_kwh=perte_kwh,
+                  perte_pct=perte_pct, motif_omission='')
+    return modele
+
+
+def _cascade_du_pan(cascade):
+    """ACAL53 — la cascade de la phase PAN, extraite d'une cascade complète.
+
+    ``{etapes, total_pct}`` : les étapes ``horizon … ohmique_dc`` et la perte
+    cumulée de la première énergie à la dernière appliquée.
+    """
+    etapes = [dict(etape) for etape in ((cascade or {}).get('etapes') or ())
+              if etape.get('etape') in ETAPES_PAN]
+    premiere = etapes[0].get('kwh_avant') if etapes else None
+    derniere = premiere
+    appliquees = 0
+    for etape in etapes:
+        if not etape.get('motif_omission'):
+            appliquees += 1
+            if etape.get('kwh_apres') is not None:
+                derniere = etape['kwh_apres']
+    return {'etapes': etapes,
+            'total_pct': _total_pct(premiere, derniere, appliquees),
+            'etapes_omises': [etape['etape'] for etape in etapes
+                              if etape.get('motif_omission')]}
+
+
+def perte_ombrage_de_la_cascade(cascade):
+    """ACAL143 — la perte d'OMBRAGE (%) d'une cascade publiée (phase PAN :
+    horizon, ombrage proche, accès module, inter-rangées), ou ``None``.
+    Sur la cascade de la SOMME (plusieurs pans), c'est la perte du site."""
+    return _perte_ombrage_pct(_cascade_du_pan(cascade))
+
+
+def _perte_ombrage_pct(cascade):
+    """ACAL53 — la perte d'OMBRAGE d'un pan, en % de l'énergie qui l'atteint.
+
+    Somme des pertes des étapes :data:`ETAPES_OMBRAGE` APPLIQUÉES, rapportée
+    à l'énergie d'entrée de la cascade du pan. ``None`` quand aucune n'est
+    appliquée (une ombre non mesurée n'est pas une ombre nulle).
+    """
+    etapes = (cascade or {}).get('etapes') or []
+    if not etapes:
+        return None
+    entree = _flottant(etapes[0].get('kwh_avant'))
+    pertes = [_flottant(etape.get('perte_kwh')) for etape in etapes
+              if etape.get('etape') in ETAPES_OMBRAGE
+              and not etape.get('motif_omission')]
+    pertes = [perte for perte in pertes if perte is not None]
+    if not pertes or not entree:
+        return None
+    return round(sum(pertes) / entree * 100.0, 3)
 
 
 def _bloc_meteo_publie(contexte, decision):
@@ -609,6 +927,13 @@ MOTIF_SERIE_AGREGEE = (
     'Elle est publiée AGRÉGÉE AU JOUR (moyenne de chaque colonne sur les '
     'points du jour, donc la même énergie) plutôt que coupée au milieu de '
     "l'année : le détail horaire se recalcule, il ne se devine pas.")
+
+
+def bloc_serie_horaire(serie):
+    """ACAL142 — le bloc ``resultat['serie_horaire']`` d'une série (borne de
+    volume comprise) : la simulation le pose APRÈS batterie /
+    autoconsommation / hors réseau."""
+    return _bloc_serie_horaire(serie)
 
 
 def _bloc_serie_horaire(serie):
@@ -878,6 +1203,36 @@ DECIMALES_KWH = 1
 #: (jamais réparties au prorata : une répartition supposée n'est pas mesurée).
 CLE_SORTIES_PAR_PAN = 'sorties_par_pan'
 
+#: ACAL54 — la PORTÉE des énergies publiées : l'ANNÉE MOYENNE de la fenêtre
+#: météo (jamais la somme de ses N années), et la clé du contexte qui porte
+#: N pour les blocs aval (batterie, autoconsommation, hors réseau).
+PORTEE_ANNEE_MOYENNE = 'annee_moyenne'
+CLE_ANNEES_FENETRE = 'annees_fenetre'
+
+#: ACAL49 / D-ACAL-7 — LE SOCLE PHYSIQUE : les postes sans lesquels le P50
+#: n'est qu'une BORNE HAUTE. Tant que l'un d'eux est omis (sur une chaîne
+#: quelconque), le PR, P75, P90 et P95 sont masqués avec leur motif et le P50
+#: est publié avec la mention « borne haute » — aucune valeur inventée.
+SOCLE_PHYSIQUE = ('salissure', 'mismatch_fabricant', 'lid', 'ohmique_dc',
+                  'ohmique_ac', 'qualite_module', 'indisponibilite')
+MENTION_BORNE_HAUTE = 'borne haute — {n} {pertes} non renseignée{s}'
+MOTIF_SOCLE_MANQUANT = (
+    'Pertes non renseignées ({postes}) : la valeur serait une borne haute '
+    'fausse — non publiée.')
+AVERTISSEMENT_BORNE_HAUTE = (
+    'Production publiée en {mention} : PR, P75, P90 et P95 non publiés tant '
+    'que les pertes du socle ne sont pas saisies ({postes}).')
+
+#: ACAL54 — le GARDE-FOU de vraisemblance du rendement spécifique (kWh/kWc
+#: et par an), borne du plan ACAL54 (C-ACAL-079, audit D3 du 04/10/2026) :
+#: hors de cette plage, un AVERTISSEMENT nommé est publié — la valeur n'est
+#: jamais bornée ni corrigée.
+RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC = (600.0, 2400.0)
+MOTIF_RENDEMENT_INVRAISEMBLABLE = (
+    'Rendement spécifique de {valeur} kWh/kWc par an hors de la plage '
+    'vraisemblable [{bas} ; {haut}] : vérifiez la fenêtre météo, la '
+    'puissance posée et la série reçue. La valeur est publiée telle quelle.')
+
 MOTIF_PAN_SANS_SERIE = (
     'Aucune série de sortie de chaîne par pan : les colonnes par pan restent '
     'vides. La chaîne ne répartit pas un total entre plusieurs pans — une '
@@ -904,6 +1259,7 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
     plans = [plan for plan in (contexte.get('plans') or ())
              if isinstance(plan, dict)]
     series = _series_par_pan(serie, contexte, plans)
+    incidentes = _irradiations_incidentes(cascade, contexte, plans)
 
     mensuel = {mois: None for mois in range(1, 13)}
     annuel = {}
@@ -912,6 +1268,7 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
     total_kwc = 0.0
     lignes = []
     bruts_par_pan = []
+    a_remplir = []
     avertissements = []
 
     for plan in plans:
@@ -924,7 +1281,10 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
             lignes.append(ligne)
             bruts_par_pan.append(None)
             continue
-        kwh, mensuel_pan, annuel_pan, irradiation = _sommes(serie_du_pan)
+        kwh, mensuel_pan, annuel_pan, _finale = _sommes(serie_du_pan)
+        # ACAL128 — l'irradiation INCIDENTE du pan (capturée avant la
+        # chaîne), jamais celle de la série finale.
+        irradiation = incidentes.get(_cle_de_pan(plan))
         bruts_par_pan.append(kwh)
         total_kwh = _ajouter(total_kwh, kwh)
         for mois, valeur in mensuel_pan.items():
@@ -934,13 +1294,15 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         if irradiation is not None and kwc:
             irradiation_ponderee = _ajouter(irradiation_ponderee,
                                             irradiation * kwc)
-        _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation)
+        a_remplir.append((ligne, kwh, annuel_pan, kwc, irradiation))
         lignes.append(ligne)
 
     if not series:
         # Aucun pan n'a de série : le TOTAL reste celui de la chaîne, et les
         # lignes par pan disent qu'elles n'ont pas été alimentées.
-        total_kwh, mensuel, annuel, irradiation = _sommes(serie)
+        total_kwh, mensuel, annuel, _finale = _sommes(serie)
+        irradiation = _flottant((cascade or {}).get(
+            'irradiation_incidente_kwh_m2'))
         if irradiation is not None and total_kwc:
             irradiation_ponderee = irradiation * total_kwc
         if plans:
@@ -952,24 +1314,78 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         # se dire « mesuré ».
         annuel = {}
 
+    # ACAL54 — L'ANNÉE MOYENNE. Une fenêtre de N années observées publie la
+    # MOYENNE de leurs totaux (jamais leur somme : 10 ans de PVGIS donnaient
+    # un « P50 annuel » dix fois trop grand). Une année type (TMY) est UNE
+    # année : N = 1. Chaque seau (mois, pan, total, irradiation) est divisé
+    # par le même N : la somme des mois égale toujours le total, et le PR
+    # (rapport de deux sommes) ne bouge pas.
+    annees_fenetre = len(annuel) if annuel else 1
+    contexte[CLE_ANNEES_FENETRE] = annees_fenetre
+    total_kwh = _moyenne(total_kwh, annees_fenetre)
+    irradiation_ponderee = _moyenne(irradiation_ponderee, annees_fenetre)
+    mensuel = {mois: _moyenne(valeur, annees_fenetre)
+               for mois, valeur in mensuel.items()}
+    bruts_par_pan = [_moyenne(valeur, annees_fenetre)
+                     for valeur in bruts_par_pan]
+    for ligne, kwh, annuel_pan, kwc, irradiation in a_remplir:
+        _remplir_ligne(ligne, _moyenne(kwh, annees_fenetre), annuel_pan, kwc,
+                       _moyenne(irradiation, annees_fenetre),
+                       contexte.get('reglages_simulation'))
+
     quantiles = _quantiles(total_kwh, annuel, total_kwc, contexte)
+    rendement = _rendement(total_kwh, total_kwc)
+    bas, haut = RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC
+    if rendement is not None and not bas <= rendement <= haut:
+        avertissements.append(MOTIF_RENDEMENT_INVRAISEMBLABLE.format(
+            valeur=rendement, bas=int(bas), haut=int(haut)))
     for avertissement in avertissements:
         _ajouter_avertissement(resultat, avertissement)
+    entete = completude_de_la_chaine(cascade, contexte)['avertissement']
+    if entete:
+        # ACAL49 — EN TÊTE des avertissements : c'est la phrase qui dit que
+        # le P50 est une borne haute.
+        _ajouter_avertissement(resultat, entete)
+        resultat['avertissements'].remove(entete)
+        resultat['avertissements'].insert(0, entete)
 
     production = resultat.get('production')
     production = dict(production) if isinstance(production, dict) else {}
     production['base'] = _base_production(production, resultat)
+    completude = completude_de_la_chaine(cascade, contexte)
+    masque = completude['motif']
+    if masque:
+        # D-ACAL-7 — un résultat incomplet ne publie ni PR ni quantile, ni au
+        # total ni par pan (le P50 reste, avec sa mention).
+        for ligne in lignes:
+            for cle in ('p75_kwh', 'p90_kwh', 'performance_ratio'):
+                ligne[cle] = None
     production['total'] = {
         'kwc': round(total_kwc, 3),
         'p50_kwh': _arrondi_kwh(total_kwh),
-        'p75_kwh': quantiles['p75_kwh'],
-        'p90_kwh': quantiles['p90_kwh'],
-        'performance_ratio': _ratio(total_kwh, irradiation_ponderee),
-        'specific_yield_kwh_kwc': _rendement(total_kwh, total_kwc),
+        'p75_kwh': None if masque else quantiles['p75_kwh'],
+        'p90_kwh': None if masque else quantiles['p90_kwh'],
+        'p95_kwh': None if masque else quantiles.get('p95_kwh'),
+        'performance_ratio': (None if masque else
+                              _ratio(total_kwh, irradiation_ponderee)),
+        # ACAL49 — la complétude, LUE ici une seule fois : les lecteurs ne la
+        # recalculent jamais.
+        'complete': completude['complete'],
+        'socle_manquant': completude['socle_manquant'],
+        'mention': completude['mention'],
+        'performance_ratio_motif': masque,
+        'p75_kwh_motif': masque,
+        'p90_kwh_motif': masque,
+        'p95_kwh_motif': masque,
+        'specific_yield_kwh_kwc': rendement,
         'annual_variability': quantiles['annual_variability'],
         'annual_variability_source': quantiles['sigma_source'],
         'annual_variability_annees': quantiles['sigma_annees'],
         'total_loss_pct': cascade['total_pct'],
+        # ACAL54 — ce que les énergies DÉCRIVENT : l'année moyenne de la
+        # fenêtre, et combien d'années elle moyenne.
+        'portee': PORTEE_ANNEE_MOYENNE,
+        'annees_fenetre': annees_fenetre,
     }
     mois_publies = _repartir([mensuel[mois] for mois in range(1, 13)],
                              production['total']['p50_kwh'])
@@ -981,15 +1397,103 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
             bruts_par_pan, production['total']['p50_kwh'])):
         ligne['p50_kwh'] = publie
     production['par_pan'] = lignes
-    annees = sorted(annuel)
-    valeurs_annees = _repartir([annuel[annee] for annee in annees],
-                               production['total']['p50_kwh'])
+    # ACAL54 — les totaux OBSERVÉS de chaque année de la fenêtre, tels quels
+    # (arrondis au dixième) : ils ne sont plus forcés à sommer au P50 — leur
+    # MOYENNE est le P50.
     production['annees'] = [
-        {'annee': annee, 'kwh': valeurs_annees[rang],
-         'source': 'chaine_pertes'}
-        for rang, annee in enumerate(annees)
+        {'annee': annee, 'kwh': _arrondi_kwh(annuel[annee]),
+         'source': 'chaine_pertes', 'observe': True}
+        for annee in sorted(annuel)
     ]
     return production
+
+
+def completude_de_la_chaine(cascade, contexte=None):
+    """ACAL49 — la complétude d'une simulation, LUE sur ses cascades.
+
+    ``etapes_omises`` vient de la cascade publiée (elle porte déjà l'union
+    des chaînes par pan, :func:`cascade_de_la_somme`). Une omission compte
+    comme « perte non renseignée » sauf si elle est TOUJOURS omise en v1
+    (:data:`TOUJOURS_OMISES`) ou écartée par une EXCLUSIVITÉ (la perte est
+    déjà comptée ailleurs).
+
+    Returns:
+        ``{complete, socle_manquant, mention, motif, avertissement}``.
+    """
+    contexte = contexte if isinstance(contexte, dict) else {}
+    cascades = [cascade or {}]
+    posees = contexte.get(CLE_CASCADES_PAR_PAN)
+    if isinstance(posees, dict):
+        cascades.extend(c for c in posees.values() if isinstance(c, dict))
+    omises = set((cascade or {}).get('etapes_omises') or ())
+    non_renseignees = set()
+    for courante in cascades:
+        for etape in courante.get('etapes') or ():
+            nom = etape.get('etape')
+            motif = etape.get('motif_omission')
+            if not motif:
+                continue
+            omises.add(nom)
+            exclusivite = EXCLUSIVITES.get(nom)
+            if nom in TOUJOURS_OMISES or (exclusivite is not None
+                                          and motif == exclusivite[1]):
+                continue
+            non_renseignees.add(nom)
+    socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]
+    n = len(non_renseignees)
+    mention = (MENTION_BORNE_HAUTE.format(
+        n=n, pertes='perte' if n == 1 else 'pertes',
+        s='' if n == 1 else 's') if n else '')
+    motif = (MOTIF_SOCLE_MANQUANT.format(postes=', '.join(socle))
+             if socle else '')
+    avertissement = (AVERTISSEMENT_BORNE_HAUTE.format(
+        mention=f'« {mention} »', postes=', '.join(socle)) if socle else '')
+    return {'complete': not socle, 'socle_manquant': socle,
+            'mention': mention, 'motif': motif,
+            'avertissement': avertissement}
+
+
+def irradiation_kwh_m2(serie):
+    """ACAL128 — ``Σ G(i) × Δt`` (kWh/m²) d'une série, ou ``None``."""
+    pas = float((serie or {}).get('pas_minutes') or _etapes.PAS_MINUTES_PVGIS)
+    heures = pas / 60.0
+    total = None
+    for point in (serie or {}).get('points') or ():
+        if not isinstance(point, dict):
+            continue
+        globale = _flottant(point.get('gi_w_m2'))
+        if globale is not None:
+            total = _ajouter(total, globale / 1000.0 * heures)
+    return None if total is None else round(total, 3)
+
+
+def _irradiations_incidentes(cascade, contexte, plans):
+    """ACAL128 — ``{clé du pan: irradiation incidente}`` : celles des
+    cascades de pan POSÉES (plusieurs pans), sinon celle de la cascade
+    publiée pour l'unique pan équipé."""
+    posees = contexte.get(CLE_CASCADES_PAR_PAN)
+    if isinstance(posees, dict) and posees:
+        return {cle: _flottant((c or {}).get('irradiation_incidente_kwh_m2'))
+                for cle, c in posees.items()}
+    equipes = [plan for plan in plans if _est_equipe(plan)]
+    if len(equipes) == 1:
+        return {_cle_de_pan(equipes[0]): _flottant(
+            (cascade or {}).get('irradiation_incidente_kwh_m2'))}
+    return {}
+
+
+def _moyenne(valeur, annees):
+    """``valeur`` ramenée à l'année moyenne d'une fenêtre de ``annees`` ans."""
+    if valeur is None:
+        return None
+    return valeur / annees if annees and annees > 1 else valeur
+
+
+def annees_de_la_fenetre(contexte):
+    """ACAL54 — le N de la fenêtre (≥ 1) posé par la publication de la
+    production : les blocs aval y ramènent leurs énergies à l'année moyenne."""
+    valeur = _flottant((contexte or {}).get(CLE_ANNEES_FENETRE))
+    return int(valeur) if valeur and valeur >= 1 else 1
 
 
 def _repartir(valeurs, total):
@@ -1134,37 +1638,59 @@ def _orientations_par_pan(serie, contexte):
     return orientations
 
 
-def _bloc_ombrage(contexte, orientations):
+def _bloc_ombrage(contexte, orientations, cascade=None):
     """``resultat['ombrage']`` — TOF, TSRF et accès solaire, pan par pan.
 
     ``methode`` reste ``null`` tant qu'AUCUN pan n'a de TOF : annoncer une
     méthode qui n'a rien produit ferait lire un calcul là où chaque ligne
     porte son motif d'omission.
+
+    ACAL53 — chaque ligne porte aussi la cascade de la phase PAN de CE pan
+    (``cascade``) et sa ``perte_ombrage_pct``. Plusieurs pans : les cascades
+    POSÉES par l'appelant (:data:`CLE_CASCADES_PAR_PAN`) ; un seul pan
+    équipé : la phase PAN de la cascade publiée (c'est la sienne).
     """
+    posees = contexte.get(CLE_CASCADES_PAR_PAN)
+    posees = posees if isinstance(posees, dict) else {}
+    plans = [plan for plan in (contexte.get('plans') or ())
+             if isinstance(plan, dict)]
+    equipes = [plan for plan in plans if _est_equipe(plan)]
     par_pan = []
-    for plan in (contexte.get('plans') or ()):
-        if not isinstance(plan, dict):
-            continue
+    for plan in plans:
         bloc = orientations.get(_cle_de_pan(plan)) or {}
+        cascade_pan = posees.get(_cle_de_pan(plan))
+        if cascade_pan is None and not posees and len(equipes) == 1 \
+                and _cle_de_pan(equipes[0]) == _cle_de_pan(plan):
+            cascade_pan = cascade
+        cascade_pan = (_cascade_du_pan(cascade_pan)
+                       if isinstance(cascade_pan, dict) else None)
         par_pan.append({
             'pan': str(plan.get('pan') or plan.get('cle') or ''),
             'tof': bloc.get('tof'),
             'tsrf': bloc.get('tsrf'),
             'acces_solaire_moyen_pct': bloc.get('acces_solaire_moyen_pct'),
             'motif_omission': bloc.get('motif_omission') or '',
+            'perte_ombrage_pct': _perte_ombrage_pct(cascade_pan),
+            'cascade': cascade_pan,
         })
     mesure = any(ligne['tof'] is not None for ligne in par_pan)
     return {'par_pan': par_pan,
             'methode': _orientation.METHODE if mesure else None}
 
 
-def _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation):
-    """Les colonnes d'un pan, depuis SA propre série — jamais un prorata."""
+def _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation, reglages=None):
+    """Les colonnes d'un pan, depuis SA propre série — jamais un prorata.
+
+    ACAL53 — ``reglages`` : la section ``simulation`` de la société. Les σ
+    SAISIS (modèle, biais du site) s'appliquent à chaque pan comme au total :
+    un seul chemin vers ``bankable``.
+    """
     ligne['p50_kwh'] = _arrondi_kwh(kwh)
     ligne['specific_yield_kwh_kwc'] = _rendement(kwh, kwc)
     ligne['performance_ratio'] = _ratio(
         kwh, irradiation * kwc if irradiation is not None and kwc else None)
-    quantiles = bankable(kwh, totaux_par_annee=annuel_pan, kwc=kwc or None)
+    quantiles = bankable(kwh, totaux_par_annee=annuel_pan, kwc=kwc or None,
+                         reglages=reglages)
     ligne['p75_kwh'] = quantiles['p75_kwh']
     ligne['p90_kwh'] = quantiles['p90_kwh']
 
@@ -1287,12 +1813,21 @@ def _executer(nom, serie, contexte):
        ``source`` inchangée ;
     4. une saisie SANS SOURCE ne s'applique jamais : l'étape reste omise et
        le nom du poste part dans ``postes_non_sources``.
+
+    ACAL135 — deux précisions : un poste FORCÉ (``force`` + ``motif_force``
+    non vide — forçage SIGNÉ) s'applique À LA PLACE de l'étape, source
+    ``saisie_forcee`` ; un poste qui prime sur un réglage société
+    (``etapes.POSTE_DE_REGLAGE``) est CONSOMMÉ par l'étape elle-même — il
+    n'est donc pas « écarté ».
     """
     saisi = _poste_saisi(contexte, nom)
 
     exclusivite = EXCLUSIVITES.get(nom)
     if exclusivite is not None and exclusivite[0](contexte):
         return serie, _etapes.etape_omise(_libelle(nom), exclusivite[1])
+
+    if _est_forcee(saisi):
+        return _appliquer_saisie(nom, serie, saisi, forcee=True)
 
     motif = TOUJOURS_OMISES.get(nom, '')
     if not motif:
@@ -1310,8 +1845,9 @@ def _executer(nom, serie, contexte):
                     etape=nom)
             rendue, etape = rendu[0], _normaliser(nom, rendu[1])
             if not etape['motif_omission']:
-                etape['entree'] = _avec_saisie_ecartee(
-                    nom, etape['entree'], saisi)
+                if not _consomme_par_l_etape(nom, contexte):
+                    etape['entree'] = _avec_saisie_ecartee(
+                        nom, etape['entree'], saisi)
                 return rendue, etape
             # Le module s'est omis : la série qu'il rend doit être INTACTE,
             # que la saisie prenne ensuite le relais ou non.
@@ -1406,7 +1942,9 @@ def _reindexer_sur_l_heure_du_site(serie, contexte):
             return serie
         offsets.add(legal)
         applique = legal if base == BASE_HEURE_UTC else saisonnier
-        decales.append(_point_decale(point, moment, applique))
+        # ACAL131 — chaque point porte SON décalage UTC légal : c'est lui
+        # que l'IAM, l'horizon et l'inter-rangées lisent (Ramadan compris).
+        decales.append(_point_decale(point, moment, applique, legal))
 
     suite = dict(serie)
     suite['points'] = decales
@@ -1417,11 +1955,15 @@ def _reindexer_sur_l_heure_du_site(serie, contexte):
 
 def _poser_verdict_horaire(contexte, base, fuseau, decalages, motif, champ):
     """Écrit le bloc ``meteo.heure`` ET le verdict que CALX5 lira."""
+    site = contexte.get('site') or {}
     contexte['meteo']['heure'] = {
         'base': base,
         'fuseau_site': fuseau,
         'decalage_minutes': list(decalages),
         'motif': motif,
+        # ACAL129 — la provenance du fuseau (imagerie | profil société).
+        'provenance_fuseau': (site.get('fuseau_source') if fuseau
+                              else None),
     }
     contexte[CLE_CROISEMENT_HORAIRE] = {
         'possible': not motif,
@@ -1464,17 +2006,21 @@ def _part_saisonniere_minutes(fuseau, moment):
     return int(saison.total_seconds() // 60)
 
 
-def _point_decale(point, moment, minutes):
+def _point_decale(point, moment, minutes, decalage_utc=None):
     """Une COPIE du point ré-étiquetée — aucune valeur mesurée n'est touchée.
 
     Ré-indexer, c'est CHANGER L'ÉTIQUETTE d'une heure, jamais sa mesure :
     l'irradiance, la température et le vent du point restent exactement ceux
-    que PVGIS a servis.
+    que PVGIS a servis. ACAL131 — ``decalage_utc`` (minutes) est posé sur le
+    point (``etapes.CLE_DECALAGE_POINT``) : l'heure LÉGALE ré-étiquetée moins
+    ce décalage est son instant UTC.
     """
-    if not minutes:
-        return point
-    cible = moment + datetime.timedelta(minutes=minutes)
     copie = dict(point)
+    if decalage_utc is not None:
+        copie[_etapes.CLE_DECALAGE_POINT] = decalage_utc
+    if not minutes:
+        return copie
+    cible = moment + datetime.timedelta(minutes=minutes)
     copie['annee'] = cible.year
     copie['mois'] = cible.month
     copie['jour'] = cible.day
@@ -1741,6 +2287,23 @@ MOTIF_SAISIE_ECARTEE = (
     'compterait la même perte deux fois. Le poste reste servi en LECTURE '
     'SEULE au panneau de saisie, avec le nom de l\'étape qui l\'a calculé.')
 
+#: ACAL135 — la source publiée d'un poste FORCÉ (forçage signé).
+SOURCE_SAISIE_FORCEE = 'saisie_forcee'
+
+#: ACAL135 — les STATUTS publiés d'un poste saisi (contrat
+#: ``calepinage_pertes.json``).
+STATUT_APPLIQUE = 'applique'
+STATUT_ECARTE = 'ecarte_par_etape'
+STATUT_HORS_CHAINE = 'hors_chaine'
+STATUT_NON_SOURCE = 'non_source'
+STATUT_NON_SIMULE = 'non_simule'
+RAISON_NON_SIMULE = (
+    'Aucune simulation fraîche : le statut de ce poste sera connu au '
+    'prochain calcul (une étape calculable le remplace, un poste sans source '
+    'n’entre jamais).')
+AVERTISSEMENT_HORS_CHAINE = (
+    'Poste « {poste} » saisi mais HORS CHAÎNE : {raison}')
+
 #: Ce qui est ajouté au motif d'omission quand la saisie n'a pas de source.
 MOTIF_SAISIE_SANS_SOURCE = (
     ' Le poste saisi « {poste} » porte bien un pourcentage, mais SANS '
@@ -1781,15 +2344,48 @@ def _est_sourcee(saisi):
     return bool(source) and _pourcentage(saisi) is not None
 
 
-def _appliquer_saisie(nom, serie, saisi):
-    """Le poste saisi s'applique lui-même, avec sa ``source`` INCHANGÉE."""
+def _appliquer_saisie(nom, serie, saisi, *, forcee=False):
+    """Le poste saisi s'applique lui-même, avec sa ``source`` INCHANGÉE.
+
+    ACAL135 — un poste MENSUEL s'applique mois par mois (la machinerie de
+    ``etapes/salissure.py``), jamais à plat ; un poste FORCÉ porte la source
+    ``saisie_forcee`` et son motif signé dans ``entree``.
+    """
+    from .etapes.salissure import appliquer_mensuel
+
     pct = _pourcentage(saisi)
-    suite = _etapes.mettre_a_l_echelle(serie, 1.0 - pct / 100.0)
+    mensuel = saisi.get('mensuel')
+    suite = (appliquer_mensuel(serie, mensuel)
+             if isinstance(mensuel, (list, tuple)) and mensuel else None)
+    if suite is None:
+        suite = _etapes.mettre_a_l_echelle(serie, 1.0 - pct / 100.0)
+    entree = f'poste_saisi:{POSTE_PAR_ETAPE[nom]}'
+    if forcee:
+        entree = {'champ': entree, 'force': True,
+                  'motif_force': str(saisi.get('motif_force') or '').strip(),
+                  'source_saisie': saisi.get('source')}
     return suite, _normaliser(nom, _etapes.etape_appliquee(
         saisi.get('libelle') or _libelle(nom),
-        source=saisi.get('source'),
-        entree=f'poste_saisi:{POSTE_PAR_ETAPE[nom]}',
+        source=SOURCE_SAISIE_FORCEE if forcee else saisi.get('source'),
+        entree=entree,
         reference=saisi.get('reference') or ''))
+
+
+def _est_forcee(saisi):
+    """ACAL135 — un forçage SIGNÉ : ``force`` vrai, un motif non vide et un
+    pourcentage lisible."""
+    return (isinstance(saisi, dict) and saisi.get('force') is True
+            and bool(str(saisi.get('motif_force') or '').strip())
+            and _pourcentage(saisi) is not None)
+
+
+def _consomme_par_l_etape(nom, contexte):
+    """ACAL135 — l'étape ``nom`` a-t-elle lu le poste du calepinage À LA
+    PLACE du réglage société (préséance projet, ``etapes.reglage``) ?"""
+    poste = POSTE_PAR_ETAPE.get(nom)
+    return any(_etapes.poste_qui_prime(contexte, cle) is not None
+               for cle, nom_poste in _etapes.POSTE_DE_REGLAGE.items()
+               if nom_poste == poste)
 
 
 def _avec_saisie_ecartee(nom, entree, saisi):

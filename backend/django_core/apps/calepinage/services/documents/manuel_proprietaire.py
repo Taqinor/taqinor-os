@@ -290,6 +290,8 @@ def construire_manuel(calepinage, *, resultat=None, gabarit=_LIRE,
             raise RapportRefuse(SANS_RESULTAT, champ='resultat')
         verifier_etancheite(resultat)
 
+    from ..provenance_document import provenance_de_simulation
+
     variables = variables_systeme(calepinage, resultat=resultat)
     sections = _sections_du_gabarit(gabarit, variables)
 
@@ -317,11 +319,9 @@ def construire_manuel(calepinage, *, resultat=None, gabarit=_LIRE,
         'identite': dict(identite or {}),
         'site': dict(site or {}),
         'styles': dict(styles or {}),
-        'provenance': {
-            'hash_entree': (resultat.get('hash_entree')
-                            or resultat.get('entree_hash') or ''),
-            'version_moteur': resultat.get('version_moteur') or '',
-        },
+        # ACAL145 — l'empreinte de la SIMULATION, lue par
+        # ``provenance_document`` (jamais une clé racine vide).
+        'provenance': provenance_de_simulation(resultat),
         'etat': dict(etat or {}),
     }
 

@@ -34,6 +34,7 @@ from ..services.pertes import CATALOGUE, PertesInvalides, postes_du_calepinage
 from ..services.pertes import enregistrer_pertes as persister_pertes
 from ..services.simulation import (
     DETAIL_DEJA_CALCULE, SimulationRefusee, construire_contexte,
+    fichier_meteo_depose, verifier_simulable,
 )
 from ..services.simulation import CLE_SIMULATION as CLE_ENTETE_SIMULATION
 from .calepinages import CalepinageViewSet
@@ -52,25 +53,51 @@ def publication_des_pertes(calepinage):
     ``total_pct`` est la somme RÉELLEMENT additionnée des postes saisis —
     aucune perte n'est passée à PVGIS (ACAL329 : la chaîne de pertes applique
     chaque poste à l'irradiance nue). Aucun poste n'est complété : une liste
-    vide reste vide, et ``simulable`` dit pourquoi aucune production ne peut
-    être demandée.
+    vide reste vide.
+
+    ACAL127 — ``simulable`` dit VRAI : la simulation ne dépend pas des postes
+    saisis (la chaîne tourne sans eux et publie alors un P50 « borne haute »,
+    D-ACAL-7). Une liste vide n'empêche donc rien : ``simulable`` vaut vrai
+    et ``motif_non_simulable`` est vide.
     """
+    from ..services.chaine_pertes import statuts_des_postes
+
     postes = postes_du_calepinage(calepinage)
     total = sum(poste['pct'] for poste in postes)
+    statuts = statuts_des_postes(postes, _cascade_fraiche(calepinage))
     return {
         'calepinage': calepinage.pk,
         'pertes': postes,
+        # ACAL135 — chaque poste et SON STATUT (contrat calepinage_pertes.json)
+        # lu sur la dernière cascade FRAÎCHE : appliqué, écarté par une
+        # étape (nommée), hors chaîne, sans source, ou non simulé.
+        'postes': [dict(poste, force=bool(poste.get('force')),
+                        motif_force=poste.get('motif_force') or '',
+                        **statuts.get(poste['poste'], {}))
+                   for poste in postes],
         'total_pct': round(total, 3) if postes else None,
         'postes_non_sources': [poste['poste'] for poste in postes
                                if poste['source'] is None],
-        'simulable': bool(postes),
-        'motif_non_simulable': (
-            '' if postes else
-            "Aucun poste de perte n'est renseigné : la chaîne de pertes du "
-            'module applique chaque poste SAISI à l’irradiance nue et ne '
-            'suppose jamais une perte par défaut.'),
+        'simulable': True,
+        'motif_non_simulable': '',
         'catalogue': [dict(entree) for entree in CATALOGUE],
     }
+
+
+def _cascade_fraiche(calepinage):
+    """ACAL135 — la cascade de la DERNIÈRE simulation, si elle est FRAÎCHE
+    (même verdict que ``GET resultat/``), sinon ``None``. Un objet qui n'est
+    pas un calepinage enregistré n'a pas de simulation servie."""
+    if (getattr(calepinage, 'pk', None) is None
+            or not hasattr(type(calepinage), '_meta')):
+        return None
+    from ..selectors import resultat_servi
+
+    servi = resultat_servi(calepinage)
+    if servi.get('simulation_perimee'):
+        return None
+    cascade = servi.get('cascade')
+    return cascade if isinstance(cascade, dict) else None
 
 
 @extend_schema(responses={200: PertesCalepinageSerializer})
@@ -98,8 +125,10 @@ def enregistrer_pertes(self, request, pk=None):
     """
     calepinage = self.get_object()
     corps = request.data if isinstance(request.data, dict) else {}
+    # ACAL135 — le contrat nomme la liste ``postes`` ; ``pertes`` reste lu.
+    saisie = corps.get('postes') if 'postes' in corps else corps.get('pertes')
     try:
-        persister_pertes(calepinage, corps.get('pertes'))
+        persister_pertes(calepinage, saisie)
     except PertesInvalides as refus:
         return Response({refus.champ or 'pertes': [str(refus)]},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -156,7 +185,8 @@ def simuler(self, request, pk=None):
     * **200** — ``forcer`` absent et empreinte inchangée : aucun recalcul, la
       date du calcul existant est rendue ;
     * **400** — refus NOMMANT le réglage ou le champ fautif (règle fondateur :
-      jamais un « non enregistré » générique).
+      jamais un « non enregistré » générique) : mode météo, pan équipé,
+      épingle du site, températures saisies (ACAL126).
     """
     from core.jobs import submit
 
@@ -169,10 +199,15 @@ def simuler(self, request, pk=None):
     corps = request.data if isinstance(request.data, dict) else {}
     forcer = bool(corps.get('forcer'))
 
-    # L'EMPREINTE D'ABORD : relancer une tâche de fond pour apprendre que rien
-    # n'a bougé coûterait un worker et une minute pour rien.
+    # ACAL126 — LES REFUS NOMMÉS D'ABORD, par les MÊMES fonctions que la
+    # simulation (mode météo, pan équipé, épingle, températures saisies) :
+    # 400 immédiat plutôt qu'une tâche de fond vouée à l'échec. Puis
+    # L'EMPREINTE : relancer une tâche pour apprendre que rien n'a bougé
+    # coûterait un worker et une minute pour rien.
     try:
-        _contexte, meta = construire_contexte(calepinage)
+        contexte, meta = construire_contexte(calepinage)
+        verifier_simulable(contexte, meta,
+                           fichier_depose=fichier_meteo_depose(calepinage))
     except SimulationRefusee as refus:
         return Response({refus.champ or 'simulation': [refus.motif]},
                         status=status.HTTP_400_BAD_REQUEST)

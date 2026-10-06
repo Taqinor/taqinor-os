@@ -239,25 +239,24 @@ describe('PlanImporteCalage (ACAL213) — le choix de l’entité et le garde-fo
       .toHaveTextContent('tracé non fermé : 4 segments isolés')
   })
 
-  it('Convertir est désactivé sous trois sommets, avec le motif', async () => {
-    calepinageApi.calepinages.layout.mockResolvedValue({
-      data: { roof_layout: { planImporte: { contour: [[0, 0], [5, 0]] } } },
-    })
+  it('ACAL70 — « Convertir en tracé de toit » n’existe plus (il écrivait des unités de plan dans outline)', async () => {
+    const utilisateur = userEvent.setup()
+    calepinageApi.calepinages.importerPlan
+      .mockResolvedValueOnce(reponse('exemple_sans_calque'))
+      .mockResolvedValueOnce(reponse('exemple'))
     rendre()
+    await screen.findByTestId('cal-calage-sans-plan')
+    await deposer(utilisateur)
+    await screen.findByTestId('cal-calage-analyse')
+    await utilisateur.selectOptions(screen.getByTestId('cal-calage-calque'),
+      contrat('exemple').calque)
+    await utilisateur.click(screen.getByTestId('cal-calage-proposer'))
+    await screen.findByTestId('cal-calage-plan')
 
-    const bouton = await screen.findByTestId('cal-calage-convertir')
-    expect(bouton).toBeDisabled()
-    expect(screen.getByTestId('cal-calage-convertir-motif'))
-      .toHaveTextContent('au moins 3 sommets')
-  })
-
-  it('Convertir reste actif dès trois sommets', async () => {
-    calepinageApi.calepinages.layout.mockResolvedValue({
-      data: { roof_layout: { planImporte: { contour: [[0, 0], [5, 0], [5, 4]] } } },
-    })
-    rendre()
-
-    expect(await screen.findByTestId('cal-calage-convertir')).toBeEnabled()
-    expect(screen.queryByTestId('cal-calage-convertir-motif')).toBeNull()
+    expect(screen.queryByTestId('cal-calage-convertir')).toBeNull()
+    expect(screen.queryByTestId('cal-calage-aimantation')).toBeNull()
+    expect(screen.queryByTestId('cal-calage-enregistrer')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Poser comme pan du toit' })).toBeInTheDocument()
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinage).not.toHaveBeenCalled()
   })
 })

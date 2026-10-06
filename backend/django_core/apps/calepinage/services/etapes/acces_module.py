@@ -96,9 +96,146 @@ REFERENCE = (
     '8537729072019-Maximum-Allowable-Design-Size. Lecture du document : '
     'roof_layout v2, zones[].geometry.solarAccess (CAL248).')
 
+#: ACAL137 — le motif publié quand la méthode est l'ancienne CHAÎNE libre.
+MOTIF_METHODE_TEXTE = (
+    "L'accès solaire est lu, mais sa méthode est un texte libre (ancienne "
+    "forme) : elle ne dit ni si l'horizon lointain ni si l'ombre des rangées "
+    "y sont comptés. Recalculez l'accès solaire dans l'atelier (méthode "
+    "{horizon, rangees, resolution}) pour qu'il s'applique.")
+
+#: ACAL137 — le motif publié quand l'accès n'est pas une lecture ANNUELLE.
+MOTIF_PERIODE = (
+    "L'accès solaire est lu sur la période « {periode} » et non sur l'année "
+    "(« annee ») : appliqué comme facteur annuel, il fausserait la "
+    "production. Recalculez l'accès solaire sur l'année dans l'atelier.")
+
+#: ACAL137 — la clé INTERNE où la simulation module par module (CALX182)
+#: pose l'accès du SEUL module simulé. Jamais une clé du document.
+CLE_ACCES_REDUIT = '_acces_du_module_simule'
+
 __all__ = ['POSTE', 'CLES_METHODE', 'MOTIF_HORIZON_INCLUS',
            'MOTIF_AUCUN_MODULE_CALCULE', 'AVERTISSEMENT_ANNUEL', 'REFERENCE',
-           'appliquer']
+           'MOTIF_METHODE_TEXTE', 'MOTIF_PERIODE', 'CLE_ACCES_REDUIT',
+           'acces_du_pan', 'appliquer', 'refus_de_methode']
+
+
+def acces_du_pan(contexte):
+    """ACAL137 — LE lecteur de l'accès solaire du pan simulé, ou ``None``.
+
+    L'atelier écrit l'accès solaire DANS LA GÉOMÉTRIE DU PAN
+    (``zones[].geometry.solarAccess`` : ``values``, ``method``,
+    ``assumptions``) — jamais à la racine du document. Les valeurs sont lues
+    par ``ombrage_chaines.acces_par_module`` (le service qui connaît l'ordre
+    des modules d'un pan) ; la méthode et les hypothèses par le bloc du MÊME
+    pan.
+
+    Le pan est celui que nomme ``contexte['plan']``. Sans pan nommé, les pans
+    portant un accès sont tous lus (valeurs mises bout à bout, méthode
+    commune seulement si TOUS la déclarent à l'identique). Quand la
+    simulation module par module réduit le contexte à UN module
+    (``CLE_ACCES_REDUIT``), ``values`` vaut cette seule entrée.
+
+    Returns:
+        ``{values, method, assumptions, …}`` (copie), ou ``None``.
+    """
+    contexte = contexte if isinstance(contexte, dict) else {}
+    ombrage = contexte.get('ombrage')
+    ombrage = ombrage if isinstance(ombrage, dict) else {}
+    layout = ombrage.get('layout') or contexte.get('layout')
+    if not isinstance(layout, dict):
+        return None
+    par_pan = acces_par_module(layout)
+    if not par_pan:
+        return None
+    blocs = _blocs_par_pan(layout)
+
+    repere = _repere_du_pan(contexte)
+    if repere is not None:
+        if repere not in par_pan:
+            return None
+        bloc = dict(blocs.get(repere) or {})
+        bloc['values'] = list(par_pan[repere])
+    else:
+        vus = []
+        valeurs = []
+        for zone_bloc, zone_valeurs in _blocs_dans_l_ordre(layout, par_pan):
+            vus.append(zone_bloc)
+            valeurs.extend(zone_valeurs)
+        if not vus:
+            return None
+        bloc = dict(vus[0])
+        if any(autre.get('method') != bloc.get('method') for autre in vus):
+            bloc.pop('method', None)
+        bloc['values'] = valeurs
+
+    reduit = contexte.get(CLE_ACCES_REDUIT)
+    if isinstance(reduit, (list, tuple)):
+        bloc['values'] = list(reduit)
+    return bloc
+
+
+def _blocs_par_pan(layout):
+    """``{repère: zones[].geometry.solarAccess}`` (label ET id du pan)."""
+    blocs = {}
+    for zone in (layout.get('zones') or []):
+        if not isinstance(zone, dict):
+            continue
+        geometrie = zone.get('geometry')
+        bloc = (geometrie.get('solarAccess')
+                if isinstance(geometrie, dict) else None)
+        if not isinstance(bloc, dict):
+            continue
+        for repere in (zone.get('label'), zone.get('id')):
+            if repere:
+                blocs[str(repere)] = bloc
+    return blocs
+
+
+def _blocs_dans_l_ordre(layout, par_pan):
+    """``[(bloc, valeurs)]`` des pans portant un accès, dans l'ordre du
+    document (un pan n'est compté qu'une fois, même nommé deux fois)."""
+    rendus = []
+    for zone in (layout.get('zones') or []):
+        if not isinstance(zone, dict):
+            continue
+        geometrie = zone.get('geometry')
+        bloc = (geometrie.get('solarAccess')
+                if isinstance(geometrie, dict) else None)
+        if not isinstance(bloc, dict):
+            continue
+        for repere in (zone.get('label'), zone.get('id')):
+            if repere and str(repere) in par_pan:
+                rendus.append((bloc, par_pan[str(repere)]))
+                break
+    return rendus
+
+
+def refus_de_methode(acces):
+    """ACAL137 — ``(motif, champ)`` si la méthode / la période interdit
+    d'appliquer cet accès solaire, sinon ``None``.
+
+    UNE règle, lue par l'étape ET par l'exclusivité de l'ordonnanceur
+    (``chaine_pertes._acces_module_disponible``) : un accès que l'étape
+    n'applique pas n'écarte pas la matrice 12×24.
+    """
+    if not isinstance(acces, dict) or not acces:
+        return MOTIF_SANS_ACCES, 'ombrage.solarAccess'
+    if isinstance(acces.get('method'), str):
+        return MOTIF_METHODE_TEXTE, 'ombrage.solarAccess.method'
+    hypotheses = acces.get('assumptions')
+    periode = (hypotheses.get('periode')
+               if isinstance(hypotheses, dict) else None)
+    if periode is not None and periode != 'annee':
+        return (MOTIF_PERIODE.format(periode=periode),
+                'ombrage.solarAccess.assumptions.periode')
+    methode = _methode(acces)
+    for cle, motif in CLES_METHODE.items():
+        if not isinstance(methode.get(cle), bool):
+            return (f"L'accès solaire est lu, mais {motif}",
+                    f'ombrage.solarAccess.method.{cle}')
+    if methode['horizon']:
+        return MOTIF_HORIZON_INCLUS, ''
+    return None
 
 
 def appliquer(serie, contexte):
@@ -108,23 +245,19 @@ def appliquer(serie, contexte):
     """
     contexte = contexte if isinstance(contexte, dict) else {}
     libelle = _libelle()
-    ombrage = contexte.get('ombrage') or {}
 
-    acces = _lecture_acces(ombrage)
+    acces = acces_du_pan(contexte)
     if acces is None:
         return serie, etapes.etape_omise(libelle, MOTIF_SANS_ACCES,
                                          champ='ombrage.solarAccess')
 
+    refus = refus_de_methode(acces)
+    if refus is not None:
+        motif, champ = refus
+        return serie, etapes.etape_omise(libelle, motif, champ=champ)
     methode = _methode(acces)
-    for cle, motif in CLES_METHODE.items():
-        if not isinstance(methode.get(cle), bool):
-            return serie, etapes.etape_omise(
-                libelle, f"L'accès solaire est lu, mais {motif}",
-                champ=f'ombrage.solarAccess.method.{cle}')
-    if methode['horizon']:
-        return serie, etapes.etape_omise(libelle, MOTIF_HORIZON_INCLUS)
 
-    valeurs = _valeurs(contexte, ombrage, acces)
+    valeurs = _liste(acces.get('values'))
     if valeurs is None:
         return serie, etapes.etape_omise(libelle, MOTIF_SANS_ACCES,
                                          champ='ombrage.solarAccess.values')
@@ -185,22 +318,10 @@ def _libelle():
     return LIBELLES[POSTE]
 
 
-def _lecture_acces(ombrage):
-    """Le bloc ``solarAccess`` du contexte, ou ``None``.
-
-    Les deux écritures sont acceptées — celle du document (``solarAccess``)
-    et sa forme francisée —, exactement comme l'ordonnanceur les lit pour
-    son exclusivité.
-    """
-    acces = ombrage.get('solar_access') or ombrage.get('solarAccess')
-    return acces if isinstance(acces, dict) and acces else None
-
-
 def _methode(acces):
-    """La méthode déclarée, en dict — une chaîne ne déclare rien."""
+    """La méthode déclarée (objet du contrat), en dict — une chaîne ne
+    déclare rien (elle est refusée plus haut avec son motif, ACAL137)."""
     methode = acces.get('method')
-    if not isinstance(methode, dict):
-        methode = acces.get('methode')
     return methode if isinstance(methode, dict) else {}
 
 
@@ -210,36 +331,6 @@ def _resolution(methode):
     if isinstance(declaree, str) and declaree.strip():
         return declaree.strip()
     return 'horaire' if methode.get('horaire') is True else 'annuelle'
-
-
-def _valeurs(contexte, ombrage, acces):
-    """Les facteurs d'accès, module par module, ou ``None``.
-
-    Trois lectures, dans l'ordre : la liste ``values`` du bloc lui-même, la
-    table ``par_pan`` qu'un contexte peut porter, et enfin le document de
-    toiture — relu par ``ombrage_chaines.acces_par_module``, le service qui
-    connaît déjà l'ordre des modules d'un pan.
-    """
-    lues = _liste(acces.get('values'))
-    if lues is not None:
-        return lues
-
-    par_pan = acces.get('par_pan')
-    if not isinstance(par_pan, dict):
-        layout = ombrage.get('layout') or contexte.get('layout')
-        par_pan = acces_par_module(layout) if layout else {}
-    if not par_pan:
-        return None
-
-    repere = _repere_du_pan(contexte)
-    if repere is not None and repere in par_pan:
-        return _liste(par_pan[repere])
-    assemblees = []
-    for cle in sorted(par_pan):
-        liste = _liste(par_pan[cle])
-        if liste:
-            assemblees.extend(liste)
-    return assemblees or None
 
 
 def _repere_du_pan(contexte):

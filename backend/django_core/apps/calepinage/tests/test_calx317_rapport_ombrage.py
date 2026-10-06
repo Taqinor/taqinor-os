@@ -323,3 +323,25 @@ class RapportOmbrageApiTest(BaseApiCalepinage):
     def test_sans_droit_de_lecture_403(self):
         self.assertEqual(
             self.api_sans.get(self._url(self.calepinage)).status_code, 403)
+
+    def test_carte_deposee_pour_cette_conception_embarquee(self):
+        """ACAL224 — chaîne RÉELLE : dépôt HTTP (MinIO), puis le HTML du
+        rapport l'embarque, datée ; le PDF se rend toujours."""
+        import base64
+        import io
+
+        from PIL import Image
+
+        tampon = io.BytesIO()
+        Image.new('RGB', (20, 20), color=(9, 9, 9)).save(tampon, format='PNG')
+        depot = self.api.post(
+            f'{url_detail(self.calepinage.pk)}image-document/',
+            {'genre': 'ombrage', 'fichier': 'data:image/png;base64,'
+             + base64.b64encode(tampon.getvalue()).decode('ascii')},
+            format='json')
+        self.assertEqual(depot.status_code, 201, depot.data)
+        html = rapport_ombrage.html_du_rapport_ombrage(self.calepinage)
+        self.assertIn('data:image/png;base64,', html)
+        self.assertIn('déposée le', html)
+        reponse = self.api.get(self._url(self.calepinage))
+        self.assertEqual(reponse.status_code, 200)

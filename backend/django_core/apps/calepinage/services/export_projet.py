@@ -748,17 +748,18 @@ def _valider_saisies(saisies):
 
 
 def _modules_du_document(document):
-    """Le nombre de modules POSÉS (``zones[].geometry.count``), ou ``None``."""
+    """Le nombre de modules POSÉS, ou ``None``.
+
+    ACAL259 — LA lecture du module (``mesures.mesures_du_document``) : toit
+    ET surfaces de pose, un pan non pavé vaut 0 — le même total que la
+    présentation, le journal et le comparatif (jamais ``geometry.count``
+    seul, qui oubliait un champ au sol).
+    """
+    from .mesures import mesures_du_document
+
     if not isinstance(document, dict):
         return None
-    total = None
-    for zone in document.get('zones') or ():
-        geometrie = zone.get('geometry') if isinstance(zone, dict) else None
-        compte = (geometrie or {}).get('count') \
-            if isinstance(geometrie, dict) else None
-        if isinstance(compte, (int, float)) and not isinstance(compte, bool):
-            total = (total or 0) + int(compte)
-    return total
+    return mesures_du_document(document)['modules']
 
 
 def _analyser_projet(document):

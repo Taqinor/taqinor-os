@@ -111,10 +111,11 @@ class DeposerImageGenreTest(unittest.TestCase):
         for genre in images_document.GENRES_IMAGE:
             self.assertIn(genre, str(capture.exception))
 
-    def test_les_trois_genres_admis_sont_exactement_ceux_du_crochet(self):
-        # CALX291 avait laissé le crochet : l'énumération EXACTE lui revient.
-        self.assertEqual(images_document.GENRES_IMAGE,
-                         ('ombrage', 'sankey', 'plan3d'))
+    def test_un_seul_genre_admis_ombrage(self):
+        # ACAL224 — sankey et plan3d n'avaient aucun lecteur : le diagramme
+        # de pertes est rendu par le serveur ; seule la carte de chaleur se
+        # dépose encore.
+        self.assertEqual(images_document.GENRES_IMAGE, ('ombrage',))
 
 
 @unittest.skipUnless(_PILLOW_DISPONIBLE, 'Pillow indisponible')
@@ -169,9 +170,7 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
                 {'pan': 'PAN-B', 'tof': None, 'tsrf': None},
             ])}
         with mock.patch.object(section_ombrage, '_calepinage_et_roof_layout',
-                               return_value=None), \
-                mock.patch.object(section_ombrage, '_image_ombrage_data_uri',
-                                  return_value=None):
+                               return_value=None):
             html = section_ombrage.html_de_section(contexte)
 
         self.assertIn('PAN-A', html)
@@ -183,9 +182,7 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
     def test_sans_ombrage_par_pan_publie_une_mention(self):
         contexte = {'resultat': _resultat()}
         with mock.patch.object(section_ombrage, '_calepinage_et_roof_layout',
-                               return_value=None), \
-                mock.patch.object(section_ombrage, '_image_ombrage_data_uri',
-                                  return_value=None):
+                               return_value=None):
             html = section_ombrage.html_de_section(contexte)
         self.assertIn('Aucun accès solaire par module mesuré', html)
 
@@ -200,9 +197,7 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
                              'motif_omission': ''}])}
         with mock.patch.object(
                 section_ombrage, '_calepinage_et_roof_layout',
-                return_value=FauxCalepinageAvecLayout()), \
-                mock.patch.object(section_ombrage, '_image_ombrage_data_uri',
-                                  return_value=None):
+                return_value=FauxCalepinageAvecLayout()):
             html = section_ombrage.html_de_section(contexte)
         self.assertIn('Matrice d’ombrage horaire', html)
         self.assertIn('0,5', html)
@@ -213,33 +208,16 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
             ombrage_par_pan=[{'pan': 'PAN-A', 'acces_solaire_moyen_pct': 90.0,
                              'motif_omission': ''}])}
         with mock.patch.object(section_ombrage, '_calepinage_et_roof_layout',
-                               return_value=None), \
-                mock.patch.object(section_ombrage, '_image_ombrage_data_uri',
-                                  return_value=None):
+                               return_value=None):
             html = section_ombrage.html_de_section(contexte)
         self.assertIn('non disponible', html.lower())
-
-    def test_image_deposee_publiee_en_img(self):
-        contexte = {'resultat': _resultat(
-            ombrage_par_pan=[{'pan': 'PAN-A', 'acces_solaire_moyen_pct': 90.0,
-                             'motif_omission': ''}])}
-        with mock.patch.object(section_ombrage, '_calepinage_et_roof_layout',
-                               return_value=object()), \
-                mock.patch.object(
-                    section_ombrage, '_image_ombrage_data_uri',
-                    return_value='data:image/png;base64,AAAA'):
-            html = section_ombrage.html_de_section(contexte)
-        self.assertIn('<img class="ombrage-image"', html)
-        self.assertIn('data:image/png;base64,AAAA', html)
 
     def test_image_absente_publie_une_mention(self):
         contexte = {'resultat': _resultat(
             ombrage_par_pan=[{'pan': 'PAN-A', 'acces_solaire_moyen_pct': 90.0,
                              'motif_omission': ''}])}
         with mock.patch.object(section_ombrage, '_calepinage_et_roof_layout',
-                               return_value=None), \
-                mock.patch.object(section_ombrage, '_image_ombrage_data_uri',
-                                  return_value=None):
+                               return_value=None):
             html = section_ombrage.html_de_section(contexte)
         self.assertIn('Aucune carte de chaleur déposée', html)
 
@@ -255,10 +233,7 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
             production_par_pan=[{'pan': 'PAN-A', 'tof': 0.9, 'tsrf': 0.8}])}
         with mock.patch.object(
                 section_ombrage, '_calepinage_et_roof_layout',
-                return_value=FauxCalepinageAvecLayout()), \
-                mock.patch.object(
-                    section_ombrage, '_image_ombrage_data_uri',
-                    return_value='data:image/png;base64,AAAA'):
+                return_value=FauxCalepinageAvecLayout()):
             html = section_ombrage.html_de_section(contexte)
         bas = html.lower()
         for mot in ('prix', 'cout', 'coût', 'marge'):
@@ -315,6 +290,19 @@ class CalepinageApiTest(BaseApiCalepinage):
             {'genre': 'inconnu', 'fichier': _data_uri_png()}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('genre', reponse.data)
+
+    def test_image_deposee_publiee_en_img_sur_la_chaine_reelle(self):
+        """ACAL224 — déposée pour la conception COURANTE : la section du
+        rapport d'étude l'embarque (dépôt HTTP réel, MinIO réel)."""
+        reponse = self.api.post(
+            self._url(self.calepinage),
+            {'genre': 'ombrage', 'fichier': _data_uri_png()}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertFalse(reponse.data['perimee'])
+        html = section_ombrage.html_de_section(
+            {'resultat': {'calepinage': self.calepinage.pk}})
+        self.assertIn('<img class="ombrage-image"', html)
+        self.assertIn('data:image/png;base64,', html)
 
     def test_format_refuse_400_champ_fichier(self):
         illisible = 'data:image/png;base64,' + base64.b64encode(

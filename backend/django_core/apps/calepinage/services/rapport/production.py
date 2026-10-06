@@ -35,13 +35,65 @@ from html import escape
 
 from . import nombre_tel_que_servi
 
-__all__ = ['CSS_SECTION', 'MENTION_QUANTILES_ANNUELS', 'html_de_section']
+__all__ = ['CSS_SECTION', 'MENTION_QUANTILES_ANNUELS', 'MOTIF_PAR_DEFAUT',
+           'html_de_section', 'mention_borne_haute',
+           'texte_non_publie']
+
+#: ACAL50 — le motif imprimé quand un résultat incomplet ne porte pas le sien
+#: (jamais une valeur : « non publié » reste « non publié »).
+MOTIF_PAR_DEFAUT = 'résultat incomplet'
+
+
+def _resultat_incomplet(total):
+    """ACAL50 / D-ACAL-7 — ``production.total.complete`` est-il FAUX ?
+
+    La complétude est LUE (publiée par la simulation, ACAL49), jamais
+    recalculée ici ; une clé absente (résultat antérieur) n'est pas un
+    résultat incomplet.
+    """
+    return isinstance(total, dict) and total.get('complete') is False
+
+
+def mention_borne_haute(total):
+    """La mention « borne haute — N pertes non renseignées », mot pour mot,
+    ou ``''`` sur un résultat complet."""
+    if not _resultat_incomplet(total):
+        return ''
+    return str(total.get('mention') or '')
+
+
+def texte_non_publie(total, cle):
+    """« non publié — <motif> » à la place de ``cle`` (PR, P75, P90, P95)
+    sur un résultat incomplet ; ``None`` sinon (la valeur s'imprime comme
+    avant). Jamais 100 %, jamais 0 : sur un résultat incomplet, la valeur
+    n'est jamais imprimée."""
+    if not _resultat_incomplet(total):
+        return None
+    motif = total.get('%s_motif' % cle) or MOTIF_PAR_DEFAUT
+    return 'non publié — %s' % motif
+
+
+def _valeur_ou_non_publie(total, cle):
+    texte = texte_non_publie(total, cle)
+    if texte is not None:
+        return '<span class="non-publie">%s</span>' % escape(texte)
+    return nombre_tel_que_servi(total.get(cle))
+
+
+def _p50_et_mention(total):
+    p50 = nombre_tel_que_servi(total.get('p50_kwh'))
+    mention = mention_borne_haute(total)
+    if not mention:
+        return p50
+    return '%s <span class="detail mention-borne-haute">%s</span>' % (
+        p50, escape(mention))
+
 
 CSS_SECTION = (
     '.production-mensuelle td.valeur,.production-par-pan td.valeur,'
     '.production-quantiles td.valeur{text-align:right;}'
-    '.production-quantiles .detail{display:block;font-size:7.5pt;'
-    'color:#555;}'
+    '.production-quantiles .detail,.production-totaux .detail'
+    '{display:block;font-size:7.5pt;color:#555;}'
 )
 
 #: PVsyst : P50/P75/P90 sont des quantiles ANNUELS (valeurs de dépassement),
@@ -79,10 +131,11 @@ def _mois_libelle(mois):
 
 def _bloc_totaux(total):
     lignes = [
-        _ligne('Production annuelle P50 (kWh)',
-               nombre_tel_que_servi(total.get('p50_kwh'))),
+        # ACAL50 — la mention « borne haute » SOUS le P50 ; le PR d'un
+        # résultat incomplet est « non publié — <motif> ».
+        _ligne('Production annuelle P50 (kWh)', _p50_et_mention(total)),
         _ligne('Ratio de performance (PR)',
-               nombre_tel_que_servi(total.get('performance_ratio'))),
+               _valeur_ou_non_publie(total, 'performance_ratio')),
         _ligne('Productible spécifique (kWh/kWc)',
                nombre_tel_que_servi(total.get('specific_yield_kwh_kwc'))),
     ]
@@ -146,9 +199,10 @@ def _bloc_quantiles(total, incertitude):
         nombre_tel_que_servi(total.get('annual_variability')),
         _nature_variabilite(composante))
     lignes = [
-        _ligne('P50 (kWh)', nombre_tel_que_servi(total.get('p50_kwh'))),
-        _ligne('P75 (kWh)', nombre_tel_que_servi(total.get('p75_kwh'))),
-        _ligne('P90 (kWh)', nombre_tel_que_servi(total.get('p90_kwh'))),
+        _ligne('P50 (kWh)', _p50_et_mention(total)),
+        _ligne('P75 (kWh)', _valeur_ou_non_publie(total, 'p75_kwh')),
+        _ligne('P90 (kWh)', _valeur_ou_non_publie(total, 'p90_kwh')),
+        _ligne('P95 (kWh)', _valeur_ou_non_publie(total, 'p95_kwh')),
         _ligne('Variabilité interannuelle', variabilite),
     ]
     return ('<table class="production-quantiles generique">%s</table>'

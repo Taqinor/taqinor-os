@@ -28,8 +28,15 @@ from __future__ import annotations
 #: Clé de registre / ContentType, DANS ``apps.trash`` (``cle_modele``).
 CLE_MODELE = 'calepinage.calepinage'
 
-__all__ = ['ArchivageInvalide', 'CLE_MODELE', 'est_archive', 'archiver',
-           'restaurer', 'restaurateur_calepinage']
+#: ACAL148 — clé de registre d'une PIÈCE JOINTE mise à la corbeille (fichier
+#: météo retiré ou remplacé). ``records.Attachment`` ne porte aucun drapeau de
+#: soft-delete : sans restaurateur dédié, le repli générique de ``apps.trash``
+#: lèverait ``RestaurationImpossible``.
+CLE_PIECE_JOINTE = 'records.attachment'
+
+__all__ = ['ArchivageInvalide', 'CLE_MODELE', 'CLE_PIECE_JOINTE',
+           'est_archive', 'archiver', 'restaurer', 'restaurateur_calepinage',
+           'restaurateur_piece_jointe']
 
 
 class ArchivageInvalide(ValueError):
@@ -110,3 +117,14 @@ def restaurateur_calepinage(element):
     from ..models import Calepinage
 
     return Calepinage.objects.filter(pk=element.object_id).first()
+
+
+def restaurateur_piece_jointe(element):
+    """ACAL148 — restaurateur d'une pièce jointe mise à la corbeille (fichier
+    météo retiré/remplacé). Comme ``restaurateur_calepinage`` il ne modifie
+    RIEN : l'état « retirée » est porté par l'entrée de corbeille ACTIVE
+    (``simulation.lire_piece_meteo`` l'exclut) ; fermer l'entrée suffit à
+    rendre la pièce de nouveau retenue."""
+    from apps.records.models import Attachment
+
+    return Attachment.objects.filter(pk=element.object_id).first()

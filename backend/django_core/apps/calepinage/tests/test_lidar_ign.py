@@ -100,8 +100,8 @@ def _plan_descendant_vers(direction, pente_m_par_m=0.2):
     """
     import math
 
-    ex = 111320.0 * math.cos(math.radians(LAT))
-    ey = 110540.0
+    ex = (math.pi / 180.0 * 6378137.0) * math.cos(math.radians(LAT))
+    ey = (math.pi / 180.0 * 6378137.0)
     vers = {
         'sud': (0.0, +pente_m_par_m),      # z croît vers le nord
         'nord': (0.0, -pente_m_par_m),
@@ -262,7 +262,7 @@ class ReponseIgnTest(SimpleTestCase):
 
 
 class DecisionHumaineTest(SimpleTestCase):
-    """Accepter écrit ; refuser ne touche à rien."""
+    """Accepter garde la trace ; refuser ne touche à rien."""
 
     def _suggestion(self):
         return {'zoneId': 'pan-sud', 'pitchDeg': 22.5,
@@ -271,22 +271,22 @@ class DecisionHumaineTest(SimpleTestCase):
                 'suggestedAt': '2026-03-12T10:00:00+00:00',
                 'status': SUGGEREE, 'points': 5}
 
-    def test_accepter_ecrit_la_pente_et_garde_la_trace(self):
-        pan = accepter_suggestion({'id': 'pan-sud'}, self._suggestion(),
-                                  maintenant='2026-03-12T11:00:00+00:00')
-        self.assertEqual(pan['pitchDeg'], 22.5)
-        self.assertEqual(pan['facingAzimuthDeg'], 180.0)
-        self.assertFalse(pan['facingManual'])
+    def test_accepter_garde_la_trace_sans_ecrire_la_pente_du_pan(self):
+        """D-ACAL-19 (ACAL65) : la pente IGN est celle du TERRAIN."""
+        pan = accepter_suggestion(
+            {'id': 'pan-sud', 'pitchDeg': 15.0}, self._suggestion(),
+            maintenant='2026-03-12T11:00:00+00:00')
+        self.assertEqual(pan['pitchDeg'], 15.0)
+        self.assertNotIn('facingAzimuthDeg', pan)
+        self.assertNotIn('facingManual', pan)
         self.assertEqual(pan['pitchSuggestion']['status'], VALIDEE)
+        self.assertEqual(pan['pitchSuggestion']['valeurDeg'], 22.5)
         self.assertEqual(pan['pitchSuggestion']['source'], SOURCE)
 
-    def test_accepter_un_toit_plat_n_ecrit_aucun_azimut(self):
-        suggestion = self._suggestion()
-        suggestion.update(pitchDeg=0.4, facingAzimuthDeg=None)
-        pan = accepter_suggestion({'id': 'plat'}, suggestion,
+    def test_accepter_un_pan_sans_pente_n_en_invente_pas(self):
+        pan = accepter_suggestion({'id': 'plat'}, self._suggestion(),
                                   maintenant='2026-03-12')
-        self.assertEqual(pan['pitchDeg'], 0.4)
-        self.assertNotIn('facingAzimuthDeg', pan)
+        self.assertNotIn('pitchDeg', pan)
 
     def test_refuser_laisse_la_saisie_seule_verite(self):
         pan = refuser_suggestion(

@@ -5,6 +5,10 @@ import { projet } from './calepinage/projet'
 import { simulation } from './calepinage/simulation'
 import { sorties } from './calepinage/sorties'
 
+// ACAL316 — l'en-tête If-Match d'une écriture COMPLÈTE du document (obligatoire côté serveur,
+// 428 sans lui) : l'empreinte « document » lue, ou l'ETag vide `""` quand le document est vide.
+const jetonIfMatch = (empreinte) => ({ headers: { 'If-Match': empreinte || '""' } })
+
 /* ============================================================================
    CAL33 — Client API du module Calepinage autonome (`apps/calepinage`).
    ----------------------------------------------------------------------------
@@ -82,7 +86,10 @@ const calepinageApi = {
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
     layout: (id) => api.get(`${pivot(id)}layout/`),
-    enregistrerLayoutCalepinage: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
+    // ACAL316 — If-Match OBLIGATOIRE (428 sans jeton) : `empreinte` est l'empreinte « document »
+    // lue avec le document (`GET layout/`, design-context) ou rendue par la dernière écriture ;
+    // un document encore vide n'en a pas, son jeton est l'ETag vide `""`.
+    enregistrerLayoutCalepinage: (id, corps, empreinte) => api.post(`${pivot(id)}layout/`, corps, jetonIfMatch(empreinte)),
 
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
     // ventes (MinIO + URL présignée) ; aucun second chemin de stockage.
@@ -242,16 +249,6 @@ const calepinageApi = {
     telechargerDocument: (endpoint, params) =>
       api.get(endpoint, { responseType: 'blob', params }),
 
-    // CALX320 — le diagramme de pertes SERVEUR, SVG autonome (CALX308,
-    // `services/diagramme_pertes.py`, la MÊME cascade que la pièce
-    // imprimable) — à RASTÉRISER dans CE navigateur avant de le déposer
-    // comme image `sankey` (`deposerImageDocument` ci-dessus,
-    // `documents/deposerImage.js::deposerDiagrammeDePertes`) : aucun
-    // rasteriseur SVG n'est installé côté serveur (même limite que
-    // `sorties/planche_png`, CAL175).
-    diagrammePertesSvg: (id, params) =>
-      api.get(`${pivot(id)}diagramme-pertes.svg/`, { responseType: 'blob', params }),
-
     ...projet,
 
     // ACAL82 — persiste le système de fixation CHOISI (ACAL81, contrat
@@ -273,6 +270,45 @@ const calepinageApi = {
     // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le
     // MÊME document que le GET `schemaUnifilaire`, édition appliquée.
     enregistrerEditionSld: (id, edition) => api.post(`${pivot(id)}schema-unifilaire/`, edition),
+
+    // ACAL222 — la REMISE explicite d'un document (`{code, langue}`) : 201
+    // nouvelle version, 200 `deja_remise` (même empreinte des entrées), 400
+    // sous le champ nommé (contrat `calepinage_documents.json` › `remise`).
+    remettreDocument: (id, corps) => api.post(`${pivot(id)}remettre-document/`, corps), // ACAL
+    // ACAL223 — une pièce de méthode POST (dossier de fin de chantier) : l'`endpoint` vient
+    // TOUJOURS de l'entrée servie ; `params` (ex. `{langue}`) voyagent en query.
+    declencherDocument: (endpoint, params) => api.post(endpoint, null, { params }), // ACAL
+    // ACAL223 — l'aperçu HTML EXACT d'une pièce (`apercu-document?code=&langue=`), texte brut.
+    apercuDocument: (id, code, params) => api.get(`${pivot(id)}apercu-document/`, // ACAL
+      { responseType: 'text', params: { code, ...params } }),
+    // ACAL23 — contrat calepinage_layout_section.json (ACAL1/ACAL22). L'écriture COMPLÈTE
+    // porte l'empreinte « document » lue au boot (ou rendue par la dernière écriture) dans
+    // l'en-tête If-Match : un document modifié ailleurs répond 409 `document_modifie`, rien
+    // n'est écrasé. Sans empreinte connue : l'ETag vide (ACAL316 — l'en-tête est obligatoire).
+    enregistrerLayoutCalepinageConditionnel: (id, corps, empreinte) => api.post( // ACAL
+      `${pivot(id)}layout/`, corps, jetonIfMatch(empreinte)),
+    // ACAL23 — l'écriture d'UNE section (`{cle, valeur | zone_id + champs, base_empreinte}`).
+    enregistrerSectionLayout: (id, corps) => api.post(`${pivot(id)}layout/section/`, corps), // ACAL
+    // ACAL192 (D-ACAL-13, contrat calepinage_design_context.json › geometrie.derive) — le GPS
+    // du lead a été corrigé après le tracé : le SERVEUR translate toute la géométrie (nouvelle
+    // version) ou acquitte la dérive (`repereAcquitte`). Aucune translation côté navigateur.
+    recentrerSurLead: (id) => api.post(`${pivot(id)}recentrer-sur-lead/`, {}), // ACAL
+    garderRepere: (id) => api.post(`${pivot(id)}garder-repere/`, {}), // ACAL
+    // ACAL207 (D-ACAL-28, contrat calepinage_releve.json › appliquer_cote) — `{zone_id,
+    // cote_index, longueur_m}` → `{roof_layout, version}` : le SERVEUR recale le côté choisi
+    // par homothétie (400 nommé : cote à confirmer, pan croisé ; 409 : verrou).
+    appliquerCoteReleve: (id, releveId, corps) => api.post( // ACAL
+      `${pivot(id)}releve/${releveId}/appliquer-cote/`, corps),
+    // ACAL66 — la DÉCISION sur une suggestion de pente IGN, par le serveur (ACAL65) :
+    // `{operation: 'proposer' | 'accepter' | 'refuser', zone_id?, base_empreinte}`. La
+    // suggestion est persistée dans le pan (« pente du terrain »), jamais recopiée dans
+    // la pente du pan (D-ACAL-19). 409 `document_modifie` si le jeton est périmé.
+    decisionSuggestionPente: (id, corps) => api.post(`${pivot(id)}suggestions-pente/`, corps), // ACAL
+    // ACAL73 — le téléversement d'une IMAGE de plan (PNG/JPEG) comme fond du document
+    // (ACAL72) : `corps` est un FormData (`fichier`, `base_empreinte`) — axios pose sa
+    // frontière multipart. Le serveur écrit `underlay` par section et rend `{underlay,
+    // empreinte_document}` ; 409 `document_modifie` si le jeton est périmé.
+    envoyerFondPlan: (id, corps) => api.post(`${pivot(id)}fond-plan/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
@@ -294,6 +330,13 @@ const calepinageApi = {
   parametres: {
     get: () => api.get('/calepinage/parametres/'),
     update: (corps) => api.put('/calepinage/parametres/', corps),
+
+    // ACAL133 — « Tout recalculer » après un changement de réglage société :
+    // relance en tâche de fond chaque simulation périmée de la société
+    // (`views/parametres.py::RecalculerSimulationsView`, ACAL134). Rend 202
+    // `{soumis, jobs: [{calepinage, job_id}], reste}` — au plus un plafond de
+    // travaux par appel, `reste` compte ceux à relancer par un nouvel appel.
+    recalculerSimulations: () => api.post('/calepinage/parametres/recalculer-simulations/'),
 
     // CALX29 — suggestion de pente par LiDAR IGN (France seule,
     // `services/lidar_ign.py`). GET est une LECTURE LOCALE : elle dit si le
@@ -319,7 +362,6 @@ const calepinageApi = {
 }
 
 export default calepinageApi
-// ACAL1 — contrat calepinage_layout_section.json (M0)
 // ACAL3 — contrat calepinage_publication.json (M0)
 // ACAL9 — contrat calepinage_entree_electrique.json (M0)
 // ACAL9 — contrat calepinage_publication_electrique.json (M0)

@@ -52,7 +52,6 @@ manque. Aucun horizon plat de repli, aucun fuseau supposé.
 from __future__ import annotations
 
 import bisect
-import datetime
 
 from apps.calepinage.services import etapes
 from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
@@ -159,11 +158,13 @@ def appliquer(serie, contexte):
             libelle, "Le site ne porte pas de longitude : la position du "
             'soleil ne peut pas être calculée.', champ='site.lon')
 
-    decalage = _decalage_minutes(contexte.get('meteo') or {})
-    if decalage is None:
+    # ACAL131 — LE lecteur d'instant UTC partagé (``etapes.instant_utc``).
+    meteo = contexte.get('meteo') or {}
+    if etapes.decalage_utc_du_point(points[0], meteo) is None:
         return serie, etapes.etape_omise(libelle, MOTIF_SANS_BASE_DE_TEMPS,
                                          champ='meteo.heure.decalage_minutes')
-    if _instant_utc(points[0], decalage) is None:
+    decalage = etapes.decalages_publies(points, meteo)
+    if etapes.instant_utc(points[0], meteo) is None:
         return serie, etapes.etape_omise(
             libelle, "Les points de la série ne portent pas d'horodatage "
             'lisible : la position du soleil ne peut pas leur être associée.',
@@ -182,7 +183,7 @@ def appliquer(serie, contexte):
 
     suite, masquees = _masquer(serie, points, azimuts, releves,
                                latitude=latitude, longitude=longitude,
-                               decalage=decalage, fraction_ciel=fraction_ciel,
+                               meteo=meteo, fraction_ciel=fraction_ciel,
                                facteur_albedo=facteur_albedo)
     return suite, etapes.etape_appliquee(
         libelle,
@@ -273,30 +274,6 @@ def _releves(profil):
     return releves
 
 
-def _decalage_minutes(meteo):
-    """Le décalage de la série sur l'UTC, en minutes, ou ``None``.
-
-    Rien n'est supposé : soit la série se déclare en UTC, soit le décalage
-    du site est posé (CALX59). Une liste de décalages n'est lue que si elle
-    n'en porte qu'un seul — deux décalages différents veulent dire que la
-    série change d'heure en cours de route, et cela se traite point par
-    point, pas en bloc.
-    """
-    heure = (meteo or {}).get('heure') or {}
-    if str(heure.get('base') or '').strip().lower() == 'utc':
-        return 0.0
-    brut = heure.get('decalage_minutes')
-    nombre = _nombre(brut)
-    if nombre is not None:
-        return nombre
-    if isinstance(brut, (list, tuple)):
-        valeurs = {_nombre(valeur) for valeur in brut}
-        valeurs.discard(None)
-        if len(valeurs) == 1:
-            return valeurs.pop()
-    return None
-
-
 def _attenuation(contexte):
     """L'état de l'atténuation du diffus et du réfléchi, et sa provenance."""
     saisie = etapes.reglage(contexte, 'attenuation_horizon')
@@ -317,12 +294,12 @@ def _attenuation(contexte):
 # ── le masquage, heure par heure ────────────────────────────────────────
 
 def _masquer(serie, points, azimuts, releves, *, latitude, longitude,
-             decalage, fraction_ciel, facteur_albedo):
+             meteo, fraction_ciel, facteur_albedo):
     """Une COPIE de la série masquée, et le nombre d'heures coupées."""
     suite = []
     masquees = 0
     for point in points:
-        instant = _instant_utc(point, decalage)
+        instant = etapes.instant_utc(point, meteo)
         directe = _nombre(point.get('gb_i_w_m2')) or 0.0
         if instant is None:
             suite.append(point)
@@ -382,18 +359,6 @@ def _reporter(avant, apres):
         valeur = _nombre(avant.get(colonne))
         if valeur is not None:
             apres[colonne] = valeur * rapport
-
-
-def _instant_utc(point, decalage_minutes):
-    """L'instant UTC d'un point de série, ou ``None`` s'il est illisible."""
-    try:
-        moment = datetime.datetime(int(point['annee']), int(point['mois']),
-                                   int(point['jour']),
-                                   tzinfo=datetime.timezone.utc)
-        moment += datetime.timedelta(hours=float(point['heure']))
-    except (KeyError, TypeError, ValueError):
-        return None
-    return moment - datetime.timedelta(minutes=decalage_minutes)
 
 
 def _hauteur_interpolee(azimuts, releves, azimut):

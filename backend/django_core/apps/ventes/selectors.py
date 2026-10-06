@@ -1554,6 +1554,75 @@ def economie_pompage_publiable(devis_id, company):
     return bool(bloc and bloc.get('publiable_client'))
 
 
+def cible_depuis_lead(lead, company):
+    """ACAL194 — LA taille que le devis automatique donnerait à ce lead.
+
+    Sélecteur MINCE pour le calepinage (lecture seule, rien n'est écrit) : le
+    MÊME dimensionnement que ``build_devis_auto`` — la taille souhaitée du
+    lead est SOUVERAINE (``source: 'lead'``, conversion kWc → panneaux de
+    ``_residential_panel_count``), sinon ``pipeline.decider_taille`` demande
+    au moteur horaire (``source: 'factures'``). Jamais un second
+    dimensionnement, jamais un repli forfaitaire : un refus du moteur est
+    rendu NOMMÉ (``refus``, la phrase de ``AutoDevisError``).
+
+    Rend ``{panneaux, panel_watt, kwc, source, refus}`` ; ``None`` sans lead.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from .domain.pipeline import (
+        ORIGINE_AUTO, IntentionDevis, decider_taille,
+    )
+    from .domain.taille import (
+        _AUTO_PANEL_WATT, AutoDevisError, _residential_panel_count,
+    )
+
+    if lead is None:
+        return None
+
+    def refus(message, source='factures'):
+        return {'panneaux': None, 'panel_watt': None, 'kwc': None,
+                'source': source, 'refus': message}
+
+    marche = (getattr(lead, 'type_installation', '') or '').lower()
+    if marche == 'agricole':
+        return refus("Lead agricole : le pompage se chiffre depuis l'écran "
+                     "devis agricole.", 'lead')
+    if marche and marche != 'residentiel':
+        return refus("Lead commercial/industriel : la taille se décide par "
+                     "l'étude C&I de l'écran devis.", 'lead')
+
+    taille = getattr(lead, 'taille_souhaitee_kwc', None)
+    try:
+        taille_ok = taille not in (None, '') and Decimal(str(taille)) > 0
+    except (InvalidOperation, TypeError, ValueError):
+        taille_ok = False
+    if taille_ok:
+        panneaux = _residential_panel_count(taille_kwc=taille)
+        return {'panneaux': panneaux, 'panel_watt': _AUTO_PANEL_WATT,
+                'kwc': round(panneaux * _AUTO_PANEL_WATT / 1000, 2),
+                'source': 'lead', 'refus': None}
+
+    # Même garde que le devis automatique : un kWh déclaré que les factures
+    # contredisent n'est jamais dimensionné en silence.
+    from .etude_horaire import controle_kwh_declare_du_lead
+    from .horaire.conso import MESSAGE_KWH_INCOHERENT
+    controle = controle_kwh_declare_du_lead(lead, company)
+    if controle is not None and not controle['coherent']:
+        return refus(MESSAGE_KWH_INCOHERENT)
+    try:
+        cible = decider_taille(IntentionDevis(
+            origine=ORIGINE_AUTO, company=company, lead=lead))
+    except AutoDevisError as erreur:
+        return refus(str(erreur))
+    if cible is None or not cible.nb_panneaux:
+        return refus("Le devis n'a pas pu être dimensionné depuis la fiche "
+                     "du lead.")
+    watt = int(float(cible.panel_watt or _AUTO_PANEL_WATT))
+    return {'panneaux': int(cible.nb_panneaux), 'panel_watt': watt,
+            'kwc': round(int(cible.nb_panneaux) * watt / 1000, 2),
+            'source': 'factures', 'refus': None}
+
+
 def promesse_pompage_devis(devis_id, company):
     """AGR609 — la PROMESSE de pompage que le devis imprime, pour la recette
     du chantier (installations) et les relevés du portail (AGR617).

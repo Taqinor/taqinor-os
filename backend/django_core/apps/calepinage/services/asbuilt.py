@@ -120,14 +120,17 @@ def pans_prevus(calepinage):
     sur le document du calepinage ne se lise jamais comme un écart avec la
     variante contractuelle.
     """
-    from .production import pans_du_layout
+    # ACAL259 — LA lecture du module (``mesures_du_document``) : le même
+    # compte par pan que la présentation, le journal et les exports.
+    from .mesures import mesures_du_document
 
     variante = (calepinage.variantes.filter(retenue=True).first()
                 if hasattr(calepinage, 'variantes') else None)
     if variante is not None and variante.roof_layout:
-        return (pans_du_layout(variante.roof_layout), SOURCE_VARIANTE)
-    return (pans_du_layout(getattr(calepinage, 'roof_layout', None)),
-            SOURCE_CALEPINAGE)
+        return (mesures_du_document(variante.roof_layout)['pans'],
+                SOURCE_VARIANTE)
+    return (mesures_du_document(getattr(calepinage, 'roof_layout', None))
+            ['pans'], SOURCE_CALEPINAGE)
 
 
 def ecarts_du_calepinage(calepinage):

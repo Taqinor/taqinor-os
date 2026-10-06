@@ -84,7 +84,7 @@ class PoseSudUnModuleTest(SimpleTestCase):
     def test_le_moteur_pose_le_champ_sud_sans_refus(self):
         resultat = moteur_service.calepiner(
             deriver_axe_rangee(_demande(1, 180)), company=1,
-            tiroirs=False, suggestions=False)
+            suggestions=False)
         self.assertGreater(resultat['total_modules'], 0)
 
     def test_sans_derivation_nord_sud_reste_refuse(self):
@@ -94,4 +94,4 @@ class PoseSudUnModuleTest(SimpleTestCase):
         with self.assertRaises((incoherent, EntreeInvalide)):
             moteur_service.calepiner(
                 _demande(1, 180, axe='NORD_SUD'), company=1,
-                tiroirs=False, suggestions=False)
+                suggestions=False)

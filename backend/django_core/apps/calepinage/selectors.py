@@ -409,6 +409,42 @@ def calepinage_du_devis(devis_id, company):
             .first())
 
 
+def ombrage_servi(devis_id, company):
+    """ACAL143 — la perte d'OMBRAGE de la conception d'un devis, PAR PAN,
+    lue sur le résultat SERVI (même verdict de fraîcheur que GET resultat/,
+    empreinte de simulation comprise), ou ``None``.
+
+    Rend ``None`` sans calepinage lié ou sans simulation jamais lancée ;
+    ``{perime: True, motif, par_pan: {}, global: None}`` quand la conception a
+    changé depuis le calcul (aucune perte d'un autre toit) ; sinon
+    ``{perime: False, motif: '', par_pan: {<pan>: perte_ombrage_pct},
+    global: pct}`` — ``global`` est la perte de la cascade publiée (la
+    SOMME des pans). Aucune condition « variante retenue » : retenir une
+    variante EST la conception courante (D-ACAL-2).
+
+    Point d'entrée cross-app (``apps.ventes`` : étude bancable du devis),
+    lecture PURE, bornée à ``company``.
+    """
+    from .services.chaine_pertes import perte_ombrage_de_la_cascade
+
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None:
+        return None
+    servi = resultat_servi(calepinage)
+    if servi.get('simulation_perimee'):
+        return {'perime': True, 'motif': servi.get('motif') or '',
+                'par_pan': {}, 'global': None}
+    cascade = servi.get('cascade')
+    if not servi.get('simule') or not isinstance(cascade, dict):
+        return None
+    par_pan = {}
+    for ligne in ((servi.get('ombrage') or {}).get('par_pan') or ()):
+        if isinstance(ligne, dict) and ligne.get('pan'):
+            par_pan[str(ligne['pan'])] = ligne.get('perte_ombrage_pct')
+    return {'perime': False, 'motif': '', 'par_pan': par_pan,
+            'global': perte_ombrage_de_la_cascade(cascade)}
+
+
 def calepinage_retenu_pour_devis(devis_id, company):
     """CAL209 — le calepinage RETENU d'un devis : id, kWc, nb modules, lien.
 
@@ -879,7 +915,7 @@ def favoris_materiel_de_societe(company):
 
 def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
                      company=None, retrait_m=None, pas_recherche_m=0.01,
-                     famille=None):
+                     famille=None, entree_traduite=None):
     """Calepine une toiture villa (``AreaRecord``) — LECTURE PURE.
 
     ``ordre`` reste un argument EXPLICITE jusqu'ici : aucun appelant ne doit
@@ -892,7 +928,21 @@ def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
 
     ``famille`` (PV66) — ``SUD`` ou ``EST_OUEST`` : la forme de table, pas le
     panneau. Absente, le calcul est celui d'avant PV66, à l'identique.
+
+    ``entree_traduite`` (ACAL256) — ``{'layout', 'pan', 'parametres'}`` :
+    mode « entrée traduite ». L'entrée du moteur est alors construite par
+    ``services.traduction.entree_depuis_layout`` à partir du PAN BRUT du
+    document et des réglages société (retrait de rive, allée, dégagement par
+    type) ; ``area`` n'est plus lu. Absent : l'appel d'hier, à l'identique.
     """
+    if entree_traduite is not None:
+        from .villa_service import calepiner_pan_traduit
+
+        return calepiner_pan_traduit(
+            entree_traduite.get('layout'), entree_traduite.get('pan'),
+            produit_panneau=produit_panneau,
+            parametres=entree_traduite.get('parametres'))
+
     from .villa_service import calepiner_villa
 
     return calepiner_villa(area, ordre=ordre, kit=kit,

@@ -145,6 +145,11 @@ class SimulationFraicheTest(SimpleTestCase):
 
     def test_les_douze_blocs_declares_par_calx4_sont_servis(self):
         for cle in BLOCS_SIMULATION:
+            if cle == 'pertes':
+                # ACAL127 — la liste plate vient des postes SAISIS du
+                # calepinage, jamais d'une copie stockée dans ``resultat``.
+                self.assertEqual(self.resultat[cle], [])
+                continue
             self.assertEqual(self.resultat[cle],
                              SIMULATION['exemple'][cle],
                              f'le bloc « {cle} » n est pas servi tel quel.')
@@ -298,18 +303,47 @@ class EnregistrerEntreeNEffaceRienTest(SimpleTestCase):
                          [('resultat', 'updated_at')])
 
     def test_la_simulation_reste_servie_apres_une_saisie_neutre(self):
-        # ``cheminement`` DÉCRIT le passage des câbles : il n'entre pas dans
-        # l'empreinte (``_options_entree``), donc il ne périme rien.
+        # ACAL48 — l'exigence de marché (bornes du ratio DC/AC imposées par
+        # le CPS) borne une ALERTE, aucune étape de la simulation ne la lit :
+        # elle n'entre pas dans l'empreinte de simulation, donc elle ne
+        # périme rien.
         empreinte = _empreinte_du_document(LAYOUT)
         calepinage = _Calepinage(LAYOUT, resultat=_document_simule(empreinte))
 
-        enregistrer_entree(calepinage, {'cheminement': 'chemin de câbles'})
+        enregistrer_entree(calepinage, {'exigence_marche': {
+            'ratio_dc_ac_max': 1.3, 'reference': 'CPS du dossier'}})
         resultat = resultat_calepinage(calepinage, materiel=MATERIEL)
 
         self.assertTrue(resultat['simule'])
         self.assertFalse(resultat['simulation_perimee'])
         self.assertEqual(resultat['production'],
                          SIMULATION['exemple']['production'])
+
+    def test_le_cheminement_perime_la_simulation(self):
+        # ACAL48 (D-ACAL-21) — le cheminement mesure les câbles, donc les
+        # pertes ohmiques : il ENTRE dans l'empreinte de simulation (il ne
+        # comptait pas dans l'empreinte d'affectation d'avant).
+        empreinte = _empreinte_du_document(LAYOUT)
+        calepinage = _Calepinage(LAYOUT, resultat=_document_simule(empreinte))
+
+        enregistrer_entree(calepinage, {'cheminement': 'chemin de câbles'})
+        resultat = resultat_calepinage(calepinage, materiel=MATERIEL)
+
+        self.assertTrue(resultat['simulation_perimee'])
+        self.assertIsNone(resultat['production'])
+
+    def test_l_entete_de_simulation_est_servi(self):
+        # ACAL48 — ``simulation`` (empreinte, version, réglages figés) est
+        # servi, frais comme périmé.
+        empreinte = _empreinte_du_document(LAYOUT)
+        calepinage = _Calepinage(LAYOUT, resultat=_document_simule(empreinte))
+
+        servi = resultat_calepinage(calepinage, materiel=MATERIEL)
+
+        self.assertEqual(servi[CLE_SIMULATION]['hash_entree'], empreinte)
+        self.assertEqual(servi[CLE_SIMULATION]['calcule_le'],
+                         '2026-09-19T11:30:00Z')
+        self.assertEqual(servi[CLE_SIMULATION]['reglages_utilises'], {})
 
     def test_une_saisie_qui_entre_dans_l_empreinte_perime_la_simulation(self):
         # ``dc_m``, elle, EST une entrée du calcul (``_options_entree``) :

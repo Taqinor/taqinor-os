@@ -73,8 +73,9 @@ from __future__ import annotations
 
 import math
 
+from core.calepinage.geo import projeteur_local
+
 from .cables import ORIGINE_PLAN, ORIGINE_SAISIE, Longueur
-from .zones import projeteur_local
 from .valeurs import nombre as _nombre
 
 __all__ = [
@@ -149,9 +150,9 @@ def _points_du_cheminement(cheminement):
 def _longueur_polyligne(points):
     """Somme des distances entre points consécutifs (m), ou ``None``.
 
-    Le repère plan est celui de ``services/zones.py::projeteur_local``, le
-    seul projeteur local du module : deux services qui fabriqueraient deux
-    repères du même site mesureraient deux longueurs du même câble.
+    Le repère plan est ``core.calepinage.geo.projeteur_local`` (ACAL281), le
+    seul projeteur local : deux services qui fabriqueraient deux repères du
+    même site mesureraient deux longueurs du même câble.
 
     Le dénivelé n'entre QUE lorsque les DEUX extrémités d'un segment portent
     leur ``altitudeM`` ; sinon le segment est compté à plat et aucun dénivelé
@@ -976,9 +977,17 @@ def troncons_du_calepinage(calepinage):
     ``troncons_de_la_conception``. Aucune écriture, aucun effet de bord.
     """
     from .electrique import conception_du_calepinage, parametres_societe
-    from .norme import norme_applicable
+    from .norme import coefficients_publies, norme_applicable
 
-    norme = norme_applicable(parametres_societe(calepinage))
+    parametres = parametres_societe(calepinage)
+    norme = norme_applicable(parametres)
+    if norme.get('applicable'):
+        # ACAL313 — les coefficients de section/chute sont LUS sur LA
+        # fonction du registre (saisi société avec référence > noyau) :
+        # aucune constante de norme recopiée ici.
+        coefficients, _refus = coefficients_publies(
+            parametres.get('norme_electrique') or {})
+        norme = dict(norme, coefficients=coefficients)
     conception, materiel, _donnees, document = conception_du_calepinage(
         calepinage)
     return troncons_de_la_conception(

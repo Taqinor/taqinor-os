@@ -24,6 +24,30 @@
       "verbe": "post"
     }
   ],
+  "calepinages.apercuDocument": [
+    {
+      "config": {
+        "params": {
+          "code": 3,
+          "k": 1
+        },
+        "responseType": "text"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/apercu-document/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.appliquerCoteReleve": [
+    {
+      "config": null,
+      "data": {
+        "k": 1
+      },
+      "url": "/calepinage/calepinages/7/releve/3/appliquer-cote/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.appliquerFixation": [
     {
       "config": null,
@@ -184,6 +208,24 @@
       "verbe": "post"
     }
   ],
+  "calepinages.decisionSuggestionPente": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/suggestions-pente/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.declencherDocument": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": 7,
+      "verbe": "post"
+    }
+  ],
   "calepinages.demarquerModele": [
     {
       "config": null,
@@ -262,17 +304,6 @@
       "verbe": "post"
     }
   ],
-  "calepinages.diagrammePertesSvg": [
-    {
-      "config": {
-        "params": 3,
-        "responseType": "blob"
-      },
-      "data": null,
-      "url": "/calepinage/calepinages/7/diagramme-pertes.svg/",
-      "verbe": "get"
-    }
-  ],
   "calepinages.documents": [
     {
       "config": null,
@@ -345,7 +376,27 @@
   ],
   "calepinages.enregistrerLayoutCalepinage": [
     {
-      "config": null,
+      "config": {
+        "headers": {
+          "If-Match": {
+            "k": 1
+          }
+        }
+      },
+      "data": 3,
+      "url": "/calepinage/calepinages/7/layout/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerLayoutCalepinageConditionnel": [
+    {
+      "config": {
+        "headers": {
+          "If-Match": {
+            "k": 1
+          }
+        }
+      },
       "data": 3,
       "url": "/calepinage/calepinages/7/layout/",
       "verbe": "post"
@@ -383,12 +434,28 @@
       "verbe": "post"
     }
   ],
+  "calepinages.enregistrerSectionLayout": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/layout/section/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.entreeElectrique": [
     {
       "config": null,
       "data": null,
       "url": "/calepinage/calepinages/7/entree-electrique/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.envoyerFondPlan": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/fond-plan/",
+      "verbe": "post"
     }
   ],
   "calepinages.envoyerImage": [
@@ -469,6 +536,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/export-projet.json/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.garderRepere": [
+    {
+      "config": null,
+      "data": {},
+      "url": "/calepinage/calepinages/7/garder-repere/",
+      "verbe": "post"
     }
   ],
   "calepinages.genererDevis": [
@@ -605,6 +680,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.meteoFichier": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/meteo-fichier/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.modeles": [
     {
       "config": null,
@@ -679,6 +762,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.recentrerSurLead": [
+    {
+      "config": null,
+      "data": {},
+      "url": "/calepinage/calepinages/7/recentrer-sur-lead/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.releve": [
     {
       "config": null,
@@ -693,6 +784,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/releve-visite/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.remettreDocument": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/remettre-document/",
+      "verbe": "post"
     }
   ],
   "calepinages.remove": [
@@ -752,6 +851,14 @@
       },
       "data": null,
       "url": "/calepinage/calepinages/7/etiquettes/",
+      "verbe": "delete"
+    }
+  ],
+  "calepinages.retirerFichierMeteo": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/meteo-fichier/",
       "verbe": "delete"
     }
   ],
@@ -935,6 +1042,14 @@
       "data": null,
       "url": "/calepinage/parametres/profils-types/",
       "verbe": "get"
+    }
+  ],
+  "parametres.recalculerSimulations": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/parametres/recalculer-simulations/",
+      "verbe": "post"
     }
   ],
   "parametres.suggererPentesIGN": [

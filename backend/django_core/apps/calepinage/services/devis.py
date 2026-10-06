@@ -63,30 +63,98 @@ def _lead_et_client(calepinage):
     return lead, client
 
 
+#: ACAL89 — défaut gravé : un lead AGRICOLE se chiffre depuis l'écran devis
+#: agricole (pompage, groupe AGR), jamais depuis le calepinage toiture.
+MESSAGE_LEAD_AGRICOLE = ("Lead agricole : le pompage se chiffre depuis l'écran "
+                         "devis agricole.")
+
+
+def _refuser_lead_agricole(lead):
+    """ACAL89 — 422 ``{type_installation}`` pour un lead agricole."""
+    if lead is not None and getattr(lead, 'type_installation', '') == 'agricole':
+        raise DevisRefuse(MESSAGE_LEAD_AGRICOLE, champ='type_installation',
+                          statut=422)
+
+
+def _refus_deja_rattache(lie):
+    """ACAL89 — 409 NOMMÉ ``{detail, devis, reference, revision_possible}``.
+
+    Le calepinage est déjà lié à un devis qu'on ne peut pas réutiliser
+    (brouillon d'une autre empreinte, ou devis non brouillon) : aucun devis
+    n'est créé et ``calepinage.devis`` ne bouge pas. ``revision_possible`` est
+    LU sur ventes (``devis_modifiabilite``), jamais recalculé ici.
+    """
+    from apps.ventes.selectors import devis_modifiabilite
+
+    reference = lie.reference or f'#{lie.pk}'
+    try:
+        libelle_statut = lie.get_statut_display()
+    except Exception:  # noqa: BLE001 — un libellé manquant n'empêche pas le refus
+        libelle_statut = lie.statut
+    message = (f"Ce calepinage est déjà rattaché au devis {reference} "
+               f"({libelle_statut}) : utilisez « Resynchroniser le devis ».")
+    try:
+        revision_possible = bool(
+            devis_modifiabilite(lie).get('revision_possible'))
+    except Exception:  # noqa: BLE001 — verdict illisible : jamais un 500
+        revision_possible = False
+    return DevisRefuse(message, champ='devis', statut=409, donnees={
+        'detail': message, 'devis': lie.pk, 'reference': lie.reference,
+        'revision_possible': revision_possible,
+    })
+
+
+def _brouillon_reutilisable(company, lead, empreinte, calepinage):
+    """ACAL89 — le brouillon de même empreinte, SEULEMENT s'il n'est lié à
+    aucun AUTRE calepinage (la copie d'un calepinage ne vole jamais le devis
+    de l'original — c'était le 500 de la porte PUB-10)."""
+    from apps.ventes.selectors import devis_brouillon_pour_layout
+
+    from ..selectors import calepinage_du_devis
+
+    deja = devis_brouillon_pour_layout(company, lead.pk, empreinte)
+    if deja is None:
+        return None
+    proprietaire = calepinage_du_devis(deja.pk, company)
+    if proprietaire is not None and proprietaire.pk != calepinage.pk:
+        return None
+    return deja
+
+
 def generer_devis(calepinage, *, user=None, taux_tva=None,
-                  remise_globale=None):
+                  remise_globale=None, journal=None):
     """CAL24 — crée (ou RETROUVE) le devis de ce calepinage.
+
+    Args:
+        journal: ACAL89 — dict facultatif rempli SUR PLACE avec ce que la
+            composition n'a pas pu faire (``avertissements``,
+            ``marques_manquantes``, canal U3 de ``build_devis_from_layout``) ;
+            vide (listes vides) quand un brouillon existant est rendu.
 
     Returns:
         ``(devis, cree)`` — ``cree`` est ``False`` quand la dédup a rendu le
         brouillon EXISTANT : un second clic ne fabrique pas un doublon.
 
     Raises:
-        DevisRefuse: conception absente, rattachement manquant, ou pré-vol de
-            composition en échec (statut 422, messages du serveur ventes
-            propagés MOT POUR MOT).
+        DevisRefuse: conception absente, rattachement manquant, lead agricole
+            (422 ``type_installation``), calepinage déjà rattaché à un devis
+            non réutilisable (409 nommé), ou pré-vol de composition en échec
+            (statut 422, messages du serveur ventes propagés MOT POUR MOT).
     """
     from decimal import Decimal
 
-    from apps.ventes.selectors import devis_brouillon_pour_layout
     from apps.ventes.services import (
         AutoDevisError, build_devis_from_layout, layout_hash,
         poser_layout_hash, validate_composition_for_layout,
     )
 
+    if journal is not None:
+        journal.setdefault('avertissements', [])
+        journal.setdefault('marques_manquantes', [])
     layout = _exiger_layout(calepinage)
     company = calepinage.company
     lead, client = _lead_et_client(calepinage)
+    _refuser_lead_agricole(lead)
     # ACAL277 — les montants sont VALIDÉS avant toute écriture (y compris le
     # rattachement d'un brouillon existant) : un refus n'écrit rien.
     montants = _montants(taux_tva, remise_globale, Decimal)
@@ -105,29 +173,28 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
 
     empreinte = calepinage.layout_hash or layout_hash(layout)
+    # ACAL89 — le lien EXISTANT est lu AVANT toute création.
     lie = _devis_lie_actif(calepinage)
     if lie is not None:
         # ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé :
-        # le même brouillon à la même empreinte est rendu (dédup), tout autre
-        # cas est un 409 NOMMÉ avant toute création (jamais un devis orphelin
-        # ni un 500). ACAL89 affine ce refus.
+        # le même brouillon à la même empreinte est rendu (dédup, double clic,
+        # client seul compris), tout autre cas est un 409 NOMMÉ avant toute
+        # création (jamais un devis orphelin ni un 500).
         if (lie.statut == 'brouillon'
                 and (lie.layout_hash or '') == (empreinte or '')):
             return lie, False
-        raise DevisRefuse(
-            f"Ce calepinage est déjà lié au devis "
-            f"{lie.reference or f'#{lie.pk}'} : utilisez « Resynchroniser "
-            "le devis ».", champ='devis', statut=409)
+        raise _refus_deja_rattache(lie)
     if lead is not None:
-        deja = devis_brouillon_pour_layout(company, lead.pk, empreinte)
+        deja = _brouillon_reutilisable(company, lead, empreinte, calepinage)
         if deja is not None:
             _lier(calepinage, deja, user=user)
             return deja, False
 
+    journal_composition = {}
     try:
         devis = build_devis_from_layout(
             layout=layout, user=user, company=company, lead=lead,
-            client=client, **montants)
+            client=client, journal=journal_composition, **montants)
     except AutoDevisError as refus:
         # ACAL32 — phase / site isolé du lead déduits par la création ; son
         # refus NOMMÉ (``hors_reseau``) remonte en 422, jamais un 500.
@@ -137,6 +204,12 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     # la dédup possible au clic suivant, et le badge « à jour » honnête.
     poser_layout_hash(devis, empreinte)
     _lier(calepinage, devis, user=user)
+    if journal is not None:
+        # ACAL89 — ce que la composition a REFUSÉ de faire, tel quel.
+        journal['avertissements'] = list(
+            journal_composition.get('avertissements') or ())
+        journal['marques_manquantes'] = list(
+            journal_composition.get('marques_manquantes') or ())
     return devis, True
 
 

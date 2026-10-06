@@ -56,17 +56,14 @@ class FormeDuBlocTest(unittest.TestCase):
         self.assertEqual(sorted(bloc), attendu)
 
     def test_chaque_composante_porte_les_cinq_champs_du_contrat(self):
-        # ACAL8 (M0) a posé ``origine`` avant son producteur : ACAL313 la
-        # sert et retire ce filtre.
-        attendu = (set(CONTRAT['exemple']['incertitude']['composantes'][0])
-                   - {'origine'})
+        # ACAL313 — ``origine`` (posée par ACAL8) est servie.
+        attendu = set(CONTRAT['exemple']['incertitude']['composantes'][0])
         bloc = bloc_incertitude(
             PRODUCTION_ESSAI, totaux_par_annee=DEUX_ANNEES,
             reglages=_saisi('sigma_modele_pct', 3.0))
         self.assertEqual(len(bloc['composantes']), 2)
         for composante in bloc['composantes']:
-            self.assertNotIn('origine', composante,
-                             'ACAL313 livré : retirer le filtre « origine ».')
+            self.assertIn(composante['origine'], ('observee', 'saisie'))
             self.assertEqual(set(composante), attendu)
 
     def test_la_portee_est_declaree_annuelle(self):

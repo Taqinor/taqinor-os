@@ -142,8 +142,16 @@ def _profil_de(company):
     if company is None:
         return {}
     try:
+        from apps.parametres.models_company import CompanyProfile
         from apps.parametres.selectors import company_identity
 
+        # Lecture PURE : ``company_identity`` passe par ``CompanyProfile.get``
+        # qui CRÉE le profil absent (défauts, dont ``fuseau_horaire``). Lire
+        # la marque ne doit rien écrire — sinon le fuseau du site (ACAL129,
+        # repli sur le profil) change entre deux lectures, périme la
+        # simulation servie et fait bouger l'empreinte ACAL221.
+        if not CompanyProfile.objects.filter(company=company).exists():
+            return {}
         profil = dict(company_identity(company) or {})
     except Exception:  # noqa: BLE001
         return {}

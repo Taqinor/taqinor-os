@@ -45,8 +45,6 @@ strictement inchangée — comportement d'aujourd'hui.
 """
 from __future__ import annotations
 
-import math
-
 #: La clé du document d'atelier (v2) et celle du contrat MOTEUR.
 CLE_LAYOUT = 'exclusionZones'
 CLE_MOTEUR = 'zones'
@@ -54,7 +52,8 @@ CLE_MOTEUR = 'zones'
 __all__ = [
     'CLE_LAYOUT', 'CLE_MOTEUR', 'ZoneRefusee', 'natures_admises',
     'zones_moteur_depuis_layout', 'injecter_zones', 'chiffrage_zones',
-    'projeteur_local', 'deprojeteur_local',
+    'projeteur_local', 'deprojeteur_local', 'natures_inconnues',
+    'message_nature_inconnue', 'projection_du_layout',
 ]
 
 
@@ -73,38 +72,54 @@ def natures_admises():
     return tuple(nature.value for nature in NatureZone)
 
 
+def natures_inconnues(document):
+    """ACAL312 — ``[(chemin, nature_recue), …]`` des zones à nature NON admise.
+
+    Le chemin est le chemin JSON (``'exclusionZones.2.nature'``), celui que
+    l'écran pointe. La liste admise est :func:`natures_admises` — le noyau,
+    jamais une seconde liste. Une zone sans nature est refusée elle aussi :
+    le moteur ne saurait pas quoi en faire (``zones_moteur_depuis_layout``).
+    Fonction PURE ; un document sans ``exclusionZones`` rend ``[]``.
+    """
+    brutes = document.get(CLE_LAYOUT) if isinstance(document, dict) else None
+    if not isinstance(brutes, list):
+        return []
+    admises = natures_admises()
+    return [(f'{CLE_LAYOUT}.{rang}.nature', brute.get('nature'))
+            for rang, brute in enumerate(brutes)
+            if isinstance(brute, dict) and brute.get('nature') not in admises]
+
+
+def message_nature_inconnue(chemin, nature):
+    """ACAL312 — le refus nommé d'une nature de zone inconnue."""
+    return (f"Conception refusée au champ « {chemin} » : nature de zone "
+            f"inconnue « {nature} ». Natures admises : "
+            f"{', '.join(natures_admises())}.")
+
+
 def projeteur_local(origine):
     """``(lon, lat) -> (x_m, y_m)`` autour de ``origine`` ``(lon, lat)``.
 
-    Approximation locale plane, suffisante à l'échelle d'un toit, et
-    IDENTIQUE à celle de CAL237 pour que les deux services ne fabriquent pas
-    deux repères différents du même site.
+    ACAL281 — la projection UNIQUE de ``core.calepinage.geo`` (sphère
+    R = 6 378 137 m, convention de l'atelier et du devis) : l'ancienne copie
+    « 111 320 / 110 540 » de ce module est supprimée, troncons.py,
+    traduction.py et import_plan.py la lisent ici sans changement d'appel.
     """
-    lon0, lat0 = float(origine[0]), float(origine[1])
-    echelle_x = 111320.0 * math.cos(math.radians(lat0))
+    from core.calepinage.geo import projeteur_local as _projeteur
 
-    def projeter(point):
-        return ((float(point[0]) - lon0) * echelle_x,
-                (float(point[1]) - lat0) * 110540.0)
-
-    return projeter
+    return _projeteur(origine)
 
 
 def deprojeteur_local(origine):
     """ACAL69 — l'INVERSE de ``projeteur_local`` : ``(x, y) m -> (lon, lat)``.
 
-    Même ``origine`` ``(lon, lat)``, mêmes constantes (111320 · cos(lat0) pour
-    x, 110540 pour y) : un point projeté puis déprojeté revient où il était.
-    UN seul repère local dans le module — jamais une seconde formule recopiée.
+    Même ``origine`` ``(lon, lat)``, même sphère (ACAL281,
+    ``core.calepinage.geo``) : un point projeté puis déprojeté revient où il
+    était. UN seul repère local — jamais une seconde formule recopiée.
     """
-    lon0, lat0 = float(origine[0]), float(origine[1])
-    echelle_x = 111320.0 * math.cos(math.radians(lat0))
+    from core.calepinage.geo import deprojeteur_local as _deprojeteur
 
-    def deprojeter(point):
-        return (lon0 + float(point[0]) / echelle_x,
-                lat0 + float(point[1]) / 110540.0)
-
-    return deprojeter
+    return _deprojeteur(origine)
 
 
 def _sommets(brute, champ, repere, projection):
@@ -228,8 +243,12 @@ def injecter_zones(document, roof_layout, *, projection=None):
     return enrichi
 
 
-def chiffrage_zones(zones):
+def chiffrage_zones(zones, *, arrondi=None):
     """Ce que les zones COÛTENT, nature par nature (m²).
+
+    ``arrondi`` (ACAL312) : nombre de décimales des aires PUBLIÉES
+    (``pose.zones`` les sert au centième, le rapport les imprime telles
+    quelles) ; ``None`` (défaut) rend les aires brutes, comme avant.
 
     * ``INTERDITE`` et ``RESERVEE`` RETIRENT de la surface posable — et la
       ``RESERVEE`` est chiffrée à part parce que c'est un argument de
@@ -264,7 +283,62 @@ def chiffrage_zones(zones):
                            for z in les_siennes),
             'aire_retiree_m2': retiree,
         }
-    return {
+    chiffrage = {
         'aire_retiree_m2': aire_retiree(objets),
         'par_nature': par_nature,
     }
+    return chiffrage if arrondi is None else _arrondir(chiffrage, arrondi)
+
+
+def _arrondir(valeur, decimales):
+    """Arrondit les AIRES (clés ``*_m2``) ; les comptes restent entiers."""
+    sortie = {}
+    for cle, v in valeur.items():
+        if isinstance(v, dict):
+            sortie[cle] = _arrondir(v, decimales)
+        elif cle.endswith('_m2') and isinstance(v, (int, float)):
+            sortie[cle] = round(float(v), decimales)
+        else:
+            sortie[cle] = v
+    return sortie
+
+
+def _origine_du_layout(roof_layout, brutes):
+    """L'ancre de projection : l'épingle, sinon le barycentre du 1er pan,
+    sinon celui de la 1re zone d'exclusion — la même règle que
+    ``traduction._origine`` (jamais une ville, jamais un centre de pays)."""
+    epingle = roof_layout.get('pin')
+    if isinstance(epingle, dict):
+        lat, lng = epingle.get('lat'), epingle.get('lng')
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool)
+               for v in (lat, lng)):
+            return (float(lng), float(lat))
+    candidats = [pan.get('vertices') for pan in (roof_layout.get('zones') or [])
+                 if isinstance(pan, dict)]
+    candidats += [z.get('vertices') for z in brutes if isinstance(z, dict)]
+    for sommets in candidats:
+        points = [p for p in (sommets if isinstance(sommets, list) else ())
+                  if isinstance(p, (list, tuple)) and len(p) >= 2
+                  and all(isinstance(v, (int, float))
+                          and not isinstance(v, bool) for v in p[:2])]
+        if points:
+            return (sum(p[0] for p in points) / len(points),
+                    sum(p[1] for p in points) / len(points))
+    return None
+
+
+def projection_du_layout(roof_layout):
+    """ACAL312 — la projection ``[lng, lat] -> m`` d'un DOCUMENT, ou ``None``.
+
+    La projection UNIQUE (``projeteur_local``, ACAL281) ancrée comme celle du
+    traducteur (``traduction._origine``) : l'épingle, sinon le barycentre du
+    premier pan, sinon celui de la première zone d'exclusion. ``None`` quand
+    le document n'offre aucun point lisible — jamais une ancre inventée.
+    Fonction PURE.
+    """
+    if not isinstance(roof_layout, dict):
+        return None
+    brutes = roof_layout.get(CLE_LAYOUT)
+    origine = _origine_du_layout(roof_layout,
+                                 brutes if isinstance(brutes, list) else [])
+    return projeteur_local(origine) if origine is not None else None

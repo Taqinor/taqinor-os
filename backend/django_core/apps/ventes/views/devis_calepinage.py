@@ -506,6 +506,9 @@ class DevisCalepinageActionsMixin:
         resultat = ajouter_lignes_boq_electrique(devis, request.user)
         return Response(resultat)
 
+    # ACAL97 a retiré le re-POST de ToitureDesign : from-layout range déjà la
+    # conception ENRICHIE, ce second envoi l'écrasait. Porte gardée (GET/POST).
+    # api-only: plus d'appelant écran depuis ACAL97 (intégrations/scripts)
     @action(
         detail=True,
         methods=['get', 'post'],

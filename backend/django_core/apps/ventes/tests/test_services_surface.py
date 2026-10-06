@@ -116,6 +116,9 @@ SURFACE_PUBLIQUE = (
     "activate_optional_line",
     "affecter_encaissement_groupe",
     "aire_contour_m2",
+    # ACAL276 — l'aire d'un pan dessiné, UNE définition (domain/geometrie),
+    # lue par le lestage du calepinage via ce service.
+    "aire_du_pan",
     "ajouter_lignes_boq_electrique",
     "ajouter_lignes_devis_import",
     "ajouter_lignes_facture_import",

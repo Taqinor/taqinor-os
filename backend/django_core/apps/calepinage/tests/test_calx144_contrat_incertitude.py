@@ -72,11 +72,9 @@ class EnveloppeTest(unittest.TestCase):
         attendu = set(SIMULATION['exemple']['incertitude']['composantes'][0])
         for etat in ETATS:
             for composante in bloc(etat)['composantes']:
-                # ACAL8 (M0) a posé ``origine`` (composante météo) dans
-                # calepinage_incertitude.json avant son producteur : ACAL313
-                # la sert, la reporte dans calepinage_simulation.json et
-                # retire ce filtre.
-                self.assertEqual(set(composante) - {'origine'}, attendu,
+                # ACAL313 — ``origine`` est servie sur chaque composante
+                # et reportée dans calepinage_simulation.json.
+                self.assertEqual(set(composante), attendu,
                                  f"{etat} : composante "
                                  f"« {composante.get('nom')} » en écart.")
 

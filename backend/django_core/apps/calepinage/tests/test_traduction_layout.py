@@ -103,8 +103,8 @@ def _rectangle(lon0, lat0, largeur_m, hauteur_m):
     La conversion mètres → degrés est celle de ``services/zones.py``
     (``projeteur_local``) : le test et le code mesurent la même Terre.
     """
-    dlon = largeur_m / (111320.0 * math.cos(math.radians(lat0))) / 2.0
-    dlat = hauteur_m / 110540.0 / 2.0
+    dlon = largeur_m / ((math.pi / 180.0 * 6378137.0) * math.cos(math.radians(lat0))) / 2.0
+    dlat = hauteur_m / (math.pi / 180.0 * 6378137.0) / 2.0
     return [[lon0 - dlon, lat0 - dlat], [lon0 + dlon, lat0 - dlat],
             [lon0 + dlon, lat0 + dlat], [lon0 - dlon, lat0 + dlat]]
 

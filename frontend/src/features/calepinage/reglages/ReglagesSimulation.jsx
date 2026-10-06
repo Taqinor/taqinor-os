@@ -1,56 +1,42 @@
-/* eslint-disable react-refresh/only-export-components --
-   Le registre (`REGISTRE_SIMULATION`/`REGISTRE_ELECTRIQUE_SOCIETE`) est une
-   table de données lue par le test jumeau (« une ligne par clé du registre »)
-   ET par l'écran par défaut : la sortir dans un `.js` voisin séparerait la
-   table de son unique lecteur pour satisfaire une règle de fast-refresh qui
-   ne s'applique pas à une constante — même dérogation que `commun/Provenance
-   .jsx` et `module.config.jsx` du même module. */
 import { useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
-import { Badge, Card, Spinner } from '../../../ui'
+import { Badge, Button, Card, Spinner } from '../../../ui'
+import ReglagesSite from './ReglagesSite'
 
 /* ============================================================================
-   CALX69 — DONNER UNE SAISIE AUX RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE,
-   AVEC PROVENANCE OBLIGATOIRE.
+   CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, AVEC
+   PROVENANCE OBLIGATOIRE, TYPÉS PAR LE REGISTRE SERVI.
    ----------------------------------------------------------------------------
-   CONSTAT (vérifié cette session). `PUT /api/django/calepinage/parametres/`
-   écrit déjà toute section admise (`views/parametres.py`), mais le seul
-   composant qui l'appelle en écriture est `Bibliotheque.jsx` (CALX43, sections
-   `presets`/`favoris_materiel`) : les deux sections ouvertes par CALX145
-   (`simulation`, `electrique_societe`) n'avaient AUCUNE porte de saisie —
-   chaque étape de la chaîne de pertes et chaque contrôle électrique qui en
-   dépend restait donc condamné à l'« omis » faute d'écran pour les renseigner.
-
-   LE REGISTRE EST DÉSORMAIS SERVI PAR LE GET (follow-up CALX145/69).
-   `GET /api/django/calepinage/parametres/` publie maintenant une clé DÉRIVÉE
-   `registre` — `{simulation: [{cle, libelle, unite, reference}, …],
-   electrique_societe: [...]}`, résolue en lecture seule depuis
-   `services/parametres_cles.py` par `selectors.registre_des_reglages`
-   (même mécanique que `kits`, CAL246 : jamais une section, `PUT` la refuse
-   comme toute clé inconnue). Les deux tables ci-dessous
-   (`REGISTRE_SIMULATION`/`REGISTRE_ELECTRIQUE_SOCIETE`) restent exportées
-   pour le test jumeau et servent de REPLI : l'écran lit d'abord `registre`
-   sur la réponse du serveur (voir `registreDepuisServeur` plus bas) et ne
-   retombe sur ces tables locales que si la clé est absente — un client
-   ancien ou un mock de test qui ne la sert pas encore continue de fonctionner
-   à l'identique.
+   `GET /api/django/calepinage/parametres/` publie la clé DÉRIVÉE `registre`
+   — `{simulation: [{cle, libelle, unite, reference, type, valeurs?, minimum?,
+   maximum?}, …], electrique_societe: [...]}`, lue de
+   `services/parametres_cles.py` (contrat `parametres_calepinage.json`).
+   ACAL133 : ce registre est la SEULE source des lignes. L'ancienne copie
+   locale (`REGISTRE_SIMULATION`/`REGISTRE_ELECTRIQUE_SOCIETE`) et son repli
+   sont SUPPRIMÉS : sans registre servi, l'écran dit qu'il est indisponible
+   plutôt que d'afficher des lignes qui ne sont plus celles du serveur. Le
+   type de chaque clé commande son champ (liste fermée pour un enum, oui/non
+   pour un booléen, saisie libre sinon — jamais de bornes HTML qui feraient
+   « sauter » ce que l'on tape : le serveur normalise « 2,5 » et refuse en
+   nommant la clé).
 
    LA DISCIPLINE DE SAISIE, IDENTIQUE À CELLE DU SERVEUR
    (`services/parametres.py::_normaliser_section_a_registre`) :
      * une clé JAMAIS entamée (valeur, source ET référence toutes vides) est
-       OMISE de l'envoi — rien n'est inventé, le comportement d'aujourd'hui
-       reste inchangé pour elle ;
-     * une clé ENTAMÉE (au moins un des trois champs rempli) sans valeur, ou
-       sans provenance choisie, est REFUSÉE avant tout envoi réseau — l'erreur
-       se pose SOUS la clé fautive et le bandeau la NOMME (règle fondateur du
-       08/09/2026) ;
-     * le refus 400 du serveur (qui nomme lui aussi la clé fautive) atterrit
-       exactement au même endroit.
+       OMISE de l'envoi — rien n'est inventé ;
+     * une clé STOCKÉE puis vidée part à `null` (le PUT fusionne par clé) ;
+     * une clé ENTAMÉE sans valeur, ou sans provenance choisie, est REFUSÉE
+       avant tout envoi réseau — l'erreur se pose SOUS la clé fautive et le
+       bandeau la NOMME ;
+     * le refus 400 du serveur (nommé DANS sa section) atterrit au même endroit ;
+     * UN SEUL PUT `{simulation, electrique_societe}` : jamais d'écriture
+       partielle entre les deux sections ;
+     * une ligne NON TOUCHÉE est renvoyée avec sa valeur d'origine telle que
+       servie (aller-retour sans geste = sections identiques côté serveur).
    Les valeurs CITÉES des logiciels concurrents (la référence doctrinale du
-   registre, ex. la tolérance PV*SOL) sont affichées comme un simple REPÈRE
-   sous chaque ligne — jamais copiées dans le champ « valeur » : la saisie
-   reste toujours celle, et seulement celle, que la société a tapée.
+   registre) restent un simple REPÈRE sous chaque ligne — jamais copiées dans
+   « valeur ».
    ========================================================================== */
 
 //: `services/parametres_cles.py::SOURCES_ADMISES` — les QUATRE provenances
@@ -62,81 +48,37 @@ const SOURCES = [
   ['texte', 'Texte cité'],
 ]
 
-//: `services/parametres_cles.py::CLES_SIMULATION` — `[clé, libellé, unité,
-//: référence doctrinale]`, une ligne par clé, DANS L'ORDRE DÉCLARÉ CÔTÉ
-//: SERVEUR.
-export const REGISTRE_SIMULATION = [
-  ['fenetre_annees', 'Fenêtre d’années météo', 'années', 'PVGIS — seriescalc, fenêtre pluriannuelle'],
-  ['mode_meteo', 'Mode météo (année type ou fenêtre pluriannuelle)', '', 'HelioScope — TMY weather file primer'],
-  ['modele_iam', 'Modèle d’incidence (IAM)', '', 'PVsyst — Array incidence loss (IAM)'],
-  ['b0_iam', 'Coefficient b0 du modèle ASHRAE', '', 'PVsyst — Array incidence loss (IAM)'],
-  ['sigma_modele_pct', 'Incertitude de simulation (σ modèle)', '%', 'PVsyst — P50/P90 evaluations'],
-  ['sigma_biais_meteo_pct', 'Biais long terme de la source météo (σ)', '%', 'PVsyst — P50/P90 evaluations'],
-  ['sigma_meteo_saisi_pct', 'Variabilité interannuelle saisie (σ météo)', '%', 'PVsyst — P50/P90 evaluations'],
-  ['tolerance_validation_pct', 'Tolérance d’écart admise face à PVGIS', '%', 'Décision fondateur 21/09/2026 — aucun verdict sans tolérance saisie'],
-  ['resolution_minutes', 'Pas de temps de la simulation', 'minutes', 'PVGIS — seriescalc, pas horaire'],
-  ['albedo_mensuel', 'Albédo du sol, mois par mois', '', 'PVsyst — Array and system losses'],
-  ['annees_exploitation', 'Durée d’exploitation simulée', 'années', 'PVsyst — Array and system losses'],
-  ['regle_qualite_module', 'Règle de qualité module (tolérance de puissance)', '', 'PVsyst — Module quality losses'],
-  ['lid_par_techno', 'Perte LID déclarée par technologie de cellule', '%', 'PVsyst — LID loss (aucune valeur par défaut proposée)'],
-  ['mismatch_fabricant_pct', 'Mismatch de fabrication entre modules', '%', 'PVsyst — Array and system losses'],
-  ['modele_degradation', 'Modèle de dégradation pluriannuelle', '', 'PVsyst — Array and system losses'],
-  ['thermique_par_pose', 'Coefficients Uc/Uv par type de pose', 'W/m²K et W/m³sK', 'PVsyst — Array thermal losses (Faiman)'],
-  ['attenuation_horizon', 'Atténuation appliquée au profil d’horizon', '', 'PVGIS — printhorizon, profil DEM'],
-]
-
-//: `services/parametres_cles.py::CLES_ELECTRIQUE_SOCIETE` — même forme,
-//: même discipline d'ajout que ci-dessus.
-export const REGISTRE_ELECTRIQUE_SOCIETE = [
-  ['tolerance_polystring_acceptable_pct', 'Tolérance de polystring acceptable', '%', 'PV*SOL — Configuration check (valeur du logiciel citée en repère, jamais préremplie)'],
-  ['tolerance_polystring_bloquante_pct', 'Tolérance de polystring bloquante', '%', 'PV*SOL — Configuration check (valeur du logiciel citée en repère, jamais préremplie)'],
-  ['seuil_desequilibre_pct', 'Seuil de déséquilibre entre chaînes', '%', 'PV*SOL — Configuration check'],
-  ['borne_usuelle_dc_ac', 'Borne usuelle du rapport DC/AC', '', 'PV*SOL — Configuration check'],
-  ['seuil_alerte_dc_ac', 'Seuil d’alerte du rapport DC/AC', '', 'PV*SOL — Configuration check'],
-  ['correspondances_nomenclature', 'Correspondances de nomenclature du bordereau', '', 'Réglage société — aucun code article n’est deviné'],
-  ['regle_bom_structure', 'Règle de sortie de la structure hors bordereau électrique', '', 'Décision fondateur 21/09/2026 — la structure sort du bordereau électrique'],
-  ['cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n’est supposée'],
-]
-
-/** Les deux sections à afficher, avec le registre ACTIF de chacune (servi
- *  par le GET, ou le repli local si la clé `registre` est absente). */
-function sectionsDe(registreSimulation, registreElectrique) {
-  return [
-    ['simulation', 'Simulation', registreSimulation],
-    ['electrique_societe', 'Électrique — société', registreElectrique],
-  ]
-}
+const TITRES = { simulation: 'Simulation', electrique_societe: 'Électrique — société' }
 
 const LIGNE_VIDE = { valeurTexte: '', source: '', reference: '' }
 
-/** Le libellé français d'une clé, cherché dans les registres ACTIFS. */
-function libelleDe(cle, sections) {
-  for (const [, , registre] of sections) {
-    const trouve = registre.find(([c]) => c === cle)
-    if (trouve) return trouve[1]
+/** Le libellé français d'une clé, cherché dans le registre SERVI. */
+function libelleDe(cle, registres) {
+  for (const registre of Object.values(registres)) {
+    const trouve = registre.find((r) => r.cle === cle)
+    if (trouve) return trouve.libelle
   }
   return cle
 }
 
-/** `registre.<section>` servi par le GET — une LISTE `[{cle, libelle, unite,
- *  reference}, …]` (contrat `parametres_calepinage.json`) — reconverti dans
- *  la forme `[clé, libellé, unité, référence]` qu'utilisent `lignesDepuis`/
- *  `validerSection`. Rend `null` si la clé est absente ou mal formée : c'est
- *  le signal qui déclenche le repli sur la table locale, jamais un registre
- *  à moitié reconstruit. */
+/** `registre.<section>` servi par le GET — une LISTE d'objets — normalisée.
+ *  Rend `null` si la clé est absente ou mal formée : l'écran dit alors que le
+ *  registre est indisponible, jamais un registre à moitié reconstruit. */
 function registreDepuisServeur(liste) {
   if (!Array.isArray(liste) || liste.length === 0) return null
   const lignes = []
   for (const ligne of liste) {
-    if (!ligne || typeof ligne !== 'object' || typeof ligne.cle !== 'string') {
-      return null
-    }
-    lignes.push([
-      ligne.cle,
-      typeof ligne.libelle === 'string' ? ligne.libelle : ligne.cle,
-      typeof ligne.unite === 'string' ? ligne.unite : '',
-      typeof ligne.reference === 'string' ? ligne.reference : '',
-    ])
+    if (!ligne || typeof ligne !== 'object' || typeof ligne.cle !== 'string') return null
+    lignes.push({
+      cle: ligne.cle,
+      libelle: typeof ligne.libelle === 'string' ? ligne.libelle : ligne.cle,
+      unite: typeof ligne.unite === 'string' ? ligne.unite : '',
+      reference: typeof ligne.reference === 'string' ? ligne.reference : '',
+      type: typeof ligne.type === 'string' ? ligne.type : '',
+      valeurs: Array.isArray(ligne.valeurs) ? ligne.valeurs.map(String) : null,
+      minimum: typeof ligne.minimum === 'number' ? ligne.minimum : null,
+      maximum: typeof ligne.maximum === 'number' ? ligne.maximum : null,
+    })
   }
   return lignes
 }
@@ -149,7 +91,8 @@ function texteDeValeur(valeur) {
 }
 
 /** La valeur ENVOYÉE, depuis le texte tapé — nombre, table (JSON) ou texte
- *  brut selon ce que l'utilisateur a tapé, jamais un type deviné à l'avance. */
+ *  brut selon ce que l'utilisateur a tapé ; « 2,5 » part tel quel (texte) et
+ *  c'est le serveur qui normalise. */
 function valeurDepuisTexte(texte) {
   try {
     return JSON.parse(texte)
@@ -164,16 +107,21 @@ function valeurDepuisTexte(texte) {
 function lignesDepuis(registre, section) {
   const servi = section && typeof section === 'object' ? section : {}
   const lignes = {}
-  for (const [cle] of registre) {
+  for (const { cle } of registre) {
     const existant = servi[cle]
-    lignes[cle] = existant && typeof existant === 'object'
-      ? {
-        valeurTexte: texteDeValeur(existant.valeur),
+    if (existant && typeof existant === 'object') {
+      const texte = texteDeValeur(existant.valeur)
+      lignes[cle] = {
+        valeurTexte: texte,
         source: typeof existant.source === 'string' ? existant.source : '',
         reference: typeof existant.reference === 'string' ? existant.reference : '',
         stockee: true,
+        valeurOrigine: existant.valeur,
+        texteOrigine: texte,
       }
-      : { ...LIGNE_VIDE }
+    } else {
+      lignes[cle] = { ...LIGNE_VIDE }
+    }
   }
   return lignes
 }
@@ -184,7 +132,7 @@ function lignesDepuis(registre, section) {
 function validerSection(registre, lignes) {
   const section = {}
   const erreurs = {}
-  for (const [cle, libelle] of registre) {
+  for (const { cle, libelle } of registre) {
     const ligne = lignes[cle] || LIGNE_VIDE
     const valeurTexte = (ligne.valeurTexte || '').trim()
     const source = (ligne.source || '').trim()
@@ -208,66 +156,120 @@ function validerSection(registre, lignes) {
         + 'societe, mesure, saisie, texte.'
       continue
     }
-    section[cle] = { valeur: valeurDepuisTexte(valeurTexte), source, reference }
+    // Ligne NON TOUCHÉE : la valeur d'origine telle que servie (un texte
+    // « 60 » ne devient pas le nombre 60 par un aller-retour sans geste).
+    const intacte = ligne.stockee && valeurTexte === (ligne.texteOrigine || '').trim()
+    section[cle] = {
+      valeur: intacte ? ligne.valeurOrigine : valeurDepuisTexte(valeurTexte),
+      source,
+      reference,
+    }
   }
   return { section, erreurs }
 }
 
-function LigneReglage({
-  cle, libelle, unite, reference, ligne, erreur, disabled, onChange,
-}) {
-  const majer = (champ, valeur) => onChange(cle, champ, valeur)
+const CLASSE_CHAMP = 'mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground'
+
+/** L'aide de TYPE d'une clé, depuis le registre servi (type, bornes). */
+function aideDeType(r) {
+  const bornes = r.minimum !== null && r.maximum !== null
+    ? ` entre ${r.minimum} et ${r.maximum}`
+    : (r.minimum !== null ? ` au moins ${r.minimum}` : (r.maximum !== null ? ` au plus ${r.maximum}` : ''))
+  switch (r.type) {
+    case 'pourcentage': return `Pourcentage${bornes}`
+    case 'nombre': return `Nombre${bornes}`
+    case 'entier': return `Nombre entier${bornes}`
+    case 'enum': return 'Une valeur de la liste'
+    case 'booleen': return 'Oui ou non'
+    case 'table_mensuelle': return `Douze valeurs mensuelles (liste), ou une seule pour les douze${bornes}`
+    case 'intervalle_annees': return 'Intervalle d’années [début, fin]'
+    case 'table': return 'Table structurée (JSON)'
+    default: return ''
+  }
+}
+
+function ChampValeur({ r, ligne, disabled, erreur, onChange }) {
+  const commun = {
+    id: `calx69-${r.cle}`,
+    value: ligne.valeurTexte,
+    disabled,
+    'aria-invalid': erreur ? 'true' : undefined,
+    'aria-describedby': erreur ? `calx69-erreur-${r.cle}` : undefined,
+    onChange: (e) => onChange('valeurTexte', e.target.value),
+    className: CLASSE_CHAMP,
+  }
+  if (r.type === 'enum' && r.valeurs) {
+    const options = r.valeurs.includes(ligne.valeurTexte) || !ligne.valeurTexte
+      ? r.valeurs : [ligne.valeurTexte, ...r.valeurs]
+    return (
+      <select {...commun}>
+        <option value="">— aucune —</option>
+        {options.map((v) => <option key={v} value={v}>{v}</option>)}
+      </select>
+    )
+  }
+  if (r.type === 'booleen') {
+    return (
+      <select {...commun}>
+        <option value="">— aucune —</option>
+        <option value="true">Oui</option>
+        <option value="false">Non</option>
+      </select>
+    )
+  }
+  return <input type="text" inputMode="text" {...commun} />
+}
+
+function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
+  const majer = (champ, valeur) => onChange(r.cle, champ, valeur)
+  const aide = aideDeType(r)
   return (
-    <fieldset className="mt-4 border-t border-border/60 pt-4" data-testid={`calx69-ligne-${cle}`}>
+    <fieldset className="mt-4 border-t border-border/60 pt-4" data-testid={`calx69-ligne-${r.cle}`}>
       <legend className="text-sm font-semibold text-foreground">
-        {libelle}{unite ? ` (${unite})` : ''}
+        {r.libelle}{r.unite ? ` (${r.unite})` : ''}
       </legend>
-      {reference && (
-        <p className="text-xs text-muted-foreground" data-testid={`calx69-aide-${cle}`}>
-          {reference}
+      {r.reference && (
+        <p className="text-xs text-muted-foreground" data-testid={`calx69-aide-${r.cle}`}>
+          {r.reference}
+        </p>
+      )}
+      {aide && (
+        <p className="text-xs text-muted-foreground" data-testid={`acal133-type-${r.cle}`}>
+          {aide}
         </p>
       )}
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block" data-testid={`calx69-valeur-${cle}`}>
+        <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Valeur</span>
-          <input
-            type="text"
-            id={`calx69-${cle}`}
-            value={ligne.valeurTexte}
-            disabled={disabled}
-            aria-invalid={erreur ? 'true' : undefined}
-            aria-describedby={erreur ? `calx69-erreur-${cle}` : undefined}
-            onChange={(e) => majer('valeurTexte', e.target.value)}
-            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground"
-          />
+          <ChampValeur r={r} ligne={ligne} disabled={disabled} erreur={erreur} onChange={majer} />
         </label>
-        <label className="block" data-testid={`calx69-source-${cle}`}>
+        <label className="block" data-testid={`calx69-source-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Source</span>
           <select
             value={ligne.source}
             disabled={disabled}
             onChange={(e) => majer('source', e.target.value)}
-            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground"
+            className={CLASSE_CHAMP}
           >
             <option value="">— aucune —</option>
             {SOURCES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
           </select>
         </label>
-        <label className="block" data-testid={`calx69-reference-${cle}`}>
+        <label className="block" data-testid={`calx69-reference-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Référence (facultatif)</span>
           <input
             type="text"
             value={ligne.reference}
             disabled={disabled}
             onChange={(e) => majer('reference', e.target.value)}
-            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground"
+            className={CLASSE_CHAMP}
           />
         </label>
       </div>
       {erreur && (
         <p
-          id={`calx69-erreur-${cle}`}
-          data-testid={`calx69-erreur-${cle}`}
+          id={`calx69-erreur-${r.cle}`}
+          data-testid={`calx69-erreur-${r.cle}`}
           role="alert"
           className="mt-2 text-xs text-destructive"
         >
@@ -278,21 +280,33 @@ function LigneReglage({
   )
 }
 
+/** « N simulations relancées » — l'accord du pluriel est celui du serveur
+ *  (`soumis`), jamais un chiffre recalculé ici. */
+function phraseRecalcul(rendu) {
+  const n = Number.isFinite(rendu?.soumis) ? rendu.soumis : 0
+  const base = n === 1 ? '1 simulation relancée' : `${n} simulations relancées`
+  const reste = Number.isFinite(rendu?.reste) ? rendu.reste : 0
+  return reste > 0
+    ? `${base} — il en reste ${reste} : relancez « Tout recalculer » pour la suite.`
+    : `${base}.`
+}
+
 export default function ReglagesSimulation() {
   const peutGerer = useHasPermission('calepinage_gerer')
 
-  const [lignesSimulation, setLignesSimulation] = useState({})
-  const [lignesElectrique, setLignesElectrique] = useState({})
-  // Le registre ACTIF : celui servi par le GET (`data.registre`), ou le
-  // repli local tant que la réponse n'est pas encore arrivée — jamais un
-  // écran sans aucune ligne pendant le chargement.
-  const [registreSimulation, setRegistreSimulation] = useState(REGISTRE_SIMULATION)
-  const [registreElectrique, setRegistreElectrique] = useState(REGISTRE_ELECTRIQUE_SOCIETE)
+  const [lignesParSection, setLignesParSection] = useState({
+    simulation: {}, electrique_societe: {},
+  })
+  // Le registre ACTIF : UNIQUEMENT celui servi par le GET (ACAL133).
+  const [registres, setRegistres] = useState(null)
+  // ACAL130 — la section « imagerie » servie, pour « Site & imagerie ».
+  const [imagerie, setImagerie] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
   const [message, setMessage] = useState(null)
   const [enregistrement, setEnregistrement] = useState(false)
+  const [recalcul, setRecalcul] = useState(false)
 
   useEffect(() => {
     let annule = false
@@ -301,16 +315,21 @@ export default function ReglagesSimulation() {
         if (annule) return
         const data = res?.data ?? {}
         const servi = data.registre && typeof data.registre === 'object' ? data.registre : {}
-        // Le registre SERVI d'abord ; le repli local (`REGISTRE_SIMULATION`/
-        // `REGISTRE_ELECTRIQUE_SOCIETE`) seulement si la clé `registre` est
-        // absente ou mal formée (client ancien, mock de test incomplet).
-        const simulationActive = registreDepuisServeur(servi.simulation) || REGISTRE_SIMULATION
-        const electriqueActive = registreDepuisServeur(servi.electrique_societe)
-          || REGISTRE_ELECTRIQUE_SOCIETE
-        setRegistreSimulation(simulationActive)
-        setRegistreElectrique(electriqueActive)
-        setLignesSimulation(lignesDepuis(simulationActive, data.simulation))
-        setLignesElectrique(lignesDepuis(electriqueActive, data.electrique_societe))
+        const simulation = registreDepuisServeur(servi.simulation)
+        const electrique = registreDepuisServeur(servi.electrique_societe)
+        if (!simulation || !electrique) {
+          setErreurChargement(
+            'Registre des réglages indisponible : le serveur n’a pas servi la liste '
+            + 'des réglages, la page ne peut pas afficher de lignes.',
+          )
+          return
+        }
+        setRegistres({ simulation, electrique_societe: electrique })
+        setImagerie(data.imagerie && typeof data.imagerie === 'object' ? data.imagerie : null)
+        setLignesParSection({
+          simulation: lignesDepuis(simulation, data.simulation),
+          electrique_societe: lignesDepuis(electrique, data.electrique_societe),
+        })
       })
       .catch(() => {
         if (!annule) {
@@ -321,15 +340,19 @@ export default function ReglagesSimulation() {
     return () => { annule = true }
   }, [])
 
-  const changer = (setter) => (cle, champ, valeur) => setter(
-    (lignes) => ({ ...lignes, [cle]: { ...(lignes[cle] || LIGNE_VIDE), [champ]: valeur } }),
-  )
-  const changerSimulation = changer(setLignesSimulation)
-  const changerElectrique = changer(setLignesElectrique)
+  const changer = (section) => (cle, champ, valeur) => setLignesParSection((courant) => ({
+    ...courant,
+    [section]: {
+      ...courant[section],
+      [cle]: { ...(courant[section][cle] || LIGNE_VIDE), [champ]: valeur },
+    },
+  }))
 
   const enregistrer = async () => {
-    const simulation = validerSection(registreSimulation, lignesSimulation)
-    const electrique = validerSection(registreElectrique, lignesElectrique)
+    const simulation = validerSection(registres.simulation, lignesParSection.simulation)
+    const electrique = validerSection(
+      registres.electrique_societe, lignesParSection.electrique_societe,
+    )
     const toutesErreurs = { ...simulation.erreurs, ...electrique.erreurs }
     setMessage(null)
     if (Object.keys(toutesErreurs).length > 0) {
@@ -339,13 +362,17 @@ export default function ReglagesSimulation() {
     setErreurs({})
     setEnregistrement(true)
     try {
-      await calepinageApi.parametres.update({ simulation: simulation.section })
-      const res = await calepinageApi.parametres.update(
-        { electrique_societe: electrique.section },
-      )
+      // UN SEUL PUT pour les deux sections (ACAL133) : le serveur l'écrit
+      // dans une seule transaction, jamais une moitié.
+      const res = await calepinageApi.parametres.update({
+        simulation: simulation.section,
+        electrique_societe: electrique.section,
+      })
       const data = res?.data ?? {}
-      setLignesSimulation(lignesDepuis(registreSimulation, data.simulation))
-      setLignesElectrique(lignesDepuis(registreElectrique, data.electrique_societe))
+      setLignesParSection({
+        simulation: lignesDepuis(registres.simulation, data.simulation),
+        electrique_societe: lignesDepuis(registres.electrique_societe, data.electrique_societe),
+      })
       setMessage('Réglages enregistrés.')
     } catch (e) {
       const corps = e?.response?.data
@@ -371,6 +398,23 @@ export default function ReglagesSimulation() {
     }
   }
 
+  const toutRecalculer = async () => {
+    setMessage(null)
+    setRecalcul(true)
+    try {
+      const res = await calepinageApi.parametres.recalculerSimulations()
+      setMessage(phraseRecalcul(res?.data))
+    } catch (e) {
+      const detail = e?.response?.data?.detail
+      setErreurs({
+        _general: typeof detail === 'string' && detail
+          ? detail : 'Le recalcul n’a pas pu être lancé : aucune simulation relancée.',
+      })
+    } finally {
+      setRecalcul(false)
+    }
+  }
+
   if (chargement) {
     return <div className="page" data-testid="calx69-ecran"><Spinner /></div>
   }
@@ -384,10 +428,7 @@ export default function ReglagesSimulation() {
     )
   }
 
-  const champsFautifs = Object.keys(erreurs)
-  const sections = sectionsDe(registreSimulation, registreElectrique)
-  const lignesParSection = { simulation: lignesSimulation, electrique_societe: lignesElectrique }
-  const changerParSection = { simulation: changerSimulation, electrique_societe: changerElectrique }
+  const champsFautifs = Object.keys(erreurs).filter((cle) => cle !== '_general')
 
   return (
     <div className="page" data-testid="calx69-ecran">
@@ -407,6 +448,9 @@ export default function ReglagesSimulation() {
         les logiciels du marché, cités à titre d’aide : ils ne sont jamais
         recopiés dans la valeur.
       </p>
+      <p className="mt-1 text-sm text-muted-foreground" data-testid="acal133-priorite">
+        Un poste saisi sur un calepinage prime sur ce réglage société.
+      </p>
 
       {champsFautifs.length > 0 && (
         <p
@@ -418,41 +462,52 @@ export default function ReglagesSimulation() {
           {champsFautifs.map((cle, i) => (
             <span key={cle}>
               {i > 0 && ', '}
-              <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle, sections)}</a>
+              <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle, registres)}</a>
             </span>
           ))}
         </p>
       )}
 
-      {sections.map(([section, titre, registre]) => (
+      <ReglagesSite imagerie={imagerie} />
+
+      {Object.keys(registres).map((section) => (
         <Card key={section} className="mt-5 p-4" data-testid={`calx69-section-${section}`}>
-          <h2 className="text-base font-semibold text-foreground">{titre}</h2>
-          {registre.map(([cle, libelle, unite, reference]) => (
+          <h2 className="text-base font-semibold text-foreground">{TITRES[section] || section}</h2>
+          {registres[section].map((r) => (
             <LigneReglage
-              key={cle}
-              cle={cle}
-              libelle={libelle}
-              unite={unite}
-              reference={reference}
-              ligne={lignesParSection[section][cle] || LIGNE_VIDE}
-              erreur={erreurs[cle]}
+              key={r.cle}
+              r={r}
+              ligne={lignesParSection[section][r.cle] || LIGNE_VIDE}
+              erreur={erreurs[r.cle]}
               disabled={!peutGerer || enregistrement}
-              onChange={changerParSection[section]}
+              onChange={changer(section)}
             />
           ))}
         </Card>
       ))}
 
       {peutGerer ? (
-        <button
-          type="button"
-          disabled={enregistrement}
-          data-testid="calx69-enregistrer"
-          className="mt-4 text-sm font-semibold underline"
-          onClick={enregistrer}
-        >
-          {enregistrement ? 'Enregistrement…' : 'Enregistrer les réglages'}
-        </button>
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            disabled={enregistrement}
+            data-testid="calx69-enregistrer"
+            className="text-sm font-semibold underline"
+            onClick={enregistrer}
+          >
+            {enregistrement ? 'Enregistrement…' : 'Enregistrer les réglages'}
+          </button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={recalcul || enregistrement}
+            data-testid="acal133-tout-recalculer"
+            onClick={toutRecalculer}
+          >
+            {recalcul ? 'Recalcul en cours…' : 'Tout recalculer'}
+          </Button>
+        </div>
       ) : (
         <p className="mt-4 text-xs text-muted-foreground">
           Sans le droit « gérer le calepinage », la saisie n’est pas proposée

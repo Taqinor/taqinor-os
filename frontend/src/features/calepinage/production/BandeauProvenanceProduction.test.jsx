@@ -9,14 +9,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: { resultat: vi.fn() } },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import BandeauProvenanceProduction from './BandeauProvenanceProduction'
+import BandeauProvenanceProduction, {
+  BandeauBorneHaute, ReglagesUtilises, estIncomplet,
+} from './BandeauProvenanceProduction'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat
@@ -72,5 +74,37 @@ describe('BandeauProvenanceProduction (CALX65)', () => {
 
     const lien = within(simulation).getByTestId('calx65-lien-production')
     expect(lien).toHaveAttribute('href', '/calepinage/1?onglet=production')
+  })
+})
+
+/* ACAL52 — le bandeau commun de borne haute et les réglages utilisés. */
+describe('BandeauBorneHaute / ReglagesUtilises (ACAL52)', () => {
+  const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+
+  it('lien vers les réglages', () => {
+    render(<MemoryRouter><BandeauBorneHaute total={borneHaute.production.total} /></MemoryRouter>)
+
+    expect(screen.getByTestId('acal52-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
+    expect(screen.getByTestId('acal52-mention')).toHaveTextContent('3 pertes non renseignées')
+  })
+
+  it('complet ou jamais simulé : aucun bandeau', () => {
+    const complet = exempleContrat('calepinage', 'calepinage_resultat', 'exemple').production.total
+    const vide = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide').production.total
+    expect(estIncomplet(complet)).toBe(false)
+    expect(estIncomplet(vide)).toBe(false)
+    expect(estIncomplet(borneHaute.production.total)).toBe(true)
+    render(<MemoryRouter><BandeauBorneHaute total={complet} /></MemoryRouter>)
+    expect(screen.queryByTestId('acal52-borne-haute')).toBeNull()
+  })
+
+  it('réglages utilisés listés', () => {
+    render(<ReglagesUtilises simulation={borneHaute.simulation} />)
+
+    const lignes = screen.getAllByTestId('acal52-reglage')
+    expect(lignes).toHaveLength(Object.keys(borneHaute.simulation.reglages_utilises).length)
+    expect(lignes[1]).toHaveTextContent('tolerance_validation_pct')
+    expect(lignes[1]).toHaveTextContent('3')
+    expect(lignes[1]).toHaveTextContent('societe')
   })
 })

@@ -116,7 +116,6 @@ FORME_CALCULER = inline_serializer('CalepinageMoteurCalculerReponse', dict(
     engagement_modules=serializers.IntegerField(allow_null=True),
     depuis_cache=serializers.BooleanField(),
     rangees=serializers.ListField(child=serializers.DictField()),
-    tiroirs=serializers.DictField(),
     suggestions=serializers.ListField(child=serializers.DictField()),
 ))
 
@@ -298,10 +297,10 @@ class MoteurPoseView(APIView):
     CE QUI LA DISTINGUE DE ``calculer``. Rien dans le moteur : c'est LE MÊME
     point d'entrée neutre (``moteur_service.calepinage_json``), donc aucune
     seconde sérialisation qui dériverait de la première. La différence est la
-    RÉPONSE : ``calculer`` publie la carte complète de l'atelier (tiroirs,
+    RÉPONSE : ``calculer`` publie la carte complète de l'atelier (
     suggestions, cache, engagement) ; ``pose`` publie la POSE et sa preuve, et
     rien d'autre. Les charges utiles d'atelier ne sont donc même pas calculées
-    (``tiroirs=False``, ``suggestions=False``) : on ne paye pas un travail que
+    (``suggestions=False``) : on ne paye pas un travail que
     la réponse ne publie pas.
 
     Elle n'écrit RIEN — aucun calepinage, aucune variante, aucun statut.
@@ -361,7 +360,7 @@ class MoteurPoseView(APIView):
             # l'axe est DÉRIVÉ des kits par le moteur, jamais deviné à l'écran.
             document = deriver_axe_rangee(document)
             resultat = calepinage_json(document, company=company,
-                                       user=request.user, tiroirs=False,
+                                       user=request.user,
                                        suggestions=False)
         except entree_invalide as erreur:
             raise ValidationError({'demande': [str(erreur)]}) from erreur

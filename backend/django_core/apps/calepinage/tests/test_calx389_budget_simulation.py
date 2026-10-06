@@ -172,9 +172,9 @@ TAILLES = (1, 4, 12)
 #
 #   1 pan  :  3 passages (pan + 2 accès distincts)    ,    864 points,
 #             0,074 s  (tours : 0,074 / 0,084 / 0,076 s)
-#   4 pans : 13 passages (4 × 3 + pan de référence)   ,  3 744 points,
+#   4 pans : 14 passages (4 × 3 + onduleur + site)    ,  4 032 points,
 #             0,261 s  (tours : 0,297 / 0,273 / 0,261 s)
-#   12 pans: 37 passages (12 × 3 + pan de référence)  , 10 656 points,
+#   12 pans: 38 passages (12 × 3 + onduleur + site)   , 10 944 points,
 #             0,748 s  (tours : 0,748 / 0,903 / 0,818 s)
 #
 # Onze des vingt-quatre étapes de la cascade CALCULENT sur ce cas (salissure,
@@ -183,17 +183,19 @@ TAILLES = (1, 4, 12)
 # module, la courbe de charge et l'autoconsommation : le budget mesure une
 # chaîne qui travaille, pas une suite d'omissions.
 #
-# Au-delà d'un pan, le pan de RÉFÉRENCE (le plus puissant) repasse une fois
-# dans la chaîne pour publier sa cascade et sa série (``simulation.py``,
-# étape 2) : d'où le « + 1 ». Temps par pan à 12 pans / temps d'1 pan :
+# Au-delà d'un pan (ACAL53, relevé du travail mis à jour le 06/10/2026 —
+# les temps restent ceux du 24/09), chaque pan ne passe que la phase PAN, puis
+# la SOMME DC passe UNE fois la phase ONDULEUR et UNE fois la phase SITE
+# (``simulation.py::_chaine_par_phases``) : d'où le « + 2 », à la place de
+# l'ancien repassage du pan de référence (« + 1 »). Temps par pan à 12 pans / temps d'1 pan :
 # 0,84 / 0,90 / 0,90 selon le tour — la chaîne est LINÉAIRE en pans.
 # Doublement artificiel (la chaîne exécutée deux fois par passage) : 6 / 26 /
 # 74 passages et 0,135 / 0,521 / 1,630 s — c'est ce que la garde refuse.
 # ═══════════════════════════════════════════════════════════════════════════
 RELEVES = {
     1: {'passages': 3, 'points': 864, 'series_meteo': 1, 'secondes': 0.074},
-    4: {'passages': 13, 'points': 3744, 'series_meteo': 4, 'secondes': 0.261},
-    12: {'passages': 37, 'points': 10656, 'series_meteo': 12,
+    4: {'passages': 14, 'points': 4032, 'series_meteo': 4, 'secondes': 0.261},
+    12: {'passages': 38, 'points': 10944, 'series_meteo': 12,
          'secondes': 0.748},
 }
 

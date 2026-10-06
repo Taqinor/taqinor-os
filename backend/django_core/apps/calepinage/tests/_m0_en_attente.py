@@ -83,34 +83,12 @@ EN_ATTENTE_DETAIL = {
 #: un état de ``calepinage_simulation.json`` OU de ``calepinage_resultat.json``
 #: (les deux échantillons publient les mêmes blocs).
 EN_ATTENTE_SIMULATION = {
-    'simulation.version_simulation': 'ACAL48',
-    'simulation.reglages_utilises': 'ACAL48',
-    'simulation.meteo_fichier': 'ACAL146',
-    'cascade.etapes_omises': 'ACAL49',
-    'cascade.irradiation_incidente_kwh_m2': 'ACAL128',
-    'meteo.fichier': 'ACAL146',
-    'meteo.heure.provenance_fuseau': 'ACAL129',
-    'ombrage.par_pan[].perte_ombrage_pct': 'ACAL53',
-    'ombrage.par_pan[].cascade': 'ACAL53',
-    'production.total.complete': 'ACAL49',
-    'production.total.socle_manquant': 'ACAL49',
-    'production.total.mention': 'ACAL49',
-    'production.total.performance_ratio_motif': 'ACAL49',
-    'production.total.p75_kwh_motif': 'ACAL49',
-    'production.total.p90_kwh_motif': 'ACAL49',
-    'production.total.p95_kwh_motif': 'ACAL49',
-    'production.total.p95_kwh': 'ACAL49',
-    'production.total.portee': 'ACAL54',
-    'production.total.annees_fenetre': 'ACAL54',
-    'production.annees[].observe': 'ACAL54',
 }
 
 #: Clés propres à ``calepinage_resultat.json`` posées par ACAL8 (M0), en plus
 #: des blocs de simulation ci-dessus.
 EN_ATTENTE_RESULTAT = {
     **EN_ATTENTE_SIMULATION,
-    'production.annees': 'ACAL54',
-    'simulation': 'ACAL48',
     'ecart_devis': 'ACAL104',
     'pose.pans[].cle': 'ACAL265',
     'pose.pans[].module_id': 'ACAL264',
