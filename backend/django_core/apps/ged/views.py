@@ -493,9 +493,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         """GED9 — Retire un tag de ce document. Body : `{"tag": <id>}`."""
         document = self.get_object()
         tag_id = request.data.get('tag')
-        DocumentTagAssignment.objects.filter(
-            company=request.user.company, document=document, tag_id=tag_id
-        ).delete()
+        # ADOC19 — retrait journalisé dans le chatter (old→new).
+        services.retirer_tag(document, tag_id, user=request.user)
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
@@ -510,6 +509,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         aucun import du modèle crm)."""
         document = self.get_object()
         data = request.data
+        # ADOC19 — état AVANT pour le chatter old→new.
+        avant = {
+            'propriétaire': getattr(document.proprietaire, 'username', None),
+            'contact': document.contact_id,
+        }
         if 'proprietaire' in data:
             proprietaire_id = data.get('proprietaire')
             if proprietaire_id in (None, '', 'null'):
@@ -537,6 +541,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                         status=status.HTTP_404_NOT_FOUND)
                 document.contact_id = client.pk
         document.save(update_fields=['proprietaire', 'contact_id', 'updated_at'])
+        services.journaliser_modifications(document, avant, {
+            'propriétaire': getattr(document.proprietaire, 'username', None),
+            'contact': document.contact_id,
+        }, request.user)
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
@@ -575,7 +583,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             from .models import ARCHIVE_LEGALE_MESSAGE
             raise PermissionDenied(ARCHIVE_LEGALE_MESSAGE)
+        # ADOC19 — état AVANT pour le chatter old→new.
+        avant = {'nom': instance.nom, 'description': instance.description} \
+            if instance is not None else {}
         document = serializer.save()
+        services.journaliser_modifications(
+            document, avant,
+            {'nom': document.nom, 'description': document.description},
+            self.request.user)
         # GED11 — réindexe après modification (nom/description/métadonnées).
         services.update_search_vector(document)
         # GED12 — réindexe l'embedding sémantique (no-op sans clé).
@@ -1132,7 +1147,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         try:
-            services.move_document(document, new_folder)
+            services.move_document(document, new_folder, user=request.user)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1343,7 +1358,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
                 status=status.HTTP_404_NOT_FOUND)
-        services.restaurer_de_corbeille(document)
+        services.restaurer_de_corbeille(document, user=request.user)
         document.refresh_from_db()
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
@@ -2269,8 +2284,17 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
+        assignment = serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+        # ADOC19 — chatter : tag posé (old→new).
+        services.journaliser_modifications(
+            assignment.document, {f'tag {assignment.tag.nom}': 'absent'},
+            {f'tag {assignment.tag.nom}': 'posé'}, self.request.user)
+
+    def perform_destroy(self, instance):
+        # ADOC19 — chatter : tag retiré (old→new).
+        services.retirer_tag(
+            instance.document, instance.tag_id, user=self.request.user)
 
 
 class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

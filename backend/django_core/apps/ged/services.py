@@ -694,9 +694,30 @@ def assign_tag(document, tag, *, created_by=None):
     from .models import DocumentTag, DocumentTagAssignment  # noqa: F401
     if tag.company_id != document.company_id:
         raise ValueError("Le tag doit appartenir à la même société.")
-    return DocumentTagAssignment.objects.get_or_create(
+    assignment, created = DocumentTagAssignment.objects.get_or_create(
         document=document, tag=tag,
         defaults={'company': document.company, 'created_by': created_by})
+    if created:
+        # ADOC19 — chatter : tag posé.
+        journaliser_modifications(
+            document, {f'tag {tag.nom}': 'absent'},
+            {f'tag {tag.nom}': 'posé'}, created_by)
+    return assignment, created
+
+
+def retirer_tag(document, tag_id, *, user=None):
+    """ADOC19 — Retire un tag d'un document et le journalise (old→new).
+    Renvoie le nombre d'affectations supprimées (0 = no-op silencieux)."""
+    from .models import DocumentTagAssignment
+    assignments = list(DocumentTagAssignment.objects.filter(
+        company=document.company, document=document,
+        tag_id=tag_id).select_related('tag'))
+    for assignment in assignments:
+        nom = assignment.tag.nom
+        assignment.delete()
+        journaliser_modifications(
+            document, {f'tag {nom}': 'posé'}, {f'tag {nom}': 'retiré'}, user)
+    return len(assignments)
 
 
 def move_folder(folder, new_parent):
@@ -731,7 +752,7 @@ def move_folder(folder, new_parent):
     return folder
 
 
-def move_document(document, new_folder):
+def move_document(document, new_folder, *, user=None):
     """Déplace un document dans un autre dossier (même société).
 
     Le dossier cible DOIT appartenir à la même société que le document — sinon
@@ -748,8 +769,12 @@ def move_document(document, new_folder):
             "Document archivé à valeur probante (write-once) : il ne peut plus "
             "être déplacé.")
     if document.folder_id != new_folder.id:
+        ancien = document.folder.nom if document.folder_id else None
         document.folder = new_folder
         document.save(update_fields=['folder', 'updated_at'])
+        # ADOC19 — chatter old→new du déplacement.
+        journaliser_modifications(
+            document, {'dossier': ancien}, {'dossier': new_folder.nom}, user)
     return document
 
 
@@ -2281,10 +2306,13 @@ def mettre_en_corbeille(document, user):
     document.supprime_le = timezone.now()
     document.supprime_par = user
     document.save(update_fields=['supprime_le', 'supprime_par', 'updated_at'])
+    # ADOC19 — chatter old→new.
+    journaliser_modifications(
+        document, {'corbeille': 'non'}, {'corbeille': 'oui'}, user)
     return document
 
 
-def restaurer_de_corbeille(document):
+def restaurer_de_corbeille(document, user=None):
     """GED26 — Restaure un document DEPUIS la corbeille (efface le soft-delete).
 
     Vide `supprime_le`/`supprime_par` : le document réapparaît dans les listes
@@ -2297,6 +2325,9 @@ def restaurer_de_corbeille(document):
     document.supprime_le = None
     document.supprime_par = None
     document.save(update_fields=['supprime_le', 'supprime_par', 'updated_at'])
+    # ADOC19 — chatter old→new.
+    journaliser_modifications(
+        document, {'corbeille': 'oui'}, {'corbeille': 'non'}, user)
     return document
 
 
@@ -5218,16 +5249,15 @@ def operation_lot(documents, *, operation, params, user):
                 assign_tag(document, tag, created_by=user)
                 resultats.append({'document': document.pk, 'ok': True})
             elif operation == 'detaguer':
-                from .models import DocumentTagAssignment
-                DocumentTagAssignment.objects.filter(
-                    document=document, tag_id=params.get('tag')).delete()
+                # ADOC19 — retrait journalisé (old→new).
+                retirer_tag(document, params.get('tag'), user=user)
                 resultats.append({'document': document.pk, 'ok': True})
             elif operation == 'deplacer':
                 folder = Folder.objects.filter(
                     company=user.company, pk=params.get('folder')).first()
                 if folder is None:
                     raise ValueError('Dossier cible inconnu.')
-                move_document(document, folder)
+                move_document(document, folder, user=user)
                 resultats.append({'document': document.pk, 'ok': True})
             elif operation == 'corbeille':
                 mettre_en_corbeille(document, user)
@@ -5270,6 +5300,28 @@ def journaliser_evenement(document, *, type_evenement, message='', utilisateur=N
             utilisateur=utilisateur)
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
         return None
+
+
+def _valeur_chatter(valeur):
+    if valeur in (None, ''):
+        return '—'
+    return str(valeur)
+
+
+def journaliser_modifications(document, avant, apres, user):
+    """ADOC19 — Journalise dans le chatter GED chaque champ qui CHANGE, en
+    old→new (« nom : Contrat A → Contrat B »). `avant`/`apres` : dicts
+    {libellé lisible: valeur}. Une entrée par champ modifié ; best-effort,
+    jamais bloquant (même contrat que `journaliser_evenement`)."""
+    for libelle, nouvelle in (apres or {}).items():
+        ancienne = (avant or {}).get(libelle)
+        if ancienne == nouvelle:
+            continue
+        journaliser_evenement(
+            document, type_evenement='modification',
+            message=(f'{libelle} : {_valeur_chatter(ancienne)} → '
+                     f'{_valeur_chatter(nouvelle)}')[:500],
+            utilisateur=user)
 
 
 def planifier_document(document, *, libelle, echeance, assigne_a=None,
