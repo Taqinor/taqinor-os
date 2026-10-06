@@ -23,16 +23,15 @@ from decimal import Decimal
 
 from core.calepinage.version import SCHEMA_VERSION, VERSION_MOTEUR
 
+#: ACAL327 — SEULS les noms qu'un autre module lit (garde AST :
+#: ``tests/test_acal_moteur_symboles_morts.py``). Les tables et traducteurs
+#: internes restent des détails de ce module.
 __all__ = [
-    'EntreeInvalide', 'NATURE_VERS_TYPE_MOTEUR', 'PROVENANCE_VERS_MOTEUR',
-    'MODE_POSE_IMPOSE',
-    'affectations_du_document', 'parametres_vers_document',
+    'EntreeInvalide',
+    'affectations_du_document',
     'AXE_AUTO', 'deriver_axe_rangee',
-    'rangees_imposees_du_preset',
     'resultat_vers_json', 'preuve_vers_json',
-    'marges_vers_json',
-    'PATCH_MOTEUR_VERS_PARAMS', 'PATCH_MOTEUR_VERS_OBSTACLE',
-    'action_de_patch', 'suggestion_vers_json', 'suggestions_vers_json',
+    'marges_vers_json', 'suggestion_vers_json', 'plan_vers_json',
 ]
 
 
@@ -169,123 +168,6 @@ def deriver_axe_rangee(document):
         else s
         for s in surfaces]
     return copie
-
-
-# ─────────────────────────────────────────────────────── paramètres
-def rives_du_preset(params):
-    """Les 4 rives NOMMÉES depuis un dict de preset (AOF27)."""
-    return {
-        'laterale_m': float(params.get('rive_laterale_m', 0.35)),
-        'extremite_m': float(params.get('rive_extremite_m', 0.35)),
-        'acrotere_m': float(params.get('acrotere_m', 0.0)),
-        'joint_m': float(params.get('joint_m', 0.0)),
-    }
-
-
-#: Valeur de ``mode_pose`` qui EXIGE des rangées imposées (PV29).
-MODE_POSE_IMPOSE = 'rangees_imposees_utilisateur'
-
-
-def rangees_imposees_du_preset(brut, codes_kits):
-    """PV30 — ``[[y0, code_kit], …]`` du preset -> forme du contrat, ou REFUS.
-
-    Le champ traverse l'API tel que l'utilisateur l'a saisi : c'est ICI, à la
-    couture, qu'il devient une donnée du contrat ou un refus NOMMÉ en français.
-    Le moteur porte la même garde (``optimum._rangees_imposees``), mais il lève
-    l'exception du NOYAU, que l'API ne sait pas retraduire en 400 : laisser le
-    refus descendre jusque-là transformerait une faute de saisie en erreur 500.
-
-    Absent, vide ou ``None`` -> ``None`` (le paramètre est alors OMIS du
-    document, exactement comme le fait ``serialisation._parametres`` : écrire
-    ``"rangees_imposees": null`` partout ferait bouger l'empreinte de relevés
-    que personne n'a touchés).
-    """
-    if brut in (None, '', (), []):
-        return None
-    if isinstance(brut, dict) or not isinstance(brut, (list, tuple)):
-        raise EntreeInvalide(
-            'Les rangées imposées doivent être une liste de couples '
-            '[position, code de kit] — reçu %s.' % type(brut).__name__)
-    connus = list(codes_kits)
-    rangees = []
-    for rang, entree in enumerate(brut, start=1):
-        if isinstance(entree, (str, bytes, dict)) or \
-                not isinstance(entree, (list, tuple)) or len(entree) != 2:
-            raise EntreeInvalide(
-                "Rangée imposée n°%d : attendu un couple [position, code de "
-                'kit], reçu %r.' % (rang, entree))
-        position, code = entree
-        try:
-            position = float(position)
-        except (TypeError, ValueError):
-            raise EntreeInvalide(
-                "Rangée imposée n°%d : la position « %r » n'est pas un nombre "
-                'de mètres.' % (rang, position)) from None
-        code = str(code)
-        if code not in connus:
-            raise EntreeInvalide(
-                "Rangée imposée n°%d : le kit « %s » n'est pas autorisé sur "
-                'cette toiture (kits déclarés : %s).'
-                % (rang, code, ', '.join(connus) or 'aucun'))
-        rangees.append([position, code])
-    return rangees
-
-
-def parametres_vers_document(params, codes_kits):
-    """Paramètres du preset AO (AOF27) -> ``Parametres`` du contrat.
-
-    Les dégagements par provenance du preset servent de PLANCHER générique ;
-    le dégagement réellement appliqué reste celui de chaque obstacle.
-
-    **PV30 — les deux paramètres de pose du plan passent d'un bout à l'autre.**
-    ``rangees_imposees`` (PV29 : le dessinateur fixe lui-même ses rangées) et
-    ``phase_forcee_m`` (PV52 : republier à l'identique une planche déjà posée
-    sur chantier) voyagent depuis le dict de paramètres de la requête jusqu'au
-    document du contrat, SANS nouvel endpoint : ``calculer`` et ``lancer`` les
-    portent déjà, leur champ ``params`` étant un ``JSONField`` opaque. Ils sont
-    OMIS du document quand ils ne disent rien — l'empreinte d'entrée d'un
-    relevé que personne n'a touché ne doit pas bouger.
-    """
-    degagements = params.get('degagements_par_provenance_m') or {}
-    mode_pose = params.get('mode_pose', 'rangees_explicites_dp')
-    document = {
-        'kits': list(codes_kits),
-        'rives': rives_du_preset(params),
-        'axe_rangee': params.get('axe_rangee', 'NORD_SUD'),
-        'mode_pose': mode_pose,
-        'allee_m': float(params.get('allee_min_m', 0.60)),
-        'degagement_defaut_m': float(degagements.get('MESURE', 0.30)),
-        'degagement_nature_inconnue_m': float(degagements.get('DEVINE', 0.50)),
-        'pas_recherche_m': float(params.get('pas_recherche_m', 0.01)),
-        'engagement_modules': params.get('engagement_modules'),
-        'plafond_kwc': params.get('plafond_kwc'),
-        'marge_troncon_min_m': float(params.get('marge_troncon_min_m', 0.02)),
-        'marge_bande_min_m': float(params.get('marge_bande_min_m', 0.04)),
-        'graine': int(params.get('graine', 0)),
-    }
-
-    rangees = rangees_imposees_du_preset(
-        params.get('rangees_imposees'), codes_kits)
-    if rangees is not None:
-        document['rangees_imposees'] = rangees
-    elif mode_pose == MODE_POSE_IMPOSE:
-        # Se replier en silence sur le DP ferait croire à l'utilisateur qu'il a
-        # imposé un plan que personne n'a posé — et le résultat porterait la
-        # preuve « optimum prouvé » d'un plan qu'il n'a pas choisi.
-        raise EntreeInvalide(
-            'Mode « rangées imposées par l\'utilisateur » : aucune rangée '
-            "n'est fournie (`rangees_imposees`). Le moteur ne pose pas un "
-            "plan à la place de l'utilisateur.")
-
-    phase = params.get('phase_forcee_m')
-    if phase not in (None, ''):
-        try:
-            document['phase_forcee_m'] = float(phase)
-        except (TypeError, ValueError):
-            raise EntreeInvalide(
-                "La phase forcée « %r » n'est pas un nombre de mètres."
-                % (phase,)) from None
-    return document
 
 
 def _affectations_par_prefixe(surfaces, obstacles):
@@ -431,8 +313,8 @@ def marges_vers_json(marges):
 # ``recommandations.proposer`` rend des ``Recommandation`` dont le
 # ``patch_entree`` est écrit dans le vocabulaire du MOTEUR (``allee_m``,
 # ``kits``, ``ecarter``…). L'écran, lui, ne sait appliquer que deux choses :
-# un patch de PARAMÈTRES de calepinage (le dict que ``parametres_vers_document``
-# relit) ou une décision sur un OBSTACLE (le champ ``provenance`` d'un
+# un patch de PARAMÈTRES de calepinage (le dict de paramètres que la requête
+# porte) ou une décision sur un OBSTACLE (le champ ``provenance`` d'un
 # ``ObstacleAO``). La traduction est donc EXPLICITE, clé par clé — et une clé
 # non cartographiée fait TOMBER la suggestion entière plutôt que de publier un
 # bouton « appliquer » qui n'appliquerait rien.
@@ -520,16 +402,6 @@ def suggestion_vers_json(recommandation):
         'question_a_poser': recommandation.question_a_poser,
         'action': action,
     }
-
-
-def suggestions_vers_json(recommandations):
-    """La liste des suggestions traduisibles, dans l'ordre reçu."""
-    sortie = []
-    for recommandation in recommandations or ():
-        suggestion = suggestion_vers_json(recommandation)
-        if suggestion is not None:
-            sortie.append(suggestion)
-    return sortie
 
 
 def resultat_vers_json(*, repere, hash_entree, modules, kwc, plans,

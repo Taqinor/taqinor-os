@@ -47,12 +47,11 @@ from .moteur_io import EntreeInvalide
 logger = logging.getLogger(__name__)
 
 
+#: ACAL327 — SEULS les noms qu'un autre module lit (garde AST :
+#: ``tests/test_acal_moteur_symboles_morts.py``). Les deux refus du moteur
+#: sortent par ``erreurs_moteur_calepinage`` (la porte des appelants).
 __all__ = [
-    'MoteurCalepinage', 'EntreeInvalide', 'CalepinageIncoherent',
-    'calepiner', 'cout_estime', 'empreinte_document',
-    'cle_cache', 'resultat_en_cache', 'mettre_en_cache',
-    'multiplicateur_suggestions',
-    'PLAFOND_SUGGESTIONS',
+    'calepiner', 'cout_estime', 'multiplicateur_suggestions',
     'erreurs_moteur_calepinage', 'cout_calepinage', 'calepinage_json',
 ]
 
@@ -74,48 +73,6 @@ def multiplicateur_suggestions(plafond=None):
 
     plafond = (PLAFOND_RECOMMANDATIONS if plafond is None else int(plafond))
     return 1 + max(0, plafond) + 1
-
-
-#: Durée de vie d'un résultat en cache (12 h). Un résultat n'est jamais
-#: « faux » en cache — la clé porte l'empreinte de l'entrée ET la version du
-#: moteur — mais on ne garde pas indéfiniment des toitures qu'on ne rouvrira
-#: plus.
-DUREE_CACHE_S = 12 * 3600
-
-
-def cle_cache(hash_entree):
-    """Nom de cache d'un résultat de calepinage (AOF61).
-
-    **La version du moteur est DANS la clé.** L'invalidation au bump de
-    version est donc structurelle : les entrées de l'ancien moteur deviennent
-    inatteignables du jour au lendemain, sans purge à ne pas oublier — c'est la
-    seule forme d'invalidation qui ne se dégrade pas avec le temps.
-    """
-    return 'ao:calepinage:%s:%s' % (hash_entree, VERSION_MOTEUR)
-
-
-def resultat_en_cache(company_id, hash_entree):
-    """Résultat déjà calculé pour cette société, ou ``None`` (best-effort)."""
-    from core import cache as cache_tenant
-
-    return cache_tenant.get(company_id, cle_cache(hash_entree))
-
-
-def mettre_en_cache(company_id, resultat, timeout=DUREE_CACHE_S):
-    """Mémorise un résultat, SCOPÉ SOCIÉTÉ (``core.cache.tenant_key``)."""
-    from core import cache as cache_tenant
-
-    cache_tenant.set(company_id, cle_cache(resultat['hash_entree']), resultat,
-                     timeout=timeout)
-    return resultat
-
-
-class VariantePerimee(Exception):
-    """AOF62 — on ne retient jamais une variante dont l'entrée a bougé."""
-
-
-class SansVarianteRetenue(Exception):
-    """PV67 — comparer des alternatives suppose une variante DE RÉFÉRENCE."""
 
 
 class MoteurCalepinage:
