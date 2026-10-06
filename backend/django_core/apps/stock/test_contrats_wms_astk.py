@@ -632,3 +632,198 @@ class ContratWmsQuaisTests(WmsBase):
         for cle in ('nouveau_hors_grille_astk191',
                     'nouveau_quota_atteint_astk192'):
             self.assertIn('NOUVEAU', reservation[cle]['nouveau'])
+
+
+class ContratNegoceTests(WmsBase):
+    """ASTK164 — negoce_consignation_rfa.json."""
+
+    BASE = '/api/django/stock/'
+
+    def setUp(self):
+        from apps.crm.models import Client
+        from apps.stock.models import Fournisseur
+
+        super().setUp()
+        self.client_crm = Client.objects.create(
+            company=self.company, nom='Client ASTK')
+        self.fournisseur = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur ASTK')
+        self.anonyme = APIClient()
+
+    def _depot(self):
+        rep = self.api.post(f'{self.BASE}consignations/', {
+            'client': self.client_crm.id, 'produit': self.produit.id,
+            'quantite_deposee': 20, 'date_depot': '2026-10-01',
+            'adresse_site': 'Zone industrielle Agadir'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        return rep.json()
+
+    def test_consignations(self):
+        contrat = route('negoce_consignation_rfa', 'consignations')
+        depot = self._depot()
+        self.assertMemesCles(depot, contrat['exemple_element'], 'dépôt')
+        rep = self.api.get(f'{self.BASE}consignations/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'liste')
+        rep = self.api.post(f'{self.BASE}consignations/', {
+            'client': self.client_crm.id, 'produit': self.produit.id,
+            'quantite_deposee': 0, 'date_depot': '2026-10-01'},
+            format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+
+    def test_module_consignation_eteint(self):
+        from apps.stock.models import ParametresNegoce
+
+        contrat = route('negoce_consignation_rfa', 'consignations')
+        params = ParametresNegoce.get(self.company)
+        params.consignation_activee = False
+        params.save()
+        rep = self.api.get(f'{self.BASE}consignations/')
+        self.assertEqual(rep.status_code, 403)
+        self.assertEqual(
+            rep.json(), contrat['exemple_erreur_403_module_eteint'])
+
+    def test_declaration_releve_et_binaires(self):
+        depot = self._depot()
+        url = f'{self.BASE}consignations/{depot["id"]}/'
+        decl = route('negoce_consignation_rfa',
+                     'consignation_declarer_consommation')
+        rep = self.api.post(f'{url}declarer-consommation/',
+                            decl['exemple_corps'], format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), decl['exemple'], 'déclaration')
+        # Les clés NOUVELLES (ASTK198) sont un sur-ensemble déclaré.
+        self.assertEqual(
+            set(decl['exemple_nouveau_astk198']) - set(decl['exemple']),
+            set(decl['cles_nouvelles_astk198']))
+
+        rep = self.api.post(f'{url}declarer-consommation/',
+                            {'quantite': 99999,
+                             'date_declaration': '2026-10-11'}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        motif = r'^Quantité supérieure au restant en dépôt \(\d+\)\.$'
+        self.assertRegex(rep.json()['detail'], motif)
+        self.assertRegex(decl['exemple_erreur_400']['detail'], motif)
+
+        rep = self.api.get(f'{self.BASE}consignations/')
+        ligne = rep.json()['results'][0]
+        self.assertMemesCles(
+            ligne['declarations'][0],
+            route('negoce_consignation_rfa', 'consignations')[
+                'exemple_element']['declarations'][0], 'déclaration liste')
+
+        releve = route('negoce_consignation_rfa', 'consignation_releve')
+        rep = self.api.get(f'{url}releve/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, releve['exemple'], 'relevé')
+        self.assertMemesCles(corps['declarations'][0],
+                             releve['exemple']['declarations'][0],
+                             'déclaration du relevé')
+
+        pdf = route('negoce_consignation_rfa', 'consignation_releve_pdf')
+        rep = self.api.get(f'{url}releve-pdf/')
+        self.assertEqual(rep.status_code, 200)
+        self.assertEqual(rep['Content-Type'], pdf['content_type'])
+
+        xlsx = route('negoce_consignation_rfa', 'consignations_export_xlsx')
+        rep = self.api.get(f'{self.BASE}consignations/export-xlsx/')
+        self.assertEqual(rep.status_code, 200)
+        self.assertEqual(rep['Content-Type'], xlsx['content_type'])
+
+    def test_accords_rfa_calcul_et_avoir(self):
+        contrat = route('negoce_consignation_rfa', 'accords_rfa_fournisseur')
+        url = f'{self.BASE}accords-rfa-fournisseur/'
+        rep = self.api.post(url, {
+            'fournisseur': self.fournisseur.id,
+            'periode_debut': '2026-01-01', 'periode_fin': '2026-12-31'},
+            format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+
+        rep = self.api.post(url, {
+            'fournisseur': self.fournisseur.id,
+            'periode_debut': '2026-01-01', 'periode_fin': '2026-12-31',
+            'montant_fixe': '1.00'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        accord = rep.json()
+        self.assertMemesCles(accord, contrat['exemple_element'], 'accord')
+        rep = self.api.get(url)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'liste')
+
+        rep = self.api.get(f'{url}{accord["id"]}/calcul/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(),
+            route('negoce_consignation_rfa', 'accord_rfa_calcul')['exemple'],
+            'calcul')
+
+        avoir = route('negoce_consignation_rfa', 'accord_rfa_generer_avoir')
+        rep = self.api.post(f'{url}{accord["id"]}/generer-avoir/')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), avoir['exemple'], 'avoir')
+        rep = self.api.post(f'{url}{accord["id"]}/generer-avoir/')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), avoir['exemple_erreur_400'])
+
+    def test_produit_atp(self):
+        contrat = route('negoce_consignation_rfa', 'produit_atp')
+        rep = self.api.get(f'{self.BASE}produits/{self.produit.id}/atp/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'ATP')
+
+    def test_parametres_negoce(self):
+        contrat = route('negoce_consignation_rfa', 'parametres_negoce')
+        url = f'{self.BASE}parametres-negoce/'
+        rep = self.api.get(url)
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'réglages')
+        rep = self.api.patch(url, {'atp_horizon_jours': 15}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'PATCH')
+        rep = self.api.patch(url, {'seuil_alerte_rfa_pct': 150},
+                             format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+        # Les DEUX réglages lus (ASTK201) existent déjà dans la forme réelle.
+        self.assertTrue(set(contrat['exemple_nouveau_astk201'])
+                        <= set(contrat['exemple']))
+
+    def test_portails_tiers_et_solde_public(self):
+        from apps.stock.models import (
+            EmplacementStock, PortailTiersToken, StockEmplacement,
+        )
+
+        contrat = route('negoce_consignation_rfa', 'portails_tiers')
+        rep = self.api.post(f'{self.BASE}portails-tiers/',
+                            {'tiers_nom': 'Client Alpha'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple_element'], 'jeton')
+        rep = self.api.get(f'{self.BASE}portails-tiers/')
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'liste')
+
+        depot_tiers = EmplacementStock.objects.create(
+            company=self.company, nom='Dépôt-vente Alpha',
+            type_proprietaire=EmplacementStock.TypeProprietaire.DE_TIERS,
+            tiers_nom='Client Alpha')
+        StockEmplacement.objects.create(
+            company=self.company, produit=self.produit,
+            emplacement=depot_tiers, quantite=7)
+        jeton = PortailTiersToken.objects.get(
+            company=self.company, tiers_nom='Client Alpha')
+        solde = route('negoce_consignation_rfa', 'public_tiers_solde')
+        rep = self.anonyme.get(
+            f'/api/django/public/stock/tiers/{jeton.token}/solde/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, solde['exemple'], 'solde 3PL')
+        self.assertTrue(corps['lignes'])
+        self.assertMemesCles(corps['lignes'][0],
+                             solde['exemple']['lignes'][0], 'ligne 3PL')
+        for cle in ('prix', 'prix_achat', 'prix_vente', 'marge'):
+            self.assertNotIn(cle, corps['lignes'][0])
+        rep = self.anonyme.get(
+            '/api/django/public/stock/tiers/jeton-invalide/solde/')
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), solde['exemple_erreur_404'])
