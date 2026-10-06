@@ -1074,8 +1074,6 @@ def comparer_versions(v1, v2):
     """XGED17 — Diff de métadonnées (toujours) + diff textuel unifié (si les
     deux versions ont un texte plein-texte/OCR). `v1`/`v2` sont des
     `DocumentVersion` du MÊME document (validé par l'appelant)."""
-    import difflib
-
     meta_fields = ['filename', 'size', 'mime', 'checksum']
     diff_meta = {}
     for f in meta_fields:
@@ -1086,29 +1084,16 @@ def comparer_versions(v1, v2):
     uploaded_by_2 = getattr(v2.uploaded_by, 'username', None)
     if uploaded_by_1 != uploaded_by_2:
         diff_meta['uploaded_by'] = {'v1': uploaded_by_1, 'v2': uploaded_by_2}
-    custom_1 = (v1.document.custom_data or {}) if v1.document_id else {}
-    custom_2 = (v2.document.custom_data or {}) if v2.document_id else {}
-    for key in set(custom_1) | set(custom_2):
-        a, b = custom_1.get(key), custom_2.get(key)
-        if a != b:
-            diff_meta.setdefault('custom_data', {})[key] = {'v1': a, 'v2': b}
-
-    texte_1 = (v1.document.texte_ocr or '') if v1.document_id else ''
-    texte_2 = (v2.document.texte_ocr or '') if v2.document_id else ''
-    if texte_1 and texte_2:
-        diff_lines = list(difflib.unified_diff(
-            texte_1.splitlines(), texte_2.splitlines(),
-            fromfile=f'v{v1.version}', tofile=f'v{v2.version}', lineterm=''))
-        return {
-            'metadonnees': diff_meta,
-            'texte_disponible': True,
-            'diff_texte': diff_lines,
-        }
+    # ADOC17 — le texte OCR et les métadonnées custom vivent sur le DOCUMENT,
+    # pas sur la version : les comparer entre deux versions du même document
+    # annoncerait « aucune différence » à tort. Le comparateur ne prétend
+    # donc rien sur eux (aucun texte n'est stocké par version).
     return {
         'metadonnees': diff_meta,
         'texte_disponible': False,
-        'message': 'Comparaison binaire indisponible '
-                   '(texte plein-texte/OCR absent sur une des versions).',
+        'diff_texte': [],
+        'message': 'Comparaison du texte indisponible : le texte OCR '
+                   "n'est pas conservé par version.",
     }
 
 

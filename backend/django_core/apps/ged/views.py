@@ -1177,6 +1177,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             new_version = services.restore_version(
                 document, source_version, uploaded_by=request.user)
+        except PermissionError as exc:
+            # ADOC17 — document extrait (check-out GED16) par un autre.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ArchivageLegalError as exc:
             # GED23 — document archivé légalement : write-once, pas de restauration.
             return Response(
@@ -1721,6 +1725,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 company=request.user.company,
                 nom=(request.data.get('nom') or '').strip(),
                 created_by=request.user)
+        except PermissionError as exc:
+            # ADOC17 — cible extraite (check-out GED16) par un autre.
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
@@ -1851,7 +1858,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
-    côté serveur via `services.add_version` ; `checksum` permet la dédup."""
+    côté serveur via `services.add_version` ; `checksum` permet la dédup.
+
+    ADOC17 — l'historique est IMMUABLE : aucun PUT/PATCH (405) ; une
+    correction passe par une NOUVELLE version."""
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
     queryset = DocumentVersion.objects.select_related(
         'document', 'uploaded_by').all()
     serializer_class = DocumentVersionSerializer
@@ -1937,13 +1948,6 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         except ArchivageLegalError as exc:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(str(exc))
-        # GED16 — bloque l'ajout d'une version si le document est extrait par
-        # un autre utilisateur.
-        try:
-            services.assert_not_locked_by_other(document, self.request.user)
-        except PermissionError as exc:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied(str(exc))
         # ADOC5 — document visible ET écriture ACL requise.
         from rest_framework.exceptions import NotFound, PermissionDenied
         if not selectors.documents_visible_to_user(
@@ -1954,16 +1958,21 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         except PermissionError as exc:
             raise PermissionDenied(str(exc))
         v = serializer.validated_data
-        instance = services.add_version(
-            document,
-            file_key=v['file_key'],
-            company=self.request.user.company,
-            filename=v.get('filename', ''),
-            size=v.get('size', 0),
-            mime=v.get('mime', ''),
-            checksum=v.get('checksum', ''),
-            uploaded_by=self.request.user,
-        )
+        # GED16/ADOC17 — le check-out d'autrui est gardé par add_version(user=).
+        try:
+            instance = services.add_version(
+                document,
+                file_key=v['file_key'],
+                company=self.request.user.company,
+                filename=v.get('filename', ''),
+                size=v.get('size', 0),
+                mime=v.get('mime', ''),
+                checksum=v.get('checksum', ''),
+                uploaded_by=self.request.user,
+                user=self.request.user,
+            )
+        except PermissionError as exc:
+            raise PermissionDenied(str(exc))
         serializer.instance = instance
 
     @action(detail=True, methods=['get'], url_path='apercu')

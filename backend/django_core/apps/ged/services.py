@@ -754,7 +754,7 @@ def move_document(document, new_folder):
 
 
 def add_version(document, *, file_key, company, filename='', size=0, mime='',
-                checksum='', uploaded_by=None, restored_from=None):
+                checksum='', uploaded_by=None, restored_from=None, user=None):
     """Ajoute une nouvelle version à un document (numéro auto-incrémenté).
 
     Le numéro de version est calculé côté serveur (dernière + 1) et la société
@@ -765,8 +765,17 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
     GED15 — `restored_from` : si cette version est le résultat d'une restauration,
     on passe ici la version source pour traçabilité (posé côté serveur dans
     `restore_version`, jamais lu du corps de requête).
+
+    ADOC17 — `user` (optionnel) : l'auteur INTERACTIF de l'écriture. Transmis,
+    le check-out GED16 est respecté (lu en base, sous verrou de ligne) :
+    `PermissionError` si le document est extrait par un autre utilisateur.
+    C'est l'unique garde de verrou des chemins versions/restaurer/fusionner/
+    office.
     """
     with transaction.atomic():
+        if user is not None:
+            courant = Document.objects.select_for_update().get(pk=document.pk)
+            assert_not_locked_by_other(courant, user)
         last = (DocumentVersion.objects
                 .select_for_update()
                 .filter(document=document)
@@ -833,6 +842,8 @@ def restore_version(document, source_version, *, uploaded_by=None):
         checksum=source_version.checksum,
         uploaded_by=uploaded_by,
         restored_from=source_version,
+        # ADOC17 — la restauration respecte le check-out d'autrui.
+        user=uploaded_by,
     )
 
 
@@ -4913,10 +4924,11 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
     if cible is not None:
         assert_not_archive_legalement(cible)
         assert_not_legal_hold(cible)
+        # ADOC17 — la fusion vers une cible respecte son check-out.
         add_version(
             cible, file_key=key, company=company,
             filename=f'{cible.nom}.pdf', size=len(out_bytes),
-            mime='application/pdf', uploaded_by=created_by)
+            mime='application/pdf', uploaded_by=created_by, user=created_by)
         update_search_vector(cible)
         return cible
     nom = nom or f'{premier.nom} (fusionné)'
@@ -5949,6 +5961,8 @@ def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
             "cette fonctionnalité est désactivée.")
     assert_not_archive_legalement(document)
     assert_not_legal_hold(document)
+    # ADOC17 — garde de check-out portée par add_version(user=...) ; vérifiée
+    # aussi AVANT le stockage pour ne jamais téléverser un objet orphelin.
     assert_not_locked_by_other(document, user)
     key, meta = _store_bytes(contenu_bytes, mime=mime or 'application/octet-stream')
     # ADOC8 — mime détecté par les octets, jamais le type déclaré.
@@ -5956,7 +5970,7 @@ def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
         document, file_key=key, company=document.company,
         filename=filename or meta.get('filename', ''),
         size=len(contenu_bytes), mime=meta.get('mime', ''),
-        uploaded_by=user)
+        uploaded_by=user, user=user)
     update_search_vector(document)
     return version
 
