@@ -257,3 +257,135 @@ class MessageJ9Tests(_Base):
 
         self.assertIn(devis.date_validite.strftime('%d/%m/%Y'),
                       rendu['message'])
+
+
+# ── CIQ510 — validité d'un dossier PRO : financement déclaré / attente ─────
+
+class _ProBase(_Base):
+    """CIQ510 — un PROFESSIONNEL n'est pas visé par la loi 31-08 ; la règle
+    « financé » (le réglage société, jamais plus court que le plan) vaut pour
+    un financement pro DÉCLARÉ (contrat CIQ1) et pour une attente d'accord
+    déclarée (CIQ508). CAD57 tient : aucun nombre nouveau."""
+    segment = 'commercial'
+    tags = ''
+
+    def setUp(self):
+        super().setUp()
+        self.lead.type_installation = self.segment
+        self.lead.tags = self.tags
+        self.lead.save(update_fields=['type_installation', 'tags'])
+        self.profil.quote_validity_days = 30
+        self.profil.save(update_fields=['quote_validity_days'])
+
+
+class ProFinancementDeclareTests(_ProBase):
+    slug = 'ciq510-pro-fin'
+    financement = 'credit_bail'
+
+    def test_a_financement_pro_declare_reglage_30j(self):
+        devis = self._envoyer('DEV-CIQ510-0010')
+        self.assertEqual(
+            devis.date_validite,
+            max(FIN_DU_SUIVI, ENVOI.date() + datetime.timedelta(days=30)))
+
+
+class ProEtiquetteAttenteAuDemarrageTests(_ProBase):
+    slug = 'ciq510-pro-tag'
+    financement = 'indecis'
+    tags = 'Attend la direction / le comité'
+
+    def test_etiquette_attente_au_demarrage_du_plan(self):
+        from apps.crm.models import LeadActivity
+        from apps.crm.services import MOTIF_VALIDITE_ATTENTE
+        devis = self._envoyer('DEV-CIQ510-0020')
+        self.assertEqual(
+            devis.date_validite,
+            max(FIN_DU_SUIVI, ENVOI.date() + datetime.timedelta(days=30)))
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, body__contains=MOTIF_VALIDITE_ATTENTE).exists())
+
+
+class ResidentielComptantInchangeTests(_ProBase):
+    slug = 'ciq510-resid'
+    segment = 'residentiel'
+    financement = 'cash'
+
+    def test_f_residentiel_comptant_inchange(self):
+        devis = self._envoyer('DEV-CIQ510-0030')
+        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+
+
+class AttenteApresEnvoiTests(_ProBase):
+    """(b)-(e) — l'attente déclarée à J+3 sur un devis ENVOYÉ valable
+    jusqu'à la fin du plan."""
+    slug = 'ciq510-attente'
+    financement = 'indecis'
+
+    def _repondre_attente(self):
+        from testkit.time import frozen
+        from apps.crm.services import repondre_attente_accord
+        j3 = ENVOI + datetime.timedelta(days=3)
+        with frozen(j3):
+            etape = (self.lead.relance_etapes
+                     .filter(statut=RelanceEtape.Statut.A_FAIRE)
+                     .order_by('due_at').first())
+            repondre_attente_accord(
+                etape, self.acteur, ENVOI + datetime.timedelta(days=60),
+                raison='direction')
+
+    def test_b_attente_a_j3_porte_a_envoi_plus_reglage(self):
+        from apps.crm.models import LeadActivity
+        devis = self._envoyer('DEV-CIQ510-0040')
+        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+        self._repondre_attente()
+        devis.refresh_from_db()
+        attendu = ENVOI.date() + datetime.timedelta(days=30)
+        self.assertEqual(devis.date_validite, attendu)
+        self.assertEqual(devis.statut, 'envoye')
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead,
+            body=(f'Validité prolongée au {attendu:%d/%m} — en attente '
+                  "d'un accord (réglage société).")).exists())
+
+    def test_c_reglage_10j_validite_inchangee(self):
+        self.profil.quote_validity_days = 10
+        self.profil.save(update_fields=['quote_validity_days'])
+        devis = self._envoyer('DEV-CIQ510-0050')
+        avant = devis.date_validite
+        self._repondre_attente()
+        devis.refresh_from_db()
+        self.assertEqual(devis.date_validite, avant)
+
+    def test_d_devis_accepte_intouche(self):
+        from apps.ventes.services import prolonger_validite_devis
+        devis = self._envoyer('DEV-CIQ510-0060')
+        avant = devis.date_validite
+        Devis.objects.filter(pk=devis.pk).update(statut='accepte')
+        self._repondre_attente()
+        devis.refresh_from_db()
+        self.assertEqual(devis.date_validite, avant)
+        self.assertIsNone(prolonger_validite_devis(
+            devis, avant + datetime.timedelta(days=90)))
+
+    def test_jamais_plus_courte(self):
+        from apps.ventes.services import prolonger_validite_devis
+        devis = self._envoyer('DEV-CIQ510-0070')
+        self.assertIsNone(prolonger_validite_devis(
+            devis, devis.date_validite - datetime.timedelta(days=1)))
+
+    def test_e_message_j9_et_pdf_meme_date(self):
+        from apps.crm.services import message_pour_etape
+        from apps.ventes.selectors import date_validite_effective
+        devis = self._envoyer('DEV-CIQ510-0080')
+        self._repondre_attente()
+        devis.refresh_from_db()
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='apres_devis',
+            ordre=7, due_at=ENVOI + datetime.timedelta(days=9),
+            due_date=(ENVOI + datetime.timedelta(days=9)).date(),
+            canal='whatsapp', libelle='Validité de la proposition',
+            template_cle='j9_validite', devis=devis)
+        rendu = message_pour_etape(etape, user=self.acteur)
+        self.assertEqual(date_validite_effective(devis), devis.date_validite)
+        self.assertIn(devis.date_validite.strftime('%d/%m/%Y'),
+                      rendu['message'])

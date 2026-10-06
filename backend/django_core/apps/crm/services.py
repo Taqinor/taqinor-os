@@ -1386,20 +1386,29 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             # cadence réactive, celle-ci est la PREMIÈRE touche, et la
             # proposition aurait expiré le jour même de son envoi.
             derniere = echeances[-1][1].astimezone(horaires.CASABLANCA).date()
-            # CAD57 — un dossier FINANCÉ À CRÉDIT ne peut pas, légalement,
-            # boucler dans cette fenêtre : la loi 31-08 impose 10 jours de
-            # réflexion PUIS 7 jours de rétractation une fois l'offre de
-            # crédit émise. Décision fondateur du 21/09/2026 : validité
-            # distincte et plus longue (le réglage société), J+14 sinon.
+            # CAD57 — un PARTICULIER financé à crédit ne peut pas, légalement,
+            # boucler dans cette fenêtre : la loi 31-08 (consommateur) impose
+            # 10 jours de réflexion PUIS 7 jours de rétractation une fois
+            # l'offre de crédit émise. CIQ510 — un PROFESSIONNEL n'est pas
+            # visé par la loi 31-08 : c'est le délai d'instruction de sa
+            # banque ou de l'organisme (financement pro déclaré) ou l'attente
+            # d'un accord déclarée qui allonge — sans conclusion juridique.
+            # Décision fondateur du 21/09/2026 : validité distincte et plus
+            # longue (le réglage société), J+14 sinon.
             fin_du_plan = derniere
             derniere = _validite_selon_financement(lead, devis, derniere)
             # AGR523 — la note dit d'où vient une validité allongée par un
             # dossier de subvention en instruction (le crédit garde la sienne).
-            motif = ('fin du plan de suivi'
-                     if (derniere == fin_du_plan
-                         or lead_finance_a_credit(lead)
-                         or not lead_dossier_subvention_en_instruction(lead))
-                     else MOTIF_VALIDITE_SUBVENTION)
+            # CIQ510 — idem pour une attente d'accord déclarée.
+            if derniere == fin_du_plan or lead_finance_a_credit(lead) \
+                    or lead_financement_pro_declare(lead):
+                motif = 'fin du plan de suivi'
+            elif lead_en_attente_d_accord(lead):
+                motif = MOTIF_VALIDITE_ATTENTE
+            elif lead_dossier_subvention_en_instruction(lead):
+                motif = MOTIF_VALIDITE_SUBVENTION
+            else:
+                motif = 'fin du plan de suivi'
             if poser_validite_devis(devis, derniere):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
@@ -11915,9 +11924,14 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
 #
 # [TRANCHÉ 21/09/2026] La validité était posée sur la DERNIÈRE touche de la
 # cadence, c'est-à-dire J+14 : le devis expirait le jour exact où le suivi
-# s'arrête. Or la loi 31-08 impose, une fois l'offre de crédit émise, 10 jours
-# de réflexion + 7 jours de rétractation avant déblocage : un client qui
-# finance ne peut pas, légalement, boucler dans la fenêtre qu'on lui annonce.
+# s'arrête. Pour un PARTICULIER, la loi 31-08 (consommateur) impose, une fois
+# l'offre de crédit émise, 10 jours de réflexion + 7 jours de rétractation
+# avant déblocage : il ne peut pas, légalement, boucler dans la fenêtre qu'on
+# lui annonce. CIQ510 — pour un PROFESSIONNEL (la loi 31-08 vise les besoins
+# non professionnels, art. 2), la même règle « financé » tient pour une autre
+# raison : le délai d'instruction de la banque ou de l'organisme, ou l'attente
+# d'un accord déclarée. Aucune conclusion juridique ici (avis d'un juriste :
+# tâche manuelle).
 #
 # Garde-fou : la DURÉE vient d'un réglage société
 # (``CompanyProfile.quote_validity_days``, lu par la façade de ventes), jamais
@@ -11950,6 +11964,31 @@ def lead_dossier_subvention_en_instruction(lead):
 #: dossier de subvention en instruction.
 MOTIF_VALIDITE_SUBVENTION = ('dossier de subvention en instruction (réglage '
                              'société)')
+#: CIQ510 — la fin de la note quand la validité vient d'une attente d'accord.
+MOTIF_VALIDITE_ATTENTE = "en attente d'un accord (réglage société)"
+
+#: CIQ510 (contrat CIQ1 ``lead_pro.json``, ``financing_intent``) — les
+#: financements PRO déclarés qui reçoivent la règle « financé » : crédit
+#: bancaire / offre de financement / ligne verte (``credit``) et crédit-bail
+#: (``credit_bail``, valeur interne). Comptant et indécis : jamais.
+FINANCEMENTS_PRO = ('credit', 'credit_bail')
+#: Les segments PRO (``Lead.type_installation``).
+SEGMENTS_PRO = ('commercial', 'industriel')
+
+
+def lead_financement_pro_declare(lead):
+    """CIQ510 — un lead commercial/industriel a-t-il DÉCLARÉ un financement
+    pro (contrat CIQ1) ? Jamais sur une supposition."""
+    return ((getattr(lead, 'type_installation', None) or '') in SEGMENTS_PRO
+            and (getattr(lead, 'financing_intent', None) or '')
+            in FINANCEMENTS_PRO)
+
+
+def lead_en_attente_d_accord(lead):
+    """CIQ510 — le lead porte-t-il une étiquette d'attente posée par la
+    réponse « En attente d'un accord » (CIQ508, une par raison) ?"""
+    return any(_lead_porte_tag(lead, tag)
+               for tag in ETIQUETTES_RAISON_ATTENTE)
 
 
 def _validite_selon_financement(lead, devis, date_fin_de_suivi):
@@ -11965,7 +12004,11 @@ def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     # AGR523 — un dossier de subvention DÉPOSÉ (en instruction) reçoit la
     # MÊME règle que le crédit : le réglage société, s'il est plus lointain.
     # Aucun nouveau nombre, aucune durée propre à la FDA.
+    # CIQ510 — même règle pour un financement PRO déclaré (contrat CIQ1) et
+    # pour un lead qui porte une étiquette d'attente d'accord (CIQ508).
     if not (lead_finance_a_credit(lead)
+            or lead_financement_pro_declare(lead)
+            or lead_en_attente_d_accord(lead)
             or lead_dossier_subvention_en_instruction(lead)):
         return date_fin_de_suivi
     try:
@@ -13775,6 +13818,37 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
     return reprise
 
 
+def prolonger_validite_attente_accord(lead, user=None):
+    """CIQ510 — à la réponse « En attente d'un accord », le dernier devis
+    ENVOYÉ du lead voit sa validité portée à ``max(validité actuelle,
+    date_validite_credit(devis))`` par la façade de ventes
+    ``prolonger_validite_devis`` ; une ligne d'historique par devis prolongé.
+    Accepté, refusé, expiré : intouché. Best-effort (jamais bloquant). Rend
+    la liste des ``(devis_id, date)`` prolongés."""
+    prolonges = []
+    try:
+        from apps.ventes.selectors import dernier_devis_envoye_par_lead
+        from apps.ventes.services import (
+            date_validite_credit, prolonger_validite_devis,
+        )
+        envoyes = dernier_devis_envoye_par_lead(lead.company, [lead.pk])
+        for devis in envoyes.values():
+            nouvelle = prolonger_validite_devis(
+                devis, date_validite_credit(devis))
+            if nouvelle is None:
+                continue
+            prolonges.append((devis.pk, nouvelle))
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=user,
+                kind=LeadActivity.Kind.NOTE,
+                body=(f'Validité prolongée au {nouvelle:%d/%m} — en attente '
+                      "d'un accord (réglage société)."))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('CIQ510 : validité non prolongée (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+    return prolonges
+
+
 # ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
 
 def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
@@ -13846,6 +13920,9 @@ def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
         company=lead.company, lead=lead, user=user,
         kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
         body=corps, outcome=spec['outcome'])
+    # CIQ510 — l'attente déclarée APRÈS l'envoi allonge la validité du
+    # devis ENVOYÉ du lead (réglage société), jamais ne la raccourcit.
+    prolonger_validite_attente_accord(lead, user)
     if reprise is None:
         etape.refresh_from_db()
         return etape

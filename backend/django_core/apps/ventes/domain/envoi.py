@@ -209,10 +209,14 @@ def poser_validite_devis(devis, date_validite):
 #
 # La validité du devis était posée sur la DERNIÈRE touche de la cadence de
 # suivi, c'est-à-dire J+14 : le devis expirait le jour exact où le suivi
-# s'arrête. Or la loi 31-08 impose, une fois l'offre de crédit émise, 10 jours
-# de réflexion PUIS 7 jours de rétractation avant déblocage des fonds — un
-# client qui finance ne peut pas, légalement, boucler dans la fenêtre qu'on lui
-# annonce.
+# s'arrête. Pour un PARTICULIER, la loi 31-08 (protection du consommateur)
+# impose, une fois l'offre de crédit émise, 10 jours de réflexion PUIS 7 jours
+# de rétractation avant déblocage des fonds — il ne peut pas, légalement,
+# boucler dans la fenêtre qu'on lui annonce. Pour un PROFESSIONNEL (CIQ510),
+# la loi 31-08 ne vise pas ses achats (art. 2 : besoins non professionnels) :
+# c'est le délai d'instruction de la banque ou de l'organisme, ou l'attente
+# d'un accord déclarée, qui allonge la validité — sans conclusion juridique
+# (l'avis d'un juriste reste une tâche manuelle).
 #
 # DÉCISION FONDATEUR du 21/09/2026 : validité distincte et plus longue pour un
 # dossier financé à crédit (J+30), J+14 (la fin du suivi) pour les autres.
@@ -252,6 +256,30 @@ def date_validite_credit(devis, depart=None):
         base = base.date()
     jours = jours_validite_societe(getattr(devis, 'company', None))
     return base + _dt.timedelta(days=jours)
+
+
+def prolonger_validite_devis(devis, date_cible):
+    """CIQ510 — porte la validité d'un devis ENVOYÉ à ``date_cible`` si elle
+    est PLUS LOINTAINE que sa validité effective (``date_validite``, sinon le
+    repli du PDF ``utils/expiry.date_expiration``).
+
+    Jamais plus courte ; jamais sur un devis accepté, refusé, expiré ou
+    brouillon ; aucun statut ne change (règle #4 : le moteur lit
+    ``date_validite``). Rend la nouvelle date, ou ``None`` si rien n'a
+    bougé."""
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.expiry import date_expiration
+
+    if devis is None or not date_cible:
+        return None
+    if getattr(devis, 'statut', None) != Devis.Statut.ENVOYE:
+        return None
+    actuelle = date_expiration(devis)
+    if actuelle is not None and date_cible <= actuelle:
+        return None
+    devis.date_validite = date_cible
+    devis.save(update_fields=['date_validite'])
+    return date_cible
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
