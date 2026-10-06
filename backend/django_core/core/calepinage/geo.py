@@ -7,7 +7,7 @@ vivaient en plusieurs copies divergentes côté serveur :
   ``RAYON_TERRE_M = 6 378 137 m`` (le demi-grand axe WGS84), autour d'une
   origine ``(lon, lat)`` : ``x = Δlon·k·cos(lat0)``, ``y = Δlat·k`` avec
   ``k = R·π/180``. C'est la convention de l'atelier (``roofPro2.ts``,
-  ``viewerFullModel.ringENUFromVertices``), d'``apps/web`` (``roof.ts``
+  ``viewerFullModel.ringENUFromVertices``), du site public (``roof.ts``
   ``geodesicAreaM2``) et du devis (``calepinage_options.anneau_enu``). Choix de
   COHÉRENCE (une seule aire du même tracé partout), pas un gain de précision :
   l'ancienne copie « 111 320 / 110 540 » et la copie ellipsoïdale de
