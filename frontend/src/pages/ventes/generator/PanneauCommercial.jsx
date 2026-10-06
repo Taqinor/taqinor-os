@@ -106,16 +106,17 @@ function ArchetypeEtSansEffet({ profil }) {
 }
 
 export default function PanneauCommercial({
-  marche, errors,
-  // ── CIQ125 — profil déclaré C&I + résultat du moteur serveur ──
-  profilCi, setChampCi, apercuCi,
+  marche,
   // ── Catégorie commerciale et ses questions (QX44) ──
   categorieCommerciale, setCategorieCommerciale,
   commercialAnswers, setCommercialAnswer,
+  // ── CIQ125/CIQ222 — la carte C&I (profil, aperçu serveur, tarif, erreurs) ──
+  ...carte
 }) {
+  const { apercuCi } = carte
   if (marche !== CLE) return null
   return (
-    <CarteProfilCi profilCi={profilCi} setChampCi={setChampCi} apercuCi={apercuCi} errors={errors}>
+    <CarteProfilCi {...carte}>
       {/* QX44 — étude commerciale par catégorie */}
       <div className="mt-3.5">
         <div className="grid gap-4 sm:grid-cols-2">

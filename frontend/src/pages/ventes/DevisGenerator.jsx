@@ -35,7 +35,10 @@ import {
   useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
   useEconomiePompagePreview,
 } from '../../features/ventes/etudePompagePreview'
-import { saisiesEconomiePompage, lignesDepuisKit } from '../../features/ventes/quote/etudeMarcheBloc'
+import {
+  saisiesEconomiePompage, lignesDepuisKit,
+  TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie, erreursTarifDeclare,
+} from '../../features/ventes/quote/etudeMarcheBloc'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
 } from '../../features/ventes/etudePompagePreviewPur'
@@ -812,6 +815,9 @@ export default function DevisGenerator({
   // saisie de consommation de ces marchés, tapée telle quelle (texte), mise à
   // la forme du contrat `etude_ci_preview.json` par `quote/profilCi.js`.
   const [profilCi, setProfilCi] = useState(profilCiVide)
+  // CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`), tel que tapé.
+  const [tarifSaisie, setTarifSaisie] = useState(TARIF_SAISIE_VIDE)
+  const setTarifChamp = (champ, valeur) => setTarifSaisie((t) => ({ ...t, [champ]: valeur }))
   // QX44 — étude commerciale par catégorie (mode commercial). categorie +
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
   const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
@@ -1728,6 +1734,8 @@ export default function DevisGenerator({
     categorie: modeInstallation === 'commercial' && categorieCommerciale !== CATEGORIE_NON_PRECISEE
       ? categorieCommerciale : null,
     reponses: modeInstallation === 'commercial' ? commercialAnswers : null,
+    // CIQ222 — le tarif déclaré part au moteur (`corps.tarif`), jamais une grille.
+    tarif: tarifDeclareDepuisSaisie(tarifSaisie, { aujourdhui: new Date().toISOString().slice(0, 10) }),
   }
   const corpsCi = marcheCi ? corpsCiDepuisProfil(profilCi, ctxProfilCi) : null
   const apercuCi = useEtudeCiPreview(corpsCi)
@@ -2091,6 +2099,8 @@ export default function DevisGenerator({
       pose(etat.consoMensuelle, setConsoMensuelle)
       // CIQ125 — le profil déclaré C&I se relit de ses ENTRÉES v2.
       pose(etat.profilCi, setProfilCi)
+      // CIQ222 — le tarif déclaré se relit tel que saisi.
+      setTarifSaisie(etat.tarifSaisie || TARIF_SAISIE_VIDE)
       pose(etat.distributeur, setDistributeur)
       pose(etat.distributeurChoisi, setDistributeurChoisi)
       pose(etat.monthly, setMonthly)
@@ -3339,7 +3349,7 @@ export default function DevisGenerator({
     mode: modeInstallation, dateValidite, tauxTva, discountPct, note, prixCible,
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
     lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
-    profilCi, ctxCi: ctxProfilCi,
+    profilCi, ctxCi: ctxProfilCi, tarifSaisie, aujourdhui: aujourdhuiIso,
     // QJR575 — la sentinelle « Non précisée » se persiste null.
     categorieCommerciale: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
     commercialAnswers,
@@ -3458,6 +3468,9 @@ export default function DevisGenerator({
           // croire à un échec d'enregistrement (ni pousser à un second POST
           // qui créerait un doublon). On le DIT, en français, et on continue.
           const detail = errEtude?.response?.data?.detail
+          // CIQ222 — un 400 qui nomme un champ du tarif déclaré s'affiche SOUS ce champ.
+          const erreursTarif = erreursTarifDeclare(detail)
+          if (Object.keys(erreursTarif).length) setErrors((e) => ({ ...e, tarifDeclare: erreursTarif }))
           toast.error(typeof detail === 'string'
             ? `Devis enregistré, étude non attachée : ${detail}`
             : "Devis enregistré, mais l'étude n'a pas pu être attachée.")
@@ -3781,7 +3794,7 @@ export default function DevisGenerator({
   // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
-    profilCi, setChampCi, apercuCi,
+    profilCi, setChampCi, apercuCi, tarifSaisie, setTarifChamp,
   }
 
   return (

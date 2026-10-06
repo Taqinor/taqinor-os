@@ -73,3 +73,27 @@ export function deriverReouverture(lignes, { mode } = {}) {
     accessoiresOnly,
   }
 }
+
+// ── CIQ222 — `etude_params.tarif_declare` stocké → état d'écran (`?edit=`) ──
+// Inverse exact de `tarifDeclareDepuisSaisie` (etudeMarcheBloc.js) : la date
+// de saisie revient telle quelle, aucun nombre n'est reformaté.
+const texteTarif = (v) => (v === null || v === undefined ? '' : String(v))
+
+export function saisieDepuisTarifDeclare(td) {
+  const t = td && typeof td === 'object' ? td : null
+  if (!t) return null
+  const mt = t.mt || {}
+  return {
+    contrat: t.contrat || '',
+    baseTarifs: t.base_tarifs || '',
+    optionBiHoraire: t.option_bi_horaire === true,
+    pointe: texteTarif(mt.tarif_pointe),
+    pleines: texteTarif(mt.tarif_pleines),
+    creuses: texteTarif(mt.tarif_creuses),
+    primeFixe: texteTarif(mt.prime_fixe_kva_an),
+    puissance: texteTarif(mt.puissance_souscrite_kva),
+    dateFacture: t.date_facture || '',
+    provenance: t.provenance || '',
+    saisiLe: t.saisi_le || '',
+  }
+}

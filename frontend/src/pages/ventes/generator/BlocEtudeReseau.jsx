@@ -28,7 +28,10 @@ import CarteResultatCi from './CarteResultatCi'
  * du moteur serveur tel quel. `children` = contenu propre au panneau
  * (catégorie commerciale).
  */
-export function CarteProfilCi({ profilCi, setChampCi, apercuCi, errors, children }) {
+export function CarteProfilCi({
+  profilCi, setChampCi, apercuCi, errors, children,
+  tarifSaisie = null, setTarifChamp = null,
+}) {
   return (
     <Card>
       <GenCardHeader icon={Zap} title="Profil de consommation du site" />
@@ -37,7 +40,15 @@ export function CarteProfilCi({ profilCi, setChampCi, apercuCi, errors, children
           profil={profilCi} setChamp={setChampCi}
           resolues={apercuCi?.donnees?.entrees_resolues || null}
           erreurConso={errors?.conso}
+          mentionReventeServeur={apercuCi?.donnees?.economie_ci?.revente?.statut === 'absente_bt'
+            ? apercuCi.donnees.economie_ci.revente.mentions?.[0] : null}
         />
+        {setTarifChamp && (
+          <CarteTarifFacture tarif={tarifSaisie} setTarifChamp={setTarifChamp}
+                             tension={profilCi?.tension}
+                             erreurs={errors?.tarifDeclare || {}}
+                             resolues={apercuCi?.donnees?.entrees_resolues || null} />
+        )}
         {children}
         <CarteResultatCi {...(apercuCi || {})} />
       </CardContent>
@@ -46,6 +57,106 @@ export function CarteProfilCi({ profilCi, setChampCi, apercuCi, errors, children
 }
 
 export const MENTION_REVENTE_BT = 'Revente du surplus non ouverte en basse tension — ANRE décision 04/26.'
+export const LIBELLE_REVENTE_MT = 'Revente du surplus (MT, plafond légal 20 %, tarif ANRE 04/26 HT)'
+
+const CONTRATS = [
+  { value: 'bt_domestique', label: 'BT domestique' },
+  { value: 'bt_patente', label: 'BT patenté' },
+  { value: 'bt_force_motrice', label: 'BT force motrice' },
+  { value: 'mt_general', label: 'MT (Tarif Général)' },
+]
+
+function ErreurChamp({ erreurs, champ }) {
+  if (!erreurs || !erreurs[champ]) return null
+  return <p className="text-xs text-destructive" data-testid={`erreur-tarif-${champ}`}>{erreurs[champ]}</p>
+}
+
+/**
+ * CIQ222 — LE TARIF DE SA FACTURE (contrat `tarifs_ci.json`, `tarif_declare`) :
+ * contrat, base HT/TTC telle qu'imprimée, postes MT + prime fixe + puissance
+ * souscrite, option bi-horaire (force motrice seulement), date de la facture.
+ * Vide ⇒ la grille ONEE sert en repli (annoncé). Chaque nombre tel que tapé,
+ * jamais corrigé ; les 400 du serveur s'affichent SOUS le champ nommé.
+ */
+export function CarteTarifFacture({ tarif, setTarifChamp, tension, erreurs = {}, resolues = null }) {
+  const t = tarif || {}
+  const mt = t.contrat === 'mt_general'
+  const vide = !t.contrat && !t.pointe && !t.pleines && !t.creuses && !t.primeFixe
+  const puissanceLead = resolues?.puissance_souscrite_kva?.valeur
+  return (
+    <fieldset className="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
+      <legend className="text-sm font-semibold">Tarif de la facture</legend>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor="gen-tarif-contrat">Contrat</Label>
+          <select id="gen-tarif-contrat" className={SELECT} value={t.contrat || ''}
+                  onChange={(e) => setTarifChamp('contrat', e.target.value)}>
+            <option value="">—</option>
+            {CONTRATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          <ErreurChamp erreurs={erreurs} champ="contrat" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="gen-tarif-base">Prix imprimés</Label>
+          <select id="gen-tarif-base" className={SELECT} value={t.baseTarifs || ''}
+                  onChange={(e) => setTarifChamp('baseTarifs', e.target.value)}>
+            <option value="">—</option>
+            <option value="ht">HT</option>
+            <option value="ttc">TTC</option>
+          </select>
+          <ErreurChamp erreurs={erreurs} champ="base_tarifs" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="gen-tarif-provenance">Source des prix</Label>
+          <select id="gen-tarif-provenance" className={SELECT} value={t.provenance || ''}
+                  onChange={(e) => setTarifChamp('provenance', e.target.value)}>
+            <option value="">—</option>
+            <option value="facture">Lus sur la facture</option>
+            <option value="oral">Déclarés oralement</option>
+          </select>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="gen-tarif-date">Date de la facture</Label>
+          <Input id="gen-tarif-date" type="date" value={t.dateFacture || ''}
+                 onChange={(e) => setTarifChamp('dateFacture', e.target.value)} />
+        </div>
+      </div>
+      {t.contrat === 'bt_force_motrice' && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" data-testid="gen-tarif-bi-horaire"
+                 checked={Boolean(t.optionBiHoraire)}
+                 onChange={(e) => setTarifChamp('optionBiHoraire', e.target.checked)} />
+          Option bi-horaire
+        </label>
+      )}
+      {mt && (
+        <div className="grid gap-4 sm:grid-cols-3" data-testid="ci-tarif-mt">
+          {[
+            ['pointe', 'tarif_pointe', 'Heures de pointe (MAD/kWh)'],
+            ['pleines', 'tarif_pleines', 'Heures pleines (MAD/kWh)'],
+            ['creuses', 'tarif_creuses', 'Heures creuses (MAD/kWh)'],
+            ['primeFixe', 'prime_fixe_kva_an', 'Prime fixe (MAD/kVA/an)'],
+            ['puissance', 'puissance_souscrite_kva', 'Puissance souscrite (kVA)'],
+          ].map(([cle, champ, libelle]) => (
+            <div className="grid gap-1.5" key={cle}>
+              <Label htmlFor={`gen-tarif-${cle}`}>{libelle}</Label>
+              <Input id={`gen-tarif-${cle}`} type="number" min="0" step="any"
+                     placeholder={cle === 'puissance' && puissanceLead != null ? String(puissanceLead) : undefined}
+                     value={t[cle] ?? ''} onChange={(e) => setTarifChamp(cle, e.target.value)} />
+              <ErreurChamp erreurs={erreurs} champ={`mt.${champ}`} />
+            </div>
+          ))}
+        </div>
+      )}
+      {vide && (
+        <p className="text-xs text-muted-foreground" data-testid="ci-tarif-repli">
+          Aucun tarif saisi : la grille ONEE officielle sert en repli
+          {tension === 'mt' ? ' (Tarif Général MT)' : ''}.
+        </p>
+      )}
+    </fieldset>
+  )
+}
 
 const TYPES_POSE = [
   { value: 'toiture_inclinee', label: 'Toiture inclinée' },
@@ -93,7 +204,7 @@ function Nombre({ id, label, value, onChange, placeholder, testid }) {
 }
 
 export default function BlocEtudeReseau({
-  profil, setChamp, resolues = null, erreurConso,
+  profil, setChamp, resolues = null, erreurConso, mentionReventeServeur = null,
 }) {
   const p = profil || {}
   const estMt = p.tension === 'mt'
@@ -299,11 +410,11 @@ export default function BlocEtudeReseau({
             <input type="checkbox" data-testid="gen-ci-revente" disabled={!estMt}
                    checked={estMt && Boolean(p.revente)}
                    onChange={(e) => setChamp('revente', e.target.checked)} />
-            Revente du surplus souhaitée
+            {estMt ? LIBELLE_REVENTE_MT : 'Revente du surplus'}
           </label>
           {!estMt && (
             <p className="text-xs text-muted-foreground" data-testid="ci-revente-bt">
-              {MENTION_REVENTE_BT}
+              {mentionReventeServeur || MENTION_REVENTE_BT}
             </p>
           )}
         </div>

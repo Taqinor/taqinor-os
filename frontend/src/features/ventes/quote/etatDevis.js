@@ -33,6 +33,8 @@ import {
 } from '../etudePompagePreviewPur.js'
 import { echeancierVersSaisie, saisieVersEcheancier } from '../echeancierEdition.js'
 import { entreesCiV2, profilDepuisEtude } from './profilCi.js'
+import { tarifDeclareDepuisSaisie } from './etudeMarcheBloc.js'
+import { saisieDepuisTarifDeclare } from './reouverture.js'
 
 //: Les options recommandées qu'un devis peut avoir FIGÉES (QJR524).
 const RECOS = ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
@@ -195,6 +197,8 @@ export function devisVersEtat(d) {
   if (mode === 'industriel' || mode === 'commercial') {
     etat.profilCi = profilDepuisEtude(e)
     etat.villeCi = e.site?.ville || null
+    // CIQ222 — le tarif de la facture du client, tel que saisi.
+    etat.tarifSaisie = saisieDepuisTarifDeclare(e.tarif_declare)
   }
   // QX44 — étude commerciale : catégorie + réponses.
   if (e.categorie_commerciale) {
@@ -325,6 +329,9 @@ export function etatVersEcritures(etat, vif = {}) {
         categorie: etat.mode === 'commercial' ? etat.categorieCommerciale : null,
         reponses: etat.mode === 'commercial' ? etat.commercialAnswers : null,
       })
+      : undefined,
+    tarifDeclare: (etat.mode === 'industriel' || etat.mode === 'commercial')
+      ? tarifDeclareDepuisSaisie(etat.tarifSaisie, { aujourdhui: etat.aujourdhui })
       : undefined,
     exploitation: {
       attestation: farm.attestation,

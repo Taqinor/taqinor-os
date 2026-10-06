@@ -21,7 +21,8 @@ import { CarteProfilCi } from './BlocEtudeReseau'
 
 const CLE = 'industriel'
 
-export default function PanneauIndustriel({ marche, profilCi, setChampCi, apercuCi, errors }) {
+// `carte` = les props de la carte C&I (profil, aperçu, tarif, erreurs).
+export default function PanneauIndustriel({ marche, ...carte }) {
   if (marche !== CLE) return null
-  return <CarteProfilCi profilCi={profilCi} setChampCi={setChampCi} apercuCi={apercuCi} errors={errors} />
+  return <CarteProfilCi {...carte} />
 }

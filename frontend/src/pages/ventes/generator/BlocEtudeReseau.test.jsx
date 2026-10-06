@@ -8,13 +8,19 @@ import { describe, it, expect, vi } from 'vitest'
 import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 
-import BlocEtudeReseau, { MENTION_REVENTE_BT } from './BlocEtudeReseau'
+import BlocEtudeReseau, {
+  MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture,
+} from './BlocEtudeReseau'
 import PanneauIndustriel from './PanneauIndustriel'
 import PanneauCommercial from './PanneauCommercial'
 import {
   profilCiVide, poserProfilCi, corpsCiDepuisProfil,
 } from '../../../features/ventes/quote/profilCi'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import {
+  TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie, erreursTarifDeclare,
+} from '../../../features/ventes/quote/etudeMarcheBloc'
+import { saisieDepuisTarifDeclare } from '../../../features/ventes/quote/reouverture'
 
 const EXEMPLE = exempleContrat('ventes', 'etude_ci_preview')
 
@@ -102,5 +108,67 @@ describe('CIQ125 — BlocEtudeReseau, profil déclaré C&I', () => {
     expect(container.querySelector('#gen-hiver')).toBeNull()
     expect(container.querySelector('#gen-realbill')).toBeNull()
     expect(screen.getByTestId('ci-taille-retenue')).toHaveTextContent(String(EXEMPLE.taille.retenue_kwc))
+  })
+})
+
+// ══ CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`) ══════════════
+const TARIF_CONTRAT = exempleContrat('ventes', 'tarifs_ci').tarif_declare
+
+function HarnaisTarif({ onTarif, erreurs = {}, tension = 'mt' }) {
+  const [tarif, setTarif] = useState({ ...TARIF_SAISIE_VIDE })
+  onTarif(tarif)
+  return (
+    <CarteTarifFacture tarif={tarif} tension={tension} erreurs={erreurs}
+                       setTarifChamp={(c, v) => setTarif((t) => ({ ...t, [c]: v }))} />
+  )
+}
+
+describe('CIQ222 — carte « Tarif de la facture »', () => {
+  it('MT : libellé de revente sourcé ; BT : case désactivée et mention', () => {
+    render(<Harnais onProfil={() => {}} />)
+    fireEvent.change(screen.getByTestId('gen-tension'), { target: { value: 'mt' } })
+    expect(screen.getByText(LIBELLE_REVENTE_MT)).toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('gen-tension'), { target: { value: 'bt' } })
+    expect(screen.getByTestId('gen-ci-revente')).toBeDisabled()
+    expect(screen.getByTestId('ci-revente-bt')).toHaveTextContent(MENTION_REVENTE_BT)
+  })
+
+  it('saisie MT ⇒ projection tarif_declare exacte (forme du contrat)', () => {
+    let tarif = null
+    render(<HarnaisTarif onTarif={(t) => { tarif = t }} />)
+    expect(screen.getByTestId('ci-tarif-repli')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Contrat'), { target: { value: 'mt_general' } })
+    fireEvent.change(screen.getByLabelText('Prix imprimés'), { target: { value: 'ht' } })
+    fireEvent.change(screen.getByLabelText('Date de la facture'), { target: { value: '2026-08-31' } })
+    const mt = TARIF_CONTRAT.mt
+    fireEvent.change(screen.getByLabelText(/Heures de pointe/), { target: { value: String(mt.tarif_pointe) } })
+    fireEvent.change(screen.getByLabelText(/Heures pleines/), { target: { value: String(mt.tarif_pleines) } })
+    fireEvent.change(screen.getByLabelText(/Heures creuses/), { target: { value: String(mt.tarif_creuses) } })
+    fireEvent.change(screen.getByLabelText(/Prime fixe/), { target: { value: String(mt.prime_fixe_kva_an) } })
+    fireEvent.change(screen.getByLabelText(/Puissance souscrite/), { target: { value: String(mt.puissance_souscrite_kva) } })
+    fireEvent.change(screen.getByLabelText('Source des prix'), { target: { value: 'facture' } })
+    const td = tarifDeclareDepuisSaisie(tarif, { aujourdhui: TARIF_CONTRAT.saisi_le })
+    expect(td).toEqual(TARIF_CONTRAT)
+    expect(screen.queryByTestId('ci-tarif-repli')).toBeNull()
+    // option bi-horaire : force motrice SEULEMENT
+    expect(screen.queryByTestId('gen-tarif-bi-horaire')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Contrat'), { target: { value: 'bt_force_motrice' } })
+    expect(screen.getByTestId('gen-tarif-bi-horaire')).toBeInTheDocument()
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = tarif identique', () => {
+    const saisie = saisieDepuisTarifDeclare(TARIF_CONTRAT)
+    expect(tarifDeclareDepuisSaisie(saisie, { aujourdhui: '2030-01-01' })).toEqual(TARIF_CONTRAT)
+    expect(tarifDeclareDepuisSaisie(TARIF_SAISIE_VIDE)).toBeNull()
+  })
+
+  it('400 sur tarif_declare.mt.tarif_pointe ⇒ message sous ce champ ; saisie libre step=any', () => {
+    const detail = '« etude_params.tarif_declare.mt.tarif_pointe » : valeur négative refusée.'
+    render(<HarnaisTarif onTarif={() => {}} erreurs={erreursTarifDeclare(detail)} />)
+    fireEvent.change(screen.getByLabelText('Contrat'), { target: { value: 'mt_general' } })
+    expect(screen.getByTestId('erreur-tarif-mt.tarif_pointe')).toHaveTextContent('valeur négative refusée')
+    for (const input of screen.getByTestId('ci-tarif-mt').querySelectorAll('input[type=number]')) {
+      expect(input.getAttribute('step')).toBe('any')
+    }
   })
 })

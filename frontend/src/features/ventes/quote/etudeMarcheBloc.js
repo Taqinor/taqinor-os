@@ -39,7 +39,7 @@ const resoudreEntrees = (entrees, consoDejaConnue) => (
 export function projeterEtudeMarche(mode, {
   choix = {}, entrees,
   categorie, reponses = {},
-  pompageEntrees, exploitation = {}, ciEntrees,
+  pompageEntrees, exploitation = {}, ciEntrees, tarifDeclare,
 } = {}) {
   if (mode === 'industriel' || mode === 'commercial') {
     // CIQ126 — le navigateur n'envoie QUE les ENTRÉES C&I v2 (contrat
@@ -53,6 +53,9 @@ export function projeterEtudeMarche(mode, {
       ...choix,
       ...(ciEntrees || {}),
     }
+    // CIQ222 — le tarif DÉCLARÉ de la facture (contrat `tarifs_ci.json`) ;
+    // `null` = rien de saisi, la clé est retirée (grille ONEE en repli).
+    if (tarifDeclare !== undefined) bloc.tarif_declare = tarifDeclare
     if (mode === 'commercial') {
       // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
       // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
@@ -337,4 +340,55 @@ export function lignesDepuisKit(kit, produits) {
     })
   }
   return rows
+}
+
+// ── CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`, `tarif_declare`) ──
+// État d'écran (texte tel que tapé) → `etude_params.tarif_declare`. Aucun
+// défaut, aucun nombre corrigé ; rien de saisi ⇒ `null` (la clé est retirée :
+// le moteur retombe sur la grille officielle ONEE, annoncée sous la carte).
+export const TARIF_SAISIE_VIDE = Object.freeze({
+  contrat: '', baseTarifs: '', optionBiHoraire: false,
+  pointe: '', pleines: '', creuses: '', primeFixe: '', puissance: '',
+  dateFacture: '', provenance: '', saisiLe: '',
+})
+
+/** `true` si un prix ou un choix de contrat a été saisi. */
+export const tarifSaisi = (t) => Boolean(t) && Object.entries(TARIF_SAISIE_VIDE)
+  .some(([k, vide0]) => k !== 'saisiLe' && t[k] !== undefined && t[k] !== vide0)
+
+export function tarifDeclareDepuisSaisie(saisie, { aujourdhui = '' } = {}) {
+  const t = { ...TARIF_SAISIE_VIDE, ...(saisie || {}) }
+  if (!tarifSaisi(t)) return null
+  const mt = t.contrat === 'mt_general' ? {
+    tarif_pointe: nombreSaisi(t.pointe),
+    tarif_pleines: nombreSaisi(t.pleines),
+    tarif_creuses: nombreSaisi(t.creuses),
+    prime_fixe_kva_an: nombreSaisi(t.primeFixe),
+    puissance_souscrite_kva: nombreSaisi(t.puissance),
+  } : null
+  return {
+    contrat: t.contrat || null,
+    option_bi_horaire: t.contrat === 'bt_force_motrice' ? Boolean(t.optionBiHoraire) : false,
+    base_tarifs: t.baseTarifs || null,
+    mt,
+    bt: null,
+    date_facture: t.dateFacture || null,
+    provenance: t.provenance || null,
+    saisi_le: t.saisiLe || aujourdhui || null,
+  }
+}
+
+/**
+ * Le 400 du serveur (`detail` qui nomme « etude_params.tarif_declare.<champ> »)
+ * → `{ '<champ>': message }`, pour l'afficher SOUS le champ nommé.
+ */
+export function erreursTarifDeclare(detail) {
+  const messages = Array.isArray(detail) ? detail : (typeof detail === 'string' ? [detail] : [])
+  const out = {}
+  for (const brut of messages) {
+    for (const m of String(brut).matchAll(/etude_params\.tarif_declare\.([a-z_.0-9[\]]+)/g)) {
+      if (!out[m[1]]) out[m[1]] = String(brut)
+    }
+  }
+  return out
 }
