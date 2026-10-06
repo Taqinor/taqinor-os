@@ -1238,7 +1238,7 @@ def build_pages(ctx) -> list:
   .p2-multi th {{ font-size:7pt; letter-spacing:.06em; text-transform:uppercase;
     color:{C['muted_2']}; font-weight:700; text-align:left;
     padding:0 4mm 1mm 0; border-bottom:1px solid {C['line']}; }}
-  .p2-multi td {{ padding:1.1mm 4mm 1.1mm 0; border-bottom:1px solid {C['line_soft']};
+  .p2-multi td {{ padding:.55mm 4mm .55mm 0; border-bottom:1px solid {C['line_soft']};
     color:{C['ink']}; }}
   .p2-multi .p2-multi-gt td {{ font-weight:800; color:{C['navy']};
     border-top:1.5px solid {C['navy']}; border-bottom:none; }}
