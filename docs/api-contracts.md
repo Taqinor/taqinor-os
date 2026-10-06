@@ -44,6 +44,8 @@
     engageable:inconnu, hash_entree:inconnu, kwc:inconnu, marges:inconnu, motifs_non_engageable:inconnu, plans:inconnu, preuve:inconnu, repere:inconnu, schema_version:inconnu, total_modules:inconnu, verdict:inconnu, version_moteur:inconnu
 - frontend/src/api/calepinageApi.js :: profilsTypes -> /api/django/calepinage/parametres/profils-types
     profils:inconnu
+- frontend/src/api/calepinageApi.js :: recalculerSimulations -> /api/django/calepinage/parametres/recalculer-simulations
+    jobs:inconnu, reste:inconnu, soumis:nombre
 - frontend/src/api/calepinageApi.js :: resultat -> /api/django/calepinage/moteur/resultat/<>
     detail:texte, elements:liste, job_id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
 - frontend/src/api/calepinageApi.js :: suggestionPenteDisponible -> /api/django/calepinage/parametres/suggestion-pente

@@ -117,13 +117,16 @@ describe('DiagrammePertes (CAL143)', () => {
   })
 
   it('ACAL52 — résultat incomplet : bandeau borne haute avec lien réglages', async () => {
-    const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
-    calepinageApi.calepinages.resultat.mockResolvedValue({
-      data: {
+    // Le `resultat` du contrat, avec production/simulation du contrat de
+    // simulation « borne haute » (même construction que les autres helpers).
+    const resultatBorneHaute = () => {
+      const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+      return {
         ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
         production: borneHaute.production, simulation: borneHaute.simulation,
-      },
-    })
+      }
+    }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultatBorneHaute() })
     rendre()
 
     await screen.findByTestId('cal143-panneau')
@@ -230,13 +233,12 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
   ]
 
   it('énergie livrée = 100 − total_pct servi', async () => {
-    calepinageApi.calepinages.resultat.mockResolvedValue({
-      data: {
-        ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
-        cascade: { ...exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple').cascade,
-          etapes: deuxEtapes, total_pct: 19 },
-      },
+    const resultatDeuxEtapes = () => ({
+      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+      cascade: { ...exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple').cascade,
+        etapes: deuxEtapes, total_pct: 19 },
     })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultatDeuxEtapes() })
     rendre()
 
     const cascade = await screen.findByTestId('calx48-cascade-detaillee')
