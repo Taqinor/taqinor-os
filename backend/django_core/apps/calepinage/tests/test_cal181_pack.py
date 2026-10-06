@@ -6,11 +6,11 @@ Deux niveaux d'essais, et ce qu'ils prouvent :
    VRAIS PDF construits par PyMuPDF, la somme des pages des pièces est celle
    qu'annonce le pack, une pièce obligatoire qui ne se rend pas fait ÉCHOUER
    le pack en la nommant, et une pièce facultative absente sort en SIGNALEMENT.
-2. ORCHESTRATION (base) — le pack dépose chaque pièce en GED puis appelle
-   ``fusionner_pdf`` avec TOUTES les pièces, dans l'ordre : aucune n'est
-   silencieusement perdue en chemin. La fusion elle-même est la primitive
-   plateforme XGED10, qui a ses propres essais ; on ne la re-teste pas, on
-   vérifie qu'on l'appelle correctement.
+2. ORCHESTRATION — ACAL236 : le pack fusionne LOCALEMENT les octets rendus
+   (toutes les pièces, dans l'ordre, pages contrôlées) et dépose UN document
+   GED sous une ancre stable, l'empreinte des ENTRÉES portée par le nom de la
+   version. La GED est ici doublée (dépendance externe) ; le dépôt réel est
+   prouvé en base par ``test_acal_depot_ged_dossiers``.
 
 Run :
     python manage.py test apps.calepinage.tests.test_cal181_pack -v2
@@ -110,7 +110,9 @@ class RenduDesPiecesTest(SimpleTestCase):
 
 @skipUnless(_FITZ, 'PyMuPDF absent de cet environnement')
 class OrchestrationDuPackTest(SimpleTestCase):
-    """Le pack appelle la GED — il ne fusionne rien lui-même."""
+    """ACAL236 — UNE fusion locale contrôlée, UN dépôt GED."""
+
+    EMPREINTE = 'c' * 64
 
     def setUp(self):
         self.calepinage = FauxCalepinage()
@@ -122,25 +124,24 @@ class OrchestrationDuPackTest(SimpleTestCase):
 
         def deposer(**kwargs):
             self.deposes.append(kwargs)
-            return ('document-%s' % kwargs['source_type'], True)
+            return ('pack', True)
 
-        with mock.patch('apps.ged.services.deposit_document',
-                        side_effect=deposer), \
-                mock.patch('apps.ged.services.fusionner_pdf',
-                           return_value='pack') as fusion:
+        with mock.patch('apps.ged.services.find_document_by_source',
+                        return_value=None), \
+                mock.patch('apps.ged.services.deposit_document',
+                           side_effect=deposer):
             resultat = construire_pack(self.calepinage,
                                        company='societe-essai',
-                                       rendus=self.rendus)
-        self.fusion = fusion
+                                       rendus=self.rendus,
+                                       empreinte=self.EMPREINTE)
         return resultat
 
     def test_toutes_les_pieces_entrent_dans_la_fusion_dans_l_ordre(self):
         resultat = self._construire()
         self.assertEqual(resultat['document'], 'pack')
-        self.assertEqual(
-            self.fusion.call_args.args[0],
-            ['document-calepinage.planche',
-             'document-calepinage.note_calcul'])
+        # UN seul dépôt : le dossier fusionné (1 + 2 pages, dans l'ordre).
+        self.assertEqual(len(self.deposes), 1)
+        self.assertEqual(compter_pages(self.deposes[0]['contenu_bytes']), 3)
 
     def test_le_nombre_de_pages_annonce_est_la_somme_des_pieces(self):
         resultat = self._construire()
@@ -149,14 +150,16 @@ class OrchestrationDuPackTest(SimpleTestCase):
             resultat['pages_attendues'],
             sum(pages for _c, _l, pages in resultat['pieces']))
 
-    def test_l_idempotence_est_ancree_sur_l_empreinte_du_layout(self):
-        # Ancrer sur le seul identifiant du calepinage aurait rendu un pack
-        # PÉRIMÉ en silence après modification de la conception.
+    def test_l_idempotence_est_ancree_sur_l_empreinte_des_entrees(self):
+        # ACAL236 — ancre STABLE (un document par calepinage et famille) ;
+        # l'empreinte des ENTRÉES (jamais layout_hash) nomme la version.
         self._construire()
-        ancres = [depose['source_id'] for depose in self.deposes]
-        for ancre in ancres:
-            self.assertIn('aaaaaaaaaaaa', ancre)
-            self.assertTrue(ancre.startswith('41:'))
+        depose = self.deposes[0]
+        self.assertEqual(depose['source_id'], '41:pack_technique')
+        self.assertEqual(depose['source_type'],
+                         'calepinage.pack_technique.fusion')
+        self.assertIn('c' * 16, depose['filename'])
+        self.assertNotIn('aaaaaaaaaaaa', depose['filename'])
 
     def test_la_societe_est_celle_du_serveur_et_le_rangement_est_dedie(self):
         self._construire()
