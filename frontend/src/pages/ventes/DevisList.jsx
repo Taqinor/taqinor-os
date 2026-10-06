@@ -58,6 +58,11 @@ import { useDevisEnvoi } from './devisList/useDevisEnvoi.js'
 import EnvoiDialogs from './devisList/EnvoiDialogs.jsx'
 // SPL206 — en-tête de page (titre, synthèse KPI, filtres, barre de lot).
 import DevisListChrome, { DevisPageHeader } from './devisList/DevisListChrome.jsx'
+// CIQ324 — identité d'entreprise facultative à l'acceptation d'un C&I.
+import IdentiteEntrepriseFields from '../../features/ventes/quote/IdentiteEntrepriseFields'
+import {
+  estDevisCi, corpsAcceptation, raisonSocialeConnue, ENTREPRISE_VIDE,
+} from '../../features/ventes/quote/acceptationEntreprise'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -377,6 +382,7 @@ export default function DevisList() {
   const [acceptNom, setAcceptNom] = useState('')
   const [acceptDate, setAcceptDate] = useState('')
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
+  const [acceptEntreprise, setAcceptEntreprise] = useState(ENTREPRISE_VIDE)
   const [acceptBusy, setAcceptBusy] = useState(false)
   // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
   // porte pas les lignes du devis — jamais un chiffre inventé).
@@ -398,6 +404,7 @@ export default function DevisList() {
     setAcceptNom('')
     setAcceptDate(new Date().toISOString().slice(0, 10))
     setAcceptOption('sans_batterie')
+    setAcceptEntreprise({ ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(d) })
     setAcceptBusy(false)
   }
 
@@ -612,11 +619,11 @@ export default function DevisList() {
     if (!d) return
     setAcceptBusy(true)
     try {
-      await ventesApi.accepterDevis(d.id, {
+      await ventesApi.accepterDevis(d.id, corpsAcceptation({
         nom: acceptNom,
         date: acceptDate,
         option: d.nb_options === 2 ? acceptOption : '',
-      })
+      }, d, acceptEntreprise))
       dispatch(fetchDevis())
       setAcceptTarget(null)
       // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
@@ -959,6 +966,10 @@ export default function DevisList() {
                   </label>
                 </RadioGroup>
               </div>
+            )}
+            {estDevisCi(acceptTarget) && (
+              <IdentiteEntrepriseFields value={acceptEntreprise} onChange={setAcceptEntreprise}
+                                        idPrefix="accept" />
             )}
           </div>
       </ResponsiveDialog>
