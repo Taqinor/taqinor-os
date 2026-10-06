@@ -3,12 +3,12 @@ import api from '../../../api/axios'
 import ventesApi from '../../../api/ventesApi'
 import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
-import { hacherLayout, brouillonPertinent } from '../brouillon.js'
+import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
   pinDepuisLead, leadToBuilderPayload, contexteToDevisPayload,
   contexteCalepinageVersPayload, bankableFromDevis, reglagesAtelierDuContexte,
-  stockageBrouillonLocal, tailleImagePlan,
+  stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan, messageRefusRepere,
 } from './contexteAtelier.js'
 
 // SPL214 — effet de boot de l'atelier (chargement lead/devis/calepinage puis
@@ -36,10 +36,16 @@ export async function pousserAffectationAtelier(builder, calepinageId) {
 export function useAtelierBoot(ctx) {
   // Identifiants et drapeaux de mode, puis refs, puis setters d'état.
   const { cibleId, calepinageId, devisId, leadId, estCalepinage, estDevis } = ctx
-  const { builderApi, poursuivreBootRef, reducedMotion, utilisateurCourantId } = ctx
+  const { builderApi, reducedMotion, utilisateurCourantId } = ctx
   const { setBrouillonPropose, setBuilderApiActuel, setBuilderReady, setContexte } = ctx
   const { setCatalogueIndisponible } = ctx
   const { setContourMessage, setHashBaseBrouillon, setLead, setLoadError, setStatus } = ctx
+  // ACAL85 — « la scène est hydratée » : posé par `onHydrationTerminee` dans les TROIS
+  // modes. `onApiReady` arrive AVANT l'hydratation (roof-tool-pro11) : une référence
+  // prise là compterait l'hydratation elle-même comme une modification.
+  const { setSceneHydratee } = ctx
+  // ACAL192 — refus serveur du recentrage automatique (calepinage verrouillé…), en français.
+  const { setRepereErreur } = ctx
   useEffect(() => {
     let cancelled = false
     // Sans identifiant, l'état initial affiche déjà l'erreur — rien à booter.
@@ -236,11 +242,13 @@ export function useAtelierBoot(ctx) {
           // l'atelier garde sa convention d'extrusion, affichée comme telle).
           if (batimentOsm) a.setBatimentOsmPropose?.(batimentOsm)
         },
+        // ACAL85 — la référence « non modifiée » se prend APRÈS l'hydratation.
+        onHydrationTerminee: () => { setSceneHydratee?.(true) },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
       if (addrEl && leadData.ville) addrEl.value = String(leadData.ville)
-      setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis & envoyer au client ».')
+      setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis ».')
     }
 
     // ── PV20 — boot MODE DEVIS : UN SEUL appel CRITIQUE (design-context) ────
@@ -323,6 +331,8 @@ export function useAtelierBoot(ctx) {
         // proposé et aucune cote de repli.
         reglagesAtelier: reglagesAtelierDuContexte(ctx),
         onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
+        // ACAL85 — la référence « non modifiée » se prend APRÈS l'hydratation.
+        onHydrationTerminee: () => { setSceneHydratee?.(true) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
       // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
@@ -389,6 +399,21 @@ export function useAtelierBoot(ctx) {
         return
       }
       if (cancelled) return
+      // ACAL192 (D-ACAL-13, D-QJR5-15) — l'épingle SUIT le lead (`derive.etat ===
+      // 'automatique'`) et le GPS du lead a été corrigé : le SERVEUR recentre UNE fois
+      // (translation versionnée), puis le contexte est relu AVANT de booter le
+      // constructeur — la carte s'ouvre sur la géométrie corrigée. Aucune translation
+      // décidée ici ; un refus (verrou…) est DIT et l'atelier boote sur l'existant.
+      if (ctx?.geometrie?.derive?.etat === 'automatique' && ctx?.modifiable) {
+        try {
+          await calepinageApi.calepinages.recentrerSurLead(calepinageId)
+          const relu = await calepinageApi.calepinages.designContext(calepinageId)
+          if (relu?.data) ctx = relu.data
+        } catch (err) {
+          setRepereErreur?.(messageRefusRepere(err?.response?.data))
+        }
+        if (cancelled) return
+      }
       setContexte(ctx)
 
       const carte = ctx?.carte ?? {}
@@ -447,6 +472,8 @@ export function useAtelierBoot(ctx) {
           // APRÈS l'hydratation (jamais depuis `onApiReady`, où `fondDuDocument()`
           // vaut null ou le fond du document précédent en navigation SPA).
           onHydrationTerminee: () => {
+            // ACAL85 — brouillon et garde de sortie partent de la scène HYDRATÉE.
+            setSceneHydratee?.(true)
             poserFondDuDocument(builderApi.current)
             // ACAL286 — la teinte par chaîne vient de la table servie (best-effort).
             pousserAffectationAtelier(builderApi.current, calepinageId)
@@ -480,21 +507,35 @@ export function useAtelierBoot(ctx) {
       // layout SERVEUR lue MAINTENANT (voir l'en-tête de `brouillon.js` —
       // elle tient lieu d'`updated_at`, absent du contrat design-context) ;
       // elle reste constante pour toute la session d'édition qui suit.
-      const hashServeur = hacherLayout(ctx?.geometrie?.roof_layout ?? null)
+      // ACAL84 — la clé porte l'empreinte « document » SERVEUR
+      // (design-context), jamais un djb2 de l'objet client : l'ordre des clés
+      // jsonb diffère de la sérialisation et la clé changeait sans changement.
+      // Sans document (aucune conception encore), le segment le DIT.
+      const hashServeur = ctx?.geometrie?.empreinte_document || 'aucun-document'
       if (!cancelled) setHashBaseBrouillon(hashServeur)
-      const brouillon = brouillonPertinent({
-        storage: stockageBrouillonLocal(),
-        calepinageId,
-        utilisateurId: utilisateurCourantId,
-        hashBase: hashServeur,
+      const idsBrouillon = { calepinageId, utilisateurId: utilisateurCourantId }
+      // ACAL84 — les brouillons d'empreintes PÉRIMÉES de ce calepinage et de
+      // cet utilisateur sont purgés à l'ouverture (jamais réhydratés).
+      purgerBrouillonsOrphelins({
+        storage: stockageBrouillonLocal(), ...idsBrouillon, hashBase: hashServeur,
       })
-      if (!cancelled && brouillon) {
-        // « Rien n'est réhydraté sans le geste » : le boot du constructeur
-        // ATTEND que l'utilisateur choisisse (bandeau plus bas dans le JSX).
-        poursuivreBootRef.current = poursuivreBootCalepinage
-        setBrouillonPropose(brouillon)
+      // ACAL84 — « Reprendre » (geste explicite) a mémorisé le brouillon puis
+      // rechargé : ce boot-ci part de lui, sans re-proposer le bandeau.
+      const reprise = consommerReprise(stockageSessionLocal(), idsBrouillon)
+      if (reprise) {
+        await poursuivreBootCalepinage(reprise.layout)
         return
       }
+      const brouillon = brouillonPertinent({
+        storage: stockageBrouillonLocal(),
+        ...idsBrouillon,
+        hashBase: hashServeur,
+      })
+      // ACAL84 — le bandeau ne BLOQUE plus le chargement (ANON-08) : l'atelier
+      // boote sur la conception serveur ; « rien n'est réhydraté sans le
+      // geste » reste vrai (Reprendre recharge sur le brouillon, Ignorer ne
+      // fait que fermer le bandeau).
+      if (!cancelled && brouillon) setBrouillonPropose(brouillon)
       await poursuivreBootCalepinage(undefined)
     }
 

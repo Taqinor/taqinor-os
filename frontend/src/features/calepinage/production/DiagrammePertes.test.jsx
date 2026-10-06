@@ -18,8 +18,11 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
+/* ACAL125 — le bouton de calcul est sous `calepinage_gerer` (doublure : pas de Provider Redux). */
+vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
+
 import calepinageApi from '../../../api/calepinageApi'
-import DiagrammePertes from './DiagrammePertes'
+import DiagrammePertes, { construireCascadeDetaillee } from './DiagrammePertes'
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -93,6 +96,51 @@ describe('DiagrammePertes (CAL143)', () => {
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
     )).toBeInTheDocument()
     expect(screen.queryByTestId('cal143-cascade')).toBeNull()
+  })
+
+  it('ACAL125 — jamais simulé sans poste (exemple_vide tel quel) : « Lancer » est actif', async () => {
+    servir('exemple_vide')
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    const bouton = screen.getByTestId('calx48-lancer-bouton')
+    expect(bouton).not.toBeDisabled()
+    expect(bouton).toHaveTextContent('Lancer la simulation')
+  })
+
+  it('ACAL125 — résultat frais : « Recalculer » est visible', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Recalculer')
+  })
+
+  it('ACAL52 — résultat incomplet : bandeau borne haute avec lien réglages', async () => {
+    // Le `resultat` du contrat, avec production/simulation du contrat de
+    // simulation « borne haute » (même construction que les autres helpers).
+    const resultatBorneHaute = () => {
+      const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+      return {
+        ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+        production: borneHaute.production, simulation: borneHaute.simulation,
+      }
+    }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultatBorneHaute() })
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    expect(screen.getByTestId('acal52-borne-haute')).toBeInTheDocument()
+    expect(screen.getByTestId('acal52-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
+    expect(screen.getAllByTestId('acal52-reglage').length).toBeGreaterThan(0)
+  })
+
+  it('ACAL52 — résultat complet : aucun bandeau', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    expect(screen.queryByTestId('acal52-borne-haute')).toBeNull()
   })
 
   it('erreur réseau : message français, aucune valeur inventée', async () => {
@@ -173,5 +221,61 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
       'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
     )
+  })
+})
+
+/* ACAL140 — les barres viennent des énergies SERVIES (kwh_avant / kwh_apres),
+   jamais d'une soustraction de pourcentages relatifs. */
+describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', () => {
+  const deuxEtapes = [
+    { rang: 1, etape: 'a', libelle: 'Étape A', kwh_avant: 100, kwh_apres: 90, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+    { rang: 2, etape: 'b', libelle: 'Étape B', kwh_avant: 90, kwh_apres: 81, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+  ]
+
+  it('énergie livrée = 100 − total_pct servi', async () => {
+    const resultatDeuxEtapes = () => ({
+      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+      cascade: { ...exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple').cascade,
+        etapes: deuxEtapes, total_pct: 19 },
+    })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultatDeuxEtapes() })
+    rendre()
+
+    const cascade = await screen.findByTestId('calx48-cascade-detaillee')
+    const table = within(cascade).getByRole('table')
+    const ligne = within(table).getByText('Énergie livrée').closest('tr')
+    expect(ligne.querySelector('td[data-label="Énergie restante"]').textContent).toMatch(/^81,0/)
+    expect(ligne.querySelector('td[data-label="Perte"]').textContent).toMatch(/^19,0.*pertes totales/)
+    // La dernière colonne n'est plus libellée « Perte (cumulé) » à tort.
+    expect(within(table).queryByText(/\(cumulé\)/)).toBeNull()
+    // Les barres : 100 → 90 → 81, pas 100 → 90 → 80.
+    const lignes = construireCascadeDetaillee(deuxEtapes, 19)
+    expect(lignes[2].niveau).toBeCloseTo(81, 6)
+    expect(lignes[3].valeur).toBeCloseTo(81, 6)
+  })
+
+  it('gain bifacial au-dessus du niveau courant', () => {
+    const etapes = [
+      { rang: 1, etape: 'a', libelle: 'Perte', kwh_avant: 100, kwh_apres: 90, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+      { rang: 2, etape: 'bif', libelle: 'Gain bifacial', kwh_avant: 90, kwh_apres: 93, perte_pct: -3.33, gain: true, source: 'fiche', motif_omission: '' },
+    ]
+    const lignes = construireCascadeDetaillee(etapes, null)
+    const gain = lignes[2]
+    expect(gain.gain).toBe(true)
+    // La barre démarre à 90 (niveau avant) et monte à 93 : au-dessus.
+    expect(gain.base).toBeCloseTo(90, 6)
+    expect(gain.base + gain.valeur).toBeCloseTo(93, 6)
+    // Sans total_pct servi : dernier niveau en énergie.
+    expect(lignes[3].valeur).toBeCloseTo(93, 6)
+  })
+
+  it('étape omise : hauteur nulle, niveau inchangé', () => {
+    const etapes = [
+      { rang: 1, etape: 'a', libelle: 'A', kwh_avant: 200, kwh_apres: 180, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+      { rang: 2, etape: 'o', libelle: 'Omise', kwh_avant: 180, kwh_apres: null, perte_pct: null, gain: false, source: null, motif_omission: 'pas de données' },
+    ]
+    const lignes = construireCascadeDetaillee(etapes, null)
+    expect(lignes[2].valeur).toBe(0)
+    expect(lignes[2].niveau).toBeCloseTo(90, 6)
   })
 })

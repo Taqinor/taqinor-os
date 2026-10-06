@@ -7,22 +7,39 @@ XGED10), déjà utilisée par le dossier d'appel d'offres. Le calepinage, lui,
 n'avait aucun pack : le technicien envoyait trois pièces séparées, et le client
 les recevait dans le désordre — quand il les recevait toutes.
 
-Ce module ne fusionne RIEN lui-même : il rend les pièces, les dépose comme
-documents GED, puis appelle ``fusionner_pdf``. Une fusion maison serait un
-second chemin PDF à maintenir, et c'est exactement ce que XGED10 a supprimé.
+(Historique : ce module déposait chaque pièce puis appelait ``fusionner_pdf``
+— remplacé par ACAL236 ci-dessous, qui fusionne les octets DÉJÀ rendus et
+dépose UN document versionné.)
 
 Les frontières respectées
 =========================
-* la GED est atteinte par ses SERVICES (``deposit_document``, ``fusionner_pdf``)
-  — jamais par ses modèles : ``apps.calepinage`` n'importe aucun modèle
-  étranger (``lint-imports``) ;
+* la GED est atteinte par ses SERVICES (``find_document_by_source``,
+  ``deposit_document``, ``add_version``…) — jamais par ses modèles :
+  ``apps.calepinage`` n'importe aucun modèle étranger (``lint-imports``) ;
 * la société est POSÉE côté serveur (celle du calepinage), jamais lue d'un
   corps de requête ;
-* l'idempotence du dépôt est ancrée sur (calepinage, EMPREINTE DU LAYOUT,
-  pièce) : relancer le pack sur la MÊME conception retrouve les documents déjà
-  déposés, tandis qu'une conception MODIFIÉE en produit de nouveaux. Ancrer sur
-  le seul identifiant du calepinage aurait rendu un pack PÉRIMÉ en silence —
-  le pire des deux mondes.
+* l'idempotence est ancrée sur l'EMPREINTE DES ENTRÉES (ACAL236), jamais sur
+  le seul ``layout_hash`` ni sur les octets (deux rendus diffèrent).
+
+ACAL236 — UNE fonction de dépôt, ancrée sur les ENTRÉES (D-ADOC-2)
+===================================================================
+Trois boucles « déposer chaque pièce puis ``fusionner_pdf`` » (dossier
+technique, dossier de fin de chantier, dossier réglementaire) ancraient
+l'idempotence sur ``layout_hash`` : une pose réelle saisie après coup (toit
+inchangé) retrouvait l'ancien dossier, figé à l'as-built vide, et chaque POST
+créait pourtant un NOUVEAU document fusionné (11, 12, 13, 14…). Désormais
+:func:`deposer_et_fusionner` est le SEUL chemin : la fusion est faite ICI par
+PyMuPDF depuis les octets déjà en mémoire, son nombre de pages est CONTRÔLÉ
+(somme des pièces, sinon refus nommé), puis le dossier est déposé UNE fois
+sous une ancre stable (``<pk>:<famille>``). L'EMPREINTE DES ENTRÉES
+(``empreinte_livrable``, ACAL221 — conception, simulation, saisies, pose
+réelle, gabarits…) voyage dans le nom de la version : des entrées inchangées
+rendent le MÊME document sans version neuve ; des entrées changées ajoutent
+une NOUVELLE VERSION du même document GED, l'ancienne restant en historique
+(décision fondateur D-ADOC-2 du 05/10/2026 : un document client régénéré =
+nouvelle version du même document). Une panne GED (lecture MinIO, document
+sans version, archivage légal) devient un refus NOMMÉ (``piece='ged'``),
+jamais un 500.
 
 Une pièce manquante est SIGNALÉE
 ================================
@@ -40,6 +57,8 @@ __all__ = [
     # CALX319 — le dossier de fin de chantier.
     'DOSSIER_FIN_CHANTIER', 'DOSSIER_CHANTIER_GED',
     'MENTION_RECETTE_GARANTIES', 'construire_dossier_fin_chantier',
+    # ACAL236 — LE dépôt fusionné, partagé avec le dossier réglementaire.
+    'deposer_et_fusionner', 'empreinte_des_dossiers',
 ]
 
 #: Où le pack se range dans la GED. Un cabinet et un dossier racine dédiés :
@@ -60,6 +79,9 @@ SPEC_PIECES = (
     ('note_calcul', 'Note de calcul', True),
     ('plan_toiture', 'Plan de toiture', False),
     ('plan_masse', 'Plan de masse', False),
+    # ACAL237 — le plan de pose TERRAIN (repères de rangée, sens de pose,
+    # chaînes) : facultatif, signalé — jamais substitué — s'il est refusé.
+    ('plan_pose', 'Plan de pose terrain', False),
     ('rapport_etude', "Rapport d'étude", False),
     ('plan_cablage', 'Plan de câblage', False),
     ('rapport_ombrage', "Rapport d'ombrage", False),
@@ -103,7 +125,8 @@ def _rendus(calepinage, company):
     """
     from .note_calcul import rendre_note_calcul
     from .planche import (
-        CONTENU_MASSE, CONTENU_TOITURE, rendre_plan_pdf, rendre_planche_pdf,
+        CONTENU_MASSE, CONTENU_TOITURE, rendre_plan_pdf, rendre_plan_pose_pdf,
+        rendre_planche_pdf,
     )
 
     # CALX309 — le plan de toiture et le plan de masse EXISTENT déjà
@@ -135,6 +158,9 @@ def _rendus(calepinage, company):
             calepinage, contenu=CONTENU_TOITURE, company=company),
         'plan_masse': lambda: rendre_plan_pdf(
             calepinage, contenu=CONTENU_MASSE, company=company),
+        # ACAL237 — le plan de pose TERRAIN, celui que sert plan-pose.pdf.
+        'plan_pose': lambda: rendre_plan_pose_pdf(calepinage,
+                                                  company=company),
         'rapport_etude': lambda: rendre_rapport(calepinage, company=company),
         'plan_cablage': lambda: rendre_plan_cablage_pdf(
             calepinage, company=company),
@@ -188,18 +214,161 @@ def rendre_pieces(calepinage, *, company=None, rendus=None, spec=SPEC_PIECES):
                     % libelle, piece=code)
             signalements.append('« %s » : rendu vide.' % libelle)
             continue
-        pieces.append((code, libelle, octets, compter_pages(octets)))
+        pages = compter_pages(octets)
+        if not pages:
+            # ACAL236 — « 0 page » n'est pas un compte : c'est un PDF que
+            # PyMuPDF ne lit pas (ou PyMuPDF absent). Il ne peut pas entrer
+            # dans la fusion ; le dire, jamais l'additionner comme un 0.
+            motif = (MOTIF_PAGES_INCONNUES % libelle)
+            if obligatoire:
+                raise PackRefuse(motif, piece=code)
+            signalements.append(motif)
+            continue
+        pieces.append((code, libelle, octets, pages))
     return pieces, signalements
 
 
-def _ancre(calepinage, code):
-    """L'ancre d'idempotence : calepinage + EMPREINTE du layout + pièce."""
-    empreinte = (getattr(calepinage, 'layout_hash', '') or 'sans-empreinte')
-    return '%s:%s:%s' % (getattr(calepinage, 'pk', ''), empreinte[:12], code)
+#: ACAL236 — le signalement d'une pièce dont le nombre de pages est inconnu.
+MOTIF_PAGES_INCONNUES = ("« %s » : pages inconnues (PDF illisible ou PyMuPDF "
+                         "indisponible) — pièce absente du dossier fusionné.")
+
+#: ACAL236 — caractères de l'empreinte des entrées portés par le nom de la
+#: version déposée (même longueur que les versions de documents, ACAL222).
+TAILLE_EMPREINTE_DOSSIER = 16
+
+
+def empreinte_des_dossiers(calepinage):
+    """ACAL236 — l'empreinte (16 hex) des ENTRÉES d'un dossier fusionné.
+
+    ``empreinte_livrable.empreinte_des_entrees`` (ACAL221) : conception,
+    simulation servie, saisies électriques, pose réelle, gabarits, photos,
+    identité, marque — jamais ``layout_hash`` seul (une pose réelle saisie
+    après coup ne le change pas).
+    """
+    from .empreinte_livrable import empreinte_des_entrees
+
+    return empreinte_des_entrees(calepinage, 'fr')[:TAILLE_EMPREINTE_DOSSIER]
+
+
+def _fusionner_localement(pieces, refus):
+    """``(octets, pages)`` : les pièces fusionnées par PyMuPDF, dans l'ordre,
+    et le nombre de pages du fichier fusionné."""
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:  # pragma: no cover - dépend de l'environnement
+        raise refus("Fusion impossible : PyMuPDF est indisponible sur ce "
+                    "serveur, le dossier ne peut pas être assemblé.",
+                    piece='pieces')
+    sortie = fitz.open()
+    try:
+        for code, libelle, octets, _pages in pieces:
+            try:
+                segment = fitz.open(stream=octets, filetype='pdf')
+            except Exception as erreur:  # noqa: BLE001 - motif reporté
+                raise refus("La pièce « %s » n'est pas un PDF lisible — %s."
+                            % (libelle, erreur), piece=code)
+            try:
+                sortie.insert_pdf(segment)
+            finally:
+                segment.close()
+        return sortie.tobytes(), sortie.page_count
+    finally:
+        sortie.close()
+
+
+def deposer_et_fusionner(calepinage, *, pieces, famille, nom, folder_nom,
+                         company, empreinte, ancre=None, created_by=None,
+                         cabinet_nom=CABINET, refus=PackRefuse):
+    """ACAL236 — LE dépôt d'un dossier fusionné (technique, fin de chantier,
+    réglementaire). ``pieces`` : ``[(code, libelle, octets, pages|None)]``.
+
+    1. fusion LOCALE (PyMuPDF) des octets déjà rendus, dans l'ordre ;
+    2. CONTRÔLE : pages du fichier fusionné == somme des pages des pièces,
+       sinon ``refus(piece='pieces')`` — une pièce vidée ne disparaît jamais
+       sans bruit ;
+    3. dépôt GED sous l'ancre STABLE ``<ancre>:<famille>`` : premier dépôt =
+       document neuf ; même ``empreinte`` des entrées que la version en
+       vigueur = MÊME document, aucune version ; empreinte changée = NOUVELLE
+       VERSION du même document (D-ADOC-2), l'ancienne en historique.
+
+    Returns:
+        ``{'document', 'pages', 'nouvelle_version'}``.
+
+    Raises:
+        ``refus`` (``PackRefuse`` / ``DossierRefuse``) : fusion impossible,
+        total de pages incohérent, ou panne GED (``piece='ged'``).
+    """
+    if not pieces:
+        raise refus('Dossier refusé : aucune pièce à fusionner.',
+                    piece='pieces')
+    pieces = [(code, libelle, octets,
+               pages if pages is not None else compter_pages(octets))
+              for code, libelle, octets, pages in pieces]
+    attendues = sum(pages for _c, _l, _o, pages in pieces)
+    octets, pages = _fusionner_localement(pieces, refus)
+    if pages != attendues:
+        raise refus(
+            "Dossier refusé : le fichier fusionné compte %s page(s) pour %s "
+            "attendue(s) (somme des pièces) — une pièce s'est perdue en "
+            "chemin." % (pages, attendues), piece='pieces')
+
+    empreinte = (empreinte or '')[:TAILLE_EMPREINTE_DOSSIER]
+    nom_fichier = '%s__%s.pdf' % (famille, empreinte or 'sans-empreinte')
+    source_type = 'calepinage.%s.fusion' % famille
+    source_id = '%s:%s' % (ancre if ancre is not None
+                           else getattr(calepinage, 'pk', ''), famille)
+
+    from django.core.files.base import ContentFile
+    from django.db import DatabaseError
+
+    from apps.ged.services import (
+        add_version, assert_not_archive_legalement, compute_checksum,
+        deposit_document, find_document_by_source, selectors_latest_version,
+    )
+    from apps.records.storage import store_attachment
+
+    try:
+        document = find_document_by_source(
+            company, source_type=source_type, source_id=source_id)
+        if document is None:
+            document, _cree = deposit_document(
+                company=company, nom=nom, source_type=source_type,
+                source_id=source_id, contenu_bytes=octets,
+                mime='application/pdf', filename=nom_fichier,
+                cabinet_nom=cabinet_nom, folder_nom=folder_nom,
+                created_by=created_by)
+            return {'document': document, 'pages': pages,
+                    'nouvelle_version': True}
+        en_vigueur = selectors_latest_version(document)
+        if (en_vigueur is not None
+                and (getattr(en_vigueur, 'filename', '') or '')
+                == nom_fichier):
+            # Entrées inchangées : le MÊME document, aucune copie.
+            return {'document': document, 'pages': pages,
+                    'nouvelle_version': False}
+        # Entrées changées : NOUVELLE VERSION du même document (D-ADOC-2) —
+        # octets dans le magasin générique (PDF vérifié par octets magiques),
+        # numéro posé par la GED, l'ancienne version reste en historique.
+        assert_not_archive_legalement(document)
+        donnees, erreur = store_attachment(
+            ContentFile(octets, name=nom_fichier), company=company)
+        if erreur:
+            raise refus("Dépôt en GED impossible — %s" % erreur, piece='ged')
+        add_version(
+            document, file_key=donnees['file_key'], company=company,
+            filename=nom_fichier, size=len(octets), mime='application/pdf',
+            checksum=compute_checksum(octets), uploaded_by=created_by)
+    except DatabaseError:
+        raise
+    except Exception as erreur:  # noqa: BLE001 - panne GED NOMMÉE (400)
+        if isinstance(erreur, refus):
+            raise
+        raise refus("Dépôt en GED impossible — %s" % erreur, piece='ged')
+    return {'document': document, 'pages': pages, 'nouvelle_version': True}
 
 
 def construire_pack(calepinage, *, company=None, created_by=None,
-                    rendus=None):
+                    rendus=None, empreinte=None):
     """Rend les pièces, les dépose en GED et les fusionne en UN document.
 
     Renvoie ``{'document', 'pieces', 'pages', 'signalements'}`` où ``pages``
@@ -221,28 +390,15 @@ def construire_pack(calepinage, *, company=None, created_by=None,
             "Dossier technique refusé : aucune pièce à fusionner.",
             piece='pieces')
 
-    from apps.ged.services import deposit_document, fusionner_pdf
-
-    documents, attendues = [], 0
-    for code, libelle, octets, pages in pieces:
-        document, _cree = deposit_document(
-            company=company,
-            nom='%s — %s' % (libelle, calepinage),
-            source_type='calepinage.%s' % code,
-            source_id=_ancre(calepinage, code),
-            contenu_bytes=octets,
-            mime='application/pdf',
-            filename='%s.pdf' % code,
-            cabinet_nom=CABINET, folder_nom=DOSSIER,
-            created_by=created_by)
-        documents.append(document)
-        attendues += pages
-
-    pack = fusionner_pdf(
-        documents, company=company, created_by=created_by,
-        nom='Dossier technique — %s' % calepinage)
+    attendues = sum(pages for _c, _l, _o, pages in pieces)
+    depot = deposer_et_fusionner(
+        calepinage, pieces=pieces, famille='pack_technique',
+        nom='Dossier technique — %s' % calepinage, folder_nom=DOSSIER,
+        company=company, created_by=created_by,
+        empreinte=(empreinte if empreinte is not None
+                   else empreinte_des_dossiers(calepinage)))
     return {
-        'document': pack,
+        'document': depot['document'],
         'pieces': [(code, libelle, pages) for code, libelle, _o, pages
                    in pieces],
         'pages_attendues': attendues,
@@ -262,10 +418,11 @@ def construire_pack(calepinage, *, company=None, created_by=None,
 # GARANTIES``, toujours présente dans ``signalements``).
 #
 # LA MÊME mécanique que ``construire_pack`` ci-dessus : ``rendre_pieces``
-# (contrôle de pages compris) et la fusion GED (``deposit_document`` +
-# ``fusionner_pdf``, XGED10) — AUCUN second chemin de fusion, seulement un
-# DOSSIER GED distinct (``DOSSIER_CHANTIER_GED``) et une ancre d'idempotence
-# préfixée pour ne jamais collisionner avec le dossier technique.
+# (contrôle de pages compris) et ``deposer_et_fusionner`` (ACAL236) — AUCUN
+# second chemin de fusion, seulement un DOSSIER GED distinct
+# (``DOSSIER_CHANTIER_GED``) et une famille d'ancre distincte
+# (``dossier_fin_chantier``) pour ne jamais collisionner avec le dossier
+# technique.
 
 #: Le dossier de fin de chantier ne partage PAS le dossier GED du dossier
 #: technique : deux livrables distincts, deux rangements distincts.
@@ -302,7 +459,7 @@ def _rendus_dossier_fin_chantier(calepinage, company):
     from .documents.document_asbuilt import rendre_document_asbuilt
     from .documents.manuel_proprietaire import rendre_manuel
     from .documents.plan_cablage import rendre_plan_cablage_pdf
-    from .planche import rendre_planche_pdf
+    from .planche import rendre_plan_pose_pdf
     from .rapport import construire_rapport, html_de_rapport
 
     def _nomenclature():
@@ -313,7 +470,11 @@ def _rendus_dossier_fin_chantier(calepinage, company):
         return render_pdf(html=html_de_rapport(rapport), company=company)
 
     return {
-        'plan_pose': lambda: rendre_planche_pdf(calepinage, company=company),
+        # ACAL237 — le plan de pose TERRAIN (repères R1…, sens de pose,
+        # chaînes et onduleur), jamais la planche cotée substituée : un plan
+        # de pose refusé sort en signalement (pièce facultative).
+        'plan_pose': lambda: rendre_plan_pose_pdf(calepinage,
+                                                  company=company),
         'document_asbuilt': lambda: rendre_document_asbuilt(
             calepinage, company=company),
         'plan_cablage': lambda: rendre_plan_cablage_pdf(
@@ -325,7 +486,8 @@ def _rendus_dossier_fin_chantier(calepinage, company):
 
 
 def construire_dossier_fin_chantier(calepinage, *, company=None,
-                                    created_by=None, rendus=None):
+                                    created_by=None, rendus=None,
+                                    empreinte=None):
     """Rend les cinq pièces, les dépose en GED et les fusionne en UN dossier.
 
     Renvoie la MÊME forme que ``construire_pack``
@@ -348,28 +510,16 @@ def construire_dossier_fin_chantier(calepinage, *, company=None,
             "Dossier de fin de chantier refusé : aucune pièce à fusionner.",
             piece='pieces')
 
-    from apps.ged.services import deposit_document, fusionner_pdf
-
-    documents, attendues = [], 0
-    for code, libelle, octets, pages in pieces:
-        document, _cree = deposit_document(
-            company=company,
-            nom='%s — %s' % (libelle, calepinage),
-            source_type='calepinage.dossier_fin_chantier.%s' % code,
-            source_id='dossier-fin-chantier:%s' % _ancre(calepinage, code),
-            contenu_bytes=octets,
-            mime='application/pdf',
-            filename='%s.pdf' % code,
-            cabinet_nom=CABINET, folder_nom=DOSSIER_CHANTIER_GED,
-            created_by=created_by)
-        documents.append(document)
-        attendues += pages
-
-    dossier = fusionner_pdf(
-        documents, company=company, created_by=created_by,
-        nom='Dossier de fin de chantier — %s' % calepinage)
+    attendues = sum(pages for _c, _l, _o, pages in pieces)
+    depot = deposer_et_fusionner(
+        calepinage, pieces=pieces, famille='dossier_fin_chantier',
+        nom='Dossier de fin de chantier — %s' % calepinage,
+        folder_nom=DOSSIER_CHANTIER_GED, company=company,
+        created_by=created_by,
+        empreinte=(empreinte if empreinte is not None
+                   else empreinte_des_dossiers(calepinage)))
     return {
-        'document': dossier,
+        'document': depot['document'],
         'pieces': [(code, libelle, pages) for code, libelle, _o, pages
                    in pieces],
         'pages_attendues': attendues,

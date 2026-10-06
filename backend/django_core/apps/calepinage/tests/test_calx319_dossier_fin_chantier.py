@@ -162,28 +162,30 @@ class OrchestrationDossierFinChantierTest(SimpleTestCase):
 
         def deposer(**depot):
             self.deposes.append(depot)
-            return ('document-%s' % depot['source_type'], True)
+            return ('dossier-chantier', True)
 
-        with mock.patch('apps.ged.services.deposit_document',
-                        side_effect=deposer), \
-                mock.patch('apps.ged.services.fusionner_pdf',
-                           return_value='dossier-chantier') as fusion:
+        # ACAL236 — la GED (dépendance externe) est doublée ; le dépôt réel
+        # est prouvé en base par ``test_acal_depot_ged_dossiers``.
+        with mock.patch('apps.ged.services.find_document_by_source',
+                        return_value=None), \
+                mock.patch('apps.ged.services.deposit_document',
+                           side_effect=deposer):
             resultat = construire_dossier_fin_chantier(
                 self.calepinage, company='societe-essai',
-                rendus=rendus if rendus is not None else self.rendus)
-        self.fusion = fusion
+                rendus=rendus if rendus is not None else self.rendus,
+                empreinte='d' * 64)
         return resultat
 
     def test_toutes_les_pieces_entrent_dans_la_fusion_dans_l_ordre(self):
         resultat = self._construire()
         self.assertEqual(resultat['document'], 'dossier-chantier')
         self.assertEqual(
-            self.fusion.call_args.args[0],
-            ['document-calepinage.dossier_fin_chantier.plan_pose',
-             'document-calepinage.dossier_fin_chantier.document_asbuilt',
-             'document-calepinage.dossier_fin_chantier.plan_cablage',
-             'document-calepinage.dossier_fin_chantier.nomenclature',
-             'document-calepinage.dossier_fin_chantier.manuel_proprietaire'])
+            [code for code, _l, _p in resultat['pieces']],
+            list(CODES_DOSSIER_CHANTIER))
+        # UN dépôt : le dossier fusionné localement, 2+1+1+1+3 pages.
+        self.assertEqual(len(self.deposes), 1)
+        self.assertEqual(
+            pack_technique.compter_pages(self.deposes[0]['contenu_bytes']), 8)
 
     def test_le_nombre_de_pages_annonce_est_la_somme_des_pieces(self):
         resultat = self._construire()
@@ -216,12 +218,13 @@ class OrchestrationDossierFinChantierTest(SimpleTestCase):
             self.assertEqual(depose['folder_nom'], DOSSIER_CHANTIER_GED)
             self.assertNotEqual(depose['folder_nom'], DOSSIER)
 
-    def test_l_ancre_est_prefixee_distincte_du_dossier_technique(self):
+    def test_l_ancre_est_distincte_du_dossier_technique(self):
         self._construire()
         for depose in self.deposes:
-            self.assertTrue(
-                depose['source_id'].startswith('dossier-fin-chantier:'))
-            self.assertIn('57:', depose['source_id'])
+            self.assertEqual(depose['source_id'], '57:dossier_fin_chantier')
+            self.assertEqual(depose['source_type'],
+                             'calepinage.dossier_fin_chantier.fusion')
+            self.assertIn('d' * 16, depose['filename'])
 
     def test_sans_societe_le_dossier_refuse(self):
         calepinage = FauxCalepinage()

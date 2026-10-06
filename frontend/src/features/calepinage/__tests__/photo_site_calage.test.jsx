@@ -22,12 +22,16 @@ import { MemoryRouter } from 'react-router-dom'
 const photos = vi.fn()
 const get = vi.fn()
 const calerPhoto = vi.fn()
+const layout = vi.fn()
+const enregistrerSectionLayout = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       photos: (...a) => photos(...a),
       get: (...a) => get(...a),
       calerPhoto: (...a) => calerPhoto(...a),
+      layout: (...a) => layout(...a),
+      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
     },
     // CAL70 — `AtelierPanneaux` (monté ici pour le test d'atteignabilité)
     // porte aussi `PanneauAllees`, qui lit les réglages société au montage.
@@ -73,7 +77,11 @@ const {
   default: PhotoSiteCalage, positionsInitiales, coinsDepuisMarqueurs,
 } = await import('../PhotoSiteCalage')
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  layout.mockResolvedValue({ data: { roof_layout: { zones: [] }, empreinte_document: 'E0' } })
+  enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
+})
 afterEach(() => { cleanup() })
 
 /* ── 1. LES MATHS, PURES ──────────────────────────────────────────────── */
@@ -129,9 +137,9 @@ const PHOTO_CALEE = {
   calage: { coins: [[33.1, -7.1], [33.2, -7.1], [33.2, -7.2], [33.1, -7.2]] },
 }
 
-const rendre = () => render(
+const rendre = (props = {}) => render(
   <MemoryRouter initialEntries={['/calepinage/9/photos']}>
-    <PhotoSiteCalage calepinageId={9} />
+    <PhotoSiteCalage calepinageId={9} {...props} />
   </MemoryRouter>,
 )
 
@@ -186,6 +194,93 @@ describe('CAL53 — l’écran affiche, cale et persiste', () => {
     expect(coins).toBeNull()
     expect(await screen.findByTestId('cal-photo-calage-message'))
       .toHaveTextContent('Calage effacé')
+  })
+})
+
+describe('ACAL67 — la photo calée devient le fond de l’atelier (underlay, par section)', () => {
+  const monter = async (props = {}) => {
+    photos.mockResolvedValue({ data: { photos: [PHOTO_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre(props)
+    await screen.findByTestId('cal-photo-calage-carte')
+  }
+
+  it('Utiliser comme fond → POST layout/section/ cle underlay kind photo', async () => {
+    await monter()
+    fireEvent.click(await screen.findByRole('button', { name: 'Utiliser comme fond de l’atelier' }))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout).toHaveBeenCalledWith(9, {
+      cle: 'underlay',
+      valeur: { kind: 'photo', photoSiteId: 2, opacite: 0.6 },
+      base_empreinte: 'E0',
+    })
+    expect(await screen.findByTestId('cal-photo-calage-message'))
+      .toHaveTextContent('posée comme fond de l’atelier')
+  })
+
+  it('pousse le fond dans l’atelier vivant, avec le jeton rendu', async () => {
+    const documentVivant = { empreinte: 'EATELIER', appliquerSection: vi.fn() }
+    await monter({ documentVivant })
+    fireEvent.click(await screen.findByRole('button', { name: 'Utiliser comme fond de l’atelier' }))
+    await waitFor(() => expect(documentVivant.appliquerSection).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('EATELIER')
+    expect(documentVivant.appliquerSection).toHaveBeenCalledWith(
+      'underlay', { kind: 'photo', photoSiteId: 2, opacite: 0.6 }, 'E1')
+  })
+
+  it('une photo NON calée ne propose pas de fond (son calage fait foi, D-ACAL-20)', async () => {
+    photos.mockResolvedValue({ data: { photos: [PHOTO_NON_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre()
+    await screen.findByTestId('cal-photo-calage-carte')
+    expect(screen.queryByRole('button', { name: 'Utiliser comme fond de l’atelier' })).toBeNull()
+  })
+
+  it('Retirer → valeur null ; le bouton n’existe que pour un fond photo', async () => {
+    layout.mockResolvedValue({
+      data: {
+        roof_layout: { underlay: { kind: 'photo', photoSiteId: 2, opacite: 0.6 } },
+        empreinte_document: 'E0',
+      },
+    })
+    await monter()
+    // Cette photo EST déjà le fond : plus de « Utiliser », mais « Retirer ».
+    expect(await screen.findByRole('button', { name: 'Retirer le fond' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Utiliser comme fond de l’atelier' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer le fond' }))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout).toHaveBeenCalledWith(9, {
+      cle: 'underlay', valeur: null, base_empreinte: 'E0',
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Retirer le fond' })).toBeNull()
+    })
+    expect(await screen.findByRole('button', { name: 'Utiliser comme fond de l’atelier' })).toBeInTheDocument()
+  })
+
+  it('pas de « Retirer » quand le fond est un plan importé', async () => {
+    layout.mockResolvedValue({
+      data: { roof_layout: { underlay: { kind: 'plan', attachmentId: 4 } }, empreinte_document: 'E0' },
+    })
+    await monter()
+    expect(screen.queryByRole('button', { name: 'Retirer le fond' })).toBeNull()
+  })
+
+  it('document illisible : aucun écrit, boutons désactivés', async () => {
+    layout.mockRejectedValue(new Error('500'))
+    await monter()
+    const bouton = await screen.findByRole('button', { name: 'Utiliser comme fond de l’atelier' })
+    expect(bouton).toBeDisabled()
+    fireEvent.click(bouton)
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('jeton périmé (409) : message, document relu', async () => {
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: { code: 'document_modifie' } } })
+    await monter()
+    fireEvent.click(await screen.findByRole('button', { name: 'Utiliser comme fond de l’atelier' }))
+    expect(await screen.findByTestId('cal-photo-calage-message')).toHaveTextContent('changé ailleurs')
+    await waitFor(() => expect(layout).toHaveBeenCalledTimes(2))
   })
 })
 

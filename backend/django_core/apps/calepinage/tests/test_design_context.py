@@ -36,16 +36,9 @@ CONTRAT = json.loads(
 #: back : chaque tâche nommée sert sa clé et retire son entrée ; la table
 #: vide, ``forme_serveur`` redevient ``complete``.
 EN_ATTENTE = {
-    'revision_possible': 'ACAL36',
-    'calepinage.devis_lie': 'ACAL36',
     'calepinage.lead_supprime': 'ACAL178',
-    'geometrie.empreinte_document': 'ACAL22',
-    'geometrie.repere_lead': 'ACAL191',
-    'geometrie.ecart_m': 'ACAL191',
-    'geometrie.derive': 'ACAL191',
     'geometrie.contour_utilisable': 'ACAL250',
     'geometrie.source_repere': 'ACAL250',
-    'cible.refus': 'ACAL194',
 }
 EXEMPLE_SERVI = sans(CONTRAT['exemple'], EN_ATTENTE)
 

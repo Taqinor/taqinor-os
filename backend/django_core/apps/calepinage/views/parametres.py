@@ -152,6 +152,20 @@ class ParametresCalepinageView(APIView):
         # écriture) : l'écran coche parmi CES sections, dans CET ordre.
         reponse['documents'] = dict(reponse.get('documents') or {},
                                     catalogue_rapport=_catalogue_rapport())
+        # ACAL129 — le fuseau EFFECTIF du site (imagerie, sinon profil
+        # société) et sa provenance, en LECTURE SEULE : jamais accepté en
+        # écriture.
+        from ..services.site import fuseau_du_site
+
+        effectif = fuseau_du_site(reponse.get('imagerie') or {},
+                                  company=company)
+        # Contrat ``site_imagerie.json`` : ``imagerie.site_effectif``, clé
+        # DÉRIVÉE de la section (jamais stockée, retirée d'un PUT).
+        reponse['imagerie'] = dict(reponse.get('imagerie') or {},
+                                   site_effectif={
+                                       'fuseau': effectif['fuseau'],
+                                       'source': effectif['provenance'],
+                                       'mention': effectif['mention']})
         return Response(reponse)
 
     @extend_schema(request=_forme_reglages('CalepinageParametresRequete'),
@@ -164,6 +178,13 @@ class ParametresCalepinageView(APIView):
                 {'detail': "Le corps attendu est un objet « section : "
                            "réglages »."},
                 status=status.HTTP_400_BAD_REQUEST)
+        imagerie = donnees.get('imagerie')
+        if isinstance(imagerie, dict) and 'site_effectif' in imagerie:
+            # ACAL129 — clé DÉRIVÉE servie par GET : un aller-retour GET → PUT
+            # la renvoie ; elle n'est jamais écrite.
+            donnees = dict(donnees, imagerie={
+                cle: valeur for cle, valeur in imagerie.items()
+                if cle != 'site_effectif'})
         documents = donnees.get('documents')
         if isinstance(documents, dict) and CLE_CATALOGUE in documents:
             # ACAL288 — clé DÉRIVÉE : refusée en la nommant, rien d'écrit.
@@ -194,6 +215,36 @@ class ParametresCalepinageView(APIView):
             return Response(_refus_nomme(refus),
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(reglages)
+
+
+#: ACAL134 — la forme DÉCLARÉE du geste « tout recalculer ».
+FORME_RECALCUL = inline_serializer('CalepinageRecalculSimulations', dict(
+    soumis=serializers.IntegerField(),
+    jobs=serializers.ListField(child=serializers.DictField()),
+    reste=serializers.IntegerField(),
+))
+
+
+class RecalculerSimulationsView(APIView):
+    """ACAL134 — ``POST /calepinage/parametres/recalculer-simulations/``.
+
+    Après un changement de réglage société, relance en tâche de fond chaque
+    simulation PÉRIMÉE de la société de l'appelant (et d'elle seule), sans
+    forcer : une simulation fraîche se court-circuite. Même droit que le PUT
+    des réglages (``calepinage_gerer``).
+    """
+
+    permission_classes = [ScopedPermission]
+    read_permission = CAL_VOIR
+    write_permission = CAL_GERER
+
+    @extend_schema(request=None, responses={202: FORME_RECALCUL})
+    def post(self, request, *args, **kwargs):
+        from ..services.simulation import recalculer_simulations_societe
+
+        rendu = recalculer_simulations_societe(
+            getattr(request.user, 'company', None), request.user)
+        return Response(rendu, status=status.HTTP_202_ACCEPTED)
 
 
 #: YAPIC6 — une APIView doit DÉCLARER sa forme (drf-spectacular ne la devine

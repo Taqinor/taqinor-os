@@ -397,7 +397,11 @@ class ChaineReelleTest(SimpleTestCase):
         self.assertIn('projection', production)
         self.assertIsInstance(production['projection'], list)
         for ligne in production['annees']:
-            self.assertEqual(sorted(ligne), ['annee', 'kwh', 'source'])
+            # ACAL54 — chaque année porte ``observe: true`` : un total
+            # OBSERVÉ, jamais forcé à sommer au P50.
+            self.assertEqual(sorted(ligne),
+                             ['annee', 'kwh', 'observe', 'source'])
+            self.assertIs(ligne['observe'], True)
 
     def test_l_incertitude_refuse_les_quantiles_sans_sigma_source(self):
         # Aucune composante saisie : σ ne peut pas être publié, et les
@@ -461,7 +465,10 @@ class ServiParResultatTest(SimpleTestCase):
         stocke = dict(blocs)
         stocke[service.CLE_SIMULATION] = entete
         calepinage = _Calepinage(resultat=stocke)
-        return resultat_calepinage(calepinage, materiel=MATERIEL)
+        # ACAL48 — les réglages société entrent dans l'empreinte de
+        # simulation : la lecture voit les MÊMES réglages que le calcul.
+        return resultat_calepinage(calepinage, materiel=MATERIEL,
+                                   reglages=REGLAGES)
 
     def test_une_simulation_fraiche_est_servie_telle_quelle(self):
         rendu = _simuler()

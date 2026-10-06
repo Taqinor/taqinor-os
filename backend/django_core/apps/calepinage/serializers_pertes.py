@@ -15,7 +15,8 @@ from __future__ import annotations
 from rest_framework import serializers
 
 __all__ = ['PertesCalepinageSerializer', 'PosteDePerteSerializer',
-           'PostesDePertesSerializer', 'PosteDuCatalogueSerializer']
+           'PostesDePertesSerializer', 'PosteDuCatalogueSerializer',
+           'PosteStatueSerializer']
 
 
 class PosteDePerteSerializer(serializers.Serializer):
@@ -31,12 +32,26 @@ class PosteDePerteSerializer(serializers.Serializer):
     #: côté serveur — jamais saisie à côté.
     mensuel = serializers.ListField(child=serializers.FloatField(),
                                     required=False, allow_null=True)
+    #: ACAL135 — le FORÇAGE SIGNÉ : appliqué à la place de l'étape qui le
+    #: calculerait, refusé sans ``motif_force``.
+    force = serializers.BooleanField(required=False)
+    motif_force = serializers.CharField(required=False, allow_blank=True)
+
+
+class PosteStatueSerializer(PosteDePerteSerializer):
+    """ACAL135 — un poste PUBLIÉ avec son statut dans la chaîne."""
+
+    statut = serializers.CharField()
+    etape = serializers.CharField(allow_null=True)
+    raison = serializers.CharField(allow_blank=True)
 
 
 class PostesDePertesSerializer(serializers.Serializer):
     """Le CORPS de ``POST enregistrer-pertes/`` : la liste complète."""
 
-    pertes = PosteDePerteSerializer(many=True)
+    pertes = PosteDePerteSerializer(many=True, required=False)
+    #: ACAL135 — le nom du contrat (``postes``) ; ``pertes`` reste lu.
+    postes = PosteDePerteSerializer(many=True, required=False)
 
 
 class PosteDuCatalogueSerializer(serializers.Serializer):
@@ -53,6 +68,7 @@ class PertesCalepinageSerializer(serializers.Serializer):
 
     calepinage = serializers.IntegerField()
     pertes = PosteDePerteSerializer(many=True)
+    postes = PosteStatueSerializer(many=True)
     #: ``null`` quand aucun poste n'est renseigné : une somme de rien n'est
     #: pas ``0 %``, c'est une absence de politique.
     total_pct = serializers.FloatField(allow_null=True)

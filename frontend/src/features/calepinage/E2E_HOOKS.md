@@ -114,6 +114,11 @@ retiré plus un hook ajouté.
 | `cal-devis-refus` | devis refus serveur. |
 | `cal-devis-reviser` | devis réviser. |
 | `cal-devis-variante-manquante` | devis variante manquant. |
+| `cal-devis-reviser-lecture-seule` | devis réviser (v2) depuis la lecture seule (ACAL93). |
+| `cal-devis-retouches` | devis retouches non enregistrées / lignes ajoutées (ACAL94/95). |
+| `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
+| `cal-devis-j-ai-lu` | devis « J'ai lu » avant rechargement (ACAL95). |
+| `cal-devis-ouvrir` | devis lien « Ouvrir le devis » (ACAL95). |
 | `cal-generer-devis` | générer devis. |
 | `cal-resynchroniser-devis` | resynchroniser devis. |
 
@@ -451,6 +456,12 @@ retiré plus un hook ajouté.
 | `cal-releve-ajouter-chaine` | relevé ajouter chaîne. |
 | `cal-releve-bandeau` | relevé bandeau. |
 | `cal-releve-chaine` | relevé chaîne. |
+| `cal-releve-appliquer-cote` | relevé ouvrir « Appliquer la cote au pan » (ACAL207). |
+| `cal-releve-cote-pan` | relevé cote : choix du pan (ACAL207). |
+| `cal-releve-cote-cote` | relevé cote : choix du côté (ACAL207). |
+| `cal-releve-cote-mesure` | relevé cote : choix de la cote mesurée (ACAL207). |
+| `cal-releve-cote-appliquer` | relevé cote : appliquer au pan (ACAL207). |
+| `cal-releve-cote-retour` | relevé cote : retour du serveur / refus nommé (ACAL207). |
 | `cal-releve-chaine--ajouter-cote` | relevé chaîne ajouter côte à côte. |
 | `cal-releve-chaine--cote` | relevé chaîne côte à côte. |
 | `cal-releve-chaine--cote--retirer` | relevé chaîne côte à côte retirer. |
@@ -606,6 +617,19 @@ retiré plus un hook ajouté.
 | `cal-doc-version-telecharger` | document version télécharger. |
 | `cal-doc-versions` | document versions. |
 | `cal-doc-vide` | document état vide. |
+| `cal-doc-post-resultat` | document composé (POST) : résultat (ACAL223). |
+| `cal-doc-post-lien-ged` | document composé : lien GED (ACAL223). |
+| `cal-doc-post-pieces` | document composé : pièces (ACAL223). |
+| `cal-doc-post-signalements` | document composé : signalements (ACAL223). |
+| `cal-doc-apercu` | document aperçu (ACAL223). |
+| `cal-doc-remettre` | document remettre (ACAL223/228). |
+| `cal-doc-autre-format` | document autre format (DXF) (ACAL223). |
+| `cal-doc-langue` | document sélecteur de langue (ACAL223). |
+| `cal-doc-langue-fr-seul` | document « n'existe qu'en français » (ACAL223). |
+| `cal-doc-image-perimee` | document image périmée (ACAL225). |
+| `cal-doc-sorties` | document section Plans et exports (ACAL228). |
+| `cal-doc-sorties-carte` | document carte de sortie technique (ACAL228). |
+| `cal-doc-sorties-motif` | document motif d'indisponibilité d'une sortie (ACAL228). |
 
 ## FichesIncompletes (`equipements/FichesIncompletes.jsx`)
 
@@ -619,6 +643,9 @@ retiré plus un hook ajouté.
 | `cal-fiches-incompletes` | fiches incomplètes. |
 | `cal-fiches-lien` | fiches lien. |
 | `cal-fiches-sans-devis` | fiches sans devis. |
+| `cal-fiches-materiel-calcul` | fiches « Matériel utilisé par le calcul » (ACAL264). |
+| `cal-fiches-materiel` | fiches ligne de matériel du calcul (ACAL264). |
+| `cal-fiches-ecart-module` | fiches écart calcul ↔ devis sur le module (ACAL264). |
 
 ## PompagePanel (`pompage/PompagePanel.jsx`)
 

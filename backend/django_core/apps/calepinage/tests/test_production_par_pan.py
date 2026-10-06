@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 
-from apps.calepinage.services.production import pans_du_layout
+from apps.calepinage.services.production import _pans_du_layout
 
 #: Azimuts de FACE du document de toiture (0 = Nord, 180 = Sud).
 SUD, EST, OUEST = 180.0, 90.0, 270.0
@@ -19,7 +19,7 @@ class LecturePansTest(unittest.TestCase):
     """La lecture du document ne suppose rien qu'il ne dise pas."""
 
     def test_la_geometrie_posee_prime_sur_le_resultat_decran(self):
-        pans = pans_du_layout({'zones': [{
+        pans = _pans_du_layout({'zones': [{
             'id': 'z1', 'label': 'Pan Sud', 'pitchDeg': 20.0,
             'facingAzimuthDeg': 170.0,
             'result': {'count': 4, 'kwc': 2.88},
@@ -31,8 +31,8 @@ class LecturePansTest(unittest.TestCase):
             'azimut_deg': 180.0, 'inclinaison_deg': 15.0}])
 
     def test_document_sans_zone_ne_rend_aucun_pan(self):
-        self.assertEqual(pans_du_layout({}), [])
-        self.assertEqual(pans_du_layout(None), [])
+        self.assertEqual(_pans_du_layout({}), [])
+        self.assertEqual(_pans_du_layout(None), [])
 
 
 if __name__ == '__main__':  # pragma: no cover

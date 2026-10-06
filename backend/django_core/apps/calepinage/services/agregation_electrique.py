@@ -205,7 +205,8 @@ def _publier(groupe, cles):
     return publie
 
 
-def agregation_production(production, affectation, *, cascades=None):
+def agregation_production(production, affectation, *, cascades=None,
+                          cascade_onduleur=None):
     """CALX183 — la production agrégée par chaîne, par MPPT et par onduleur.
 
     Args:
@@ -218,6 +219,11 @@ def agregation_production(production, affectation, *, cascades=None):
         cascades: ``{numéro de chaîne: [étapes de la cascade]}`` — la liste
             plate ``pertes`` de CHAQUE chaîne (D-CALX 11). Absente, les deux
             pertes de la maille chaîne sont omises avec leur motif.
+        cascade_onduleur: ACAL142 — les étapes de la phase ONDULEUR de la
+            simulation (ACAL53 : elle voit la SOMME DC des pans rattachés à
+            l'ensemble des onduleurs). Son étape « ecretage » donne
+            ``par_onduleur[].perte_ecretage_pct`` ; absente, la perte est
+            omise avec son motif (jamais 0 %).
 
     Returns:
         ``{par_chaine, par_mppt, par_onduleur, hors_chaine, total,
@@ -306,12 +312,21 @@ def agregation_production(production, affectation, *, cascades=None):
                 "ne publie aucune somme partielle."
                 % (groupe['chaine'], module))
 
+    par_onduleur = []
+    for cle in ordre_onduleurs:
+        publie = _publier(onduleurs[cle], ('onduleur',))
+        ecretage, motif_ecretage = (
+            _perte_de_l_etape(cascade_onduleur, ETAPE_ECRETAGE)
+            if cascade_onduleur else (None, MOTIF_SANS_CASCADE))
+        publie['perte_ecretage_pct'] = ecretage
+        publie['motif_ecretage'] = motif_ecretage
+        par_onduleur.append(publie)
+
     return {
         'par_chaine': par_chaine,
         'par_mppt': [_publier(mppts[cle], ('onduleur', 'mppt'))
                      for cle in ordre_mppts],
-        'par_onduleur': [_publier(onduleurs[cle], ('onduleur',))
-                         for cle in ordre_onduleurs],
+        'par_onduleur': par_onduleur,
         'hors_chaine': {
             'modules': hors['modules'],
             'p50_kwh': (None if hors['energie_illisible']

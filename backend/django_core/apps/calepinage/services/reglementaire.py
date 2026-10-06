@@ -262,27 +262,35 @@ def composer_dossiers(*, calepinage_id, pays, entrees, infos):
 
 # ── la couche qui lit la base ──────────────────────────────────────────────
 
-def infos_du_calepinage(calepinage):
+def infos_du_calepinage(calepinage, *, resultat=None):
     """Les données RÉELLES qu'un gabarit peut demander à préremplir.
 
     Aucune n'est calculée « au mieux » : une donnée absente vaut ``None`` et
     le champ qui la demandait sortira « à compléter ».
+
+    ACAL259 — modules et kWc sont ceux de ``mesures.mesures_du_document`` (LA
+    lecture du module), sur le résultat SERVI (``selectors.resultat_servi``,
+    bloc ``pose`` : la fiche du stock) quand ``resultat`` n'est pas fourni.
     """
-    from .production import pans_du_layout
+    from .mesures import mesures_du_document
 
     company = getattr(calepinage, 'company', None)
     client = getattr(calepinage, 'client', None)
-    pans = pans_du_layout(getattr(calepinage, 'roof_layout', None))
-    modules = sum(int(pan.get('modules') or 0) for pan in pans)
-    kwc = [pan.get('kwc') for pan in pans if pan.get('kwc') is not None]
+    layout = getattr(calepinage, 'roof_layout', None)
+    if resultat is None and isinstance(layout, dict) and layout:
+        from .. import selectors
+
+        resultat = selectors.resultat_servi(calepinage)
+    mesures = mesures_du_document(layout, resultat)
+    pans = mesures['pans']
     domine = max(pans, key=lambda pan: int(pan.get('modules') or 0),
                  default=None)
     return {
         'societe_nom': _valeur_reelle(getattr(company, 'nom', None)),
         'client_nom': _valeur_reelle(getattr(client, 'nom', None)),
         'adresse': _valeur_reelle(getattr(client, 'adresse', None)),
-        'puissance_kwc': (sum(kwc) if kwc else None),
-        'nombre_modules': (modules or None),
+        'puissance_kwc': mesures['kwc'],
+        'nombre_modules': (mesures['modules'] or None),
         'orientation_deg': (domine or {}).get('azimut_deg'),
         'inclinaison_deg': (domine or {}).get('inclinaison_deg'),
     }
@@ -494,9 +502,9 @@ def enregistrer_champs(dossier, saisie):
 # fiche société). En l'absence de gabarit société, il REFUSE en expliquant en
 # français quoi déposer — jamais un gabarit inventé.
 #
-# La fusion est celle de la GED (``apps.ged.services.fusionner_pdf``, XGED10),
-# exactement comme ``services/pack_technique.py`` : aucune seconde plomberie
-# PDF n'est créée ici.
+# ACAL236 — la fusion et le dépôt passent par LA fonction du dossier technique
+# (``services/pack_technique.deposer_et_fusionner``) : aucune seconde
+# plomberie PDF n'est créée ici.
 
 #: Où le pack se range dans la GED.
 CABINET_GED = 'Calepinage'
@@ -569,13 +577,8 @@ def _rendre_pieces_produites(rendus):
     return pieces, signalements
 
 
-def _ancre(calepinage, dossier, code):
-    """L'ancre d'idempotence : dossier + EMPREINTE du layout + pièce."""
-    empreinte = getattr(calepinage, 'layout_hash', '') or 'sans-empreinte'
-    return '%s:%s:%s' % (getattr(dossier, 'pk', ''), empreinte[:12], code)
-
-
-def construire_pack_dossier(dossier, *, created_by=None, rendus=None):
+def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
+                            empreinte=None):
     """Produit et FUSIONNE le dossier réglementaire d'un calepinage.
 
     Le gabarit de la société FAIT FOI : sans son fichier, rien n'est produit
@@ -605,35 +608,32 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None):
             "module, l'ERP ne fabrique aucun formulaire officiel qu'il n'a "
             "pas reçu." % gabarit.intitule, piece='gabarit')
 
-    # La GED n'est importée QU'APRÈS les refus : un refus doit être immédiat,
-    # et il ne coûte pas le chargement d'un module lourd (patron
-    # ``services/pack_technique.py``).
-    from apps.ged.services import deposit_document, fusionner_pdf
+    # ACAL236 — le dépôt passe par LA fonction partagée avec le dossier
+    # technique et le dossier de fin de chantier : fusion locale contrôlée
+    # (pages), ancre stable ``<dossier>:dossier_reglementaire``, version neuve
+    # seulement quand l'EMPREINTE DES ENTRÉES change (gabarit compris).
+    from .pack_technique import deposer_et_fusionner, empreinte_des_dossiers
 
     rendus = rendus if rendus is not None else _rendus_du_module(calepinage,
                                                                  company)
     pieces, signalements = _rendre_pieces_produites(rendus)
-    documents = []
-    for code, libelle, octets in pieces:
-        document, _cree = deposit_document(
-            company=company,
-            nom='%s — %s' % (libelle, calepinage),
-            source_type='calepinage.dossier.%s' % code,
-            source_id=_ancre(calepinage, dossier, code),
-            contenu_bytes=octets, mime='application/pdf',
-            filename='%s.pdf' % code,
-            cabinet_nom=CABINET_GED, folder_nom=DOSSIER_GED,
-            created_by=created_by)
-        documents.append(document)
-    if not documents:
+    if not pieces:
         raise DossierRefuse(
             "Dossier réglementaire refusé : aucune pièce à fusionner.",
             piece='pieces')
 
-    pack = fusionner_pdf(documents, company=company, created_by=created_by,
-                         nom='%s — %s' % (gabarit.intitule, calepinage))
+    depot = deposer_et_fusionner(
+        calepinage, pieces=[(code, libelle, octets, None)
+                            for code, libelle, octets in pieces],
+        famille='dossier_reglementaire',
+        nom='%s — %s' % (gabarit.intitule, calepinage),
+        cabinet_nom=CABINET_GED, folder_nom=DOSSIER_GED, company=company,
+        created_by=created_by, ancre=getattr(dossier, 'pk', ''),
+        refus=DossierRefuse,
+        empreinte=(empreinte if empreinte is not None
+                   else empreinte_des_dossiers(calepinage)))
     return {
-        'document': pack,
+        'document': depot['document'],
         'pieces': [(code, libelle) for code, libelle, _o in pieces],
         'signalements': signalements,
         'dossier': dossier.pk,

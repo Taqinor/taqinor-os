@@ -46,7 +46,8 @@ import urllib.parse
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.horizon import (
-    lire_profil, profil_saisi, reechantillonner_pour_pvgis,
+    lire_profil, profil_depuis_document, profil_saisi,
+    reechantillonner_pour_pvgis,
 )
 from apps.calepinage.services.pvgis_serie import (
     ClientPvgis, EntreeInvalide, _Cache,
@@ -82,9 +83,14 @@ def profil_24_directions():
         azimut = point['azimut_face_deg'] % 360.0
         if abs(azimut % 15.0) < 1e-9:
             vus[azimut] = max(point['hauteur_deg'], vus.get(azimut, -90.0))
-    return dict(complet, points=[
-        {'azimut_face_deg': azimut, 'hauteur_deg': hauteur}
-        for azimut, hauteur in sorted(vus.items())])
+    # ACAL123 — les points réduits passent par la forme du DOCUMENT
+    # (``horizonProfile`` v2, celle de l'onglet Horizon) et par LE lecteur
+    # que la simulation appelle.
+    document = {'source': complet['source'], 'points': [
+        {'azimuthDeg': azimut, 'heightDeg': hauteur}
+        for azimut, hauteur in sorted(vus.items())]}
+    return dict(complet,
+                points=profil_depuis_document(document)['points'])
 
 
 def hauteur_a(profil, azimut_face):

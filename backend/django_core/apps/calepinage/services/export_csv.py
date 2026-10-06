@@ -58,7 +58,7 @@ __all__ = ['EXPORTS', 'PAS_DISPONIBLES', 'COLONNES_HORAIRE',
            'DEFAULT_COLONNES_HORAIRE', 'ExportImpossible',
            'NON_CALCULEE', 'NON_PUBLIEE', 'LIBELLE_EMPREINTE_LAYOUT',
            'LIBELLE_EMPREINTE_SIMULATION', 'document_exportable',
-           'encoder_pour_tableur', 'export_csv', 'nom_de_fichier']
+           'encoder_pour_tableur', 'export_csv']
 
 NON_CALCULEE = 'non calculée'
 NON_PUBLIEE = 'non publiée'
@@ -408,8 +408,3 @@ def export_csv(document, *, quoi='horaire', colonnes=None, pas='horaire'):
 def encoder_pour_tableur(texte):
     """Le CSV en octets, avec le BOM qu'Excel attend."""
     return texte.encode(ENCODAGE_TABLEUR)
-
-
-def nom_de_fichier(calepinage_id, quoi):
-    """Un nom de fichier parlant — sans donnée client, sans prix."""
-    return f'calepinage-{calepinage_id}-{quoi}.csv'

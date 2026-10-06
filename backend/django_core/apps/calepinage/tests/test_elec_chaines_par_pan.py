@@ -68,13 +68,18 @@ class LectureDuDocumentTest(SimpleTestCase):
         self.assertEqual([(p.label, p.modules) for p in pans], [('A', 12)])
 
     def test_pan_sans_module_est_ignore(self):
+        # ACAL61 — ``neededPanels`` n'est JAMAIS un compte posé (primitive
+        # ``ventes.pans_du_document``) : B, non pavé, n'est pas chaîné non
+        # plus ; seul C, posé, l'est.
         pans = pans_poses({'zones': [{'label': 'A', 'geometry': {'count': 0}},
-                                     {'label': 'B', 'neededPanels': 4}]})
+                                     {'label': 'B', 'neededPanels': 4},
+                                     {'label': 'C', 'geometry': {'count': 4}}]})
 
-        self.assertEqual([p.label for p in pans], ['B'])
+        self.assertEqual([p.label for p in pans], ['C'])
 
     def test_orientation_absente_reste_inconnue(self):
-        pans = pans_poses({'zones': [{'label': 'A', 'neededPanels': 4}]})
+        pans = pans_poses({'zones': [{'label': 'A',
+                                      'geometry': {'count': 4}}]})
 
         self.assertIsNone(pans[0].azimut_deg)
         self.assertIsNone(pans[0].source_orientation)

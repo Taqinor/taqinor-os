@@ -102,13 +102,20 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
         patch_ombrage = mock.patch(
             'apps.calepinage.services.rapport_ombrage.rendre_rapport_ombrage',
             return_value=pdf_de(1))
+        # ACAL237 — le plan de pose terrain rejoint le dossier ; son câblage
+        # est verrouillé par ``test_acal_plan_pose_dossier`` : ici il est
+        # mocké comme les autres pièces que ce test n'exerce pas.
+        patch_pose = mock.patch(
+            'apps.calepinage.services.planche.rendre_plan_pose_pdf',
+            return_value=pdf_de(1))
         # Seul WeasyPrint est mocké — le plan de toiture/masse garde son VRAI
         # chemin (SVG + parcelle) jusqu'ici, même patron que
         # test_cal174_endpoints_planche.py.
         patch_render_pdf = mock.patch('core.pdf.render_pdf',
                                       return_value=pdf_de(1))
         for patch in (patch_planche, patch_note, patch_rapport,
-                      patch_cablage, patch_ombrage, patch_render_pdf):
+                      patch_cablage, patch_ombrage, patch_pose,
+                      patch_render_pdf):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -119,13 +126,13 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
             ['planche', 'note_calcul', 'plan_toiture', 'plan_masse',
-             'rapport_etude', 'plan_cablage', 'rapport_ombrage'])
+             'plan_pose', 'rapport_etude', 'plan_cablage', 'rapport_ombrage'])
         # `pages` (posé par `rendre_pieces` via `compter_pages`, ARC11) doit
         # correspondre au VRAI comptage des octets rendus — ici de VRAIS PDF
         # PyMuPDF (fabriqués par les mocks), pas une valeur inventée.
         for _code, _libelle, octets, pages in pieces:
             self.assertEqual(pack_technique.compter_pages(octets), pages)
-        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 8)
+        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 9)
         self.assertEqual(signalements, [])
 
     def test_sans_parcelle_le_dossier_compte_trois_pieces_et_signale(self):
@@ -134,8 +141,8 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
                                              company='societe-essai')
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
-            ['planche', 'note_calcul', 'plan_toiture', 'rapport_etude',
-             'plan_cablage', 'rapport_ombrage'])
-        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 7)
+            ['planche', 'note_calcul', 'plan_toiture', 'plan_pose',
+             'rapport_etude', 'plan_cablage', 'rapport_ombrage'])
+        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 8)
         self.assertEqual(len(signalements), 1)
         self.assertIn('parcelle', signalements[0].lower())

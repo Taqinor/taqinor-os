@@ -200,7 +200,8 @@ function BandeauVerrou({ calepinageId, onDeverrouille }) {
 
 export default function AtelierPanneaux({
   calepinageId, contexte, builderApi, lectureSeule = false,
-  onRecharger, children,
+  onRecharger, documentVivant = null, enregistrerAvant = null, aDesRetouches = null,
+  children,
 }) {
   const cible = contexte?.cible ?? null
   const calepinage = contexte?.calepinage ?? null
@@ -320,7 +321,16 @@ export default function AtelierPanneaux({
           lequel un panneau d'onglet peut piloter la scène 3D (« Armer la
           pose »). Hors de la scène, elle vaut `undefined` et le panneau le
           DIT plutôt que d'armer dans le vide. */}
-      <Rail calepinageId={calepinageId} builderApi={builderApi} />
+      {/* ACAL23 — le Rail relaie aussi `onRecharger` (l'UNIQUE rechargement de
+          l'atelier), la lecture seule effective et `documentVivant` (jeton
+          d'écriture + application d'une section à la scène). */}
+      <Rail
+        calepinageId={calepinageId}
+        builderApi={builderApi}
+        onRecharger={onRecharger}
+        lectureSeule={enLectureSeule}
+        documentVivant={documentVivant}
+      />
 
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour
@@ -346,6 +356,7 @@ export default function AtelierPanneaux({
         lectureSeule={enLectureSeule}
         calepinageId={calepinageId}
         builderApi={builderApi}
+        documentVivant={documentVivant}
         contraintesSite={detail ? (detail.contraintes_site ?? null) : undefined}
         onContraintesEnregistrees={relire}
       />
@@ -362,6 +373,10 @@ export default function AtelierPanneaux({
           lectureSeule={enLectureSeule}
           onRecharger={onRecharger}
           onRelire={relire}
+          enregistrerAvant={enregistrerAvant}
+          aDesRetouches={aDesRetouches}
+          // ACAL93 — le verdict SERVEUR (design-context, ACAL36).
+          revisionPossible={!!contexte?.revision_possible}
         />
         {/* SOLMVP15 — le bouton « Reprendre le contour de l'affaire » (CAL242)
             était posé ici. Son endpoint est parti avec l'app d'appels d'offres,

@@ -140,6 +140,26 @@ def _ligne_horizon(horizon):
         origine, nombre_tel_que_servi(hauteur))
 
 
+def _surfaces_retirees(zones):
+    """ACAL312 — « Surface retirée : X m² (interdite) / réservée : Y m² ».
+
+    LU sur ``resultat['pose']['zones']`` (``electrique._chiffrage_des_zones``,
+    servi par ``resultat_calepinage``) et imprimé TEL QUE SERVI — des m², jamais
+    un montant. ``None`` (ligne omise) quand le document ne porte aucune zone
+    INTERDITE ni RESERVEE : rien n'a été retiré, rien n'est dit.
+    """
+    if not isinstance(zones, dict):
+        return None
+    par_nature = zones.get('par_nature') or {}
+    interdite = par_nature.get('INTERDITE') or {}
+    reservee = par_nature.get('RESERVEE') or {}
+    if not (interdite.get('nombre') or reservee.get('nombre')):
+        return None
+    return escape('Surface retirée : %s m² (interdite) / réservée : %s m²' % (
+        nombre_tel_que_servi(interdite.get('aire_retiree_m2')),
+        nombre_tel_que_servi(reservee.get('aire_retiree_m2'))))
+
+
 def html_de_section(contexte):
     """Le corps de la section ``site_meteo`` (le titre est posé par
     l'assembleur)."""
@@ -174,6 +194,10 @@ def html_de_section(contexte):
                              '%s %%%s' % (
                                  nombre_tel_que_servi(base['loss_passee_pct']),
                                  detail)))
+
+    surfaces = _surfaces_retirees((resultat.get('pose') or {}).get('zones'))
+    if surfaces is not None:
+        lignes.append(_ligne('Zones d\'exclusion', surfaces))
 
     horizon = _horizon_disponible(meteo)
     if horizon is not None:

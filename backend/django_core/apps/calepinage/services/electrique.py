@@ -1379,6 +1379,42 @@ def _options_entree(entree):
     return options
 
 
+def _fiches_modules_du_document(company, document, materiel):
+    """ACAL264 — ``{produit_id: {'specs', 'designation'}}`` des modules POSÉS
+    sur les pans du document qui DIFFÈRENT du module par défaut.
+
+    Lecture cross-app par SÉLECTEUR uniquement (``get_produit_scoped`` : jamais
+    un produit d'une autre société, puis ``specs_for_produit``). Un produit
+    introuvable n'est pas inventé : son pan garde la puissance que le
+    document recopie (``modules[].pmaxWc``). Aucun prix n'est lu.
+    """
+    from apps.ventes.services import pans_du_document
+
+    if company is None or not isinstance(document, dict):
+        return {}
+    defaut = ((materiel or {}).get('produits') or {}).get('module')
+    produits = []
+    for pan in pans_du_document(document):
+        produit_id = pan.get('produit_id')
+        if (produit_id in (None, '') or int(pan.get('modules') or 0) <= 0
+                or str(produit_id) == str(defaut)
+                or produit_id in produits):
+            continue
+        produits.append(produit_id)
+    if not produits:
+        return {}
+    from apps.stock.selectors import get_produit_scoped, specs_for_produit
+
+    fiches = {}
+    for produit_id in produits:
+        produit = get_produit_scoped(company, produit_id)
+        if produit is None:
+            continue
+        fiches[produit_id] = {'specs': specs_for_produit(produit) or {},
+                              'designation': _designation(produit)}
+    return fiches
+
+
 def conception_du_calepinage(calepinage, *, entree=None, layout=None,
                              materiel=None):
     """La ``Conception`` (CAL124) de CE calepinage, matériel et site compris.
@@ -1402,6 +1438,15 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     if materiel is None:
         materiel = resoudre_materiel(getattr(calepinage, 'company', None),
                                      donnees, calepinage=calepinage)
+    # ACAL264 — le module de CHAQUE pan (``modules[].produitId``), fiche lue
+    # par le sélecteur du stock (bornée société). Posée dans ``materiel``
+    # seulement quand un pan porte un AUTRE produit que le module par
+    # défaut : l'empreinte de simulation d'un champ mono-module ne bouge pas.
+    fiches = (materiel.get('fiches_modules')
+              if 'fiches_modules' in materiel else _fiches_modules_du_document(
+                  getattr(calepinage, 'company', None), document, materiel))
+    if fiches:
+        materiel = {**materiel, 'fiches_modules': fiches}
     # ACAL164 — la fiche module (``noct_c``) fait du chaud TMY une
     # température de CELLULE.
     temperatures = temperatures_pour_calepinage(
@@ -1413,6 +1458,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_designation=materiel['designations']['onduleur'],
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
+        fiches_modules=materiel.get('fiches_modules'),
         **_options_entree(donnees), **_options_batterie(
             calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)
@@ -1526,40 +1572,25 @@ def _est_un_nombre(valeur):
     return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
 
 
-#: CALX172 — la colonne de la série persistée qui porte la puissance DC
-#: horaire (``contract_samples/calepinage_serie_horaire.json``, CALX142).
-COLONNE_SERIE_DC = 'p_dc_kw'
+def _ecretage_de_la_cascade(cascade):
+    """ACAL141 — le pourcentage d'écrêtage de l'étape « ecretage » de la
+    cascade SERVIE (fraîche), ou ``None``.
 
-
-def _serie_dc_persistee(calepinage, empreinte):
-    """La série horaire de puissance DC déjà calculée, ou ``None``.
-
-    CALX172 — ``ecretage_depuis_serie`` existe depuis CAL127 et n'a JAMAIS
-    reçu de série : son unique appelant était invoqué sans ``serie_dc_kw``,
-    si bien que ``ecretage_pct`` valait toujours ``null``. La série existe
-    pourtant : la chaîne de pertes la dépose dans
-    ``Calepinage.resultat['serie_horaire']`` (CALX193).
-
-    Elle n'est servie que si elle décrit ENCORE ce toit — même contrôle de
-    fraîcheur que les blocs de simulation (CALX70) : une puissance calculée
-    sur un autre document ne doit pas chiffrer l'écrêtage de celui-ci.
-    ``None`` quand rien n'a été simulé, quand l'empreinte a bougé, ou quand
-    la colonne DC n'a pas été produite — jamais une série approchée.
+    La cascade est celle de la simulation (phase ONDULEUR sur la somme DC des
+    pans, ACAL53) : son étape ``ecretage`` publie ``entree.ecretage_pct``
+    calculé heure par heure par ``ecretage_depuis_serie``. Jamais la colonne
+    ``p_dc_kw`` d'une série persistée — aucune étape ne l'écrit.
     """
-    stocke = getattr(calepinage, 'resultat', None)
-    stocke = stocke if isinstance(stocke, dict) else {}
-    simulation = stocke.get(CLE_SIMULATION)
-    simulation = simulation if isinstance(simulation, dict) else {}
-    if (simulation.get('hash_entree') or '') != empreinte:
-        return None
-    serie = stocke.get('serie_horaire')
-    if not isinstance(serie, dict):
-        return None
-    valeurs = [point.get(COLONNE_SERIE_DC)
-               for point in serie.get('points') or []
-               if isinstance(point, dict)]
-    valeurs = [valeur for valeur in valeurs if _est_un_nombre(valeur)]
-    return valeurs or None
+    for etape in ((cascade or {}).get('etapes') or ()):
+        if not isinstance(etape, dict) or etape.get('etape') != 'ecretage':
+            continue
+        if etape.get('motif_omission'):
+            return None
+        entree = etape.get('entree')
+        valeur = (entree or {}).get('ecretage_pct') if isinstance(
+            entree, dict) else None
+        return valeur if _est_un_nombre(valeur) else None
+    return None
 
 
 def _simulation_servie(calepinage, empreinte, *, defauts=None):
@@ -1615,8 +1646,34 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None):
     return blocs, False, '', simulation.get('calcule_le')
 
 
+def _chiffrage_des_zones(document):
+    """ACAL312 — ``pose.zones`` : les zones d'exclusion du DOCUMENT, chiffrées.
+
+    Sommets projetés par LA projection du document
+    (``zones.projection_du_layout``, ACAL281), zones lues par
+    ``zones.zones_moteur_depuis_layout`` (CAL68), aires par
+    ``zones.chiffrage_zones`` (calcul du noyau ``core.calepinage.zones``),
+    au centième de m². LECTURE PURE : des zones illisibles (nature inconnue,
+    contour à 1-2 sommets) rendent ``None`` — le refus nommé appartient à
+    l'écriture, jamais à une lecture qui tomberait.
+    """
+    from .zones import (
+        ZoneRefusee, chiffrage_zones, projection_du_layout,
+        zones_moteur_depuis_layout,
+    )
+
+    if not isinstance(document, dict):
+        return None
+    try:
+        zones = zones_moteur_depuis_layout(
+            document, projection=projection_du_layout(document))
+    except ZoneRefusee:
+        return None
+    return chiffrage_zones(zones, arrondi=2)
+
+
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
-                        materiel=None):
+                        materiel=None, reglages=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
 
     Les blocs de simulation (``production``, ``pertes``, ``cascade``,
@@ -1630,17 +1687,27 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     toiture ne produit rien »), et l'avertissement le dit.
     """
     from .chaines import (
-        AffectationInvalide, bloc_electrique, bloc_pose, empreinte_entree,
+        AffectationInvalide, bloc_electrique, bloc_pose,
         normaliser_affectation_imposee,
     )
+    from .simulation import empreinte_simulation
 
     conception, materiel, donnees, document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
+    # Les réglages société sont LUS UNE FOIS par lecture du résultat (budget
+    # CALX390) ; chaque section en est tirée sans relire la base.
+    societe = parametres_societe(calepinage)
+    electrique_societe = _reglages_electrique_societe(
+        calepinage, parametres=societe)
+    # ACAL48 — ``reglages`` est, comme ``materiel``, un seam réservé aux
+    # APPELS INTERNES et aux tests (aucune vue ne l'expose).
+    if reglages is None:
+        reglages = societe
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
     verdicts = verdicts_electriques(
         conception, optimiseur, nom_optimiseur,
-        reglages=_reglages_electrique_societe(calepinage))
+        reglages=electrique_societe)
     regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
     try:
         # CAL234 — l'affectation MANUELLE enregistrée (si elle existe) écrase
@@ -1666,7 +1733,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # une saisie existe : sans elle, le bloc est celui d'aujourd'hui.
     poly = _polystring_du_calepinage(
         conception, saisie=donnees.get(CLE_POLYSTRING),
-        reglages=_reglages_electrique_societe(calepinage))
+        reglages=electrique_societe)
     if poly['bloc'] is not None:
         electrique[CLE_POLYSTRING] = poly['bloc']
     # CALX209 — le régime micro-onduleur : des branches AC, plus de chaînes.
@@ -1679,29 +1746,40 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
                                              nom_optimiseur)
     if optimiseurs is not None:
         electrique[CLE_OPTIMISEURS] = optimiseurs
-    # CALX70 — l'empreinte du document AUJOURD'HUI : c'est elle qui dit si la
-    # simulation déposée dans ``Calepinage.resultat`` décrit encore CE toit.
-    empreinte = empreinte_entree(
-        document, module_specs=materiel['module'],
-        onduleur_specs=materiel['onduleur'],
-        temperatures=conception.temperatures,
-        options=_options_entree(donnees))
+    # CALX70 / ACAL48 — l'empreinte de SIMULATION d'AUJOURD'HUI (D-ACAL-21 :
+    # document hors volatils + entrées hors ``roof_layout`` +
+    # VERSION_SIMULATION), calculée par LA fonction de la simulation — plus
+    # aucun recalcul parallèle ici. C'est elle qui dit si la simulation
+    # déposée dans ``Calepinage.resultat`` décrit encore CE dossier ;
+    # l'empreinte d'AFFECTATION (``empreinte_entree``) n'est plus jamais
+    # comparée à ``resultat.simulation``.
+    empreinte = empreinte_simulation(
+        calepinage, document=document, donnees=donnees, materiel=materiel,
+        reglages=reglages)
     pose = bloc_pose(conception)
+    # ACAL312 (D-ACAL-20) — le chiffrage des zones d'exclusion du document
+    # (aire retirée INTERDITE, RESERVEE chiffrée à part, PREFEREE à 0),
+    # recalculé à CHAQUE lecture par ``services.zones`` (calcul du noyau).
+    pose['zones'] = _chiffrage_des_zones(document)
+    # CALX70 — la simulation persistée, servie si elle décrit ENCORE ce
+    # dossier ; lue ICI parce que le ratio DC/AC en tire son écrêtage.
+    blocs, perimee, motif, calcule_le = _simulation_servie(
+        calepinage, empreinte, defauts=_defauts_simulation(pose))
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
-        parametres_societe=_parametres_electriques(calepinage),
-        # CALX172 — la série DC de la simulation PERSISTÉE, quand elle décrit
-        # encore CE toit : c'est le seul chemin par lequel
-        # ``ecretage_depuis_serie`` reçoit enfin une série.
-        serie_dc_kw=_serie_dc_persistee(calepinage, empreinte))
+        parametres_societe=_parametres_electriques(calepinage,
+                                                   parametres=societe),
+        # ACAL141 — l'écrêtage de l'étape « ecretage » de la cascade FRAÎCHE
+        # (``None`` périmée ou jamais simulée : motif inchangé).
+        ecretage_pct=_ecretage_de_la_cascade(blocs.get('cascade')))
 
     # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
     # sans elle, sections et chutes de tension sont OMISES (règle D5).
     from .cables import cables_du_calepinage
     from .norme import norme_applicable
 
-    norme = norme_applicable(parametres_societe(calepinage))
+    norme = norme_applicable(reglages)
     cables = cables_du_calepinage(
         conception, cheminement=donnees.get('cheminement'), norme=norme,
         layout=document,
@@ -1792,32 +1870,12 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     if conception.temperatures is not None and conception.temperatures.mention:
         messages.append(conception.temperatures.mention)
 
-    blocs, perimee, motif, calcule_le = _simulation_servie(
-        calepinage, empreinte, defauts={
-            # Le squelette servi tant qu'aucune simulation n'a tourné : la
-            # POSE est un fait (modules et kWc restent chiffrés), la
-            # production ne l'est pas (toutes ses grandeurs à ``null``).
-            'production': {
-                'base': {'source': None, 'fenetre_annees': None,
-                         'loss_passee_pct': None,
-                         'commentaire': "Aucune simulation lancée : aucune "
-                                        "perte n'a été passée à PVGIS."},
-                'total': {'kwc': pose['kwc'], 'p50_kwh': None,
-                          'p75_kwh': None, 'p90_kwh': None,
-                          'performance_ratio': None,
-                          'specific_yield_kwh_kwc': None,
-                          'annual_variability': None, 'total_loss_pct': None},
-                'mensuel': [],
-                'par_pan': [{'pan': pan['pan'], 'modules': pan['modules'],
-                             'kwc': pan['kwc'], 'p50_kwh': None,
-                             'p75_kwh': None, 'p90_kwh': None,
-                             'performance_ratio': None,
-                             'specific_yield_kwh_kwc': None,
-                             'shading_annual_loss_pct': None}
-                            for pan in pose['pans']],
-            },
-            'pertes': [],
-        })
+    # ACAL127 — ``pertes`` est la LISTE PLATE des postes SAISIS (D-CALX 11),
+    # servie depuis ``Calepinage.pertes`` (aucune copie stockée) : jamais
+    # simulé, frais ou périmé, ce sont les MÊMES postes que GET pertes/.
+    blocs['pertes'], motif_postes = _postes_servis(calepinage)
+    if motif_postes:
+        messages.append(motif_postes)
     if motif:
         # En tête des avertissements : c'est la phrase que l'écran affiche
         # quand il n'a rien à tracer, et elle doit NOMMER la péremption.
@@ -1896,12 +1954,82 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'validation': blocs['validation'],
         'simulation_perimee': perimee,
         'motif': motif,
+        # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
+        # simulation, réglages figés, date, durée), servi même périmé : il dit
+        # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
+        # d'aujourd'hui et des valeurs nulles.
+        CLE_SIMULATION: _entete_servie(calepinage, empreinte),
         'avertissements': messages,
         # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
         # recalculés), listes vides jamais absentes — y compris quand la
         # simulation est périmée.
         'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
         'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
+    }
+
+
+def _defauts_simulation(pose):
+    """Le squelette servi tant qu'aucune simulation n'a tourné : la POSE est
+    un fait (modules et kWc restent chiffrés), la production ne l'est pas
+    (toutes ses grandeurs à ``null``)."""
+    return {
+        'production': {
+            'base': {'source': None, 'fenetre_annees': None,
+                     'loss_passee_pct': None,
+                     'commentaire': "Aucune simulation lancée : aucune "
+                                    "perte n'a été passée à PVGIS."},
+            'total': {'kwc': pose['kwc'], 'p50_kwh': None,
+                      'p75_kwh': None, 'p90_kwh': None,
+                      'performance_ratio': None,
+                      'specific_yield_kwh_kwc': None,
+                      'annual_variability': None, 'total_loss_pct': None},
+            'mensuel': [],
+            'par_pan': [{'pan': pan['pan'], 'modules': pan['modules'],
+                         'kwc': pan['kwc'], 'p50_kwh': None,
+                         'p75_kwh': None, 'p90_kwh': None,
+                         'performance_ratio': None,
+                         'specific_yield_kwh_kwc': None,
+                         'shading_annual_loss_pct': None}
+                        for pan in pose['pans']],
+        },
+    }
+
+
+def _postes_servis(calepinage):
+    """ACAL127 — ``(postes saisis normalisés, motif)`` — lecture TOLÉRANTE.
+
+    Un poste stocké devenu illisible ne fait pas tomber ``GET resultat/`` :
+    la liste servie est vide et le motif NOMME le refus (la simulation, elle,
+    refuse en le nommant).
+    """
+    from .pertes import PertesInvalides, postes_du_calepinage
+
+    try:
+        return postes_du_calepinage(calepinage), ''
+    except PertesInvalides as refus:
+        return [], 'Postes de pertes illisibles : %s' % refus
+
+
+def _entete_servie(calepinage, empreinte):
+    """ACAL48 — l'en-tête ``simulation`` publié par ``GET resultat/``."""
+    stocke = getattr(calepinage, 'resultat', None)
+    stocke = stocke if isinstance(stocke, dict) else {}
+    entete = stocke.get(CLE_SIMULATION)
+    entete = entete if isinstance(entete, dict) else {}
+    if not entete.get('hash_entree'):
+        return {'hash_entree': empreinte, 'version_simulation': None,
+                'reglages_utilises': {}, 'meteo_fichier': None,
+                'calcule_le': None, 'duree_s': None}
+    reglages = entete.get('reglages_utilises')
+    return {
+        'hash_entree': entete.get('hash_entree'),
+        'version_simulation': entete.get('version_simulation'),
+        'reglages_utilises': (dict(reglages) if isinstance(reglages, dict)
+                              else {}),
+        # ACAL146 — le fichier météo retenu par ce calcul, ou ``null``.
+        'meteo_fichier': entete.get('meteo_fichier'),
+        'calcule_le': entete.get('calcule_le'),
+        'duree_s': entete.get('duree_s'),
     }
 
 
@@ -2729,9 +2857,13 @@ def parametres_societe(calepinage):
         return {}
 
 
-def _parametres_electriques(calepinage):
-    """La seule section « norme électrique » des réglages (CAL130)."""
-    return parametres_societe(calepinage).get('norme_electrique') or {}
+def _parametres_electriques(calepinage, *, parametres=None):
+    """La seule section « norme électrique » des réglages (CAL130).
+
+    ``parametres`` : les réglages société DÉJÀ lus (sinon relus ici)."""
+    if parametres is None:
+        parametres = parametres_societe(calepinage)
+    return parametres.get('norme_electrique') or {}
 
 
 def _version_moteur():
@@ -2941,12 +3073,15 @@ def _optimiseurs_du_calepinage(conception, specs, designation=''):
     }
 
 
-def _reglages_electrique_societe(calepinage):
-    """La seule section « electrique_societe » des réglages (CALX145)."""
+def _reglages_electrique_societe(calepinage, *, parametres=None):
+    """La seule section « electrique_societe » des réglages (CALX145).
+
+    ``parametres`` : les réglages société DÉJÀ lus (sinon relus ici)."""
     from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
 
-    return parametres_societe(calepinage).get(
-        SECTION_ELECTRIQUE_SOCIETE) or {}
+    if parametres is None:
+        parametres = parametres_societe(calepinage)
+    return parametres.get(SECTION_ELECTRIQUE_SOCIETE) or {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3609,12 +3744,16 @@ def ecretage_depuis_serie(serie_dc_kw, puissance_ac_kw):
 
 
 def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
-                     parametres_societe=None, serie_dc_kw=None):
+                     parametres_societe=None, ecretage_pct=None):
     """CAL127 — le ratio, SA borne, la SOURCE de sa borne, et l'écrêtage.
 
     Rend ``(bloc, avertissements)``. Hors bornes, l'avertissement CITE la
     borne ET sa source : « ratio DC/AC 1,52 au-dessus de la borne 1,35
     (borne usuelle du noyau électrique) ».
+
+    ACAL141 — ``ecretage_pct`` est celui de l'étape « ecretage » de la
+    cascade FRAÎCHE (calculé heure par heure par ``ecretage_depuis_serie``
+    dans la chaîne) ; ``None`` ⇒ publié ``null`` avec son motif.
     """
     from core.electrique.types import fr
 
@@ -3647,7 +3786,7 @@ def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
                 "surdimensionnement DC important"
                 % (fr(valeur, 2), fr(alerte, 2), source))
 
-    ecretage = ecretage_depuis_serie(serie_dc_kw, puissance_ac)
+    ecretage = ecretage_pct if _est_un_nombre(ecretage_pct) else None
     dc_kwc = (evaluation.puissance_dc_kwc if evaluation is not None else None)
     return ({
         'valeur': (round(valeur, 3) if valeur is not None else None),

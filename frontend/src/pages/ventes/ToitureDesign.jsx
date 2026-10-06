@@ -11,7 +11,7 @@
  *      (GET /ventes/roof-config/ pour la clé MapTiler) ;
  *   2. rend l'échafaudage `rp9-*` (copié de l'ancienne page astro publique) puis
  *      boote le builder COMPLET hydraté avec le repère/contour du client ;
- *   3. UN SEUL bouton « Générer le devis & envoyer au client » enchaîne :
+ *   3. UN SEUL bouton « Générer le devis » (ACAL335 : rien n'est envoyé ici) enchaîne :
  *        a. POST /ventes/devis/from-layout/  {layout, lead}  → {id, reference,
  *           proposal_token, proposal_path}
  *        b. POST /ventes/devis/<id>/layout/  (persistance idempotente du layout)
@@ -27,7 +27,7 @@
  * (login form + token + cross-domain) est remplacée par celle-ci. La source du
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
@@ -56,11 +56,13 @@ import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
 import BandeauProvenanceProduction from '../../features/calepinage/production/BandeauProvenanceProduction'
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
-import { hacherLayout, creerGestionnaireBrouillon } from '../../features/calepinage/brouillon'
+import { hacherLayout, creerGestionnaireBrouillon, memoriserReprise } from '../../features/calepinage/brouillon'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
 import { useConfirmDialog } from '../../ui/confirm'
+import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
+import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 // L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
 // la carte du calepinage 3D (voir ToitClientOverlay.jsx pour le pourquoi).
 import { contourExploitable } from '../../features/crm/workspace/traceToit'
@@ -70,7 +72,8 @@ import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 // mécanique que celle de `Vue2DPlan.jsx` (CAL104) — voir l'en-tête du module.
 import {
   dataUrlToBlob, pinDepuisLead, cibleActiveDuContexte, httpMessage,
-  stockageBrouillonLocal, formaterHeureBrouillon,
+  stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
+  messageRefusRepere, libelleEcartRepere, libelleCibleEstimee,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
@@ -163,11 +166,30 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // Le texte est TOUJOURS celui du serveur ; l'écran choisit seulement entre
   // l'encart « Réviser (v2) » et le bandeau de document clos.
   const [conflit, setConflit] = useState(null)
+  // ACAL23 — 409 `document_modifie` du mode calepinage : la conception a été
+  // modifiée AILLEURS (un onglet du rail, un autre navigateur) depuis que la
+  // page l'a lue. DISTINCT du conflit verrou ci-dessus : rien n'est écrasé et
+  // la seule sortie est « Recharger ». Texte = celui du serveur.
+  const [documentModifie, setDocumentModifie] = useState(null)
+  // ACAL192 (D-ACAL-13) — refus serveur d'un geste de repère (recentrer / garder), texte
+  // du SERVEUR ; `repereEnCours` désactive les deux boutons pendant l'appel.
+  const [repereErreur, setRepereErreur] = useState(null)
+  const [repereEnCours, setRepereEnCours] = useState(false)
+  // ACAL23 — le jeton d'écriture (empreinte « document », contrat
+  // `calepinage_layout_section.json`) RENDU par la dernière écriture réussie ;
+  // tant qu'aucune n'a eu lieu, c'est celui lu au boot (design-context,
+  // `geometrie.empreinte_document`). Jamais `layout_hash`.
+  const [empreinteEcrite, setEmpreinteEcrite] = useState(null)
+  const empreinteDocument = empreinteEcrite
+    ?? contexte?.geometrie?.empreinte_document ?? null
   // PVHEAL — avertissements renvoyés par l'enregistrement (kit non complété,
   // composant absent du catalogue, deux onduleurs…). Le TEXTE est celui du
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
   // en silence.
   const [avertissementsSync, setAvertissementsSync] = useState([])
+  // ACAL87 — l'aperçu de toiture n'a pas pu être capturé (image vide) ou
+  // téléversé : on le DIT, au lieu d'un « Conception enregistrée » muet.
+  const [apercuMessage, setApercuMessage] = useState(null)
   // L-MAP — bascule d'affichage du calque « Toit dessiné par le client »
   // (rp9-chip, comme les autres bascules de l'écran). Défaut ON — le
   // fondateur veut le voir SANS geste supplémentaire ; le bouton ne sert
@@ -217,12 +239,22 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // réussi, ce qui fait démarrer une minuterie/clé neuve et orpheline
   // l'ancien brouillon (jamais réhydraté par erreur). `brouillonPropose` porte
   // le brouillon TROUVÉ à l'ouverture, tant que l'utilisateur n'a pas choisi
-  // « Reprendre » ou « Ignorer » — rien n'est réhydraté sans ce geste : le
-  // boot du constructeur ATTEND cette décision (voir `bootCalepinage`).
+  // « Reprendre » ou « Ignorer » — rien n'est réhydraté sans ce geste.
+  // ACAL84 — `hashBaseBrouillon` est l'empreinte « document » SERVEUR
+  // (design-context au boot, puis celle rendue par chaque écriture), jamais un
+  // djb2 de l'objet client ; et le boot n'attend plus la décision (bandeau
+  // non bloquant).
   const [hashBaseBrouillon, setHashBaseBrouillon] = useState(null)
   const [brouillonPropose, setBrouillonPropose] = useState(null)
   const gestionnaireBrouillonRef = useRef(null)
-  const poursuivreBootRef = useRef(null)
+  // ACAL85 — la scène est HYDRATÉE (`onHydrationTerminee`, posé par le boot dans
+  // les trois modes). `onApiReady` arrive avant l'hydratation : toute référence
+  // « non modifiée » (garde de sortie, amorce du brouillon) se prend APRÈS.
+  const [sceneHydratee, setSceneHydratee] = useState(false)
+  // ACAL85 — empreinte de la scène au boot (après hydratation) puis à chaque
+  // enregistrement réussi ; `sceneModifiee` arme `useDirtyGuard`.
+  const hashSceneReferenceRef = useRef(null)
+  const [sceneModifiee, setSceneModifiee] = useState(false)
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -250,7 +282,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
     estCalepinage,
     estDevis,
     leadId,
-    poursuivreBootRef,
     reducedMotion,
     setBrouillonPropose,
     setBuilderApiActuel,
@@ -261,9 +292,41 @@ export default function ToitureDesign({ mode = 'lead' }) {
     setHashBaseBrouillon,
     setLead,
     setLoadError,
+    setSceneHydratee,
+    setRepereErreur,
     setStatus,
     utilisateurCourantId,
   })
+
+  // ── ACAL85 — GARDE DE SORTIE (les trois modes) ─────────────────────────────
+  // `dirty` = hacherLayout(serializeLayout()) ≠ l'empreinte prise au boot (scène
+  // hydratée) ou au dernier enregistrement réussi. La scène vit dans le
+  // constructeur 3D, hors de React : un sondage léger la compare, et
+  // `useDirtyGuard` (la garde commune, déjà adoptée par DevisGenerator) arme
+  // `beforeunload` ; « Fermer » confirme par `confirmLeaveIfDirty`.
+  const hacherScene = useCallback(() => {
+    try {
+      const layout = builderApi.current?.serializeLayout?.()
+      return layout == null ? null : hacherLayout(layout)
+    } catch {
+      return null
+    }
+  }, [])
+  const sceneEstModifiee = useCallback(() => {
+    const courant = hacherScene()
+    if (courant === null) return false
+    if (hashSceneReferenceRef.current === null) {
+      hashSceneReferenceRef.current = courant
+      return false
+    }
+    return courant !== hashSceneReferenceRef.current
+  }, [hacherScene])
+  const marquerSceneEnregistree = (layout) => {
+    try {
+      hashSceneReferenceRef.current = layout == null ? hacherScene() : hacherLayout(layout)
+    } catch { /* référence inchangée */ }
+    setSceneModifiee(false)
+  }
 
   // CALX68 — décision du bandeau de reprise : « Reprendre » substitue le
   // layout du brouillon AVANT le boot du constructeur (le seul moment où
@@ -272,17 +335,32 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // le brouillon local n'est PAS effacé pour autant (seul un enregistrement
   // réussi l'efface, CALX68), mais le document serveur, lui, reste intact
   // dans les deux cas : ni l'un ni l'autre ne fait le moindre appel réseau.
-  const reprendreBrouillon = async () => {
-    const poursuivre = poursuivreBootRef.current
+  // ACAL84 — l'atelier a DÉJÀ booté sur la conception serveur (bandeau non
+  // bloquant) : « Reprendre » mémorise le brouillon pour le PROCHAIN boot
+  // (sessionStorage, consommé une fois par `useAtelierBoot`) puis recharge —
+  // le seul moyen d'hydrater le constructeur sur un autre document.
+  // « Ignorer » ferme seulement le bandeau : la conception serveur est déjà
+  // à l'écran et le brouillon local n'est PAS effacé (seul un enregistrement
+  // réussi l'efface).
+  const reprendreBrouillon = () => {
     const brouillon = brouillonPropose
+    if (!brouillon) return
+    const ok = memoriserReprise(stockageSessionLocal(),
+      { calepinageId, utilisateurId: utilisateurCourantId }, brouillon.layout)
+    if (!ok) {
+      setGenError('Reprise impossible : le stockage local de ce navigateur est indisponible.')
+      return
+    }
     setBrouillonPropose(null)
-    if (poursuivre && brouillon) await poursuivre(brouillon.layout)
+    window.location.reload()
   }
-  const ignorerBrouillon = async () => {
-    const poursuivre = poursuivreBootRef.current
+  const ignorerBrouillon = () => {
     setBrouillonPropose(null)
-    if (poursuivre) await poursuivre(undefined)
   }
+
+  // ACAL84 — en lecture seule, aucun brouillon n'est écrit : il n'y aurait
+  // rien à reprendre (aucun enregistrement possible).
+  const lectureSeuleContexte = contexte != null && !contexte.modifiable
 
   // CALX68 — le planificateur d'écriture du brouillon : démarre une fois le
   // constructeur prêt (`builderReady`) et une empreinte de base connue
@@ -291,7 +369,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // LA MÊME fonction que « Enregistrer le calepinage » (CAL37) — donc un
   // brouillon repris est strictement au format d'un enregistrement normal.
   useEffect(() => {
-    if (!estCalepinage || !builderReady || !hashBaseBrouillon) return undefined
+    if (!estCalepinage || !builderReady || !sceneHydratee || !hashBaseBrouillon
+      || lectureSeuleContexte) return undefined
     const gestionnaire = creerGestionnaireBrouillon({
       storage: stockageBrouillonLocal(),
       calepinageId,
@@ -306,8 +385,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
       gestionnaire.arreter()
       if (gestionnaireBrouillonRef.current === gestionnaire) gestionnaireBrouillonRef.current = null
     }
-  }, [estCalepinage, builderReady, calepinageId, utilisateurCourantId,
-    hashBaseBrouillon, intervalleBrouillonSecondes])
+  }, [estCalepinage, builderReady, sceneHydratee, calepinageId, utilisateurCourantId,
+    hashBaseBrouillon, intervalleBrouillonSecondes, lectureSeuleContexte])
+
+  // ACAL85 — la référence se prend sur la scène HYDRATÉE, puis un sondage
+  // (1,5 s) tient `sceneModifiee` à jour. Rien en lecture seule (rien à perdre).
+  useEffect(() => {
+    if (!builderReady || !sceneHydratee || lectureSeuleContexte) return undefined
+    if (hashSceneReferenceRef.current === null) hashSceneReferenceRef.current = hacherScene()
+    const id = window.setInterval(() => setSceneModifiee(sceneEstModifiee()), 1500)
+    return () => window.clearInterval(id)
+  }, [builderReady, sceneHydratee, lectureSeuleContexte, hacherScene, sceneEstModifiee])
+  useDirtyGuard(sceneModifiee && !lectureSeuleContexte)
 
   // VT13 — la photo réelle du toit se demande sur le LEAD, jamais sur la
   // visite : mode lead (l'id de l'URL) ou mode devis QUAND le devis porte un
@@ -352,10 +441,61 @@ export default function ToitureDesign({ mode = 'lead' }) {
     builderApi.current?.setReferenceContourVisible?.(toitClientVisible)
   }, [toitClientVisible, builderReady])
 
+  // ACAL83 — UNE fonction relit design-context après chaque enregistrement
+  // réussi : `contexte` (geometrie, avertissements, modifiable, cible) n'était
+  // posé qu'au boot, si bien que la note « calepinage automatique — à
+  // vérifier » et son bouton Recommencer survivaient à l'enregistrement
+  // jusqu'au F5. Mode lead : aucun contexte agrégé, rien à relire. Échec =
+  // best-effort, l'écran garde le contexte précédent (jamais d'état inventé).
+  const rafraichirContexte = async () => {
+    try {
+      let res = null
+      if (estCalepinage && calepinageId) {
+        res = await calepinageApi.calepinages.designContext(calepinageId)
+      } else if (estDevis && devisId) {
+        res = await ventesApi.getDevisDesignContext(devisId)
+      } else {
+        return
+      }
+      if (res?.data) {
+        setContexte(res.data)
+        // Le jeton relu au serveur fait foi (ACAL23) : plus besoin de celui
+        // rendu par la dernière écriture.
+        setEmpreinteEcrite(null)
+      }
+    } catch { /* best-effort : le contexte précédent reste affiché */ }
+  }
+
+  // ACAL87 — capture (asynchrone : lue APRÈS un rendu réel, null si l'image est
+  // entièrement transparente) puis téléversement de l'aperçu. Rend le message à
+  // afficher, ou null quand tout a réussi. Un PNG vide n'est JAMAIS envoyé, et
+  // l'échec d'envoi n'est plus avalé.
+  const capturerEtEnvoyerApercu = async (apiTool, nomFichier, envoyer) => {
+    let png = null
+    try {
+      png = await apiTool.snapshot?.()
+    } catch {
+      png = null
+    }
+    const blob = png ? dataUrlToBlob(png) : null
+    if (!blob) {
+      return 'Aperçu 3D non capturé — la conception est enregistrée, mais sans image de toiture.'
+    }
+    const form = new FormData()
+    form.append('image', blob, nomFichier)
+    try {
+      await envoyer(form)
+      return null
+    } catch {
+      return 'Aperçu 3D non envoyé — la conception est enregistrée, mais l’image de toiture n’a pas pu être téléversée.'
+    }
+  }
+
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
     if (sending) return
     setGenError(null)
+    setApercuMessage(null) // ACAL87
     setAvertissementsSync([])
     const apiTool = builderApi.current
     if (!apiTool) {
@@ -396,24 +536,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
         return
       }
 
-      // 2) Persistance idempotente du layout finalisé (best-effort).
-      try {
-        await api.post(`/ventes/devis/${devis.id}/layout/`, layout)
-      } catch { /* on continue : la persistance est best-effort */ }
+      // 2) ACAL97 — PLUS de re-POST du layout BRUT sur /ventes/devis/<id>/layout/ :
+      //    from-layout (étape 1) range DÉJÀ la conception, ENRICHIE côté serveur
+      //    (`_pans_geometry`…) ; ce second envoi « best-effort » l'écrasait.
 
       // 3) Capture le PNG de la 3D et l'envoie (multipart, best-effort).
       setGenStatus('Capture de la vue 3D…')
-      const png = apiTool.snapshot()
-      if (png) {
-        const blob = dataUrlToBlob(png)
-        if (blob) {
-          const form = new FormData()
-          form.append('image', blob, `devis-${devis.id}.png`)
-          try {
-            await api.post(`/ventes/devis/${devis.id}/roof-image/`, form)
-          } catch { /* image best-effort */ }
-        }
-      }
+      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `devis-${devis.id}.png`,
+        (form) => api.post(`/ventes/devis/${devis.id}/roof-image/`, form)))
 
       // 4) L-SECT — bascule sur le bloc de confirmation. L'envoi lui-même a
       //    quitté cet écran : il se fait depuis la fiche lead, onglet Devis,
@@ -422,6 +552,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setGenStatus(null)
       setSending(false)
       setStatus(`Devis ${devis.reference} créé — à envoyer depuis la fiche lead.`)
+      marquerSceneEnregistree(layout) // ACAL85
+      await rafraichirContexte() // ACAL83 — no-op en mode lead (aucun contexte agrégé)
     } catch {
       setGenStatus(null)
       setGenError('Erreur réseau pendant la génération. Vérifiez votre connexion puis réessayez.')
@@ -436,6 +568,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const enregistrerConception = async () => {
     if (sending) return
     setGenError(null)
+    setApercuMessage(null) // ACAL87
     setConflit(null)
     setAvertissementsSync([])
     const apiTool = builderApi.current
@@ -507,23 +640,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setGenStatus(null)
         setSending(false)
         setStatus('Calepinage inchangé — le devis n’a pas bougé.')
+        marquerSceneEnregistree(layout) // ACAL85
+        await rafraichirContexte() // ACAL83
         return
       }
 
       // 3) Capture le PNG de la 3D et l'envoie (multipart, best-effort) —
       //    même patron que le flux lead.
       setGenStatus('Capture de la vue 3D…')
-      const png = apiTool.snapshot()
-      if (png) {
-        const blob = dataUrlToBlob(png)
-        if (blob) {
-          const form = new FormData()
-          form.append('image', blob, `devis-${devisId}.png`)
-          try {
-            await api.post(`/ventes/devis/${devisId}/roof-image/`, form)
-          } catch { /* image best-effort */ }
-        }
-      }
+      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `devis-${devisId}.png`,
+        (form) => api.post(`/ventes/devis/${devisId}/roof-image/`, form)))
 
       // 4) L-SECT — plus AUCUN mint ici : enregistrer une conception ne doit
       //    pas frapper un lien public aux réglages par défaut. L'écran confirme,
@@ -538,6 +664,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
         + `${resultat.lignes_modifiees} ligne(s) de devis mise(s) à jour`
         + (ajoutees > 0 ? `, ${ajoutees} ligne(s) de kit ajoutée(s).` : '.')
       )
+      marquerSceneEnregistree(layout) // ACAL85
+      await rafraichirContexte() // ACAL83
     } catch {
       setGenStatus(null)
       setGenError('Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
@@ -552,19 +680,24 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // conception a changé, et répond `{inchange: true}` sinon. AUCUN statut
   // n'est écrit ici (règle #4) ; le devis, lui, se génère par son propre
   // bouton (CAL38), jamais en effet de bord d'un enregistrement.
+  // ACAL94 — rend `true` quand la conception de l'écran est rangée (écrite ou
+  // « inchangée »), `false` sinon : « Générer / Resynchroniser » l'appellent
+  // AVANT leur geste serveur (prop `enregistrerAvant`), UNE seule fonction.
   const enregistrerCalepinage = async () => {
-    if (sending) return
+    if (sending) return false
     setGenError(null)
+    setApercuMessage(null) // ACAL87
     setConflit(null)
+    setDocumentModifie(null)
     setAvertissementsSync([])
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
-      return
+      return false
     }
     if (catalogueIndisponible) {
       setGenError('Catalogue des modules indisponible : rien n’est enregistré, rechargez la page.')
-      return
+      return false
     }
     setSending(true)
     setGenStatus('Enregistrement du calepinage…')
@@ -572,30 +705,48 @@ export default function ToitureDesign({ mode = 'lead' }) {
       const layout = apiTool.serializeLayout()
       let resultat
       try {
+        // ACAL23 — l'écriture COMPLÈTE porte If-Match = l'empreinte « document »
+        // lue au boot puis remplacée par celle de chaque réponse 2xx.
         const res = await calepinageApi.calepinages
-          .enregistrerLayoutCalepinage(calepinageId, layout)
+          .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument)
         resultat = res?.data ?? {}
       } catch (err) {
         const code = err?.response?.status
         const data = err?.response?.data
         setGenStatus(null)
         setSending(false)
+        if (code === 409 && data?.code === 'document_modifie') {
+          // ACAL23 — la conception a changé AILLEURS : rien n'est écrasé, et ce
+          // n'est PAS le verrou (bannière distincte, seule sortie : Recharger).
+          setDocumentModifie({
+            detail: typeof data.detail === 'string' && data.detail.trim()
+              ? data.detail : 'La conception a été modifiée ailleurs.',
+          })
+          return false
+        }
         if (code === 409) {
           // Un calepinage dont le devis est parti chez le client : le motif
-          // est celui du SERVEUR, jamais reformulé ici.
+          // est celui du SERVEUR, jamais reformulé ici (`{detail}` ou le
+          // `{roof_layout: [msg]}` du verrou).
+          const motifVerrou = Array.isArray(data?.roof_layout)
+            ? data.roof_layout[0] : data?.roof_layout
           setConflit({
-            detail: data?.detail || 'Ce calepinage ne peut plus être modifié.',
+            detail: data?.detail || (typeof motifVerrou === 'string' && motifVerrou)
+              || 'Ce calepinage ne peut plus être modifié.',
             revision_possible: false,
           })
-          return
+          return false
         }
         // Le 400 de CAL18 NOMME son champ (`roof_layout`) : on affiche le
         // message du serveur tel quel plutôt qu'un « non enregistré » générique.
         const champ = data && typeof data === 'object' ? data.roof_layout : null
         setGenError(typeof champ === 'string' && champ.trim()
           ? champ : httpMessage(code ?? 0, data))
-        return
+        return false
       }
+
+      // ACAL23 — le jeton de la PROCHAINE écriture est celui que le serveur vient de rendre.
+      if (resultat?.empreinte_document) setEmpreinteEcrite(resultat.empreinte_document)
 
       // ACAL286 — l'affectation servie a pu changer avec ce document : la teinte est relue.
       pousserAffectationAtelier(apiTool, calepinageId)
@@ -608,35 +759,29 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // plus récent, il s'efface (repli sur `layout` si `serializeLayout()`
         // n'est déjà plus joignable).
         gestionnaireBrouillonRef.current?.effacer()
-        setHashBaseBrouillon(hacherLayout(layout))
+        setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon) // ACAL84
         toastInfo('Aucun changement')
         setGenStatus(null)
         setSending(false)
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
-        return
+        marquerSceneEnregistree(layout) // ACAL85
+        await rafraichirContexte() // ACAL83
+        return true
       }
 
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
       // MÊME service de stockage MinIO — jamais un second magasin).
       setGenStatus('Capture de la vue 3D…')
-      const png = apiTool.snapshot()
-      if (png) {
-        const blob = dataUrlToBlob(png)
-        if (blob) {
-          const form = new FormData()
-          form.append('image', blob, `calepinage-${calepinageId}.png`)
-          try {
-            await calepinageApi.calepinages.envoyerImage(calepinageId, form)
-          } catch { /* image best-effort */ }
-        }
-      }
+      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `calepinage-${calepinageId}.png`,
+        (form) => calepinageApi.calepinages.envoyerImage(calepinageId, form)))
       // CALX68 — enregistrement réussi : le brouillon local ne porte plus
       // rien de plus récent que le serveur, il s'efface. Le layout SERVEUR
       // vient de changer (nouvelle version) : son empreinte change avec lui,
       // ce qui fait démarrer une minuterie/clé neuve pour la suite de la
       // session (l'effet dédié plus haut réagit à `hashBaseBrouillon`).
       gestionnaireBrouillonRef.current?.effacer()
-      setHashBaseBrouillon(hacherLayout(layout))
+      // ACAL84 — la clé suivante est l'empreinte SERVEUR rendue par l'écriture.
+      setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon)
       setGenStatus(null)
       setSending(false)
       setStatus(
@@ -644,6 +789,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? `Conception enregistrée — version ${resultat.version}.`
           : 'Conception enregistrée.'
       )
+      marquerSceneEnregistree(layout) // ACAL85
+      await rafraichirContexte() // ACAL83
+      return true
     } catch (err) {
       setGenStatus(null)
       // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
@@ -652,33 +800,39 @@ export default function ToitureDesign({ mode = 'lead' }) {
         ? err.message
         : 'Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
       setSending(false)
+      return false
     }
   }
 
-  // PV21 — « Réviser (v2) » : le devis est déjà chez le client, on en crée une
-  // NOUVELLE version (brouillon) et on rouvre la conception dessus.
-  const reviser = async () => {
-    if (sending) return
+  // PV21 / ACAL93 — « Réviser (v2) » : le devis est déjà chez le client, on en
+  // crée une NOUVELLE version (brouillon) et on rouvre la conception dessus.
+  // UNE seule fonction de révision dans tout le produit : `reviserEtOuvrir`
+  // (avertit d'un chantier en cours, dit l'échec du serveur) — jamais masquée
+  // ni refusée (D-QJR5-2). Ici, la V2 s'ouvre sur sa CONCEPTION.
+  const reviser = async (idDevis = devisId, reference = '') => {
+    if (sending || !idDevis) return
     setSending(true)
     setGenError(null)
     setGenStatus('Création de la révision…')
+    let v2 = null
     try {
-      const res = await ventesApi.reviserDevis(devisId)
-      const nouveau = res?.data?.id
+      await reviserEtOuvrir({
+        devis: { id: idDevis, reference },
+        onApres: (nouveau) => { v2 = nouveau; setConflit(null) },
+        navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
+      })
+    } finally {
       setGenStatus(null)
       setSending(false)
-      if (!nouveau) {
-        setGenError('Révision créée sans identifiant — rouvrez le devis depuis la liste.')
-        return
-      }
-      setConflit(null)
-      navigate(`/ventes/devis/${nouveau}/design`)
-    } catch (err) {
-      setGenStatus(null)
-      setSending(false)
-      setGenError(httpMessage(err?.response?.status ?? 0, err?.response?.data))
     }
   }
+  // ACAL93 — le devis à réviser depuis le bandeau « Lecture seule » : celui du
+  // mode devis, ou le devis LIÉ du calepinage (contexte, ACAL36).
+  const devisARevise = estDevis
+    ? { id: devisId, reference: contexte?.devis?.reference ?? '' }
+    : (contexte?.calepinage?.devis_lie?.id != null
+      ? { id: contexte.calepinage.devis_lie.id, reference: contexte.calepinage.devis_lie.reference ?? '' }
+      : null)
 
   // Fondateur 18/08 — bouton Fermer (X, haut-droite) : cette fenêtre de
   // calepinage 3D n'avait aucune sortie visible une fois ouverte (lead,
@@ -688,7 +842,46 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // une cible en dur qui pourrait diverger d'un appelant à l'autre. Le tracé
   // en cours n'est jamais perdu silencieusement : rien n'est envoyé ici, on
   // quitte seulement la vue (comme un retour navigateur).
-  const fermer = () => navigate(-1)
+  // ACAL85 — une conception NON enregistrée n'est plus perdue en silence :
+  // « Fermer » confirme d'abord (calcul frais au clic, pas seulement le sondage).
+  const fermer = () => {
+    const modifiee = sceneHydratee && !lectureSeuleContexte && sceneEstModifiee()
+    if (!confirmLeaveIfDirty(modifiee,
+      'La conception porte des modifications non enregistrées — fermer quand même ?')) return
+    navigate(-1)
+  }
+
+  // ACAL23 — L'UNIQUE rechargement de l'atelier (relayé par le Rail à chaque
+  // onglet, et porté par la bannière « modifiée ailleurs »). Le constructeur
+  // n'a aucun rechargement post-boot : la page est rechargée, ce qui relit
+  // design-context et le document serveur. Si la scène porte des
+  // modifications non enregistrées (sérialisation ≠ base serveur), on
+  // CONFIRME d'abord — sinon rechargement direct.
+  const rechargerAtelier = async () => {
+    // ACAL85 — MÊME mesure que la garde de sortie (référence = scène hydratée
+    // ou dernier enregistrement), jamais l'empreinte serveur du brouillon.
+    const modifiee = sceneHydratee && sceneEstModifiee()
+    if (modifiee) {
+      const ok = await confirm({
+        title: 'Modifications non enregistrées',
+        description: 'La scène porte des modifications non enregistrées : elles seront perdues. Recharger quand même ?',
+        confirmLabel: 'Recharger quand même',
+      })
+      if (!ok) return
+    }
+    window.location.reload()
+  }
+
+  // ACAL23 — le document VIVANT confié aux onglets du Rail : le jeton
+  // d'écriture courant, et la façon d'appliquer à la scène une section qu'un
+  // onglet vient d'écrire (`layout/section/`) en reprenant le jeton rendu.
+  const documentVivant = useMemo(() => ({
+    empreinte: empreinteDocument,
+    appliquerSection: (cle, valeur, empreinteApres) => {
+      builderApi.current?.appliquerSection?.(cle, valeur)
+      if (empreinteApres) setEmpreinteEcrite(empreinteApres)
+    },
+  }), [empreinteDocument])
 
   // PVHEAL — le bandeau d'avertissements du serveur, partagé par les deux
   // modes. Il reste affiché APRÈS le passage au bloc « Prêt à envoyer » : un
@@ -718,6 +911,29 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const raisonLectureSeule = (contexte?.raison_lecture_seule ?? '').trim()
   const avertissements = Array.isArray(contexte?.avertissements)
     ? contexte.avertissements : []
+  // ACAL192 (D-ACAL-13) — le GPS du lead a été corrigé APRÈS le tracé et l'épingle a été
+  // posée à la main (ou sa provenance est inconnue) : le serveur dit « a_decider », la
+  // bannière OFFRE les deux gestes. « automatique » est traité au boot (recentrage d'office),
+  // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
+  // ACAL195 — cible ESTIMÉE (lead/factures) ou refus nommé du moteur, affichés tels quels.
+  const cibleEstimee = estCalepinage ? libelleCibleEstimee(contexte?.cible) : null
+  const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null
+  const ecartRepere = libelleEcartRepere(contexte?.geometrie?.ecart_m)
+  const gesteRepere = async (geste) => {
+    if (!calepinageId || repereEnCours) return
+    setRepereEnCours(true)
+    setRepereErreur(null)
+    try {
+      await geste(calepinageId)
+    } catch (err) {
+      setRepereErreur(messageRefusRepere(err?.response?.data))
+      setRepereEnCours(false)
+      return
+    }
+    // La conception a changé CÔTÉ SERVEUR (nouvelle version) : l'atelier repart du
+    // document relu — la carte se recentre sur la nouvelle épingle.
+    window.location.reload()
+  }
 
   // Correction fondateur 24/08 — sans AUCUNE position (ni pin posé, ni GPS de
   // fiche), la carte reste au niveau Maroc : comportement inchangé, mais on le
@@ -872,11 +1088,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
           )}
         </div>
         <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
+        {apercuMessage && (
+          <p className="mt-1 text-sm text-brass-300" role="status" data-testid="apercu-3d-avertissement">
+            {apercuMessage}
+          </p>
+        )}
 
         {/* CALX68 — LE BANDEAU DE REPRISE DE BROUILLON. N'existe QUE tant que
-            l'utilisateur n'a pas choisi : le constructeur 3D n'a pas encore
-            booté (voir `bootCalepinage`/`poursuivreBootCalepinage`), donc
-            « rien n'est réhydraté sans le geste ». */}
+            l'utilisateur n'a pas choisi. ACAL84 — NON BLOQUANT : l'atelier a
+            déjà booté sur la conception serveur ; « Reprendre » recharge sur
+            le brouillon, « Ignorer » ferme le bandeau — « rien n'est
+            réhydraté sans le geste ». */}
         {estCalepinage && brouillonPropose && (
           <div className="cine-card mt-4 border border-brass-400/40 p-4"
             data-testid="cal-brouillon-bandeau">
@@ -982,7 +1204,64 @@ export default function ToitureDesign({ mode = 'lead' }) {
                 Voir en 3D
               </Link>
             )}
+            {/* ACAL93 — le serveur dit que la révision est possible : le
+                bandeau l'OFFRE (jamais masquée par rôle, jamais refusée). */}
+            {contexte?.revision_possible && devisARevise && (
+              <button
+                type="button"
+                onClick={() => reviser(devisARevise.id, devisARevise.reference)}
+                disabled={sending}
+                data-testid="acal-reviser-lecture-seule"
+                className="mt-4 ml-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Réviser (v2)
+              </button>
+            )}
           </div>
+        )}
+
+        {/* ACAL192 (D-ACAL-13) — GPS du lead corrigé après le tracé : décider. */}
+        {deriveRepere === 'a_decider' && (
+          <div className="cine-card mt-6 border border-brass-400/40 p-5" data-testid="acal-derive-repere">
+            <p className="text-sm text-brass-300" role="status">
+              {`Le GPS du lead a été corrigé${ecartRepere ? ` (${ecartRepere})` : ''}.`}
+            </p>
+            <p className="mt-1 text-xs text-lune-soft">
+              Recentrer déplace toute la conception sur le nouveau repère (une version est créée) ;
+              garder conserve l’emplacement dessiné.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => gesteRepere(calepinageApi.calepinages.recentrerSurLead)}
+                disabled={repereEnCours || lectureSeule}
+                data-testid="acal-derive-recentrer"
+                className="inline-flex items-center border border-brass-400 px-4 py-2 text-sm font-semibold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Recentrer sur le GPS du lead
+              </button>
+              <button
+                type="button"
+                onClick={() => gesteRepere(calepinageApi.calepinages.garderRepere)}
+                disabled={repereEnCours || lectureSeule}
+                data-testid="acal-derive-garder"
+                className="inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-lune-soft disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Garder ce repère
+              </button>
+            </div>
+          </div>
+        )}
+        {estCalepinage && repereErreur && (
+          <p className="mt-3 text-sm text-alert-300" role="alert" data-testid="acal-derive-erreur">
+            {repereErreur}
+          </p>
+        )}
+
+        {cibleEstimee && (
+          <p className="mt-3 text-xs text-lune-soft" role="status" data-testid="acal-cible-estimee">
+            {cibleEstimee}
+          </p>
         )}
 
         {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…). */}
@@ -1162,10 +1441,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
                   <span aria-hidden="true"
                     className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
                 )}
-                <span>{sending ? 'Génération en cours…' : 'Générer le devis & envoyer au client'}</span>
+                <span>{sending ? 'Génération en cours…' : 'Générer le devis'}</span>
               </button>
               <p className="mt-3 text-xs text-lune-faint">
-                Un seul clic : le devis est créé, la vue 3D enregistrée et le lien client préparé.
+                Un seul clic : le devis est créé et la vue 3D enregistrée ; l’envoi se fait depuis la fiche lead.
               </p>
               {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
               {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
@@ -1202,7 +1481,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
             {conflit?.revision_possible && (
               <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
                 <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
-                <button type="button" onClick={reviser} disabled={sending}
+                <button type="button" onClick={() => reviser()} disabled={sending}
                   className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
                   Réviser (v2)
                 </button>
@@ -1259,7 +1538,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
             // `builderApi.current` dans ce cadre-là, inchangé).
             builderApi={builderApiActuel}
             lectureSeule={lectureSeule}
-            onRecharger={() => window.location.reload()}
+            onRecharger={rechargerAtelier}
+            documentVivant={documentVivant}
+            // ACAL94 — Générer / Resynchroniser rangent d'abord l'écran (une
+            // seule fonction d'enregistrement), et Réviser sait s'il reste
+            // des retouches non enregistrées.
+            enregistrerAvant={enregistrerCalepinage}
+            aDesRetouches={() => sceneHydratee && sceneEstModifiee()}
           />
         )}
 
@@ -1286,6 +1571,23 @@ export default function ToitureDesign({ mode = 'lead' }) {
           </p>
           {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
           {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive" data-testid="cal-erreur-enregistrement">{genError}</p>}
+
+          {/* ACAL23 — 409 `document_modifie` : modifiée AILLEURS, rien n'est
+              écrasé ; distinct du verrou ci-dessous. */}
+          {documentModifie && (
+            <div className="mt-4 border border-brass-400/40 p-4" data-testid="cal-document-modifie">
+              <p className="text-sm text-brass-300" role="alert">
+                La conception a été modifiée ailleurs (onglet, autre navigateur) — rechargez avant
+                d’enregistrer.
+              </p>
+              <p className="mt-1 text-xs text-lune-soft">{documentModifie.detail}</p>
+              <button type="button" onClick={rechargerAtelier}
+                className="mt-3 inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-300"
+                data-testid="cal-document-modifie-recharger">
+                Recharger
+              </button>
+            </div>
+          )}
 
           {/* 409 : le devis lié est parti chez le client — motif du SERVEUR. */}
           {conflit && (

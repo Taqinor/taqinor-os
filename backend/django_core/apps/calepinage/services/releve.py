@@ -32,7 +32,7 @@ from __future__ import annotations
 
 __all__ = ['ReleveRefuse', 'enregistrer_releve', 'resoudre_chaines',
            'releve_en_ligne', 'releve_courant_id', 'modifier_releve',
-           'supprimer_releve']
+           'supprimer_releve', 'appliquer_cote_au_pan']
 
 
 class ReleveRefuse(ValueError):
@@ -393,3 +393,224 @@ def releve_en_ligne(releve):
         'created_at': releve.created_at.isoformat() if releve.created_at
         else None,
     }
+
+
+# ── ACAL207 (D-ACAL-28) — « Appliquer la cote au pan » ─────────────────────
+
+#: Deux longueurs à moins de ce delta (m) désignent la MÊME cote du relevé
+#: (arrondi d'affichage au millimètre, jamais une tolérance de mesure).
+_TOLERANCE_LONGUEUR_M = 0.0005
+
+
+def _mesures_du_releve(releve):
+    """Les longueurs du relevé qu'un côté peut recevoir.
+
+    ``[{longueur, libelle, a_confirmer, precision}]`` : le total MESURÉ de
+    chaque chaîne et chacune de ses cotes (segments) telles que le solveur
+    les a résolues. ``precision`` = la tolérance DÉCLARÉE de la chaîne à la
+    saisie (``tolerance_m``), ``None`` quand rien n'a été déclaré — jamais le
+    défaut du solveur présenté comme une précision mesurée.
+    """
+    saisies = releve.chaines if isinstance(releve.chaines, list) else []
+    resolues = (releve.geometrie or {}).get('chaines') or []
+    mesures = []
+    for rang, chaine in enumerate(resolues):
+        if not isinstance(chaine, dict):
+            continue
+        saisie = (saisies[rang] if rang < len(saisies)
+                  and isinstance(saisies[rang], dict) else {})
+        precision = _nombre_valide(saisie.get('tolerance_m'), 'longueur_m',
+                                   'Précision')
+        nom = chaine.get('nom') or f'chaîne {rang + 1}'
+        total = chaine.get('total_mesure')
+        if isinstance(total, (int, float)) and total > 0:
+            mesures.append({'longueur': float(total), 'libelle': nom,
+                            'a_confirmer': False, 'precision': precision})
+        for cote in chaine.get('cotes') or []:
+            valeur = cote.get('valeur') if isinstance(cote, dict) else None
+            if not isinstance(valeur, (int, float)) or valeur <= 0:
+                continue
+            mesures.append({'longueur': float(valeur),
+                            'libelle': cote.get('nom') or '',
+                            'a_confirmer': bool(cote.get('a_confirmer')),
+                            'precision': precision})
+    return mesures
+
+
+def _sommets_du_pan(zone):
+    """Les sommets ``(lng, lat)`` lisibles d'un pan (≥ 3), ou ``None``."""
+    sommets = zone.get('vertices') if isinstance(zone, dict) else None
+    if not isinstance(sommets, list):
+        return None
+    points = []
+    for sommet in sommets:
+        if (not isinstance(sommet, (list, tuple)) or len(sommet) < 2
+                or not all(isinstance(v, (int, float))
+                           and not isinstance(v, bool) for v in sommet[:2])):
+            return None
+        points.append((float(sommet[0]), float(sommet[1])))
+    if len(points) >= 2 and points[0] == points[-1]:
+        points = points[:-1]
+    return points if len(points) >= 3 else None
+
+
+def _homothetie_le_long_du_cote(sommets_m, cote_index, longueur_m):
+    """Le pan (mètres locaux) dont le côté ``i → i+1`` mesure ``longueur_m``.
+
+    Homothétie de facteur ``k = longueur / longueur actuelle`` LE LONG de la
+    direction du côté, ancrée au sommet ``i`` : la composante PARALLÈLE au
+    côté est multipliée par ``k``, la composante PERPENDICULAIRE est
+    inchangée (l'azimut du pan ne bouge pas). Fonction PURE.
+    """
+    n = len(sommets_m)
+    ax, ay = sommets_m[cote_index]
+    bx, by = sommets_m[(cote_index + 1) % n]
+    longueur = ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
+    if longueur <= 0:
+        raise ReleveRefuse(
+            f"Le côté {cote_index} du pan est de longueur nulle : "
+            "impossible d'y appliquer une cote.", 'cote_index')
+    ux, uy = (bx - ax) / longueur, (by - ay) / longueur
+    k = float(longueur_m) / longueur
+    resultat = []
+    for x, y in sommets_m:
+        dx, dy = x - ax, y - ay
+        parallele = dx * ux + dy * uy
+        px, py = dx - parallele * ux, dy - parallele * uy
+        resultat.append((ax + parallele * k * ux + px,
+                         ay + parallele * k * uy + py))
+    return resultat
+
+
+def _contour_copie_du_pan(contour, sommets):
+    """``outline`` racine ([lat, lng]) est-il la copie de ces sommets ?"""
+    if not isinstance(contour, list) or len(contour) != len(sommets):
+        return False
+    try:
+        return all(abs(float(c[0]) - s[1]) < 1e-9
+                   and abs(float(c[1]) - s[0]) < 1e-9
+                   for c, s in zip(contour, sommets))
+    except (TypeError, ValueError, IndexError):
+        return False
+
+
+def _index_de_cote(brut):
+    """L'index de côté (entier ≥ 0) du corps, ou un refus nommé."""
+    if isinstance(brut, bool):
+        brut = None
+    if isinstance(brut, str) and brut.strip().isdigit():
+        brut = int(brut.strip())
+    if not isinstance(brut, int) or brut < 0:
+        raise ReleveRefuse("Choisissez le côté du pan (index entier).",
+                           'cote_index')
+    return brut
+
+
+def appliquer_cote_au_pan(calepinage, *, zone_id, cote_index, longueur_m,
+                          releve_id, user=None):
+    """ACAL207 — recale le côté ``cote_index`` du pan ``zone_id`` sur une cote
+    MESURÉE du relevé ``releve_id``, par homothétie le long de ce côté.
+
+    Le pan est projeté en mètres autour de l'épingle par LA projection
+    (``core.calepinage.geo``, C-ACAL-144), recalé, reconverti, puis écrit par
+    ``services.layout.enregistrer_layout`` (nouvelle version « Cote du relevé
+    appliquée — côté i », verrou respecté) ; ``zones[i].cotesReleve`` reçoit
+    ``{cote, longueurM, precisionM, releveId, appliqueLe}`` (précision du
+    relevé CONSERVÉE). L'azimut n'est jamais recalculé ici.
+
+    Raises:
+        ReleveRefuse: relevé introuvable, zone/côté invalides, longueur
+            absente du relevé, cote A_CONFIRMER, pan croisé (champ nommé).
+        VerrouilleRefuse (409): calepinage verrouillé.
+    """
+    import copy
+
+    from django.utils import timezone
+
+    from core.calepinage.geo import deprojeteur_local, projeteur_local
+    from core.calepinage.geometrie import est_polygone_simple
+
+    from .layout import LayoutRefuse, enregistrer_layout
+
+    releve = None
+    if str(releve_id).isdigit():
+        releve = calepinage.releves_terrain.filter(pk=int(releve_id)).first()
+    if releve is None:
+        raise ReleveRefuse('Relevé introuvable.', 'releve')
+
+    index = _index_de_cote(cote_index)
+    longueur = _nombre_valide(longueur_m, 'longueur_m', 'Longueur mesurée',
+                              obligatoire=True, positif=True)
+
+    document = (copy.deepcopy(calepinage.roof_layout)
+                if isinstance(calepinage.roof_layout, dict) else {})
+    zones = document.get('zones')
+    zone = next((z for z in (zones if isinstance(zones, list) else ())
+                 if isinstance(z, dict) and str(z.get('id')) == str(zone_id)),
+                None)
+    if zone is None:
+        raise ReleveRefuse(
+            f"Pan introuvable dans la conception : {zone_id}.", 'zone_id')
+    sommets = _sommets_du_pan(zone)
+    if sommets is None:
+        raise ReleveRefuse(
+            f"Le pan « {zone_id} » n'a pas de contour exploitable.",
+            'zone_id')
+    if index >= len(sommets):
+        raise ReleveRefuse(
+            f"Côté inconnu : le pan « {zone_id} » a {len(sommets)} côtés "
+            f"(0 à {len(sommets) - 1}).", 'cote_index')
+
+    correspondances = [m for m in _mesures_du_releve(releve)
+                       if abs(m['longueur'] - longueur)
+                       <= _TOLERANCE_LONGUEUR_M]
+    mesurees = [m for m in correspondances if not m['a_confirmer']]
+    if not mesurees:
+        if correspondances:
+            raise ReleveRefuse(
+                f"La cote « {correspondances[0]['libelle']} » est "
+                "A_CONFIRMER (déduite par fermeture) : confirmez-la avant "
+                "de l'appliquer.", 'cote_index')
+        raise ReleveRefuse(
+            f"La longueur {longueur:.2f} m ne correspond à aucune cote "
+            "mesurée de ce relevé.", 'longueur_m')
+
+    pin = document.get('pin')
+    try:
+        origine = (float(pin['lng']), float(pin['lat']))
+    except (TypeError, KeyError, ValueError):
+        origine = sommets[0]
+    projeter = projeteur_local(origine)
+    deprojeter = deprojeteur_local(origine)
+    sommets_m = [projeter(p) for p in sommets]
+    if not est_polygone_simple(sommets_m):
+        raise ReleveRefuse(
+            f"Le pan « {zone_id} » est croisé : corrigez son contour avant "
+            "d'appliquer une cote.", 'zone_id')
+    recales = _homothetie_le_long_du_cote(sommets_m, index, longueur)
+    if not est_polygone_simple(recales):
+        raise ReleveRefuse(
+            f"Appliquer cette cote rendrait le pan « {zone_id} » croisé : "
+            "choisissez un autre côté ou corrigez le contour.", 'zone_id')
+
+    zone['vertices'] = [list(deprojeter(p)) for p in recales]
+    # Le contour racine (`outline`, [lat, lng]) est la COPIE du pan actif :
+    # il suit le pan recalé, jamais une seconde géométrie divergente.
+    if _contour_copie_du_pan(document.get('outline'), sommets):
+        document['outline'] = [[lat, lng] for lng, lat in zone['vertices']]
+    cotes = [c for c in (zone.get('cotesReleve') or [])
+             if not (isinstance(c, dict) and c.get('cote') == index)]
+    cotes.append({
+        'cote': index,
+        'longueurM': longueur,
+        'precisionM': mesurees[0]['precision'],
+        'releveId': releve.pk,
+        'appliqueLe': timezone.now().isoformat().replace('+00:00', 'Z'),
+    })
+    zone['cotesReleve'] = cotes
+    try:
+        return enregistrer_layout(
+            calepinage, document, user=user,
+            libelle=f'Cote du relevé appliquée — côté {index}')
+    except LayoutRefuse as refus:
+        raise ReleveRefuse(str(refus), refus.champ or 'zone_id')

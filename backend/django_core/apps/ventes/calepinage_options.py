@@ -58,15 +58,18 @@ from __future__ import annotations
 import logging
 import math
 
+from core.calepinage import geo as _geo
+
 logger = logging.getLogger(__name__)
 
 _DEG2RAD = math.pi / 180.0
 #: Rayon WGS84 (m) — MÊME constante que ``lib/roofPro2.ts`` et
 #: ``viewerFullModel.ringENUFromVertices`` : la projection ENU du serveur doit
 #: être celle du navigateur au mètre près, sinon le test de contenance ne parle
-#: plus du polygone que le client voit.
-_RAYON_WGS84 = 6378137.0
-_DEG2M = _DEG2RAD * _RAYON_WGS84
+#: plus du polygone que le client voit. ACAL281 : lue dans la source UNIQUE
+#: ``core.calepinage.geo`` (jamais recopiée).
+_RAYON_WGS84 = _geo.RAYON_TERRE_M
+_DEG2M = _geo.METRES_PAR_DEGRE
 
 #: Deux panneaux dont la coordonnée « dans le sens de la visée » diffère de
 #: moins que ça sont sur la MÊME rangée. Par construction les ``v`` d'une
@@ -211,23 +214,9 @@ def anneau_enu(vertices, origine):
 
     Formule IDENTIQUE à ``viewerFullModel.ringENUFromVertices`` — c'est ce qui
     garantit que « dans le polygone » veut dire la même chose ici et à l'écran.
+    ACAL281 : délègue à ``core.calepinage.geo.anneau_local`` (projection unique).
     """
-    olng = _fini((origine or [None, None])[0])
-    olat = _fini((origine or [None, None])[1])
-    if olng is None or olat is None:
-        return []
-    cos_lat = math.cos(olat * _DEG2RAD)
-    anneau = []
-    for sommet in vertices or []:
-        if not isinstance(sommet, (list, tuple)) or len(sommet) < 2:
-            continue
-        lng = _fini(sommet[0])
-        lat = _fini(sommet[1])
-        if lng is None or lat is None:
-            continue
-        anneau.append(((lng - olng) * _DEG2M * cos_lat,
-                       (lat - olat) * _DEG2M))
-    return anneau
+    return _geo.anneau_local(vertices, origine)
 
 
 def _dans_polygone(point, anneau):

@@ -1,0 +1,38 @@
+{
+ "_provenance": {
+  "tache": "ACAL131",
+  "produit_par": "python -m apps.calepinage.tests.test_acal_instant_utc --write",
+  "cas": "Casablanca (33,5731 / −7,5898), fuseau Africa/Casablanca, base locale standard ; deux jours de 2024 : 25 mars (Ramadan, UTC+0) et 20 juin (UTC+1) ; pan 30° plein sud, 3 rangées au pas de 3,2 m.",
+  "comment_regenerer": "Relancer la commande À LA MAIN, lire le diff, dire dans le message de commit POURQUOI la cascade a bougé."
+ },
+ "attendu": {
+  "decalage_minutes": [
+   0,
+   60
+  ],
+  "etapes": [
+   {
+    "etape": "horizon",
+    "omise": true,
+    "kwh_avant": 93.12,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
+    "etape": "inter_rangees",
+    "omise": false,
+    "kwh_avant": 93.12,
+    "kwh_apres": 93.12,
+    "perte_pct": 0.0
+   },
+   {
+    "etape": "iam",
+    "omise": false,
+    "kwh_avant": 93.12,
+    "kwh_apres": 88.045,
+    "perte_pct": 5.45
+   }
+  ],
+  "total_pct": 5.4
+ }
+}

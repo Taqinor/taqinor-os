@@ -28,10 +28,8 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import etapes
-from apps.calepinage.services.chaines import empreinte_entree
 from apps.calepinage.services.electrique import (
-    METHODE_ECRETAGE_SERIE, MOTIF_ECRETAGE_SANS_SERIE, _options_entree,
-    temperatures_site,
+    METHODE_ECRETAGE_SERIE, MOTIF_ECRETAGE_SANS_SERIE,
 )
 from apps.calepinage.services.etapes import ecretage
 from apps.calepinage.services.etapes.ecretage import (
@@ -223,68 +221,63 @@ def _materiel(**onduleur):
     }
 
 
-class _Calepinage:
-    """Un calepinage dont la simulation persistée décrit ENCORE ce toit."""
+def _simule(materiel, *, simuler=True):
+    """ACAL141 — un pivot SIMULÉ par la vraie chaîne (client rejoué, crête
+    1 000 W/m²) : l'écrêtage du ratio vient de l'étape « ecretage » de la
+    cascade fraîche, plus d'une colonne ``p_dc_kw`` écrite à la main."""
+    from apps.calepinage.services.simulation import simuler_calepinage
 
-    pk = 172
-    statut = 'brouillon'
+    from .test_acal_multi_pans import _ClientParOrientation
+    from .test_calx5_simulation import REGLAGES, _Calepinage
 
-    def __init__(self, materiel, avec_serie=True):
-        self.roof_layout = LAYOUT
-        self.company = None
-        entree = {'temperature_min_c': -5.0, 'temperature_max_c': 70.0}
-        self.resultat = {'entree_electrique': entree}
-        empreinte = empreinte_entree(
-            LAYOUT, module_specs=materiel['module'],
-            onduleur_specs=materiel['onduleur'],
-            temperatures=temperatures_site(saisie=entree),
-            options=_options_entree(entree))
-        self.resultat['simulation'] = {'hash_entree': empreinte,
-                                       'calcule_le': '2026-09-21T10:00:00'}
-        if avec_serie:
-            self.resultat['serie_horaire'] = {
-                'pas_minutes': 60,
-                'points': [{'annee': 2020, 'mois': 6, 'jour': 21,
-                            'heure': heure, 'p_dc_kw': valeur}
-                           for heure, valeur in enumerate(
-                               (0.0, 5.0, 14.0, 20.0, 16.0, 4.0))],
-            }
+    pivot = _Calepinage(layout={'version': 2, 'pin': {'lat': 33.5731,
+                                                      'lng': -7.5898},
+                                'zones': LAYOUT['zones']})
+    if simuler:
+        simuler_calepinage(pivot, client=_ClientParOrientation(1000.0),
+                           materiel=materiel, reglages=REGLAGES,
+                           enregistrer=True)
+    return pivot
 
 
 class SerieServieAuRatioTest(SimpleTestCase):
-    """Le bloc ratio reçoit enfin une série, et le DIT."""
+    """Le bloc ratio lit l'écrêtage de la cascade FRAÎCHE, et le DIT."""
+
+    def _servi(self, materiel, **kwargs):
+        from apps.calepinage.services.electrique import resultat_calepinage
+
+        from .test_calx5_simulation import REGLAGES
+
+        pivot = _simule(materiel, **kwargs)
+        return pivot, resultat_calepinage(pivot, materiel=materiel,
+                                          reglages=REGLAGES)
 
     def test_un_resultat_simule_publie_la_methode_horaire(self):
-        from apps.calepinage.services.electrique import resultat_calepinage
+        pivot, resultat = self._servi(_materiel(ac_kw=5.0))
 
-        materiel = _materiel()
-        resultat = resultat_calepinage(_Calepinage(materiel),
-                                       materiel=materiel)
-
+        etape = next(e for e in pivot.resultat['cascade']['etapes']
+                     if e['etape'] == 'ecretage')
         self.assertEqual(resultat['ratio_dc_ac']['ecretage_methode'],
                          METHODE_ECRETAGE_SERIE)
-        self.assertIsNotNone(resultat['ratio_dc_ac']['ecretage_pct'])
+        self.assertEqual(resultat['ratio_dc_ac']['ecretage_pct'],
+                         etape['entree']['ecretage_pct'])
+        self.assertGreater(resultat['ratio_dc_ac']['ecretage_pct'], 0.0)
 
     def test_sans_serie_persistee_le_motif_de_refus_est_conserve(self):
-        from apps.calepinage.services.electrique import resultat_calepinage
-
-        materiel = _materiel()
-        resultat = resultat_calepinage(
-            _Calepinage(materiel, avec_serie=False), materiel=materiel)
+        _pivot, resultat = self._servi(_materiel(ac_kw=5.0), simuler=False)
 
         self.assertEqual(resultat['ratio_dc_ac']['ecretage_methode'],
                          MOTIF_ECRETAGE_SANS_SERIE)
         self.assertIsNone(resultat['ratio_dc_ac']['ecretage_pct'])
 
     def test_une_fiche_sans_ond_ac_kw_garde_le_motif_de_refus_existant(self):
-        from apps.calepinage.services.electrique import resultat_calepinage
-
         materiel = _materiel()
         materiel['onduleur'] = {cle: valeur
                                 for cle, valeur in materiel['onduleur'].items()
                                 if cle != 'ac_kw'}
-        resultat = resultat_calepinage(_Calepinage(materiel),
-                                       materiel=materiel)
+        # Sans puissance AC, aucun onduleur n'est dimensionné : rien à
+        # simuler, et le ratio garde son motif de refus.
+        _pivot, resultat = self._servi(materiel, simuler=False)
 
         self.assertEqual(resultat['ratio_dc_ac']['ecretage_methode'],
                          MOTIF_ECRETAGE_SANS_SERIE)

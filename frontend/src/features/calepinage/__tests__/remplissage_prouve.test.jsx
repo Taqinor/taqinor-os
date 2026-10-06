@@ -129,7 +129,7 @@ describe('CAL79 — l’écran, branché sur la porte moteur CAL22', () => {
     calculer.mockResolvedValue({ data: JOB })
     // Le travail RESTE en cours : c'est l'état d'attente qu'on observe, sans
     // aucune temporisation arbitraire (on attend une CONDITION de l'écran).
-    resultatJob.mockResolvedValue({ data: { ...JOB, statut: 'STARTED', progress_pct: 40 } })
+    resultatJob.mockResolvedValue({ data: { ...JOB, statut: 'running', progress_pct: 40 } })
     rendre({ intervalleMs: 10_000 })
     fireEvent.click(screen.getByTestId('cal-remplissage-lancer'))
 
@@ -146,7 +146,7 @@ describe('CAL79 — l’écran, branché sur la porte moteur CAL22', () => {
   it('202 : le plan arrive à la fin du travail de fond, avec son régime', async () => {
     calculer.mockResolvedValue({ data: JOB })
     resultatJob.mockResolvedValue({
-      data: { ...JOB, statut: 'SUCCESS', progress_pct: 100, resultat: RESULTAT },
+      data: { ...JOB, statut: 'done', progress_pct: 100, resultat: RESULTAT },
     })
     rendre()
     fireEvent.click(screen.getByTestId('cal-remplissage-lancer'))
@@ -154,6 +154,32 @@ describe('CAL79 — l’écran, branché sur la porte moteur CAL22', () => {
     expect(await screen.findByTestId('cal-remplissage-regime'))
       .toHaveTextContent('Optimum prouvé')
     expect(screen.queryByTestId('cal-remplissage-avancement')).toBeNull()
+  })
+
+  it('ACAL125 — queued puis running puis done : aucun refus au premier sondage', async () => {
+    calculer.mockResolvedValue({ data: JOB })
+    resultatJob
+      .mockResolvedValueOnce({ data: { ...JOB, statut: 'queued', progress_pct: 0 } })
+      .mockResolvedValueOnce({ data: { ...JOB, statut: 'running', progress_pct: 50 } })
+      .mockResolvedValue({ data: { ...JOB, statut: 'done', progress_pct: 100, resultat: RESULTAT } })
+    rendre({ intervalleMs: 5 })
+    fireEvent.click(screen.getByTestId('cal-remplissage-lancer'))
+
+    expect(await screen.findByTestId('cal-remplissage-regime')).toHaveTextContent('Optimum prouvé')
+    expect(resultatJob).toHaveBeenCalledTimes(3)
+    expect(screen.queryByTestId('cal-remplissage-refus')).toBeNull()
+  })
+
+  it('ACAL125 — failed : le motif nommé du serveur est affiché', async () => {
+    calculer.mockResolvedValue({ data: JOB })
+    resultatJob.mockResolvedValue({
+      data: { ...JOB, statut: 'failed', progress_pct: 100, resultat: null,
+        elements: [{ statut: 'failed', champ: 'toit', motif: 'Toit introuvable.' }] },
+    })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-remplissage-lancer'))
+
+    expect(await screen.findByTestId('cal-remplissage-refus')).toHaveTextContent('Toit introuvable.')
   })
 
   it('l’édition manuelle reste PRIORITAIRE : rien n’est appliqué sans geste', async () => {

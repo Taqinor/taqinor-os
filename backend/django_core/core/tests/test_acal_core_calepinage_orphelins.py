@@ -25,6 +25,10 @@ ALLOWLISTE = {
     # parqué) — ACAL328 « Hors périmètre » : ils RESTENT.
     'core.calepinage.echelle': 'importé par backend/parked/ao',
     'core.calepinage.sensibilites': 'importé par backend/parked/ao',
+    # ACAL292 a retiré les tiroirs AO de ``moteur/calculer`` ; le texte de
+    # la tâche : « core/calepinage/tiroirs.py (noyau) reste intact car
+    # parked/ao l'importe » (calepinage_service.py l.92 et l.439).
+    'core.calepinage.tiroirs': 'importé par backend/parked/ao (ACAL292)',
     # Hors périmètre d'ACAL328 (le noyau CAL88 du champ au sol et le site) :
     # non parqués ici, à statuer par leur propre tâche.
     'core.calepinage.site': 'hors périmètre ACAL328 (à statuer)',

@@ -206,17 +206,41 @@ def valider_postes(postes):
         else:
             pct = _pourcentage(brut.get('pct'), champ=nom)
 
-        normalises.append({
+        normalise = {
             'poste': nom,
             'libelle': (str(brut.get('libelle') or '').strip()
                         or reference_catalogue.get('libelle', '')),
             'pct': pct,
             'source': source,
+            # La référence SAISIE est conservée ; le catalogue ne la remplit
+            # qu'à défaut.
             'reference': (str(brut.get('reference') or '').strip()
                           or reference_catalogue.get('reference', '')),
             'mensuel': mensuel,
-        })
+        }
+        # ACAL135 — le FORÇAGE SIGNÉ : appliqué à la place de l'étape qui le
+        # calculerait, mais seulement avec un motif écrit. Les deux clés ne
+        # sont posées que sur un poste forcé (la forme des autres ne bouge
+        # pas : enregistrer → relire → enregistrer reste octet-identique).
+        if _vrai(brut.get('force')):
+            motif_force = str(brut.get('motif_force') or '').strip()
+            if not motif_force:
+                raise PertesInvalides(
+                    f'Le poste « {nom} » est FORCÉ sans motif : un forçage '
+                    'remplace une étape calculée, il se signe — écrivez '
+                    'pourquoi (« motif_force »), ou retirez le forçage.',
+                    champ=f'{nom}.motif_force')
+            normalise['force'] = True
+            normalise['motif_force'] = motif_force
+        normalises.append(normalise)
     return normalises
+
+
+def _vrai(valeur):
+    """Un booléen de saisie (``true``, ``"true"``, ``1``…), jamais deviné."""
+    if isinstance(valeur, bool):
+        return valeur
+    return str(valeur or '').strip().lower() in ('1', 'true', 'vrai', 'oui')
 
 
 def postes_du_calepinage(calepinage):

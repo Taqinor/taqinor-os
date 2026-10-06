@@ -157,14 +157,14 @@ describe('CAL96 — l’écran', () => {
   })
 })
 
-/* ── 3. CALX52 — la hauteur de toit supposée, enfin lisible ─────────────── */
+/* ── 3. CALX52 / ACAL74 — la hauteur de toit : celle du bâtiment du document ── */
 
 const MENTION_HYPOTHESE = 'hauteur de toit supposée à 6 m (2 étages × 3 m), '
   + 'non mesurée'
 
 // Un objet d'ENVIRONNEMENT (CAL67, référencé au sol) : sa hauteur EFFECTIVE
 // dépend de `roofHeightM` — contrairement à un obstacle de toiture (CAL66),
-// qui est pris tel quel. C'est le cas qui rend le 4ᵉ argument observable.
+// qui est pris tel quel. C'est le cas qui rend la hauteur de toit observable.
 const ZONE_AVEC_ENVIRONNEMENT = {
   ...ZONE,
   obstacles: [],
@@ -173,22 +173,26 @@ const ENVIRONNEMENT = [
   { label: 'Arbre voisin', kind: 'arbre', centerLng: -7.598, centerLat: 33.6, heightM: 10 },
 ]
 
-const rendreAvecEnvironnement = () => {
+const rendreAvecEnvironnement = ({ buildings, buildingId } = {}) => {
   layout.mockResolvedValue({
     data: {
       roof_layout: {
         pin: { lat: 33.6, lng: -7.6 },
         activeAreaId: 'z1',
-        zones: [ZONE_AVEC_ENVIRONNEMENT],
+        zones: [{ ...ZONE_AVEC_ENVIRONNEMENT, ...(buildingId ? { buildingId } : {}) }],
         environment: ENVIRONNEMENT,
+        ...(buildings ? { buildings } : {}),
       },
     },
   })
   return rendre()
 }
 
-describe('CALX52 — la hauteur de toit supposée du diagramme', () => {
-  it('la mention est présente au montage, sans aucune saisie', async () => {
+const cyDuPremierMarqueur = () => screen.getAllByTestId('cal-sundiagram-obstruction')[0]
+  .querySelector('circle').getAttribute('cy')
+
+describe('CALX52 — l’hypothèse de hauteur de toit, quand le document n’a pas de hauteur', () => {
+  it('la mention est présente au montage, avec le lien pour saisir la hauteur dans l’atelier', async () => {
     await rendreAvecEnvironnement()
     await screen.findByTestId('cal-course-soleil')
 
@@ -196,6 +200,8 @@ describe('CALX52 — la hauteur de toit supposée du diagramme', () => {
       .toHaveTextContent(MENTION_HYPOTHESE)
     expect(screen.getByTestId('cal-course-soleil-hauteur-toit-valeur'))
       .toHaveTextContent('6 m')
+    expect(screen.getByRole('link', { name: 'Saisir la hauteur dans l’atelier (Bâtiment)' }))
+      .toHaveAttribute('href', '/calepinage/7')
   })
 
   it('aucune obstruction proche n’est tracée sans que la hauteur employée soit lisible', async () => {
@@ -211,28 +217,72 @@ describe('CALX52 — la hauteur de toit supposée du diagramme', () => {
     }
   })
 
-  it('saisir 9 m change les angles d’élévation calculés ET la provenance affichée', async () => {
+  it('la saisie locale « hauteur de toit » n’existe plus (état d’écran perdu au rechargement)', async () => {
     await rendreAvecEnvironnement()
     await screen.findByTestId('cal-course-soleil')
+    expect(screen.queryByTestId('cal-course-soleil-hauteur-toit-champ')).not.toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
+  })
 
-    const cercleAvant = screen.getAllByTestId('cal-sundiagram-obstruction')[0]
-      .querySelector('circle')
-    const cyAvant = cercleAvant.getAttribute('cy')
-
-    fireEvent.change(screen.getByTestId('cal-course-soleil-hauteur-toit-champ'),
-      { target: { value: '9' } })
-
+  it('un bâtiment SANS hauteur (null) ou un pan sans bâtiment : l’hypothèse reste', async () => {
+    await rendreAvecEnvironnement({ buildings: [{ id: 'b1', hauteurM: null, source: null }], buildingId: 'b1' })
+    await screen.findByTestId('cal-course-soleil')
     expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance'))
-      .toHaveTextContent('Hauteur de toit saisie : 9 m.')
-    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-valeur'))
-      .toHaveTextContent('9 m')
+      .toHaveTextContent(MENTION_HYPOTHESE)
+    cleanup()
+    await rendreAvecEnvironnement({ buildings: [{ id: 'b1', hauteurM: 9, source: 'saisie' }] })
+    await screen.findByTestId('cal-course-soleil')
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance'))
+      .toHaveTextContent(MENTION_HYPOTHESE)
+  })
 
-    const cercleApres = screen.getAllByTestId('cal-sundiagram-obstruction')[0]
-      .querySelector('circle')
-    // La hauteur EFFECTIVE de l'objet d'environnement change (10 − 6 = 4 m
-    // devient 10 − 9 = 1 m) : l'angle d'élévation calculé, donc la position
-    // tracée, en est la conséquence directe — jamais un second calcul ici.
-    expect(cercleApres.getAttribute('cy')).not.toBe(cyAvant)
+  it('la hauteur d’un AUTRE bâtiment ne s’applique pas au pan', async () => {
+    await rendreAvecEnvironnement({
+      buildings: [{ id: 'autre', hauteurM: 9, source: 'saisie' }], buildingId: 'b1',
+    })
+    await screen.findByTestId('cal-course-soleil')
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-valeur')).toHaveTextContent('6 m')
+  })
+})
+
+describe('ACAL74 — la hauteur du bâtiment du pan, lue dans le document', () => {
+  it('buildings[{hauteurM:9}] + zones[].buildingId → obstruction calculée à 9 m, provenance affichée', async () => {
+    await rendreAvecEnvironnement()
+    await screen.findByTestId('cal-course-soleil')
+    const cyHypothese = cyDuPremierMarqueur()
+    cleanup()
+
+    await rendreAvecEnvironnement({
+      buildings: [{ id: 'b1', label: 'Villa', hauteurM: 9, source: 'saisie' }], buildingId: 'b1',
+    })
+    await screen.findByTestId('cal-course-soleil')
+
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-valeur')).toHaveTextContent('9 m')
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance'))
+      .toHaveTextContent('hauteur du bâtiment : 9 m (saisie atelier)')
+    expect(screen.queryByRole('link', { name: /Saisir la hauteur/ })).not.toBeInTheDocument()
+    // L'objet d'environnement (10 m) est ramené au plan du champ : 10 − 9 = 1 m au lieu
+    // de 10 − 6 = 4 m — le marqueur change de hauteur angulaire, par la MÊME formule.
+    expect(cyDuPremierMarqueur()).not.toBe(cyHypothese)
+    for (const ligne of screen.getAllByTestId(/^cal-course-soleil-obstruction-hauteur-/)) {
+      expect(ligne).toHaveTextContent('hauteur du bâtiment : 9 m (saisie atelier)')
+    }
+  })
+
+  it('une source libre (« lue sur le permis ») est affichée telle quelle', async () => {
+    await rendreAvecEnvironnement({
+      buildings: [{ id: 'b1', hauteurM: 7.5, source: 'lue sur le permis' }], buildingId: 'b1',
+    })
+    await screen.findByTestId('cal-course-soleil')
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance'))
+      .toHaveTextContent('hauteur du bâtiment : 7.5 m (lue sur le permis)')
+  })
+
+  it('lecture du document en échec : l’erreur est dite, aucune hauteur n’est inventée', async () => {
+    layout.mockRejectedValue(new Error('500'))
+    rendre()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger la conception')
+    expect(screen.queryByTestId('cal-course-soleil-hauteur-toit-valeur')).not.toBeInTheDocument()
   })
 })
 

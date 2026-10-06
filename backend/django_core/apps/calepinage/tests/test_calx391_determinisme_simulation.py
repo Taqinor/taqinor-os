@@ -49,7 +49,8 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services import chaines, pvgis_serie, simulation
+from apps.calepinage.services import layout as layout_service
+from apps.calepinage.services import pvgis_serie, simulation
 from apps.calepinage.tests.test_calx389_budget_simulation import (
     ENTREE_ELECTRIQUE, MAINTENANT, MATERIEL, POSTES_SAISIS, REGLAGES,
     CalepinageEssai, ClientFixture, document,
@@ -261,7 +262,9 @@ class SensibiliteTest(SimpleTestCase):
             brut = json.dumps(layout, ensure_ascii=False)
             return hashlib.sha256(brut.encode('utf-8')).hexdigest()
 
-        with mock.patch.object(chaines, 'empreinte_entree',
+        # ACAL48 — l'empreinte de SIMULATION hache le document par
+        # ``services/layout.py::empreinte_document`` : c'est elle qu'on mute.
+        with mock.patch.object(layout_service, 'empreinte_document',
                                empreinte_sans_ordre):
             premier = simuler(document(1))
             second = simuler(inverser(document(1)))

@@ -380,7 +380,11 @@ class ComparaisonProjetsApiEnBaseTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 404)
 
     def test_comparatif_xlsx_six_calepinages_refuse(self):
+        # Cinq identifiants TOUS distincts de ``self.a.pk`` (6 au total) :
+        # des ids en dur (101..105) retombaient sur ``a.pk`` selon la séquence
+        # de la base (dédoublonnés → 5 → 200), d'où un rouge dépendant du shard.
+        autres = ','.join(str(self.a.pk + k) for k in range(1, 6))
         reponse = self.api.get(url_detail(self.a.pk) + 'comparatif.xlsx/',
-                               {'ids': '101,102,103,104,105'})
+                               {'ids': autres})
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('ids', reponse.data)

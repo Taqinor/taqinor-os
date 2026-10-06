@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components --
+   `estIncomplet` est une fonction PURE (un bloc `total` → booléen) que les écrans
+   Production / Pertes importent avec les composants du bandeau. */
 import { Link } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
@@ -62,5 +65,91 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
         </span>
       )}
     </p>
+  )
+}
+
+/* ============================================================================
+   ACAL52 — LA BORNE HAUTE ET LES RÉGLAGES UTILISÉS, DITS SUR L'ÉCRAN.
+   ----------------------------------------------------------------------------
+   `production.total.complete === false` (ACAL49) veut dire que des postes de
+   perte du socle n'ont pas été renseignés : le P50 servi est une BORNE HAUTE.
+   Le bandeau reprend la mention SERVIE, la liste `socle_manquant` et le lien
+   vers les réglages ; PR / P75 / P90 / P95 s'affichent « — non publié » (motif
+   en infobulle), jamais un nombre. Rien n'est recalculé ici : la complétude est
+   celle du serveur. `complete === true` : ni bandeau ni masquage.
+   ========================================================================== */
+
+/** Résultat simulé mais incomplet : le P50 existe, le socle de pertes non. */
+export function estIncomplet(total) {
+  return Boolean(total) && total.complete === false
+    && total.p50_kwh !== null && total.p50_kwh !== undefined
+}
+
+export function BandeauBorneHaute({ total }) {
+  if (!estIncomplet(total)) return null
+  const manquants = Array.isArray(total.socle_manquant) ? total.socle_manquant : []
+  const mention = total.mention
+    || `borne haute — ${manquants.length} pertes non renseignées`
+  return (
+    <div
+      className="flex flex-col gap-1 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+      role="status"
+      data-testid="acal52-borne-haute"
+    >
+      <p className="font-medium" data-testid="acal52-mention">{mention}</p>
+      {manquants.length > 0 && (
+        <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="acal52-socle-manquant">
+          {manquants.map((poste) => <li key={poste}>{poste}</li>)}
+        </ul>
+      )}
+      <Link
+        to="/calepinage/reglages"
+        className="w-fit text-xs font-medium text-primary underline"
+        data-testid="acal52-lien-reglages"
+      >
+        Ouvrir les réglages de simulation
+      </Link>
+    </div>
+  )
+}
+
+function texteReglage(valeur) {
+  if (valeur === null || valeur === undefined) return '—'
+  if (typeof valeur === 'object') return JSON.stringify(valeur)
+  return String(valeur)
+}
+
+/** Les réglages FIGÉS au calcul (`simulation.reglages_utilises`, D-ACAL-8) :
+    clé, valeur, source — tels que le serveur les a gravés. */
+export function ReglagesUtilises({ simulation }) {
+  const reglages = simulation?.reglages_utilises
+  const cles = reglages && typeof reglages === 'object' ? Object.keys(reglages) : []
+  if (cles.length === 0) return null
+  return (
+    <details className="text-sm" data-testid="acal52-reglages-utilises">
+      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+        Réglages utilisés
+      </summary>
+      <table className="mt-1 w-full text-xs">
+        <thead>
+          <tr className="text-left text-muted-foreground">
+            <th className="py-1 font-normal">Réglage</th>
+            <th className="py-1 font-normal">Valeur</th>
+            <th className="py-1 font-normal">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cles.map((cle) => (
+            <tr key={cle} className="border-t border-border/60" data-testid="acal52-reglage">
+              <td className="py-1">{cle}</td>
+              <td className="py-1 tabular-nums" title={reglages[cle]?.reference || undefined}>
+                {texteReglage(reglages[cle]?.valeur)}
+              </td>
+              <td className="py-1">{texteReglage(reglages[cle]?.source)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   )
 }

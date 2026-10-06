@@ -71,7 +71,7 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
     expect(await screen.findByText(/Catalogue des modules indisponible : rien n’est enregistré, rechargez/))
       .toBeTruthy()
-    expect(calepinageApi.calepinages.enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
   })
 
   it('catalogue lu : Enregistrer part normalement (le refus ne vaut que pour l’échec)', async () => {
@@ -79,12 +79,12 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
       reponseContrat('calepinage', 'calepinage_design_context'))
     calepinageApi.calepinages.modulesDisponibles.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_modules_disponibles'))
-    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockResolvedValue(
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
       { data: { inchange: true, version: null } })
 
     rendreCalepinage(CTX.calepinage.id)
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
-    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinage).toHaveBeenCalled())
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalled())
   })
 
   it('le mode DEVIS ne fait AUCUNE requête de catalogue (porte propre au calepinage)', async () => {

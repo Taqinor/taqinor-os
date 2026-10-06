@@ -11,21 +11,12 @@
    tests/estimatorRuntimePro10Pro11.test.ts (« runtime ACAL31 »).
    ========================================================================== */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { hydrateFromDevis } from './prefill';
-import { appliquerHydratationAuCtx, serialiserDocumentAtelier } from './hydratation';
-import { creerCoucheElectrique } from './electrique3d';
-import { uniformSetbacks } from '../../lib/roofPro2';
-import { emptyCurve } from '../../lib/applianceConsumption';
 import { reinitialiserNumerotation } from './numerotation';
-import { type Ctx } from './context';
-import { racineDepot } from './harnaisAtelier';
+import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';
 
 
-const EXEMPLE = (JSON.parse(readFileSync(join(
-  racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples', 'roof_layout_v2.schema.json',
-), 'utf8')) as { exemple: Record<string, unknown> }).exemple;
+const EXEMPLE = exempleRoofLayoutV2();
 
 /** Les CHEMINS qui diffèrent : la garde rougit en NOMMANT la clé. */
 function differences(attendu: unknown, obtenu: unknown, chemin = ''): string[] {
@@ -39,41 +30,12 @@ function differences(attendu: unknown, obtenu: unknown, chemin = ''): string[] {
   return [`${chemin} : attendu ${JSON.stringify(attendu)} — obtenu ${JSON.stringify(obtenu)}`];
 }
 
-/** L'état vivant d'un atelier qui vient de démarrer (défauts de roof-tool-pro11.ts). */
-function ctxNeuf(): Record<string, unknown> {
-  return {
-    areas: [], activeAreaId: '', vertices: [], obstacles: [], roofType: 'flat', pitchDeg: 22,
-    facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null,
-    layoutOptimalCount: 0, shadeObstructions: [], environment: [], exclusionZones: [], measurements: [],
-    setbacks: uniformSetbacks(), shadeFactors: null, shadeAnnualFactor: 1, prodPerKwc: null,
-    sunDay: 355, sunHour: 12, consCurve: emptyCurve(), consHandEdited: false, consAppliances: [],
-    consDailyTarget: 0, consSeasonal: false, consSummerFactor: 1.3, consWinterFactor: 0.9,
-    sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
-    pinned: new Set(), useRecommended: true, rec: null,
-  };
-}
-
-/** Boot (le payload de la page) → hydratation → « Enregistrer » sans geste. */
+/** Boot (le payload de la page) → hydratation → « Enregistrer » sans geste (harnais ACAL345). */
 function ouvrirPuisEnregistrer(payload: Parameters<typeof hydrateFromDevis>[0]) {
-  const h = hydrateFromDevis(payload);
-  const ctx = ctxNeuf();
-  const zones = h.zones!;
-  const actif = zones.find((z) => z.id === h.activeAreaId) ?? zones[0];
-  Object.assign(ctx, {
-    areas: zones, activeAreaId: actif.id, vertices: actif.vertices, obstacles: actif.obstacles,
-    roofType: actif.roofType, pitchDeg: actif.pitchDeg, facingAzimuthDeg: actif.facingAzimuthDeg,
-    facingManual: actif.facingManual ?? false, neededPanels: actif.neededPanels, neededAuto: actif.neededAuto,
-  });
-  const c = ctx as unknown as Ctx;
-  appliquerHydratationAuCtx(c, h);
-  return serialiserDocumentAtelier(c, null, {
-    devisOrigin: h.devisId != null ? { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario } : null,
-    solarAccess: null,
-    setbacks: c.setbacks!,
-    horizonProfile: c.horizonProfile as never,
-    modules: null,
-    coucheElectrique: creerCoucheElectrique(c),
-  });
+  const { c, h } = ouvrirAtelier(payload);
+  return enregistrerAtelier(
+    c, h.devisId != null ? { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario } : null,
+  );
 }
 
 beforeEach(() => reinitialiserNumerotation());

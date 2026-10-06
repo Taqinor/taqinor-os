@@ -23,10 +23,15 @@ vi.mock('../../../api/calepinageApi', () => ({
     calepinages: {
       documents: vi.fn(),
       telechargerDocument: vi.fn(),
-      diagrammePertesSvg: vi.fn(),
       exporterConception: vi.fn(),
       importerConception: vi.fn(),
       deposerImageDocument: vi.fn(), // CALX302
+      remettreDocument: vi.fn(), // ACAL223
+      sorties: vi.fn(), // ACAL228
+      telechargerSortie: vi.fn(), // ACAL228
+      composerPackTechnique: vi.fn(), // ACAL228
+      declencherDocument: vi.fn(), // ACAL223
+      apercuDocument: vi.fn(), // ACAL223
     },
   },
 }))
@@ -196,8 +201,9 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-rapport_etude'))
 
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    // ACAL223 : une carte à deux langues transmet `{langue}` (défaut = data.langue).
     expect(calepinageApi.calepinages.telechargerDocument)
-      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint)
+      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'fr' })
     expect(filenameFromResponse).toHaveBeenCalled()
     expect(downloadBlob.mock.calls[0][1]).toBe('rapport-etude-1.pdf')
   })
@@ -388,14 +394,13 @@ describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
     <MemoryRouter><PanneauDocuments calepinageId={calepinageId} builderApi={builderApi} /></MemoryRouter>,
   )
 
-  it('sans builderApi, le bouton est désactivé et le dit — le diagramme de pertes, lui, reste actif', async () => {
+  it('sans builderApi, le bouton est désactivé et le dit', async () => {
     servirInventaire('exemple')
 
     rendreAvecBuilder(null)
 
     expect(await screen.findByTestId('cal-doc-bouton-joindre-ombrage')).toBeDisabled()
     expect(screen.getByTestId('cal-doc-images-outil-absent')).toBeInTheDocument()
-    expect(screen.getByTestId('cal-doc-bouton-joindre-pertes')).toBeEnabled()
   })
 
   it('clic → renderImageHd(2) puis dépôt genre « ombrage », confirmation affichée', async () => {
@@ -439,69 +444,257 @@ describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
   })
 })
 
-describe('PanneauDocuments — joindre le diagramme de pertes (CALX320)', () => {
-  /* CALX236/CALX320 — jsdom n'implémente ni `getContext('2d')` ni
-     `URL.createObjectURL` nativement (même constat que `SchemaUnifilairePanel
-     .test.jsx`) : on les stub globalement. `FakeImage` déclenche `onload` en
-     microtâche — aucun décodage d'image réel n'est nécessaire pour prouver
-     le CÂBLAGE du dépôt (SVG serveur → rastérisation → `deposerImageDocument`). */
-  class FakeImage {
-    set src(_v) {
-      this.width = 300
-      this.height = 150
-      queueMicrotask(() => this.onload?.())
-    }
-  }
-
-  beforeEach(() => {
-    globalThis.Image = FakeImage
-    globalThis.URL.createObjectURL = vi.fn(() => 'blob:fake-url')
-    globalThis.URL.revokeObjectURL = vi.fn()
-    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ drawImage: vi.fn() }))
-    HTMLCanvasElement.prototype.toBlob = vi.fn((cb) => cb(new Blob(['png'], { type: 'image/png' })))
-  })
-
-  it('clic → récupère le SVG serveur, le rastérise, puis dépose genre « sankey »', async () => {
+describe('PanneauDocuments — contrat documents v2 (ACAL223)', () => {
+  it('envoie la langue choisie en params au telechargement et a la remise', async () => {
     servirInventaire('exemple')
-    calepinageApi.calepinages.diagrammePertesSvg.mockResolvedValue({
-      data: new Blob(['<svg><title>pertes</title></svg>'], { type: 'image/svg+xml' }),
-    })
-    calepinageApi.calepinages.deposerImageDocument.mockResolvedValue({
-      data: { ok: true, genre: 'sankey', attachment: 513, depose_le: '2026-09-23T11:00:00Z' },
-    })
+    calepinageApi.calepinages.telechargerDocument.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    calepinageApi.calepinages.remettreDocument.mockResolvedValue({ data: { numero: 3 } })
     const utilisateur = userEvent.setup()
 
-    rendre(1)
-    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-pertes'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('cal-doc-images-confirmation-pertes'))
-        .toHaveTextContent('2026-09-23T11:00:00Z')
-    })
-    expect(calepinageApi.calepinages.diagrammePertesSvg).toHaveBeenCalledWith(1)
-    expect(calepinageApi.calepinages.deposerImageDocument).toHaveBeenCalledWith(
-      1, { genre: 'sankey', fichier: expect.stringContaining('data:') },
-    )
+    rendre()
+    await utilisateur.selectOptions(await screen.findByTestId('cal-doc-langue-rapport_etude'), 'en')
+    await utilisateur.click(screen.getByTestId('cal-doc-bouton-rapport_etude'))
+    await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
+      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'en' }))
+    await utilisateur.click(await screen.findByTestId('cal-doc-remettre-rapport_etude'))
+    await waitFor(() => expect(calepinageApi.calepinages.remettreDocument)
+      .toHaveBeenCalledWith(1, { code: 'rapport_etude', langue: 'en' }))
   })
 
-  it('refus serveur du SVG (champ nommé) : le motif s’affiche, aucun dépôt tenté', async () => {
+  it('appelle POST pour une carte methode POST et affiche les signalements', async () => {
     servirInventaire('exemple')
-    calepinageApi.calepinages.diagrammePertesSvg.mockRejectedValue({
-      response: {
-        status: 400,
-        data: new Blob([JSON.stringify({ roof_layout: 'Aucune cascade produite.' })],
-          { type: 'application/json' }),
+    const doc = documentDe('exemple', 'dossier_fin_chantier')
+    // Le contrat sert ce document indisponible : on le rend disponible en
+    // gardant TOUTE sa forme (methode, endpoint) — jamais un payload à la main.
+    calepinageApi.calepinages.documents.mockResolvedValue({
+      data: {
+        ...exempleContrat(APP, NOM, 'exemple'),
+        documents: [{ ...doc, disponible: true, manque: [], motif_indisponible: null }],
+      },
+    })
+    calepinageApi.calepinages.declencherDocument.mockResolvedValue({
+      data: {
+        document: 9, nom: 'Dossier de fin de chantier',
+        pieces: [{ code: 'plan_pose', libelle: 'Plan de pose', pages: 2 }],
+        pages_attendues: 2, signalements: ['Recette IEC 62446-1 : à fournir par le chantier.'],
       },
     })
     const utilisateur = userEvent.setup()
 
-    rendre(1)
-    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-pertes'))
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-dossier_fin_chantier'))
 
-    await waitFor(() => {
-      expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Aucune cascade produite.')
+    expect(await screen.findByTestId('cal-doc-post-signalements'))
+      .toHaveTextContent('Recette IEC 62446-1')
+    expect(calepinageApi.calepinages.declencherDocument).toHaveBeenCalledWith(doc.endpoint, undefined)
+    expect(calepinageApi.calepinages.telechargerDocument).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cal-doc-post-lien-ged')).toHaveAttribute('href', '/ged')
+  })
+
+  it('Remettre appelle remettreDocument puis recharge les versions', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.remettreDocument.mockResolvedValue({ data: { numero: 3 } })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-remettre-rapport_etude'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.documents).toHaveBeenCalledTimes(2))
+    expect(calepinageApi.calepinages.remettreDocument)
+      .toHaveBeenCalledWith(1, { code: 'rapport_etude', langue: 'fr' })
+  })
+
+  it('lien d’onglet par clé manque[].onglet, texte simple quand null', async () => {
+    servirInventaire('exemple')
+    rendre()
+    const lien = await screen.findByTestId('cal-doc-manque-lien-plan_cablage-electrique.chainage')
+    expect(lien.getAttribute('href')).toContain('affectation')
+    expect(screen.queryByTestId('cal-doc-manque-lien-rapport_ombrage-roof_layout.zones[].geometry.solarAccess.values'))
+      .toBeNull()
+  })
+
+  it('carte francais seulement affiche la mention, sans selecteur', async () => {
+    servirInventaire('exemple')
+    rendre()
+    expect(await screen.findByTestId('cal-doc-langue-fr-seul-manuel_proprietaire'))
+      .toHaveTextContent('Ce document n’existe qu’en français')
+    expect(screen.queryByTestId('cal-doc-langue-manuel_proprietaire')).toBeNull()
+    expect(screen.getByTestId('cal-doc-langue-rapport_etude')).toBeInTheDocument()
+  })
+
+  it('Apercu appelle apercu-document avec code et langue', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.apercuDocument.mockResolvedValue({ data: '<html></html>' })
+    const creer = vi.fn(() => 'blob:apercu')
+    const ouvrir = vi.fn()
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: creer }))
+    const fenetre = vi.spyOn(window, 'open').mockImplementation(ouvrir)
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-apercu-rapport_etude'))
+
+    await waitFor(() => expect(ouvrir).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.apercuDocument)
+      .toHaveBeenCalledWith(1, 'rapport_etude', { langue: 'fr' })
+    fenetre.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('la carte plan_cablage propose le DXF', async () => {
+    servirInventaire('exemple')
+    const doc = documentDe('exemple', 'plan_cablage')
+    calepinageApi.calepinages.documents.mockResolvedValue({
+      data: {
+        ...exempleContrat(APP, NOM, 'exemple'),
+        documents: [{ ...doc, disponible: true, manque: [], motif_indisponible: null }],
+      },
     })
-    expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
-    expect(screen.queryByTestId('cal-doc-images-confirmation-pertes')).toBeNull()
+    calepinageApi.calepinages.telechargerDocument.mockResolvedValue({ data: new Blob(['0']), headers: {} })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-autre-format-plan_cablage-dxf'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
+      .toHaveBeenCalledWith(doc.autres_formats[0].endpoint))
+  })
+
+  it('une version perimee est signalee, une version a jour aussi', async () => {
+    servirInventaire('exemple')
+    rendre()
+    expect(await screen.findByTestId('cal-doc-version-rapport_etude-1')).toHaveTextContent('périmée')
+    expect(screen.getByTestId('cal-doc-version-rapport_etude-2')).toHaveTextContent('à jour')
+  })
+})
+
+describe('PanneauDocuments — section Images (ACAL225)', () => {
+  it('ne propose plus le diagramme de pertes', async () => {
+    servirInventaire('exemple')
+    rendre()
+    await screen.findByTestId('cal-doc-bouton-joindre-ombrage')
+    expect(screen.queryByTestId('cal-doc-bouton-joindre-pertes')).toBeNull()
+    expect(screen.queryByText(/Joindre le diagramme de pertes/)).toBeNull()
+  })
+
+  it('affiche le badge Perimee d’une image perimee, avec la consigne', async () => {
+    servirInventaire('exemple')
+    const image = exempleContrat(APP, NOM, 'exemple').images[0]
+    calepinageApi.calepinages.documents.mockResolvedValue({
+      data: {
+        ...exempleContrat(APP, NOM, 'exemple'),
+        images: [{ ...image, perimee: true }],
+      },
+    })
+    rendre()
+    const badge = await screen.findByTestId(`cal-doc-image-perimee-${image.genre}-${image.attachment}`)
+    expect(badge).toHaveTextContent('Périmée')
+    expect(screen.getByTestId(`cal-doc-image-${image.genre}-${image.attachment}`))
+      .toHaveTextContent('Rejoindre depuis l’atelier')
+  })
+
+  it('une image a jour n’a aucun badge Perimee', async () => {
+    servirInventaire('exemple') // images[0].perimee = false dans le contrat
+    const image = exempleContrat(APP, NOM, 'exemple').images[0]
+    rendre()
+    await screen.findByTestId(`cal-doc-image-${image.genre}-${image.attachment}`)
+    expect(screen.queryByTestId(`cal-doc-image-perimee-${image.genre}-${image.attachment}`)).toBeNull()
+  })
+
+  it('apres Joindre l’inventaire est recharge', async () => {
+    servirInventaire('exemple')
+    const blob = new Blob(['png-simule'], { type: 'image/png' })
+    const renderImageHd = vi.fn().mockResolvedValue({ blob, width: 8, height: 6, scale: 2 })
+    calepinageApi.calepinages.deposerImageDocument.mockResolvedValue({
+      data: { ok: true, genre: 'ombrage', attachment: 512, depose_le: '2026-09-23T10:00:00Z' },
+    })
+    const utilisateur = userEvent.setup()
+    render(<MemoryRouter><PanneauDocuments calepinageId={1} builderApi={{ renderImageHd }} /></MemoryRouter>)
+
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.documents).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
+  const sortieDe = (code) =>
+    exempleContrat(APP, 'calepinage_sorties', 'exemple').sorties.find((x) => x.code === code)
+
+  const servirSorties = () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.sorties.mockResolvedValue(
+      reponseContrat(APP, 'calepinage_sorties', 'exemple'))
+  }
+
+  it('affiche une carte par code de sorties/ avec son bouton', async () => {
+    servirSorties()
+    rendre()
+    for (const code of ['planche_pdf', 'plan_pose_pdf', 'note_calcul_pdf', 'dxf', 'tableur_csv', 'pack_technique']) {
+      expect(await screen.findByTestId(`cal-doc-bouton-${code}`)).toBeInTheDocument()
+    }
+    // sortie indisponible : motif servi, bouton inactif
+    expect(screen.getByTestId('cal-doc-bouton-plan_masse_pdf')).toBeDisabled()
+    expect(screen.getByTestId('cal-doc-sorties-motif-plan_masse_pdf'))
+      .toHaveTextContent(sortieDe('plan_masse_pdf').motif_indisponible)
+  })
+
+  it('telecharge l’endpoint servi tel quel', async () => {
+    servirSorties()
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-note_calcul_pdf'))
+    await waitFor(() => expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortieDe('note_calcul_pdf').endpoint))
+    expect(downloadBlob).toHaveBeenCalled()
+  })
+
+  it('pack technique appelle composerPackTechnique et affiche les signalements', async () => {
+    servirSorties()
+    calepinageApi.calepinages.composerPackTechnique.mockResolvedValue({
+      data: {
+        document: 4, nom: 'Dossier technique',
+        pieces: [{ code: 'planche', libelle: 'Planche', pages: 1 }],
+        pages_attendues: 1, signalements: ['Recette IEC 62446-1 produite par le chantier.'],
+      },
+    })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-pack_technique'))
+    expect(await screen.findByTestId('cal-doc-post-signalements'))
+      .toHaveTextContent('Recette IEC 62446-1')
+    expect(calepinageApi.calepinages.composerPackTechnique).toHaveBeenCalledWith(1)
+  })
+
+  it('un bouton Remettre est propose pour les PDF du registre seulement', async () => {
+    servirSorties()
+    calepinageApi.calepinages.remettreDocument.mockResolvedValue({ data: {} })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-remettre-planche_pdf'))
+    await waitFor(() => expect(calepinageApi.calepinages.remettreDocument)
+      .toHaveBeenCalledWith(1, { code: 'planche_pdf' }))
+    expect(screen.queryByTestId('cal-doc-remettre-dxf')).toBeNull()
+  })
+
+  it('planche_png rasterise planche.svg', async () => {
+    servirSorties()
+    const png = new Blob(['png'], { type: 'image/png' })
+    class FauxImage { set src(_v) { this.width = 3; this.height = 2; queueMicrotask(() => this.onload?.()) } }
+    globalThis.Image = FauxImage
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:svg')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ drawImage: vi.fn() }))
+    HTMLCanvasElement.prototype.toBlob = vi.fn((cb) => cb(png))
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({
+      data: new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'], { type: 'image/svg+xml' }),
+    })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-planche_png'))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(png, 'planche-calepinage-1.png'))
+    expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortieDe('planche_png').endpoint)
   })
 })

@@ -55,14 +55,16 @@ describe('ACAL258 — la suggestion s’enregistre dans le document, pas dans la
   it('la suggestion s’enregistre dans le document, pas dans la société', async () => {
     const b = builder()
     enregistrerLayout.mockResolvedValue({ data: { inchange: false, version: 3 } })
-    await suggerer({ builderApi: b })
+    await suggerer({ builderApi: b, documentVivant: { empreinte: 'EMPREINTE-VIVANTE' } })
 
     fireEvent.click(screen.getByTestId('cal-allees-enregistrer-calepinage'))
 
     await waitFor(() => expect(enregistrerLayout).toHaveBeenCalledTimes(1))
     // Le corps POSTÉ porte l'allée de CE calepinage, avec sa source…
-    const [id, corps] = enregistrerLayout.mock.calls[0]
+    const [id, corps, jeton] = enregistrerLayout.mock.calls[0]
     expect(id).toBe(9)
+    // ACAL316 — If-Match obligatoire : le jeton du document vivant de l'atelier.
+    expect(jeton).toBe('EMPREINTE-VIVANTE')
     expect(corps.alleeTechnique).toEqual({ largeurM: ALLEE, source: 'suggestion_moteur' })
     // …et la société n'est JAMAIS écrite.
     expect(updateParametres).not.toHaveBeenCalled()

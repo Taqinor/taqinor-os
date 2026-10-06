@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
@@ -126,8 +127,26 @@ const MODES = [
   ['cotes', 'Aux cotes'],
 ]
 
+/**
+ * ACAL66 — les suggestions de pente IGN EN ATTENTE du document : un pan dont
+ * `pitchSuggestion.status` vaut `suggeree`. Lecture PURE du document (la
+ * suggestion y est persistée par `POST suggestions-pente/`, ACAL65) : rouvrir
+ * l'onglet retrouve la même liste.
+ */
+export function suggestionsEnAttente(document) {
+  const zones = Array.isArray(document?.zones) ? document.zones : []
+  return zones
+    .filter((z) => z?.pitchSuggestion?.status === 'suggeree')
+    .map((z) => ({
+      zoneId: String(z.id ?? ''),
+      valeurDeg: z.pitchSuggestion.valeurDeg ?? null,
+      source: z.pitchSuggestion.source ?? '',
+      suggestedAt: z.pitchSuggestion.suggestedAt ?? '',
+    }))
+}
+
 export default function SaisiePente({
-  calepinageId: idPropose, onChange = null, persister = true,
+  calepinageId: idPropose, onChange = null, persister = true, documentVivant = null,
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
@@ -136,7 +155,13 @@ export default function SaisiePente({
   const [saisie, setSaisie] = useState({
     degres: '', pourcentage: '', porteeM: '', hauteurFaitageM: '',
   })
-  const [layout, setLayout] = useState(null)
+  // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
+  // un document vide. L'écriture de la PENTE du pan reste l'écriture complète
+  // (C-ACAL-022, hors de cette tâche) : on ne l'émet QUE depuis un document lu
+  // avec succès. La DÉCISION sur une suggestion IGN passe, elle, par le serveur
+  // (`suggestions-pente/`, ACAL65/ACAL66) — jamais par une écriture locale.
+  const doc = useDocumentCalepinage(calepinageId, { actif: persister })
+  const layout = doc.document
   const [message, setMessage] = useState(null)
 
   /* CALX29 — Suggestion de pente LiDAR IGN, FRANCE SEULEMENT.
@@ -144,27 +169,20 @@ export default function SaisiePente({
      aucune requête sortante même quand le service est offert) : c'est elle,
      et elle seule, qui commande l'affichage du bouton. */
   const [ignDisponible, setIgnDisponible] = useState(false)
-  const [suggestions, setSuggestions] = useState([])
   const [chargementSuggestions, setChargementSuggestions] = useState(false)
   const [messageSuggestions, setMessageSuggestions] = useState(null)
-  const [decalage, setDecalage] = useState({ x: '', y: '', z: '' })
 
-  // RELECTURE : la pente déjà enregistrée dans le document de conception.
-  useEffect(() => {
-    if (!calepinageId || !persister) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const document = res?.data?.roof_layout ?? null
-        setLayout(document)
-        if (document?.penteDeg === null || document?.penteDeg === undefined) return
-        setMode(document.penteSource ?? 'degres')
-        setSaisie((s) => ({ ...s, degres: String(document.penteDeg) }))
-      })
-      .catch(() => { if (!annule) setLayout(null) })
-    return () => { annule = true }
-  }, [calepinageId, persister])
+  // RELECTURE : la pente déjà enregistrée dans le document de conception (une
+  // fois par lecture serveur).
+  const [lectureHydratee, setLectureHydratee] = useState(null)
+  if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
+    setLectureHydratee(doc.generation)
+    const lu = doc.document
+    if (lu?.penteDeg !== null && lu?.penteDeg !== undefined) {
+      setMode(lu.penteSource ?? 'degres')
+      setSaisie((s) => ({ ...s, degres: String(lu.penteDeg) }))
+    }
+  }
 
   // CALX29 — la lecture locale qui décide si le bouton existe. Société hors
   // France ⇒ `disponible: false` ⇒ pas de bouton, pas d'appel de suggestion.
@@ -176,54 +194,78 @@ export default function SaisiePente({
     return () => { annule = true }
   }, [])
 
-  const suggererDepuisIGN = () => {
+  // ACAL66 — la suggestion et sa décision (proposer / accepter / refuser) sont des
+  // actes SERVEUR : `POST suggestions-pente/` avec le jeton d'écriture, le
+  // document rendu est poussé dans l'atelier vivant. Jamais d'écriture locale
+  // `{...layout, zones}` : la suggestion est la pente du TERRAIN, elle n'est
+  // JAMAIS recopiée dans la pente du pan (D-ACAL-19).
+  const suggestions = suggestionsEnAttente(layout)
+
+  const decider = async (operation, zoneId = undefined) => {
+    if (doc.etat !== 'ok') return null
+    const base = documentVivant?.empreinte || doc.empreinte
+    if (!base) {
+      setMessageSuggestions('Conception illisible : rien n’est enregistré.')
+      return null
+    }
+    try {
+      const res = await calepinageApi.calepinages.decisionSuggestionPente(calepinageId, {
+        operation, base_empreinte: base, ...(zoneId ? { zone_id: zoneId } : {}),
+      })
+      const zones = res?.data?.roof_layout?.zones
+      const empreinte = res?.data?.empreinte_document ?? null
+      if (Array.isArray(zones)) {
+        doc.appliquerSection('zones', zones, empreinte)
+        // L'atelier vivant reprend le jeton rendu (sa scène n'est pas touchée :
+        // la suggestion ne change ni la pente ni la production).
+        documentVivant?.appliquerSection?.('zones', zones, empreinte)
+      }
+      return res?.data ?? {}
+    } catch (e) {
+      const statut = e?.response?.status
+      const donnees = e?.response?.data
+      if (statut === 409) {
+        setMessageSuggestions('La conception a changé ailleurs : elle est relue, recommencez.')
+        doc.recharger()
+      } else if (statut === 403) {
+        setMessageSuggestions(donnees?.pays || donnees?.detail
+          || 'La suggestion IGN n’est pas offerte pour cette société.')
+      } else {
+        setMessageSuggestions(operation === 'proposer'
+          ? 'La suggestion IGN n’a pas pu être obtenue.'
+          : 'La décision sur la suggestion n’a pas pu être enregistrée.')
+      }
+      return null
+    }
+  }
+
+  const suggererDepuisIGN = async () => {
+    if (doc.etat !== 'ok') return
     setChargementSuggestions(true)
     setMessageSuggestions(null)
-    Promise.resolve(calepinageApi.parametres?.suggererPentesIGN?.(layout ?? {}))
-      .then((res) => {
-        const recues = res?.data?.suggestions ?? []
-        setSuggestions(recues)
-        if (!recues.length) {
-          setMessageSuggestions(res?.data?.detail
-            || 'Aucun pan ne porte assez de points d’altitude exploitables : '
-              + 'aucune pente n’est suggérée.')
-        }
-      })
-      .catch(() => setMessageSuggestions('La suggestion IGN n’a pas pu être obtenue.'))
-      .finally(() => setChargementSuggestions(false))
+    const rendu = await decider('proposer')
+    setChargementSuggestions(false)
+    if (rendu && !suggestionsEnAttente(rendu.roof_layout).length) {
+      setMessageSuggestions('Aucun pan ne porte assez de points d’altitude exploitables : '
+        + 'aucune pente n’est suggérée (ou chaque pan a déjà une décision).')
+    }
   }
 
-  const jeterSuggestion = (suggestion) => {
-    // Le relevé paraît faux, ou le dessinateur préfère sa saisie : la
-    // suggestion disparaît, la pente saisie reste la SEULE vérité — jamais
-    // corrigée d'office par le décalage (x, y, z).
-    setSuggestions((s) => s.filter((x) => x.zoneId !== suggestion.zoneId))
+  const jeterSuggestion = async (suggestion) => {
+    // Le relevé paraît faux, ou le dessinateur préfère sa saisie : le refus est
+    // PERSISTÉ (`refusee`), la pente saisie reste la SEULE vérité.
+    const rendu = await decider('refuser', suggestion.zoneId)
+    if (rendu) setMessageSuggestions('Suggestion jetée : la pente du pan est inchangée.')
   }
 
-  const accepterSuggestion = (suggestion) => {
-    const horodatage = new Date().toISOString()
-    const zones = (layout?.zones ?? []).map((zone) => {
-      if (String(zone?.id ?? '') !== suggestion.zoneId) return zone
-      return {
-        ...zone,
-        pitchDeg: suggestion.pitchDeg,
-        ...(suggestion.facingAzimuthDeg != null
-          ? { facingAzimuthDeg: suggestion.facingAzimuthDeg, facingManual: false }
-          : {}),
-        pitchSuggestion: { ...suggestion, status: 'validee', decidedAt: horodatage },
-      }
-    })
-    const document = { ...(layout ?? {}), zones }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
-      .then(() => {
-        setLayout(document)
-        setSuggestions((s) => s.filter((x) => x.zoneId !== suggestion.zoneId))
-        setMessageSuggestions(`Pente du pan acceptée (${suggestion.source}).`)
-      })
-      .catch(() => setMessageSuggestions('La suggestion n’a pas pu être enregistrée.'))
+  const accepterSuggestion = async (suggestion) => {
+    const rendu = await decider('accepter', suggestion.zoneId)
+    if (rendu) {
+      setMessageSuggestions(
+        `Suggestion validée (${suggestion.source}) : pente du terrain, la pente du pan n’est pas modifiée.`,
+      )
+    }
   }
-
-  const majDecalage = (axe, brut) => setDecalage((d) => ({ ...d, [axe]: brut }))
 
   const majChamp = (cle, brut) => {
     const suivante = { ...saisie, [cle]: brut }
@@ -239,6 +281,10 @@ export default function SaisiePente({
   const retenue = penteRetenue(mode, saisie)
 
   const enregistrer = () => {
+    if (doc.etat !== 'ok') {
+      setMessage('Conception illisible : rien n’est enregistré.')
+      return
+    }
     if (!retenue) {
       setMessage('Aucune pente n’est encore mesurée : rien n’est enregistré, '
         + 'et surtout pas un 0° qui se lirait « toiture plate ».')
@@ -250,12 +296,25 @@ export default function SaisiePente({
       penteDeg: retenue.degres,
       penteSource: retenue.source,
     }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
-      .then(() => {
-        setLayout(document)
+    // ACAL316 — If-Match obligatoire : le jeton de l'atelier vivant s'il existe, sinon celui de la
+    // lecture. L'atelier n'est pas touché (il ne connaît pas la pente racine) : s'il enregistre
+    // ensuite avec son jeton d'avant, il reçoit un 409 plutôt que d'effacer cette pente.
+    const base = documentVivant?.empreinte || doc.empreinte
+    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document, base))
+      .then((res) => {
+        const apres = res?.data?.empreinte_document ?? null
+        doc.appliquerSection('penteDeg', document.penteDeg, null)
+        doc.appliquerSection('penteSource', document.penteSource, apres)
         setMessage('Pente enregistrée dans la conception.')
       })
-      .catch(() => setMessage('La pente n’a pas pu être enregistrée.'))
+      .catch((e) => {
+        if (e?.response?.status === 409 || e?.response?.status === 428) {
+          setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
+          doc.recharger()
+        } else {
+          setMessage('La pente n’a pas pu être enregistrée.')
+        }
+      })
   }
 
   return (
@@ -346,21 +405,6 @@ export default function SaisiePente({
             {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
           </button>
 
-          <div className="mt-3 grid grid-cols-3 gap-2" data-testid="cal-pente-lidar-decalage">
-            <span className="col-span-3 text-xs text-lune-faint">
-              Décalage de recalage (m), si le relevé ne tombe pas sur le bâtiment
-            </span>
-            {['x', 'y', 'z'].map((axe) => (
-              <label key={axe} className="block">
-                <span className="tech-label text-lune-faint">Décalage {axe.toUpperCase()}</span>
-                <input type="number" step="any" value={decalage[axe]}
-                  data-testid={`cal-pente-lidar-decalage-${axe}`}
-                  onChange={(e) => majDecalage(axe, e.target.value)}
-                  className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white" />
-              </label>
-            ))}
-          </div>
-
           {suggestions.length > 0 && (
             <>
               <p className="mt-3 text-xs text-lune-soft" data-testid="cal-pente-lidar-mention">
@@ -373,7 +417,10 @@ export default function SaisiePente({
                     data-testid={`cal-pente-lidar-suggestion-${suggestion.zoneId}`}
                     className="rounded border border-white/10 p-3 text-sm text-white">
                     <p>
-                      Pan {suggestion.zoneId} — {auDixieme(suggestion.pitchDeg)} °
+                      Pan {suggestion.zoneId} — {auDixieme(suggestion.valeurDeg)} °
+                    </p>
+                    <p className="text-xs text-lune-soft">
+                      Pente du terrain (LiDAR IGN) — n’est jamais recopiée dans la pente du pan.
                     </p>
                     <p className="text-xs text-lune-faint" data-testid={`cal-pente-lidar-source-${suggestion.zoneId}`}>
                       {suggestion.source} · {suggestion.suggestedAt}

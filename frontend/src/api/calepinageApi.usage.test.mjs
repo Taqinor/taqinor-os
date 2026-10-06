@@ -150,9 +150,9 @@ export const EXCEPTIONS_SANS_APPELANT = {
   // 'calepinages.sorties' / 'calepinages.telechargerSortie' RETIRÉES (fold M5,
   // 24/09/2026) : Fixation.jsx (CALX360, onglet Fixation de l'atelier) les
   // appelle désormais toutes les deux — exceptions périmées.
-  'calepinages.composerPackTechnique': "23/09/2026 — la porte HTTP existe (CALX24) mais aucun écran ne compose encore le dossier technique depuis l'atelier",
   'calepinages.variantes': "23/09/2026 — la liste des variantes se lit via le comparatif comparer() ; l'endpoint brut n'a plus de consommateur direct",
   'calepinages.joindrePiece': "05/10/2026 — la porte joindre-piece/ existe (ACAL238) ; l'écran Dossiers réglementaires qui l'appelle arrive avec ACAL242 (bloquée en amont) — retirer cette entrée à ACAL242",
+  'parametres.suggererPentesIGN': "06/10/2026 — la porte société parametres/suggestion-pente/ (POST) est conservée (ACAL66) ; l'onglet Pente passe désormais par calepinages/<id>/suggestions-pente/ (decisionSuggestionPente), qui persiste la suggestion",
 }
 
 /* ============================================================================

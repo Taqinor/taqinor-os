@@ -429,19 +429,52 @@ def altitude_du_site(section, *, charge_pvgis=None):
     return {'altitude_m': depuis_pvgis, 'source': SOURCE_PVGIS, 'mention': ''}
 
 
-def fuseau_du_site(section):
-    """``{'fuseau', 'source', 'mention'}`` — SAISI, jamais déduit.
+#: ACAL129 — la PROVENANCE du fuseau effectif, publiée
+#: (``meteo.heure.provenance_fuseau``, ``site_effectif.source``).
+PROVENANCE_IMAGERIE = 'imagerie'
+PROVENANCE_PROFIL_SOCIETE = 'profil_societe'
+MENTION_FUSEAU_PROFIL = (
+    'fuseau repris du profil société (Paramètres › Société)')
+
+
+def _fuseau_du_profil(company):
+    """ACAL129 — le fuseau SAISI au profil de la société
+    (``CompanyProfile.fuseau_horaire``), ou ``None`` (pas de société, pas de
+    profil, champ vide). Lecture fonction-locale d'une app de fondation."""
+    if company is None or getattr(company, 'pk', None) is None:
+        return None
+    from apps.parametres.models_company import CompanyProfile
+
+    fuseau = (CompanyProfile.objects.filter(company=company)
+              .values_list('fuseau_horaire', flat=True).first())
+    fuseau = str(fuseau or '').strip()
+    return fuseau or None
+
+
+def fuseau_du_site(section, *, company=None):
+    """``{'fuseau', 'source', 'mention', 'provenance'}`` — SAISI, jamais
+    déduit.
 
     Le fuseau est validé contre la base IANA (``zoneinfo``) à l'écriture
     (``normaliser_section_imagerie``) ; ici on le SERT, ou on dit qu'il
     manque. Aucune coordonnée n'entre dans cette fonction : c'est la garantie
     structurelle qu'aucun fuseau ne peut être dérivé d'une longitude.
+
+    ACAL129 — préséance : le fuseau des réglages d'IMAGERIE du calepinage,
+    sinon (``company`` fournie) celui SAISI au profil de la société — repli
+    DÉCLARÉ, avec sa provenance et sa mention. Jamais la longitude.
     """
     fuseau = (section or {}).get('fuseau')
-    if not fuseau:
-        return {'fuseau': None, 'source': None,
-                'mention': MENTION_FUSEAU_INCONNU}
-    return {'fuseau': fuseau, 'source': 'base IANA (zoneinfo)', 'mention': ''}
+    if fuseau:
+        return {'fuseau': fuseau, 'source': 'base IANA (zoneinfo)',
+                'mention': '', 'provenance': PROVENANCE_IMAGERIE}
+    profil = _fuseau_du_profil(company)
+    if profil:
+        return {'fuseau': profil, 'source': 'base IANA (zoneinfo)',
+                'mention': MENTION_FUSEAU_PROFIL,
+                'provenance': PROVENANCE_PROFIL_SOCIETE}
+    return {'fuseau': None, 'source': None,
+            'mention': MENTION_FUSEAU_INCONNU, 'provenance': None}
 
 
 def decalage_utc_minutes(fuseau, moment):

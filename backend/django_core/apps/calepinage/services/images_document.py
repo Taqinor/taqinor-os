@@ -38,6 +38,17 @@ décodant RÉELLEMENT l'image avec Pillow (déjà une dépendance pinnée,
 ``requirements.txt``) — un fichier illisible, ou hors des bornes
 raisonnables d'une capture d'écran, est refusé EN NOMMANT le champ
 ``fichier``, jamais silencieusement accepté ou silencieusement tronqué.
+
+ACAL224 — L'IMAGE EST LIÉE À LA CONCEPTION QUI L'A PRODUITE (C-ACAL-119)
+-------------------------------------------------------------------------
+Une carte de chaleur déposée pour la conception A était imprimée à côté de
+la matrice d'une conception B. Le dépôt encode désormais l'empreinte
+« document » (D-ACAL-4, ``services/layout.empreinte_document``, 12 hex) dans
+le nom — ``image__<genre>__<empreinte12>__<id>.<ext>`` (aucune migration) —
+et seule une image dont l'empreinte est celle de la conception COURANTE est
+embarquée (``derniere_image_encodee``) ; sinon les rapports impriment un
+motif DATÉ. Une image ancienne sans empreinte est périmée. Un seul genre
+déposable : ``ombrage`` (le diagramme de pertes est rendu par le serveur).
 """
 from __future__ import annotations
 
@@ -51,13 +62,13 @@ logger = logging.getLogger(__name__)
 __all__ = [
     'GENRES_IMAGE', 'ImageDocumentRefuse', 'deposer_image_document',
     'images_du_calepinage', 'image_recente', 'octets_et_mime',
-    'derniere_image_encodee',
+    'derniere_image_encodee', 'image_est_fraiche',
 ]
 
 #: L'énumération FERMÉE des genres d'image déposables — le crochet laissé
 #: par CALX291 (``contract_samples/calepinage_documents.json``). Un genre
 #: hors de cette liste est refusé en la citant, jamais deviné.
-GENRES_IMAGE = ('ombrage', 'sankey', 'plan3d')
+GENRES_IMAGE = ('ombrage',)  # ACAL224 — sankey/plan3d : aucun lecteur
 
 #: Le séparateur du nom de fichier encodé — jamais présent dans un genre de
 #: cette liste (même discipline que ``versions_document._SEPARATEUR``).
@@ -66,6 +77,9 @@ _PREFIXE = 'image' + _SEPARATEUR
 
 #: Bornes RAISONNABLES pour une capture d'écran (jamais un scan, jamais une
 #: vignette) — un fichier hors bornes est refusé en NOMMANT le champ.
+#: ACAL224 — caractères de l'empreinte « document » encodés dans le nom.
+TAILLE_EMPREINTE_IMAGE = 12
+
 _TAILLE_MIN_COTE_PX = 8
 _TAILLE_MAX_COTE_PX = 8000
 
@@ -194,9 +208,12 @@ def deposer_image_document(calepinage, *, genre, fichier, user=None):
                  if '.' in nom_recu else 'png')
     if extension not in _EXTENSIONS_CONNUES:
         extension = 'png'
-    nom = '%s%s%s%s.%s' % (
-        _PREFIXE, genre_propre, _SEPARATEUR, uuid.uuid4().hex[:12],
-        extension)
+    # ACAL224 — l'empreinte de la conception COURANTE voyage dans le nom.
+    empreinte = _empreinte_de_conception(calepinage)
+    nom = '%s%s%s%s%s.%s' % (
+        _PREFIXE, genre_propre, _SEPARATEUR,
+        (empreinte + _SEPARATEUR) if empreinte else '',
+        uuid.uuid4().hex[:12], extension)
     enveloppe = ContentFile(octets, name=nom)
     donnees, erreur = store_attachment(enveloppe, company=calepinage.company)
     if erreur:
@@ -209,7 +226,7 @@ def deposer_image_document(calepinage, *, genre, fichier, user=None):
         uploaded_by=utilisateur, **donnees)
 
     return {'genre': genre_propre, 'attachment': piece,
-            'depose_le': piece.created_at}
+            'depose_le': piece.created_at, 'empreinte': empreinte or None}
 
 
 def _attachments_images(calepinage, *, genre=None):
@@ -226,6 +243,36 @@ def _attachments_images(calepinage, *, genre=None):
     return qs
 
 
+def _empreinte_de_conception(calepinage):
+    """Les 12 premiers hex de l'empreinte « document » (D-ACAL-4) de la
+    conception COURANTE, ou ``''`` sans conception."""
+    from .layout import empreinte_document
+
+    return (empreinte_document(getattr(calepinage, 'roof_layout', None))
+            or '')[:TAILLE_EMPREINTE_IMAGE]
+
+
+def _empreinte_depuis_nom(filename):
+    """``image__<genre>__<empreinte12>__<id>.<ext>`` → ``<empreinte12>`` ;
+    ``None`` pour un nom d'avant ACAL224 (``image__<genre>__<id>.<ext>``)."""
+    morceaux = (filename or '').split(_SEPARATEUR)
+    if len(morceaux) != 4:
+        return None
+    empreinte = morceaux[2]
+    if len(empreinte) != TAILLE_EMPREINTE_IMAGE or any(
+            c not in '0123456789abcdef' for c in empreinte):
+        return None
+    return empreinte
+
+
+def image_est_fraiche(attachment, calepinage):
+    """ACAL224 — vrai si ``attachment`` a été déposée pour la conception
+    COURANTE de ``calepinage`` ; une image sans empreinte est périmée."""
+    empreinte = _empreinte_depuis_nom(getattr(attachment, 'filename', ''))
+    return bool(empreinte) and empreinte == _empreinte_de_conception(
+        calepinage)
+
+
 def _genre_depuis_nom(filename):
     """``image__<genre>__<id>.<ext>`` → ``<genre>`` — ``''`` si illisible
     (ligne défensive : ne doit jamais lever pour un nom hors schéma)."""
@@ -239,9 +286,17 @@ def images_du_calepinage(calepinage):
     ``calepinage_documents.json::exemple.images``). Bornées à SA société."""
     if calepinage is None or not getattr(calepinage, 'pk', None):
         return []
-    return [{'genre': _genre_depuis_nom(a.filename), 'attachment': a.pk,
-             'depose_le': a.created_at}
-            for a in _attachments_images(calepinage)]
+    courante = _empreinte_de_conception(calepinage)
+    images = []
+    for piece in _attachments_images(calepinage):
+        empreinte = _empreinte_depuis_nom(piece.filename)
+        images.append({
+            'genre': _genre_depuis_nom(piece.filename),
+            'attachment': piece.pk, 'depose_le': piece.created_at,
+            # ACAL224 — liée à la conception qui l'a produite.
+            'empreinte': empreinte,
+            'perimee': not (empreinte and empreinte == courante)})
+    return images
 
 
 def image_recente(calepinage, *, genre):
@@ -271,9 +326,10 @@ def octets_et_mime(attachment):
 def derniere_image_encodee(calepinage, *, genre):
     """La dernière image ``genre`` de ``calepinage``, en data-URI base64
     prête à embarquer dans un ``<img src=…>`` de pièce PDF — ``None`` si
-    aucune image n'est déposée ou si sa relecture échoue."""
+    aucune image n'est déposée, si sa relecture échoue, ou (ACAL224) si elle
+    a été déposée pour une AUTRE conception que la courante."""
     piece = image_recente(calepinage, genre=genre)
-    if piece is None:
+    if piece is None or not image_est_fraiche(piece, calepinage):
         return None
     octets, mime = octets_et_mime(piece)
     if not octets:

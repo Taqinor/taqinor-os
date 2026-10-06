@@ -27,7 +27,7 @@ from pathlib import Path
 
 __all__ = [
     'ImportLayoutRefuse', 'VERSION_SCHEMA', 'exporter_layout',
-    'valider_document', 'importer_layout',
+    'valider_document', 'importer_layout', 'module_du_pan',
 ]
 
 #: Numéro de version du schéma v2 publié (CAL232) — celui que ``exporter_
@@ -80,6 +80,27 @@ def exporter_layout(calepinage):
         'layout_hash': calepinage.layout_hash or '',
         'schema_version': VERSION_SCHEMA,
     }
+
+
+def module_du_pan(document, zone):
+    """ACAL263 — l'entrée de ``modules[]`` que désigne ``zone.geometry.moduleId``.
+
+    ``None`` quand le pan ne désigne aucun modèle, ou un modèle absent du
+    catalogue (``_refuser_module_inconnu`` refuse ce second cas à l'import) —
+    jamais un modèle deviné. SEULE fonction qui résout ce renvoi : la planche
+    et ses sorties la lisent, aucune ne le refait.
+    """
+    if not isinstance(document, dict) or not isinstance(zone, dict):
+        return None
+    geometrie = zone.get('geometry')
+    modele = geometrie.get('moduleId') if isinstance(geometrie, dict) else None
+    catalogue = document.get('modules')
+    if not isinstance(modele, str) or not isinstance(catalogue, list):
+        return None
+    for entree in catalogue:
+        if isinstance(entree, dict) and entree.get('id') == modele:
+            return entree
+    return None
 
 
 def _refuser_module_inconnu(document):
@@ -180,6 +201,36 @@ def _controles_croises(document):
     """
     _refuser_module_inconnu(document)
     _refuser_numero_de_module_double(document)
+    _refuser_contour_croise(document)
+
+
+def _refuser_contour_croise(document):
+    """ACAL76 — un document IMPORTÉ ne peut porter aucun contour croisé.
+
+    Pans, obstacles polygonaux et zones d'exclusion : le test est celui du
+    noyau (``core.calepinage.geometrie.est_polygone_simple``), via le
+    collecteur unique ``services.layout.contours_croises`` — jamais recodé.
+    """
+    from .layout import contours_croises, message_contour_croise
+
+    croises = contours_croises(document)
+    if croises:
+        chemin = croises[0][0]
+        raise ImportLayoutRefuse(message_contour_croise(chemin), champ=chemin)
+
+
+def _refuser_nature_inconnue(document):
+    """ACAL312 (D-ACAL-20) — une zone d'exclusion à nature inconnue est
+    refusée AVANT le schéma, au chemin ``exclusionZones.<i>.nature``, avec la
+    liste ``services.zones.natures_admises`` (le noyau) — jamais la phrase
+    anglaise de l'``enum`` JSON Schema, jamais une liste recopiée."""
+    from .zones import message_nature_inconnue, natures_inconnues
+
+    refusees = natures_inconnues(document)
+    if refusees:
+        chemin, nature = refusees[0]
+        raise ImportLayoutRefuse(message_nature_inconnue(chemin, nature),
+                                 champ=chemin)
 
 
 def valider_document(document):
@@ -204,6 +255,7 @@ def valider_document(document):
         from apps.ventes.services import battery_du_document
         document = dict(document, battery=battery_du_document(document))
     _refuser_parcelle_trop_courte(document)
+    _refuser_nature_inconnue(document)
     try:
         jsonschema.validate(document, _schema())
     except jsonschema.exceptions.ValidationError as erreur:

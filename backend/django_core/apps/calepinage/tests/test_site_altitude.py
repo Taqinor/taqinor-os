@@ -83,8 +83,10 @@ class FuseauTest(unittest.TestCase):
     def test_le_fuseau_ne_peut_pas_etre_derive_de_la_longitude(self):
         # Garantie STRUCTURELLE : la fonction ne prend AUCUNE coordonnée, donc
         # aucune dérivation par la longitude n'est possible par distraction.
+        # ACAL129 — la SOCIÉTÉ s'y ajoute (repli sur le fuseau SAISI de son
+        # profil) : toujours aucune coordonnée.
         parametres = inspect.signature(site.fuseau_du_site).parameters
-        self.assertEqual(list(parametres), ['section'])
+        self.assertEqual(list(parametres), ['section', 'company'])
         source = inspect.getsource(site.fuseau_du_site)
         for interdit in ('lon', 'longitude'):
             self.assertNotIn(f'{interdit} /', source)

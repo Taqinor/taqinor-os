@@ -208,7 +208,7 @@ import {
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout, deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/prefill';
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 
 let booted = false;
@@ -427,6 +427,23 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       clientPinMarker.remove();
       clientPinMarker = null;
     }
+  };
+  // ACAL193 (D-ACAL-13) — le repère client est DÉPLAÇABLE à la main : le relâcher ailleurs
+  // pose `pinSource: 'manuel'` (et cette épingle) dans le prochain document — elle ne
+  // suivra plus d'office une correction du GPS du lead (le serveur proposera « Recentrer »
+  // ou « Garder »). Un marqueur jamais déplacé laisse la provenance du document intacte.
+  const planterClientPinMarker = (center: LngLat) => {
+    removeClientPinMarker();
+    const marker = new maplibregl.Marker({ color: '#e8b54a', draggable: true })
+      .setLngLat(center)
+      .addTo(map);
+    // `on` optionnel : un marqueur sans émetteur (doublure de test) reste un repère fixe.
+    marker.on?.('dragend', () => {
+      const p = marker.getLngLat();
+      deplacerEpingleALaMain(ctx, [p.lng, p.lat]);
+      setStatus('Épingle déplacée à la main — elle ne suivra plus le GPS du lead.');
+    });
+    clientPinMarker = marker;
   };
   // V3 — type de toit (plat = modèle existant, défaut ; pente = pose affleurante),
   // pente + face SAISIES (imposent l'inclinaison et l'azimut de l'array), et le
@@ -1926,10 +1943,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // Plante un marqueur laiton BIEN VISIBLE à l'endroit exact pointé par le client, pour
       // que Meriem voie son repère (distinct du contour qu'elle trace). On remplace tout
       // marqueur précédent (ré-hydratation d'un autre lead).
-      removeClientPinMarker();
-      clientPinMarker = new maplibregl.Marker({ color: '#e8b54a' })
-        .setLngLat(h.center)
-        .addTo(map);
+      planterClientPinMarker(h.center); // ACAL193 — déplaçable à la main
       setStatus('Repère du client chargé — tracez le contour du toit pour lancer le calcul.');
       return true;
     }
@@ -2080,8 +2094,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       landOnPin();
       if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
       map.once('idle', landOnPin);
-      removeClientPinMarker();
-      clientPinMarker = new maplibregl.Marker({ color: '#e8b54a' }).setLngLat(h.center).addTo(map);
+      planterClientPinMarker(h.center); // ACAL193 — déplaçable à la main
       setStatus('Devis chargé — tracez le contour du toit pour lancer le calcul.');
       return true;
     }
@@ -2477,6 +2490,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  seule zone vide active. */
   function reset() {
     clearEditorState();
+    oublierEpingleDeplacee(ctx); // ACAL193 — un site vierge n'a plus d'épingle déplacée
     // ACAL26 — « Effacer » repart d'un site vierge : la consommation du site (courbe,
     // appareils, provenance relue) part avec lui (`clearEditorState` ne la touche plus).
     consCurve = emptyCurve();
@@ -4214,6 +4228,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       ctx.affectationColoration = coloring.colorByModule.size > 0 ? coloring : null;
       scene3d.rafraichirAffectation();
     },
+    // ACAL87 — PROMESSE : l'aperçu est lu après un rendu réel ; null si l'image est vide.
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
