@@ -417,7 +417,7 @@ function SectionImages({
   )
 }
 
-export default function PanneauDocuments({ calepinageId, builderApi = null }) {
+export default function PanneauDocuments({ calepinageId, builderApi = null, onRecharger = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -510,6 +510,9 @@ export default function PanneauDocuments({ calepinageId, builderApi = null }) {
       setConfirmationConception(reponse.data.inchange
         ? 'Conception importée — identique à celle déjà enregistrée (empreinte inchangée).'
         : 'Conception importée et enregistrée.')
+      // ACAL23 — la conception SERVEUR vient de changer : la scène 3D la relit
+      // (sinon « Enregistrer le calepinage » republierait la copie d'avant).
+      if (!reponse.data.inchange && typeof onRecharger === 'function') await onRecharger()
     } catch (erreur) {
       setErreurConception(await erreurDeTelechargement(erreur))
     } finally {

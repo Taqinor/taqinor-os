@@ -163,6 +163,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // Le texte est TOUJOURS celui du serveur ; l'écran choisit seulement entre
   // l'encart « Réviser (v2) » et le bandeau de document clos.
   const [conflit, setConflit] = useState(null)
+  // ACAL23 — 409 `document_modifie` du mode calepinage : la conception a été
+  // modifiée AILLEURS (un onglet du rail, un autre navigateur) depuis que la
+  // page l'a lue. DISTINCT du conflit verrou ci-dessus : rien n'est écrasé et
+  // la seule sortie est « Recharger ». Texte = celui du serveur.
+  const [documentModifie, setDocumentModifie] = useState(null)
+  // ACAL23 — le jeton d'écriture (empreinte « document », contrat
+  // `calepinage_layout_section.json`) RENDU par la dernière écriture réussie ;
+  // tant qu'aucune n'a eu lieu, c'est celui lu au boot (design-context,
+  // `geometrie.empreinte_document`). Jamais `layout_hash`.
+  const [empreinteEcrite, setEmpreinteEcrite] = useState(null)
+  const empreinteDocument = empreinteEcrite
+    ?? contexte?.geometrie?.empreinte_document ?? null
   // PVHEAL — avertissements renvoyés par l'enregistrement (kit non complété,
   // composant absent du catalogue, deux onduleurs…). Le TEXTE est celui du
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
@@ -556,6 +568,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
     if (sending) return
     setGenError(null)
     setConflit(null)
+    setDocumentModifie(null)
     setAvertissementsSync([])
     const apiTool = builderApi.current
     if (!apiTool) {
@@ -572,19 +585,34 @@ export default function ToitureDesign({ mode = 'lead' }) {
       const layout = apiTool.serializeLayout()
       let resultat
       try {
+        // ACAL23 — l'écriture COMPLÈTE porte If-Match = l'empreinte « document »
+        // lue au boot puis remplacée par celle de chaque réponse 2xx.
         const res = await calepinageApi.calepinages
-          .enregistrerLayoutCalepinage(calepinageId, layout)
+          .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument)
         resultat = res?.data ?? {}
       } catch (err) {
         const code = err?.response?.status
         const data = err?.response?.data
         setGenStatus(null)
         setSending(false)
+        if (code === 409 && data?.code === 'document_modifie') {
+          // ACAL23 — la conception a changé AILLEURS : rien n'est écrasé, et ce
+          // n'est PAS le verrou (bannière distincte, seule sortie : Recharger).
+          setDocumentModifie({
+            detail: typeof data.detail === 'string' && data.detail.trim()
+              ? data.detail : 'La conception a été modifiée ailleurs.',
+          })
+          return
+        }
         if (code === 409) {
           // Un calepinage dont le devis est parti chez le client : le motif
-          // est celui du SERVEUR, jamais reformulé ici.
+          // est celui du SERVEUR, jamais reformulé ici (`{detail}` ou le
+          // `{roof_layout: [msg]}` du verrou).
+          const motifVerrou = Array.isArray(data?.roof_layout)
+            ? data.roof_layout[0] : data?.roof_layout
           setConflit({
-            detail: data?.detail || 'Ce calepinage ne peut plus être modifié.',
+            detail: data?.detail || (typeof motifVerrou === 'string' && motifVerrou)
+              || 'Ce calepinage ne peut plus être modifié.',
             revision_possible: false,
           })
           return
@@ -596,6 +624,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? champ : httpMessage(code ?? 0, data))
         return
       }
+
+      // ACAL23 — le jeton de la PROCHAINE écriture est celui que le serveur vient de rendre.
+      if (resultat?.empreinte_document) setEmpreinteEcrite(resultat.empreinte_document)
 
       // ACAL286 — l'affectation servie a pu changer avec ce document : la teinte est relue.
       pousserAffectationAtelier(apiTool, calepinageId)
@@ -689,6 +720,35 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // en cours n'est jamais perdu silencieusement : rien n'est envoyé ici, on
   // quitte seulement la vue (comme un retour navigateur).
   const fermer = () => navigate(-1)
+
+  // ACAL23 — L'UNIQUE rechargement de l'atelier (relayé par le Rail à chaque
+  // onglet, et porté par la bannière « modifiée ailleurs »). Le constructeur
+  // n'a aucun rechargement post-boot : la page est rechargée, ce qui relit
+  // design-context et le document serveur. Si la scène porte des
+  // modifications non enregistrées (sérialisation ≠ base serveur), on
+  // CONFIRME d'abord — sinon rechargement direct.
+  const rechargerAtelier = () => {
+    let modifiee = false
+    try {
+      const courant = builderApi.current?.serializeLayout?.()
+      modifiee = !!courant && !!hashBaseBrouillon && hacherLayout(courant) !== hashBaseBrouillon
+    } catch { modifiee = false }
+    if (modifiee && !window.confirm(
+      'La scène porte des modifications non enregistrées : elles seront perdues. Recharger quand même ?',
+    )) return
+    window.location.reload()
+  }
+
+  // ACAL23 — le document VIVANT confié aux onglets du Rail : le jeton
+  // d'écriture courant, et la façon d'appliquer à la scène une section qu'un
+  // onglet vient d'écrire (`layout/section/`) en reprenant le jeton rendu.
+  const documentVivant = useMemo(() => ({
+    empreinte: empreinteDocument,
+    appliquerSection: (cle, valeur, empreinteApres) => {
+      builderApi.current?.appliquerSection?.(cle, valeur)
+      if (empreinteApres) setEmpreinteEcrite(empreinteApres)
+    },
+  }), [empreinteDocument])
 
   // PVHEAL — le bandeau d'avertissements du serveur, partagé par les deux
   // modes. Il reste affiché APRÈS le passage au bloc « Prêt à envoyer » : un
@@ -1259,7 +1319,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
             // `builderApi.current` dans ce cadre-là, inchangé).
             builderApi={builderApiActuel}
             lectureSeule={lectureSeule}
-            onRecharger={() => window.location.reload()}
+            onRecharger={rechargerAtelier}
+            documentVivant={documentVivant}
           />
         )}
 
@@ -1286,6 +1347,23 @@ export default function ToitureDesign({ mode = 'lead' }) {
           </p>
           {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
           {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive" data-testid="cal-erreur-enregistrement">{genError}</p>}
+
+          {/* ACAL23 — 409 `document_modifie` : modifiée AILLEURS, rien n'est
+              écrasé ; distinct du verrou ci-dessous. */}
+          {documentModifie && (
+            <div className="mt-4 border border-brass-400/40 p-4" data-testid="cal-document-modifie">
+              <p className="text-sm text-brass-300" role="alert">
+                La conception a été modifiée ailleurs (onglet, autre navigateur) — rechargez avant
+                d’enregistrer.
+              </p>
+              <p className="mt-1 text-xs text-lune-soft">{documentModifie.detail}</p>
+              <button type="button" onClick={rechargerAtelier}
+                className="mt-3 inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-300"
+                data-testid="cal-document-modifie-recharger">
+                Recharger
+              </button>
+            </div>
+          )}
 
           {/* 409 : le devis lié est parti chez le client — motif du SERVEUR. */}
           {conflit && (
