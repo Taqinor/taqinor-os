@@ -53,7 +53,7 @@ class Xpur6Base(TestCase):
         self.company = _company('xpur6-co')
         self.user = _user(
             self.company, 'xpur6-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
 
 

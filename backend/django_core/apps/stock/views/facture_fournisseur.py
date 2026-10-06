@@ -70,8 +70,12 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + [
-                'comptes_a_payer', 'en_exception', 'suggestions_bcf']:
+        if self.action in ('comptes_a_payer', 'en_exception'):
+            # ASTK11 (D-ASTK-2) — files dont l'objet est un montant d'achat :
+            # `prix_achat_voir` requis (repli légacy can_view_buy_prices).
+            from ..permissions import PeutVoirPrixAchat
+            return [IsAnyRole(), PeutVoirPrixAchat()]
+        if self.action in READ_ACTIONS + ['suggestions_bcf']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'paiements', 'echeancier', 'resoudre_exception',
@@ -337,6 +341,12 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         paiement (montant/date/mode), recalcule le statut + le solde dû."""
         facture = self.get_object()
         if request.method.lower() == 'get':
+            # ASTK11 (D-ASTK-2) — lecture des règlements = montants d'achat.
+            if not getattr(request.user, 'can_view_buy_prices', True):
+                return Response(
+                    {'detail': ("Permission « prix_achat_voir » requise "
+                                "(prix et montants d'achat).")},
+                    status=status.HTTP_403_FORBIDDEN)
             qs = facture.paiements.select_related('created_by').all()
             return Response(
                 PaiementFournisseurSerializer(qs, many=True).data)

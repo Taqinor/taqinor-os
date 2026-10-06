@@ -1549,6 +1549,19 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
 
 # ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
 
+#: ASTK11 — montants d'achat d'une ligne de facture fournisseur.
+CHAMPS_MONTANTS_LIGNE_FACTURE_FOURNISSEUR = (
+    'prix_unitaire_ht', 'total_ht', 'total_tva',
+)
+#: ASTK11 — montants d'achat d'une facture fournisseur (en-tête, règlements,
+#: échéances, imputations), retirés sans `prix_achat_voir`.
+CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
+    'montant_ht', 'montant_tva', 'montant_ttc', 'montant_ttc_devise',
+    'total_paye', 'solde_du', 'total_acomptes_imputes',
+    'total_avoirs_imputes', 'sous_totaux_par_taux', 'paiements', 'echeances',
+)
+
+
 class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
     # produit est optionnel (ligne libre/service, XPUR16) — default=None
     # évite une AttributeError DRF quand produit est vide.
@@ -1567,6 +1580,15 @@ class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
             'id', 'produit', 'produit_nom', 'designation', 'quantite',
             'prix_unitaire_ht', 'total_ht', 'taux_tva', 'total_tva',
         ]
+
+    def get_fields(self):
+        # ASTK11 (D-ASTK-2) — prix et totaux d'achat retirés sans
+        # `prix_achat_voir`.
+        fields = super().get_fields()
+        if not _peut_voir_montants_achat(_user_du_contexte(self)):
+            for nom in CHAMPS_MONTANTS_LIGNE_FACTURE_FOURNISSEUR:
+                fields.pop(nom, None)
+        return fields
 
 
 class PaiementFournisseurSerializer(serializers.ModelSerializer):
@@ -1719,6 +1741,21 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'resolu_par', 'resolu_le',
             'numero_clearance_dgi', 'statut_conformite_dgi',
         ]
+
+    def get_fields(self):
+        # ASTK11 (D-ASTK-2) — montants d'achat servis UNIQUEMENT avec
+        # `prix_achat_voir` ; les règlements imbriqués suivent EN PLUS le
+        # palier AUD419 de PaiementFournisseurViewSet (responsable/admin) —
+        # ferme le contournement « paiements-fournisseur 403 mais
+        # factures-fournisseur 200 avec date_paiement ».
+        fields = super().get_fields()
+        user = _user_du_contexte(self)
+        if not _peut_voir_montants_achat(user):
+            for nom in CHAMPS_MONTANTS_FACTURE_FOURNISSEUR:
+                fields.pop(nom, None)
+        elif user is not None and not getattr(user, 'is_responsable', True):
+            fields.pop('paiements', None)
+        return fields
 
     def get_sous_totaux_par_taux(self, obj):
         from .selectors import sous_totaux_tva_facture_fournisseur
