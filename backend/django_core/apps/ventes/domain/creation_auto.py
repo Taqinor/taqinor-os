@@ -275,6 +275,126 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
     return devis
 
 
+#: AGR124 — refus D-AGR-4 : le relevé du point d'eau d'abord.
+MESSAGE_RELEVE_POINT_EAU = (
+    "Relevé du point d'eau requis avant devis (D-AGR-4) : niveau d'eau et "
+    "débit du forage à mesurer lors d'une visite.")
+
+
+def _fr_nombre(valeur):
+    if valeur is None:
+        return '?'
+    texte = ('%.1f' % float(valeur)).rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
+
+
+def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
+                               journal_auto=None):
+    """AGR124 — devis automatique AGRICOLE (pompage) par le serveur.
+
+    Entrées : ``crm.selectors.entrees_pompage_du_lead`` (AGR404), lues par
+    ``pompage.etudier_pompage`` — jamais une colonne du lead lue ici. Refus
+    ``AutoDevisError(field=…)`` : données manquantes (``devis_auto.
+    champs_requis``, AGR403), relevé du point d'eau requis (D-AGR-4), HMT ou
+    débit introuvables, aucune pompe chiffrable. Chaîne : ``etudier_pompage``
+    → taille Recommandée + kit minimum (afficheur par défaut) → devis
+    BROUILLON (numérotation ``utils/references.py``, lignes par l'écrivain
+    unique) → étude v2 écrite UNE fois par le rafraîchisseur (AGR123). Les
+    entrées carburant du lead partent dans ``saisies_economie_pompage``
+    (provenance ``lead``). Le type du lead n'est JAMAIS changé (D-AGR-9) ;
+    aucun statut touché (règle #4). ``journal_auto['alertes']`` reçoit les
+    alertes de l'étude et les articles « prix à renseigner » omis."""
+    from apps.crm.selectors import champs_devis_auto_manquants
+    from apps.crm.services import resolve_client_for_lead, \
+        visite_point_eau_requise
+    from apps.ventes.domain.catalogue import catalogue_de_la_societe
+    from apps.ventes.domain.lignes import creer_ligne
+    from apps.ventes.domain.pompage import (
+        etudier_pompage, lignes_kit_auto, saisies_economie_pompage_du_lead)
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+
+    manquants = champs_devis_auto_manquants(lead)
+    if manquants:
+        raise AutoDevisError(
+            'Manque : ' + ', '.join(m['label'] for m in manquants),
+            field=manquants[0]['champ'])
+    if visite_point_eau_requise(lead):
+        raise AutoDevisError(MESSAGE_RELEVE_POINT_EAU,
+                             field='niveau_statique_m')
+
+    # L'alimentation est DÉDUITE du raccordement déclaré (mono/tri) ; inconnu
+    # ⇒ absente (jamais « tri » par défaut).
+    corps = {'taille': 'recommandee'}
+    alim = {'monophase': 'mono', 'triphase': 'tri'}.get(
+        phase_et_isolement_du_lead(lead)[0])
+    if alim:
+        corps['alim'] = alim
+    sortie = etudier_pompage(company, corps, lead=lead)
+    hmt_m = (sortie.get('hmt') or {}).get('valeur_m')
+    debit = (sortie.get('conception') or {}).get('debit_conception_m3h')
+    pompe = sortie.get('pompe') or {}
+    mode_pompe = ((sortie.get('entrees_resolues') or {}).get(
+        'mode_pompe') or {}).get('valeur') or 'neuve'
+    if hmt_m is None:
+        raise AutoDevisError(
+            "HMT introuvable : saisissez la HMT ou le niveau d'eau du forage.",
+            field='pompe_hmt_m')
+    if mode_pompe != 'existante' and debit is None:
+        raise AutoDevisError(
+            'Débit de conception introuvable : saisissez le débit souhaité ou '
+            "le besoin en eau (m³/jour).", field='pompe_debit_m3h')
+
+    lignes, omises = lignes_kit_auto(sortie)
+    prix = {p.id: p.prix_vente for p in catalogue_de_la_societe(company)}
+    lignes = [dict(ligne, prix_unitaire=Decimal(str(prix[ligne['produit_id']])))
+              for ligne in lignes
+              if prix.get(ligne['produit_id']) and prix[ligne['produit_id']] > 0]
+    if mode_pompe != 'existante' and (
+            pompe.get('placeholder')
+            or not any(ligne['role_pompage'] == 'pompe' for ligne in lignes)):
+        noms = sortie.get('prix_a_renseigner') or []
+        message = ('Aucune pompe chiffrable pour HMT %s m / débit %s m³/h'
+                   % (_fr_nombre(hmt_m), _fr_nombre(debit)))
+        if noms:
+            message += ' — pompes à courbe sans prix : %s' % ', '.join(noms)
+        raise AutoDevisError(message + '.', field='pompe')
+
+    client = resolve_client_for_lead(lead)
+    etude = dict(corps)
+    saisies = saisies_economie_pompage_du_lead(lead)
+    if saisies:
+        etude['saisies_economie_pompage'] = saisies
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company, reference=ref, client=client, lead=lead,
+            statut=Devis.Statut.BROUILLON, created_by=user,
+            taux_tva=taux_tva, mode_installation='agricole',
+            etude_params=etude)
+
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+    for ordre, ligne in enumerate(lignes):
+        creer_ligne(devis, produit_id=ligne['produit_id'],
+                    designation=ligne['designation'],
+                    quantite=ligne['quantite'],
+                    prix_unitaire=ligne['prix_unitaire'], ordre=ordre)
+    rafraichir_etudes_du_devis(devis)
+    if journal_auto is not None:
+        alertes = [dict(a) for a in (sortie.get('alertes') or [])]
+        for designation in omises:
+            alertes.append({
+                'code': 'article_prix_a_renseigner', 'champ': 'kit',
+                'message': ('« %s » non ajouté au devis : prix à renseigner '
+                            'au catalogue (jamais un article gratuit).'
+                            % designation)})
+        journal_auto['alertes'] = alertes
+    logger.info('Auto-devis agricole %s: pompe %s (lead %s, company %s)',
+                devis.reference, pompe.get('nom'), getattr(lead, 'pk', '?'),
+                getattr(company, 'id', '?'))
+    return devis
+
+
 def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                      remise_globale=Decimal('0'), target_kwc=None,
                      scenario=None, etude_extra=None, plafond_toit=None,
@@ -349,6 +469,17 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                 "la fiche lead.", field='type_installation')
         return _build_devis_auto_ci(lead=lead, user=user, company=company,
                                     taux_tva=taux_tva, target_kwc=target_kwc)
+    if marche == 'agricole':
+        # AGR124 — l'agricole passe par LE moteur serveur (D-AGR-1), origine
+        # « auto » seulement : le tunnel du site reste refusé.
+        if (origine or ORIGINE_AUTO) != ORIGINE_AUTO:
+            raise AutoDevisError(
+                "Le devis automatique depuis le site n'est pas ouvert à "
+                "l'agricole : le commercial le lance depuis la fiche lead.",
+                field='type_installation')
+        return _build_devis_auto_agricole(
+            lead=lead, user=user, company=company, taux_tva=taux_tva,
+            journal_auto=journal_auto)
     if marche and marche != 'residentiel':
         raise AutoDevisError(
             "L'auto-devis ne gère que le résidentiel pour l'instant. Pour "

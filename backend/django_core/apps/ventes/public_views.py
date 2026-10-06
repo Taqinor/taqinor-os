@@ -917,6 +917,25 @@ CLES_ECONOMIES_RESIDENTIELLES_CI = CLES_ECONOMIES_RESIDENTIELLES + (
 MODES_CI = ('commercial', 'industriel')
 
 
+def _mode_kpis_ci(synthese):
+    """CIQ306 — ``mode_kpis`` C&I v2 : PROJECTION de ``synthese_ci``
+    (contrat ``proposal_data.json`` › ``notes_ciq4.mode_kpis_ci_v2``) —
+    énergie + ``argent.indicateurs.retour_ans`` + ``argent.revente``. Aucune
+    clé d'étude JS lue, aucun calcul ; l'argent omis (ou sa case décochée)
+    ⇒ économies, payback et revente à ``None``. CIQ307 : par
+    ``chiffres_cles`` — la MÊME projection que lisent les gabarits PDF."""
+    from .quote_engine.ci.synthese import chiffres_cles
+    c = chiffres_cles(synthese)
+    return {
+        'taux_autoconso': c['taux_autoconso_pct'],
+        'taux_couverture': c['taux_couverture_pct'],
+        'economies_annuelles': c['economie_annuelle_mad'],
+        'payback': c['payback_ans'],
+        'injection_kwh_an': c['revente_kwh_an'],
+        'injection_dh_an': c['revente_mad_an'],
+    }
+
+
 def _mode_public(data):
     return str((data or {}).get('mode_installation') or '').strip().lower()
 
@@ -1053,6 +1072,18 @@ def proposal_data(request, token):
         if str(data.get('mode_installation') or '').strip().lower() == 'agricole':
             from .quote_engine.agricole.synthese import synthese_agricole
             synthese_agricole_pub = synthese_agricole(data)
+        # CIQ306 — la synthèse C&I, par LA MÊME fonction que le PDF
+        # (``quote_engine/ci/synthese.synthese_ci``), sur ce ``data`` déjà
+        # assaini (``_strip_confidential_deep``, aucun ``prix_achat``) : la
+        # parité PDF ↔ /proposition est prouvée clé par clé par un test. Clé
+        # ADDITIVE : ``None`` hors commercial / industriel ⇒ ABSENTE.
+        from .quote_engine.ci.synthese import synthese_ci
+        synthese_ci_pub = synthese_ci(data)
+        if synthese_ci_pub is not None and \
+                not _section_servie(link, 'economies'):
+            # Case « économies » décochée : l'argent ne part pas.
+            synthese_ci_pub = {cle: val for cle, val in synthese_ci_pub.items()
+                               if cle != 'argent'}
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -1202,7 +1233,11 @@ def proposal_data(request, token):
             # les 4 variantes sans re-calcul client.
             'mode_installation': data.get('mode_installation'),
             'categorie_commerciale': (data.get('etude') or {}).get('categorie_commerciale'),
-            'mode_kpis': _mode_kpis(data),
+            # CIQ306 — en C&I, ``mode_kpis`` v2 est une PROJECTION de
+            # ``synthese_ci`` : plus aucune clé d'étude JS lue.
+            'mode_kpis': (_mode_kpis_ci(synthese_ci_pub)
+                          if synthese_ci_pub is not None
+                          else _mode_kpis(data)),
             'roof_image_url': roof_url,
             # QJ26 — layout de toiture ASSAINI (géométrie + par-pan uniquement,
             # jamais de prix/marge/champ interne). None quand absent → le PNG
@@ -1362,6 +1397,9 @@ def proposal_data(request, token):
                     cle: val for cle, val in synthese_agricole_pub.items()
                     if cle != 'economies'}
             payload['synthese_agricole'] = synthese_agricole_pub
+        # CIQ306 — synthèse C&I (additive, absente hors C&I, jamais `null`).
+        if synthese_ci_pub is not None:
+            payload['synthese_ci'] = synthese_ci_pub
         # COURBES (21/08/2026) — graphe « une journée type » : formes horaires
         # PVGIS (live au point GPS, sinon courbe de référence de la ville),
         # niveaux RÉELS (productible × kWc du devis / factures du lead), pic en
@@ -1376,12 +1414,18 @@ def proposal_data(request, token):
         # c'est UNE section à l'écran, elle part d'un bloc. On évite même le
         # calcul quand elle n'est pas servie.
         _jour_type_servi = _section_servie(link, 'jour_type')
-        from .courbes_journalieres import construire_courbes_journalieres
-        _courbes = (
-            construire_courbes_journalieres(
+        from .courbes_journalieres import (
+            construire_courbes_ci, construire_courbes_journalieres)
+        # CIQ308 — en C&I, la courbe vient UNIQUEMENT de la sortie horaire du
+        # moteur C&I (``source: 'moteur_ci'``) : jamais l'occupation ni les
+        # équipements d'un LOGEMENT. Sans sortie moteur ⇒ clé ABSENTE.
+        if not _jour_type_servi:
+            _courbes = None
+        elif _ci_public:
+            _courbes = construire_courbes_ci(data)
+        else:
+            _courbes = construire_courbes_journalieres(
                 devis, data, monthly_consumption=_conso_mensuelle)
-            if _jour_type_servi else None
-        )
         if _courbes is not None:
             payload['courbes_journalieres'] = _courbes
         # CJ2b (fondateur, 21/08/2026) — « we cannot see the real calculated
@@ -1420,7 +1464,13 @@ def proposal_data(request, token):
                 _tranche.pop('residuel_kwh_mois', None)
             payload['tranche_tarifaire'] = _tranche
         _bloc_horaire_devis = _etude_params_devis.get('etude_horaire')
-        _regime = _batterie_regime_publique(_dimensionnement, _bloc_horaire_devis)
+        # CIQ308 — régime batterie, balayage de stockage, estimation de
+        # consommation, jours types et dimensionnement par option déclinent
+        # le moteur horaire RÉSIDENTIEL : ABSENTS en C&I (le moteur C&I ne les
+        # sert pas).
+        _regime = (None if _ci_public else
+                   _batterie_regime_publique(_dimensionnement,
+                                             _bloc_horaire_devis))
         if _regime is not None:
             # QJR14 — même règle pour le taux de remplissage, tiré de la
             # batterie OPTIMALE (``recommandation_avec``) et non de celle que
@@ -1436,7 +1486,8 @@ def proposal_data(request, token):
         # batterie + message de sur-stockage sur la page publique : le mini-
         # balayage de stockage (paliers RETENUS + premier REFUSÉ), même patron
         # additif que les clés ci-dessus.
-        _balayage = _balayage_stockage_publique(_dimensionnement)
+        _balayage = (None if _ci_public
+                     else _balayage_stockage_publique(_dimensionnement))
         if _balayage is not None:
             payload['balayage_stockage'] = _balayage
         # L-PCMP (fondateur, 24/08/2026) — « le client doit pouvoir CHANGER son
@@ -1467,10 +1518,12 @@ def proposal_data(request, token):
                 and _section_servie(link, 'economies')) else None)
         if _periodes is not None:
             payload['economies_periodes'] = _periodes
-        _estimation = _estimation_conso_publique(devis)
+        _estimation = (None if _ci_public
+                       else _estimation_conso_publique(devis))
         if _estimation is not None:
             payload['estimation_conso'] = _estimation
-        _jours = _jours_types_publique(devis) if _jour_type_servi else None
+        _jours = (_jours_types_publique(devis)
+                  if (_jour_type_servi and not _ci_public) else None)
         if _jours is not None:
             payload['jours_types'] = _jours
         # PACT10 (« deux optimiseurs », 25/08/2026) — un devis résidentiel
@@ -1482,7 +1535,9 @@ def proposal_data(request, token):
         # la page retombe sur la courbe unique déjà servie
         # (`courbes_journalieres`). Contrat :
         # apps/ventes/contract_samples/dimensionnement_options.json.
-        _dimensionnement_options = _dimensionnement_options_publique(devis, data)
+        _dimensionnement_options = (
+            None if _ci_public
+            else _dimensionnement_options_publique(devis, data))
         if _dimensionnement_options is not None:
             payload['dimensionnement_options'] = _dimensionnement_options
             payload['production_par_option'] = _production_par_option_publique(

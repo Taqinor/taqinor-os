@@ -889,6 +889,8 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
             'tiers_payeur',
             # CIQ214 — conditions C&I à la demande du client (D-CIQ-14).
             'retenue_garantie', 'penalites_retard_livraison', 'caution',
+            # CIQ216 — référence de commande du client (≤ 60, facultative).
+            'reference_commande_client',
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais

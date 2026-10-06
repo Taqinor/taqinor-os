@@ -49,6 +49,11 @@ PDF_VISITE_FIXTURE = (Path(services.__file__).resolve().parent / 'fixtures'
                       / 'guide_visite_suivi_commercial.pdf')
 GENERATEUR = RACINE / 'scripts' / 'generer_guide_suivi.py'
 
+HTML_POMPAGE = DOCS / 'source' / 'devis_pompage.html'
+PDF_POMPAGE = DOCS / 'Devis_pompage.pdf'
+CONSIGNE_POMPAGE = ('Relancez `python scripts/generer_guide_suivi.py '
+                    'devis_pompage` et committez le HTML, le PDF et le manifeste.')
+
 FICHIER_SUIVI = 'Suivi_commercial_etapes_et_reponses.pdf'
 FICHIER_VISITE = 'Guide_visite_suivi_commercial.pdf'
 
@@ -137,6 +142,57 @@ class GuideSuiviAJourTests(SimpleTestCase):
                 cmd._destination(entree)  # ValueError si un seul des deux champs
                 self.assertTrue((DOCS / entree['fichier']).is_file())
                 self.assertTrue(entree.get('titre'))
+
+    # ── AGR136 — le guide « Devis pompage en 10 gestes » ─────────────────────
+    def _generateur(self):
+        spec = importlib.util.spec_from_file_location(
+            'generer_guide_suivi_pompage_sous_test', GENERATEUR)
+        generateur = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generateur)
+        return generateur
+
+    def test_pompage_le_html_committe_est_celui_que_le_generateur_produit(self):
+        attendu, _sceau = self._generateur().produire_html_pompage()
+        committe = HTML_POMPAGE.read_text(encoding='utf-8').replace('\r\n', '\n')
+        self.assertTrue(
+            committe == attendu,
+            'Le guide « Devis pompage » n\'est plus celui que le générateur '
+            'produit. ' + CONSIGNE_POMPAGE)
+
+    def test_pompage_le_pdf_est_celui_de_cette_source(self):
+        generateur = self._generateur()
+        _document, sceau = generateur.produire_html_pompage()
+        self.assertTrue(PDF_POMPAGE.is_file(), f'{PDF_POMPAGE.name} est absent. '
+                        + CONSIGNE_POMPAGE)
+        donnees = PDF_POMPAGE.read_bytes()
+        self.assertTrue(donnees.startswith(b'%PDF'), CONSIGNE_POMPAGE)
+        self.assertGreater(len(donnees), 20 * 1024, CONSIGNE_POMPAGE)
+        # Edge écrit le <title> du HTML en UTF-16BE hexadécimal dans /Title :
+        # l'empreinte de la source y figure, sinon le PDF est périmé.
+        marque = generateur.marque_pdf_pompage(sceau).encode('utf-16-be').hex().upper()
+        self.assertIn(
+            marque.encode(), donnees.upper(),
+            'Le PDF « Devis pompage » n\'est pas celui de sa source HTML '
+            f'(empreinte {sceau} absente de ses métadonnées). ' + CONSIGNE_POMPAGE)
+
+    def test_pompage_le_manifeste_est_coherent_avec_le_generateur(self):
+        generateur = self._generateur()
+        entrees = {e.get('fichier'): e for e in _manifeste()}
+        entree = entrees.get(generateur.FICHIER_POMPAGE)
+        self.assertIsNotNone(entree, 'Devis_pompage.pdf manque au manifeste.')
+        self.assertEqual(entree['titre'], generateur.TITRE_POMPAGE)
+        self.assertEqual(entree['version'], generateur.VERSION_POMPAGE)
+        self.assertEqual(entree['description'], generateur.DESCRIPTION_POMPAGE)
+        self.assertEqual(entree.get('cabinet'), services.GUIDE_VISITE_CABINET)
+        self.assertEqual(entree.get('dossier'), services.GUIDE_VISITE_DOSSIER)
+        cmd._destination(entree)
+
+    def test_pompage_ne_promet_ni_subvention_ni_chiffre_d_exemple(self):
+        document, _sceau = self._generateur().produire_html_pompage()
+        texte = re.sub(r'<style>.*?</style>', ' ', document, flags=re.S)
+        texte = re.sub(r'<[^>]+>', ' ', texte)
+        self.assertNotRegex(texte, r'\d+\s?(m³|m3|MAD|DH|kWc|kW\b)')
+        self.assertNotIn('prix_achat', document)
 
     def test_le_pdf_de_la_visite_est_identique_a_la_fixture(self):
         self.assertTrue(PDF_VISITE_DOCS.is_file(), f'{PDF_VISITE_DOCS} est absent.')

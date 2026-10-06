@@ -1,11 +1,14 @@
-// QJR543 — le « Devis automatique » agricole / industriel / commercial se crée
-// en UN appel atomique (POST /ventes/devis/atomic/) qui porte son étude
-// (projetée par QJR542 : clés ECRAN seulement) et son scénario. Plus jamais
+// QJR543 — le « Devis automatique » industriel / commercial se crée en UN
+// appel atomique (POST /ventes/devis/atomic/) qui porte son étude (projetée
+// par QJR542 : clés ECRAN seulement) et son scénario. Plus jamais
 // createDevis + N addLigneDevis (non atomique, brouillon partiel, étude
 // ignorée car en lecture seule sur POST /devis/).
+// AGR126 — l'AGRICOLE ne compose plus rien en JS : un seul appel serveur
+// POST /ventes/devis/auto/ (AGR124), jamais createDevisAtomic ; un 422 rend
+// le message du serveur tel quel, et ses `alertes` vont à `onAlertes`.
 //
-// Exécute le VRAI createAutoQuote ; seules la composition et la sélection de
-// pompe (solar.js) sont remplacées par des valeurs fixes.
+// Exécute le VRAI createAutoQuote ; seule la composition C&I (solar.js) est
+// remplacée par des valeurs fixes.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -33,15 +36,6 @@ vi.mock('./solar', async (importOriginal) => {
   })
   return {
     ...original,
-    autoFillPompage: vi.fn(() => [
-      ligne(1, 'Pompe immergée OSP 30-5', 1, 12000),
-      ligne(2, 'Variateur VEICHI SI22', 1, 6000),
-      ligne(3, 'Panneau 710W', 8, 1100),
-    ]),
-    pompageSelection: vi.fn(() => ({
-      cv: 5.5, kw: 4, pump: { nom: 'OSP 30-5' }, debitHmt: 12.4, m3Jour: 86.8,
-      dims: { champKwc: 5.68 },
-    })),
     optimalKwcByPayback: vi.fn(() => ({ nbPanneaux: 20 })),
     autoFillLines: vi.fn(() => [
       ligne(10, 'Panneau 710W', 20, 1100),
@@ -74,32 +68,37 @@ beforeEach(() => {
 describe('QJR543 — devis automatique non résidentiel : UN appel atomique', () => {
   it('le schéma ECRAN est bien lu (le test se protège de sa propre extraction)', () => {
     expect(ECRAN.size).toBeGreaterThan(40)
-    expect(ECRAN.has('m3_jour')).toBe(true)
+    // AGR122 — `m3_jour` est désormais une dérivée `moteur_pompage`, plus ECRAN.
+    expect(ECRAN.has('m3_jour')).toBe(false)
+    expect(ECRAN.has('saisies_economie_pompage')).toBe(true)
     expect(ECRAN.has('scenario')).toBe(true)
   })
 
-  it('agricole : createDevisAtomic ×1 avec lignes + étude typée, jamais addLigneDevis', async () => {
-    const lead = {
-      id: 7, type_installation: 'agricole', pompe_cv: 5.5, pompe_hmt_m: 60, pompe_debit_m3h: 12,
-    }
-    const id = await createAutoQuote({ lead, produits: [], discountStr: '5', dispatch: vi.fn() })
-    expect(id).toBe(501)
-    expect(api.createDevisAtomic).toHaveBeenCalledTimes(1)
-    expect(slice.addLigneDevis).not.toHaveBeenCalled()
+  it('agricole : UN appel serveur /ventes/devis/auto/, aucun createDevisAtomic, alertes rendues', async () => {
+    const alertes = [{ code: 'pvgis_indisponible', champ: 'production', message: 'Irradiation indisponible' }]
+    api.creerDevisAuto.mockResolvedValueOnce({ data: { id: 777, statut: 'brouillon', alertes } })
+    const lead = { id: 7, type_installation: 'agricole', pompe_hmt_m: 60, pompe_debit_m3h: 12 }
+    const onAlertes = vi.fn()
+    const id = await createAutoQuote({ lead, produits: [], discountStr: '5', dispatch: vi.fn(), onAlertes })
+    expect(id).toBe(777)
+    expect(api.creerDevisAuto).toHaveBeenCalledTimes(1)
+    expect(api.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 7, remise_globale: '5' })
+    expect(api.createDevisAtomic).not.toHaveBeenCalled()
+    expect(api.createDevis).not.toHaveBeenCalled()
     expect(slice.createDevis).not.toHaveBeenCalled()
-    expect(api.addLigneDevis).not.toHaveBeenCalled()
-    const corps = api.createDevisAtomic.mock.calls[0][0]
-    expect(corps.lead).toBe(7)
-    expect(corps.statut).toBe('brouillon')
-    expect(corps.mode_installation).toBe('agricole')
-    expect(corps.remise_globale).toBe('5')
-    expect(corps.lignes).toHaveLength(3)
-    expect(corps.lignes.map(l => l.ordre)).toEqual([0, 1, 2])
-    expect(corps.lignes[0]).toMatchObject({ produit: 1, quantite: '1', remise: '0', taux_tva: '20' })
-    expect(horsSchema(corps.etude_params)).toEqual([])
-    expect(corps.etude_params.m3_jour).toBe(86.8)
-    expect(typeof corps.etude_params.pompe_cv).toBe('number')
-    expect(corps.etude_params).not.toHaveProperty('pompe_nom')
+    expect(onAlertes).toHaveBeenCalledWith(alertes)
+  })
+
+  it('agricole : un 422 du serveur remonte TEL QUEL (message et champ nommé)', async () => {
+    const detail = "Relevé du point d'eau requis avant devis (D-AGR-4) : niveau d'eau et débit du forage à mesurer lors d'une visite."
+    api.creerDevisAuto.mockRejectedValueOnce({
+      response: { status: 422, data: { detail, field: 'niveau_statique_m' } },
+    })
+    const lead = { id: 9, type_installation: 'agricole' }
+    await expect(createAutoQuote({ lead, produits: [], discountStr: '0', dispatch: vi.fn() }))
+      .rejects.toEqual({ detail, field: 'niveau_statique_m' })
+    expect(api.creerDevisAuto).toHaveBeenCalledTimes(1)
+    expect(api.createDevisAtomic).not.toHaveBeenCalled()
   })
 
   it('industriel : createDevisAtomic ×1, scénario « Sans batterie » + taux_autoconso, aucune clé brute', async () => {
@@ -125,7 +124,7 @@ describe('QJR543 — devis automatique non résidentiel : UN appel atomique', ()
 
   it('rejet de la création atomique → l\'erreur remonte, aucun autre appel', async () => {
     api.createDevisAtomic.mockRejectedValueOnce({ response: { status: 400, data: { detail: 'non' } } })
-    const lead = { id: 9, type_installation: 'agricole', pompe_cv: 5.5 }
+    const lead = { id: 9, type_installation: 'industriel', facture_hiver: '20000', distributeur: 'onee' }
     await expect(createAutoQuote({ lead, produits: [], discountStr: '0', dispatch: vi.fn() }))
       .rejects.toBeTruthy()
     expect(api.createDevisAtomic).toHaveBeenCalledTimes(1)

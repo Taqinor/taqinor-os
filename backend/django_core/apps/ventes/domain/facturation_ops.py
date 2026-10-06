@@ -40,9 +40,33 @@ class EmissionRefusee(Exception):
     Porte ``motif`` (le message français) pour que les vues le renvoient tel
     quel dans un 400 sans jamais reformuler la règle métier."""
 
-    def __init__(self, motif):
+    def __init__(self, motif, champ=None):
         super().__init__(motif)
         self.motif = motif
+        # CIQ217 — le champ fautif (p. ex. ``client.ice``), pour l'afficher
+        # sous le champ ; None pour les refus qui ne visent aucun champ.
+        self.champ = champ
+
+
+MOTIF_ICE_MANQUANT = (
+    "ICE du client manquant (client.ice) : une facture à un client "
+    "entreprise ne peut pas être émise sans son ICE. Renseignez l'ICE sur la "
+    "fiche client — la facture reste en brouillon.")
+
+
+def verifier_ice_client_entreprise(facture):
+    """CIQ217 (D-CIQ-11) — refuse l'émission d'une facture dont le client
+    est une ENTREPRISE sans ICE. Indépendant de l'interrupteur de
+    transmission DGI (qui reste éteint) ; un particulier n'est pas concerné ;
+    le DEVIS n'est jamais bloqué (seule l'émission de la facture l'est)."""
+    client = facture.client if facture.client_id else None
+    if client is None:
+        return
+    if getattr(client, 'type_client', None) != 'entreprise':
+        return
+    if (getattr(client, 'ice', '') or '').strip():
+        return
+    raise EmissionRefusee(MOTIF_ICE_MANQUANT, champ='client.ice')
 
 
 def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
@@ -90,6 +114,7 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
     if exiger_lignes and not facture.lignes.exists() and not facture.libelle:
         raise EmissionRefusee(
             'La facture doit contenir au moins une ligne.')
+    verifier_ice_client_entreprise(facture)
 
     if verifier_credit and facture.client_id:
         from apps.ventes.domain.recouvrement import verifier_credit_hold

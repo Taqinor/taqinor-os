@@ -7,6 +7,7 @@ Chaque contenu est QUALITATIF (aucun chiffre inventé) ; les nombres affichés
 viennent des réponses du questionnaire (etude_params) quand elles existent.
 Catégorie absente/inconnue → METADATA['autre'] (blocs génériques).
 """
+from ..ci.mentions import TEXTES_POINTE_SANS
 
 # label, icône (emoji rendu par WeasyPrint via Noto), accroche P1.
 METADATA = {
@@ -45,9 +46,13 @@ def _num(v):
         return None
 
 
-def category_block(category, etude, C, fmt):
+def category_block(category, etude, C, fmt, note_pointe=None):
     """HTML du bloc P2 conditionnel par catégorie. `etude` porte les réponses du
-    questionnaire (QX44). Retourne un bloc (string) — jamais None."""
+    questionnaire (QX44). Retourne un bloc (string) — jamais None.
+
+    CIQ307 — ``note_pointe`` : la note sur la pointe de la table des mentions
+    C&I (CIQ305, selon la composition servie) ; absente ⇒ la phrase « sans
+    batterie » de cette même table."""
     cat = (category or "").strip().lower()
     etude = etude or {}
     navy = C["navy"]
@@ -148,6 +153,5 @@ def category_block(category, etude, C, fmt):
     inner = (
         '<div class="c2b-li">Le solaire couvre la <b>consommation diurne</b> de votre '
         'établissement (froid, éclairage, climatisation) en autoconsommation.</div>'
-        '<div class="c2b-li">La <b>pointe du soir/nuit</b> n\'est sécurisée qu\'avec un '
-        'stockage — non promise ici sans batterie.</div>')
+        f'<div class="c2b-li">{note_pointe or TEXTES_POINTE_SANS["fr"]}</div>')
     return wrap("Votre profil de consommation", inner)

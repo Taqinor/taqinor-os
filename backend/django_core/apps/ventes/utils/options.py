@@ -430,6 +430,9 @@ def _totaux_canoniques(devis, lignes) -> dict:
         'ht': can['ht_net'], 'tva': can['tva'], 'ttc': can['ttc'],
         'ht_brut': can['ht_brut'], 'remise': can['remise'],
         'arrondi': can['arrondi'],
+        # CIQ215 — bases et TVA par taux de l'option (ventilation des
+        # factures de tranche à taux mixtes).
+        'tva_par_taux': can['tva_par_taux'],
     }
 
 

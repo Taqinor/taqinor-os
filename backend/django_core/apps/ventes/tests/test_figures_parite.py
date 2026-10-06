@@ -36,7 +36,9 @@ Run:
 """
 import importlib
 import itertools
+import json
 from decimal import Decimal
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -115,6 +117,16 @@ AGRICOLE_ETUDE = {
     'champ_kwc': 17.5,
 }
 
+#: CIQ307 — la sortie du moteur C&I telle que le rafraîchisseur la stocke
+#: (``etude_params.etude_ci``, contrat partagé ``etude_ci_preview.json``) :
+#: le PDF ET /proposition lisent ``synthese_ci`` sur elle.
+_ETUDE_CI = json.loads(
+    (Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'etude_ci_preview.json').read_text(encoding='utf-8'))
+ETUDE_CI_BT = {'etude_ci': _ETUDE_CI['exemple'],
+               'tarif_declare': {'contrat': 'bt_patente'}}
+ETUDE_CI_MT = {'etude_ci': _ETUDE_CI['exemple_industriel_mt']}
+
 FORMATS = {
     'full': {'pdf_mode': 'full'},
     'onepage': {'pdf_mode': 'onepage'},
@@ -154,17 +166,29 @@ CAS = {
         etude_params=dict(AGRICOLE_ETUDE), formats=('full', 'onepage'),
         requis=('total_ttc*', 'pompe_hmt_m', 'pompe_debit_m3h',
                 'pompe_volume_m3_jour')),
+    # CIQ307 — production, taux, économie et payback : ceux de
+    # ``synthese_ci`` (moteur C&I) sur le PDF ET la proposition. Les clés
+    # d'étude JS (``ETUDE``) restent dans la fixture : plus personne ne les lit.
     'industriel': dict(
         lignes=FULL_LINES, mode='industriel',
-        etude_params={**DEUX_OPTIONS, **ETUDE}, formats=('full', 'onepage'),
+        etude_params={**DEUX_OPTIONS, **ETUDE, **ETUDE_CI_MT},
+        formats=('full',),
         requis=('puissance_kwc', 'total_affiche', 'couverture_pct',
-                'autoconsommation_pct')),
+                'autoconsommation_pct', 'production_annuelle_kwh',
+                'economie_annuelle*', 'payback_ans*')),
     'commercial': dict(
         lignes=FULL_LINES, mode='commercial',
-        etude_params={**DEUX_OPTIONS, **ETUDE,
+        etude_params={**DEUX_OPTIONS, **ETUDE, **ETUDE_CI_BT,
                       'categorie_commerciale': 'hotel'},
         formats=('full',),
-        requis=('puissance_kwc', 'total_affiche', 'total_ttc*')),
+        requis=('puissance_kwc', 'total_affiche', 'total_ttc*',
+                'couverture_pct', 'autoconsommation_pct',
+                'economie_annuelle*', 'payback_ans*')),
+    # Le une-page C&I (moteur legacy) sans étude moteur : puissance et total.
+    'industriel_une_page': dict(
+        lignes=FULL_LINES, mode='industriel',
+        etude_params={**DEUX_OPTIONS, **ETUDE}, formats=('full', 'onepage'),
+        requis=('puissance_kwc', 'total_affiche')),
 }
 
 
@@ -341,14 +365,19 @@ class FiguresPariteSurfacesTests(TestCase):
     def test_industriel(self):
         self._verifier('industriel')
 
+    def test_industriel_une_page(self):
+        self._verifier('industriel_une_page')
+
     def test_commercial(self):
         self._verifier('commercial')
 
     def test_ci_proposition_sans_economie_residentielle(self):
         """CIQ300 — la surface proposition d'un devis industriel ou commercial
         ne porte plus ``economie_annuelle`` ni ``payback_ans`` (modèle
-        résidentiel/BT ou étude JS ; l'argent C&I viendra de ``synthese_ci``)."""
-        for cas in ('industriel', 'commercial'):
+        résidentiel/BT ou étude JS). CIQ307 : l'argent C&I vient de
+        ``synthese_ci`` — un devis SANS sortie du moteur C&I n'en a aucun
+        (les cas « moteur » sont confrontés au PDF par ``_verifier``)."""
+        for cas in ('industriel_une_page',):
             with self.subTest(cas=cas):
                 spec = CAS[cas]
                 surfaces, _ = self._surfaces(self._devis(cas, spec), spec)

@@ -125,11 +125,24 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">{{ _L('facture_a') }}</div>
+      {# CIQ217 — client ENTREPRISE : raison sociale (``client.nom``), ICE, IF
+         et RC, chacun omis s'il est vide (jamais un tiret). #}
+      {% if facture.client.type_client == 'entreprise' %}
+      <div class="partie-nom">{{ facture.client.nom }}</div>
+      <div class="partie-detail">
+        {% if facture.client.ice %}ICE : {{ facture.client.ice }}<br />{% endif %}
+        {% if facture.client.if_fiscal %}IF : {{ facture.client.if_fiscal }}<br />{% endif %}
+        {% if facture.client.rc %}RC : {{ facture.client.rc }}<br />{% endif %}
+      </div>
+      {% else %}
       <div class="partie-nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
+      {% endif %}
       <div class="partie-detail">
         {% if facture.client.email %}{{ facture.client.email }}<br />{% endif %}
         {% if facture.client.telephone %}{{ facture.client.telephone }}<br />{% endif %}
         {% if facture.client.adresse %}{{ facture.client.adresse }}{% endif %}
+        {# CIQ216 — numéro de commande du client, seulement s'il est rempli. #}
+        {% if facture.reference_commande_client %}<br />Votre commande : {{ facture.reference_commande_client }}{% endif %}
       </div>
     </div>
   </div>
@@ -146,7 +159,9 @@
     </div>
     <div class="meta-item">
       <strong>{{ _L('tva') }}</strong>
-      <span>{{ facture.taux_tva }}%</span>
+      {# CIQ215 — plusieurs taux : aucun « taux mélangé » (il n'existe pas
+         dans la loi), la ventilation est imprimée dans les totaux. #}
+      {% if facture.tva_par_taux|length > 1 %}<span>voir ventilation</span>{% else %}<span>{{ facture.taux_tva }}%</span>{% endif %}
     </div>
     <div class="meta-item">
       <strong>{{ _L('statut') }}</strong>
@@ -233,6 +248,13 @@
     {# TVA ventilée par taux (10 %/20 %). Mono-taux (factures historiques) →
        une seule ligne, identique à avant. #}
     {% for b in totaux.tva_par_taux %}
+    {# CIQ215 — tranche à taux mixtes : base HT puis TVA de chaque taux. #}
+    {% if facture.ventilation_tva %}
+    <div class="totaux-row">
+      <span>Base HT ({{ b.taux }}%)</span>
+      <span>{{ "%.2f"|format(b.base_ht) }} MAD</span>
+    </div>
+    {% endif %}
     <div class="totaux-row">
       <span>{{ _L('tva') }} ({{ b.taux }}%)</span>
       <span>{{ "%.2f"|format(b.montant) }} MAD</span>
