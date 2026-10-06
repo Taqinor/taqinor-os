@@ -25,9 +25,15 @@ const installationsApi = {
     api.post(`/installations/chantiers/${id}/checklist-photo/`, payload),
   // NTMOB16 — signature client tracée sur le bon de livraison chantier
   // (distinct de installationsApi.signerClient, réservé aux interventions).
-  signerClientChantier: (id, { signature_client, signataire_nom }) =>
+  // CIQ637 — signataire nommé (fonction, société) et co-signataire facultatif :
+  // seuls les champs fournis partent (le serveur ignore ceux qui manquent).
+  signerClientChantier: (id, { signature_client, signataire_nom, ...extra }) =>
     api.post(`/installations/chantiers/${id}/signer-client/`,
-      { signature_client, signataire_nom }),
+      { signature_client, signataire_nom, ...extra }),
+  // CIQ637 — réception définitive (réserves toutes levées) : 400 FR listant
+  // les réserves ouvertes en cas de refus.
+  prononcerReceptionDefinitive: (id) =>
+    api.post(`/installations/chantiers/${id}/reception-definitive/`, {}),
   // N4 — étapes modèle de checklist (Paramètres → Chantiers).
   getChecklistEtapes: (templateId) =>
     api.get('/installations/checklist-etapes/',

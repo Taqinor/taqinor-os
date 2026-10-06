@@ -20,14 +20,28 @@ export default function SignatureLivraisonDialog({
 }) {
   const [sig, setSig] = useState(null) // data-URL PNG de la signature tracée
   const [nom, setNom] = useState(installation?.signataire_nom || '')
+  // CIQ631/CIQ637 — signataire nommé (fonction, société) et co-signataire
+  // facultatif, repris du chantier à la re-signature.
+  const [sign, setSign] = useState({
+    signataire_fonction: installation?.signataire_fonction || '',
+    signataire_societe: installation?.signataire_societe || '',
+    cosignataire_nom: installation?.cosignataire_nom || '',
+    cosignataire_fonction: installation?.cosignataire_fonction || '',
+    cosignataire_organisme: installation?.cosignataire_organisme || '',
+  })
+  const setSigne = (k) => (e) => setSign((p) => ({ ...p, [k]: e.target.value }))
   const [busy, setBusy] = useState(false)
 
   const enregistrer = async () => {
     if (!sig) { toast.error('Faites signer le client avant d’enregistrer.'); return }
     setBusy(true)
     try {
+      // Seuls les champs renseignés partent : le serveur laisse inchangés
+      // ceux qui manquent.
+      const extra = Object.fromEntries(
+        Object.entries(sign).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v))
       await installationsApi.signerClientChantier(installation.id, {
-        signature_client: sig, signataire_nom: nom.trim(),
+        signature_client: sig, signataire_nom: nom.trim(), ...extra,
       })
       toast.success('Signature enregistrée — jointe au bon de livraison.')
       setSig(null)
@@ -62,6 +76,18 @@ export default function SignatureLivraisonDialog({
 
         <Input placeholder="Nom du signataire (optionnel)"
                value={nom} onChange={(e) => setNom(e.target.value)} />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input aria-label="Fonction du signataire" placeholder="Fonction du signataire"
+                 value={sign.signataire_fonction} onChange={setSigne('signataire_fonction')} />
+          <Input aria-label="Société du signataire" placeholder="Société du signataire"
+                 value={sign.signataire_societe} onChange={setSigne('signataire_societe')} />
+          <Input aria-label="Nom du co-signataire" placeholder="Co-signataire (facultatif)"
+                 value={sign.cosignataire_nom} onChange={setSigne('cosignataire_nom')} />
+          <Input aria-label="Fonction du co-signataire" placeholder="Fonction du co-signataire"
+                 value={sign.cosignataire_fonction} onChange={setSigne('cosignataire_fonction')} />
+          <Input aria-label="Organisme du co-signataire" placeholder="Organisme du co-signataire"
+                 value={sign.cosignataire_organisme} onChange={setSigne('cosignataire_organisme')} />
+        </div>
         <SignaturePad onChange={setSig} />
 
         <div className="flex justify-end gap-2">
