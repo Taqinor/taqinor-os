@@ -1124,6 +1124,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
                 logger.warning('AGR522: rappel FDA non posé (lead #%s)',
                                new_lead.pk, exc_info=True)
+        # CIQ513 — « Qui décide » noté au téléphone (conjoint/famille,
+        # associé/direction, propriétaire tiers) pose l'étiquette « Décision à
+        # plusieurs » (même effet que les réponses de touche). Idempotent ;
+        # repasser à « seul » ne retire rien. Jamais bloquant.
+        if old.decideur != new_lead.decideur:
+            from .services import poser_decision_a_plusieurs_depuis_decideur
+            try:
+                poser_decision_a_plusieurs_depuis_decideur(
+                    new_lead, self.request.user)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('CIQ513: étiquette non posée (lead #%s)',
+                               new_lead.pk, exc_info=True)
         # AGR525 — la pompe passe au butane sur un agricole déjà contacté :
         # la tâche FDA apparaît pour les étapes atteintes (idempotent).
         if (old.pompe_alim_actuelle != new_lead.pompe_alim_actuelle

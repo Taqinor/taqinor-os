@@ -14133,6 +14133,28 @@ NOTES_DECISION_B2B = {
 }
 
 
+#: CIQ513 — les valeurs de ``Lead.decideur`` qui disent « pas seul ».
+DECIDEURS_A_PLUSIEURS = ('conjoint_famille', 'associe_direction',
+                         'proprietaire_tiers')
+
+
+def poser_decision_a_plusieurs_depuis_decideur(lead, user):
+    """CIQ513 — « Qui décide » noté sur le lead (``conjoint_famille``,
+    ``associe_direction``, ``proprietaire_tiers``) pose l'étiquette « Décision
+    à plusieurs » par ``poser_tag_lead`` (idempotent, ligne d'historique) —
+    même effet que les deux réponses de touche (CAD9). La partition réactive
+    réinjecte alors la touche « dimanche famille » si son jour n'est pas
+    passé ; elle n'est jamais inventée. ``seul`` ne retire rien (geste
+    humain). Aucun barreau créé. Rend True si l'étiquette vient d'être
+    posée."""
+    if (getattr(lead, 'decideur', None) or '') not in DECIDEURS_A_PLUSIEURS:
+        return False
+    if _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS):
+        return False
+    poser_tag_lead(lead, user, TAG_DECISION_A_PLUSIEURS)
+    return True
+
+
 def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
     """CAD9 — le client dit qu'il ne décide pas SEUL, sur une touche du
     suivi de proposition.
