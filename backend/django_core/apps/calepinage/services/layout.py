@@ -199,17 +199,31 @@ def _refuser_nature_nouvellement_inconnue(ancien, nouveau):
     Même patron qu'ACAL76 : une zone DÉJÀ stockée et renvoyée inchangée
     passe — on ne bloque jamais la réédition d'un dossier existant pour un
     défaut ancien (pass-through octet-identique).
+
+    La zone est comparée HORS de ses coordonnées géographiques (les clés que
+    ``services.repere.CHEMINS_TRANSLATES`` translate sous ``exclusionZones``) :
+    le défaut est la NATURE, et un déplacement de la géométrie seule — le
+    recentrage sur le lead (ACAL191), translation pure — n'introduit aucune
+    nature nouvelle. Toute autre clé modifiée (nature comprise) refait
+    passer la zone par le refus.
     """
+    from .repere import CHEMINS_TRANSLATES
     from .zones import CLE_LAYOUT, message_nature_inconnue, natures_inconnues
 
     refusees = natures_inconnues(nouveau)
     if not refusees:
         return
 
+    prefixe = f'{CLE_LAYOUT}[].'
+    geometrie = {chemin[len(prefixe):].split('.')[0]
+                 for chemin in CHEMINS_TRANSLATES if chemin.startswith(prefixe)}
+
     def _zone(document, chemin):
         rang = int(chemin.split('.')[1])
-        return json.dumps(document[CLE_LAYOUT][rang], sort_keys=True,
-                          default=str)
+        zone = document[CLE_LAYOUT][rang]
+        return json.dumps({cle: valeur for cle, valeur in zone.items()
+                           if cle not in geometrie},
+                          sort_keys=True, default=str)
 
     deja = {_zone(ancien, chemin) for chemin, _n in natures_inconnues(ancien)}
     for chemin, nature in refusees:
