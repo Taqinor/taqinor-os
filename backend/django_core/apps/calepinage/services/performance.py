@@ -175,9 +175,13 @@ def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE,
 
     colonne = _etapes.colonne_energie(serie)
     heures = _heures(serie)
+    # ACAL128 — UNE mesure de l'irradiation (``chaine_pertes``), plus un
+    # jumeau ici.
+    from apps.calepinage.services.chaine_pertes import irradiation_kwh_m2
+
     irradiation = (_nombre(irradiation_incidente)
                    if irradiation_incidente is not None
-                   else _irradiation_kwh_m2(points, heures))
+                   else irradiation_kwh_m2(serie))
     periode = _periode(points)
     puissance = _nombre(kwc)
 
@@ -231,21 +235,6 @@ def _heures(serie):
     """La durée d'un point, en heures."""
     pas = _nombre(serie.get('pas_minutes')) or _etapes.PAS_MINUTES_PVGIS
     return float(pas) / 60.0
-
-
-def _irradiation_kwh_m2(points, heures):
-    """``Σ G(i) × Δt`` en kWh/m², ou ``None`` si la colonne est illisible."""
-    total = 0.0
-    lues = 0
-    for point in points:
-        valeur = _nombre(point.get(COLONNE_IRRADIANCE))
-        if valeur is None:
-            continue
-        total += valeur
-        lues += 1
-    if not lues:
-        return None
-    return round(total * heures / 1000.0, 3)
 
 
 def _motif_du_refus(points, colonne, irradiation, puissance):
