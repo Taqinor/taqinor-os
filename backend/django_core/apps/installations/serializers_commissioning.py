@@ -47,6 +47,26 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             'ventes_recette_id', 'iv_readings',
         ]
 
+    def validate(self, attrs):
+        """CIQ625 — ``resultat`` est CALCULÉ par le serveur à chaque écriture
+        (``core.recette.resultat`` : un essai faux ⇒ non conforme, tous vrais
+        ⇒ conforme, sinon en cours) : un ``resultat`` envoyé par le client est
+        IGNORÉ, sauf le seul choix humain « conforme avec réserves »
+        (``reserves``), admis seulement quand TOUS les essais sont vrais —
+        sinon 400 FR nommant ``resultat``."""
+        from core.recette.resultat import RESERVES, ReservesRefusees
+
+        from .services import resultat_recette_fiche
+        demande = attrs.pop('resultat', None)
+        fiche = (self.instance if self.instance is not None
+                 else CommissioningRecord())
+        try:
+            attrs['resultat'] = resultat_recette_fiche(
+                fiche, attrs, choix=RESERVES if demande == RESERVES else None)
+        except ReservesRefusees as exc:
+            raise serializers.ValidationError({'resultat': str(exc)})
+        return attrs
+
     def get_instrument_nom(self, obj):
         instrument = obj.instrument
         return instrument.nom if instrument else None
@@ -68,37 +88,13 @@ class HandoverPackSerializer(serializers.ModelSerializer):
 
 
 # ── AGR608 — recette POMPAGE (contrat partagé recette_pompage.json) ─────────
-PROMESSE_CLES = ('debit_hmt_m3h', 'hmt_m', 'm3_jour', 'heures_pompage',
-                 'devis_reference', 'figee_le')
-
-
 def comparaison_recette_pompage(recette):
-    """Bloc ``comparaison`` du contrat. AGR608 ne calcule AUCUN écart : il
-    sert la promesse FIGÉE stockée (vide tant que la comparaison AGR609 ne
-    l'a pas figée) et dit pourquoi chaque valeur manque. Aucun seuil, aucune
-    tolérance, aucune correction d'irradiance."""
-    promesse_stockee = recette.promesse or {}
-    promesse = {cle: promesse_stockee.get(cle) for cle in PROMESSE_CLES}
-    omissions = []
-    if not promesse_stockee:
-        omissions.append({
-            'cle': 'promesse',
-            'motif': "promesse du devis non encore figée dans la fiche"})
-    omissions.append({
-        'cle': 'ecart_debit_pct',
-        'motif': "aucun débit attendu : écart non calculable"})
-    omissions.append({
-        'cle': 'hors_seuil',
-        'motif': "seuil d'écart non saisi par la société : aucun verdict"})
-    return {
-        'promesse': promesse,
-        'debit_attendu_a_hmt_mesuree_m3h': None,
-        'ecart_debit_pct': None,
-        'seuil_ecart_pct': None,
-        'hors_seuil': None,
-        'commentaire_requis': False,
-        'omissions': omissions,
-    }
+    """Bloc ``comparaison`` du contrat — AGR609 : calculé par LE service
+    ``services.comparer_recette_pompage`` (promesse FIGÉE, débit attendu à la
+    HMT mesurée, écart, seuil société sans défaut). Aucune correction
+    d'irradiance, aucun verdict sans seuil."""
+    from .services import comparer_recette_pompage
+    return comparer_recette_pompage(recette)
 
 
 class RecettePompageSerializer(serializers.ModelSerializer):
@@ -132,6 +128,29 @@ class RecettePompageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Technicien inconnu.')
         return value
 
+    def validate(self, attrs):
+        """AGR609 (d) — un écart AU-DELÀ du seuil SAISI par la société exige
+        ``commentaire_ecart`` (400 FR). Jugé sur l'état APRÈS l'écriture
+        (fiche + champs reçus) ; seuil non saisi ⇒ aucun verdict, rien
+        d'exigé."""
+        import copy
+
+        from .services import (
+            comparer_recette_pompage, message_commentaire_requis,
+        )
+        if self.instance is None:
+            return attrs
+        apres = copy.copy(self.instance)
+        for champ, valeur in attrs.items():
+            setattr(apres, champ, valeur)
+        comparaison = comparer_recette_pompage(apres)
+        if (comparaison['commentaire_requis']
+                and not (apres.commentaire_ecart or '').strip()):
+            raise serializers.ValidationError({
+                'commentaire_ecart': message_commentaire_requis(
+                    comparaison['ecart_debit_pct'])})
+        return attrs
+
     @extend_schema_field(serializers.CharField())
     def get_cadre(self, obj):
         return RecettePompage.CADRE
@@ -142,17 +161,9 @@ class RecettePompageSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.DictField())
     def get_vue_portail(self, obj):
-        comp = comparaison_recette_pompage(obj)
-        return {
-            'date_essai': (obj.date_essai.isoformat()
-                           if obj.date_essai else None),
-            'hmt_mesuree_m': obj.hmt_mesuree_m,
-            'debit_mesure_m3h': obj.debit_mesure_m3h,
-            'debit_promis_m3h': comp['promesse'].get('debit_hmt_m3h'),
-            'ecart_debit_pct': comp['ecart_debit_pct'],
-            'commentaire_ecart': obj.commentaire_ecart,
-            'resultat': obj.resultat,
-        }
+        # AGR612 — UNE liste blanche, partagée avec le portail client.
+        from .services import vue_portail_recette_pompage
+        return vue_portail_recette_pompage(obj)
 
 
 def recette_pompage_envelope(installation, recette, context=None):

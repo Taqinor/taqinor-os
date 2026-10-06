@@ -3013,6 +3013,23 @@ def chantier_du_client_portail_obj(company, client_id, chantier_id):
         company=company, client_id=client_id, pk=chantier_id).first()
 
 
+def recette_pompage_portail(company, client_id, chantier_id):
+    """AGR612 — la recette POMPAGE d'UN chantier du client, réduite au
+    sous-objet ``vue_portail`` du contrat ``recette_pompage.json`` (lecture
+    seule). ``None`` si le chantier n'est pas celui du client (triplet
+    société/client/id exigé) ou s'il n'a pas de fiche. Jamais l'instrument,
+    le technicien, un prix ni ``prix_achat``."""
+    chantier = chantier_du_client_portail_obj(company, client_id, chantier_id)
+    if chantier is None:
+        return None
+    from .models import RecettePompage
+    recette = RecettePompage.objects.filter(installation=chantier).first()
+    if recette is None:
+        return None
+    from .services import vue_portail_recette_pompage
+    return vue_portail_recette_pompage(recette)
+
+
 def photos_chantier_client_portail(company, client_id, chantier_id, *, phase=None):
     """NTPRT14 — Photos (``records.Attachment``) d'UN chantier du client, au
     format PLAT attendu par la galerie portail avant/pendant/après. Réutilise

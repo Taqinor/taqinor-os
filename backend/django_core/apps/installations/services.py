@@ -4902,3 +4902,247 @@ def sync_indisponibilite_maintenance(company, emplacement_stock_id,
                 date_fin=today + timedelta(days=365), created_by=user)
     else:
         marquees.filter(date_fin__gte=today).update(date_fin=today)
+
+
+# ── AGR609 — recette POMPAGE : la mesure face à la promesse du devis ────────
+
+#: Clés de la promesse FIGÉE dans la fiche (contrat ``recette_pompage.json``,
+#: ``comparaison.promesse``).
+PROMESSE_POMPAGE_CLES = ('debit_hmt_m3h', 'hmt_m', 'm3_jour',
+                         'heures_pompage', 'devis_reference', 'figee_le')
+
+#: La formule, affichée en note à côté de l'écart (jamais une autre).
+NOTE_FORMULE_ECART = (
+    "Écart = (débit mesuré − débit promis) ÷ débit promis × 100. "
+    "L'irradiance est affichée à côté : aucune correction n'est calculée.")
+
+
+def figer_promesse_recette(recette):
+    """AGR609 (a) — FIGE la promesse du devis dans la fiche, à la PREMIÈRE
+    écriture, puis ne la relit plus jamais : une V2 du devis ne réécrit pas
+    une recette. Lue via ``ventes.selectors.promesse_pompage_devis`` (devis
+    du chantier, scopé société). Chantier sans devis ⇒ rien de figé (motif
+    servi par la comparaison). Rend la promesse (dict, éventuellement vide).
+    """
+    if recette.promesse:
+        return recette.promesse
+    installation = recette.installation
+    if not installation.devis_id:
+        return {}
+    from django.utils import timezone
+
+    from apps.ventes.selectors import promesse_pompage_devis
+    promesse = promesse_pompage_devis(installation.devis_id,
+                                      installation.company)
+    if promesse is None:
+        return {}
+    figee = {cle: promesse.get(cle) for cle in PROMESSE_POMPAGE_CLES}
+    figee['figee_le'] = timezone.localdate().isoformat()
+    recette.promesse = figee
+    recette.save(update_fields=['promesse'])
+    return figee
+
+
+def _pompe_de_la_nomenclature(installation):
+    """La pompe de la nomenclature GELÉE du chantier (``Installation.bom``),
+    forme catalogue ``stock.selectors.produits_pompage`` — ou ``None``."""
+    ids = [ligne.get('produit_id') for ligne in (installation.bom or [])
+           if isinstance(ligne, dict) and ligne.get('produit_id')]
+    if not ids:
+        return None
+    from apps.stock.selectors import produits_pompage
+    par_id = {p['id']: p for p in produits_pompage(installation.company)
+              if p.get('role_pompage') == 'pompe'}
+    for produit_id in ids:
+        if produit_id in par_id:
+            return par_id[produit_id]
+    return None
+
+
+def _seuil_ecart_societe(company):
+    if company is None:
+        return None
+    from apps.parametres.models import CompanyProfile
+    seuil = (CompanyProfile.objects.filter(company=company)
+             .values_list('recette_pompage_ecart_max_pct', flat=True)
+             .first())
+    return float(seuil) if seuil is not None else None
+
+
+def _nombre(valeur):
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+def comparer_recette_pompage(recette):
+    """AGR609 — le bloc ``comparaison`` du contrat ``recette_pompage.json``.
+
+    * ``promesse`` : la copie FIGÉE (:func:`figer_promesse_recette`) — jamais
+      relue en direct ;
+    * ``debit_attendu_a_hmt_mesuree_m3h`` : la courbe de la pompe de la
+      nomenclature gelée lue à la HMT MESURÉE par LA fonction serveur du
+      moteur agricole (``core.pompage.hydraulique.debit_a_hmt``, AGR109) —
+      jamais une 3e implémentation ; pompe sans courbe ⇒ null + motif ;
+    * ``ecart_debit_pct`` = (débit mesuré − débit promis) ÷ débit promis ×
+      100 (formule servie dans ``note_formule``) ; promesse absente ⇒ omis
+      avec le motif « le devis ne porte pas de débit promis » ;
+    * ``seuil_ecart_pct`` = réglage SOCIÉTÉ (AGR606), sans défaut : non saisi
+      ⇒ ``hors_seuil`` null, aucun verdict ; au-delà ⇒ ``commentaire_requis``.
+
+    Aucune correction d'irradiance (pas de formule sourcée) : l'irradiance
+    reste affichée dans la fiche. Lecture seule, aucun statut touché.
+    """
+    promesse_stockee = recette.promesse or {}
+    promesse = {cle: promesse_stockee.get(cle)
+                for cle in PROMESSE_POMPAGE_CLES}
+    omissions = []
+    hmt = _nombre(recette.hmt_mesuree_m)
+    mesure = _nombre(recette.debit_mesure_m3h)
+
+    attendu = None
+    pompe = _pompe_de_la_nomenclature(recette.installation)
+    if pompe is None:
+        omissions.append({
+            'cle': 'debit_attendu_a_hmt_mesuree_m3h',
+            'motif': "aucune pompe dans la nomenclature gelée du chantier : "
+                     "débit attendu non calculable"})
+    elif not (pompe.get('courbe_pompe') or {}).get('debits_m3h'):
+        omissions.append({
+            'cle': 'debit_attendu_a_hmt_mesuree_m3h',
+            'motif': "pompe sans courbe constructeur : débit attendu non "
+                     "calculable"})
+    elif hmt is None:
+        omissions.append({
+            'cle': 'debit_attendu_a_hmt_mesuree_m3h',
+            'motif': "HMT mesurée non saisie : débit attendu non "
+                     "calculable"})
+    else:
+        from core.pompage.hydraulique import debit_a_hmt
+        brut = debit_a_hmt(pompe['courbe_pompe'], hmt)
+        attendu = round(brut, 1) if brut is not None else None
+        if attendu is None:
+            omissions.append({
+                'cle': 'debit_attendu_a_hmt_mesuree_m3h',
+                'motif': "HMT mesurée hors de la courbe de la pompe"})
+
+    promis = _nombre(promesse.get('debit_hmt_m3h'))
+    ecart = None
+    if not promesse_stockee:
+        omissions.append({
+            'cle': 'promesse',
+            'motif': "promesse du devis non encore figée dans la fiche"})
+    if promis is None or promis <= 0:
+        omissions.append({
+            'cle': 'ecart_debit_pct',
+            'motif': "le devis ne porte pas de débit promis"})
+    elif mesure is None:
+        omissions.append({
+            'cle': 'ecart_debit_pct',
+            'motif': "débit mesuré non saisi : écart non calculable"})
+    else:
+        ecart = round((mesure - promis) / promis * 100.0, 1)
+
+    seuil = _seuil_ecart_societe(recette.company
+                                 or recette.installation.company)
+    hors_seuil = None
+    if seuil is None:
+        omissions.append({
+            'cle': 'hors_seuil',
+            'motif': "seuil d'écart non saisi par la société : aucun "
+                     "verdict"})
+    elif ecart is not None:
+        hors_seuil = abs(ecart) > seuil
+    return {
+        'promesse': promesse,
+        'debit_attendu_a_hmt_mesuree_m3h': attendu,
+        'ecart_debit_pct': ecart,
+        'seuil_ecart_pct': seuil,
+        'hors_seuil': hors_seuil,
+        'commentaire_requis': hors_seuil is True,
+        'note_formule': NOTE_FORMULE_ECART,
+        'omissions': omissions,
+    }
+
+
+def message_commentaire_requis(ecart):
+    """Le refus FR quand un écart hors seuil n'a pas de commentaire."""
+    texte = ('%.1f' % ecart).replace('.', ',')
+    return ("Écart de %s %% au-delà du seuil de la société : commentaire "
+            "requis" % texte)
+
+
+def vue_portail_recette_pompage(recette, comparaison=None):
+    """AGR608/AGR612 — le sous-objet ``vue_portail`` du contrat
+    ``recette_pompage.json`` : ce que le CLIENT voit (date, HMT et débit
+    mesurés, débit promis, écart, commentaire, résultat). LISTE BLANCHE —
+    jamais l'instrument, le technicien, un prix ni ``prix_achat``."""
+    if comparaison is None:
+        comparaison = comparer_recette_pompage(recette)
+    return {
+        'date_essai': (recette.date_essai.isoformat()
+                       if recette.date_essai else None),
+        'hmt_mesuree_m': recette.hmt_mesuree_m,
+        'debit_mesure_m3h': recette.debit_mesure_m3h,
+        'debit_promis_m3h': comparaison['promesse'].get('debit_hmt_m3h'),
+        'ecart_debit_pct': comparaison['ecart_debit_pct'],
+        'commentaire_ecart': recette.commentaire_ecart,
+        'resultat': recette.resultat,
+    }
+
+
+# ── CIQ625 — le résultat de la recette IEC 62446-1 est CALCULÉ ──────────────
+
+#: Les ESSAIS de la fiche ``CommissioningRecord`` (booléens) qui font son
+#: résultat (``core.recette.resultat``). Un relevé I-V en défaut est un essai
+#: faux de plus.
+ESSAIS_RECETTE = (
+    'doc_dossier_ok', 'doc_schema_ok', 'doc_datasheets_ok',
+    'visuel_structure_ok', 'visuel_cablage_ok', 'visuel_terre_ok',
+    'continuite_terre_ok', 'polarite_ok', 'isolement_ok', 'performance_ok',
+    'securite_coupure_ok', 'securite_signalisation_ok',
+)
+
+
+def essais_recette(record, modifications=None):
+    """CIQ625 — la liste des essais de la fiche APRÈS ``modifications``
+    (champs reçus d'un PATCH, ``None`` = l'état stocké) + un essai faux par
+    relevé I-V en défaut."""
+    modifications = modifications or {}
+    essais = [modifications.get(champ, getattr(record, champ, None))
+              for champ in ESSAIS_RECETTE]
+    if getattr(record, 'pk', None) is not None and \
+            record.iv_readings.filter(defaut_detecte=True).exists():
+        essais.append(False)
+    return essais
+
+
+def resultat_recette_fiche(record, modifications=None, choix=None):
+    """CIQ625 — le résultat que la fiche DOIT porter : calculé par
+    ``core.recette.resultat`` ; le seul choix humain admis est ``reserves``
+    (tous les essais vrais). Un ``reserves`` déjà posé est CONSERVÉ tant que
+    les essais restent tous vrais (un PATCH sans ``resultat`` ne le rétrograde
+    pas). Lève ``core.recette.resultat.ReservesRefusees`` sur un ``reserves``
+    DEMANDÉ alors qu'un essai n'est pas vrai."""
+    from core.recette.resultat import (
+        CONFORME, RESERVES, resultat_avec_choix, resultat_recette,
+    )
+    essais = essais_recette(record, modifications)
+    if choix is None and getattr(record, 'resultat', None) == RESERVES \
+            and resultat_recette(essais) == CONFORME:
+        choix = RESERVES
+    return resultat_avec_choix(essais, choix)
+
+
+def recalculer_resultat_recette(record):
+    """CIQ625 — recalcule et persiste le résultat après une écriture qui ne
+    passe pas par le sérialiseur (relevé I-V ajouté). Aucun statut de devis
+    touché (règle #4). Rend le résultat."""
+    resultat = resultat_recette_fiche(record)
+    if record.resultat != resultat:
+        record.resultat = resultat
+        record.save(update_fields=['resultat'])
+    return resultat
