@@ -1890,9 +1890,17 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # (200) au lieu de dupliquer les octets (201).
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # ADOC10 — dédup bornée au document DEMANDÉ (jamais la version d'un
+        # autre document), après la garde de visibilité.
+        document = serializer.validated_data['document']
+        if not selectors.documents_visible_to_user(
+                request.user).filter(pk=document.pk).exists():
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Document inconnu.')
         checksum = serializer.validated_data.get('checksum', '')
         if checksum:
-            existing = services.find_duplicate(request.user.company, checksum)
+            existing = services.find_duplicate(
+                request.user.company, checksum, document=document)
             if existing is not None:
                 return Response(
                     self.get_serializer(existing).data,

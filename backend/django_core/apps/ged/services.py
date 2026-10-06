@@ -825,9 +825,22 @@ def restore_version(document, source_version, *, uploaded_by=None):
     )
 
 
-def find_duplicate(company, checksum):
-    """Première version d'une société portant ce checksum, ou None (dedup)."""
+def find_duplicate(company, checksum, *, document=None):
+    """Première version d'une société portant ce checksum, ou None (dedup).
+
+    ADOC10 — avec `document`, la déduplication est BORNÉE à ce document : seule
+    sa DERNIÈRE version est un doublon (re-déposer le fichier courant) ; un
+    retour au contenu d'une version plus ancienne, ou un fichier identique à
+    celui d'un AUTRE document, crée bien une nouvelle version."""
     if not checksum:
+        return None
+    if document is not None:
+        derniere = (DocumentVersion.objects
+                    .filter(company=company, document=document)
+                    .order_by('-version', '-id')
+                    .first())
+        if derniere is not None and derniere.checksum == checksum:
+            return derniere
         return None
     return (DocumentVersion.objects
             .filter(company=company, checksum=checksum)
