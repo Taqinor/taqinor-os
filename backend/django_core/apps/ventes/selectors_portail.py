@@ -106,8 +106,11 @@ def devis_du_client_portail_obj(company, client_id, devis_id):
 
     if company is None or not client_id or not devis_id:
         return None
+    # ADOC125 — même périmètre que la liste : une version REMPLACÉE
+    # (is_active=False) est introuvable, donc jamais acceptable au portail.
     return (Devis.objects
-            .filter(company=company, client_id=client_id, pk=devis_id)
+            .filter(company=company, client_id=client_id, pk=devis_id,
+                    is_active=True)
             .exclude(statut=Devis.Statut.BROUILLON)
             .first())
 
@@ -208,8 +211,10 @@ def resume_portail_client(company, client_id):
     if company is None or not client_id:
         return vide
 
+    # ADOC125 — is_active=True : périmètre EXACT de « Mes devis » (QJR520) ;
+    # une version remplacée par une révision ne compte plus.
     devis_en_attente = Devis.objects.filter(
-        company=company, client_id=client_id,
+        company=company, client_id=client_id, is_active=True,
         statut=Devis.Statut.ENVOYE).count()
 
     factures_impayees_qs = Facture.objects.filter(
