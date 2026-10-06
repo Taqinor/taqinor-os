@@ -26,6 +26,9 @@ def apply_product_bulk(*, company, user, ids, op, params):
     Renvoie {ok, updated, skipped:[{id,nom,reason}]}. Le prix d'achat reste
     intouché en toutes circonstances."""
     from .models import Produit, Categorie
+    from .views.produit import (
+        _champs_modifies, _instantane_suivi, emettre_produit_modifie,
+    )
 
     if op not in BULK_ACTIONS:
         raise ValueError("Action en masse inconnue.")
@@ -58,8 +61,14 @@ def apply_product_bulk(*, company, user, ids, op, params):
             if new_price < 0:
                 skip(p, "prix négatif refusé")
                 continue
+            # ASTK88 — avant/après capturés ICI, émis dans la transaction de
+            # la requête (le récepteur ventes planifie on_commit) : la
+            # variation en masse recale les devis comme l'édition unitaire.
+            avant = _instantane_suivi(p)
             p.prix_vente = new_price.quantize(Decimal('0.01'))
             p.save(update_fields=['prix_vente'])  # prix_achat JAMAIS touché
+            emettre_produit_modifie(
+                p, _champs_modifies(avant, p), company, user)
             updated += 1
 
         elif op == 'set_warranty':

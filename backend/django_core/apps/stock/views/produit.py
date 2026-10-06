@@ -107,6 +107,40 @@ def _texte_champ(valeur):
     return '' if valeur is None else str(valeur)
 
 
+def _instantane_suivi(produit):
+    """ASTK88 — instantané AVANT des champs suivis par les devis."""
+    return {champ: getattr(produit, champ, None)
+            for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS}
+
+
+def _champs_modifies(avant, produit):
+    """ASTK88 — calcul UNIQUE des champs suivis qui ont changé :
+    ``{champ: [ancien, nouveau]}`` (textes), vide si rien n'a bougé. Partagé
+    par l'édition unitaire (``perform_update``) et l'édition en masse
+    (``services.apply_product_bulk``)."""
+    champs = {}
+    for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS:
+        apres = getattr(produit, champ, None)
+        if avant[champ] != apres:
+            champs[champ] = [_texte_champ(avant[champ]),
+                             _texte_champ(apres)]
+    return champs
+
+
+def emettre_produit_modifie(produit, champs, company, user):
+    """ASTK88 — annonce ``produit_modifie`` sur le bus (best-effort : un
+    abonné en panne ne bloque jamais l'écriture). Sans champ modifié : rien."""
+    if not champs:
+        return
+    try:
+        from core.events import produit_modifie
+        produit_modifie.send(
+            sender=Produit, produit=produit, company=company, user=user,
+            champs=champs)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture
+        pass
+
+
 def _sans_accents(expression):
     """STKCAT27 — `public.f_unaccent(<expression>)`.
 
@@ -388,36 +422,22 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         Best-effort : l'émission ne peut pas faire échouer l'enregistrement du
         produit (un abonné en panne ne doit pas bloquer le magasinier).
 
-        PÉRIMÈTRE ASSUMÉ : l'édition EN MASSE (action ``bulk``) n'émet pas —
-        elle passe par ``services.apply_product_bulk``, pas par ce point. C'est
-        un manque CONNU, pas un oubli : le brancher demande de décider ce qu'on
-        fait de N × M devis en une requête (file, lot, plafond), une question
-        qui se tranche à part.
+        ASTK88 : l'édition EN MASSE (action ``bulk``) passe par
+        ``services.apply_product_bulk`` et émet le MÊME événement, avec le même
+        calcul (``_champs_modifies``) — la variation de prix en masse recale
+        les devis comme l'édition unitaire.
         """
-        avant = {champ: getattr(serializer.instance, champ, None)
-                 for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS}
+        avant = _instantane_suivi(serializer.instance)
         # L'écriture PASSE PAR ``super()`` : c'est lui qui force la société côté
         # serveur (``TenantMixin.perform_update``). Sauvegarder soi-même ici
         # défairait cette garde d'isolation.
         super().perform_update(serializer)
         produit = serializer.instance
-        champs = {}
-        for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS:
-            apres = getattr(produit, champ, None)
-            if avant[champ] != apres:
-                champs[champ] = [_texte_champ(avant[champ]),
-                                 _texte_champ(apres)]
-        if not champs:
-            return  # rien de significatif n'a bougé : aucun événement
-        try:
-            from core.events import produit_modifie
-            produit_modifie.send(
-                sender=Produit, produit=produit,
-                company=getattr(self.request.user, 'company', None),
-                user=getattr(self.request, 'user', None),
-                champs=champs)
-        except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture
-            pass
+        # rien de significatif n'a bougé : aucun événement (helper ASTK88)
+        emettre_produit_modifie(
+            produit, _champs_modifies(avant, produit),
+            getattr(self.request.user, 'company', None),
+            getattr(self.request, 'user', None))
 
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()
