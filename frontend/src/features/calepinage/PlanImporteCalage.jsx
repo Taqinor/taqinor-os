@@ -1,17 +1,17 @@
 /* eslint-disable react-refresh/only-export-components --
-   Les quatre fonctions de TRANSFORMATION exportées ci-dessous sont PURES
-   (géométrie, zéro React) : la tâche exige explicitement un « test unitaire de
-   la transformation », qui doit donc pouvoir les appeler sans monter l'écran.
-   Les sortir dans un `.js` voisin séparerait la formule de son unique lecteur
-   pour satisfaire une règle de fast-refresh qui ne concerne pas des fonctions
-   sans état ; même dérogation que `module.config.jsx` du même module. */
-import { useEffect, useState } from 'react'
+   `echelleDepuisDeuxPoints` est une fonction PURE (géométrie, zéro React) : la
+   tâche exige explicitement un « test unitaire » de l'échelle, qui doit donc
+   pouvoir l'appeler sans monter l'écran. La sortir dans un `.js` voisin
+   séparerait la formule de son unique lecteur pour satisfaire une règle de
+   fast-refresh qui ne concerne pas une fonction sans état ; même dérogation
+   que `module.config.jsx` du même module. */
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
-   CAL63 — CALER UN PLAN IMPORTÉ : translation, rotation, ÉCHELLE SAISIE.
+   CAL63 — CALER UN PLAN IMPORTÉ : rotation, ÉCHELLE SAISIE.
    ----------------------------------------------------------------------------
    Constat de la tâche : l'atelier n'a aucune manipulation de plan importé
    (aucun `rotate`/`scale` de calque dans `roofPro11/`). Un plan déposé reste
@@ -25,23 +25,27 @@ import RetourAtelier from './atelier/RetourAtelier'
    l'échelle ni du cartouche, ni de l'unité déclarée, ni d'une hypothèse de
    format : l'utilisateur DÉSIGNE DEUX POINTS du plan et TAPE la distance
    RÉELLE qui les sépare. Sans cette saisie, `echelleDepuisDeuxPoints` rend
-   `null` et l'écran refuse de convertir — il n'invente pas un facteur 1.
+   `null` et l’écran refuse de poser le pan — il n’invente pas un facteur 1.
 
-   LE CALAGE EST PERSISTÉ DANS LE DOCUMENT DE CONCEPTION (`roof_layout`, clé
-   `planImporte`, schéma v2 `additionalProperties: true`), relu au montage par
-   la MÊME porte `layout/` (CAL18) — aucun second stockage, aucune seconde
-   forme d'URL.
+   LE SERVEUR POSE LE CONTOUR SUR LE TOIT (ACAL70). Le calage (deux sommets de
+   référence A et B, la distance RÉELLE saisie, la rotation) part à
+   `importer-plan/` avec le fichier : le serveur rend `contour_lnglat`, le
+   contour calé en [lng, lat] autour de l'épingle du calepinage (un seul repère
+   local, `services/zones.py`). « Poser comme pan du toit » le passe à
+   `builderApi.ajouterPanDepuisContour` : un VRAI pan apparaît dans l'atelier,
+   à enregistrer avec la conception. Cet écran n'écrit donc plus RIEN dans le
+   document : plus de clé `planImporte` (sans lecteur, effacée par l'atelier),
+   plus de « Convertir en tracé de toit » (il écrivait des unités de plan dans
+   `outline`), plus d'aimantation (elle comparait des unités de plan à des
+   degrés) — l'aimantation se fait dans l'atelier, une fois le pan posé.
 
    D'OÙ VIENT LE CONTOUR (CALX39). L'analyseur de CAL62 a désormais sa porte
    HTTP : `POST calepinages/<pk>/importer-plan/` (contrat
    `apps/calepinage/contract_samples/calepinage_import_plan.json`). Le fichier
    déposé ici est ANALYSÉ par le serveur, qui rend ses calques ; le calque
    choisi rend le contour. Cette porte n'écrit RIEN — ni `roof_layout`, ni
-   document : l'enregistrement reste les deux boutons du bas, et c'est
-   l'utilisateur qui les presse. Le contour peut toujours arriver par la
-   propriété `contour` ou depuis un calage déjà enregistré ; sans aucun des
-   trois, l'écran le DIT au lieu d'afficher un calque vide qui aurait l'air
-   cassé.
+   document. Sans plan analysé, l'écran le DIT au lieu d'afficher un calque
+   vide qui aurait l'air cassé.
 
    LE SERVEUR NE DEVINE AUCUNE ÉCHELLE, ET CET ÉCRAN NON PLUS : la réponse
    porte l'unité DÉCLARÉE par le fichier (ou « inconnu ») et le motif qui dit
@@ -50,9 +54,6 @@ import RetourAtelier from './atelier/RetourAtelier'
    ========================================================================== */
 
 const RAD = Math.PI / 180
-
-/** ACAL213 — un tracé de toit demande au moins trois sommets. */
-const MIN_SOMMETS = 3
 
 /**
  * CAL63 — l'ÉCHELLE, depuis deux points de référence et la distance RÉELLE
@@ -78,73 +79,6 @@ export function echelleDepuisDeuxPoints(a, b, distanceReelleM) {
     distancePlan,
     source: 'saisie',
   }
-}
-
-/**
- * CAL63 — la TRANSFORMATION d'un point du plan : rotation autour d'un pivot,
- * mise à l'échelle, puis translation. L'ordre est figé (et testé) parce que
- * deux ordres différents donnent deux plans différents.
- *
- * `calage` : `{ pivot: [x, y], rotationDeg, echelle, translation: [tx, ty] }`.
- * Toute composante absente est NEUTRE (pivot à l'origine, rotation nulle,
- * échelle 1, translation nulle) — neutre, pas « devinée » : le neutre ne
- * déplace rien, une estimation, si.
- */
-export function appliquerCalage(point, calage = {}) {
-  if (!Array.isArray(point) || point.length < 2) return null
-  const [px, py] = calage.pivot ?? [0, 0]
-  const angle = Number(calage.rotationDeg ?? 0) * RAD
-  const k = Number.isFinite(Number(calage.echelle)) && Number(calage.echelle) > 0
-    ? Number(calage.echelle) : 1
-  const [tx, ty] = calage.translation ?? [0, 0]
-
-  const dx = Number(point[0]) - Number(px)
-  const dy = Number(point[1]) - Number(py)
-  const cos = Math.cos(angle)
-  const sin = Math.sin(angle)
-  const rx = dx * cos - dy * sin
-  const ry = dx * sin + dy * cos
-  return [
-    Number(px) + rx * k + Number(tx),
-    Number(py) + ry * k + Number(ty),
-  ]
-}
-
-/** CAL63 — le contour entier calé. Un contour non exploitable rend `[]`. */
-export function calerContour(contour, calage) {
-  if (!Array.isArray(contour)) return []
-  return contour
-    .map((point) => appliquerCalage(point, calage))
-    .filter(Boolean)
-}
-
-/**
- * CAL63 — AIMANTATION : un point se colle au sommet de mur/objet le plus
- * proche, à condition qu'il soit DANS la tolérance. Hors tolérance, le point
- * ne bouge pas (`aimante: false`) — on ne tire jamais un tracé vers un mur
- * éloigné « pour faire propre ».
- */
-export function aimanter(point, cibles, tolerance) {
-  const seuil = Number(tolerance)
-  if (!Array.isArray(point) || !Array.isArray(cibles) || !cibles.length
-    || !Number.isFinite(seuil) || seuil <= 0) {
-    return { point, aimante: false, distance: null }
-  }
-  let meilleure = null
-  let distanceMin = Infinity
-  for (const cible of cibles) {
-    if (!Array.isArray(cible) || cible.length < 2) continue
-    const d = Math.hypot(Number(cible[0]) - Number(point[0]),
-      Number(cible[1]) - Number(point[1]))
-    if (d < distanceMin) {
-      distanceMin = d
-      meilleure = cible
-    }
-  }
-  if (meilleure === null || distanceMin > seuil) {
-    return { point, aimante: false, distance: Number.isFinite(distanceMin) ? distanceMin : null }
-  }
-  return { point: [Number(meilleure[0]), Number(meilleure[1])], aimante: true, distance: distanceMin }
 }
 
 /** Une valeur servie, ou le tiret de l'inconnu — jamais un zéro de repli. */
@@ -175,17 +109,14 @@ function ChampNombre({ cle, label, valeur, erreur, onChange }) {
 }
 
 export default function PlanImporteCalage({
-  calepinageId: idPropose, contour: contourPropose = null,
+  calepinageId: idPropose, builderApi = null,
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
-  const [layout, setLayout] = useState(null)
   const [saisie, setSaisie] = useState({
-    translationX: '', translationY: '', rotationDeg: '',
-    indexA: '0', indexB: '1', distanceReelleM: '', tolerance: '',
+    rotationDeg: '', indexA: '0', indexB: '1', distanceReelleM: '',
   })
-  const [aimantationActive, setAimantationActive] = useState(false)
   const [message, setMessage] = useState(null)
   const [refus, setRefus] = useState(null)
   // CALX39 — le plan déposé, l'analyse rendue par le serveur, le calque choisi
@@ -198,102 +129,11 @@ export default function PlanImporteCalage({
   const [contourImporte, setContourImporte] = useState(null)
   const [refusImport, setRefusImport] = useState(null)
 
-  // RELECTURE du calage persisté : la MÊME porte `layout/` que la conception.
-  useEffect(() => {
-    if (!calepinageId) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const document = res?.data?.roof_layout ?? null
-        setLayout(document)
-        const calage = document?.planImporte?.calage
-        if (!calage) return
-        setSaisie((s) => ({
-          ...s,
-          translationX: String(calage.translation?.[0] ?? ''),
-          translationY: String(calage.translation?.[1] ?? ''),
-          rotationDeg: String(calage.rotationDeg ?? ''),
-          indexA: String(calage.indexA ?? '0'),
-          indexB: String(calage.indexB ?? '1'),
-          distanceReelleM: String(calage.distanceReelleM ?? ''),
-        }))
-      })
-      .catch(() => { if (!annule) setLayout(null) })
-    return () => { annule = true }
-  }, [calepinageId])
-
-  const contour = contourPropose ?? contourImporte
-    ?? layout?.planImporte?.contour ?? null
-  const sommets = Array.isArray(contour) ? contour : []
+  const sommets = Array.isArray(contourImporte) ? contourImporte : []
 
   const pointA = sommets[Number(saisie.indexA)] ?? null
   const pointB = sommets[Number(saisie.indexB)] ?? null
   const mesure = echelleDepuisDeuxPoints(pointA, pointB, saisie.distanceReelleM)
-
-  const calage = {
-    pivot: pointA ?? [0, 0],
-    rotationDeg: Number(saisie.rotationDeg) || 0,
-    echelle: mesure?.echelle,
-    translation: [Number(saisie.translationX) || 0, Number(saisie.translationY) || 0],
-  }
-
-  // Les sommets des murs/objets DÉJÀ tracés : les cibles d'aimantation. Ils
-  // viennent du document de conception, jamais d'une grille inventée.
-  const cibles = Array.isArray(layout?.outline) ? layout.outline : []
-  const brut = calerContour(sommets, calage)
-  const cale = aimantationActive
-    ? brut.map((p) => aimanter(p, cibles, Number(saisie.tolerance)).point)
-    : brut
-
-  const enregistrer = () => {
-    if (!mesure) {
-      setRefus('distanceReelleM')
-      setMessage(null)
-      return
-    }
-    setRefus(null)
-    const document = {
-      ...(layout ?? {}),
-      planImporte: {
-        contour: sommets,
-        calage: {
-          translation: calage.translation,
-          rotationDeg: calage.rotationDeg,
-          echelle: mesure.echelle,
-          echelle_source: mesure.source,
-          indexA: Number(saisie.indexA),
-          indexB: Number(saisie.indexB),
-          distanceReelleM: Number(saisie.distanceReelleM),
-        },
-        contour_cale: cale,
-      },
-    }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
-      .then(() => {
-        setLayout(document)
-        setMessage('Calage enregistré : il sera rechargé tel quel.')
-      })
-      .catch((e) => setMessage(
-        e?.response?.data?.roof_layout
-        || 'Le calage n’a pas pu être enregistré.'))
-  }
-
-  const convertir = () => {
-    if (sommets.length < MIN_SOMMETS) return
-    if (!mesure) {
-      setRefus('distanceReelleM')
-      return
-    }
-    setRefus(null)
-    const document = { ...(layout ?? {}), outline: cale }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
-      .then(() => {
-        setLayout(document)
-        setMessage('Plan converti en tracé de toit.')
-      })
-      .catch(() => setMessage('La conversion n’a pas pu être enregistrée.'))
-  }
 
   const majChamp = (cle, brutSaisi) => setSaisie((s) => ({ ...s, [cle]: brutSaisi }))
 
@@ -330,6 +170,72 @@ export default function PlanImporteCalage({
           champ,
           message: String(corpsErreur[champ]
             ?? 'Le plan n’a pas pu être analysé.'),
+        })
+      })
+  }
+
+  /* ACAL70 — « Poser comme pan du toit » : le calage part au SERVEUR avec le
+     fichier (`importer-plan/`), qui rend le contour en [lng, lat] autour de
+     l'épingle ; l'atelier le pose comme un vrai pan (refusé, motif nommé, s'il
+     se croise ou sort de l'amplitude GPS). Aucun POST du document : le pan est
+     à enregistrer avec la conception. */
+  const poserCommePan = () => {
+    if (!builderApi?.ajouterPanDepuisContour) {
+      setRefusImport({
+        champ: 'atelier',
+        message: 'Ouvrez cet onglet depuis l’atelier : le pan se pose dans la scène vivante.',
+      })
+      return
+    }
+    if (!fichierDepose) {
+      setRefusImport({
+        champ: 'fichier',
+        message: 'Déposez un plan (DXF ou PDF vectoriel) avant de le poser.',
+      })
+      return
+    }
+    if (!mesure) {
+      setRefus('distanceReelleM')
+      return
+    }
+    setRefus(null)
+    setRefusImport(null)
+    setMessage(null)
+    const corps = new FormData()
+    corps.append('fichier', fichierDepose)
+    corps.append('calque', calqueChoisi)
+    if (entiteChoisie) corps.append('entite', String(entiteChoisie))
+    corps.append('calage', JSON.stringify({
+      pointA, pointB,
+      distanceM: Number(saisie.distanceReelleM),
+      rotationDeg: Number(saisie.rotationDeg) || 0,
+    }))
+    Promise.resolve(calepinageApi.calepinages.importerPlan(calepinageId, corps))
+      .then((res) => {
+        const contourGeo = res?.data?.contour_lnglat
+        if (!Array.isArray(contourGeo) || !contourGeo.length) {
+          setRefusImport({
+            champ: 'contour',
+            message: 'Le serveur n’a rendu aucun contour calé : le pan n’est pas posé.',
+          })
+          return
+        }
+        const verdict = builderApi.ajouterPanDepuisContour(contourGeo)
+        if (verdict?.ok) {
+          setMessage('Pan posé dans l’atelier : enregistrez le calepinage pour le conserver.')
+        } else {
+          setRefusImport({
+            champ: 'contour',
+            message: verdict?.motif || 'Le contour n’a pas pu être posé comme pan.',
+          })
+        }
+      })
+      .catch((e) => {
+        const corpsErreur = e?.response?.data ?? {}
+        const champ = Object.keys(corpsErreur)[0] ?? 'fichier'
+        setRefusImport({
+          champ,
+          message: String(corpsErreur[champ] ?? 'Le plan n’a pas pu être calé.'),
         })
       })
   }
@@ -462,14 +368,8 @@ export default function PlanImporteCalage({
       {blocDepot}
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <ChampNombre cle="translationX" label="Translation X"
-          valeur={saisie.translationX} onChange={majChamp} />
-        <ChampNombre cle="translationY" label="Translation Y"
-          valeur={saisie.translationY} onChange={majChamp} />
         <ChampNombre cle="rotationDeg" label="Rotation (°)"
           valeur={saisie.rotationDeg} onChange={majChamp} />
-        <ChampNombre cle="tolerance" label="Tolérance d’aimantation"
-          valeur={saisie.tolerance} onChange={majChamp} />
       </div>
 
       <fieldset className="mt-4" data-testid="cal-calage-echelle">
@@ -500,16 +400,6 @@ export default function PlanImporteCalage({
         </p>
       </fieldset>
 
-      <label className="mt-4 flex items-center gap-2 text-sm text-lune-soft">
-        <input
-          type="checkbox"
-          data-testid="cal-calage-aimantation"
-          checked={aimantationActive}
-          onChange={(e) => setAimantationActive(e.target.checked)}
-        />
-        Aimanter aux murs et objets déjà tracés ({cibles.length} sommet(s) cible)
-      </label>
-
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
         <div data-testid="cal-calage-sommets">
           <dd className="fig text-lg text-white">{sommets.length}</dd>
@@ -526,24 +416,15 @@ export default function PlanImporteCalage({
       </dl>
 
       <div className="mt-4 flex flex-wrap gap-3">
-        <button type="button" onClick={enregistrer}
-          data-testid="cal-calage-enregistrer"
+        <button type="button" onClick={poserCommePan}
           className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
-          Enregistrer le calage
-        </button>
-        <button type="button" onClick={convertir}
-          data-testid="cal-calage-convertir"
-          disabled={sommets.length < MIN_SOMMETS}
-          className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-          Convertir en tracé de toit
+          Poser comme pan du toit
         </button>
       </div>
-      {sommets.length < MIN_SOMMETS && (
-        <p role="alert" className="mt-2 text-xs text-red-300"
-          data-testid="cal-calage-convertir-motif">
-          {`Conversion impossible : ce contour n’a que ${sommets.length} sommet(s) ; un tracé de toit demande au moins ${MIN_SOMMETS} sommets.`}
-        </p>
-      )}
+      <p className="mt-2 text-xs text-lune-faint">
+        Le contour calé devient un vrai pan de l’atelier (posé autour de l’épingle) :
+        enregistrez ensuite le calepinage pour le conserver.
+      </p>
 
       {message && (
         <p className="mt-3 text-sm text-lune-soft" role="status"

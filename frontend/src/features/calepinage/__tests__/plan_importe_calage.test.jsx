@@ -14,19 +14,22 @@ import { MemoryRouter } from 'react-router-dom'
 
 const layout = vi.fn()
 const enregistrerLayout = vi.fn()
+const importerPlan = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       enregistrerLayoutCalepinage: (...a) => enregistrerLayout(...a),
+      importerPlan: (...a) => importerPlan(...a),
     },
   },
 }))
 
 const {
-  default: PlanImporteCalage, echelleDepuisDeuxPoints, appliquerCalage,
-  calerContour, aimanter,
+  default: PlanImporteCalage, echelleDepuisDeuxPoints,
 } = await import('../PlanImporteCalage')
+const { default: userEvent } = await import('@testing-library/user-event')
+const { exempleContrat, reponseContrat } = await import('../../../test/fixtures/contractSamples')
 
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })
@@ -55,160 +58,143 @@ describe('CAL63 — l’échelle vient de la distance SAISIE, jamais d’une est
   })
 })
 
-describe('CAL63 — rotation, échelle puis translation, dans cet ordre', () => {
-  it('rotation de 90° autour de l’origine', () => {
-    const [x, y] = appliquerCalage([1, 0], { rotationDeg: 90 })
-    expect(x).toBeCloseTo(0, 10)
-    expect(y).toBeCloseTo(1, 10)
-  })
+/* ACAL70 — la rotation, l'échelle et la translation du contour sont désormais
+   calculées par le SERVEUR (`importer-plan/`, `contour_lnglat`, un seul repère
+   local) : les copies locales `appliquerCalage` / `calerContour` / `aimanter`
+   (unités de plan comparées à des degrés — porte SIT-G2-05) n'existent plus. */
 
-  it('rotation autour d’un PIVOT choisi : le pivot ne bouge pas', () => {
-    const pivot = [5, 5]
-    expect(appliquerCalage(pivot, { pivot, rotationDeg: 37 })[0]).toBeCloseTo(5, 10)
-    expect(appliquerCalage(pivot, { pivot, rotationDeg: 37 })[1]).toBeCloseTo(5, 10)
-  })
+/* ── 2. L'ÉCRAN : le plan se pose comme pan, par le serveur ──────────── */
 
-  it('échelle puis translation : (2,0) ×3 puis +(10,1) = (16,1)', () => {
-    const [x, y] = appliquerCalage([2, 0], { echelle: 3, translation: [10, 1] })
-    expect(x).toBeCloseTo(16, 10)
-    expect(y).toBeCloseTo(1, 10)
-  })
+const contrat = (variante) => exempleContrat('calepinage', 'calepinage_import_plan', variante)
+const reponse = (variante) => reponseContrat('calepinage', 'calepinage_import_plan', variante)
+const PLAN = () => new File(['0\nSECTION\n'], 'plan-toiture.dxf', { type: 'application/dxf' })
 
-  it('composition complète : 90°, ×2, translation (1,1)', () => {
-    const [x, y] = appliquerCalage([1, 0], {
-      rotationDeg: 90, echelle: 2, translation: [1, 1],
-    })
-    expect(x).toBeCloseTo(1, 10)   // 0×2 + 1
-    expect(y).toBeCloseTo(3, 10)   // 1×2 + 1
-  })
-
-  it('une composante absente est NEUTRE — elle ne déplace rien', () => {
-    expect(appliquerCalage([7, -3], {})).toEqual([7, -3])
-    // Une échelle nulle ou négative n'écrase pas le plan : elle est ignorée.
-    expect(appliquerCalage([7, -3], { echelle: 0 })).toEqual([7, -3])
-  })
-
-  it('le contour entier suit la même transformation', () => {
-    const contour = [[0, 0], [1, 0], [1, 1]]
-    const cale = calerContour(contour, { echelle: 2, translation: [5, 0] })
-    expect(cale).toEqual([[5, 0], [7, 0], [7, 2]])
-    expect(calerContour(null, {})).toEqual([])
-  })
-})
-
-describe('CAL63 — l’aimantation colle DANS la tolérance, et jamais au-delà', () => {
-  const murs = [[10, 10], [0, 0]]
-
-  it('un point à 0,3 avec une tolérance de 0,5 se colle au sommet du mur', () => {
-    const r = aimanter([0.3, 0], murs, 0.5)
-    expect(r.aimante).toBe(true)
-    expect(r.point).toEqual([0, 0])
-  })
-
-  it('un point hors tolérance ne bouge PAS — aucun tracé tiré « pour faire propre »', () => {
-    const r = aimanter([3, 0], murs, 0.5)
-    expect(r.aimante).toBe(false)
-    expect(r.point).toEqual([3, 0])
-  })
-
-  it('sans cible ni tolérance, le point est rendu tel quel', () => {
-    expect(aimanter([3, 0], [], 0.5).aimante).toBe(false)
-    expect(aimanter([3, 0], murs, 0).aimante).toBe(false)
-  })
-})
-
-/* ── 2. L'ÉCRAN : persistance, relecture, refus sous le champ ──────────── */
-
-const CONTOUR = [[0, 0], [4, 0], [4, 3]]
-
-const rendre = (contour = CONTOUR) => render(
-  <MemoryRouter>
-    <PlanImporteCalage calepinageId={7} contour={contour} />
-  </MemoryRouter>,
+const rendre = (props = {}) => render(
+  <MemoryRouter><PlanImporteCalage calepinageId={7} {...props} /></MemoryRouter>,
 )
 
-describe('CAL63 — l’écran cale, enregistre et relit', () => {
-  it('sans plan importé, il le DIT au lieu d’afficher un calque vide', async () => {
-    layout.mockResolvedValue({ data: { roof_layout: {} } })
-    rendre(null)
-    expect(await screen.findByTestId('cal-calage-sans-plan')).toBeInTheDocument()
+/** Dépose le plan, choisit le calque d'enveloppe et obtient son contour. */
+const proposerLeContour = async (utilisateur) => {
+  await screen.findByTestId('cal-calage-sans-plan')
+  await utilisateur.upload(screen.getByTestId('cal-calage-fichier'), PLAN())
+  await utilisateur.click(screen.getByTestId('cal-calage-analyser'))
+  await screen.findByTestId('cal-calage-analyse')
+  await utilisateur.selectOptions(screen.getByTestId('cal-calage-calque'), contrat('exemple').calque)
+  await utilisateur.click(screen.getByTestId('cal-calage-proposer'))
+  await screen.findByTestId('cal-calage-plan')
+}
+
+describe('ACAL70 — « Poser comme pan du toit » (le serveur géoréférence, l’atelier pose)', () => {
+  const builderApi = () => ({ ajouterPanDepuisContour: vi.fn(() => ({ ok: true, id: 'pan-3' })) })
+
+  beforeEach(() => {
+    importerPlan
+      .mockResolvedValueOnce(reponse('exemple_sans_calque'))
+      .mockResolvedValueOnce(reponse('exemple'))
   })
 
-  it('refuse d’enregistrer sans distance réelle, SOUS le champ fautif', async () => {
-    layout.mockResolvedValue({ data: { roof_layout: {} } })
-    rendre()
-    await screen.findByTestId('cal-calage-plan')
+  it('Poser comme pan → ajouterPanDepuisContour reçoit des [lng,lat] proches de l’épingle ; aucun POST layout/', async () => {
+    const utilisateur = userEvent.setup()
+    const atelier = builderApi()
+    rendre({ builderApi: atelier })
+    await proposerLeContour(utilisateur)
 
-    fireEvent.click(screen.getByTestId('cal-calage-enregistrer'))
-    expect(screen.getByTestId('cal-calage-erreur-distanceReelleM'))
-      .toHaveTextContent('distance réelle')
+    importerPlan.mockResolvedValueOnce(reponse('exemple'))
+    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '30' } })
+    fireEvent.change(screen.getByLabelText(/Sommet de référence B/), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Poser comme pan du toit' }))
+
+    await waitFor(() => expect(atelier.ajouterPanDepuisContour).toHaveBeenCalledTimes(1))
+    const contour = atelier.ajouterPanDepuisContour.mock.calls[0][0]
+    expect(contour.length).toBeGreaterThanOrEqual(3)
+    // Le contour du contrat est posé autour de l'épingle (-7.6, 33.5).
+    for (const [lng, lat] of contour) {
+      expect(Math.abs(lng - (-7.6))).toBeLessThan(0.01)
+      expect(Math.abs(lat - 33.5)).toBeLessThan(0.01)
+    }
     expect(enregistrerLayout).not.toHaveBeenCalled()
-    // Et l'écran ne prétend surtout pas connaître une échelle.
-    expect(screen.getByTestId('cal-calage-facteur'))
-      .toHaveTextContent('aucune échelle n’est estimée')
+    expect(layout).not.toHaveBeenCalled()
+    expect(await screen.findByTestId('cal-calage-message')).toHaveTextContent('Pan posé dans l’atelier')
   })
 
-  it('enregistre le calage DANS le document de conception, échelle tracée', async () => {
-    layout.mockResolvedValue({ data: { roof_layout: { version: 2, outline: [] } } })
-    enregistrerLayout.mockResolvedValue({ data: { inchange: false } })
-    rendre()
-    await screen.findByTestId('cal-calage-plan')
+  it('le calage part au serveur : points A/B du plan, distance saisie, rotation', async () => {
+    const utilisateur = userEvent.setup()
+    rendre({ builderApi: builderApi() })
+    await proposerLeContour(utilisateur)
 
-    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '10' } })
-    fireEvent.click(screen.getByTestId('cal-calage-enregistrer'))
+    importerPlan.mockResolvedValueOnce(reponse('exemple'))
+    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '30' } })
+    fireEvent.change(screen.getByLabelText(/Rotation/), { target: { value: '15' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Poser comme pan du toit' }))
 
-    await waitFor(() => expect(enregistrerLayout).toHaveBeenCalledTimes(1))
-    const [id, document] = enregistrerLayout.mock.calls[0]
+    await waitFor(() => expect(importerPlan).toHaveBeenCalledTimes(3))
+    const [id, corps] = importerPlan.mock.calls[2]
     expect(id).toBe(7)
-    // Le reste du document de conception est PRÉSERVÉ : on n'écrase pas la toiture.
-    expect(document.version).toBe(2)
-    expect(document.planImporte.calage.echelle).toBeCloseTo(2.5, 10)
-    expect(document.planImporte.calage.echelle_source).toBe('saisie')
-    expect(document.planImporte.calage.distanceReelleM).toBe(10)
-    expect(document.planImporte.contour).toEqual(CONTOUR)
-    expect(await screen.findByTestId('cal-calage-message'))
-      .toHaveTextContent('rechargé tel quel')
-  })
-
-  it('RELIT le calage persisté au montage — il n’est pas perdu', async () => {
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: {
-          planImporte: {
-            contour: CONTOUR,
-            calage: {
-              translation: [3, 4], rotationDeg: 15, echelle: 2.5,
-              indexA: 0, indexB: 1, distanceReelleM: 10,
-            },
-          },
-        },
-      },
+    expect(corps.get('calque')).toBe(contrat('exemple').calque)
+    const calage = JSON.parse(corps.get('calage'))
+    const contour = contrat('exemple').contour
+    expect(calage).toEqual({
+      pointA: contour[0], pointB: contour[1], distanceM: 30, rotationDeg: 15,
     })
-    render(
-      <MemoryRouter><PlanImporteCalage calepinageId={7} /></MemoryRouter>,
-    )
-    await screen.findByTestId('cal-calage-plan')
-
-    expect(await screen.findByLabelText(/Distance réelle/)).toHaveValue(10)
-    expect(screen.getByLabelText(/Rotation/)).toHaveValue(15)
-    expect(screen.getByLabelText(/Translation X/)).toHaveValue(3)
-    expect(screen.getByTestId('cal-calage-facteur')).toHaveTextContent('2.5')
   })
 
-  it('convertit le plan calé en tracé de toit', async () => {
-    layout.mockResolvedValue({ data: { roof_layout: { version: 2 } } })
-    enregistrerLayout.mockResolvedValue({ data: {} })
+  it('sans distance réelle : refus SOUS le champ, aucun appel, aucun pan', async () => {
+    const utilisateur = userEvent.setup()
+    const atelier = builderApi()
+    rendre({ builderApi: atelier })
+    await proposerLeContour(utilisateur)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Poser comme pan du toit' }))
+    expect(screen.getByTestId('cal-calage-erreur-distanceReelleM')).toHaveTextContent('distance réelle')
+    expect(importerPlan).toHaveBeenCalledTimes(2) // analyse + contour, rien de plus
+    expect(atelier.ajouterPanDepuisContour).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cal-calage-facteur')).toHaveTextContent('aucune échelle n’est estimée')
+  })
+
+  it('l’atelier refuse le contour (il se croise) : le motif nommé est affiché, rien n’est posé', async () => {
+    const utilisateur = userEvent.setup()
+    const atelier = { ajouterPanDepuisContour: vi.fn(() => ({ ok: false, motif: 'Le contour se croise (nœud papillon).' })) }
+    rendre({ builderApi: atelier })
+    await proposerLeContour(utilisateur)
+
+    importerPlan.mockResolvedValueOnce(reponse('exemple'))
+    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Poser comme pan du toit' }))
+
+    expect(await screen.findByTestId('cal-calage-bandeau-import')).toHaveTextContent('se croise')
+    expect(screen.queryByText(/Pan posé dans l’atelier/)).toBeNull()
+  })
+
+  it('sans épingle, le refus 400 du serveur nomme `pin`', async () => {
+    const utilisateur = userEvent.setup()
+    const atelier = builderApi()
+    rendre({ builderApi: atelier })
+    await proposerLeContour(utilisateur)
+
+    importerPlan.mockRejectedValueOnce({ response: { data: contrat('refus_sans_epingle_400') } })
+    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Poser comme pan du toit' }))
+
+    expect(await screen.findByTestId('cal-calage-bandeau-import')).toHaveTextContent('pin')
+    expect(atelier.ajouterPanDepuisContour).not.toHaveBeenCalled()
+  })
+
+  it('hors atelier (pas de builderApi) : le dit, sans appel serveur', async () => {
+    const utilisateur = userEvent.setup()
     rendre()
-    await screen.findByTestId('cal-calage-plan')
+    await proposerLeContour(utilisateur)
 
-    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '10' } })
-    fireEvent.click(screen.getByTestId('cal-calage-convertir'))
+    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Poser comme pan du toit' }))
 
-    await waitFor(() => expect(enregistrerLayout).toHaveBeenCalledTimes(1))
-    const [, document] = enregistrerLayout.mock.calls[0]
-    // (0,0) est le pivot : il reste en place ; (4,0) ×2,5 devient (10,0).
-    expect(document.outline[0][0]).toBeCloseTo(0, 10)
-    expect(document.outline[1][0]).toBeCloseTo(10, 10)
+    expect(await screen.findByTestId('cal-calage-bandeau-import')).toHaveTextContent('atelier')
+    expect(importerPlan).toHaveBeenCalledTimes(2)
+  })
+
+  it('sans plan déposé, il le DIT au lieu d’afficher un calque vide', async () => {
+    importerPlan.mockReset()
+    rendre()
+    expect(await screen.findByTestId('cal-calage-sans-plan')).toBeInTheDocument()
   })
 })
 
