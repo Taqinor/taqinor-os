@@ -2089,6 +2089,10 @@ def archiver_legalement(document, *, user, motif='', retain_until=None):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    # ADOC22 — un document en corbeille ne s'archive pas (400 nommé).
+    if document.supprime_le is not None:
+        raise ValueError(
+            "Un document en corbeille ne peut pas être archivé légalement.")
     # Write-once : un document n'est archivé légalement qu'une seule fois.
     if ArchivageLegal.objects.filter(document=document).exists():
         raise ValueError("Ce document est déjà archivé légalement.")
@@ -4952,6 +4956,7 @@ def scinder_pdf(version, points_de_coupe, *, created_by=None):
     data, err = _fetch_version_bytes(version)
     if err:
         raise ValueError(err)
+    _exiger_pdf(data)  # ADOC22
     src = fitz.open(stream=data, filetype='pdf')
     try:
         n_pages = src.page_count
@@ -5024,6 +5029,7 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
             data, err = _fetch_version_bytes(version)
             if err:
                 raise ValueError(err)
+            _exiger_pdf(data)  # ADOC22
             seg = fitz.open(stream=data, filetype='pdf')
             out.insert_pdf(seg)
             seg.close()
@@ -5054,6 +5060,13 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
         size=len(out_bytes), mime='application/pdf', uploaded_by=created_by)
     update_search_vector(nouveau)
     return nouveau
+
+
+def _exiger_pdf(data):
+    """ADOC22 — les opérations PDF (scinder, fusionner, caviarder, export
+    annoté) refusent un fichier non PDF par un 400 nommé, jamais une 500."""
+    if not (data or b'').lstrip()[:5] == b'%PDF-':
+        raise ValueError("Opération réservée aux PDF.")
 
 
 def _fetch_version_bytes(version):
@@ -5399,6 +5412,7 @@ def exporter_pdf_annote(version):
     data, err = _fetch_version_bytes(version)
     if err:
         raise ValueError(err)
+    _exiger_pdf(data)  # ADOC22
     doc = fitz.open(stream=data, filetype='pdf')
     try:
         # ADOC1 — seules les annotations de la société de la version.
@@ -5803,6 +5817,7 @@ def executer_demande_disposition(demande, *, user):
             "Seule une demande APPROUVÉE peut être exécutée.")
 
     certificats = []
+    ignores = 0
     with transaction.atomic():
         for doc_id in (demande.documents or []):
             document = Document.objects.filter(
@@ -5811,6 +5826,11 @@ def executer_demande_disposition(demande, *, user):
                 continue  # déjà supprimé/introuvable — silencieux.
             if _document_sous_legal_hold(document):
                 continue  # protégé entre-temps — exclusion silencieuse.
+            # ADOC22 — archivé légalement entre-temps : ni détruit ni
+            # ré-archivé ; compté « ignoré », la demande ne reste plus bloquée.
+            if _document_archive_legalement(document):
+                ignores += 1
+                continue
             if demande.action == DISPOSITION_ACTION_ARCHIVER:
                 archiver_legalement(document, user=user)
                 continue
@@ -5843,7 +5863,15 @@ def executer_demande_disposition(demande, *, user):
             ))
         demande.statut = DISPOSITION_EXECUTEE
         demande.executee_le = timezone.now()
-        demande.save(update_fields=['statut', 'executee_le', 'updated_at'])
+        champs = ['statut', 'executee_le', 'updated_at']
+        if ignores:
+            note = (f'{ignores} document(s) ignoré(s) : archivé(s) '
+                    f'légalement.')
+            demande.commentaire = (
+                f'{demande.commentaire}\n{note}'.strip()
+                if demande.commentaire else note)
+            champs.append('commentaire')
+        demande.save(update_fields=champs)
     return certificats
 
 
@@ -5880,6 +5908,7 @@ def caviarder_document(version, zones, *, created_by=None):
         raise ValueError(err)
     if not zones:
         raise ValueError("Au moins une zone à caviarder est requise.")
+    _exiger_pdf(data)  # ADOC22
     doc = fitz.open(stream=data, filetype='pdf')
     try:
         # ADOC11 — chaque zone est validée AVANT toute rédaction : une zone

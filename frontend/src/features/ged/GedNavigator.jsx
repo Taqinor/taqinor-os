@@ -522,7 +522,10 @@ export default function GedNavigator() {
                           Désélectionner
                         </Button>
                         {/* XGED10 — fusionne les PDF sélectionnés (≥2) en un seul document. */}
-                        {selectedIds.size >= 2 && (
+                        {/* ADOC22 — seulement si TOUS les documents sélectionnés sont des PDF. */}
+                        {selectedIds.size >= 2 && documents
+                          .filter((d) => selectedIds.has(d.id))
+                          .every((d) => d.derniere_mime === 'application/pdf') && (
                           <Button size="sm" variant="outline" onClick={() => setMergeDlg(true)}>
                             <FileText className="size-4" aria-hidden="true" /> Fusionner
                           </Button>

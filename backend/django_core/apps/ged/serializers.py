@@ -169,6 +169,19 @@ class CabinetSerializer(serializers.ModelSerializer):
         fields = ['id', 'nom', 'description', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
+    def validate_nom(self, value):
+        """ADOC22 — doublon (société, nom) : 400 nommé, jamais une 500."""
+        request = self.context.get('request')
+        if request is not None:
+            qs = Cabinet.objects.filter(
+                company_id=request.user.company_id, nom=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Une armoire de ce nom existe déjà.")
+        return value
+
 
 class FolderSerializer(serializers.ModelSerializer):
     cabinet_nom = serializers.CharField(source='cabinet.nom', read_only=True)
@@ -253,6 +266,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         source='created_by.username', read_only=True, default=None)
     version_count = serializers.SerializerMethodField()
     derniere_version = serializers.SerializerMethodField()
+    derniere_mime = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
     # GED16 — état du verrou (lecture seule, posé côté serveur).
     locked_by_nom = serializers.CharField(
@@ -291,7 +305,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             'id', 'reference', 'folder', 'folder_nom', 'coffre', 'nom',
             'description',
             'custom_data', 'created_by', 'created_by_nom', 'version_count',
-            'derniere_version', 'tags',
+            'derniere_version', 'derniere_mime', 'tags',
             'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
             'statut', 'statut_display', 'transitions_autorisees',
             # GED21 — contrôle de diffusion (filigrane à la diffusion).
@@ -338,6 +352,12 @@ class DocumentSerializer(serializers.ModelSerializer):
     def get_derniere_version(self, obj):
         last = obj.versions.order_by('-version').first()
         return last.version if last else None
+
+    def get_derniere_mime(self, obj):
+        """ADOC22 — mime de la version en vigueur (l'écran ne propose les
+        opérations PDF — fusion — que pour des PDF)."""
+        last = obj.versions.order_by('-version').first()
+        return last.mime if last else None
 
     def get_tags(self, obj):
         # GED9 — tags de la taxonomie appliqués au document (id + nom).
@@ -1309,6 +1329,19 @@ class TamponSocieteSerializer(serializers.ModelSerializer):
         model = TamponSociete
         fields = ['id', 'libelle', 'created_at']
         read_only_fields = ['created_at']
+
+    def validate_libelle(self, value):
+        """ADOC22 — doublon (société, libellé) : 400 nommé, jamais une 500."""
+        request = self.context.get('request')
+        if request is not None:
+            qs = TamponSociete.objects.filter(
+                company_id=request.user.company_id, libelle=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Un tampon de ce libellé existe déjà.")
+        return value
 
 
 class RegleAclMetadonneeSerializer(serializers.ModelSerializer):

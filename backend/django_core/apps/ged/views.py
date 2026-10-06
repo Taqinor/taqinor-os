@@ -508,6 +508,12 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         `apps.crm.selectors` (dégrade proprement si absent/autre société —
         aucun import du modèle crm)."""
         document = self.get_object()
+        # ADOC22 — document archivé légalement : 403 nommé, jamais une 500.
+        try:
+            services.assert_not_archive_legalement(document)
+        except ArchivageLegalError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         data = request.data
         # ADOC19 — état AVANT pour le chatter old→new.
         avant = {
@@ -1358,7 +1364,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
                 status=status.HTTP_404_NOT_FOUND)
-        services.restaurer_de_corbeille(document, user=request.user)
+        try:
+            services.restaurer_de_corbeille(document, user=request.user)
+        except ArchivageLegalError as exc:  # ADOC22 — 403, jamais 500.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         document.refresh_from_db()
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
@@ -1441,8 +1451,12 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         `{"motif": "..."}`. 409 si déjà posé par un autre utilisateur."""
         document = self.get_object()
         try:
+            services.assert_not_archive_legalement(document)  # ADOC22
             doc = services.verrouiller_avertissement(
                 document, request.user, motif=request.data.get('motif', ''))
+        except ArchivageLegalError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
@@ -1457,7 +1471,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         est journalisé). Idempotent si déjà libre."""
         document = self.get_object()
         try:
+            services.assert_not_archive_legalement(document)  # ADOC22
             doc = services.deverrouiller_avertissement(document, request.user)
+        except ArchivageLegalError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)

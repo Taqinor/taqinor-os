@@ -323,8 +323,8 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
     ]))
     gedApi.getDocuments.mockResolvedValue(ok([
-      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
-      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z', derniere_mime: 'application/pdf' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z', derniere_mime: 'application/pdf' },
     ]))
 
     renderGed()
@@ -338,6 +338,24 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.fusionnerDocuments).toHaveBeenCalledWith({
       documents: [8, 9], nom: undefined,
     }))
+  })
+
+  it('ADOC22 — « Fusionner » absent pour une sélection non PDF', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.png', updated_at: '2026-06-01T10:00:00Z', derniere_mime: 'image/png' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z', derniere_mime: 'application/pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.png/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
+    await screen.findByText(/2 sélectionnés/)
+    expect(screen.queryByRole('button', { name: /^Fusionner$/i })).toBeNull()
   })
 
   it('XGED17 — compare deux versions d’un document', async () => {
