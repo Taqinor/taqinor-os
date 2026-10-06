@@ -73,14 +73,20 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
 #     devis ; renommer la référence laisse sinon les devis parler d'un produit
 #     qui n'existe plus sous ce nom ;
 #   * ``prix_vente`` — c'est le prix catalogue auquel une ligne NON NÉGOCIÉE a
-#     été posée.
+#     été posée ;
+#   * ``tva``, ``prix_fixe_ht``, ``prix_par_panneau_ht`` (ASTK89) — la TVA et
+#     le barème forfaitaire (forfait / par panneau) chiffrent aussi les lignes
+#     d'un devis : les corriger sans émettre laissait les brouillons faux
+#     (l'abonné ventes les retarife, ASTK142 ; il ignore d'ici là les clés
+#     qu'il ne sait pas encore lire).
 #
 # Volontairement ABSENTS : ``description`` / ``marque`` / ``garantie`` /
 # ``garantie_mois`` / la fiche technique. Ce ne sont pas des oublis : le moteur
 # de proposition les relit sur le PRODUIT au moment du rendu (fiches produit du
 # PDF), donc ils se propagent DÉJÀ sans qu'aucune ligne n'ait à être réécrite —
 # les émettre ne ferait que réveiller une tâche Celery pour ne rien changer.
-CHAMPS_PRODUIT_SUIVIS_DEVIS = ('nom', 'prix_vente')
+CHAMPS_PRODUIT_SUIVIS_DEVIS = (
+    'nom', 'prix_vente', 'tva', 'prix_fixe_ht', 'prix_par_panneau_ht')
 
 # ASTK87 — champs NON copiés par ``dupliquer`` (le reste de
 # ``Produit._meta.concrete_fields`` l'est). Chaque entrée a sa raison : identité

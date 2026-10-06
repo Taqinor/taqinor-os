@@ -333,7 +333,15 @@ class TestSeedCatalogue(TestCase):
         chaque déploiement, puisque le seeder tourne désormais à chaque fois.
         """
         from apps.stock.views.produit import CHAMPS_PRODUIT_SUIVIS_DEVIS
-        self.assertEqual(CHAMPS_PRODUIT_SUIVIS_DEVIS, ('nom', 'prix_vente'))
+        # ASTK89 — la liste a été étendue AUX SEULS champs qui chiffrent une
+        # ligne (tva, forfait, par panneau) ; la frontière « fiche / texte
+        # commercial jamais suivi » reste, elle, inchangée.
+        self.assertEqual(
+            CHAMPS_PRODUIT_SUIVIS_DEVIS,
+            ('nom', 'prix_vente', 'tva', 'prix_fixe_ht',
+             'prix_par_panneau_ht'))
+        for champ in ('description', 'marque', 'garantie', 'garantie_mois'):
+            self.assertNotIn(champ, CHAMPS_PRODUIT_SUIVIS_DEVIS)
 
     def test_pv85_deye_10t_modele_confirme_fondateur(self):
         """PV85 — SG05LP3 tranché par le fondateur : plus « supposé »."""
