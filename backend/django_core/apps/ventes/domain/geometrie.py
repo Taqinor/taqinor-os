@@ -52,15 +52,15 @@ def _aspect_to_orientation(aspect):
 def _azimut_boussole_vers_aspect(azimut):
     """Azimut BOUSSOLE du builder (180 = Sud) → azimut PVGIS (0 = Sud).
 
-    MÊME formule que le builder lui-même (``roofPro11/prodWindow.ts`` :
-    ``aspect: res.facingAzimuthDeg - 180``), normalisée dans [-180, 180] pour
-    que ±180 reste bien le Nord. Valeur illisible → ``None`` (le libellé est
-    alors omis, jamais deviné)."""
-    try:
-        a = float(azimut)
-    except (TypeError, ValueError):
-        return None
-    return (a - 180.0 + 180.0) % 360.0 - 180.0
+    MÊME convention que le builder lui-même (``roofPro11/prodWindow.ts`` :
+    ``aspect: res.facingAzimuthDeg - 180``), dans ]−180, 180] : le Nord vaut
+    +180 (ACAL281). Valeur illisible → ``None`` (le libellé est alors omis,
+    jamais deviné). ACAL281 : délègue à ``core.calepinage.geo`` (source
+    unique de la conversion).
+    """
+    from core.calepinage.geo import boussole_vers_aspect
+
+    return boussole_vers_aspect(azimut)
 
 
 def _aspect_vers_azimut_boussole(aspect):
@@ -69,13 +69,11 @@ def _aspect_vers_azimut_boussole(aspect):
     Réciproque de :func:`_azimut_boussole_vers_aspect`. Elle existe pour que
     ``_pans_geometry['azimut_deg']`` n'ait qu'UN SEUL repère quelle que soit la
     clé source du layout (F3) — voir :func:`extract_roof_config`. Valeur
-    illisible → ``None``.
+    illisible → ``None``. ACAL281 : délègue à ``core.calepinage.geo``.
     """
-    try:
-        a = float(aspect)
-    except (TypeError, ValueError):
-        return None
-    return (a + 180.0) % 360.0
+    from core.calepinage.geo import aspect_vers_boussole
+
+    return aspect_vers_boussole(aspect)
 
 
 def orientation_du_pan(zone):
@@ -1234,25 +1232,14 @@ def contour_client_lnglat(lead):
 def aire_contour_m2(contour):
     """L'aire (m²) d'un contour ``[[lng, lat], …]``, ou ``None``.
 
-    Reprojection ENU par ``calepinage_options.anneau_enu`` (la formule DÉJÀ
-    partagée avec l'écran), puis lacet de souliers. Aucune approximation
-    maison : c'est la surface du polygone que le client a réellement tracé.
+    ACAL281 — délègue à ``core.calepinage.geo.aire_contour_m2`` : MÊME
+    projection (sphère R = 6 378 137 m) que ``calepinage_options.anneau_enu``
+    et que l'écran, puis lacet de souliers. Aucune approximation maison :
+    c'est la surface du polygone que le client a réellement tracé.
     """
-    if len(contour or []) < 3:
-        return None
-    from ..calepinage_options import anneau_enu
+    from core.calepinage.geo import aire_contour_m2 as _aire
 
-    origine = contour[0]
-    anneau = anneau_enu(contour, origine)
-    if len(anneau) < 3:
-        return None
-    aire2 = 0.0
-    for i in range(len(anneau)):
-        ax, ay = anneau[i]
-        bx, by = anneau[(i + 1) % len(anneau)]
-        aire2 += ax * by - bx * ay
-    aire = abs(aire2) / 2.0
-    return aire if aire > 0 else None
+    return _aire(contour)
 
 
 def _aire_portee(valeur):

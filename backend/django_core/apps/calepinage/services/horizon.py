@@ -73,13 +73,11 @@ def azimut_de_face(azimut_pvgis_deg):
 
     L'inverse exact de ``pvgis_serie.azimut_pvgis``. Publier les deux évite
     qu'un écran, en lisant la mauvaise convention, dessine le masque du Sud
-    au Nord.
+    au Nord. ACAL281 : délègue à ``core.calepinage.geo`` (source unique).
     """
-    try:
-        aspect = float(azimut_pvgis_deg)
-    except (TypeError, ValueError):
-        return None
-    return (aspect + 180.0) % 360.0
+    from core.calepinage.geo import aspect_vers_boussole
+
+    return aspect_vers_boussole(azimut_pvgis_deg)
 
 
 class ClientHorizon(ClientPvgis):
@@ -294,6 +292,8 @@ def profil_saisi(points, *, note=''):
             'relevé, le champ reste celui de PVGIS (ou vide), jamais un '
             'horizon plat.', champ='horizon')
 
+    from core.calepinage.geo import boussole_vers_aspect
+
     lus = []
     hauteur_max = None
     for rang, point in enumerate(points):
@@ -321,8 +321,8 @@ def profil_saisi(points, *, note=''):
                 champ=f'horizon[{rang}].hauteur_deg')
         lus.append({
             'azimut_face_deg': azimut,
-            'azimut_pvgis_deg': ((azimut - 180.0) % 360.0) - (
-                360.0 if ((azimut - 180.0) % 360.0) > 180.0 else 0.0),
+            # ACAL281 — la conversion UNIQUE (core.calepinage.geo).
+            'azimut_pvgis_deg': boussole_vers_aspect(azimut),
             'hauteur_deg': hauteur,
         })
         hauteur_max = hauteur if hauteur_max is None else max(hauteur_max,
