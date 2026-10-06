@@ -3105,6 +3105,18 @@ class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, utilisateur=self.request.user)
 
+    def perform_update(self, serializer):
+        """ADOC15 — une vue (partagée) ne se modifie que par son créateur ou
+        un gestionnaire, comme sa suppression."""
+        instance = serializer.instance
+        is_owner = instance.utilisateur_id == self.request.user.id
+        is_manager = IsResponsableOrAdmin().has_permission(self.request, self)
+        if not (is_owner or is_manager):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Seul le créateur ou un gestionnaire peut modifier cette vue.")
+        serializer.save()
+
     def perform_destroy(self, instance):
         is_owner = instance.utilisateur_id == self.request.user.id
         is_manager = IsResponsableOrAdmin().has_permission(self.request, self)
@@ -3946,13 +3958,19 @@ def mes_favoris(request):
     favoris = FavoriGed.objects.filter(
         company=request.user.company, utilisateur=request.user
     ).select_related('folder', 'document')
+    # ADOC15 — seuls les documents VISIBLES (coffre, ACL, corbeille) et les
+    # dossiers lisibles ; le favori reste en base (il réapparaît si le
+    # document redevient visible).
+    visibles = set(selectors.documents_visible_to_user(
+        request.user).values_list('pk', flat=True))
     dossiers = [
         {'id': f.folder.pk, 'nom': f.folder.nom, 'favori_id': f.pk}
-        for f in favoris if f.folder_id
+        for f in favoris
+        if f.folder_id and selectors.folder_lisible(f.folder, request.user)
     ]
     documents = [
         {'id': f.document.pk, 'nom': f.document.nom, 'favori_id': f.pk}
-        for f in favoris if f.document_id
+        for f in favoris if f.document_id and f.document_id in visibles
     ]
     return Response({'dossiers': dossiers, 'documents': documents})
 
