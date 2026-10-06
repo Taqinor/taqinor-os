@@ -107,6 +107,13 @@ class SyntheseCiServieTest(_BaseDevis):
             devis=residentiel, produit=self.panneau,
             designation='Panneau 710W', quantite=Decimal('10'),
             prix_unitaire=Decimal('1272.73'), remise=Decimal('0'))
+        # Un devis résidentiel sans onduleur est REFUSÉ par le moteur (règle
+        # dure « aucune option sans onduleur », builder) ⇒ 404 public : la
+        # fixture doit être un devis rendable pour prouver l'ABSENCE de clé.
+        LigneDevis.objects.create(
+            devis=residentiel, produit=self.ond,
+            designation='Onduleur réseau', quantite=Decimal('1'),
+            prix_unitaire=Decimal('8000'), remise=Decimal('0'))
         agricole = make_devis_agricole(self.co, self.user, self.client_obj,
                                        'DEV-CIQ306-0040')
         for devis in (residentiel, agricole):
