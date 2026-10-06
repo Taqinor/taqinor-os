@@ -2629,47 +2629,6 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // (`economie_ci.revente`). `KWH_PRICE` reste : le RÉSIDENTIEL le lit encore
 // (repli de `computeROI` et défaut `quoteLogic.kwhPrice` du générateur).
 
-// ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT) ═══════════════════
-// Miroir de quote_engine/constants_82_21.py `TARIF_MT_ONEE`, qui LIT la seule
-// source `apps/parametres/tarifs_officiels.py` (CIQ202) — un test de parité
-// backend (test_qx50_injection_82_21.py) relit CE fichier. Le miroir disparaît
-// avec CIQ228 (aperçu serveur).
-//
-// RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, D-CIQ-4). Prix TTC TELS
-// QUE PUBLIÉS par l'ONEE « Tarif Général (MT) » (one.org.ma, relevé le
-// 03/10/2026, inchangé depuis le 30/11/2023). La page garde un libellé « TVA
-// 18 % » périmé : le taux légal 2026 de l'électricité est 20 % — aucun TTC
-// n'est re-multiplié. NON RETENU : la grille « Grands Comptes » (494,09 DH/kVA)
-// — branche THT/HT, pas MT. Le TURD (6,07 c/kWh, décision ANRE 03/26) est un
-// tarif d'ACCÈS hors site, jamais un tarif de vente.
-export const TARIF_MT_ONEE = {
-  // Redevance de consommation par poste horaire, DH/kWh TTC publié.
-  POINTE: 1.4157,
-  PLEINES: 1.0101,
-  CREUSES: 0.7398,
-  // Prime fixe, DH par kVA souscrit et par an. DÉLIBÉRÉMENT NON déduite des
-  // économies : le solaire ne réduit pas la puissance souscrite.
-  PRIME_PUISSANCE_DH_KVA_AN: 512.62,
-  // Plages horaires PUBLIÉES, heure GMT, intervalles [de_h, a_h) : schéma
-  // one.org.ma/images/horr.jpg, page bi-horaire ; décision ANRE 04/26 art. 7.
-  PLAGES_H: [
-    { saison: 'hiver', du: '10-01', au: '03-31', postes: [
-      { poste: 'pointe', de_h: 17, a_h: 22 },
-      { poste: 'pleines', de_h: 7, a_h: 17 },
-      { poste: 'creuses', de_h: 22, a_h: 7 },
-    ] },
-    { saison: 'ete', du: '04-01', au: '09-30', postes: [
-      { poste: 'pointe', de_h: 18, a_h: 23 },
-      { poste: 'pleines', de_h: 7, a_h: 18 },
-      { poste: 'creuses', de_h: 23, a_h: 7 },
-    ] },
-  ],
-  // Mention affichée avec TOUT chiffre issu de ce barème (jamais un chiffre nu).
-  MENTION: 'Barème ONEE « Tarif Général (MT) », prix TTC tels que publiés sur '
-    + 'one.org.ma (relevé le 03/10/2026 ; la page indique TVA 18 %, taux légal '
-    + '2026 : 20 %)',
-}
-
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
 export const CV_TO_KW = 0.7355
 // Heures de pompage effectives par défaut (champ 1.4× surdimensionné →
