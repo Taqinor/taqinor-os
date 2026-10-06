@@ -2022,8 +2022,13 @@ def equipement_releve_portail_obj(company, client_id, chantier_id,
 def releve_portail(releve):
     """AGR617 — UN relevé à la forme du contrat portail : ``{equipement,
     type, valeur, date, moyenne_jour_depuis_precedent}``. Jamais l'auteur."""
+    from decimal import Decimal
+    # Toujours 2 décimales (forme du contrat, comme un DecimalField DRF) :
+    # une instance juste créée porte la Decimal saisie (« 1250 »), pas celle
+    # relue de la base (« 1250.00 »).
+    valeur = Decimal(str(releve.valeur)).quantize(Decimal('0.01'))
     return {'equipement': releve.equipement_id, 'type': releve.type,
-            'valeur': str(releve.valeur), 'date': releve.date.isoformat(),
+            'valeur': str(valeur), 'date': releve.date.isoformat(),
             'moyenne_jour_depuis_precedent':
                 moyenne_jour_depuis_precedent(releve)}
 
