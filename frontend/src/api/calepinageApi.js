@@ -287,6 +287,11 @@ const calepinageApi = {
       empreinte ? { headers: { 'If-Match': empreinte } } : undefined),
     // ACAL23 — l'écriture d'UNE section (`{cle, valeur | zone_id + champs, base_empreinte}`).
     enregistrerSectionLayout: (id, corps) => api.post(`${pivot(id)}layout/section/`, corps), // ACAL
+    // ACAL66 — la DÉCISION sur une suggestion de pente IGN, par le serveur (ACAL65) :
+    // `{operation: 'proposer' | 'accepter' | 'refuser', zone_id?, base_empreinte}`. La
+    // suggestion est persistée dans le pan (« pente du terrain »), jamais recopiée dans
+    // la pente du pan (D-ACAL-19). 409 `document_modifie` si le jeton est périmé.
+    decisionSuggestionPente: (id, corps) => api.post(`${pivot(id)}suggestions-pente/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

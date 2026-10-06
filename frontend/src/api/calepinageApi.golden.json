@@ -184,6 +184,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.decisionSuggestionPente": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/suggestions-pente/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.demarquerModele": [
     {
       "config": null,
