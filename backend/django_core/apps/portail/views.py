@@ -63,6 +63,10 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
     serializer_class = ComptePortailClientSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
+    #: ADOC115 — DELETE → 405 : supprimer le compte emportait en CASCADE les
+    #: invitations de l'équipe, et un ex-membre sans invitation devenait
+    #: « admin » (``est_admin_portail_client``). On révoque, on ne supprime pas.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def perform_create(self, serializer):
         # DC32 — le client est lié PAR FK ; on vérifie qu'il est bien dans la

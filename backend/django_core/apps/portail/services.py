@@ -442,12 +442,17 @@ def provisionner_compte_partenaire(company, partenaire_id):
 
 def _basculer_acces_portail_client(company, client_id, *, actif):
     """Pose ``actif`` sur le compte portail ET ``is_active`` sur ses comptes
-    utilisateur portail, atomiquement. Renvoie ``(compte, nb_utilisateurs)``."""
+    utilisateur portail, atomiquement. Renvoie ``(compte, nb_utilisateurs)``.
+
+    ADOC115 — la RÉACTIVATION n'inclut jamais un membre d'équipe dont
+    l'invitation a été RÉVOQUÉE par l'admin : rouvrir l'accès du client ne
+    ressuscite pas un ex-membre (sa révocation est une décision distincte).
+    """
     from django.db import transaction
 
     from authentication.models import CustomUser
 
-    from .models import ComptePortailClient
+    from .models import ComptePortailClient, InvitationPortail
 
     if company is None or not client_id:
         return None, 0
@@ -462,11 +467,19 @@ def _basculer_acces_portail_client(company, client_id, *, actif):
         if compte is not None and compte.actif != actif:
             compte.actif = actif
             compte.save(update_fields=['actif'])
-        nb = CustomUser.objects.filter(
+        utilisateurs = CustomUser.objects.filter(
             company=company,
             portee=CustomUser.PORTEE_PORTAIL_CLIENT,
             portail_client_id=client_id,
-        ).update(is_active=actif)
+        )
+        if actif:
+            utilisateurs = utilisateurs.exclude(
+                pk__in=InvitationPortail.objects.filter(
+                    company=company,
+                    statut=InvitationPortail.Statut.REVOQUEE,
+                    utilisateur_cree__isnull=False,
+                ).values('utilisateur_cree'))
+        nb = utilisateurs.update(is_active=actif)
     return compte, nb
 
 
@@ -749,16 +762,21 @@ def role_portail_client(user):
     ``InvitationPortail`` ne le concerne) a toujours accès plein : renvoie
     ``ECRITURE``. Un compte créé par acceptation d'une invitation porte le
     rôle choisi par l'admin à l'invitation, gelé au moment de l'acceptation.
+
+    ADOC115 — un compte lié à une invitation qui n'est PAS (ou plus)
+    acceptée (révoquée, notamment) vaut ``LECTURE`` : seul un compte SANS
+    aucune invitation est l'admin. Avant, ce cas retombait sur ``ECRITURE``.
     """
     from .models import InvitationPortail
 
-    invitation = InvitationPortail.objects.filter(
-        utilisateur_cree=user,
-        statut=InvitationPortail.Statut.ACCEPTEE,
-    ).first()
-    if invitation is None:
-        return InvitationPortail.Role.ECRITURE
-    return invitation.role
+    invitations = InvitationPortail.objects.filter(utilisateur_cree=user)
+    acceptee = invitations.filter(
+        statut=InvitationPortail.Statut.ACCEPTEE).first()
+    if acceptee is not None:
+        return acceptee.role
+    if invitations.exists():
+        return InvitationPortail.Role.LECTURE
+    return InvitationPortail.Role.ECRITURE
 
 
 def peut_ecrire_portail_client(user):
