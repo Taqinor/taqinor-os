@@ -157,3 +157,70 @@ describe('BoutonDevis (CAL38)', () => {
     expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
   })
 })
+
+/* ACAL95 — ce que la génération et la resynchro n'ont pas pu faire se LIT
+   avant de naviguer ou de recharger. Charges : l'échantillon COMMITTÉ
+   `calepinage_publication.json` (PACT13). */
+describe('BoutonDevis — retour du serveur (ACAL95)', () => {
+  const PUBLICATION = exempleContrat('calepinage', 'calepinage_publication')
+  const SYNC = exempleContrat('calepinage', 'calepinage_publication', 'sync_devis')
+
+  it('resynchro : avertissements et lignes ajoutées affichés', async () => {
+    const onRecharger = vi.fn()
+    const onRelire = vi.fn()
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({
+      data: { ...SYNC.exemple, lignes_ajoutees: 1 },
+    })
+
+    rendre({ onRecharger, onRelire })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+
+    const bloc = await screen.findByTestId('cal-devis-avertissements')
+    expect(bloc).toHaveTextContent(SYNC.exemple.avertissements[0])
+    expect(bloc).toHaveTextContent('1 ligne ajoutée au devis')
+    // Le rechargement complet attend « J'ai lu ».
+    expect(onRecharger).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByTestId('cal-devis-j-ai-lu'))
+    await waitFor(() => expect(onRecharger).toHaveBeenCalledTimes(1))
+    expect(onRelire).toHaveBeenCalledTimes(1)
+  })
+
+  it('génération avec avertissements : pas de navigation immédiate', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({ data: PUBLICATION })
+
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+
+    const bloc = await screen.findByTestId('cal-devis-avertissements')
+    expect(bloc).toHaveTextContent(PUBLICATION.avertissements[0])
+    expect(bloc).toHaveTextContent(PUBLICATION.marques_manquantes[0])
+    expect(navigateMock).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cal-devis-ouvrir'))
+      .toHaveAttribute('href', `/ventes/devis/${PUBLICATION.devis}/design`)
+  })
+
+  it('inchangé : Aucun changement', async () => {
+    const onRecharger = vi.fn()
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: SYNC.exemple_inchange })
+
+    rendre({ onRecharger })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+
+    expect(await screen.findByTestId('cal-devis-avertissements'))
+      .toHaveTextContent('Aucun changement')
+    expect(onRecharger).not.toHaveBeenCalled()
+  })
+
+  it('génération sans message : navigation comme aujourd’hui', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({
+      data: { ...PUBLICATION, avertissements: [], marques_manquantes: [] },
+    })
+
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+
+    await waitFor(() => expect(navigateMock)
+      .toHaveBeenCalledWith(`/ventes/devis/${PUBLICATION.devis}/design`))
+    expect(screen.queryByTestId('cal-devis-avertissements')).toBeNull()
+  })
+})

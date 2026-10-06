@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import ventesApi from '../../api/ventesApi'
 
@@ -73,6 +73,27 @@ function refusServeur(erreur) {
   }
 }
 
+/* ACAL95 — CE QUE LA GÉNÉRATION ET LA RESYNCHRO N'ONT PAS PU FAIRE se lit à
+   l'écran AVANT toute navigation ou rechargement (contrat
+   `calepinage_publication.json`) : avertissements et marques manquantes du
+   serveur, MOT POUR MOT ; lignes de kit ajoutées ; « Aucun changement ». Sans
+   rien à dire, le geste reste celui d'aujourd'hui (navigation / rechargement). */
+function messagesDuServeur(data) {
+  const messages = []
+  for (const cle of ['avertissements', 'marques_manquantes']) {
+    for (const m of Array.isArray(data?.[cle]) ? data[cle] : []) {
+      if (typeof m === 'string' && m.trim()) messages.push(m.trim())
+    }
+  }
+  return messages
+}
+
+function libelleLignesAjoutees(n) {
+  const nombre = Number(n) || 0
+  if (nombre <= 0) return null
+  return nombre === 1 ? '1 ligne ajoutée au devis' : `${nombre} lignes ajoutées au devis`
+}
+
 export default function BoutonDevis({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
 }) {
@@ -80,6 +101,9 @@ export default function BoutonDevis({
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
   const [conflit, setConflit] = useState(null)
+  // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
+  // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
+  const [retour, setRetour] = useState(null)
 
   // L'ÉTAT VIENT DU SERVEUR, et d'UNE SEULE lecture : l'agrégat de détail
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
@@ -102,6 +126,7 @@ export default function BoutonDevis({
     if (enCours) return
     setRefus(null)
     setConflit(null)
+    setRetour(null)
     setEnCours(true)
     try {
       return await appel()
@@ -127,18 +152,47 @@ export default function BoutonDevis({
       () => calepinageApi.calepinages.genererDevis(calepinageId, {}))
     const nouveau = res?.data?.devis
     if (!nouveau) return
+    // ACAL95 — ce que la composition n'a pas pu faire se lit AVANT de partir :
+    // pas de navigation immédiate, un lien « Ouvrir le devis » à la place.
+    const messages = messagesDuServeur(res.data)
+    if (messages.length > 0) {
+      setRetour({ messages, lignes: null, inchange: false, devisId: nouveau, suite: 'ouvrir' })
+      return
+    }
     // On rouvre la conception SUR le devis : c'est là que le commercial
     // continue son geste, exactement comme depuis la fiche lead.
     navigate(`/ventes/devis/${nouveau}/design`)
+  }
+
+  const relireEtRecharger = async () => {
+    // On RELIT l'agrégat plutôt que de deviner le nouvel état du devis.
+    await onRelire?.()
+    await onRecharger?.()
   }
 
   const resynchroniser = async () => {
     const res = await executer(
       () => calepinageApi.calepinages.syncDevis(calepinageId, {}))
     if (!res) return
-    // On RELIT l'agrégat plutôt que de deviner le nouvel état du devis.
-    await onRelire?.()
-    await onRecharger?.()
+    const data = res?.data ?? {}
+    const messages = messagesDuServeur(data)
+    const lignes = libelleLignesAjoutees(data.lignes_ajoutees)
+    // ACAL95 — « Aucun changement » se DIT ; rien n'a bougé, rien à recharger.
+    if (data.inchange) {
+      setRetour({ messages, lignes: null, inchange: true, devisId: null, suite: null })
+      return
+    }
+    // Quelque chose à lire : le rechargement attend « J'ai lu ».
+    if (messages.length > 0 || lignes) {
+      setRetour({ messages, lignes, inchange: false, devisId: null, suite: 'recharger' })
+      return
+    }
+    await relireEtRecharger()
+  }
+
+  const confirmerLecture = async () => {
+    setRetour(null)
+    await relireEtRecharger()
   }
 
   const reviser = async () => {
@@ -196,6 +250,42 @@ export default function BoutonDevis({
             {LIBELLE_CHAMP[refus.champ] || refus.champ}
           </p>
           <p className="mt-1 text-sm text-alert-300" role="alert">{refus.message}</p>
+        </div>
+      )}
+
+      {/* ACAL95 — le retour du serveur, LU avant de poursuivre. */}
+      {retour && (
+        <div className="border border-brass-400/40 p-3" data-testid="cal-devis-avertissements">
+          {retour.inchange && (
+            <p className="text-sm text-lune-soft" role="status">Aucun changement</p>
+          )}
+          {retour.lignes && (
+            <p className="text-sm text-lune-soft" role="status">{retour.lignes}</p>
+          )}
+          {retour.messages.length > 0 && (
+            <ul className="mt-1 space-y-1 text-sm text-brass-300" role="status">
+              {retour.messages.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
+          {retour.suite === 'recharger' && (
+            <button
+              type="button"
+              onClick={confirmerLecture}
+              data-testid="cal-devis-j-ai-lu"
+              className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-4 py-2 text-sm font-bold text-brass-300"
+            >
+              J’ai lu
+            </button>
+          )}
+          {retour.suite === 'ouvrir' && retour.devisId && (
+            <Link
+              to={`/ventes/devis/${retour.devisId}/design`}
+              data-testid="cal-devis-ouvrir"
+              className="mt-3 inline-block text-sm font-semibold text-brass-300 underline"
+            >
+              Ouvrir le devis
+            </Link>
+          )}
         </div>
       )}
 
