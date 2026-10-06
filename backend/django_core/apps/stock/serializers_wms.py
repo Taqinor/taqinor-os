@@ -5,6 +5,8 @@
 """
 from rest_framework import serializers
 
+from core.serializers import CompanyScopedRelationsMixin
+
 from .models_wms import (
     AlerteRappel, BlocageQualite, ExpeditionTransporteur, LignePicking,
     LigneRetourClient, MouvementRebut, PlanChargement, PlanComptageTournant,
@@ -168,8 +170,13 @@ class RendezVousTransporteurSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ExpeditionTransporteurSerializer(serializers.ModelSerializer):
+class ExpeditionTransporteurSerializer(CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
     """NTWMS9 — expédition d'une unité logistique par un transporteur.
+
+    ASTK3 — ``unite_logistique`` et ``transporteur`` sont bornés à la société
+    de la requête : un id d'une autre société répond « objet inexistant »,
+    exactement comme un id qui n'existe pas.
 
     Le numéro de suivi et la clé d'étiquette sont POSÉS PAR LE SERVEUR (via le
     connecteur) : jamais acceptés du client."""

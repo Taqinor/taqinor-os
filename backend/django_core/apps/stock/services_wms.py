@@ -721,8 +721,7 @@ def decrementer_stock_expedition(*, expedition, user=None):
     """
     from django.db import transaction
 
-    from .models import MouvementStock
-    from .selectors import lock_produit
+    from .models import MouvementStock, Produit
     from .services import record_stock_movement
 
     unite = expedition.unite_logistique
@@ -735,6 +734,12 @@ def decrementer_stock_expedition(*, expedition, user=None):
     mouvements, ignorees = [], 0
     with transaction.atomic():
         for colis in _unites_a_deplacer(unite):
+            # ASTK3 — étanchéité société : une unité (ou un colis enfant)
+            # d'une autre société n'est jamais décomptée ; on lève, la
+            # transaction annule toute sortie déjà posée.
+            if colis.company_id != expedition.company_id:
+                raise ValueError(
+                    'Unité logistique introuvable dans cette société.')
             for ligne in colis.lignes.select_related(
                     'produit', 'ligne_picking').all():
                 if ligne.produit_id is None or (ligne.quantite or 0) <= 0:
@@ -744,7 +749,14 @@ def decrementer_stock_expedition(*, expedition, user=None):
                     # Flux chantier : consommé à l'INSTALLÉ (N14).
                     ignorees += 1
                     continue
-                produit = lock_produit(ligne.produit_id)
+                # ASTK3 — verrou du produit BORNÉ à la société de
+                # l'expédition (``lock_produit`` n'a pas de filtre société).
+                produit = Produit.objects.select_for_update().filter(
+                    pk=ligne.produit_id,
+                    company_id=expedition.company_id).first()
+                if produit is None:
+                    raise ValueError(
+                        'Produit introuvable dans cette société.')
                 avant = produit.quantite_stock
                 # ERR80 — plancher : on ne sort jamais plus que le stock en
                 # main (même garde que la consommation chantier).
