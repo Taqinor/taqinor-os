@@ -148,9 +148,23 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
-    facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
+    taux_demande = Decimal(str(taux_tva or 20))
     rendu = []
     for index, ligne in enumerate(lignes):
+        # TVA-LIGNE (06/10/2026) — le taux PAR LIGNE : celui du produit quand
+        # sa fiche en porte un (DC7 — 10 % panneaux PV), sinon le taux
+        # demandé. Un taux unique (20) pour toute la composition faisait
+        # enregistrer les panneaux à 20 % par l'écran.
+        tva_produit = getattr(getattr(ligne, 'produit', None), 'tva', None)
+        taux_ligne = taux_demande
+        if tva_produit is not None:
+            taux_ligne = Decimal(str(tva_produit))
+            # « 10.00 » (colonne à 2 décimales) rendu « 10 », comme le taux
+            # demandé : la forme de la valeur ne change pas d'une ligne à
+            # l'autre ; un taux non entier (5.5) reste tel quel.
+            if taux_ligne == taux_ligne.to_integral_value():
+                taux_ligne = taux_ligne.quantize(Decimal('1'))
+        facteur = Decimal('1') + taux_ligne / Decimal('100')
         # Le TTC est DÉRIVÉ du HT stocké, jamais l'inverse : l'écran saisit en
         # TTC mais la base fait foi en HT (même aller-retour qu'`htFromTtc`).
         ttc = (Decimal(ligne.prix_unitaire) * facteur).quantize(
@@ -163,7 +177,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
             'quantite': int(ligne.quantite),
             'prix_unitaire_ht': str(Decimal(ligne.prix_unitaire)),
             'prix_unitaire_ttc': str(ttc),
-            'taux_tva': str(Decimal(str(taux_tva or 20))),
+            'taux_tva': str(taux_ligne),
             # L-2OPT — '' sur toute composition mono-optimum (le cas de tous
             # les aperçus d'hier) : la clé est ADDITIVE, jamais absente.
             'variante': getattr(ligne, 'variante', '') or '',
