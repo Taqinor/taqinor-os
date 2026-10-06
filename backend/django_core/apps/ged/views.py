@@ -344,6 +344,19 @@ class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def destroy(self, request, *args, **kwargs):
+        """ADOC4 — supprimer un coffre qui contient des documents les
+        rendrait visibles de tous (SET_NULL) : refus 409 nommé."""
+        coffre = self.get_object()
+        nombre = Document.objects.filter(coffre=coffre).count()
+        if nombre:
+            return Response(
+                {'detail': f'Le coffre contient {nombre} document(s) : '
+                           f'videz-le avant de le supprimer.',
+                 'documents': nombre},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['get'], url_path='documents')
     def documents(self, request, pk=None):
         """Documents rattachés à ce coffre (l'accès au coffre est déjà filtré
@@ -1671,7 +1684,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         try:
             created = services.scinder_pdf(
-                version, request.data.get('points_de_coupe') or [])
+                version, request.data.get('points_de_coupe') or [],
+                created_by=request.user)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:

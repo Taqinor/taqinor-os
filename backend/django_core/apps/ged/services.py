@@ -871,7 +871,7 @@ def find_duplicate(company, checksum, *, document=None):
 
 
 def create_document(*, company, folder, nom, description='', created_by=None,
-                    custom_data=None):
+                    custom_data=None, coffre=None):
     """Crée un document dans un dossier (société cohérente avec le dossier).
 
     `custom_data` (optionnel) permet de poser des métadonnées typées dès la
@@ -880,10 +880,13 @@ def create_document(*, company, folder, nom, description='', created_by=None,
     """
     if folder.company_id != getattr(company, 'id', company):
         raise ValueError("Le dossier doit appartenir à la même société.")
+    # ADOC4 — `coffre` (optionnel) : un document DÉRIVÉ hérite de la
+    # confidentialité de sa source.
     return Document.objects.create(
         company=company, folder=folder, nom=nom,
         description=description, created_by=created_by,
-        custom_data=custom_data if custom_data is not None else dict())
+        custom_data=custom_data if custom_data is not None else dict(),
+        coffre=coffre)
 
 
 # ── Dépôt cross-app : enregistrer un fichier/des octets existants en GED ─────
@@ -4825,7 +4828,7 @@ def _pdf_lib_indisponible_message():
             "sur ce serveur).")
 
 
-def scinder_pdf(version, points_de_coupe):
+def scinder_pdf(version, points_de_coupe, *, created_by=None):
     """XGED10 — Scinde un PDF en segments (chaque segment devient un nouveau
     `Document`, métadonnées héritées). `points_de_coupe` est une liste
     d'entiers (numéros de PAGE 1-based OÙ COMMENCE chaque nouveau segment,
@@ -4871,15 +4874,18 @@ def scinder_pdf(version, points_de_coupe):
             seg_bytes = seg.tobytes()
             seg.close()
             nom = f'{document.nom} ({debut}-{fin - 1})'
+            # ADOC4 — le segment hérite du COFFRE de la source (un segment
+            # d'un document confidentiel reste confidentiel).
             new_doc = create_document(
                 company=document.company, folder=document.folder, nom=nom,
                 description=document.description,
-                custom_data=dict(document.custom_data or {}))
+                custom_data=dict(document.custom_data or {}),
+                coffre=document.coffre, created_by=created_by)
             key, _meta = _store_bytes(seg_bytes, mime='application/pdf')
             add_version(
                 new_doc, file_key=key, company=document.company,
                 filename=f'{nom}.pdf', size=len(seg_bytes),
-                mime='application/pdf')
+                mime='application/pdf', uploaded_by=created_by)
             update_search_vector(new_doc)
             created.append(new_doc)
         return created
@@ -4902,6 +4908,9 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
+    # ADOC4 — on ne mélange jamais des confidentialités différentes.
+    if len({doc.coffre_id for doc in documents_ordonnes}) > 1:
+        raise ValueError("Les documents viennent de coffres différents.")
     out = fitz.open()
     try:
         for doc in documents_ordonnes:
@@ -4932,9 +4941,10 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
         update_search_vector(cible)
         return cible
     nom = nom or f'{premier.nom} (fusionné)'
+    # ADOC4 — le document fusionné hérite du coffre (commun) des sources.
     nouveau = create_document(
         company=company, folder=premier.folder, nom=nom,
-        created_by=created_by)
+        created_by=created_by, coffre=premier.coffre)
     add_version(
         nouveau, file_key=key, company=company, filename=f'{nom}.pdf',
         size=len(out_bytes), mime='application/pdf', uploaded_by=created_by)
