@@ -214,6 +214,35 @@ def controle_courbe_pompe_lisible(value):
     return None
 
 
+def normaliser_sku(valeur):
+    """ASTK93 — '' et espaces → ``None`` : « pas de SKU » s'écrit UNE seule
+    façon (la contrainte ``(company, sku)`` traiterait deux '' comme un
+    doublon → IntegrityError 500). Survivant unique pour Produit et Kit."""
+    return (valeur or '').strip() or None
+
+
+def verifier_sku_libre(modele, company, sku, instance=None):
+    """ASTK93 — refuse (400) un SKU déjà pris À LA CASSE PRÈS dans la société
+    ('ref-1' / 'REF-1' sont le même article). Le message nomme l'existant."""
+    if sku is None or company is None:
+        return
+    qs = modele.objects.filter(company=company, sku__iexact=sku)
+    if instance is not None and instance.pk:
+        qs = qs.exclude(pk=instance.pk)
+    existant = qs.first()
+    if existant is not None:
+        raise serializers.ValidationError(
+            f'Ce SKU existe déjà ({sku} ≈ {existant.sku}).')
+
+
+def _company_du_contexte(serializer):
+    request = serializer.context.get('request')
+    company = getattr(getattr(request, 'user', None), 'company', None)
+    if company is None:
+        company = getattr(serializer.instance, 'company', None)
+    return company
+
+
 class ProduitSerializer(serializers.ModelSerializer):
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
@@ -420,6 +449,13 @@ class ProduitSerializer(serializers.ModelSerializer):
         probleme = controle_courbe_pompe_lisible(value)
         if probleme:
             raise serializers.ValidationError(probleme)
+        return value
+
+    def validate_sku(self, value):
+        # ASTK93 — '' → None puis refus du doublon à la casse près.
+        value = normaliser_sku(value)
+        verifier_sku_libre(
+            Produit, _company_du_contexte(self), value, self.instance)
         return value
 
     # ── ASTK92 — règles de saisie : 400 lisible par champ, jamais 200/500.
@@ -1885,6 +1921,15 @@ class KitProduitSerializer(serializers.ModelSerializer):
     # OPT-IN via `?avec_disponibilite=1` (contexte posé par la vue) : la
     # liste/fiche l'affiche sans alourdir le comportement par défaut.
     disponibilite_potentielle = serializers.SerializerMethodField()
+    # ASTK93 — même déclaration explicite que Produit.sku (optionnel, '' → None).
+    sku = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=50)
+
+    def validate_sku(self, value):
+        value = normaliser_sku(value)
+        verifier_sku_libre(
+            KitProduit, _company_du_contexte(self), value, self.instance)
+        return value
 
     class Meta:
         model = KitProduit

@@ -134,3 +134,54 @@ class ValidationProduitTests(_Base):
         self.assertIn('facteur', reponse.json())
         self.assertFalse(ConditionnementProduit.objects.filter(
             produit=self.produit).exists())
+
+
+class SkuTests(_Base):
+    """ASTK93 — SKU normalisé ('' → None) et unique à la casse près."""
+
+    def _creer(self, **corps):
+        return self.api.post(
+            '/api/django/stock/produits/',
+            {'prix_vente': '10', **corps}, format='json')
+
+    def test_sku_vide_normalise_puis_doublon_a_la_casse_refuse(self):
+        Produit.objects.create(
+            company=self.company, nom='A', sku='ref-1', prix_vente=10)
+        # un produit existant sans SKU : le POST '' ne doit plus entrer en
+        # collision (500 IntegrityError avant)
+        Produit.objects.create(
+            company=self.company, nom='Sans sku', prix_vente=10)
+
+        reponse = self._creer(nom='B', sku='')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        self.assertIsNone(Produit.objects.get(pk=reponse.json()['id']).sku)
+
+        reponse = self._creer(nom='C', sku='REF-1')
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(
+            reponse.json()['sku'], ['Ce SKU existe déjà (REF-1 ≈ ref-1).'])
+        self.assertFalse(Produit.objects.filter(nom='C').exists())
+
+    def test_deux_produits_sans_sku_ne_collisionnent_plus(self):
+        premier = self._creer(nom='Premier', sku='')
+        second = self._creer(nom='Second', sku='   ')
+        self.assertEqual(premier.status_code, 201, premier.content)
+        self.assertEqual(second.status_code, 201, second.content)
+
+    def test_kits_sku_vide_deux_fois_puis_doublon(self):
+        for nom in ('Kit 1', 'Kit 2'):
+            reponse = self.api.post(
+                '/api/django/stock/kits/',
+                {'nom': nom, 'sku': '', 'composants': []}, format='json')
+            self.assertEqual(reponse.status_code, 201, reponse.content)
+        reponse = self.api.post(
+            '/api/django/stock/kits/',
+            {'nom': 'Kit 3', 'sku': 'kit-x', 'composants': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        reponse = self.api.post(
+            '/api/django/stock/kits/',
+            {'nom': 'Kit 4', 'sku': 'KIT-X', 'composants': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertIn('sku', reponse.json())
