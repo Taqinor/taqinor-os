@@ -65,6 +65,10 @@ const portailApi = {
   // production + alertes ouvertes ; `params.chantier` borne les alertes.
   consommation: (params) =>
     api.get('/portail/client/ma-consommation/', { params }),
+  // ADOC141 — recherche scopée au client (contrat recherche_portail.json) et
+  // export « mes données » (binaire zip : lien direct, nom de fichier servi).
+  recherche: (q) => api.get('/portail/client/recherche/', { params: { q } }),
+  exportMesDonneesUrl: () => '/api/django/portail/client/mes-donnees/export/',
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),

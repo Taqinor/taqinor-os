@@ -107,6 +107,8 @@ const PortailClientEquipe = lazy(() => import('../features/portail/client/Portai
 const PortailClientContrats = lazy(() => import('../features/portail/client/PortailClientContrats'))
 // ADOC140 — « Ma consommation » (série de production, alertes ouvertes).
 const PortailClientConsommation = lazy(() => import('../features/portail/client/PortailClientConsommation'))
+// ADOC141 — « Mes données » : export zip (la recherche vit dans le shell).
+const PortailClientMesDonnees = lazy(() => import('../features/portail/client/PortailClientMesDonnees'))
 // AUD139 — changement OBLIGATOIRE du mot de passe temporaire (portail client).
 // ADOC119 — écran COMMUN aux trois portées (fichier client = ré-export).
 const PortailMotDePasse = lazy(() => import('../features/portail/PortailMotDePasse'))
@@ -509,6 +511,12 @@ const router = createBrowserRouter([
     path: '/portail/client/consommation',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientConsommation /></WithPortal>,
+  },
+  // ADOC141 — « Mes données » du portail client (export zip).
+  {
+    path: '/portail/client/mes-donnees',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientMesDonnees /></WithPortal>,
   },
   // ADOC119 — mot de passe TEMPORAIRE des portails fournisseur et partenaire
   // (même écran commun, même garde de portée que leur accueil).
