@@ -115,8 +115,10 @@ class StageModele(models.Model):
     Chaque étape est un GATE : `bloquant` rend son franchissement OBLIGATOIREMENT
     conditionné aux exigences cochées (`exige_*` — checklist faite, photos,
     n° de série, essais de mise en service, matériel disponible, dossier 82-21,
-    pièces de remise) — plus les points d'arrêt QHSE (toujours vérifiés pour un
-    gate bloquant, cf. CH2). Une étape non bloquante reste PUREMENT consultative.
+    pièces de remise, et — CIQ623 — documents de sécurité `exige_hse` : plan
+    de prévention, analyse de risques, permis de travail en hauteur, chacun
+    avec une révision). Aucun autre point d'arrêt QHSE n'est vérifié (l'app
+    `qhse` est parquée). Une étape non bloquante reste PUREMENT consultative.
 
     `statut_legacy` rabat l'étape sur l'entonnoir HISTORIQUE à 7 statuts de
     `Installation.statut` (JAMAIS supprimé) : l'arrivée sur une étape synchronise
@@ -131,7 +133,7 @@ class StageModele(models.Model):
     libelle = models.CharField(max_length=120)
     ordre = models.PositiveIntegerField(default=0)
     # Gate BLOQUANT : le franchissement exige les éléments requis ci-dessous
-    # + la levée des points d'arrêt QHSE. Non bloquant = consultatif.
+    # (rien d'autre). Non bloquant = consultatif.
     bloquant = models.BooleanField(default=False)
     # ── Éléments REQUIS pour franchir le gate (si bloquant) ──
     exige_checklist = models.BooleanField(default=False)
@@ -141,6 +143,9 @@ class StageModele(models.Model):
     exige_materiel = models.BooleanField(default=False)
     exige_dossier = models.BooleanField(default=False)
     exige_pack = models.BooleanField(default=False)
+    # CIQ623 — documents de sécurité (plan de prévention, analyse de risques,
+    # permis de travail en hauteur) présents avec une révision.
+    exige_hse = models.BooleanField(default=False)
     # CHT23 — exigences de comptage CONFIGURABLES, ADDITIVES STRICTES : les
     # gates `exige_checklist`/`exige_photos` ci-dessus restent inconditionnels
     # au comportement historique (« tous faits ») à leurs valeurs par défaut.
@@ -248,6 +253,56 @@ class CommissioningRecord(models.Model):
     # saisies ; les relevés propres à cette fiche vivent dans
     # ``CommissioningIVReading``.
     ventes_recette_id = models.PositiveIntegerField(null=True, blank=True)
+    # ── CIQ626 — sections C&I du contrat ``recette_ci.json`` (additives,
+    #    toutes SAISIES ; aucun seuil, aucune tolérance, aucune correction
+    #    d'irradiance codés). ──
+
+    class SourceIrradiance(models.TextChoices):
+        MESUREE = 'mesuree', 'Mesurée'
+        ESTIMEE = 'estimee', 'Estimée'
+
+    class EtatEssai(models.TextChoices):
+        SANS_OBJET = 'sans_objet', 'Sans objet'
+        A_FAIRE = 'a_faire', 'À faire'
+        OK = 'ok', 'Conforme'
+        NON_OK = 'non_ok', 'Non conforme'
+
+    irradiance_poa_wm2 = models.DecimalField(
+        max_digits=7, decimal_places=1, null=True, blank=True)
+    irradiance_source = models.CharField(
+        max_length=8, choices=SourceIrradiance.choices, null=True,
+        blank=True)
+    temperature_module_c = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True)
+    # Irradiation mesurée sur la fenêtre d'énergie (kWh/m²) : base du PR.
+    irradiation_kwh_m2 = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True)
+    energie_mesuree_kwh = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    energie_fenetre_debut = models.DateTimeField(null=True, blank=True)
+    energie_fenetre_fin = models.DateTimeField(null=True, blank=True)
+    terre_installation_ohm = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    thermographie_faite = models.BooleanField(null=True, blank=True)
+    thermographie_constats = models.TextField(blank=True, null=True)
+    # CIQ663 rendra ces deux essais exigibles en MT ; défaut « sans objet ».
+    limitation_injection_etat = models.CharField(
+        max_length=10, choices=EtatEssai.choices,
+        default=EtatEssai.SANS_OBJET)
+    limitation_injection_consigne = models.CharField(
+        max_length=255, blank=True, null=True)
+    decouplage_etat = models.CharField(
+        max_length=10, choices=EtatEssai.choices,
+        default=EtatEssai.SANS_OBJET)
+    decouplage_piece = models.CharField(max_length=255, blank=True, null=True)
+    echantillon_iv_chaines = models.PositiveIntegerField(
+        null=True, blank=True)
+    # {essai: instrument_id} — validé contre l'outillage de la société.
+    instruments_par_essai = models.JSONField(default=dict, blank=True)
+    # CIQ627 — promesse de production du devis FIGÉE à la première écriture
+    # ({production_annuelle_kwh, pr_modelise, source, figee_le}) ; une V2 ne
+    # la réécrit jamais. Null = pas encore figée (devis sans étude C&I).
+    promesse_figee = models.JSONField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='commissioning_records_crees')
@@ -325,7 +380,10 @@ class CommissioningIVReading(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True)
     ecart_pmax_pct = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True)
-    defaut_detecte = models.BooleanField(default=False)
+    # CIQ626 — jugé contre le seuil SAISI par la société
+    # (``recette_ecart_pmax_pct``, CIQ622) ; null = écart affiché sans
+    # verdict (aucune tolérance codée).
+    defaut_detecte = models.BooleanField(null=True, blank=True)
     observations = models.TextField(blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 

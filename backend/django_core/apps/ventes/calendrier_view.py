@@ -6,8 +6,12 @@ issues des dossiers de raccordement (FG268-269) :
   * pièces de checklist datées (``DossierChecklistItem.date_echeance``) —
     date limite de dépôt / fourniture d'une pièce ;
   * dossiers déposés en attente de décision (``RegulatoryDossier.date_depot``) ;
-  * validité d'un accord (``RegulatoryDossier.date_decision`` + fenêtre de
-    validité paramétrable, défaut 12 mois) — date limite de mise en service ;
+  * CIQ619 — délais MAXIMAUX du décret 2.25.100 : paiement de l'étude
+    (notification + 10 jours, art. 13) et limite des travaux (convention +
+    2 ans pour un accord, art. 14 ; récépissé + 12 mois pour une
+    déclaration, art. 8). Plus de validité d'accord supposée à 365 jours :
+    ``?validite=<jours>`` reste une SURCHARGE explicite (date de décision +
+    fenêtre) ;
   * CHT25 — prochaine action EXPLICITE posée par l'utilisateur sur le dossier
     (``RegulatoryDossier.prochaine_action``/``prochaine_action_date``), en
     PLUS des règles déduites ci-dessus — jamais un remplacement.
@@ -25,10 +29,45 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole
 from .models import RegulatoryDossier, DossierChecklistItem
 
-# Fenêtre de validité par défaut d'un accord de raccordement (jours).
-DEFAULT_VALIDITE_ACCORD_JOURS = 365
 # Seuil par défaut « imminent » (jours).
 DEFAULT_SEUIL_IMMINENT_JOURS = 30
+
+
+def _echeances_decret(dossier, today, seuil):
+    """CIQ619 — échéances DÉRIVÉES du décret 2.25.100 d'un dossier."""
+    from .selectors_reglementaire import (
+        DELAI_PAIEMENT_ETUDE_SOURCE, DELAI_TRAVAUX_ACCORD_SOURCE,
+        DELAI_TRAVAUX_DECLARATION_SOURCE, paiement_etude_limite,
+        travaux_limite)
+    lignes = []
+    paiement = paiement_etude_limite(dossier)
+    if paiement and not dossier.etude_payee_le:
+        lignes.append(('paiement_etude', paiement,
+                       f"Paiement de l'étude du distributeur "
+                       f"({DELAI_PAIEMENT_ETUDE_SOURCE}) — devis "
+                       f"{dossier.devis_id}"))
+    travaux = travaux_limite(dossier)
+    if travaux and not dossier.demande_exploitation_le:
+        source = (DELAI_TRAVAUX_DECLARATION_SOURCE
+                  if dossier.regime_8221 == 'declaration_bt'
+                  else DELAI_TRAVAUX_ACCORD_SOURCE)
+        lignes.append(('travaux_limite', travaux,
+                       f"Limite des travaux ({source}) — devis "
+                       f"{dossier.devis_id}"))
+    sortie = []
+    for type_, date_limite, libelle in lignes:
+        statut, jours = _alerte(date_limite, today, seuil)
+        sortie.append({
+            'type': type_,
+            'sous_type': dossier.regime_8221,
+            'dossier_id': dossier.id,
+            'libelle': libelle,
+            'date_echeance': date_limite.isoformat(),
+            'statut_alerte': statut,
+            'jours_restants': jours,
+            'relance_due': False,
+        })
+    return sortie
 
 
 def _alerte(date_echeance, today, seuil_jours):
@@ -49,7 +88,8 @@ def calendrier_reglementaire(request):
     """GET /ventes/calendrier-reglementaire/
 
     ``?seuil=<jours>`` règle la fenêtre « imminent » (défaut 30).
-    ``?validite=<jours>`` règle la validité d'accord (défaut 365).
+    ``?validite=<jours>`` : surcharge EXPLICITE de la validité d'accord
+    (sinon : délais du décret 2.25.100, CIQ619).
     ``?statut=expire|imminent|a_venir`` filtre les lignes renvoyées.
 
     Renvoie ``{echeances: [...], resume: {expire, imminent, a_venir}}`` trié par
@@ -65,13 +105,14 @@ def calendrier_reglementaire(request):
         seuil = DEFAULT_SEUIL_IMMINENT_JOURS
     if seuil < 0:
         seuil = DEFAULT_SEUIL_IMMINENT_JOURS
+    # CIQ619 — aucune validité par défaut : sans surcharge, les délais du
+    # décret s'appliquent.
     try:
-        validite = int(request.query_params.get(
-            'validite', DEFAULT_VALIDITE_ACCORD_JOURS))
+        validite = int(request.query_params.get('validite'))
     except (TypeError, ValueError):
-        validite = DEFAULT_VALIDITE_ACCORD_JOURS
-    if validite < 0:
-        validite = DEFAULT_VALIDITE_ACCORD_JOURS
+        validite = None
+    if validite is not None and validite < 0:
+        validite = None
 
     def _scope(qs):
         if getattr(user, 'company_id', None):
@@ -117,8 +158,11 @@ def calendrier_reglementaire(request):
                 'jours_restants': jours,
                 'relance_due': False,
             })
-        # Validité d'accord → date limite de mise en service.
-        if d.date_decision and d.statut in ('approuve', 'comptage_pose'):
+        # CIQ619 — délais maximaux du décret 2.25.100.
+        echeances.extend(_echeances_decret(d, today, seuil))
+        # Surcharge explicite ``?validite=`` → date limite de mise en service.
+        if (validite is not None and d.date_decision
+                and d.statut in ('approuve', 'comptage_pose')):
             limite_mes = d.date_decision + timedelta(days=validite)
             statut, jours = _alerte(limite_mes, today, seuil)
             echeances.append({

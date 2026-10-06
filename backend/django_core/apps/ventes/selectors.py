@@ -122,6 +122,74 @@ def production_attendue_pour_devis(devis_id):
     return val if val > 0 else None
 
 
+def kwc_dernier_devis(lead, company):
+    """CIQ515 — kWc du DERNIER devis du lead : la taille retenue du moteur
+    C&I (contrat CIQ2, ``etude_params['etude_ci']['taille']['retenue_kwc']``),
+    sinon la conception calepinée (``conception_pour_lead``). ``None`` si
+    rien n'est connu — jamais un chiffre fabriqué. Scopé société."""
+    from .models import Devis
+    lead_id = getattr(lead, 'pk', None)
+    if not lead_id or company is None:
+        return None
+    devis = (Devis.objects.filter(lead_id=lead_id, company=company)
+             .only('etude_params').order_by('-date_creation', '-id').first())
+    if devis is not None:
+        etude = (devis.etude_params or {}).get('etude_ci') or {}
+        taille = etude.get('taille') if isinstance(etude, dict) else None
+        kwc = (taille or {}).get('retenue_kwc') if isinstance(
+            taille, dict) else None
+        try:
+            if kwc not in (None, '') and float(kwc) > 0:
+                return float(kwc)
+        except (TypeError, ValueError):
+            pass
+    kwc = (conception_pour_lead(lead, company) or {}).get('kwc')
+    try:
+        return float(kwc) if kwc not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
+
+
+def promesse_production_devis(devis_id, company):
+    """CIQ627 — promesse de production d'un devis C&I, lue dans la sortie du
+    moteur serveur (contrat CIQ2, ``etude_params['etude_ci']``) :
+    ``{production_annuelle_kwh, pr_modelise, source}`` ou ``None`` si le
+    devis n'a pas d'étude C&I (jamais une valeur devinée).
+
+    ``pr_modelise`` = 1 − pertes système du moteur (hypothèse ``pertes_pct``
+    de l'étude, PVGIS) ; ``None`` si l'hypothèse est absente. Scopé société.
+    Aucune garantie annoncée."""
+    from decimal import Decimal, InvalidOperation
+
+    from .models import Devis
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .only('etude_params').first())
+    if devis is None:
+        return None
+    etude = (devis.etude_params or {}).get('etude_ci') or {}
+    if not isinstance(etude, dict):
+        return None
+    try:
+        production = Decimal(str((etude.get('bilan') or {}).get(
+            'production_kwh')))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if not production.is_finite() or production <= 0:
+        return None
+    pr = None
+    for hypothese in etude.get('hypotheses') or []:
+        if isinstance(hypothese, dict) and hypothese.get('cle') == 'pertes_pct':
+            try:
+                pertes = Decimal(str(hypothese.get('valeur')))
+            except (InvalidOperation, ValueError, TypeError):
+                break
+            if 0 <= pertes < 100:
+                pr = float((1 - pertes / 100).quantize(Decimal('0.001')))
+            break
+    return {'production_annuelle_kwh': float(production),
+            'pr_modelise': pr, 'source': 'estimation moteur'}
+
+
 def pr_initial_pour_chantier(installation_id):
     """YSERV8 — énergie annuelle attendue (kWh) du test de performance FG278.
 

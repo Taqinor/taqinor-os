@@ -291,6 +291,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                           or '').strip()
         motif_reouverture = (self.request.data.get('motif_reouverture')
                              or '').strip()
+        # CIQ621 — dérogation Directeur (motif) aux travaux sans convention.
+        motif_derogation_8221 = (
+            self.request.data.get('motif_derogation_8221') or '').strip()
         with transaction.atomic():
             super().perform_update(serializer)
             inst = serializer.instance
@@ -319,6 +322,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                     inst, nouveau_statut, self.request.user,
                     motif_override_acompte=motif_override,
                     motif_reouverture=motif_reouverture,
+                    motif_derogation_8221=motif_derogation_8221,
                     # Instantané d'AVANT la sauvegarde des autres champs : le
                     # diff du chatter doit les voir, et les gates doivent
                     # s'évaluer sur l'état d'avant (comportement historique).
@@ -1236,7 +1240,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         """CH2 — avance le chantier à l'étape demandée (corps {"etape": cle})
         ou à la suivante. Une étape BLOQUANTE ne se franchit pas tant que ses
         exigences (checklist/photos/séries/essais/matériel/dossier 82-21) et
-        les points d'arrêt QHSE ne sont pas levés — rejet 400 avec les raisons
+        les documents de sécurité (`exige_hse`) manquent — rejet 400 avec les raisons
         en français. Les étapes non bloquantes s'avancent librement. Le statut
         hérité est synchronisé, donc les effets de bord existants (stock à
         « Installé », garantie/parc à « Réceptionné ») tirent inchangés."""
@@ -1288,7 +1292,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         try:
             changer_statut_chantier(
                 inst, statut_cible, request.user, etape=cible,
-                motif_override_acompte=motif_override)
+                motif_override_acompte=motif_override,
+                motif_derogation_8221=(
+                    request.data.get('motif_derogation_8221') or '').strip())
         except TransitionRefusee as exc:
             return Response(
                 {'detail': 'Étape bloquée par un gate.',

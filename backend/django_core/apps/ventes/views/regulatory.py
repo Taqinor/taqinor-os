@@ -46,6 +46,13 @@ def _company_or_none(user):
     return getattr(user, 'company', None)
 
 
+def _figer_equipements(dossier):
+    """CIQ620 — au passage à « déposé », fige une fois les équipements du
+    devis (fabricant, modèle, quantité, puissance)."""
+    from ..services import figer_equipements_dossier_8221
+    figer_equipements_dossier_8221(dossier)
+
+
 def _refleter_sur_chantier(dossier):
     """CIQ617 — le dossier est la SEULE source de l'état 82-21 : à chaque
     changement (statut, dates, référence, régime), son ``resume`` est reflété
@@ -118,6 +125,7 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
         company = self._resolve_company(devis)
         dossier = serializer.save(company=company,
                                   created_by=self.request.user)
+        _figer_equipements(dossier)  # CIQ620
         _refleter_sur_chantier(dossier)  # CIQ617
 
     def perform_update(self, serializer):
@@ -125,6 +133,7 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
             'devis', serializer.instance.devis)
         company = self._resolve_company(devis)
         dossier = serializer.save(company=company)
+        _figer_equipements(dossier)  # CIQ620
         _refleter_sur_chantier(dossier)  # CIQ617
 
     @action(detail=True, methods=['post'], url_path='generer-checklist')

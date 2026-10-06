@@ -180,6 +180,8 @@ SURFACE_PUBLIQUE = (
     "extract_roof_config",
     "facturables_pour_devis",
     "facture_montant_du",
+    # CIQ620 — équipements figés au dépôt (domain/dossier_8221.py).
+    "figer_equipements_dossier_8221",
     "fusionner_kits",
     "gamme_envoi",
     "gamme_info",
@@ -216,6 +218,8 @@ SURFACE_PUBLIQUE = (
     # ACAL58 — orientation POSÉE d'abord (ventes/domain/geometrie.py).
     "orientation_du_pan",
     "otp_lecture_verified",
+    # CIQ618 — ouverture automatique du dossier 82-21 (domain/dossier_8221.py).
+    "ouvrir_dossier_8221",
     "pans_du_document",
     "phase_client_pour_dimensionnement",
     "plafond_panneaux",
@@ -231,6 +235,8 @@ SURFACE_PUBLIQUE = (
     "prix_applicable",
     "prix_forfait_ht",
     "produits_a_renseigner",
+    # CIQ510 — prolonger (jamais raccourcir) la validité (domain/envoi.py).
+    "prolonger_validite_devis",
     # QJR107 (30/08/2026) — ``profil_reel_existe`` RETIRÉE de la surface :
     # la fonction est supprimée (aucun appelant dans tout le dépôt), voir la
     # note de suppression en tête de ``domain/etudes.py``.

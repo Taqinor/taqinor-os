@@ -41,7 +41,30 @@ def _creer_chantier_on_devis_accepted(sender, devis, user, ancien_statut,
     company = getattr(devis, 'company', None)
     if company is None:
         return
-    create_installation_from_devis(devis, user, company)
+    inst, _created = create_installation_from_devis(devis, user, company)
+    _ouvrir_dossier_8221_ci(devis, inst, user)
+
+
+def _ouvrir_dossier_8221_ci(devis, inst, user):
+    """CIQ618 — un chantier C&I (``industriel``) ouvre SEUL son dossier 82-21
+    (D-CIQ-18) par la façade ``ventes.services.ouvrir_dossier_8221``
+    (idempotente : un seul dossier par affaire, révisions comprises), puis le
+    chantier reçoit le miroir de son état (CIQ617). Résidentiel et agricole :
+    rien. Aucun délai promis au client."""
+    if (inst is None or inst.type_installation
+            != Installation.TypeInstallation.INDUSTRIEL):
+        return
+    from apps.ventes.selectors import dossier_8221_resume
+    from apps.ventes.services import ouvrir_dossier_8221
+
+    from .services import refleter_dossier_8221
+
+    dossier, _ = ouvrir_dossier_8221(devis, inst.pk, inst.regime_8221,
+                                     user=user)
+    if dossier is not None:
+        refleter_dossier_8221(
+            inst.pk, dossier_8221_resume(inst.company, dossier.devis_id),
+            company=inst.company)
 
 
 @receiver(reception_fournisseur_confirmee,

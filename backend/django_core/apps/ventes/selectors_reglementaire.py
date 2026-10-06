@@ -25,6 +25,58 @@ def _champ(dossier, nom):
     return getattr(dossier, nom, None)
 
 
+#: CIQ619 — délais MAXIMAUX du décret 2.25.100 (jamais une date promise).
+#: Art. 13 : l'étude est payée sous 10 jours après notification des frais,
+#: sinon le dossier est retourné.
+DELAI_PAIEMENT_ETUDE_JOURS = 10
+DELAI_PAIEMENT_ETUDE_SOURCE = 'décret 2.25.100 art. 13'
+#: Art. 14 : travaux sous 2 ans après la convention (accord / autorisation).
+DELAI_TRAVAUX_ACCORD_MOIS = 24
+DELAI_TRAVAUX_ACCORD_SOURCE = 'décret 2.25.100 art. 14'
+#: Art. 8 : travaux sous 12 mois après le récépissé (déclaration).
+DELAI_TRAVAUX_DECLARATION_MOIS = 12
+DELAI_TRAVAUX_DECLARATION_SOURCE = 'décret 2.25.100 art. 8'
+
+
+def _ajouter_mois(jour, mois):
+    """``jour`` + ``mois`` mois calendaires (29/02 → 28/02 si besoin)."""
+    import calendar
+    total = jour.month - 1 + mois
+    annee, mois_cible = jour.year + total // 12, total % 12 + 1
+    dernier = calendar.monthrange(annee, mois_cible)[1]
+    return jour.replace(year=annee, month=mois_cible,
+                        day=min(jour.day, dernier))
+
+
+def paiement_etude_limite(dossier):
+    """Date limite de paiement de l'étude (art. 13), ou None."""
+    from datetime import timedelta
+    notifie = _champ(dossier, 'etude_frais_notifies_le')
+    if not notifie:
+        return None
+    return notifie + timedelta(days=DELAI_PAIEMENT_ETUDE_JOURS)
+
+
+def travaux_limite(dossier):
+    """Date limite des travaux : accord/autorisation → convention + 2 ans
+    (art. 14) ; déclaration → récépissé (``date_decision``) + 12 mois
+    (art. 8). None tant que la date d'origine n'est pas saisie."""
+    regime = dossier.regime_8221
+    if regime in ('accord_raccordement', 'autorisation_anre'):
+        convention = _champ(dossier, 'convention_signee_le')
+        return (_ajouter_mois(convention, DELAI_TRAVAUX_ACCORD_MOIS)
+                if convention else None)
+    if regime == 'declaration_bt' and dossier.date_decision:
+        return _ajouter_mois(dossier.date_decision,
+                             DELAI_TRAVAUX_DECLARATION_MOIS)
+    return None
+
+
+def _alertes(dossier):
+    from .domain.dossier_8221 import alertes_modification_dossier
+    return alertes_modification_dossier(dossier)
+
+
 def resume_dossier_8221(dossier):
     """Bloc ``resume`` (contrat CIQ12) d'un ``RegulatoryDossier``."""
     manquantes = [
@@ -41,7 +93,7 @@ def resume_dossier_8221(dossier):
         'etude': {
             'frais_notifies_le': _iso(_champ(dossier,
                                              'etude_frais_notifies_le')),
-            'paiement_limite_le': None,
+            'paiement_limite_le': _iso(paiement_etude_limite(dossier)),
             'payee_le': _iso(_champ(dossier, 'etude_payee_le')),
             'conclusion': _champ(dossier, 'etude_conclusion'),
             'reglages_imposes': _champ(dossier, 'etude_reglages_imposes'),
@@ -51,13 +103,15 @@ def resume_dossier_8221(dossier):
             'date': _iso(_champ(dossier, 'capacite_date')),
         },
         'convention_signee_le': _iso(_champ(dossier, 'convention_signee_le')),
-        'travaux_limite_le': None,
+        'travaux_limite_le': _iso(travaux_limite(dossier)),
         'demande_exploitation_le': _iso(
             _champ(dossier, 'demande_exploitation_le')),
         'accord_exploitation_le': _iso(
             _champ(dossier, 'accord_exploitation_le')),
         'equipements_figes': list(_champ(dossier, 'equipements_figes') or []),
-        'alertes_modification': [],
+        # CIQ620 — avertissement (jamais un blocage) si le matériel a changé
+        # depuis le dépôt (loi 82-21 art. 8-9).
+        'alertes_modification': _alertes(dossier),
     }
 
 
