@@ -420,8 +420,10 @@ def lire_piece_meteo(calepinage):
     # n'est plus RETENUE : l'état vit dans la corbeille (patron CAL208), la
     # ligne ``Attachment`` n'est jamais supprimée.
     company = getattr(calepinage, 'company', None)
-    en_corbeille = list(ids_dans_corbeille('records.attachment',
-                                           company=company))
+    # Sous-requête (jamais ``list()``) : la corbeille et la pièce sont lues
+    # en UNE requête — ``GET resultat/`` relit cette signature à chaque appel
+    # (budget CALX390).
+    en_corbeille = ids_dans_corbeille('records.attachment', company=company)
     return (Attachment.objects
             .filter(company=company,
                     content_type=ContentType.objects.get_for_model(

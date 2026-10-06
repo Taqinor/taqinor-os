@@ -1694,15 +1694,20 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     conception, materiel, donnees, document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
+    # Les réglages société sont LUS UNE FOIS par lecture du résultat (budget
+    # CALX390) ; chaque section en est tirée sans relire la base.
+    societe = parametres_societe(calepinage)
+    electrique_societe = _reglages_electrique_societe(
+        calepinage, parametres=societe)
     # ACAL48 — ``reglages`` est, comme ``materiel``, un seam réservé aux
     # APPELS INTERNES et aux tests (aucune vue ne l'expose).
     if reglages is None:
-        reglages = parametres_societe(calepinage)
+        reglages = societe
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
     verdicts = verdicts_electriques(
         conception, optimiseur, nom_optimiseur,
-        reglages=_reglages_electrique_societe(calepinage))
+        reglages=electrique_societe)
     regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
     try:
         # CAL234 — l'affectation MANUELLE enregistrée (si elle existe) écrase
@@ -1728,7 +1733,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # une saisie existe : sans elle, le bloc est celui d'aujourd'hui.
     poly = _polystring_du_calepinage(
         conception, saisie=donnees.get(CLE_POLYSTRING),
-        reglages=_reglages_electrique_societe(calepinage))
+        reglages=electrique_societe)
     if poly['bloc'] is not None:
         electrique[CLE_POLYSTRING] = poly['bloc']
     # CALX209 — le régime micro-onduleur : des branches AC, plus de chaînes.
@@ -1763,7 +1768,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
-        parametres_societe=_parametres_electriques(calepinage),
+        parametres_societe=_parametres_electriques(calepinage,
+                                                   parametres=societe),
         # ACAL141 — l'écrêtage de l'étape « ecretage » de la cascade FRAÎCHE
         # (``None`` périmée ou jamais simulée : motif inchangé).
         ecretage_pct=_ecretage_de_la_cascade(blocs.get('cascade')))
@@ -2851,9 +2857,13 @@ def parametres_societe(calepinage):
         return {}
 
 
-def _parametres_electriques(calepinage):
-    """La seule section « norme électrique » des réglages (CAL130)."""
-    return parametres_societe(calepinage).get('norme_electrique') or {}
+def _parametres_electriques(calepinage, *, parametres=None):
+    """La seule section « norme électrique » des réglages (CAL130).
+
+    ``parametres`` : les réglages société DÉJÀ lus (sinon relus ici)."""
+    if parametres is None:
+        parametres = parametres_societe(calepinage)
+    return parametres.get('norme_electrique') or {}
 
 
 def _version_moteur():
@@ -3063,12 +3073,15 @@ def _optimiseurs_du_calepinage(conception, specs, designation=''):
     }
 
 
-def _reglages_electrique_societe(calepinage):
-    """La seule section « electrique_societe » des réglages (CALX145)."""
+def _reglages_electrique_societe(calepinage, *, parametres=None):
+    """La seule section « electrique_societe » des réglages (CALX145).
+
+    ``parametres`` : les réglages société DÉJÀ lus (sinon relus ici)."""
     from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
 
-    return parametres_societe(calepinage).get(
-        SECTION_ELECTRIQUE_SOCIETE) or {}
+    if parametres is None:
+        parametres = parametres_societe(calepinage)
+    return parametres.get(SECTION_ELECTRIQUE_SOCIETE) or {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
