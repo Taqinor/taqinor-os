@@ -1936,14 +1936,16 @@ def _entete_servie(calepinage, empreinte):
     entete = entete if isinstance(entete, dict) else {}
     if not entete.get('hash_entree'):
         return {'hash_entree': empreinte, 'version_simulation': None,
-                'reglages_utilises': {}, 'calcule_le': None,
-                'duree_s': None}
+                'reglages_utilises': {}, 'meteo_fichier': None,
+                'calcule_le': None, 'duree_s': None}
     reglages = entete.get('reglages_utilises')
     return {
         'hash_entree': entete.get('hash_entree'),
         'version_simulation': entete.get('version_simulation'),
         'reglages_utilises': (dict(reglages) if isinstance(reglages, dict)
                               else {}),
+        # ACAL146 — le fichier météo retenu par ce calcul, ou ``null``.
+        'meteo_fichier': entete.get('meteo_fichier'),
         'calcule_le': entete.get('calcule_le'),
         'duree_s': entete.get('duree_s'),
     }

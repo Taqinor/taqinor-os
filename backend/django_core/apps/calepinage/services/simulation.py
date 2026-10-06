@@ -73,6 +73,7 @@ __all__ = [
     'MOTIF_SANS_POINT',
     'SOURCE_ENTREE_CHAINE', 'SimulationRefusee', 'VERSION_SIMULATION',
     'construire_contexte', 'empreinte_simulation', 'fichier_meteo_depose',
+    'lire_compagnon_meteo', 'lire_piece_meteo',
     'recalculer_simulations_societe', 'simuler_calepinage',
     'verifier_simulable',
 ]
@@ -396,11 +397,15 @@ def _reglages_utilises(reglages):
     return fige
 
 
-def _piece_meteo_deposee(calepinage):
-    """La ``records.Attachment`` du DERNIER fichier météo déposé, ou ``None``.
+def lire_piece_meteo(calepinage):
+    """ACAL146 — LA ``records.Attachment`` du DERNIER fichier météo déposé
+    sur ce calepinage, ou ``None`` — la SEULE résolution (simulation,
+    empreinte, ``GET meteo-fichier/``).
 
-    Un pivot jamais enregistré (``pk`` absent) ou un double de calcul qui
-    n'est pas un modèle n'a aucune pièce jointe : rien n'est lu.
+    Le filtre SOCIÉTÉ est EXPLICITE : une pièce « meteo/… » rattachée au même
+    ``object_id`` par une autre société n'est jamais lue. Un pivot jamais
+    enregistré (``pk`` absent) ou un double de calcul qui n'est pas un modèle
+    n'a aucune pièce jointe : rien n'est lu.
     """
     if (getattr(calepinage, 'pk', None) is None
             or not hasattr(type(calepinage), '_meta')):
@@ -410,12 +415,41 @@ def _piece_meteo_deposee(calepinage):
     from apps.records.models import Attachment
 
     return (Attachment.objects
-            .filter(content_type=ContentType.objects.get_for_model(
-                type(calepinage)),
-                object_id=calepinage.pk,
-                file_key__startswith='meteo/')
+            .filter(company=getattr(calepinage, 'company', None),
+                    content_type=ContentType.objects.get_for_model(
+                        type(calepinage)),
+                    object_id=calepinage.pk,
+                    file_key__startswith='meteo/')
             .order_by('-id')
             .first())
+
+
+#: ACAL146 — le suffixe de l'objet COMPAGNON d'un fichier météo déposé :
+#: ``<file_key>.meta.json`` porte {fournisseur, sha256, nom}. Ni migration, ni
+#: écriture dans ``Calepinage.resultat``.
+SUFFIXE_COMPAGNON_METEO = '.meta.json'
+
+
+def lire_compagnon_meteo(piece):
+    """ACAL146 — ``{fournisseur, sha256, nom}`` du fichier météo déposé,
+    relu dans son objet compagnon, ou ``{}`` (dépôt antérieur, magasin
+    injoignable, contenu illisible)."""
+    import json
+
+    from apps.ventes import services as ventes_services
+
+    if piece is None or not getattr(piece, 'file_key', ''):
+        return {}
+    brut = ventes_services.lire_fichier_toiture(
+        piece.file_key + SUFFIXE_COMPAGNON_METEO)
+    if not brut:
+        return {}
+    try:
+        donnees = json.loads(brut.decode('utf-8') if isinstance(brut, bytes)
+                             else brut)
+    except (TypeError, ValueError, UnicodeDecodeError):
+        return {}
+    return donnees if isinstance(donnees, dict) else {}
 
 
 def _signature_meteo_deposee(calepinage):
@@ -427,7 +461,7 @@ def _signature_meteo_deposee(calepinage):
     calculée à chaque ``GET resultat/`` et ne va pas chercher le fichier dans
     le magasin d'objets à chaque lecture.
     """
-    piece = _piece_meteo_deposee(calepinage)
+    piece = lire_piece_meteo(calepinage)
     if piece is None:
         return None
     return {'piece_jointe': piece.pk, 'cle': piece.file_key or '',
@@ -702,7 +736,7 @@ def verifier_simulable(contexte, meta, *, fichier_depose=False):
 def fichier_meteo_depose(calepinage):
     """ACAL126 — un fichier météo est-il déposé sur ce calepinage ? (la vue
     pré-vérifie sans relire le fichier lui-même)."""
-    return _piece_meteo_deposee(calepinage) is not None
+    return lire_piece_meteo(calepinage) is not None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -764,21 +798,33 @@ def _serie_meteo_deposee(calepinage):
     fichier illisible (objet effacé du magasin, contenu devenu invalide) rend
     ``None`` — la simulation repart alors sur PVGIS plutôt que de s'arrêter.
     """
+    import hashlib
+
     from apps.ventes import services as ventes_services
 
     from .meteo_fichier import MeteoFichierRefuse, lire_serie_meteo
 
-    piece = _piece_meteo_deposee(calepinage)
+    piece = lire_piece_meteo(calepinage)
     if piece is None:
         return None
     contenu = ventes_services.lire_fichier_toiture(piece.file_key)
     if not contenu:
         return None
+    # ACAL146 — le fournisseur SAISI au dépôt, REJOUÉ depuis le compagnon.
+    compagnon = lire_compagnon_meteo(piece)
     try:
-        return lire_serie_meteo(contenu, fournisseur='',
-                                nom_fichier=piece.filename or '')
+        serie = lire_serie_meteo(
+            contenu, fournisseur=str(compagnon.get('fournisseur') or ''),
+            nom_fichier=piece.filename or '')
     except MeteoFichierRefuse:
         return None
+    serie['identite'] = {
+        'piece_jointe': piece.pk,
+        'sha256': hashlib.sha256(contenu).hexdigest(),
+        'nom': piece.filename or None,
+        'fournisseur': compagnon.get('fournisseur') or None,
+    }
+    return serie
 
 
 def _serie_de_chaine(reponse, plan):
@@ -1189,12 +1235,14 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
     # fournisseur compte ce qui est réellement parti sur le réseau.
     blocs['meteo']['appels_pvgis'] = compteur['appels']
-    if fichier is not None:
-        # Les deux clés de provenance qu'un fichier apporte et que la liste
-        # fixe du bloc météo ne porte pas.
-        for cle in ('fournisseur', 'fichier'):
-            if cle in (provenance['provenance'] or {}):
-                blocs['meteo'][cle] = provenance['provenance'][cle]
+    # ACAL146 — ``meteo.fichier`` {nom, fournisseur} quand un fichier déposé
+    # est la source (``null`` sinon : PVGIS), et le fournisseur rejoué.
+    identite = (fichier or {}).get('identite') if fichier else None
+    blocs['meteo']['fichier'] = (
+        {'nom': identite.get('nom'), 'fournisseur': identite.get('fournisseur')}
+        if identite else None)
+    if identite:
+        blocs['meteo']['fournisseur'] = identite.get('fournisseur')
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
     par_module = production_module_par_module(contexte)
@@ -1298,6 +1346,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         # (D-ACAL-8) : le résultat dit avec quoi il a été calculé.
         'version_simulation': VERSION_SIMULATION,
         'reglages_utilises': meta['reglages_utilises'],
+        # ACAL146 — le fichier météo RETENU (identité + empreinte du
+        # contenu), ``null`` quand la source est PVGIS.
+        'meteo_fichier': ({'piece_jointe': identite.get('piece_jointe'),
+                           'sha256': identite.get('sha256')}
+                          if identite else None),
         'version_moteur': _version_moteur(),
         'calcule_le': calcule_le,
         'duree_s': round(time.monotonic() - depart, 3),

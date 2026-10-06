@@ -43,7 +43,7 @@ SIMULATION = charger(ECHANTILLONS / 'calepinage_simulation.json')
 #: ACAL8 (M0) a étendu le bloc météo de ``calepinage_simulation.json`` avant
 #: ses producteurs : la tâche nommée sert la clé, la reporte dans
 #: ``calepinage_meteo.json`` et retire son entrée.
-EN_ATTENTE_METEO = {'fichier': 'ACAL146'}
+EN_ATTENTE_METEO = {}
 
 
 def serie_de_la_fixture():

@@ -568,6 +568,9 @@ CLES_METEO_PUBLIEES = (
     'service', 'base_rayonnement', 'base_meteo', 'mode', 'fenetre_annees',
     'annees', 'point', 'horizon', 'url', 'obtenue_le', 'depuis_cache',
     'convention_azimut', 'heure', 'albedo_face_avant',
+    # ACAL146 — le fichier météo déposé quand il est la source (``null`` :
+    # PVGIS) ; la simulation le publie sous la forme {nom, fournisseur}.
+    'fichier',
 )
 
 #: Les sous-blocs du bloc météo et leurs clés — un sous-bloc partiel se

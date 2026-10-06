@@ -83,8 +83,6 @@ EN_ATTENTE_DETAIL = {
 #: un état de ``calepinage_simulation.json`` OU de ``calepinage_resultat.json``
 #: (les deux échantillons publient les mêmes blocs).
 EN_ATTENTE_SIMULATION = {
-    'simulation.meteo_fichier': 'ACAL146',
-    'meteo.fichier': 'ACAL146',
 }
 
 #: Clés propres à ``calepinage_resultat.json`` posées par ACAL8 (M0), en plus
