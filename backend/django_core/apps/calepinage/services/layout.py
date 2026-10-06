@@ -116,6 +116,81 @@ class LayoutRefuse(ValueError):
         self.champ = champ
 
 
+def _contour_lisible(sommets):
+    """Le contour en couples numériques, ou ``None`` s'il est illisible."""
+    if not isinstance(sommets, list):
+        return None
+    pts = []
+    for point in sommets:
+        if (not isinstance(point, (list, tuple)) or len(point) < 2
+                or not all(isinstance(v, (int, float))
+                           and not isinstance(v, bool) for v in point[:2])):
+            return None
+        pts.append((point[0], point[1]))
+    return pts
+
+
+def contours_croises(document):
+    """ACAL76 — ``[(chemin, contour), …]`` des contours qui se CROISENT.
+
+    Contours contrôlés : ``zones[].vertices``, ``zones[].obstacles[].contour``
+    et ``exclusionZones[].vertices`` ; le test est
+    ``core.calepinage.geometrie.est_polygone_simple`` (le noyau, jamais
+    recodé). Un contour illisible est laissé au schéma. Fonction PURE.
+    """
+    from core.calepinage.geometrie import est_polygone_simple
+
+    if not isinstance(document, dict):
+        return []
+    candidats = []
+    zones = document.get('zones')
+    for rang, zone in enumerate(zones if isinstance(zones, list) else ()):
+        if not isinstance(zone, dict):
+            continue
+        candidats.append((f'zones.{rang}.vertices', zone.get('vertices')))
+        obstacles = zone.get('obstacles')
+        for place, obstacle in enumerate(
+                obstacles if isinstance(obstacles, list) else ()):
+            if isinstance(obstacle, dict):
+                candidats.append(
+                    (f'zones.{rang}.obstacles.{place}.contour',
+                     obstacle.get('contour')))
+    exclusions = document.get('exclusionZones')
+    for rang, zone in enumerate(
+            exclusions if isinstance(exclusions, list) else ()):
+        if isinstance(zone, dict):
+            candidats.append((f'exclusionZones.{rang}.vertices',
+                              zone.get('vertices')))
+    croises = []
+    for chemin, sommets in candidats:
+        contour = _contour_lisible(sommets)
+        if contour and not est_polygone_simple(contour):
+            croises.append((chemin, contour))
+    return croises
+
+
+def message_contour_croise(chemin):
+    """ACAL76 — le refus nommé d'un contour qui se croise."""
+    return (f"Conception refusée au champ « {chemin} » : le contour se "
+            "croise (nœud papillon) — redessinez-le sans que deux côtés se "
+            "coupent.")
+
+
+def _refuser_contour_nouvellement_croise(ancien, nouveau):
+    """ACAL76 — refuse un contour croisé ABSENT du document stocké.
+
+    Un contour croisé DÉJÀ stocké et renvoyé inchangé passe : on ne bloque
+    jamais l'édition d'un dossier existant pour un défaut ancien.
+    """
+    croises = contours_croises(nouveau)
+    if not croises:
+        return
+    deja = {json.dumps(contour) for _c, contour in contours_croises(ancien)}
+    for chemin, contour in croises:
+        if json.dumps(contour) not in deja:
+            raise LayoutRefuse(message_contour_croise(chemin), champ=chemin)
+
+
 class DocumentModifie(ValueError):
     """ACAL22 (C-ACAL-044) — le jeton d'écriture est périmé.
 
@@ -301,6 +376,9 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             calepinage.roof_layout = _relire_sous_verrou(calepinage,
                                                          base_empreinte)
         ancien_layout = calepinage.roof_layout
+        # ACAL76 — un contour NOUVELLEMENT croisé (nœud papillon) est refusé
+        # en nommant son chemin ; rien n'est écrit.
+        _refuser_contour_nouvellement_croise(ancien_layout, roof_layout)
         # ACAL39 — « inchangé » se décide sur l'empreinte DOCUMENT de
         # l'ancien document relu, jamais sur layout_hash (empreinte imprimée,
         # aveugle à l'horizon, aux champs au sol, à l'épingle…).
