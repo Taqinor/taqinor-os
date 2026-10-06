@@ -116,6 +116,22 @@ class UniteLogistiqueSerializer(CompanyScopedRelationsMixin,
     def get_nb_enfants(self, obj) -> int:
         return obj.enfants.count()
 
+    def validate_parent(self, value):
+        """ASTK31 — un parent égal à soi ou qui forme un cycle est refusé
+        (sinon le déplacement récursif tombait en 500)."""
+        if value is None or self.instance is None:
+            return value
+        vus = set()
+        courant = value
+        while courant is not None and courant.pk not in vus:
+            if courant.pk == self.instance.pk:
+                raise serializers.ValidationError(
+                    'Ce parent formerait un cycle (une unité ne peut pas se '
+                    'contenir elle-même).')
+            vus.add(courant.pk)
+            courant = courant.parent
+        return value
+
 
 class QuaiSerializer(CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):

@@ -210,6 +210,17 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
 
+    def perform_update(self, serializer):
+        """ASTK31 — une unité SCELLÉE (ou expédiée) est immuable : parent,
+        vague, type, poids et dimensions ne bougent plus (l'étiquette SSCC
+        déjà imprimée doit toujours correspondre au contenu). Même prédicat
+        ``est_figee`` que l'ajout de ligne."""
+        from rest_framework.exceptions import ValidationError
+        if serializer.instance.est_figee:
+            raise ValidationError({'detail': (
+                'Unité scellée : elle ne peut plus être modifiée.')})
+        super().perform_update(serializer)
+
     @action(detail=True, methods=['post'], url_path='lignes')
     def ajouter_ligne(self, request, pk=None):
         """Ajoute une ligne de contenu (``{produit, quantite, lot?}``).

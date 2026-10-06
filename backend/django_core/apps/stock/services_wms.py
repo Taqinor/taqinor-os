@@ -1784,10 +1784,19 @@ def ajouter_unite_plan_chargement(*, plan, unite):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _unites_a_deplacer(unite):
-    """L'unité et, si c'est une palette, tous ses colis enfants."""
-    unites = [unite]
-    for enfant in unite.enfants.all():
-        unites.extend(_unites_a_deplacer(enfant))
+    """L'unité et, si c'est une palette, tous ses colis enfants.
+
+    ASTK31 — parcours ITÉRATIF avec ensemble des visités : un ``parent``
+    cyclique hérité (U→U, V→W→V) ne provoque plus de ``RecursionError``
+    (500) ; chaque unité n'apparaît qu'une fois."""
+    unites, vus, a_voir = [], set(), [unite]
+    while a_voir:
+        courante = a_voir.pop(0)
+        if courante.pk in vus:
+            continue
+        vus.add(courante.pk)
+        unites.append(courante)
+        a_voir.extend(courante.enfants.all())
     return unites
 
 
