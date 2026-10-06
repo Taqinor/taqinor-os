@@ -1,5 +1,5 @@
 """CIQ618 — ouverture automatique du dossier réglementaire 82-21 d'un site
-professionnel (D-CIQ-18 : TAQINOR monte le dossier).
+professionnel (D-CIQ-18 : l'installateur monte le dossier).
 
 Appelée par ``installations`` (récepteur ``devis_accepted``) via la façade
 ``ventes.services.ouvrir_dossier_8221`` — jamais par un import de modèle.

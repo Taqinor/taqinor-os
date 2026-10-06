@@ -5,8 +5,12 @@ from django.db import migrations, models
 
 def _defaut_null_en_faux(apps, schema_editor):
     Reading = apps.get_model('installations', 'CommissioningIVReading')
-    Reading.objects.filter(defaut_detecte__isnull=True).update(
-        defaut_detecte=False)
+    nuls = Reading.objects.filter(defaut_detecte__isnull=True)
+    while True:
+        batch = list(nuls.values_list('pk', flat=True)[:500])
+        if not batch:
+            break
+        Reading.objects.filter(pk__in=batch).update(defaut_detecte=False)
 
 
 class Migration(migrations.Migration):
