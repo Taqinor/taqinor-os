@@ -100,7 +100,30 @@
         ],
         "en_attente_accord": 6,
         "dossiers_subvention": {},
-        "incoherents": 2
+        "incoherents": 2,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 1
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 1
+        },
+        "joints_par_creneau": {
+          "matin": 31,
+          "midi": 9,
+          "apres_midi": 28,
+          "soir": 6
+        },
+        "delais_signature_jours": [
+          18.0,
+          26.5,
+          34.0
+        ]
       },
       {
         "segment": "commercial",
@@ -123,7 +146,29 @@
         ],
         "en_attente_accord": 3,
         "dossiers_subvention": {},
-        "incoherents": 1
+        "incoherents": 1,
+        "attente_accord_par_raison": {
+          "direction": 1,
+          "financement": 2,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 4,
+          "appel": 2
+        },
+        "joints_par_creneau": {
+          "matin": 6,
+          "midi": 1,
+          "apres_midi": 5,
+          "soir": 0
+        },
+        "delais_signature_jours": [
+          31.0,
+          49.0
+        ]
       },
       {
         "segment": "industriel",
@@ -137,7 +182,21 @@
         "signatures_par_mois": [],
         "en_attente_accord": 1,
         "dossiers_subvention": {},
-        "incoherents": 0
+        "incoherents": 0,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": null,
+        "delais_signature_jours": []
       },
       {
         "segment": "agricole",
@@ -153,7 +212,28 @@
         "dossiers_subvention": {
           "a_deposer": 1
         },
-        "incoherents": 0
+        "incoherents": 0,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 2
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": {
+          "matin": 4,
+          "midi": 2,
+          "apres_midi": 3,
+          "soir": 0
+        },
+        "delais_signature_jours": [
+          27.0
+        ]
       },
       {
         "segment": "non_renseigne",
@@ -167,7 +247,21 @@
         "signatures_par_mois": [],
         "en_attente_accord": 0,
         "dossiers_subvention": {},
-        "incoherents": 3
+        "incoherents": 3,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": null,
+        "delais_signature_jours": []
       }
     ]
   },
@@ -197,7 +291,21 @@
         "signatures_par_mois": [],
         "en_attente_accord": 0,
         "dossiers_subvention": {},
-        "incoherents": 0
+        "incoherents": 0,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": null,
+        "delais_signature_jours": []
       },
       {
         "segment": "commercial",
@@ -211,7 +319,21 @@
         "signatures_par_mois": [],
         "en_attente_accord": 0,
         "dossiers_subvention": {},
-        "incoherents": 0
+        "incoherents": 0,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": null,
+        "delais_signature_jours": []
       },
       {
         "segment": "industriel",
@@ -225,7 +347,21 @@
         "signatures_par_mois": [],
         "en_attente_accord": 0,
         "dossiers_subvention": {},
-        "incoherents": 0
+        "incoherents": 0,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": null,
+        "delais_signature_jours": []
       },
       {
         "segment": "agricole",
@@ -239,7 +375,21 @@
         "signatures_par_mois": [],
         "en_attente_accord": 0,
         "dossiers_subvention": {},
-        "incoherents": 0
+        "incoherents": 0,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": null,
+        "delais_signature_jours": []
       },
       {
         "segment": "non_renseigne",
@@ -253,7 +403,21 @@
         "signatures_par_mois": [],
         "en_attente_accord": 0,
         "dossiers_subvention": {},
-        "incoherents": 0
+        "incoherents": 0,
+        "attente_accord_par_raison": {
+          "direction": 0,
+          "financement": 0,
+          "bailleur_murs": 0,
+          "budget_exercice": 0,
+          "consultation": 0,
+          "administration": 0
+        },
+        "touches_converties": {
+          "email": 0,
+          "appel": 0
+        },
+        "joints_par_creneau": null,
+        "delais_signature_jours": []
       }
     ]
   },
@@ -295,13 +459,15 @@
       "joints_par_creneau": {
         "matin": 6,
         "midi": 1,
-        "apres_midi": 5
+        "apres_midi": 5,
+        "soir": 0
       },
       "delais_signature_jours": [
         31.0,
         49.0
       ]
     },
-    "note": "Valeurs ILLUSTRATIVES."
+    "note": "Valeurs ILLUSTRATIVES.",
+    "implemente_par": "CIQ518 (06/10/2026) — servi par `mesure_cadence.par_segment` : `attente_accord_par_raison` = leads portant l'étiquette de la raison (CIQ508), `touches_converties` = touches nées WhatsApp au protocole de la société, aujourd'hui e-mail ou appel avec leur clé (la MÊME fonction pure que le moteur, `cadence_temps.conversion_numero`), `joints_par_creneau` = touches jointes par créneau de clôture (matin < 12 h, midi 12-14 h, après-midi 14-18 h, soir dès 18 h, heure de Casablanca) — `null` quand AUCUNE touche n'a été tentée, jamais des zéros —, `delais_signature_jours` = liste triée des délais (jours) premier devis envoyé → signature de la période, `incoherents` élargi aux devis commerciaux/industriels portés par un lead qui n'est ni commercial ni industriel (compté sous le segment du DEVIS, un lead une fois)."
   }
 }

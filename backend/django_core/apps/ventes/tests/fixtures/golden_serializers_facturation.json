@@ -781,6 +781,13 @@
      "*",
      false
     ],
+    "montant_exigible": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
     "montant_ht": [
      "DecimalField",
      false,
@@ -868,6 +875,20 @@
     "remise_globale": [
      "DecimalField",
      false,
+     false,
+     null,
+     false
+    ],
+    "retenue_garantie_mad": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "retenue_liberee_le": [
+     "DateField",
+     true,
      false,
      null,
      false
@@ -1256,6 +1277,20 @@
     ],
     "remise_globale": [
      "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "retenue_garantie_mad": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "retenue_liberee_le": [
+     "DateField",
      false,
      false,
      null,

@@ -6,6 +6,26 @@ import { configureStore } from '@reduxjs/toolkit'
 /* XSAV15/16/17 — panneau fiabilité (MTBF/MTTR/coût gated), disponibilité,
    immobilisation, relevés compteur. savApi mocké. */
 
+// Radix Select ne s'ouvre pas de façon fiable sous jsdom : <select> natif
+// (même patron que InstallationDetail.cht22.test.jsx).
+vi.mock('../../ui', async (importOriginal) => {
+  const original = await importOriginal()
+  const Fragment = ({ children }) => children
+  return {
+    ...original,
+    Select: ({ value, onValueChange, children }) => (
+      <select aria-label="Type de relevé" value={value ?? ''}
+              onChange={(e) => onValueChange(e.target.value)}>
+        {children}
+      </select>
+    ),
+    SelectTrigger: () => null,
+    SelectValue: () => null,
+    SelectContent: Fragment,
+    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
+  }
+})
+
 vi.mock('../../api/savApi', () => ({
   default: {
     getEquipementFiabilite: vi.fn(),
@@ -21,6 +41,12 @@ vi.mock('../../api/savApi', () => ({
 
 import savApi from '../../api/savApi'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
+
+const RELEVES_LISTE = exempleContrat('sav', 'releves_compteur', 'exemple_liste')
+const RELEVE_201 = exempleContrat('sav', 'releves_compteur', 'exemple_201')
+const CORPS_POST = exempleContrat('sav', 'releves_compteur', 'corps_post')
+const RECUL = exempleContrat('sav', 'releves_compteur', 'exemple_400_recul')
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -132,5 +158,62 @@ describe('EquipementFiabilitePanel — XSAV17 relevés compteur', () => {
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
     await waitFor(() => expect(savApi.addEquipementReleve).toHaveBeenCalledWith(
       1, { type: 'heures', valeur: '500' }))
+  })
+})
+
+describe('EquipementFiabilitePanel — AGR616 relevé en m³ (contrat releves_compteur)', () => {
+  function monter(releves) {
+    savApi.getEquipementFiabilite.mockResolvedValue({ data: { mtbf_jours: null, mttr_jours: null } })
+    savApi.getEquipementDisponibilite.mockResolvedValue({ data: { disponibilite_pct: 100 } })
+    savApi.getEquipementDowntime.mockResolvedValue({ data: [] })
+    savApi.getEquipementReleves.mockResolvedValue({ data: releves })
+    return renderPanel()
+  }
+
+  it('la liste affiche l’unité réelle et la moyenne par jour, rien au premier relevé', async () => {
+    monter(RELEVES_LISTE)
+    await screen.findByText('Relevés compteur')
+    const m3 = await screen.findByText(/1838\.00 m³/)
+    expect(m3).toHaveTextContent('≈ 19.6 m³/jour depuis le relevé du 05/01/2027')
+    expect(screen.getByText(/412\.00 h/)).not.toHaveTextContent('≈')
+    expect(screen.getByText(/1250\.00 m³/)).not.toHaveTextContent('≈')
+  })
+
+  it('l’option m³ est envoyée avec type m3, valeur saisie telle quelle', async () => {
+    monter([])
+    savApi.addEquipementReleve.mockResolvedValue({ data: RELEVE_201 })
+    await screen.findByText('Relevés compteur')
+    expect(screen.getByRole('option', { name: /m³ \(compteur d’eau\)/ })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Type de relevé'), { target: { value: CORPS_POST.type } })
+    const valeur = screen.getByPlaceholderText('Valeur')
+    expect(valeur).toHaveAttribute('step', 'any')
+    fireEvent.change(valeur, { target: { value: CORPS_POST.valeur } })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    await waitFor(() => expect(savApi.addEquipementReleve).toHaveBeenCalledWith(
+      1, { type: 'm3', valeur: CORPS_POST.valeur }))
+  })
+
+  it('le 400 « le compteur ne peut pas reculer » s’affiche sous le champ', async () => {
+    monter(RELEVES_LISTE)
+    savApi.addEquipementReleve.mockRejectedValue({ response: { status: 400, data: RECUL } })
+    await screen.findByText('Relevés compteur')
+    fireEvent.change(screen.getByPlaceholderText('Valeur'), { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    const erreur = await screen.findByTestId('releve-erreur')
+    expect(erreur).toHaveTextContent('le compteur ne peut pas reculer')
+  })
+
+  it('enregistrer → rouvrir = même liste (relue du serveur)', async () => {
+    monter(RELEVES_LISTE)
+    savApi.addEquipementReleve.mockResolvedValue({ data: RELEVE_201 })
+    await screen.findByText('Relevés compteur')
+    savApi.getEquipementReleves.mockResolvedValue({ data: [RELEVE_201, ...RELEVES_LISTE] })
+    fireEvent.change(screen.getByPlaceholderText('Valeur'), { target: { value: CORPS_POST.valeur } })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    expect(await screen.findByText(/2391\.00 m³/)).toHaveTextContent('≈ 18.4 m³/jour')
+    cleanup()
+    renderPanel()
+    expect(await screen.findByText(/2391\.00 m³/)).toBeInTheDocument()
+    expect(screen.getByText(/1838\.00 m³/)).toBeInTheDocument()
   })
 })

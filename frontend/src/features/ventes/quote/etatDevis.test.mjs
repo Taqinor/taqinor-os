@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 import { devisVersEtat, etatVersEcritures } from './etatDevis.js'
 import { consoAnnuelleDepuisFactures } from '../solar.js'
+import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 // Les clés DÉCLARÉES au schéma serveur (`domain/etude_schema.py`) : toute clé
@@ -206,4 +207,24 @@ test('toute clé écrite par l’écran est DÉCLARÉE au schéma serveur', () =
       assert.ok(CLES_SCHEMA.has(cle), `clé « ${cle} » écrite mais absente du schéma`)
     }
   }
+})
+
+// ── AGR218 — enregistrer → rouvrir → enregistrer sans toucher : identique ──
+test('AGR218 — ligne à 0 % + base légale + attestation : aller-retour exact et stable', () => {
+  const corps = documentContrat('ventes', 'devis_replace_lines_entete').corps_agricole
+  const devis = base(6, 'agricole', { ...corps.etude_params },
+    corps.lignes.map((l, i) => ({ id: i + 1, ...l })))
+  const premier = etatVersEcritures(devisVersEtat(devis))
+  assert.deepEqual(premier.lignes.map(l => l.tva_base_legale),
+    corps.lignes.map(l => l.tva_base_legale))
+  assert.deepEqual(premier.etude.attestation_usage_agricole,
+    corps.etude_params.attestation_usage_agricole)
+  // Rouvrir ce qui vient d'être enregistré, ré-enregistrer sans toucher.
+  const relu = {
+    ...devis, etude_params: premier.etude,
+    lignes: premier.lignes.map((l, i) => ({ id: i + 1, ...l })),
+  }
+  const second = etatVersEcritures(devisVersEtat(relu))
+  assert.deepEqual(second.lignes, premier.lignes)
+  assert.deepEqual(second.etude, premier.etude)
 })

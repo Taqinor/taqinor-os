@@ -10,7 +10,9 @@
     "repli_langue": false,
     "crochets": [],
     "preuve_manquante": false,
-    "vocal": false
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   },
   "exemple_phrase_omise": {
     "message": "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité.",
@@ -23,7 +25,9 @@
     "repli_langue": true,
     "crochets": [],
     "preuve_manquante": false,
-    "vocal": false
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   },
   "exemple_numero_invalide": {
     "message": "Bonjour Salma, Karim de TAQINOR.",
@@ -34,7 +38,9 @@
     "repli_langue": false,
     "crochets": [],
     "preuve_manquante": false,
-    "vocal": false
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   },
   "exemple_darija": {
     "message": "السلام عليكم السي Aziz، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
@@ -45,7 +51,9 @@
     "repli_langue": false,
     "crochets": [],
     "preuve_manquante": false,
-    "vocal": false
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   },
   "exemple_repli_langue": {
     "message": "Bonjour M. Omar, petit mot de suivi de votre demande solaire.",
@@ -56,7 +64,9 @@
     "repli_langue": true,
     "crochets": [],
     "preuve_manquante": false,
-    "vocal": false
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   },
   "exemple_crochets": {
     "message": "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
@@ -70,7 +80,9 @@
       "[heure]"
     ],
     "preuve_manquante": false,
-    "vocal": false
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   },
   "exemple_preuve_manquante": {
     "message": "Le suivi de production est en temps réel, je peux vous montrer.",
@@ -87,7 +99,9 @@
     "repli_langue": false,
     "crochets": [],
     "preuve_manquante": true,
-    "vocal": false
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   },
   "exemple_vocal": {
     "message": "Bonjour M. Aziz, c'est Nadia de TAQINOR. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
@@ -98,7 +112,9 @@
     "repli_langue": false,
     "crochets": [],
     "preuve_manquante": false,
-    "vocal": true
+    "vocal": true,
+    "objet": "",
+    "mailto_url": null
   },
   "notes": {
     "vocal": "CAD79 — booléen, jamais null. `true` pour le script du VOCAL (`vocal_j3`) : c'est un texte à DIRE en note vocale, pas un message à envoyer — `wa_url` n'a pas de `?text=` (`exemple_vocal`). L'aperçu le présente comme un script à LIRE (bouton Copier) et son CTA dit « Enregistrer une note vocale » : il ouvre la conversation vide, le clic reste journalisé comme pour toute touche WhatsApp.",

@@ -26,6 +26,7 @@ import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js
 import { deriverReouverture } from './reouverture.js'
 import {
   projeterEtudeMarche, ecoDepuisSaisies, saisiesEconomiePompage,
+  attestationDepuisEtude,
 } from './etudeMarcheBloc.js'
 import { echeancierVersSaisie, saisieVersEcheancier } from '../echeancierEdition.js'
 
@@ -162,6 +163,8 @@ export function devisVersEtat(d) {
     irrigation: texte(e.irrigation_method),
     hmtStatic: texte(e.hmt_static),
     hmtDrawdown: texte(e.hmt_drawdown),
+    // AGR218 — l'attestation d'usage agricole se relit telle que saisie.
+    attestation: attestationDepuisEtude(e.attestation_usage_agricole),
   }
   etat.saisiesEco = ecoDepuisSaisies(e.saisies_economie_pompage)
   return etat
@@ -247,6 +250,7 @@ export function etatVersEcritures(etat, vif = {}) {
       irrigation: farm.irrigation, region: farm.region, crop: farm.crop,
       surfaceHa: farm.surfaceHa,
       hmtStatic: farm.hmtStatic, hmtDrawdown: farm.hmtDrawdown,
+      attestation: farm.attestation,
       saisiesEconomie: saisiesEconomiePompage(etat.saisiesEco),
     },
   })

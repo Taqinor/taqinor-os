@@ -13,6 +13,7 @@ import authReducer from '../../../features/auth/store/authSlice'
 import ventesReducer from '../../../features/ventes/store/ventesSlice'
 import PanneauAgricole from './PanneauAgricole'
 import { ECO_POMPAGE_VIDE } from '../../../features/ventes/quote/etudeMarcheBloc'
+import { documentContrat } from '../../../test/fixtures/contractSamples'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
   construireCorpsPompage, manquantsPompage,
@@ -277,5 +278,38 @@ describe('économie déclarée (AGR212)', () => {
     for (const input of document.querySelectorAll('input[type="number"]')) {
       expect(input.getAttribute('step')).toBe('any')
     }
+  })
+})
+
+// AGR218 (contrat AGR200) — l'attestation d'usage agricole : jamais cochée
+// d'office ; chaque geste remonte tel quel ; la valeur stockée se relit.
+describe('attestation d’usage agricole (AGR218)', () => {
+  const CASE = /atteste l’usage exclusivement agricole/
+
+  it('formulaire neuf : case décochée, date et signataire vides', () => {
+    render(<PanneauAgricole {...PROPS_VIDES} />)
+    expect(screen.getByLabelText(CASE).checked).toBe(false)
+    expect(screen.getByLabelText('Date de l’attestation').value).toBe('')
+    expect(screen.getByLabelText('Signataire').value).toBe('')
+  })
+
+  it('cocher, dater, signer → majAttestation reçoit chaque valeur telle quelle', () => {
+    const majAttestation = vi.fn()
+    render(<PanneauAgricole {...PROPS_VIDES} majAttestation={majAttestation} />)
+    fireEvent.click(screen.getByLabelText(CASE))
+    fireEvent.change(screen.getByLabelText('Date de l’attestation'), { target: { value: '2026-10-02' } })
+    fireEvent.change(screen.getByLabelText('Signataire'), { target: { value: 'M. Exploitant' } })
+    expect(majAttestation.mock.calls).toEqual([
+      ['attestee', true], ['le', '2026-10-02'], ['signataire', 'M. Exploitant'],
+    ])
+  })
+
+  it('une attestation relue (?edit=) s’affiche cochée, datée, signée', () => {
+    const a = documentContrat('ventes', 'devis_replace_lines_entete')
+      .corps_agricole.etude_params.attestation_usage_agricole
+    render(<PanneauAgricole {...PROPS_VIDES} attestation={a} />)
+    expect(screen.getByLabelText(CASE).checked).toBe(true)
+    expect(screen.getByLabelText('Date de l’attestation').value).toBe(a.le)
+    expect(screen.getByLabelText('Signataire').value).toBe(a.signataire)
   })
 })

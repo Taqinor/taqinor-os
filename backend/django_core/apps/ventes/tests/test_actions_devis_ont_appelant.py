@@ -30,8 +30,9 @@ MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
 #: 55 ``@action`` de ``views/devis.py`` (dont ``facturer-complet``, 05/10, et
 #: ``revoquer-lien-public``, ADOC131) +
 #: ``economie`` (views/economie.py) + ``economie_pompage``
-#: (views/economie_pompage.py, AGR206).
-NB_ACTIONS = 57
+#: (views/economie_pompage.py, AGR206) + ``economie_ci``
+#: (views/economie_ci.py, CIQ210).
+NB_ACTIONS = 58
 
 
 def _vues_devis():

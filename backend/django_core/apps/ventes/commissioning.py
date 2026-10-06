@@ -6,16 +6,17 @@ serveur le résultat de recette et le verdict « défaut détecté » d'une cour
 """
 from __future__ import annotations
 
-# Tolérance par défaut sur l'écart de puissance mesuré vs attendu (%).
-DEFAULT_PMAX_TOLERANCE_PCT = 8.0
+# CIQ654 (convention 14, D-CIQ-12) — AUCUNE tolérance I-V ni seuil PR par
+# défaut : les anciens 8 % et 0,75 n'étaient fondés par aucun texte ni
+# décision. Les seuils viennent des réglages SOCIÉTÉ (CIQ622,
+# ``recette_ecart_pmax_pct`` / ``recette_pr_seuil_interne``) ou du test ; vide
+# ⇒ écart servi sans verdict, avec ce motif.
+MOTIF_SEUIL_NON_SAISI = 'seuil non saisi en Paramètres'
 
 # FG287 — facteur d'émission moyen du réseau électrique marocain
 # (kg CO₂ / kWh). Valeur de référence appliquée côté serveur pour dériver le CO₂
 # évité ; jamais lue du corps de la requête.
 DEFAULT_GRID_CO2_KG_PER_KWH = 0.72
-
-# FG278 — seuil de PR par défaut sous lequel la réception est refusée.
-DEFAULT_PR_ACCEPTANCE = 0.75
 
 
 def _to_float(value):
@@ -42,43 +43,43 @@ def compute_commissioning_result(*, isolement_ok=None, polarite_ok=None,
     ``has_defective_iv`` : au moins une courbe I-V hors tolérance.
     Renvoie une valeur de ``CommissioningTest.Resultat``.
     """
+    # CIQ625 — LA règle vit en fondation (``core.recette.resultat``),
+    # partagée avec la fiche chantier (installations) : ventes y délègue.
+    from core.recette.resultat import resultat_recette
     checks = [isolement_ok, polarite_ok, continuite_terre_ok,
               controle_onduleur_ok]
-    if any(c is False for c in checks) or has_defective_iv:
-        return 'non_conforme'
-    if all(c is True for c in checks):
-        return 'conforme'
-    return 'en_cours'
+    if has_defective_iv:
+        checks.append(False)
+    return resultat_recette(checks)
 
 
 def evaluate_iv_curve(*, pmax_mesure_w=None, pmax_attendu_w=None,
-                      tolerance_pct=DEFAULT_PMAX_TOLERANCE_PCT):
+                      tolerance_pct=None):
     """FG275 — écart Pmax (%) et verdict défaut d'une courbe I-V.
 
     L'écart est ``(mesuré - attendu) / attendu × 100`` (négatif = sous-
-    performance). Un écart NÉGATIF dont l'amplitude dépasse la tolérance signale
-    un module/string défectueux. Renvoie ``(ecart_pct, defaut_detecte)`` ;
-    ``(None, False)`` si les données sont insuffisantes (jamais d'exception).
+    performance). Un écart NÉGATIF dont l'amplitude dépasse la tolérance SAISIE
+    signale un module/string défectueux. CIQ654 — sans tolérance saisie
+    (``None``), l'écart est servi et AUCUN défaut n'est déclaré (motif
+    :data:`MOTIF_SEUIL_NON_SAISI`, porté par l'appelant). Renvoie
+    ``(ecart_pct, defaut_detecte)`` ; ``(None, False)`` si les données sont
+    insuffisantes (jamais d'exception).
     """
     mesure = _to_float(pmax_mesure_w)
     attendu = _to_float(pmax_attendu_w)
-    try:
-        tol = float(tolerance_pct)
-    except (TypeError, ValueError):
-        tol = DEFAULT_PMAX_TOLERANCE_PCT
-    if tol < 0:
-        tol = DEFAULT_PMAX_TOLERANCE_PCT
     if mesure is None or attendu is None or attendu <= 0:
         return None, False
     ecart = round((mesure - attendu) / attendu * 100.0, 2)
-    # Sous-performance au-delà de la tolérance = défaut.
-    defaut = ecart < -tol
-    return ecart, defaut
+    tol = _to_float(tolerance_pct)
+    if tol is None or tol < 0:
+        return ecart, False
+    # Sous-performance au-delà de la tolérance saisie = défaut.
+    return ecart, ecart < -tol
 
 
 def compute_reception_pr(*, energie_mesuree_kwh=None, energie_attendue_kwh=None,
                          pr_mesure=None, pr_attendu=None,
-                         pr_seuil_acceptation=None):
+                         pr_seuil_acceptation=None, pr_seuil_societe=None):
     """FG278 — dérive PR mesuré, écart (%) et verdict d'un test de réception.
 
     Si ``pr_mesure`` n'est pas fourni mais que les énergies mesurée et attendue
@@ -88,6 +89,12 @@ def compute_reception_pr(*, energie_mesuree_kwh=None, energie_attendue_kwh=None,
     ``pr_mesure`` tombe sous le seuil d'acceptation, ``accepte`` s'il est ≥ seuil,
     ``en_attente`` faute de données. Renvoie ``(pr_mesure, ecart_pct, verdict)``.
     Jamais d'exception.
+
+    CIQ654 — le seuil est celui SAISI sur le test, sinon ``pr_seuil_societe``
+    (``CompanyProfile.recette_pr_seuil_interne`` ramené en fraction, alerte
+    INTERNE) ; sans AUCUN seuil, le verdict est ``en_attente`` (motif
+    :data:`MOTIF_SEUIL_NON_SAISI`), JAMAIS ``refuse``. Le PR reste servi « à
+    titre d'information » (D-CIQ-12).
     """
     e_mes = _to_float(energie_mesuree_kwh)
     e_att = _to_float(energie_attendue_kwh)
@@ -95,7 +102,7 @@ def compute_reception_pr(*, energie_mesuree_kwh=None, energie_attendue_kwh=None,
     pr_a = _to_float(pr_attendu)
     seuil = _to_float(pr_seuil_acceptation)
     if seuil is None:
-        seuil = DEFAULT_PR_ACCEPTANCE
+        seuil = _to_float(pr_seuil_societe)
     # Dériver le PR mesuré depuis les énergies si non fourni.
     if pr_m is None and e_mes is not None and e_att is not None and e_att > 0 \
             and pr_a is not None:
@@ -103,7 +110,7 @@ def compute_reception_pr(*, energie_mesuree_kwh=None, energie_attendue_kwh=None,
     ecart = None
     if pr_m is not None and pr_a is not None and pr_a > 0:
         ecart = round((pr_m - pr_a) / pr_a * 100.0, 2)
-    if pr_m is None:
+    if pr_m is None or seuil is None:
         verdict = 'en_attente'
     elif pr_m < seuil:
         verdict = 'refuse'
@@ -131,3 +138,8 @@ def compute_co2_evite(*, energie_kwh=None,
         return round(facteur, 4), None
     co2_t = round(energie * facteur / 1000.0, 3)
     return round(facteur, 4), co2_t
+
+
+def motif_seuil(seuil):
+    """CIQ654 — le motif servi quand aucun seuil n'est saisi, sinon ``None``."""
+    return MOTIF_SEUIL_NON_SAISI if _to_float(seuil) is None else None

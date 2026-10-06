@@ -1157,6 +1157,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             recette = RecettePompage.objects.create(
                 company=inst.company, installation=inst,
                 created_by=request.user)
+            # AGR609 (a) — promesse du devis FIGÉE à la création.
+            from ..services import figer_promesse_recette
+            figer_promesse_recette(recette)
             return Response(recette_pompage_envelope(inst, recette, ctx),
                             status=status.HTTP_201_CREATED)
         return Response(recette_pompage_envelope(inst, recette, ctx))

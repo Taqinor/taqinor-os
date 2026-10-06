@@ -50,10 +50,22 @@ _DEFAULT_WATT = 710
 # facultative d'une tranche (``utils/echeancier.py``), jamais par un autre %.
 PAYMENT_TERMS_BY_MODE = {
     "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
-    "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
-    # QX43 — commercial : mêmes conditions que l'industriel (50/40/10), en
-    # attente d'un éventuel veto du fondateur.
-    "commercial": {"acompte": 50, "materiel": 40, "solde": 10},
+    # CIQ212 — décision fondateur D-CIQ-13 du 03/10/2026 : échéancier C&I à N
+    # JALONS (remplace la valeur industrielle 50/40/10 du 12/06/2026 et le
+    # 50/40/10 commercial provisoire de QX43). Défauts SOCIÉTÉ éditables
+    # (Paramètres → Devis, ``CompanyProfile.payment_terms[mode]`` en liste de
+    # jalons) ; la réception définitive est un SOLDE.
+    "industriel": [
+        {"jalon": "commande", "pct": 30},
+        {"jalon": "livraison_materiel", "pct": 40},
+        {"jalon": "mise_en_service", "pct": 20},
+        {"jalon": "reception_definitive", "pct": 10},
+    ],
+    "commercial": [
+        {"jalon": "commande", "pct": 40},
+        {"jalon": "livraison_materiel", "pct": 50},
+        {"jalon": "mise_en_service", "pct": 10},
+    ],
     "agricole": {"acompte": 30, "materiel": 60, "solde": 10},
 }
 
@@ -2267,6 +2279,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # production/savings are canonical; payback and prix/kWc are recomputed from
     # the canonical totals so edited lines can never desynchronize the document.
     etude = dict(devis_etude_override or {})
+    if _mode_ci:
+        # CIQ210 — la toiture ne fournit au C&I que géométrie et production :
+        # une économie écrite par un calepinage synchronisé (ou une étude
+        # d'écran) n'apparaît NULLE PART dans le document ; l'argent C&I vient
+        # du seul bloc ``economie_ci``.
+        etude.pop("economies_annuelles", None)
     # ── QJR625 — UNE ÉTUDE I/C CALCULÉE POUR UN AUTRE KWC N'EST PAS IMPRIMÉE ─
     # Les dérivées écran (autoconsommation, couverture, payback, injection)
     # décrivent le kWc du moment où l'écran les a calculées
@@ -2588,6 +2606,32 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                              and (_mode_ci
                                   or not etude.get("economies_annuelles")))
     tarif_mt_mention = ""
+    # ── CIQ210 — LE C&I EST CHIFFRÉ PAR ``economie_ci`` (D-CIQ-0) ───────────
+    # Commercial / industriel : le bloc vient du moteur C&I (valorisation
+    # horaire au tarif du POSTE, tarif déclaré ou grille ONEE étiquetée
+    # « repli ») — jamais ``calculate_savings_roi`` (60 %), ``onee_tarif_kwh``
+    # (1,75), une économie de calepinage ni les fractions ``_sf``. Le masque
+    # suit le STATUT du bloc (``omis`` ⇒ masqué, motif nommé) et la mention MT
+    # n'accompagne que des économies valorisées au Tarif Général MT. Le
+    # moteur ne fait que LIRE (règle #4). Le bloc PUBLIC (sans vue interne)
+    # est posé sur ``data['economie_ci']`` plus bas.
+    _economie_ci = None
+    if _mode_ci:
+        try:
+            from apps.ventes.economie_ci import (
+                economie_ci_pour_devis, economie_ci_publique)
+            _economie_ci = economie_ci_publique(economie_ci_pour_devis(
+                devis, getattr(devis, "company", None)))
+        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+            logger.exception("economie_ci: échec (devis %s)",
+                             getattr(devis, "reference", "?"))
+            _economie_ci = None
+        _statut_ci = (_economie_ci or {}).get("statut")
+        masquer_economies = _statut_ci != "calcule"
+        _dossier_mt = bool(
+            _statut_ci == "calcule"
+            and ((_economie_ci.get("tarif") or {}).get("contrat")
+                 == "mt_general"))
     if _dossier_mt and not masquer_economies:
         try:
             from .constants_82_21 import MENTION_MT
@@ -4094,6 +4138,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # octet-identique. Aucune facture n'est datée par elles.
     if _dates_prevues is not None:
         data["payment_dates"] = _dates_prevues
+
+    # ── CIQ210 — le bloc PUBLIC ``economie_ci`` (contrat CIQ3, calculé à la
+    # lecture, jamais stocké ; SANS ``vue_interne`` ni ``alertes_internes`` —
+    # ``economie_ci_publique``). Commercial / industriel seulement : tout autre
+    # devis reste octet-identique. Le rendu des pages relève de D3 (CIQ4).
+    if _mode_ci:
+        data["economie_ci"] = _economie_ci
+        # CIQ212 — les N jalons de paiement (D-CIQ-13), source unique que D3
+        # imprimera ; ``payment_terms`` reste le rabattu à trois créneaux des
+        # marqueurs CGV {acompte}/{materiel}/{solde}.
+        try:
+            from apps.ventes.utils.echeancier import jalons_paiement_devis
+            data["jalons_paiement"] = [
+                dict(j, pct=_pct_simple(j["pct"]),
+                     montant_ttc=float(j["montant_ttc"]))
+                for j in jalons_paiement_devis(devis, lignes)]
+        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+            logger.exception("jalons_paiement: échec (devis %s)",
+                             getattr(devis, "reference", "?"))
 
     # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
     # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre

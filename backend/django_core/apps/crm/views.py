@@ -3237,6 +3237,19 @@ _DEFAULT_MOTIFS_PERTE = [
     # n'était appris. Pertes commerciales réelles, jamais « junk ».
     ('Subvention non obtenue', False),
     ('Eau insuffisante / forage', False),
+    # CIQ514 (06/10/2026) — pertes d'une affaire PRO (commerce, industrie) : la
+    # banque a refusé, la direction a reporté, le bailleur des murs a dit non,
+    # le budget passe à l'exercice suivant… Jusqu'ici tout finissait en
+    # « Reporté » ou « Autre » et rien n'était appris. Pertes commerciales
+    # réelles, jamais « junk » ; ajoutées SANS migration par
+    # `completer_motifs_perte`. Libellés ✎ à valider par Reda.
+    ('Financement refusé (banque / organisme)', False),
+    ('Décision interne reportée', False),
+    ('Refus du bailleur des murs', False),
+    ("Budget reporté à l'exercice suivant", False),
+    ('Contrainte de raccordement au réseau', False),
+    ('Toiture ou structure inadaptée (visite)', False),
+    ('Consultation : autre prestataire retenu', False),
 ]
 
 # MRY2 — étiquettes standard. `Lead.tags` reste un TEXTE LIBRE : cette liste
@@ -3267,6 +3280,13 @@ _DEFAULT_TAGS = [
     # AGR520 (05/10/2026) — l'étiquette posée par la réponse « En attente
     # d'un accord (DPA / banque) » (`services.TAG_ATTENTE_ACCORD`).
     'Attend un accord (DPA / banque)',
+    # CIQ508 (06/10/2026) — une étiquette par RAISON de l'attente B2B
+    # (`services.RAISONS_ATTENTE`) ; `administration` pose celle d'AGR520.
+    'Attend la direction / le comité',
+    "Attend la banque / l'organisme de financement",
+    'Attend le bailleur des murs',
+    "Budget de l'exercice suivant",
+    'Consultation en cours',
 ]
 
 
@@ -4217,7 +4237,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             REPONSE_JOINT_TELEPHONE,
             REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
             REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE,
-            refus_motif_perte, refus_reponse_touche,
+            refus_motif_perte, refus_raison_attente, refus_reponse_touche,
             repondre_attente_accord,
             repondre_decision_a_plusieurs, repondre_devis_modifie,
             repondre_joint_telephone, repondre_ne_plus_contacter,
@@ -4258,6 +4278,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     '« Rappeler le » : la date convenue avec le client est '
                     f'obligatoire pour « {spec["libelle"]} ».')}},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CIQ508 — la RAISON de l'attente (liste fermée) est obligatoire :
+        # absente ou inconnue, le refus NOMME le champ et LISTE les valeurs.
+        raison_attente = (request.data.get('raison_attente') or '').strip()
+        if spec.get('raison_requise'):
+            refus = refus_raison_attente(raison_attente)
+            if refus:
+                return Response({'erreurs': {'raison_attente': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
         if rappel_le:
             quand = _parse_rappel(
                 rappel_le, (request.data.get('rappel_heure') or '').strip())
@@ -4278,9 +4306,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape = repondre_plus_tard(
                 etape, request.user, quand, note=note, body=body)
         elif reponse == REPONSE_ATTENTE_ACCORD:
-            # AGR520 — étiquette + la veille de « Plus tard ».
+            # AGR520 — étiquette + la veille de « Plus tard » ; CIQ508 — la
+            # raison typée (étiquette, historique, note du réveil daté).
             etape = repondre_attente_accord(
-                etape, request.user, quand, note=note, body=body)
+                etape, request.user, quand, raison=raison_attente,
+                note=note, body=body)
         elif reponse == REPONSE_QUESTION_PRIX:
             etape = repondre_question_prix(
                 etape, request.user, note=note, body=body)

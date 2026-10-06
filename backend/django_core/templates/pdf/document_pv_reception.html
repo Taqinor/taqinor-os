@@ -118,7 +118,7 @@
   {% if checklist %}
   <div class="section-title">Réception — vérifications ({{ checklist.done }}/{{ checklist.total }})</div>
   <ul class="checklist">
-    {% for item in checklist.items %}
+    {% for item in checklist['items'] %}
     <li class="{{ 'ok' if item.fait else 'ko' }}">{{ '☑' if item.fait else '☐' }} {{ item.label }}</li>
     {% endfor %}
   </ul>
