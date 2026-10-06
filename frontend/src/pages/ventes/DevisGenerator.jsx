@@ -690,6 +690,7 @@ export default function DevisGenerator({
   // CIQ226 — conditions contractuelles DÉCLARÉES (retenue, pénalités,
   // caution, organisme financeur, référence de commande) : rien de pré-rempli.
   const [conditions, setConditions] = useState(CONDITIONS_VIDES)
+  const conditionsServies = useRef([])
   const setCondition = (champ, valeur) => setConditions((c) => ({ ...c, [champ]: valeur }))
   const setEcheancierSaisie = useCallback((valeur) => {
     echeancierAEnvoyer.current = true
@@ -2077,6 +2078,7 @@ export default function DevisGenerator({
       setEcheancierSaisieBrut(etat.echeancier)
       // CIQ226 — les conditions contractuelles du devis, telles que saisies.
       pose(etat.conditions, setConditions)
+      conditionsServies.current = etat.conditionsServies || []
       setPrixCible(etat.prixCible)
       setLines(withKeys(etat.lignes))
       linesInitialized.current = true
@@ -3366,7 +3368,7 @@ export default function DevisGenerator({
   const etatEcran = () => ({
     mode: modeInstallation, dateValidite, tauxTva, discountPct, note, prixCible,
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
-    conditions,
+    conditions, conditionsServies: conditionsServies.current,
     lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
     profilCi, ctxCi: ctxProfilCi, tarifSaisie, aujourdhui: aujourdhuiIso,
     ecoCi: { ...ecoCi, revente_demandee: profilCi.tension === 'mt' && Boolean(profilCi.revente) },

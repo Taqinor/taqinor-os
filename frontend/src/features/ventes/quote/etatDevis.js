@@ -42,6 +42,8 @@ import { saisieDepuisTarifDeclare, ecoCiDepuisSaisies } from './reouverture.js'
 const RECOS = ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
 
 const present = (v) => v !== undefined && v !== null && v !== ''
+// CIQ226 — une condition « vide » : null ou texte vide.
+const estVide = (v) => v === null || v === undefined || v === ''
 const texte = (v) => (present(v) ? String(v) : undefined)
 
 // ── AGR130 — pompage : ENTRÉES v2 ⇄ états d'écran (`?edit=` et enregistrer) ──
@@ -169,6 +171,10 @@ export function devisVersEtat(d) {
   // CIQ226 — conditions contractuelles déclarées (retenue, pénalités, caution,
   // organisme financeur, référence de commande).
   etat.conditions = conditionsDepuisDevis(devis)
+  // Les clés que le devis PORTE déjà : elles repartent même vidées (pour les
+  // effacer) ; une clé jamais posée et toujours vide n'est pas envoyée.
+  etat.conditionsServies = Object.keys(conditionsVersEntete(etat.conditions))
+    .filter((k) => !estVide(conditionsVersEntete(etat.conditions)[k]))
 
   // PVMRQ — gamme du devis.
   if (e.gamme && typeof e.gamme === 'object' && e.gamme.nom) etat.gammeNom = String(e.gamme.nom)
@@ -322,7 +328,12 @@ export function etatVersEcritures(etat, vif = {}) {
   // QJR624 — l'échéancier ne part que s'il était propre au devis ou touché.
   if (etat.echeancierAEnvoyer) entete.echeancier = saisieVersEcheancier(etat.echeancier)
   // CIQ226 — les conditions partent dans l'en-tête dès que l'écran les porte.
-  if (etat.conditions) Object.assign(entete, conditionsVersEntete(etat.conditions))
+  if (etat.conditions) {
+    const servies = new Set(etat.conditionsServies || [])
+    for (const [cle, valeur] of Object.entries(conditionsVersEntete(etat.conditions))) {
+      if (!estVide(valeur) || servies.has(cle)) entete[cle] = valeur
+    }
+  }
 
   const farm = etat.farm || {}
   const etude = projeterEtudeMarche(etat.mode, {
