@@ -12,7 +12,7 @@ elles sont retirées du HTML avant la recherche. PDF réel : 4 pages.
 """
 import re
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.quote_engine import i18n_labels as L
 from apps.ventes.quote_engine.ci import blocs as ci_blocs
@@ -103,6 +103,7 @@ def _morceaux_francais(cle, autre):
             L.LIBELLES[cle][autre]]
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq345LanguesIndustriel(SimpleTestCase):
 
     def _aucun_libelle_francais(self, langue):

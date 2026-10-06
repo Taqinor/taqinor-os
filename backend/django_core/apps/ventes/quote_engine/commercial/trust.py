@@ -11,6 +11,7 @@ CSS tables only. Classes prefixed ``c3-``.
 from ..premium_base import bande_legale
 # CIQ311 — blocs C&I communs (conditions, Bon pour accord).
 from ..ci import blocs as ci_blocs
+from .. import premium_base
 
 
 def build(ctx):
@@ -22,20 +23,10 @@ def build(ctx):
     ident = ctx.get("ident") or {}
     brand = ident.get("brand_name") or "TAQINOR"
 
-    navy = C["navy"]
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    line_soft = C.get("line_soft", "#EFF1F4")
-    wash = C.get("wash", "#F7F9FC")
+    navy, gold, green, green_bg, ink, muted, muted_2, line, line_soft, wash = premium_base.couleurs(
+        C, "navy gold green green_bg ink muted muted_2 line line_soft wash")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
     # CIQ333 — libellés STRUCTURELS dans la langue du document.
     def L(cle, fr, **valeurs):

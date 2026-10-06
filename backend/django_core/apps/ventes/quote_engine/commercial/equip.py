@@ -16,6 +16,7 @@ from ..ci.mentions import texte_revente
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
+from .. import premium_base
 
 
 def _num(v, default=0.0):
@@ -104,29 +105,20 @@ def pdf_adaptatif(d, build_html, rendre, index_page=1):
 
 def build(ctx):
     d = ctx["d"]
+
+    def L(cle, fr, **valeurs):
+        return _libelle(d, cle, fr, **valeurs)
+
     C = ctx["C"]
     fmt = ctx["fmt"]
     # QJR614 — prix, totaux de ligne et chaîne de totaux au centime.
     fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
 
-    navy = C["navy"]
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    line_soft = C.get("line_soft", "#EFF1F4")
-    wash = C.get("wash", "#F7F9FC")
+    navy, gold, green, green_bg, ink, muted, muted_2, line, line_soft, wash = premium_base.couleurs(
+        C, "navy gold green green_bg ink muted muted_2 line line_soft wash")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
-
-    def L(cle, fr, **valeurs):
-        return _libelle(d, cle, fr, **valeurs)
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
     items = [it for it in (d.get("all_items") or []) if _num(it.get("quantite")) > 0]
     # QJR619 — sections et notes intercalées à leur ``ordre`` par la MÊME

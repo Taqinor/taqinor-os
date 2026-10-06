@@ -8,7 +8,7 @@ bloc PUBLIC ``economie_ci`` des exemples du contrat ``economie_ci.json``.
 import re
 from html import unescape
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.quote_engine.ci.synthese import synthese_ci
 from apps.ventes.quote_engine.figures import FIGURE_KEYS, extract_figures
@@ -78,6 +78,7 @@ class Ciq342Jalons(SimpleTestCase):
         self.assertFalse(hasattr(finance, "_flux_annuels"))
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq342SiteMT(SimpleTestCase):
 
     def test_mt_flux_present_revente_hors_cashflow(self):

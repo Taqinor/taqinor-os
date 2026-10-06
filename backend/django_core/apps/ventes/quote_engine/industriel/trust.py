@@ -21,6 +21,7 @@ qualitative, sans promesse de conformité. Rendu seul (règle #4).
 from ..premium_base import bande_legale
 # CIQ311 — blocs C&I communs (conditions, Bon pour accord, échéancier).
 from ..ci import blocs as ci_blocs
+from .. import premium_base
 from ..ci.mentions import TEXTES_DECARBONATION, texte
 
 
@@ -28,32 +29,21 @@ def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
-    fonts = ctx["fonts"]
-    theme = ctx["theme"]
-    ident = ctx.get("ident") or {}
-    brand = ident.get("brand_name") or "TAQINOR"
 
     # CIQ345 — libellés STRUCTURELS dans la langue du document.
     def L(cle, fr, **valeurs):
         return ci_blocs.libelle(d, cle, fr, **valeurs)
 
     langue = ci_blocs.langue(d)
+    fonts = ctx["fonts"]
+    theme = ctx["theme"]
+    ident = ctx.get("ident") or {}
+    brand = ident.get("brand_name") or "TAQINOR"
 
-    navy = C["navy"]
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    line_soft = C.get("line_soft", "#EFF1F4")
-    wash = C.get("wash", "#F7F9FC")
-    blue = C.get("blue", "#2C5F8A")
+    navy, gold, green, green_bg, ink, muted, muted_2, line, line_soft, wash, blue = premium_base.couleurs(
+        C, "navy gold green green_bg ink muted muted_2 line line_soft wash blue")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
     synthese = d.get("ind_synthese") or {}
 

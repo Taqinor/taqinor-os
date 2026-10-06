@@ -18,6 +18,11 @@ from ..ci import blocs as ci_blocs
 
 def build(ctx):
     d = ctx["d"]
+
+    # CIQ333 — libellés STRUCTURELS dans la langue du document.
+    def L(cle, fr, **valeurs):
+        return ci_blocs.libelle(d, cle, fr, **valeurs)
+
     C = ctx["C"]
     fmt = ctx["fmt"]
     # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — l'investissement TTC
@@ -29,21 +34,10 @@ def build(ctx):
     ident = ctx.get("ident") or {}
     brand = ident.get("brand_name") or "TAQINOR"
 
-    navy = C["navy"]
-    navy_900 = C.get("navy_900", "#0F1E35")
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    paper = C.get("paper", "#FFFFFF")
-    wash = C.get("wash", "#F7F9FC")
+    navy, navy_900, gold, green, green_bg, ink, muted, muted_2, line, paper, wash = premium_base.couleurs(
+        C, "navy navy_900 gold green green_bg ink muted muted_2 line paper wash")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
     ref = d["ref"]
     date = d["date"]
@@ -59,9 +53,6 @@ def build(ctx):
     # ``date_validite`` ou le réglage société ``quote_validity_days``).
     # Indéterminable ⇒ pastille OMISE : le portail client affichait la
     # vraie date, le PDF un « 30 jours » codé en dur.
-    # CIQ333 — libellés STRUCTURELS dans la langue du document.
-    def L(cle, fr, **valeurs):
-        return ci_blocs.libelle(d, cle, fr, **valeurs)
 
     _vu = (d.get("valid_until") or "").strip()
     validity_pill = (
@@ -77,8 +68,6 @@ def build(ctx):
     accroche = meta["accroche"]
 
     kwc = premium_base.kwc_str(d.get("com_kwc"))
-    autoconso = d.get("com_autoconso")
-    couverture = d.get("com_couverture")
     invest = d.get("_invest_ttc") or 0
 
     # QJR651 — la cellule KPI est commune (premium_base.kpi) ; seul
@@ -97,14 +86,7 @@ def build(ctx):
                             L("ci_unite_kwh_an", "&nbsp;kWh/an"),
                             L("ci_production_annuelle", "Production annuelle"),
                             "production_annuelle_kwh"))
-    if autoconso is not None:
-        cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                            L("ci_autoconsommation", "Autoconsommation"),
-                            "autoconsommation_pct"))
-    if couverture is not None:
-        cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                            L("ci_couverture_conso", "Couverture conso"),
-                            "couverture_pct"))
+    cellules.extend(ci_couverture.tuiles_taux(d, "com", kpi))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
     # QJR119 — l'omission couvre aussi « valeur non chiffrable » : le garde ne

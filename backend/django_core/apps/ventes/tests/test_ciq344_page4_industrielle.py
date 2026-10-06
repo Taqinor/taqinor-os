@@ -10,7 +10,7 @@ import re
 from decimal import Decimal
 from html import unescape
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.quote_engine.ci.mentions import (
     SOURCE_CBAM, TEXTES_DECARBONATION, decarbonation_ci)
@@ -111,6 +111,7 @@ class Ciq344Decarbonation(SimpleTestCase):
         self.assertIn("sans promesse de conformité", texte)
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq344Jalons(SimpleTestCase):
 
     def test_quatre_jalons_au_centime_somme_egale_total(self):

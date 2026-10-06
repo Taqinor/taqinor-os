@@ -9,7 +9,7 @@ import json
 import re
 from html import unescape
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.public.payload_economie import _sans_internes_bancables
 from apps.ventes.quote_engine.ci.synthese import synthese_ci
@@ -117,6 +117,7 @@ class Ciq343P90(SimpleTestCase):
         self.assertNotIn("bankable", public["etude"])
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq343Financement(SimpleTestCase):
 
     def test_offre_de_financement_servie(self):

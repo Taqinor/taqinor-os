@@ -10,7 +10,7 @@ import copy
 import json
 from pathlib import Path
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.economie_ci import economie_ci_publique
 from apps.ventes.quote_engine.ci.categories import CATEGORIES
@@ -74,6 +74,7 @@ def _cles(html):
     return {i.split("@")[0] for i in extract_figures(html)}
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq331DocumentChiffre(SimpleTestCase):
 
     def test_payback_production_et_jalons(self):
@@ -117,6 +118,7 @@ class Ciq331DocumentChiffre(SimpleTestCase):
                         p3.index("Bon pour accord"))
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq331SansArgent(SimpleTestCase):
 
     def test_motif_et_aucun_zero(self):
@@ -137,6 +139,7 @@ class Ciq331SansArgent(SimpleTestCase):
                                           etude_ci=False))), 3)
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq331TroisPages(SimpleTestCase):
 
     def test_dix_categories(self):

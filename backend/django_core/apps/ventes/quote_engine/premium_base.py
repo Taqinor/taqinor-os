@@ -89,6 +89,28 @@ def render_pdf(out_path, html: str, base_dir) -> str:
     return str(out_path)
 
 
+#: CIQ333 — la palette des pages premium C&I : teinte → repli littéral
+#: quand le thème ne la porte pas (``None`` = teinte obligatoire du thème).
+PALETTE = {"navy": None, "navy_900": "#0F1E35", "gold": None,
+           "green": None, "green_bg": "#E8F5EC", "ink": "#1F2937",
+           "muted": "#6B7280", "muted_2": "#9BA3AE", "line": "#E5E7EB",
+           "line_soft": "#EFF1F4", "paper": "#FFFFFF", "wash": "#F7F9FC",
+           "blue": "#2C5F8A"}
+
+
+def couleurs(C, noms: str) -> tuple:
+    """CIQ333 — les teintes ``noms`` (séparées par des espaces) de la
+    palette ``C``, dans cet ordre : UNE définition des replis au lieu d'un
+    bloc recopié dans chaque page (``check_duplicats_litteraux``)."""
+    return tuple(C[nom] if PALETTE[nom] is None else C.get(nom, PALETTE[nom])
+                 for nom in noms.split())
+
+
+def polices(fonts: dict) -> tuple:
+    """``(display, serif, sans)`` des pages premium."""
+    return fonts["display"], fonts["serif"], fonts["sans"]
+
+
 def kwc_str(v, defaut: str = "—") -> str:
     """Puissance à la française pour les couvertures (« 10,65 », « 10 ») ;
     ``defaut`` quand la valeur est illisible ou absente."""

@@ -15,7 +15,7 @@ import json
 import re
 from pathlib import Path
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.economie_ci import economie_ci_publique
 from apps.ventes.quote_engine import i18n_labels as L
@@ -115,6 +115,7 @@ def _morceaux_francais(cle, autre):
             L.LIBELLES[cle][autre]]
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq333LanguesCommercial(SimpleTestCase):
 
     def _aucun_libelle_francais(self, langue):

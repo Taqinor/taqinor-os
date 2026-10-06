@@ -12,7 +12,7 @@ import re
 from html import unescape
 from pathlib import Path
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.economie_ci import economie_ci_publique
 from apps.ventes.quote_engine.ci.mentions import TEXTES_PUISSANCE
@@ -112,6 +112,7 @@ class Ciq341SiteMT(SimpleTestCase):
         self.assertNotIn("cos φ", html)
 
 
+@tag("weasyprint")  # rendu PDF réel
 class Ciq341Synthese(SimpleTestCase):
 
     def test_synthese_tri_horizon_sans_van_sans_taux(self):

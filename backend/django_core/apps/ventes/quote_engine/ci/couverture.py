@@ -192,6 +192,26 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
         f'    </div>')
 
 
+def tuiles_taux(d, cle, kpi):
+    """Tuiles « Autoconsommation » et « Couverture conso » (taux du moteur
+    C&I lus sur ``synthese_ci``), ou [] — UNE définition pour les deux
+    couvertures (CIQ333 : libellés dans la langue du document)."""
+    tuiles = []
+    autoconso = d.get(f"{cle}_autoconso")
+    if autoconso is not None:
+        tuiles.append(kpi(f"{round(autoconso)}", "&nbsp;%",
+                          libelle(d, "ci_autoconsommation",
+                                  "Autoconsommation"),
+                          "autoconsommation_pct"))
+    couverture = d.get(f"{cle}_couverture")
+    if couverture is not None:
+        tuiles.append(kpi(f"{round(couverture)}", "&nbsp;%",
+                          libelle(d, "ci_couverture_conso",
+                                  "Couverture conso"),
+                          "couverture_pct"))
+    return tuiles
+
+
 def tuiles_argent(d, cle, kpi, fmt):
     """Tuiles « Économies estimées / an (base) » et « Retour estimé », ou []
     (argent non servi ⇒ tuiles OMISES, jamais un « 0 », QJR119)."""

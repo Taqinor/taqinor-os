@@ -1992,6 +1992,14 @@
           "date": "2026-09-18"
         }
       ],
+      "decarbonation": {
+        "cbam": false,
+        "textes": {
+          "fr": "Vos clients vous demandent de plus en plus le bilan carbone de votre électricité : une part produite par le soleil sur votre site est un élément de réponse.",
+          "en": "Your customers increasingly ask for the carbon footprint of your electricity: a share produced by the sun on your site is part of the answer.",
+          "ar": "يطلب منكم زبناؤكم بشكل متزايد البصمة الكربونية لكهربائكم: جزء منتج بالطاقة الشمسية في موقعكم عنصر من عناصر الجواب."
+        }
+      },
       "services": {
         "om_option": {
           "statut": "propose",

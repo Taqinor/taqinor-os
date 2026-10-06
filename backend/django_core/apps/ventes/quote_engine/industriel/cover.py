@@ -152,22 +152,10 @@ def build(ctx):
     def L(cle, fr, **valeurs):
         return ci_blocs.libelle(d, cle, fr, **valeurs)
 
-    navy = C["navy"]
-    navy_900 = C.get("navy_900", "#0F1E35")
-    gold = C["gold"]
-    green = C["green"]
-    green_bg = C.get("green_bg", "#E8F5EC")
-    ink = C.get("ink", "#1F2937")
-    muted = C.get("muted", "#6B7280")
-    muted_2 = C.get("muted_2", "#9BA3AE")
-    line = C.get("line", "#E5E7EB")
-    paper = C.get("paper", "#FFFFFF")
-    wash = C.get("wash", "#F7F9FC")
-    blue = C.get("blue", "#2C5F8A")
+    navy, navy_900, gold, green, green_bg, ink, muted, muted_2, line, paper, wash, blue = premium_base.couleurs(
+        C, "navy navy_900 gold green green_bg ink muted muted_2 line paper wash blue")
 
-    f_display = fonts["display"]
-    f_serif = fonts["serif"]
-    f_sans = fonts["sans"]
+    f_display, f_serif, f_sans = premium_base.polices(fonts)
 
     ref = d["ref"]
     date = d["date"]
@@ -189,8 +177,6 @@ def build(ctx):
     kwc = premium_base.kwc_str(d.get("ind_kwc"))
     prod = d.get("ind_prod")
     conso = d.get("ind_conso")
-    autoconso = d.get("ind_autoconso")
-    couverture = d.get("ind_couverture")
     invest = d.get("_invest_ttc") or 0
     # QJR614 — l'investissement TTC s'imprime au centime : on relit le
     # montant NON arrondi (display_total, sinon totaux_all.ttc).
@@ -273,14 +259,7 @@ def build(ctx):
     cellules = [kpi(kwc, "&nbsp;kWc",
                     L("ci_puissance_crete", "Puissance crête"),
                     "puissance_kwc")]
-    if autoconso is not None:
-        cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                            L("ci_autoconsommation", "Autoconsommation"),
-                            "autoconsommation_pct"))
-    if couverture is not None:
-        cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                            L("ci_couverture_conso", "Couverture conso"),
-                            "couverture_pct"))
+    cellules.extend(ci_couverture.tuiles_taux(d, "ind", kpi))
     # CIQ307 — tuiles d'argent lues sur ``synthese_ci.argent`` ; absentes ⇒
     # omises (jamais un « 0 », QJR119).
     cellules.extend(ci_couverture.tuiles_argent(d, "ind", kpi, fmt))
