@@ -413,6 +413,10 @@ def synthese_ci(data):
     # CIQ305 — les phrases client C&I, sourcées et trilingues (une table).
     synthese["hypotheses"] = mentions_ci(
         data, sous_reserve=statut == STATUT_SOUS_RESERVE)
+    # CIQ330 — le contenu par catégorie commerciale (UNE table trilingue).
+    if segment == "commercial":
+        from .categories import categorie_ci
+        synthese["categorie"] = categorie_ci(data, synthese)
     synthese["echeancier"] = _echeancier(data, option)
     # CIQ309 — l'entreprise cliente, recopiée telle que le builder la sert.
     entreprise = data.get("entreprise_client")

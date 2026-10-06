@@ -65,7 +65,8 @@ def build(ctx):
         if _vu else "")
 
     cat = d.get("com_category")
-    meta = categories.meta(cat)
+    # CIQ330 — libellé et accroche lus sur ``synthese_ci['categorie']``.
+    meta = categories.meta(cat, (d.get("com_synthese") or {}).get("categorie"))
     icon = meta["icon"]
     cat_label = meta["label"]
     accroche = meta["accroche"]

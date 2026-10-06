@@ -72,43 +72,60 @@ class TestCommercialContent(SimpleTestCase):
 
 
 class TestCommercialCategoryBlocks(SimpleTestCase):
-    """Chaque catégorie déclenche SON bloc conditionnel P2."""
+    """Chaque catégorie déclenche SON bloc conditionnel P2.
+
+    CIQ330 — le contenu vient de la table trilingue ``ci/categories.py``
+    (réponses DÉCLARÉES) : plus de « Saisonnalité hôtelière », d'« éco-OTA »,
+    d'« Alignement horaires » ni de « surplus injectable » en BT."""
 
     def _html(self, category):
         return render.build_html(renderer._augment(sample_data.build(category)))
 
-    def test_hotel_seasonality_and_ota(self):
+    def test_hotel_reponses_declarees_sans_ota(self):
         html = self._html("hotel")
-        self.assertIn("Saisonnalité hôtelière", html)
-        self.assertIn("éco-OTA", html)
+        self.assertIn("Votre hôtel", html)
+        self.assertIn("48 chambres, occupation 62 %, piscine chauffée", html)
+        self.assertNotIn("éco-OTA", html)
+        self.assertNotIn("alignement idéal", html)
 
-    def test_restaurant_cold_chain(self):
-        self.assertIn("chaîne du froid", self._html("restaurant"))
+    def test_restaurant_reponses_traduites(self):
+        html = self._html("restaurant")
+        self.assertIn("Votre restaurant", html)
+        self.assertIn("service continu, cuisson au gaz", html)
 
-    def test_froid_cold_chain(self):
-        self.assertIn("chaîne du froid", self._html("froid"))
+    def test_froid_reponses(self):
+        html = self._html("froid")
+        self.assertIn("Votre entrepôt froid", html)
+        self.assertIn("Consigne -18 °C", html)
 
     def test_boulangerie_nocturnal_baking(self):
         html = self._html("boulangerie")
         self.assertIn("cuisson nocturne", html)
         self.assertIn("pas couverte", html)
+        self.assertIn("Four électrique", html)
 
-    def test_ecole_summer_closure_injection(self):
+    def test_ecole_sans_promesse_injection(self):
         html = self._html("ecole")
-        self.assertIn("Calendrier scolaire", html)
-        self.assertIn("injection", html.lower())
+        self.assertIn("Votre école", html)
+        self.assertNotIn("injectable", html)
+        self.assertNotIn("valorisable", html)
+        self.assertNotIn("prévisible", html)
 
-    def test_bureau_hours_alignment(self):
-        self.assertIn("Alignement horaires", self._html("bureau"))
+    def test_bureau_sans_promesse_export(self):
+        html = self._html("bureau")
+        self.assertIn("Vos bureaux", html)
+        self.assertNotIn("quasi-totalité", html)
+        self.assertNotIn("peu d'export", html)
 
     def test_no_category_generic_block(self):
         base = sample_data.build("hotel")
         base["etude"] = dict(base["etude"])
         base["etude"].pop("categorie_commerciale", None)
         html = render.build_html(renderer._augment(base))
-        self.assertIn("profil de consommation", html)
+        self.assertIn("Votre établissement", html)
+        self.assertIn("Autre commerce", html)
         # les blocs spécifiques n'apparaissent pas
-        self.assertNotIn("Saisonnalité hôtelière", html)
+        self.assertNotIn("Votre hôtel", html)
 
 
 class TestCommercialUnsupported(SimpleTestCase):

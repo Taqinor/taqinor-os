@@ -136,9 +136,13 @@ def build(ctx):
             '(non incluses dans le total)</div>'
             f'<table class="c2-tbl">{_orows}</table></div>')
 
+    # CIQ330 — le bloc RENDU depuis ``synthese_ci['categorie']`` (table
+    # trilingue de ``ci/categories.py``), le même contenu que /proposition.
     block = categories.category_block(
         d.get("com_category"), d.get("etude"), C, fmt,
-        note_pointe=d.get("com_note_pointe") or d.get("ind_note_pointe"))
+        note_pointe=d.get("com_note_pointe") or d.get("ind_note_pointe"),
+        categorie=(d.get("com_synthese") or {}).get("categorie"),
+        langue=d.get("langue_sortie") or "fr")
 
     css = f"""
 <style>
