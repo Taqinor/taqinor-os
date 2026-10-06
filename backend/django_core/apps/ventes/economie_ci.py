@@ -1226,9 +1226,9 @@ def _alertes_internes(apercu, tarif):
     for alerte in apercu.get('alertes') or []:
         if isinstance(alerte, dict) and \
                 alerte.get('code') in CODES_ALERTES_RELAYEES:
-            relayee = dict(alerte)
-            relayee['interne'] = True
-            alertes.append(relayee)
+            alertes.append({'code': alerte.get('code'),
+                            'message': alerte.get('message'),
+                            'interne': True})
     return alertes
 
 
