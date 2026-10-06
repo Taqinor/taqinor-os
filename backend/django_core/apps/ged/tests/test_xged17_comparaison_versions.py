@@ -55,9 +55,11 @@ class XGed17Base(TestCase):
 
 class ComparerVersionsSelectorTests(XGed17Base):
     def test_texte_diff_when_both_have_text(self):
+        # ADOC17 — le texte OCR vit sur le DOCUMENT (partagé par v1 et v2) :
+        # le comparateur n'annonce plus un diff texte « vide » trompeur.
         result = selectors.comparer_versions(self.v1, self.v2)
-        self.assertTrue(result['texte_disponible'])
-        self.assertIn('diff_texte', result)
+        self.assertFalse(result['texte_disponible'])
+        self.assertEqual(result['diff_texte'], [])
 
     def test_metadonnees_diff_always_present(self):
         result = selectors.comparer_versions(self.v1, self.v2)

@@ -95,6 +95,10 @@ expire_stale_devis = _recouvrement.expire_stale_devis
 # RÉ-EXPORTS — QJR69 (2/3) : encaissements → ``domain/encaissements.py``
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import encaissements as _encaissements  # noqa: E402
+# ADOC143 — exception du garde loi 31-08, ré-exportée pour qu'un appelant
+# cross-app (portail) puisse la rattraper sans importer ``apps.ventes.models``.
+from apps.ventes import models as _models  # noqa: E402
+AcompteAvantDelaiLegal = _models.AcompteAvantDelaiLegal
 marquer_facture_soldee = _encaissements.marquer_facture_soldee
 enregistrer_paiement = _encaissements.enregistrer_paiement
 facture_montant_du = _encaissements.facture_montant_du
@@ -472,6 +476,7 @@ supprimer_fichier_toiture = _stockage_toiture.supprimer_fichier_toiture
 __all__ = [
     'AVERTISSEMENTS_KIT_ABSENT',
     'AcceptError',
+    'AcompteAvantDelaiLegal',
     'AutoDevisError',
     'BOQ_CATEGORIES',
     'BOQ_SUFFIXE_A_CHIFFRER',

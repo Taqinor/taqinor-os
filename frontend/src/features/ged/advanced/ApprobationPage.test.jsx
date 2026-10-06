@@ -21,8 +21,11 @@ vi.mock('../../../api/gedApi', () => ({
     getDemandesApprobation: vi.fn(() => Promise.resolve({ data: [] })),
     getDemandesSignature: vi.fn(() => Promise.resolve({ data: [] })),
     getModelesDocument: vi.fn(() => Promise.resolve({ data: [
-      { id: 2, nom: 'Attestation maintenance', categorie: 'contrat', actif: true },
+      { id: 2, nom: 'Attestation maintenance', categorie: 'contrat', actif: true,
+        corps_html: '<p>Attestation {{ nom }}</p>' },
     ] })),
+    // ADOC13 — génération depuis un modèle avec le contexte saisi.
+    genererModele: vi.fn(() => Promise.resolve({ data: { document: 34, created: true } })),
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
     getRolesSignataire: vi.fn(() => Promise.resolve({ data: [] })),
     getLotsEnvoi: vi.fn(),
@@ -37,6 +40,10 @@ vi.mock('../../../api/gedApi', () => ({
       data: new Blob(['%PDF'], { type: 'application/pdf' }), headers: {},
     })),
     prolongerDemandeSignature: vi.fn(() => Promise.resolve({ data: {} })),
+    // ADOC63 / ADOC76 — création mono / circuit multi-signataires.
+    createDemandeSignature: vi.fn(),
+    creerDemandeMultiSignataires: vi.fn(),
+    getChampsSignature: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 
@@ -116,6 +123,21 @@ describe('PACT135 ApprobationPage — Envoi en masse', () => {
 
     expect(gedApi.envoyerLotSignature).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledWith('Choisissez un fichier CSV.')
+  })
+})
+
+describe('ADOC13 ApprobationPage — Générer depuis un modèle', () => {
+  it('Générer envoie le contexte saisi', async () => {
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Modèles' }))
+    await screen.findAllByText('Attestation maintenance')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Générer un document' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('nom'), 'ALPHA')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Générer' }))
+    await waitFor(() => {
+      expect(gedApi.genererModele).toHaveBeenCalledWith(2, { nom: 'ALPHA' })
+    })
   })
 })
 
@@ -199,5 +221,76 @@ describe('WIR204 ApprobationPage — PDF signé & prolongation d’échéance', 
 
     await waitFor(() => expect(gedApi.prolongerDemandeSignature).toHaveBeenCalledWith(
       5, { expires_at: new Date('2026-12-31T10:00').toISOString() }))
+  })
+})
+
+/* ADOC63 / ADOC76 — écran Approbation, versant signature.
+   Réponses de forme RÉELLE (DemandeSignatureDocumentSerializer : id, token,
+   lien_signature absolu, signataires[]) — jamais un champ inventé. */
+
+const LIEN = 'https://erp.exemple.ma/ged/signature/tok-adoc63/'
+
+describe('ADOC63 ApprobationPage — lien de signature', () => {
+  it('la demande créée affiche Copier le lien de signature', async () => {
+    gedApi.createDemandeSignature.mockResolvedValue({
+      data: {
+        id: 12, document: 4, document_nom: 'Bail.pdf', statut: 'en_attente',
+        signataire_nom: 'Client A', signataire_email: 'a@x.ma',
+        token: 'tok-adoc63', lien_signature: LIEN, signataires: [],
+      },
+    })
+    gedApi.getDocumentsList.mockResolvedValue({ data: [{ id: 4, nom: 'Bail.pdf' }] })
+    gedApi.getModelesDocument.mockResolvedValue({ data: [] })
+    gedApi.getLotsEnvoi.mockResolvedValue({ data: [] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: /Nouvelle demande/i }))[0])
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByText('Choisir un document…').closest('button'))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Bail.pdf'))
+    const champs = within(dialog).getAllByRole('textbox')
+    await userEvent.type(champs[0], 'Client A')
+    await userEvent.type(champs[1], 'a@x.ma')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Créer la demande' }))
+
+    const lien = await screen.findByLabelText('Lien de signature')
+    expect(lien).toHaveValue(LIEN)
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    await userEvent.click(screen.getByRole('button', { name: 'Copier le lien de signature' }))
+    expect(writeText).toHaveBeenCalledWith(LIEN)
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Lien de signature copié.'))
+  })
+})
+
+describe('ADOC76 ApprobationPage — circuit multi-signataires', () => {
+  it('le rôle est un choix fermé', async () => {
+    gedApi.creerDemandeMultiSignataires.mockResolvedValue({
+      data: { id: 30, document: 4, statut: 'en_attente', lien_signature: null, signataires: [] },
+    })
+    gedApi.getDocumentsList.mockResolvedValue({ data: [{ id: 4, nom: 'Bail.pdf' }] })
+    gedApi.getModelesDocument.mockResolvedValue({ data: [] })
+    gedApi.getLotsEnvoi.mockResolvedValue({ data: [] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: /Circuit multi-signataires/i }))[0])
+    const dialog = await screen.findByRole('dialog')
+
+    // Plus aucune saisie libre du rôle.
+    expect(within(dialog).queryByPlaceholderText('Rôle')).not.toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Rôle du destinataire 1' }))
+    const options = within(await screen.findByRole('listbox')).getAllByRole('option')
+    expect(options.map((o) => o.textContent)).toEqual(['Signataire', 'Copie', 'Approbateur'])
+    await userEvent.click(options[2])
+
+    await userEvent.click(within(dialog).getByText('Choisir un document…').closest('button'))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Bail.pdf'))
+    await userEvent.type(within(dialog).getByPlaceholderText('Nom'), 'Sofia')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Créer le circuit' }))
+
+    await waitFor(() => expect(gedApi.creerDemandeMultiSignataires).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destinataires: [expect.objectContaining({ nom: 'Sofia', role: 'approbateur', ordre: 1 })],
+      })))
   })
 })

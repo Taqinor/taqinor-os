@@ -12,7 +12,7 @@ import {
 } from '../../../ui'
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { ActionEcheance, errMessage, formatOctets } from './shared.js'
+import { ActionEcheance, errMessage, formatOctets, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    UX46 — Rétention, archivage légal & partage.
@@ -70,15 +70,16 @@ export default function RetentionPage() {
     setError(null)
     try {
       const [p, e, a, h, pa, j, docs, q, disp] = await Promise.all([
-        gedApi.getPolitiquesRetention(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getPolitiquesRetention),
         gedApi.getDocumentsEchus(),
-        gedApi.getArchivagesLegaux(),
-        gedApi.getLegalHolds(),
-        gedApi.getPartages(),
-        gedApi.getJournalAcces(),
-        gedApi.getDocumentsList(),
+        toutesLesPages(gedApi.getArchivagesLegaux),
+        toutesLesPages(gedApi.getLegalHolds),
+        toutesLesPages(gedApi.getPartages),
+        toutesLesPages(gedApi.getJournalAcces),
+        toutesLesPages(gedApi.getDocumentsList),
         gedApi.getQuotaEtat(),
-        gedApi.getDemandesDisposition(),
+        toutesLesPages(gedApi.getDemandesDisposition),
       ])
       setPolitiques(unpage(p.data))
       setEchus(unpage(e.data))
@@ -196,7 +197,10 @@ export default function RetentionPage() {
     { id: 'document', header: 'Document', accessor: (r) => r.document_nom || `#${r.document}` },
     {
       id: 'lien', header: 'Lien public', accessor: (r) => r.public_url,
-      cell: (v) => <span className="truncate font-mono text-xs" title={v}>{v}</span>,
+      // ADOC6 — le lien n'est servi qu'au créateur du partage et à l'admin.
+      cell: (v) => (v
+        ? <span className="truncate font-mono text-xs" title={v}>{v}</span>
+        : <span className="text-xs text-muted-foreground">Masqué</span>),
     },
     {
       id: 'expire', header: 'Expire', width: 150,

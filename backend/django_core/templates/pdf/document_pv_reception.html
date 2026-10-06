@@ -138,8 +138,15 @@
       <div class="signature-line">{{ signataire_nom or (client.nom ~ ' ' ~ client.prenom) }}</div>
       {% if signe_le %}
       <div class="signature-horodatage">
+        {# ADOC70 — un PV figé APRÈS coup (plus d'une heure après la signature,
+           chantier signé avant le gel en GED) n'affirme pas l'empreinte d'un
+           contenu non vérifié : il dit quand il a été figé. #}
+        {% if fige_le %}
+        Figé le {{ fige_le.strftime('%d/%m/%Y à %H:%M') }}, après la signature du {{ signe_le.strftime('%d/%m/%Y à %H:%M') }}
+        {% else %}
         Signé le {{ signe_le.strftime('%d/%m/%Y à %H:%M') }}
         — empreinte {{ empreinte_signature }}
+        {% endif %}
       </div>
       {% endif %}
     </div>

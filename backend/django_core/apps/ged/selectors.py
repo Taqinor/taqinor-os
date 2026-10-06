@@ -111,6 +111,16 @@ def documents_visible_to_user(user):
     return qs
 
 
+def document_ids_visibles(user):
+    """ADOC3 — Sous-requête des ids de documents VISIBLES de l'utilisateur
+    (coffre GED8, ACL GED19, corbeille GED26 — exactement
+    `documents_visible_to_user`). Seule source des filtres des listes et
+    actions qui exposent un objet RATTACHÉ à un document (versions, aperçu,
+    annotations, validations OCR, approbations, liens, affectations de tags) :
+    là où GET /documents/<id>/ répond 404, ces routes répondent 404 / 0 ligne."""
+    return documents_visible_to_user(user).values('pk')
+
+
 def mes_recents(user, *, limit=10):
     """ZGED13 — Documents récemment CONSULTÉS par l'appelant, dédupliqués et
     ordonnés par dernier accès (le plus récent en premier).
@@ -303,13 +313,18 @@ def documents_partages_client_portail(company, client_id):
     récent d'abord). ``company``/``client_id`` absents → queryset vide."""
     if company is None or not client_id:
         return Document.objects.none()
+    from .models import LIFECYCLE_OBSOLETE
     doc_ids = (AclGed.objects
                .filter(company=company, client_id=client_id,
                        document__isnull=False)
                .values_list('document_id', flat=True))
+    # ADOC128 — un document déclaré « obsolète » n'est plus diffusé au client
+    # (liste, détail, téléchargement, export, recherche) ; « archivé » reste
+    # visible (son propre document).
     return (Document.objects
             .filter(company=company, id__in=doc_ids,
                     supprime_le__isnull=True)
+            .exclude(statut=LIFECYCLE_OBSOLETE)
             .order_by('-created_at', '-id'))
 
 
@@ -342,13 +357,17 @@ def ressources_partenaire_portail(company):
 
     if company is None:
         return Document.objects.none()
+    from .models import LIFECYCLE_ARCHIVE, LIFECYCLE_OBSOLETE
     doc_ids = (AclGed.objects
                .filter(company=company, document__isnull=False,
                        role__nom=ROLE_PORTAIL_PARTENAIRE)
                .values_list('document_id', flat=True))
+    # ADOC128 — une ressource « obsolète » ou « archivée » n'est plus diffusée
+    # aux partenaires (ni listée, ni détaillée, ni téléchargeable).
     return (Document.objects
             .filter(company=company, id__in=doc_ids,
                     supprime_le__isnull=True)
+            .exclude(statut__in=[LIFECYCLE_OBSOLETE, LIFECYCLE_ARCHIVE])
             .order_by('-created_at', '-id'))
 
 
@@ -468,7 +487,14 @@ def acl_entries_for_target(target):
         cond = cond | Q(folder_id__in=chain)
     if not cond:
         return AclGed.objects.none()
-    return AclGed.objects.filter(cond, company=company)
+    # ADOC16 — un partage PORTAIL (client NTPRT13, rôle portail NTPRT31) ne
+    # gouverne pas la visibilité INTERNE : il ne cache jamais un document aux
+    # employés. Le portail lit ces entrées par ses sélecteurs dédiés.
+    from apps.roles.permissions_registre import CANONICAL_PORTAIL_ROLES
+    noms_portail = [nom for nom, _perms in CANONICAL_PORTAIL_ROLES]
+    return (AclGed.objects.filter(cond, company=company)
+            .filter(client__isnull=True)
+            .exclude(role__nom__in=noms_portail))
 
 
 def _principal_matches(entry, user):
@@ -619,6 +645,56 @@ def acl_governs_target(target):
     comportement existant (backward-compat).
     """
     return acl_entries_for_target(target).exists()
+
+
+ACL_MESSAGES = {
+    'lecture': "Droit de lecture requis sur cette cible.",
+    'ecriture': "Droit d'écriture requis sur cette cible.",
+    'gestion': "Droit de gestion requis sur cette cible.",
+}
+
+
+def assert_acl_niveau(target, user, niveau):
+    """ADOC5 — LA garde des écritures GED : lève `PermissionError` si
+    `user` n'a pas au moins `niveau` ('lecture'/'ecriture'/'gestion') sur
+    `target` (document ou dossier) selon l'ACL GED19 effective.
+
+    Une cible NON gouvernée par une ACL garde le comportement existant
+    (aucun refus : les paliers de rôle de la vue tranchent). Une cible
+    gouvernée sans aucun droit pour l'utilisateur est refusée. L'admin a
+    toujours « gestion ». Renvoie le niveau effectif (ou ``None``)."""
+    effectif = acl_effective(target, user)
+    if effectif is None:
+        if acl_governs_target(target):
+            raise PermissionError(ACL_MESSAGES[niveau])
+        return None
+    if ACL_RANK.get(effectif, 0) < ACL_RANK[niveau]:
+        raise PermissionError(ACL_MESSAGES[niveau])
+    return effectif
+
+
+def folder_lisible(folder, user):
+    """ADOC5 — True si `user` peut LIRE ce dossier (ACL GED19 : un dossier
+    gouverné sans droit effectif pour lui est invisible)."""
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return True
+    if acl_effective(folder, user) is not None:
+        return True
+    return not acl_governs_target(folder)
+
+
+def folders_visibles(qs, user):
+    """ADOC5 — Restreint un QuerySet de dossiers à ceux que `user` peut lire
+    (même règle SOFT que `documents_visible_to_user` : sans aucune ACL dans
+    la société, rien n'est filtré)."""
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return qs
+    if not AclGed.objects.filter(company_id=user.company_id).exists():
+        return qs
+    refuses = [f.pk for f in qs if not folder_lisible(f, user)]
+    if refuses:
+        qs = qs.exclude(pk__in=refuses)
+    return qs
 
 
 def acls_for_document(document):
@@ -998,8 +1074,6 @@ def comparer_versions(v1, v2):
     """XGED17 — Diff de métadonnées (toujours) + diff textuel unifié (si les
     deux versions ont un texte plein-texte/OCR). `v1`/`v2` sont des
     `DocumentVersion` du MÊME document (validé par l'appelant)."""
-    import difflib
-
     meta_fields = ['filename', 'size', 'mime', 'checksum']
     diff_meta = {}
     for f in meta_fields:
@@ -1010,29 +1084,16 @@ def comparer_versions(v1, v2):
     uploaded_by_2 = getattr(v2.uploaded_by, 'username', None)
     if uploaded_by_1 != uploaded_by_2:
         diff_meta['uploaded_by'] = {'v1': uploaded_by_1, 'v2': uploaded_by_2}
-    custom_1 = (v1.document.custom_data or {}) if v1.document_id else {}
-    custom_2 = (v2.document.custom_data or {}) if v2.document_id else {}
-    for key in set(custom_1) | set(custom_2):
-        a, b = custom_1.get(key), custom_2.get(key)
-        if a != b:
-            diff_meta.setdefault('custom_data', {})[key] = {'v1': a, 'v2': b}
-
-    texte_1 = (v1.document.texte_ocr or '') if v1.document_id else ''
-    texte_2 = (v2.document.texte_ocr or '') if v2.document_id else ''
-    if texte_1 and texte_2:
-        diff_lines = list(difflib.unified_diff(
-            texte_1.splitlines(), texte_2.splitlines(),
-            fromfile=f'v{v1.version}', tofile=f'v{v2.version}', lineterm=''))
-        return {
-            'metadonnees': diff_meta,
-            'texte_disponible': True,
-            'diff_texte': diff_lines,
-        }
+    # ADOC17 — le texte OCR et les métadonnées custom vivent sur le DOCUMENT,
+    # pas sur la version : les comparer entre deux versions du même document
+    # annoncerait « aucune différence » à tort. Le comparateur ne prétend
+    # donc rien sur eux (aucun texte n'est stocké par version).
     return {
         'metadonnees': diff_meta,
         'texte_disponible': False,
-        'message': 'Comparaison binaire indisponible '
-                   '(texte plein-texte/OCR absent sur une des versions).',
+        'diff_texte': [],
+        'message': 'Comparaison du texte indisponible : le texte OCR '
+                   "n'est pas conservé par version.",
     }
 
 

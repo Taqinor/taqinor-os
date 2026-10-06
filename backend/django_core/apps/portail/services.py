@@ -99,39 +99,58 @@ def rapprocher_paiement_facture(paiement, *, reference=None, user=None):
     ``apps.ventes.services``, jamais un import de ses modèles. Le montant est
     borné au reste dû ; la facture ne bascule que si son résiduel retombe à
     zéro (garde interne à ``marquer_facture_soldee``).
+
+    ADOC143 — ATOMIQUE : sous ``transaction.atomic()`` avec le paiement
+    verrouillé (``select_for_update``), l'encaissement ventes passe D'ABORD
+    et le statut ``PAYE`` n'est posé qu'ENSUITE. Un refus ventes — notamment
+    ``AcompteAvantDelaiLegal`` (loi 31-08, acompte d'un bon signé à domicile
+    pendant le délai) — remonte à l'appelant et annule tout : le paiement
+    reste ``INITIE`` (sans ``paye_le``), donc re-rapprochable une fois le
+    délai passé. Avant, ``PAYE`` était posé en premier : le refus laissait un
+    paiement « payé » sans aucun encaissement, et le rejeu était un no-op.
+    Renvoie le paiement RELU sous verrou.
     """
     from decimal import Decimal
 
+    from django.db import transaction
+
     from .models import PaiementFacturePortail
 
-    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
-        return paiement
-    if reference:
-        paiement.reference = reference
-    paiement.statut = PaiementFacturePortail.Statut.PAYE
-    paiement.paye_le = timezone.now()
-    paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+    with transaction.atomic():
+        paiement = (PaiementFacturePortail.objects
+                    .select_for_update()
+                    .get(pk=paiement.pk))
+        if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+            return paiement
+        if reference:
+            paiement.reference = reference
 
-    if paiement.facture_id:
-        from apps.ventes.services import (
-            enregistrer_paiement, get_facture_or_none, marquer_facture_soldee,
-        )
-        facture = get_facture_or_none(
-            company=paiement.company, facture_id=paiement.facture_id)
-        if facture is not None:
-            montant = min(Decimal(str(paiement.montant)), facture.montant_du)
-            if montant > Decimal('0'):
-                mode = ('carte'
-                        if paiement.methode == PaiementFacturePortail.Methode.CARTE
-                        else 'virement')
-                enregistrer_paiement(
-                    facture=facture, montant=montant, mode=mode,
-                    date_paiement=timezone.localdate(), user=user,
-                    reference=paiement.reference or '',
-                    note='Paiement encaissé au portail client.')
-                marquer_facture_soldee(
-                    facture, montant=montant, user=user,
-                    source='portail_client')
+        if paiement.facture_id:
+            from apps.ventes.services import (
+                enregistrer_paiement, get_facture_or_none,
+                marquer_facture_soldee,
+            )
+            facture = get_facture_or_none(
+                company=paiement.company, facture_id=paiement.facture_id)
+            if facture is not None:
+                montant = min(Decimal(str(paiement.montant)),
+                              facture.montant_du)
+                if montant > Decimal('0'):
+                    mode = ('carte'
+                            if paiement.methode == PaiementFacturePortail.Methode.CARTE
+                            else 'virement')
+                    enregistrer_paiement(
+                        facture=facture, montant=montant, mode=mode,
+                        date_paiement=timezone.localdate(), user=user,
+                        reference=paiement.reference or '',
+                        note='Paiement encaissé au portail client.')
+                    marquer_facture_soldee(
+                        facture, montant=montant, user=user,
+                        source='portail_client')
+
+        paiement.statut = PaiementFacturePortail.Statut.PAYE
+        paiement.paye_le = timezone.now()
+        paiement.save(update_fields=['reference', 'statut', 'paye_le'])
     return paiement
 
 
@@ -262,8 +281,22 @@ def _envoyer_identifiants_portail(
         return False
 
 
+class ProvisionnementSansEmail(Exception):
+    """ADOC123 — ouvrir un accès portail exige l'e-mail du destinataire : le
+    mot de passe temporaire part par e-mail et le « mot de passe oublié » en
+    dépend. Levée AVANT toute création (aucun compte, aucun e-mail)."""
+
+
+MESSAGE_PROVISIONNEMENT_SANS_EMAIL = (
+    "Ajoutez l'adresse e-mail du client avant d'ouvrir son accès portail : "
+    "le mot de passe temporaire part par e-mail.")
+
+
 def provisionner_compte_portail_client(company, client_id):
     """NTPRT2 — Crée (ou relie) le compte utilisateur portail d'un client.
+
+    ADOC123 — un client SANS e-mail lève ``ProvisionnementSansEmail`` avant
+    toute création (jamais un compte muet, sans mot de passe récupérable).
 
     Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé
     par CET appel. Le ``ComptePortailClient`` (avec son ``token_acces``) est
@@ -315,6 +348,12 @@ def provisionner_compte_portail_client(company, client_id):
         if existant is not None:
             return existant, False
 
+        email = (getattr(client, 'email', '') or '').strip()
+        if not email:
+            # La transaction annule aussi un ComptePortailClient tout juste
+            # créé ci-dessus : rien ne reste en base.
+            raise ProvisionnementSansEmail(MESSAGE_PROVISIONNEMENT_SANS_EMAIL)
+
         role, _ = Role.objects.get_or_create(
             company=company,
             nom=ROLE_PORTAIL_CLIENT,
@@ -324,7 +363,6 @@ def provisionner_compte_portail_client(company, client_id):
             },
         )
 
-        email = (getattr(client, 'email', '') or '').strip()
         mot_de_passe = get_random_string(LONGUEUR_MOT_DE_PASSE_TEMPORAIRE)
         user = CustomUser(
             username=_username_portail_disponible(email or f'client-{client.id}'),
@@ -355,8 +393,12 @@ def provisionner_compte_portail_client(company, client_id):
 # login JWT standard — jamais un second système d'auth.
 # ``Partenaire.token_acces`` (lien ponctuel/legacy) reste intact et inchangé.
 
-def provisionner_compte_partenaire(company, partenaire_id):
+def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False):
     """NTPRT4 — Crée (ou relie) le compte utilisateur portail d'un partenaire.
+
+    ADOC123 — ``exiger_email=True`` lève ``ProvisionnementSansEmail`` avant
+    toute création quand le partenaire n'a pas d'e-mail (ADOC124 l'active
+    côté vue). Défaut ``False`` : comportement inchangé.
 
     Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé
     par CET appel. Idempotent SANS effet de bord : un compte déjà rattaché à
@@ -390,6 +432,11 @@ def provisionner_compte_partenaire(company, partenaire_id):
         ).first()
         if existant is not None:
             return existant, False
+
+        if exiger_email and not (partenaire.email or '').strip():
+            raise ProvisionnementSansEmail(
+                "Ajoutez l'adresse e-mail du partenaire avant d'ouvrir son "
+                "accès portail : le mot de passe temporaire part par e-mail.")
 
         role, _ = Role.objects.get_or_create(
             company=company,
@@ -442,12 +489,17 @@ def provisionner_compte_partenaire(company, partenaire_id):
 
 def _basculer_acces_portail_client(company, client_id, *, actif):
     """Pose ``actif`` sur le compte portail ET ``is_active`` sur ses comptes
-    utilisateur portail, atomiquement. Renvoie ``(compte, nb_utilisateurs)``."""
+    utilisateur portail, atomiquement. Renvoie ``(compte, nb_utilisateurs)``.
+
+    ADOC115 — la RÉACTIVATION n'inclut jamais un membre d'équipe dont
+    l'invitation a été RÉVOQUÉE par l'admin : rouvrir l'accès du client ne
+    ressuscite pas un ex-membre (sa révocation est une décision distincte).
+    """
     from django.db import transaction
 
     from authentication.models import CustomUser
 
-    from .models import ComptePortailClient
+    from .models import ComptePortailClient, InvitationPortail
 
     if company is None or not client_id:
         return None, 0
@@ -462,11 +514,19 @@ def _basculer_acces_portail_client(company, client_id, *, actif):
         if compte is not None and compte.actif != actif:
             compte.actif = actif
             compte.save(update_fields=['actif'])
-        nb = CustomUser.objects.filter(
+        utilisateurs = CustomUser.objects.filter(
             company=company,
             portee=CustomUser.PORTEE_PORTAIL_CLIENT,
             portail_client_id=client_id,
-        ).update(is_active=actif)
+        )
+        if actif:
+            utilisateurs = utilisateurs.exclude(
+                pk__in=InvitationPortail.objects.filter(
+                    company=company,
+                    statut=InvitationPortail.Statut.REVOQUEE,
+                    utilisateur_cree__isnull=False,
+                ).values('utilisateur_cree'))
+        nb = utilisateurs.update(is_active=actif)
     return compte, nb
 
 
@@ -576,10 +636,20 @@ def upsert_jalon_chantier(company, chantier_id, cle_phase, libelle,
 DUREE_VALIDITE_INVITATION = timedelta(days=7)
 
 
-def _envoyer_invitation_portail(invitation, company):
+def _envoyer_invitation_portail(invitation, company, base_url=None):
     """Envoie le lien d'invitation à l'email invité. Best-effort, jamais
     fatal — sans email envoyé, l'admin peut toujours transmettre le lien
-    autrement (le token reste valable jusqu'à expiration)."""
+    autrement (le token reste valable jusqu'à expiration).
+
+    ADOC116 — le lien est construit sur l'hôte ERP de la REQUÊTE
+    (``base_url``, patron WIR216 ``request.build_absolute_uri``), jamais sur
+    ``SITE_URL`` : le site public n'a aucune page portail. Sans base
+    explicite (usage programmatique), AUCUN e-mail n'est envoyé plutôt
+    qu'un lien vers un autre hôte.
+    """
+    base = (base_url or '').strip().rstrip('/')
+    if not base:
+        return False
     try:
         from django.conf import settings
         from django.core.mail import send_mail
@@ -587,8 +657,7 @@ def _envoyer_invitation_portail(invitation, company):
         from .branding import marque_portail
         societe = (marque_portail(company).get('nom_affichage')
                    or 'votre prestataire')
-        site = (getattr(settings, 'SITE_URL', '') or '').rstrip('/')
-        lien = (f'{site}/portail/invitation/accepter'
+        lien = (f'{base}/portail/invitation/accepter'
                 f'?token={invitation.token_invitation}')
         send_mail(
             subject=f"Invitation au portail {societe}",
@@ -609,7 +678,7 @@ def _envoyer_invitation_portail(invitation, company):
         return False
 
 
-def inviter_membre_portail(company, client_id, email, role):
+def inviter_membre_portail(company, client_id, email, role, base_url=None):
     """NTPRT6 — Crée une invitation « équipe portail » et l'envoie par email.
 
     ``client_id`` doit correspondre à un ``ComptePortailClient`` déjà
@@ -617,6 +686,10 @@ def inviter_membre_portail(company, client_id, email, role):
     d'invitation flottante sans compte cible). ``role`` invalide retombe sur
     ``lecture`` (le choix le moins permissif — jamais un défaut permissif
     silencieux).
+
+    ADOC116 — ``base_url`` : racine de l'hôte ERP de la requête (construite
+    par la vue) où pointe le lien de l'e-mail ; absente ⇒ invitation créée,
+    aucun e-mail.
     """
     import secrets
 
@@ -641,12 +714,32 @@ def inviter_membre_portail(company, client_id, email, role):
         token_invitation=secrets.token_urlsafe(32),
         expire_le=timezone.now() + DUREE_VALIDITE_INVITATION,
     )
-    _envoyer_invitation_portail(invitation, company)
+    _envoyer_invitation_portail(invitation, company, base_url=base_url)
     return invitation
 
 
-def accepter_invitation_portail(token, mot_de_passe):
+class MotDePasseInvitationRefuse(Exception):
+    """ADOC122 — le mot de passe choisi à l'acceptation d'une invitation est
+    refusé par la politique (``validate_new_password``). ``messages`` porte
+    les raisons, rendues telles quelles par la vue publique (400)."""
+
+    def __init__(self, messages):
+        super().__init__('; '.join(messages))
+        self.messages = list(messages)
+
+
+def accepter_invitation_portail(token, mot_de_passe, valider_mot_de_passe=None):
     """NTPRT6 — L'invité pose son mot de passe et devient un VRAI compte.
+
+    ADOC122 — ``valider_mot_de_passe(mot_de_passe, company, user)`` (la vue
+    publique passe ``authentication.password_policy.validate_new_password``,
+    la même politique que les autres entrées de mot de passe neuf) est
+    appelé AVANT toute création, avec la société de l'invitation et un
+    utilisateur PROVISOIRE : une liste d'erreurs non vide ⇒
+    ``MotDePasseInvitationRefuse`` levée, aucun compte créé, invitation
+    toujours en attente. Injecté (et non importé ici) : ``password_policy``
+    importe ``apps.audit``, et ce module est importé par des tests ventes —
+    contrat import-linter « ventes n'importe pas audit ».
 
     Refuse (renvoie ``None``) un token inconnu, déjà accepté, révoqué, ou
     expiré — une invitation expirée reste visible (trace), mais n'ouvre plus
@@ -674,6 +767,17 @@ def accepter_invitation_portail(token, mot_de_passe):
     ).first()
     if invitation is None or invitation.expiree:
         return None
+
+    # ADOC122 — validation AVANT création, avec la société de l'invitation et
+    # un utilisateur PROVISOIRE (non sauvegardé) pour la règle de similarité.
+    if valider_mot_de_passe is not None:
+        provisoire = CustomUser(
+            username=invitation.email or f'invite-{invitation.id}',
+            email=invitation.email)
+        erreurs = valider_mot_de_passe(
+            mot_de_passe, invitation.company, user=provisoire)
+        if erreurs:
+            raise MotDePasseInvitationRefuse(erreurs)
 
     with transaction.atomic():
         compte = invitation.compte_portail_client
@@ -749,16 +853,21 @@ def role_portail_client(user):
     ``InvitationPortail`` ne le concerne) a toujours accès plein : renvoie
     ``ECRITURE``. Un compte créé par acceptation d'une invitation porte le
     rôle choisi par l'admin à l'invitation, gelé au moment de l'acceptation.
+
+    ADOC115 — un compte lié à une invitation qui n'est PAS (ou plus)
+    acceptée (révoquée, notamment) vaut ``LECTURE`` : seul un compte SANS
+    aucune invitation est l'admin. Avant, ce cas retombait sur ``ECRITURE``.
     """
     from .models import InvitationPortail
 
-    invitation = InvitationPortail.objects.filter(
-        utilisateur_cree=user,
-        statut=InvitationPortail.Statut.ACCEPTEE,
-    ).first()
-    if invitation is None:
-        return InvitationPortail.Role.ECRITURE
-    return invitation.role
+    invitations = InvitationPortail.objects.filter(utilisateur_cree=user)
+    acceptee = invitations.filter(
+        statut=InvitationPortail.Statut.ACCEPTEE).first()
+    if acceptee is not None:
+        return acceptee.role
+    if invitations.exists():
+        return InvitationPortail.Role.LECTURE
+    return InvitationPortail.Role.ECRITURE
 
 
 def peut_ecrire_portail_client(user):

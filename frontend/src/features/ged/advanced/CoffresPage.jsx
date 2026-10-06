@@ -8,7 +8,7 @@ import {
 } from '../../../ui'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    PACT131 — Coffres-forts documentaires (GED8).
@@ -32,13 +32,16 @@ export default function CoffresPage() {
   const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [viewDocs, setViewDocs] = useState(null)
+  // ADOC4 — coffre dont la suppression attend une confirmation explicite.
+  const [aSupprimer, setASupprimer] = useState(null)
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
       const [c, cl, u] = await Promise.all([
-        gedApi.getCoffres(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getCoffres),
         crmApi.getClients().catch(() => ({ data: [] })),
         gedApi.getUsers().catch(() => ({ data: [] })),
       ])
@@ -74,14 +77,22 @@ export default function CoffresPage() {
     },
   ], [clients])
 
+  // ADOC4 — un coffre non vide est refusé (409) : le motif serveur est
+  // affiché tel quel, jamais « Coffre supprimé. ».
+  const confirmerSuppression = async () => {
+    const coffre = aSupprimer
+    setASupprimer(null)
+    if (!coffre) return
+    try { await gedApi.deleteCoffre(coffre.id); toast.success('Coffre supprimé.'); load() }
+    catch (err) { toast.error(errMessage(err)) }
+  }
+
   const rowActions = (r) => [
     { id: 'documents', label: 'Voir les documents', icon: FileText, onClick: () => setViewDocs(r) },
     {
       id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-      onClick: async () => {
-        try { await gedApi.deleteCoffre(r.id); toast.success('Coffre supprimé.'); load() }
-        catch (err) { toast.error(errMessage(err)) }
-      },
+      // ADOC4 — confirmation d'abord (dialogue ci-dessous).
+      onClick: () => setASupprimer(r),
     },
   ]
 
@@ -105,6 +116,23 @@ export default function CoffresPage() {
       )}
       {viewDocs && (
         <CoffreDocumentsDialog coffre={viewDocs} onClose={() => setViewDocs(null)} />
+      )}
+      {aSupprimer && (
+        <Dialog open onOpenChange={(o) => !o && setASupprimer(null)}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Supprimer ce coffre ?</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Le coffre <strong>{aSupprimer.nom}</strong> sera supprimé. Un coffre
+              qui contient encore des documents est refusé : videz-le d&apos;abord.
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setASupprimer(null)}>Annuler</Button>
+              <Button variant="destructive" onClick={confirmerSuppression}>
+                Supprimer le coffre
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </>
   )

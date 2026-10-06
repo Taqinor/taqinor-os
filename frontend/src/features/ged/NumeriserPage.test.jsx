@@ -15,6 +15,7 @@ vi.mock('../../api/gedApi', () => ({
     assemblerPhotos: vi.fn(),
     // GED31/WIR249 — scan-lot (fichiers déjà numérisés, un document PAR fichier).
     scanLot: vi.fn(),
+    deposerLotScansSepare: vi.fn(),
   },
 }))
 
@@ -42,6 +43,7 @@ vi.mock('../pwa/CameraCapture.jsx', () => ({
 }))
 
 import gedApi from '../../api/gedApi'
+import { toast } from '../../ui/Toaster'
 import NumeriserPage from './NumeriserPage.jsx'
 
 const ok = (data) => Promise.resolve({ data })
@@ -161,6 +163,51 @@ describe('NumeriserPage (XGED12)', () => {
     const call = gedApi.scanLot.mock.calls[0][0]
     expect(call.folder).toBe(10)
     expect(call.files).toHaveLength(2)
+  })
+
+  it('dossiers sur deux pages', async () => {
+    const user = userEvent.setup()
+    const dossiers = Array.from({ length: 56 }, (_, i) => ({
+      id: 300 + i, parent: null, nom: `Dossier ${i + 1}`, path: `/${300 + i}/`,
+    }))
+    gedApi.getDossiers.mockImplementation((params = {}) => {
+      const page = params.page || 1
+      const debut = (page - 1) * 50
+      return Promise.resolve({ data: {
+        count: dossiers.length,
+        next: debut + 50 < dossiers.length ? `?page=${page + 1}` : null,
+        results: dossiers.slice(debut, debut + 50),
+      } })
+    })
+    render(<NumeriserPage />)
+    await waitFor(() => expect(gedApi.getDossiers).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2 })))
+    await user.click(screen.getByLabelText(/choisir le dossier/i))
+    expect(await screen.findByText('Dossier 56')).toBeInTheDocument()
+  })
+
+  it('lot séparé appelle deposer-lot-scans-separe', async () => {
+    const user = userEvent.setup()
+    gedApi.deposerLotScansSepare.mockResolvedValue(ok({
+      documents: [{ id: 1, nom: 'Scan 1' }, { id: 2, nom: 'Scan 2' }],
+    }))
+    render(<NumeriserPage />)
+    await waitFor(() => expect(gedApi.getDossiers).toHaveBeenCalled())
+    await user.click(screen.getByLabelText(/choisir le dossier/i))
+    await user.click(await screen.findByText('Numérisations'))
+
+    const images = [1, 2, 3, 4, 5].map(
+      (i) => new File([`img${i}`], `p${i}.png`, { type: 'image/png' }))
+    await user.upload(screen.getByLabelText('Fichiers à numériser'), images)
+    await user.click(screen.getByLabelText(/Séparer par page blanche/i))
+    await user.click(screen.getByRole('button', { name: /^Importer \(5\)$/i }))
+
+    await waitFor(() => expect(gedApi.deposerLotScansSepare).toHaveBeenCalledTimes(1))
+    const call = gedApi.deposerLotScansSepare.mock.calls[0][0]
+    expect(call.folder).toBe(10)
+    expect(call.files).toHaveLength(5)
+    expect(gedApi.scanLot).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith('2 documents créés.')
   })
 
   it('GED31 — désactive l’import tant qu’aucun fichier ou dossier n’est choisi', async () => {

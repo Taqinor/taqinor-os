@@ -12,6 +12,8 @@ vi.mock('../../../api/portailApi', () => ({
 
 import portailApi from '../../../api/portailApi'
 import AcceptationsDevisPortailAdmin from './AcceptationsDevisPortailAdmin'
+import { enveloppe, pagine } from './paginationTest'
+
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -22,11 +24,11 @@ function renderPage(ui) {
 describe('AcceptationsDevisPortailAdmin — PACT97', () => {
   it("affiche l'IP et le nom du signataire tels que renvoyés par le serveur", async () => {
     portailApi.admin.acceptationsDevis.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 1, devis_id: 42, option_choisie: 'Autoconsommation 6kWc',
         nom_signataire: 'Karim Alaoui', signature_ip: '41.248.12.34',
         accepte: true, signe_le: '2026-08-01T09:12:00Z', date_creation: '2026-08-01T09:10:00Z',
-      }],
+      }]),
     })
     renderPage(<AcceptationsDevisPortailAdmin />)
     await waitFor(() => expect(
@@ -37,22 +39,31 @@ describe('AcceptationsDevisPortailAdmin — PACT97', () => {
   })
 
   it('affiche un état vide quand aucune acceptation', async () => {
-    portailApi.admin.acceptationsDevis.liste.mockResolvedValue({ data: [] })
+    portailApi.admin.acceptationsDevis.liste.mockResolvedValue({ data: enveloppe([]) })
     renderPage(<AcceptationsDevisPortailAdmin />)
     expect((await screen.findAllByText('Aucune acceptation de devis')).length).toBeGreaterThan(0)
   })
 
   it("ne propose aucune action d'écriture (lecture seule)", async () => {
     portailApi.admin.acceptationsDevis.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 2, devis_id: 8, option_choisie: '', nom_signataire: 'Sami Idrissi',
         signature_ip: '', accepte: false, signe_le: null, date_creation: '2026-08-02T08:00:00Z',
-      }],
+      }]),
     })
     renderPage(<AcceptationsDevisPortailAdmin />)
     await waitFor(() => expect(
       screen.getAllByText('Sami Idrissi').length).toBeGreaterThan(0))
     expect(screen.queryByRole('button', { name: /créer|ajouter|modifier|supprimer/i })).not.toBeInTheDocument()
     expect(screen.getAllByText('Non accepté').length).toBeGreaterThan(0)
+  })
+})
+
+describe('ADOC32 — toutes les pages (acceptations)', () => {
+  it('60 lignes sur deux pages', async () => {
+    portailApi.admin.acceptationsDevis.liste.mockImplementation(pagine(60, (n) => ({ id: n, devis_id: 1000 + n, option_choisie: '', nom_signataire: `Signataire ${n}`, signature_ip: '1.1.1.1', accepte: true, signe_le: '2026-08-01T09:12:00Z', date_creation: '2026-08-01T09:10:00Z' })))
+    renderPage(<AcceptationsDevisPortailAdmin />)
+    expect((await screen.findAllByText('1–25 sur 60')).length).toBeGreaterThan(0)
+    expect(portailApi.admin.acceptationsDevis.liste).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
   })
 })
