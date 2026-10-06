@@ -12,5 +12,9 @@ Posées par AskUserQuestion pendant `work on the plan audit stock` (docs/plans/P
   « pendent → pendant » et la réforme TVA rejoués au déploiement. Construit par ASTK176. La phrase
   CLAUDE.md « re-applies product sheets (marque/description/garantie only) » devient fausse : à corriger
   par le fondateur.
+- **ASTK171 — RAS-TVA et acompte (07/10/2026).** Réponse : (a) « Toute la TVA ». Facture biens TTC 1 200 /
+  TVA 200 / retenue 100 %, réglée par acompte 360 + paiement 840 → retenue totale 200 (pas 140) ; la RAS due
+  = TVA × taux de la facture, ventilée sur les règlements, le dernier portant le solde au centime. Aucun
+  champ RAS sur l'acompte. Construit par ASTK175.
 
-Ne jamais re-demander ces deux questions.
+Ne jamais re-demander ces questions.
