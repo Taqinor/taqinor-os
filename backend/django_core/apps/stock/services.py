@@ -1043,6 +1043,12 @@ def apply_retour_fournisseur(retour, user):
     if not lignes:
         raise ValueError('Le retour ne contient aucune ligne.')
     with transaction.atomic():
+        # ASTK49 — le retour est relu SOUS verrou et son statut re-contrôlé :
+        # une 2e validation sur une instance périmée ne sort rien.
+        verrou = (RetourFournisseur.objects.select_for_update()
+                  .get(pk=retour.pk))
+        if verrou.statut != RetourFournisseur.Statut.BROUILLON:
+            raise ValueError('Seul un retour en brouillon peut être validé.')
         for ligne in lignes:
             # ERR24 — verrou de ligne produit dans la transaction pour que des
             # retours concurrents du même produit ne perdent pas de décrément.
@@ -1073,6 +1079,21 @@ def apply_retour_fournisseur(retour, user):
 # évoluer le statut du BCF vers reçu/partiellement reçu via ses quantités reçues
 # existantes (`est_entierement_recu`). IDEMPOTENTE : une réception déjà confirmée
 # ne re-crée jamais de mouvement. Mêmes règles que l'action `recevoir` du BCF.
+
+def _verrouiller_ligne_bcf(ligne_cmd):
+    """ASTK49 — relit une ligne de BCF SOUS verrou (``select_for_update``)
+    dans la transaction de l'appelant ; renvoie l'instance fraîche."""
+    return type(ligne_cmd).objects.select_for_update().get(pk=ligne_cmd.pk)
+
+
+def _incrementer_quantite_recue(ligne_cmd, qte):
+    """ASTK49 — incrémente ``quantite_recue`` par une expression ``F()``
+    (jamais une valeur lue puis réécrite), puis relit la valeur."""
+    from django.db.models import F
+    ligne_cmd.quantite_recue = F('quantite_recue') + qte
+    ligne_cmd.save(update_fields=['quantite_recue'])
+    ligne_cmd.refresh_from_db(fields=['quantite_recue'])
+
 
 def confirm_reception_fournisseur(reception, user):
     """Confirme une réception fournisseur : crée un MouvementStock ENTREE par
@@ -1110,22 +1131,31 @@ def confirm_reception_fournisseur(reception, user):
     today = timezone.now().date()
     bc = reception.bon_commande
     with transaction.atomic():
+        # ASTK49 — la réception est relue SOUS verrou et son statut
+        # re-contrôlé DANS la transaction : une 2e confirmation sur une
+        # instance périmée (double clic) n'ajoute rien (patron AUD217).
+        verrou = (ReceptionFournisseur.objects.select_for_update()
+                  .get(pk=reception.pk))
+        if verrou.statut != ReceptionFournisseur.Statut.BROUILLON:
+            raise ValueError(
+                'Seule une réception en brouillon peut être confirmée '
+                '(déjà confirmée ou annulée).')
         for ligne in lignes:
             qte = int(ligne.quantite or 0)
             if qte <= 0:
                 continue
             # Plafonne au reste dû de la ligne de commande (jamais plus que
             # commandé — protège contre une saisie incohérente, idempotence).
-            ligne_cmd = ligne.ligne_commande
-            ligne_cmd.refresh_from_db()
+            # ASTK49 — ligne de BCF relue SOUS verrou (plus de simple
+            # refresh_from_db) : le reste dû est décidé sur une valeur sûre.
+            ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
             qte = min(qte, ligne_cmd.quantite_restante)
             if qte <= 0:
                 continue
             # XPUR16 — ligne libre/service (sans_stock ou produit=null) :
             # aucun MouvementStock, la quantité reçue est simplement actée.
             if ligne_cmd.sans_stock or ligne.produit_id is None:
-                ligne_cmd.quantite_recue += qte
-                ligne_cmd.save(update_fields=['quantite_recue'])
+                _incrementer_quantite_recue(ligne_cmd, qte)
                 continue
             # AUD216 — VERROU de ligne produit (patron ERR24 déjà appliqué à
             # `apply_retour_fournisseur` juste au-dessus). Un
@@ -1145,8 +1175,7 @@ def confirm_reception_fournisseur(reception, user):
                 note=f'Réception {reception.reference}'
                      + (f' (BCF {bc.reference})' if bc else ''),
                 created_by=user)
-            ligne_cmd.quantite_recue += qte
-            ligne_cmd.save(update_fields=['quantite_recue'])
+            _incrementer_quantite_recue(ligne_cmd, qte)
             # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.
             if bc is not None:
                 record_purchase_price(
@@ -1179,7 +1208,7 @@ def confirm_reception_fournisseur(reception, user):
                     reference_reception=reception.reference,
                     user=user)
         reception.statut = ReceptionFournisseur.Statut.CONFIRME
-        reception.recu_par = reception.recu_par or user
+        reception.recu_par = verrou.recu_par or user
         reception.save(update_fields=['statut', 'recu_par'])
         # Avance le statut du BCF selon ses quantités reçues existantes.
         if bc is not None:
@@ -1243,6 +1272,14 @@ def annuler_reception_confirmee(reception, user):
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     bc = reception.bon_commande
     with transaction.atomic():
+        # ASTK49 — statut relu SOUS verrou : une 2e annulation sur une
+        # instance périmée ne contre-passe pas une seconde fois.
+        verrou = (ReceptionFournisseur.objects.select_for_update()
+                  .get(pk=reception.pk))
+        if verrou.statut != ReceptionFournisseur.Statut.CONFIRME:
+            raise ValueError(
+                'Seule une réception confirmée peut être annulée par '
+                'contre-passation (déjà annulée).')
         for ligne in lignes:
             qte = int(ligne.quantite or 0)
             if qte <= 0 or ligne.produit_id is None:
@@ -1269,9 +1306,9 @@ def annuler_reception_confirmee(reception, user):
                     note=(f'Contre-passation annulation réception '
                           f'{reception.reference}'),
                     created_by=user)
-            ligne_cmd = ligne.ligne_commande
-            if ligne_cmd is not None:
-                ligne_cmd.refresh_from_db()
+            if ligne.ligne_commande_id is not None:
+                # ASTK49 — ligne de BCF relue SOUS verrou avant décrément.
+                ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
                 ligne_cmd.quantite_recue = max(
                     ligne_cmd.quantite_recue - qte, 0)
                 ligne_cmd.save(update_fields=['quantite_recue'])
