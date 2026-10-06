@@ -917,6 +917,26 @@ CLES_ECONOMIES_RESIDENTIELLES_CI = CLES_ECONOMIES_RESIDENTIELLES + (
 MODES_CI = ('commercial', 'industriel')
 
 
+def _mode_kpis_ci(synthese):
+    """CIQ306 — ``mode_kpis`` C&I v2 : PROJECTION de ``synthese_ci``
+    (contrat ``proposal_data.json`` › ``notes_ciq4.mode_kpis_ci_v2``) —
+    énergie + ``argent.indicateurs.retour_ans`` + ``argent.revente``. Aucune
+    clé d'étude JS lue, aucun calcul ; l'argent omis (ou sa case décochée)
+    ⇒ économies, payback et revente à ``None``."""
+    energie = synthese.get('energie') or {}
+    argent = synthese.get('argent') or {}
+    economie = argent.get('economie_annee1') or {}
+    revente = argent.get('revente') or {}
+    return {
+        'taux_autoconso': energie.get('taux_autoconso_pct'),
+        'taux_couverture': energie.get('taux_couverture_pct'),
+        'economies_annuelles': economie.get('total_mad'),
+        'payback': (argent.get('indicateurs') or {}).get('retour_ans'),
+        'injection_kwh_an': revente.get('kwh_an'),
+        'injection_dh_an': revente.get('valeur_mad_an'),
+    }
+
+
 def _mode_public(data):
     return str((data or {}).get('mode_installation') or '').strip().lower()
 
@@ -1053,6 +1073,18 @@ def proposal_data(request, token):
         if str(data.get('mode_installation') or '').strip().lower() == 'agricole':
             from .quote_engine.agricole.synthese import synthese_agricole
             synthese_agricole_pub = synthese_agricole(data)
+        # CIQ306 — la synthèse C&I, par LA MÊME fonction que le PDF
+        # (``quote_engine/ci/synthese.synthese_ci``), sur ce ``data`` déjà
+        # assaini (``_strip_confidential_deep``, aucun ``prix_achat``) : la
+        # parité PDF ↔ /proposition est prouvée clé par clé par un test. Clé
+        # ADDITIVE : ``None`` hors commercial / industriel ⇒ ABSENTE.
+        from .quote_engine.ci.synthese import synthese_ci
+        synthese_ci_pub = synthese_ci(data)
+        if synthese_ci_pub is not None and \
+                not _section_servie(link, 'economies'):
+            # Case « économies » décochée : l'argent ne part pas.
+            synthese_ci_pub = {cle: val for cle, val in synthese_ci_pub.items()
+                               if cle != 'argent'}
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -1202,7 +1234,11 @@ def proposal_data(request, token):
             # les 4 variantes sans re-calcul client.
             'mode_installation': data.get('mode_installation'),
             'categorie_commerciale': (data.get('etude') or {}).get('categorie_commerciale'),
-            'mode_kpis': _mode_kpis(data),
+            # CIQ306 — en C&I, ``mode_kpis`` v2 est une PROJECTION de
+            # ``synthese_ci`` : plus aucune clé d'étude JS lue.
+            'mode_kpis': (_mode_kpis_ci(synthese_ci_pub)
+                          if synthese_ci_pub is not None
+                          else _mode_kpis(data)),
             'roof_image_url': roof_url,
             # QJ26 — layout de toiture ASSAINI (géométrie + par-pan uniquement,
             # jamais de prix/marge/champ interne). None quand absent → le PNG
@@ -1362,6 +1398,9 @@ def proposal_data(request, token):
                     cle: val for cle, val in synthese_agricole_pub.items()
                     if cle != 'economies'}
             payload['synthese_agricole'] = synthese_agricole_pub
+        # CIQ306 — synthèse C&I (additive, absente hors C&I, jamais `null`).
+        if synthese_ci_pub is not None:
+            payload['synthese_ci'] = synthese_ci_pub
         # COURBES (21/08/2026) — graphe « une journée type » : formes horaires
         # PVGIS (live au point GPS, sinon courbe de référence de la ville),
         # niveaux RÉELS (productible × kWc du devis / factures du lead), pic en
