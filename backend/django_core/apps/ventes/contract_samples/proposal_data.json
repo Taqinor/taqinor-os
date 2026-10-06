@@ -238,7 +238,8 @@
     "confirmation_email": true,
     "detail": null,
     "synthese_agricole": {},
-    "synthese_ci": {}
+    "synthese_ci": {},
+    "signature_entreprise": {}
   },
   "exemple_standard": {
     "remplace_par": null,

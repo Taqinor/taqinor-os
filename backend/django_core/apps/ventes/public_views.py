@@ -1400,6 +1400,11 @@ def proposal_data(request, token):
         # CIQ306 — synthèse C&I (additive, absente hors C&I, jamais `null`).
         if synthese_ci_pub is not None:
             payload['synthese_ci'] = synthese_ci_pub
+        # CIQ319 — identité d'entreprise enregistrée avec la signature en
+        # ligne (contrat ``acceptation_entreprise.json``) : additive, ABSENTE
+        # hors C&I ou tant que le devis n'est pas accepté en ligne.
+        if data.get('signature_entreprise'):
+            payload['signature_entreprise'] = data['signature_entreprise']
         # COURBES (21/08/2026) — graphe « une journée type » : formes horaires
         # PVGIS (live au point GPS, sinon courbe de référence de la ville),
         # niveaux RÉELS (productible × kWc du devis / factures du lead), pic en

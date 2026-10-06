@@ -6,6 +6,13 @@ CSS tables only. Classes prefixed ``c3-``.
 """
 
 
+# CIQ310 — bande légale du vendeur (RC, ICE, capital) : UNE fonction
+# partagée avec le résidentiel.
+from ..premium_base import bande_legale
+# CIQ311 — blocs C&I communs (conditions, Bon pour accord).
+from ..ci import blocs as ci_blocs
+
+
 def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
@@ -34,7 +41,6 @@ def build(ctx):
         ("1", "Étude &amp; validation", "Dimensionnement, visite technique et validation du projet."),
         ("2", "Installation", "Pose des équipements par nos équipes, sans interrompre votre activité."),
         ("3", "Mise en service", "Raccordement, tests et réception — votre production démarre."),
-        ("4", "Suivi &amp; O&amp;M", "Supervision temps réel + maintenance : performance garantie dans la durée."),
     ]
     steps_cells = ""
     for i, (n, t, s) in enumerate(steps):
@@ -63,13 +69,26 @@ def build(ctx):
   <div class="c3-warr">
     <div class="c3-warr-row">
       {_cells}
-      <div class="c3-warr-c"><div class="c3-warr-v">O&amp;M</div><div class="c3-warr-l">Maintenance &amp; supervision</div></div>
     </div>
+    <div class="c3-warr-l" style="margin-top:6px;">{ci_blocs.LEGENDE_GARANTIES}</div>
   </div>
 """
     else:
         warranties_html = ""
 
+    # CIQ311 — « Conditions » (CGV gelées à l'envoi, note TVA) et textes
+    # « Bon pour accord » éditables, lus par la même voie que le legacy.
+    bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
+    conditions_html = ci_blocs.bloc_conditions(d, "c3", navy, ink)
+    # CIQ320 — « Bon pour accord — pour la société » : raison sociale,
+    # signataire, ICE, date, cadres Signature et Cachet ; valeurs de
+    # ``signature_entreprise`` sur la copie signée.
+    acceptation_html = ci_blocs.bloc_acceptation(d, "c3", ink, line)
+    # CIQ314 — seulement les services que le devis porte (O&M nommée,
+    # délai saisi) : plus d'étape « supervision », ni de « performance
+    # garantie », ni de cellule O&M sans ligne derrière.
+    services_html = ci_blocs.bloc_services(
+        d.get("com_synthese") or {}, "c3", navy, ink)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -79,7 +98,7 @@ def build(ctx):
         sign_client = (f'<div class="c3-sign-name">{accepte_nom}</div>'
                        f'<div class="c3-sign-date">Le {date_accept}</div>')
     else:
-        sign_client = '<div class="c3-sign-blank">Nom, date &amp; « Bon pour accord »</div>'
+        sign_client = f'<div class="c3-sign-blank">{bpa_mention}</div>'
 
     css = f"""
 <style>
@@ -129,16 +148,13 @@ def build(ctx):
 
   {warranties_html}
 
-  <div class="c3-trust">
-    Un <b>interlocuteur unique</b> du devis à la mise en service, une <b>supervision
-    temps réel</b> de votre production et un engagement de <b>performance</b> dans la durée.
-  </div>
+  {services_html}
+
+  {conditions_html}
 
   <div class="c3-sign">
     <div class="c3-sign-c">
-      <div class="c3-sign-h">Bon pour accord — Client</div>
-      <div class="c3-sign-box"></div>
-      {sign_client}
+      {acceptation_html}{sign_client if (accepte_nom and date_accept) else ''}
     </div>
     <div class="c3-sign-gap"></div>
     <div class="c3-sign-c">
@@ -147,6 +163,7 @@ def build(ctx):
       <div class="c3-sign-co"><b>{brand}</b> &nbsp;·&nbsp; {ident.get('email','')} &nbsp;·&nbsp; {ident.get('phone','')}</div>
     </div>
   </div>
+  <div class="c3-legal" style="margin-top:10px;font-size:6.8pt;color:{muted};line-height:1.4;">{bande_legale(d, ident)}</div>
 </div>
 """
     return html

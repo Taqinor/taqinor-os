@@ -6,6 +6,13 @@ CSS tables only. Classes prefixed ``i3-``.
 """
 
 
+# CIQ310 — bande légale du vendeur (RC, ICE, capital) : UNE fonction
+# partagée avec le résidentiel.
+from ..premium_base import bande_legale
+# CIQ311 — blocs C&I communs (conditions, Bon pour accord).
+from ..ci import blocs as ci_blocs
+
+
 def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
@@ -107,14 +114,25 @@ def build(ctx):
     <div class="i3-blk-t">Garanties</div>
     <div class="i3-warr-row" style="margin-top:8px;">
       {_cells}
-      <div class="i3-warr-c"><div class="i3-warr-v">O&amp;M</div><div class="i3-warr-l">Maintenance &amp; supervision</div></div>
     </div>
+    <div class="i3-warr-l" style="margin-top:6px;">{ci_blocs.LEGENDE_GARANTIES}</div>
   </div>
 """
     else:
         warranties_html = ""
 
     # Signature — tampon d'acceptation posé à l'acceptation (sinon champ vierge).
+    # CIQ311 — « Conditions » (CGV gelées à l'envoi, note TVA) et textes
+    # « Bon pour accord » éditables, lus par la même voie que le legacy.
+    bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
+    conditions_html = ci_blocs.bloc_conditions(d, "i3", navy, ink)
+    # CIQ320 — « Bon pour accord — pour la société » : raison sociale,
+    # signataire, ICE, date, cadres Signature et Cachet ; valeurs de
+    # ``signature_entreprise`` sur la copie signée.
+    acceptation_html = ci_blocs.bloc_acceptation(d, "i3", ink, line)
+    # CIQ314 — seulement les services que le devis porte.
+    services_html = ci_blocs.bloc_services(
+        d.get("ind_synthese") or {}, "i3", navy, ink)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -124,7 +142,7 @@ def build(ctx):
         # Ré-échapper ici sortait « &amp;amp; » sur un nom porteur d'un « & ».
         sign_client = f'<div class="i3-sign-name">{accepte_nom}</div><div class="i3-sign-date">Le {date_accept}</div>'
     else:
-        sign_client = '<div class="i3-sign-blank">Nom, date &amp; « Bon pour accord »</div>'
+        sign_client = f'<div class="i3-sign-blank">{bpa_mention}</div>'
 
     css = f"""
 <style>
@@ -192,7 +210,6 @@ def build(ctx):
     <div class="i3-col"><div class="i3-blk">
       <div class="i3-blk-t">ISO 50001 — management de l'énergie</div>
       <div class="i3-li">Données de production/consommation exploitables pour la <b>revue énergétique</b> et les indicateurs de performance (IPE).</div>
-      <div class="i3-li">Supervision temps réel : base d'un <b>plan d'actions</b> d'efficacité énergétique.</div>
     </div></div>
     <div class="i3-col"><div class="i3-blk">
       <div class="i3-blk-t">CBAM — ajustement carbone aux frontières (UE)</div>
@@ -201,13 +218,13 @@ def build(ctx):
     </div></div>
   </div>
 
-  {warranties_html}{clauses_html}
+  {warranties_html}{services_html}{clauses_html}
+
+  {conditions_html}
 
   <div class="i3-sign">
     <div class="i3-sign-c">
-      <div class="i3-sign-h">Bon pour accord — Client</div>
-      <div class="i3-sign-box"></div>
-      {sign_client}
+      {acceptation_html}{sign_client if (accepte_nom and date_accept) else ''}
     </div>
     <div class="i3-sign-gap"></div>
     <div class="i3-sign-c">
@@ -216,6 +233,7 @@ def build(ctx):
       <div class="i3-sign-co"><b>{brand}</b> &nbsp;·&nbsp; {ident.get('email','')} &nbsp;·&nbsp; {ident.get('phone','')}</div>
     </div>
   </div>
+  <div class="i3-legal" style="margin-top:10px;font-size:6.8pt;color:{muted};line-height:1.4;">{bande_legale(d, ident)}</div>
 </div>
 """
     return html

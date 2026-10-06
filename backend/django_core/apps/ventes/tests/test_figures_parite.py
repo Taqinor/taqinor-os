@@ -167,12 +167,13 @@ CAS = {
         requis=('total_ttc*', 'pompe_hmt_m', 'pompe_debit_m3h',
                 'pompe_volume_m3_jour')),
     # CIQ307 — production, taux, économie et payback : ceux de
-    # ``synthese_ci`` (moteur C&I) sur le PDF ET la proposition. Les clés
+    # ``synthese_ci`` (moteur C&I) sur le PDF ET la proposition.
+    # CIQ210 (complément) — le UNE-PAGE aussi (``chiffres_cles``). Les clés
     # d'étude JS (``ETUDE``) restent dans la fixture : plus personne ne les lit.
     'industriel': dict(
         lignes=FULL_LINES, mode='industriel',
         etude_params={**DEUX_OPTIONS, **ETUDE, **ETUDE_CI_MT},
-        formats=('full',),
+        formats=('full', 'onepage'),
         requis=('puissance_kwc', 'total_affiche', 'couverture_pct',
                 'autoconsommation_pct', 'production_annuelle_kwh',
                 'economie_annuelle*', 'payback_ans*')),
@@ -180,7 +181,7 @@ CAS = {
         lignes=FULL_LINES, mode='commercial',
         etude_params={**DEUX_OPTIONS, **ETUDE, **ETUDE_CI_BT,
                       'categorie_commerciale': 'hotel'},
-        formats=('full',),
+        formats=('full', 'onepage'),
         requis=('puissance_kwc', 'total_affiche', 'total_ttc*',
                 'couverture_pct', 'autoconsommation_pct',
                 'economie_annuelle*', 'payback_ans*')),

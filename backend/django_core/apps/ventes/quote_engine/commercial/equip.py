@@ -24,6 +24,82 @@ def _num(v, default=0.0):
         return default
 
 
+# ── CIQ317 — densité adaptative de la page équipements ─────────────────────
+#: Paliers ``(police pt, padding vertical px, interligne)`` du tableau, des
+#: totaux et des blocs sous le tableau. Palier 0 = le rendu d'hier, octet pour
+#: octet. Le renderer choisit le premier palier qui TIENT, mesuré sur le rendu
+#: réel (``deborde``) ; si le dernier déborde encore, il refuse le devis
+#: (``Unsupported('nomenclature trop longue')``) et le dispatch prend le repli
+#: NOMMÉ (QJR235) — jamais une ligne, un total ou une option perdue.
+PALIERS_DENSITE = (None, (7.5, 4, 1.25), (6.8, 2.5, 1.15), (6.0, 1.2, 1.05))
+#: Bande de pied fixe des pages premium (``theme`` › ``.foot``, 13 mm).
+PIED_MM = 13.0
+_PX_PAR_MM = 96 / 25.4
+
+
+def css_densite(palier):
+    """Surcharge CSS du palier ``palier`` (``''`` au palier 0)."""
+    if not palier or palier >= len(PALIERS_DENSITE):
+        return ""
+    pt, pad, lh = PALIERS_DENSITE[palier]
+    return (
+        "<style>.c2-tot{display:block;}.c2-tot-sp{display:none;}"
+        ".c2-tot-box{display:block;width:45%;margin-left:55%;}"
+        f".c2-sec{{font-size:{pt + 5:g}pt;}}"
+        f".c2-tbl{{margin-top:4px;font-size:{pt:g}pt;line-height:{lh:g};}}"
+        f".c2-tbl th,.c2-tbl td{{padding:{pad:g}px 6px;}}"
+        f".c2-mq{{font-size:{max(pt - 1.5, 5):g}pt;"
+        + ("display:inline;margin-left:4px;" if palier >= 2 else "") + "}"
+        f".c2-tot{{margin-top:{pad:g}px;}}"
+        f".c2-tot-tbl{{font-size:{pt:g}pt;}}"
+        f".c2-tot-tbl td{{padding:{max(pad - 1, 1):g}px 8px;}}"
+        f".c2-tot-ttc td{{font-size:{pt + 3:g}pt;padding-top:{pad:g}px;}}"
+        f".c2-note,.c2-inj{{margin-top:{pad:g}px;font-size:{pt:g}pt;}}"
+        f".c2b{{margin-top:{pad + 2:g}px;padding:{pad + 2:g}px 10px;}}"
+        f".c2b-li{{font-size:{pt:g}pt;margin-top:1px;line-height:{lh:g};}}"
+        "</style>")
+
+
+def _boites_texte(boite, dans_pied=False):
+    element = getattr(boite, "element", None)
+    classes = ""
+    if element is not None and hasattr(element, "get"):
+        classes = element.get("class") or ""
+    pied = dans_pied or "foot" in classes.split()
+    if type(boite).__name__ == "TextBox" and not pied:
+        yield boite
+    for enfant in getattr(boite, "children", None) or []:
+        yield from _boites_texte(enfant, pied)
+
+
+def deborde(page):
+    """Vrai quand un TEXTE de la page (hors pied) descend sous le haut de la
+    bande de pied : la page fixe en ``overflow:hidden`` le couperait en
+    silence. ``page`` : une page de ``HTML(...).render().pages``."""
+    limite = page.height - PIED_MM * _PX_PAR_MM
+    for boite in _boites_texte(page._page_box):
+        if boite.position_y + boite.margin_height() > limite + 0.5:
+            return True
+    return False
+
+
+def pdf_adaptatif(d, build_html, rendre, index_page=1):
+    """Les octets PDF au PREMIER palier de densité qui tient, ou ``None``
+    quand même le dernier déborde (le renderer lève alors ``Unsupported``).
+    ``rendre(html)`` : le document WeasyPrint rendu par le RENDERER — aucun
+    import WeasyPrint ici (ARC11)."""
+    for palier in range(len(PALIERS_DENSITE)):
+        donnees = d if palier == 0 else dict(d, _palier_equip=palier)
+        html = build_html(donnees)
+        doc = rendre(html)
+        # Une page qui déborde peut aussi POUSSER une page de plus : le
+        # document ne tient que s'il a exactement ses pages et rien de coupé.
+        attendu = html.count('<div class="page">')
+        if len(doc.pages) == attendu and not deborde(doc.pages[index_page]):
+            return doc.write_pdf()
+    return None
+
+
 def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
@@ -128,17 +204,30 @@ def build(ctx):
         for _o in _opts:
             _oq = _num(_o.get("quantite"))
             _oq_txt = f"{_oq:g}× " if _oq and _oq != 1 else ""
+            # CIQ316 — en HT avec leur taux, comme le reste du tableau : les
+            # ``total_ht`` / ``taux_tva`` / ``total_ttc`` SERVIS par le builder
+            # (supplément canonique QJR616), aucun recalcul ici ; TTC en petit.
+            _o_taux = _num(_o.get("taux_tva"))
             _orows += (
                 f'<tr><td class="c2-d">{_oq_txt}{_o.get("designation", "")}</td>'
-                f'<td class="c2-t">{fmt_mad(_num(_o.get("total_ttc")))} MAD TTC</td></tr>')
+                f'<td class="c2-v">{_o_taux:g} %</td>'
+                f'<td class="c2-t">{fmt_mad(_num(_o.get("total_ht")))} MAD HT'
+                f'<div style="font-size:6.5pt;font-weight:400;">'
+                f'{fmt_mad(_num(_o.get("total_ttc")))} MAD TTC</div></td></tr>')
         options_html = (
             '<div style="margin-top:12px;"><div class="c2-kicker">Options propos&eacute;es '
             '(non incluses dans le total)</div>'
-            f'<table class="c2-tbl">{_orows}</table></div>')
+            '<table class="c2-tbl"><tr><th>D&eacute;signation</th>'
+            '<th class="c2-rr">TVA %</th><th class="c2-rr">Total HT</th></tr>'
+            f'{_orows}</table></div>')
 
+    # CIQ330 — le bloc RENDU depuis ``synthese_ci['categorie']`` (table
+    # trilingue de ``ci/categories.py``), le même contenu que /proposition.
     block = categories.category_block(
         d.get("com_category"), d.get("etude"), C, fmt,
-        note_pointe=d.get("com_note_pointe") or d.get("ind_note_pointe"))
+        note_pointe=d.get("com_note_pointe") or d.get("ind_note_pointe"),
+        categorie=(d.get("com_synthese") or {}).get("categorie"),
+        langue=d.get("langue_sortie") or "fr")
 
     css = f"""
 <style>
@@ -199,7 +288,7 @@ def build(ctx):
     from ..clauses_cgv import bloc_clauses_html
     clauses_html = bloc_clauses_html(
         d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
-    html = f"""{css}
+    html = f"""{css}{css_densite(d.get("_palier_equip"))}
 <div class="c2-root">
   <div class="c2-kicker">Votre installation</div>
   <div class="c2-sec">Équipements &amp; investissement</div>

@@ -525,7 +525,7 @@ def _send_otp_email(email, code, devis_ref, company=None):
 
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
-                         on_behalf_of='', lignes=None):
+                         on_behalf_of='', lignes=None, entreprise=None):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
 
     Idempotent : un enregistrement existant n'est jamais écrasé (la première
@@ -570,6 +570,8 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             consent_esign=bool(consentement),
             signed_at_client=signed_at_client or None,
             on_behalf_of=(on_behalf_of or '')[:150],
+            # CIQ319 — identité de l'entreprise signataire (vide hors C&I).
+            **_champs_signature_entreprise(entreprise),
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -577,6 +579,120 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning('QJ10: échec DevisSignature pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
+
+
+def _champs_signature_entreprise(entreprise):
+    """CIQ319 — ``{raison_sociale, signataire_qualite, ice_declare}`` du
+    bloc ``entreprise`` (contrat ``acceptation_entreprise.json``), bornés aux
+    longueurs du modèle ; ``{}`` sans bloc."""
+    if not isinstance(entreprise, dict):
+        return {}
+    return {
+        'raison_sociale': str(entreprise.get('raison_sociale') or '')
+        .strip()[:200],
+        'signataire_qualite': str(entreprise.get('signataire_qualite') or '')
+        .strip()[:150],
+        'ice_declare': str(entreprise.get('ice') or '').strip()[:30],
+    }
+
+
+#: CIQ319 — modes dont l'acceptation EN LIGNE exige l'identité d'entreprise.
+MODES_ACCEPTATION_ENTREPRISE = ('commercial', 'industriel')
+#: Champs du bloc ``entreprise`` (contrat ``acceptation_entreprise.json``) et
+#: le message 400 qui NOMME chacun.
+CHAMPS_ENTREPRISE = (
+    ('raison_sociale',
+     "La raison sociale de l'entreprise est requise pour accepter ce devis."),
+    ('signataire_qualite',
+     'La qualité du signataire est requise pour accepter ce devis.'),
+    ('ice', "L'ICE de l'entreprise est requis pour accepter ce devis."),
+)
+
+
+class EntrepriseInvalide(Exception):
+    """CIQ319 — bloc ``entreprise`` refusé : ``detail`` + ``champ`` nommé
+    (``entreprise.<cle>``), rendus en 400 par les vues."""
+
+    def __init__(self, detail, champ):
+        super().__init__(detail)
+        self.detail = detail
+        self.champ = champ
+
+
+def exige_identite_entreprise(devis):
+    """Vrai pour un devis commercial / industriel (règle sur le MODE)."""
+    mode = str(getattr(devis, 'mode_installation', '') or '').strip().lower()
+    return mode in MODES_ACCEPTATION_ENTREPRISE
+
+
+def lire_entreprise_acceptation(devis, brut, *, obligatoire):
+    """CIQ319/CIQ323 — le bloc ``entreprise`` d'un corps d'acceptation,
+    validé, ou ``None``.
+
+    * hors commercial / industriel : IGNORÉ (``None``, ni erreur ni écriture) ;
+    * ``obligatoire`` (lien public, portail) : les trois champs requis ;
+    * ICE validé par ``parametres.tax_id_validators.validate_ice_ma`` (la
+      règle EXISTANTE, jamais une seconde).
+
+    Lève :class:`EntrepriseInvalide` (détail + champ nommé)."""
+    if not exige_identite_entreprise(devis):
+        return None
+    if brut in (None, ''):
+        brut = {}
+    if not isinstance(brut, dict):
+        raise EntrepriseInvalide(
+            'Le bloc entreprise doit être un objet.', 'entreprise')
+    valeurs = {}
+    for cle, message in CHAMPS_ENTREPRISE:
+        valeur = brut.get(cle)
+        if valeur is not None and not isinstance(valeur, (str, int)):
+            raise EntrepriseInvalide(
+                f'entreprise.{cle} : texte attendu.', f'entreprise.{cle}')
+        valeur = str(valeur or '').strip()
+        if obligatoire and not valeur:
+            raise EntrepriseInvalide(message, f'entreprise.{cle}')
+        valeurs[cle] = valeur
+    if valeurs['ice']:
+        from apps.parametres.tax_id_validators import validate_ice_ma
+        verdict = validate_ice_ma(valeurs['ice'])
+        if not verdict.get('valide'):
+            raise EntrepriseInvalide(verdict.get('message') or 'ICE invalide.',
+                                     'entreprise.ice')
+    if not any(valeurs.values()):
+        return None
+    return valeurs
+
+
+def signature_entreprise(devis):
+    """CIQ319 — le bloc de RENDU ``signature_entreprise`` (contrat
+    ``acceptation_entreprise.json``) : ``{raison_sociale, signataire_nom,
+    signataire_qualite, ice, date}`` d'un devis C&I accepté en ligne, sinon
+    ``None``. Lecture seule."""
+    if not exige_identite_entreprise(devis):
+        return None
+    try:
+        sig = devis.signature
+    except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist
+        return None
+    if sig is None or not (sig.raison_sociale or sig.signataire_qualite
+                           or sig.ice_declare):
+        return None
+    return {
+        'raison_sociale': sig.raison_sociale,
+        'signataire_nom': sig.signataire_nom,
+        'signataire_qualite': sig.signataire_qualite,
+        'ice': sig.ice_declare,
+        'date': sig.signed_at.date().isoformat() if sig.signed_at else None,
+    }
+
+
+def divergence_ice(devis, ice_declare):
+    """CIQ319 — vrai quand le Client porte DÉJÀ un ICE différent de celui
+    déclaré à l'acceptation (jamais écrasé : drapeau pour le vendeur)."""
+    client = getattr(devis, 'client', None)
+    ice_client = ''.join(str(getattr(client, 'ice', '') or '').split())
+    declare = ''.join(str(ice_declare or '').split())
+    return bool(ice_client and declare and ice_client != declare)
 
 
 def verifier_empreinte_signature(devis, *, lignes=None):
@@ -1196,7 +1312,8 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  signature_image='', signed_at_client=None, on_behalf_of='',
-                 idempotent_reaccept=True, rejouer_aval=False):
+                 idempotent_reaccept=True, rejouer_aval=False,
+                 entreprise=None):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1460,6 +1577,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             user_agent=user_agent, consentement=consentement,
             signature_image=signature_image, signed_at_client=signed_at_client,
             on_behalf_of=on_behalf_of, lignes=lignes_devis,
+            # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
+            # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
+            entreprise=entreprise,
         )
         # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers
         # etude_params du devis pour que l'attribution reste lossless même si

@@ -12,6 +12,8 @@ from ..figures import ancre
 from .. import premium_base
 # CIQ307 — bandeau, méthode, tuiles d'argent : lus sur ``synthese_ci``.
 from ..ci import couverture as ci_couverture
+# CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
+from ..ci import blocs as ci_blocs
 
 
 def build(ctx):
@@ -63,7 +65,8 @@ def build(ctx):
         if _vu else "")
 
     cat = d.get("com_category")
-    meta = categories.meta(cat)
+    # CIQ330 — libellé et accroche lus sur ``synthese_ci['categorie']``.
+    meta = categories.meta(cat, (d.get("com_synthese") or {}).get("categorie"))
     icon = meta["icon"]
     cat_label = meta["label"]
     accroche = meta["accroche"]
@@ -158,6 +161,11 @@ def build(ctx):
 </style>
 """
 
+    # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
+    # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
+    inv_html = ci_couverture.bloc_investissement(
+        d, d.get("com_synthese") or {}, "c1c", fmt_mad, ancre, invest=invest)
+
     html = f"""{css}
 <div class="c1c-root">
   <div class="c1c-hero">
@@ -184,7 +192,7 @@ def build(ctx):
   <div class="c1c-client">
     <b>{client_full}</b>
     {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    <span class="c1c-tag">{cat_label}</span>
+    <span class="c1c-tag">{cat_label}</span>{ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"))}
   </div>
 
   <div class="c1c-wrap">
@@ -195,11 +203,7 @@ def build(ctx):
     <div class="c1c-note">
       L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur
       la consommation de <b>journée</b> de votre établissement. {note_pointe}
-    </div>
-    <div class="c1c-inv">
-      <div class="c1c-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="c1c-inv-v">{fmt_mad(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest))}
-    </div>
+    </div>{inv_html}
   </div>
 </div>
 """

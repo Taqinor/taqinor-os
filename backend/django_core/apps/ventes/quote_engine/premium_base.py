@@ -87,3 +87,14 @@ def kpi(val, unit, label, fig=None, *, prefixe: str) -> str:
     return (f'<td class="{prefixe}-kpi"><div class="{prefixe}-kv">{val}'
             f'<span class="{prefixe}-ku">{unit}</span></div>{_a}'
             f'<div class="{prefixe}-kl">{label}</div></td>')
+
+
+def bande_legale(d: dict, ident: dict) -> str:
+    """CIQ310 — la bande légale du VENDEUR (RC, ICE, capital…), composée UNE
+    fois pour le résidentiel (``residential/trust``, sortie identique octet
+    pour octet) et les pages de confiance commerciale et industrielle.
+
+    La composition (profil société d'un tenant, sinon repli fondateur) vit
+    dans ``residential.theme.bande_legale``, à côté des autres replis de
+    marque du moteur (SCA29)."""
+    return theme.bande_legale(d, ident)

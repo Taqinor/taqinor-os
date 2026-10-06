@@ -316,6 +316,10 @@ TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # AGR313 — la synthèse agricole (``agricole/synthese.synthese_agricole``) : la
 # MÊME fonction que le document de 3 pages et /proposition. None hors agricole.
 SYNTHESE_AGRICOLE = None
+# CIQ210 (complément) — les chiffres-clés C&I (``ci.synthese.chiffres_cles``
+# sur ``synthese_ci``) : la MÊME projection que la couverture du document
+# complet et /proposition. None hors commercial/industriel.
+CHIFFRES_CI = None
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
@@ -3931,6 +3935,38 @@ def _cartes_pompage_synthese(synthese):
     return cellules
 
 
+def _cartes_ci_onepage(chiffres):
+    """CIQ210 (complément) — vignettes « Production annuelle », « Économies
+    estimées / an (base) » et « Retour estimé » du une-page C&I, lues sur
+    ``chiffres_cles(synthese_ci)`` : la production du moteur C&I, l'argent du
+    bloc ``economie_ci`` (``synthese_ci.argent``). Valeur absente ⇒ vignette
+    OMISE — jamais la production par ville ni ``calculate_savings_roi``."""
+    try:
+        from .ci.couverture import ans
+    except ImportError:  # exécution directe du moteur depuis son dossier
+        from ci.couverture import ans
+    cellules = []
+    prod = chiffres.get("production_kwh_an")
+    if prod:
+        cellules.append(
+            ("Production annuelle", f"{fnum(prod)} kWh/an",
+             _ancre_figure("production_annuelle_kwh", fnum(prod))))
+    if MASQUER_ECONOMIES:
+        return cellules
+    eco = chiffres.get("economie_annuelle_mad")
+    if eco is not None:
+        base = chiffres.get("base_economie")
+        libelle = ("&#201;conomies estim&#233;es / an"
+                   + (f" ({base})" if base else ""))
+        cellules.append((libelle, f"{fnum(eco)} MAD/an",
+                         _ancre_figure("economie_annuelle", fnum(eco))))
+    payback = chiffres.get("payback_ans")
+    if payback is not None:
+        cellules.append(("Retour estim&#233;", f"{ans(payback)} ans",
+                         _ancre_figure("payback_ans", ans(payback))))
+    return cellules
+
+
 def _bon_pour_accord_compact_html():
     """AGR313 — bloc « Bon pour accord » compact du une-page agricole : nom,
     date, signature. Sa DERNIÈRE ligne porte le libellé, si bien que la mesure
@@ -4029,29 +4065,36 @@ def page_onepage(items, tronquees=0):
         _sum_cells = [
             ("Puissance cr&#234;te", f"{kwc_fr(KWC)} kWc",
              _ancre_figure("puissance_kwc", kwc_fr(KWC))),
-            ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an",
-             _ancre_figure("production_annuelle_kwh", fnum(PROD_KWH))),
         ]
-        # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
-        # la vignette « Économie annuelle » est OMISE. La valeur disponible
-        # (``ECO_S_ANN``/``ECO_A_ANN``) sort de ``calculate_savings_roi``, au
-        # barème BASSE TENSION de l'ONEE : l'imprimer sur un dossier MT donne
-        # au client un chiffre qui n'est pas le sien.
-        # M4 (audit du 19/08/2026) — L'ÉCONOMIE VIENT DE LA MÊME BRANCHE QUE LES
-        # LIGNES. ``max(ECO_S_ANN, ECO_A_ANN)`` affichait l'économie de l'option
-        # AVEC batterie sur un document qui chiffre l'option SANS — et qui le
-        # dit, quelques centimètres plus bas (« voir la proposition complète »).
-        # Deux histoires d'argent sur une seule page. Branche non identifiable
-        # ⇒ vignette OMISE, jamais un maximum arbitraire.
-        _eco_branche = {"sans": ECO_S_ANN, "avec": ECO_A_ANN}.get(
-            ONEPAGE_BRANCHE)
-        if not MASQUER_ECONOMIES and _eco_branche:
+        if CHIFFRES_CI is not None:
+            # CIQ210 (complément) — commercial / industriel : les chiffres de
+            # la couverture du document complet (``chiffres_cles``) ; absents
+            # ⇒ omis, jamais la production par ville ni l'économie BT/60 %.
+            _sum_cells += _cartes_ci_onepage(CHIFFRES_CI)
+        else:
             _sum_cells.append(
-                ("&#201;conomie annuelle",
-                 f"{fnum(_eco_branche)} MAD/an"
-                 + (" (estimation)" if SAVINGS_ESTIMATED else ""),
-                 _ancre_figure("economie_annuelle", fnum(_eco_branche),
-                               ONEPAGE_BRANCHE)))
+                ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an",
+                 _ancre_figure("production_annuelle_kwh", fnum(PROD_KWH))))
+            # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
+            # la vignette « Économie annuelle » est OMISE. La valeur disponible
+            # (``ECO_S_ANN``/``ECO_A_ANN``) sort de ``calculate_savings_roi``, au
+            # barème BASSE TENSION de l'ONEE : l'imprimer sur un dossier MT donne
+            # au client un chiffre qui n'est pas le sien.
+            # M4 (audit du 19/08/2026) — L'ÉCONOMIE VIENT DE LA MÊME BRANCHE QUE LES
+            # LIGNES. ``max(ECO_S_ANN, ECO_A_ANN)`` affichait l'économie de l'option
+            # AVEC batterie sur un document qui chiffre l'option SANS — et qui le
+            # dit, quelques centimètres plus bas (« voir la proposition complète »).
+            # Deux histoires d'argent sur une seule page. Branche non identifiable
+            # ⇒ vignette OMISE, jamais un maximum arbitraire.
+            _eco_branche = {"sans": ECO_S_ANN, "avec": ECO_A_ANN}.get(
+                ONEPAGE_BRANCHE)
+            if not MASQUER_ECONOMIES and _eco_branche:
+                _sum_cells.append(
+                    ("&#201;conomie annuelle",
+                     f"{fnum(_eco_branche)} MAD/an"
+                     + (" (estimation)" if SAVINGS_ESTIMATED else ""),
+                     _ancre_figure("economie_annuelle", fnum(_eco_branche),
+                                   ONEPAGE_BRANCHE)))
         _pkwc_txt = fnum(round(total / KWC))
         _sum_cells.append(
             ("Prix par kWc", f"{_pkwc_txt} MAD/kWc",
@@ -4695,6 +4738,19 @@ def apply_quote_data(data: dict) -> None:
             SYNTHESE_AGRICOLE = synthese_agricole(data)
         except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
             SYNTHESE_AGRICOLE = None
+    # CIQ210 (complément) — le une-page C&I lit production, économie et
+    # retour dans ``synthese_ci`` (moteur C&I + bloc ``economie_ci``), comme
+    # le document complet et /proposition ; plus jamais ``prod_kwh`` (par
+    # ville) ni ``eco_s_ann`` (``calculate_savings_roi``, BT/60 %). Une
+    # synthèse illisible ⇒ dict VIDE ⇒ vignettes omises, jamais un repli.
+    global CHIFFRES_CI
+    CHIFFRES_CI = None
+    if MODE_INSTALLATION.strip().lower() in ("commercial", "industriel"):
+        try:
+            from .ci.synthese import chiffres_cles, synthese_ci
+            CHIFFRES_CI = chiffres_cles(synthese_ci(data) or {})
+        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+            CHIFFRES_CI = {}
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}

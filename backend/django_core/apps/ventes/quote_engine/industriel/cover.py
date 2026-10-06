@@ -11,6 +11,8 @@ see quote_engine/RENDERING_NOTES.md). Classes prefixed ``i1-``.
 from ..figures import ancre
 # CIQ307 — bandeau, méthode, tuiles d'argent : lus sur ``synthese_ci``.
 from ..ci import couverture as ci_couverture
+# CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
+from ..ci import blocs as ci_blocs
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
 from .. import premium_base
 
@@ -220,6 +222,11 @@ def build(ctx):
 </style>
 """
 
+    # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
+    # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
+    inv_html = ci_couverture.bloc_investissement(
+        d, d.get("ind_synthese") or {}, "i1", fmt_mad, ancre, invest=invest_centimes)
+
     html = f"""{css}
 <div class="i1-root">
   <div class="i1-hero">
@@ -243,7 +250,7 @@ def build(ctx):
   <div class="i1-client">
     <b>{client_full}</b>
     {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    <span class="i1-tag">{d.get('inst_type','Industrielle')}</span>
+    <span class="i1-tag">{d.get('inst_type','Industrielle')}</span>{ci_blocs.bloc_client((d.get('ind_synthese') or {}).get('entreprise_client'), 'i1', d.get('client_full') or d.get('client_name'))}
   </div>
 
   <div class="i1-wrap">
@@ -268,10 +275,7 @@ def build(ctx):
       les <b>heures pleines</b> (production en journée). {note_pointe}
     </div>
 
-    <div class="i1-inv">
-      <div class="i1-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="i1-inv-v">{fmt_mad(invest_centimes)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest_centimes))}
-    </div>
+    {inv_html}
   </div>
 </div>
 """
