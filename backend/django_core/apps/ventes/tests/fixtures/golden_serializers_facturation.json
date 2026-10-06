@@ -781,6 +781,13 @@
      "*",
      false
     ],
+    "montant_exigible": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
     "montant_ht": [
      "DecimalField",
      false,
@@ -865,9 +872,30 @@
      null,
      false
     ],
+    "reference_commande_client": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
     "remise_globale": [
      "DecimalField",
      false,
+     false,
+     null,
+     false
+    ],
+    "retenue_garantie_mad": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "retenue_liberee_le": [
+     "DateField",
+     true,
      false,
      null,
      false
@@ -975,6 +1003,13 @@
      true,
      false,
      "updated_by.username",
+     false
+    ],
+    "ventilation_tva": [
+     "JSONField",
+     false,
+     false,
+     null,
      false
     ]
    }
@@ -1254,8 +1289,29 @@
      null,
      false
     ],
+    "reference_commande_client": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
     "remise_globale": [
      "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "retenue_garantie_mad": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "retenue_liberee_le": [
+     "DateField",
      false,
      false,
      null,
@@ -1313,6 +1369,13 @@
     "updated_by": [
      "PrimaryKeyRelatedField",
      false,
+     false,
+     null,
+     false
+    ],
+    "ventilation_tva": [
+     "JSONField",
+     true,
      false,
      null,
      false

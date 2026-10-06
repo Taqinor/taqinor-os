@@ -462,13 +462,17 @@ class DevisViewSet(DevisEditionActionsMixin,
             return Response(
                 {'detail': 'etude_params doit être un objet.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # AGR124 — le devis automatique AGRICOLE dépose ici ses alertes
+        # (étude pompage + articles « prix à renseigner » omis), rendues à
+        # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
+        journal = {}
         try:
             devis = build_devis_auto(
                 lead=lead_obj, user=request.user, company=company,
                 taux_tva=taux_tva, remise_globale=remise,
                 target_kwc=request.data.get('target_kwc'),
                 scenario=request.data.get('scenario'),
-                etude_extra=etude_extra)
+                etude_extra=etude_extra, journal_auto=journal)
         except AutoDevisError as exc:
             return Response(
                 {'detail': exc.message, 'field': exc.field},
@@ -484,6 +488,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                 'nb_lignes': devis.lignes.count(),
                 'proposal_token': link.token,
                 'proposal_path': chemin_proposition(devis, link.token),
+                'alertes': list(journal.get('alertes') or []),
             },
             status=status.HTTP_201_CREATED)
 

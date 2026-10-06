@@ -30,3 +30,14 @@ test('le stub noticePalierKwc est supprimé (aucun appelant de production)', () 
   assert.doesNotMatch(DEVIS_TAB, /noticePalierKwc/)
   assert.doesNotMatch(LEAD_DEVIS_PANEL, /noticePalierKwc/)
 })
+
+// AGR126 — l'agricole part au SERVEUR (POST /ventes/devis/auto/, AGR124) :
+// la composition JS du pompage et ses défauts supposés (« tri », « immergée »,
+// 20 m) ne reviennent jamais dans createAutoQuote. Le comportement exécuté
+// (un seul appel serveur, 422 rendu tel quel) vit dans
+// autoQuote.atomique.test.jsx.
+test('AGR126 — plus de composition agricole JS ni de défauts supposés dans autoQuote.js', () => {
+  assert.doesNotMatch(SRC, /autoFillPompage\(/)
+  assert.doesNotMatch(SRC, /pompageSelection\(/)
+  assert.doesNotMatch(SRC, /alim: 'tri', typePompe: 'immergee', distance: '20'/)
+})

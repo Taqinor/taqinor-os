@@ -119,14 +119,19 @@ REPONSES_SPEC = frozenset({
     'attente_accord'})
 #: AGR533 — les SEULES clés qu'une variante de segment (`variantes_segment`)
 #: peut remplacer : ce qui se LIT. Jamais `reponse`, `outcome`, `geste` ni
-#: `suite` — la même clé serveur, le même effet.
-CLES_VARIANTE_SEGMENT = frozenset({'label', 'precision', 'effet'})
+#: `suite` — la même clé serveur, le même effet. CIQ508 : `message` aussi, le
+#: texte d'accusé PROPOSÉ après la réponse (CIQ503), à condition qu'il figure
+#: dans ``services.CLES_MESSAGE_REPONSE`` — il n'envoie rien, la commerciale
+#: clique.
+CLES_VARIANTE_SEGMENT = frozenset({'label', 'precision', 'effet', 'message'})
 
 
 def refus_variantes_segment(objet):
     """AGR533 — les clés interdites qu'une ``variantes_segment`` de ``objet``
     (modèle de réponse, entrée d'étape ou geste) voudrait changer : ``[]``
     quand tout va bien. La garde de table le vérifie partout."""
+    from apps.crm.services import CLES_MESSAGE_REPONSE
+
     refus = []
     for segment, variante in (objet.get('variantes_segment') or {}).items():
         if not isinstance(variante, dict) or not variante:
@@ -134,6 +139,9 @@ def refus_variantes_segment(objet):
             continue
         for cle in sorted(set(variante) - CLES_VARIANTE_SEGMENT):
             refus.append(f'{segment} : « {cle} » ne peut pas changer')
+        message = variante.get('message')
+        if message is not None and message not in CLES_MESSAGE_REPONSE:
+            refus.append(f'{segment} : « message » {message!r} est inconnu')
     return refus
 
 
@@ -577,6 +585,11 @@ class ParcoursBase(TestCase):
         if reponse.get('date'):
             corps['rappel_le'] = date.isoformat()
             corps['rappel_heure'] = HEURE_CONVENUE
+        if reponse.get('raison'):
+            # CIQ508 — la raison d'attente est OBLIGATOIRE : le rejeu envoie la
+            # première raison de la liste de la table (jamais une valeur
+            # retapée ici).
+            corps['raison_attente'] = reponse['raisons'][0]['valeur']
         if reponse.get('motif_perte') and motif:
             corps['motif_perte'] = motif
         if reponse.get('motif_refus') and motif_refus:

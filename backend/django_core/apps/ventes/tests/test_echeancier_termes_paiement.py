@@ -74,10 +74,13 @@ class TermesPaiementDevis(TestCase):
                          {'acompte': 30, 'materiel': 60, 'solde': 10})
 
     def test_sans_echeancier_la_societe(self):
-        from apps.ventes.utils.company_settings import payment_terms_for
+        from apps.ventes.utils.company_settings import (
+            creneaux_depuis_jalons, payment_terms_for)
         from apps.ventes.utils.echeancier import termes_paiement_devis
         devis = self._devis('DEV-QJR622-C')
-        societe = payment_terms_for(self.company, 'residentiel')
+        # CIQ212 — ``payment_terms_for`` rend une LISTE de jalons.
+        societe = creneaux_depuis_jalons(
+            payment_terms_for(self.company, 'residentiel'))
         slots = termes_paiement_devis(devis, societe)
         for cle in ('acompte', 'materiel', 'solde'):
             self.assertEqual(Decimal(str(slots[cle])),

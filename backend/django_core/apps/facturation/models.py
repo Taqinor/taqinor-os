@@ -147,6 +147,30 @@ class Facture(TotauxDocumentMixin, models.Model):
     # Tous deux optionnels : leur absence ne fait qu'AVERTIR, jamais bloquer.
     date_livraison = models.DateField(null=True, blank=True)
     conditions_paiement = models.TextField(blank=True, default='')
+    # ── CIQ214 — retenue de garantie CLIENT (D-CIQ-14), seulement à la
+    # demande du client : taux × TTC de la tranche, RETENUE SUR LE RÈGLEMENT —
+    # sans effet sur la base taxable (``montant_ht``/``montant_tva`` ne
+    # baissent pas, phrase AUD180). Libérée à la réception définitive :
+    # ``retenue_liberee_le`` posé par l'action ``liberer-retenue``. Vide =
+    # comportement historique inchangé.
+    retenue_garantie_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Retenue de garantie (MAD)')
+    retenue_liberee_le = models.DateField(
+        null=True, blank=True, verbose_name='Retenue libérée le')
+    # ── CIQ215 — TVA ventilée par taux d'une facture de TRANCHE : liste
+    # ``[{taux, base_ht, montant}]`` (chaînes décimales) posée à la création de
+    # la tranche, au prorata des bases par taux de l'option retenue. Lue par
+    # ``tva_par_taux`` d'un document figé à la place du panier unique « taux
+    # mélangé » (qui n'existe pas dans la loi). Vide (mono-taux, factures
+    # historiques, factures à lignes) = comportement d'hier, octet-identique.
+    ventilation_tva = models.JSONField(
+        null=True, blank=True, verbose_name='Ventilation TVA par taux')
+    # CIQ216 — numéro de commande du client, hérité du devis (facture de BC,
+    # facture de tranche) ; imprimé sous « Facturé à » quand il est rempli.
+    reference_commande_client = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Référence de commande du client')
     # ── ARC24 — référentiel des conditions de paiement (additif, optionnel) ──
     # FK nullable (string-FK — jamais d'import de apps.parametres.models ici)
     # vers parametres.ConditionPaiement : SOURCE du libellé par défaut. Le
@@ -531,6 +555,25 @@ class Facture(TotauxDocumentMixin, models.Model):
                  - self.montant_paye_avec_retenues
                  - self.avoirs_total
                  - (self.abandon_montant or Decimal('0')))
+        return reste if reste > 0 else Decimal('0')
+
+    @property
+    def retenue_non_liberee(self):
+        """CIQ214 — la retenue de garantie encore détenue (0 sans retenue ou
+        une fois libérée)."""
+        from decimal import Decimal
+        if self.retenue_garantie_mad is None or self.retenue_liberee_le:
+            return Decimal('0')
+        return self.retenue_garantie_mad
+
+    @property
+    def montant_exigible(self):
+        """CIQ214 — ce que le client doit RÉGLER maintenant : ``montant_du``
+        moins la retenue de garantie non libérée (jamais négatif). Lu par les
+        relances ; la créance totale (grand livre, balance) reste
+        ``montant_du``. Sans retenue : identique à ``montant_du``."""
+        from decimal import Decimal
+        reste = self.montant_du - self.retenue_non_liberee
         return reste if reste > 0 else Decimal('0')
 
     @property

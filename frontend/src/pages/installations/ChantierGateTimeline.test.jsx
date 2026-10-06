@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
 import ChantierGateTimeline from './ChantierGateTimeline'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 const ETAPES_RESPONSE = {
   installation: 1,
@@ -104,5 +105,37 @@ describe('ChantierGateTimeline (CH6)', () => {
     await waitFor(() => expect(api.getEtapesChantier).toHaveBeenCalled())
     expect(screen.getByText(/Aucune étape de cycle de vie configurée/)).toBeInTheDocument()
     expect(screen.queryByTestId('ch6-gate-timeline')).toBeNull()
+  })
+})
+
+describe('ChantierGateTimeline — AGR604 hors réseau (contrat parcours_etapes_chantier)', () => {
+  const PARCOURS = exempleContrat('installations', 'parcours_etapes_chantier')
+
+  it('rend l’avertissement en style info et grise l’étape sans objet', async () => {
+    api.getEtapesChantier.mockResolvedValue({ data: PARCOURS })
+    render(<ChantierGateTimeline installationId={214} />)
+    await waitFor(() => expect(api.getEtapesChantier).toHaveBeenCalledWith(214))
+
+    const avert = await screen.findByTestId('ch6-avertissements')
+    expect(avert).toHaveTextContent(PARCOURS.etapes[0].avertissements[0])
+    expect(avert.className).toContain('text-info')
+    expect(avert.className).not.toContain('destructive')
+    // Jamais présenté comme un blocage.
+    expect(screen.queryByTestId('ch6-blocked-reasons')).toBeNull()
+
+    const pto = screen.getAllByTestId('ch6-stage')
+      .find((el) => el.dataset.cle === 'inspection_raccordement')
+    expect(pto.dataset.sansObjet).toBe('true')
+    expect(pto).toHaveTextContent('Sans objet (hors réseau)')
+    expect(pto).not.toHaveTextContent('Gate bloquant')
+  })
+
+  it('étape ordinaire : aucune mention sans objet', async () => {
+    api.getEtapesChantier.mockResolvedValue({ data: PARCOURS })
+    render(<ChantierGateTimeline installationId={214} />)
+    const stages = await screen.findAllByTestId('ch6-stage')
+    const autorisations = stages.find((el) => el.dataset.cle === 'autorisations')
+    expect(autorisations.dataset.sansObjet).toBe('false')
+    expect(autorisations).not.toHaveTextContent('Sans objet')
   })
 })

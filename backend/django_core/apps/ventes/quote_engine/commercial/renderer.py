@@ -12,6 +12,8 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
+from ..ci.synthese import chiffres_cles, synthese_ci
+
 
 class Unsupported(Exception):
     """The devis/options are outside the commercial renderer's scope."""
@@ -94,30 +96,39 @@ def _augment(data: dict) -> dict:
     d.setdefault("valid_until", None)
 
     d["com_category"] = (etude.get("categorie_commerciale") or "").strip().lower() or None
-    # QJR625 — la puissance DES LIGNES d'abord ; ``etude['kwc']`` n'est plus
-    # qu'un repli (il décrit le kWc d'une étude peut-être périmée).
-    d["com_kwc"] = _num(d.get("puissance_kwc")) or _num(etude.get("kwc"))
+    # CIQ307 — UNE SOURCE : ``synthese_ci(data)``, la fonction que sert aussi
+    # /proposition (CIQ306) ; plus aucun taux ni argent lu dans l'étude JS.
+    synthese = synthese_ci(d) or {}
+    chiffres = chiffres_cles(synthese)
+    d["com_synthese"] = synthese
+    # QJR625 — la puissance DES LIGNES (``systeme.kwc`` en est la lecture) ;
+    # ``etude['kwc']`` n'est plus qu'un repli.
+    d["com_kwc"] = chiffres["kwc"] or _num(d.get("puissance_kwc")) \
+        or _num(etude.get("kwc"))
     # QJR145 (g) — ``com_prod`` SUPPRIMÉ : calculé et lu par aucun gabarit
     # commercial (la production s'affiche depuis ``com_kwc``/l'étude).
     d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
-    d["com_autoconso"] = _num(etude.get("taux_autoconso"))
-    d["com_couverture"] = _num(etude.get("taux_couverture"))
+    d["com_autoconso"] = chiffres["taux_autoconso_pct"]
+    d["com_couverture"] = chiffres["taux_couverture_pct"]
+    d["com_methode"] = chiffres["libelle_methode"]
+    d["com_sous_reserve"] = chiffres["sous_reserve"]
+    d["com_a_confirmer"] = chiffres["a_confirmer"]
+    d["com_note_pointe"] = chiffres["note_pointe"]
+    d["com_motif_argent"] = chiffres["motif_argent"]
+    d["com_argent_mt"] = chiffres["argent_mt"]
     # QXMT — DOSSIER MT SANS ÉCONOMIES D'ÉTUDE : aucun repli sur le chiffre BT
     # (``eco_s_ann``/``roi_s`` sortent du barème BASSE TENSION de l'ONEE). Le
     # bloc est OMIS — jamais un « 0 », jamais un chiffre qui n'est pas le sien.
     masque = bool(d.get("masquer_economies"))
     d["com_masquer_economies"] = masque
     d["com_mt_mention"] = d.get("tarif_mt_mention") or ""
-    # CIQ301 — AUCUN REPLI SUR LE MODÈLE RÉSIDENTIEL/BT. ``eco_s_ann``/``roi_s``
-    # sortent de ``calculate_savings_roi`` (barème BT résidentiel ×
-    # ``AUTOCONSO_SANS`` 0,60) et ``etude['payback']`` de l'étude JS (prix
-    # pondéré par la consommation, pointe comprise) : aucun ne décrit un site
-    # commercial. La tuile argent est OMISE (``None`` ⇒ carte absente, jamais
-    # un « 0 », QJR119) jusqu'à ce que ``synthese_ci.argent`` la serve (CIQ307).
-    # QJR145 (g) — ``com_payback`` est CONSERVÉ (nul) : sa nullité EST le
-    # contrat épinglé par test_quote_engine_builder et test_qjr119.
-    d["com_economies"] = None
-    d["com_payback"] = None
+    # CIQ301 — AUCUN REPLI SUR LE MODÈLE RÉSIDENTIEL/BT (``eco_s_ann``/
+    # ``roi_s``, étude JS). CIQ307 — l'argent vient SEULEMENT de
+    # ``synthese_ci.argent`` (bloc ``economie_ci`` du moteur C&I) ; absent ⇒
+    # ``None`` ⇒ tuile OMISE (jamais un « 0 », QJR119).
+    d["com_economies"] = chiffres["economie_annuelle_mad"]
+    d["com_economie_base"] = chiffres["base_economie"]
+    d["com_payback"] = chiffres["payback_ans"]
 
     d["site_url"] = d.get("site_url") or "taqinor.ma"
     return d

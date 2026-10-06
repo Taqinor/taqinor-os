@@ -26,7 +26,11 @@ import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js
 import { deriverReouverture } from './reouverture.js'
 import {
   projeterEtudeMarche, ecoDepuisSaisies, saisiesEconomiePompage,
+  attestationDepuisEtude,
 } from './etudeMarcheBloc.js'
+import {
+  POMPAGE_SAISIE_VIDE, etatPompageEcran,
+} from '../etudePompagePreviewPur.js'
 import { echeancierVersSaisie, saisieVersEcheancier } from '../echeancierEdition.js'
 
 //: Les options recommandées qu'un devis peut avoir FIGÉES (QJR524).
@@ -34,6 +38,97 @@ const RECOS = ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
 
 const present = (v) => v !== undefined && v !== null && v !== ''
 const texte = (v) => (present(v) ? String(v) : undefined)
+
+// ── AGR130 — pompage : ENTRÉES v2 ⇄ états d'écran (`?edit=` et enregistrer) ──
+// L'écran garde ses états historiques (CV, HMT, débit, profondeur, distance,
+// niveaux, culture) ET les blocs de l'AGR128 (`pompageSaisie`) ; l'étude
+// stockée n'a qu'UNE forme, celle du corps de l'aperçu. Ces deux fonctions
+// sont l'aller et le retour de CETTE correspondance — exécutées par
+// `etatDevis.test.mjs` (enregistrer → rouvrir → enregistrer = identique).
+const sf = (v) => (present(v) ? String(v) : '')
+
+/** `etude_params` (entrées v2) → { pompe, farm, saisie } de l'écran. */
+export function pompageDepuisEtude(e) {
+  const b = e.besoin || {}
+  const s = e.source || {}
+  const h = e.hmt_entrees || {}
+  const c = h.conduite || null
+  const cu = Array.isArray(b.cultures) ? (b.cultures[0] || {}) : {}
+  const detail = [h.denivele_m, h.pertes_singulieres_m, h.pression_service_bar]
+    .some(present) || Boolean(c)
+  const compteur = s.compteur === true ? 'oui' : s.compteur === false ? 'non' : ''
+  const saisie = {
+    ...POMPAGE_SAISIE_VIDE,
+    mode_pompe: e.mode_pompe || '',
+    plaque: {
+      kw: sf(e.plaque?.kw), tension_v: sf(e.plaque?.tension_v),
+      phases: sf(e.plaque?.phases), courant_a: sf(e.plaque?.courant_a),
+    },
+    besoin: {
+      mode: b.mode || '', volume_m3_jour: sf(b.volume_m3_jour),
+      mois_pointe: sf(b.mois_pointe), debit_actuel_m3h: sf(b.debit_actuel_m3h),
+      heures_actuelles_jour: sf(b.heures_actuelles_jour),
+    },
+    source: {
+      debit_exploitation_m3h: sf(s.debit_exploitation_m3h),
+      debit_exploitation_origine: sf(s.debit_exploitation_origine),
+      debit_exploitation_date: sf(s.debit_exploitation_date),
+      debit_autorise_m3h: sf(s.debit_autorise_m3h),
+      volume_annuel_autorise_m3: sf(s.volume_annuel_autorise_m3),
+      compteur, niveau_dynamique_m: sf(s.niveau_dynamique_m),
+      diametre_tubage_mm: sf(s.diametre_tubage_mm),
+      profondeur_calage_m: sf(s.profondeur_calage_m),
+      volume_reservoir_m3: sf(s.volume_reservoir_m3),
+    },
+    hmt: {
+      detail, denivele_m: sf(h.denivele_m),
+      pertes_singulieres_m: sf(h.pertes_singulieres_m),
+      pression_service_bar: sf(h.pression_service_bar),
+      conduite: {
+        materiau: sf(c?.materiau), diametre_interieur_mm: sf(c?.diametre_interieur_mm),
+        longueur_m: sf(c?.longueur_m), c_hazen_williams: sf(c?.c_hazen_williams),
+      },
+    },
+    options_cochees: Array.isArray(e.options_cochees) ? [...e.options_cochees] : [],
+    taille: e.taille || '',
+    localisation: e.localisation || null,
+  }
+  return {
+    saisie,
+    pompe: {
+      cv: sf(e.plaque?.cv) || undefined,
+      hmt: sf(h.saisie_m) || undefined,
+      debit: sf(b.debit_souhaite_m3h) || undefined,
+      type: texte(e.type_pompe),
+      alim: texte(e.alim),
+      profondeur: texte(s.profondeur_forage_m),
+      distance: texte(e.distance_champ_m),
+    },
+    farm: {
+      region: texte(b.region), crop: texte(cu.crop),
+      surfaceHa: texte(cu.surface_ha), irrigation: texte(cu.irrigation),
+      hmtStatic: texte(s.niveau_statique_m), hmtDrawdown: texte(s.rabattement_m),
+    },
+  }
+}
+
+/** L'état d'écran → l'état du corps de l'aperçu (celui que `entreesPompageV2` projette). */
+export function entreesPompageEcran(etat) {
+  const pompe = etat.pompe || {}
+  const farm = etat.farm || {}
+  const saisie = etat.pompageSaisie || POMPAGE_SAISIE_VIDE
+  const corps = etatPompageEcran(saisie, {
+    pompeCv: pompe.cv, pompeType: pompe.type, pompeAlim: pompe.alim,
+    pompeHmt: pompe.hmt, pompeDebit: pompe.debit,
+    pompeProfondeur: pompe.profondeur, pompeDistance: pompe.distance,
+    farmRegion: farm.region, farmCrop: farm.crop, farmSurfaceHa: farm.surfaceHa,
+    farmIrrigation: farm.irrigation, farmHmtStatic: farm.hmtStatic,
+    farmHmtDrawdown: farm.hmtDrawdown,
+  })
+  // La localisation lue du devis (ville, lat, lon) ne se perd pas.
+  if (saisie.localisation) corps.localisation = { ...saisie.localisation }
+  return corps
+}
 
 /** Le devis servi → l'état de l'écran d'Édition complète. */
 export function devisVersEtat(d) {
@@ -119,18 +214,10 @@ export function devisVersEtat(d) {
     etat.commercialAnswers = reponses
   }
 
-  // Pompage (agricole).
-  etat.pompe = {
-    cv: e.pompe_cv ? String(e.pompe_cv) : undefined,
-    kw: present(e.pompe_kw) ? Number(e.pompe_kw) : undefined,
-    hmt: e.hmt_m ? String(e.hmt_m) : undefined,
-    debit: e.debit_souhaite_m3h ? String(e.debit_souhaite_m3h) : undefined,
-    heures: e.heures_pompage ? String(e.heures_pompage) : undefined,
-    type: texte(e.type_pompe),
-    alim: texte(e.alim),
-    profondeur: texte(e.profondeur_m),
-    distance: texte(e.distance_m),
-  }
+  // Pompage (agricole) — AGR130 : relu des ENTRÉES v2 (jamais des dérivées).
+  const { pompe, farm: ferme, saisie } = pompageDepuisEtude(e)
+  etat.pompe = pompe
+  etat.pompageSaisie = saisie
   if (e.conso_annuelle) etat.consoMensuelle = String(Math.round(e.conso_annuelle / 12))
 
   // QF4 — distributeur + conso annuelle réelle.
@@ -156,12 +243,9 @@ export function devisVersEtat(d) {
   // dépense DÉCLARÉES se relisent dans `saisies_economie_pompage` (plus
   // jamais `current_fuel` / `fuel_spend_current`).
   etat.farm = {
-    region: texte(e.region),
-    crop: texte(e.crop),
-    surfaceHa: texte(e.surface_ha),
-    irrigation: texte(e.irrigation_method),
-    hmtStatic: texte(e.hmt_static),
-    hmtDrawdown: texte(e.hmt_drawdown),
+    ...ferme,
+    // AGR218 — l'attestation d'usage agricole se relit telle que saisie.
+    attestation: attestationDepuisEtude(e.attestation_usage_agricole),
   }
   etat.saisiesEco = ecoDepuisSaisies(e.saisies_economie_pompage)
   return etat
@@ -226,7 +310,6 @@ export function etatVersEcritures(etat, vif = {}) {
   // QJR624 — l'échéancier ne part que s'il était propre au devis ou touché.
   if (etat.echeancierAEnvoyer) entete.echeancier = saisieVersEcheancier(etat.echeancier)
 
-  const pompe = etat.pompe || {}
   const farm = etat.farm || {}
   const etude = projeterEtudeMarche(etat.mode, {
     etude: vif.etude,
@@ -237,16 +320,9 @@ export function etatVersEcritures(etat, vif = {}) {
     repartitionMt: etat.repartitionMt,
     categorie: etat.categorieCommerciale,
     reponses: etat.commercialAnswers || {},
-    pompage: vif.pompage ?? { pompe_cv: pompe.cv, pompe_kw: pompe.kw },
-    saisiePompage: {
-      hmt: pompe.hmt, debit: pompe.debit, heures: pompe.heures,
-      typePompe: pompe.type, alim: pompe.alim,
-      profondeur: pompe.profondeur, distance: pompe.distance,
-    },
+    pompageEntrees: etat.mode === 'agricole' ? entreesPompageEcran(etat) : undefined,
     exploitation: {
-      irrigation: farm.irrigation, region: farm.region, crop: farm.crop,
-      surfaceHa: farm.surfaceHa,
-      hmtStatic: farm.hmtStatic, hmtDrawdown: farm.hmtDrawdown,
+      attestation: farm.attestation,
       saisiesEconomie: saisiesEconomiePompage(etat.saisiesEco),
     },
   })

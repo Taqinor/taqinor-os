@@ -24,7 +24,7 @@ import {
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
-  createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE,
+  createAutoQuote, LEAD_TYPE_TO_MODE,
   // QJR575 — les paramètres du balayage C&I, construits UNE fois (partagés
   // avec le « Devis automatique »).
   parametresBalayageCI,
@@ -40,11 +40,13 @@ import {
   useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
   useEconomiePompagePreview,
 } from '../../features/ventes/etudePompagePreview'
-import { saisiesEconomiePompage } from '../../features/ventes/quote/etudeMarcheBloc'
+import { saisiesEconomiePompage, lignesDepuisKit } from '../../features/ventes/quote/etudeMarcheBloc'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
 } from '../../features/ventes/etudePompagePreviewPur'
-import { ECO_POMPAGE_VIDE, ecoDepuisSaisies } from '../../features/ventes/quote/etudeMarcheBloc'
+import {
+  ECO_POMPAGE_VIDE, ecoDepuisSaisies, ATTESTATION_VIDE,
+} from '../../features/ventes/quote/etudeMarcheBloc'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -119,7 +121,7 @@ import {
   appliquerRecomposition, lignesManuellesEnConflitPossible,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
-  autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
+  HEURES_POMPAGE_DEFAUT,
   isBattery, isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,
   prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
@@ -193,7 +195,9 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // reste le seul déballeur (`unwrap`), cet écran ne fait que signer.
 import { moteur, apercu } from '../../features/ventes/quote/valeur'
 // QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
-import { lignesServeurVersEcran } from '../../features/ventes/quote/lignesEcran'
+import {
+  lignesServeurVersEcran, erreursBaseLegaleServeur,
+} from '../../features/ventes/quote/lignesEcran'
 // QJR658 — devis ⇄ état d'écran : un module pur.
 import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/etatDevis'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
@@ -930,6 +934,10 @@ export default function DevisGenerator({
   const [ecoPompage, setEcoPompage] = useState(ECO_POMPAGE_VIDE)
   const majEco = useCallback(
     (cle, valeur) => setEcoPompage((e) => ({ ...e, [cle]: valeur })), [])
+  // AGR218 — attestation d'usage agricole (case + date + signataire).
+  const [attestationAgricole, setAttestationAgricole] = useState(ATTESTATION_VIDE)
+  const majAttestation = useCallback(
+    (cle, valeur) => setAttestationAgricole((a) => ({ ...a, [cle]: valeur })), [])
   const [reperesEnergie, setReperesEnergie] = useState({})
   const [farmHmtStatic, setFarmHmtStatic] = useState('')
   const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
@@ -964,7 +972,7 @@ export default function DevisGenerator({
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, ecoPompage, farmHmtStatic,
+    farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
 
   }), [
@@ -978,7 +986,7 @@ export default function DevisGenerator({
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, ecoPompage, farmHmtStatic,
+    farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
   ])
   // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
@@ -1117,6 +1125,9 @@ export default function DevisGenerator({
     if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
     if (d.farmIrrigation != null) setFarmIrrigation(d.farmIrrigation)
     if (d.ecoPompage && typeof d.ecoPompage === 'object') setEcoPompage(d.ecoPompage)
+    if (d.attestationAgricole && typeof d.attestationAgricole === 'object') {
+      setAttestationAgricole(d.attestationAgricole)
+    }
     if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
     if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
     if (d.pompageSaisie && typeof d.pompageSaisie === 'object') setPompageSaisie(d.pompageSaisie)
@@ -2167,7 +2178,7 @@ export default function DevisGenerator({
       pose(etat.pompe.cv, setPompeCv)
       pose(etat.pompe.hmt, setPompeHmt)
       pose(etat.pompe.debit, setPompeDebit)
-      pose(etat.pompe.heures, setPompeHeures)
+      if (etat.pompageSaisie) setPompageSaisie(etat.pompageSaisie)
       pose(etat.consoMensuelle, setConsoMensuelle)
       pose(etat.distributeur, setDistributeur)
       pose(etat.distributeurChoisi, setDistributeurChoisi)
@@ -2181,6 +2192,8 @@ export default function DevisGenerator({
       pose(etat.farm.irrigation, setFarmIrrigation)
       // AGR212 — l'économie déclarée se relit telle qu'enregistrée.
       setEcoPompage(etat.saisiesEco || ecoDepuisSaisies(null))
+      // AGR218 — l'attestation d'usage agricole se relit telle que saisie.
+      setAttestationAgricole(etat.farm.attestation || ATTESTATION_VIDE)
       pose(etat.farm.hmtStatic, setFarmHmtStatic)
       pose(etat.farm.hmtDrawdown, setFarmHmtDrawdown)
       pose(etat.pompe.profondeur, setPompeProfondeur)
@@ -2713,18 +2726,8 @@ export default function DevisGenerator({
     }
   }
 
-  // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.
-  // Courbe constructeur (HMT + débit souhaité) si une pompe à courbe convient,
-  // sinon sélection historique par CV (débit manuel, pas de m³/jour inventé).
-  // Déclaré AVANT handleAutoFill qui le lit (déplacé ici au recalage L-2OPT
-  // 25/08 — eslint no-use-before-define, le code autour avait bougé).
-  const pompageSel = modeInstallation === 'agricole'
-    ? pompageSelection(produits, {
-        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
-        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-      })
-    : null
-  const pompageDims = pompageSel?.dims ?? null
+  // AGR130 — le dimensionnement pompage vit CÔTÉ SERVEUR (aperçu AGR127,
+  // `apercuPompage` ci-dessous) : plus aucune sélection JavaScript.
   // AGR128 — l'état de l'écran recomposé dans la forme du corps du contrat
   // (AGR127) ; l'aperçu SERVEUR n'est demandé que pour le marché agricole et
   // seulement quand l'essentiel est saisi (sinon `null`, aucun appel).
@@ -3015,15 +3018,14 @@ export default function DevisGenerator({
     setOnduleursIncomplets([])
     // Mode agricole : équipement pompage (pompe + variateur + champ PV)
     if (modeInstallation === 'agricole') {
-      const generated = autoFillPompage(produits, {
-        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
-        distance: pompeDistance, structureType,
-        // STKCAT10 — même souveraineté du produit choisi en pompage.
-        structureProduitId,
-        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-      })
+      // AGR130 — Auto-remplir pose les lignes du KIT de la taille choisie,
+      // telles que le serveur les a composées (aperçu AGR127) : aucune
+      // composition JavaScript. Sans aperçu, rien n'est inventé.
+      const kit = apercuPompage?.donnees?.kit
+      const generated = lignesDepuisKit(kit, produits)
       if (!generated.length) {
-        setErrors(e => ({ ...e, autofill: 'Renseignez la puissance pompe (CV) ou HMT + débit souhaité.' }))
+        setErrors(e => ({ ...e, autofill: 'Le dimensionnement du serveur n\'est pas encore disponible : '
+          + 'renseignez le besoin, la hauteur et le cas de pompe, puis patientez un instant.' }))
         return
       }
       setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
@@ -3031,12 +3033,12 @@ export default function DevisGenerator({
       // Succès sur le marché agricole : une erreur de composition
       // résidentielle antérieure ne décrit plus rien (QJR577).
       setCompositionErreur(null)
-      // QJR99 — le dimensionnement pompage POSE une taille calculée : la même
+      // QJR99 — le dimensionnement POSE une taille calculée : la même
       // transition que la réouverture d'un devis (`REOUVERTURE`) la pose SANS
-      // marquer le champ « touché » (ce n'est pas une frappe) et tient la
-      // cible kWc à jour avec elle.
-      if (pompageSel) {
-        dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: pompageSel.dims.nbPanneaux } })
+      // marquer le champ « touché » (ce n'est pas une frappe).
+      const nb = apercuPompage?.donnees?.champ?.nb_panneaux
+      if (Number.isFinite(Number(nb)) && Number(nb) > 0) {
+        dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: Number(nb) } })
       }
       setPompageAutoFilled(true)
       return
@@ -3303,7 +3305,12 @@ export default function DevisGenerator({
       const usable = usableLines()
       const has = (pred) => usable.some(l => pred(l.designation))
       if (modeInstallation === 'agricole') {
-        if (!has(isPompe)) {
+        // AGR130 — une pompe EXISTANTE n'a pas de ligne pompe (le kit n'en
+        // pose pas) ; une pompe NEUVE exige une pompe ou son placeholder
+        // « prix à renseigner » (ligne sans produit, jamais chiffrée à 0).
+        const existante = pompageSaisie.mode_pompe === 'existante'
+        const placeholderPompe = lines.some(l => !l.produit && isPompe(l.designation))
+        if (!existante && !has(isPompe) && !placeholderPompe) {
           e.lines = 'Un devis de pompage doit contenir au moins une pompe. '
             + 'Utilisez « Auto-remplir » ou ajoutez une pompe, ou cochez '
             + '« Composition libre ».'
@@ -3538,13 +3545,15 @@ export default function DevisGenerator({
     categorieCommerciale: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
     commercialAnswers,
     pompe: {
-      hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures, type: pompeType,
+      cv: pompeCv, hmt: pompeHmt, debit: pompeDebit, type: pompeType,
       alim: pompeAlim, profondeur: pompeProfondeur, distance: pompeDistance,
     },
+    pompageSaisie,
     farm: {
       irrigation: farmIrrigation, region: farmRegion, crop: farmCrop,
       surfaceHa: farmSurfaceHa,
       hmtStatic: farmHmtStatic, hmtDrawdown: farmHmtDrawdown,
+      attestation: attestationAgricole,
     },
     saisiesEco: ecoAvecCalendrier,
   })
@@ -3552,13 +3561,6 @@ export default function DevisGenerator({
     etude: modeInstallation === 'industriel' ? etudeIndustrielle : etudeCommerciale,
     recommended,
     entrees: entreesReellesEcran,
-    pompage: (modeInstallation === 'agricole' && pompageSel)
-      ? buildEtudePompage(pompageSel, {
-          typePompe: pompeType, alim: pompeAlim,
-          hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-          profondeur: pompeProfondeur, distance: pompeDistance,
-        })
-      : {},
   }).etude
 
   // Cœur de persistance extrait de `handleSubmit` (aucun changement de
@@ -3717,6 +3719,13 @@ export default function DevisGenerator({
         // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — refus serveur : sous le champ.
         msg = typeof raw.detail === 'string' ? raw.detail : MESSAGE_KWH_INCOHERENT
         setErrors(prev => ({ ...prev, conso: msg }))
+      } else if (Object.keys(erreursBaseLegaleServeur(raw, lines)).length) {
+        // AGR218 — refus « base légale obligatoire à 0 % » : le message du
+        // serveur s'affiche SOUS le champ de la ligne visée.
+        const parLigne = erreursBaseLegaleServeur(raw, lines)
+        setLines(ls => ls.map(l => (parLigne[l._key]
+          ? { ...l, _erreurBaseLegale: parLigne[l._key] } : l)))
+        msg = raw.detail
       } else if (typeof raw?.detail === 'string') {
         msg = raw.detail
       } else {
@@ -4480,6 +4489,7 @@ export default function DevisGenerator({
           farmRegion={farmRegion} setFarmRegion={setFarmRegion}
           farmIrrigation={farmIrrigation} setFarmIrrigation={setFarmIrrigation}
           ecoPompage={ecoPompage} majEco={majEco}
+          attestation={attestationAgricole} majAttestation={majAttestation}
           reperesEnergie={reperesEnergie} moisCalendrier={moisCalendrier}
           coherenceAvertit={coherenceAvertit}
           farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}
@@ -4734,14 +4744,12 @@ export default function DevisGenerator({
                 chiffrables.
               </div>
             )}
-            {modeInstallation === 'agricole' && pompageAutoFilled && pompageSel && (
-              <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-                Auto-remplissage effectué —
-                {pompageSel.m3Jour != null && (
-                  <> <strong>≈ {pompageSel.m3Jour} m³/jour</strong> ·</>
-                )}
-                {' '}champ PV <strong>{pompageDims?.champKwc ?? pompageDims?.champKw} kWc</strong>
-                {' '}({pompageDims?.nbPanneaux} panneaux).
+            {modeInstallation === 'agricole' && pompageAutoFilled && apercuPompage?.donnees && (
+              <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+                   data-testid="pompage-auto-rempli">
+                Auto-remplissage effectué (kit calculé par le serveur) —
+                {' '}champ PV <strong>{apercuPompage.donnees.champ?.kwc ?? '—'} kWc</strong>
+                {' '}({apercuPompage.donnees.champ?.nb_panneaux ?? '—'} panneaux).
               </div>
             )}
           </CardContent>
@@ -5554,11 +5562,12 @@ export default function DevisGenerator({
                 : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
                   + 'premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).'}
             </p>
-            {modeInstallation === 'agricole' && pompageSel?.sansPrix?.length > 0 && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            {modeInstallation === 'agricole' && (apercuPompage?.donnees?.prix_a_renseigner || []).length > 0 && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+                   data-testid="pompage-prix-a-renseigner">
                 Attention : seules des pompes <strong>sans prix renseigné</strong> conviennent
-                ({pompageSel.sansPrix.join(', ')}). Aucune pompe ne sera ajoutée au devis tant
-                que leur prix n'est pas saisi dans Stock.
+                ({apercuPompage.donnees.prix_a_renseigner.join(', ')}). Aucune pompe ne sera chiffrée
+                au devis tant que leur prix n'est pas saisi dans Stock.
               </div>
             )}
             {superieurMsg && (

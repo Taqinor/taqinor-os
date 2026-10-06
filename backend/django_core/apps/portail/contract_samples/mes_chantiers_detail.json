@@ -23,6 +23,16 @@
         "atteint": false,
         "date_jalon": null
       }
-    ]
-  }
+    ],
+    "recette_pompage": {
+      "date_essai": "2026-11-18",
+      "hmt_mesuree_m": 60.2,
+      "debit_mesure_m3h": 28.9,
+      "debit_promis_m3h": 30.5,
+      "ecart_debit_pct": -5.2,
+      "commentaire_ecart": "",
+      "resultat": "conforme"
+    }
+  },
+  "recette_pompage_regles": "AGR612 — additif : `recette_pompage` = le sous-objet `vue_portail` du contrat installations `recette_pompage.json` (sélecteur `installations.selectors.recette_pompage_portail`), `null` quand le chantier n'a pas de fiche de recette pompage. Jamais l'instrument, le technicien, un prix ni `prix_achat`."
 }

@@ -269,9 +269,13 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
           s = { ...s, structureProduitId: String(idLead) }
         }
       }
-      // 5. Tension déjà posée par le tunnel (QXMT).
-      if (!s.touche.tension) {
-        const t = String(lead.web_questionnaire?.tension_raccordement ?? '').toLowerCase()
+      // 5. Tension du lead (CIQ426) : la colonne promue `tension_raccordement`
+      //    (CIQ401) — plus le sac `web_questionnaire`. Une valeur que le site
+      //    avait PRÉSÉLECTIONNÉE (`tension_source` = 'site_defaut_visible')
+      //    n'est pas une déclaration : elle n'est pas appliquée. « ne_sait_pas »
+      //    ou vide → la tension n'est pas touchée ; un geste du vendeur jamais écrasé.
+      if (!s.touche.tension && lead.tension_source !== 'site_defaut_visible') {
+        const t = String(lead.tension_raccordement ?? '').toLowerCase()
         if (t === 'bt' || t === 'mt') s = { ...s, tension: t }
       }
       // 6. Pompage : l'alimentation suit le raccordement tant qu'elle est intacte.

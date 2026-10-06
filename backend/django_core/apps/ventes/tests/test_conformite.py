@@ -59,17 +59,19 @@ class TestFactureConformite(TestCase):
             remise=Decimal('0'), taux_tva=Decimal('10.00'))
         return facture
 
-    def test_b2b_facture_missing_client_ice_warns_but_does_not_block(self):
+    def test_b2b_facture_missing_client_ice_blocks_emission(self):
         client_pro = make_client(
             self.company, email='pro@example.com', type_client='entreprise')
         facture = self._make_facture(client_pro)
         self.assertIn(
             'ICE du client (client professionnel)',
             facture.mentions_manquantes)
-        # Une mention manquante NE bloque PAS l'émission (override autorisé).
+        # CIQ217 (D-CIQ-11) — l'ICE d'un client ENTREPRISE est désormais
+        # exigé à l'émission (les autres mentions ne font qu'avertir).
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/emettre/')
-        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('client.ice', r.data['detail'])
 
     def test_b2c_facture_does_not_require_client_ice(self):
         client_part = make_client(

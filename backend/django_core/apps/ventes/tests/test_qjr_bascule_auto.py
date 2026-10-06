@@ -534,5 +534,6 @@ class LaPreVerificationRefuseAvantDEcrire(_BaseAuto):
         et n'a pas bougé."""
         lead = self._lead(type_installation='agricole')
         with self.assertRaises(AutoDevisError) as leve:
-            build_devis_auto(lead=lead, user=self.user, company=self.company)
+            build_devis_auto(lead=lead, user=self.user, company=self.company,
+                             origine='tunnel')
         self.assertEqual(leve.exception.field, 'type_installation')

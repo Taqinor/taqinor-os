@@ -40,10 +40,13 @@ CLES_ECRAN_LEGITIMES = (
     'conso_annuelle',
     'toiture',
     'attribution',
-    'debit_souhaite_m3h',
-    'heures_pompage',
+    # AGR122 — les ENTRÉES agricoles v2 (les clés v1 ont quitté le schéma ;
+    # `heures_pompage` est devenue une DÉRIVÉE du moteur pompage).
+    'mode_pompe',
+    'besoin',
+    'source',
+    'hmt_entrees',
     'type_pompe',
-    'surface_ha',
     'repartition_mt',
 )
 
