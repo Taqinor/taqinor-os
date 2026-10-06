@@ -181,6 +181,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
   // en silence.
   const [avertissementsSync, setAvertissementsSync] = useState([])
+  // ACAL87 — l'aperçu de toiture n'a pas pu être capturé (image vide) ou
+  // téléversé : on le DIT, au lieu d'un « Conception enregistrée » muet.
+  const [apercuMessage, setApercuMessage] = useState(null)
   // L-MAP — bascule d'affichage du calque « Toit dessiné par le client »
   // (rp9-chip, comme les autres bascules de l'écran). Défaut ON — le
   // fondateur veut le voir SANS geste supplémentaire ; le bouton ne sert
@@ -456,10 +459,36 @@ export default function ToitureDesign({ mode = 'lead' }) {
     } catch { /* best-effort : le contexte précédent reste affiché */ }
   }
 
+  // ACAL87 — capture (asynchrone : lue APRÈS un rendu réel, null si l'image est
+  // entièrement transparente) puis téléversement de l'aperçu. Rend le message à
+  // afficher, ou null quand tout a réussi. Un PNG vide n'est JAMAIS envoyé, et
+  // l'échec d'envoi n'est plus avalé.
+  const capturerEtEnvoyerApercu = async (apiTool, nomFichier, envoyer) => {
+    let png = null
+    try {
+      png = await apiTool.snapshot?.()
+    } catch {
+      png = null
+    }
+    const blob = png ? dataUrlToBlob(png) : null
+    if (!blob) {
+      return 'Aperçu 3D non capturé — la conception est enregistrée, mais sans image de toiture.'
+    }
+    const form = new FormData()
+    form.append('image', blob, nomFichier)
+    try {
+      await envoyer(form)
+      return null
+    } catch {
+      return 'Aperçu 3D non envoyé — la conception est enregistrée, mais l’image de toiture n’a pas pu être téléversée.'
+    }
+  }
+
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
     if (sending) return
     setGenError(null)
+    setApercuMessage(null) // ACAL87
     setAvertissementsSync([])
     const apiTool = builderApi.current
     if (!apiTool) {
@@ -507,17 +536,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
       // 3) Capture le PNG de la 3D et l'envoie (multipart, best-effort).
       setGenStatus('Capture de la vue 3D…')
-      const png = apiTool.snapshot()
-      if (png) {
-        const blob = dataUrlToBlob(png)
-        if (blob) {
-          const form = new FormData()
-          form.append('image', blob, `devis-${devis.id}.png`)
-          try {
-            await api.post(`/ventes/devis/${devis.id}/roof-image/`, form)
-          } catch { /* image best-effort */ }
-        }
-      }
+      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `devis-${devis.id}.png`,
+        (form) => api.post(`/ventes/devis/${devis.id}/roof-image/`, form)))
 
       // 4) L-SECT — bascule sur le bloc de confirmation. L'envoi lui-même a
       //    quitté cet écran : il se fait depuis la fiche lead, onglet Devis,
@@ -542,6 +562,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const enregistrerConception = async () => {
     if (sending) return
     setGenError(null)
+    setApercuMessage(null) // ACAL87
     setConflit(null)
     setAvertissementsSync([])
     const apiTool = builderApi.current
@@ -621,17 +642,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
       // 3) Capture le PNG de la 3D et l'envoie (multipart, best-effort) —
       //    même patron que le flux lead.
       setGenStatus('Capture de la vue 3D…')
-      const png = apiTool.snapshot()
-      if (png) {
-        const blob = dataUrlToBlob(png)
-        if (blob) {
-          const form = new FormData()
-          form.append('image', blob, `devis-${devisId}.png`)
-          try {
-            await api.post(`/ventes/devis/${devisId}/roof-image/`, form)
-          } catch { /* image best-effort */ }
-        }
-      }
+      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `devis-${devisId}.png`,
+        (form) => api.post(`/ventes/devis/${devisId}/roof-image/`, form)))
 
       // 4) L-SECT — plus AUCUN mint ici : enregistrer une conception ne doit
       //    pas frapper un lien public aux réglages par défaut. L'écran confirme,
@@ -665,6 +677,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const enregistrerCalepinage = async () => {
     if (sending) return
     setGenError(null)
+    setApercuMessage(null) // ACAL87
     setConflit(null)
     setDocumentModifie(null)
     setAvertissementsSync([])
@@ -750,17 +763,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
       // MÊME service de stockage MinIO — jamais un second magasin).
       setGenStatus('Capture de la vue 3D…')
-      const png = apiTool.snapshot()
-      if (png) {
-        const blob = dataUrlToBlob(png)
-        if (blob) {
-          const form = new FormData()
-          form.append('image', blob, `calepinage-${calepinageId}.png`)
-          try {
-            await calepinageApi.calepinages.envoyerImage(calepinageId, form)
-          } catch { /* image best-effort */ }
-        }
-      }
+      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `calepinage-${calepinageId}.png`,
+        (form) => calepinageApi.calepinages.envoyerImage(calepinageId, form)))
       // CALX68 — enregistrement réussi : le brouillon local ne porte plus
       // rien de plus récent que le serveur, il s'efface. Le layout SERVEUR
       // vient de changer (nouvelle version) : son empreinte change avec lui,
@@ -1040,6 +1044,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
           )}
         </div>
         <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
+        {apercuMessage && (
+          <p className="mt-1 text-sm text-brass-300" role="status" data-testid="apercu-3d-avertissement">
+            {apercuMessage}
+          </p>
+        )}
 
         {/* CALX68 — LE BANDEAU DE REPRISE DE BROUILLON. N'existe QUE tant que
             l'utilisateur n'a pas choisi. ACAL84 — NON BLOQUANT : l'atelier a

@@ -24,6 +24,8 @@ import {
   construireOmbriere,
   pasInterRangeeMesure,
   type PlanMoteurSurface,
+  capturerApresRendu,
+  imageEntierementTransparente,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
@@ -644,5 +646,52 @@ describe('CAL91 — ombrière : posée à la hauteur SAISIE, jamais à une haute
     for (const interdit of ['charge', 'masse', 'poteau', 'structure', 'prix']) {
       expect(cles).not.toContain(interdit);
     }
+  });
+});
+
+// ACAL87 — l'aperçu de toiture est lu APRÈS un rendu réel (rappel `render`), et une
+// image entièrement transparente n'est jamais rendue (null) : plus de PNG vide
+// téléversé comme « Rendu 3D ».
+describe('ACAL87 — capture de l’aperçu après rendu', () => {
+  function carteFactice() {
+    let rappel: (() => void) | null = null;
+    const carte = {
+      once: (_evt: 'render', cb: () => void) => { rappel = cb; return carte; },
+      triggerRepaint: () => {},
+      rendre: () => rappel?.(),
+    };
+    return carte;
+  }
+  const OPAQUE = new Uint8ClampedArray([10, 20, 30, 255, 0, 0, 0, 0]);
+  const VIDE = new Uint8ClampedArray([0, 0, 0, 0, 0, 0, 0, 0]);
+
+  it('snapshotAsync lit après l’événement render et rejette une image entièrement transparente', async () => {
+    const carte = carteFactice();
+    let lectures = 0;
+    const canvas = { toDataURL: () => { lectures += 1; return 'data:image/png;base64,AAA='; } };
+    const promesse = capturerApresRendu(carte, canvas, () => OPAQUE, 60_000);
+    // Rien n'est lu tant que le rendu demandé n'a pas eu lieu.
+    expect(lectures).toBe(0);
+    carte.rendre();
+    await expect(promesse).resolves.toBe('data:image/png;base64,AAA=');
+    expect(lectures).toBe(1);
+
+    const carte2 = carteFactice();
+    const canvas2 = { toDataURL: () => 'data:image/png;base64,VIDE=' };
+    const vide = capturerApresRendu(carte2, canvas2, () => VIDE, 60_000);
+    carte2.rendre();
+    await expect(vide).resolves.toBeNull();
+  });
+
+  it('imageEntierementTransparente : un seul pixel opaque suffit à garder l’image', () => {
+    expect(imageEntierementTransparente(VIDE)).toBe(true);
+    expect(imageEntierementTransparente(OPAQUE)).toBe(false);
+    expect(imageEntierementTransparente(null)).toBe(true);
+  });
+
+  it('une carte qui lève rend null, jamais une exception', async () => {
+    const carte = { once: () => { throw new Error('carte détachée'); }, triggerRepaint: () => {} };
+    await expect(capturerApresRendu(carte, { toDataURL: () => 'x' }, () => OPAQUE, 10))
+      .resolves.toBeNull();
   });
 });

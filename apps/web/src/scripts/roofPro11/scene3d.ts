@@ -147,9 +147,10 @@ export interface Scene3d {
   /** ACAL286 — repeint la zone active depuis `ctx.affectationColoration` (table servie) ; la
    *  teinte est ré-appliquée à chaque rendu de la scène (le mesh est reconstruit). */
   rafraichirAffectation: () => void;
-  /** W115 — instantané PNG (data URL) de la 3D rendue, ou null si le renderer/canvas
-   *  est indisponible. Le renderer partage le canvas MapLibre (map.getCanvas()). */
-  snapshot: () => string | null;
+  /** W115 / ACAL87 — instantané PNG (data URL) de la 3D rendue, lu APRÈS un rendu réel ;
+   *  null si le renderer/canvas est indisponible OU si l'image est entièrement
+   *  transparente (jamais un PNG vide téléversé). */
+  snapshot: () => Promise<string | null>;
   /** CAL180 — rend la SCÈNE dans une cible HORS ÉCRAN à `scale` fois la taille du
    *  canvas et renvoie un blob PNG, avec les dimensions RÉELLEMENT obtenues (le
    *  facteur est rabaissé si le plafond `HD_MAX_SIDE_PX` l'impose). `null` si la
@@ -876,6 +877,102 @@ function stretchProfileUVs(geo: THREE.BoxGeometry, lengthM: number) {
   uv.needsUpdate = true;
 }
 
+
+// ————————————————————————————————————————————————————————————————————————
+// ACAL87 — L'APERÇU DE TOITURE EST LU APRÈS UN RENDU RÉEL
+//
+// La carte est créée sans `preserveDrawingBuffer` : un `toDataURL` lancé juste
+// après `triggerRepaint()` lit un tampon DÉJÀ présenté — un PNG entièrement
+// transparent était téléversé comme aperçu (calepinage 3 : 379 626 pixels sur
+// 379 626 à (0,0,0,0)). La lecture se fait dans le rappel `render` de MapLibre
+// (même trame que le dessin), et une image dont 100 % des pixels sont
+// transparents est REJETÉE (null) : l'appelant le dit au lieu d'envoyer du vide.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Le strict nécessaire de MapLibre pour une capture après rendu. */
+export interface CarteCapturable {
+  once: (evenement: 'render', rappel: () => void) => unknown;
+  triggerRepaint: () => void;
+}
+
+/** Le canvas lu : seulement ce que la capture emploie. */
+export interface CanvasCapturable {
+  toDataURL: (type?: string) => string;
+}
+
+/** Délai de garde (ms) si aucun événement `render` n'arrive (carte détachée). */
+export const DELAI_GARDE_CAPTURE_MS = 2000;
+
+/** Vrai si TOUS les pixels d'un tampon RGBA ont une opacité nulle (image vide). */
+export function imageEntierementTransparente(rgba: ArrayLike<number> | null | undefined): boolean {
+  if (!rgba || rgba.length < 4) return true;
+  for (let i = 3; i < rgba.length; i += 4) {
+    if (rgba[i] !== 0) return false;
+  }
+  return true;
+}
+
+/** Lit les pixels RGBA d'un canvas WebGL via une copie 2D (même trame) — null si impossible. */
+export function lireRgbaCanvas(canvas: CanvasCapturable): Uint8ClampedArray | null {
+  try {
+    const source = canvas as unknown as HTMLCanvasElement;
+    const largeur = source.width;
+    const hauteur = source.height;
+    if (!largeur || !hauteur || typeof document === 'undefined') return null;
+    const copie = document.createElement('canvas');
+    copie.width = largeur;
+    copie.height = hauteur;
+    const g = copie.getContext('2d');
+    if (!g) return null;
+    g.drawImage(source, 0, 0);
+    return g.getImageData(0, 0, largeur, hauteur).data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ACAL87 — demande un rendu puis lit le canvas DANS le rappel `render` (jamais avant) ;
+ * une image entièrement transparente rend `null`. Une seule lecture (le délai de garde
+ * ne relit pas après le rendu). Jamais d'exception : tout échec rend `null`.
+ */
+export function capturerApresRendu(
+  map: CarteCapturable,
+  canvas: CanvasCapturable,
+  lireRgba: (c: CanvasCapturable) => ArrayLike<number> | null,
+  delaiGardeMs: number = DELAI_GARDE_CAPTURE_MS,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    let lu = false;
+    let garde: ReturnType<typeof setTimeout> | null = null;
+    const lire = () => {
+      if (lu) return;
+      lu = true;
+      if (garde !== null) clearTimeout(garde);
+      try {
+        const pixels = lireRgba(canvas);
+        // Pixels illisibles (contexte 2D absent) : on ne PROUVE pas le vide, on ne
+        // rejette donc pas — seul un tampon lu et entièrement transparent est rejeté.
+        if (pixels && imageEntierementTransparente(pixels)) {
+          resolve(null);
+          return;
+        }
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(null);
+      }
+    };
+    try {
+      map.once('render', lire);
+      map.triggerRepaint();
+    } catch {
+      lu = true;
+      resolve(null);
+      return;
+    }
+    garde = setTimeout(lire, delaiGardeMs);
+  });
+}
 
 // ————————————————————————————————————————————————————————————————————————
 // CAL180 — RENDU HORS ÉCRAN HAUTE RÉSOLUTION
@@ -2716,19 +2813,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     map.triggerRepaint();
   }
 
-  /** W115 — instantané PNG de la scène 3D. Le renderer Three.js partage le canvas
-   *  MapLibre (map.getCanvas()), donc toDataURL renvoie la carte + la 3D composées.
-   *  preserveDrawingBuffer n'est pas garanti : on force d'abord un rendu synchrone via
-   *  triggerRepaint, puis on lit le canvas. Renvoie null si rien à lire (pas de GL). */
-  function snapshot(): string | null {
+  /** W115 / ACAL87 — instantané PNG de la scène 3D. Le renderer Three.js partage le
+   *  canvas MapLibre (map.getCanvas()), donc toDataURL renvoie la carte + la 3D composées.
+   *  La carte est créée SANS preserveDrawingBuffer : lire juste après triggerRepaint lisait
+   *  un tampon déjà présenté (PNG 100 % transparent, preuve locale 379 626/379 626 pixels
+   *  (0,0,0,0)). La lecture se fait donc dans le rappel `render` du rendu demandé
+   *  (`capturerApresRendu`), et une image entièrement transparente rend null. */
+  function snapshot(): Promise<string | null> {
     const canvas = renderer?.domElement ?? (glCanvas as HTMLCanvasElement | null) ?? null;
-    if (!canvas || typeof canvas.toDataURL !== 'function') return null;
-    map.triggerRepaint();
-    try {
-      return canvas.toDataURL('image/png');
-    } catch {
-      return null;
-    }
+    if (!canvas || typeof canvas.toDataURL !== 'function') return Promise.resolve(null);
+    return capturerApresRendu(map, canvas, lireRgbaCanvas);
   }
 
   /**

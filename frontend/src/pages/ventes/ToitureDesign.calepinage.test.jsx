@@ -114,6 +114,39 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(ventesApi.syncDevisLayout).not.toHaveBeenCalled()
   })
 
+  /* ACAL87 — un aperçu vide (snapshot null) n'est JAMAIS téléversé, et l'écran
+     le dit ; un téléversement en échec n'est plus avalé. */
+  it('snapshot null → aucun POST roof-image, message affiché', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 5 } })
+    snapshot.mockResolvedValue(null)
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('apercu-3d-avertissement'))
+      .toHaveTextContent('Aperçu 3D non capturé')
+    expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
+  })
+
+  it('téléversement de l’aperçu en échec → dit, jamais avalé', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 5 } })
+    snapshot.mockResolvedValue('data:image/png;base64,aGk=')
+    calepinageApi.calepinages.envoyerImage.mockRejectedValue(new Error('réseau'))
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('apercu-3d-avertissement'))
+      .toHaveTextContent('Aperçu 3D non envoyé')
+    expect(calepinageApi.calepinages.envoyerImage).toHaveBeenCalledTimes(1)
+  })
+
   it('conception inchangée : on le DIT, et aucune image n’est envoyée', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
