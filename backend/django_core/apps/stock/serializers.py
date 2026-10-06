@@ -422,6 +422,32 @@ class ProduitSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(probleme)
         return value
 
+    # ── ASTK92 — règles de saisie : 400 lisible par champ, jamais 200/500.
+    # ``prix_vente = 0`` reste ACCEPTÉ (pompes « prix à renseigner »).
+    def validate_prix_vente(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le prix de vente ne peut pas être négatif.')
+        return value
+
+    def validate_prix_achat(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le prix d'achat ne peut pas être négatif.")
+        return value
+
+    def validate_seuil_alerte(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le seuil d'alerte ne peut pas être négatif.")
+        return value
+
+    def validate_tva(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                'La TVA doit être comprise entre 0 et 100 %.')
+        return value
+
     def validate_code_barres(self, value):
         # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une
         # IntegrityError 500 sur la contrainte DB. Vide/None reste toléré
@@ -2211,6 +2237,13 @@ class ConditionnementProduitSerializer(serializers.ModelSerializer):
             'id', 'produit', 'produit_nom', 'nom', 'facteur', 'code_barres',
             'unite_stock', 'date_creation',
         ]
+
+    def validate_facteur(self, value):
+        # ASTK92 — un facteur ≤ 0 rendrait toute réception nulle ou négative.
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Le facteur de conversion doit être strictement positif.')
+        return value
 
 
 class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):

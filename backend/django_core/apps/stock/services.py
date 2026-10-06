@@ -11,6 +11,9 @@ from django.db import models
 logger = logging.getLogger('stock.audit')
 
 BULK_ACTIONS = {'set_price', 'set_warranty', 'set_category', 'set_brand'}
+# ASTK92 — borne de la ``valeur`` d'une variation de prix en masse (le prix est
+# un DecimalField(10, 2) : au-delà, la sauvegarde échouerait en 500).
+BULK_VALEUR_MAX = Decimal('99999999')
 
 
 def _dec(value):
@@ -46,6 +49,29 @@ def apply_product_bulk(*, company, user, ids, op, params):
         valeur = _dec(params.get('valeur'))
         if mode not in ('percent', 'fixed') or valeur is None:
             raise ValueError("Prix invalide (mode percent/fixed + valeur requise).")
+        # ASTK92 — NaN/Infinity (500 avant), hors bornes, et jamais un prix
+        # ≤ 0 : le bulk ne met pas à zéro un produit chiffré.
+        if not valeur.is_finite():
+            raise ValueError("Valeur invalide : un nombre fini est requis.")
+        if abs(valeur) > BULK_VALEUR_MAX:
+            raise ValueError("Valeur hors bornes.")
+        if mode == 'percent' and valeur <= Decimal('-100'):
+            raise ValueError(
+                "Une baisse de 100 % ou plus mettrait le prix à zéro ou "
+                "en négatif : refusé.")
+        if mode == 'fixed' and valeur <= 0:
+            raise ValueError("Le prix fixe doit être strictement positif.")
+    elif op == 'set_warranty':
+        for cle in ('garantie_mois', 'garantie_production_mois'):
+            brut = params.get(cle)
+            if brut in ('', None):
+                continue
+            try:
+                mois = int(str(brut))
+            except (TypeError, ValueError):
+                raise ValueError(f"{cle} : entier requis.")
+            if mois < 0:
+                raise ValueError(f"{cle} : la durée ne peut pas être négative.")
     elif op == 'set_category':
         cid = params.get('categorie_id')
         categorie = Categorie.objects.filter(id=cid, company=company).first()
@@ -60,6 +86,13 @@ def apply_product_bulk(*, company, user, ids, op, params):
                 new_price = valeur
             if new_price < 0:
                 skip(p, "prix négatif refusé")
+                continue
+            new_price = new_price.quantize(Decimal('0.01'))
+            if new_price == 0 and (p.prix_vente or 0) > 0:
+                skip(p, "prix nul refusé pour un produit chiffré")
+                continue
+            if new_price > Decimal('99999999.99'):
+                skip(p, "prix hors bornes refusé")
                 continue
             # ASTK88 — avant/après capturés ICI, émis dans la transaction de
             # la requête (le récepteur ventes planifie on_commit) : la
