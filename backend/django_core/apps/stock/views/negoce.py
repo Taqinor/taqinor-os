@@ -58,6 +58,26 @@ class DepotConsignationSerializer(CompanyScopedRelationsMixin,
             'created_at',
         ]
 
+    #: ASTK30 — champs FIGÉS après création : ils décrivent la marchandise
+    #: réellement sortie du stock (1 mouvement CONSIGNATION posé à la
+    #: création). Les modifier par un PATCH désaccorderait le dépôt de son
+    #: mouvement (50 en dépôt pour 10 sortis).
+    CHAMPS_FIGES = (
+        'quantite_deposee', 'produit', 'client', 'emplacement_source',
+        'date_depot',
+    )
+
+    def validate(self, attrs):
+        if self.instance is not None:
+            figes = [nom for nom in self.CHAMPS_FIGES
+                     if nom in getattr(self, 'initial_data', {})]
+            if figes:
+                raise serializers.ValidationError({
+                    nom: ('Champ figé après la création du dépôt '
+                          '(il décrit la marchandise réellement sortie).')
+                    for nom in figes})
+        return super().validate(attrs)
+
 
 class DepotConsignationViewSet(CompanyScopedModelViewSet):
     """NTDST3 — dépôts de consignation chez les clients.
@@ -103,6 +123,19 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
             raise PermissionDenied(
                 'Le module « consignation » est désactivé pour cette société '
                 '(Paramètres → Négoce).')
+
+    def perform_destroy(self, instance):
+        """ASTK30 — un dépôt qui porte encore des unités chez le client ne
+        disparaît jamais sans mouvement : aucune action de restitution
+        (ENTREE tracée) n'existe encore, donc la suppression est REFUSÉE tant
+        que ``quantite_restante`` > 0."""
+        if instance.quantite_restante > 0:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'detail': (
+                f'{instance.quantite_restante} unité(s) sont encore en dépôt '
+                'chez le client : la suppression effacerait leur trace. '
+                'Déclarez leur consommation (ou leur restitution) avant.')})
+        super().perform_destroy(instance)
 
     def create(self, request, *args, **kwargs):
         from ..services_consignation import creer_depot_consignation
