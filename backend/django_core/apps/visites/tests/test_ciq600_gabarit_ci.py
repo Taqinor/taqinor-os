@@ -38,7 +38,13 @@ ZONE_COMPLETE = {
     'largeur_m': 18, 'pente_deg': 8, 'orientation': 'sud',
     'couverture': 'bac_acier', 'structure': 'portique'}
 
+#: CIQ651 — le « site commerce » est REQUIS pour un lead commercial.
+SITE_COMMERCE = {'categorie': 'restaurant',
+                 'horaires_constates': '11 h–23 h, 7/7',
+                 'besoin_continuite_service': False}
+
 MESURES_CI = {
+    'site_commerce': SITE_COMMERCE,
     'toiture_ci': {'zones_toiture': [ZONE_COMPLETE]},
     'tableau_general': {'calibre_a': 250, 'depart_disponible': True},
     'comptage': {'type_compteur': 'électronique triphasé',
@@ -137,7 +143,8 @@ class VisiteCiTests(VisiteTerrainBase):
         detail = self._detail(visite_id)
         self.assertEqual(detail['gabarit'], 'ci')
         self.assertIsNone(detail['photo_toit'])
-        self.assertEqual([b['categorie'] for b in detail['checklist']], SOCLE)
+        self.assertEqual([b['categorie'] for b in detail['checklist']],
+                         ['site_commerce'] + SOCLE)
 
     def test_une_visite_ci_se_termine_sans_mesure_residentielle(self):
         visite_id = self.creer_visite()

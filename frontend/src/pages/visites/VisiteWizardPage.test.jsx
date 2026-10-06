@@ -78,10 +78,11 @@ const VISITE_INCOMPLETE = {
   ],
 }
 
-const { getVisite, terminerVisite, qualifierVisite } = vi.hoisted(() => ({
+const { getVisite, terminerVisite, qualifierVisite, patchVisiteMesures } = vi.hoisted(() => ({
   getVisite: vi.fn(),
   terminerVisite: vi.fn(),
   qualifierVisite: vi.fn(),
+  patchVisiteMesures: vi.fn(),
 }))
 
 vi.mock('../../api/visitesApi', () => ({
@@ -91,7 +92,7 @@ vi.mock('../../api/visitesApi', () => ({
     qualifierVisite: (...a) => qualifierVisite(...a),
     uploadVisitePhoto: vi.fn(),
     deleteVisitePhoto: vi.fn(),
-    patchVisiteMesures: vi.fn(),
+    patchVisiteMesures: (...a) => patchVisiteMesures(...a),
     // VTA11 — l'historique des visites du même lead (panneau en lecture seule
     // monté par le wizard). Liste vide ici : ces cas testent le wizard.
     getVisites: vi.fn(async () => ({ data: [] })),
@@ -113,7 +114,7 @@ vi.mock('../../ui/confirm', async (importOriginal) => {
 })
 
 import VisiteWizardPage from './VisiteWizardPage'
-import { MESURES_SCHEMA } from './visiteHelpers'
+import { MESURES_SCHEMA, MESURES_SCHEMA_CI } from './visiteHelpers'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 
 function withProviders() {
@@ -368,5 +369,441 @@ describe('VisiteWizardPage — AGR422 (gabarit point_eau)', () => {
     withProviders()
     expect(await screen.findByRole('heading', { name: 'Client Démo' })).toBeInTheDocument()
     expect(screen.getByText('Longueur de la zone utile (m)')).toBeInTheDocument()
+  })
+})
+
+/* CIQ609 — gabarit `ci` (site professionnel) : le mock est l'`exemple_ci` du
+   contrat partagé `visite_terrain.json` (check_api_shapes), jamais inventé.
+   L'exemple ne porte qu'une catégorie de checklist : les onglets sont dérivés
+   des catégories du contrat `gabarit_ci`. */
+describe('VisiteWizardPage — CIQ609 (gabarit ci)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const CATEGORIES_CI = Object.keys(contrat.gabarit_ci)
+  const CI = {
+    ...contrat.exemple_ci,
+    qualification: null,
+    checklist: CATEGORIES_CI.map((categorie) => ({ categorie, libelle: categorie, slots: [] })),
+  }
+  const catId = (categorie, cle) => `visite-mesure-${categorie}-${cle}`
+
+  beforeEach(() => {
+    patchVisiteMesures.mockResolvedValue({ data: {} })
+    getVisite.mockResolvedValue({ data: CI })
+  })
+
+  it('titre « Visite technique — site professionnel », jamais de champ de toit résidentiel', async () => {
+    withProviders()
+    expect(await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })).toBeInTheDocument()
+    expect(screen.queryByText('Longueur de la zone utile')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /calage du toit/i })).not.toBeInTheDocument()
+  })
+
+  it('le schéma reprend les codes, libellés et choix du contrat gabarit_ci, tels quels', () => {
+    for (const [categorie, bloc] of Object.entries(contrat.gabarit_ci)) {
+      const schema = MESURES_SCHEMA_CI[categorie]
+      expect(schema, categorie).toBeTruthy()
+      expect(schema.map((c) => c.key), categorie).toEqual(Object.keys(bloc.mesures))
+      for (const champ of schema) {
+        const def = bloc.mesures[champ.key]
+        expect(champ.label, champ.key).toBe(def.libelle)
+        if (def.type === 'choix') {
+          expect(champ.options.map((o) => o.value), champ.key).toEqual(def.choix)
+        }
+      }
+    }
+    // Les champs d'une zone sont ceux de l'exemple servi.
+    const zone = contrat.exemple_ci.mesures.toiture_ci.zones_toiture[0]
+    const forme = MESURES_SCHEMA_CI.toiture_ci[0].forme
+    expect(['id', ...forme.map((c) => c.key)].sort()).toEqual(Object.keys(zone).sort())
+    // Gabarits toiture et point_eau : schémas inchangés.
+    expect(MESURES_SCHEMA.cheminement.map((c) => c.key)).toEqual(['longueur_estimee_m'])
+  })
+
+  it('l’ordre des onglets suit la checklist servie', async () => {
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(CATEGORIES_CI)
+  })
+
+  it('ajoute une 2e zone de toiture et enregistre les deux, sans arrondir un nombre tapé', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'toiture_ci' }))
+    const form = await screen.findByTestId('visite-mesures-toiture_ci')
+    expect(form.querySelectorAll('[data-testid^="visite-ligne-zones_toiture-"]')).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: 'Ajouter une zone' }))
+    expect(form.querySelectorAll('[data-testid^="visite-ligne-zones_toiture-"]')).toHaveLength(2)
+    const nom = form.querySelector(`#${catId('toiture_ci', 'zones_toiture-z2-libelle')}`)
+    await user.type(nom, 'Atelier sud')
+    const pente = form.querySelector(`#${catId('toiture_ci', 'zones_toiture-z2-pente_deg')}`)
+    expect(pente).toHaveAttribute('step', 'any')
+    await user.type(pente, '12.5')
+    expect(pente).toHaveValue(12.5)
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    const [visiteId, categorie, valeurs] = patchVisiteMesures.mock.calls[0]
+    expect([String(visiteId), categorie]).toEqual(['7', 'toiture_ci'])
+    expect(valeurs.zones_toiture.map((z) => z.id)).toEqual(['z1', 'z2'])
+    expect(valeurs.zones_toiture[1]).toMatchObject({ libelle: 'Atelier sud', pente_deg: 12.5 })
+  })
+
+  it('supprime une zone', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'toiture_ci' }))
+    const form = await screen.findByTestId('visite-mesures-toiture_ci')
+    await user.click(screen.getByRole('button', { name: 'Supprimer zone 1' }))
+    expect(form.querySelectorAll('[data-testid^="visite-ligne-zones_toiture-"]')).toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2].zones_toiture).toEqual([])
+  })
+
+  it('« non relevé » + motif : l’état du serveur est repris, et un nouveau part avec son motif', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'comptage' }))
+    const form = await screen.findByTestId('visite-mesures-comptage')
+    // Venu du serveur (`exemple_ci._non_releves`) : puissance souscrite.
+    const deja = form.querySelector(`#${catId('comptage', 'puissance_souscrite_kva_constatee')}-nr`)
+    expect(deja).toBeChecked()
+    expect(form.querySelector(`#${catId('comptage', 'puissance_souscrite_kva_constatee')}`)).toBeDisabled()
+    // Nouveau : type de compteur non relevé, site fermé.
+    const caseType = form.querySelector(`#${catId('comptage', 'type_compteur')}-nr`)
+    await user.click(caseType)
+    await user.click(form.querySelector(`#${catId('comptage', 'type_compteur')}-motif`))
+    await user.click(await screen.findByRole('option', { name: 'Site fermé' }))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2]._non_releves).toEqual({
+      puissance_souscrite_kva_constatee: 'a_faire_par_electricien',
+      type_compteur: 'site_ferme',
+    })
+  })
+
+  it('l’erreur du serveur s’affiche sous le champ fautif (motif manquant)', async () => {
+    patchVisiteMesures.mockRejectedValue({
+      response: { data: { erreurs: { '_non_releves.type_compteur': 'Motif requis pour Type de compteur.' } } },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'comptage' }))
+    const form = await screen.findByTestId('visite-mesures-comptage')
+    await user.click(form.querySelector(`#${catId('comptage', 'type_compteur')}-nr`))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(await screen.findByText('Motif requis pour Type de compteur.')).toBeInTheDocument()
+  })
+
+  it('tous les booléens sont des tri-états : jamais un « Non » enregistré sans réponse', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...CI, mesures: { ...CI.mesures, tableau_general: { ...CI.mesures.tableau_general, parafoudre_existant: null } } },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'tableau_general' }))
+    const form = await screen.findByTestId('visite-mesures-tableau_general')
+    expect(screen.getByLabelText('Parafoudre existant')).toHaveTextContent('pas encore relevé')
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2].parafoudre_existant).toBeNull()
+    expect(form.querySelector('form')).toHaveAttribute('novalidate')
+  })
+
+  it('terminer : activé dès que le serveur dit complet', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...CI, completude: { complet: true, manquants: [] }, qualification: contrat.exemple.qualification },
+    })
+    terminerVisite.mockResolvedValue({ data: { ...CI, statut: 'terminee' } })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('button', { name: /terminer la visite/i }))
+    expect(terminerVisite).toHaveBeenCalledWith('7')
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+  })
+
+  it('la complétude vient TOUJOURS du serveur : manquants affichés tels quels', async () => {
+    withProviders()
+    const bloc = await screen.findByTestId('visite-manquants')
+    for (const m of CI.completude.manquants) expect(bloc).toHaveTextContent(m.libelle)
+    expect(await screen.findByRole('button', { name: /il manque des éléments/i })).toBeDisabled()
+  })
+
+  it('le décideur « propriétaire tiers » est proposé', async () => {
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })
+    expect(screen.getByRole('button', { name: 'Le propriétaire (un tiers) décide' })).toBeInTheDocument()
+  })
+})
+
+/* CIQ653 — catégorie « site commerce » : le mock est l'`exemple_ci_commerce` du
+   contrat partagé `visite_terrain.json` (check_api_shapes), jamais inventé. */
+describe('VisiteWizardPage — CIQ653 (site commerce)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const SITE_CONTRAT = contrat.gabarit_ci_site_commerce.site_commerce
+  const COMMERCE = contrat.exemple_ci_commerce
+  const tuile = (code, libelle) => ({
+    ...COMMERCE.checklist[0].slots[0], code, libelle, requis: false, etat: 'manquant', photos: [],
+  })
+  const visite = (slots, mesures = COMMERCE.mesures) => ({
+    ...COMMERCE,
+    qualification: null,
+    mesures,
+    checklist: [
+      { categorie: 'site_commerce', libelle: 'Site commerce', slots },
+      ...Object.keys(contrat.gabarit_ci).map((categorie) => ({ categorie, libelle: categorie, slots: [] })),
+    ],
+  })
+  const catId = (cle) => `visite-mesure-site_commerce-${cle}`
+
+  beforeEach(() => {
+    patchVisiteMesures.mockResolvedValue({ data: {} })
+    getVisite.mockResolvedValue({ data: visite([tuile('secours_existant', 'Secours existant')]) })
+  })
+
+  it('le schéma reprend les codes, libellés et choix du contrat, tels quels', () => {
+    const schema = MESURES_SCHEMA_CI.site_commerce
+    expect(schema.map((c) => c.key)).toEqual(Object.keys(SITE_CONTRAT.mesures))
+    for (const champ of schema) {
+      const def = SITE_CONTRAT.mesures[champ.key]
+      expect(champ.label, champ.key).toBe(def.libelle)
+      if (def.type === 'choix') expect(champ.options.map((o) => o.value), champ.key).toEqual(def.choix)
+    }
+    const circuits = schema.find((c) => c.key === 'circuits_critiques')
+    expect(circuits.forme.map((c) => c.key)).toEqual(Object.keys(SITE_CONTRAT.mesures.circuits_critiques.forme))
+    expect(circuits.forme[0].options.map((o) => o.value)).toEqual(['froid', 'medical', 'informatique', 'cuisine', 'autre'])
+  })
+
+  it('l’exemple servi se rend avec tous ses champs (aucun champ du contrat oublié)', async () => {
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })
+    const form = await screen.findByTestId('visite-mesures-site_commerce')
+    for (const champ of MESURES_SCHEMA_CI.site_commerce) {
+      if (champ.type === 'list') {
+        expect(form.querySelector(`[data-testid="visite-liste-${champ.key}"]`), champ.key).toBeTruthy()
+      } else {
+        expect(form.querySelector(`#${catId(champ.key)}`), champ.key).toBeTruthy()
+      }
+    }
+    expect(screen.getByLabelText("Horaires et jours d'ouverture")).toHaveValue('11 h–23 h, 7/7')
+    expect(form.querySelector('form')).toHaveAttribute('novalidate')
+  })
+
+  it('saisie : horaires, circuit critique, besoin de continuité — le PATCH porte les clés du contrat', async () => {
+    getVisite.mockResolvedValue({
+      data: visite([tuile('secours_existant', 'Secours existant')], {
+        ...COMMERCE.mesures,
+        site_commerce: Object.fromEntries(Object.keys(SITE_CONTRAT.mesures).map((k) => [k, k === 'circuits_critiques' ? [] : null])),
+      }),
+    })
+    const user = userEvent.setup()
+    withProviders()
+    const form = await screen.findByTestId('visite-mesures-site_commerce')
+    await user.type(screen.getByLabelText("Horaires et jours d'ouverture"), '8 h–20 h, lun–sam')
+    await user.click(screen.getByRole('button', { name: 'Ajouter un circuit critique' }))
+    await user.click(form.querySelector('#visite-mesure-site_commerce-circuits_critiques-0-circuit'))
+    await user.click(await screen.findByRole('option', { name: 'Matériel médical' }))
+    await user.click(screen.getByLabelText('Besoin de continuité de service'))
+    await user.click(await screen.findByRole('option', { name: 'Oui' }))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    const valeurs = patchVisiteMesures.mock.calls[0][2]
+    expect(Object.keys(valeurs).sort()).toEqual([...Object.keys(SITE_CONTRAT.mesures), '_non_releves'].sort())
+    expect(valeurs.horaires_constates).toBe('8 h–20 h, lun–sam')
+    expect(valeurs.circuits_critiques).toEqual([{ circuit: 'medical', precision: null }])
+    expect(valeurs.besoin_continuite_service).toBe(true)
+    // Un booléen jamais répondu reste « pas encore relevé » (null), jamais « Non ».
+    expect(valeurs.secours_ups).toBeNull()
+  })
+
+  it('l’erreur du serveur s’affiche sous le champ fautif', async () => {
+    patchVisiteMesures.mockRejectedValue({
+      response: { data: { erreurs: { categorie: '« Catégorie du site » : valeur inconnue « casino ».' } } },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    await screen.findByTestId('visite-mesures-site_commerce')
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(await screen.findByText('« Catégorie du site » : valeur inconnue « casino ».')).toBeInTheDocument()
+  })
+
+  it('la pièce « accord du propriétaire » n’est affichée que si le serveur la sert', async () => {
+    withProviders()
+    await screen.findByTestId('visite-slot-secours_existant')
+    expect(screen.queryByTestId('visite-slot-accord_proprietaire')).not.toBeInTheDocument()
+  })
+
+  it('serveur : lead locataire → la tuile « accord du propriétaire » est présente', async () => {
+    getVisite.mockResolvedValue({
+      data: visite([tuile('secours_existant', 'Secours existant'), tuile('accord_proprietaire', 'Accord du propriétaire')]),
+    })
+    withProviders()
+    expect(await screen.findByTestId('visite-slot-accord_proprietaire')).toHaveTextContent('Accord du propriétaire')
+  })
+
+  it('terminer : activé dès que le serveur dit complet', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...visite([tuile('secours_existant', 'Secours existant')]), completude: { complet: true, manquants: [] }, qualification: contrat.exemple.qualification },
+    })
+    terminerVisite.mockResolvedValue({ data: { ...COMMERCE, statut: 'terminee' } })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('button', { name: /terminer la visite/i }))
+    expect(terminerVisite).toHaveBeenCalledWith('7')
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = même PATCH', async () => {
+    const user = userEvent.setup()
+    const premier = withProviders()
+    await screen.findByTestId('visite-mesures-site_commerce')
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    const p1 = patchVisiteMesures.mock.calls[0][2]
+    premier.unmount()
+    // Le serveur rend la valeur normalisée : on rouvre dessus.
+    getVisite.mockResolvedValue({
+      data: visite([tuile('secours_existant', 'Secours existant')], { ...COMMERCE.mesures, site_commerce: JSON.parse(JSON.stringify(p1)) }),
+    })
+    withProviders()
+    await screen.findByTestId('visite-mesures-site_commerce')
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[1][2]).toEqual(p1)
+  })
+})
+
+/* CIQ661 — supplément MT : le mock est l'`exemple_ci_mt` du contrat partagé
+   `visite_terrain.json` (check_api_shapes), jamais inventé. Les catégories du
+   supplément sont SERVIES par le serveur quand le niveau constaté vaut `mt`. */
+describe('VisiteWizardPage — CIQ661 (supplément MT)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const SUPPLEMENT = contrat.gabarit_ci_supplement_mt
+  const CATEGORIES_MT = Object.keys(SUPPLEMENT)
+  const MT = contrat.exemple_ci_mt
+  const tuile = (code) => ({
+    ...MT.checklist[0].slots[0], code, libelle: code, requis: true, etat: 'manquant', photos: [],
+  })
+  const bloc = (categorie) => ({
+    categorie,
+    libelle: categorie,
+    slots: Object.keys(SUPPLEMENT[categorie]?.photos ?? {}).map(tuile),
+  })
+  const SOCLE = Object.keys(contrat.gabarit_ci).map((categorie) => ({ categorie, libelle: categorie, slots: [] }))
+  const visiteMt = { ...MT, qualification: null, checklist: [...SOCLE, ...CATEGORIES_MT.map(bloc)] }
+  const visiteBt = {
+    ...visiteMt,
+    mesures: { ...MT.mesures, comptage: { ...MT.mesures.comptage, niveau_tension_constate: 'bt' } },
+    checklist: SOCLE,
+  }
+  const catId = (categorie, cle) => `visite-mesure-${categorie}-${cle}`
+
+  beforeEach(() => {
+    patchVisiteMesures.mockResolvedValue({ data: {} })
+    getVisite.mockResolvedValue({ data: visiteMt })
+  })
+
+  it('le schéma reprend les codes, libellés, choix et formes du contrat, tels quels', () => {
+    for (const [categorie, def] of Object.entries(SUPPLEMENT)) {
+      const schema = MESURES_SCHEMA_CI[categorie]
+      expect(schema, categorie).toBeTruthy()
+      expect(schema.map((c) => c.key), categorie).toEqual(Object.keys(def.mesures))
+      for (const champ of schema) {
+        const mesure = def.mesures[champ.key]
+        expect(champ.label, champ.key).toBe(mesure.libelle)
+        if (mesure.type === 'choix') expect(champ.options.map((o) => o.value), champ.key).toEqual(mesure.choix)
+        if (mesure.type === 'liste') {
+          expect(champ.forme.map((c) => c.key), champ.key).toEqual(Object.keys(mesure.forme))
+        }
+      }
+    }
+  })
+
+  it('MT servi : les catégories du supplément s’affichent, dans l’ordre servi', async () => {
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      ...Object.keys(contrat.gabarit_ci), ...CATEGORIES_MT,
+    ])
+  })
+
+  it('passer le niveau à MT fait apparaître le supplément (rechargé depuis le serveur)', async () => {
+    getVisite.mockResolvedValueOnce({ data: visiteBt }).mockResolvedValue({ data: visiteMt })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'comptage' }))
+    expect(screen.queryByRole('tab', { name: 'poste_mt' })).not.toBeInTheDocument()
+    await user.click(await screen.findByLabelText('Niveau de tension constaté'))
+    await user.click(await screen.findByRole('option', { name: 'Moyenne tension (MT)' }))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2].niveau_tension_constate).toBe('mt')
+    expect(await screen.findByRole('tab', { name: 'poste_mt' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'reseau_assurance' })).toBeInTheDocument()
+  })
+
+  it('les tuiles photo du poste (cellule, plaque) et des factures sont servies et prises en photo', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'poste_mt' }))
+    expect(await screen.findByTestId('visite-slot-cellule_mt')).toHaveTextContent('Ajouter une photo')
+    expect(screen.getByTestId('visite-slot-transformateur_plaque')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'factures_mt' }))
+    expect(await screen.findByTestId('visite-slot-factures_mt')).toHaveTextContent('Ajouter une photo')
+  })
+
+  it('la source du cos φ est obligatoire : l’erreur serveur s’affiche sous le champ', async () => {
+    patchVisiteMesures.mockRejectedValue({
+      response: { data: { erreurs: { source_cos_phi: '« Source du cos φ » est obligatoire dès que « cos φ constaté » est saisi.' } } },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'factures_mt' }))
+    const form = await screen.findByTestId('visite-mesures-factures_mt')
+    const cos = form.querySelector(`#${catId('factures_mt', 'cos_phi_constate')}`)
+    expect(cos).toHaveAttribute('step', 'any')
+    await user.type(cos, '0.82')
+    expect(cos).toHaveValue(0.82)
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(await screen.findByText('« Source du cos φ » est obligatoire dès que « cos φ constaté » est saisi.')).toBeInTheDocument()
+    expect(patchVisiteMesures.mock.calls[0][2].cos_phi_constate).toBe(0.82)
+  })
+
+  it('« non relevé » + motif sur une cellule : état du serveur repris, nouveau motif envoyé', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'reactif_secours' }))
+    const form = await screen.findByTestId('visite-mesures-reactif_secours')
+    expect(form.querySelector(`#${catId('reactif_secours', 'condensateurs_kvar')}-nr`)).toBeChecked()
+    expect(form.querySelector(`#${catId('reactif_secours', 'condensateurs_kvar')}`)).toBeDisabled()
+    await user.click(form.querySelector(`#${catId('reactif_secours', 'condensateurs_etat')}-nr`))
+    await user.click(form.querySelector(`#${catId('reactif_secours', 'condensateurs_etat')}-motif`))
+    await user.click(await screen.findByRole('option', { name: 'Dangereux' }))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2]._non_releves).toEqual({
+      condensateurs_kvar: 'acces_refuse', condensateurs_etat: 'dangereux',
+    })
+  })
+
+  it('un transformateur s’ajoute (nombre et kVA, jamais arrondis) ; la date ANRE est une date, les pièces des références', async () => {
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'poste_mt' }))
+    const form = await screen.findByTestId('visite-mesures-poste_mt')
+    await user.click(screen.getByRole('button', { name: 'Ajouter un transformateur' }))
+    const kva = form.querySelector(`#${catId('poste_mt', 'transformateurs-1-kva')}`)
+    expect(kva).toHaveAttribute('step', 'any')
+    await user.type(kva, '630.5')
+    expect(kva).toHaveValue(630.5)
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2].transformateurs[1]).toMatchObject({ kva: 630.5, nb: null })
+    await user.click(screen.getByRole('tab', { name: 'reseau_assurance' }))
+    const reseau = await screen.findByTestId('visite-mesures-reseau_assurance')
+    expect(reseau.querySelector(`#${catId('reseau_assurance', 'capacite_consultee_le')}`)).toHaveAttribute('type', 'date')
+    expect(reseau.querySelector(`#${catId('reseau_assurance', 'profil_charge_mesure_fichier')}`)).toHaveAttribute('type', 'text')
+    expect(reseau.querySelector('form')).toHaveAttribute('novalidate')
+  })
+
+  it('terminer : activé dès que le serveur dit complet', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...visiteMt, completude: { complet: true, manquants: [] }, qualification: contrat.exemple.qualification },
+    })
+    terminerVisite.mockResolvedValue({ data: { ...visiteMt, statut: 'terminee' } })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('button', { name: /terminer la visite/i }))
+    expect(terminerVisite).toHaveBeenCalledWith('7')
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled())
   })
 })

@@ -146,10 +146,16 @@ export const MESURES_SCHEMA = {
 // garde toute catégorie inconnue du serveur À LA FIN plutôt que de la perdre.
 // AGR422 — le gabarit `point_eau` suit l'ordre servi : point_eau → pompe_existante
 // → electricite → site_pv → administratif → general.
+// CIQ609 — le gabarit `ci` (site professionnel) : socle commun puis, une fois
+// `general` passé, le supplément MT servi par le serveur (CIQ660).
 const ORDRE_CATEGORIES = [
-  'toiture', 'tableau', 'local_onduleur', 'cheminement',
+  'site_commerce',
+  'toiture', 'toiture_ci', 'tableau', 'tableau_general', 'comptage',
+  'local_onduleur', 'cheminement', 'acces_securite', 'autres_autorisations',
   'point_eau', 'pompe_existante', 'electricite', 'site_pv', 'administratif',
   'general',
+  'poste_mt', 'factures_mt', 'reactif_secours', 'charges_principales',
+  'reseau_assurance',
 ]
 
 // AGR422 — gabarit servi par la visite (`visite.gabarit`) ; absent = toiture.
@@ -164,10 +170,19 @@ export function estVisitePointEau(visite) {
   return visite?.gabarit === GABARIT_POINT_EAU
 }
 
+// CIQ609 — gabarit `ci` : la visite d'un site professionnel (lead commercial
+// ou industriel). Les gabarits toiture et point_eau restent rendus à l'identique.
+export const GABARIT_CI = 'ci'
+
+export function estVisiteCi(visite) {
+  return visite?.gabarit === GABARIT_CI
+}
+
 // Titre de l'écran : « Visite de relevé du point d'eau » pour le gabarit
 // point_eau, sinon le nom du client (inchangé).
 export function titreVisite(visite) {
   if (estVisitePointEau(visite)) return 'Visite de relevé du point d’eau'
+  if (estVisiteCi(visite)) return 'Visite technique — site professionnel'
   return visite?.client_panel?.lead_nom ?? `Visite #${visite?.id}`
 }
 
@@ -285,6 +300,7 @@ export const QUALIFICATION_SCHEMA = [
       { value: 'seul', label: 'Seul' },
       { value: 'conjoint_famille', label: 'Avec conjoint / famille' },
       { value: 'associe_direction', label: 'Avec associé / direction' },
+      { value: 'proprietaire_tiers', label: 'Le propriétaire (un tiers) décide' },
     ],
   },
   {
@@ -347,4 +363,364 @@ export function ligneQualification(qualification) {
   return QUALIFICATION_SCHEMA
     .map((q) => labelQualification(q.key, qualification[q.key]))
     .join(' · ')
+}
+
+
+// ── CIQ609 — gabarit `ci` : schéma des mesures d'un site professionnel ───────
+//
+// Codes, libellés et choix repris TELS QUELS du contrat CIQ5
+// (`apps/visites/contract_samples/visite_terrain.json` → `gabarit_ci`) ; le
+// serveur les valide, la complétude vient TOUJOURS de lui (`completude`). Aucun
+// seuil, aucun verdict : le module montre, le bureau d'études juge. Les
+// booléens sont des TRI-ÉTATS (Oui / Non / pas encore relevé) : jamais un
+// « Non » enregistré sans réponse. Une clé `list` porte `forme` (les champs
+// d'UN élément) ; `id` = préfixe des identifiants d'élément (zones : z1, z2…) ;
+// `nonReleve` marque un champ d'élément qui peut être « non relevé ».
+const OUI_NON = { type: 'tribool' }
+
+export const MESURES_SCHEMA_CI = {
+  // CIQ653 — « site commerce » (contrat `gabarit_ci_site_commerce`) : horaires,
+  // circuits critiques, secours existant, accès, besoin de continuité. La pièce
+  // « accord du propriétaire » est une tuile photo SERVIE par le serveur (lead
+  // locataire seulement) : l'écran ne la décide jamais.
+  site_commerce: [
+    {
+      key: 'categorie', label: 'Catégorie du site', unite: '', type: 'select',
+      options: [
+        { value: 'hotel', label: 'Hôtel / riad' }, { value: 'restaurant', label: 'Restaurant / café' },
+        { value: 'commerce', label: 'Commerce / supermarché' }, { value: 'bureau', label: 'Bureaux' },
+        { value: 'sante', label: 'Santé (clinique, cabinet)' }, { value: 'ecole', label: 'École' },
+        { value: 'hammam', label: 'Hammam / spa / salle de sport' }, { value: 'boulangerie', label: 'Boulangerie' },
+        { value: 'froid', label: 'Froid / entrepôt frigorifique' }, { value: 'autre', label: 'Autre' },
+      ],
+    },
+    { key: 'horaires_constates', label: "Horaires et jours d'ouverture", unite: '', type: 'text' },
+    { key: 'equipements_principaux', label: 'Équipements principaux', unite: '', type: 'text' },
+    {
+      key: 'circuits_critiques', label: 'Circuits critiques', type: 'list',
+      itemLabel: 'Circuit', addLabel: 'Ajouter un circuit critique',
+      forme: [
+        {
+          key: 'circuit', label: 'Circuit critique', unite: '', type: 'select',
+          options: [
+            { value: 'froid', label: 'Froid' }, { value: 'medical', label: 'Matériel médical' },
+            { value: 'informatique', label: 'Informatique' }, { value: 'cuisine', label: 'Cuisine' },
+            { value: 'autre', label: 'Autre' },
+          ],
+        },
+        { key: 'precision', label: 'Précision', unite: '', type: 'text' },
+      ],
+    },
+    { key: 'secours_groupe', label: 'Groupe électrogène existant', unite: '', ...OUI_NON },
+    { key: 'secours_ups', label: 'Onduleur UPS existant', unite: '', ...OUI_NON },
+    { key: 'secours_inverseur', label: 'Inverseur de source existant', unite: '', ...OUI_NON },
+    { key: 'acces_pendant_ouverture', label: "Contraintes d'accès pendant l'ouverture", unite: '', type: 'text' },
+    { key: 'besoin_continuite_service', label: 'Besoin de continuité de service', unite: '', ...OUI_NON },
+  ],
+  toiture_ci: [
+    {
+      key: 'zones_toiture', label: 'Zones de toiture (une par pan / bâtiment)', type: 'list',
+      itemLabel: 'Zone', addLabel: 'Ajouter une zone', id: 'z',
+      forme: [
+        { key: 'libelle', label: 'Nom de la zone', unite: '', type: 'text' },
+        { key: 'batiment', label: 'Bâtiment', unite: '', type: 'text' },
+        { key: 'longueur_m', label: 'Longueur', unite: 'm', type: 'number' },
+        { key: 'largeur_m', label: 'Largeur', unite: 'm', type: 'number' },
+        { key: 'surface_utile_m2', label: 'Surface utile', unite: 'm²', type: 'number', nonReleve: true },
+        { key: 'pente_deg', label: 'Pente', unite: '°', type: 'number', nonReleve: true },
+        {
+          key: 'orientation', label: 'Orientation du pan', unite: '', type: 'select', nonReleve: true,
+          options: [
+            { value: 'nord', label: 'Nord' }, { value: 'nord_est', label: 'Nord-Est' },
+            { value: 'est', label: 'Est' }, { value: 'sud_est', label: 'Sud-Est' },
+            { value: 'sud', label: 'Sud' }, { value: 'sud_ouest', label: 'Sud-Ouest' },
+            { value: 'ouest', label: 'Ouest' }, { value: 'nord_ouest', label: 'Nord-Ouest' },
+          ],
+        },
+        {
+          key: 'couverture', label: 'Type de couverture', unite: '', type: 'select', nonReleve: true,
+          options: [
+            { value: 'bac_acier', label: 'Bac acier' }, { value: 'beton', label: 'Béton' },
+            { value: 'fibrociment', label: 'Fibrociment' }, { value: 'tole', label: 'Tôle' },
+            { value: 'tuile', label: 'Tuile' }, { value: 'autre', label: 'Autre' },
+          ],
+        },
+        { key: 'age_ans', label: 'Âge de la couverture', unite: 'ans', type: 'number' },
+        {
+          key: 'structure', label: 'Structure porteuse', unite: '', type: 'select', nonReleve: true,
+          options: [
+            { value: 'portique', label: 'Portique' }, { value: 'ferme', label: 'Ferme' },
+            { value: 'dalle', label: 'Dalle' }, { value: 'autre', label: 'Autre' },
+          ],
+        },
+        { key: 'portee_pannes_m', label: 'Portée des pannes', unite: 'm', type: 'number' },
+        { key: 'entraxe_pannes_m', label: 'Entraxe des pannes', unite: 'm', type: 'number' },
+        { key: 'epaisseur_bac_mm', label: 'Épaisseur du bac', unite: 'mm', type: 'number' },
+        {
+          key: 'etancheite', label: 'Étanchéité', type: 'objet',
+          forme: [
+            { key: 'type', label: "Type d'étanchéité", unite: '', type: 'text' },
+            { key: 'age_ans', label: "Âge de l'étanchéité", unite: 'ans', type: 'number' },
+            { key: 'sous_garantie', label: 'Étanchéité sous garantie', unite: '', ...OUI_NON },
+          ],
+        },
+        { key: 'lanterneaux_exutoires', label: 'Lanterneaux et exutoires', unite: '', type: 'text' },
+        { key: 'ligne_de_vie_existante', label: 'Ligne de vie existante', unite: '', ...OUI_NON },
+        // DÉCLARÉE seulement, avec sa pièce : l'application ne juge jamais que
+        // la charge « suffit ».
+        { key: 'charge_admissible_declaree_kg_m2', label: 'Charge admissible déclarée', unite: 'kg/m²', type: 'number', nonReleve: true },
+        { key: 'charge_admissible_piece', label: 'Pièce justifiant la charge admissible (bureau de contrôle ou propriétaire)', unite: '', type: 'piece' },
+        { key: 'fibrociment', label: 'Amiante possible — diagnostic requis', unite: '', ...OUI_NON },
+      ],
+    },
+  ],
+  tableau_general: [
+    { key: 'calibre_a', label: "Calibre de l'appareil de tête (A)", unite: '', type: 'number' },
+    { key: 'depart_disponible', label: 'Départ disponible pour le PV', unite: '', ...OUI_NON },
+    {
+      key: 'regime_neutre', label: 'Régime de neutre', unite: '', type: 'select',
+      options: [
+        { value: 'TT', label: 'TT' }, { value: 'TN', label: 'TN' },
+        { value: 'IT', label: 'IT' }, { value: 'inconnu', label: 'Inconnu' },
+      ],
+    },
+    { key: 'parafoudre_existant', label: 'Parafoudre existant', unite: '', ...OUI_NON },
+  ],
+  comptage: [
+    { key: 'type_compteur', label: 'Type de compteur', unite: '', type: 'text' },
+    {
+      key: 'niveau_tension_constate', label: 'Niveau de tension constaté', unite: '', type: 'select',
+      options: [
+        { value: 'bt', label: 'Basse tension (BT)' }, { value: 'mt', label: 'Moyenne tension (MT)' },
+        { value: 'inconnu', label: 'Inconnu' },
+      ],
+    },
+    { key: 'puissance_souscrite_kva_constatee', label: 'Puissance souscrite constatée (plaque / contrat)', unite: 'kVA', type: 'number' },
+  ],
+  cheminement: [
+    {
+      key: 'trajets', label: 'Trajets de câbles', type: 'list',
+      itemLabel: 'Trajet', addLabel: 'Ajouter un trajet',
+      forme: [
+        { key: 'libelle', label: 'Trajet', unite: '', type: 'text' },
+        { key: 'longueur_dc_m', label: 'Longueur DC', unite: 'm', type: 'number', nonReleve: true },
+        { key: 'longueur_ac_m', label: 'Longueur AC', unite: 'm', type: 'number', nonReleve: true },
+      ],
+    },
+  ],
+  acces_securite: [
+    { key: 'escalier', label: "Escalier d'accès", unite: '', ...OUI_NON },
+    { key: 'echelle', label: 'Échelle nécessaire', unite: '', ...OUI_NON },
+    { key: 'nacelle', label: 'Nacelle nécessaire', unite: '', ...OUI_NON },
+    { key: 'grue_possible', label: 'Grue possible', unite: '', ...OUI_NON },
+    { key: 'horaires_acces', label: "Horaires d'accès au site", unite: '', type: 'text' },
+    { key: 'zones_fragiles', label: 'Zones fragiles (lanterneaux, bac corrodé…)', unite: '', type: 'text' },
+  ],
+  autres_autorisations: [
+    { key: 'texte', label: 'Autres autorisations à confirmer avec le client (décret 2.25.100 art. 26)', unite: '', type: 'text' },
+  ],
+  general: [],
+  // CIQ661 — supplément d'un site raccordé en MOYENNE tension (contrat
+  // `gabarit_ci_supplement_mt`). Le serveur ne le sert que lorsque le relevé
+  // `comptage.niveau_tension_constate` vaut `mt` : l'écran n'ajoute ni ne
+  // retire jamais ces catégories de lui-même. Que des faits : aucun seuil,
+  // aucun verdict, aucune alerte cos φ.
+  poste_mt: [
+    { key: 'cellule_protection', label: 'Cellule et protection existantes', unite: '', type: 'text' },
+    {
+      key: 'transformateurs', label: 'Transformateurs', type: 'list',
+      itemLabel: 'Transformateur', addLabel: 'Ajouter un transformateur',
+      forme: [
+        { key: 'nb', label: 'Nombre', unite: '', type: 'number' },
+        { key: 'kva', label: 'Puissance', unite: 'kVA', type: 'number' },
+      ],
+    },
+    { key: 'tgbt_courant_assigne_a', label: 'TGBT : courant assigné (A)', unite: '', type: 'number' },
+    { key: 'tgbt_jeu_de_barres', label: 'TGBT : jeu de barres', unite: '', type: 'text' },
+  ],
+  factures_mt: [
+    {
+      key: 'registres', label: '12 factures : registres pointe / pleines / creuses (photos)', type: 'list',
+      itemLabel: 'Facture', addLabel: 'Ajouter une facture',
+      forme: [
+        { key: 'mois', label: 'Mois (AAAA-MM)', unite: '', type: 'text' },
+        { key: 'pointe_kwh', label: 'Pointe', unite: 'kWh', type: 'number' },
+        { key: 'pleines_kwh', label: 'Pleines', unite: 'kWh', type: 'number' },
+        { key: 'creuses_kwh', label: 'Creuses', unite: 'kWh', type: 'number' },
+      ],
+    },
+    { key: 'cos_phi_constate', label: 'cos φ constaté', unite: '', type: 'number' },
+    {
+      key: 'source_cos_phi', label: 'Source du cos φ', unite: '', type: 'select',
+      options: [
+        { value: 'facture', label: 'Facture' }, { value: 'mesure', label: 'Mesure' },
+        { value: 'inconnu', label: 'Inconnue' },
+      ],
+    },
+  ],
+  reactif_secours: [
+    { key: 'condensateurs_kvar', label: 'Batterie de condensateurs (kvar)', unite: '', type: 'number' },
+    { key: 'condensateurs_etat', label: 'État de la batterie de condensateurs', unite: '', type: 'text' },
+    { key: 'groupe_kva', label: 'Groupe électrogène (kVA)', unite: '', type: 'number' },
+    { key: 'groupe_inverseur', label: 'Inverseur de source', unite: '', ...OUI_NON },
+  ],
+  charges_principales: [
+    {
+      key: 'charges', label: 'Charges principales (moteurs, variateurs, fours, soudage)', type: 'list',
+      itemLabel: 'Charge', addLabel: 'Ajouter une charge',
+      forme: [
+        { key: 'libelle', label: 'Charge', unite: '', type: 'text' },
+        { key: 'puissance_kw', label: 'Puissance', unite: 'kW', type: 'number' },
+      ],
+    },
+  ],
+  reseau_assurance: [
+    { key: 'poste_source', label: 'Poste source', unite: '', type: 'text' },
+    // Saisie MANUELLE : aucun scraping de la plateforme (règle #5).
+    { key: 'capacite_poste_source', label: 'Capacité lue sur la plateforme ANRE (saisie manuelle, aucun scraping — règle #5)', unite: '', type: 'text' },
+    { key: 'capacite_consultee_le', label: 'Date de consultation de la plateforme', unite: '', type: 'date' },
+    { key: 'assureur', label: 'Assureur du site', unite: '', type: 'text' },
+    { key: 'exigences_assureur_piece', label: "Exigences écrites de l'assureur", unite: '', type: 'piece' },
+    { key: 'compartimentage_sprinklers', label: 'Compartimentage / sprinklers', unite: '', type: 'text' },
+    { key: 'profil_charge_mesure_fichier', label: 'Fichier de profil de charge mesuré (facultatif)', unite: '', type: 'piece' },
+  ],
+}
+
+// Le schéma d'affichage d'une catégorie SELON le gabarit de la visite : la
+// catégorie `cheminement` n'a pas les mêmes champs en toiture (longueur
+// estimée) et en `ci` (trajets). Gabarit toiture / point_eau : inchangé.
+export function schemaMesures(categorie, gabarit) {
+  if (gabarit === GABARIT_CI && MESURES_SCHEMA_CI[categorie]) return MESURES_SCHEMA_CI[categorie]
+  return MESURES_SCHEMA[categorie] ?? []
+}
+
+// CIQ601 — motifs FERMÉS de « non relevé » (contrat `non_releves_motifs`) et
+// leur libellé lisible.
+export const MOTIFS_NON_RELEVE = [
+  { value: 'acces_refuse', label: 'Accès refusé' },
+  { value: 'dangereux', label: 'Dangereux' },
+  { value: 'site_ferme', label: 'Site fermé' },
+  { value: 'a_faire_par_electricien', label: 'À faire par un électricien' },
+  { value: 'non_applicable', label: 'Non applicable' },
+]
+
+export function libelleMotifNonReleve(motif) {
+  return MOTIFS_NON_RELEVE.find((m) => m.value === motif)?.label ?? motif
+}
+
+// Clé « non relevé » d'une mesure (`calibre_a`) ou d'un champ d'élément de
+// liste (`zones_toiture[z1].pente_deg`, `trajets.longueur_dc_m`) — format du
+// contrat (`exemple_ci._non_releves`).
+export function cleNonReleve(listeKey, ligneId, champKey) {
+  if (!listeKey) return champKey
+  if (ligneId) return `${listeKey}[${ligneId}].${champKey}`
+  return `${listeKey}.${champKey}`
+}
+
+// ── Valeurs d'un formulaire de mesures ↔ charge utile du PATCH ──────────────
+// Aller-retour STABLE : enregistrer → rouvrir → enregistrer sans toucher
+// envoie exactement le même PATCH (les nombres partent en nombres, jamais en
+// chaînes qui dépendent de la frappe).
+
+const vide = (v) => v == null || v === ''
+
+export function valeurVersForm(champ, v) {
+  if (champ.type === 'tribool') return v === true ? 'oui' : v === false ? 'non' : ''
+  if (champ.type === 'bool') return Boolean(v)
+  if (champ.type === 'list') {
+    return (Array.isArray(v) ? v : []).map((ligne) => ({
+      ...(champ.id ? { id: ligne?.id ?? '' } : {}),
+      ...formDepuisValeurs(champ.forme, ligne),
+    }))
+  }
+  if (champ.type === 'objet') return formDepuisValeurs(champ.forme, v)
+  return vide(v) ? '' : String(v)
+}
+
+export function formDepuisValeurs(schema, valeurs) {
+  const out = {}
+  for (const champ of schema) out[champ.key] = valeurVersForm(champ, valeurs?.[champ.key])
+  return out
+}
+
+export function valeurVersPayload(champ, v) {
+  if (champ.type === 'tribool') return v === 'oui' ? true : v === 'non' ? false : null
+  if (champ.type === 'bool') return Boolean(v)
+  if (champ.type === 'list') {
+    return (Array.isArray(v) ? v : []).map((ligne) => ({
+      ...(champ.id && ligne.id ? { id: ligne.id } : {}),
+      ...payloadDepuisForm(champ.forme, ligne),
+    }))
+  }
+  if (champ.type === 'objet') return payloadDepuisForm(champ.forme, v ?? {})
+  if (vide(v)) return null
+  if (champ.type === 'number') {
+    const n = Number(v)
+    // Une saisie illisible part TELLE QUELLE : c'est le serveur qui la refuse,
+    // avec son message sous le champ (jamais un nombre « corrigé » ici).
+    return Number.isFinite(n) && String(v).trim() !== '' ? n : v
+  }
+  return v
+}
+
+export function payloadDepuisForm(schema, form) {
+  const out = {}
+  for (const champ of schema) out[champ.key] = valeurVersPayload(champ, form?.[champ.key])
+  return out
+}
+
+// Une nouvelle ligne d'une liste : champs vides + identifiant libre suivant
+// (`z1`, `z2`…) pour les listes à identifiants.
+export function nouvelleLigne(champ, lignes) {
+  const base = formDepuisValeurs(champ.forme, {})
+  if (!champ.id) return base
+  const utilises = new Set((lignes ?? []).map((l) => l.id))
+  let n = (lignes ?? []).length + 1
+  while (utilises.has(`${champ.id}${n}`)) n += 1
+  return { id: `${champ.id}${n}`, ...base }
+}
+
+// Les états « non relevé » d'UNE catégorie, depuis la table à plat du serveur
+// (`visite._non_releves` : `{'<categorie>.<clé>': motif}`).
+export function nonRelevesDeCategorie(plats, categorie) {
+  const prefixe = `${categorie}.`
+  const out = {}
+  for (const [cle, motif] of Object.entries(plats ?? {})) {
+    if (cle.startsWith(prefixe)) out[cle.slice(prefixe.length)] = motif
+  }
+  return out
+}
+
+// Libellé lisible d'une clé « non relevé » (récap bureau d'études).
+export function libelleCleNonReleve(schema, cle) {
+  const m = /^([a-z0-9_]+)(?:\[([^\]]+)\])?(?:\.([a-z0-9_]+))?$/.exec(cle ?? '')
+  if (!m) return cle
+  const champ = schema.find((c) => c.key === m[1])
+  if (!champ) return cle
+  if (!m[3]) return champ.label
+  const sous = champ.forme?.find((c) => c.key === m[3])
+  return `${champ.label} — ${sous?.label ?? m[3]}`
+}
+
+// CIQ609 — lignes du tableau déclaré / constaté / écart de la revue bureau
+// d'études. SERVIES par le serveur (`visite.releve_ci`, CIQ606) : rien n'est
+// recalculé ici, seul l'affichage est mis en forme.
+export const LIGNES_RELEVE_CI = [
+  { key: 'niveau_tension', label: 'Niveau de tension', unite: '' },
+  { key: 'puissance_souscrite_kva', label: 'Puissance souscrite', unite: 'kVA' },
+  { key: 'type_toiture', label: 'Type de toiture', unite: '' },
+  { key: 'surface_utile', label: 'Surface utile', unite: 'm²' },
+  { key: 'statut_occupation', label: 'Statut d’occupation', unite: '' },
+]
+
+export function valeurReleve(valeur, unite) {
+  if (valeur == null || valeur === '') return '—'
+  return unite ? `${valeur} ${unite}` : String(valeur)
+}
+
+// `ecart` : true = différent, false = égal, null = non comparable.
+export function libelleEcart(ecart) {
+  if (ecart === true) return 'Écart'
+  if (ecart === false) return 'Concordant'
+  return 'Non comparable'
 }

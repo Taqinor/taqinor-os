@@ -545,12 +545,16 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
     # Une mesure « à refaire » est une mesure à RE-RELEVER : on la vide, donc
     # la complétude serveur la redemande d'elle-même — aucun second registre
     # d'état à tenir synchrone.
+    from . import selectors
+
+    contexte = selectors.contexte_checklist(visite)
     stockees = dict(visite.mesures if isinstance(visite.mesures, dict) else {})
     touchee = False
     for demande in (mesures or []):
         categorie = (demande or {}).get('categorie')
         code = (demande or {}).get('code')
-        if checklist.mesure(categorie, code, visite.gabarit) is None:
+        if checklist.mesure(categorie, code, visite.gabarit,
+                            **contexte) is None:
             continue
         bloc = dict(stockees.get(categorie) or {})
         if code in bloc:
@@ -706,6 +710,15 @@ def valeur_mesure(declaration, brute):
             return None, (f"« {declaration['libelle']} » ne peut pas être "
                           'négatif.')
         return int(nombre), None
+    if nature == checklist.DATE:
+        import datetime
+
+        try:
+            jour = datetime.date.fromisoformat(str(brute).strip())
+        except ValueError:
+            return None, (f"« {declaration['libelle']} » attend une date "
+                          f'AAAA-MM-JJ (reçu : {brute!r}).')
+        return jour.isoformat(), None
     if nature == checklist.PIECE:
         # Référence d'une pièce jointe (identifiant) ou texte libre.
         if isinstance(brute, bool) or not isinstance(brute, (int, str)):
@@ -771,7 +784,10 @@ def enregistrer_mesures(visite, categorie, valeurs):
     """
     from . import visite_checklist as checklist
 
-    declaration = checklist.categorie(categorie, visite.gabarit)
+    from . import selectors
+
+    declaration = checklist.categorie(
+        categorie, visite.gabarit, **selectors.contexte_checklist(visite))
     if declaration is None or not declaration['mesures']:
         return None, {'categorie': ('Catégorie de mesures inconnue '
                                     f'« {categorie} ».')}
@@ -803,12 +819,22 @@ def enregistrer_mesures(visite, categorie, valeurs):
             erreurs[code] = message
         else:
             propres[code] = valeur
-    if erreurs:
-        return None, erreurs
-
     stockees = visite.mesures if isinstance(visite.mesures, dict) else {}
     bloc = dict(stockees.get(categorie) or {})
     bloc.update(propres)
+    # CIQ660 — une mesure ``requis_si`` (un cos φ exige sa source) est refusée
+    # en NOMMANT le champ quand l'autre est saisi sans elle.
+    for champ in declaration['mesures']:
+        lie = champ.get('requis_si')
+        if (lie and champ['code'] not in erreurs
+                and bloc.get(lie) not in (None, '')
+                and bloc.get(champ['code']) in (None, '')):
+            erreurs[champ['code']] = (
+                f"« {champ['libelle']} » est obligatoire dès que "
+                f"« {connus[lie]['libelle']} » est saisi.")
+    if erreurs:
+        return None, erreurs
+
     if visite.gabarit == checklist.GABARIT_CI:
         etats = dict(bloc.get(checklist.CLE_NON_RELEVES) or {})
         # Saisir ensuite une valeur EFFACE l'état « non relevé ».

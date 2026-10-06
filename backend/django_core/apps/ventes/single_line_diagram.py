@@ -36,6 +36,9 @@ from __future__ import annotations
 
 from html import escape
 
+from core.electrique.schema import blocs_etage_mt
+from core.electrique.types import EtageMt, TransformateurMt
+
 
 def _esc(text) -> str:
     """Échappe un texte pour l'insérer en contenu/attribut SVG."""
@@ -73,6 +76,9 @@ def normalize_diagram_params(params=None):
       - has_battery (bool) : ajoute une branche batterie sous l'onduleur.
       - injection (bool) : True = injection réseau (ONEE), False = autonome.
       - titre (str) : titre du schéma.
+      - etage_mt (EtageMt | dict, facultatif) : CIQ664 — l'étage moyenne
+        tension d'un site livré en MT (relevé validé). Absent, le schéma est
+        celui d'avant, octet pour octet.
     """
     p = dict(params or {})
     n_panneaux = _coerce_int(p.get("n_panneaux"), 0)
@@ -85,7 +91,7 @@ def normalize_diagram_params(params=None):
     if n_strings > n_panneaux > 0:
         n_strings = n_panneaux
     phases = 3 if _coerce_int(p.get("phases"), 1) == 3 else 1
-    return {
+    cfg = {
         "n_panneaux": n_panneaux,
         "puissance_panneau_wc": _coerce_int(p.get("puissance_panneau_wc"), 0),
         "n_strings": n_strings,
@@ -99,6 +105,101 @@ def normalize_diagram_params(params=None):
         "titre": (str(p.get("titre") or "Schéma unifilaire").strip()[:120]
                   or "Schéma unifilaire"),
     }
+    etage = _normaliser_etage_mt(p.get("etage_mt"))
+    if etage is not None:
+        cfg["etage_mt"] = etage
+    return cfg
+
+
+def _normaliser_etage_mt(valeur):
+    """CIQ664 — l'étage MT normalisé en dict, ou ``None`` (site BT).
+
+    Accepte un ``EtageMt`` ou un dict tolérant ; ne lève jamais. Un transformateur
+    sans nombre ni puissance exploitables est ignoré (rien n'est inventé)."""
+    if valeur is None or valeur is False:
+        return None
+    if isinstance(valeur, EtageMt):
+        brut = {
+            "transformateurs": [
+                {"nb": t.nb, "kva": t.kva, "rapport": t.rapport}
+                for t in valeur.transformateurs],
+            "cellule": valeur.cellule,
+            "compteur_production": valeur.compteur_production,
+            "injection_limitee": valeur.injection_limitee,
+        }
+    elif isinstance(valeur, dict):
+        brut = valeur
+    else:
+        return None
+    transformateurs = []
+    for t in brut.get("transformateurs") or []:
+        if not isinstance(t, dict):
+            continue
+        nb = _coerce_int(t.get("nb"), 0)
+        kva = _coerce_float(t.get("kva"), 0.0)
+        if nb > 0 and kva > 0:
+            transformateurs.append({
+                "nb": nb, "kva": kva,
+                "rapport": str(t.get("rapport") or "").strip()[:40]})
+    return {
+        "transformateurs": transformateurs,
+        "cellule": str(brut.get("cellule") or "").strip()[:80],
+        "compteur_production": bool(brut.get("compteur_production")),
+        "injection_limitee": bool(brut.get("injection_limitee")),
+    }
+
+
+def _en_etage(etage):
+    """Le dict normalisé → l'``EtageMt`` du noyau électrique."""
+    return EtageMt(
+        transformateurs=tuple(
+            TransformateurMt(t["nb"], t["kva"], t.get("rapport", ""))
+            for t in etage["transformateurs"]),
+        cellule=etage["cellule"],
+        compteur_production=etage["compteur_production"],
+        injection_limitee=etage["injection_limitee"])
+
+
+def etage_mt_depuis_releve(releve, injection_limitee=False):
+    """CIQ664 — l'``EtageMt`` d'un RELEVÉ DE VISITE MT VALIDÉ, sinon ``None``.
+
+    ``releve`` = le bloc ``releve_ci`` d'une visite (``visites.selectors``,
+    CIQ606/CIQ660). Seul un relevé VALIDÉ (``validee_le``) dont le niveau de
+    tension CONSTATÉ est ``mt`` donne un étage : un site BT, une visite non
+    validée ou un niveau « non relevé » ne dessinent rien. Les transformateurs
+    sont ceux relevés au poste (``poste_mt``) ; ``injection_limitee`` est posé
+    par l'appelant d'après la SORTIE du moteur C&I (CIQ2) — jamais devinée ici.
+    Fonction pure, ne lève jamais."""
+    if not isinstance(releve, dict) or not releve.get("validee_le"):
+        return None
+    tension = releve.get("niveau_tension")
+    if not isinstance(tension, dict) or tension.get("non_releve"):
+        return None
+    if tension.get("constate") != "mt":
+        return None
+    poste = releve.get("poste_mt")
+    poste = poste if isinstance(poste, dict) else {}
+    etage = _normaliser_etage_mt({
+        "transformateurs": poste.get("transformateurs"),
+        "cellule": poste.get("cellule_protection"),
+        "injection_limitee": bool(injection_limitee),
+    })
+    return _en_etage(etage)
+
+
+def _lignes_sous_libelle(texte, largeur=24):
+    """Coupe ``texte`` en lignes de ``largeur`` caractères au plus, aux mots."""
+    lignes, courante = [], ""
+    for mot in str(texte).split():
+        candidate = (courante + " " + mot).strip()
+        if len(candidate) <= largeur or not courante:
+            courante = candidate
+        else:
+            lignes.append(courante)
+            courante = mot
+    if courante:
+        lignes.append(courante)
+    return lignes
 
 
 def _box(x, y, w, h, label, sublabel="", fill="#ffffff", stroke="#1f3a5f"):
@@ -108,7 +209,18 @@ def _box(x, y, w, h, label, sublabel="", fill="#ffffff", stroke="#1f3a5f"):
         f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" '
         f'fill="{fill}" stroke="{stroke}" stroke-width="2"/>',
     ]
-    if sublabel:
+    if isinstance(sublabel, (list, tuple)):
+        # CIQ664 — sous-libellé sur plusieurs lignes (blocs de l'étage MT).
+        parts.append(
+            f'<text x="{cx}" y="{y + h / 2 - 20}" text-anchor="middle" '
+            f'font-size="13" font-weight="600" fill="#1f3a5f">'
+            f'{_esc(label)}</text>')
+        for i, ligne in enumerate(sublabel):
+            parts.append(
+                f'<text x="{cx}" y="{y + h / 2 - 4 + 13 * i}" '
+                f'text-anchor="middle" font-size="11" fill="#555">'
+                f'{_esc(ligne)}</text>')
+    elif sublabel:
         parts.append(
             f'<text x="{cx}" y="{y + h / 2 - 4}" text-anchor="middle" '
             f'font-size="13" font-weight="600" fill="#1f3a5f">'
@@ -145,6 +257,9 @@ def build_single_line_svg(params=None) -> str:
     row_y = 92            # ordonnée de la rangée principale
     box_w, box_h = 150, 70
     gap = 60              # espace flèche entre deux blocs
+    etage_mt = cfg.get("etage_mt")
+    if etage_mt is not None:
+        box_h = 96        # les blocs MT portent un sous-libellé sur 3 lignes
 
     n = cfg["n_panneaux"]
     n_strings = cfg["n_strings"]
@@ -180,6 +295,17 @@ def build_single_line_svg(params=None) -> str:
          if cfg["injection"] else "Compteur", "#f3eefb"),
         (reseau_label, reseau_sub, "#fdeeee"),
     ]
+    if etage_mt is not None:
+        # CIQ664 — l'étage MT s'insère AVANT le réseau : comptage →
+        # transformateur → cellule → découplage → [compteur] → [limiteur] →
+        # réseau. Chaque bloc est « à confirmer » (aucune règle sourcée).
+        blocs_mt = [
+            (b.titre, _lignes_sous_libelle(b.sous_titre.replace("\n", " ")),
+             "#fdf6e3")
+            for b in blocs_etage_mt(_en_etage(etage_mt))]
+        blocks[-1:-1] = blocs_mt
+        width = max(width, 20 + len(blocks) * (box_w + gap) - gap + 20)
+        height = 300
 
     svg = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} '

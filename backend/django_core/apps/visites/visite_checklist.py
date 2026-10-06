@@ -35,6 +35,8 @@ LISTE = 'liste'
 ENTIER = 'entier'
 OBJET = 'objet'
 PIECE = 'piece'
+#: CIQ660 — date ISO (``AAAA-MM-JJ``), ex. la consultation de la plateforme ANRE.
+DATE = 'date'
 
 # Types de manquants exposés dans le bloc ``completude`` du contrat.
 MANQUE_PHOTO = 'photo'
@@ -654,6 +656,225 @@ CATEGORIES_CI = [
     },
 ]
 
+#: CIQ651 — les catégories commerciales du moteur (``Lead.CategorieCommerciale``,
+#: gardé identique par ``test_ciq651_site_commerce``).
+CATEGORIES_COMMERCIALES = [
+    'hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole', 'hammam',
+    'boulangerie', 'froid', 'autre']
+
+#: CIQ651 — types de circuit critique déclarés (choix du contrat CIQ5).
+CIRCUITS_CRITIQUES = ['froid', 'medical', 'informatique', 'cuisine', 'autre']
+
+CATEGORIE_SITE_COMMERCE = 'site_commerce'
+SLOT_ACCORD_PROPRIETAIRE = 'accord_proprietaire'
+
+
+def _categorie_site_commerce(requise, locataire):
+    """CIQ651 — la catégorie ``site_commerce`` du gabarit ``ci`` : requise pour
+    un lead ``commercial``, facultative sinon. La pièce « accord du
+    propriétaire » n'est servie que pour un lead LOCATAIRE (lu par
+    ``crm.selectors``, jamais ressaisi). Que des faits déclarés ou observés."""
+    slots = [{
+        'code': 'secours_existant',
+        'libelle': ('Secours existant (groupe, onduleur UPS, inverseur) '
+                    '(optionnel)'),
+        'guide': ("Plaque ou vue du groupe, de l'onduleur UPS ou de "
+                  "l'inverseur de source."),
+        'requis': False,
+        'min_photos': 1,
+    }]
+    if locataire:
+        slots.append({
+            'code': SLOT_ACCORD_PROPRIETAIRE,
+            'libelle': 'Accord du propriétaire (optionnel)',
+            'guide': 'Pièce signée du propriétaire : le lead est locataire.',
+            'requis': False,
+            'min_photos': 1,
+        })
+    return {
+        'categorie': CATEGORIE_SITE_COMMERCE,
+        'libelle': 'Site commerce',
+        'slots': slots,
+        'mesures': [
+            {'code': 'categorie', 'libelle': 'Catégorie du site',
+             'nature': CHOIX, 'requis': requise,
+             'choix': list(CATEGORIES_COMMERCIALES)},
+            {'code': 'horaires_constates',
+             'libelle': "Horaires et jours d'ouverture",
+             'nature': TEXTE, 'requis': requise},
+            {'code': 'equipements_principaux',
+             'libelle': 'Équipements principaux',
+             'nature': TEXTE, 'requis': False},
+            {'code': 'circuits_critiques', 'libelle': 'Circuits critiques',
+             'nature': LISTE, 'requis': False,
+             'forme': [
+                 {'code': 'circuit', 'libelle': 'Circuit critique',
+                  'nature': CHOIX, 'requis': True,
+                  'choix': list(CIRCUITS_CRITIQUES)},
+                 {'code': 'precision', 'libelle': 'Précision',
+                  'nature': TEXTE, 'requis': False},
+             ]},
+            {'code': 'secours_groupe', 'libelle': 'Groupe électrogène existant',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'secours_ups', 'libelle': 'Onduleur UPS existant',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'secours_inverseur',
+             'libelle': 'Inverseur de source existant',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'acces_pendant_ouverture',
+             'libelle': "Contraintes d'accès pendant l'ouverture",
+             'nature': TEXTE, 'requis': False},
+            {'code': 'besoin_continuite_service',
+             'libelle': 'Besoin de continuité de service',
+             'nature': BOOLEEN, 'requis': requise},
+        ],
+    }
+
+
+#: CIQ660 (contrat CIQ5 ``gabarit_ci_supplement_mt``) — le SUPPLÉMENT d'un site
+#: raccordé en MOYENNE tension, servi quand ``comptage.niveau_tension_constate``
+#: vaut ``mt``. Que des faits : aucun seuil, aucun verdict, aucune alerte cos φ.
+CATEGORIES_CI_MT = [
+    {
+        'categorie': 'poste_mt',
+        'libelle': 'Poste de livraison et TGBT',
+        'slots': [
+            {
+                'code': 'cellule_mt',
+                'libelle': 'Cellule MT et sa protection',
+                'guide': 'Cellule et protection existantes, plaque lisible.',
+                'requis': True,
+                'min_photos': 1,
+            },
+            {
+                'code': 'transformateur_plaque',
+                'libelle': 'Plaque du transformateur',
+                'guide': 'Puissance et tension lisibles sur la plaque.',
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'cellule_protection',
+             'libelle': 'Cellule et protection existantes',
+             'nature': TEXTE, 'requis': True},
+            {'code': 'transformateurs', 'libelle': 'Transformateurs',
+             'nature': LISTE, 'requis': True,
+             'forme': [
+                 {'code': 'nb', 'libelle': 'Nombre', 'nature': ENTIER,
+                  'requis': True},
+                 {'code': 'kva', 'libelle': 'Puissance (kVA)',
+                  'nature': NOMBRE, 'requis': True},
+             ]},
+            {'code': 'tgbt_courant_assigne_a',
+             'libelle': 'TGBT : courant assigné (A)', 'unite': 'A',
+             'nature': NOMBRE, 'requis': False},
+            {'code': 'tgbt_jeu_de_barres', 'libelle': 'TGBT : jeu de barres',
+             'nature': TEXTE, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'factures_mt',
+        'libelle': 'Factures MT et cos φ',
+        'slots': [
+            {
+                'code': 'factures_mt',
+                'libelle': 'Les 12 dernières factures (registres)',
+                'guide': 'Registres pointe / pleines / creuses lisibles.',
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'registres',
+             'libelle': ('12 factures : registres pointe / pleines / creuses '
+                         '(photos)'),
+             'nature': LISTE, 'requis': False,
+             'forme': [
+                 {'code': 'mois', 'libelle': 'Mois (AAAA-MM)',
+                  'nature': TEXTE, 'requis': False},
+                 {'code': 'pointe_kwh', 'libelle': 'Pointe (kWh)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'pleines_kwh', 'libelle': 'Pleines (kWh)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'creuses_kwh', 'libelle': 'Creuses (kWh)',
+                  'nature': NOMBRE, 'requis': False},
+             ]},
+            {'code': 'cos_phi_constate', 'libelle': 'cos φ constaté',
+             'nature': NOMBRE, 'requis': False},
+            # Un cos φ sans sa SOURCE est refusé (CIQ660) ; ``inconnu`` est
+            # une source valide.
+            {'code': 'source_cos_phi', 'libelle': 'Source du cos φ',
+             'nature': CHOIX, 'requis': False,
+             'requis_si': 'cos_phi_constate',
+             'choix': ['facture', 'mesure', 'inconnu']},
+        ],
+    },
+    {
+        'categorie': 'reactif_secours',
+        'libelle': 'Compensation et groupe électrogène',
+        'slots': [],
+        'mesures': [
+            {'code': 'condensateurs_kvar',
+             'libelle': 'Batterie de condensateurs (kvar)', 'unite': 'kvar',
+             'nature': NOMBRE, 'requis': False},
+            {'code': 'condensateurs_etat',
+             'libelle': 'État de la batterie de condensateurs',
+             'nature': TEXTE, 'requis': False},
+            {'code': 'groupe_kva', 'libelle': 'Groupe électrogène (kVA)',
+             'unite': 'kVA', 'nature': NOMBRE, 'requis': False},
+            {'code': 'groupe_inverseur', 'libelle': 'Inverseur de source',
+             'nature': BOOLEEN, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'charges_principales',
+        'libelle': 'Charges principales',
+        'slots': [],
+        'mesures': [
+            {'code': 'charges',
+             'libelle': ('Charges principales (moteurs, variateurs, fours, '
+                         'soudage)'),
+             'nature': LISTE, 'requis': False,
+             'forme': [
+                 {'code': 'libelle', 'libelle': 'Charge', 'nature': TEXTE,
+                  'requis': True},
+                 {'code': 'puissance_kw', 'libelle': 'Puissance (kW)',
+                  'nature': NOMBRE, 'requis': False},
+             ]},
+        ],
+    },
+    {
+        'categorie': 'reseau_assurance',
+        'libelle': 'Réseau et assurance',
+        'slots': [],
+        'mesures': [
+            {'code': 'poste_source', 'libelle': 'Poste source',
+             'nature': TEXTE, 'requis': False},
+            # Saisie MANUELLE : aucun scraping de la plateforme (règle #5).
+            {'code': 'capacite_poste_source',
+             'libelle': ('Capacité lue sur la plateforme ANRE (saisie '
+                         'manuelle, aucun scraping — règle #5)'),
+             'nature': TEXTE, 'requis': False},
+            {'code': 'capacite_consultee_le',
+             'libelle': 'Date de consultation de la plateforme',
+             'nature': DATE, 'requis': False},
+            {'code': 'assureur', 'libelle': 'Assureur du site',
+             'nature': TEXTE, 'requis': False},
+            {'code': 'exigences_assureur_piece',
+             'libelle': "Exigences écrites de l'assureur",
+             'nature': PIECE, 'requis': False},
+            {'code': 'compartimentage_sprinklers',
+             'libelle': 'Compartimentage / sprinklers',
+             'nature': TEXTE, 'requis': False},
+            {'code': 'profil_charge_mesure_fichier',
+             'libelle': 'Fichier de profil de charge mesuré (facultatif)',
+             'nature': PIECE, 'requis': False},
+        ],
+    },
+]
+
+
 #: AGR412 — les gabarits de visite (``VisiteTerrain.gabarit``).
 GABARIT_TOITURE = 'toiture'
 GABARIT_POINT_EAU = 'point_eau'
@@ -665,31 +886,67 @@ _PAR_GABARIT = {
 }
 
 
-def categories(gabarit=GABARIT_TOITURE, niveau=None):
+_VARIANTES_CI = {}
+
+
+def _variante_ci(commerce, mt, locataire):
+    """La liste de catégories ``ci`` pour (``commerce`` : ``None`` | ``'requise'``
+    | ``'facultative'``, ``mt``, ``locataire``) ; mémorisée, jamais mutée."""
+    cle = (commerce, mt, bool(locataire and commerce))
+    if cle not in _VARIANTES_CI:
+        liste = list(CATEGORIES_CI)
+        if commerce:
+            liste.insert(0, _categorie_site_commerce(
+                commerce == 'requise', cle[2]))
+        if mt:
+            liste.extend(CATEGORIES_CI_MT)
+        _VARIANTES_CI[cle] = liste
+    return _VARIANTES_CI[cle]
+
+
+def categories(gabarit=GABARIT_TOITURE, niveau=None, type_lead=None,
+               locataire=False):
     """Les catégories du ``gabarit``, dans l'ordre du wizard (toiture par
     défaut : un gabarit inconnu retombe sur la checklist historique).
 
-    ``niveau`` = la mesure ``comptage.niveau_tension_constate`` : seul le
-    gabarit ``ci`` le lira (le supplément MT est branché par CIQ660) ; ``bt``,
-    ``inconnu`` ou ``None`` servent le socle commun + BT."""
-    return _PAR_GABARIT.get(gabarit or GABARIT_TOITURE, CATEGORIES)
+    Seul le gabarit ``ci`` varie : ``niveau`` = la mesure
+    ``comptage.niveau_tension_constate`` (``mt`` ajoute le supplément MT,
+    CIQ660 ; ``bt``, ``inconnu`` ou ``None`` servent le socle) ; ``type_lead``
+    (``commercial`` → catégorie ``site_commerce`` requise, tout autre type
+    renseigné → facultative, ``None`` → absente) et ``locataire`` (ajoute la
+    pièce « accord du propriétaire », CIQ651)."""
+    if (gabarit or GABARIT_TOITURE) != GABARIT_CI:
+        return _PAR_GABARIT.get(gabarit or GABARIT_TOITURE, CATEGORIES)
+    commerce = None
+    if type_lead:
+        commerce = 'requise' if type_lead == 'commercial' else 'facultative'
+    mt = niveau == 'mt'
+    if commerce is None and not mt:
+        return CATEGORIES_CI
+    return _variante_ci(commerce, mt, locataire)
 
 
-def categorie(code, gabarit=GABARIT_TOITURE):
+def categorie(code, gabarit=GABARIT_TOITURE, **contexte):
     """La catégorie ``code`` du ``gabarit``, ou ``None``."""
-    for cat in categories(gabarit):
+    for cat in categories(gabarit, **contexte):
         if cat['categorie'] == code:
             return cat
     return None
 
 
-def slots(gabarit=GABARIT_TOITURE):
+def slots(gabarit=GABARIT_TOITURE, **contexte):
     """Tous les slots photo du ``gabarit``, à plat, avec leur catégorie."""
     plats = []
-    for cat in categories(gabarit):
+    for cat in categories(gabarit, **contexte):
         for slot in cat['slots']:
             plats.append(dict(slot, categorie=cat['categorie']))
     return plats
+
+
+#: Tout ce que le gabarit ``ci`` peut servir (libellé d'une photo quelle que
+#: soit la visite).
+_CONTEXTE_CI_COMPLET = {'niveau': 'mt', 'type_lead': 'commercial',
+                        'locataire': True}
 
 
 def slot(code, gabarit=None):
@@ -699,26 +956,27 @@ def slot(code, gabarit=None):
     quelle que soit la visite) ; sinon dans celui-là seulement."""
     gabarits = ([gabarit] if gabarit else list(_PAR_GABARIT))
     for nom in gabarits:
-        for item in slots(nom):
+        contexte = _CONTEXTE_CI_COMPLET if nom == GABARIT_CI else {}
+        for item in slots(nom, **contexte):
             if item['code'] == code:
                 return item
     return None
 
 
-def codes_slots(gabarit=GABARIT_TOITURE):
+def codes_slots(gabarit=GABARIT_TOITURE, **contexte):
     """L'ensemble des codes de slot du ``gabarit`` (garde d'upload VT2)."""
-    return {item['code'] for item in slots(gabarit)}
+    return {item['code'] for item in slots(gabarit, **contexte)}
 
 
-def mesures(categorie_code, gabarit=GABARIT_TOITURE):
+def mesures(categorie_code, gabarit=GABARIT_TOITURE, **contexte):
     """Les mesures déclarées pour ``categorie_code`` (liste, jamais None)."""
-    cat = categorie(categorie_code, gabarit)
+    cat = categorie(categorie_code, gabarit, **contexte)
     return list(cat['mesures']) if cat else []
 
 
-def mesure(categorie_code, code, gabarit=GABARIT_TOITURE):
+def mesure(categorie_code, code, gabarit=GABARIT_TOITURE, **contexte):
     """La déclaration de la mesure ``code`` dans sa catégorie, ou ``None``."""
-    for champ in mesures(categorie_code, gabarit):
+    for champ in mesures(categorie_code, gabarit, **contexte):
         if champ['code'] == code:
             return champ
     return None
@@ -731,6 +989,11 @@ def mesure_requise(champ, valeurs):
     est vrai (seul cas aujourd'hui : la pente d'un TOIT PLAT n'existe pas).
     Aucune autre conditionnalité — et surtout aucun seuil de jugement.
     """
+    lie = champ.get('requis_si')
+    if lie and (valeurs or {}).get(lie) not in (None, ''):
+        # CIQ660 — exigée dès que l'autre champ est saisi (un cos φ exige sa
+        # source), même si elle n'est pas requise par ailleurs.
+        return True
     if not champ.get('requis'):
         return False
     dispense = champ.get('sauf_si')

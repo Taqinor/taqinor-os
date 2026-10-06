@@ -305,6 +305,45 @@ def poser_sla_due_at(ticket, *, persister=True):
     return ticket
 
 
+#: CIQ642 — chantiers et régimes pour lesquels un arrêt d'exploitation se
+#: notifie au distributeur (accord) ou aux services de l'énergie
+#: (autorisation) : décret 2.25.100 art. 28. Les codes sont ceux stockés par
+#: ``installations.Installation.regime_8221``.
+REGIMES_NOTIFICATION_ARRET = ('accord_raccordement', 'autorisation_anre')
+TYPE_CHANTIER_NOTIFICATION_ARRET = 'industriel'
+
+#: CIQ642 — la prochaine action posée sur le dossier 82-21.
+ACTION_NOTIFIER_ARRET = (
+    "Notifier l'arrêt de l'installation au distributeur "
+    '(décret 2.25.100 art. 28)')
+
+
+def notifier_arret_installation(ticket):
+    """CIQ642 — un ticket marqué « installation à l'arrêt » sur un chantier
+    ``industriel`` dont le régime est accord ou autorisation pose, sur son
+    dossier 82-21, la prochaine action « Notifier l'arrêt de l'installation au
+    distributeur ». Aucun envoi, aucun délai inventé ; une seule fois (la
+    façade ventes est idempotente) ; chantier résidentiel ou agricole, ticket
+    sans chantier, régime autre ou dossier absent : rien, sans erreur.
+    Lecture du chantier par ``installations.selectors``, écriture par
+    ``ventes.services`` (jamais un import de modèle). Rend le dossier touché
+    ou ``None``."""
+    if not getattr(ticket, 'arret_installation', False):
+        return None
+    if ticket.installation_id is None or ticket.company_id is None:
+        return None
+    from apps.installations.selectors import installation_scoped
+    from apps.ventes.services import ajouter_action_dossier_8221
+
+    chantier = installation_scoped(ticket.company, ticket.installation_id)
+    if (chantier is None
+            or chantier.type_installation != TYPE_CHANTIER_NOTIFICATION_ARRET
+            or chantier.regime_8221 not in REGIMES_NOTIFICATION_ARRET):
+        return None
+    return ajouter_action_dossier_8221(
+        chantier.pk, ACTION_NOTIFIER_ARRET, company=ticket.company)
+
+
 def create_corrective_ticket(*, company, client, installation, description,
                              created_by):
     """F16 — crée un ticket SAV correctif (référence sans collision via

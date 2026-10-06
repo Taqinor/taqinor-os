@@ -11,6 +11,7 @@ vi.mock('../../api/visitesApi', () => ({
 }))
 
 import VisiteMesuresForm from './VisiteMesuresForm'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 beforeEach(() => { vi.clearAllMocks() })
 
@@ -92,4 +93,73 @@ describe('VisiteMesuresForm — VT10', () => {
       expect(await screen.findByRole('option', { name: libelle })).toBeInTheDocument()
     }
   })
+})
+
+// CIQ609 — enregistrer → rouvrir → enregistrer sans toucher = même PATCH
+// (valeurs de l'`exemple_ci` du contrat partagé, jamais inventées).
+describe('VisiteMesuresForm — CIQ609 (aller-retour stable)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const MESURES = contrat.exemple_ci.mesures
+
+  it.each(['toiture_ci', 'tableau_general', 'comptage', 'cheminement', 'acces_securite'])(
+    '%s : le 2e enregistrement sans toucher envoie exactement le même PATCH', async (categorie) => {
+      patchVisiteMesures.mockResolvedValue({ data: {} })
+      const user = userEvent.setup()
+      const nonReleves = contrat.exemple_ci._non_releves
+      const premier = render(
+        <VisiteMesuresForm
+          visiteId={7} categorie={categorie} libelle={categorie} gabarit="ci"
+          valeurs={MESURES[categorie]} nonReleves={nonReleves} onSaved={() => {}}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+      const p1 = patchVisiteMesures.mock.calls[0][2]
+      premier.unmount()
+      // Le serveur rend la valeur normalisée (nombres, null) : on la remet telle quelle.
+      render(
+        <VisiteMesuresForm
+          visiteId={7} categorie={categorie} libelle={categorie} gabarit="ci"
+          valeurs={JSON.parse(JSON.stringify(p1))} nonReleves={nonReleves} onSaved={() => {}}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+      expect(patchVisiteMesures.mock.calls[1][2]).toEqual(p1)
+    })
+
+  it('le gabarit toiture n’envoie jamais « _non_releves » (le serveur le refuse)', async () => {
+    patchVisiteMesures.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    render(<VisiteMesuresForm visiteId={7} categorie="toiture" libelle="Toiture" valeurs={{}} onSaved={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[0][2]).not.toHaveProperty('_non_releves')
+  })
+})
+
+// CIQ661 — supplément MT : même aller-retour stable, valeurs de `exemple_ci_mt`.
+describe('VisiteMesuresForm — CIQ661 (supplément MT)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const MT = contrat.exemple_ci_mt
+
+  it.each(Object.keys(contrat.gabarit_ci_supplement_mt))(
+    '%s : le 2e enregistrement sans toucher envoie exactement le même PATCH', async (categorie) => {
+      patchVisiteMesures.mockResolvedValue({ data: {} })
+      const user = userEvent.setup()
+      const premier = render(
+        <VisiteMesuresForm
+          visiteId={7} categorie={categorie} libelle={categorie} gabarit="ci"
+          valeurs={MT.mesures[categorie]} nonReleves={MT._non_releves} onSaved={() => {}}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+      const p1 = patchVisiteMesures.mock.calls[0][2]
+      premier.unmount()
+      render(
+        <VisiteMesuresForm
+          visiteId={7} categorie={categorie} libelle={categorie} gabarit="ci"
+          valeurs={JSON.parse(JSON.stringify(p1))} nonReleves={MT._non_releves} onSaved={() => {}}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+      expect(patchVisiteMesures.mock.calls[1][2]).toEqual(p1)
+    })
 })
