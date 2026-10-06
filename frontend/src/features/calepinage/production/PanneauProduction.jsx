@@ -3,10 +3,14 @@ import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
+import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card, Spinner, Stat } from '../../../ui'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import RetourAtelier from '../atelier/RetourAtelier'
+import {
+  LIBELLE_BOUTON, etatCalcul, issueDuJob, refusDepuisErreur, refusRenvoieAuxReglages,
+} from './suiviSimulation'
 import TapisHoraire from './TapisHoraire'
 
 /* ============================================================================
@@ -85,36 +89,25 @@ export function BandeauPerime({ motif }) {
   )
 }
 
-const JOB_EN_ATTENTE = new Set(['PENDING', 'STARTED', 'RETRY'])
-
-/** Le refus 400 de `POST simuler/` : `{champ: [motif]}` (règle fondateur —
-    jamais un refus générique, le champ fautif est toujours nommé). */
-function refusDepuisErreur(erreur) {
-  const corps = erreur?.response?.data
-  if (!corps || typeof corps !== 'object') {
-    return { champ: '', motif: 'Simulation refusée par le serveur.' }
-  }
-  const [champ, valeur] = Object.entries(corps)[0] || []
-  const motif = Array.isArray(valeur) ? valeur[0] : valeur
-  return {
-    champ: champ || '',
-    motif: (typeof motif === 'string' && motif) || 'Simulation refusée par le serveur.',
-  }
-}
-
 /* ============================================================================
-   CALX48 — LE REFUS ACTIONNABLE : PARTAGÉ PAR LES DEUX PANNEAUX.
+   ACAL125 — LE BOUTON DE CALCUL UNIQUE, PARTAGÉ PAR LES QUATRE ÉCRANS.
    ----------------------------------------------------------------------------
-   Un bouton « Lancer la simulation » (`POST simuler/`, CALX5), le suivi du
-   travail de fond par `moteur/resultat/<job_id>/` (MÊME patron que
-   `RemplissageProuve.jsx`, CAL79 — un seul kind, D-CALX 12) et la liste
-   NOMMÉE de ce qui manque, publiée par le serveur (`avertissements`) — jamais
-   devinée ici. `DiagrammePertes.jsx` (même tâche) importe ce composant plutôt
-   que de dupliquer le suivi de job.
+   Un seul bouton, toujours visible pour qui peut gérer (`calepinage_gerer`),
+   dont le libellé dit l'état RÉEL du résultat servi : « Lancer » (jamais
+   simulé), « Relancer (document modifié) » (périmé), « Recalculer »
+   (frais → `forcer: true`). Il suit le travail de fond par
+   `moteur/resultat/<job_id>/` avec les statuts réels du serveur
+   (`suiviSimulation.js` : queued/running = attente, done = succès, failed =
+   refus structuré nommant le champ) et la liste NOMMÉE de ce qui manque,
+   publiée par le serveur (`avertissements`) — jamais devinée ici. Il n'est
+   PAS désactivé quand aucun poste de perte n'est saisi : le service
+   n'en exige aucun.
    ========================================================================== */
-export function BoutonLancerSimulation({
-  calepinageId, avertissements = [], desactive = false, intervalleMs = 2000, onTermine,
+export function BoutonCalculer({
+  calepinageId, data = null, avertissements = [], intervalleMs = 2000, onTermine,
+  declenchement = 0,
 }) {
+  const peutGerer = useHasPermission('calepinage_gerer')
   const [enCours, setEnCours] = useState(false)
   const [job, setJob] = useState(null)
   const [refus, setRefus] = useState(null)
@@ -125,22 +118,24 @@ export function BoutonLancerSimulation({
     if (minuterie.current) clearTimeout(minuterie.current)
   }, [])
 
+  const etat = etatCalcul(data)
+
   const suivre = (jobId) => {
     Promise.resolve(calepinageApi.moteur.resultat(jobId))
       .then((res) => {
         const suivi = res?.data ?? null
         setJob(suivi)
-        if (JOB_EN_ATTENTE.has(String(suivi?.statut || '').toUpperCase())) {
+        const issue = issueDuJob(suivi)
+        if (issue.etat === 'attente') {
           minuterie.current = setTimeout(() => suivre(jobId), intervalleMs)
           return
         }
         setEnCours(false)
-        if (suivi?.resultat) {
-          // Les chiffres arrivent SANS rechargement complet : un simple
-          // `refetch()` du panneau appelant.
+        if (issue.etat === 'succes') {
+          // Le résultat est RELU du serveur (aucun calcul ni recopie ici).
           onTermine?.()
         } else {
-          setRefus({ champ: '', motif: suivi?.message_erreur || 'La simulation a échoué.' })
+          setRefus(issue.refus)
         }
       })
       .catch(() => {
@@ -149,11 +144,15 @@ export function BoutonLancerSimulation({
       })
   }
 
-  const lancer = () => {
+  const lancer = (forcerDemande = false) => {
     if (!calepinageId) return
     setRefus(null)
     setEnCours(true)
-    Promise.resolve(calepinageApi.calepinages.simuler(calepinageId))
+    const forcer = forcerDemande || etat === 'frais'
+    const appel = forcer
+      ? calepinageApi.calepinages.simuler(calepinageId, { forcer: true })
+      : calepinageApi.calepinages.simuler(calepinageId)
+    Promise.resolve(appel)
       .then((res) => {
         const donnees = res?.data ?? null
         if (donnees?.job_id) {
@@ -162,8 +161,7 @@ export function BoutonLancerSimulation({
           return
         }
         // 200 « déjà calculé » (hash inchangé) : rien à recalculer, mais
-        // l'écran se rafraîchit quand même (course possible avec un calcul
-        // qui vient de finir ailleurs).
+        // l'écran se rafraîchit quand même.
         setEnCours(false)
         onTermine?.()
       })
@@ -173,21 +171,31 @@ export function BoutonLancerSimulation({
       })
   }
 
-  // CALX69 — un refus sur un réglage de simulation renvoie vers son écran.
-  const versReglages = typeof refus?.champ === 'string'
-    && refus.champ.startsWith('parametres.simulation')
+  // ACAL167 — « Enregistrer et relancer » : le parent incrémente `declenchement`,
+  // le bouton lance alors LA MÊME relance forcée (une seule logique de suivi).
+  const dernierDeclenchement = useRef(declenchement)
+  useEffect(() => {
+    if (declenchement !== dernierDeclenchement.current) {
+      dernierDeclenchement.current = declenchement
+      lancer(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `lancer` est recréée à chaque rendu ; seul le compteur déclenche
+  }, [declenchement])
+
+  if (!peutGerer) return null
 
   return (
     <div className="flex flex-col gap-2" data-testid="calx48-lancer">
       <Button
         type="button"
         size="sm"
-        onClick={lancer}
-        disabled={enCours || desactive}
+        onClick={() => lancer()}
+        disabled={enCours || !calepinageId}
         data-testid="calx48-lancer-bouton"
+        data-etat={etat}
         className="w-fit"
       >
-        {enCours ? 'Simulation en cours…' : 'Lancer la simulation'}
+        {enCours ? 'Simulation en cours…' : LIBELLE_BOUTON[etat]}
       </Button>
 
       {/* L'AVANCEMENT PUBLIÉ par la tâche de fond — jamais une barre qui
@@ -220,7 +228,7 @@ export function BoutonLancerSimulation({
       {refus && (
         <p className="text-sm text-destructive" role="alert" data-testid="calx48-refus">
           {refus.motif}
-          {versReglages && (
+          {refusRenvoieAuxReglages(refus) && (
             <>
               {' '}
               <Link to="/calepinage/reglages" className="underline" data-testid="calx48-lien-reglages">
@@ -342,7 +350,7 @@ function TableauParPan({ parPan }) {
   )
 }
 
-export default function PanneauProduction({ calepinageId }) {
+export default function PanneauProduction({ calepinageId, intervalleMs = 2000 }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -372,9 +380,6 @@ export default function PanneauProduction({ calepinageId }) {
   // CALX70 : un document qui a changé depuis le dernier calcul reste `simule:
   // false`, mais le motif « périmé » remplace celui de « jamais lancé ».
   const perime = data?.simulation_perimee === true
-  // CALX48 — Done : « sans poste de perte, le bouton est inactif ». `pertes`
-  // (liste plate) ET `cascade.etapes` valent tous deux « rien à simuler ».
-  const pertesVides = !(data?.pertes?.length) && !(data?.cascade?.etapes?.length)
   // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — `pose` est TOUJOURS
   // chiffrée (contrat CAL244 : « la pose est un fait », jamais `null`, même
   // non simulée/périmée) : `pose.total_modules === 0` dit sans détour qu'
@@ -392,14 +397,13 @@ export default function PanneauProduction({ calepinageId }) {
       {perime
         ? <BandeauPerime motif={data?.motif} />
         : (!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />)}
-      {!data?.simule && (
-        <BoutonLancerSimulation
-          calepinageId={id}
-          avertissements={data?.avertissements ?? []}
-          desactive={pertesVides}
-          onTermine={refetch}
-        />
-      )}
+      <BoutonCalculer
+        calepinageId={id}
+        data={data}
+        avertissements={data?.simule ? [] : (data?.avertissements ?? [])}
+        intervalleMs={intervalleMs}
+        onTermine={refetch}
+      />
       <BlocBase base={production?.base} />
       <TotalKpis total={production?.total} />
       <div className="grid gap-4 sm:grid-cols-2">

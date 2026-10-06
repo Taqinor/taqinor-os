@@ -18,6 +18,9 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
+/* ACAL125 — le bouton de calcul est sous `calepinage_gerer` (doublure : pas de Provider Redux). */
+vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
+
 import calepinageApi from '../../../api/calepinageApi'
 import DiagrammePertes from './DiagrammePertes'
 
@@ -93,6 +96,24 @@ describe('DiagrammePertes (CAL143)', () => {
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
     )).toBeInTheDocument()
     expect(screen.queryByTestId('cal143-cascade')).toBeNull()
+  })
+
+  it('ACAL125 — jamais simulé sans poste (exemple_vide tel quel) : « Lancer » est actif', async () => {
+    servir('exemple_vide')
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    const bouton = screen.getByTestId('calx48-lancer-bouton')
+    expect(bouton).not.toBeDisabled()
+    expect(bouton).toHaveTextContent('Lancer la simulation')
+  })
+
+  it('ACAL125 — résultat frais : « Recalculer » est visible', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal143-panneau')
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Recalculer')
   })
 
   it('erreur réseau : message français, aucune valeur inventée', async () => {

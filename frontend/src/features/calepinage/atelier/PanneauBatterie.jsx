@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    `STRATEGIES`, `depuisEntree` et `corpsDeclaration` sont des constantes et des fonctions PURES que le
    test confronte directement (même dérogation que `Raccordement.jsx`). */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
@@ -9,6 +9,7 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card, Input, Label, Spinner, Stat } from '../../../ui'
 import { nombreOuNull, refusParChamp, texteOuNull } from '../electrique/entreeElectrique'
+import { BoutonCalculer } from '../production/PanneauProduction'
 
 /* ============================================================================
    CALX14 — LE PANNEAU « BATTERIE », ET CE QUE LA CHAÎNE CALCULE DEVIENT ENFIN
@@ -121,114 +122,6 @@ function MotifAbsence({ motif, testId }) {
       <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
       <span>{motif}</span>
     </p>
-  )
-}
-
-const JOB_EN_ATTENTE = new Set(['PENDING', 'STARTED', 'RETRY'])
-
-/**
- * CALX14 — relance la simulation (`POST simuler/`, `forcer: true`) et suit le
- * travail de fond par `moteur/resultat/<job_id>/` (même patron que
- * `RemplissageProuve.jsx`, CAL79, et `PanneauProduction.jsx`, CALX48— repris
- * ici plutôt qu'importé : ce panneau reste dans SON fichier, D-CALX 13).
- * AUCUN calcul n'est refait côté navigateur.
- */
-function BoutonRelancerSimulation({ calepinageId, onTermine, declenchement = 0 }) {
-  const [enCours, setEnCours] = useState(false)
-  const [job, setJob] = useState(null)
-  const [refus, setRefus] = useState(null)
-  const minuterie = useRef(null)
-
-  useEffect(() => () => {
-    if (minuterie.current) clearTimeout(minuterie.current)
-  }, [])
-
-  const suivre = (jobId) => {
-    Promise.resolve(calepinageApi.moteur.resultat(jobId))
-      .then((res) => {
-        const suivi = res?.data ?? null
-        setJob(suivi)
-        if (JOB_EN_ATTENTE.has(String(suivi?.statut || '').toUpperCase())) {
-          minuterie.current = setTimeout(() => suivre(jobId), 2000)
-          return
-        }
-        setEnCours(false)
-        if (suivi?.resultat) {
-          onTermine?.()
-        } else {
-          setRefus(suivi?.message_erreur || 'La simulation a échoué.')
-        }
-      })
-      .catch(() => {
-        setEnCours(false)
-        setRefus('Le suivi du calcul de fond a été interrompu.')
-      })
-  }
-
-  const relancer = () => {
-    if (!calepinageId) return
-    setRefus(null)
-    setEnCours(true)
-    Promise.resolve(calepinageApi.calepinages.simuler(calepinageId, { forcer: true }))
-      .then((res) => {
-        const donnees = res?.data ?? null
-        if (donnees?.job_id) {
-          setJob(donnees)
-          suivre(donnees.job_id)
-          return
-        }
-        setEnCours(false)
-        onTermine?.()
-      })
-      .catch((e) => {
-        setEnCours(false)
-        const corps = e?.response?.data
-        let motif = null
-        if (corps && typeof corps === 'object') {
-          const valeur = Object.values(corps)[0]
-          motif = Array.isArray(valeur) ? valeur[0] : valeur
-        }
-        setRefus((typeof motif === 'string' && motif) || 'Relance refusée par le serveur.')
-      })
-  }
-
-  // ACAL167 — « Enregistrer et relancer » : le parent incrémente `declenchement`, le bouton
-  // lance alors LA MÊME relance (une seule logique de suivi du travail de fond).
-  const dernierDeclenchement = useRef(declenchement)
-  useEffect(() => {
-    if (declenchement !== dernierDeclenchement.current) {
-      dernierDeclenchement.current = declenchement
-      relancer()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `relancer` est recréée à chaque rendu ; seul le compteur déclenche
-  }, [declenchement])
-
-  return (
-    <div className="flex flex-col gap-2" data-testid="calx14-relancer">
-      <Button
-        type="button"
-        size="sm"
-        onClick={relancer}
-        disabled={enCours || !calepinageId}
-        data-testid="calx14-relancer-bouton"
-        className="w-fit"
-      >
-        {enCours ? 'Relance en cours…' : 'Relancer la simulation (stratégie actuelle)'}
-      </Button>
-      {enCours && job?.job_id && (
-        <p className="text-xs text-muted-foreground" role="status" data-testid="calx14-avancement">
-          Calcul de fond n°{job.job_id} —{' '}
-          {job.progress_pct === null || job.progress_pct === undefined
-            ? 'avancement non publié'
-            : `${job.progress_pct} %`}
-        </p>
-      )}
-      {refus && (
-        <p className="text-sm text-destructive" role="alert" data-testid="calx14-refus">
-          {refus}
-        </p>
-      )}
-    </div>
   )
 }
 
@@ -680,7 +573,7 @@ function BlocHorsReseau({ horsReseau }) {
   )
 }
 
-export default function PanneauBatterie({ calepinageId }) {
+export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -706,7 +599,7 @@ export default function PanneauBatterie({ calepinageId }) {
         ? <BandeauPerime motif={data?.motif} />
         : (!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />)}
       <DeclarationBatterie id={id} onRelancer={() => setRelance((n) => n + 1)} />
-      <BoutonRelancerSimulation calepinageId={id} onTermine={refetch} declenchement={relance} />
+      <BoutonCalculer calepinageId={id} data={data} onTermine={refetch} declenchement={relance} intervalleMs={intervalleMs} />
       {!perime && data?.simule && (
         <>
           <BlocBatterie batterie={data?.batterie} />

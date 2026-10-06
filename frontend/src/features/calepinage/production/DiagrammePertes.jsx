@@ -7,7 +7,7 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
-import { BandeauPerime, BoutonLancerSimulation } from './PanneauProduction'
+import { BandeauPerime, BoutonCalculer } from './PanneauProduction'
 import { ChartFrame, ChartTooltip, ChartEmpty } from '../../../ui/charts'
 import {
   CHART_TOKENS, CHART_GRID_STYLE, BAR_RADIUS, animationDuration, CHART_ANIM_EASING,
@@ -177,10 +177,9 @@ export default function DiagrammePertes({ calepinageId }) {
     )
   }
 
-  const pertes = data?.production?.pertes ?? data?.pertes ?? []
+  const pertes = data?.pertes ?? []
   const etapesCascade = Array.isArray(data?.cascade?.etapes) ? data.cascade.etapes : []
   const perime = data?.simulation_perimee === true
-  const pertesVides = !(pertes.length) && !(etapesCascade.length)
 
   return (
     <>
@@ -188,17 +187,16 @@ export default function DiagrammePertes({ calepinageId }) {
       <Card className="flex flex-col gap-3 p-4" data-testid="cal143-panneau">
       <h2 className="text-base font-semibold">Diagramme de pertes</h2>
       {perime && <BandeauPerime motif={data?.motif} />}
-      {!data?.simule && (
-        /* CALX48 — les manques restent affichés par le panneau Production
-           (qui, lui, pointe VERS cet onglet Pertes) : les redire ICI créerait
-           un lien qui pointe sur l'onglet où l'on est déjà. */
-        <BoutonLancerSimulation
-          calepinageId={id}
-          avertissements={[]}
-          desactive={pertesVides}
-          onTermine={refetch}
-        />
-      )}
+      {/* CALX48 — les manques restent affichés par le panneau Production
+          (qui, lui, pointe VERS cet onglet Pertes) : les redire ICI créerait
+          un lien qui pointe sur l'onglet où l'on est déjà. ACAL125 : le bouton
+          est TOUJOURS là (lancer / recalculer / relancer), même sans poste. */}
+      <BoutonCalculer
+        calepinageId={id}
+        data={data}
+        avertissements={[]}
+        onTermine={refetch}
+      />
       {etapesCascade.length > 0 ? (
         <>
           <MentionSourceCascade cascadeServie />

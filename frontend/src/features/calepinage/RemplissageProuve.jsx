@@ -5,6 +5,7 @@
    dérogation que `module.config.jsx` du même module. */
 import { useEffect, useRef, useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
+import { issueDuJob } from './production/suiviSimulation'
 
 /* ============================================================================
    CAL79 — LE REMPLISSAGE, ET L'HONNÊTETÉ SUR SON RÉGIME DE PREUVE.
@@ -69,12 +70,6 @@ export function regimeDePreuve(resultat) {
   }
 }
 
-/** Un travail de fond encore en cours ? Les statuts du job partagé (CAL23). */
-function enAttente(job) {
-  const statut = String(job?.statut || '').toUpperCase()
-  return statut === 'PENDING' || statut === 'STARTED' || statut === 'RETRY'
-}
-
 export default function RemplissageProuve({
   entree = null, onAppliquer = null, lectureSeule = false, intervalleMs = 2000,
 }) {
@@ -94,15 +89,18 @@ export default function RemplissageProuve({
       .then((res) => {
         const suivi = res?.data ?? null
         setJob(suivi)
-        if (enAttente(suivi)) {
+        // ACAL125 — statuts RÉELS du job partagé (queued/running/done/failed),
+        // le même vocabulaire que le bouton de calcul de la simulation.
+        const issue = issueDuJob(suivi)
+        if (issue.etat === 'attente') {
           minuterie.current = setTimeout(() => suivre(jobId), intervalleMs)
           return
         }
         setEnCours(false)
-        if (suivi?.resultat) {
+        if (issue.etat === 'refus') {
+          setRefus(issue.refus.motif)
+        } else if (suivi?.resultat) {
           setResultat(suivi.resultat)
-        } else if (suivi?.message_erreur) {
-          setRefus(suivi.message_erreur)
         }
       })
       .catch(() => {

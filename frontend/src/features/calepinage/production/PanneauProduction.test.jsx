@@ -22,6 +22,13 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
+/* ACAL125 — le bouton de calcul est sous `calepinage_gerer` : la permission
+   est pilotée par la doublure (sans Provider Redux dans ce test). */
+const permission = vi.hoisted(() => ({ gerer: true }))
+vi.mock('../../../hooks/useHasPermission', () => ({
+  useHasPermission: () => permission.gerer,
+}))
+
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
 
@@ -34,7 +41,7 @@ const rendre = () => render(
   <MemoryRouter><PanneauProduction calepinageId={1} /></MemoryRouter>,
 )
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => { vi.clearAllMocks(); permission.gerer = true })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('PanneauProduction (CAL236)', () => {
@@ -101,25 +108,26 @@ describe('PanneauProduction (CAL236)', () => {
   })
 })
 
-/* CALX48 — le refus « production non calculée » devient ACTIONNABLE : un
-   bouton « Lancer la simulation » (`POST simuler/`), le suivi du job
-   (`moteur/resultat/<job_id>/`, même patron que `RemplissageProuve` CAL79) et
-   la liste NOMMÉE des manques publiée par le serveur (`avertissements`). */
-describe('PanneauProduction — refus actionnable (CALX48)', () => {
-  // `exemple_vide` (pertes vides) DOIT désactiver le bouton (Done) ; les
-  // scénarios de clic ont donc besoin de postes de pertes déjà saisis — repris
-  // TELS QUELS de `exemple` (même contrat), jamais inventés.
-  const nonSimuleAvecPostes = () => ({
-    ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide'),
-    pertes: exempleContrat('calepinage', 'calepinage_resultat', 'exemple').pertes,
-  })
+/* CALX48 / ACAL125 — le refus « production non calculée » devient ACTIONNABLE :
+   un bouton de calcul unique (`POST simuler/`), le suivi du job
+   (`moteur/resultat/<job_id>/`) avec les statuts RÉELS du serveur
+   (queued/running/done/failed) et la liste NOMMÉE des manques publiée par le
+   serveur. Les réponses viennent de `calepinage_simulation.json`. */
+describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
+  const accuse = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_accepte')
+  const refusServi = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus')
+  const refus400 = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_400')
+  // Jamais de fixture fabriquée : `exemple_vide` TEL QUEL (aucun poste de perte).
+  const vide = () => ({ data: exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide') })
 
-  it('sans poste de perte : le bouton est inactif et les manques pointent vers l’onglet Pertes', async () => {
+  it('jamais simulé sans poste de perte : le bouton « Lancer » est ACTIF et les manques pointent vers l’onglet Pertes', async () => {
     servir('exemple_vide')
     rendre()
 
     await screen.findByTestId('cal236-panneau')
-    expect(screen.getByTestId('calx48-lancer-bouton')).toBeDisabled()
+    const bouton = screen.getByTestId('calx48-lancer-bouton')
+    expect(bouton).not.toBeDisabled()
+    expect(bouton).toHaveTextContent('Lancer la simulation')
 
     const manques = screen.getByTestId('calx48-manques')
     expect(within(manques).getByText(
@@ -129,55 +137,42 @@ describe('PanneauProduction — refus actionnable (CALX48)', () => {
       .toHaveAttribute('href', '/calepinage/1?onglet=pertes')
   })
 
-  it('des postes saisis activent le bouton ; le job en cours publie son avancement', async () => {
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: nonSimuleAvecPostes() })
-    calepinageApi.calepinages.simuler.mockResolvedValue({
-      data: { job_id: 77, statut: 'PENDING', progress_pct: null },
-    })
-    calepinageApi.moteur.resultat.mockResolvedValue({
-      data: { job_id: 77, statut: 'PENDING', progress_pct: 30 },
-    })
-    rendre()
-
-    await screen.findByTestId('cal236-panneau')
-    const bouton = screen.getByTestId('calx48-lancer-bouton')
-    expect(bouton).not.toBeDisabled()
-
-    fireEvent.click(bouton)
-
-    expect(await screen.findByTestId('calx48-avancement')).toHaveTextContent(
-      'Calcul de fond n°77 — 30 %',
-    )
-  })
-
-  it('simulation terminée : le panneau se rafraîchit tout seul, sans rechargement complet', async () => {
+  it('suit queued → running → done sans refus, puis relit le résultat', async () => {
     calepinageApi.calepinages.resultat
-      .mockResolvedValueOnce({ data: nonSimuleAvecPostes() })
-      .mockResolvedValueOnce(reponseContrat('calepinage', 'calepinage_resultat', 'exemple'))
-    calepinageApi.calepinages.simuler.mockResolvedValue({
-      data: { job_id: 78, statut: 'PENDING', progress_pct: null },
-    })
-    calepinageApi.moteur.resultat.mockResolvedValue({
-      data: { job_id: 78, statut: 'SUCCESS', resultat: { ok: true } },
-    })
-    rendre()
+      .mockResolvedValueOnce(vide())
+      .mockResolvedValue(reponseContrat('calepinage', 'calepinage_resultat', 'exemple'))
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: accuse })
+    calepinageApi.moteur.resultat
+      .mockResolvedValueOnce({ data: { ...accuse, statut: 'queued' } })
+      .mockResolvedValueOnce({ data: { ...accuse, statut: 'running', progress_pct: 40 } })
+      .mockResolvedValue({ data: { ...accuse, statut: 'done', progress_pct: 100 } })
+    render(<MemoryRouter><PanneauProduction calepinageId={1} intervalleMs={5} /></MemoryRouter>)
 
     await screen.findByTestId('cal236-panneau')
     fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
 
-    await waitFor(() => {
-      expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2)
-    })
+    expect(await screen.findByTestId('calx48-avancement')).toHaveTextContent(
+      `Calcul de fond n°${accuse.job_id}`,
+    )
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Simulation en cours…')
     expect(await screen.findByText('13 000 kWh')).toBeInTheDocument()
+    expect(calepinageApi.moteur.resultat).toHaveBeenCalledTimes(3)
+    expect(screen.queryByTestId('calx48-refus')).toBeNull()
+    // Première demande sans `forcer` (jamais simulé).
+    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(1)
   })
 
-  it('refus 400 sur un réglage de simulation : motif du serveur + lien vers les réglages', async () => {
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: nonSimuleAvecPostes() })
-    calepinageApi.calepinages.simuler.mockRejectedValue({
-      response: {
-        data: {
-          'parametres.simulation.mode_meteo': ['Aucun mode météo choisi pour ce document.'],
-        },
+  it('failed nommé : le motif du serveur et le lien vers les réglages', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide())
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: accuse })
+    calepinageApi.moteur.resultat.mockResolvedValue({
+      data: {
+        ...refusServi,
+        elements: [{
+          statut: 'failed',
+          champ: 'parametres.simulation.mode_meteo',
+          motif: 'Aucun mode météo choisi pour ce document.',
+        }],
       },
     })
     rendre()
@@ -187,8 +182,55 @@ describe('PanneauProduction — refus actionnable (CALX48)', () => {
 
     const refus = await screen.findByTestId('calx48-refus')
     expect(refus).toHaveTextContent('Aucun mode météo choisi pour ce document.')
+    expect(refus).not.toHaveTextContent('La simulation a échoué.')
     expect(within(refus).getByTestId('calx48-lien-reglages'))
       .toHaveAttribute('href', '/calepinage/reglages')
+  })
+
+  it('refus 400 de la porte (fuseau) : motif nommé du serveur + lien vers les réglages', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide())
+    calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: refus400 } })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+
+    const refus = await screen.findByTestId('calx48-refus')
+    expect(refus).toHaveTextContent(refus400.fuseau[0])
+    expect(within(refus).getByTestId('calx48-lien-reglages'))
+      .toHaveAttribute('href', '/calepinage/reglages')
+  })
+
+  it('frais : « Recalculer » est visible et envoie forcer:true', async () => {
+    servir('exemple')
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: accuse })
+    calepinageApi.moteur.resultat.mockResolvedValue({ data: { ...accuse, statut: 'running' } })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    const bouton = screen.getByTestId('calx48-lancer-bouton')
+    expect(bouton).toHaveTextContent('Recalculer')
+    fireEvent.click(bouton)
+
+    await waitFor(() => expect(calepinageApi.calepinages.simuler)
+      .toHaveBeenCalledWith(1, { forcer: true }))
+  })
+
+  it('périmé : « Relancer (document modifié) »', async () => {
+    servir('exemple_perime')
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Relancer (document modifié)')
+  })
+
+  it('sans la permission de gestion : aucun bouton de calcul', async () => {
+    permission.gerer = false
+    servir('exemple_vide')
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('calx48-lancer-bouton')).toBeNull()
   })
 
   it('simulation périmée (CALX70) : le bandeau de péremption remplace celui « jamais simulé »', async () => {
