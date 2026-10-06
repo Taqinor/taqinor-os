@@ -530,3 +530,137 @@ describe('VisiteWizardPage — CIQ609 (gabarit ci)', () => {
     expect(screen.getByRole('button', { name: 'Le propriétaire (un tiers) décide' })).toBeInTheDocument()
   })
 })
+
+/* CIQ653 — catégorie « site commerce » : le mock est l'`exemple_ci_commerce` du
+   contrat partagé `visite_terrain.json` (check_api_shapes), jamais inventé. */
+describe('VisiteWizardPage — CIQ653 (site commerce)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const SITE_CONTRAT = contrat.gabarit_ci_site_commerce.site_commerce
+  const COMMERCE = contrat.exemple_ci_commerce
+  const tuile = (code, libelle) => ({
+    ...COMMERCE.checklist[0].slots[0], code, libelle, requis: false, etat: 'manquant', photos: [],
+  })
+  const visite = (slots, mesures = COMMERCE.mesures) => ({
+    ...COMMERCE,
+    qualification: null,
+    mesures,
+    checklist: [
+      { categorie: 'site_commerce', libelle: 'Site commerce', slots },
+      ...Object.keys(contrat.gabarit_ci).map((categorie) => ({ categorie, libelle: categorie, slots: [] })),
+    ],
+  })
+  const catId = (cle) => `visite-mesure-site_commerce-${cle}`
+
+  beforeEach(() => {
+    patchVisiteMesures.mockResolvedValue({ data: {} })
+    getVisite.mockResolvedValue({ data: visite([tuile('secours_existant', 'Secours existant')]) })
+  })
+
+  it('le schéma reprend les codes, libellés et choix du contrat, tels quels', () => {
+    const schema = MESURES_SCHEMA_CI.site_commerce
+    expect(schema.map((c) => c.key)).toEqual(Object.keys(SITE_CONTRAT.mesures))
+    for (const champ of schema) {
+      const def = SITE_CONTRAT.mesures[champ.key]
+      expect(champ.label, champ.key).toBe(def.libelle)
+      if (def.type === 'choix') expect(champ.options.map((o) => o.value), champ.key).toEqual(def.choix)
+    }
+    const circuits = schema.find((c) => c.key === 'circuits_critiques')
+    expect(circuits.forme.map((c) => c.key)).toEqual(Object.keys(SITE_CONTRAT.mesures.circuits_critiques.forme))
+    expect(circuits.forme[0].options.map((o) => o.value)).toEqual(['froid', 'medical', 'informatique', 'cuisine', 'autre'])
+  })
+
+  it('l’exemple servi se rend avec tous ses champs (aucun champ du contrat oublié)', async () => {
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })
+    const form = await screen.findByTestId('visite-mesures-site_commerce')
+    for (const champ of MESURES_SCHEMA_CI.site_commerce) {
+      if (champ.type === 'list') {
+        expect(form.querySelector(`[data-testid="visite-liste-${champ.key}"]`), champ.key).toBeTruthy()
+      } else {
+        expect(form.querySelector(`#${catId(champ.key)}`), champ.key).toBeTruthy()
+      }
+    }
+    expect(screen.getByLabelText("Horaires et jours d'ouverture")).toHaveValue('11 h–23 h, 7/7')
+    expect(form.querySelector('form')).toHaveAttribute('novalidate')
+  })
+
+  it('saisie : horaires, circuit critique, besoin de continuité — le PATCH porte les clés du contrat', async () => {
+    getVisite.mockResolvedValue({
+      data: visite([tuile('secours_existant', 'Secours existant')], {
+        ...COMMERCE.mesures,
+        site_commerce: Object.fromEntries(Object.keys(SITE_CONTRAT.mesures).map((k) => [k, k === 'circuits_critiques' ? [] : null])),
+      }),
+    })
+    const user = userEvent.setup()
+    withProviders()
+    const form = await screen.findByTestId('visite-mesures-site_commerce')
+    await user.type(screen.getByLabelText("Horaires et jours d'ouverture"), '8 h–20 h, lun–sam')
+    await user.click(screen.getByRole('button', { name: 'Ajouter un circuit critique' }))
+    await user.click(form.querySelector('#visite-mesure-site_commerce-circuits_critiques-0-circuit'))
+    await user.click(await screen.findByRole('option', { name: 'Matériel médical' }))
+    await user.click(screen.getByLabelText('Besoin de continuité de service'))
+    await user.click(await screen.findByRole('option', { name: 'Oui' }))
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    const valeurs = patchVisiteMesures.mock.calls[0][2]
+    expect(Object.keys(valeurs).sort()).toEqual([...Object.keys(SITE_CONTRAT.mesures), '_non_releves'].sort())
+    expect(valeurs.horaires_constates).toBe('8 h–20 h, lun–sam')
+    expect(valeurs.circuits_critiques).toEqual([{ circuit: 'medical', precision: null }])
+    expect(valeurs.besoin_continuite_service).toBe(true)
+    // Un booléen jamais répondu reste « pas encore relevé » (null), jamais « Non ».
+    expect(valeurs.secours_ups).toBeNull()
+  })
+
+  it('l’erreur du serveur s’affiche sous le champ fautif', async () => {
+    patchVisiteMesures.mockRejectedValue({
+      response: { data: { erreurs: { categorie: '« Catégorie du site » : valeur inconnue « casino ».' } } },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    await screen.findByTestId('visite-mesures-site_commerce')
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(await screen.findByText('« Catégorie du site » : valeur inconnue « casino ».')).toBeInTheDocument()
+  })
+
+  it('la pièce « accord du propriétaire » n’est affichée que si le serveur la sert', async () => {
+    withProviders()
+    await screen.findByTestId('visite-slot-secours_existant')
+    expect(screen.queryByTestId('visite-slot-accord_proprietaire')).not.toBeInTheDocument()
+  })
+
+  it('serveur : lead locataire → la tuile « accord du propriétaire » est présente', async () => {
+    getVisite.mockResolvedValue({
+      data: visite([tuile('secours_existant', 'Secours existant'), tuile('accord_proprietaire', 'Accord du propriétaire')]),
+    })
+    withProviders()
+    expect(await screen.findByTestId('visite-slot-accord_proprietaire')).toHaveTextContent('Accord du propriétaire')
+  })
+
+  it('terminer : activé dès que le serveur dit complet', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...visite([tuile('secours_existant', 'Secours existant')]), completude: { complet: true, manquants: [] }, qualification: contrat.exemple.qualification },
+    })
+    terminerVisite.mockResolvedValue({ data: { ...COMMERCE, statut: 'terminee' } })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('button', { name: /terminer la visite/i }))
+    expect(terminerVisite).toHaveBeenCalledWith('7')
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = même PATCH', async () => {
+    const user = userEvent.setup()
+    const premier = withProviders()
+    await screen.findByTestId('visite-mesures-site_commerce')
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    const p1 = patchVisiteMesures.mock.calls[0][2]
+    premier.unmount()
+    // Le serveur rend la valeur normalisée : on rouvre dessus.
+    getVisite.mockResolvedValue({
+      data: visite([tuile('secours_existant', 'Secours existant')], { ...COMMERCE.mesures, site_commerce: JSON.parse(JSON.stringify(p1)) }),
+    })
+    withProviders()
+    await screen.findByTestId('visite-mesures-site_commerce')
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(patchVisiteMesures.mock.calls[1][2]).toEqual(p1)
+  })
+})

@@ -379,6 +379,44 @@ export function ligneQualification(qualification) {
 const OUI_NON = { type: 'tribool' }
 
 export const MESURES_SCHEMA_CI = {
+  // CIQ653 — « site commerce » (contrat `gabarit_ci_site_commerce`) : horaires,
+  // circuits critiques, secours existant, accès, besoin de continuité. La pièce
+  // « accord du propriétaire » est une tuile photo SERVIE par le serveur (lead
+  // locataire seulement) : l'écran ne la décide jamais.
+  site_commerce: [
+    {
+      key: 'categorie', label: 'Catégorie du site', unite: '', type: 'select',
+      options: [
+        { value: 'hotel', label: 'Hôtel / riad' }, { value: 'restaurant', label: 'Restaurant / café' },
+        { value: 'commerce', label: 'Commerce / supermarché' }, { value: 'bureau', label: 'Bureaux' },
+        { value: 'sante', label: 'Santé (clinique, cabinet)' }, { value: 'ecole', label: 'École' },
+        { value: 'hammam', label: 'Hammam / spa / salle de sport' }, { value: 'boulangerie', label: 'Boulangerie' },
+        { value: 'froid', label: 'Froid / entrepôt frigorifique' }, { value: 'autre', label: 'Autre' },
+      ],
+    },
+    { key: 'horaires_constates', label: "Horaires et jours d'ouverture", unite: '', type: 'text' },
+    { key: 'equipements_principaux', label: 'Équipements principaux', unite: '', type: 'text' },
+    {
+      key: 'circuits_critiques', label: 'Circuits critiques', type: 'list',
+      itemLabel: 'Circuit', addLabel: 'Ajouter un circuit critique',
+      forme: [
+        {
+          key: 'circuit', label: 'Circuit critique', unite: '', type: 'select',
+          options: [
+            { value: 'froid', label: 'Froid' }, { value: 'medical', label: 'Matériel médical' },
+            { value: 'informatique', label: 'Informatique' }, { value: 'cuisine', label: 'Cuisine' },
+            { value: 'autre', label: 'Autre' },
+          ],
+        },
+        { key: 'precision', label: 'Précision', unite: '', type: 'text' },
+      ],
+    },
+    { key: 'secours_groupe', label: 'Groupe électrogène existant', unite: '', ...OUI_NON },
+    { key: 'secours_ups', label: 'Onduleur UPS existant', unite: '', ...OUI_NON },
+    { key: 'secours_inverseur', label: 'Inverseur de source existant', unite: '', ...OUI_NON },
+    { key: 'acces_pendant_ouverture', label: "Contraintes d'accès pendant l'ouverture", unite: '', type: 'text' },
+    { key: 'besoin_continuite_service', label: 'Besoin de continuité de service', unite: '', ...OUI_NON },
+  ],
   toiture_ci: [
     {
       key: 'zones_toiture', label: 'Zones de toiture (une par pan / bâtiment)', type: 'list',
