@@ -246,7 +246,7 @@ export function useAtelierBoot(ctx) {
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
       if (addrEl && leadData.ville) addrEl.value = String(leadData.ville)
-      setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis & envoyer au client ».')
+      setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis ».')
     }
 
     // ── PV20 — boot MODE DEVIS : UN SEUL appel CRITIQUE (design-context) ────

@@ -11,7 +11,7 @@
  *      (GET /ventes/roof-config/ pour la clé MapTiler) ;
  *   2. rend l'échafaudage `rp9-*` (copié de l'ancienne page astro publique) puis
  *      boote le builder COMPLET hydraté avec le repère/contour du client ;
- *   3. UN SEUL bouton « Générer le devis & envoyer au client » enchaîne :
+ *   3. UN SEUL bouton « Générer le devis » (ACAL335 : rien n'est envoyé ici) enchaîne :
  *        a. POST /ventes/devis/from-layout/  {layout, lead}  → {id, reference,
  *           proposal_token, proposal_path}
  *        b. POST /ventes/devis/<id>/layout/  (persistance idempotente du layout)
@@ -1363,10 +1363,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
                   <span aria-hidden="true"
                     className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
                 )}
-                <span>{sending ? 'Génération en cours…' : 'Générer le devis & envoyer au client'}</span>
+                <span>{sending ? 'Génération en cours…' : 'Générer le devis'}</span>
               </button>
               <p className="mt-3 text-xs text-lune-faint">
-                Un seul clic : le devis est créé, la vue 3D enregistrée et le lien client préparé.
+                Un seul clic : le devis est créé et la vue 3D enregistrée ; l’envoi se fait depuis la fiche lead.
               </p>
               {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
               {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}

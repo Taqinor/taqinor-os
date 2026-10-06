@@ -85,7 +85,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
     // Le bouton du flux LEAD n'existe jamais ici.
     expect(screen.queryByRole('button',
-      { name: /Générer le devis & envoyer au client/ })).toBeNull()
+      { name: /^Générer le devis$/ })).toBeNull()
   })
 
   it('enregistre la conception par POST layout, puis envoie l’aperçu', async () => {

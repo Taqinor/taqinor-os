@@ -83,7 +83,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
     // Le bouton du flux LEAD n'existe jamais ici : on ne recrée pas un devis.
     expect(screen.queryByRole('button',
-      { name: /Générer le devis & envoyer au client/ })).toBeNull()
+      { name: /^Générer le devis$/ })).toBeNull()
     // PV23bis — la barre d'adresse est pré-remplie depuis adresse+ville du
     // devis (même geste que le mode lead, GOLDEN plus bas) : elle donne à la
     // carte un point de départ tant qu'aucun repère n'est encore posé.
@@ -224,7 +224,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     // Le designer boote quand même (consultation), sans action d'enregistrement.
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByRole('button',
-      { name: /Générer le devis & envoyer au client/ })).toBeNull()
+      { name: /^Générer le devis$/ })).toBeNull()
     // Les avertissements du serveur sont rendus, pas inventés.
     for (const a of CTX_RO.avertissements) {
       expect(screen.getByTestId('pv20-avertissements')).toHaveTextContent(a)
@@ -727,7 +727,12 @@ describe('ToitureDesign — mode lead GOLDEN (inchangé par PV20)', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Lead 88')
     expect(screen.getByRole('button',
-      { name: /Générer le devis & envoyer au client/ })).toBeInTheDocument()
+      { name: /^Générer le devis$/ })).toBeInTheDocument()
+    // ACAL335 — rien n'est envoyé ni préparé par ce bouton : ni son libellé
+    // ni son aide ne promettent un envoi au client ou un lien client.
+    const blocGenerer = screen.getByRole('button', { name: /^Générer le devis$/ }).parentElement
+    expect(blocGenerer.textContent).not.toMatch(/envoyer au client|lien client/)
+    expect(blocGenerer).toHaveTextContent('l’envoi se fait depuis la fiche lead')
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
     // Une épingle publique existe déjà : pas de message GPS.
     expect(screen.queryByTestId('pv-sans-gps')).toBeNull()

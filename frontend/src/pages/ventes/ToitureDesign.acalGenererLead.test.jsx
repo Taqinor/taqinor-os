@@ -33,7 +33,7 @@ describe('ToitureDesign — mode lead : Générer (ACAL97)', () => {
     rendreLead(88)
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     await userEvent.click(await screen.findByRole('button',
-      { name: /Générer le devis & envoyer au client/ }))
+      { name: /^Générer le devis$/ }))
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/ventes/devis/from-layout/', expect.objectContaining({ lead: '88' })))
