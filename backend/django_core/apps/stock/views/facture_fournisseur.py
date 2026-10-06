@@ -143,6 +143,32 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                     'suppression refusée.'
                 ),
             })
+        # ASTK85 — même garde pour un acompte ou un avoir IMPUTÉ : sans
+        # elle, la suppression effaçait l'imputation (CASCADE / SET_NULL) et
+        # le crédit fournisseur disparaissait (avoir « consommé » à vide,
+        # acompte détaché mais compté consommé).
+        nb_acomptes = instance.acomptes_imputes.count()
+        if nb_acomptes:
+            raise ValidationError({
+                'detail': (
+                    'Cette facture fournisseur porte '
+                    f'{nb_acomptes} acompte(s) imputé(s) (total : '
+                    f'{instance.total_acomptes_imputes} MAD) : '
+                    'suppression refusée.'
+                ),
+            })
+        imputations_avoir = list(
+            instance.avoirs_imputes.select_related('avoir'))
+        if imputations_avoir:
+            refs = ', '.join(sorted({
+                i.avoir.reference for i in imputations_avoir}))
+            raise ValidationError({
+                'detail': (
+                    'Cette facture fournisseur porte un avoir imputé '
+                    f'({refs} — total : {instance.total_avoirs_imputes} '
+                    'MAD) : suppression refusée.'
+                ),
+            })
         instance.delete()
 
     def create(self, request, *args, **kwargs):
