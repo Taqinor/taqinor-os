@@ -204,6 +204,59 @@ def ensure_template_agricole(company):
     return template
 
 
+# CIQ611 — checklist d'exécution « Site professionnel (BT) » (chantier C&I,
+# socle commun + BT ; le supplément MT relève de CIQ662).
+# (cle, libelle, capture_serie, photo_obligatoire) — AUCUN chiffre dans les
+# libellés : les mesures vivent dans la recette, jamais dans une étape.
+CI_TEMPLATE_NOM = 'Site professionnel (BT)'
+CI_CHECKLIST_ETAPES = [
+    ('materiel_recu', 'Matériel reçu', False, False),
+    ('plan_prevention_signe',
+     'Plan de prévention et analyse de risques signés', False, True),
+    ('acces_protections',
+     'Accès et protections collectives en place', False, True),
+    ('structure_posee', 'Structure posée et étanchéité contrôlée',
+     False, True),
+    ('panneaux_poses', 'Panneaux posés', True, False),
+    ('chaines_dc_reperees', 'Chaînes DC repérées et étiquetées', False, True),
+    ('onduleurs_poses',
+     'Onduleurs posés (photo de la plaque signalétique)', True, True),
+    ('raccordement_tgbt', 'Raccordement au tableau général', False, True),
+    ('supervision_compteur',
+     'Supervision et compteur de production en service', False, False),
+    ('recette_enregistree', 'Recette enregistrée', False, False),
+    ('client_forme', 'Client formé', False, False),
+    ('photos_prises', 'Photos prises', False, False),
+    ('pv_reception_signe', 'PV de réception signé', False, False),
+    ('schema_electrique_valide', 'Schéma électrique validé', False, False),
+]
+
+
+def ensure_template_ci(company):
+    """CIQ611 — sème UNE SEULE FOIS le template « Site professionnel (BT) »
+    (type ``industriel``, niveau null = tous) de la société (idempotent,
+    additif). Jamais recréé dès qu'un template ``industriel`` sans niveau
+    existe, ACTIF OU NON : renommé, désactivé ou modifié par la société, il
+    est respecté. ``protege=False`` (le seul protégé reste le « Défaut »).
+    Renvoie le template créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    industriel = Installation.TypeInstallation.INDUSTRIEL
+    if ChecklistTemplate.objects.filter(
+            company=company, type_installation=industriel,
+            niveau_tension__isnull=True).exists():
+        return None
+    template = ChecklistTemplate.objects.create(
+        company=company, type_installation=industriel, niveau_tension=None,
+        nom=CI_TEMPLATE_NOM, ordre=1, protege=False, actif=True)
+    for i, (cle, libelle, capture, photo) in enumerate(CI_CHECKLIST_ETAPES):
+        ChecklistEtapeModele.objects.create(
+            company=company, template=template, cle=cle, libelle=libelle,
+            ordre=i, capture_serie=capture, photo_obligatoire=photo,
+            protege=True)
+    return template
+
+
 # AGR605 — plan d'interventions standard d'un chantier agricole : jamais de
 # « raccordement ». Repère des 30 premiers jours : Ignite, nextbillion.net
 # « Four key lessons for implementing PAYGo ».
@@ -249,10 +302,19 @@ def template_for_installation(installation):
     type_install = installation.type_installation
     if type_install == Installation.TypeInstallation.AGRICOLE:
         ensure_template_agricole(company)  # AGR605 — une seule fois.
+    elif type_install == Installation.TypeInstallation.INDUSTRIEL:
+        ensure_template_ci(company)  # CIQ611 — une seule fois.
     if type_install:
-        match = ChecklistTemplate.objects.filter(
+        candidats = ChecklistTemplate.objects.filter(
             company=company, type_installation=type_install, actif=True
-        ).order_by('ordre', 'id').first()
+        ).order_by('ordre', 'id')
+        # CIQ611 — d'abord (type, niveau du chantier), puis (type, tous).
+        niveau = getattr(installation, 'niveau_tension', None)
+        match = None
+        if niveau:
+            match = candidats.filter(niveau_tension=niveau).first()
+        if match is None:
+            match = candidats.filter(niveau_tension__isnull=True).first()
         if match is not None:
             return match
     return default

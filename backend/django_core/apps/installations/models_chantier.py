@@ -42,6 +42,11 @@ class ChecklistTemplate(models.Model):
     type_installation = models.CharField(
         max_length=20, choices=Installation.TypeInstallation.choices,
         blank=True, null=True)
+    # CIQ611 — niveau de tension visé (BT/MT). Null = tous les niveaux : la
+    # sélection cherche d'abord (type, niveau du chantier), puis (type, null).
+    niveau_tension = models.CharField(
+        max_length=2, choices=Installation.NiveauTension.choices,
+        blank=True, null=True)
     ordre = models.PositiveIntegerField(default=0)
     actif = models.BooleanField(default=True)
     # `protege` verrouille le template « Défaut » système contre la suppression.
