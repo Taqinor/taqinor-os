@@ -460,6 +460,16 @@ def releve_ci_de_visite(visite, declare=None):
     trajets = (saisies.get('cheminement') or {}).get('trajets')
     releve['trajets'] = [t for t in (trajets or []) if isinstance(t, dict)]
     releve['non_releves'] = _non_releves_plats(visite)
+    # CIQ652 — le besoin de continuité DÉCLARÉ à la visite (``True`` /
+    # ``False`` ; ``None`` = non renseigné ou « non relevé »). Un fait déclaré :
+    # le CRM en tire une note interne, jamais un dimensionnement.
+    commerce = saisies.get('site_commerce')
+    commerce = commerce if isinstance(commerce, dict) else {}
+    etats = commerce.get(checklist.CLE_NON_RELEVES)
+    releve['besoin_continuite_service'] = (
+        None if isinstance(etats, dict)
+        and 'besoin_continuite_service' in etats
+        else commerce.get('besoin_continuite_service'))
     return releve
 
 
