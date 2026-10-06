@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -40,6 +40,42 @@ describe('GedSearch — état vide', () => {
       screen.getByText('Aucun document ne correspond à ces critères.'),
     ).toBeInTheDocument()
     expect(gedApi.searchDocuments).toHaveBeenCalledWith({ q: 'facture' })
+  })
+})
+
+describe('ADOC33 GedSearch — vues et ouverture des résultats', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('applique une vue enregistrée au premier clic', async () => {
+    gedApi.getTags.mockResolvedValue({ data: [{ id: 7, nom: 'Comptabilité' }] })
+    gedApi.getVues.mockResolvedValueOnce({ data: [{
+      id: 5, nom: 'Factures 2026',
+      criteres: { query: 'facture', tagId: 7, semantic: false }, partagee: false,
+    }] })
+    gedApi.searchDocuments.mockResolvedValueOnce({ data: [
+      { id: 1, nom: 'facture-1.pdf', tags: [{ id: 7, nom: 'Comptabilité' }] },
+    ] })
+    render(<MemoryRouter><ThemeProvider><GedSearch /></ThemeProvider></MemoryRouter>)
+
+    await userEvent.click(await screen.findByText('Factures 2026'))
+    expect(await screen.findByText('1 résultat')).toBeInTheDocument()
+    expect(gedApi.searchDocuments).toHaveBeenCalledTimes(1)
+    expect(gedApi.searchDocuments).toHaveBeenCalledWith({ q: 'facture' })
+  })
+
+  it('un clic sur un résultat ouvre le document', async () => {
+    const doc = { id: 2, nom: 'devis-9.pdf', tags: [] }
+    gedApi.searchDocuments.mockResolvedValueOnce({ data: [doc] })
+    const onOpenDocument = vi.fn()
+    render(<MemoryRouter><ThemeProvider>
+      <GedSearch onOpenDocument={onOpenDocument} />
+    </ThemeProvider></MemoryRouter>)
+
+    await userEvent.type(screen.getByLabelText('Recherche plein-texte'), 'devis')
+    await userEvent.click(screen.getByRole('button', { name: /^Rechercher$/i }))
+    const table = await screen.findByRole('table', { name: 'Résultats de recherche' })
+    await userEvent.click(within(table).getByText('devis-9.pdf'))
+    expect(onOpenDocument).toHaveBeenCalledWith(doc)
   })
 })
 
