@@ -61,6 +61,14 @@ class EvaluateIvCurveTest(SimpleTestCase):
         self.assertGreater(ecart, 0)
         self.assertFalse(defaut)
 
+    def test_sans_tolerance_saisie_ecart_servi_sans_defaut(self):
+        """CIQ654 — plus de 8 % inventé : -14 % sans tolérance n'est PAS un
+        défaut."""
+        ecart, defaut = evaluate_iv_curve(
+            pmax_mesure_w=4300, pmax_attendu_w=5000)
+        self.assertAlmostEqual(ecart, -14.0, places=1)
+        self.assertFalse(defaut)
+
     def test_missing_data_returns_none(self):
         self.assertEqual(evaluate_iv_curve(pmax_mesure_w=None,
                                            pmax_attendu_w=5000),
@@ -79,6 +87,12 @@ class IVCurveApiTest(TestCase):
         self.api = APIClient()
         self.api.force_authenticate(self.user)
         self.url = '/api/django/ventes/courbes-iv/'
+        # CIQ654 — plus de tolérance par défaut : la société SAISIT la sienne
+        # (CIQ622) ; 8 % ici reproduit l'ancien cadre de ces tests.
+        from apps.parametres.models import CompanyProfile
+        profil, _ = CompanyProfile.objects.get_or_create(company=self.company)
+        CompanyProfile.objects.filter(pk=profil.pk).update(
+            recette_ecart_pmax_pct=8)
 
     def test_defect_derived_and_cascades_to_recette(self):
         # Recette toute-conforme au départ.
