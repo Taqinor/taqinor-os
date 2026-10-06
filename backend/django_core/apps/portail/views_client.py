@@ -255,6 +255,44 @@ def ma_consommation_client(request):
     return Response(serie)
 
 
+# ── ADOC142 — UN seul contenu diffusable pour « Télécharger » ET l'export ──
+
+def contenu_diffusable(doc, company):
+    """ADOC142 — contenu de la VERSION EN VIGUEUR d'un document GED partagé,
+    tel qu'il peut sortir vers le client : ``latest_version`` →
+    ``fetch_attachment`` → filigrane GED21 (``apply_watermark``) quand
+    ``watermark_diffusion`` est posé.
+
+    Sert « Télécharger » (``MesDocumentsPortailViewSet.telecharger``) ET
+    l'export « mes données » (``exporter_mes_donnees``) : avant, l'export
+    écrivait les octets BRUTS — le client récupérait par l'export l'original
+    non filigrané que « Télécharger » lui refusait.
+
+    Renvoie ``(version, data, mime, erreur)`` : ``version`` vaut ``None`` si
+    le document n'a aucune version ; ``erreur`` est le message du stockage
+    (``data`` alors ``None``). Un échec du filigrane dégrade à l'original
+    (comportement GED21 historique de « Télécharger », jamais un 500).
+    """
+    from apps.ged.selectors import latest_version
+    from apps.records.storage import fetch_attachment
+
+    version = latest_version(doc)
+    if version is None:
+        return None, None, None, None
+    data, erreur = fetch_attachment(version.file_key)
+    if erreur:
+        return version, None, None, erreur
+    mime = version.mime or 'application/octet-stream'
+    if getattr(doc, 'watermark_diffusion', False):
+        try:
+            from apps.ged import services as ged_services
+            label = ged_services.watermark_label(company=company)
+            data, _marque = ged_services.apply_watermark(data, mime, label)
+        except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
+            pass
+    return version, data, mime, None
+
+
 # ── NTPRT36 — Export « mes données » (portabilité, loi 09-08) ──────────────
 
 @extend_schema(responses={(200, 'application/zip'): OpenApiTypes.BINARY})
@@ -288,8 +326,7 @@ def exporter_mes_donnees(request):
     from django.http import HttpResponse
     from django.utils import timezone
 
-    from apps.ged.selectors import documents_partages_client_portail, latest_version
-    from apps.records.storage import fetch_attachment
+    from apps.ged.selectors import documents_partages_client_portail
     from apps.ventes.selectors import (
         devis_du_client_portail, factures_du_client_portail,
     )
@@ -335,11 +372,10 @@ def exporter_mes_donnees(request):
             'tickets.json', json.dumps(tickets, ensure_ascii=False, indent=2))
         noms_utilises = set()
         for document in documents:
-            version = latest_version(document)
-            if version is None:
-                continue
-            data, erreur = fetch_attachment(version.file_key)
-            if erreur:
+            # ADOC142 — MÊME contenu que « Télécharger » (filigrane compris).
+            version, data, _mime, erreur = contenu_diffusable(
+                document, company)
+            if version is None or erreur:
                 continue
             nom = (version.filename or document.nom
                    or f'document-{document.id}').replace('/', '_')
@@ -1299,10 +1335,17 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
     @extend_schema(responses=inline_serializer(
         name='MonEquipePortail',
         fields={'results': serializers.ListField(
-            child=MonEquipePortailLigneSerializer())}))
+            child=MonEquipePortailLigneSerializer()),
+            'peut_gerer': serializers.BooleanField()}))
     def list(self, request):
+        # ADOC137 (contrat ``mon_equipe.json``) — ``peut_gerer`` dit à l'écran
+        # s'il montre inviter/révoquer : vrai pour l'ADMIN portail seul. Le
+        # serveur reste la garde (create/revoquer répondent 403 sinon).
         return Response({
-            'results': [self._ligne(i) for i in self._invitations(request)]})
+            'results': [self._ligne(i) for i in self._invitations(request)],
+            'peut_gerer': bool(
+                services.est_admin_portail_client(request.user)),
+        })
 
     @extend_schema(request=inline_serializer(
         name='MonEquipePortailInviter',
@@ -1368,6 +1411,9 @@ class MesDocumentsPortailLigneSerializer(serializers.Serializer):
     taille = serializers.IntegerField(allow_null=True)
     mime = serializers.CharField(allow_null=True)
     date_creation = serializers.DateTimeField(allow_null=True)
+    # ADOC134 (D-ADOC-2) — version en vigueur et sa date.
+    version_numero = serializers.IntegerField(allow_null=True)
+    version_date = serializers.DateTimeField(allow_null=True)
 
 
 #: YAPIC6 — même remarque que ``_ID_LIVRAISON`` plus haut.
@@ -1415,6 +1461,12 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
             'mime': version.mime if version else None,
             'date_creation': (document.created_at.isoformat()
                               if document.created_at else None),
+            # ADOC134 (D-ADOC-2, contrat ``mes_documents.json``) — la VERSION
+            # EN VIGUEUR (celle que sert « Télécharger ») et SA date, jamais
+            # la date du document.
+            'version_numero': version.version if version else None,
+            'version_date': (version.created_at.isoformat()
+                             if version and version.created_at else None),
         }
 
     @extend_schema(responses=inline_serializer(
@@ -1447,36 +1499,23 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
         le scope/l'ACL, eux, viennent du sélecteur GED."""
         from django.http import HttpResponse
 
-        from apps.ged.selectors import (
-            document_partage_client_portail, latest_version,
-        )
-        from apps.records.storage import fetch_attachment
+        from apps.ged.selectors import document_partage_client_portail
 
         company, client_id = _scope(request)
         doc = document_partage_client_portail(company, client_id, pk)
         if doc is None:
             return Response({'detail': 'Introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
-        version = latest_version(doc)
+        # GED21 — un document diffusé sous contrôle (filigrane) le reste sur
+        # CE canal aussi. ADOC142 — via ``contenu_diffusable``, la MÊME
+        # fonction que l'export « mes données ».
+        version, data, mime, err = contenu_diffusable(doc, company)
         if version is None:
             return Response({'detail': 'Aucun fichier disponible.'},
                             status=status.HTTP_404_NOT_FOUND)
-        data, err = fetch_attachment(version.file_key)
         if err:
             return Response({'detail': err},
                             status=status.HTTP_404_NOT_FOUND)
-
-        # GED21 — un document diffusé sous contrôle (filigrane) le reste sur
-        # CE canal aussi ; jamais un flux non filigrané qui contournerait la
-        # règle appliquée partout ailleurs (aperçu interne, partage public).
-        mime = version.mime or 'application/octet-stream'
-        if getattr(doc, 'watermark_diffusion', False):
-            try:
-                from apps.ged import services as ged_services
-                label = ged_services.watermark_label(company=company)
-                data, _marque = ged_services.apply_watermark(data, mime, label)
-            except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
-                pass
 
         # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
         from apps.audit.models import AuditLog
