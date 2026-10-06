@@ -72,20 +72,20 @@
     "message": "Contour proposé depuis le calque choisi : rien n'a été enregistré. Calez-le (deux points et leur distance réelle) avant de l'appliquer au toit.",
     "contour_lnglat": [
       [
-        -7.600161589,
-        33.499918582
+        -7.60016159,
+        33.499919152
       ],
       [
-        -7.599838411,
-        33.499918582
+        -7.59983841,
+        33.499919152
       ],
       [
-        -7.599838411,
-        33.500081418
+        -7.59983841,
+        33.500080848
       ],
       [
-        -7.600161589,
-        33.500081418
+        -7.60016159,
+        33.500080848
       ]
     ]
   },
