@@ -39,7 +39,6 @@ EN_ATTENTE = {
     'revision_possible': 'ACAL36',
     'calepinage.devis_lie': 'ACAL36',
     'calepinage.lead_supprime': 'ACAL178',
-    'geometrie.empreinte_document': 'ACAL22',
     'geometrie.repere_lead': 'ACAL191',
     'geometrie.ecart_m': 'ACAL191',
     'geometrie.derive': 'ACAL191',
