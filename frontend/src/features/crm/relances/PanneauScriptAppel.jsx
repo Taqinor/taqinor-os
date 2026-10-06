@@ -41,6 +41,7 @@ import {
   AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
   VISITE_POINT_EAU_TITRE, VISITE_POINT_EAU_CONSIGNE,
+  VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE,
 } from './appelGuidance'
 
 const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
@@ -220,6 +221,24 @@ export default function PanneauScriptAppel({
   const segmentPanneau = etat.panneau?.segment || null
   const [visitePointEau, setVisitePointEau] = useState(null)
   const [messagePointEau, setMessagePointEau] = useState(false)
+  // CIQ420 — fin d'appel PRO : la visite avant devis, lue au serveur
+  // (`devis_auto.visite_avant_devis`, CIQ404) et jamais recalculée ici.
+  const [visitePro, setVisitePro] = useState(null)
+  const [messageVisitePro, setMessageVisitePro] = useState(false)
+  useEffect(() => {
+    let active = true
+    if (!actif || !leadId || !['industriel', 'commercial'].includes(segmentPanneau)
+        || typeof crmApi.getLead !== 'function') {
+      queueMicrotask(() => { if (active) setVisitePro(null) })
+      return () => { active = false }
+    }
+    crmApi.getLead(leadId)
+      .then((r) => {
+        if (active) setVisitePro(r?.data?.devis_auto?.visite_avant_devis ?? null)
+      })
+      .catch(() => { if (active) setVisitePro(null) })
+    return () => { active = false }
+  }, [actif, leadId, segmentPanneau, version])
   useEffect(() => {
     let active = true
     if (!actif || !leadId || segmentPanneau !== 'agricole'
@@ -517,6 +536,31 @@ export default function PanneauScriptAppel({
           <MessageVisiteDialog
             leadId={leadId} cle="visite_releve_point_eau" etapeId={etapeId}
             open={messagePointEau} onOpenChange={setMessagePointEau}
+          />
+        </div>
+      )}
+      {/* CIQ420 — fin d'appel PRO : visite requise avant le devis. */}
+      {g?.livre && g.famille === 'pro' && visitePro?.requise && (
+        <div
+          className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2"
+          role="status" data-testid="visite-avant-devis-pro"
+        >
+          <p className="font-medium text-foreground">{VISITE_PRO_TITRE}</p>
+          <p>{VISITE_PRO_CONSIGNE}</p>
+          {Array.isArray(visitePro.motifs) && visitePro.motifs.length > 0 && (
+            <ul className="ml-4 list-disc">
+              {visitePro.motifs.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
+          <Button
+            type="button" size="sm" variant="outline" className="self-start"
+            onClick={() => setMessageVisitePro(true)}
+          >
+            Proposer la visite (message)
+          </Button>
+          <MessageVisiteDialog
+            leadId={leadId} cle="visite_proposition" etapeId={etapeId}
+            open={messageVisitePro} onOpenChange={setMessageVisitePro}
           />
         </div>
       )}

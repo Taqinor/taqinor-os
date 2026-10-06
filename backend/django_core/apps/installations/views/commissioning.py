@@ -121,6 +121,10 @@ class CommissioningRecordViewSet(UsageGuardedDestroyMixin,
                if k != 'record'})
         compute_iv_ecart(reading)
         reading.save()
+        # CIQ625 — un relevé I-V en défaut est un essai faux : le résultat
+        # de la fiche est recalculé (jamais laissé « conforme »).
+        from ..services import recalculer_resultat_recette
+        recalculer_resultat_recette(record)
         return Response(
             CommissioningIVReadingSerializer(reading).data,
             status=status.HTTP_201_CREATED)
@@ -173,6 +177,10 @@ class RecettePompageViewSet(CompanyScopedModelViewSet):
         recette = self.get_object()
         if recette.verrouillee:
             raise ValidationError({'verrouillee': MESSAGE_RECETTE_VERROUILLEE})
+        # AGR609 (a) — la promesse du devis est FIGÉE à la première écriture
+        # (une V2 du devis ne réécrit jamais une recette).
+        from ..services import figer_promesse_recette
+        figer_promesse_recette(recette)
         serializer = self.get_serializer(
             recette, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)

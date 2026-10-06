@@ -82,7 +82,9 @@ class TestSyntheseCiCoeur(SimpleTestCase):
         self.assertEqual(s["provenance"]["kwh_mensuels"], PROV_FACTURE)
         self.assertEqual(s["provenance"]["tension"], PROV_CLIENT)
         self.assertEqual(s["option_servie"], "sans_batterie")
-        self.assertEqual(s["omissions"], [])
+        # CIQ304 : sans bloc ``economie_ci`` dans ``data``, seul l'argent est
+        # omis — le cœur (CIQ303) ne l'est jamais.
+        self.assertEqual([o["bloc"] for o in s["omissions"]], ["argent"])
 
     def test_echeancier_au_centime_qui_somme_au_total(self):
         s = synthese_ci(_data(_etude_ci()))

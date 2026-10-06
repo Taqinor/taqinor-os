@@ -82,7 +82,10 @@ def _rouvrir_facture_apres_rejet(facture):
     from ..models import Facture
 
     facture.refresh_from_db()
-    if facture.statut == Facture.Statut.ANNULEE or facture.montant_du <= 0:
+    # CIQ214 — rouverte (et relancée) seulement si l'EXIGIBLE redevient dû :
+    # une retenue de garantie non libérée ne rouvre pas la facture.
+    if facture.statut == Facture.Statut.ANNULEE \
+            or facture.montant_exigible <= 0:
         return
     today = timezone.now().date()
     if facture.date_echeance and facture.date_echeance < today:

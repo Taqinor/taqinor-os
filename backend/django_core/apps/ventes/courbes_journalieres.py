@@ -43,6 +43,7 @@ import logging
 import math
 
 from apps.parametres.pvgis_profils import (
+    MOIS_PAR_SAISON,
     SAISONS,
     decalage_maroc_h,
     moyenne_journaliere_saison,
@@ -1368,4 +1369,122 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
         return bloc
     except Exception:  # noqa: BLE001 — le graphe ne casse jamais la page
         logger.warning('courbes_journalieres indisponibles', exc_info=True)
+        return None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ308 — COURBES C&I : UNIQUEMENT la sortie horaire du moteur C&I.
+# ═════════════════════════════════════════════════════════════════════════════
+# Un hôtel ou une usine n'a ni « présence en journée » ni équipements de
+# LOGEMENT : la courbe d'un devis commercial / industriel vient SEULEMENT du
+# moteur C&I stocké (``etude_params.etude_ci``, contrat CIQ2
+# ``etude_ci_preview.json``) — production horaire agrégée
+# (``bilan.horaire`` : autoconsommé + surplus) × profil de charge du moteur
+# (``profil_charge.jours_types``). Chaque saison est la moyenne de ses mois
+# (``MOIS_PAR_SAISON``), pondérée par ``nb_jours`` ; aucune variante que le
+# moteur ne sert pas. Heures du moteur en GMT, décalées vers l'heure légale
+# par ``vers_heure_locale`` (``decalage_maroc_h``, aucun décalage codé).
+
+SOURCE_MOTEUR_CI = 'moteur_ci'
+#: Profil de charge NON déclaré (archétype du moteur) : dit « estimation ».
+ETIQUETTE_PROFIL_TYPE = 'profil type — estimation'
+METHODES_PROFIL_TYPE = frozenset({'archetype'})
+
+
+def _serie_24(valeurs):
+    if not isinstance(valeurs, (list, tuple)) or len(valeurs) != 24:
+        return None
+    return [_nombre(v) or 0.0 for v in valeurs]
+
+
+def _moyenne_saison(entrees, mois_saison, extraire):
+    """``(kwh_par_heure[24], kwh_jour)`` moyen de la saison, ou None."""
+    total = [0.0] * 24
+    jours = 0
+    for entree in entrees:
+        if not isinstance(entree, dict) or entree.get('mois') not in \
+                mois_saison:
+            continue
+        serie = extraire(entree)
+        nb = _nombre(entree.get('nb_jours'))
+        if serie is None or nb is None:
+            continue
+        jours += nb
+        for h in range(24):
+            total[h] += serie[h] * nb
+    if jours <= 0:
+        return None
+    moyenne = [v / jours for v in total]
+    kwh_jour = sum(moyenne)
+    if kwh_jour <= 0:
+        return None
+    return moyenne, kwh_jour
+
+
+def _production_horaire(entree):
+    auto = _serie_24(entree.get('autoconso_kwh'))
+    surplus = _serie_24(entree.get('surplus_kwh'))
+    if auto is None or surplus is None:
+        return None
+    return [a + s for a, s in zip(auto, surplus)]
+
+
+def _charge_horaire(entree):
+    return _serie_24(entree.get('charge_kwh'))
+
+
+def _bloc_saisons(entrees, extraire, *, avec_pic):
+    out = {}
+    for saison in SAISONS:
+        resolu = _moyenne_saison(entrees, MOIS_PAR_SAISON[saison], extraire)
+        if resolu is None:
+            continue
+        moyenne, kwh_jour = resolu
+        forme = vers_heure_locale([v / kwh_jour for v in moyenne])
+        if not forme:
+            continue
+        serie = {'forme': forme, 'kwh_jour': round(kwh_jour, 1),
+                 'source': SOURCE_MOTEUR_CI}
+        if avec_pic:
+            serie['pic_kw'] = round(kwh_jour * max(forme), 2)
+        out[saison] = serie
+    return out
+
+
+def construire_courbes_ci(data):
+    """Bloc ``courbes_journalieres`` d'un devis C&I, ou ``None`` (⇒ clé
+    ABSENTE) sans sortie horaire du moteur C&I. PURE : lit ``data`` seul
+    (``data['etude']['etude_ci']``), jamais le lead ni l'occupation
+    résidentielle. Aucune exception ne remonte."""
+    try:
+        etude_ci = (data.get('etude') or {}).get('etude_ci')
+        if not isinstance(etude_ci, dict):
+            return None
+        bilan = etude_ci.get('bilan') or {}
+        profil = etude_ci.get('profil_charge') or {}
+        production = _bloc_saisons(bilan.get('horaire') or [],
+                                   _production_horaire, avec_pic=True)
+        consommation = _bloc_saisons(profil.get('jours_types') or [],
+                                     _charge_horaire, avec_pic=False)
+        if not production and not consommation:
+            return None
+        bloc = {
+            'source': SOURCE_MOTEUR_CI,
+            'note_horaire': note_horaire(),
+            'unites': {
+                'forme': 'part du total du jour (somme = 1)',
+                'kwh_jour': 'kWh/jour',
+                'pic_kw': 'kW',
+            },
+        }
+        if profil.get('methode') in METHODES_PROFIL_TYPE:
+            bloc['profil_suppose'] = True
+            bloc['etiquette_profil'] = ETIQUETTE_PROFIL_TYPE
+        if production:
+            bloc['production'] = production
+        if consommation:
+            bloc['consommation'] = consommation
+        return bloc
+    except Exception:  # noqa: BLE001 — le graphe ne casse jamais la page
+        logger.warning('courbes_journalieres C&I indisponibles', exc_info=True)
         return None

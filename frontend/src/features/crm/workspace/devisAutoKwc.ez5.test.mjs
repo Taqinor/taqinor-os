@@ -90,7 +90,9 @@ test('la cible traverse le panneau jusqu’au calcul partagé', () => {
   assert.match(panel, /createAutoQuote\(\{[\s\S]{0,200}?targetKwc,[\s\S]{0,120}?\}\)/)
   // PVMRQ (18/08) — la signature porte aussi `marques` après `targetKwc` ;
   // PVORD (19/08) — puis `ordreLignes` (ordre par défaut des lignes).
-  assert.match(autoQuote, /pumpHours, onEtude,\s*\n\s*targetKwc, marques, ordreLignes \}\)/)
+  // AGR126 — `pumpHours` a quitté la signature (plus de pompage JS) ;
+  // `onAlertes` reçoit les alertes du devis créé par le serveur.
+  assert.match(autoQuote, /onEtude, onAlertes,\s*\n\s*targetKwc, marques, ordreLignes \}\)/)
 })
 
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {

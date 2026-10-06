@@ -27,8 +27,8 @@ from apps.installations.models import (
     CommissioningRecord, Installation,
 )
 from apps.installations.services import (
-    compute_iv_ecart, ensure_commissioning_record, seed_stages,
-    verifier_transition_statut,
+    ESSAIS_RECETTE, compute_iv_ecart, ensure_commissioning_record,
+    seed_stages, verifier_transition_statut,
 )
 
 User = get_user_model()
@@ -173,11 +173,22 @@ class CommissioningApiTests(TestCase):
     def test_maj_resultat_et_iv(self):
         inst = make_installation(self.company)
         rec = ensure_commissioning_record(inst, self.user)
+        # CIQ625 — le résultat est CALCULÉ : un seul essai vrai ne suffit
+        # plus (« conforme » demandé, « en cours » servi) ; tous les essais
+        # vrais ⇒ conforme, donc fiche passée.
         r = self.api.patch(
             f'{BASE}/recettes-commissioning/{rec.id}/',
             {'resultat': 'conforme', 'isolement_mohm': '2.5',
              'isolement_ok': True}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['resultat'], 'en_cours')
+        self.assertFalse(r.data['passe'])
+        tous_vrais = {champ: True for champ in ESSAIS_RECETTE}
+        r = self.api.patch(
+            f'{BASE}/recettes-commissioning/{rec.id}/', tous_vrais,
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['resultat'], 'conforme')
         self.assertTrue(r.data['passe'])
         r2 = self.api.post(
             f'{BASE}/recettes-commissioning/{rec.id}/ajouter-iv/',
@@ -187,6 +198,10 @@ class CommissioningApiTests(TestCase):
         self.assertTrue(r2.data['defaut_detecte'])
         self.assertEqual(Decimal(str(r2.data['ecart_pmax_pct'])),
                          Decimal('-20.00'))
+        # Un string en défaut est un essai faux : la fiche n'est plus passée.
+        rec.refresh_from_db()
+        self.assertEqual(rec.resultat, 'non_conforme')
+        self.assertFalse(rec.passe)
 
     def test_scope_par_societe(self):
         autre = make_company()

@@ -840,6 +840,9 @@ class PariteBase(TestCase):
         if REPONSES_TOUCHE.get(cle, {}).get('date_requise'):
             corps['rappel_le'] = (DATE_LOINTAINE if variante == 'loin'
                                   else DATE_CHOISIE).isoformat()
+        # CIQ508 — « En attente d'un accord » exige sa RAISON (liste fermée).
+        if REPONSES_TOUCHE.get(cle, {}).get('raison_requise'):
+            corps['raison_attente'] = 'administration'
         if cle == 'perdu':
             # SUIVI E2 — le motif est OBLIGATOIRE (écrit en minuscules : la
             # comparaison est sans casse, le lead porte le libellé exact).

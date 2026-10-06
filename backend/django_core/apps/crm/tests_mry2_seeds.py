@@ -61,6 +61,38 @@ class MotifsStandardTests(TestCase):
         self.assertTrue(perso.est_junk)
         self.assertEqual(motifs.count(), len(_DEFAULT_MOTIFS_PERTE) + 1)
 
+    def test_ciq514_une_societe_personnalisee_recoit_les_sept_motifs_pro(self):
+        """CIQ514 — les sept motifs de perte B2B arrivent à la LECTURE de la
+        liste (sans migration), sans toucher un motif personnalisé ; rejouer
+        ne crée aucun doublon ; aucun n'est « junk »."""
+        company = make_company('ciq514-motifs')
+        perso = MotifPerte.objects.create(
+            company=company, nom='Motif perso fondateur', est_junk=True)
+        user = User.objects.create_user(
+            username='ciq514-motifs', password='x', company=company)
+        api = make_api(user)
+        for _ in range(2):
+            self.assertEqual(
+                api.get('/api/django/crm/motifs-perte/').status_code, 200)
+        attendus = (
+            'Financement refusé (banque / organisme)',
+            'Décision interne reportée',
+            'Refus du bailleur des murs',
+            "Budget reporté à l'exercice suivant",
+            'Contrainte de raccordement au réseau',
+            'Toiture ou structure inadaptée (visite)',
+            'Consultation : autre prestataire retenu',
+        )
+        motifs = MotifPerte.objects.filter(company=company)
+        for nom in attendus:
+            with self.subTest(nom=nom):
+                self.assertEqual(motifs.filter(nom=nom).count(), 1)
+                self.assertFalse(motifs.get(nom=nom).est_junk)
+        perso.refresh_from_db()
+        self.assertEqual(perso.nom, 'Motif perso fondateur')
+        self.assertTrue(perso.est_junk)
+        self.assertEqual(motifs.count(), len(_DEFAULT_MOTIFS_PERTE) + 1)
+
     def test_les_cinq_motifs_de_meryem_sont_dans_les_defauts(self):
         noms = {nom for nom, _ in _DEFAULT_MOTIFS_PERTE}
         for attendu in ('Locataire', 'Consommation trop faible',

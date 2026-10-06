@@ -73,7 +73,7 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 #: écrit dans `notes.structure_de_la_reponse`. Si ces deux nombres bougent,
 #: le contrat ET cette constante changent ensemble — jamais l'un sans l'autre.
 NB_CLES_BASE = 48
-NB_CLES_ADDITIVES = 22  # AGR308 : + `synthese_agricole` ; ACAL173 : + `fiche_batterie`
+NB_CLES_ADDITIVES = 23  # AGR308 : + `synthese_agricole` ; ACAL173 : + `fiche_batterie` ; CIQ306 : + `synthese_ci`
 
 #: Les clés que l'échantillon déclare pour les réponses d'ERREUR, jamais pour
 #: la charge utile 200 (contrat, bloc `notes.cle_detail`). QJR228 (31/08/2026)
@@ -273,6 +273,29 @@ def make_devis_agricole(company, user, client_obj, reference):
     return devis
 
 
+def make_devis_ci(company, user, client_obj, reference, mode):
+    """CIQ306 — devis COMMERCIAL / INDUSTRIEL minimal (lignes réseau, sans
+    étude C&I : la synthèse sert son cœur et nomme ses omissions)."""
+    devis = Devis.objects.create(
+        company=company, reference=reference, client=client_obj,
+        statut='envoye', taux_tva=Decimal('20.00'),
+        remise_globale=Decimal('0'), created_by=user,
+        mode_installation=mode, etude_params={})
+    for i, (designation, quantite, prix) in enumerate([
+        ('Onduleur réseau Huawei 50kW Triphasé', '1', '60000'),
+        ('Panneau mono 550W', '100', '1100'),
+    ]):
+        produit = Produit.objects.create(
+            company=company, nom=designation, sku=f'{reference[-6:]}-{i}',
+            prix_vente=Decimal(prix), prix_achat=Decimal('9999'),
+            quantite_stock=50)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=designation,
+            quantite=Decimal(quantite), prix_unitaire=Decimal(prix),
+            remise=Decimal('0'), ordre=i)
+    return devis
+
+
 def sample_layout():
     return {
         'version': 1, 'scenario': 'reseau',
@@ -296,7 +319,7 @@ def sample_layout():
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestContratLisible(TestCase):
-    def test_le_contrat_declare_48_cles_de_base_et_22_additives(self):
+    def test_le_contrat_declare_48_cles_de_base_et_23_additives(self):
         base, additives, _natures = charger_contrat()
         self.assertEqual(
             len(base), NB_CLES_BASE,
@@ -386,6 +409,32 @@ class TestFormeDeLaChargeUtileVivante(TestCase):
                     self.assertEqual(nature(valeur), attendue, cle)
         # Hors agricole : la clé additive est ABSENTE, jamais `null`.
         self.assertNotIn('synthese_agricole',
+                         self._payload(self.devis, ShareLink.NIVEAU_CONFIANCE))
+
+    def test_synthese_ci_conforme_aux_fragments_commercial_et_industriel(self):
+        # CIQ306 — le test de forme s'étend aux fragments `exemple_commercial`
+        # et `exemple_industriel` : chaque sous-clé servie de `synthese_ci`
+        # est déclarée, avec la même nature.
+        contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
+        fragment = dict(contrat['exemple_industriel']['synthese_ci'])
+        fragment.update(contrat['exemple_commercial']['synthese_ci'])
+        for i, mode in enumerate(('commercial', 'industriel')):
+            devis = make_devis_ci(self.company, self.user, self.client_obj,
+                                  f'DEV-QJR7-C{i + 1}', mode)
+            for niveau in (ShareLink.NIVEAU_STANDARD,
+                           ShareLink.NIVEAU_CONFIANCE):
+                payload = self._payload(devis, niveau)
+                servie = payload['synthese_ci']
+                with self.subTest(mode=mode, niveau=niveau):
+                    self.assertEqual(servie['segment'], mode)
+                    self.assertEqual(sorted(set(servie) - set(fragment)), [])
+                    for cle, valeur in servie.items():
+                        attendue = nature(fragment[cle])
+                        if NUL in (nature(valeur), attendue):
+                            continue
+                        self.assertEqual(nature(valeur), attendue, cle)
+        # Hors C&I : la clé additive est ABSENTE, jamais `null`.
+        self.assertNotIn('synthese_ci',
                          self._payload(self.devis, ShareLink.NIVEAU_CONFIANCE))
 
     def test_les_44_cles_de_base_sont_servies_aux_deux_niveaux(self):

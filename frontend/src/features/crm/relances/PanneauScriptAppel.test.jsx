@@ -472,26 +472,18 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
     expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
   })
 
-  it('lead industriel : conso, puissance souscrite, surface, décideur — jamais la présence, aucun chiffre', async () => {
-    armer({
-      panneau: {
-        ...PANNEAU,
-        segment: 'industriel',
-        segment_libelle: 'Industriel',
-        champs_a_poser: [
-          occupationServie, entree('conso_mensuelle_kwh'), entree('surface_toiture_m2'),
-          PANNEAU.champs_a_poser.find((q) => q.champ === 'decideur'),
-          entree('compteur_puissance_kva'),
-        ],
-      },
-    })
-    render(<PanneauScriptAppel mode="fiche" leadId={PANNEAU.lead_id} />)
+  it('lead industriel (CIQ420) : cinq étapes servies par le contrat — jamais la présence, aucun chiffre', async () => {
+    const INDUSTRIEL = exempleContrat('crm', 'panneau_appel', 'exemple_industriel')
+    armer({ panneau: INDUSTRIEL })
+    render(<PanneauScriptAppel mode="fiche" leadId={INDUSTRIEL.lead_id} />)
     const liste = await screen.findByTestId('questions-appel')
     const posees = [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
       .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
-    expect(posees).toEqual(['conso_mensuelle_kwh', 'compteur_puissance_kva', 'surface_toiture_m2', 'decideur'])
+    expect(posees).toEqual([
+      'conso_mensuelle_kwh', 'compteur_puissance_kva', 'secteur_industriel', 'type_surface', 'decideur',
+    ])
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
-    expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_TENSION)
+    expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_PROCESS)
     expect(screen.getAllByTestId('garde-fou-segment').map((n) => n.textContent))
       .toEqual([guidance.AUCUNE_ESTIMATION_SEGMENT])
     expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
@@ -694,5 +686,76 @@ describe('CAD153 — une question déjà répondue n’est JAMAIS reposée', () 
     expect(await screen.findByTestId('mention-d7')).toBeInTheDocument()
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
     expect(screen.queryByTestId('question-appel-occupation_jour')).not.toBeInTheDocument()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// CIQ420 — l'appel pro en cinq étapes (exemples du contrat panneau_appel.json)
+// ════════════════════════════════════════════════════════════════════════════
+describe('CIQ420 — script d’appel pro', () => {
+  const COMMERCIAL = exempleContrat('crm', 'panneau_appel', 'exemple_commercial')
+  const INDUSTRIEL = exempleContrat('crm', 'panneau_appel', 'exemple_industriel')
+  const DEVIS_AUTO_COMMERCIAL = exempleContrat('crm', 'devis_auto_pret', 'exemple_commercial')
+
+  const posees = async () => {
+    const liste = await screen.findByTestId('questions-appel')
+    return [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
+      .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
+  }
+
+  it('une étape déjà répondue est sautée (commercial : tension et catégorie pré-remplies)', async () => {
+    armer({ panneau: COMMERCIAL })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    expect(await posees()).toEqual([
+      'facture_hiver', 'compteur_puissance_kva', 'reponses_categorie', 'type_surface', 'decideur',
+    ])
+    expect(screen.queryByTestId('question-appel-tension_raccordement')).not.toBeInTheDocument()
+  })
+
+  it('« avec le conjoint / la famille » est absent pour un pro', async () => {
+    armer({ panneau: INDUSTRIEL })
+    render(<PanneauScriptAppel mode="fiche" leadId={INDUSTRIEL.lead_id} />)
+    const decideur = await screen.findByTestId('question-appel-decideur')
+    expect(decideur.textContent.toLowerCase()).not.toContain('conjoint')
+    expect(decideur.textContent.toLowerCase()).not.toContain('famille')
+  })
+
+  it('visite requise (devis_auto servi) : la proposition de visite apparaît, avec ses motifs', async () => {
+    armer({ panneau: COMMERCIAL })
+    crmApi.getLead = vi.fn(() => Promise.resolve({ data: DEVIS_AUTO_COMMERCIAL }))
+    try {
+      render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+      const bloc = await screen.findByTestId('visite-avant-devis-pro')
+      expect(bloc).toHaveTextContent(guidance.VISITE_PRO_TITRE)
+      for (const motif of DEVIS_AUTO_COMMERCIAL.devis_auto.visite_avant_devis.motifs) {
+        expect(bloc).toHaveTextContent(motif)
+      }
+      expect(within(bloc).getByRole('button', { name: /Proposer la visite/ })).toBeInTheDocument()
+    } finally {
+      delete crmApi.getLead
+    }
+  })
+
+  it('visite non requise : aucune proposition', async () => {
+    armer({ panneau: COMMERCIAL })
+    crmApi.getLead = vi.fn(() => Promise.resolve({
+      data: { devis_auto: { visite_avant_devis: { requise: false, motifs: [] } } },
+    }))
+    try {
+      render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+      await screen.findByTestId('questions-appel')
+      await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+      expect(screen.queryByTestId('visite-avant-devis-pro')).not.toBeInTheDocument()
+    } finally {
+      delete crmApi.getLead
+    }
+  })
+
+  it('aucune clé ni chiffre d’économie n’est rendu', async () => {
+    armer({ panneau: INDUSTRIEL })
+    render(<PanneauScriptAppel mode="fiche" leadId={INDUSTRIEL.lead_id} />)
+    await screen.findByTestId('questions-appel')
+    expect(screen.getByTestId('panneau-script-appel').textContent)
+      .not.toMatch(/\d[\d\s.,]*\s*(MAD|DH|dirhams?|%|kWh)/i)
   })
 })

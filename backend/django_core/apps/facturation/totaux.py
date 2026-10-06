@@ -114,6 +114,19 @@ class TotauxDocumentMixin:
         TOUJOURS le noyau canonique (``_canonique``) : la TVA se calcule sur
         le HT NET déjà arrondi au centime, remise globale ou non (ERR-QAH-
         VENTES-FACTURE-HT-NON-ARRONDI)."""
+        ventilation = getattr(self, 'ventilation_tva', None)
+        if ventilation and self._figee:
+            # CIQ215 — tranche à taux mixtes : la ventilation par taux posée
+            # à la création (bases et TVA au prorata de l'option retenue)
+            # remplace le panier unique au « taux mélangé ». Absente
+            # (mono-taux, historique) ⇒ le chemin d'hier ci-dessous.
+            from decimal import Decimal
+            return [
+                {'taux': Decimal(str(b['taux'])),
+                 'base_ht': Decimal(str(b['base_ht'])),
+                 'montant': Decimal(str(b['montant']))}
+                for b in ventilation
+            ]
         if self.montant_tva is not None or self._figee:
             # Document figé : chemin historique, au bit près. ``montant_ht``
             # peut être posé SANS ``montant_tva`` (facture de relance/tranche

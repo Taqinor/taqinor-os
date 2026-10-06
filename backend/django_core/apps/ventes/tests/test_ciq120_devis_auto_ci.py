@@ -141,8 +141,11 @@ class DevisAutoCITests(_Base):
             build_devis_auto(lead=lead, user=self.user, company=self.co, origine='tunnel')
         self.assertEqual(ctx.exception.field, 'type_installation')
 
-    def test_agricole_toujours_refuse(self):
+    def test_agricole_tunnel_toujours_refuse(self):
+        # AGR124 — l'agricole est ouvert au bouton (origine « auto ») ; le
+        # tunnel du site, lui, reste refusé.
         lead = self._lead(type_installation='agricole', conso_mensuelle_kwh=Decimal('6000'))
         with self.assertRaises(AutoDevisError) as ctx:
-            build_devis_auto(lead=lead, user=self.user, company=self.co)
+            build_devis_auto(lead=lead, user=self.user, company=self.co,
+                             origine='tunnel')
         self.assertEqual(ctx.exception.field, 'type_installation')

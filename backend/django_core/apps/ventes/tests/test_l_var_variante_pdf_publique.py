@@ -339,7 +339,12 @@ class TestPdfReelParVariante(_Base):
                 self.devis.id,
                 clean_pdf_options({'variante_option': 'avec'}), persist=True)
         self.devis.refresh_from_db()
-        self.assertEqual(self.devis.fichier_pdf, avant)
+        # ``None`` et ``''`` sont tous deux « aucune clé persistée » : le
+        # signal ``parametres.invalidate_pdf_cache`` (déclenché par la création
+        # paresseuse du CompanyProfile pendant le rendu) normalise NULL → ''
+        # sans rapport avec la variante. L'invariant testé : la clé de variante
+        # n'est JAMAIS écrite sur le devis.
+        self.assertEqual(self.devis.fichier_pdf or '', avant or '')
 
 
 # ═══════════════════════════════════════════════════════════════════════════

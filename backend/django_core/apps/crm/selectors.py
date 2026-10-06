@@ -6425,3 +6425,14 @@ def repere_toit(lead):
         return pin, source, False
     utilisable = True if pin is None else _repere_dans_anneau(pin, anneau)
     return pin, source, utilisable
+
+
+def champs_devis_auto_manquants(lead):
+    """AGR124 — ``[{champ, label}]`` des groupes « devis automatique prêt »
+    sans aucun champ rempli (``devis_auto.champs_manquants_detail``, AGR403) :
+    point d'entrée cross-app du devis automatique serveur (``ventes``), qui
+    ne lit jamais ``crm.devis_auto`` directement. Lecture seule."""
+    from .devis_auto import champs_manquants_detail
+    if lead is None:
+        return []
+    return champs_manquants_detail(lead)

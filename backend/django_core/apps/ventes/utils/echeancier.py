@@ -33,7 +33,7 @@ sans déclaration et ≤ 100, la valeur reste un pourcentage, mot pour mot.
 """
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
 from apps.ventes.models import Facture
 
@@ -43,12 +43,32 @@ TRANCHE_LABELS = {
     'acompte': 'Acompte',
     'materiel': 'Livraison du matériel',
     'solde': 'Solde',
+    # CIQ212 — jalons C&I (D-CIQ-13), libellés de ``company_settings``.
+    'commande': 'Commande',
+    'livraison_materiel': 'Livraison du matériel',
+    'mise_en_service': 'Mise en service',
+    'reception_definitive': 'Réception définitive',
+    'reception_financeur': ("Règlement par l'organisme financeur à la "
+                            "réception signée"),
+    'liberation_retenue': 'Libération de la retenue de garantie',
 }
 TRANCHE_TYPE = {
     'acompte': Facture.TypeFacture.ACOMPTE,
     'materiel': Facture.TypeFacture.INTERMEDIAIRE,
     'solde': Facture.TypeFacture.SOLDE,
+    # CIQ212 — la réception définitive est un SOLDE.
+    'commande': Facture.TypeFacture.ACOMPTE,
+    'livraison_materiel': Facture.TypeFacture.INTERMEDIAIRE,
+    'mise_en_service': Facture.TypeFacture.INTERMEDIAIRE,
+    'reception_definitive': Facture.TypeFacture.SOLDE,
+    'reception_financeur': Facture.TypeFacture.SOLDE,
+    'liberation_retenue': Facture.TypeFacture.SOLDE,
 }
+#: CIQ212 — jalons C&I dont la DERNIÈRE tranche est facturée en SOLDE.
+JALONS_CI = ('commande', 'livraison_materiel', 'mise_en_service',
+             'reception_definitive', 'reception_financeur',
+             'liberation_retenue')
+PAYEURS = ('client', 'tiers')
 
 # ── QJR21 — unité d'une tranche ─────────────────────────────────────────────
 #: Les deux unités qu'une tranche peut déclarer.
@@ -151,6 +171,11 @@ def normaliser_tranche(entree, index=0) -> dict:
     if not isinstance(nature, str) or not nature.strip() \
             or _mot_unite(nature) is not None:
         nature = None
+    # CIQ212 — sans nature, le JALON déclaré nomme la tranche (avant la clé
+    # positionnelle d'hier).
+    jalon = entree.get('jalon')
+    if nature is None and isinstance(jalon, str) and jalon in TRANCHE_LABELS:
+        nature = jalon
     key = nature or f'tranche_{index}'
     libelle = entree.get('libelle') or TRANCHE_LABELS.get(key, key)
     sortie = {'key': key, 'libelle': libelle, 'valeur': valeur, 'unite': unite}
@@ -160,6 +185,59 @@ def normaliser_tranche(entree, index=0) -> dict:
     date_prevue = date_prevue_tranche(entree, index)
     if date_prevue is not None:
         sortie['date_prevue'] = date_prevue
+    # CIQ212 — champs FACULTATIFS d'une tranche (contrat
+    # ``devis_replace_lines_entete.json``) : absents ⇒ clés absentes, un
+    # échéancier d'hier sort identique à l'octet.
+    sortie.update(_champs_jalon(entree, index))
+    return sortie
+
+
+def _nombre_tranche(entree, cle, index, *, entier):
+    brut = entree.get(cle)
+    if brut is None or (isinstance(brut, str) and not brut.strip()):
+        return None
+    try:
+        if isinstance(brut, bool):
+            raise ValueError(brut)
+        valeur = float(str(brut).replace(',', '.'))
+        if valeur != valeur or valeur < 0 or (
+                entier and valeur != int(valeur)):
+            raise ValueError(brut)
+    except (TypeError, ValueError):
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : « echeancier[{index}].{cle} » doit être "
+            f"un nombre {'entier ' if entier else ''}positif (reçu « {brut} »).")
+    return int(valeur) if entier or valeur == int(valeur) else valeur
+
+
+def _champs_jalon(entree, index):
+    """CIQ212 / CIQ213 — ``jalon``, ``delai_reglement_jours``,
+    ``semaines_indicatives`` et ``payeur`` d'une tranche, validés (refus FR
+    nommant ``echeancier[i].<champ>``) ; seulement ceux qui sont présents."""
+    from apps.ventes.utils.company_settings import JALONS_CONNUS
+    sortie = {}
+    jalon = entree.get('jalon')
+    if jalon not in (None, ''):
+        if jalon not in JALONS_CONNUS:
+            raise EcheancierInvalide(
+                f"Tranche n°{index + 1} : « echeancier[{index}].jalon » doit "
+                f"valoir {' | '.join(JALONS_CONNUS)} (reçu « {jalon} »).")
+        sortie['jalon'] = jalon
+    delai = _nombre_tranche(entree, 'delai_reglement_jours', index,
+                            entier=True)
+    if delai is not None:
+        sortie['delai_reglement_jours'] = delai
+    semaines = _nombre_tranche(entree, 'semaines_indicatives', index,
+                               entier=False)
+    if semaines is not None:
+        sortie['semaines_indicatives'] = semaines
+    payeur = entree.get('payeur')
+    if payeur not in (None, ''):
+        if payeur not in PAYEURS:
+            raise EcheancierInvalide(
+                f"Tranche n°{index + 1} : « echeancier[{index}].payeur » doit "
+                f"valoir client | tiers (reçu « {payeur} »).")
+        sortie['payeur'] = payeur
     return sortie
 
 
@@ -227,12 +305,21 @@ def tranches_normalisees(devis) -> list:
 
     from apps.ventes.utils.company_settings import payment_terms_for
     mode = devis.mode_installation or 'residentiel'
-    terms = payment_terms_for(getattr(devis, 'company', None), mode)
-    return [{'key': key,
-             'libelle': TRANCHE_LABELS.get(key, key.capitalize()),
-             'valeur': terms[key],
-             'unite': UNITE_PCT}
-            for key in TRANCHE_ORDER]
+    jalons = payment_terms_for(getattr(devis, 'company', None), mode)
+    # CIQ212 — N jalons (liste résolue) ; les trois créneaux historiques
+    # sortent identiques à l'octet (mêmes clés, libellés, valeurs).
+    sortie = []
+    for j in jalons:
+        key = j['jalon']
+        tranche = {'key': key,
+                   'libelle': (TRANCHE_LABELS.get(key, key.capitalize())
+                               if key in TRANCHE_ORDER else j['libelle']),
+                   'valeur': j['pct'],
+                   'unite': UNITE_PCT}
+        if key not in TRANCHE_ORDER:
+            tranche['jalon'] = key
+        sortie.append(tranche)
+    return sortie
 
 
 def pourcentages_echeancier(devis, lignes=None) -> list:
@@ -272,8 +359,11 @@ def pourcentages_echeancier(devis, lignes=None) -> list:
                    if total_ttc > 0 else Decimal('0'))
         else:
             pct = Decimal(str(tranche['valeur']))
-        out.append({'key': tranche['key'], 'libelle': tranche['libelle'],
-                    'pct': pct})
+        sortie = {'key': tranche['key'], 'libelle': tranche['libelle'],
+                  'pct': pct}
+        if tranche.get('jalon'):
+            sortie['jalon'] = tranche['jalon']  # CIQ212 (absent sinon)
+        out.append(sortie)
     return out
 
 
@@ -303,6 +393,32 @@ def montants_tranches(total_ttc, pourcentages) -> dict:
             out[cle] = montant
             cumul += montant
     return out
+
+
+def jalons_paiement_devis(devis, lignes=None) -> list:
+    """CIQ212 — les JALONS de paiement d'un devis, source unique que le PDF
+    et /proposition imprimeront (D3) : ``[{jalon, libelle, pct, montant_ttc,
+    delai_reglement_jours, semaines_indicatives}]``.
+
+    Même règle que :func:`montants_tranches` : chaque jalon non final vaut
+    ``TTC × pct`` au centime, le DERNIER reçoit le reliquat (la somme égale le
+    TTC de l'option retenue). Délai et semaines : ``None`` quand non déclarés
+    (jamais un délai inventé). Fonction de lecture, aucune écriture.
+    """
+    from apps.ventes.utils.options import option_totaux
+    tranches = tranches_normalisees(devis)
+    pourcentages = pourcentages_echeancier(devis, lignes=lignes)
+    total = option_totaux(devis, lignes=lignes)['ttc']
+    montants = montants_tranches(
+        total, [(i, p['pct']) for i, p in enumerate(pourcentages)])
+    return [{
+        'jalon': t.get('jalon') or t['key'],
+        'libelle': t['libelle'],
+        'pct': pourcentages[i]['pct'],
+        'montant_ttc': montants[i],
+        'delai_reglement_jours': t.get('delai_reglement_jours'),
+        'semaines_indicatives': t.get('semaines_indicatives'),
+    } for i, t in enumerate(tranches)]
 
 
 def dates_prevues_par_creneau(devis):
@@ -359,7 +475,11 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
         if dates is not None:
             slots['dates_prevues'] = dates
         return slots
-    termes = termes_defaut or {}
+    # CIQ212 — les défauts société arrivent en LISTE de jalons
+    # (``payment_terms_for``) : rabattus sur trois créneaux (somme par
+    # créneau ; trois jalons historiques ⇒ le même dict qu'hier).
+    from apps.ventes.utils.company_settings import creneaux_depuis_jalons
+    termes = creneaux_depuis_jalons(termes_defaut) if termes_defaut else {}
     slots = {'acompte': termes.get('acompte', 30),
              'materiel': termes.get('materiel', 60),
              'solde': termes.get('solde', 10)}
@@ -381,9 +501,84 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
         for cle in ('acompte', 'materiel', 'solde'):
             if cle in par_cle:
                 slots[cle] = par_cle[cle]
+        # CIQ212 — jalons C&I (4 tranches industrielles…) : somme par créneau
+        # imprimé ; sans jalon C&I, rien ne change.
+        from apps.ventes.utils.company_settings import CRENEAU_DU_JALON
+        sommes = {}
+        if any(t.get('jalon') in JALONS_CI or t['key'] in JALONS_CI
+               for t in tranches):
+            for t in tranches:
+                creneau = CRENEAU_DU_JALON.get(t.get('jalon') or t['key'])
+                if creneau is not None:
+                    sommes[creneau] = sommes.get(creneau, 0) + t['pct']
+        slots.update(sommes)
         # La PREMIÈRE tranche EST l'acompte, quel que soit son nom.
         slots['acompte'] = tranches[0]['pct']
     return slots
+
+
+#: CIQ213 — libellé de la tranche réglée par l'organisme financeur (jamais
+#: « crédit-bail » : le mot n'est imprimé qu'après l'avis juridique, CIQ211).
+LIBELLE_FINANCEUR = TRANCHE_LABELS['reception_financeur']
+
+
+def modele_financeur(devis, acompte_client_pct):
+    """CIQ213 — l'échéancier « règlement par l'organisme financeur à la
+    réception signée » : une tranche CLIENT (acompte DÉCLARÉ, 0 possible —
+    alors absente) puis la tranche ``payeur: tiers``, jalon
+    ``reception_financeur``, qui porte le reste. Forme ``Devis.echeancier``
+    (validée par :func:`valider_echeancier`) ; rien n'est écrit ici.
+
+    Lève ``EcheancierInvalide`` (FR) sur un acompte hors [0, 100].
+    """
+    del devis  # forme indépendante du devis (le tiers est sur le devis)
+    try:
+        acompte = Decimal(str(acompte_client_pct))
+        if not acompte.is_finite():
+            raise ValueError(acompte_client_pct)
+    except (TypeError, ValueError, ArithmeticError):
+        raise EcheancierInvalide(
+            "Acompte client : un pourcentage entre 0 et 100 est attendu.")
+    if acompte < 0 or acompte > 100:
+        raise EcheancierInvalide(
+            "Acompte client : un pourcentage entre 0 et 100 est attendu.")
+    valeur = int(acompte) if acompte == int(acompte) else float(acompte)
+    reste = 100 - acompte
+    reste = int(reste) if reste == int(reste) else float(reste)
+    tranches = []
+    if acompte > 0:
+        tranches.append({'libelle': TRANCHE_LABELS['commande'],
+                         'type': 'acompte', 'pct_or_montant': valeur,
+                         'jalon': 'commande', 'payeur': 'client'})
+    if reste > 0:
+        tranches.append({'libelle': LIBELLE_FINANCEUR, 'type': 'solde',
+                         'pct_or_montant': reste,
+                         'jalon': 'reception_financeur', 'payeur': 'tiers'})
+    return tranches
+
+
+def retenue_de_tranche(devis, ttc_tranche):
+    """CIQ214 — ``{taux, montant, phrase}`` de la retenue de garantie d'une
+    tranche, ou None (aucune retenue demandée). Montant = taux × TTC de la
+    tranche au centime ; la phrase (AUD180) dit qu'elle est retenue sur le
+    règlement, sans effet sur la base taxable."""
+    retenue = getattr(devis, 'retenue_garantie', None)
+    if not isinstance(retenue, dict) or retenue.get('taux_pct') in (None, ''):
+        return None
+    try:
+        taux = Decimal(str(retenue['taux_pct']))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    if not taux.is_finite() or taux <= 0:
+        return None
+    montant = _q(Decimal(str(ttc_tranche)) * taux / 100)
+    return {
+        'taux': taux,
+        'montant': montant,
+        'phrase': (f'Retenue de garantie de {taux.normalize():f} % '
+                   f'({montant} MAD) retenue sur le règlement, libérée à la '
+                   'réception définitive — sans effet sur la base taxable.'),
+    }
 
 
 def schedule_for_devis(devis):
@@ -421,8 +616,79 @@ def blended_tva_pct(devis) -> Decimal:
     return _q(Decimal(str(opt['tva'])) / ht * 100)
 
 
-def _tranche_type(key):
-    """Type Facture d'une tranche : depuis TRANCHE_TYPE ou INTERMEDIAIRE par défaut."""
+def _repartir_au_centime(total, poids):
+    """CIQ215 — répartit ``total`` (MAD) entre les clés de ``poids`` au
+    prorata, méthode du plus fort reste au centime : la somme des parts vaut
+    EXACTEMENT ``total``. Poids nuls ⇒ tout sur la dernière clé."""
+    cles = list(poids)
+    centimes = int((Decimal(str(total)) * 100).to_integral_value())
+    somme = sum((Decimal(str(poids[c])) for c in cles), Decimal('0'))
+    if somme == 0:
+        parts = {c: 0 for c in cles}
+        parts[cles[-1]] = centimes
+    else:
+        exactes = {c: Decimal(centimes) * Decimal(str(poids[c])) / somme
+                   for c in cles}
+        parts = {c: int(exactes[c].to_integral_value(rounding=ROUND_FLOOR))
+                 for c in cles}
+        reste = centimes - sum(parts.values())
+        ordre = sorted(cles, key=lambda c: (exactes[c] - parts[c], -cles.index(c)),
+                       reverse=True)
+        for c in ordre[:reste]:
+            parts[c] += 1
+    return {c: Decimal(parts[c]) / 100 for c in cles}
+
+
+def ventilation_tva_tranche(devis, tranche, existantes=None):
+    """CIQ215 — ventilation ``[{taux, base_ht, montant}]`` (chaînes) d'une
+    tranche, ou None quand l'option retenue n'a qu'un taux (facture d'hier,
+    octet-identique).
+
+    Bases et TVA de la tranche réparties au prorata des bases (resp. des TVA)
+    par taux de l'option retenue (``option_totaux``), au centime par le plus
+    fort reste. La DERNIÈRE tranche prend le reste de CHAQUE taux, pour que
+    la somme des factures égale la ventilation du devis au centime. Aucun
+    taux ne change (convention 12)."""
+    from apps.ventes.utils.options import option_totaux
+    paniers = option_totaux(devis).get('tva_par_taux') or []
+    if len(paniers) < 2:
+        return None
+    taux = [Decimal(str(b['taux'])) for b in paniers]
+    bases_devis = {t: Decimal(str(b['base_ht'])) for t, b in zip(taux, paniers)}
+    tva_devis = {t: Decimal(str(b['montant'])) for t, b in zip(taux, paniers)}
+    ht, tva = Decimal(str(tranche['ht'])), Decimal(str(tranche['tva']))
+    bases = tvas = None
+    if tranche.get('is_last'):
+        precedentes = list(existantes if existantes is not None
+                           else factures_actives(devis))
+        if all(f.ventilation_tva for f in precedentes):
+            deja_b = {t: Decimal('0') for t in taux}
+            deja_t = {t: Decimal('0') for t in taux}
+            for f in precedentes:
+                for b in f.ventilation_tva:
+                    t = Decimal(str(b['taux']))
+                    if t in deja_b:
+                        deja_b[t] += Decimal(str(b['base_ht']))
+                        deja_t[t] += Decimal(str(b['montant']))
+            bases = {t: _q(bases_devis[t] - deja_b[t]) for t in taux}
+            tvas = {t: _q(tva_devis[t] - deja_t[t]) for t in taux}
+            if sum(bases.values()) != ht or sum(tvas.values()) != tva:
+                bases = tvas = None
+    if bases is None:
+        bases = _repartir_au_centime(ht, bases_devis)
+        tvas = _repartir_au_centime(tva, tva_devis)
+    return [{'taux': str(t), 'base_ht': str(_q(bases[t])),
+             'montant': str(_q(tvas[t]))} for t in taux]
+
+
+def _tranche_type(key, is_last=False):
+    """Type Facture d'une tranche : depuis TRANCHE_TYPE ou INTERMEDIAIRE par défaut.
+
+    CIQ212 — la DERNIÈRE tranche d'un échéancier à jalons C&I est un SOLDE
+    (mise en service d'un commercial 40/50/10, réception définitive d'un
+    industriel) ; les clés historiques gardent leur type d'hier."""
+    if is_last and key in JALONS_CI:
+        return Facture.TypeFacture.SOLDE
     return TRANCHE_TYPE.get(key, Facture.TypeFacture.INTERMEDIAIRE)
 
 
@@ -505,16 +771,23 @@ def next_tranche(devis, lignes=None, option=None):
         # celui d'hier ; la TVA en devient le complément exact.
         tva = ttc - ht
 
-    return {
+    sortie = {
         'key': key,
         'label': tranche['libelle'],
-        'type': _tranche_type(key),
+        'type': _tranche_type(key, is_last),
         'pourcentage': pourcentage,
         'ht': ht,
         'tva': tva,
         'ttc': ttc,
         'is_last': is_last,
     }
+    # CIQ212 — délai de règlement DÉCLARÉ sur le jalon (clé absente sinon).
+    if tranche.get('delai_reglement_jours') is not None:
+        sortie['delai_reglement_jours'] = tranche['delai_reglement_jours']
+    # CIQ213 — tranche réglée par un TIERS (organisme financeur).
+    if tranche.get('payeur') == 'tiers':
+        sortie['payeur'] = 'tiers'
+    return sortie
 
 
 def creer_facture_tranche(devis, user, company, create_with_reference):
@@ -551,15 +824,48 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     if tr is None:
         raise ValueError("Toutes les tranches de l'échéancier sont déjà facturées.")
 
+    # CIQ213 — une tranche ``payeur: tiers`` est facturée à l'organisme
+    # financeur du devis (``Facture.client`` = financeur) ; ``Facture.devis``
+    # garde le lien au client final. Sans tiers posé : refus en français.
+    destinataire = devis.client
+    if tr.get('payeur') == 'tiers':
+        destinataire = getattr(devis, 'tiers_payeur', None)
+        if destinataire is None:
+            raise ValueError(
+                "Cette tranche est réglée par un organisme financeur : "
+                "renseignez le tiers payeur du devis avant de la facturer.")
+
     pct_label = int(tr['pourcentage']) if tr['pourcentage'] == int(tr['pourcentage']) \
         else tr['pourcentage']
     libelle = f"{tr['label']} {pct_label} % — devis {devis.reference}"
 
+    # CIQ212 — un délai de règlement DÉCLARÉ sur le jalon fixe l'échéance
+    # (émission + délai) AVANT l'émission, qui ne l'écrase pas ; sinon le
+    # repli XFAC23 d'hier (délai du client). Aucun délai légal codé.
+    echeance = None
+    if tr.get('delai_reglement_jours') is not None:
+        from datetime import timedelta
+        from django.utils import timezone
+        echeance = timezone.localdate() + timedelta(
+            days=int(tr['delai_reglement_jours']))
+
+    # CIQ214 — retenue de garantie DEMANDÉE par le client (D-CIQ-14) : taux ×
+    # TTC de la tranche, au centime, retenue sur le RÈGLEMENT — ni le HT ni
+    # la TVA ne baissent (phrase AUD180). Sans retenue : facture d'hier.
+    retenue = retenue_de_tranche(devis, tr['ttc'])
+    # CIQ215 — TVA ventilée par taux (devis à taux mixtes) ; None sinon.
+    ventilation = ventilation_tva_tranche(devis, tr)
+
     def _create(ref):
+        extra = {} if echeance is None else {'date_echeance': echeance}
+        if retenue is not None:
+            extra['retenue_garantie_mad'] = retenue['montant']
+            extra['conditions_paiement'] = retenue['phrase']
         return Facture.objects.create(
+            **extra,
             reference=ref,
             devis=devis,
-            client=devis.client,
+            client=destinataire,
             statut=Facture.Statut.BROUILLON,
             type_facture=tr['type'],
             pourcentage=tr['pourcentage'],
@@ -568,19 +874,31 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             montant_tva=tr['tva'],
             montant_ttc=tr['ttc'],
             taux_tva=blended_tva_pct(devis),
+            ventilation_tva=ventilation,
+            # CIQ216 — la référence de commande du client suit le devis.
+            reference_commande_client=(
+                getattr(devis, 'reference_commande_client', '') or ''),
             created_by=user,
             company=company,
         )
 
     from django.db import transaction
-    from apps.ventes.domain.facturation_ops import emettre_facture
+    from apps.ventes.domain.facturation_ops import (
+        EmissionRefusee, emettre_facture,
+    )
     from apps.ventes.utils.company_settings import numbering_config
     cfg = numbering_config(company, 'facture')
-    with transaction.atomic():
-        facture = create_with_reference(
-            Facture, cfg['prefix'], company, _create,
-            padding=cfg['padding'], period=cfg['period'])
-        emettre_facture(facture, user=user, source='echeancier_tranche')
+    try:
+        with transaction.atomic():
+            facture = create_with_reference(
+                Facture, cfg['prefix'], company, _create,
+                padding=cfg['padding'], period=cfg['period'])
+            emettre_facture(facture, user=user, source='echeancier_tranche')
+    except EmissionRefusee as exc:
+        # CIQ217 — un refus d'émission (p. ex. client entreprise sans ICE)
+        # annule la tranche entière : rien n'est écrit, et l'appelant le
+        # rend en 400 français comme ses autres refus (ValueError).
+        raise ValueError(exc.motif) from exc
     return facture
 
 

@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 import { devisVersEtat, etatVersEcritures } from './etatDevis.js'
 import { consoAnnuelleDepuisFactures } from '../solar.js'
+import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 // Les clés DÉCLARÉES au schéma serveur (`domain/etude_schema.py`) : toute clé
@@ -85,19 +86,34 @@ const FIXTURES = {
 
   'agricole, pompe à courbe': base(4, 'agricole', {
     scenario: 'Sans batterie',
-    pompe_cv: 7.5,
-    pompe_kw: 5.5,
-    hmt_m: 60,
-    debit_souhaite_m3h: 12,
-    heures_pompage: 7,
+    // AGR130 — ENTRÉES v2 seules (forme du corps de l'aperçu, contrat
+    // `etude_pompage_preview.json`) : jamais une dérivée (pompe_cv, m3_jour…).
+    mode_pompe: 'neuve',
+    plaque: null,
+    besoin: {
+      mode: 'volume_declare', volume_m3_jour: 135, debit_souhaite_m3h: 12,
+      mois_pointe: 7, debit_actuel_m3h: null, heures_actuelles_jour: null,
+      cultures: [{ crop: 'agrumes', surface_ha: 3, irrigation: 'goutte' }],
+      region: 'souss-massa',
+    },
+    source: {
+      debit_exploitation_m3h: 36, debit_exploitation_origine: 'foreur',
+      debit_exploitation_date: '2026-09-15', debit_autorise_m3h: null,
+      volume_annuel_autorise_m3: null, compteur: true, niveau_dynamique_m: null,
+      diametre_tubage_mm: 150, profondeur_calage_m: 60, volume_reservoir_m3: null,
+      niveau_statique_m: 40, rabattement_m: 8, profondeur_forage_m: 45,
+    },
+    hmt_entrees: {
+      saisie_m: null, denivele_m: 4,
+      conduite: { c_hazen_williams: null, materiau: 'pehd', diametre_interieur_mm: 100, longueur_m: 350 },
+      pertes_singulieres_m: 0.8, pression_service_bar: 1,
+    },
     type_pompe: 'immergee',
-    alim: 'triphase',
-    profondeur_m: 45,
-    distance_m: 30,
-    region: 'souss-massa',
-    crop: 'agrumes',
-    surface_ha: 3,
-    irrigation_method: 'goutte',
+    alim: 'tri',
+    localisation: { ville: 'Taroudant', lat: 30.47, lon: -8.88 },
+    distance_champ_m: 30,
+    options_cochees: ['afficheur_variateur', 'protection_dc'],
+    taille: 'superieure',
     // AGR212 — l'énergie DÉCLARÉE vit dans saisies_economie_pompage.
     saisies_economie_pompage: {
       energie_actuelle: { valeur: 'diesel', provenance: { origine: 'saisie', detail: null, date: '2026-09-12' } },
@@ -110,8 +126,6 @@ const FIXTURES = {
       taux_actualisation: null,
       pret: null,
     },
-    hmt_static: 40,
-    hmt_drawdown: 8,
   }, [
     ligne(1, 41, 'Pompe OSP 30-8 5.5kW', '1.00', '18000.00', '20.00'),
     ligne(2, 42, 'Panneau Jinko 580W', '14.00', '1000.00', '10.00'),
@@ -206,4 +220,77 @@ test('toute clé écrite par l’écran est DÉCLARÉE au schéma serveur', () =
       assert.ok(CLES_SCHEMA.has(cle), `clé « ${cle} » écrite mais absente du schéma`)
     }
   }
+})
+
+// ── AGR218 — enregistrer → rouvrir → enregistrer sans toucher : identique ──
+test('AGR218 — ligne à 0 % + base légale + attestation : aller-retour exact et stable', () => {
+  const corps = documentContrat('ventes', 'devis_replace_lines_entete').corps_agricole
+  const devis = base(6, 'agricole', { ...corps.etude_params },
+    corps.lignes.map((l, i) => ({ id: i + 1, ...l })))
+  const premier = etatVersEcritures(devisVersEtat(devis))
+  assert.deepEqual(premier.lignes.map(l => l.tva_base_legale),
+    corps.lignes.map(l => l.tva_base_legale))
+  assert.deepEqual(premier.etude.attestation_usage_agricole,
+    corps.etude_params.attestation_usage_agricole)
+  // Rouvrir ce qui vient d'être enregistré, ré-enregistrer sans toucher.
+  const relu = {
+    ...devis, etude_params: premier.etude,
+    lignes: premier.lignes.map((l, i) => ({ id: i + 1, ...l })),
+  }
+  const second = etatVersEcritures(devisVersEtat(relu))
+  assert.deepEqual(second.lignes, premier.lignes)
+  assert.deepEqual(second.etude, premier.etude)
+})
+
+// ── AGR130 — rien de dérivé ne part du navigateur ; mode « existante » ────
+const DERIVEES = ['pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h', 'm3_jour',
+  'champ_kwc', 'heures_pompage', 'production', 'kit', 'conception', 'champ',
+  'besoin_mensuel', 'alertes_pompage', 'provenance_pompage', 'pvgis_fige']
+
+test('AGR130 — un devis agricole relu avec des dérivées serveur : aucune ne repart', () => {
+  const devis = { ...FIXTURES['agricole, pompe à courbe'] }
+  devis.etude_params = {
+    ...devis.etude_params,
+    pompe_cv: 10, pompe_kw: 7.5, hmt_m: 61.2, debit_hmt_m3h: 14, m3_jour: 98,
+    champ_kwc: 9.94, heures_pompage: 7, production: { m3_jour_mois: [1] },
+    kit: { inclus: [], options: [] }, conception: {}, champ: {},
+    besoin_mensuel: [], alertes_pompage: [], provenance_pompage: {}, pvgis_fige: {},
+  }
+  const { etude } = etatVersEcritures(devisVersEtat(devis))
+  for (const cle of DERIVEES) assert.equal(cle in etude, false, cle)
+  assert.deepEqual(etude.besoin, FIXTURES['agricole, pompe à courbe'].etude_params.besoin)
+})
+
+test('AGR130 — pompe existante : plaque, HMT saisie, taille ; enregistrer → rouvrir → enregistrer', () => {
+  const devis = base(7, 'agricole', {
+    mode_pompe: 'existante',
+    plaque: { kw: 5.5, tension_v: 380, phases: 'tri', cv: 7.5, courant_a: null },
+    besoin: {
+      mode: 'pompe_actuelle', volume_m3_jour: null, debit_souhaite_m3h: null,
+      mois_pointe: null, debit_actuel_m3h: 10, heures_actuelles_jour: 6,
+      cultures: [], region: null,
+    },
+    source: {
+      debit_exploitation_m3h: null, debit_exploitation_origine: null,
+      debit_exploitation_date: null, debit_autorise_m3h: null,
+      volume_annuel_autorise_m3: null, compteur: false, niveau_dynamique_m: 50,
+      diametre_tubage_mm: null, profondeur_calage_m: null, volume_reservoir_m3: null,
+      niveau_statique_m: null, rabattement_m: null, profondeur_forage_m: null,
+    },
+    hmt_entrees: { saisie_m: 60, denivele_m: null, conduite: null,
+      pertes_singulieres_m: null, pression_service_bar: null },
+    type_pompe: 'immergee', alim: 'tri',
+    localisation: { ville: null, lat: null, lon: null },
+    distance_champ_m: null, options_cochees: [], taille: 'recommandee',
+  }, [ligne(1, 41, 'Variateur VEICHI SI23 4kW', '1.00', '9000.00', '20.00')])
+  const premier = etatVersEcritures(devisVersEtat(devis))
+  assert.deepEqual(premier.etude.plaque, devis.etude_params.plaque)
+  for (const [cle, valeur] of Object.entries(devis.etude_params)) {
+    assert.deepEqual(premier.etude[cle], valeur, cle)
+  }
+  const relu = { ...devis, etude_params: premier.etude,
+    lignes: premier.lignes.map((l, i) => ({ id: i + 1, ...l })) }
+  const second = etatVersEcritures(devisVersEtat(relu))
+  assert.deepEqual(second.etude, premier.etude)
+  assert.deepEqual(second.lignes, premier.lignes)
 })

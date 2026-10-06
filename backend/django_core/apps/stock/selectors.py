@@ -66,6 +66,15 @@ def produit_does_not_exist():
     return Produit.DoesNotExist
 
 
+def taux_tva_produit(pk):
+    """TVA-LIGNE — le taux de TVA (``Produit.tva``) d'un produit par id, ou
+    ``None`` (produit absent ou sans taux). Lecture seule, UNE requête d'une
+    seule colonne. Le produit est déjà rattaché à une ligne du devis de
+    l'appelant (borné à sa société en amont) : aucun filtre société ici."""
+    from .models import Produit
+    return Produit.objects.filter(pk=pk).values_list('tva', flat=True).first()
+
+
 def lock_produit(pk):
     """Produit verrouillé pour mise à jour (select_for_update). À utiliser dans
     une transaction. Lève Produit.DoesNotExist si absent."""

@@ -1623,6 +1623,43 @@ def cible_depuis_lead(lead, company):
             'source': 'factures', 'refus': None}
 
 
+def promesse_pompage_devis(devis_id, company):
+    """AGR609 — la PROMESSE de pompage que le devis imprime, pour la recette
+    du chantier (installations) et les relevés du portail (AGR617).
+
+    Clés v1 écrites par le moteur serveur (AGR122/AGR123) : ``debit_hmt_m3h``,
+    ``hmt_m``, ``m3_jour``, ``heures_pompage`` (``None`` quand le devis ne
+    les porte pas — jamais un défaut) + ``devis_reference`` ; et, pour
+    information, les ENTRÉES v2 ``mode_pompe`` / ``besoin`` du contrat AGR2.
+    ``None`` si le devis est inconnu ou d'une autre société. Lecture seule ;
+    jamais un prix ni ``prix_achat``.
+    """
+    from .models import Devis
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .only('id', 'reference', 'etude_params').first())
+    if devis is None:
+        return None
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+
+    def _nombre(valeur):
+        if valeur is None or isinstance(valeur, bool):
+            return None
+        try:
+            return float(valeur)
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        'debit_hmt_m3h': _nombre(etude.get('debit_hmt_m3h')),
+        'hmt_m': _nombre(etude.get('hmt_m')),
+        'm3_jour': _nombre(etude.get('m3_jour')),
+        'heures_pompage': _nombre(etude.get('heures_pompage')),
+        'devis_reference': devis.reference,
+        'mode_pompe': etude.get('mode_pompe'),
+        'besoin': etude.get('besoin'),
+    }
+
+
 from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
     compter_factures,
     factures_echues,

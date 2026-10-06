@@ -17,14 +17,16 @@
 //   partDiurne         part diurne du curseur industriel (%)
 //   tensionRaccordement, repartitionMt   raccordement et répartition horaire TELLE QUE SAISIE
 //   categorie, reponses                  catégorie commerciale + réponses du questionnaire
-//   pompage            objet de `buildEtudePompage` (ou {} si aucune pompe retenue)
-//   saisiePompage      { hmt, debit, heures, typePompe, alim, profondeur, distance }
-//   exploitation       { irrigation, region, crop, surfaceHa, hmtStatic, hmtDrawdown,
-//                        saisiesEconomie } — AGR212 : l'énergie et la dépense
+//   pompageEntrees     AGR130 — l'état du corps de l'aperçu pompage (forme du contrat
+//                        etude_pompage_preview.json, nombres éventuellement en texte) ;
+//                        seules les ENTRÉES v2 partent (`entreesPompageV2`).
+//   exploitation       { saisiesEconomie, attestation } — AGR212 : l'énergie et la dépense
 //                        DÉCLARÉES partent dans `saisies_economie_pompage`
 //                        (contrat economie_pompage.json) ; plus jamais
 //                        `current_fuel` / `fuel_spend_current`, plus jamais × 12.
-import { COMMERCIAL_CATEGORY_QUESTIONS } from '../solar.js'
+//                        AGR218 : `attestation` {attestee, le, signataire} →
+//                        `attestation_usage_agricole`.
+import { COMMERCIAL_CATEGORY_QUESTIONS, ttcFromHt, tauxTvaOf } from '../solar.js'
 
 const nombre = (v) => {
   const n = parseFloat(v)
@@ -53,7 +55,7 @@ export function projeterEtudeMarche(mode, {
   etude, choix = {}, entrees, partDiurne,
   tensionRaccordement, repartitionMt,
   categorie, reponses = {},
-  pompage, saisiePompage = {}, exploitation = {},
+  pompageEntrees, exploitation = {},
 } = {}) {
   if (mode === 'industriel' || mode === 'commercial') {
     const e = etude || {}
@@ -97,42 +99,21 @@ export function projeterEtudeMarche(mode, {
     return bloc
   }
   if (mode === 'agricole') {
-    // MÊME dérivation que l'aperçu écran et que le devis auto
-    // (`buildEtudePompage`) : une seule formule, jamais deux chiffres qui
-    // pourraient diverger. Seules les clés du schéma en sortent, typées.
-    const p = pompage || {}
-    const s = saisiePompage
+    // AGR130 (D-AGR-1 / D-AGR-13) — le navigateur n'envoie QUE les ENTRÉES v2
+    // du contrat `etude_pompage_preview.json` (`cles_etude_params_v2.entrees`) :
+    // les dérivées (pompe retenue, m³/jour, champ, kit…) sont calculées par le
+    // rafraîchisseur serveur (AGR123) et refusées en 400 si l'écran les écrit.
     const x = exploitation
     return {
       ...choix,
       ...resoudreEntrees(entrees, null),
-      // DÉRIVÉES du dimensionnement (propriétaire ECRAN au schéma).
-      pompe_cv: nombre(p.pompe_cv),
-      pompe_kw: nombre(p.pompe_kw),
-      debit_hmt_m3h: nombre(p.debit_hmt_m3h),
-      m3_jour: nombre(p.m3_jour),
-      champ_kwc: nombre(p.champ_kwc),
-      // ENTRÉES du vendeur, prises à l'ÉTAT de l'écran (pas au
-      // dimensionnement) : ce sont elles que le mappeur `?edit=` réinjecte
-      // dans le formulaire, et elles existent même quand aucune pompe à
-      // courbe ne peut être retenue.
-      hmt_m: nombre(s.hmt),
-      debit_souhaite_m3h: nombre(s.debit),
-      heures_pompage: nombre(s.heures),
-      type_pompe: s.typePompe || null,
-      alim: s.alim || null,
-      profondeur_m: nombre(s.profondeur),
-      distance_m: nombre(s.distance),
-      // Exploitation guidée (toutes optionnelles, toutes relues par `?edit=`).
-      irrigation_method: x.irrigation || null,
-      region: x.region || null,
-      crop: x.crop || null,
-      surface_ha: nombre(x.surfaceHa),
+      ...entreesPompageV2(pompageEntrees),
       // AGR212 — `null` = rien de déclaré : la clé est RETIRÉE (Z2), jamais
       // un « butane » par défaut.
       saisies_economie_pompage: x.saisiesEconomie || null,
-      hmt_static: nombre(x.hmtStatic),
-      hmt_drawdown: nombre(x.hmtDrawdown),
+      // AGR218 (contrat AGR200) — l'attestation d'usage agricole SAISIE ;
+      // `null` = rien de coché ni saisi : la clé est RETIRÉE (Z2).
+      attestation_usage_agricole: attestationUsageAgricole(x.attestation),
     }
   }
   // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des
@@ -274,4 +255,108 @@ export function ecoDepuisSaisies(saisies) {
     coherenceConfirmee: Boolean(s.coherence_confirmee),
     interne: { taux_actualisation: s.taux_actualisation ?? null, pret: s.pret ?? null },
   }
+}
+
+// ── AGR218 — attestation d'usage exclusivement agricole (contrat AGR200) ──
+// État d'écran {attestee, le, signataire} ⇄ `etude_params.attestation_usage_
+// agricole`. Saisie, jamais supposée : rien de coché ni saisi ⇒ `null`.
+export const ATTESTATION_VIDE = Object.freeze({ attestee: false, le: '', signataire: '' })
+
+/** État d'écran → forme stockée `{attestee, le, signataire}`, ou `null`. */
+export function attestationUsageAgricole(saisie) {
+  if (!saisie || typeof saisie !== 'object') return null
+  const attestee = Boolean(saisie.attestee)
+  const le = texteNet(saisie.le) || null
+  const signataire = texteNet(saisie.signataire)
+  if (!attestee && !le && !signataire) return null
+  return { attestee, le, signataire }
+}
+
+/** Inverse : la forme stockée → état d'écran (`?edit=`). */
+export function attestationDepuisEtude(valeur) {
+  if (!valeur || typeof valeur !== 'object') return { ...ATTESTATION_VIDE }
+  return {
+    attestee: Boolean(valeur.attestee),
+    le: valeur.le || '',
+    signataire: valeur.signataire || '',
+  }
+}
+
+// ── AGR130 — les ENTRÉES v2 du pompage (une seule liste, celle du contrat) ──
+// Clés de tête persistées dans `etude_params` : le bloc `hmt` du corps s'y
+// appelle `hmt_entrees` (la clé `hmt` serait ambiguë avec les dérivées).
+const TEXTES_POMPAGE = new Set([
+  'mode_pompe', 'mode', 'phases', 'debit_exploitation_origine',
+  'debit_exploitation_date', 'materiau', 'crop', 'irrigation', 'region',
+  'ville', 'alim', 'type_pompe', 'taille',
+])
+
+// '' → null ; texte nommé → texte ; sinon nombre lu (virgule FR), jamais arrondi.
+const normaliserPompage = (valeur, cle) => {
+  if (Array.isArray(valeur)) return valeur.map((v) => normaliserPompage(v, cle))
+  if (valeur && typeof valeur === 'object') {
+    const out = {}
+    for (const [k, v] of Object.entries(valeur)) out[k] = normaliserPompage(v, k)
+    return out
+  }
+  if (valeur === true || valeur === false) return valeur
+  if (vide(valeur)) return null
+  if (cle === 'compteur') return valeur === 'oui' ? true : valeur === 'non' ? false : null
+  if (TEXTES_POMPAGE.has(cle)) return texteNet(valeur) || null
+  return nombreSaisi(valeur)
+}
+
+const TAILLES_POMPAGE = ['recommandee', 'inferieure', 'superieure']
+
+/**
+ * L'état du corps de l'aperçu (`etatPompageEcran`) → les ENTRÉES v2 de
+ * `etude_params` (D-AGR-13). `{}` sans état : aucune clé v1, aucune dérivée.
+ * `plaque` n'existe qu'en mode « existante » ; `options_cochees` est toujours
+ * une liste ; les identifiants `lead`/`devis` du corps n'y entrent jamais.
+ */
+export function entreesPompageV2(etat) {
+  if (!etat || typeof etat !== 'object') return {}
+  const n = normaliserPompage
+  const existante = etat.mode_pompe === 'existante'
+  return {
+    mode_pompe: n(etat.mode_pompe, 'mode_pompe'),
+    plaque: existante && etat.plaque ? n(etat.plaque, 'plaque') : null,
+    besoin: etat.besoin ? n(etat.besoin, 'besoin') : null,
+    source: etat.source ? n(etat.source, 'source') : null,
+    hmt_entrees: etat.hmt ? n(etat.hmt, 'hmt') : null,
+    alim: n(etat.alim, 'alim'),
+    type_pompe: n(etat.type_pompe, 'type_pompe'),
+    localisation: etat.localisation ? n(etat.localisation, 'localisation') : null,
+    distance_champ_m: n(etat.distance_champ_m, 'distance_champ_m'),
+    options_cochees: Array.isArray(etat.options_cochees) ? [...etat.options_cochees] : [],
+    taille: TAILLES_POMPAGE.includes(etat.taille) ? etat.taille : null,
+  }
+}
+
+// ── AGR130 — Auto-remplir : les lignes du KIT serveur, aucune composition JS ──
+// `kit` = la réponse de l'aperçu (`kit.inclus` + les `kit.options` cochées).
+// `produits` = le catalogue de l'écran (prix de vente HT, TVA du produit) :
+// le serveur dit QUOI et COMBIEN, l'écran ne fait que poser le prix du
+// produit. Un article au prix à renseigner (`produit: null`) devient une ligne
+// SANS produit (jamais enregistrée, jamais chiffrée à 0 comme un article
+// gratuit) ; une option dont la quantité est à saisir (`quantite: null`) est
+// laissée de côté. Rien n'est inventé.
+export function lignesDepuisKit(kit, produits) {
+  if (!kit || typeof kit !== 'object') return []
+  const cochees = (kit.options || []).filter((o) => o && o.cochee)
+  const rows = []
+  for (const it of [...(kit.inclus || []), ...cochees]) {
+    const quantite = Number(it.quantite)
+    if (!Number.isFinite(quantite) || quantite <= 0) continue
+    const p = (it.produit == null || it.prix_connu === false) ? null
+      : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
+    rows.push({
+      produit: p ? String(p.id) : '',
+      designation: p ? p.nom : (it.designation || it.libelle || '') + (it.designation ? '' : ' — prix à renseigner'),
+      quantite,
+      prix_unit_ttc: p ? ttcFromHt(p.prix_vente, tauxTvaOf(p)) : 0,
+      taux_tva: p ? tauxTvaOf(p) : 20,
+    })
+  }
+  return rows
 }

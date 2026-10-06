@@ -1960,3 +1960,88 @@ def moyenne_jour_depuis_precedent(releve):
     if jours <= 0:
         return None
     return round(float(releve.valeur - precedent.valeur) / jours, 1)
+
+
+# ── AGR617 — relevés de la pompe saisis par le CLIENT sur le portail ────────
+
+#: Types de relevé qu'un client peut saisir, par RÔLE pompage du produit
+#: (rôles AGR7, ``core.product_roles.ROLES_POMPAGE``). Le kWh n'y figure
+#: jamais : c'est une lecture d'onduleur, pas une saisie client (contrat
+#: portail ``mes_releves_pompage.json``).
+TYPES_RELEVE_PORTAIL_PAR_ROLE = {
+    'pompe': ('m3',),
+    'variateur_pompage': ('heures',),
+    'compteur_eau': ('m3',),
+}
+
+_SUFFIXE_COMPTEUR = {('m3',): "compteur d'eau", ('heures',): 'compteur horaire'}
+
+
+def _equipements_releve(company, client_id, chantier_id):
+    from apps.installations.selectors import chantier_du_client_portail_obj
+
+    from .models import Equipement
+
+    chantier = chantier_du_client_portail_obj(company, client_id, chantier_id)
+    if chantier is None:
+        return []
+    equipements = (Equipement.objects
+                   .filter(company=company, installation_id=chantier.id)
+                   .select_related('produit').order_by('id'))
+    return [eq for eq in equipements
+            if getattr(eq.produit, 'role_pompage', '')
+            in TYPES_RELEVE_PORTAIL_PAR_ROLE]
+
+
+def equipements_releve_portail(company, client_id, chantier_id):
+    """AGR617 — les équipements du chantier DU CLIENT sur lesquels il peut
+    saisir un relevé : rôle produit pompe, variateur ou compteur d'eau.
+    ``[{id, libelle, types_admis}]`` ; liste vide pour le chantier d'un autre
+    client. Jamais un prix ni un champ interne."""
+    sortie = []
+    for eq in _equipements_releve(company, client_id, chantier_id):
+        types = TYPES_RELEVE_PORTAIL_PAR_ROLE[eq.produit.role_pompage]
+        nom = (getattr(eq.produit, 'nom', '') or '').strip() or 'Équipement'
+        sortie.append({'id': eq.id,
+                       'libelle': '{} — {}'.format(
+                           nom, _SUFFIXE_COMPTEUR.get(types, 'compteur')),
+                       'types_admis': list(types)})
+    return sortie
+
+
+def equipement_releve_portail_obj(company, client_id, chantier_id,
+                                  equipement_id):
+    """AGR617 — l'``Equipement`` (ORM) du chantier du client qui admet un
+    relevé portail, ou ``None`` (autre chantier, autre client, rôle exclu)."""
+    for eq in _equipements_releve(company, client_id, chantier_id):
+        if str(eq.id) == str(equipement_id):
+            return eq
+    return None
+
+
+def releve_portail(releve):
+    """AGR617 — UN relevé à la forme du contrat portail : ``{equipement,
+    type, valeur, date, moyenne_jour_depuis_precedent}``. Jamais l'auteur."""
+    from decimal import Decimal
+    # Toujours 2 décimales (forme du contrat, comme un DecimalField DRF) :
+    # une instance juste créée porte la Decimal saisie (« 1250 »), pas celle
+    # relue de la base (« 1250.00 »).
+    valeur = Decimal(str(releve.valeur)).quantize(Decimal('0.01'))
+    return {'equipement': releve.equipement_id, 'type': releve.type,
+            'valeur': str(valeur), 'date': releve.date.isoformat(),
+            'moyenne_jour_depuis_precedent':
+                moyenne_jour_depuis_precedent(releve)}
+
+
+def releves_portail(company, equipement_ids):
+    """AGR617 — les relevés heures/m³ de ces équipements, plus récent
+    d'abord, à la forme du contrat portail."""
+    from .models import ReleveCompteurEquipement
+
+    if not equipement_ids:
+        return []
+    qs = (ReleveCompteurEquipement.objects
+          .filter(company=company, equipement_id__in=list(equipement_ids),
+                  type__in=('heures', 'm3'))
+          .order_by('-date', '-id'))
+    return [releve_portail(r) for r in qs]

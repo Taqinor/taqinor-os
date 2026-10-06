@@ -31,6 +31,8 @@ import {
   adjacentStatuses,
   canMoveStatus,
   nextBestAction,
+  REGIME_8221_LABELS,
+  RACCORDEMENT_RESEAU_LABELS,
 } from '../../features/installations/statuses'
 import ProduitPicker from '../../components/ProduitPicker'
 import OwnerChain from '../../components/OwnerChain'
@@ -225,6 +227,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     labour_jours_estimes: F('labour_jours_estimes'),
     labour_jours_reels: F('labour_jours_reels'),
     regime_8221: F('regime_8221', 'non_concerne'),
+    raccordement_reseau: F('raccordement_reseau'),
     dossier_statut: F('dossier_statut', 'non_concerne'),
     dossier_reference: F('dossier_reference'),
     dossier_operateur: F('dossier_operateur'),
@@ -1168,6 +1171,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                       <SelectItem value="declaration_bt">Déclaration (&lt; 11 kW, BT)</SelectItem>
                       <SelectItem value="accord_raccordement">Accord de raccordement</SelectItem>
                       <SelectItem value="autorisation_anre">Autorisation ANRE (&gt; 1 MW)</SelectItem>
+                      <SelectItem value="declaration_hors_reseau">{REGIME_8221_LABELS.declaration_hors_reseau}</SelectItem>
                     </SelectContent>
                   </Select>
                   {current?.regime_suggere?.code
@@ -1181,6 +1185,18 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                       </Button>
                     </div>
                   )}
+                </FormField>
+                <FormField label="Raccordement au réseau" htmlFor="ch-rac-reseau">
+                  <Select value={fields.raccordement_reseau || 'non_renseigne'}
+                          onValueChange={(v) => set('raccordement_reseau', v === 'non_renseigne' ? '' : v)}>
+                    <SelectTrigger id="ch-rac-reseau"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="non_renseigne">Non renseigné</SelectItem>
+                      {Object.entries(RACCORDEMENT_RESEAU_LABELS).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FormField>
                 <FormField label="Statut du dossier" htmlFor="ch-dstatut">
                   <Select value={fields.dossier_statut ?? 'non_concerne'} onValueChange={(v) => set('dossier_statut', v)}>

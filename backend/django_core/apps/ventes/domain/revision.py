@@ -34,6 +34,7 @@ def renouveler_devis(devis, *, user=None):
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
+    from apps.ventes.domain.creation_clone import conditions_ci_pour_copie
     from apps.ventes.utils.company_settings import create_numbered
 
     RENOUVELABLES = (Devis.Statut.ACCEPTE, Devis.Statut.EXPIRE)
@@ -75,7 +76,10 @@ def renouveler_devis(devis, *, user=None):
             devise=devis.devise,
             taux_change=devis.taux_change, entite=devis.entite,
             created_by=user, devis_origine=racine,
-            numero_renouvellement=(devis.numero_renouvellement or 0) + 1)
+            numero_renouvellement=(devis.numero_renouvellement or 0) + 1,
+            # CIQ219 — conditions C&I recopiées (référence de commande du
+            # client VIDÉE : un renouvellement est une nouvelle offre).
+            **conditions_ci_pour_copie(devis))
         return cree['obj']
 
     def _prix_courant(ligne):

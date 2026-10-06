@@ -16,7 +16,8 @@
 // lot (QJR667 — rattachement à un lot multi-sites posé par « Lots /
 // multi-sites » ; sans lui, replace-lines recréait les lignes hors lot),
 // ligne_composee ⇄ compose (ERR-QJR570 — provenance composée / ajoutée à la
-// main, persistée : D-QJR5-4).
+// main, persistée : D-QJR5-4), tva_base_legale ⇄ tvaBaseLegale (AGR218 —
+// la base légale d'une exonération à 0 %, saisie, jamais pré-remplie).
 //
 // Module PUR (aucun React, aucun import.meta) : exécuté par `node --test`.
 import { ttcExactFromHt, htFromTtc, tauxTvaOuDefaut } from '../solar.js'
@@ -50,7 +51,11 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
     .slice()
     .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || (a.id ?? 0) - (b.id ?? 0))
     .map((l) => {
-      const taux = tauxTvaOuDefaut(l.taux_tva ?? tauxDevis, 20)
+      // TVA-LIGNE (06/10/2026) — une ligne SANS taux prend d'abord celui de
+      // sa fiche produit (`produit_tva`, DC7 : 10 % panneaux PV), et
+      // seulement ensuite le taux du devis : sinon le prochain
+      // enregistrement figeait 20 % sur un panneau. 0 % reste 0 % (AGR216).
+      const taux = tauxTvaOuDefaut(l.taux_tva ?? l.produit_tva ?? tauxDevis, 20)
       const produit = l.produit ?? l.produit_id
       // Marqueur d'écran `compose` ⇄ provenance persistée `ligne_composee`
       // (ERR-QJR570) : composée ⇒ remplacée par la prochaine recomposition,
@@ -76,11 +81,20 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         groupeLabel: l.groupe_label ?? '',
         role_devis: l.role_devis ?? '',
         lot: l.lot ?? null,
+        // AGR218 (contrat AGR200) — base légale d'un taux à 0 %, telle que
+        // saisie (vide = aucune).
+        tvaBaseLegale: l.tva_base_legale ?? '',
       }
     })
 }
 
 const estStructure = (l) => TYPES_STRUCTURE.has(l.typeLigne)
+
+// Les lignes d'écran qui PARTENT au serveur (même filtre que le payload) :
+// l'index `lignes[i]` d'un refus serveur se lit dans CETTE liste.
+const lignesEnvoyees = (lines) => (lines || []).filter((l) => (estStructure(l)
+  ? !!(l.designation || '').trim()
+  : (l.produit && parseFloat(l.quantite) > 0)))
 
 /**
  * Lignes d'écran → corps `lignes` de replace-lines / devis atomique.
@@ -91,9 +105,7 @@ const estStructure = (l) => TYPES_STRUCTURE.has(l.typeLigne)
  */
 export function lignesEcranVersPayload(lines, { multiMode } = {}) {
   const villas = multiMode === 'villas'
-  const gardees = (lines || []).filter((l) => (estStructure(l)
-    ? !!(l.designation || '').trim()
-    : (l.produit && parseFloat(l.quantite) > 0)))
+  const gardees = lignesEnvoyees(lines)
   return gardees.map((l, idx) => {
     if (estStructure(l)) {
       // Une ligne section/note ne porte ni produit ni prix (ni provenance).
@@ -126,6 +138,36 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
       // le moteur (une recomposition la remplace), false = ajoutée à la main
       // (« Ajouter une ligne », jamais remplacée, même après réouverture).
       ligne_composee: !!l.compose,
+      // AGR218 — base légale de l'exonération (obligatoire à 0 %, refus 400
+      // serveur sinon) ; vide = aucune. Jamais de texte proposé par défaut.
+      tva_base_legale: String(l.tvaBaseLegale ?? ''),
     }
   })
+}
+
+/**
+ * AGR218 — une ligne PRODUIT à 0 % de TVA sans base légale saisie ? (Même
+ * règle que le serveur, `domain/lignes.exiger_base_legale_tva`.) Le taux
+ * n'est jamais changé ici : on signale, on ne corrige pas.
+ */
+export function baseLegaleManquante(l) {
+  if (!l || estStructure(l)) return false
+  const taux = parseFloat(l.taux_tva)
+  if (!Number.isFinite(taux) || taux !== 0) return false
+  return !String(l.tvaBaseLegale ?? '').trim()
+}
+
+const CHAMP_BASE_LEGALE = /^lignes\[(\d+)\]\.tva_base_legale$/
+
+/**
+ * AGR218 — refus 400 du serveur (`{detail, champ: 'lignes[i].tva_base_legale'}`,
+ * contrat `exemple_400_tva_base_legale`) → `{ [_key de la ligne]: detail }`,
+ * l'index étant celui des lignes ENVOYÉES. Tout autre refus → `{}`.
+ */
+export function erreursBaseLegaleServeur(data, lines) {
+  const m = CHAMP_BASE_LEGALE.exec(String(data?.champ ?? ''))
+  if (!m) return {}
+  const ligne = lignesEnvoyees(lines)[Number(m[1])]
+  if (!ligne || ligne._key == null) return {}
+  return { [ligne._key]: String(data.detail ?? '') }
 }

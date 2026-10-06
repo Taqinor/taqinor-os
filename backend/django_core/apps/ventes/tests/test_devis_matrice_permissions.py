@@ -47,6 +47,9 @@ FIGEE = {
     # AGR206 (views/economie_pompage.py, même patron) : lecture du bloc
     # économie de pompage, garde déclarée IsAnyRole comme `economie`.
     'economie_pompage': ANY,
+    # CIQ210 (views/economie_ci.py, même patron) : lecture du bloc
+    # économie C&I, garde déclarée IsAnyRole.
+    'economie_ci': ANY,
     'prefill_site': ANY, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
     'proposal': PORTAIL,

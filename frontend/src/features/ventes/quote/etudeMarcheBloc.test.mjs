@@ -6,6 +6,8 @@ import assert from 'node:assert/strict'
 
 import {
   projeterEtudeMarche, saisiesEconomiePompage, ecoDepuisSaisies, ECO_POMPAGE_VIDE,
+  lignesDepuisKit,
+  attestationUsageAgricole, attestationDepuisEtude,
 } from './etudeMarcheBloc.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -19,10 +21,10 @@ const ECRAN = new Set([
   'tension_raccordement', 'distributeur', 'categorie_commerciale', 'origine',
   'nombre_proprietes', 'factures_mensuelles_reelles', 'conso_kwh_mensuelles',
   'conso_annuelle', 'toiture', 'attribution',
-  'pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h', 'm3_jour', 'champ_kwc',
-  'irrigation_method', 'debit_souhaite_m3h', 'heures_pompage', 'type_pompe', 'alim',
-  'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha',
-  'saisies_economie_pompage', 'hmt_static', 'hmt_drawdown',
+  // AGR130 — les ENTRÉES v2 du pompage (AGR122) ; plus aucune clé v1.
+  'mode_pompe', 'plaque', 'besoin', 'source', 'hmt_entrees', 'type_pompe', 'alim',
+  'localisation', 'distance_champ_m', 'options_cochees', 'taille',
+  'saisies_economie_pompage', 'attestation_usage_agricole',
   'taux_autoconso', 'taux_couverture', 'payback', 'injection_kwh_an', 'injection_dh_an',
   'repartition_mt', 'etude_kwc_base',
   'chambres', 'occupation_pct', 'piscine', 'chambres_froides', 'horaires', 'cuisson',
@@ -77,37 +79,97 @@ test('commercial : catégorie + réponses typées, pas de part diurne, BT ⇒ re
   assert.ok(!('occupation_pct' in bloc))
 })
 
-test('agricole : pompe_cv est un nombre, seules des clés ECRAN sortent', () => {
-  const pompage = {
-    pompe_cv: '5.5', pompe_kw: 4, debit_hmt_m3h: 12.4, m3_jour: 86.8, champ_kwc: 5.6,
-    // clés BRUTES de buildEtudePompage hors schéma :
-    pompe_designation: 'OSP 30-5', kwc: 5.6, prix: 1000,
-  }
+const DERIVEES_POMPAGE = [
+  'pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h', 'm3_jour', 'champ_kwc',
+  'heures_pompage', 'besoin_mensuel', 'production', 'couverture_pct_mois',
+  'controle_conception', 'conception', 'champ', 'hmt_composantes', 'ha_irrigables',
+  'autonomie_reservoir_jours', 'kit', 'alertes_pompage', 'hypotheses_pompage',
+  'pvgis_fige', 'provenance_pompage',
+  // les clés v1 retirées du schéma (AGR122)
+  'debit_souhaite_m3h', 'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha',
+  'hmt_static', 'hmt_drawdown', 'irrigation_method',
+]
+
+// L'état du corps de l'aperçu, tel que l'écran le tient (nombres en texte).
+const ETAT_POMPAGE = {
+  mode_pompe: 'neuve', plaque: { kw: '', cv: '5.5' },
+  besoin: { mode: 'volume_declare', volume_m3_jour: '135', debit_souhaite_m3h: '12',
+    mois_pointe: '7', cultures: [{ crop: 'olivier', surface_ha: '4', irrigation: 'goutte' }], region: '' },
+  source: { niveau_statique_m: '32', niveau_dynamique_m: '', rabattement_m: '8',
+    profondeur_forage_m: '', compteur: 'oui', debit_exploitation_origine: 'foreur' },
+  hmt: { saisie_m: '60', denivele_m: '', conduite: null },
+  alim: 'tri', type_pompe: 'immergee', localisation: { ville: '', lat: '', lon: '' },
+  distance_champ_m: '30', options_cochees: ['afficheur_variateur'], taille: 'recommandee',
+  lead: 7, devis: 12,
+}
+
+test('AGR130 — agricole : seules les ENTRÉES v2 partent, typées, aucune dérivée', () => {
   const bloc = projeterEtudeMarche('agricole', {
     choix: CHOIX, entrees,
-    pompage,
-    saisiePompage: { hmt: '60', debit: '12', heures: '7', typePompe: 'immergee', alim: 'solaire', profondeur: '', distance: '30' },
-    exploitation: { irrigation: 'goutte', region: '', crop: 'olivier', surfaceHa: '4', hmtStatic: '', hmtDrawdown: '5' },
+    pompageEntrees: ETAT_POMPAGE,
+    exploitation: {},
   })
   assert.deepEqual(horsSchema(bloc), [])
-  assert.equal(typeof bloc.pompe_cv, 'number')
-  assert.equal(bloc.pompe_cv, 5.5)
-  assert.equal(bloc.hmt_m, 60)
-  assert.equal(bloc.profondeur_m, null)
-  assert.equal(bloc.region, null)
-  assert.equal('current_fuel' in bloc, false)
-  assert.equal('fuel_spend_current' in bloc, false)
+  for (const cle of DERIVEES_POMPAGE) assert.equal(cle in bloc, false, cle)
+  assert.equal(bloc.mode_pompe, 'neuve')
+  assert.equal(bloc.plaque, null, 'pas de plaque en mode neuve')
+  assert.equal(bloc.besoin.volume_m3_jour, 135)
+  assert.equal(bloc.besoin.debit_souhaite_m3h, 12)
+  assert.equal(bloc.besoin.region, null)
+  assert.equal(bloc.besoin.cultures[0].surface_ha, 4)
+  assert.equal(bloc.source.niveau_statique_m, 32)
+  assert.equal(bloc.source.compteur, true)
+  assert.equal(bloc.source.profondeur_forage_m, null)
+  assert.equal(bloc.hmt_entrees.saisie_m, 60)
+  assert.equal(bloc.distance_champ_m, 30)
+  assert.deepEqual(bloc.options_cochees, ['afficheur_variateur'])
+  assert.equal(bloc.taille, 'recommandee')
+  assert.equal('lead' in bloc, false)
+  assert.equal('devis' in bloc, false)
   assert.equal(bloc.saisies_economie_pompage, null)
   assert.ok(!('conso_annuelle' in bloc))
 })
 
-test('agricole sans pompe retenue : dérivées nulles, entrées de l\'écran gardées', () => {
+test('AGR130 — mode « existante » : la plaque part, sans CV converti', () => {
   const bloc = projeterEtudeMarche('agricole', {
-    choix: {}, entrees: {}, pompage: {}, saisiePompage: { hmt: '40' },
+    choix: {}, entrees: {},
+    pompageEntrees: { ...ETAT_POMPAGE, mode_pompe: 'existante',
+      plaque: { kw: '5,5', tension_v: '380', phases: 'tri', cv: '', courant_a: '' } },
   })
-  assert.equal(bloc.pompe_cv, null)
-  assert.equal(bloc.hmt_m, 40)
-  assert.deepEqual(horsSchema(bloc), [])
+  assert.deepEqual(bloc.plaque, { kw: 5.5, tension_v: 380, phases: 'tri', cv: null, courant_a: null })
+})
+
+test('AGR130 — sans état de pompage : aucune clé pompage, aucun défaut inventé', () => {
+  const bloc = projeterEtudeMarche('agricole', { choix: {}, entrees: {} })
+  for (const cle of DERIVEES_POMPAGE) assert.equal(cle in bloc, false, cle)
+  assert.equal('mode_pompe' in bloc, false)
+})
+
+test('AGR130 — lignesDepuisKit : le kit serveur, aucun prix inventé', () => {
+  const produits = [
+    { id: 314, nom: 'Pompe OSP 30/8', prix_vente: '10000', taux_tva: '20' },
+    { id: 3, nom: 'Panneau 710W', prix_vente: '1000', taux_tva: '20' },
+  ]
+  const kit = {
+    inclus: [
+      { cle: 'pompe', produit: 314, designation: 'Pompe OSP 30/8', quantite: 1, prix_connu: true },
+      { cle: 'panneaux', produit: 3, designation: 'Panneau 710W', quantite: 14, prix_connu: true },
+      { cle: 'variateur', produit: null, designation: 'Variateur — prix à renseigner : X', quantite: 1, prix_connu: false },
+    ],
+    options: [
+      { cle: 'afficheur_variateur', libelle: 'Afficheur', produit: 420, prix_connu: false, cochee: true, quantite: 1 },
+      { cle: 'sonde', libelle: 'Sonde', produit: null, prix_connu: false, cochee: false, quantite: 1 },
+      { cle: 'cable', libelle: 'Câble', produit: 88, prix_connu: true, cochee: true, quantite: null },
+    ],
+  }
+  const lignes = lignesDepuisKit(kit, produits)
+  assert.deepEqual(lignes.map(l => [l.produit, l.quantite]),
+    [['314', 1], ['3', 14], ['', 1], ['', 1]])
+  assert.equal(lignes[0].prix_unit_ttc, 12000)
+  assert.equal(lignes[2].prix_unit_ttc, 0)
+  assert.equal(lignes[2].designation, 'Variateur — prix à renseigner : X')
+  assert.equal(lignes[3].designation, 'Afficheur — prix à renseigner')
+  assert.deepEqual(lignesDepuisKit(null, produits), [])
 })
 
 test('résidentiel : choix + entrées, objet vide ⇒ null', () => {
@@ -138,7 +200,7 @@ test('AGR212 — 2 000 /mois sur 4 mois : 24 000 n’apparaît nulle part', () =
     periode: 'mois', prix: '1', mois: [5, 6, 7, 8], dateDeclaration: '2026-10-05',
   })
   const bloc = projeterEtudeMarche('agricole', {
-    choix: {}, entrees: {}, pompage: {}, exploitation: { saisiesEconomie: s } })
+    choix: {}, entrees: {}, exploitation: { saisiesEconomie: s } })
   const texteBloc = JSON.stringify(bloc)
   assert.equal(texteBloc.includes('24000'), false)
   assert.equal(bloc.saisies_economie_pompage.consommation.quantite, 2000)
@@ -160,4 +222,27 @@ test('AGR212 — mois du calendrier : provenance « calendrier » puis « décla
   const touche = saisiesEconomiePompage({ ...base, mois: [6, 4] })
   assert.deepEqual(touche.mois_irrigation.mois, [4, 6])
   assert.equal(touche.mois_irrigation.provenance.origine, 'saisie')
+})
+
+// ── AGR218 — attestation d'usage agricole (contrat AGR200) ─────────────────
+const CONTRAT_LIGNES = JSON.parse(readFileSync(path.resolve(ICI,
+  '../../../../../backend/django_core/apps/ventes/contract_samples/devis_replace_lines_entete.json'),
+'utf8'))
+
+test('AGR218 — attestation : aller-retour exact de la forme du contrat', () => {
+  const exemple = CONTRAT_LIGNES.corps_agricole.etude_params.attestation_usage_agricole
+  assert.deepEqual(attestationUsageAgricole(attestationDepuisEtude(exemple)), exemple)
+})
+
+test('AGR218 — rien de coché ni saisi ⇒ null (clé retirée, jamais d’attestation supposée)', () => {
+  assert.equal(attestationUsageAgricole(attestationDepuisEtude(null)), null)
+  assert.equal(attestationUsageAgricole(undefined), null)
+})
+
+test('AGR218 — l’attestation part dans etude_params agricole, clé ECRAN', () => {
+  const attestation = { attestee: true, le: '2026-10-02', signataire: 'M. Exploitant' }
+  const bloc = projeterEtudeMarche('agricole', {
+    choix: {}, entrees: {}, exploitation: { attestation } })
+  assert.deepEqual(bloc.attestation_usage_agricole, attestation)
+  assert.deepEqual(horsSchema(bloc), [])
 })

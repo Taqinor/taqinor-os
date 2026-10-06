@@ -34,22 +34,108 @@ def _profile(company):
         ("parametres.company_profile", getattr(company, "id", None)), _load)
 
 
+#: CIQ212 — jalons d'échéancier connus et leur libellé. Les trois créneaux
+#: historiques (acompte / materiel / solde) restent des jalons à part entière :
+#: un réglage en ancienne forme est LU tel quel (mêmes clés, mêmes libellés).
+CRENEAUX_HISTORIQUES = ('acompte', 'materiel', 'solde')
+LIBELLES_JALONS = {
+    'acompte': 'Acompte',
+    'materiel': 'Livraison du matériel',
+    'solde': 'Solde',
+    'commande': 'Commande',
+    'livraison_materiel': 'Livraison du matériel',
+    'mise_en_service': 'Mise en service',
+    'reception_definitive': 'Réception définitive',
+    'reception_financeur': ("Règlement par l'organisme financeur à la "
+                            "réception signée"),
+    'liberation_retenue': 'Libération de la retenue de garantie',
+}
+JALONS_CONNUS = tuple(LIBELLES_JALONS)
+#: Créneau imprimé (``{acompte}/{materiel}/{solde}`` des CGV) de chaque jalon :
+#: les lecteurs à trois créneaux reçoivent une somme par créneau.
+CRENEAU_DU_JALON = {
+    'acompte': 'acompte', 'commande': 'acompte',
+    'materiel': 'materiel', 'livraison_materiel': 'materiel',
+    'solde': 'solde', 'mise_en_service': 'solde',
+    'reception_definitive': 'solde', 'reception_financeur': 'solde',
+    'liberation_retenue': 'solde',
+}
+
+
+def _pct(valeur):
+    """Pourcentage lu (int si entier, comme l'historique), ou ValueError."""
+    if isinstance(valeur, bool):
+        raise ValueError(valeur)
+    nombre = Decimal(str(valeur))
+    if not nombre.is_finite():
+        raise ValueError(valeur)
+    return int(nombre) if nombre == int(nombre) else float(nombre)
+
+
+def jalons_depuis_termes(termes):
+    """Un échéancier société (ancienne forme dict ``{acompte, materiel,
+    solde}`` ou liste ``[{jalon, pct}]``) en LISTE ``[{jalon, libelle, pct}]``,
+    ou None quand il est illisible (repli sur le défaut)."""
+    try:
+        if isinstance(termes, dict):
+            if not all(k in termes for k in CRENEAUX_HISTORIQUES):
+                return None
+            return [{'jalon': k, 'libelle': LIBELLES_JALONS[k],
+                     'pct': _pct(termes[k])} for k in CRENEAUX_HISTORIQUES]
+        if isinstance(termes, (list, tuple)) and termes:
+            sortie = []
+            for entree in termes:
+                jalon = entree.get('jalon') if isinstance(entree, dict) \
+                    else None
+                if jalon not in LIBELLES_JALONS:
+                    return None
+                sortie.append({'jalon': jalon,
+                               'libelle': (entree.get('libelle')
+                                           or LIBELLES_JALONS[jalon]),
+                               'pct': _pct(entree.get('pct'))})
+            return sortie
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    return None
+
+
+def creneaux_depuis_jalons(jalons):
+    """``{acompte, materiel, solde}`` d'une liste de jalons : la somme des
+    pourcentages par créneau imprimé (:data:`CRENEAU_DU_JALON`), la PREMIÈRE
+    tranche étant l'acompte. Une ancienne forme dict est rendue telle quelle."""
+    if isinstance(jalons, dict):
+        return jalons
+    slots = {}
+    for i, j in enumerate(jalons or ()):
+        creneau = 'acompte' if i == 0 else CRENEAU_DU_JALON.get(
+            j.get('jalon'), 'solde')
+        slots[creneau] = slots.get(creneau, 0) + j.get('pct', 0)
+    return {k: slots.get(k, 0) for k in CRENEAUX_HISTORIQUES}
+
+
 def payment_terms_for(company, mode):
-    """{'acompte','materiel','solde'} en % pour le mode, réglage ou défaut."""
+    """CIQ212 — la LISTE de jalons ``[{jalon, libelle, pct}]`` du mode :
+    réglage société (liste de jalons, ou ancienne forme ``{acompte, materiel,
+    solde}`` toujours lue et convertie), sinon ``PAYMENT_TERMS_BY_MODE``."""
     mode = mode or 'residentiel'
     from apps.ventes.quote_engine.builder import PAYMENT_TERMS_BY_MODE
-    default = PAYMENT_TERMS_BY_MODE.get(mode, PAYMENT_TERMS_BY_MODE['residentiel'])
+    default = jalons_depuis_termes(PAYMENT_TERMS_BY_MODE.get(
+        mode, PAYMENT_TERMS_BY_MODE['residentiel']))
     prof = _profile(company)
     pt = getattr(prof, 'payment_terms', None) if prof else None
     if isinstance(pt, dict):
-        t = pt.get(mode)
-        if isinstance(t, dict) and all(
-                k in t for k in ('acompte', 'materiel', 'solde')):
-            try:
-                return {k: int(t[k]) for k in ('acompte', 'materiel', 'solde')}
-            except (TypeError, ValueError):
-                pass
+        lus = jalons_depuis_termes(pt.get(mode))
+        if lus:
+            return lus
     return default
+
+
+def payment_terms_effectifs(company):
+    """``{mode: [jalons]}`` RÉSOLU pour les quatre modes (réglage société,
+    sinon défaut) — servi en lecture seule par le profil société."""
+    from apps.ventes.quote_engine.builder import PAYMENT_TERMS_BY_MODE
+    return {mode: payment_terms_for(company, mode)
+            for mode in PAYMENT_TERMS_BY_MODE}
 
 
 def doc_prefix(company, key):

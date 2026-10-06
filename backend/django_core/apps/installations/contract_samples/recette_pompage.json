@@ -51,10 +51,11 @@
           "figee_le": "2026-11-02"
         },
         "debit_attendu_a_hmt_mesuree_m3h": 29.9,
-        "ecart_debit_pct": -3.3,
+        "ecart_debit_pct": -5.2,
         "seuil_ecart_pct": null,
         "hors_seuil": null,
         "commentaire_requis": false,
+        "note_formule": "Écart = (débit mesuré − débit promis) ÷ débit promis × 100. L'irradiance est affichée à côté : aucune correction n'est calculée.",
         "omissions": [
           {"cle": "hors_seuil", "motif": "seuil d'écart non saisi par la société : aucun verdict"}
         ]
@@ -64,7 +65,7 @@
         "hmt_mesuree_m": 60.2,
         "debit_mesure_m3h": 28.9,
         "debit_promis_m3h": 30.5,
-        "ecart_debit_pct": -3.3,
+        "ecart_debit_pct": -5.2,
         "commentaire_ecart": "",
         "resultat": "conforme"
       }
@@ -118,9 +119,10 @@
         "seuil_ecart_pct": null,
         "hors_seuil": null,
         "commentaire_requis": false,
+        "note_formule": "Écart = (débit mesuré − débit promis) ÷ débit promis × 100. L'irradiance est affichée à côté : aucune correction n'est calculée.",
         "omissions": [
           {"cle": "debit_attendu_a_hmt_mesuree_m3h", "motif": "pompe sans courbe constructeur : débit attendu non calculable"},
-          {"cle": "ecart_debit_pct", "motif": "aucun débit promis ni attendu : écart non calculable"}
+          {"cle": "ecart_debit_pct", "motif": "le devis ne porte pas de débit promis"}
         ]
       },
       "vue_portail": {
@@ -140,7 +142,9 @@
     "source_irradiance": "mesuree | estimee",
     "resultat": "en_cours | conforme | reserves | non_conforme — saisi par le technicien, jamais déduit d'un seuil par le contrat",
     "comparaison.promesse": "copie FIGÉE des quatre clés du devis (debit_hmt_m3h, hmt_m, m3_jour, heures_pompage) + devis_reference + figee_le",
-    "comparaison.ecart_debit_pct": "(débit mesuré − débit attendu à la HMT mesurée) ÷ débit attendu × 100 ; null + motif quand l'attendu est null",
+    "comparaison.ecart_debit_pct": "AGR609 : (débit mesuré − débit PROMIS) ÷ débit promis × 100 ; null + motif « le devis ne porte pas de débit promis » quand la promesse n'a pas de débit. Le débit attendu à la HMT mesurée (courbe de la pompe de la nomenclature gelée) est servi À CÔTÉ, pour information",
+    "comparaison.note_formule": "AGR609 : la formule de l'écart, affichée en note",
+    "comparaison.commentaire_ecart_requis": "AGR609 : |écart| > seuil société ⇒ PATCH sans `commentaire_ecart` refusé en 400 FR « Écart de N % au-delà du seuil de la société : commentaire requis »",
     "comparaison.seuil_ecart_pct": "réglage société (AGR606), null = non saisi ; aucun défaut",
     "comparaison.hors_seuil": "true | false | null (null sans seuil ou sans écart)",
     "comparaison.commentaire_requis": "true quand hors_seuil est true : `commentaire_ecart` devient obligatoire avant le verrouillage",

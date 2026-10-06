@@ -119,14 +119,15 @@ def normaliser(brut: str, web: bool = False) -> str | None:
     Les plans abrègent : ``apps/crm/views.py`` (= backend/django_core/apps/…),
     ``core/events.py``, ``features/crm/stages.js`` (= frontend/src/…). Un nom
     nu (``views.py``) est ambigu : ignoré. ``web=True`` (plan du site) lit
-    ``src/…`` comme ``apps/web/src/…``.
+    ``src/…`` comme ``apps/web/src/…``. ``apps/yanbow-web/…`` (second site
+    public, hors Django) reste tel quel, comme ``apps/web/…``.
     """
     p = brut.strip().replace("\\", "/").strip("`'\"() ,;")
     while p.startswith("./"):
         p = p[2:]
     if not p or "/" not in p or any(c in p for c in "<>{}"):
         return None
-    if p.startswith(("backend/", "frontend/", "apps/web/")):
+    if p.startswith(("backend/", "frontend/", "apps/web/", "apps/yanbow-web/")):
         return p
     if p.startswith("django_core/"):
         return "backend/" + p

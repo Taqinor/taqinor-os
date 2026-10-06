@@ -355,6 +355,10 @@ def generate_pv_reception(chantier):
         ctx['signe_le'] = chantier.signe_le
         ctx['empreinte_signature'] = empreinte_signature(chantier)
     html = get_template('document_pv_reception.html').render(ctx)
+    # AGR611 — chantier agricole : mesures de la recette pompage + formalité
+    # art. 3 (fragment vide ailleurs : PV strictement inchangé).
+    html = _inject_before(html, '<div class="signature-section">',
+                          _recette_pompage_fragment(chantier))
     return _html_to_pdf(html)
 
 
@@ -503,6 +507,145 @@ def _equipements_poses_fragment(chantier):
     return html
 
 
+# ── AGR611 — recette POMPAGE dans le PV de réception et le dossier de remise ─
+
+#: Le cadre des essais (contrat ``recette_pompage.json``).
+CADRE_ESSAIS_POMPAGE = 'Cadre des essais : IEC 62253:2011'
+
+#: La formalité d'une installation NON raccordée (loi 82-21, art. 3). Ni
+#: guichet, ni pièces, ni délai (non sourcés) ; aucune promesse de dépôt.
+FORMALITE_HORS_RESEAU = (
+    "Loi 82-21, art. 3 : une installation non raccordée au réseau est "
+    "soumise à déclaration auprès de l'administration ; modalités fixées "
+    "par voie réglementaire.")
+
+
+def _est_chantier_pompage(chantier):
+    return (getattr(chantier, 'type_installation', None) or '') == 'agricole'
+
+
+def _recette_pompage_summary(chantier):
+    """AGR611 — résumé de la RECETTE POMPAGE (``installations.RecettePompage``,
+    cadre IEC 62253:2011) d'un chantier agricole, en LISTE BLANCHE : des
+    mesures, la promesse figée du devis et l'écart — jamais un prix ni
+    ``prix_achat``. ``None`` hors agricole ou sans fiche (accesseur inverse
+    OneToOne lu défensivement, patron de ``_recette_summary``). La
+    comparaison vient du SERVICE ``installations.services.
+    comparer_recette_pompage`` (une seule formule). Une recette non conforme
+    est résumée TELLE QUELLE."""
+    if not _est_chantier_pompage(chantier):
+        return None
+    recette = getattr(chantier, 'recette_pompage', None)
+    if recette is None:
+        return None
+    from apps.installations.services import comparer_recette_pompage
+    comparaison = comparer_recette_pompage(recette)
+    return {
+        'date_essai': _as_date(recette.date_essai),
+        'niveau_statique_m': recette.niveau_statique_m,
+        'niveau_dynamique_m': recette.niveau_dynamique_m,
+        'hmt_mesuree_m': recette.hmt_mesuree_m,
+        'debit_mesure_m3h': recette.debit_mesure_m3h,
+        'debit_promis_m3h': comparaison['promesse'].get('debit_hmt_m3h'),
+        'ecart_debit_pct': comparaison['ecart_debit_pct'],
+        'commentaire_ecart': recette.commentaire_ecart or '',
+        'courant_plaque_a': recette.courant_plaque_a,
+        'courants_phases_a': [recette.courant_phase_1_a,
+                              recette.courant_phase_2_a,
+                              recette.courant_phase_3_a],
+        'frequence_variateur_hz': recette.frequence_variateur_hz,
+        'irradiance_wm2': recette.irradiance_wm2,
+        'source_irradiance': (recette.get_source_irradiance_display()
+                              if recette.source_irradiance else ''),
+        'isolement_moteur_mohm': recette.isolement_moteur_mohm,
+        'isolement_ok': recette.isolement_ok,
+        'sens_rotation_ok': recette.sens_rotation_ok,
+        'test_marche_a_sec_ok': recette.test_marche_a_sec_ok,
+        'resultat': recette.get_resultat_display(),
+    }
+
+
+def _client_forme(chantier):
+    """AGR611 — l'étape de checklist ``client_forme`` est-elle COCHÉE ?"""
+    try:
+        return chantier.checklist.filter(cle='client_forme',
+                                         fait=True).exists()
+    except Exception:
+        return False
+
+
+def _fr_mesure(valeur):
+    if valeur is None:
+        return '—'
+    if isinstance(valeur, float):
+        texte = ('%.2f' % valeur).rstrip('0').rstrip('.')
+    else:
+        texte = str(valeur)
+    return texte.replace('.', ',')
+
+
+def _oui_non(valeur):
+    if valeur is None:
+        return '—'
+    return 'Oui' if valeur else 'Non'
+
+
+def _recette_pompage_fragment(chantier):
+    """AGR611 — fragment HTML (échappé champ par champ) des MESURES de la
+    recette pompage + bloc « Formalités » (loi 82-21, art. 3), injecté À
+    L'IDENTIQUE dans le PV de réception et le dossier de remise (jumeaux du
+    même geste). Chaîne vide hors chantier agricole : PV et dossier
+    résidentiels/C&I restent OCTET-IDENTIQUES. Construit exclusivement depuis
+    :func:`_recette_pompage_summary` (liste blanche) : ``prix_achat`` ne peut
+    structurellement pas y apparaître."""
+    if not _est_chantier_pompage(chantier):
+        return ''
+    html = ''
+    recette = _recette_pompage_summary(chantier)
+    if recette is not None:
+        phases = ' / '.join(_fr_mesure(c) for c in recette['courants_phases_a'])
+        irradiance = _fr_mesure(recette['irradiance_wm2'])
+        if recette['irradiance_wm2'] is not None and recette['source_irradiance']:
+            irradiance += ' ({})'.format(recette['source_irradiance'].lower())
+        lignes = [
+            ("Date de l'essai", (recette['date_essai'].strftime('%d/%m/%Y')
+                                 if recette['date_essai'] else '—')),
+            ('Niveau statique (m)', _fr_mesure(recette['niveau_statique_m'])),
+            ('Niveau dynamique (m)',
+             _fr_mesure(recette['niveau_dynamique_m'])),
+            ('HMT mesurée (m)', _fr_mesure(recette['hmt_mesuree_m'])),
+            ('Débit mesuré (m³/h)', _fr_mesure(recette['debit_mesure_m3h'])),
+            ('Débit promis au devis (m³/h)',
+             _fr_mesure(recette['debit_promis_m3h'])),
+            ('Écart de débit (%)', _fr_mesure(recette['ecart_debit_pct'])),
+            ("Commentaire d'écart", recette['commentaire_ecart'] or '—'),
+            ('Courant par phase (A) / plaque (A)',
+             '{} / plaque {}'.format(
+                 phases, _fr_mesure(recette['courant_plaque_a']))),
+            ('Fréquence du variateur (Hz)',
+             _fr_mesure(recette['frequence_variateur_hz'])),
+            ('Irradiance (W/m²)', irradiance),
+            ('Isolement moteur (MΩ)', '{} — conforme : {}'.format(
+                _fr_mesure(recette['isolement_moteur_mohm']),
+                _oui_non(recette['isolement_ok']))),
+            ('Sens de rotation correct', _oui_non(recette['sens_rotation_ok'])),
+            ('Test de marche à sec', _oui_non(recette['test_marche_a_sec_ok'])),
+            ('Résultat', recette['resultat']),
+        ]
+        html += (
+            '<div class="section-title">Recette pompage — mesures</div>'
+            '<p>{}</p><table><tbody>{}</tbody></table>'.format(
+                escape(CADRE_ESSAIS_POMPAGE),
+                ''.join('<tr><td>{}</td><td>{}</td></tr>'.format(
+                    escape(libelle), escape(valeur))
+                    for libelle, valeur in lignes)))
+    if _client_forme(chantier):
+        html += '<p>Formation du client : faite</p>'
+    html += ('<div class="section-title">Formalités</div>'
+             '<p>{}</p>'.format(escape(FORMALITE_HORS_RESEAU)))
+    return html
+
+
 def _inject_before(html, marker, fragment):
     """CHT24 — Insère `fragment` juste avant la première occurrence de
     `marker` dans le HTML déjà rendu par le gabarit Jinja. `fragment` vide =
@@ -546,6 +689,9 @@ def generate_dossier_remise(chantier):
     html = get_template('document_dossier_remise.html').render(ctx)
     html = _inject_before(
         html, '<div class="footer">', _equipements_poses_fragment(chantier))
+    # AGR611 — le MÊME fragment que le PV de réception (jumeaux du geste).
+    html = _inject_before(
+        html, '<div class="footer">', _recette_pompage_fragment(chantier))
     return _html_to_pdf(html)
 
 

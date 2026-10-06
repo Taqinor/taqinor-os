@@ -6,8 +6,11 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js'
-import { documentContrat } from '../../../test/fixtures/contractSamples.js'
+import {
+  lignesServeurVersEcran, lignesEcranVersPayload,
+  baseLegaleManquante, erreursBaseLegaleServeur,
+} from './lignesEcran.js'
+import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 
@@ -80,6 +83,25 @@ test('modèle appliqué (produit_id / prix_unit_ht) passe par le même mappeur',
   assert.equal(l.quantite, '1')
   assert.equal(l.prix_unit_ttc, '110')
   assert.equal(l.taux_tva, '10')
+})
+
+test('TVA-LIGNE : une ligne sans taux prend la TVA de son produit avant celle du devis', () => {
+  const [panneau, sansFiche, exoneree] = lignesServeurVersEcran([
+    { id: 1, produit: 7, designation: 'Panneau', prix_unitaire: '100.00',
+      taux_tva: null, produit_tva: '10.00' },
+    { id: 2, produit: 8, designation: 'Onduleur', prix_unitaire: '100.00',
+      taux_tva: null, produit_tva: null },
+    { id: 3, produit: 9, designation: 'Pompe', prix_unitaire: '100.00',
+      taux_tva: '0.00', produit_tva: '20.00', tva_base_legale: 'Art. 92' },
+  ], '20.00')
+  assert.equal(panneau.taux_tva, '10')
+  assert.equal(panneau.prix_unit_ttc, '110')
+  // Sans fiche produit, le taux du devis reste le repli.
+  assert.equal(sansFiche.taux_tva, '20')
+  // AGR216 — un 0 % explicite reste 0 %, jamais remplacé par la fiche.
+  assert.equal(exoneree.taux_tva, '0')
+  const payload = lignesEcranVersPayload([panneau, sansFiche, exoneree])
+  assert.deepEqual(payload.map((p) => p.taux_tva), ['10', '20', '0'])
 })
 
 test('lignes vides / sans produit / quantité nulle ne partent pas', () => {
@@ -167,4 +189,45 @@ test('ERR-QJR570 — une ligne « Ajouter une ligne » (compose absent) part en 
 test('ERR-QJR570 — le contrat replace-lines porte ligne_composee sur ses lignes', () => {
   const lignes = documentContrat('ventes', 'devis_replace_lines_entete').corps.lignes
   assert.deepEqual(lignes.map(l => l.ligne_composee), [true, false])
+})
+
+// ── AGR218 — base légale d'une ligne à 0 % (contrat AGR200) ────────────────
+const CORPS_AGRICOLE = documentContrat('ventes', 'devis_replace_lines_entete').corps_agricole
+
+test('AGR218 — tva_base_legale fait l’aller-retour serveur → écran → payload', () => {
+  const ecran = lignesServeurVersEcran(
+    CORPS_AGRICOLE.lignes.map((l, i) => ({ id: i + 1, ...l })), '20.00')
+  assert.equal(ecran[0].tvaBaseLegale, CORPS_AGRICOLE.lignes[0].tva_base_legale)
+  const payload = lignesEcranVersPayload(ecran)
+  assert.deepEqual(payload.map(p => p.tva_base_legale),
+    CORPS_AGRICOLE.lignes.map(l => l.tva_base_legale))
+  assert.deepEqual(payload.map(p => parseFloat(p.taux_tva)),
+    CORPS_AGRICOLE.lignes.map(l => parseFloat(l.taux_tva)))
+})
+
+test('AGR218 — aucune ligne n’est mise à 0 % automatiquement', () => {
+  const lignes = documentContrat('ventes', 'devis_replace_lines_entete').corps.lignes
+  const payload = lignesEcranVersPayload(lignesServeurVersEcran(lignes, '20.00'))
+  assert.ok(payload.every(p => parseFloat(p.taux_tva) > 0))
+  assert.ok(payload.every(p => p.tva_base_legale === ''))
+})
+
+test('AGR218 — ligne à 0 % sans base ⇒ manquante ; avec base ou taux > 0 ⇒ non', () => {
+  const [pompe, variateur] = lignesServeurVersEcran(CORPS_AGRICOLE.lignes, '20.00')
+  assert.equal(baseLegaleManquante(pompe), false)
+  assert.equal(baseLegaleManquante({ ...pompe, tvaBaseLegale: '  ' }), true)
+  assert.equal(baseLegaleManquante(variateur), false)
+  assert.equal(baseLegaleManquante({ typeLigne: 'note', taux_tva: '0' }), false)
+})
+
+test('AGR218 — le 400 serveur (champ lignes[i].tva_base_legale) revient sur SA ligne', () => {
+  const refus = exempleContrat('ventes', 'devis_replace_lines_entete', 'exemple_400_tva_base_legale')
+  const ecran = [
+    { _key: 'vide', produit: '', quantite: '1', typeLigne: 'produit' },  // non envoyée
+    ...lignesServeurVersEcran(CORPS_AGRICOLE.lignes, '20.00')
+      .map((l, i) => ({ ...l, _key: `k${i}` })),
+  ]
+  assert.deepEqual(erreursBaseLegaleServeur(refus, ecran), { k0: refus.detail })
+  assert.deepEqual(erreursBaseLegaleServeur({ detail: 'autre' }, ecran), {})
+  assert.deepEqual(erreursBaseLegaleServeur(null, ecran), {})
 })

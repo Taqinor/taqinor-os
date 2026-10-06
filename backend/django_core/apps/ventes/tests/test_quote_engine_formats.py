@@ -1265,7 +1265,9 @@ class TestPdfFormats4(TestPdfFormats):
 
     def test_payment_terms_by_mode_on_all_formats(self):
         """Conditions de paiement = mapping UNIQUE par mode : résidentiel et
-        agricole 30/60/10, industriel 50/40/10 — cohérent sur tous formats."""
+        agricole 30/60/10, industriel 30/40/20/10 rabattu en 30/40/30 sur
+        les trois créneaux imprimés (CIQ212, D-CIQ-13) — cohérent sur tous
+        formats."""
         # Résidentiel (défaut) — premium
         html, _ = self._render()
         self.assertIn('Acompte à la commande&#160;: 30&#37;', html)
@@ -1277,21 +1279,21 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertIn('Acompte&#160;: 30&#37;', html1)
         self.assertIn('60&#37; &#224; la r&#233;ception du mat&#233;riel', html1)
         self.assertIn('10&#37; apr&#232;s mise en marche', html1)
-        # Industriel — 50/40/10 partout
+        # Industriel — 30/40/(20+10) partout (CIQ212)
         self.devis.mode_installation = 'industriel'
         self.devis.save(update_fields=['mode_installation'])
         html2, _ = self._render()
-        self.assertIn('Acompte à la commande&#160;: 50&#37;', html2)
+        self.assertIn('Acompte à la commande&#160;: 30&#37;', html2)
         self.assertIn('40&#37; à la réception du matériel', html2)
-        self.assertIn('+ acompte 50&#37;', html2)
-        self.assertNotIn('Acompte à la commande&#160;: 30&#37;', html2)
+        self.assertIn('+ acompte 30&#37;', html2)
+        self.assertNotIn('Acompte à la commande&#160;: 50&#37;', html2)
         html3, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte&#160;: 50&#37;', html3)
+        self.assertIn('Acompte&#160;: 30&#37;', html3)
         self.assertIn('40&#37; &#224; la r&#233;ception du mat&#233;riel', html3)
         # Bloc « Modalités de paiement » (devis final) suit aussi le mode
         html4, _ = self._render({'devis_final': True})
         self.assertIn('Modalit', html4)
-        self.assertIn('>50%</div>', html4)   # acompte industriel
+        self.assertIn('>30%</div>', html4)   # acompte industriel
         # Agricole — défaut résidentiel 30/60/10 (one-page)
         self.devis.mode_installation = 'agricole'
         self.devis.save(update_fields=['mode_installation'])

@@ -32,5 +32,13 @@
     "description": "Quand et comment proposer la visite technique, la planifier, l'annuler ou la reporter, puis exploiter le retour du technicien ; version du 30/09/2026 : la visite peut s'accepter dès l'appel de prise de contact.",
     "cabinet": "Documentation",
     "dossier": "Guides"
+  },
+  {
+    "fichier": "Devis_pompage.pdf",
+    "titre": "Guide — Le devis de pompage solaire en 10 gestes",
+    "version": "1.0",
+    "description": "Les dix gestes pour chiffrer un pompage solaire dans le générateur de devis : cas de pompe, besoin en eau, point d’eau, hauteur, résultat du serveur, taille et options, économie déclarée, enregistrement et document client.",
+    "cabinet": "Documentation",
+    "dossier": "Guides"
   }
 ]

@@ -43,6 +43,33 @@ class Devis(models.Model):
         blank=True,
         related_name='devis',
     )
+    # CIQ213 — payeur TIERS (organisme financeur, réglant à la réception
+    # signée) : un client de la MÊME société (refus 400 nommant
+    # ``tiers_payeur`` sinon). Les tranches ``payeur: tiers`` de l'échéancier
+    # lui sont facturées ; le lien au client final reste ``Facture.devis``.
+    tiers_payeur = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='devis_finances',
+        verbose_name='Tiers payeur (organisme financeur)',
+    )
+    # CIQ214 — conditions contractuelles C&I SEULEMENT à la demande du client
+    # (D-CIQ-14), vides par défaut, écrites par l'entête de replace-lines :
+    # ``retenue_garantie`` {taux_pct, liberation: reception_definitive} ;
+    # ``penalites_retard_livraison`` {taux_pct_par_semaine, plafond_pct} (les
+    # DEUX ou refus 400) ; ``caution`` {nature, montant_ou_pct, plafond}.
+    retenue_garantie = models.JSONField(null=True, blank=True, default=None)
+    penalites_retard_livraison = models.JSONField(
+        null=True, blank=True, default=None)
+    caution = models.JSONField(null=True, blank=True, default=None)
+    # CIQ216 — numéro de commande du CLIENT (services achats : une facture
+    # n'est réglée que si elle le cite). Facultatif, vide par défaut ; hérité
+    # par la facture du BC et chaque facture de tranche.
+    reference_commande_client = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Référence de commande du client')
     statut = models.CharField(
         max_length=20,
         choices=Statut.choices,

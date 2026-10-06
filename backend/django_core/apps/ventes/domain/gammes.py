@@ -132,6 +132,7 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     """
     from apps.ventes.models import Devis
     from apps.ventes.domain.lignes import cloner_lignes
+    from apps.ventes.domain.creation_clone import conditions_ci_pour_copie
     from apps.ventes.domain.etudes import (
         etude_params_pour_copie, rafraichir_etudes_du_devis)
     from apps.ventes.utils.company_settings import create_numbered
@@ -191,6 +192,9 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
             custom_data=(dict(devis.custom_data)
                          if isinstance(devis.custom_data, dict)
                          else devis.custom_data),
+            # CIQ219 — conditions C&I recopiées (référence de commande du
+            # client VIDÉE : la sœur est une autre offre).
+            **conditions_ci_pour_copie(devis),
             created_by=user,
             version=devis.version + 1,
             version_parent=root,

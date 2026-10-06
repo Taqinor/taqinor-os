@@ -365,6 +365,31 @@ const MOIS = [['1', 'Janvier'], ['2', 'Février'], ['3', 'Mars'], ['4', 'Avril']
 // module supprimé faute de consommateur de production).
 const CLE = 'agricole'
 
+// AGR218 (contrat AGR200) — « Le client atteste l'usage exclusivement
+// agricole » : case + date + signataire, écrits tels que saisis dans
+// `etude_params.attestation_usage_agricole` (jamais cochée d'office).
+function AttestationUsageAgricole({ attestation, majAttestation }) {
+  const a = attestation || {}
+  const maj = (cle) => (valeur) => majAttestation?.(cle, valeur)
+  return (
+    <div className="mt-4 rounded-lg border border-border p-3"
+         data-testid="attestation-usage-agricole">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input type="checkbox" id="gen-attestation-agricole"
+               checked={!!a.attestee}
+               onChange={e => maj('attestee')(e.target.checked)} />
+        Le client atteste l’usage exclusivement agricole
+      </label>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <ChampTexte id="gen-attestation-le" label="Date de l’attestation" type="date"
+                    valeur={a.le} onChange={maj('le')} />
+        <ChampTexte id="gen-attestation-signataire" label="Signataire"
+                    valeur={a.signataire} onChange={maj('signataire')} />
+      </div>
+    </div>
+  )
+}
+
 export default function PanneauAgricole({
   marche,
   // ── Pompe et forage ──
@@ -382,6 +407,8 @@ export default function PanneauAgricole({
   pompageSaisie, majPompage, apercuPompage,
   // ── AGR213 — lignes de l'écran (investissement recalculé côté serveur) ──
   lignesDevis = [],
+  // ── AGR218 — attestation d'usage agricole {attestee, le, signataire} ──
+  attestation = null, majAttestation,
 }) {
   if (marche !== CLE) return null
   const sp = pompageSaisie || {}
@@ -595,12 +622,10 @@ export default function PanneauAgricole({
         {/* ── Votre exploitation (données GUIDÉES, toutes optionnelles) ── */}
         {/* Encouragées : le besoin en eau FAO-56 qu'elles permettent d'estimer
             alimente bien le dimensionnement pompage du PDF (cartes HMT /
-            Débit / Eau-par-jour du one-page). QJR428 (02/09/2026) — la
-            donnée carburant (current_fuel / fuel_spend_current) reste
-            conservée pour l'étude, mais aucune promesse de chiffre dans le
-            PDF : le renderer agricole premium qui publiait un comparatif
-            solaire-vs-carburant a été supprimé par QJR236, et le one-page
-            qui sert aujourd'hui ce marché ne le lit pas (preuve exécutée :
+            Débit / Eau-par-jour du one-page). AGR316 — l'économie, elle,
+            ne sort QUE des dépenses DÉCLARÉES (bloc AGR3, D-AGR-5) : le
+            document 3 pages l'imprime, le une-page jamais (texte visible
+            ci-dessous, preuve exécutée :
             apps/ventes/tests/test_qjr428_promesse_carburant_agricole.py).
             Aucune donnée n'est obligatoire — chacune a un défaut. */}
         <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 sm:p-4">
@@ -687,11 +712,19 @@ export default function PanneauAgricole({
         <EconomieDeclaree eco={ecoPompage} majEco={majEco}
                           reperes={reperesEnergie} moisCalendrier={moisCalendrier}
                           coherenceAvertit={coherenceAvertit} />
+        {/* AGR316 — ce que le document imprime VRAIMENT de l'économie. */}
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="texte-economies-pdf">
+          {'Les dépenses que le client DÉCLARE (datées) alimentent le bloc économies du document 3 pages ; sans déclaration, le bloc est omis. Le une-page n’imprime aucune économie.'}
+        </p>
 
         {/* ── AGR213 — l'économie DÉCLARÉE en direct, servie par le serveur ── */}
         <CarteEconomiePompage eco={ecoPompage} moisCalendrier={moisCalendrier}
                               sortieEtude={apercuPompage?.donnees || null}
                               lignes={lignesDevis} majEco={majEco} />
+
+        {/* ── AGR218 — attestation d'usage agricole (contrat AGR200) ── */}
+        <AttestationUsageAgricole attestation={attestation}
+                                  majAttestation={majAttestation} />
 
         {/* ── AGR129 — le résultat SERVEUR en direct (aperçu AGR127) ── */}
         {apercuPompage?.chargement && (

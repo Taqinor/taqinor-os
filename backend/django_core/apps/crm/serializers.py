@@ -24,6 +24,7 @@ from .models import (
 from .devis_auto import (
     champs_manquants_detail, champs_requis, message_manquants,
     source_conso, visite_avant_devis, visite_point_eau_avant_devis)
+from . import cadence_temps
 from .scoring import compute_score, score_label, score_reasons
 
 
@@ -320,7 +321,31 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
                 == Lead.ContactPreference.WHATSAPP_ONLY):
             return ('Canal adapté à la préférence du client : '
                     'WhatsApp uniquement.')
+        # CIQ505 — la conversion d'un fixe (e-mail, sinon appel) : la MÊME
+        # fonction pure que le moteur (`cadence_temps.conversion_numero`),
+        # appliquée aux seules touches nées WhatsApp au protocole.
+        if (obj.canal in (cadence_temps.CANAL_EMAIL, cadence_temps.CANAL_APPEL)
+                and obj.template_cle
+                and self._canal_protocole(obj) == cadence_temps.CANAL_WHATSAPP):
+            conversion = cadence_temps.conversion_numero(
+                obj.lead, obj.template_cle)
+            if conversion is not None and conversion[0] == obj.canal:
+                return conversion[1]
         return ''
+
+    def _canal_protocole(self, obj) -> str:
+        """CIQ505 — le canal que le PROTOCOLE de la société donne à cette
+        touche (par cadence et rang), mis en cache pour la réponse : sert à
+        reconnaître une touche née WhatsApp puis convertie. Lecture seule —
+        jamais ``cadence_pour``, qui sème à la volée."""
+        cache = self.context.setdefault('_ciq505_canaux_protocole', {})
+        cle = (obj.company_id, obj.cadence)
+        if cle not in cache:
+            from apps.parametres.models_relance import CadenceRelanceEtape
+            cache[cle] = dict(CadenceRelanceEtape.objects.filter(
+                company_id=obj.company_id, cadence=obj.cadence, actif=True,
+            ).values_list('ordre', 'canal'))
+        return cache[cle].get(obj.ordre, '')
 
     def get_lead_est_junk(self, obj) -> bool:
         """CAD11 — ``True`` si le lead est PERDU avec un motif « junk » de sa

@@ -409,10 +409,10 @@ def etude_horaire_preview(request):
         etude = calculer_etude_horaire(
             kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements,
-            batterie_kwh_utile=_num(corps.get('batterie_kwh')),
             source_conso=source, detail_conso=detail,
             tranches=tranches, charges_fixes_mad=charges_fixes,
-            jour_reference=jour_reference)
+            jour_reference=jour_reference,
+            **_batterie_de_l_apercu(devis, _num(corps.get('batterie_kwh'))))
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '
@@ -436,6 +436,61 @@ def etude_horaire_preview(request):
     return Response(_reponse(
         etude, dimensionnement, conso, source, detail, occupation,
         equipements, avertissements, estimation_conso))
+
+
+def _batterie_de_l_apercu(devis, batterie_kwh_corps):
+    """Arguments batterie de l'aperçu horaire, ceux du bloc ENREGISTRÉ du devis
+    quand l'écran décrit LA MÊME batterie.
+
+    ERR-FIG-APERCU-BATTERIE (06/10/2026, e2e figures-parite) — l'écran envoie
+    la capacité NOMINALE lue sur le nom de ses lignes (« Dyness 5 kWh » → 5) et
+    rien d'autre : l'aperçu tournait donc à 5 kWh × rendement de référence
+    0,90, pendant que le bloc du devis (``_etude_horaire_pour_devis``) tourne
+    à la capacité UTILE de la fiche (4,6 kWh) × le rendement PUBLIÉ (0,98,
+    QJR137) avec les puissances de la fiche. Même devis, deux paybacks
+    (6,9 ans à l'écran contre 6,7 au PDF).
+
+    Quand un devis est résolu et que la capacité envoyée est le NOMINAL de son
+    option « avec » (l'écran n'explore pas une autre batterie), l'aperçu prend
+    les grandeurs du devis — le même calcul que le bloc enregistré. Sinon
+    (pas de devis, ou une batterie différente essayée à l'écran) : la capacité
+    du corps, comme avant, sans rien emprunter à une fiche qui ne la décrit
+    pas.
+    """
+    if devis is None or not batterie_kwh_corps:
+        return {'batterie_kwh_utile': batterie_kwh_corps}
+    try:
+        from apps.ventes.horaire.batterie_lignes import (
+            capacite_batterie_du_devis, ligne_dans_option,
+            puissance_batterie_du_devis, rendement_batterie_du_devis,
+        )
+        from apps.ventes.services import _parse_kwh, classer_produit
+        nominal = 0.0
+        for ligne in devis.lignes.all():
+            designation = getattr(ligne, 'designation', '') or ''
+            if (not ligne_dans_option(ligne, 'avec')
+                    or classer_produit(designation) != 'batterie'):
+                continue
+            nominal += float(_parse_kwh(designation) or 0) * float(
+                getattr(ligne, 'quantite', 0) or 0)
+        if not nominal or abs(nominal - float(batterie_kwh_corps)) > 0.01:
+            return {'batterie_kwh_utile': batterie_kwh_corps}
+        puissances = puissance_batterie_du_devis(devis)
+        rendement = rendement_batterie_du_devis(devis)
+        return {
+            'batterie_kwh_utile': (capacite_batterie_du_devis(devis, 'avec')
+                                   or batterie_kwh_corps),
+            'batterie_puissance_decharge_kw': puissances['packs_decharge_kw'],
+            'batterie_puissance_decharge_onduleur_kw':
+                puissances['ond_decharge_kw'],
+            'batterie_puissance_charge_kw': puissances['charge_kw'],
+            'batterie_rendement': rendement['rendement'],
+            'batterie_rendement_source': rendement['source'],
+        }
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais : corps seul
+        logger.warning('batterie du devis illisible pour l\'aperçu',
+                       exc_info=True)
+        return {'batterie_kwh_utile': batterie_kwh_corps}
 
 
 def _localisation(corps, devis, lead=None):
