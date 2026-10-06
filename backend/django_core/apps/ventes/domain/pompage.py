@@ -1247,3 +1247,83 @@ def rafraichir_etude_pompage_devis(devis, *, force=False):
         logger.warning('rafraichir_etude_pompage_devis indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
+
+
+# ── 6. AGR124 — LE DEVIS AUTOMATIQUE AGRICOLE (lectures pour creation_auto) ──
+
+#: Sous-blocs de ``saisies_economie_pompage`` (contrat AGR3) qui portent une
+#: PROVENANCE ``{origine, detail, date}`` ; les autres portent ``saisi_le``.
+_SAISIES_AVEC_PROVENANCE = ('energie_actuelle', 'mois_irrigation')
+
+
+def saisies_economie_pompage_du_lead(lead):
+    """AGR124 (repris de l'ex-AGR215) — les entrées CARBURANT du lead (énergie
+    actuelle, bouteilles/jour, litres/mois, prix payé + date, mois
+    d'irrigation) dans la forme ``saisies_economie_pompage`` du contrat
+    partagé ``economie_pompage.json``, provenance ``lead``. Lecture UNIQUE par
+    ``crm.selectors.entrees_pompage_du_lead`` (AGR404), jamais une colonne lue
+    directement ; rien d'inventé (une donnée absente reste absente). ``None``
+    quand le lead n'a rien déclaré."""
+    if lead is None:
+        return None
+    from apps.crm.selectors import entrees_pompage_du_lead
+
+    lecture = entrees_pompage_du_lead(lead) or {}
+    saisies = {}
+    for entree in lecture.get('entrees') or ():
+        chemin = entree.get('chemin') or ''
+        if not chemin.startswith('saisies_economie_pompage.'):
+            continue
+        morceaux = chemin.split('.')[1:]
+        if len(morceaux) != 2:
+            continue
+        bloc, champ = morceaux
+        valeur = _json(entree.get('valeur'))
+        if _vide(valeur):
+            continue
+        cible = saisies.setdefault(bloc, {})
+        cible[champ] = valeur
+        date = entree.get('date')
+        if bloc in _SAISIES_AVEC_PROVENANCE:
+            cible['provenance'] = _provenance(
+                'lead', entree.get('provenance'), date)
+        elif date:
+            cible['saisi_le'] = date
+        for cle in ('unite', 'periode'):
+            if entree.get(cle):
+                cible[cle] = entree[cle]
+    return saisies or None
+
+
+def lignes_kit_auto(sortie):
+    """AGR124 — le KIT MINIMUM de l'étude (``kit.inclus`` + options cochées
+    par défaut, dont l'afficheur d'un variateur VEICHI) en lignes de devis
+    ``[{produit_id, designation, quantite, role_pompage, cle}]``.
+
+    Seuls les articles PRICÉS deviennent des lignes ; une ligne « prix à
+    renseigner » ou sans quantité n'est JAMAIS un article gratuit : elle est
+    rendue dans ``omises`` (désignations) pour être nommée dans les alertes.
+    Rend ``(lignes, omises)``."""
+    kit = (sortie or {}).get('kit') or {}
+    candidates = list(kit.get('inclus') or [])
+    for option in kit.get('options') or []:
+        if option.get('cochee'):
+            candidates.append({
+                'cle': option.get('cle'), 'role_pompage': option.get('cle'),
+                'produit': option.get('produit'),
+                'designation': option.get('libelle'),
+                'quantite': option.get('quantite'),
+                'prix_connu': option.get('prix_connu')})
+    lignes, omises = [], []
+    for ligne in candidates:
+        quantite = _num(ligne.get('quantite'))
+        if (not ligne.get('prix_connu') or not ligne.get('produit')
+                or not quantite or quantite <= 0):
+            omises.append(ligne.get('designation') or ligne.get('cle') or '')
+            continue
+        lignes.append({'produit_id': ligne['produit'],
+                       'designation': ligne.get('designation') or '',
+                       'quantite': Decimal(str(quantite)),
+                       'role_pompage': ligne.get('role_pompage') or '',
+                       'cle': ligne.get('cle') or ''})
+    return lignes, omises
