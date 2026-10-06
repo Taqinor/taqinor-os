@@ -151,15 +151,17 @@ def document_dxf(geometrie, *, chaines=None, provenance=None):
     # UN objet par module POSÉ — c'est le compte que le calque doit porter.
     module_m = geometrie.get('module_m')
     for pan in geometrie.get('pans') or ():
+        # ACAL263 — chaque pan porte les cotes de SON module.
+        module_m_pan = pan['module_m'] if 'module_m' in pan else module_m
         for centre in pan['modules']:
-            if module_m is None:
+            if module_m_pan is None:
                 espace.add_point(
                     (centre[0], centre[1]),
                     dxfattribs={'layer': CALQUE_MODULES})
             else:
                 espace.add_lwpolyline(
-                    _rectangle(centre, module_m[0], module_m[1]), close=True,
-                    dxfattribs={'layer': CALQUE_MODULES})
+                    _rectangle(centre, module_m_pan[0], module_m_pan[1]),
+                    close=True, dxfattribs={'layer': CALQUE_MODULES})
 
     _coter(espace, geometrie.get('etendue'))
     _surfaces_de_pose(document, espace, geometrie)
@@ -263,11 +265,13 @@ def _calque_chaines(document, espace, chaines, module_m):
             attributs['true_color'] = colors.rgb2int(
                 rgb_de(module['couleur']))
         centre = module['centre']
-        if module_m is None:
+        # ACAL263 — le module du pan de CE module ; repli : l'appel global.
+        cotes = module['module_m'] if 'module_m' in module else module_m
+        if cotes is None:
             espace.add_point((centre[0], centre[1]), dxfattribs=attributs)
         else:
             espace.add_lwpolyline(
-                _rectangle(centre, module_m[0], module_m[1]), close=True,
+                _rectangle(centre, cotes[0], cotes[1]), close=True,
                 dxfattribs=attributs)
         repere = 'C%s%s' % (module['chaine'], '*' if module.get('manuel')
                             else '')

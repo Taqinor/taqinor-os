@@ -184,22 +184,43 @@ def _projection(roof_layout):
 
 # ── Les dimensions du module : SOURCÉES, ou absentes ────────────────────────
 
-def dimensions_module(roof_layout):
+def _dimensions_du_catalogue(roof_layout, zone):
+    """ACAL263 — ``(long_m, court_m)`` du module que désigne le pan
+    (``geometry.moduleId`` -> ``modules[]``, ``io_layout.module_du_pan``),
+    ou ``None`` : pas de catalogue, pas de renvoi, cotes absentes."""
+    from .io_layout import module_du_pan
+
+    entree = module_du_pan(roof_layout, zone)
+    if entree is None:
+        return None
+    longueur = _nombre(entree.get('longueurMm'))
+    largeur = _nombre(entree.get('largeurMm'))
+    if longueur is None or largeur is None or longueur <= 0 or largeur <= 0:
+        return None
+    return (longueur / 1000.0, largeur / 1000.0)
+
+
+def dimensions_module(roof_layout, zone=None):
     """``(long_m, court_m)`` du module, ou ``None`` si rien ne les SOURCE.
 
-    Le document de conception ne porte PAS les dimensions physiques du module :
-    il ne porte que sa puissance (``panelWatt``) et les CENTRES des modules
-    posés. On ne les invente donc pas — on les retrouve dans les kits DÉCLARÉS
-    du moteur (``core.calepinage.types``) quand la puissance correspond, et on
-    rend ``None`` sinon. Un module sans dimension connue est figuré par son
-    centre (voir ``svg_de_planche``), jamais par un rectangle de taille
-    plausible : une emprise fausse au demi-mètre se lit comme une emprise
-    vraie.
+    ACAL263 — avec ``zone``, le module du PAN fait foi : ``modules[]`` résolu
+    par ``geometry.moduleId`` (cotes du produit CHOISI). Sans catalogue pour
+    ce pan, et pour l'appel global, repli EXPLICITE sur la puissance seule
+    (``panelWatt``) comparée aux kits DÉCLARÉS du moteur
+    (``core.calepinage.types``) : on ne l'invente pas, on la retrouve quand
+    la puissance correspond, et on rend ``None`` sinon. Un module sans
+    dimension connue est figuré par son centre (voir ``svg_de_planche``),
+    jamais par un rectangle de taille plausible : une emprise fausse au
+    demi-mètre se lit comme une emprise vraie.
     """
     from core.calepinage.types import (
         KIT_AO_PAYSAGE, KIT_AO_PORTRAIT, KIT_VILLA_720,
     )
 
+    if zone is not None:
+        cotes = _dimensions_du_catalogue(roof_layout, zone)
+        if cotes is not None:
+            return cotes
     watt = _nombre((roof_layout or {}).get('panelWatt'))
     if watt is None:
         return None
@@ -265,6 +286,8 @@ def geometrie_de_planche(roof_layout):
                                  if 'tiltDeg' in geometrie
                                  else zone.get('pitchDeg')),
             'modules': modules,
+            # ACAL263 — le module de CE pan (catalogue puis repli kit).
+            'module_m': dimensions_module(roof_layout, zone),
             'batiment': str(zone.get('buildingId') or ''),
         }
         pans.append(pan)
@@ -594,8 +617,12 @@ def _cote_verticale(y0, y1, x, vers_feuille, *, couleur=NOIR):
          _n(a[0] - 7.2), _n(milieu_y), escape(texte_de_longueur(abs(y1 - y0))))
 
 
-def _dessin_des_modules(pan, vers_feuille, module_m):
-    """Les modules POSÉS : rectangle quand l'emprise est SOURCÉE, sinon croix."""
+def _dessin_des_modules(pan, vers_feuille, module_m=None):
+    """Les modules POSÉS : rectangle quand l'emprise est SOURCÉE, sinon croix.
+
+    ACAL263 — l'emprise est celle du PAN (``pan['module_m']``) ; le paramètre
+    n'est qu'un repli pour un pan sans cote propre."""
+    module_m = pan['module_m'] if 'module_m' in pan else module_m
     morceaux = []
     for centre in pan['modules']:
         if module_m is None:
