@@ -49,10 +49,22 @@ def ligne_methode(d, cle, prefixe):
     return f'<div class="{prefixe}-mtsrc">{methode}</div>' if methode else ""
 
 
+def _argent_mt(d, cle):
+    """Le motif MT s'applique-t-il ? ``synthese_ci`` le dit quand elle existe
+    (``<cle>_motif_argent`` posé). Sans synthèse (aucun motif servi), le masque
+    ne vient que de la garde QXMT du builder — un dossier dont la tension de
+    raccordement DÉCLARÉE est MT : il garde sa mention MOYENNE TENSION."""
+    if d.get(f"{cle}_motif_argent"):
+        return bool(d.get(f"{cle}_argent_mt"))
+    etude = d.get("etude") if isinstance(d.get("etude"), dict) else {}
+    tension = str(etude.get("tension_raccordement") or "").strip().lower()
+    return tension in ("mt", "ht")
+
+
 def ligne_non_chiffre(d, cle, prefixe):
     """Le motif quand l'argent n'est pas chiffré (``masquer_economies``)."""
     motif = d.get(f"{cle}_motif_argent") or "vos 12 dernières factures"
-    gabarit = (TEXTE_MT_NON_CHIFFRE if d.get(f"{cle}_argent_mt")
+    gabarit = (TEXTE_MT_NON_CHIFFRE if _argent_mt(d, cle)
                else TEXTE_NON_CHIFFRE)
     return f'<div class="{prefixe}-mtsrc">{gabarit.format(motif=motif)}</div>'
 

@@ -872,6 +872,13 @@
      null,
      false
     ],
+    "reference_commande_client": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
     "remise_globale": [
      "DecimalField",
      false,
@@ -996,6 +1003,13 @@
      true,
      false,
      "updated_by.username",
+     false
+    ],
+    "ventilation_tva": [
+     "JSONField",
+     false,
+     false,
+     null,
      false
     ]
    }
@@ -1275,6 +1289,13 @@
      null,
      false
     ],
+    "reference_commande_client": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
     "remise_globale": [
      "DecimalField",
      false,
@@ -1348,6 +1369,13 @@
     "updated_by": [
      "PrimaryKeyRelatedField",
      false,
+     false,
+     null,
+     false
+    ],
+    "ventilation_tva": [
+     "JSONField",
+     true,
      false,
      null,
      false
