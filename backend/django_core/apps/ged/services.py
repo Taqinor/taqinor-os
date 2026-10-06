@@ -4388,6 +4388,10 @@ def resolve_depot_public(token):
         'folder', 'company').first()
     if depot is None or not depot.actif:
         return DEPOT_INTROUVABLE, None
+    # ADOC1 — un lien dont le dossier est d'une AUTRE société (ligne
+    # incohérente héritée) ne range jamais un fichier chez autrui.
+    if depot.folder.company_id != depot.company_id:
+        return DEPOT_INTROUVABLE, None
     if depot.is_expired or depot.quota_fichiers_exhausted or depot.quota_octets_exhausted:
         return DEPOT_EXPIRE, None
     return DEPOT_OK, depot
@@ -4407,7 +4411,7 @@ def deposer_via_lien_public(depot, *, file_key, filename='', size=0, mime='',
     from .models import DepotPublic
     with _tx.atomic():
         d = DepotPublic.objects.select_for_update().get(pk=depot.pk)
-        if not d.is_accessible:
+        if not d.is_accessible or d.folder.company_id != d.company_id:
             raise ValueError("Ce lien de dépôt n'accepte plus de fichiers.")
         nom = (filename or 'Document déposé').strip()
         document = Document.objects.create(
@@ -4477,7 +4481,9 @@ def relancer_demande_document(demande, *, now=None):
     from .models import DEMANDE_DOC_EN_ATTENTE
     if demande.statut != DEMANDE_DOC_EN_ATTENTE:
         return demande
-    if demande.utilisateur_id:
+    # ADOC1 — jamais de notification vers un utilisateur d'une autre société.
+    if (demande.utilisateur_id
+            and demande.utilisateur.company_id == demande.company_id):
         try:
             from apps.notifications.types_evenements import EventType as ET
             from apps.notifications.services import notify
@@ -5107,7 +5113,8 @@ def notifier_planifications_echues(company, *, today=None):
         company=company, faite=False, notifiee=False, echeance__lte=today)
     notifiees = []
     for planif in qs:
-        if planif.assigne_a_id:
+        if (planif.assigne_a_id
+                and planif.assigne_a.company_id == planif.company_id):
             try:
                 from apps.notifications.types_evenements import EventType as ET
                 from apps.notifications.services import notify
@@ -5163,7 +5170,9 @@ def exporter_pdf_annote(version):
         raise ValueError(err)
     doc = fitz.open(stream=data, filetype='pdf')
     try:
-        for annot in version.annotations.all():
+        # ADOC1 — seules les annotations de la société de la version.
+        for annot in version.annotations.filter(
+                company_id=version.company_id):
             if annot.page >= doc.page_count:
                 continue
             page = doc[annot.page]

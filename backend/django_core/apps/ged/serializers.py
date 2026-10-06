@@ -789,11 +789,14 @@ class TypeChampSignatureSerializer(serializers.ModelSerializer):
         return value
 
 
-class RoutageDocumentaireSerializer(serializers.ModelSerializer):
+class RoutageDocumentaireSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
     """ZGED6 — Réglage de centralisation des fichiers d'un autre module.
 
     `company`/`created_by` posés côté serveur. `source` unique par société
-    (garde base + message FR clair)."""
+    (garde base + message FR clair). ADOC1 — cabinet, dossier et tags par
+    défaut bornés à la société de la requête (id d'ailleurs = id absent)."""
+    same_company_fields = ('cabinet_cible', 'dossier_cible', 'tags_defaut')
     cabinet_cible_nom = serializers.CharField(
         source='cabinet_cible.nom', read_only=True)
 
@@ -1020,11 +1023,14 @@ class QuotaStockageSerializer(serializers.ModelSerializer):
         return services.quota_depasse(obj.company)
 
 
-class DepotPublicSerializer(serializers.ModelSerializer):
+class DepotPublicSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
     """XGED7 — Gestion (côté propriétaire) d'un lien de dépôt public.
 
     `company`/`created_by`/`token` posés côté serveur. `url_publique` expose le
-    chemin de dépôt (le frontend préfixe l'origine)."""
+    chemin de dépôt (le frontend préfixe l'origine). ADOC1 — `folder` borné à
+    la société de la requête et non modifiable après création."""
+    same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
@@ -1044,9 +1050,22 @@ class DepotPublicSerializer(serializers.ModelSerializer):
             'is_expired', 'is_accessible', 'created_at', 'updated_at',
         ]
 
+    def validate(self, attrs):
+        """ADOC1 — le dossier d'un lien existant ne se déplace plus."""
+        attrs = super().validate(attrs)
+        if (self.instance is not None and 'folder' in attrs
+                and attrs['folder'].pk != self.instance.folder_id):
+            raise serializers.ValidationError({
+                'folder': ["Le dossier d'un lien de dépôt n'est pas "
+                           "modifiable : créez un nouveau lien."]})
+        return attrs
 
-class ExigenceDossierSerializer(serializers.ModelSerializer):
+
+class ExigenceDossierSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """XGED8 — Modèle de checklist de pièces requises."""
+    same_company_fields = ('cabinet', 'folder')
+
     class Meta:
         model = ExigenceDossier
         fields = [
@@ -1056,8 +1075,10 @@ class ExigenceDossierSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class DemandeDocumentSerializer(serializers.ModelSerializer):
+class DemandeDocumentSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """XGED8 — Demande d'une pièce nommée (interne ou contact externe)."""
+    same_company_fields = ('folder', 'exigence', 'utilisateur')
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     utilisateur_nom = serializers.CharField(
         source='utilisateur.username', read_only=True, default=None)
@@ -1096,9 +1117,11 @@ class ValidationOcrDocumentSerializer(serializers.ModelSerializer):
         ]
 
 
-class AnnotationDocumentSerializer(serializers.ModelSerializer):
+class AnnotationDocumentSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """XGED16 — Annotation/tampon posé sur l'image d'une version (couche
     séparée — n'affecte jamais le fichier original)."""
+    same_company_fields = ('version',)
     auteur_nom = serializers.CharField(
         source='auteur.username', read_only=True, default=None)
 
@@ -1111,11 +1134,13 @@ class AnnotationDocumentSerializer(serializers.ModelSerializer):
         read_only_fields = ['auteur', 'created_at']
 
 
-class RegleDossierSerializer(serializers.ModelSerializer):
+class RegleDossierSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
     """XGED19 — Règle d'action automatique à l'upload dans un dossier.
 
     `condition_group` doit être un groupe `core.rules` valide — validé côté
     vue via `core.rules.validate_condition_group` avant persistance."""
+    same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
 
     class Meta:
@@ -1309,8 +1334,10 @@ class LotEnvoiSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class PlanificationDocumentSerializer(serializers.ModelSerializer):
+class PlanificationDocumentSerializer(SameCompanyFKSerializerMixin,
+                                      serializers.ModelSerializer):
     """XGED15 — Activité planifiée sur un document (« relancer le J+7 »)."""
+    same_company_fields = ('document', 'assigne_a')
     document_nom = serializers.CharField(source='document.nom', read_only=True)
     assigne_a_nom = serializers.CharField(
         source='assigne_a.username', read_only=True, default=None)

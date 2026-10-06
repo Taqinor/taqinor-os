@@ -3115,8 +3115,18 @@ class DepotPublicViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
+        """ADOC1 — création par LE service (garde folder.company_id), jamais
+        un save direct du sérialiseur."""
+        data = serializer.validated_data
+        serializer.instance = services.create_depot_public(
+            folder=data['folder'], company=self.request.user.company,
+            created_by=self.request.user, message=data.get('message', ''),
+            expires_at=data.get('expires_at'),
+            quota_fichiers=data.get('quota_fichiers'),
+            quota_octets=data.get('quota_octets'))
+        if 'actif' in data and data['actif'] != serializer.instance.actif:
+            serializer.instance.actif = data['actif']
+            serializer.instance.save(update_fields=['actif', 'updated_at'])
 
     @action(detail=True, methods=['post'], url_path='revoquer')
     def revoquer(self, request, pk=None):
