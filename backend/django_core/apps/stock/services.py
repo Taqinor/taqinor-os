@@ -4251,12 +4251,23 @@ def taux_ras_tva(facture):
 
 
 def compute_ras_tva(company, facture, montant_paiement):
-    """XPUR2 — calcule (taux, montant_ras) pour un paiement de
-    ``montant_paiement`` sur ``facture``, proportionnellement à la part de
-    TVA couverte par ce règlement. No-op (0, 0) si la société n'a pas activé
-    la RAS-TVA (``AchatsParametres.ras_tva_actif`` OFF par défaut) ou si la
-    facture ne porte aucune TVA."""
-    from .models import AchatsParametres
+    """XPUR2/ASTK175 — calcule (taux, montant_ras) pour un paiement de
+    ``montant_paiement`` sur ``facture``. No-op (0, 0) si la société n'a pas
+    activé la RAS-TVA (``AchatsParametres.ras_tva_actif`` OFF par défaut) ou
+    si la facture ne porte aucune TVA.
+
+    ASTK175 — règle (a) tranchée par le fondateur le 07/10/2026 (ASTK171,
+    « Toute la TVA ») : la retenue due porte sur la TVA de la facture
+    ENTIÈRE (TVA × taux), ventilée sur ses règlements. Un acompte ou un avoir
+    imputé règle une part de la facture SANS porter de retenue propre (aucun
+    champ RAS sur l'acompte) : sa part de retenue est portée par les
+    paiements. Chaque paiement retient la retenue CUMULÉE due au prorata de la
+    part du TTC réglée APRÈS lui (paiements + acomptes + avoirs), moins les
+    retenues déjà portées par les paiements antérieurs ; le paiement qui
+    SOLDE la facture porte exactement le reste, de sorte que Σ RAS des
+    paiements = TVA × taux au centime (exemple : TTC 1 200 / TVA 200 / 100 %,
+    acompte 360 imputé puis paiement 840 ⇒ 200,00)."""
+    from .models import AchatsParametres, FactureFournisseur
     parametres = AchatsParametres.for_company(company)
     if not parametres.ras_tva_actif:
         return Decimal('0'), Decimal('0')
@@ -4267,11 +4278,31 @@ def compute_ras_tva(company, facture, montant_paiement):
     taux = taux_ras_tva(facture)
     if taux <= 0:
         return Decimal('0'), Decimal('0')
-    # TVA proportionnelle à la part du TTC réglée par CE paiement.
     montant_paiement = Decimal(montant_paiement or 0)
-    part_tva = (montant_tva * montant_paiement / montant_ttc).quantize(
+    if montant_paiement <= 0:
+        return taux, Decimal('0')
+    ras_totale = (montant_tva * taux / Decimal('100')).quantize(
         Decimal('0.01'))
-    montant_ras = (part_tva * taux / Decimal('100')).quantize(Decimal('0.01'))
+    if facture.pk is None:
+        # Facture non persistée (calcul isolé) : prorata direct.
+        solde_avant = montant_ttc
+        deja_retenu = Decimal('0')
+    else:
+        fraiche = FactureFournisseur.objects.get(pk=facture.pk)
+        solde_avant = fraiche.solde_du
+        deja_retenu = sum(
+            (p.montant_ras_tva or Decimal('0')
+             for p in fraiche.paiements.all()), Decimal('0'))
+    if montant_paiement >= solde_avant:
+        # Dernier règlement : il porte le solde de retenue au centime.
+        due_cumulee = ras_totale
+    else:
+        regle_apres = min(
+            montant_ttc - solde_avant + montant_paiement, montant_ttc)
+        due_cumulee = (ras_totale * regle_apres / montant_ttc).quantize(
+            Decimal('0.01'))
+    montant_ras = max(due_cumulee - deja_retenu, Decimal('0'))
+    montant_ras = min(montant_ras, montant_paiement)
     return taux, montant_ras
 
 
