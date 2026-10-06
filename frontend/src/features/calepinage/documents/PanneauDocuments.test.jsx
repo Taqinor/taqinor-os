@@ -27,6 +27,9 @@ vi.mock('../../../api/calepinageApi', () => ({
       exporterConception: vi.fn(),
       importerConception: vi.fn(),
       deposerImageDocument: vi.fn(), // CALX302
+      remettreDocument: vi.fn(), // ACAL223
+      declencherDocument: vi.fn(), // ACAL223
+      apercuDocument: vi.fn(), // ACAL223
     },
   },
 }))
@@ -196,8 +199,9 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-rapport_etude'))
 
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    // ACAL223 : une carte à deux langues transmet `{langue}` (défaut = data.langue).
     expect(calepinageApi.calepinages.telechargerDocument)
-      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint)
+      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'fr' })
     expect(filenameFromResponse).toHaveBeenCalled()
     expect(downloadBlob.mock.calls[0][1]).toBe('rapport-etude-1.pdf')
   })
@@ -503,5 +507,129 @@ describe('PanneauDocuments — joindre le diagramme de pertes (CALX320)', () => 
     })
     expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
     expect(screen.queryByTestId('cal-doc-images-confirmation-pertes')).toBeNull()
+  })
+})
+
+describe('PanneauDocuments — contrat documents v2 (ACAL223)', () => {
+  it('envoie la langue choisie en params au telechargement et a la remise', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.telechargerDocument.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    calepinageApi.calepinages.remettreDocument.mockResolvedValue({ data: { numero: 3 } })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.selectOptions(await screen.findByTestId('cal-doc-langue-rapport_etude'), 'en')
+    await utilisateur.click(screen.getByTestId('cal-doc-bouton-rapport_etude'))
+    await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
+      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'en' }))
+    await utilisateur.click(await screen.findByTestId('cal-doc-remettre-rapport_etude'))
+    await waitFor(() => expect(calepinageApi.calepinages.remettreDocument)
+      .toHaveBeenCalledWith(1, { code: 'rapport_etude', langue: 'en' }))
+  })
+
+  it('appelle POST pour une carte methode POST et affiche les signalements', async () => {
+    servirInventaire('exemple')
+    const doc = documentDe('exemple', 'dossier_fin_chantier')
+    // Le contrat sert ce document indisponible : on le rend disponible en
+    // gardant TOUTE sa forme (methode, endpoint) — jamais un payload à la main.
+    calepinageApi.calepinages.documents.mockResolvedValue({
+      data: {
+        ...exempleContrat(APP, NOM, 'exemple'),
+        documents: [{ ...doc, disponible: true, manque: [], motif_indisponible: null }],
+      },
+    })
+    calepinageApi.calepinages.declencherDocument.mockResolvedValue({
+      data: {
+        document: 9, nom: 'Dossier de fin de chantier',
+        pieces: [{ code: 'plan_pose', libelle: 'Plan de pose', pages: 2 }],
+        pages_attendues: 2, signalements: ['Recette IEC 62446-1 : à fournir par le chantier.'],
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-dossier_fin_chantier'))
+
+    expect(await screen.findByTestId('cal-doc-post-signalements'))
+      .toHaveTextContent('Recette IEC 62446-1')
+    expect(calepinageApi.calepinages.declencherDocument).toHaveBeenCalledWith(doc.endpoint, undefined)
+    expect(calepinageApi.calepinages.telechargerDocument).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cal-doc-post-lien-ged')).toHaveAttribute('href', '/ged')
+  })
+
+  it('Remettre appelle remettreDocument puis recharge les versions', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.remettreDocument.mockResolvedValue({ data: { numero: 3 } })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-remettre-rapport_etude'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.documents).toHaveBeenCalledTimes(2))
+    expect(calepinageApi.calepinages.remettreDocument)
+      .toHaveBeenCalledWith(1, { code: 'rapport_etude', langue: 'fr' })
+  })
+
+  it('lien d’onglet par clé manque[].onglet, texte simple quand null', async () => {
+    servirInventaire('exemple')
+    rendre()
+    const lien = await screen.findByTestId('cal-doc-manque-lien-plan_cablage-electrique.chainage')
+    expect(lien.getAttribute('href')).toContain('affectation')
+    expect(screen.queryByTestId('cal-doc-manque-lien-rapport_ombrage-roof_layout.zones[].geometry.solarAccess.values'))
+      .toBeNull()
+  })
+
+  it('carte francais seulement affiche la mention, sans selecteur', async () => {
+    servirInventaire('exemple')
+    rendre()
+    expect(await screen.findByTestId('cal-doc-langue-fr-seul-manuel_proprietaire'))
+      .toHaveTextContent('Ce document n’existe qu’en français')
+    expect(screen.queryByTestId('cal-doc-langue-manuel_proprietaire')).toBeNull()
+    expect(screen.getByTestId('cal-doc-langue-rapport_etude')).toBeInTheDocument()
+  })
+
+  it('Apercu appelle apercu-document avec code et langue', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.apercuDocument.mockResolvedValue({ data: '<html></html>' })
+    const creer = vi.fn(() => 'blob:apercu')
+    const ouvrir = vi.fn()
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: creer }))
+    const fenetre = vi.spyOn(window, 'open').mockImplementation(ouvrir)
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-apercu-rapport_etude'))
+
+    await waitFor(() => expect(ouvrir).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.apercuDocument)
+      .toHaveBeenCalledWith(1, 'rapport_etude', { langue: 'fr' })
+    fenetre.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('la carte plan_cablage propose le DXF', async () => {
+    servirInventaire('exemple')
+    const doc = documentDe('exemple', 'plan_cablage')
+    calepinageApi.calepinages.documents.mockResolvedValue({
+      data: {
+        ...exempleContrat(APP, NOM, 'exemple'),
+        documents: [{ ...doc, disponible: true, manque: [], motif_indisponible: null }],
+      },
+    })
+    calepinageApi.calepinages.telechargerDocument.mockResolvedValue({ data: new Blob(['0']), headers: {} })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-autre-format-plan_cablage-dxf'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
+      .toHaveBeenCalledWith(doc.autres_formats[0].endpoint))
+  })
+
+  it('une version perimee est signalee, une version a jour aussi', async () => {
+    servirInventaire('exemple')
+    rendre()
+    expect(await screen.findByTestId('cal-doc-version-rapport_etude-1')).toHaveTextContent('périmée')
+    expect(screen.getByTestId('cal-doc-version-rapport_etude-2')).toHaveTextContent('à jour')
   })
 })

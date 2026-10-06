@@ -33,16 +33,12 @@ import { deposerCarteDeChaleur, deposerDiagrammeDePertes } from './deposerImage'
    n'est masquée : elle reste affichée, grisée, bouton désactivé, motif et
    manque lisibles.
 
-   LE LIEN VERS L'ONGLET. `manque[].ou_saisir` est une phrase FRANÇAISE déjà
-   écrite par le serveur (ex. « Vérifiez les températures sur l'onglet
-   Équipements électriques. ») — jamais une clé de registre. `ongletCiteDans`
-   cherche, DANS ce texte, le libellé d'un onglet qui existe RÉELLEMENT dans
-   `atelier/onglets.js` (« l'onglet <libellé> » / « le panneau <libellé> ») :
-   seul un texte qui NOMME un onglet inscrit devient un lien cliquable —
-   jamais une devinette (un champ comme `roof_layout`, dont le texte cite
-   « l'onglet Toiture », qui n'existe pas dans le registre sous ce nom,
-   n'obtient donc AUCUN lien : le texte reste lisible, sans destination
-   fausse).
+   LE LIEN VERS L'ONGLET (ACAL223). `manque[].ou_saisir` est une phrase
+   FRANÇAISE déjà écrite par le serveur ; `manque[].onglet` est la CLÉ de
+   registre (`atelier/onglets.js`) que le serveur NOMME, ou null (geste dans
+   l'atelier 3D / Réglages). Seule une clé inscrite devient un lien
+   `?onglet=<clé>` ; sinon le texte reste simple. Plus aucune recherche du
+   libellé d'un onglet dans la phrase.
 
    L'EMPREINTE. Le contrat ne publie AUCUNE empreinte par version (seulement
    `numero`/`produit_le`/`produit_par_utilisateur`/`attachment`) — en publier
@@ -132,21 +128,6 @@ function hrefAttachment(attachmentId) {
   return `/api/django/records/attachments/${attachmentId}/download/`
 }
 
-/** L'onglet du REGISTRE (`atelier/onglets.js`) dont le libellé est cité,
-    EN TOUTES LETTRES, par un texte `ou_saisir` (« … sur l'onglet Toiture. »,
-    « … le panneau Pertes. ») — `null` si aucun onglet du registre n'y est
-    nommé : JAMAIS un lien vers une devinette. Recherche DEPUIS le registre
-    (pas l'inverse) : ça évite toute ambiguïté de découpage de phrase. */
-function ongletCiteDans(texte) {
-  if (!texte) return null
-  const bas = texte.toLowerCase()
-  return ONGLETS.find((o) => {
-    const nom = o.libelle.toLowerCase()
-    return bas.includes(`l'onglet ${nom}`) || bas.includes(`l’onglet ${nom}`)
-      || bas.includes(`le panneau ${nom}`)
-  }) ?? null
-}
-
 /** La liste `manque[]` d'un document indisponible — chaque entrée NOMME son
     champ et son libellé ; `ou_saisir` devient un LIEN vers l'onglet du
     registre quand le texte en cite un qui existe réellement (voir
@@ -156,12 +137,10 @@ function ListeManque({ manque, calepinageId, code }) {
   return (
     <ul className="mt-2 space-y-1 text-xs text-muted-foreground" data-testid={`cal-doc-manque-${code}`}>
       {manque.map((m) => {
-        // ACAL14 — le SERVEUR nomme l'onglet (`manque[].onglet`, clé du registre,
-        // ou null : geste hors registre) ; le repérage dans le texte ne sert
-        // que si la clé n'est pas servie du tout (serveur antérieur).
-        const onglet = 'onglet' in m
-          ? (ONGLETS.find((o) => o.cle === m.onglet) ?? null)
-          : ongletCiteDans(m.ou_saisir)
+        // ACAL14/ACAL223 — le SERVEUR nomme l'onglet (`manque[].onglet`, clé du
+        // registre, ou null : geste hors registre) ; plus aucune devinette dans
+        // la phrase `ou_saisir`.
+        const onglet = ONGLETS.find((o) => o.cle === m.onglet) ?? null
         return (
           <li key={`${code}-${m.champ}`} data-testid={`cal-doc-manque-item-${code}-${m.champ}`}>
             <strong className="text-foreground">{m.libelle}</strong>
@@ -194,6 +173,7 @@ function LigneVersion({ code, version, etiquette }) {
         {etiquette} v{version.numero} — {formatDateTime(version.produit_le)}
         {version.produit_par_utilisateur?.nom_complet
           ? ` · ${version.produit_par_utilisateur.nom_complet}` : ''}
+        {version.perimee === true ? ' — périmée' : version.perimee === false ? ' — à jour' : ''}
       </span>
       <a
         href={hrefAttachment(version.attachment)}
@@ -224,15 +204,50 @@ function VersionsDocument({ versions, code }) {
   )
 }
 
+/** Le résultat d'une carte de méthode POST (dossier de fin de chantier) :
+    pièces, pages, signalements et lien vers la GED — tels que servis. */
+function ResultatPost({ resultat }) {
+  if (!resultat) return null
+  return (
+    <div className="mt-2 text-xs text-foreground" data-testid="cal-doc-post-resultat">
+      <p>
+        {resultat.nom ? <strong>{resultat.nom}</strong> : 'Dossier composé'}
+        {' — '}
+        <Link to="/ged" className="underline" data-testid="cal-doc-post-lien-ged">
+          Ouvrir dans la GED
+        </Link>
+      </p>
+      {resultat.pieces?.length > 0 && (
+        <ul className="mt-1 list-disc pl-4 text-muted-foreground" data-testid="cal-doc-post-pieces">
+          {resultat.pieces.map((piece) => (
+            <li key={piece.code}>{piece.libelle} — {piece.pages} p.</li>
+          ))}
+        </ul>
+      )}
+      {resultat.signalements?.length > 0 && (
+        <ul className="mt-1 list-disc pl-4 text-muted-foreground" data-testid="cal-doc-post-signalements">
+          {resultat.signalements.map((signalement) => (
+            <li key={signalement}>{signalement}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /** Une carte de document (contrat `calepinage_documents.json`) : libellé,
     format, bouton de téléchargement (actif seulement si `disponible`), le
     motif SOUS le bouton quand il ne l'est pas — suivi de la liste `manque[]`
     NOMMÉE (CALX321) — puis les versions déjà produites (CALX322), qu'il
     soit disponible ou non (une pièce redevenue indisponible garde son
-    historique). */
+    historique). ACAL223 : sélecteur de langue (cartes `langues` à deux
+    entrées), Remettre (versionne), Aperçu HTML, DXF, méthode POST. */
 function CarteDocument({
   entree, calepinageId, enCours, onTelecharger, erreurs,
+  langue, onLangue, onRemettre, enRemise, onApercu, onAutreFormat, resultatPost,
 }) {
+  const estPost = entree.methode === 'POST'
+  const langues = entree.langues || []
   return (
     <div
       className="rounded-md border border-border/60 p-3"
@@ -243,17 +258,70 @@ function CarteDocument({
           <p className="text-sm font-medium text-foreground">{entree.libelle}</p>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">{entree.format}</p>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!entree.disponible}
-          loading={enCours}
-          onClick={onTelecharger}
-          data-testid={`cal-doc-bouton-${entree.code}`}
-        >
-          Télécharger
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!entree.disponible}
+            loading={enCours}
+            onClick={onTelecharger}
+            data-testid={`cal-doc-bouton-${entree.code}`}
+          >
+            {estPost ? 'Composer' : 'Télécharger'}
+          </Button>
+          {entree.apercu && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!entree.disponible}
+              onClick={onApercu}
+              data-testid={`cal-doc-apercu-${entree.code}`}
+            >
+              Aperçu
+            </Button>
+          )}
+          {entree.disponible && !estPost && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={enRemise}
+              onClick={onRemettre}
+              data-testid={`cal-doc-remettre-${entree.code}`}
+            >
+              Remettre
+            </Button>
+          )}
+          {(entree.autres_formats || []).map((f) => (
+            <Button
+              key={f.format}
+              size="sm"
+              variant="outline"
+              disabled={!entree.disponible}
+              onClick={() => onAutreFormat(f)}
+              data-testid={`cal-doc-autre-format-${entree.code}-${f.format}`}
+            >
+              Télécharger le {f.format.toUpperCase()}
+            </Button>
+          ))}
+        </div>
       </div>
+      {langues.length > 1 ? (
+        <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+          Langue du document
+          <select
+            value={langue}
+            onChange={(e) => onLangue(e.target.value)}
+            className="rounded border border-border bg-background px-1 py-0.5 text-foreground"
+            data-testid={`cal-doc-langue-${entree.code}`}
+          >
+            {langues.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+          </select>
+        </label>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid={`cal-doc-langue-fr-seul-${entree.code}`}>
+          Ce document n’existe qu’en français.
+        </p>
+      )}
       {!entree.disponible && (
         <>
           <p
@@ -266,6 +334,7 @@ function CarteDocument({
         </>
       )}
       <VersionsDocument versions={entree.versions} code={entree.code} />
+      <ResultatPost resultat={resultatPost} />
       <ErreursSortie erreurs={erreurs} />
     </div>
   )
@@ -421,7 +490,7 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
-  const { data, loading, error } = useResource(
+  const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.documents(id), id,
     { select: (r) => r.data, errorMessage: 'Inventaire des documents indisponible.' },
   )
@@ -448,19 +517,95 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
     return carte
   }, [data])
 
+  // ACAL223 — langue choisie par carte (état d'écran NON persisté : le défaut
+  // est `data.langue` servi), résultat d'une carte POST, remise en cours.
+  const [langues, setLangues] = useState({})
+  const [resultatsPost, setResultatsPost] = useState({})
+  const [enRemise, setEnRemise] = useState(null)
+
+  /** La langue d'une carte : une carte à deux langues suit le choix puis
+      `data.langue` ; une carte française seule vaut toujours `fr`. */
+  function langueDe(entree) {
+    const admises = entree.langues || []
+    if (admises.length < 2) return admises[0] || 'fr'
+    if (langues[entree.code]) return langues[entree.code]
+    return admises.includes(data?.langue) ? data.langue : admises[0]
+  }
+
+  /** `{langue}` transmis seulement aux cartes qui en proposent plusieurs. */
+  function paramsDe(entree) {
+    return (entree.langues || []).length > 1 ? { langue: langueDe(entree) } : undefined
+  }
+
   async function telecharger(code) {
     const entree = parCode.get(code)
     if (!entree) return
     setErreurs((precedent) => ({ ...precedent, [code]: null }))
     setEnCours(code)
     try {
-      const reponse = await calepinageApi.calepinages.telechargerDocument(entree.endpoint)
-      downloadBlob(reponse.data, filenameFromResponse(reponse, code))
+      const params = paramsDe(entree)
+      if (entree.methode === 'POST') {
+        const reponse = await calepinageApi.calepinages.declencherDocument(entree.endpoint, params)
+        setResultatsPost((precedent) => ({ ...precedent, [code]: reponse.data }))
+      } else {
+        const reponse = params
+          ? await calepinageApi.calepinages.telechargerDocument(entree.endpoint, params)
+          : await calepinageApi.calepinages.telechargerDocument(entree.endpoint)
+        downloadBlob(reponse.data, filenameFromResponse(reponse, code))
+      }
+      await refetch()
     } catch (erreur) {
       const details = await erreurDeTelechargement(erreur)
       setErreurs((precedent) => ({ ...precedent, [code]: details }))
     } finally {
       setEnCours(null)
+    }
+  }
+
+  // ACAL223 — l'autre format publié (`autres_formats[]`, ex. le DXF du plan de
+  // câblage) : l'endpoint est celui du serveur, tel quel.
+  async function telechargerAutreFormat(code, format) {
+    setErreurs((precedent) => ({ ...precedent, [code]: null }))
+    try {
+      const reponse = await calepinageApi.calepinages.telechargerDocument(format.endpoint)
+      downloadBlob(reponse.data, filenameFromResponse(reponse, `${code}.${format.format}`))
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur)
+      setErreurs((precedent) => ({ ...precedent, [code]: details }))
+    }
+  }
+
+  // ACAL223 — l'aperçu HTML exact de la pièce, ouvert dans un nouvel onglet.
+  async function apercu(code) {
+    const entree = parCode.get(code)
+    if (!entree) return
+    setErreurs((precedent) => ({ ...precedent, [code]: null }))
+    try {
+      const reponse = await calepinageApi.calepinages.apercuDocument(
+        id, code, { langue: langueDe(entree) })
+      const url = URL.createObjectURL(new Blob([reponse.data], { type: 'text/html' }))
+      window.open(url, '_blank', 'noopener')
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur)
+      setErreurs((precedent) => ({ ...precedent, [code]: details }))
+    }
+  }
+
+  // ACAL223 — la REMISE explicite (POST remettre-document) : crée la version
+  // « Dernière version vN » ; l'inventaire est relu ensuite.
+  async function remettre(code) {
+    const entree = parCode.get(code)
+    if (!entree) return
+    setErreurs((precedent) => ({ ...precedent, [code]: null }))
+    setEnRemise(code)
+    try {
+      await calepinageApi.calepinages.remettreDocument(id, { code, langue: langueDe(entree) })
+      await refetch()
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur)
+      setErreurs((precedent) => ({ ...precedent, [code]: details }))
+    } finally {
+      setEnRemise(null)
     }
   }
 
@@ -530,6 +675,7 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
       const resultat = await deposerCarteDeChaleur(id, builderApi)
       if (resultat.ok) {
         setDerniereImageDeposee({ genre: resultat.genre, deposeLe: resultat.deposeLe })
+        await refetch() // ACAL223 — images[] à jour sans recharger la page
       } else {
         setErreursImage(resultat.erreurs || [{ champ: '', message: resultat.motif }])
       }
@@ -585,6 +731,13 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
           enCours={enCours === entree.code}
           onTelecharger={() => telecharger(entree.code)}
           erreurs={erreurs[entree.code]}
+          langue={langueDe(entree)}
+          onLangue={(l) => setLangues((precedent) => ({ ...precedent, [entree.code]: l }))}
+          onRemettre={() => remettre(entree.code)}
+          enRemise={enRemise === entree.code}
+          onApercu={() => apercu(entree.code)}
+          onAutreFormat={(format) => telechargerAutreFormat(entree.code, format)}
+          resultatPost={resultatsPost[entree.code]}
         />
       ))}
       {/* CALX28 — HORS inventaire (aucun document ne le déclare) : toujours

@@ -24,6 +24,20 @@
       "verbe": "post"
     }
   ],
+  "calepinages.apercuDocument": [
+    {
+      "config": {
+        "params": {
+          "code": 3,
+          "k": 1
+        },
+        "responseType": "text"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/apercu-document/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.appliquerFixation": [
     {
       "config": null,
@@ -181,6 +195,16 @@
       "config": null,
       "data": 3,
       "url": "/calepinage/calepinages/7/approbation/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.declencherDocument": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": 7,
       "verbe": "post"
     }
   ],

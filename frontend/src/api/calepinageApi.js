@@ -278,6 +278,12 @@ const calepinageApi = {
     // nouvelle version, 200 `deja_remise` (même empreinte des entrées), 400
     // sous le champ nommé (contrat `calepinage_documents.json` › `remise`).
     remettreDocument: (id, corps) => api.post(`${pivot(id)}remettre-document/`, corps), // ACAL
+    // ACAL223 — une pièce de méthode POST (dossier de fin de chantier) : l'`endpoint` vient
+    // TOUJOURS de l'entrée servie ; `params` (ex. `{langue}`) voyagent en query.
+    declencherDocument: (endpoint, params) => api.post(endpoint, null, { params }), // ACAL
+    // ACAL223 — l'aperçu HTML EXACT d'une pièce (`apercu-document?code=&langue=`), texte brut.
+    apercuDocument: (id, code, params) => api.get(`${pivot(id)}apercu-document/`, // ACAL
+      { responseType: 'text', params: { code, ...params } }),
     // ACAL23 — contrat calepinage_layout_section.json (ACAL1/ACAL22). L'écriture COMPLÈTE
     // porte l'empreinte « document » lue au boot (ou rendue par la dernière écriture) dans
     // l'en-tête If-Match : un document modifié ailleurs répond 409 `document_modifie`, rien
