@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4798, operations: 7594, components: 2200}
+counts: {paths: 4812, operations: 7606, components: 2202}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1415,6 +1415,7 @@ operations:
 - get /api/django/ged/documents/{id}/journal-acces/ -> django_ged_documents_journal_acces_retrieve
 - post /api/django/ged/documents/{id}/lever-legal-hold/ -> django_ged_documents_lever_legal_hold_create
 - post /api/django/ged/documents/{id}/mettre-en-corbeille/ -> django_ged_documents_mettre_en_corbeille_create
+- post /api/django/ged/documents/{id}/nouvelle-version/ -> django_ged_documents_nouvelle_version_create
 - post /api/django/ged/documents/{id}/ocr-piece/ -> django_ged_documents_ocr_piece_create
 - post /api/django/ged/documents/{id}/office-ouvrir/ -> django_ged_documents_office_ouvrir_create
 - post /api/django/ged/documents/{id}/office-sauvegarder/ -> django_ged_documents_office_sauvegarder_create
@@ -1570,9 +1571,8 @@ operations:
 - post /api/django/ged/versions/ -> django_ged_versions_create
 - delete /api/django/ged/versions/{id}/ -> django_ged_versions_destroy
 - get /api/django/ged/versions/{id}/ -> django_ged_versions_retrieve
-- patch /api/django/ged/versions/{id}/ -> django_ged_versions_partial_update
-- put /api/django/ged/versions/{id}/ -> django_ged_versions_update
 - get /api/django/ged/versions/{id}/apercu/ -> django_ged_versions_apercu_retrieve
+- get /api/django/ged/versions/{id}/pages/ -> django_ged_versions_pages_retrieve
 - get /api/django/ged/vues/ -> django_ged_vues_list
 - post /api/django/ged/vues/ -> django_ged_vues_create
 - delete /api/django/ged/vues/{id}/ -> django_ged_vues_destroy
@@ -5256,6 +5256,7 @@ operations:
 - get /api/v1/ged/documents/{id}/journal-acces/ -> v1_ged_documents_journal_acces_retrieve
 - post /api/v1/ged/documents/{id}/lever-legal-hold/ -> v1_ged_documents_lever_legal_hold_create
 - post /api/v1/ged/documents/{id}/mettre-en-corbeille/ -> v1_ged_documents_mettre_en_corbeille_create
+- post /api/v1/ged/documents/{id}/nouvelle-version/ -> v1_ged_documents_nouvelle_version_create
 - post /api/v1/ged/documents/{id}/ocr-piece/ -> v1_ged_documents_ocr_piece_create
 - post /api/v1/ged/documents/{id}/office-ouvrir/ -> v1_ged_documents_office_ouvrir_create
 - post /api/v1/ged/documents/{id}/office-sauvegarder/ -> v1_ged_documents_office_sauvegarder_create
@@ -5411,9 +5412,8 @@ operations:
 - post /api/v1/ged/versions/ -> v1_ged_versions_create
 - delete /api/v1/ged/versions/{id}/ -> v1_ged_versions_destroy
 - get /api/v1/ged/versions/{id}/ -> v1_ged_versions_retrieve
-- patch /api/v1/ged/versions/{id}/ -> v1_ged_versions_partial_update
-- put /api/v1/ged/versions/{id}/ -> v1_ged_versions_update
 - get /api/v1/ged/versions/{id}/apercu/ -> v1_ged_versions_apercu_retrieve
+- get /api/v1/ged/versions/{id}/pages/ -> v1_ged_versions_pages_retrieve
 - get /api/v1/ged/vues/ -> v1_ged_vues_list
 - post /api/v1/ged/vues/ -> v1_ged_vues_create
 - delete /api/v1/ged/vues/{id}/ -> v1_ged_vues_destroy
@@ -9013,7 +9013,6 @@ components:
 - PatchedDocumentRequest
 - PatchedDocumentTagAssignmentRequest
 - PatchedDocumentTagRequest
-- PatchedDocumentVersionRequest
 - PatchedDossierChecklistItemRequest
 - PatchedDossierExchangeRequest
 - PatchedDossierImportRequest

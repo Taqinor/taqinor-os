@@ -404,7 +404,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
         last = obj.versions.order_by('-version').first()
         return last.version if last else None
 
-    def get_favori(self, obj):
+    def get_favori(self, obj) -> bool:
         """ADOC35 — True si l'utilisateur de la requête a mis ce document en
         favori. Lit l'annotation `favori_utilisateur` posée par
         DocumentViewSet (sans N+1) ; à défaut, une requête Exists."""
@@ -418,7 +418,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
         return FavoriGed.objects.filter(
             utilisateur=user, document_id=obj.pk).exists()
 
-    def get_derniere_mime(self, obj):
+    def get_derniere_mime(self, obj) -> str | None:
         """ADOC22 — mime de la version en vigueur (l'écran ne propose les
         opérations PDF — fusion — que pour des PDF)."""
         last = obj.versions.order_by('-version').first()
