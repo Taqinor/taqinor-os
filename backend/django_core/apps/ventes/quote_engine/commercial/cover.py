@@ -12,6 +12,8 @@ from ..figures import ancre
 from .. import premium_base
 # CIQ307 — bandeau, méthode, tuiles d'argent : lus sur ``synthese_ci``.
 from ..ci import couverture as ci_couverture
+# CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
+from ..ci import blocs as ci_blocs
 
 
 def build(ctx):
@@ -184,7 +186,7 @@ def build(ctx):
   <div class="c1c-client">
     <b>{client_full}</b>
     {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    <span class="c1c-tag">{cat_label}</span>
+    <span class="c1c-tag">{cat_label}</span>{ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"))}
   </div>
 
   <div class="c1c-wrap">

@@ -414,6 +414,10 @@ def synthese_ci(data):
     synthese["hypotheses"] = mentions_ci(
         data, sous_reserve=statut == STATUT_SOUS_RESERVE)
     synthese["echeancier"] = _echeancier(data, option)
+    # CIQ309 — l'entreprise cliente, recopiée telle que le builder la sert.
+    entreprise = data.get("entreprise_client")
+    if isinstance(entreprise, dict) and any(entreprise.values()):
+        synthese["entreprise_client"] = dict(entreprise)
     synthese["omissions"] = omissions
     return synthese
 

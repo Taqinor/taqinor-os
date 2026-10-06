@@ -4229,6 +4229,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
             logger.exception("jalons_paiement: échec (devis %s)",
                              getattr(devis, "reference", "?"))
+        # CIQ309 — identité de l'entreprise cliente (contrat client
+        # entreprise CIQ8) ; ABSENTE quand rien n'est à imprimer.
+        _entreprise = entreprise_client_du_client(client)
+        if _entreprise is not None:
+            data["entreprise_client"] = _entreprise
 
     # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
     # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre
@@ -4332,6 +4337,43 @@ def _references_pompage(devis):
             for r in refs or [] if isinstance(r, dict)]
 
 
+# ── CIQ309 — client entreprise (contrat CIQ8) ───────────────────────────────
+
+def _texte_client(client, champ):
+    return str(getattr(client, champ, "") or "").strip()
+
+
+def entreprise_client_du_client(client):
+    """La forme ``entreprise_client`` (contrat ``proposal_data.json``, CIQ4)
+    lue sur le Client (colonnes du contrat client entreprise CIQ8) :
+    ``{raison_sociale, ice, rc, if_fiscal, siege, interlocuteur, fonction}``.
+
+    Lecture seule, rien n'est deviné : la raison sociale n'est le ``nom``
+    que pour un client de type ``entreprise`` ; le siège n'est servi que
+    s'il diffère de l'adresse du site. ``None`` quand le client n'est ni une
+    entreprise ni porteur d'un identifiant légal. Aucune donnée de marge."""
+    if client is None:
+        return None
+    entreprise = _texte_client(client, "type_client") == "entreprise"
+    ice = _texte_client(client, "ice")
+    rc = _texte_client(client, "rc")
+    if_fiscal = _texte_client(client, "if_fiscal")
+    if not entreprise and not (ice or rc or if_fiscal):
+        return None
+    siege = _texte_client(client, "adresse_siege")
+    if siege and siege == _texte_client(client, "adresse"):
+        siege = ""
+    return {
+        "raison_sociale": _texte_client(client, "nom") if entreprise else "",
+        "ice": ice,
+        "rc": rc,
+        "if_fiscal": if_fiscal,
+        "siege": siege,
+        "interlocuteur": _texte_client(client, "contact_nom"),
+        "fonction": _texte_client(client, "contact_fonction"),
+    }
+
+
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
 #: Champs texte d'une ligne rendus tels quels par les gabarits (les mêmes que
 #: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
@@ -4431,6 +4473,11 @@ def echapper_textes_client(data: dict) -> dict:
              if isinstance(c, dict) else c)
             for c in _clauses
         ]
+    # CIQ309 — identité de l'entreprise cliente : texte saisi (fiche client).
+    if isinstance(sortie.get("entreprise_client"), dict):
+        sortie["entreprise_client"] = {
+            cle: (_e(val) if isinstance(val, str) else val)
+            for cle, val in sortie["entreprise_client"].items()}
     # CIQ218 — conditions générales C&I : texte saisi par la société.
     if isinstance(sortie.get("cgv_ci"), list):
         sortie["cgv_ci"] = [_e(v) for v in sortie["cgv_ci"]]
