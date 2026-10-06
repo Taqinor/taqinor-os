@@ -238,12 +238,16 @@
     actif:inconnu, signalements:inconnu
 - frontend/src/api/installationsApi.js :: getPhotos -> /api/django/installations/interventions/<>/photos
     autres:inconnu, created_at:inconnu, filename:inconnu, groupes:inconnu, id:inconnu, intervention:inconnu, mime:inconnu, obligatoires_manquants:liste, sans_creneau:inconnu, uploaded_by_nom:inconnu, url:texte
+- frontend/src/api/installationsApi.js :: getRecettePompage -> /api/django/installations/chantiers/<>/recette-pompage
+    detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: getRegimeSuggestion -> /api/django/installations/chantiers/regime-suggestion
     code:inconnu, label:inconnu, seuil_anre_kwc:inconnu, seuil_declaration_kwc:inconnu
 - frontend/src/api/installationsApi.js :: getSousTraitants -> /api/django/installations/sous-traitants
     count:nombre, next:inconnu, previous:inconnu, results:inconnu
 - frontend/src/api/installationsApi.js :: getTourneeLivraison -> /api/django/installations/tournee-livraison
     depart:texte, jour:texte, sans_gps:inconnu, total:inconnu, tournee:inconnu
+- frontend/src/api/installationsApi.js :: ouvrirRecettePompage -> /api/django/installations/chantiers/<>/recette-pompage
+    detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
     interventions:inconnu, seuil_pct:inconnu
 - frontend/src/api/installationsApi.js :: supprimerLigneConsommation -> /api/django/installations/interventions/<>/supprimer-ligne-consommation
