@@ -2800,6 +2800,8 @@ def facturer_reception(company, user, reception):
         return ff
 
     create_with_reference(FactureFournisseur, 'FF', company, _save)
+    # ASTK107 — rapprochement 3 voies à la création par réception.
+    evaluer_rapprochement_3_voies(created['ff'])
     # XPUR8 — impute automatiquement les acomptes non consommés du BCF sur
     # cette première facture (idempotent, no-op si aucun acompte).
     imputer_acomptes_bcf(reception.bon_commande)
@@ -4962,16 +4964,106 @@ def evaluer_tolerance_ecart(company, bon_commande_id):
     return override.tolerance_prix_pct
 
 
+def _montant_attendu_bcf_ht(bon_commande_id):
+    """ASTK107 — HT ATTENDU d'un BCF pour le rapprochement 3 voies :
+    somme (quantité reçue sur réceptions CONFIRMÉES × PU du BCF) pour les
+    lignes « sur réception », somme (quantité commandée × PU) pour les lignes
+    « sur commande » (ZPUR1, facturées avant réception)."""
+    from .models import (
+        LigneBonCommandeFournisseur, LigneReceptionFournisseur, Produit,
+        ReceptionFournisseur,
+    )
+    recu = {}
+    for ligne_id, qte in (LigneReceptionFournisseur.objects
+                          .filter(reception__bon_commande_id=bon_commande_id,
+                                  reception__statut=ReceptionFournisseur
+                                  .Statut.CONFIRME,
+                                  ligne_commande__isnull=False)
+                          .values_list('ligne_commande_id', 'quantite')):
+        recu[ligne_id] = recu.get(ligne_id, Decimal('0')) + Decimal(
+            str(qte or 0))
+    attendu = Decimal('0')
+    for ligne in (LigneBonCommandeFournisseur.objects
+                  .filter(bon_commande_id=bon_commande_id)
+                  .select_related('produit')):
+        pu = ligne.prix_achat_unitaire or Decimal('0')
+        if (ligne.produit_id is not None
+                and ligne.produit.politique_facturation_achat
+                == Produit.PolitiqueFacturationAchat.SUR_COMMANDE):
+            quantite = Decimal(str(ligne.quantite or 0))
+        else:
+            quantite = recu.get(ligne.id, Decimal('0'))
+        attendu += quantite * pu
+    return attendu.quantize(Decimal('0.01'))
+
+
+def evaluer_rapprochement_3_voies(facture):
+    """ASTK107 — évaluateur UNIQUE du rapprochement 3 voies côté stock,
+    appelé à la création par réception (``facturer_reception``), au lien BCF
+    par PATCH (``perform_update``) et à la création OCR/UBL liée.
+
+    Compare le HT CUMULÉ facturé sur le BCF (toutes ses factures) au HT
+    attendu (``_montant_attendu_bcf_ht`` : reçu × PU du BCF). Une
+    SUR-facturation au-delà de la tolérance applicable
+    (``evaluer_tolerance_ecart`` : catégorie commune sinon défaut société ;
+    l'écart absolu société s'il est configuré) pose
+    ``statut_controle = exception`` + ``motif_ecart`` : le paiement est alors
+    refusé par ``check_facture_exception_gate``. Une facture dans la
+    tolérance reste 'normale'. Une exception RÉSOLUE (acte explicite du
+    responsable) n'est jamais re-basculée ; une facture déjà en exception
+    n'est pas réécrite. Lecture 100 % stock/achats (aucun module compta).
+    Renvoie le statut de contrôle résultant (None sans BCF)."""
+    from django.db.models import Sum
+    from .models import AchatsParametres, FactureFournisseur
+    if facture is None or facture.bon_commande_id is None:
+        return None
+    if facture.statut_controle != FactureFournisseur.StatutControle.NORMALE:
+        return facture.statut_controle
+    company = facture.company
+    facture_ht = (FactureFournisseur.objects
+                  .filter(company=company,
+                          bon_commande_id=facture.bon_commande_id)
+                  .aggregate(t=Sum('montant_ht'))['t'] or Decimal('0'))
+    attendu = _montant_attendu_bcf_ht(facture.bon_commande_id)
+    ecart = (facture_ht - attendu).quantize(Decimal('0.01'))
+    if ecart <= Decimal('0'):
+        return facture.statut_controle
+    tolerance_pct = evaluer_tolerance_ecart(company, facture.bon_commande_id)
+    tolerance_abs = (AchatsParametres.for_company(company)
+                     .tolerance_prix_absolu_mad or Decimal('0'))
+    seuil = max((attendu * tolerance_pct / Decimal('100')).quantize(
+        Decimal('0.01')), tolerance_abs)
+    if ecart <= seuil:
+        return facture.statut_controle
+    if attendu > 0:
+        pct = (ecart / attendu * Decimal('100')).quantize(Decimal('0.01'))
+        pct_txt = f'+{_fmt_montant_pdf(pct)} %'
+    else:
+        pct_txt = 'rien de reçu au prix du BCF'
+    facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
+    facture.motif_ecart = (
+        'Rapprochement 3 voies hors tolérance : facturé '
+        f'{_fmt_montant_pdf(facture_ht)} HT pour '
+        f'{_fmt_montant_pdf(attendu)} HT reçus au prix du BCF '
+        f'(écart +{_fmt_montant_pdf(ecart)} HT, {pct_txt} ; tolérance '
+        f'{_fmt_montant_pdf(tolerance_pct)} %).')
+    FactureFournisseur.objects.filter(pk=facture.pk).update(
+        statut_controle=facture.statut_controle,
+        motif_ecart=facture.motif_ecart)
+    return facture.statut_controle
+
+
 def check_facture_exception_gate(company, facture):
     """XPUR10 — lève ValueError si la facture est en EXCEPTION non résolue —
     bloque la CRÉATION d'un PaiementFournisseur. No-op si la facture reste
     'normale' ou a déjà été résolue (statut 'resolue' n'est jamais re-basculé
     en exception ici — la résolution est un acte explicite du responsable).
 
-    SOLMVP12 (20/09/2026) — l'ÉVALUATION automatique de l'écart de
-    rapprochement 3 voies (lecture du module compta, détaché de stock) a été
-    retirée : seule la résolution manuelle (``resoudre_exception_facture``)
-    fait évoluer ``statut_controle`` désormais."""
+    SOLMVP12 (20/09/2026) avait retiré l'évaluation automatique (lecture du
+    module compta, détaché de stock). ASTK107 la REBRANCHE côté stock :
+    ``evaluer_rapprochement_3_voies`` pose l'exception à la création par
+    réception, au lien BCF par PATCH et à la création OCR/UBL liée ; la
+    résolution reste manuelle (``resoudre_exception_facture``)."""
     from .models import FactureFournisseur
     if facture.statut_controle == FactureFournisseur.StatutControle.EXCEPTION:
         raise ValueError(
@@ -5227,8 +5319,10 @@ def creer_facture_fournisseur_depuis_ocr(
 
     from apps.ventes.utils.references import create_with_reference
     facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
-    # ASTK99 — une facture OCR déjà liée à un BCF émet à la création (no-op
-    # aujourd'hui : le lien se pose ensuite par PATCH, qui émet alors).
+    # ASTK99/ASTK107 — une facture OCR déjà liée à un BCF est rapprochée et
+    # émet à la création (no-op aujourd'hui : le lien se pose ensuite par
+    # PATCH, qui fait alors les deux).
+    evaluer_rapprochement_3_voies(facture)
     _emettre_facture_creee(facture, user)
 
     if doublons and confirmer_malgre_doublon:
@@ -7061,7 +7155,9 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
 
     from apps.ventes.utils.references import create_with_reference
     facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
-    # ASTK99 — même émission « au lien » qu'OCR/PATCH (no-op sans BCF).
+    # ASTK99/ASTK107 — même rapprochement + émission « au lien » qu'OCR/
+    # PATCH (no-op sans BCF).
+    evaluer_rapprochement_3_voies(facture)
     _emettre_facture_creee(facture, user)
     return facture
 

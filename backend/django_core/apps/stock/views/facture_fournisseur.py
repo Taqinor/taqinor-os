@@ -121,21 +121,25 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         """NTP2P10 — confirmation du lien `bon_commande` (jamais posé
         silencieusement, l'utilisateur choisit).
 
-        SOLMVP12 (20/09/2026) — l'évaluation immédiate du rapprochement 3
-        voies (``services.evaluate_facture_exception``, lecture du module
-        compta détaché de stock) a été retirée : seul
-        ``check_facture_exception_gate`` (au paiement) reste.
+        SOLMVP12 (20/09/2026) avait retiré l'évaluation immédiate du
+        rapprochement 3 voies (lecture du module compta). ASTK107 la
+        rebranche côté stock : au lien BCF, ``evaluer_rapprochement_3_voies``
+        compare le HT facturé au reçu × PU du BCF et pose l'exception hors
+        tolérance (paiement alors bloqué par ``check_facture_exception_gate``).
 
         ASTK99 — quand le PATCH fait ACQUÉRIR (ou changer) un BCF à la
         facture, `facture_fournisseur_creee` est émis UNE fois dans la même
         transaction (lettrage GR/IR des provisions du BCF) ; un PATCH qui ne
         change pas `bon_commande` n'émet rien."""
-        from ..services import _emettre_facture_creee
+        from ..services import (
+            _emettre_facture_creee, evaluer_rapprochement_3_voies,
+        )
         ancien_bcf_id = serializer.instance.bon_commande_id
         with transaction.atomic():
             facture = serializer.save()
             if (facture.bon_commande_id is not None
                     and facture.bon_commande_id != ancien_bcf_id):
+                evaluer_rapprochement_3_voies(facture)
                 _emettre_facture_creee(facture, self.request.user)
 
     def perform_destroy(self, instance):
