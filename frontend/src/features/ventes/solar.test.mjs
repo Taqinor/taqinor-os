@@ -25,7 +25,6 @@ import {
   isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
   batteryKwhFromLines, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
   // STKCAT10 — sélecteur de structures piloté par le catalogue.,
-  // (`autoFillPompage` est déjà importé plus bas, avec le bloc pompage.),
   structureRoleForName, structureChoisie,
 } from './solar.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
@@ -846,56 +845,12 @@ test('QF8 — réseau Deye mais hybride Huawei : Smart Meter/Wifi attachés (hyb
 
 // ══ Multi-marchés ═════════════════════════════════════════════════════════════
 import {
-  computePompage, autoFillPompage,
-  prixParKwc, discountForTarget, computeBuyCost, CV_TO_KW,
+  prixParKwc, discountForTarget, computeBuyCost,
   expectedTvaForDesignation,
 } from './solar.js'
 
-const POMPAGE_FIXTURE = [
-  P('Pompe immergée solaire 3 CV Monophasé', 6500),
-  P('Pompe immergée solaire 5.5 CV Triphasé', 11000),
-  P('Pompe immergée solaire 7.5 CV Triphasé', 14500),
-  P('Pompe de surface solaire 1.5 CV Monophasé', 3000),
-  P('Variateur pompage solaire 3 CV Triphasé (coffret complet)', 4800),
-  P('Variateur pompage solaire 5.5 CV Triphasé (coffret complet)', 6500),
-  P('Variateur pompage solaire 7.5 CV Triphasé (coffret complet)', 8000),
-  P('Câble solaire 6mm² (au mètre)', 13),
-].map((p, i) => ({
-  ...p,
-  pompe_cv: ['3', '5.5', '7.5', '1.5', '3', '5.5', '7.5', null][i],
-}))
-
-test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans batterie/onduleur', () => {
-  const dims = computePompage(5.5)
-  assert.ok(Math.abs(dims.kw - 5.5 * CV_TO_KW) < 0.01)
-  // champ 1.4× pompe ∈ [1.3, 1.5] × kW
-  assert.ok(dims.champKw >= dims.kw * 1.3 && dims.champKw <= dims.kw * 1.5)
-  assert.equal(dims.nbPanneaux, Math.ceil(dims.champKw * 1000 / 710))
-
-  const rows = autoFillPompage(POMPAGE_FIXTURE.concat(SEEDED), {
-    cv: '5.5', alim: 'tri', typePompe: 'immergee',
-    distance: '35', structureType: 'acier',
-  })
-  const names = rows.map(r => r.designation)
-  assert.ok(names.includes('Pompe immergée solaire 5.5 CV Triphasé'))
-  assert.ok(names.includes('Variateur pompage solaire 5.5 CV Triphasé (coffret complet)'))
-  // câble à la distance
-  const cable = rows.find(r => r.designation.includes('Câble'))
-  assert.equal(Number(cable.quantite), 35)
-  // ni batterie, ni onduleur réseau/hybride
-  assert.ok(!names.some(n => /batterie/i.test(n)))
-  assert.ok(!names.some(n => /onduleur/i.test(n)))
-  // panneaux 710 du catalogue
-  const pan = rows.find(r => /panneau/i.test(r.designation))
-  assert.equal(Number(pan.quantite), dims.nbPanneaux)
-})
-
-// ══ Courbes de pompe + VEICHI (matériel réel) ════════════════════════════════
-import {
-  debitAtHmt, selectPompeByCurve, selectVariateurVeichi,
-  findAfficheurVariateur, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  tensionOf, tensionForAlim, isPompe,
-} from './solar.js'
+// ══ Classification pompe (le moteur pompage JS est retiré, AGR132) ═══════════
+import { isPompe } from './solar.js'
 
 test('QX20 — isPompe classe une pompe, pas un panneau/onduleur', () => {
   assert.equal(isPompe('Pompe immergée OSP 30/8'), true)
@@ -928,130 +883,7 @@ const ospPump13 = (overrides = {}) => ({
   courbe_pompe: OSP_CURVE_30_13, ...overrides,
 })
 
-test('courbe : débit interpolé à la HMT (points exacts, interpolation, bornes)', () => {
-  assert.equal(debitAtHmt(OSP_CURVE_30_8, 60), 30)      // point exact
-  assert.equal(debitAtHmt(OSP_CURVE_30_8, 65), 27)      // interpolation 70→60
-  assert.equal(debitAtHmt(OSP_CURVE_30_8, 91), 0)       // HMT max → débit nul
-  assert.equal(debitAtHmt(OSP_CURVE_30_8, 120), 0)      // au-delà de la pompe
-  assert.equal(debitAtHmt(OSP_CURVE_30_8, 20), 39)      // borné au dernier point
-  assert.equal(debitAtHmt(null, 60), null)              // pas de courbe → null
-})
-
-test('sélection pompe : HMT 60 m + débit 30 m³/h → OSP 30/8 (la plus petite qui suffit)', () => {
-  const produits = [ospPump(), ospPump13({ prix_vente: '15000.00' })]
-  const sel = selectPompeByCurve(produits, { hmt: '60', debit: '30', typePompe: 'immergee' })
-  assert.equal(sel.pump.id, 950)
-  assert.equal(sel.kw, 7.5)
-  assert.equal(sel.debitHmt, 30)
-  assert.deepEqual(sel.sansPrix, [])
-})
-
-test('pompes sans prix : jamais chiffrées — signalées à la place', () => {
-  const produits = [ospPump({ prix_vente: '0.00' }), ospPump13()]
-  const sel = selectPompeByCurve(produits, { hmt: '60', debit: '30', typePompe: 'immergee' })
-  assert.equal(sel.pump, null)
-  assert.ok(sel.sansPrix.length >= 1)
-  assert.ok(sel.sansPrix[0].includes('OSP'))
-  // …et l'auto-fill n'ajoute AUCUNE ligne pompe dans ce cas
-  const rows = autoFillPompage(produits.concat(VEICHI_FIXTURE, SEEDED), {
-    cv: '', alim: 'tri', typePompe: 'immergee', distance: '20',
-    structureType: 'acier', hmt: '60', debit: '30', heures: '7',
-  })
-  assert.ok(!rows.some(r => /OSP|pompe/i.test(r.designation)))
-})
-
-test('variateur VEICHI : plus petit kW suffisant, tension assortie, jamais l\'afficheur', () => {
-  const v = selectVariateurVeichi(VEICHI_FIXTURE, 7.5, 'tri')
-  assert.equal(v.vfd.nom, 'VARIATEUR VEICHI SI23 7.5KW 380V')
-  assert.equal(v.insuffisant, false)
-  // pompe mono 1.1 kW → 220 V, le moins cher des 2.2 kW (SI22)
-  const v220 = selectVariateurVeichi(VEICHI_FIXTURE, 1.1, 'mono')
-  assert.equal(v220.vfd.nom, 'VARIATEUR VEICHI SI22 2.2KW 220V')
-  // l'afficheur (sans kW) n'est jamais candidat
-  assert.ok(!/afficheur/i.test(v.vfd.nom) && !/afficheur/i.test(v220.vfd.nom))
-  assert.equal(findAfficheurVariateur(VEICHI_FIXTURE).id, 901)
-})
-
 // ── QJR130 — jamais de repli silencieux sur un matériel sous-dimensionné ──────
-test('QJR130(a) : variateur VEICHI trop puissant demandé → RIEN sélectionné, insuffisant=true', () => {
-  // Le plus gros VEICHI tri du fixture est 11 kW ; on demande 50 kW.
-  const v = selectVariateurVeichi(VEICHI_FIXTURE, 50, 'tri')
-  assert.equal(v.vfd, null)
-  assert.equal(v.insuffisant, true)
-  // Aucun candidat du tout (mono demandé alors que le fixture n'a que du tri
-  // à cette puissance) → insuffisant reste false (rien à sur-dimensionner).
-  const none = selectVariateurVeichi([], 5, 'tri')
-  assert.equal(none.vfd, null)
-  assert.equal(none.insuffisant, false)
-})
-
-test('QJR130(a)(b) : auto-fill pompage — variateur trop puissant demandé → avertissement visible, pas de repli', () => {
-  // Pompe OSP 30/8 (7.5 kW) mais AUCUN variateur (VEICHI ni coffret) du
-  // fixture n'atteint 7.5 kW : le plus gros VEICHI tri disponible ici est
-  // limité à 5.5 kW.
-  const SMALL_VEICHI = VEICHI_FIXTURE.filter(p => !/7\.5KW|11KW/.test(p.nom))
-  const produits = [ospPump()].concat(SMALL_VEICHI, SEEDED)
-  const rows = autoFillPompage(produits, {
-    cv: '', alim: 'tri', typePompe: 'immergee', distance: '40',
-    structureType: 'acier', hmt: '60', debit: '30', heures: '7',
-  })
-  // aucune ligne « Variateur solaire » avec un variateur RÉEL sous-dimensionné
-  assert.ok(!rows.some(r => /VEICHI/i.test(r.designation)))
-  const warn = rows.find(r => r.designation.includes('Variateur solaire'))
-  assert.ok(warn, 'une ligne d\'avertissement doit apparaître')
-  assert.equal(warn.produit, '')                // jamais un produit réel
-  assert.equal(warn.prix_unit_ttc, 0)
-  assert.ok(/AUCUN variateur assez puissant/i.test(warn.designation))
-})
-
-test('QJR130(c) : auto-fill pompage — aucune pompe au CV demandé → avertissement visible, pas de repli', () => {
-  // Retire la pompe 7.5 CV du fixture : la plus grande immergée triphasée
-  // disponible reste 5.5 CV, plus PETITE que le CV demandé (7.5).
-  const SMALL_PUMPS = POMPAGE_FIXTURE.filter(p => !p.nom.includes('7.5 CV Triphasé'))
-  const rows = autoFillPompage(SMALL_PUMPS.concat(SEEDED), {
-    cv: '7.5', alim: 'tri', typePompe: 'immergee',
-    distance: '10', structureType: 'acier',
-  })
-  // jamais la pompe 5.5 CV (plus petite que le CV saisi) silencieusement facturée
-  assert.ok(!rows.some(r => /5\.5 CV/i.test(r.designation)))
-  const warn = rows.find(r => r.designation.includes('Pompe solaire'))
-  assert.ok(warn, 'une ligne d\'avertissement doit apparaître')
-  assert.equal(warn.produit, '')
-  assert.equal(warn.prix_unit_ttc, 0)
-  assert.ok(/AUCUNE pompe assez puissante/i.test(warn.designation))
-})
-
-test('m³/jour = débit à la HMT × heures de pompage (défaut 7 h)', () => {
-  assert.equal(HEURES_POMPAGE_DEFAUT, 7)
-  const sel = pompageSelection([ospPump()], {
-    cv: '', typePompe: 'immergee', hmt: '60', debit: '30', heures: '7',
-  })
-  assert.equal(sel.mode, 'courbe')
-  assert.equal(sel.m3Jour, 210)              // 30 m³/h × 7 h
-  // champ PV ≈ 1.4 × kW réels de la pompe
-  assert.ok(sel.dims.champKw >= sel.kw * 1.3 && sel.dims.champKw <= sel.kw * 1.5)
-  // sans heures valides → pas de m³/jour inventé
-  const sel0 = pompageSelection([ospPump()], {
-    cv: '', typePompe: 'immergee', hmt: '60', debit: '30', heures: '',
-  })
-  assert.equal(sel0.m3Jour, null)
-})
-
-test('auto-fill courbe complet : pompe OSP + VEICHI assorti + afficheur, sans onduleur', () => {
-  const produits = [ospPump()].concat(VEICHI_FIXTURE, SEEDED)
-  const rows = autoFillPompage(produits, {
-    cv: '', alim: 'tri', typePompe: 'immergee', distance: '40',
-    structureType: 'acier', hmt: '60', debit: '30', heures: '7',
-  })
-  const names = rows.map(r => r.designation)
-  assert.ok(names.some(n => n.includes('OSP 30/8')))
-  assert.ok(names.includes('VARIATEUR VEICHI SI23 7.5KW 380V'))
-  const aff = rows.find(r => /AFFICHEUR/i.test(r.designation))
-  assert.equal(Number(aff.quantite), 1)      // afficheur par défaut (supprimable)
-  assert.ok(!names.some(n => /onduleur/i.test(n)))
-  assert.ok(!names.some(n => /batterie/i.test(n)))
-})
-
 // ── QJR131 — `_hasPrix` couvre AUSSI panneaux/structures/socles/câble/
 // installation/transport (avant : réservé pompe/variateur/afficheur) : un
 // candidat sans prix n'est plus jamais chiffré, repli sur un placeholder
@@ -1061,55 +893,6 @@ const POMPAGE_ARGS = {
 }
 const zeroed = (produits, matches) => produits.map(p =>
   matches.some(m => p.nom.includes(m)) ? { ...p, prix_vente: '0.00' } : p)
-
-test('QJR131 : Panneaux sans prix → placeholder, jamais un produit gratuit', () => {
-  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Panneau'])
-  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Panneaux')
-  assert.ok(row)
-  assert.equal(row.produit, '')
-  assert.equal(row.prix_unit_ttc, 0)
-})
-
-test('QJR131 : Structures sans prix → placeholder, jamais un produit gratuit', () => {
-  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Structures'])
-  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Structures')
-  assert.ok(row)
-  assert.equal(row.produit, '')
-  assert.equal(row.prix_unit_ttc, 0)
-})
-
-test('QJR131 : Socles sans prix → placeholder, jamais un produit gratuit', () => {
-  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Socles'])
-  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Socles')
-  assert.ok(row)
-  assert.equal(row.produit, '')
-  assert.equal(row.prix_unit_ttc, 0)
-})
-
-test('QJR131 : Câble sans prix → placeholder, jamais un produit gratuit', () => {
-  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Câble'])
-  const row = autoFillPompage(produits, POMPAGE_ARGS)
-    .find(r => r.designation === 'Câble solaire (m)')
-  assert.ok(row)
-  assert.equal(row.produit, '')
-  assert.equal(row.prix_unit_ttc, 0)
-})
-
-test('QJR131 : Installation sans prix → placeholder, jamais un produit gratuit', () => {
-  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Installation'])
-  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Installation')
-  assert.ok(row)
-  assert.equal(row.produit, '')
-  assert.equal(row.prix_unit_ttc, 0)
-})
-
-test('QJR131 : Transport sans prix → placeholder, jamais un produit gratuit', () => {
-  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Transport'])
-  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Transport')
-  assert.ok(row)
-  assert.equal(row.produit, '')
-  assert.equal(row.prix_unit_ttc, 0)
-})
 
 // ══ Réforme TVA 2024–2026 : 10 % panneaux PV, 20 % le reste ═════════════════
 import { ttcFromHt as _ttc, htFromTtc as _htf, tauxTvaOf } from './solar.js'
@@ -1626,58 +1409,6 @@ const _curvePump = (nom, kw, tension, prix, courbe) => ({
 // courbe simple : à HMT 60 m délivre 40 m³/h (≥ le débit demandé de 30)
 const _COURBE = { debits_m3h: [0, 40, 60], hmt_m: [90, 60, 30] }
 
-test('QX40 — tensionOf / tensionForAlim', () => {
-  assert.equal(tensionForAlim('mono'), 220)
-  assert.equal(tensionForAlim('tri'), 380)
-  assert.equal(tensionOf({ tension_v: 380 }), 380)
-  assert.equal(tensionOf({ nom: 'Pompe immergée 220V' }), 220)
-  assert.equal(tensionOf({ nom: 'Pompe sans tension' }), null)
-})
-
-test('QX40 — une demande mono/220V ne renvoie JAMAIS une pompe 380V', () => {
-  const produits = [
-    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
-  ]
-  const sel = selectPompeByCurve(produits, { hmt: 60, debit: 30, typePompe: 'immergee', alim: 'mono' })
-  // la seule pompe à courbe pricée est 380V → incompatible mono → pas de pompe
-  assert.equal(sel.pump, null)
-  assert.equal(sel.phaseMismatch, true)
-})
-
-test('QX40 — une pompe compatible 220V est bien sélectionnée en mono', () => {
-  const produits = [
-    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
-    _curvePump('Pompe immergée OSP 220V', 7.5, 220, '11000', _COURBE),
-  ]
-  const sel = selectPompeByCurve(produits, { hmt: 60, debit: 30, typePompe: 'immergee', alim: 'mono' })
-  assert.ok(sel.pump)
-  assert.equal(tensionOf(sel.pump), 220)
-})
-
-test('QX40 — mismatch de phase dégrade vers le chemin CV avec avertissement', () => {
-  const produits = [
-    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
-  ]
-  const sel = pompageSelection(produits, {
-    cv: '10', typePompe: 'immergee', hmt: 60, debit: 30, heures: 7, alim: 'mono' })
-  assert.equal(sel.mode, 'cv')
-  assert.ok(sel.warning && sel.warning.includes('monophasée'))
-})
-
-test('QX40 — compose : jamais un couple pompe/variateur de tensions différentes', () => {
-  const produits = [
-    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
-    // un variateur 220V pricé (mono)
-    { id: ++_id, nom: 'VARIATEUR VEICHI SI23 7.5KW 220V', pompe_kw: 7.5, tension_v: 220, prix_vente: '3000' },
-  ]
-  const lignes = autoFillPompage(produits, {
-    cv: '10', alim: 'mono', typePompe: 'immergee', distance: 0,
-    structureType: 'acier', hmt: 60, debit: 30, heures: 7 })
-  // aucune ligne « Pompe … 380V » ne doit être chiffrée avec un variateur 220V
-  const pompe380 = lignes.find(l => /380\s*v/i.test(l.designation || '') && /pompe/i.test(l.designation || ''))
-  assert.equal(pompe380, undefined)
-})
-
 // ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─
 test('QF5 — computeROI : sans consommation réelle, comportement HISTORIQUE inchangé (estimation)', () => {
   const roi = computeROI({
@@ -1962,22 +1693,6 @@ test('STKCAT10 — un produit choisi qui porte encore « aluminium » garde le r
   assert.equal(rows[0].designation, 'Structures aluminium')
   assert.equal(rows[0].quantite, 14)
   assert.equal(rows.filter(r => /Structures acier/.test(r.designation)).length, 0)
-})
-
-test('STKCAT10 — pompage : la structure choisie prime sur le mot-clé acier/alu', () => {
-  const opts = {
-    cv: '3', alim: 'tri', typePompe: 'immergee', distance: '20',
-    structureType: 'acier', hmt: '', debit: '', heures: '7',
-  }
-  const avant = autoFillPompage(SEEDED_PERGOLA, opts)
-  assert.deepEqual(autoFillPompage(SEEDED_PERGOLA, { ...opts, structureProduitId: '' }), avant)
-  const apres = autoFillPompage(SEEDED_PERGOLA, { ...opts, structureProduitId: PERGOLA.id })
-  const structAvant = avant.find(r => r.designation.includes('Structures'))
-  const structApres = apres.find(r => String(r.produit) === String(PERGOLA.id))
-  assert.equal(structAvant.designation, 'Structures acier')
-  assert.ok(structApres, 'la pergola choisie doit être la ligne structure')
-  assert.equal(structApres.designation, 'Pergola bioclimatique 4x3')
-  assert.equal(structApres.quantite, structAvant.quantite)
 })
 
 test('STKCAT10 — un produit choisi ne déclenche AUCUNE « marque introuvable » de structure', () => {
