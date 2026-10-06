@@ -41,6 +41,7 @@ def devis_du_client_portail(company, client_id, *, limit=200):
     Les BROUILLONS internes sont EXCLUS : un devis non envoyé n'a jamais été
     montré au client, l'exposer serait une fuite de travail en cours.
     """
+    from .domain.cycle_vie import exige_identite_entreprise
     from .models import Devis
 
     if company is None or not client_id:
@@ -64,6 +65,11 @@ def devis_du_client_portail(company, client_id, *, limit=200):
         # dernière correction après envoi (``etude_params.resync_apres_envoi``),
         # null sinon — JAMAIS updated_at.
         'mis_a_jour_le': _date_correction_apres_envoi(d),
+        # CIQ321 (D-CIQ-11, contrat ``mes_devis_liste.json``) — vrai pour un
+        # devis commercial / industriel : l'acceptation portail exige alors
+        # raison sociale, qualité du signataire et ICE (même règle, même
+        # prédicat que la page publique).
+        'exige_identite_entreprise': exige_identite_entreprise(d),
     } for d in qs]
 
 
