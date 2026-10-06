@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4798, operations: 7598, components: 2201}
+counts: {paths: 4800, operations: 7602, components: 2203}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2496,6 +2496,8 @@ operations:
 - get /api/django/portail/mes-chantiers/{id}/ -> django_portail_mes_chantiers_retrieve
 - get /api/django/portail/mes-chantiers/{id}/photo/{attachment_id}/ -> django_portail_mes_chantiers_photo_retrieve
 - get /api/django/portail/mes-chantiers/{id}/photos/ -> django_portail_mes_chantiers_photos_retrieve
+- get /api/django/portail/mes-chantiers/{id}/releves/ -> django_portail_mes_chantiers_releves_retrieve
+- post /api/django/portail/mes-chantiers/{id}/releves/ -> django_portail_mes_chantiers_releves_create
 - get /api/django/portail/mes-commissions/ -> django_portail_mes_commissions_list
 - get /api/django/portail/mes-commissions/pdf/ -> django_portail_mes_commissions_pdf_retrieve
 - get /api/django/portail/mes-contrats-maintenance/ -> django_portail_mes_contrats_maintenance_list
@@ -6333,6 +6335,8 @@ operations:
 - get /api/v1/portail/mes-chantiers/{id}/ -> v1_portail_mes_chantiers_retrieve
 - get /api/v1/portail/mes-chantiers/{id}/photo/{attachment_id}/ -> v1_portail_mes_chantiers_photo_retrieve
 - get /api/v1/portail/mes-chantiers/{id}/photos/ -> v1_portail_mes_chantiers_photos_retrieve
+- get /api/v1/portail/mes-chantiers/{id}/releves/ -> v1_portail_mes_chantiers_releves_retrieve
+- post /api/v1/portail/mes-chantiers/{id}/releves/ -> v1_portail_mes_chantiers_releves_create
 - get /api/v1/portail/mes-commissions/ -> v1_portail_mes_commissions_list
 - get /api/v1/portail/mes-commissions/pdf/ -> v1_portail_mes_commissions_pdf_retrieve
 - get /api/v1/portail/mes-contrats-maintenance/ -> v1_portail_mes_contrats_maintenance_list
@@ -8398,6 +8402,8 @@ components:
 - MesLivraisonsPortailLigne
 - MesLivraisonsPortailPreuve
 - MesProcessusResponse
+- MesRelevesPompagePortail
+- MesRelevesPompagePortailPostRequest
 - MesSauvegardesReponse
 - MesSoumissionsPortail
 - MesSoumissionsPortailLigne
