@@ -514,6 +514,8 @@ class InstallationSerializer(serializers.ModelSerializer):
             # CIQ629 — la réception définitive ne se prononce QUE par
             # l'action `reception-definitive` (réserves toutes levées).
             'date_reception_definitive',
+            # CIQ633 — « non relevé + motif » : action `series-lot` seule.
+            'series_non_relevees',
         ]
 
     def validate(self, attrs):

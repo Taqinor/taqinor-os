@@ -7,6 +7,8 @@ raccordement GELÉ (depuis le lead), type d'installation (depuis le devis).
 Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
 import logging
+import re
+from decimal import Decimal
 
 from apps.ventes.utils.references import create_with_reference
 from .models import (
@@ -1620,9 +1622,165 @@ def _gate_check_photos(installation, stage=None):
     return None
 
 
+# ── CIQ633 — numéros de série : lot atomique, chaîne, gate C&I ──────────────
+#: Produits SUIVIS d'un site pro : (clé, mots-clés de désignation alignés sur
+#: ``quote_engine/builder.py``, libellé singulier). Le gate exige autant de
+#: séries que la quantité GELÉE de la nomenclature, sauf « non relevé + motif ».
+SERIES_SUIVIES_CI = (
+    ('module', ('module', 'panneau'), 'module'),
+    ('onduleur', ('onduleur',), 'onduleur'),
+    ('compteur', ('compteur',), 'compteur'),
+)
+#: Désignations d'accessoires qui contiennent un mot suivi sans en être un.
+_SERIES_EXCLUS = ('support', 'structure', 'fixation', 'rail', 'câble',
+                  'cable', 'coffret', 'connecteur', 'bride')
+_ENTETES_SERIES = ('serie', 'série', 'numero_serie', 'numéro de série',
+                   'n° de série', 'n°', 'sn')
+
+
+def _type_serie_suivie(designation):
+    """CIQ633 — clé du produit suivi (module/onduleur/compteur) d'une ligne
+    de nomenclature, ``None`` pour tout autre produit."""
+    texte = str(designation or '').lower()
+    if any(mot in texte for mot in _SERIES_EXCLUS):
+        return None
+    for cle, mots, _libelle in SERIES_SUIVIES_CI:
+        if any(mot in texte for mot in mots):
+            return cle
+    return None
+
+
+def series_attendues_ci(installation):
+    """CIQ633 — ``{produit_id: (clé, quantité gelée)}`` des produits suivis
+    de la nomenclature GELÉE (lignes sans produit ignorées)."""
+    attendues = {}
+    for ligne in (installation.bom or []):
+        ligne = ligne or {}
+        cle = _type_serie_suivie(ligne.get('designation'))
+        produit_id = ligne.get('produit_id')
+        if cle is None or not produit_id:
+            continue
+        try:
+            quantite = int(Decimal(str(ligne.get('quantite') or 0)))
+        except (ArithmeticError, ValueError):
+            quantite = 0
+        if quantite <= 0:
+            continue
+        _cle, deja = attendues.get(produit_id, (cle, 0))
+        attendues[produit_id] = (cle, deja + quantite)
+    return attendues
+
+
+def series_manquantes_ci(installation):
+    """CIQ633 — ``[(clé, manquantes)]`` : séries encore à relever par produit
+    suivi, un « non relevé + motif » levant la garde du produit."""
+    non_releves = installation.series_non_relevees or {}
+    manquantes = []
+    for produit_id, (cle, quantite) in series_attendues_ci(
+            installation).items():
+        if str(non_releves.get(str(produit_id)) or '').strip():
+            continue
+        releves = (installation.equipements
+                   .filter(produit_id=produit_id)
+                   .exclude(numero_serie__isnull=True)
+                   .exclude(numero_serie='').count())
+        if releves < quantite:
+            manquantes.append((cle, quantite - releves))
+    return manquantes
+
+
+def _libelle_series_manquantes(cle, nombre):
+    if nombre == 1:
+        return f"1 série de {cle} manquante"
+    return f"{nombre} séries de {cle} manquantes"
+
+
+def lire_lignes_series(texte, produit_defaut=None):
+    """CIQ633 — lignes d'un collage ou d'un CSV : une ligne = une série +
+    un libellé de chaîne facultatif (séparateur ``;``, tabulation ou
+    virgule). Lignes vides et ligne d'en-tête ignorées."""
+    lignes = []
+    for brut in str(texte or '').splitlines():
+        brut = brut.strip()
+        if not brut:
+            continue
+        morceaux = [m.strip() for m in re.split(r'[;\t,]', brut)]
+        serie = morceaux[0] if morceaux else ''
+        if not serie or serie.lower() in _ENTETES_SERIES:
+            continue
+        chaine = morceaux[1] if len(morceaux) > 1 else ''
+        ligne = {'produit': produit_defaut, 'numero_serie': serie}
+        if chaine:
+            ligne['chaine'] = chaine
+        lignes.append(ligne)
+    return lignes
+
+
+def enregistrer_series_lot(installation, lignes, user=None):
+    """CIQ633 — crée les équipements d'un lot de séries dans UNE transaction
+    et renvoie un résultat PAR LIGNE (``cree`` | ``doublon`` | ``autre_societe``
+    | ``erreur``), jamais d'exception : un doublon n'interrompt pas le lot.
+    La chaîne éventuelle est gardée dans la note de l'équipement (plan des
+    chaînes)."""
+    from django.db import transaction
+    from django.utils import timezone
+
+    from apps.sav.services import creer_equipement_import
+    from apps.stock.selectors import get_produit_scoped
+
+    resultats = []
+    with transaction.atomic():
+        for index, ligne in enumerate(lignes or [], start=1):
+            ligne = ligne or {}
+            serie = str(ligne.get('numero_serie') or '').strip()
+            chaine = str(ligne.get('chaine') or '').strip()
+            resultat = {'ligne': index, 'numero_serie': serie or None,
+                        'produit': ligne.get('produit'), 'statut': 'erreur',
+                        'message': None}
+            resultats.append(resultat)
+            produit = None
+            if ligne.get('produit'):
+                try:
+                    produit = get_produit_scoped(
+                        installation.company, ligne['produit'])
+                except (TypeError, ValueError):
+                    produit = None
+            if produit is None:
+                resultat['statut'] = 'autre_societe'
+                resultat['message'] = "Produit inconnu de cette société."
+                continue
+            champs = {
+                'numero_serie': serie or None,
+                'date_pose': (installation.date_pose_reelle
+                              or timezone.localdate()),
+            }
+            if chaine:
+                champs['note'] = f"Chaîne : {chaine}"
+            statut, message = creer_equipement_import(
+                installation.company, champs, produit=produit,
+                installation=installation, user=user)
+            resultat['statut'] = statut
+            resultat['message'] = message
+            if statut == 'doublon':
+                resultat['message'] = "Numéro de série déjà enregistré."
+    return resultats
+
+
 def _gate_check_series(installation, stage=None):
     """Au moins un n° de série / équipement relevé quand la checklist du
-    chantier comporte une étape de capture de série (N9)."""
+    chantier comporte une étape de capture de série (N9).
+
+    CIQ633 — site pro : autant de séries que la quantité GELÉE des produits
+    suivis (modules, onduleurs, compteur), ou un « non relevé + motif » par
+    produit ; résidentiel inchangé."""
+    if est_chantier_industriel(installation):
+        if series_attendues_ci(installation):
+            manquantes = series_manquantes_ci(installation)
+            if not manquantes:
+                return None
+            return ("Séries manquantes : " + ", ".join(
+                _libelle_series_manquantes(cle, nombre)
+                for cle, nombre in manquantes) + ".")
     items = ensure_checklist_items(installation)
     if not any(it.capture_serie for it in items):
         return None  # aucun relevé de série attendu sur ce chantier.
