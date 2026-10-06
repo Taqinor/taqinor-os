@@ -1176,6 +1176,9 @@ class MesChantiersPortailDetailSerializer(MesChantiersPortailLigneSerializer):
     pompage, réduite à la vue client du contrat ``recette_pompage.json``."""
     jalons = serializers.ListField(child=MesChantiersPortailJalonSerializer())
     recette_pompage = serializers.DictField(allow_null=True)
+    # CIQ635 — la recette C&I de SON chantier : sous-objet ``vue_portail``
+    # du contrat ``recette_ci.json`` ; null sans fiche.
+    recette_ci = serializers.DictField(allow_null=True)
 
 
 class MesChantiersPortailPhotoSerializer(serializers.Serializer):
@@ -1227,7 +1230,9 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
         if chantier is None:
             return Response({'detail': 'Introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
-        from apps.installations.selectors import recette_pompage_portail
+        from apps.installations.selectors import (
+            recette_ci_portail, recette_pompage_portail,
+        )
         ligne = next(
             (c for c in chantiers_du_client_portail(company, client_id)
              if c['id'] == chantier.id), None)
@@ -1236,6 +1241,8 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
         return Response({
             **ligne, 'jalons': self._jalons(company, pk),
             'recette_pompage': recette_pompage_portail(
+                company, client_id, chantier.id),
+            'recette_ci': recette_ci_portail(
                 company, client_id, chantier.id)})
 
     @staticmethod
