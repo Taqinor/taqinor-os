@@ -264,6 +264,9 @@ def _composants(chantier):
     return items
 
 
+EQUIPEMENT_EN_SERVICE = 'en_service'
+
+
 def _equipements_poses(chantier):
     """CHT24 — Matériel RÉELLEMENT posé sur le chantier (parc ``sav.Equipement``),
     PAS les lignes du devis (l'intention commerciale, cf. `_composants` juste
@@ -281,7 +284,14 @@ def _equipements_poses(chantier):
     montant d'achat) est structurellement inaccessible depuis cette fonction.
     """
     items = []
-    for eq in chantier.equipements.select_related('produit').order_by('id'):
+    # ADOC77 — seul le matériel EN SERVICE et non mis au rebut figure sous
+    # « Équipements posés » : après un remplacement sous garantie, l'ancien
+    # numéro de série (statut « remplacé ») et son ancienne garantie ne sont
+    # plus remis au client. Valeur littérale de ``sav.Equipement.Statut
+    # .EN_SERVICE`` (lecture par la relation inverse, aucun import de modèle).
+    poses = chantier.equipements.filter(
+        statut=EQUIPEMENT_EN_SERVICE, mis_au_rebut=False)
+    for eq in poses.select_related('produit').order_by('id'):
         produit = eq.produit
         items.append({
             'numero_serie': (eq.numero_serie or '').strip(),
