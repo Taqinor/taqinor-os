@@ -539,3 +539,128 @@ describe('ToitureDesign — le mode devis ne bouge pas (garde CAL37)', () => {
     expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
   })
 })
+
+/* ACAL192 (D-ACAL-13) — GPS du lead corrigé après le tracé. Les contextes viennent du
+   contrat committé (`exemple_derive_a_decider`) ; « automatique » est la MÊME charge dont
+   seul `derive.etat` change (l'état D-QJR5-15 d'une épingle qui suit le lead). */
+describe('ToitureDesign — dérive du GPS du lead (ACAL192)', () => {
+  const CTX_DERIVE = exempleContrat('calepinage', 'calepinage_design_context',
+    'exemple_derive_a_decider')
+  const ctxAutomatique = () => {
+    const ctx = structuredClone(CTX_DERIVE)
+    ctx.geometrie.derive.etat = 'automatique'
+    return ctx
+  }
+
+  it('affiche la bannière de dérive et appelle recentrer', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: CTX_DERIVE })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    const banniere = await screen.findByTestId('acal-derive-repere')
+    expect(banniere).toHaveTextContent('Le GPS du lead a été corrigé (≈ 780 m).')
+    // « a_decider » : rien n'est recentré d'office.
+    expect(calepinageApi.calepinages.recentrerSurLead).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByTestId('acal-derive-recentrer'))
+    await waitFor(() => expect(calepinageApi.calepinages.recentrerSurLead)
+      .toHaveBeenCalledWith(String(CTX_DERIVE.calepinage.id)))
+    expect(calepinageApi.calepinages.garderRepere).not.toHaveBeenCalled()
+  })
+
+  it('« Garder ce repère » appelle garder-repere, jamais recentrer', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: CTX_DERIVE })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    await userEvent.click(await screen.findByTestId('acal-derive-garder'))
+    await waitFor(() => expect(calepinageApi.calepinages.garderRepere)
+      .toHaveBeenCalledWith(String(CTX_DERIVE.calepinage.id)))
+    expect(calepinageApi.calepinages.recentrerSurLead).not.toHaveBeenCalled()
+  })
+
+  it('un refus serveur (calepinage verrouillé) s’affiche en français', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: CTX_DERIVE })
+    calepinageApi.calepinages.recentrerSurLead.mockRejectedValue({
+      response: { status: 409, data: { calepinage: ['Calepinage verrouillé : devis envoyé.'] } },
+    })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    await userEvent.click(await screen.findByTestId('acal-derive-recentrer'))
+    expect(await screen.findByTestId('acal-derive-erreur'))
+      .toHaveTextContent('Calepinage verrouillé : devis envoyé.')
+  })
+
+  it('recentre automatiquement quand derive.etat est automatique', async () => {
+    calepinageApi.calepinages.designContext
+      .mockResolvedValueOnce({ data: ctxAutomatique() })
+      .mockResolvedValueOnce(reponseContrat('calepinage', 'calepinage_design_context'))
+    // `clearAllMocks` ne remet pas les implémentations : on repose un succès explicite.
+    calepinageApi.calepinages.recentrerSurLead.mockResolvedValue({ data: {} })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.recentrerSurLead).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.calepinages.recentrerSurLead)
+      .toHaveBeenCalledWith(String(CTX_DERIVE.calepinage.id))
+    // Le contexte est RELU après le recentrage : le constructeur boote dessus.
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(2)
+    expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.geometrie.roof_point)
+      .toEqual(CTX.geometrie.pin)
+    expect(screen.queryByTestId('acal-derive-repere')).toBeNull()
+  })
+
+  it('« aucune » : ni bannière ni recentrage', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal-derive-repere')).toBeNull()
+    expect(calepinageApi.calepinages.recentrerSurLead).not.toHaveBeenCalled()
+  })
+})
+
+/* ACAL195 — une cible ESTIMÉE (source 'lead' | 'factures', ACAL194) n'est PAS une
+   cible vendue : elle part comme point de départ modifiable. Contextes du contrat
+   committé (`exemple_cible_lead`, `exemple_cible_refus`, `exemple`). */
+describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
+  it('une cible source factures ne pose pas cibleVendue et passe panneaux', async () => {
+    const ctx = exempleContrat('calepinage', 'calepinage_design_context',
+      'exemple_cible_lead')
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    rendreCalepinage(ctx.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const payload = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(ctx.cible.source).toBe('factures')
+    expect(payload.cibleVendue).toBe(false)
+    expect(payload.cible.panneaux).toBe(ctx.cible.panneaux)
+    expect(payload.cible.panel_watt).toBe(ctx.cible.panel_watt)
+    expect(await screen.findByTestId('acal-cible-estimee')).toHaveTextContent(
+      `Cible estimée depuis les factures du lead : ${ctx.cible.panneaux} panneaux (non vendue)`)
+  })
+
+  it('une cible source devis garde cibleVendue true', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(CTX.cible.source).toBe('devis')
+    expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.cibleVendue).toBe(true)
+    expect(screen.queryByTestId('acal-cible-estimee')).toBeNull()
+  })
+
+  it('cible.refus est affiché tel quel, rien n’est imposé', async () => {
+    const ctx = exempleContrat('calepinage', 'calepinage_design_context',
+      'exemple_cible_refus')
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    rendreCalepinage(ctx.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const payload = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(payload.cibleVendue).toBe(false)
+    expect(payload.cible.panneaux).toBeNull()
+    expect(await screen.findByTestId('acal-cible-estimee'))
+      .toHaveTextContent(ctx.cible.refus)
+  })
+})

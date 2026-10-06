@@ -75,9 +75,13 @@ const enregistrerReleve = vi.fn()
 const corrigerReleve = vi.fn()
 const supprimerReleve = vi.fn()
 const photos = vi.fn()
+const layout = vi.fn()
+const appliquerCoteReleve = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
+      layout: (...a) => layout(...a),
+      appliquerCoteReleve: (...a) => appliquerCoteReleve(...a),
       releve: (...a) => releve(...a),
       enregistrerReleve: (...a) => enregistrerReleve(...a),
       corrigerReleve: (...a) => corrigerReleve(...a),
@@ -295,5 +299,70 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
 
     expect(screen.queryByTestId('cal-releve-nouveau')).toBeNull()
     expect(screen.queryByTestId('cal-releve-supprimer')).toBeNull()
+  })
+})
+
+/* ============================================================================
+   ACAL207 (D-ACAL-28) — « Appliquer la cote au pan » : le dessinateur choisit le pan, le
+   côté et une cote MESURÉE ; l'écran envoie {zone_id, cote_index, longueur_m} et le
+   SERVEUR recale (aucune homothétie ici). Relevé du contrat `calepinage_releve.json`.
+   ========================================================================== */
+describe('ACAL207 — appliquer une cote du relevé à un côté du pan', () => {
+  const PAN = { id: 'z1', label: 'Pan sud', vertices: [
+    [-7.58986, 33.57306], [-7.58973, 33.57306], [-7.58973, 33.57313], [-7.58986, 33.57313],
+  ] }
+
+  beforeEach(() => {
+    const reponse = reponseContrat('calepinage', 'calepinage_releve')
+    releve.mockResolvedValue({ data: { releves: reponse.data.releves,
+      releve_courant_id: reponse.data.releve_courant_id } })
+    photos.mockResolvedValue({ data: { photos: [] } })
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PAN] } } })
+    appliquerCoteReleve.mockResolvedValue({ data: { roof_layout: { zones: [PAN] }, version: 6 } })
+  })
+
+  it('choisir le côté puis appliquer la cote envoie zone_id, cote_index et la mesure', async () => {
+    const courant = reponseContrat('calepinage', 'calepinage_releve').data.releves[0]
+    rendre()
+    const panneau = await screen.findByTestId('cal-releve-appliquer-cote')
+    expect(layout).toHaveBeenCalledWith(1)
+    expect(panneau).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('cal-releve-cote-pan'), { target: { value: 'z1' } })
+    // Quatre côtés, chacun avec sa longueur actuelle (lue par la projection partagée).
+    const cotes = screen.getByTestId('cal-releve-cote-cote').querySelectorAll('option')
+    expect(cotes).toHaveLength(5)
+    expect(cotes[1].textContent).toMatch(/^Côté 0 → 1 \(\d+\.\d{2} m\)$/)
+    fireEvent.change(screen.getByTestId('cal-releve-cote-cote'), { target: { value: '0' } })
+    // La cote déduite « b » (à confirmer) n'est pas proposable.
+    const options = [...screen.getByTestId('cal-releve-cote-mesure').querySelectorAll('option')]
+    const deduite = options.find((o) => o.textContent.includes('/ b'))
+    expect(deduite.disabled).toBe(true)
+    const totalSud = options.find((o) => o.textContent.startsWith('Égout sud — total'))
+    expect(totalSud.textContent).toContain('± 0.05 m')
+    fireEvent.change(screen.getByTestId('cal-releve-cote-mesure'), { target: { value: totalSud.value } })
+
+    fireEvent.click(screen.getByTestId('cal-releve-cote-appliquer'))
+
+    await waitFor(() => expect(appliquerCoteReleve).toHaveBeenCalledWith(
+      1, courant.id, { zone_id: 'z1', cote_index: 0, longueur_m: 9 }))
+    expect(await screen.findByTestId('cal-releve-cote-retour'))
+      .toHaveTextContent('Cote appliquée au côté 0 — nouvelle version (précision ± 0.05 m).')
+  })
+
+  it('un refus nommé du serveur s’affiche tel quel', async () => {
+    appliquerCoteReleve.mockRejectedValue({ response: { status: 400, data: {
+      zone_id: 'Le pan « z1 » est croisé : corrigez son contour avant d’appliquer une cote.' } } })
+    rendre()
+    await screen.findByTestId('cal-releve-appliquer-cote')
+    fireEvent.change(screen.getByTestId('cal-releve-cote-pan'), { target: { value: 'z1' } })
+    fireEvent.change(screen.getByTestId('cal-releve-cote-cote'), { target: { value: '1' } })
+    const options = [...screen.getByTestId('cal-releve-cote-mesure').querySelectorAll('option')]
+    fireEvent.change(screen.getByTestId('cal-releve-cote-mesure'),
+      { target: { value: options.find((o) => o.textContent.startsWith('Pignon nord / a')).value } })
+    fireEvent.click(screen.getByTestId('cal-releve-cote-appliquer'))
+
+    expect(await screen.findByTestId('cal-releve-cote-retour'))
+      .toHaveTextContent('Le pan « z1 » est croisé')
   })
 })

@@ -78,6 +78,11 @@ from ..services.layout import (
 )
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
+# ACAL191 — dérive du GPS du lead : mesure (lecture) et deux gestes versionnés.
+from ..services import repere as service_repere
+from ..services.repere import (
+    RepereRefuse, avertissement_derive, etat_derive, repere_du_lead,
+)
 from ..services.variantes import (
     VarianteRefusee, creer_variante, modifier_variante, retenir_variante,
     supprimer_variante,
@@ -653,6 +658,35 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         return Response(contexte_conception(self.get_object(), request))
 
+    def _geste_repere(self, request, geste):
+        """ACAL191 — exécute un geste de repère et rend la réponse d'écriture."""
+        calepinage = self.get_object()  # borné société par get_queryset
+        try:
+            resultat = geste(calepinage, user=request.user,
+                             base_empreinte=_jeton_if_match(request))
+        except DocumentModifie as conflit:
+            return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
+        except (RepereRefuse, LayoutRefuse) as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(_reponse_ecriture(calepinage, resultat))
+
+    @action(detail=True, methods=['post'], url_path='recentrer-sur-lead',
+            permission_classes=[PeutGererCalepinage])
+    def recentrer_sur_lead(self, request, pk=None):
+        """ACAL191 (D-ACAL-13) — translate TOUTE la géométrie sur le GPS du
+        lead (projection locale, jamais Δlat/Δlng bruts) et dépose une
+        version « Recentré sur le GPS du lead ». Verrou respecté (409)."""
+        return self._geste_repere(request,
+                                  service_repere.recentrer_sur_lead)
+
+    @action(detail=True, methods=['post'], url_path='garder-repere',
+            permission_classes=[PeutGererCalepinage])
+    def garder_repere(self, request, pk=None):
+        """ACAL191 (D-ACAL-13) — acquitte la dérive (``repereAcquitte`` = le
+        repère du lead) : plus de bannière tant que le lead ne bouge pas."""
+        return self._geste_repere(request, service_repere.garder_repere)
+
     # SOLMVP15 — l'action ``importer-contour-ao`` (CAL240) vivait ICI : elle
     # reprenait dans ce calepinage le contour d'une toiture d'appel d'offres, en
     # symétrie du sens inverse posé côté AO (CAL241). C'était un PONT, et rien
@@ -809,6 +843,11 @@ def contexte_conception(calepinage, request=None):
     # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
     geo = cal_selectors.contexte_geographique(calepinage)
     geometrie = _geometrie(calepinage, contexte_devis, geo)
+    # ACAL191 — la dérive du GPS du lead (LECTURE PURE : rien n'est
+    # translaté ici ; seuls les gestes recentrer / garder écrivent).
+    geometrie.update(etat_derive(
+        getattr(calepinage, 'roof_layout', None), repere_du_lead(geo),
+        devis_statut=(_devis_lie_resume(contexte_devis) or {}).get('statut')))
     cible = _cible(calepinage, contexte_devis)
     return {
         # ACAL36 — « Réviser » est-il possible sur le devis lié ? LU sur ventes
@@ -1008,24 +1047,64 @@ def _geometrie(calepinage, contexte_devis, geo=None):
 def _cible(calepinage, contexte_devis):
     """La cible de puissance, ou ``None`` — JAMAIS une puissance inventée.
 
-    Ordre : la cible du DEVIS lié (celle que l'atelier devis emploie), sinon
-    celle déduite des factures du lead (CAL147, quand elle existera), sinon
-    ``None`` — et l'écran affiche « non renseignée ». Un toit dessiné sur une
-    cible devinée ne correspond à aucun devis.
+    Ordre : la cible du DEVIS lié (celle que l'atelier devis emploie,
+    ``source: 'devis'``), sinon celle que le devis automatique donnerait au
+    LEAD (ACAL194, :func:`_cible_du_lead` : taille souhaitée ``'lead'``, ou
+    moteur horaire depuis les factures ``'factures'``), sinon ``None`` (aucun
+    lead). Un refus du moteur est rendu NOMMÉ dans ``refus``, jamais remplacé
+    par un repli forfaitaire.
     """
     if contexte_devis is not None and contexte_devis.get('cible'):
-        return dict(contexte_devis['cible'], source='devis')
-    return _cible_des_factures(calepinage)
+        return dict(contexte_devis['cible'], source='devis', refus=None)
+    return _cible_du_lead(calepinage)
 
 
-def _cible_des_factures(calepinage):
-    """CAL147 — la cible déduite des factures du lead, ou ``None``.
+#: ACAL194 — durée de mémorisation de la cible du lead (secondes).
+DUREE_MEMO_CIBLE_LEAD_S = 600
 
-    Le déducteur de CAL147 n'est pas encore posé : tant qu'il manque, cette
-    fonction rend ``None``. C'est le refus explicite d'inventer une puissance
-    (un ``0`` ici se lirait « zéro kWc voulu »).
+
+def _cible_du_lead(calepinage):
+    """ACAL194 (C-ACAL-004) — la cible du LEAD d'un calepinage sans devis.
+
+    LE MÊME dimensionnement que le devis automatique, lu par le sélecteur
+    mince ``apps.ventes.selectors.cible_depuis_lead`` (taille souhaitée
+    souveraine, sinon ``pipeline.decider_taille`` / moteur horaire) — jamais
+    un second calcul ici. Lecture PURE ; mémorisée 10 min par (lead,
+    ``date_modification``) : une fiche corrigée recalcule. ``None`` sans lead.
     """
-    return None
+    from django.core.cache import cache
+
+    from apps.crm.selectors import get_company_lead
+    from apps.ventes.selectors import cible_depuis_lead
+
+    company = getattr(calepinage, 'company', None)
+    if company is None or not getattr(calepinage, 'lead_id', None):
+        return None
+    lead = get_company_lead(company, calepinage.lead_id)
+    if lead is None:
+        return None
+    modifie = getattr(lead, 'date_modification', None)
+    cle = 'calepinage:cible-lead:%s:%s:%s' % (
+        company.pk, lead.pk, modifie.isoformat() if modifie else '')
+    resultat = cache.get(cle)
+    if resultat is None:
+        resultat = cible_depuis_lead(lead, company)
+        if resultat is not None:
+            cache.set(cle, resultat, DUREE_MEMO_CIBLE_LEAD_S)
+    if resultat is None:
+        return None
+    batterie = (getattr(lead, 'batterie_souhaitee', '') or '') == 'avec'
+    return {
+        'panneaux': resultat['panneaux'],
+        'kwc': resultat['kwc'],
+        'panel_watt': resultat['panel_watt'],
+        # Aucun scénario n'est vendu : on ne l'invente pas.
+        'scenario': None,
+        'batterie': batterie,
+        'avertissements': [],
+        'source': resultat['source'],
+        'refus': resultat['refus'],
+    }
 
 
 def _raison_lecture_seule(contexte_devis):
@@ -1042,6 +1121,9 @@ def _raison_lecture_seule(contexte_devis):
 def _avertissements(geometrie, cible, contexte_devis):
     """Ce qui manque, DIT en français — jamais tu."""
     messages = list((contexte_devis or {}).get('avertissements') or [])
+    derive = avertissement_derive(geometrie)  # ACAL191
+    if derive:
+        messages.append(derive)
     if geometrie['source'] == 'none':
         messages.append(
             'Aucune géométrie de toiture connue pour ce calepinage : '
@@ -1049,6 +1131,10 @@ def _avertissements(geometrie, cible, contexte_devis):
     if cible is None:
         messages.append('Aucune cible de puissance connue : renseignez-la, '
                         'ou rattachez un devis.')
+    elif cible.get('refus'):
+        # ACAL194 — le motif du moteur, NOMMÉ (la donnée manquante).
+        messages.append('Cible de puissance non calculée : '
+                        + cible['refus'])
     return messages
 
 
