@@ -22,6 +22,7 @@ Run :
 import copy
 import threading
 import uuid
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -201,7 +202,13 @@ class RemiseDocumentTest(TestCase):
     def test_chaque_code_du_registre_remet_un_fichier(self):
         self.assertEqual(set(REGISTRE_REMISE), set(CHEMIN_GET))
         for code, (_action, extension, _mime) in REGISTRE_REMISE.items():
-            with self.subTest(code=code):
+            # L'export JSON porte `produit_le` à la SECONDE : GET et remise
+            # lisent la même heure figée (sinon rouge dès qu'une seconde passe
+            # entre les deux — shard CI lent).
+            heure = mock.patch(
+                'apps.calepinage.services.export_projet.horodatage_utc',
+                return_value='2026-10-06T12:00:00Z')
+            with self.subTest(code=code), heure:
                 with patch_materiel():
                     lecture = self.api.get(self._url(CHEMIN_GET[code]),
                                            {'langue': 'fr'})
