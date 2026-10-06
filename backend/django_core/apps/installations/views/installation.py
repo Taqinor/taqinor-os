@@ -361,14 +361,22 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         seuils éditables de la société. ?kwc=<nombre>. Défaut modifiable.
 
         AGR602 — ``&hors_reseau=1`` : installation non raccordée → régime
-        « déclaration hors réseau » (loi 82-21, art. 3), sans seuil."""
+        « déclaration hors réseau » (loi 82-21, art. 3), sans seuil.
+
+        CIQ613 — noyau sourcé (``core.reglementaire``) : ``&kw_ac=`` (kW AC
+        des onduleurs), ``&niveau=bt|mt``, ``&type_installation=`` ; un
+        chantier ``industriel`` à puissance inconnue → ``a_qualifier``."""
         from ..regime import suggest_for_company, regime_thresholds
         from ..models import Installation
-        kwc = request.query_params.get('kwc')
-        hors_reseau = str(request.query_params.get('hors_reseau', '')).strip(
+        params = request.query_params
+        kwc = params.get('kwc')
+        hors_reseau = str(params.get('hors_reseau', '')).strip(
         ).lower() in ('1', 'true', 'oui', 'yes')
         company = request.user.company
-        code = suggest_for_company(kwc, company, hors_reseau=hors_reseau)
+        code = suggest_for_company(
+            kwc, company, hors_reseau=hors_reseau,
+            kw_ac=params.get('kw_ac'), niveau=params.get('niveau'),
+            type_installation=params.get('type_installation'))
         label = dict(Installation.Regime8221.choices).get(code, code)
         seuil_decl, seuil_anre = regime_thresholds(company)
         return Response({

@@ -522,18 +522,31 @@ def create_installation_from_devis(devis, user, company):
         raccordement = None
 
     # N43 — régime loi 82-21 proposé comme DÉFAUT MODIFIABLE depuis la
-    # puissance (seuils éditables en Paramètres). Reste 'non_concerne' si la
-    # puissance est inconnue ; l'utilisateur peut toujours le changer ensuite.
+    # puissance. Résidentiel à puissance inconnue : 'non_concerne' ;
+    # l'utilisateur peut toujours le changer ensuite.
     # AGR602 — un chantier agricole (pompage) est suggéré HORS RÉSEAU
     # (modifiable) → régime « déclaration hors réseau » (loi 82-21, art. 3),
     # quelle que soit la puissance. Les autres types : inchangé (par kWc).
-    from .regime import suggest_for_company
+    # CIQ613 — le régime vient du noyau sourcé (core.reglementaire) avec les
+    # surcharges société : kWc DC, kW AC des onduleurs de la nomenclature
+    # gelée (C&I seulement), niveau de tension (CIQ610), hors réseau. Un
+    # chantier C&I à puissance inconnue reçoit « à qualifier ».
+    from .regime import kw_ac_onduleurs, suggest_for_company
     raccordement_reseau = (
         Installation.RaccordementReseau.HORS_RESEAU
         if type_install == Installation.TypeInstallation.AGRICOLE else None)
+    # CIQ610 — niveau de tension + puissance souscrite recopiés du lead (null
+    # si inconnus ; résidentiel sans colonnes pro → tout null, octet-identique).
+    niveau_tension, niveau_source, puissance_kva = _niveau_tension_from_lead(
+        None if type_install == Installation.TypeInstallation.RESIDENTIEL
+        else lead)
+    bom = _freeze_bom(devis)
+    est_ci = type_install == Installation.TypeInstallation.INDUSTRIEL
     regime_suggere = suggest_for_company(
         _puissance_from(devis, lead), company,
-        hors_reseau=raccordement_reseau is not None)
+        hors_reseau=raccordement_reseau is not None,
+        kw_ac=kw_ac_onduleurs(bom, company) if est_ci else None,
+        niveau=niveau_tension, type_installation=type_install)
 
     # Installateur par défaut (N66) : celui configuré en Paramètres, sinon le
     # créateur du chantier (comportement actuel). « Signé » est le 1er jalon de
@@ -541,11 +554,6 @@ def create_installation_from_devis(devis, user, company):
     # devis quand elle existe.
     date_signature = getattr(devis, 'date_acceptation', None) or None
     installer = default_installer_for(company) or user
-    # CIQ610 — niveau de tension + puissance souscrite recopiés du lead (null
-    # si inconnus ; résidentiel sans colonnes pro → tout null, octet-identique).
-    niveau_tension, niveau_source, puissance_kva = _niveau_tension_from_lead(
-        None if type_install == Installation.TypeInstallation.RESIDENTIEL
-        else lead)
 
     def _create(ref):
         return Installation.objects.create(
@@ -569,7 +577,7 @@ def create_installation_from_devis(devis, user, company):
             raccordement_reseau=raccordement_reseau,
             statut=Installation.Statut.SIGNE,
             date_signature=date_signature,
-            bom=_freeze_bom(devis),
+            bom=bom,
             technicien_responsable=installer,
             created_by=user,
         )
@@ -1708,10 +1716,17 @@ def _gate_avertissements(installation, stage):
     return avertissements
 
 
+#: CIQ613 — motif du gate dossier pour un régime 82-21 encore inconnu.
+RAISON_REGIME_A_QUALIFIER = "Régime 82-21 à qualifier."
+
+
 def _gate_check_dossier(installation, stage=None):
     """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
     if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
         return None
+    if installation.regime_8221 == Installation.Regime8221.A_QUALIFIER:
+        # CIQ613 — régime inconnu = jamais approuvé, quel que soit le statut.
+        return RAISON_REGIME_A_QUALIFIER
     if (installation.regime_8221
             == Installation.Regime8221.DECLARATION_HORS_RESEAU):
         return None  # AGR625 — consultatif : voir `_gate_avertissements`.

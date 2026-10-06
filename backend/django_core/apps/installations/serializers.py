@@ -535,11 +535,10 @@ class InstallationSerializer(serializers.ModelSerializer):
         return Installation.canonical_statut(obj.statut)
 
     def get_regime_suggere(self, obj):
-        from .regime import suggest_for_company
-        code = suggest_for_company(
-            obj.puissance_installee_kwc, obj.company,
-            hors_reseau=(obj.raccordement_reseau
-                         == Installation.RaccordementReseau.HORS_RESEAU))
+        # CIQ613 — noyau sourcé : kWc DC, kW AC des onduleurs (nomenclature
+        # gelée), niveau de tension, hors réseau ; C&I inconnu → à qualifier.
+        from .regime import suggest_for_installation
+        code = suggest_for_installation(obj)
         label = dict(Installation.Regime8221.choices).get(code, code)
         return {'code': code, 'label': label}
 

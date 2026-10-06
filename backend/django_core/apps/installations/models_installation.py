@@ -148,7 +148,6 @@ class Installation(models.Model):
         max_length=12, choices=Raccordement.choices, blank=True, null=True)
     type_installation = models.CharField(
         max_length=20, choices=TypeInstallation.choices, blank=True, null=True)
-
     # CIQ610 — niveau de tension du site (BT/MT) et puissance souscrite,
     # recopiés du lead à la création (colonnes CIQ1, corrigées par la visite
     # CIQ607) ; null = inconnu, jamais deviné. Éditables sur la fiche. Le
@@ -203,15 +202,21 @@ class Installation(models.Model):
     # ── Dossier réglementaire loi 82-21 / Article 33 (N40/N42) — additif,
     #    tout optionnel. Le régime et le statut pilotent les filtres (N41). ──
     class Regime8221(models.TextChoices):
+        # CIQ613 — libellés SANS seuil (le seuil vit dans le noyau sourcé
+        # ``core.reglementaire.regime_8221``) ; ``autorisation_anre`` reste
+        # le code STOCKÉ historique, l'ANRE n'est pas un guichet.
         NON_CONCERNE = 'non_concerne', 'Non concerné'
-        DECLARATION_BT = 'declaration_bt', 'Déclaration (< 11 kW, BT)'
+        DECLARATION_BT = 'declaration_bt', 'Déclaration'
         ACCORD_RACCORDEMENT = 'accord_raccordement', 'Accord de raccordement'
-        AUTORISATION_ANRE = 'autorisation_anre', 'Autorisation ANRE (> 1 MW)'
+        AUTORISATION_ANRE = 'autorisation_anre', 'Autorisation (ministère)'
         # AGR602 — loi 82-21, art. 3 : TOUTE installation non raccordée au
         # réseau relève d'une déclaration, sans seuil de puissance.
         DECLARATION_HORS_RESEAU = (
             'declaration_hors_reseau',
             'Déclaration hors réseau (loi 82-21, art. 3)')
+        # CIQ613 — chantier C&I à puissance ou niveau inconnu : jamais
+        # « non concerné » par défaut ; le gate dossier le bloque.
+        A_QUALIFIER = 'a_qualifier', 'À qualifier'
 
     # AGR602 — l'installation est-elle raccordée au réseau ? (null = non
     # renseigné → suggestion par kWc, comportement historique). Un chantier
