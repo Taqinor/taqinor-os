@@ -168,10 +168,12 @@
       <span>Sous-total HT</span>
       <span>{{ "%.2f"|format(total_document) }} {{ devise_doc }}</span>
     </div>
+    {% for taux_ligne, _ht, tva_taux in tva_par_taux %}
     <div class="totaux-row">
-      <span>TVA ({{ "%.0f"|format(taux_tva_standard) }} % — taux standard)</span>
-      <span>{{ "%.2f"|format(total_tva_standard) }} {{ devise_doc }}</span>
+      <span>TVA ({{ "%.0f"|format(taux_ligne) }} %)</span>
+      <span>{{ "%.2f"|format(tva_taux) }} {{ devise_doc }}</span>
     </div>
+    {% endfor %}
     <div class="totaux-row total">
       <span>Total TTC</span>
       <span>{{ "%.2f"|format(total_ttc_standard) }} {{ devise_doc }}</span>

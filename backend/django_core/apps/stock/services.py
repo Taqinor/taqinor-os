@@ -2902,6 +2902,50 @@ def generate_facture_fournisseur_pdf(facture):
     return _html_to_pdf(html)
 
 
+# ── ASTK65 — Ventilation TVA des documents d'achat (helper UNIQUE) ─────────
+# Le PDF du BCF, la facture née d'une réception (FG56), la facture sur
+# commande (ZPUR1) et l'avoir préparé depuis un retour (XPUR9) ventilent la
+# TVA de la MÊME façon : par ligne, au taux du produit (`Produit.tva`), 20 %
+# à défaut, arrondi par ligne. Le TTC du BCF envoyé = le TTC de la facture.
+
+TAUX_TVA_ACHAT_DEFAUT = Decimal('20')
+
+
+def taux_tva_achat(produit):
+    """ASTK65 — taux de TVA d'une ligne d'achat : celui du produit, sinon le
+    défaut 20 % (ligne libre/service ou produit sans taux)."""
+    if produit is not None and getattr(produit, 'tva', None) is not None:
+        return Decimal(str(produit.tva))
+    return TAUX_TVA_ACHAT_DEFAUT
+
+
+def ventiler_tva_achats(lignes):
+    """ASTK65 — ``lignes`` : itérable de ``(montant_ht, produit)``. Renvoie
+    ``{lignes: [(montant_ht, taux, tva)], par_taux: [(taux, ht, tva)],
+    total_ht, total_tva, total_ttc}`` — TVA arrondie au centime PAR LIGNE
+    (règle historique de ``facturer_reception``). Pur calcul."""
+    detail, par_taux = [], {}
+    total_ht = Decimal('0')
+    total_tva = Decimal('0')
+    for montant_ht, produit in lignes:
+        montant_ht = Decimal(str(montant_ht or 0))
+        taux = taux_tva_achat(produit)
+        tva = (montant_ht * taux / Decimal('100')).quantize(Decimal('0.01'))
+        detail.append((montant_ht, taux, tva))
+        cumul = par_taux.setdefault(taux, [Decimal('0'), Decimal('0')])
+        cumul[0] += montant_ht
+        cumul[1] += tva
+        total_ht += montant_ht
+        total_tva += tva
+    return {
+        'lignes': detail,
+        'par_taux': [(t, ht, tva) for t, (ht, tva) in sorted(par_taux.items())],
+        'total_ht': total_ht,
+        'total_tva': total_tva,
+        'total_ttc': total_ht + total_tva,
+    }
+
+
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
 def facturer_reception(company, user, reception):
@@ -2927,9 +2971,6 @@ def facturer_reception(company, user, reception):
         raise ValueError(
             f"Cette réception ({reception.reference}) est déjà facturée.")
 
-    taux_tva_defaut = Decimal('20')
-    montant_ht = Decimal('0')
-    montant_tva = Decimal('0')
     lignes_data = []
     for ligne in reception.lignes.select_related('produit', 'ligne_commande').all():
         # ASTK59 — facture ce qui est RÉELLEMENT entré (quantite_appliquee),
@@ -2939,7 +2980,6 @@ def facturer_reception(company, user, reception):
             continue
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
         total = Decimal(str(qte_facturee)) * pu
-        montant_ht += total
         # XPUR16 — une ligne libre/service reprend sa désignation d'origine
         # (BCF) plutôt que le nom d'un produit catalogue absent.
         if ligne.produit:
@@ -2948,22 +2988,21 @@ def facturer_reception(company, user, reception):
             designation = ligne.ligne_commande.designation
         else:
             designation = 'Produit'
-        # XPUR17 — TVA par ligne : reprend le taux du produit (`Produit.tva`)
-        # quand connu, sinon le défaut 20 % (comportement historique de
-        # cette fonction, qui appliquait déjà 20 % globalement).
-        taux_ligne = (ligne.produit.tva
-                      if ligne.produit and ligne.produit.tva is not None
-                      else taux_tva_defaut)
-        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
-            Decimal('0.01'))
-        montant_tva += tva_ligne
-        lignes_data.append((designation, qte_facturee, pu, taux_ligne))
+        # XPUR17/ASTK65 — TVA par ligne au taux du produit (helper unique
+        # `ventiler_tva_achats`, le même que le PDF du BCF).
+        lignes_data.append(
+            (designation, qte_facturee, pu, taux_tva_achat(ligne.produit),
+             total, ligne.produit))
 
     if not lignes_data:
         raise ValueError(
             f"Rien à facturer : la réception {reception.reference} n'a fait "
             'entrer aucune quantité.')
-    montant_ttc = montant_ht + montant_tva
+    ventilation = ventiler_tva_achats(
+        (total, produit) for *_r, total, produit in lignes_data)
+    montant_ht = ventilation['total_ht']
+    montant_tva = ventilation['total_tva']
+    montant_ttc = ventilation['total_ttc']
 
     created = {}
 
@@ -2981,7 +3020,7 @@ def facturer_reception(company, user, reception):
             date_facture=timezone.now().date(),
             note=f'Facture réception {reception.reference}',
             created_by=user)
-        for designation, qte, pu, taux_ligne in lignes_data:
+        for designation, qte, pu, taux_ligne, _t, _p in lignes_data:
             LigneFactureFournisseur.objects.create(
                 facture=ff, designation=designation,
                 quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
@@ -3045,26 +3084,23 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
             f'Ce bon de commande ({bon_commande.reference}) est déjà '
             'facturé sur commande.')
 
-    taux_tva_defaut = Decimal('20')
-    montant_ht = Decimal('0')
-    montant_tva = Decimal('0')
     lignes_data = []
+    totaux = []
     for ligne in lignes_eligibles:
         pu = ligne.prix_achat_unitaire or Decimal('0')
         total = Decimal(str(ligne.quantite)) * pu
-        montant_ht += total
         designation = (
             ligne.produit.nom if ligne.produit_id else
             (ligne.designation or 'Produit'))
-        taux_ligne = (ligne.produit.tva
-                      if ligne.produit_id and ligne.produit.tva is not None
-                      else taux_tva_defaut)
-        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
-            Decimal('0.01'))
-        montant_tva += tva_ligne
-        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
+        # ASTK65 — même helper de ventilation TVA que le PDF du BCF.
+        lignes_data.append((designation, ligne.quantite, pu,
+                            taux_tva_achat(ligne.produit)))
+        totaux.append((total, ligne.produit))
 
-    montant_ttc = montant_ht + montant_tva
+    ventilation = ventiler_tva_achats(totaux)
+    montant_ht = ventilation['total_ht']
+    montant_tva = ventilation['total_tva']
+    montant_ttc = ventilation['total_ttc']
     created = {}
 
     def _save(ref):
@@ -5037,17 +5073,17 @@ def preparer_avoir_depuis_retour(retour):
     pour 0 — jamais d'erreur bloquante). TVA 20 % (même taux par défaut que
     ``facturer_reception``). Renvoie un dict ``{montant_ht, montant_tva,
     montant_ttc}`` — NE CRÉE RIEN (pur calcul)."""
-    montant_ht = Decimal('0')
+    # ASTK65 — TVA ventilée par ligne au taux du produit (helper unique),
+    # plus de 20 % fixe : l'avoir reprend la TVA de la facture d'origine.
+    totaux = []
     for ligne in retour.lignes.select_related('produit'):
         pu = _prix_ligne_retour(retour.bon_commande, ligne.produit)
-        montant_ht += Decimal(str(ligne.quantite)) * pu
-    taux_tva = Decimal('20')
-    montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(
-        Decimal('0.01'))
+        totaux.append((Decimal(str(ligne.quantite)) * pu, ligne.produit))
+    ventilation = ventiler_tva_achats(totaux)
     return {
-        'montant_ht': montant_ht,
-        'montant_tva': montant_tva,
-        'montant_ttc': montant_ht + montant_tva,
+        'montant_ht': ventilation['total_ht'],
+        'montant_tva': ventilation['total_tva'],
+        'montant_ttc': ventilation['total_ttc'],
     }
 
 
