@@ -292,6 +292,8 @@ class DocumentSerializer(serializers.ModelSerializer):
     version_count = serializers.SerializerMethodField()
     derniere_version = serializers.SerializerMethodField()
     derniere_mime = serializers.SerializerMethodField()
+    # ADOC35 — favori de l'utilisateur de la requête (ZGED7, personnel).
+    favori = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
     # GED16 — état du verrou (lecture seule, posé côté serveur).
     locked_by_nom = serializers.CharField(
@@ -330,7 +332,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             'id', 'reference', 'folder', 'folder_nom', 'coffre', 'nom',
             'description',
             'custom_data', 'created_by', 'created_by_nom', 'version_count',
-            'derniere_version', 'derniere_mime', 'tags',
+            'derniere_version', 'derniere_mime', 'favori', 'tags',
             'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
             'statut', 'statut_display', 'transitions_autorisees',
             # GED21 — contrôle de diffusion (filigrane à la diffusion).
@@ -377,6 +379,20 @@ class DocumentSerializer(serializers.ModelSerializer):
     def get_derniere_version(self, obj):
         last = obj.versions.order_by('-version').first()
         return last.version if last else None
+
+    def get_favori(self, obj):
+        """ADOC35 — True si l'utilisateur de la requête a mis ce document en
+        favori. Lit l'annotation `favori_utilisateur` posée par
+        DocumentViewSet (sans N+1) ; à défaut, une requête Exists."""
+        annote = getattr(obj, 'favori_utilisateur', None)
+        if annote is not None:
+            return bool(annote)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return False
+        return FavoriGed.objects.filter(
+            utilisateur=user, document_id=obj.pk).exists()
 
     def get_derniere_mime(self, obj):
         """ADOC22 — mime de la version en vigueur (l'écran ne propose les

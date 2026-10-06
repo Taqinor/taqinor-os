@@ -439,8 +439,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         # GED8 — base : documents visibles selon l'ACL coffre-fort.
+        # ADOC35 — `favori_utilisateur` annoté (Exists, sans N+1).
+        from django.db.models import Exists, OuterRef
         qs = (selectors.documents_visible_to_user(self.request.user)
-              .select_related('folder', 'coffre', 'created_by'))
+              .select_related('folder', 'coffre', 'created_by')
+              .annotate(favori_utilisateur=Exists(FavoriGed.objects.filter(
+                  utilisateur_id=self.request.user.pk,
+                  document_id=OuterRef('pk')))))
         folder = self.request.query_params.get('folder')
         if folder:
             qs = qs.filter(folder_id=folder)
