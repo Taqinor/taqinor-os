@@ -9,14 +9,12 @@
 import { useEffect, useState } from 'react'
 import { Check, Milestone, Pencil, Trash2, Undo2, X } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
-import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import {
   Button, Card, EmptyState, Skeleton, StatusPill, Input, Switch, DataTable, toast,
 } from '../../../ui'
 
 const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '—')
-
-const toutesLesLignes = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
 
 export default function JalonsChantierPortailAdmin() {
   const [rows, setRows] = useState([])
@@ -26,12 +24,10 @@ export default function JalonsChantierPortailAdmin() {
   const [edit, setEdit] = useState(null) // { id, libelle, date_jalon, atteint }
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
-  const fetchJalons = () => fetchAllPages(
-    (page) => portailApi.admin.jalonsChantier.liste({ page }).then((r) => r.data),
+  const fetchJalons = () => chargerToutesLesPages(
+    (page) => portailApi.admin.jalonsChantier.liste({ page }),
+    { setRows, setLoadError, setLoading },
   )
-    .then((data) => setRows(toutesLesLignes(data)))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
 
   const load = () => {
     setLoading(true)

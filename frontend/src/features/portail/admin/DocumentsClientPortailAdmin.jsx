@@ -10,15 +10,13 @@ import { useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
 import { Check, FileText } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
-import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import { Button, Card, EmptyState, Skeleton, StatusPill, DataTable, toast } from '../../../ui'
 
 const formatDateHeure = (iso) => formatDateTime(iso)
 
 // Libellés FR — copiés tels quels du TextChoices serveur (DocumentClientPortail.TypeDoc).
 const TYPE_LABELS = { facture_onee: 'Facture ONEE', plan: 'Plan / schéma', autre: 'Autre' }
-
-const toutesLesLignes = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
 
 export default function DocumentsClientPortailAdmin() {
   const [rows, setRows] = useState([])
@@ -27,12 +25,10 @@ export default function DocumentsClientPortailAdmin() {
   const [busyId, setBusyId] = useState(null)
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
-  const fetchDocumentsClient = () => fetchAllPages(
-    (page) => portailApi.admin.documentsClient.liste({ page }).then((r) => r.data),
+  const fetchDocumentsClient = () => chargerToutesLesPages(
+    (page) => portailApi.admin.documentsClient.liste({ page }),
+    { setRows, setLoadError, setLoading },
   )
-    .then((data) => setRows(toutesLesLignes(data)))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
 
   const load = () => {
     setLoading(true)

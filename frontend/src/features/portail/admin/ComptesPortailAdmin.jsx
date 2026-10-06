@@ -17,12 +17,11 @@ import { Plus, KeyRound, Link2, RefreshCw } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import crmApi from '../../../api/crmApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import {
   Button, Card, EmptyState, Skeleton, Switch, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem, Form, FormField, DataTable, toast,
 } from '../../../ui'
-
-const toutesLesLignes = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
 
 const formatDateHeure = (iso) => formatDateTime(iso)
 
@@ -37,12 +36,10 @@ export default function ComptesPortailAdmin() {
   // ADOC32 — TOUTES les pages (enveloppe DRF {count, next, results}) : un
   // compte au-delà de la page 1 (ordering -id ⇒ les plus anciens) restait
   // invisible donc impossible à révoquer.
-  const fetchComptes = () => fetchAllPages(
-    (page) => portailApi.admin.comptes.liste({ page }).then((r) => r.data),
+  const fetchComptes = () => chargerToutesLesPages(
+    (page) => portailApi.admin.comptes.liste({ page }),
+    { setRows, setLoadError, setLoading },
   )
-    .then((data) => setRows(toutesLesLignes(data)))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
 
   const load = () => {
     setLoading(true)

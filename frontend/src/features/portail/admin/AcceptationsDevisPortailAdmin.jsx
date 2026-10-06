@@ -10,12 +10,10 @@ import { useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
 import { ShieldCheck } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
-import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import { Button, Card, EmptyState, Skeleton, StatusPill, DataTable } from '../../../ui'
 
 const formatDateHeure = (iso) => formatDateTime(iso)
-
-const toutesLesLignes = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
 
 export default function AcceptationsDevisPortailAdmin() {
   const [rows, setRows] = useState([])
@@ -23,12 +21,10 @@ export default function AcceptationsDevisPortailAdmin() {
   const [loadError, setLoadError] = useState(false)
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
-  const fetchAcceptations = () => fetchAllPages(
-    (page) => portailApi.admin.acceptationsDevis.liste({ page }).then((r) => r.data),
+  const fetchAcceptations = () => chargerToutesLesPages(
+    (page) => portailApi.admin.acceptationsDevis.liste({ page }),
+    { setRows, setLoadError, setLoading },
   )
-    .then((data) => setRows(toutesLesLignes(data)))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
 
   const load = () => {
     setLoading(true)
