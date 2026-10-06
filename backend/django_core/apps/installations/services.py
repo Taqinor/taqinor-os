@@ -7,6 +7,8 @@ raccordement GELÉ (depuis le lead), type d'installation (depuis le devis).
 Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
 import logging
+import re
+from decimal import Decimal
 
 from apps.ventes.utils.references import create_with_reference
 from .models import (
@@ -257,6 +259,63 @@ def ensure_template_ci(company):
     return template
 
 
+# CIQ662 — supplément MT du socle C&I : poste de livraison, réglages de
+# protection, essais (quand exigés, CIQ663), mise sous tension coordonnée avec
+# le distributeur, compteur de production si le site injecte (ANRE décision
+# 04/26 art. 9). AUCUN chiffre, AUCUN réglage dans un libellé.
+CI_MT_TEMPLATE_NOM = 'Site professionnel (MT)'
+CI_MT_ETAPES_SUPPLEMENT = [
+    ('poste_livraison_controle', 'Poste de livraison contrôlé', False, True),
+    ('reglages_protection_appliques',
+     "Réglages de protection reçus de l'étude du distributeur et appliqués",
+     False, True),
+    ('essais_injection_decouplage',
+     "Essais de limitation d'injection et de découplage enregistrés "
+     "(quand ils sont exigés)", False, False),
+    ('mise_sous_tension_distributeur',
+     'Mise sous tension coordonnée avec le distributeur (PV)', False, True),
+    ('compteur_production_pose',
+     'Compteur de production posé (si le site injecte)', False, False),
+]
+#: Les étapes du supplément s'insèrent avant la supervision, après le
+#: raccordement au tableau général.
+_CI_MT_AVANT = 'supervision_compteur'
+
+
+def ci_mt_checklist_etapes():
+    """CIQ662 — étapes du template MT : socle C&I + supplément MT."""
+    etapes = []
+    for etape in CI_CHECKLIST_ETAPES:
+        if etape[0] == _CI_MT_AVANT:
+            etapes.extend(CI_MT_ETAPES_SUPPLEMENT)
+        etapes.append(etape)
+    return etapes
+
+
+def ensure_template_ci_mt(company):
+    """CIQ662 — sème UNE SEULE FOIS le template « Site professionnel (MT) »
+    (type ``industriel``, ``niveau_tension='mt'``) de la société (idempotent,
+    additif). Jamais recréé dès qu'un template industriel MT existe, ACTIF OU
+    NON. Renvoie le template créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    industriel = Installation.TypeInstallation.INDUSTRIEL
+    if ChecklistTemplate.objects.filter(
+            company=company, type_installation=industriel,
+            niveau_tension='mt').exists():
+        return None
+    template = ChecklistTemplate.objects.create(
+        company=company, type_installation=industriel, niveau_tension='mt',
+        nom=CI_MT_TEMPLATE_NOM, ordre=2, protege=False, actif=True)
+    for i, (cle, libelle, capture, photo) in enumerate(
+            ci_mt_checklist_etapes()):
+        ChecklistEtapeModele.objects.create(
+            company=company, template=template, cle=cle, libelle=libelle,
+            ordre=i, capture_serie=capture, photo_obligatoire=photo,
+            protege=True)
+    return template
+
+
 # AGR605 — plan d'interventions standard d'un chantier agricole : jamais de
 # « raccordement ». Repère des 30 premiers jours : Ignite, nextbillion.net
 # « Four key lessons for implementing PAYGo ».
@@ -304,6 +363,8 @@ def template_for_installation(installation):
         ensure_template_agricole(company)  # AGR605 — une seule fois.
     elif type_install == Installation.TypeInstallation.INDUSTRIEL:
         ensure_template_ci(company)  # CIQ611 — une seule fois.
+        if getattr(installation, 'niveau_tension', None) == 'mt':
+            ensure_template_ci_mt(company)  # CIQ662 — une seule fois.
     if type_install:
         candidats = ChecklistTemplate.objects.filter(
             company=company, type_installation=type_install, actif=True
@@ -1620,9 +1681,165 @@ def _gate_check_photos(installation, stage=None):
     return None
 
 
+# ── CIQ633 — numéros de série : lot atomique, chaîne, gate C&I ──────────────
+#: Produits SUIVIS d'un site pro : (clé, mots-clés de désignation alignés sur
+#: ``quote_engine/builder.py``, libellé singulier). Le gate exige autant de
+#: séries que la quantité GELÉE de la nomenclature, sauf « non relevé + motif ».
+SERIES_SUIVIES_CI = (
+    ('module', ('module', 'panneau'), 'module'),
+    ('onduleur', ('onduleur',), 'onduleur'),
+    ('compteur', ('compteur',), 'compteur'),
+)
+#: Désignations d'accessoires qui contiennent un mot suivi sans en être un.
+_SERIES_EXCLUS = ('support', 'structure', 'fixation', 'rail', 'câble',
+                  'cable', 'coffret', 'connecteur', 'bride')
+_ENTETES_SERIES = ('serie', 'série', 'numero_serie', 'numéro de série',
+                   'n° de série', 'n°', 'sn')
+
+
+def _type_serie_suivie(designation):
+    """CIQ633 — clé du produit suivi (module/onduleur/compteur) d'une ligne
+    de nomenclature, ``None`` pour tout autre produit."""
+    texte = str(designation or '').lower()
+    if any(mot in texte for mot in _SERIES_EXCLUS):
+        return None
+    for cle, mots, _libelle in SERIES_SUIVIES_CI:
+        if any(mot in texte for mot in mots):
+            return cle
+    return None
+
+
+def series_attendues_ci(installation):
+    """CIQ633 — ``{produit_id: (clé, quantité gelée)}`` des produits suivis
+    de la nomenclature GELÉE (lignes sans produit ignorées)."""
+    attendues = {}
+    for ligne in (installation.bom or []):
+        ligne = ligne or {}
+        cle = _type_serie_suivie(ligne.get('designation'))
+        produit_id = ligne.get('produit_id')
+        if cle is None or not produit_id:
+            continue
+        try:
+            quantite = int(Decimal(str(ligne.get('quantite') or 0)))
+        except (ArithmeticError, ValueError):
+            quantite = 0
+        if quantite <= 0:
+            continue
+        _cle, deja = attendues.get(produit_id, (cle, 0))
+        attendues[produit_id] = (cle, deja + quantite)
+    return attendues
+
+
+def series_manquantes_ci(installation):
+    """CIQ633 — ``[(clé, manquantes)]`` : séries encore à relever par produit
+    suivi, un « non relevé + motif » levant la garde du produit."""
+    non_releves = installation.series_non_relevees or {}
+    manquantes = []
+    for produit_id, (cle, quantite) in series_attendues_ci(
+            installation).items():
+        if str(non_releves.get(str(produit_id)) or '').strip():
+            continue
+        releves = (installation.equipements
+                   .filter(produit_id=produit_id)
+                   .exclude(numero_serie__isnull=True)
+                   .exclude(numero_serie='').count())
+        if releves < quantite:
+            manquantes.append((cle, quantite - releves))
+    return manquantes
+
+
+def _libelle_series_manquantes(cle, nombre):
+    if nombre == 1:
+        return f"1 série de {cle} manquante"
+    return f"{nombre} séries de {cle} manquantes"
+
+
+def lire_lignes_series(texte, produit_defaut=None):
+    """CIQ633 — lignes d'un collage ou d'un CSV : une ligne = une série +
+    un libellé de chaîne facultatif (séparateur ``;``, tabulation ou
+    virgule). Lignes vides et ligne d'en-tête ignorées."""
+    lignes = []
+    for brut in str(texte or '').splitlines():
+        brut = brut.strip()
+        if not brut:
+            continue
+        morceaux = [m.strip() for m in re.split(r'[;\t,]', brut)]
+        serie = morceaux[0] if morceaux else ''
+        if not serie or serie.lower() in _ENTETES_SERIES:
+            continue
+        chaine = morceaux[1] if len(morceaux) > 1 else ''
+        ligne = {'produit': produit_defaut, 'numero_serie': serie}
+        if chaine:
+            ligne['chaine'] = chaine
+        lignes.append(ligne)
+    return lignes
+
+
+def enregistrer_series_lot(installation, lignes, user=None):
+    """CIQ633 — crée les équipements d'un lot de séries dans UNE transaction
+    et renvoie un résultat PAR LIGNE (``cree`` | ``doublon`` | ``autre_societe``
+    | ``erreur``), jamais d'exception : un doublon n'interrompt pas le lot.
+    La chaîne éventuelle est gardée dans la note de l'équipement (plan des
+    chaînes)."""
+    from django.db import transaction
+    from django.utils import timezone
+
+    from apps.sav.services import creer_equipement_import
+    from apps.stock.selectors import get_produit_scoped
+
+    resultats = []
+    with transaction.atomic():
+        for index, ligne in enumerate(lignes or [], start=1):
+            ligne = ligne or {}
+            serie = str(ligne.get('numero_serie') or '').strip()
+            chaine = str(ligne.get('chaine') or '').strip()
+            resultat = {'ligne': index, 'numero_serie': serie or None,
+                        'produit': ligne.get('produit'), 'statut': 'erreur',
+                        'message': None}
+            resultats.append(resultat)
+            produit = None
+            if ligne.get('produit'):
+                try:
+                    produit = get_produit_scoped(
+                        installation.company, ligne['produit'])
+                except (TypeError, ValueError):
+                    produit = None
+            if produit is None:
+                resultat['statut'] = 'autre_societe'
+                resultat['message'] = "Produit inconnu de cette société."
+                continue
+            champs = {
+                'numero_serie': serie or None,
+                'date_pose': (installation.date_pose_reelle
+                              or timezone.localdate()),
+            }
+            if chaine:
+                champs['note'] = f"Chaîne : {chaine}"
+            statut, message = creer_equipement_import(
+                installation.company, champs, produit=produit,
+                installation=installation, user=user)
+            resultat['statut'] = statut
+            resultat['message'] = message
+            if statut == 'doublon':
+                resultat['message'] = "Numéro de série déjà enregistré."
+    return resultats
+
+
 def _gate_check_series(installation, stage=None):
     """Au moins un n° de série / équipement relevé quand la checklist du
-    chantier comporte une étape de capture de série (N9)."""
+    chantier comporte une étape de capture de série (N9).
+
+    CIQ633 — site pro : autant de séries que la quantité GELÉE des produits
+    suivis (modules, onduleurs, compteur), ou un « non relevé + motif » par
+    produit ; résidentiel inchangé."""
+    if est_chantier_industriel(installation):
+        if series_attendues_ci(installation):
+            manquantes = series_manquantes_ci(installation)
+            if not manquantes:
+                return None
+            return ("Séries manquantes : " + ", ".join(
+                _libelle_series_manquantes(cle, nombre)
+                for cle, nombre in manquantes) + ".")
     items = ensure_checklist_items(installation)
     if not any(it.capture_serie for it in items):
         return None  # aucun relevé de série attendu sur ce chantier.
@@ -2638,14 +2855,27 @@ def assemble_handover_pieces(installation):
     docs = list(installation.inst_documents.all())
     schema = next((d for d in docs
                    if d.type_doc == 'schema_unifilaire'), None)
-    pieces.append({
-        'type': 'as_built',
-        'libelle': 'Dossier as-built / schéma unifilaire',
-        'reference': schema.titre if schema is not None else (
-            docs[0].titre if docs else None),
-        'present': bool(docs),
-        'obligatoire': True,
-    })
+    if est_chantier_industriel(installation):
+        # CIQ632 — site pro : as-built RÉEL = schéma unifilaire ou plan des
+        # chaînes dont une révision est POSTÉRIEURE à la pose réelle (le
+        # pointeur vers le schéma du devis semé à la création ne compte pas).
+        as_built = as_built_reel_ci(installation)
+        pieces.append({
+            'type': 'as_built',
+            'libelle': 'Dossier as-built / schéma unifilaire',
+            'reference': as_built.titre if as_built is not None else None,
+            'present': as_built is not None,
+            'obligatoire': True,
+        })
+    else:
+        pieces.append({
+            'type': 'as_built',
+            'libelle': 'Dossier as-built / schéma unifilaire',
+            'reference': schema.titre if schema is not None else (
+                docs[0].titre if docs else None),
+            'present': bool(docs),
+            'obligatoire': True,
+        })
 
     # ── Fiches techniques (datasheets) des équipements du parc (FG70) ──
     equipements = [eq for eq in installation.equipements.all()
@@ -2663,14 +2893,23 @@ def assemble_handover_pieces(installation):
     # ── Garanties (issues du parc SAV — FG70) ──
     garanties = [eq for eq in equipements
                  if getattr(eq, 'date_fin_garantie', None) is not None]
-    pieces.append({
+    piece_garanties = {
         'type': 'garanties',
         'libelle': 'Garanties matériel & production',
         'reference': f'{len(garanties)} équipement(s) couvert(s)'
         if garanties else None,
         'present': bool(garanties),
         'obligatoire': True,
-    })
+    }
+    if est_chantier_industriel(installation):
+        # CIQ634 — garanties de pose et d'étanchéité, listées à côté des
+        # garanties fabricants (résidentiel octet-identique).
+        installateur = garanties_installateur(installation)
+        piece_garanties['installateur'] = installateur
+        piece_garanties['reference'] = " ; ".join(
+            ([piece_garanties['reference']] if garanties else [])
+            + [g['texte'] for g in installateur])
+    pieces.append(piece_garanties)
 
     # ── Certificat de recette IEC 62446-1 (CH3) ──
     # AGR610 — chantier agricole : « Procès-verbal de recette pompage »
@@ -2746,8 +2985,137 @@ def assemble_handover_pieces(installation):
         'obligatoire': False,
     })
 
+    if est_chantier_industriel(installation):
+        pieces.extend(pieces_remise_ci(installation, docs))
+
     complet = all(p['present'] for p in pieces if p['obligatoire'])
     return {'pieces': pieces, 'complet': complet}
+
+
+# ── CIQ632 — pack de remise C&I ─────────────────────────────────────────────
+#: Pièces C&I listées et FACULTATIVES (les rendre obligatoires = décision
+#: fondateur ou assureur).
+PIECES_CI_FACULTATIVES = (
+    'plan_chaines', 'reglages_protections', 'manuel_om',
+    'attestation_formation', 'pv_mise_sous_tension', 'note_structure',
+)
+#: Pièces exigées pour EXPLOITER en accord de raccordement ou autorisation
+#: (décret 2.25.100 art. 15) ; facultatives pour une déclaration (art. 9).
+PIECES_CI_EXPLOITATION = ('certificat_organisme_agree',
+                          'attestation_assurance')
+SOURCE_PIECES_EXPLOITATION = (
+    "décret 2.25.100 art. 15 (accord et autorisation seulement)")
+#: CIQ632 — phrase FIXE, sans chiffre, du dossier de remise d'un site
+#: raccordé sans batterie.
+PHRASE_ARRET_COUPURE = (
+    "Installation raccordée au réseau sans batterie : elle s'arrête "
+    "automatiquement pendant une coupure du réseau")
+
+
+def as_built_reel_ci(installation):
+    """CIQ632 — le document as-built RÉEL d'un site pro : un schéma
+    unifilaire ou un plan des chaînes portant une révision datée APRÈS
+    ``date_pose_reelle`` ; ``None`` sinon (pose non datée comprise)."""
+    if installation.date_pose_reelle is None:
+        return None
+    return (DocumentProjet.objects
+            .filter(installation=installation,
+                    type_doc__in=('schema_unifilaire', 'plan_chaines'),
+                    inst_revisions__date_revision__gt=(
+                        installation.date_pose_reelle))
+            .order_by('id').first())
+
+
+def regime_exige_pieces_exploitation(installation):
+    """CIQ632 — accord de raccordement ou autorisation : certificat
+    d'organisme agréé et assurance exigés (décret 2.25.100 art. 15)."""
+    regime = installation.regime_8221
+    resume = resume_dossier_8221(installation)
+    if resume.get('source') == 'dossier' and resume.get('regime'):
+        regime = resume['regime']
+    return regime in (
+        Installation.Regime8221.ACCORD_RACCORDEMENT,
+        Installation.Regime8221.AUTORISATION_ANRE)
+
+
+def pieces_remise_ci(installation, docs=None):
+    """CIQ632 — pièces C&I du pack : exploitation (obligatoires sous
+    accord/autorisation) puis pièces techniques facultatives."""
+    if docs is None:
+        docs = list(installation.inst_documents.all())
+    par_type = {}
+    for doc in docs:
+        par_type.setdefault(doc.type_doc, doc)
+    exige = regime_exige_pieces_exploitation(installation)
+    pieces = []
+    for code in PIECES_CI_EXPLOITATION + PIECES_CI_FACULTATIVES:
+        doc = par_type.get(code)
+        piece = {
+            'type': code,
+            'libelle': DocumentProjet.TypeDoc(code).label,
+            'reference': doc.titre if doc is not None else None,
+            'present': doc is not None,
+            'obligatoire': exige and code in PIECES_CI_EXPLOITATION,
+        }
+        if code in PIECES_CI_EXPLOITATION:
+            piece['source'] = SOURCE_PIECES_EXPLOITATION
+        pieces.append(piece)
+    return pieces
+
+
+def bom_avec_batterie(installation):
+    """CIQ632 — la nomenclature GELÉE contient-elle une batterie ?
+    (mot-clé aligné sur ``quote_engine/builder.py``)."""
+    return any('batter' in str((ligne or {}).get('designation') or '').lower()
+               for ligne in (installation.bom or []))
+
+
+def phrase_arret_coupure(installation):
+    """CIQ632 — la phrase fixe pour un site pro raccordé SANS batterie
+    dans sa nomenclature gelée, sinon ``None``."""
+    if (est_chantier_industriel(installation)
+            and not est_hors_reseau(installation)
+            and not bom_avec_batterie(installation)):
+        return PHRASE_ARRET_COUPURE
+    return None
+
+
+#: CIQ634 — mention d'une durée de garantie installateur non saisie.
+GARANTIE_NON_RENSEIGNEE = 'non renseignée'
+
+
+def garanties_installateur(installation):
+    """CIQ634 — garanties de pose et d'étanchéité du chantier, durées
+    SAISIES (aucun défaut) : ``[{type, libelle, duree_mois, perimetre,
+    date_fin, texte}]``. Fin = réception PROVISOIRE + durée ; sans durée :
+    « non renseignée ». Jamais de garantie de production (D-CIQ-12)."""
+    from dateutil.relativedelta import relativedelta
+    lignes = []
+    for cle, libelle, mois, perimetre in (
+            ('installation', 'Garantie de pose',
+             installation.garantie_installation_mois,
+             installation.garantie_installation_perimetre),
+            ('etancheite', "Garantie d'étanchéité de la toiture",
+             installation.garantie_etancheite_mois,
+             installation.garantie_etancheite_perimetre)):
+        fin = None
+        if mois is None:
+            texte = f"{libelle} : {GARANTIE_NON_RENSEIGNEE}"
+        elif installation.date_reception is not None:
+            fin = installation.date_reception + relativedelta(months=mois)
+            texte = (f"{libelle} : {mois} mois, jusqu'au "
+                     f"{fin.strftime('%d/%m/%Y')}")
+        else:
+            texte = (f"{libelle} : {mois} mois à compter de la réception "
+                     f"provisoire")
+        perimetre = (perimetre or '').strip()
+        if perimetre:
+            texte += f" ({perimetre})"
+        lignes.append({
+            'type': cle, 'libelle': libelle, 'duree_mois': mois,
+            'perimetre': perimetre,
+            'date_fin': fin.isoformat() if fin else None, 'texte': texte})
+    return lignes
 
 
 def generer_handover_pack(installation, user=None):
@@ -5914,6 +6282,27 @@ ESSAIS_RECETTE = (
 )
 
 
+def essais_mt_exiges(installation):
+    """CIQ663 — la limitation d'injection et le découplage sont-ils EXIGÉS à
+    la recette ? Seulement pour un chantier ``mt`` ET quand le ``resume`` du
+    dossier 82-21 porte ``etude.reglages_imposes`` (décret 2.25.100 art. 27 :
+    l'étude du distributeur fixe des critères de réglage de l'exploitation),
+    ou quand la sortie du moteur C&I indique une injection limitée
+    (contrat CIQ2). Aucun réglage, aucun seuil écrits par le code."""
+    if installation is None or installation.niveau_tension != 'mt':
+        return False
+    resume = resume_dossier_8221(installation)
+    if (resume.get('etude') or {}).get('reglages_imposes'):
+        return True
+    if installation.devis_id and installation.company_id:
+        from apps.ventes.selectors_reglementaire import (
+            injection_limitee_devis,
+        )
+        return injection_limitee_devis(
+            installation.company, installation.devis_id)
+    return False
+
+
 def essais_recette(record, modifications=None):
     """CIQ625 — la liste des essais de la fiche APRÈS ``modifications``
     (champs reçus d'un PATCH, ``None`` = l'état stocké) + un essai faux par
@@ -5923,9 +6312,19 @@ def essais_recette(record, modifications=None):
               for champ in ESSAIS_RECETTE]
     # CIQ626 — un essai C&I (limitation d'injection, découplage) déclaré non
     # conforme est un essai faux ; « sans objet » ne compte pas.
+    # CIQ663 — en MT, quand l'étude du distributeur impose des réglages ou
+    # que le devis limite l'injection, ces deux essais sont EXIGÉS : non
+    # saisis (« sans objet » ou « à faire »), ils laissent le résultat « en
+    # cours » ; « conforme » = vrai, « non conforme » = faux.
+    exiges = essais_mt_exiges(getattr(record, 'installation', None)
+                              if getattr(record, 'installation_id', None)
+                              else None)
     for champ in ('limitation_injection_etat', 'decouplage_etat'):
-        if modifications.get(champ, getattr(record, champ, None)) == 'non_ok':
+        etat = modifications.get(champ, getattr(record, champ, None))
+        if etat == 'non_ok':
             essais.append(False)
+        elif exiges:
+            essais.append(True if etat == 'ok' else None)
     if getattr(record, 'pk', None) is not None and \
             record.iv_readings.filter(defaut_detecte=True).exists():
         essais.append(False)

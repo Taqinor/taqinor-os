@@ -33,6 +33,8 @@ import {
   nextBestAction,
   REGIME_8221_LABELS,
   RACCORDEMENT_RESEAU_LABELS,
+  NIVEAU_TENSION_LABELS,
+  NIVEAU_TENSION_SOURCE_LABELS,
 } from '../../features/installations/statuses'
 import ProduitPicker from '../../components/ProduitPicker'
 import OwnerChain from '../../components/OwnerChain'
@@ -227,6 +229,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     labour_jours_estimes: F('labour_jours_estimes'),
     labour_jours_reels: F('labour_jours_reels'),
     regime_8221: F('regime_8221', 'non_concerne'),
+    // CIQ610/CIQ637 — niveau de tension et puissance souscrite (éditables).
+    niveau_tension: F('niveau_tension'),
+    puissance_souscrite_kva: F('puissance_souscrite_kva'),
     raccordement_reseau: F('raccordement_reseau'),
     dossier_statut: F('dossier_statut', 'non_concerne'),
     dossier_reference: F('dossier_reference'),
@@ -250,6 +255,13 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // CH2) : on intercepte le 400 `{statut: [...]}` plutôt que de dupliquer un
   // second appel à `etapes-chantier/{id}/etapes/`.
   const [statutBlockedReasons, setStatutBlockedReasons] = useState(null)
+  // CIQ637 — motif de dérogation (Directeur) demandé quand le serveur refuse
+  // un passage de statut (CIQ621/CIQ630) ; envoyé tel quel au prochain
+  // enregistrement.
+  const [motifDerogation, setMotifDerogation] = useState('')
+  // CIQ637 — réception définitive : refus serveur (liste des réserves).
+  const [receptionBusy, setReceptionBusy] = useState(false)
+  const [receptionRefus, setReceptionRefus] = useState(null)
   // Retour FR explicite pour les actions secondaires (équipement / intervention
   // / ticket / besoin) dont les échecs étaient avalés (catch vides).
   const [actionError, setActionError] = useState(null)
@@ -512,7 +524,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
       const data = Object.fromEntries(
         Object.entries(fields).map(([k, v]) => [k, nullable(v)]))
+      if (motifDerogation.trim()) data.motif_derogation_8221 = motifDerogation.trim()
       await dispatch(updateInstallation({ id, data })).unwrap()
+      setMotifDerogation('')
       onSaved?.()
     } catch (err) {
       // CHT22 — une transition de statut refusée par les gates CH2 renvoie
@@ -531,6 +545,24 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  // CIQ637 — « Prononcer la réception définitive » : le serveur refuse avant la
+  // provisoire ou tant qu'une réserve est ouverte (400 FR citant les
+  // réserves) ; le refus s'affiche tel quel, sous le bouton.
+  const prononcerReceptionDefinitive = async () => {
+    setReceptionBusy(true)
+    setReceptionRefus(null)
+    try {
+      await installationsApi.prononcerReceptionDefinitive(id)
+      await refreshInstallation()
+      loadHistorique()
+    } catch (err) {
+      setReceptionRefus(
+        err?.response?.data?.detail || 'Réception définitive impossible.')
+    } finally {
+      setReceptionBusy(false)
     }
   }
 
@@ -1153,6 +1185,13 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   <ul className="flex flex-col gap-0.5">
                     {statutBlockedReasons.map((r) => <li key={r}>• {r}</li>)}
                   </ul>
+                  {/* CIQ621/CIQ630 — un Directeur peut passer outre avec un
+                      motif, journalisé ; il part au prochain enregistrement. */}
+                  <label className="mt-1 flex flex-col gap-1 text-foreground" htmlFor="ch-derogation">
+                    Motif de dérogation (Directeur)
+                    <Input id="ch-derogation" value={motifDerogation}
+                           onChange={(e) => setMotifDerogation(e.target.value)} />
+                  </label>
                 </div>
               ) : saveError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
@@ -1162,16 +1201,64 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             </Section>
             {/* ── Dossier réglementaire loi 82-21 / Article 33 (N40/N42) ── */}
             <Section icon={ScrollText} title="Dossier réglementaire (loi 82-21)">
+              {current.type_installation === 'industriel' && (
+                <div className="grid gap-3 sm:grid-cols-3" data-testid="ch-tension">
+                  <FormField label="Niveau de tension" htmlFor="ch-niveau">
+                    <Select value={fields.niveau_tension || 'inconnu'}
+                            onValueChange={(v) => set('niveau_tension', v === 'inconnu' ? '' : v)}>
+                      <SelectTrigger id="ch-niveau"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="inconnu">Non renseigné</SelectItem>
+                        {Object.entries(NIVEAU_TENSION_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {current.niveau_tension_source && (
+                      <Hint>Source : {NIVEAU_TENSION_SOURCE_LABELS[current.niveau_tension_source]
+                        ?? current.niveau_tension_source}</Hint>
+                    )}
+                  </FormField>
+                  <FormField label="Puissance souscrite (kVA)" htmlFor="ch-psous">
+                    <Input id="ch-psous" type="number" step="any"
+                           value={fields.puissance_souscrite_kva ?? ''}
+                           onChange={(e) => set('puissance_souscrite_kva', e.target.value)} />
+                  </FormField>
+                </div>
+              )}
+              {dossierReglementaireLie ? (
+                <div className="flex flex-col gap-2 text-sm" data-testid="dossier-82-21-lecture">
+                  <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                    <span>Régime : <strong>{REGIME_8221_LABELS[fields.regime_8221] ?? '—'}</strong></span>
+                    <span>Statut : <strong>{dossierReglementaireLie.statut_label
+                      ?? dossierReglementaireLie.resume?.statut?.replace(/_/g, ' ') ?? '—'}</strong></span>
+                    <span>Référence : <strong>{dossierReglementaireLie.reference_dossier
+                      || dossierReglementaireLie.resume?.reference || '—'}</strong></span>
+                    <span data-testid="dossier-echeance-travaux">Échéance des travaux : <strong>{
+                      dossierReglementaireLie.resume?.travaux_limite_le
+                        ? formatDate(dossierReglementaireLie.resume.travaux_limite_le) : '—'}</strong></span>
+                  </div>
+                  {(dossierReglementaireLie.resume?.alertes_modification ?? []).map((a) => (
+                    <div key={`${a.code}-${a.message}`} role="alert"
+                         className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                      {a.message}{a.base ? ` (${a.base})` : ''}
+                    </div>
+                  ))}
+                  <Button size="sm" variant="outline" className="self-start"
+                          onClick={() => navigate('/ventes/dossiers-reglementaires')}>
+                    Ouvrir le dossier réglementaire
+                  </Button>
+                </div>
+              ) : (
+                <>
               <div className="grid gap-3 sm:grid-cols-3">
                 <FormField label="Régime" htmlFor="ch-regime">
                   <Select value={fields.regime_8221 ?? 'non_concerne'} onValueChange={(v) => set('regime_8221', v)}>
                     <SelectTrigger id="ch-regime"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="non_concerne">Non concerné</SelectItem>
-                      <SelectItem value="declaration_bt">Déclaration (&lt; 11 kW, BT)</SelectItem>
-                      <SelectItem value="accord_raccordement">Accord de raccordement</SelectItem>
-                      <SelectItem value="autorisation_anre">Autorisation ANRE (&gt; 1 MW)</SelectItem>
-                      <SelectItem value="declaration_hors_reseau">{REGIME_8221_LABELS.declaration_hors_reseau}</SelectItem>
+                      {Object.entries(REGIME_8221_LABELS).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   {current?.regime_suggere?.code
@@ -1234,6 +1321,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                          onChange={(e) => set('dossier_date_approbation', e.target.value)} />
                 </FormField>
               </div>
+                </>
+              )}
               <Hint>Joignez les pièces du dossier dans « Photos &amp; fichiers » ci-dessous.</Hint>
             </Section>
             </TabsContent>
@@ -1295,6 +1384,24 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
                 Enregistrer la mise en service
               </Button>
+              {current.type_installation === 'industriel' && (
+                <div className="flex flex-col gap-1" data-testid="reception-definitive">
+                  {current.date_reception_definitive ? (
+                    <Hint>Réception définitive prononcée le {formatDate(current.date_reception_definitive)}.</Hint>
+                  ) : (
+                    <Button variant="outline" loading={receptionBusy}
+                            onClick={prononcerReceptionDefinitive} className="self-start">
+                      Prononcer la réception définitive
+                    </Button>
+                  )}
+                  {receptionRefus && (
+                    <div role="alert" data-testid="reception-refus"
+                         className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                      {receptionRefus}
+                    </div>
+                  )}
+                </div>
+              )}
             </Section>
             </TabsContent>
 

@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ventesApi from '../../api/ventesApi'
 import PageHeader from '../../components/layout/PageHeader'
-import { Badge, Button, Card, CardContent, EmptyState, Segmented, Skeleton } from '../../ui'
+import {
+  Badge, Button, Card, CardContent, EmptyState, Input, Label, Segmented,
+  Skeleton,
+} from '../../ui'
 import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
@@ -127,6 +130,292 @@ const rendu = (v) => {
   return String(v)
 }
 
+/* ── CIQ638 — Détail 82-21 d'un dossier : régime sourcé, pièces par étape avec
+   leur source, étude, capacité, convention, exploitation, échéance des
+   travaux, équipements figés et alertes de modification. Tout vient du
+   SERVEUR (`regime`, `pieces`, `resume` du contrat `dossier_8221.json`) :
+   aucune date, aucun délai, aucun régime n'est recalculé ici. */
+const ETAPES_PIECES = [
+  { value: 'depot', label: 'Dépôt' },
+  { value: 'etude', label: 'Étude du distributeur' },
+  { value: 'convention', label: 'Convention' },
+  { value: 'comptage', label: 'Comptage' },
+  { value: 'exploitation', label: 'Exploitation' },
+  { value: 'travaux', label: 'Travaux' },
+]
+
+const GUICHETS = {
+  distributeur: 'Distributeur (ONEE ou SRM régionale)',
+  services_deconcentres_energie: "Services déconcentrés de l'énergie",
+}
+
+const CONCLUSIONS = [
+  { value: '', label: '—' },
+  { value: 'favorable', label: 'Favorable' },
+  { value: 'alternative', label: 'Solution alternative proposée' },
+  { value: 'refus', label: 'Refus' },
+]
+
+const ETATS_CAPACITE = [
+  { value: '', label: '—' },
+  { value: 'provisoire', label: 'Réservée provisoirement' },
+  { value: 'definitive', label: 'Réservée définitivement' },
+]
+
+const REGLAGES = [
+  { value: '', label: 'Non renseigné' },
+  { value: 'oui', label: 'Oui' },
+  { value: 'non', label: 'Non' },
+]
+
+// Champs saisis du dossier (écrits tels quels, jamais calculés ici).
+const CHAMPS_DATE_DOSSIER = [
+  ['etude_frais_notifies_le', "Frais d'étude notifiés le", (r) => r.etude?.frais_notifies_le],
+  ['etude_payee_le', 'Étude payée le', (r) => r.etude?.payee_le],
+  ['capacite_date', 'Capacité réservée le', (r) => r.capacite?.date],
+  ['convention_signee_le', 'Convention signée le', (r) => r.convention_signee_le],
+  ['demande_exploitation_le', "Demande d'exploitation le", (r) => r.demande_exploitation_le],
+  ['accord_exploitation_le', "Accord d'exploitation le", (r) => r.accord_exploitation_le],
+]
+
+const versTexte = (v) => (v == null ? '' : String(v))
+
+const reglagesVersTexte = (v) => {
+  if (v === true) return 'oui'
+  if (v === false) return 'non'
+  // Le résumé peut porter le texte saisi d'après l'étude : présent = « oui ».
+  return v ? 'oui' : ''
+}
+
+// L'état du formulaire est lu du dossier (champs saisis) et, à défaut, du
+// `resume` du contrat.
+function etatDepuisDossier(d) {
+  const resume = d.resume || {}
+  const etat = {}
+  for (const [cle, , lire] of CHAMPS_DATE_DOSSIER) {
+    etat[cle] = versTexte(d[cle] ?? lire(resume))
+  }
+  etat.etude_conclusion = versTexte(d.etude_conclusion ?? resume.etude?.conclusion)
+  etat.capacite_etat = versTexte(d.capacite_etat ?? resume.capacite?.etat)
+  etat.etude_reglages_imposes = reglagesVersTexte(
+    d.etude_reglages_imposes !== undefined
+      ? d.etude_reglages_imposes
+      : resume.etude?.reglages_imposes)
+  return etat
+}
+
+function payloadDepuisEtat(etat) {
+  const payload = {}
+  for (const [cle] of CHAMPS_DATE_DOSSIER) payload[cle] = etat[cle] || null
+  payload.etude_conclusion = etat.etude_conclusion || null
+  payload.capacite_etat = etat.capacite_etat || null
+  payload.etude_reglages_imposes = etat.etude_reglages_imposes === 'oui' ? true
+    : etat.etude_reglages_imposes === 'non' ? false : null
+  return payload
+}
+
+function guichetRendu(regime) {
+  if (!regime?.guichet) return '—'
+  const nom = GUICHETS[regime.guichet] || regime.guichet
+  return regime.guichet_statut === 'a_confirmer' ? `${nom} — à confirmer` : nom
+}
+
+function piecesParEtape(pieces) {
+  const connues = ETAPES_PIECES.map((e) => e.value)
+  const groupes = ETAPES_PIECES.map((e) => ({
+    ...e, pieces: pieces.filter((p) => p.etape === e.value),
+  }))
+  const autres = pieces.filter((p) => !connues.includes(p.etape))
+  if (autres.length > 0) groupes.push({ value: 'autre', label: 'Autres', pieces: autres })
+  return groupes.filter((g) => g.pieces.length > 0)
+}
+
+function DossierDetail82({ dossier, onSaved, onClose }) {
+  const [etat, setEtat] = useState(() => etatDepuisDossier(dossier))
+  const [busy, setBusy] = useState(false)
+  const [erreurs, setErreurs] = useState({})
+  const [erreurGenerale, setErreurGenerale] = useState(null)
+  const resume = dossier.resume || {}
+  const regime = dossier.regime || null
+  const pieces = dossier.pieces || []
+  const manquantes = resume.pieces_manquantes || []
+  const equipements = resume.equipements_figes || []
+  const alertes = resume.alertes_modification || []
+  const champ = (cle) => (valeur) => setEtat((p) => ({ ...p, [cle]: valeur }))
+
+  const enregistrer = async () => {
+    setBusy(true)
+    setErreurs({})
+    setErreurGenerale(null)
+    try {
+      const r = await ventesApi.patchReglementaire(
+        'dossiers-reglementaires', dossier.id, payloadDepuisEtat(etat))
+      onSaved?.(r.data)
+    } catch (err) {
+      const data = err?.response?.data
+      // Erreurs de validation : sous le champ fautif ; le reste en bandeau.
+      if (data && typeof data === 'object' && !data.detail) {
+        const parChamp = {}
+        for (const [k, v] of Object.entries(data)) {
+          parChamp[k] = Array.isArray(v) ? v.join(' ') : String(v)
+        }
+        setErreurs(parChamp)
+      } else {
+        setErreurGenerale(data?.detail || "L'enregistrement du dossier a échoué.")
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const erreurSous = (cle) => (erreurs[cle]
+    ? <p className="form-error" role="alert">{erreurs[cle]}</p> : null)
+
+  return (
+    <div className="mt-3 flex w-full flex-col gap-4 rounded-lg border border-border p-3"
+         data-testid="dossier-detail-8221">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="m-0 text-sm font-semibold text-foreground">Dossier loi 82-21</h4>
+        <Button type="button" size="sm" variant="ghost" onClick={onClose}>Fermer</Button>
+      </div>
+
+      {regime && (
+        <section aria-label="Régime 82-21" className="flex flex-col gap-1 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-foreground">{regime.libelle}</span>
+            {regime.a_qualifier && <Badge tone="warning">À qualifier</Badge>}
+          </div>
+          <span className="text-muted-foreground">Base : {regime.base}</span>
+          <span className="text-muted-foreground">Guichet : {guichetRendu(regime)}</span>
+          {regime.puissance_retenue_kw != null && (
+            <span className="text-muted-foreground">
+              Puissance retenue : {regime.puissance_retenue_kw} kW
+              {regime.base_puissance === 'a_confirmer_avec_le_distributeur'
+                ? ' (base à confirmer avec le distributeur)' : ''}
+            </span>
+          )}
+        </section>
+      )}
+
+      {alertes.length > 0 && (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0" aria-label="Alertes de modification">
+          {alertes.map((a) => (
+            <li key={`${a.code}-${a.message}`} role="alert"
+                className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+              {a.message}
+              {a.base && <span className="ml-1 text-muted-foreground">({a.base})</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <section aria-label="Pièces du dossier" className="flex flex-col gap-3">
+        {piecesParEtape(pieces).map((g) => (
+          <div key={g.value} data-etape={g.value}>
+            <h5 className="m-0 mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {g.label}
+            </h5>
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+              {g.pieces.map((pc) => (
+                <li key={pc.code} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="text-foreground">{pc.label}</span>
+                  {pc.obligatoire && <Badge tone="neutral">Obligatoire</Badge>}
+                  {manquantes.includes(pc.code) && <Badge tone="warning">Manquante</Badge>}
+                  {pc.statut && <Badge tone="info">{pc.statut.replace(/_/g, ' ')}</Badge>}
+                  <span className="text-xs text-muted-foreground">Source : {pc.source}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+
+      <form noValidate className="flex flex-col gap-3" onSubmit={(e) => e.preventDefault()}>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {CHAMPS_DATE_DOSSIER.map(([cle, libelle]) => (
+            <div key={cle} className="flex flex-col gap-1.5">
+              <Label htmlFor={`dossier-${cle}`}>{libelle}</Label>
+              <Input id={`dossier-${cle}`} type="date" value={etat[cle]}
+                     onChange={(e) => champ(cle)(e.target.value)} />
+              {erreurSous(cle)}
+            </div>
+          ))}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="dossier-etude_conclusion">Conclusion de l'étude</Label>
+            <select id="dossier-etude_conclusion" className="form-control"
+                    value={etat.etude_conclusion}
+                    onChange={(e) => champ('etude_conclusion')(e.target.value)}>
+              {CONCLUSIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            {erreurSous('etude_conclusion')}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="dossier-etude_reglages_imposes">Réglages imposés par l'étude</Label>
+            <select id="dossier-etude_reglages_imposes" className="form-control"
+                    value={etat.etude_reglages_imposes}
+                    onChange={(e) => champ('etude_reglages_imposes')(e.target.value)}>
+              {REGLAGES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            {erreurSous('etude_reglages_imposes')}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="dossier-capacite_etat">Capacité réservée</Label>
+            <select id="dossier-capacite_etat" className="form-control"
+                    value={etat.capacite_etat}
+                    onChange={(e) => champ('capacite_etat')(e.target.value)}>
+              {ETATS_CAPACITE.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            {erreurSous('capacite_etat')}
+          </div>
+        </div>
+        {erreurGenerale && <p className="form-error" role="alert">{erreurGenerale}</p>}
+        <div>
+          <Button type="button" size="sm" loading={busy} onClick={enregistrer}>
+            Enregistrer le dossier
+          </Button>
+        </div>
+      </form>
+
+      {/* Dates dérivées par le SERVEUR (décret 2.25.100) : jamais recalculées. */}
+      <section aria-label="Échéances du dossier" className="flex flex-col gap-1 text-sm">
+        {resume.etude?.paiement_limite_le && (
+          <span>Paiement de l'étude avant le {resume.etude.paiement_limite_le}
+            <span className="text-muted-foreground"> (décret 2.25.100 art. 13)</span>
+          </span>
+        )}
+        {resume.travaux_limite_le && (
+          <span data-testid="echeance-travaux">
+            Échéance des travaux : {resume.travaux_limite_le}
+            <span className="text-muted-foreground">
+              {' '}(accord : art. 14 ; déclaration : art. 8, décret 2.25.100)
+            </span>
+          </span>
+        )}
+      </section>
+
+      {equipements.length > 0 && (
+        <section aria-label="Équipements figés" className="flex flex-col gap-1 text-sm">
+          <h5 className="m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Équipements figés au dépôt
+          </h5>
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+            {equipements.map((e, i) => (
+              <li key={`${e.fabricant}-${e.modele}-${i}`}>
+                {e.fabricant} {e.modele} × {e.quantite}
+                {e.puissance != null && ` — puissance ${e.puissance}`}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
+}
+
+// La recette se saisit UNE SEULE FOIS, sur la fiche chantier (propriétaire
+// unique, CIQ6) : ces trois onglets ne sont plus une seconde saisie.
+const RESSOURCES_RECETTE_CHANTIER = ['recettes-mes', 'courbes-iv', 'tests-pr-reception']
+
 export default function DossiersReglementairesPage() {
   const [vue, setVue] = useState('tableau')
   const [ressource, setRessource] = useState(RESSOURCES[0].value)
@@ -140,6 +429,10 @@ export default function DossiersReglementairesPage() {
   const [dossiers, setDossiers] = useState([])
   const [dossiersLoading, setDossiersLoading] = useState(true)
   const [dossiersError, setDossiersError] = useState(false)
+  // CIQ638 — dossier dont le détail 82-21 est ouvert (File de travail) ; la
+  // version force la ré-ouverture du formulaire depuis la réponse serveur.
+  const [detailId, setDetailId] = useState(null)
+  const [detailVersion, setDetailVersion] = useState(0)
   // Ignore une réponse devenue obsolète (ressource changée entre-temps) —
   // même rôle que le drapeau `active` d'un effet, partagé entre le montage
   // et `changerRessource`.
@@ -280,6 +573,14 @@ export default function DossiersReglementairesPage() {
     return groupes
   }, [dossiers, echeancesToutes])
 
+  const dossierEnregistre = (maj) => {
+    if (!maj?.id) return
+    setDossiers((prev) => prev.map((d) => (d.id === maj.id ? { ...d, ...maj } : d)))
+    setRows((prev) => (ressource === 'dossiers-reglementaires'
+      ? prev.map((d) => (d.id === maj.id ? { ...d, ...maj } : d)) : prev))
+    setDetailVersion((v) => v + 1)
+  }
+
   const ouvrirDossierDansLeTableau = () => {
     setVue('tableau')
     changerRessource('dossiers-reglementaires')
@@ -389,6 +690,17 @@ export default function DossiersReglementairesPage() {
             aria-label="Ressource réglementaire"
           />
 
+          {RESSOURCES_RECETTE_CHANTIER.includes(ressource) && (
+            <p className="mt-4 text-sm text-muted-foreground" data-testid="recette-sur-chantier">
+              La recette de ce chantier se saisit sur la fiche chantier.{' '}
+              <Link to={`/chantiers${rows.find((r) => r.chantier)
+                ? `?id=${rows.find((r) => r.chantier).chantier}` : ''}`}
+                    className="underline">
+                Ouvrir la fiche chantier
+              </Link>
+            </p>
+          )}
+
           <Card className="mt-4">
             <CardContent className="p-0">
               {loading && <Skeleton className="m-4 h-24" />}
@@ -489,11 +801,24 @@ export default function DossiersReglementairesPage() {
                                     onClick={ouvrirDossierDansLeTableau}>
                               Voir le dossier
                             </Button>
+                            <Button type="button" size="sm" variant="ghost"
+                                    aria-expanded={detailId === d.id}
+                                    onClick={() => setDetailId(detailId === d.id ? null : d.id)}>
+                              Détail 82-21
+                            </Button>
                             {d.chantier && (
                               <Link to={`/chantiers?id=${d.chantier}`}
                                     className="text-sm underline">
                                 Voir le chantier
                               </Link>
+                            )}
+                            {detailId === d.id && (
+                              <DossierDetail82
+                                key={`${d.id}-${detailVersion}`}
+                                dossier={d}
+                                onSaved={dossierEnregistre}
+                                onClose={() => setDetailId(null)}
+                              />
                             )}
                           </li>
                         )

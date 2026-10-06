@@ -245,3 +245,48 @@ describe('PortailClientChantiers — AGR618 relevés de ma pompe', () => {
     expect(erreur).toHaveTextContent('le compteur ne peut pas reculer')
   })
 })
+
+describe('PortailClientChantiers — CIQ649 mise en service d’un chantier pro', () => {
+  async function ouvrirSuivi(detail) {
+    portailApi.chantiers.liste.mockResolvedValue({ data: LISTE })
+    portailApi.chantiers.detail.mockResolvedValue({ data: detail })
+    portailApi.chantiers.photos.mockResolvedValue({ data: { results: [] } })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText(CHANTIER.reference)
+    await user.click(screen.getAllByRole('button', { name: /Voir le suivi/i })[0])
+    await screen.findByText(/Aucune photo pour ce chantier/i)
+  }
+
+  it('rend le bloc avec les valeurs de l’exemple du contrat', async () => {
+    await ouvrirSuivi(DETAIL)
+    const bloc = screen.getByTestId('mise-en-service-ci')
+    const r = DETAIL.recette_ci
+    expect(bloc).toHaveTextContent('Mise en service')
+    expect(bloc).toHaveTextContent('Conforme avec réserves')
+    expect(bloc).toHaveTextContent(`${r.pr}`)
+    expect(bloc).toHaveTextContent(r.pr_libelle)
+    expect(bloc).toHaveTextContent(r.reserves_ouvertes[0].description)
+    expect(bloc).toHaveTextContent('Réception provisoire')
+    expect(bloc).toHaveTextContent('Réception définitive')
+  })
+
+  it('recette_ci: null → rien', async () => {
+    await ouvrirSuivi({ ...DETAIL, recette_ci: null })
+    expect(screen.queryByTestId('mise-en-service-ci')).toBeNull()
+  })
+
+  it('sans réserve ouverte, la liste n’est pas rendue', async () => {
+    await ouvrirSuivi({
+      ...DETAIL, recette_ci: { ...DETAIL.recette_ci, reserves_ouvertes: [] },
+    })
+    expect(screen.getByTestId('mise-en-service-ci'))
+      .not.toHaveTextContent('Réserves ouvertes')
+  })
+
+  it('aucun prix, instrument ni technicien rendu dans le bloc', async () => {
+    await ouvrirSuivi(DETAIL)
+    expect(screen.getByTestId('mise-en-service-ci').textContent)
+      .not.toMatch(/MAD|DH|prix|€|\$|instrument|technicien/i)
+  })
+})

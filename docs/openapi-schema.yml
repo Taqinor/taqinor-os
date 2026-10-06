@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7636, components: 2212}
+counts: {paths: 4838, operations: 7638, components: 2212}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1714,6 +1714,7 @@ operations:
 - get /api/django/installations/chantiers/{id}/reserves/ -> django_installations_chantiers_reserves_retrieve
 - post /api/django/installations/chantiers/{id}/reserves/ -> django_installations_chantiers_reserves_create
 - post /api/django/installations/chantiers/{id}/reserves/{rid}/lever/ -> django_installations_chantiers_reserves_lever_create
+- post /api/django/installations/chantiers/{id}/series-lot/ -> django_installations_chantiers_series_lot_create
 - post /api/django/installations/chantiers/{id}/signer-client/ -> django_installations_chantiers_signer_client_create
 - post /api/django/installations/chantiers/{id}/supprimer-releve/ -> django_installations_chantiers_supprimer_releve_create
 - get /api/django/installations/checklist-etapes/ -> django_installations_checklist_etapes_list
@@ -5570,6 +5571,7 @@ operations:
 - get /api/v1/installations/chantiers/{id}/reserves/ -> v1_installations_chantiers_reserves_retrieve
 - post /api/v1/installations/chantiers/{id}/reserves/ -> v1_installations_chantiers_reserves_create
 - post /api/v1/installations/chantiers/{id}/reserves/{rid}/lever/ -> v1_installations_chantiers_reserves_lever_create
+- post /api/v1/installations/chantiers/{id}/series-lot/ -> v1_installations_chantiers_series_lot_create
 - post /api/v1/installations/chantiers/{id}/signer-client/ -> v1_installations_chantiers_signer_client_create
 - post /api/v1/installations/chantiers/{id}/supprimer-releve/ -> v1_installations_chantiers_supprimer_releve_create
 - get /api/v1/installations/checklist-etapes/ -> v1_installations_checklist_etapes_list

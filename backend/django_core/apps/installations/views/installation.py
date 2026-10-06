@@ -222,6 +222,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'lever_reserve',
             # CIQ629 — réception définitive.
             'reception_definitive',
+            # CIQ633 — import en lot des numéros de série.
+            'series_lot',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -599,26 +601,27 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         item.save(update_fields=['fait', 'fait_par', 'fait_le'])
 
         # N9 — saisie optionnelle de n° de série → équipements du parc.
-        created_equip = 0
+        # CIQ633 — UNE transaction, un résultat PAR LIGNE (créé | doublon |
+        # autre société), jamais d'erreur 500 sur un doublon.
+        from ..services import enregistrer_series_lot
+        lignes = [eq for eq in (request.data.get('equipements') or [])
+                  if isinstance(eq, dict) and eq.get('produit')]
+        resultats_series = enregistrer_series_lot(
+            inst, lignes, user=request.user)
+        created_equip = sum(
+            1 for r in resultats_series if r['statut'] == 'cree')
+        noms = {}
         captures = []  # libellés « produit (n° série) » des relevés créés.
-        for eq in (request.data.get('equipements') or []):
-            produit_id = eq.get('produit')
-            serie = (eq.get('numero_serie') or '').strip()
-            if not produit_id:
+        for ligne, resultat in zip(lignes, resultats_series):
+            if resultat['statut'] != 'cree':
                 continue
-            from apps.stock.selectors import get_produit_scoped
-            from apps.sav.services import create_equipement_from_serial
-            produit = get_produit_scoped(inst.company, produit_id)
-            if produit is None:
-                continue
-            create_equipement_from_serial(
-                company=inst.company, produit=produit, installation=inst,
-                numero_serie=serie or None,
-                date_pose=inst.date_pose_reelle or timezone.localdate(),
-                created_by=request.user)
-            created_equip += 1
+            if ligne['produit'] not in noms:
+                from apps.stock.selectors import get_produit_scoped
+                produit = get_produit_scoped(inst.company, ligne['produit'])
+                noms[ligne['produit']] = produit.nom if produit else ''
+            serie = resultat['numero_serie']
             captures.append(
-                f"{produit.nom}"
+                f"{noms[ligne['produit']]}"
                 + (f" (n° {serie})" if serie else " (sans n° de série)"))
 
         # N16 — la note liste les produits/séries capturés (pas juste un compte).
@@ -638,6 +641,65 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'items': ChantierChecklistItemSerializer(items, many=True).data,
             'completion': round(100 * done / len(items)) if items else None,
             'equipements_crees': created_equip,
+            'resultats_series': resultats_series,
+        })
+
+    @action(detail=True, methods=['post'], url_path='series-lot',
+            permission_classes=[IsResponsableOrAdmin])
+    def series_lot(self, request, pk=None):
+        """CIQ633 — import en lot des numéros de série d'un chantier.
+
+        Corps : ``lignes`` = [{"produit", "numero_serie", "chaine"?}] ou
+        ``texte`` (collage / contenu CSV, « série;chaîne » par ligne, avec
+        ``produit`` par défaut) ; ``non_releves`` = [{"produit", "motif"}]
+        (un motif vide retire l'entrée). Un résultat par ligne (créé |
+        doublon | autre société | erreur), jamais d'erreur 500."""
+        from apps.stock.selectors import get_produit_scoped
+        from ..services import (
+            _gate_check_series, enregistrer_series_lot, lire_lignes_series,
+        )
+        inst = self.get_object()
+        lignes = [x for x in (request.data.get('lignes') or [])
+                  if isinstance(x, dict)]
+        texte = request.data.get('texte')
+        fichier = request.FILES.get('fichier') if request.FILES else None
+        if fichier is not None:
+            texte = fichier.read().decode('utf-8-sig', errors='replace')
+        if texte:
+            lignes += lire_lignes_series(
+                texte, produit_defaut=request.data.get('produit'))
+        resultats = enregistrer_series_lot(inst, lignes, user=request.user)
+
+        non_releves = dict(inst.series_non_relevees or {})
+        changed = False
+        for entree in (request.data.get('non_releves') or []):
+            if not isinstance(entree, dict):
+                continue
+            produit = get_produit_scoped(inst.company, entree.get('produit'))
+            if produit is None:
+                continue
+            motif = str(entree.get('motif') or '').strip()
+            if motif:
+                non_releves[str(produit.id)] = motif
+            else:
+                non_releves.pop(str(produit.id), None)
+            changed = True
+        if changed:
+            inst.series_non_relevees = non_releves
+            inst.save(update_fields=['series_non_relevees'])
+
+        crees = sum(1 for r in resultats if r['statut'] == 'cree')
+        if resultats or changed:
+            activity.log_note(
+                inst, request.user,
+                f"Séries : lot de {len(resultats)} ligne(s), {crees} "
+                f"créée(s)" + (" ; produits « non relevés » mis à jour"
+                               if changed else ""))
+        return Response({
+            'resultats': resultats,
+            'crees': crees,
+            'series_non_relevees': inst.series_non_relevees or {},
+            'manquantes': _gate_check_series(inst),
         })
 
     @action(detail=True, methods=['post'], url_path='checklist-photo',

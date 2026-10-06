@@ -100,48 +100,321 @@ const texteVersBool = (v) => (v === 'true' ? true : v === 'false' ? false : null
 // Un nombre TAPÉ n'est jamais rogné ni arrondi : il part tel quel, ou null.
 const nombreOuNull = (v) => (v === '' || v == null ? null : v)
 
+/* ── CIQ636 — sections C&I de la fiche (contrat `recette_ci.json`) ───────────
+   Le serveur sert chaque valeur À PLAT (champ écrit) ET groupée (section du
+   contrat) : on lit le champ plat, puis la section groupée. Les essais
+   `limitation_injection` / `decouplage` ne concernent que le MT. */
+const ETATS_ESSAI = [
+  { value: 'sans_objet', label: 'Sans objet' },
+  { value: 'a_faire', label: 'À faire' },
+  { value: 'ok', label: 'Conforme' },
+  { value: 'non_ok', label: 'Non conforme' },
+]
+
+const SOURCES_IRRADIANCE = [
+  { value: '', label: 'Non renseignée' },
+  { value: 'mesuree', label: 'Mesurée' },
+  { value: 'estimee', label: 'Estimée' },
+]
+
+// [clé écrite, libellé, lecture de la valeur groupée]
+const CI_NOMBRES = [
+  ['irradiance_poa_wm2', 'Irradiance dans le plan des modules (W/m²)', (r) => r.irradiance?.irradiance_poa_wm2],
+  ['temperature_module_c', 'Température des modules (°C)', (r) => r.irradiance?.temperature_module_c],
+  ['irradiation_kwh_m2', 'Irradiation mesurée sur la fenêtre (kWh/m²)', (r) => r.irradiance?.irradiation_kwh_m2],
+  ['energie_mesuree_kwh', 'Énergie mesurée (kWh)', (r) => r.energie?.energie_mesuree_kwh],
+  ['terre_installation_ohm', 'Terre de l’installation (Ω)', (r) => r.terre_installation_ohm],
+]
+
+const CI_DATES_HEURE = [
+  ['energie_fenetre_debut', 'Début de la fenêtre d’énergie', (r) => r.energie?.fenetre_debut],
+  ['energie_fenetre_fin', 'Fin de la fenêtre d’énergie', (r) => r.energie?.fenetre_fin],
+]
+
+// [section, libellé, champ état, champ texte, libellé du texte, sous-clé du texte]
+const CI_MT_ESSAIS = [
+  ['limitation_injection', 'Limitation d’injection', 'limitation_injection_etat', 'limitation_injection_consigne', 'Consigne', 'consigne'],
+  ['decouplage', 'Découplage', 'decouplage_etat', 'decouplage_piece', 'Pièce (réglages imposés)', 'piece'],
+]
+
+// `datetime-local` n'affiche que « AAAA-MM-JJTHH:MM » : la valeur d'origine
+// du serveur est conservée telle quelle tant que le champ n'est pas modifié
+// (un enregistrement sans retouche renvoie exactement le même PATCH).
+const heureLocale = (v) => (v ? String(v).slice(0, 16) : '')
+
+const lire = (record, cle, groupee) => {
+  const plat = record?.[cle]
+  if (plat !== undefined && plat !== null) return plat
+  const g = record ? groupee?.(record) : undefined
+  return g ?? null
+}
+
 function etatDepuisRecord(record) {
   const etat = {
-    date_essai: record?.date_essai ?? '',
+    date_essai: record?.date_essai ?? record?.date_recette ?? '',
     technicien: record?.technicien ?? '',
-    resultat: record?.resultat ?? 'en_cours',
     observations: record?.observations ?? '',
+    reserves_choisi: record?.resultat === 'reserves',
+    irradiance_source: lire(record, 'irradiance_source', (r) => r.irradiance?.source) ?? '',
+    thermographie_faite: boolVersTexte(
+      lire(record, 'thermographie_faite', (r) => r.thermographie?.faite)),
+    thermographie_constats: lire(
+      record, 'thermographie_constats', (r) => r.thermographie?.constats) ?? '',
   }
   for (const section of SECTIONS) {
     for (const [cle] of section.essais) etat[cle] = boolVersTexte(record?.[cle])
     for (const [cle] of section.mesures) etat[cle] = record?.[cle] ?? ''
   }
+  for (const [cle, , groupee] of CI_NOMBRES) etat[cle] = lire(record, cle, groupee) ?? ''
+  for (const [cle, , groupee] of CI_DATES_HEURE) {
+    etat[cle] = heureLocale(lire(record, cle, groupee))
+  }
+  for (const [section, , cleEtat, cleTexte, , sousCle] of CI_MT_ESSAIS) {
+    etat[cleEtat] = record?.[cleEtat] ?? record?.[section]?.etat ?? 'sans_objet'
+    etat[cleTexte] = record?.[cleTexte] ?? record?.[section]?.[sousCle] ?? ''
+  }
   return etat
 }
 
-function payloadDepuisEtat(etat) {
+function payloadDepuisEtat(etat, record, { industriel, mt }) {
   const payload = {
     date_essai: etat.date_essai || null,
     technicien: etat.technicien || null,
-    resultat: etat.resultat,
     observations: etat.observations || null,
   }
+  // Résultat calculé côté serveur : seule la valeur « reserves » part du client.
+  if (etat.reserves_choisi) payload.resultat = 'reserves'
   for (const section of SECTIONS) {
     for (const [cle] of section.essais) payload[cle] = texteVersBool(etat[cle])
     for (const [cle] of section.mesures) payload[cle] = nombreOuNull(etat[cle])
   }
+  if (industriel) {
+    payload.irradiance_source = etat.irradiance_source || null
+    payload.thermographie_faite = texteVersBool(etat.thermographie_faite)
+    payload.thermographie_constats = etat.thermographie_constats || null
+    for (const [cle] of CI_NOMBRES) payload[cle] = nombreOuNull(etat[cle])
+    for (const [cle, , groupee] of CI_DATES_HEURE) {
+      const origine = lire(record, cle, groupee)
+      payload[cle] = etat[cle] === heureLocale(origine)
+        ? (origine ?? null) : (etat[cle] || null)
+    }
+    if (mt) {
+      for (const [, , cleEtat, cleTexte] of CI_MT_ESSAIS) {
+        payload[cleEtat] = etat[cleEtat]
+        payload[cleTexte] = etat[cleTexte] || null
+      }
+    }
+  }
   return payload
 }
 
-function RecetteDialog({ installationId, record, onClose, onSaved }) {
+const tousEssaisVrais = (etat) => SECTIONS.every(
+  (s) => s.essais.every(([cle]) => etat[cle] === 'true'))
+
+const reserveRecetteOuverte = (reserves) => reserves.some(
+  (r) => r.statut === 'ouverte' && r.origine === 'recette')
+
+// Les erreurs 400 DRF `{champ: [msg]}` se rangent sous le champ fautif.
+function erreursParChamp(data) {
+  if (!data || typeof data !== 'object' || data.detail) return null
+  const out = {}
+  for (const [k, v] of Object.entries(data)) {
+    out[k] = Array.isArray(v) ? v.join(' ') : String(v)
+  }
+  return out
+}
+
+function ComparaisonRecette({ comparaison, energie }) {
+  if (!comparaison && !energie) return null
+  const promesse = comparaison?.promesse_figee
+  const ecart = comparaison?.ecart_iv_pmax_pct
+  const seuil = comparaison?.seuil_ecart_pmax_pct
+  const pr = energie?.pr_mesure
+  return (
+    <section className="flex flex-col gap-1 rounded-lg border border-border p-3 text-sm"
+             data-testid="recette-comparaison">
+      <h4 className="m-0 text-sm font-semibold">Comparaison au devis</h4>
+      {promesse ? (
+        <span>
+          Promesse figée au devis : {promesse.production_annuelle_kwh} kWh/an
+          {promesse.pr_modelise != null && `, PR modélisé ${promesse.pr_modelise}`}
+          {promesse.source && ` (${promesse.source})`}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">Aucune promesse figée sur ce devis.</span>
+      )}
+      <span>
+        PR mesuré : {pr != null ? pr : '—'}{' '}
+        <span className="text-muted-foreground">
+          {energie?.libelle || 'à titre d’information'}
+        </span>
+      </span>
+      <span>
+        Écart I-V (Pmax) : {ecart != null ? `${ecart} %` : '—'}
+        {ecart != null && seuil == null && (
+          <span className="text-muted-foreground"> — seuil non saisi en Paramètres</span>
+        )}
+        {ecart != null && seuil != null && comparaison?.defaut_detecte != null && (
+          <Badge tone={comparaison.defaut_detecte ? 'danger' : 'neutral'} className="ml-2">
+            {comparaison.defaut_detecte ? 'Défaut détecté' : 'Dans le seuil'}
+          </Badge>
+        )}
+      </span>
+    </section>
+  )
+}
+
+function ReservesPanel({ installationId, reserves, ficheOuverte, onChange }) {
+  const [desc, setDesc] = useState('')
+  const [bloquante, setBloquante] = useState(false)
+  const [echeance, setEcheance] = useState('')
+  const [responsable, setResponsable] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  const recharger = async () => {
+    const r = await installationsApi.getReservesChantier(installationId)
+    onChange(Array.isArray(r.data) ? r.data : [])
+  }
+
+  const ajouter = async () => {
+    setBusy(true)
+    setErreur(null)
+    try {
+      await installationsApi.ajouterReserveChantier(installationId, {
+        description: desc,
+        origine: 'recette',
+        bloquante,
+        date_echeance: echeance || null,
+        responsable: responsable || '',
+      })
+      setDesc(''); setBloquante(false); setEcheance(''); setResponsable('')
+      await recharger()
+    } catch (err) {
+      const d = err?.response?.data
+      setErreur(d?.description || d?.date_echeance || d?.detail
+        || "La réserve n'a pas pu être ajoutée.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const lever = async (id) => {
+    setBusy(true)
+    setErreur(null)
+    try {
+      await installationsApi.leverReserveChantier(installationId, id)
+      await recharger()
+    } catch (err) {
+      setErreur(err?.response?.data?.detail || "La réserve n'a pas pu être levée.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border border-border p-3"
+             data-testid="recette-reserves">
+      <h4 className="m-0 text-sm font-semibold">Réserves</h4>
+      {reserves.length === 0 && (
+        <p className="m-0 text-sm text-muted-foreground">Aucune réserve.</p>
+      )}
+      {reserves.length > 0 && (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          {reserves.map((r) => (
+            <li key={r.id} data-statut={r.statut}
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span className="font-medium">{r.description}</span>
+              {r.bloquante && <Badge tone="danger">Bloquante</Badge>}
+              <Badge tone={r.statut === 'ouverte' ? 'warning' : 'success'}>
+                {r.statut === 'ouverte' ? 'Ouverte' : 'Levée'}
+              </Badge>
+              {r.date_echeance && (
+                <span className="text-muted-foreground">échéance {r.date_echeance}</span>
+              )}
+              {r.responsable && (
+                <span className="text-muted-foreground">responsable {r.responsable}</span>
+              )}
+              {r.statut === 'ouverte' && (
+                <Button type="button" size="sm" variant="outline" disabled={busy}
+                        aria-label={`Lever la réserve ${r.description}`}
+                        onClick={() => lever(r.id)}>
+                  Lever
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {ficheOuverte ? (
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="reserve-description">Réserve à ajouter</Label>
+            <Input id="reserve-description" value={desc}
+                   onChange={(e) => setDesc(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reserve-echeance">Échéance</Label>
+            <Input id="reserve-echeance" type="date" value={echeance}
+                   onChange={(e) => setEcheance(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reserve-responsable">Responsable</Label>
+            <Input id="reserve-responsable" value={responsable}
+                   onChange={(e) => setResponsable(e.target.value)} />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={bloquante}
+                   onChange={(e) => setBloquante(e.target.checked)} />
+            Bloquante
+          </label>
+          <div>
+            <Button type="button" size="sm" variant="outline" loading={busy}
+                    onClick={ajouter}>
+              Ajouter la réserve
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p className="m-0 text-sm text-muted-foreground">
+          Enregistrez d’abord la fiche pour y ajouter des réserves.
+        </p>
+      )}
+      {erreur && <p className="form-error" role="alert">{String(erreur)}</p>}
+    </section>
+  )
+}
+
+function RecetteDialog({
+  installationId, record, installation, comparaison, reserves: reservesInit,
+  onClose, onSaved,
+}) {
+  const industriel = installation?.type_installation === 'industriel'
+  const mt = industriel && installation?.niveau_tension === 'mt'
   const [etat, setEtat] = useState(() => etatDepuisRecord(record))
   const [ficheId, setFicheId] = useState(record?.id ?? null)
   const [releves, setReleves] = useState(record?.iv_readings ?? [])
+  const [reserves, setReserves] = useState(reservesInit ?? record?.reserves ?? [])
   const [iv, setIv] = useState(IV_VIDE)
   const [busy, setBusy] = useState(false)
   const [ivBusy, setIvBusy] = useState(false)
   const [erreur, setErreur] = useState(null)
+  const [erreurs, setErreurs] = useState({})
+  // Le résultat est AFFICHÉ (calculé par le serveur), jamais saisi.
+  const [resultat, setResultat] = useState(record?.resultat ?? 'en_cours')
+  const resultatLibelle = RESULTAT_LIBELLES[resultat] ?? resultat
+  const energie = record?.energie
 
   const champ = (cle) => (valeur) => setEtat((p) => ({ ...p, [cle]: valeur }))
+  const erreurSous = (cle) => (erreurs[cle]
+    ? <p className="form-error" role="alert">{erreurs[cle]}</p> : null)
+
+  const reservesPossible = tousEssaisVrais(etat) && reserveRecetteOuverte(reserves)
 
   const enregistrer = async () => {
     setBusy(true)
     setErreur(null)
+    setErreurs({})
     try {
       let id = ficheId
       // La fiche n'est créée qu'ICI (première sauvegarde), jamais à
@@ -151,11 +424,18 @@ function RecetteDialog({ installationId, record, onClose, onSaved }) {
         id = cree.data?.id
         setFicheId(id)
       }
-      const r = await installationsApi.updateRecette(id, payloadDepuisEtat(etat))
+      const r = await installationsApi.updateRecette(
+        id, payloadDepuisEtat(etat, record, { industriel, mt }))
+      if (r.data?.resultat) setResultat(r.data.resultat)
       onSaved?.(r.data)
     } catch (err) {
-      setErreur(err?.response?.data?.detail
-        || "L'enregistrement de la fiche a échoué — vérifiez les valeurs saisies.")
+      const parChamp = erreursParChamp(err?.response?.data)
+      if (parChamp) {
+        setErreurs(parChamp)
+      } else {
+        setErreur(err?.response?.data?.detail
+          || "L'enregistrement de la fiche a échoué — vérifiez les valeurs saisies.")
+      }
     } finally {
       setBusy(false)
     }
@@ -188,9 +468,10 @@ function RecetteDialog({ installationId, record, onClose, onSaved }) {
         <DialogHeader>
           <DialogTitle>Fiche de recette (IEC 62446-1)</DialogTitle>
           <DialogDescription>
-            Essais de mise en service. Une fiche « Conforme » ou « Conforme avec
-            réserves » débloque le gate « Mise en service ». Un essai laissé
-            vide reste « non renseigné » — il n’est jamais présumé conforme.
+            Essais de mise en service. Le résultat est calculé par le serveur à
+            partir des essais : « Conforme » ou « Conforme avec réserves »
+            débloque le gate « Mise en service ». Un essai laissé vide reste
+            « non renseigné » — il n’est jamais présumé conforme.
           </DialogDescription>
         </DialogHeader>
 
@@ -202,6 +483,7 @@ function RecetteDialog({ installationId, record, onClose, onSaved }) {
               <Label htmlFor="recette-date">Date d’essai</Label>
               <Input id="recette-date" type="date" value={etat.date_essai}
                      onChange={(e) => champ('date_essai')(e.target.value)} />
+              {erreurSous('date_essai')}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="recette-technicien">Technicien</Label>
@@ -209,14 +491,13 @@ function RecetteDialog({ installationId, record, onClose, onSaved }) {
                      onChange={(e) => champ('technicien')(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="recette-resultat">Résultat</Label>
-              <select id="recette-resultat" className="form-control"
-                      value={etat.resultat}
-                      onChange={(e) => champ('resultat')(e.target.value)}>
-                {RESULTATS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <span className="text-sm font-medium">Résultat (calculé)</span>
+              <span data-testid="recette-resultat" className="text-sm">
+                <Badge tone={['conforme', 'reserves'].includes(resultat) ? 'success'
+                  : resultat === 'non_conforme' ? 'danger' : 'outline'}>
+                  {resultatLibelle}
+                </Badge>
+              </span>
             </div>
           </div>
 
@@ -234,6 +515,7 @@ function RecetteDialog({ installationId, record, onClose, onSaved }) {
                         <option key={o.value} value={o.value}>{o.label}</option>
                       ))}
                     </select>
+                    {erreurSous(cle)}
                   </div>
                 ))}
                 {section.mesures.map(([cle, libelle]) => (
@@ -242,17 +524,124 @@ function RecetteDialog({ installationId, record, onClose, onSaved }) {
                     <Input id={`recette-${cle}`} type="number" step="any"
                            value={etat[cle]}
                            onChange={(e) => champ(cle)(e.target.value)} />
+                    {erreurSous(cle)}
                   </div>
                 ))}
               </div>
             </section>
           ))}
 
+          {industriel && (
+            <>
+              <section className="flex flex-col gap-2" data-testid="recette-ci">
+                <h4 className="text-sm font-semibold">Irradiance, énergie et terre</h4>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {CI_NOMBRES.map(([cle, libelle]) => (
+                    <div key={cle} className="flex flex-col gap-1.5">
+                      <Label htmlFor={`recette-${cle}`}>{libelle}</Label>
+                      <Input id={`recette-${cle}`} type="number" step="any"
+                             value={etat[cle]}
+                             onChange={(e) => champ(cle)(e.target.value)} />
+                      {erreurSous(cle)}
+                    </div>
+                  ))}
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="recette-irradiance_source">Source de l’irradiance</Label>
+                    <select id="recette-irradiance_source" className="form-control"
+                            value={etat.irradiance_source}
+                            onChange={(e) => champ('irradiance_source')(e.target.value)}>
+                      {SOURCES_IRRADIANCE.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {CI_DATES_HEURE.map(([cle, libelle]) => (
+                    <div key={cle} className="flex flex-col gap-1.5">
+                      <Label htmlFor={`recette-${cle}`}>{libelle}</Label>
+                      <Input id={`recette-${cle}`} type="datetime-local" value={etat[cle]}
+                             onChange={(e) => champ(cle)(e.target.value)} />
+                      {erreurSous(cle)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="flex flex-col gap-2">
+                <h4 className="text-sm font-semibold">Thermographie</h4>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="recette-thermographie_faite">Thermographie réalisée</Label>
+                    <select id="recette-thermographie_faite" className="form-control"
+                            value={etat.thermographie_faite}
+                            onChange={(e) => champ('thermographie_faite')(e.target.value)}>
+                      {TRI_ETAT.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5 sm:col-span-2">
+                    <Label htmlFor="recette-thermographie_constats">Constats</Label>
+                    <Textarea id="recette-thermographie_constats" rows={2}
+                              value={etat.thermographie_constats}
+                              onChange={(e) => champ('thermographie_constats')(e.target.value)} />
+                  </div>
+                </div>
+              </section>
+
+              {mt && (
+                <section className="flex flex-col gap-2" data-testid="recette-mt">
+                  <h4 className="text-sm font-semibold">Limitation d’injection et découplage (MT)</h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {CI_MT_ESSAIS.map(([cle, libelle, cleEtat, cleTexte, libelleTexte]) => (
+                      <div key={cle} className="flex flex-col gap-1.5">
+                        <Label htmlFor={`recette-${cleEtat}`}>{libelle}</Label>
+                        <select id={`recette-${cleEtat}`} className="form-control"
+                                value={etat[cleEtat]}
+                                onChange={(e) => champ(cleEtat)(e.target.value)}>
+                          {ETATS_ESSAI.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <Label htmlFor={`recette-${cleTexte}`}>{libelleTexte}</Label>
+                        <Input id={`recette-${cleTexte}`} value={etat[cleTexte]}
+                               onChange={(e) => champ(cleTexte)(e.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <ComparaisonRecette comparaison={comparaison ?? record?.comparaison}
+                                  energie={energie} />
+            </>
+          )}
+
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="recette-observations">Observations</Label>
             <Textarea id="recette-observations" rows={3} value={etat.observations}
                       onChange={(e) => champ('observations')(e.target.value)} />
           </div>
+
+          {/* Le seul choix humain : « conforme avec réserves », quand TOUS les
+              essais sont conformes ET qu'une réserve de recette est ouverte. */}
+          <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={etat.reserves_choisi}
+                     disabled={!reservesPossible && !etat.reserves_choisi}
+                     onChange={(e) => champ('reserves_choisi')(e.target.checked)} />
+              Conforme avec réserves
+            </label>
+            {!reservesPossible && (
+              <p className="m-0 text-xs text-muted-foreground">
+                Possible quand tous les essais sont conformes et qu’une réserve
+                de recette est ouverte (panneau Réserves ci-dessous).
+              </p>
+            )}
+            {erreurSous('resultat')}
+          </div>
+
+          <ReservesPanel installationId={installationId} reserves={reserves}
+                         ficheOuverte={Boolean(ficheId)} onChange={setReserves} />
 
           {/* ── Relevés I-V par string (FG275) ── */}
           <section className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -645,7 +1034,10 @@ export default function ChantierGateTimeline({ installationId, installation, onA
       {recetteOuverte && !agricole && (
         <RecetteDialog
           installationId={installationId}
+          installation={installation}
           record={recetteRecord}
+          comparaison={recette?.comparaison}
+          reserves={recette?.reserves}
           onClose={() => setRecetteOuverte(false)}
           onSaved={(record) => {
             setRecette(record)

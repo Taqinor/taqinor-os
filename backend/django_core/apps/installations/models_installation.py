@@ -271,6 +271,20 @@ class Installation(models.Model):
     date_reception_definitive = models.DateField(
         null=True, blank=True, verbose_name='Réception définitive')
     date_cloture = models.DateField(null=True, blank=True)
+    # CIQ633 — site pro : produit suivi dont les séries n'ont PAS été
+    # relevées, avec son motif ({"<produit_id>": "<motif>"}). Écrit par
+    # l'action ``series-lot`` uniquement (``read_only_fields``).
+    series_non_relevees = models.JSONField(default=dict, blank=True)
+    # CIQ634 — garanties de l'INSTALLATEUR (pose) et d'étanchéité de la
+    # toiture : durées en mois SAISIES par la société, AUCUN défaut (null =
+    # « non renseignée »), avec leur périmètre. Aucune garantie de production
+    # (D-CIQ-12) ; le calcul « sous garantie » du SAV est inchangé.
+    garantie_installation_mois = models.PositiveSmallIntegerField(
+        null=True, blank=True)
+    garantie_installation_perimetre = models.TextField(blank=True, default='')
+    garantie_etancheite_mois = models.PositiveSmallIntegerField(
+        null=True, blank=True)
+    garantie_etancheite_perimetre = models.TextField(blank=True, default='')
     # AUD326 — « Clôturé » est un ÉTAT GELÉ. Le drapeau est posé côté serveur
     # à l'entrée en CLOTURE (jamais lu du corps : `read_only_fields`) ; tant
     # qu'il est vrai, un recul de statut exige un motif ET le rôle Directeur,

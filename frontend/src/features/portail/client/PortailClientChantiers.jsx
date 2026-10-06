@@ -106,6 +106,61 @@ function EssaiMiseEnService({ essai }) {
   )
 }
 
+// CIQ649 — « Mise en service » d'un chantier pro : rendu depuis `recette_ci`
+// (sous-objet `vue_portail` du contrat `recette_ci.json`, servi dans
+// `mes_chantiers_detail.json`). Lecture seule ; jamais l'instrument, le
+// technicien ni un prix ; le PR reste « à titre d'information » (aucun
+// verdict) ; rien quand c'est null.
+function MiseEnServiceCI({ recette }) {
+  if (!recette) return null
+  const reserves = recette.reserves_ouvertes ?? []
+  const date = (d) => (d ? formatDate(d) : '—')
+  return (
+    <section className="flex flex-col gap-1 rounded-lg border border-border p-3"
+             data-testid="mise-en-service-ci">
+      <h3 className="text-sm font-semibold">Mise en service</h3>
+      <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+        <dt className="text-muted-foreground">Date de la recette</dt>
+        <dd>{date(recette.date)}</dd>
+        <dt className="text-muted-foreground">Résultat</dt>
+        <dd>{LABEL_RESULTAT_ESSAI[recette.resultat] ?? recette.resultat ?? '—'}</dd>
+        {recette.pr != null && (
+          <>
+            <dt className="text-muted-foreground">Performance ratio mesuré</dt>
+            <dd>
+              {recette.pr}{' '}
+              <span className="text-muted-foreground">
+                {recette.pr_libelle || 'à titre d’information'}
+              </span>
+            </dd>
+          </>
+        )}
+        <dt className="text-muted-foreground">Réception provisoire</dt>
+        <dd>{date(recette.date_reception_provisoire)}</dd>
+        <dt className="text-muted-foreground">Réception définitive</dt>
+        <dd>{date(recette.date_reception_definitive)}</dd>
+      </dl>
+      {reserves.length > 0 && (
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="text-muted-foreground">Réserves ouvertes</span>
+          <ul className="flex flex-col gap-0.5">
+            {reserves.map((r) => (
+              <li key={`${r.description}-${r.date_echeance}`}>
+                {r.description}
+                {r.date_echeance && (
+                  <span className="text-muted-foreground">
+                    {' '}— à lever avant le {formatDate(r.date_echeance)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Galerie({ photos }) {
   if (photos.length === 0) {
     return (
@@ -326,6 +381,7 @@ export default function PortailClientChantiers() {
           releves,
           jalons: detail.data?.jalons ?? [],
           recette: detail.data?.recette_pompage ?? null,
+          recetteCi: detail.data?.recette_ci ?? null,
           photos: photos.data?.results ?? [],
         },
       })))
@@ -417,6 +473,7 @@ export default function PortailClientChantiers() {
                 <div className="flex flex-col gap-4">
                   <Timeline jalons={suivis[c.id].jalons} />
                   <EssaiMiseEnService essai={suivis[c.id].recette} />
+                  <MiseEnServiceCI recette={suivis[c.id].recetteCi} />
                   <RelevesPompe
                     chantierId={c.id}
                     donnees={suivis[c.id].releves}
