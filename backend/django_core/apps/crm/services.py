@@ -5244,6 +5244,44 @@ def _resoudre_ou_creer_client(lead, _find_existing):
     return client
 
 
+def completer_client_depuis_acceptation(client_id, company, *,
+                                        raison_sociale='', ice=''):
+    """CIQ319 (complément, contrat CIQ8) — l'identité d'entreprise déclarée à
+    l'acceptation en ligne d'un devis C&I remonte au Client, SANS JAMAIS
+    écraser ce qu'il porte déjà.
+
+    * ICE : écrit seulement si le Client n'en a aucun. Un ICE DIFFÉRENT déjà
+      présent reste intact (le cas est signalé par
+      ``ventes.domain.cycle_vie.divergence_ice``) ;
+    * raison sociale : remplace le nom seulement quand il est marqué « à
+      confirmer » (le nom de la personne posé faute de raison sociale,
+      CIQ403) ; le marqueur est alors levé ;
+    * un client qui reçoit une identité légale devient « Entreprise ».
+
+    Borné à la société. Rend la liste des champs écrits (``[]`` = rien)."""
+    raison = str(raison_sociale or '').strip()[:255]
+    ice_net = str(ice or '').strip()[:30]
+    if not client_id or not (raison or ice_net):
+        return []
+    client = Client.objects.filter(pk=client_id, company=company).first()
+    if client is None:
+        return []
+    ecrits = []
+    if ice_net and not _ice_normalise(client.ice):
+        client.ice = ice_net
+        ecrits.append('ice')
+    if raison and client.raison_sociale_a_confirmer:
+        client.nom = raison
+        client.raison_sociale_a_confirmer = False
+        ecrits += ['nom', 'raison_sociale_a_confirmer']
+    if ecrits and client.type_client != Client.TypeClient.ENTREPRISE:
+        client.type_client = Client.TypeClient.ENTREPRISE
+        ecrits.append('type_client')
+    if ecrits:
+        client.save(update_fields=[*ecrits, 'date_modification'])
+    return ecrits
+
+
 # ── QJR590 : l'identité client SUIT le lead tant qu'elle n'a pas divergé ─────
 #: Champs d'identité recopiés du lead vers sa fiche Client (contrat
 #: ``lead_client_ecart.json``) — ordre stable, celui de l'écart servi.
