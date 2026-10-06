@@ -41,6 +41,8 @@ vi.mock('../../api/gedApi', () => ({
     restaurerVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 24, version: 2 } })),
     // XGED24 — caviardage.
     caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
+    // ADOC20 — geste « Modifier ».
+    updateDocument: vi.fn(() => Promise.resolve({ data: { id: 8 } })),
     // ADOC18 — geste « Nouvelle version ».
     nouvelleVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 31, version: 2 } })),
     // ADOC11 — nombre de pages de la version (choix de page 1..N).
@@ -238,6 +240,42 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
       zones: [{ page: 0, x0: 0, y0: 0, x1: 20, y1: 10 }], version: 22,
     }))
+  })
+
+  it('Modifier renomme le document et relit le nom', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture_scan_0012.pdf', description: '', updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    // Enregistrer sans rien toucher : aucun PATCH.
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour facture_scan_0012\.pdf/i }))
+    await userEvent.click(await screen.findByText('Modifier…'))
+    let dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+    expect(gedApi.updateDocument).not.toHaveBeenCalled()
+
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'Facture fournisseur 0012', description: 'Fournisseur X', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour facture_scan_0012\.pdf/i }))
+    await userEvent.click(await screen.findByText('Modifier…'))
+    dialog = await screen.findByRole('dialog')
+    const champNom = within(dialog).getByLabelText('Nom du document')
+    await userEvent.clear(champNom)
+    await userEvent.type(champNom, 'Facture fournisseur 0012')
+    await userEvent.type(within(dialog).getByLabelText('Description du document'), 'Fournisseur X')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(gedApi.updateDocument).toHaveBeenCalledWith(8, {
+      nom: 'Facture fournisseur 0012', description: 'Fournisseur X',
+    }))
+    expect((await screen.findAllByText('Facture fournisseur 0012')).length).toBeGreaterThan(0)
   })
 
   it('Nouvelle version téléverse et rafraîchit la version courante', async () => {

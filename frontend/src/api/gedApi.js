@@ -41,6 +41,11 @@ const gedApi = {
     })
   },
 
+  // ADOC20 — Geste « Modifier » d'un document (nom, description) : PATCH des
+  // seuls champs changés ; les refus (ACL lecture → 403) remontent tels quels.
+  updateDocument: (documentId, data) =>
+    api.patch(`/ged/documents/${documentId}/`, data),
+
   // ADOC18 — Geste « Nouvelle version » : téléverse `file` comme NOUVELLE
   // version du document (stockage, empreinte, gardes côté serveur ; aucune
   // file_key fournie à la main). Renvoie la version créée.

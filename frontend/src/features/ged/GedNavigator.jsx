@@ -351,6 +351,8 @@ export default function GedNavigator() {
   const [cycleVieDoc, setCycleVieDoc] = useState(null)
   // ADOC18 — geste « Nouvelle version » (D-ADOC-2).
   const [nouvelleVersionDoc, setNouvelleVersionDoc] = useState(null)
+  // ADOC20 — geste « Modifier » (nom, description).
+  const [modifierDoc, setModifierDoc] = useState(null)
 
   const hasCabinet = cabinetId != null
 
@@ -665,6 +667,9 @@ export default function GedNavigator() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => setModifierDoc(d)}>
+                                    <Pencil /> Modifier…
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onSelect={() => setNouvelleVersionDoc(d)}>
                                     <FileUp /> Nouvelle version…
                                   </DropdownMenuItem>
@@ -745,6 +750,14 @@ export default function GedNavigator() {
           onDone={() => { setCycleVieDoc(null); reloadDocuments() }}
         />
       )}
+      {/* ADOC20 — modifier nom/description d'un document. */}
+      {modifierDoc && (
+        <ModifierDocumentDialog
+          document={modifierDoc}
+          onClose={() => setModifierDoc(null)}
+          onDone={() => { setModifierDoc(null); reloadDocuments() }}
+        />
+      )}
       {/* ADOC18 — nouvelle version d'un document existant (D-ADOC-2). */}
       {nouvelleVersionDoc && (
         <NouvelleVersionDialog
@@ -754,6 +767,56 @@ export default function GedNavigator() {
         />
       )}
     </div>
+  )
+}
+
+// ── ADOC20 — Dialogue : modifier un document (nom, description) ────────────
+// N'envoie QUE les champs changés ; enregistrer sans rien toucher ne fait
+// aucun appel. La liste est relue après succès (relecture à la réouverture).
+function ModifierDocumentDialog({ document: doc, onClose, onDone }) {
+  const [nom, setNom] = useState(doc.nom || '')
+  const [description, setDescription] = useState(doc.description || '')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    const changes = {}
+    if (nom.trim() && nom.trim() !== (doc.nom || '')) changes.nom = nom.trim()
+    if (description.trim() !== (doc.description || '')) changes.description = description.trim()
+    if (!Object.keys(changes).length) { onClose(); return }
+    setBusy(true)
+    try {
+      await gedApi.updateDocument(doc.id, changes)
+      toast.success('Document modifié.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Modification impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Modifier « {doc.nom} »</DialogTitle>
+          <DialogDescription>Nom et description du document.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-3">
+          <Input aria-label="Nom du document" value={nom}
+            onChange={(e) => setNom(e.target.value)} />
+          <Textarea aria-label="Description du document" rows={3} value={description}
+            onChange={(e) => setDescription(e.target.value)} />
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy || !nom.trim()}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
