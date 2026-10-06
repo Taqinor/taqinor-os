@@ -503,6 +503,10 @@ class InstallationSerializer(serializers.ModelSerializer):
             # re-signature et journalisée) : un PATCH générique ne peut plus
             # l'écraser ni la vider.
             'signature_client', 'signataire_nom', 'signe_le',
+            # CIQ631 — signataire nommé et co-signature : action
+            # `signer-client` uniquement.
+            'signataire_fonction', 'signataire_societe', 'cosignataire_nom',
+            'cosignataire_fonction', 'cosignataire_organisme',
             # AUD326 — le verrou de clôture est posé/levé côté serveur (à
             # l'entrée en CLOTURE, et à une réouverture Directeur motivée) :
             # jamais lu du corps, sinon la garde se désarme d'un PATCH.

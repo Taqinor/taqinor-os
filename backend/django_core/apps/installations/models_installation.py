@@ -306,6 +306,19 @@ class Installation(models.Model):
     signature_client = models.TextField(blank=True, null=True)
     signataire_nom = models.CharField(max_length=120, blank=True, null=True)
     signe_le = models.DateTimeField(null=True, blank=True)
+    # CIQ631 — signataire NOMMÉ du PV (fonction, société — préremplie depuis
+    # la raison sociale du client entreprise, contrat CIQ8) et co-signature
+    # facultative (bureau de contrôle, maître d'œuvre…). Saisis par l'action
+    # `signer-client` ; vides = PV résidentiel octet-identique.
+    signataire_fonction = models.CharField(
+        max_length=120, blank=True, null=True)
+    signataire_societe = models.CharField(
+        max_length=255, blank=True, null=True)
+    cosignataire_nom = models.CharField(max_length=120, blank=True, null=True)
+    cosignataire_fonction = models.CharField(
+        max_length=120, blank=True, null=True)
+    cosignataire_organisme = models.CharField(
+        max_length=255, blank=True, null=True)
 
     class Meta:
         verbose_name = 'Chantier'

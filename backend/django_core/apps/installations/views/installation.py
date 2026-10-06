@@ -746,6 +746,24 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             inst.signataire_nom = nom
         inst.signe_le = timezone.now()
         fields = ['signature_client', 'signataire_nom', 'signe_le']
+        # CIQ631 — signataire nommé (fonction, société) et co-signature
+        # facultative. La société est préremplie depuis la raison sociale du
+        # client entreprise (contrat CIQ8) quand elle n'est pas saisie.
+        for champ, longueur in (
+                ('signataire_fonction', 120), ('signataire_societe', 255),
+                ('cosignataire_nom', 120), ('cosignataire_fonction', 120),
+                ('cosignataire_organisme', 255)):
+            if champ in request.data:
+                valeur = (request.data.get(champ) or '').strip()[:longueur]
+                setattr(inst, champ, valeur or None)
+                fields.append(champ)
+        client = inst.client
+        if (not inst.signataire_societe and client is not None
+                and getattr(client, 'type_client', None) == 'entreprise'
+                and (client.nom or '').strip()):
+            inst.signataire_societe = client.nom.strip()[:255]
+            if 'signataire_societe' not in fields:
+                fields.append('signataire_societe')
         inst.save(update_fields=fields)
         activity.log_changes(old, inst, request.user)
         if old.signe_le and motif:
