@@ -155,3 +155,30 @@ def injection_limitee_devis(company, devis_id):
     taille = etude.get('taille') if isinstance(etude, dict) else None
     return (isinstance(taille, dict)
             and taille.get('raison_arret') == 'plafond_injection')
+
+
+def regime_contrat_dossier(dossier):
+    """CIQ638 — bloc ``regime`` du contrat ``dossier_8221.json`` du régime
+    STOCKÉ d'un dossier : libellé sans seuil, base légale (article), guichet
+    « à confirmer ». La puissance retenue n'est donnée que si le devis la
+    porte (jamais devinée)."""
+    from core.reglementaire.regime_8221 import forme_regime
+    devis = getattr(dossier, 'devis', None)
+    puissance = ((getattr(devis, 'etude_params', None) or {})
+                 .get('puissance_kwc'))
+    return forme_regime(dossier.regime_8221, puissance)
+
+
+def pieces_contrat_dossier(dossier):
+    """CIQ638 — bloc ``pieces`` du contrat : les pièces du décret du régime
+    du dossier (``regulatory_docs.required_documents``), chacune avec son
+    ``etape`` et sa ``source`` ; ``statut`` = celui de la pièce de checklist
+    de même code (``None`` si elle n'a pas été ouverte). Une pièce « à
+    confirmer » le reste dans sa source, jamais présentée comme certaine."""
+    from .regulatory_docs import required_documents
+    statuts = {item.code: item.statut for item in dossier.checklist_items.all()}
+    return [{
+        'code': piece['code'], 'label': piece['label'],
+        'etape': piece['etape'], 'obligatoire': piece['obligatoire'],
+        'source': piece['source'], 'statut': statuts.get(piece['code']),
+    } for piece in required_documents(dossier.regime_8221)]
