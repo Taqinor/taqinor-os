@@ -376,8 +376,16 @@ def cheapest_prix_fournisseur(produit):
 
 
 def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
-    """Upsert du prix d'achat (produit, fournisseur) + date du dernier achat.
-    Appelé à la réception d'un BCF. INTERNE (jamais client-facing)."""
+    """Tarif d'achat (produit, fournisseur) + date du dernier achat.
+    Appelé à la réception d'un BCF. INTERNE (jamais client-facing).
+
+    ASTK90 — le tarif NÉGOCIÉ n'est posé qu'à la CRÉATION (ou s'il est vide) :
+    un prix de réception (palier de quantité, remise ponctuelle, écart de
+    facturation) ne l'écrase JAMAIS — seule ``date_dernier_achat`` avance. Le
+    prix réellement payé reste lu sur la ligne de BCF reçue
+    (``selectors.historique_prix_fournisseur``), ce qui permet à l'alerte
+    d'écart NTP2P18 de sonner sur un flux réel. Le seul geste d'écrasement
+    explicite est l'import xlsx (``ecraser=true``)."""
     from decimal import Decimal
     from .models import PrixFournisseur
     if fournisseur is None or produit is None:
@@ -388,11 +396,14 @@ def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
         defaults={'company': company, 'prix_achat': prix,
                   'date_dernier_achat': date})
     if not created:
-        obj.prix_achat = prix
+        champs = ['date_dernier_achat', 'company']
+        if not obj.prix_achat:  # tarif vide : le prix reçu le renseigne
+            obj.prix_achat = prix
+            champs.append('prix_achat')
         obj.date_dernier_achat = date
         if obj.company_id is None:
             obj.company = company
-        obj.save(update_fields=['prix_achat', 'date_dernier_achat', 'company'])
+        obj.save(update_fields=champs)
     return obj
 
 
