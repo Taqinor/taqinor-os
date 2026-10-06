@@ -256,6 +256,12 @@ class CourseDeuxConnexionsTest(TransactionTestCase):
         self.calepinage = Calepinage.objects.create(
             company=self.company, client=self.client_a, roof_layout=D1)
 
+    @staticmethod
+    def _ecrivain_bloque_sur_le_verrou():
+        with connection.cursor() as curseur:
+            curseur.execute('SELECT count(*) FROM pg_locks WHERE granted = false')
+            return curseur.fetchone()[0] > 0
+
     def test_le_second_ecrivain_voit_le_jeton_perime(self):
         base_d1 = empreinte_document(D1)
         d2 = dict(copy.deepcopy(D1), horizonProfile=HORIZON)
@@ -280,7 +286,15 @@ class CourseDeuxConnexionsTest(TransactionTestCase):
                 roof_layout=d2)
             fil = threading.Thread(target=ecrivain)
             fil.start()
-            time.sleep(1.0)
+            # Attente de CONDITION, jamais un délai arbitraire : le second
+            # écrivain doit être RÉELLEMENT bloqué sur le verrou en base
+            # (``pg_locks.granted = false``) avant de relâcher la transaction.
+            pacage = threading.Event()  # jamais signalé : régulateur de boucle
+            limite = time.monotonic() + 10
+            while not self._ecrivain_bloque_sur_le_verrou():
+                self.assertLess(time.monotonic(), limite,
+                                'le second écrivain ne s’est jamais bloqué')
+                pacage.wait(0.05)
         fil.join(timeout=20)
 
         self.assertEqual(len(issues), 1, issues)
