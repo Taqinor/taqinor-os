@@ -684,3 +684,38 @@ describe('ACAL25 — le plan calculé ne survit pas à une entrée changée', ()
     expect(corps.valeur).toEqual([B])
   })
 })
+
+/* ── ACAL75 — la pente du terrain n'entre pas dans le calcul, et l'écran le dit ── */
+
+describe('ACAL75 — champ pente du terrain grisé avec la mention', () => {
+  it('champ pente du terrain grisé avec la mention', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    const champ = screen.getByTestId('cal-terrain-penteTerrainDeg')
+    expect(champ.closest('label').className).toContain('opacity-60')
+    const mention = document.getElementById(champ.getAttribute('aria-describedby'))
+    expect(mention).toHaveTextContent('non prise en compte par le calcul — terrain supposé plat')
+    // Les autres champs, eux, comptent : ni grisés ni décrits comme ignorés.
+    expect(screen.getByTestId('cal-terrain-tiltDeg').closest('label').className)
+      .not.toContain('opacity-60')
+  })
+
+  it('la valeur reste saisissable et persistée (rendu 3D), mais n’entre jamais dans la demande', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    for (const [cle, valeur] of Object.entries({ ...SAISIE, penteTerrainDeg: '15' })) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+    expect(screen.getByTestId('cal-terrain-penteTerrainDeg').value).toBe('15')
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    expect(pose.mock.calls[0][0].demande.surfaces[0].pente_deg).toBe(0)
+    expect(documentTerrain({ ...SAISIE, penteTerrainDeg: '15' }, REPONSE).terrainSlopeDeg).toBe(15)
+  })
+
+  it('le champ terrain ne force PAS d’allée : vide ⇒ politique du moteur (aucun allee_m)', () => {
+    expect(demandeMoteur({ ...SAISIE, alleeM: '' }).parametres.allee_m).toBeUndefined()
+    expect(demandeMoteur({ ...SAISIE, alleeM: '0' }).parametres.allee_m).toBe(0)
+  })
+})

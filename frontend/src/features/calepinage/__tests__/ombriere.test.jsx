@@ -642,3 +642,33 @@ describe('ACAL25 — une seule fonction de surface de pose (module et allée per
     expect(corps.valeur).toEqual([B])
   })
 })
+
+/* ── ACAL75 — l'ombrière est une couverture continue : allée vide = pose jointive ── */
+
+describe('ACAL75 — allée vide : pose jointive (allee_m 0), politique affichée', () => {
+  it('allée vide → demande moteur allee_m 0 et mention pose jointive', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir({ ...SAISIE, alleeM: '' })
+    expect(screen.getByText(/Pose jointive \(allée 0\) — saisissez une allée pour en imposer une/))
+      .toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    // Le moteur reçoit la couverture continue, pas son allée de circulation (0,60 m).
+    expect(pose.mock.calls[0][0].demande.parametres.allee_m).toBe(0)
+  })
+
+  it('allée saisie → envoyée telle quelle, et la mention pose jointive disparaît', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir({ ...SAISIE, alleeM: '1.2' })
+    expect(screen.queryByText(/Pose jointive/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    expect(pose.mock.calls[0][0].demande.parametres.allee_m).toBe(1.2)
+  })
+
+  it('l’allée vide reste persistée null (le défaut jointif n’est pas une saisie)', () => {
+    expect(documentOmbriere({ ...SAISIE, alleeM: '' }, REPONSE).alleeM).toBeNull()
+  })
+})

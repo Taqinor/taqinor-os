@@ -57,6 +57,10 @@ import { formatNumber } from '../../lib/format'
 /** Axe des rangées DÉRIVÉ par le serveur (ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD). */
 export const AXE_AUTO = 'AUTO'
 
+/** ACAL75 — la mention exacte du champ « Pente du terrain » (jamais reformulée). */
+export const MENTION_PENTE_NON_PRISE_EN_COMPTE
+  = 'non prise en compte par le calcul — terrain supposé plat'
+
 /**
  * ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — un plan du moteur à 0 module n'est pas
  * un « optimum » à afficher en silence : on DIT qu'aucune table ne tient.
@@ -95,7 +99,7 @@ export {
  * CAL89 — la DEMANDE envoyée au moteur (contrat `pose.json`, clé `demande`).
  * Aucune clé inventée : chaque nom est celui du document d'entrée du moteur.
  */
-export function demandeMoteur(saisie) {
+export function demandeMoteur(saisie, { alleeParDefautM = null } = {}) {
   const contour = contourTerrain(saisie.largeurM, saisie.profondeurM)
   if (!contour) return null
   const azimut = nombre(saisie.rowAzimuthDeg)
@@ -120,7 +124,10 @@ export function demandeMoteur(saisie) {
   }
   // L'allée n'est envoyée QUE si elle est imposée : sinon le moteur applique
   // sa propre politique — on ne lui souffle jamais une valeur inventée ici.
+  // ACAL75 — SEULE exception, déclarée par l'appelant : l'ombrière est une
+  // couverture CONTINUE (`alleeParDefautM: 0`, pose jointive) ; l'écran le DIT.
   if (allee !== null) parametres.allee_m = allee
+  else if (alleeParDefautM !== null) parametres.allee_m = alleeParDefautM
 
   return {
     schema_version: 1,
@@ -512,16 +519,28 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           {CHAMPS.map(([cle, label]) => (
-            <label key={cle} className="block text-sm text-lune-soft">
+            // ACAL75 — la pente du terrain n'entre PAS dans le calcul (la demande
+            // part avec `pente_deg: 0`) : le champ est grisé et le dit ; la valeur
+            // reste persistée pour le rendu 3D.
+            <label
+              key={cle}
+              className={`block text-sm text-lune-soft${cle === 'penteTerrainDeg' ? ' opacity-60' : ''}`}
+            >
               <span className="tech-label text-lune-faint">{label}</span>
               <input
                 type="number"
                 step="any"
                 value={saisie[cle]}
                 data-testid={`cal-terrain-${cle}`}
+                aria-describedby={cle === 'penteTerrainDeg' ? 'cal-terrain-pente-mention' : undefined}
                 onChange={(e) => majChamp(cle, e.target.value)}
                 className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
               />
+              {cle === 'penteTerrainDeg' && (
+                <span id="cal-terrain-pente-mention" className="mt-1 block text-xs text-lune-faint">
+                  {MENTION_PENTE_NON_PRISE_EN_COMPTE}
+                </span>
+              )}
             </label>
           ))}
         </div>

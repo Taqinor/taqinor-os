@@ -269,7 +269,12 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
   const calculer = () => {
     // Le SENS D'ÉCOULEMENT est l'azimut d'empilement : une seule grandeur,
     // saisie une seule fois, passée telle quelle à la demande de CAL89.
-    const demande = demandeMoteur({ ...saisie, rowAzimuthDeg: saisie.flowAzimuthDeg })
+    // ACAL75 — une ombrière est une couverture CONTINUE : sans allée saisie, la pose
+    // est jointive (`allee_m: 0`), pas l'allée de circulation du moteur (0,60 m).
+    const demande = demandeMoteur(
+      { ...saisie, rowAzimuthDeg: saisie.flowAzimuthDeg },
+      { alleeParDefautM: 0 },
+    )
     if (!demande) {
       setMessage('Emprise et module incomplets : rien n’est envoyé au moteur, '
         + 'et surtout aucune valeur par défaut inventée.')
@@ -415,6 +420,11 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             </label>
           ))}
         </div>
+        {nombre(saisie.alleeM) === null && (
+          <p className="mt-2 text-xs text-lune-faint">
+            Pose jointive (allée 0) — saisissez une allée pour en imposer une.
+          </p>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
