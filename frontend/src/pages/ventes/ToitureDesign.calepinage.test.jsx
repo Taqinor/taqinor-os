@@ -618,3 +618,49 @@ describe('ToitureDesign — dérive du GPS du lead (ACAL192)', () => {
     expect(calepinageApi.calepinages.recentrerSurLead).not.toHaveBeenCalled()
   })
 })
+
+/* ACAL195 — une cible ESTIMÉE (source 'lead' | 'factures', ACAL194) n'est PAS une
+   cible vendue : elle part comme point de départ modifiable. Contextes du contrat
+   committé (`exemple_cible_lead`, `exemple_cible_refus`, `exemple`). */
+describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
+  it('une cible source factures ne pose pas cibleVendue et passe panneaux', async () => {
+    const ctx = exempleContrat('calepinage', 'calepinage_design_context',
+      'exemple_cible_lead')
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    rendreCalepinage(ctx.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const payload = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(ctx.cible.source).toBe('factures')
+    expect(payload.cibleVendue).toBe(false)
+    expect(payload.cible.panneaux).toBe(ctx.cible.panneaux)
+    expect(payload.cible.panel_watt).toBe(ctx.cible.panel_watt)
+    expect(await screen.findByTestId('acal-cible-estimee')).toHaveTextContent(
+      `Cible estimée depuis les factures du lead : ${ctx.cible.panneaux} panneaux (non vendue)`)
+  })
+
+  it('une cible source devis garde cibleVendue true', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(CTX.cible.source).toBe('devis')
+    expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.cibleVendue).toBe(true)
+    expect(screen.queryByTestId('acal-cible-estimee')).toBeNull()
+  })
+
+  it('cible.refus est affiché tel quel, rien n’est imposé', async () => {
+    const ctx = exempleContrat('calepinage', 'calepinage_design_context',
+      'exemple_cible_refus')
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    rendreCalepinage(ctx.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const payload = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(payload.cibleVendue).toBe(false)
+    expect(payload.cible.panneaux).toBeNull()
+    expect(await screen.findByTestId('acal-cible-estimee'))
+      .toHaveTextContent(ctx.cible.refus)
+  })
+})

@@ -108,10 +108,12 @@ export function contexteToDevisPayload(contexte) {
 // builder.
 //
 // LA CIBLE N'EST JAMAIS INVENTÉE (décision du contrat, verbatim) : `cible` vaut
-// `null` quand le calepinage n'a ni devis lié ni facture exploitable — les
-// trois champs restent alors nuls, et l'optimiseur travaille librement comme il
-// le fait pour un lead sans facture. Fabriquer ici une puissance « par défaut »
-// ferait dessiner un toit qui ne correspond à aucun devis.
+// `null` quand le calepinage n'a ni devis lié ni lead — les trois champs restent
+// alors nuls, et l'optimiseur travaille librement comme il le fait pour un lead
+// sans facture. ACAL195 — une cible ESTIMÉE (`source` 'lead' ou 'factures' : la
+// taille que le devis automatique donnerait au lead, ACAL194) est transmise comme
+// POINT DE DÉPART modifiable, jamais comme une vente ; un refus du moteur
+// (`cible.refus`, panneaux nuls) n'impose rien.
 //
 // `id: null` — un calepinage N'EST PAS un devis, et rien ici ne prétend le
 // contraire. L'hydratation passe par le MÊME emplacement `hydrate.devis` parce
@@ -145,12 +147,28 @@ export function contexteCalepinageVersPayload(contexte) {
     // DEV-202608-0016) ; un calepinage sans devis lié, lui, n'a AUCUNE vente
     // derrière lui — le même silence n'y veut pas dire la même chose. Sans ce
     // drapeau, l'atelier ouvert sur un calepinage restait figé : zéro panneau
-    // posé, aucune recommandation, aucune production demandée. `true` dès qu'un
-    // devis (ou une facture, CAL147) fournit la cible : on retrouve alors
-    // EXACTEMENT le comportement du mode devis.
-    cibleVendue: contexte.cible != null,
+    // posé, aucune recommandation, aucune production demandée. ACAL195 — `true`
+    // SEULEMENT quand la cible vient d'un DEVIS (`source: 'devis'`) : on retrouve
+    // alors EXACTEMENT le comportement du mode devis. Une cible estimée depuis le
+    // lead (taille souhaitée ou factures) n'est PAS vendue : ses panneaux
+    // plafonnent le remplissage proposé, et le nombre choisi puis enregistré
+    // (`neededPanels` du pan) prime à la réouverture.
+    cibleVendue: contexte.cible?.source === 'devis',
     fullName: titre || undefined,
   }
+}
+
+// ACAL195 — le libellé d'une cible ESTIMÉE (source 'lead' | 'factures'), ou le refus
+// NOMMÉ du moteur tel que le serveur l'a écrit ; `null` pour une cible vendue (devis)
+// ou absente. Jamais imprimé ailleurs que dans l'atelier (aucune sortie client).
+export function libelleCibleEstimee(cible) {
+  if (!cible || cible.source === 'devis') return null
+  if (typeof cible.refus === 'string' && cible.refus) return cible.refus
+  const n = Number(cible.panneaux)
+  if (!Number.isFinite(n) || n <= 0) return null
+  const origine = cible.source === 'lead'
+    ? 'la taille souhaitée du lead' : 'les factures du lead'
+  return `Cible estimée depuis ${origine} : ${n} panneaux (non vendue)`
 }
 
 // ACAL192 (D-ACAL-13) — la phrase FRANÇAISE d'un refus serveur des gestes de repère

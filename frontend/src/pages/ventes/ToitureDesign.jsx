@@ -73,7 +73,7 @@ import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 import {
   dataUrlToBlob, pinDepuisLead, cibleActiveDuContexte, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
-  messageRefusRepere, libelleEcartRepere,
+  messageRefusRepere, libelleEcartRepere, libelleCibleEstimee,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
@@ -910,6 +910,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // posée à la main (ou sa provenance est inconnue) : le serveur dit « a_decider », la
   // bannière OFFRE les deux gestes. « automatique » est traité au boot (recentrage d'office),
   // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
+  // ACAL195 — cible ESTIMÉE (lead/factures) ou refus nommé du moteur, affichés tels quels.
+  const cibleEstimee = estCalepinage ? libelleCibleEstimee(contexte?.cible) : null
   const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null
   const ecartRepere = libelleEcartRepere(contexte?.geometrie?.ecart_m)
   const gesteRepere = async (geste) => {
@@ -1248,6 +1250,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
         {estCalepinage && repereErreur && (
           <p className="mt-3 text-sm text-alert-300" role="alert" data-testid="acal-derive-erreur">
             {repereErreur}
+          </p>
+        )}
+
+        {cibleEstimee && (
+          <p className="mt-3 text-xs text-lune-soft" role="status" data-testid="acal-cible-estimee">
+            {cibleEstimee}
           </p>
         )}
 
