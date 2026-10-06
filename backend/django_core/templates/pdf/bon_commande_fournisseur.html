@@ -146,8 +146,8 @@
         <td>{{ ref_produit_fournisseur.get(ligne.id, '') or '—' }}</td>
         <td>{{ ligne.produit.nom }}{% if ligne.produit.description %}<br /><span style="font-size:10px;color:#777">{{ ligne.produit.description }}</span>{% endif %}</td>
         <td class="text-right">{{ ligne.quantite }}</td>
-        <td class="text-right">{{ "%.2f"|format(ligne.prix_achat_unitaire) }} MAD</td>
-        <td class="text-right"><strong>{{ "%.2f"|format(ligne.total_achat) }} MAD</strong></td>
+        <td class="text-right">{{ "%.2f"|format(montants_ligne[ligne.id].pu) }} {{ devise_doc }}</td>
+        <td class="text-right"><strong>{{ "%.2f"|format(montants_ligne[ligne.id].total) }} {{ devise_doc }}</strong></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -166,20 +166,25 @@
     {% if total_tva_standard is not none %}
     <div class="totaux-row">
       <span>Sous-total HT</span>
-      <span>{{ "%.2f"|format(total_achat) }} MAD</span>
+      <span>{{ "%.2f"|format(total_document) }} {{ devise_doc }}</span>
     </div>
     <div class="totaux-row">
       <span>TVA ({{ "%.0f"|format(taux_tva_standard) }} % — taux standard)</span>
-      <span>{{ "%.2f"|format(total_tva_standard) }} MAD</span>
+      <span>{{ "%.2f"|format(total_tva_standard) }} {{ devise_doc }}</span>
     </div>
     <div class="totaux-row total">
       <span>Total TTC</span>
-      <span>{{ "%.2f"|format(total_ttc_standard) }} MAD</span>
+      <span>{{ "%.2f"|format(total_ttc_standard) }} {{ devise_doc }}</span>
     </div>
     {% else %}
     <div class="totaux-row total">
       <span>Total HT</span>
-      <span>{{ "%.2f"|format(total_achat) }} MAD</span>
+      <span>{{ "%.2f"|format(total_document) }} {{ devise_doc }}</span>
+    </div>
+    {% endif %}
+    {% if en_devise %}
+    <div class="totaux-row">
+      <span>contre-valeur : {{ contre_valeur_mad }} MAD (taux {{ taux_change_affiche }})</span>
     </div>
     {% endif %}
   </div>
