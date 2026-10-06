@@ -173,6 +173,10 @@ class RecettePompageViewSet(CompanyScopedModelViewSet):
         recette = self.get_object()
         if recette.verrouillee:
             raise ValidationError({'verrouillee': MESSAGE_RECETTE_VERROUILLEE})
+        # AGR609 (a) — la promesse du devis est FIGÉE à la première écriture
+        # (une V2 du devis ne réécrit jamais une recette).
+        from ..services import figer_promesse_recette
+        figer_promesse_recette(recette)
         serializer = self.get_serializer(
             recette, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
