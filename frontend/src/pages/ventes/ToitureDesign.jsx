@@ -73,6 +73,7 @@ import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 import {
   dataUrlToBlob, pinDepuisLead, cibleActiveDuContexte, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
+  messageRefusRepere, libelleEcartRepere,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
@@ -170,6 +171,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // page l'a lue. DISTINCT du conflit verrou ci-dessus : rien n'est écrasé et
   // la seule sortie est « Recharger ». Texte = celui du serveur.
   const [documentModifie, setDocumentModifie] = useState(null)
+  // ACAL192 (D-ACAL-13) — refus serveur d'un geste de repère (recentrer / garder), texte
+  // du SERVEUR ; `repereEnCours` désactive les deux boutons pendant l'appel.
+  const [repereErreur, setRepereErreur] = useState(null)
+  const [repereEnCours, setRepereEnCours] = useState(false)
   // ACAL23 — le jeton d'écriture (empreinte « document », contrat
   // `calepinage_layout_section.json`) RENDU par la dernière écriture réussie ;
   // tant qu'aucune n'a eu lieu, c'est celui lu au boot (design-context,
@@ -288,6 +293,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
     setLead,
     setLoadError,
     setSceneHydratee,
+    setRepereErreur,
     setStatus,
     utilisateurCourantId,
   })
@@ -900,6 +906,27 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const raisonLectureSeule = (contexte?.raison_lecture_seule ?? '').trim()
   const avertissements = Array.isArray(contexte?.avertissements)
     ? contexte.avertissements : []
+  // ACAL192 (D-ACAL-13) — le GPS du lead a été corrigé APRÈS le tracé et l'épingle a été
+  // posée à la main (ou sa provenance est inconnue) : le serveur dit « a_decider », la
+  // bannière OFFRE les deux gestes. « automatique » est traité au boot (recentrage d'office),
+  // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
+  const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null
+  const ecartRepere = libelleEcartRepere(contexte?.geometrie?.ecart_m)
+  const gesteRepere = async (geste) => {
+    if (!calepinageId || repereEnCours) return
+    setRepereEnCours(true)
+    setRepereErreur(null)
+    try {
+      await geste(calepinageId)
+    } catch (err) {
+      setRepereErreur(messageRefusRepere(err?.response?.data))
+      setRepereEnCours(false)
+      return
+    }
+    // La conception a changé CÔTÉ SERVEUR (nouvelle version) : l'atelier repart du
+    // document relu — la carte se recentre sur la nouvelle épingle.
+    window.location.reload()
+  }
 
   // Correction fondateur 24/08 — sans AUCUNE position (ni pin posé, ni GPS de
   // fiche), la carte reste au niveau Maroc : comportement inchangé, mais on le
@@ -1184,6 +1211,44 @@ export default function ToitureDesign({ mode = 'lead' }) {
               </button>
             )}
           </div>
+        )}
+
+        {/* ACAL192 (D-ACAL-13) — GPS du lead corrigé après le tracé : décider. */}
+        {deriveRepere === 'a_decider' && (
+          <div className="cine-card mt-6 border border-brass-400/40 p-5" data-testid="acal-derive-repere">
+            <p className="text-sm text-brass-300" role="status">
+              {`Le GPS du lead a été corrigé${ecartRepere ? ` (${ecartRepere})` : ''}.`}
+            </p>
+            <p className="mt-1 text-xs text-lune-soft">
+              Recentrer déplace toute la conception sur le nouveau repère (une version est créée) ;
+              garder conserve l’emplacement dessiné.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => gesteRepere(calepinageApi.calepinages.recentrerSurLead)}
+                disabled={repereEnCours || lectureSeule}
+                data-testid="acal-derive-recentrer"
+                className="inline-flex items-center border border-brass-400 px-4 py-2 text-sm font-semibold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Recentrer sur le GPS du lead
+              </button>
+              <button
+                type="button"
+                onClick={() => gesteRepere(calepinageApi.calepinages.garderRepere)}
+                disabled={repereEnCours || lectureSeule}
+                data-testid="acal-derive-garder"
+                className="inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-lune-soft disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Garder ce repère
+              </button>
+            </div>
+          </div>
+        )}
+        {estCalepinage && repereErreur && (
+          <p className="mt-3 text-sm text-alert-300" role="alert" data-testid="acal-derive-erreur">
+            {repereErreur}
+          </p>
         )}
 
         {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…). */}

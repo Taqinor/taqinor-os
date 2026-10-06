@@ -8,7 +8,7 @@ import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
   pinDepuisLead, leadToBuilderPayload, contexteToDevisPayload,
   contexteCalepinageVersPayload, bankableFromDevis, reglagesAtelierDuContexte,
-  stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan,
+  stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan, messageRefusRepere,
 } from './contexteAtelier.js'
 
 // SPL214 — effet de boot de l'atelier (chargement lead/devis/calepinage puis
@@ -44,6 +44,8 @@ export function useAtelierBoot(ctx) {
   // modes. `onApiReady` arrive AVANT l'hydratation (roof-tool-pro11) : une référence
   // prise là compterait l'hydratation elle-même comme une modification.
   const { setSceneHydratee } = ctx
+  // ACAL192 — refus serveur du recentrage automatique (calepinage verrouillé…), en français.
+  const { setRepereErreur } = ctx
   useEffect(() => {
     let cancelled = false
     // Sans identifiant, l'état initial affiche déjà l'erreur — rien à booter.
@@ -397,6 +399,21 @@ export function useAtelierBoot(ctx) {
         return
       }
       if (cancelled) return
+      // ACAL192 (D-ACAL-13, D-QJR5-15) — l'épingle SUIT le lead (`derive.etat ===
+      // 'automatique'`) et le GPS du lead a été corrigé : le SERVEUR recentre UNE fois
+      // (translation versionnée), puis le contexte est relu AVANT de booter le
+      // constructeur — la carte s'ouvre sur la géométrie corrigée. Aucune translation
+      // décidée ici ; un refus (verrou…) est DIT et l'atelier boote sur l'existant.
+      if (ctx?.geometrie?.derive?.etat === 'automatique' && ctx?.modifiable) {
+        try {
+          await calepinageApi.calepinages.recentrerSurLead(calepinageId)
+          const relu = await calepinageApi.calepinages.designContext(calepinageId)
+          if (relu?.data) ctx = relu.data
+        } catch (err) {
+          setRepereErreur?.(messageRefusRepere(err?.response?.data))
+        }
+        if (cancelled) return
+      }
       setContexte(ctx)
 
       const carte = ctx?.carte ?? {}

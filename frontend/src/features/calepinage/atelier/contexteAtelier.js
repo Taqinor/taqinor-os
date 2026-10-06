@@ -153,6 +153,30 @@ export function contexteCalepinageVersPayload(contexte) {
   }
 }
 
+// ACAL192 (D-ACAL-13) — la phrase FRANÇAISE d'un refus serveur des gestes de repère
+// (recentrer-sur-lead / garder-repere) : `detail`, sinon le premier message nommé
+// (`{calepinage: ['…verrouillé…']}`, `{repere_lead: '…'}`), jamais rédigée ici au-delà
+// d'un repli générique quand le serveur n'a rien dit.
+export function messageRefusRepere(data) {
+  if (typeof data?.detail === 'string' && data.detail) return data.detail
+  if (data && typeof data === 'object') {
+    for (const valeur of Object.values(data)) {
+      if (typeof valeur === 'string' && valeur) return valeur
+      if (Array.isArray(valeur) && typeof valeur[0] === 'string') return valeur[0]
+    }
+  }
+  return 'Le repère du calepinage n’a pas pu être mis à jour — réessayez.'
+}
+
+// ACAL192 — « ≈ 780 m » / « ≈ 2,4 km » / « ≈ 219 km » : l'écart SERVI (`geometrie.ecart_m`),
+// arrondi pour la lecture ; `null` quand le serveur ne l'a pas mesuré.
+export function libelleEcartRepere(metres) {
+  if (!Number.isFinite(metres)) return null
+  if (metres < 1000) return `≈ ${Math.round(metres)} m`
+  const km = metres / 1000
+  return km < 10 ? `≈ ${km.toFixed(1).replace('.', ',')} km` : `≈ ${Math.round(km)} km`
+}
+
 // PV75 — projette `Devis.etude_params.simulation.pr` (étude bancable PV69/PV74 :
 // P50/P90, ratio de performance, cascade des pertes) vers le payload `bankable`
 // consommé par la fenêtre de production du builder. Le contexte agrégé

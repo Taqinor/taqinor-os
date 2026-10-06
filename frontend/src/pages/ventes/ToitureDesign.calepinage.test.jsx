@@ -539,3 +539,82 @@ describe('ToitureDesign — le mode devis ne bouge pas (garde CAL37)', () => {
     expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
   })
 })
+
+/* ACAL192 (D-ACAL-13) — GPS du lead corrigé après le tracé. Les contextes viennent du
+   contrat committé (`exemple_derive_a_decider`) ; « automatique » est la MÊME charge dont
+   seul `derive.etat` change (l'état D-QJR5-15 d'une épingle qui suit le lead). */
+describe('ToitureDesign — dérive du GPS du lead (ACAL192)', () => {
+  const CTX_DERIVE = exempleContrat('calepinage', 'calepinage_design_context',
+    'exemple_derive_a_decider')
+  const ctxAutomatique = () => {
+    const ctx = structuredClone(CTX_DERIVE)
+    ctx.geometrie.derive.etat = 'automatique'
+    return ctx
+  }
+
+  it('affiche la bannière de dérive et appelle recentrer', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: CTX_DERIVE })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    const banniere = await screen.findByTestId('acal-derive-repere')
+    expect(banniere).toHaveTextContent('Le GPS du lead a été corrigé (≈ 780 m).')
+    // « a_decider » : rien n'est recentré d'office.
+    expect(calepinageApi.calepinages.recentrerSurLead).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByTestId('acal-derive-recentrer'))
+    await waitFor(() => expect(calepinageApi.calepinages.recentrerSurLead)
+      .toHaveBeenCalledWith(String(CTX_DERIVE.calepinage.id)))
+    expect(calepinageApi.calepinages.garderRepere).not.toHaveBeenCalled()
+  })
+
+  it('« Garder ce repère » appelle garder-repere, jamais recentrer', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: CTX_DERIVE })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    await userEvent.click(await screen.findByTestId('acal-derive-garder'))
+    await waitFor(() => expect(calepinageApi.calepinages.garderRepere)
+      .toHaveBeenCalledWith(String(CTX_DERIVE.calepinage.id)))
+    expect(calepinageApi.calepinages.recentrerSurLead).not.toHaveBeenCalled()
+  })
+
+  it('un refus serveur (calepinage verrouillé) s’affiche en français', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: CTX_DERIVE })
+    calepinageApi.calepinages.recentrerSurLead.mockRejectedValue({
+      response: { status: 409, data: { calepinage: ['Calepinage verrouillé : devis envoyé.'] } },
+    })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    await userEvent.click(await screen.findByTestId('acal-derive-recentrer'))
+    expect(await screen.findByTestId('acal-derive-erreur'))
+      .toHaveTextContent('Calepinage verrouillé : devis envoyé.')
+  })
+
+  it('recentre automatiquement quand derive.etat est automatique', async () => {
+    calepinageApi.calepinages.designContext
+      .mockResolvedValueOnce({ data: ctxAutomatique() })
+      .mockResolvedValueOnce(reponseContrat('calepinage', 'calepinage_design_context'))
+    // `clearAllMocks` ne remet pas les implémentations : on repose un succès explicite.
+    calepinageApi.calepinages.recentrerSurLead.mockResolvedValue({ data: {} })
+    rendreCalepinage(CTX_DERIVE.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.recentrerSurLead).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.calepinages.recentrerSurLead)
+      .toHaveBeenCalledWith(String(CTX_DERIVE.calepinage.id))
+    // Le contexte est RELU après le recentrage : le constructeur boote dessus.
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(2)
+    expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.geometrie.roof_point)
+      .toEqual(CTX.geometrie.pin)
+    expect(screen.queryByTestId('acal-derive-repere')).toBeNull()
+  })
+
+  it('« aucune » : ni bannière ni recentrage', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal-derive-repere')).toBeNull()
+    expect(calepinageApi.calepinages.recentrerSurLead).not.toHaveBeenCalled()
+  })
+})

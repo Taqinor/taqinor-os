@@ -287,6 +287,11 @@ const calepinageApi = {
       empreinte ? { headers: { 'If-Match': empreinte } } : undefined),
     // ACAL23 — l'écriture d'UNE section (`{cle, valeur | zone_id + champs, base_empreinte}`).
     enregistrerSectionLayout: (id, corps) => api.post(`${pivot(id)}layout/section/`, corps), // ACAL
+    // ACAL192 (D-ACAL-13, contrat calepinage_design_context.json › geometrie.derive) — le GPS
+    // du lead a été corrigé après le tracé : le SERVEUR translate toute la géométrie (nouvelle
+    // version) ou acquitte la dérive (`repereAcquitte`). Aucune translation côté navigateur.
+    recentrerSurLead: (id) => api.post(`${pivot(id)}recentrer-sur-lead/`, {}), // ACAL
+    garderRepere: (id) => api.post(`${pivot(id)}garder-repere/`, {}), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

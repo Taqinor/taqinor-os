@@ -493,6 +493,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.garderRepere": [
+    {
+      "config": null,
+      "data": {},
+      "url": "/calepinage/calepinages/7/garder-repere/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.genererDevis": [
     {
       "config": null,
@@ -699,6 +707,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/raccordement/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.recentrerSurLead": [
+    {
+      "config": null,
+      "data": {},
+      "url": "/calepinage/calepinages/7/recentrer-sur-lead/",
+      "verbe": "post"
     }
   ],
   "calepinages.releve": [
