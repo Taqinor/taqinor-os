@@ -74,6 +74,10 @@ class ProposerTest(_Base):
         reglages = TariffSettings.get(company=self.company)
         reglages.residential_tiers = [{'max_kwh': None,
                                        'prix_kwh_ttc': '2.00'}]
+        # Un barème RÉGLÉ déclare aussi ses charges fixes d'abonnement :
+        # sans elles, ``kwh_depuis_facture`` refuse de convertir (kwh None,
+        # motif nommé — CALX257) plutôt que de compter le compteur en kWh.
+        reglages.redevance_compteur_mad_mois = Decimal('39.94')
         reglages.save()
 
         reponse = self._proposer({'source': 'lead'})
