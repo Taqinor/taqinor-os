@@ -167,70 +167,65 @@ def _entier(valeur):
     return int(nombre)
 
 
-def _modules_du_pan(pan):
-    """Le compte POSÉ prime sur le compte souhaité (schéma v2, CAL232).
-
-    ``geometry.panels`` est la vérité la plus fine (les cellules RÉELLEMENT
-    occupées, PV27) ; ``geometry.count`` vient ensuite, puis le ``result`` de
-    zone, et seulement à défaut le compte SOUHAITÉ ``neededPanels``.
-    """
-    geometrie = pan.get('geometry') if isinstance(pan, dict) else None
-    if isinstance(geometrie, dict):
-        panneaux = geometrie.get('panels')
-        if isinstance(panneaux, (list, tuple)) and panneaux:
-            return len(panneaux)
-        compte = _entier(geometrie.get('count'))
-        if compte is not None:
-            return compte
-    resultat = pan.get('result') if isinstance(pan, dict) else None
-    if isinstance(resultat, dict):
-        compte = _entier(resultat.get('count'))
-        if compte is not None:
-            return compte
-    return _entier(pan.get('neededPanels')) or 0
+#: ACAL61 — la provenance de l'orientation d'un pan de toit, lue sur
+#: ``ventes.orientation_du_pan`` (``pose`` = géométrie des modules posés,
+#: ``toit`` = champs saisis du pan) et republiée sous le vocabulaire
+#: historique de ``PanPose.source_orientation``.
+SOURCES_ORIENTATION = {'pose': 'geometrie', 'toit': 'saisie'}
 
 
-def _orientation_du_pan(pan):
-    """``(azimut, inclinaison, source)`` — jamais une orientation devinée."""
-    geometrie = pan.get('geometry') if isinstance(pan, dict) else None
-    if isinstance(geometrie, dict):
-        azimut = _nombre(geometrie.get('azimuthDeg'))
-        pente = _nombre(geometrie.get('tiltDeg'))
-        if azimut is not None or pente is not None:
-            return (azimut, pente, 'geometrie')
-    azimut = _nombre(pan.get('facingAzimuthDeg'))
-    pente = _nombre(pan.get('pitchDeg'))
-    if azimut is not None or pente is not None:
-        return (azimut, pente, 'saisie')
-    return (None, None, None)
+def _source_orientation(pan, zones_par_cle):
+    """``'geometrie'`` | ``'saisie'`` | ``None`` — d'où vient l'orientation."""
+    if pan.get('azimut_deg') is None and pan.get('inclinaison_deg') is None:
+        return None
+    if pan.get('kind') != 'toit':
+        # Une surface de pose (champ au sol, ombrière) porte l'inclinaison et
+        # l'azimut de ses rangées : c'est une géométrie de pose.
+        return 'geometrie'
+    from apps.ventes.services import orientation_du_pan
+
+    zone = zones_par_cle.get(pan.get('cle'))
+    if zone is None:
+        return None
+    return SOURCES_ORIENTATION.get(
+        orientation_du_pan(zone).get('source_orientation'))
 
 
 def pans_poses(layout):
     """Les pans du document qui portent au moins un module POSÉ.
 
-    Un pan par ``zone`` du document : deux zones ne sont JAMAIS fusionnées,
-    même orientées pareil — le document dessine deux surfaces, le chaînage en
-    respecte le découpage (fusionner ferait une chaîne qui saute d'un pan à
-    l'autre sans que personne ne l'ait demandé).
+    ACAL61 — adaptateur MINCE de ``apps.ventes.services.pans_du_document``
+    (LA primitive, D-ACAL-5) : pans de toit ET surfaces de pose (champ au
+    sol, ombrière — un pan à part entière, ``engine.modules``), même
+    préséance de compte (``geometry.panels`` > ``geometry.count`` >
+    ``result.count`` ; ``neededPanels`` n'est JAMAIS un compte posé : un pan
+    non pavé vaut 0 et n'est pas chaîné), même orientation
+    (``orientation_du_pan``, azimut de face d'une surface = rangée + 90).
+
+    Un pan par entrée du document : deux pans ne sont JAMAIS fusionnés,
+    même orientés pareil — le chaînage respecte le découpage dessiné.
     """
+    from apps.ventes.services import pans_du_document
+
     if not isinstance(layout, dict):
         return ()
-    zones = layout.get('zones')
-    if not isinstance(zones, (list, tuple)):
-        return ()
+    zones = (layout.get('zones') or layout.get('areas')
+             or layout.get('pans') or [])
+    zones_par_cle = {}
+    for index, zone in enumerate(zones if isinstance(zones, list) else []):
+        if isinstance(zone, dict):
+            zones_par_cle[str(zone.get('id') or 'zone-%d' % (index + 1))] = (
+                zone)
     pans = []
-    for rang, zone in enumerate(zones, start=1):
-        if not isinstance(zone, dict):
+    for pan in pans_du_document(layout):
+        modules = int(pan.get('modules') or 0)
+        if modules <= 0:
             continue
-        modules = _modules_du_pan(zone)
-        if not modules:
-            continue
-        azimut, pente, source = _orientation_du_pan(zone)
-        libelle = (zone.get('label') or zone.get('id')
-                   or 'PAN-%d' % rang)
-        pans.append(PanPose(label=str(libelle), modules=modules,
-                            azimut_deg=azimut, inclinaison_deg=pente,
-                            source_orientation=source))
+        pans.append(PanPose(
+            label=str(pan.get('libelle')), modules=modules,
+            azimut_deg=_nombre(pan.get('azimut_deg')),
+            inclinaison_deg=_nombre(pan.get('inclinaison_deg')),
+            source_orientation=_source_orientation(pan, zones_par_cle)))
     return tuple(pans)
 
 
