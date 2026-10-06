@@ -50,6 +50,7 @@ vi.mock('../../api/ventesApi', () => ({
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
+import parametresApi from '../../api/parametresApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
 
@@ -67,12 +68,12 @@ const LEAD = {
   ville: 'Mohammedia',
 }
 
-function devisRouvert(variante, echeancier) {
+function devisRouvert(variante, echeancier, mode = 'residentiel') {
   const contrat = exempleContrat('ventes', 'devis_modifiabilite', variante)
   return {
     data: {
       ...contrat, echeancier, lead: LEAD.id, client: 9, date_envoi: '2026-09-28T10:00:00Z',
-      mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
+      mode_installation: mode, taux_tva: '20.00', remise_globale: '0',
       etude_params: {
         scenario: 'Sans batterie',
         factures_mensuelles_reelles: estimerMois(3000, 3000),
@@ -135,6 +136,14 @@ beforeEach(() => {
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
 
+const EFFECTIFS = {
+  residentiel: [
+    { jalon: 'acompte', libelle: 'Acompte', pct: 30 },
+    { jalon: 'materiel', libelle: 'Livraison du matériel', pct: 60 },
+    { jalon: 'solde', libelle: 'Solde', pct: 10 },
+  ],
+}
+
 const ECHEANCIER = documentContrat('ventes', 'devis_replace_lines_entete')
   .corps.entete.echeancier
 
@@ -149,7 +158,7 @@ describe('QJR624 — échéancier : helpers', () => {
   })
 
   it('acompte personnalisé : première tranche en MAD, le matériel absorbe l\'écart', () => {
-    const e = echeancierAvecAcompte(null, '20000', 100000, 'residentiel')
+    const e = echeancierAvecAcompte(null, '20000', 100000, 'residentiel', EFFECTIFS)
     expect(e[0]).toMatchObject({ type: 'acompte', unite: 'montant', pct_or_montant: 20000 })
     expect(e[1]).toMatchObject({ type: 'materiel', unite: 'pct', pct_or_montant: 70 })
     expect(e[2]).toMatchObject({ type: 'solde', unite: 'pct', pct_or_montant: 10 })
@@ -172,7 +181,7 @@ describe('AGR220 — date facultative par tranche', () => {
 
   it('mode agricole : la tranche de solde propose « Solde après récolte »', () => {
     expect(saisieParDefaut('agricole')[2].libelle).toBe('Solde après récolte')
-    expect(saisieParDefaut('residentiel')[2].libelle).toBe('Solde')
+    expect(saisieParDefaut('residentiel', EFFECTIFS)[2].libelle).toBe('Solde')
   })
 
   it('date saisie dans la carte ⇒ envoyée dans entete.echeancier', async () => {
@@ -222,6 +231,7 @@ describe('QJR624 — l\'échéancier s\'édite dans l\'Édition complète', () =
   })
 
   it('personnaliser puis enregistrer envoie l\'échéancier par défaut du mode', async () => {
+    parametresApi.getProfile.mockResolvedValue({ data: { payment_terms_effectifs: EFFECTIFS } })
     const rouvert = devisRouvert('exemple_brouillon', [])
     ventesApi.getDevisById.mockResolvedValue(rouvert)
     renderEdition(rouvert.data.id)
@@ -231,5 +241,65 @@ describe('QJR624 — l\'échéancier s\'édite dans l\'Édition complète', () =
     await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
     const [, , { entete }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
     expect(entete.echeancier.map(t => t.pct_or_montant)).toEqual([30, 60, 10])
+  })
+
+  // CIQ225 — le défaut vient de `payment_terms_effectifs`, pas d'une constante JS.
+  it('devis industriel : « Personnaliser » propose les 4 jalons du profil', async () => {
+    parametresApi.getProfile.mockResolvedValue({ data: { payment_terms_effectifs: {
+      ...EFFECTIFS,
+      industriel: [
+        { jalon: 'commande', libelle: 'Commande', pct: 25 },
+        { jalon: 'livraison_materiel', libelle: 'Livraison du matériel', pct: 45 },
+        { jalon: 'mise_en_service', libelle: 'Mise en service', pct: 20 },
+        { jalon: 'reception_definitive', libelle: 'Réception définitive', pct: 10 },
+      ],
+    } } })
+    const rouvert = devisRouvert('exemple_brouillon', [], 'industriel')
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(parametresApi.getProfile).toHaveBeenCalled())
+    await userEvent.click(await screen.findByRole('button', { name: /Personnaliser l'échéancier/ }))
+    const carte = await screen.findByTestId('carte-echeancier')
+    expect([0, 1, 2, 3].map(i => carte.querySelector(`#gen-echeance-${i}`).value))
+      .toEqual(['25', '45', '20', '10'])
+    fireEvent.change(carte.querySelector('#gen-echeance-delai-3'), { target: { value: '30' } })
+    fireEvent.change(carte.querySelector('#gen-echeance-semaines-1'), { target: { value: '6.5' } })
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, , { entete }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(entete.echeancier.map(t => t.jalon)).toEqual(
+      ['commande', 'livraison_materiel', 'mise_en_service', 'reception_definitive'])
+    expect(entete.echeancier[3].delai_reglement_jours).toBe(30)
+    expect(entete.echeancier[1].semaines_indicatives).toBe(6.5)
+    expect(entete.echeancier[0]).not.toHaveProperty('delai_reglement_jours')
+  })
+
+  it('4 jalons enregistrés → rouvrir → enregistrer sans toucher = identique', async () => {
+    const serveur = [
+      { libelle: 'Commande', type: 'commande', jalon: 'commande', unite: 'pct', pct_or_montant: 30 },
+      { libelle: 'Livraison du matériel', type: 'livraison_materiel', jalon: 'livraison_materiel', unite: 'pct', pct_or_montant: 40, semaines_indicatives: 6 },
+      { libelle: 'Mise en service', type: 'mise_en_service', jalon: 'mise_en_service', unite: 'pct', pct_or_montant: 20 },
+      { libelle: 'Réception définitive', type: 'reception_definitive', jalon: 'reception_definitive', unite: 'pct', pct_or_montant: 10, delai_reglement_jours: 30 },
+    ]
+    expect(saisieVersEcheancier(echeancierVersSaisie(serveur))).toEqual(serveur)
+    const rouvert = devisRouvert('exemple_envoye', serveur, 'industriel')
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await screen.findByTestId('carte-echeancier')
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, , { entete }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(entete.echeancier).toEqual(serveur)
+  })
+
+  it('somme ≠ 100 ⇒ message sous la liste', async () => {
+    const rouvert = devisRouvert('exemple_envoye', ECHEANCIER)
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    const carte = await screen.findByTestId('carte-echeancier')
+    fireEvent.change(carte.querySelector('#gen-echeance-0'), { target: { value: '10' } })
+    expect(await screen.findByTestId('echeancier-somme')).toHaveTextContent('100 %')
   })
 })

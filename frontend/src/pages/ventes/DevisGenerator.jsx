@@ -704,6 +704,9 @@ export default function DevisGenerator({
   // touché : un devis qui suit la société n'en reçoit pas un figé en silence.
   const [echeancierSaisie, setEcheancierSaisieBrut] = useState(null)
   const echeancierAEnvoyer = useRef(false)
+  // CIQ225 — jalons EFFECTIFS de la société (`payment_terms_effectifs`) : le défaut
+  // de « Personnaliser l'échéancier » vient d'eux, plus d'une constante JS.
+  const [termesEffectifs, setTermesEffectifs] = useState(null)
   const setEcheancierSaisie = useCallback((valeur) => {
     echeancierAEnvoyer.current = true
     setEcheancierSaisieBrut(valeur)
@@ -2244,6 +2247,7 @@ export default function DevisGenerator({
       // AGR208/AGR212 — repères énergie datés et sourcés (simple indication à
       // côté du champ prix, jamais recopiés dedans).
       setReperesEnergie(data?.reperes_energie_agricole || {})
+      setTermesEffectifs(data?.payment_terms_effectifs || null)
       const heures = parseFloat(data?.agricole_pump_hours)
       if (!editId && Number.isFinite(heures) && heures > 0) {
         setPompeHeures(String(heures))
@@ -5520,7 +5524,7 @@ export default function DevisGenerator({
         {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
         {editDevis && (
           <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
-                           mode={modeInstallation} />
+                           mode={modeInstallation} effectifs={termesEffectifs} />
         )}
 
         {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}

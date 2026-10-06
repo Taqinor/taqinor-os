@@ -7,16 +7,6 @@
 export const UNITE_PCT = 'pct'
 export const UNITE_MONTANT = 'montant'
 
-// Défauts documentés de `utils/echeancier.py` (PAYMENT_TERMS_BY_MODE) — servent
-// seulement de point de départ quand le commercial personnalise un devis qui
-// n'a pas encore d'échéancier propre (le serveur garde sinon celui de la société).
-const DEFAUTS = {
-  residentiel: [30, 60, 10],
-  agricole: [30, 60, 10],
-  industriel: [50, 40, 10],
-  commercial: [50, 40, 10],
-}
-
 const LIBELLES = [
   ['Acompte', 'acompte'],
   ['Livraison du matériel', 'materiel'],
@@ -36,13 +26,38 @@ function arrondi2(n) {
   return Math.round(n * 100) / 100
 }
 
-/** Échéancier par défaut (saisie) pour un mode d'installation. */
-export function saisieParDefaut(mode) {
-  const pcts = DEFAUTS[mode] || DEFAUTS.residentiel
-  return LIBELLES.map(([libelle, type], i) => ({
+// CIQ225 — jalons proposables (mêmes clés que `company_settings.LIBELLES_JALONS`).
+export const JALONS_PROPOSES = [
+  ['commande', 'Commande'],
+  ['livraison_materiel', 'Livraison du matériel'],
+  ['mise_en_service', 'Mise en service'],
+  ['reception_definitive', 'Réception définitive'],
+]
+const JALONS_HISTORIQUES = new Set(LIBELLES.map(([, type]) => type))
+
+/** Une ligne de saisie vierge (tous les champs facultatifs vides). */
+export function trancheVierge(libelle, type, valeur = '') {
+  return {
+    libelle, type, unite: UNITE_PCT, valeur: String(valeur), date_prevue: '',
+    delai_reglement_jours: '', semaines_indicatives: '',
+    ...(type && !JALONS_HISTORIQUES.has(type) ? { jalon: type } : {}),
+  }
+}
+
+/** Échéancier par défaut (saisie) d'un mode : les JALONS et pourcentages
+ *  EFFECTIFS servis par le profil société (`payment_terms_effectifs`,
+ *  `{mode: [{jalon, libelle, pct}]}`) — aucun pourcentage n'est écrit ici.
+ *  Sans profil chargé, les libellés historiques s'affichent à valeur vide. */
+export function saisieParDefaut(mode, effectifs) {
+  const jalons = effectifs?.[mode] || effectifs?.residentiel
+  const lignes = Array.isArray(jalons) && jalons.length
+    ? jalons.map(j => [j.libelle || j.jalon, j.jalon, j.pct])
+    : LIBELLES.map(([libelle, type]) => [libelle, type, ''])
+  return lignes.map(([libelle, type, pct]) => ({
+    ...trancheVierge(libelle, type, pct ?? ''),
     // AGR220 — en agricole, le solde se règle après la récolte (modifiable).
-    libelle: mode === 'agricole' && type === 'solde' ? LIBELLE_SOLDE_AGRICOLE : libelle,
-    type, unite: UNITE_PCT, valeur: String(pcts[i]), date_prevue: '',
+    ...(mode === 'agricole' && type === 'solde'
+      ? { libelle: LIBELLE_SOLDE_AGRICOLE } : {}),
   }))
 }
 
@@ -64,6 +79,11 @@ export function echeancierVersSaisie(echeancier) {
       valeur: String(t?.pct_or_montant ?? ''),
       // AGR220 — date facultative (AAAA-MM-JJ) relue telle que le serveur la sert.
       date_prevue: typeof t?.date_prevue === 'string' ? t.date_prevue : '',
+      // CIQ225 — jalon, délai de règlement et semaines indicatives (facultatifs).
+      delai_reglement_jours: t?.delai_reglement_jours ?? '',
+      semaines_indicatives: t?.semaines_indicatives ?? '',
+      ...(t?.jalon ? { jalon: t.jalon } : {}),
+      ...(t?.payeur ? { payeur: t.payeur } : {}),
     }
   })
 }
@@ -83,6 +103,13 @@ export function saisieVersEcheancier(saisie) {
     // enregistrer sans toucher redonne l'échéancier serveur à l'identique).
     const d = String(t.date_prevue ?? '').trim()
     if (d) tranche.date_prevue = d
+    // CIQ225 — champs facultatifs : clé absente tant qu'ils sont vides.
+    if (t.jalon) tranche.jalon = t.jalon
+    if (t.payeur) tranche.payeur = t.payeur
+    for (const cle of ['delai_reglement_jours', 'semaines_indicatives']) {
+      const brut = String(t[cle] ?? '').trim()
+      if (brut !== '') tranche[cle] = nombre(brut)
+    }
     return tranche
   })
 }
@@ -97,8 +124,8 @@ export function sommePourcentages(saisie) {
  *  première tranche devient `montant` MAD ; sur un échéancier à trois
  *  tranches en %, le matériel absorbe l'écart (le solde garde son %), comme
  *  l'ancien mode « personnalisé » du rendu. */
-export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode) {
-  const base = echeancierVersSaisie(echeancier) || saisieParDefaut(mode)
+export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode, effectifs) {
+  const base = echeancierVersSaisie(echeancier) || saisieParDefaut(mode, effectifs)
   const acompte = Math.max(0, nombre(montant))
   const saisie = base.map(t => ({ ...t }))
   saisie[0] = { ...saisie[0], unite: UNITE_MONTANT, valeur: String(acompte) }
