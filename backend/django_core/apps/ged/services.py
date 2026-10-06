@@ -3007,6 +3007,13 @@ def resolve_signature_publique(token):
     return SIGNATURE_PUBLIQUE_OK, demande
 
 
+def version_a_signer(demande):
+    """ADOC67 — Version du document que le signataire LIT avant de consentir
+    (et que l'aperçu public par jeton sert) : la version en vigueur du
+    document de la demande."""
+    return selectors_latest_version(demande.document)
+
+
 def _hash_version_contenu(version):
     """XGED1 — SHA-256 hex du CONTENU de la version courante (preuve QJ10).
 

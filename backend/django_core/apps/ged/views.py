@@ -4066,6 +4066,7 @@ def _signature_publique_payload(demande):
     positionnés (XGED3) — liste vide pour une demande sans champ (mono-champ
     rétrocompatible XGED1)."""
     document = demande.document
+    version = services.version_a_signer(demande)
     return {
         'document_nom': document.nom,
         'document_id': document.id,
@@ -4073,6 +4074,9 @@ def _signature_publique_payload(demande):
         'statut': demande.statut,
         'expires_at': demande.expires_at,
         'champs': ChampSignatureSerializer(demande.champs.all(), many=True).data,
+        # ADOC67 — aperçu du document PAR LE JETON (lisible sans login).
+        'apercu_url': f'/api/django/ged/signature/{demande.token}/document/',
+        'apercu_mime': getattr(version, 'mime', '') or '',
     }
 
 
@@ -4249,9 +4253,13 @@ def _signataire_publique_payload(signataire):
     que l'écran public sache s'il doit demander un code avant de débloquer la
     signature."""
     demande = signataire.demande
+    version = services.version_a_signer(demande)
     return {
         'document_nom': demande.document.nom,
         'document_id': demande.document_id,
+        # ADOC67 — aperçu du document PAR LE JETON du destinataire.
+        'apercu_url': f'/api/django/ged/signataire/{signataire.token}/document/',
+        'apercu_mime': getattr(version, 'mime', '') or '',
         'nom': signataire.nom,
         'role': signataire.role,
         'ordre': signataire.ordre,
@@ -4383,3 +4391,85 @@ def public_signataire(request, token):
         {'detail': "Action inconnue : 'signer', 'refuser', 'envoyer-code' ou "
                    "'valider-code' attendu."},
         status=status.HTTP_400_BAD_REQUEST)), document=demande.document)
+
+
+# ── ADOC67 — Aperçu du document à signer PAR LE JETON (public, sans login) ──
+
+_SIGNATURE_DOC_INTROUVABLE = "Ce lien de signature est introuvable."
+
+
+def _servir_document_a_signer(request, demande):
+    """ADOC67 — Sert les octets de la version à signer d'une demande déjà
+    RÉSOLUE par son jeton (jamais par un id lu de la requête), avec
+    X-Robots-Tag noindex ; la consultation est tracée au `JournalAcces`."""
+    from .models import ACCES_PUBLIC
+    version = services.version_a_signer(demande)
+    if version is None:
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    data, err = fetch_attachment(version.file_key)
+    if err or data is None:
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    services.journaliser_acces(
+        demande.document, utilisateur=None, type_acces=ACCES_PUBLIC,
+        adresse_ip=_ip_client(request), source_ref='public_signature')
+    mime = version.mime or 'application/octet-stream'
+    safe_name = (version.filename or demande.document.nom or 'document') \
+        .replace('"', '')
+    disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
+    resp = HttpResponse(data, content_type=mime)
+    resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
+    resp['X-Content-Type-Options'] = 'nosniff'
+    return _ged_noindex(resp)
+
+
+def _demande_lisible_par_jeton(demande):
+    """ADOC67 — Une demande annulée ou expirée ne sert plus son document
+    (même 404 que la page) ; en attente ou déjà traitée, elle le sert."""
+    from .models import SIGNATURE_ANNULE
+    return demande is not None and demande.statut != SIGNATURE_ANNULE \
+        and not demande.is_expired
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignatureRateThrottle, PublicSignatureTokenThrottle])
+def public_signature_document(request, token):
+    """ADOC67 — `GET /api/django/ged/signature/<token>/document/` : octets de
+    la version à signer d'une demande mono, servis PAR LE JETON (AllowAny,
+    mêmes throttles et même verrou NTDOC9 que la cérémonie, noindex). Jeton
+    inconnu, expiré ou annulé → 404 avec le message de la page."""
+    if services.signature_publique_verrouillee(token):
+        return _signature_verrouillee_reponse()
+    from .models import DemandeSignatureDocument
+    demande = (DemandeSignatureDocument.objects
+               .select_related('document', 'document__company')
+               .filter(token=token).first())
+    if not _demande_lisible_par_jeton(demande):
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    return _servir_document_a_signer(request, demande)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignataireRateThrottle, PublicSignataireTokenThrottle])
+def public_signataire_document(request, token):
+    """ADOC67 — `GET /api/django/ged/signataire/<token>/document/` : même
+    aperçu, par le jeton PROPRE d'un destinataire du circuit multi."""
+    if services.signature_publique_verrouillee(token):
+        return _signature_verrouillee_reponse()
+    signataire = (SignataireDemande.objects
+                  .select_related('demande', 'demande__document',
+                                  'demande__document__company')
+                  .filter(token=token).first())
+    demande = signataire.demande if signataire is not None else None
+    if not _demande_lisible_par_jeton(demande):
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    return _servir_document_a_signer(request, demande)

@@ -21,7 +21,9 @@ vi.mock('../../api/gedApi', () => ({
     refuserSignataire: vi.fn(),
     envoyerCodeSignataire: vi.fn(),
     validerCodeSignataire: vi.fn(),
-    getVersions: vi.fn(() => Promise.resolve({ data: [] })),
+    // ADOC67 — comportement ANONYME réel : la liste des versions est
+    // authentifiée (401) ; la page ne doit plus s'en servir.
+    getVersions: vi.fn(() => Promise.reject({ response: { status: 401 } })),
     apercuVersionUrl: (id) => `/api/django/ged/versions/${id}/apercu/`,
   },
 }))
@@ -151,5 +153,23 @@ describe('ADOC64 PublicSignaturePage — code exigé dès le chargement', () => 
     await userEvent.click(await screen.findByRole('button', { name: 'Recevoir un code' }))
     expect(await screen.findByRole('button', { name: /Signer le document/i })).toBeInTheDocument()
     expect(screen.queryByLabelText('Code reçu')).not.toBeInTheDocument()
+  })
+})
+
+describe('ADOC67 PublicSignaturePage — aperçu par le jeton', () => {
+  it('rend l’aperçu depuis apercu_url sans appeler /ged/versions/', async () => {
+    gedApi.getSignaturePublique.mockResolvedValue({
+      data: {
+        document_nom: 'NDA.pdf', document_id: 7, signataire_nom: 'Amine',
+        statut: 'en_attente', champs: [],
+        apercu_url: '/api/django/ged/signature/tok-ap/document/',
+        apercu_mime: 'application/pdf',
+      },
+    })
+    renderAt('/ged/signature/tok-ap', <PublicSignaturePage mode="signature" />)
+    const iframe = await screen.findByTitle('Aperçu du document')
+    expect(iframe).toHaveAttribute('src', '/api/django/ged/signature/tok-ap/document/')
+    expect(gedApi.getVersions).not.toHaveBeenCalled()
+    expect(screen.queryByText(/L’aperçu du document n’est pas disponible/)).not.toBeInTheDocument()
   })
 })
