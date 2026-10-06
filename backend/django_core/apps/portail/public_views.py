@@ -118,7 +118,13 @@ def accepter_invitation_portail_public(request):
             {'detail': 'Le token et le mot de passe sont requis.'},
             status=status.HTTP_400_BAD_REQUEST)
 
-    user = services.accepter_invitation_portail(token, mot_de_passe)
+    try:
+        user = services.accepter_invitation_portail(token, mot_de_passe)
+    except services.MotDePasseInvitationRefuse as exc:
+        # ADOC122 — refus NOMMÉ de la politique de mot de passe : rien n'est
+        # créé, l'invitation reste en attente (l'invité réessaie).
+        return Response({'mot_de_passe': exc.messages},
+                        status=status.HTTP_400_BAD_REQUEST)
     if user is None:
         return Response(
             {'detail': 'Invitation introuvable, déjà utilisée, révoquée '

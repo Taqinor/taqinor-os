@@ -671,8 +671,23 @@ def inviter_membre_portail(company, client_id, email, role, base_url=None):
     return invitation
 
 
+class MotDePasseInvitationRefuse(Exception):
+    """ADOC122 — le mot de passe choisi à l'acceptation d'une invitation est
+    refusé par la politique (``validate_new_password``). ``messages`` porte
+    les raisons, rendues telles quelles par la vue publique (400)."""
+
+    def __init__(self, messages):
+        super().__init__('; '.join(messages))
+        self.messages = list(messages)
+
+
 def accepter_invitation_portail(token, mot_de_passe):
     """NTPRT6 — L'invité pose son mot de passe et devient un VRAI compte.
+
+    ADOC122 — le mot de passe passe par ``validate_new_password`` (la même
+    politique que les autres entrées de mot de passe neuf) AVANT toute
+    création : refusé ⇒ ``MotDePasseInvitationRefuse`` levée, aucun compte
+    créé, invitation toujours en attente.
 
     Refuse (renvoie ``None``) un token inconnu, déjà accepté, révoqué, ou
     expiré — une invitation expirée reste visible (trace), mais n'ouvre plus
@@ -700,6 +715,17 @@ def accepter_invitation_portail(token, mot_de_passe):
     ).first()
     if invitation is None or invitation.expiree:
         return None
+
+    # ADOC122 — validation AVANT création, avec la société de l'invitation et
+    # un utilisateur PROVISOIRE (non sauvegardé) pour la règle de similarité.
+    from authentication.password_policy import validate_new_password
+    provisoire = CustomUser(
+        username=invitation.email or f'invite-{invitation.id}',
+        email=invitation.email)
+    erreurs = validate_new_password(
+        mot_de_passe, invitation.company, user=provisoire)
+    if erreurs:
+        raise MotDePasseInvitationRefuse(erreurs)
 
     with transaction.atomic():
         compte = invitation.compte_portail_client
