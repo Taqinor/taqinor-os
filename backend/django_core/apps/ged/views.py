@@ -425,7 +425,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         'update', 'partial_update', 'destroy', 'assigner', 'deplacer',
         'mettre_en_corbeille', 'tagger', 'detagger', 'classer', 'restaurer',
         'cycle_vie', 'check_out', 'check_in', 'office_sauvegarder',
-        'scinder', 'caviarder', 'ocr_piece',
+        'scinder', 'caviarder', 'ocr_piece', 'nouvelle_version',
     })
 
     def check_object_permissions(self, request, obj):
@@ -1158,6 +1158,61 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = DocumentVersionSerializer(
             qs, many=True, context={'request': request}).data
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='nouvelle-version',
+            parser_classes=[MultiPartParser, FormParser])
+    def nouvelle_version(self, request, pk=None):
+        """ADOC18 — Geste « Nouvelle version » (D-ADOC-2) : téléverse un
+        fichier et l'ajoute comme NOUVELLE version de ce document.
+
+        `POST …/documents/<id>/nouvelle-version/` (multipart, champ `file`).
+        Stockage par `records.storage.store_attachment` (10 Mo, octets
+        magiques), empreinte SHA-256 et taille réelles, gardes : ACL écriture
+        (get_object), document-lien 400, archivé 403, quota 403, check-out
+        d'un autre 409 (add_version(user=)). Aucune `file_key` fournie à la
+        main. Écriture : responsable/admin."""
+        document = self.get_object()
+        try:
+            services.assert_not_document_lien(
+                document, action='ajout de version')
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.assert_not_archive_legalement(document)
+        except ArchivageLegalError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'file': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        company = request.user.company
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=getattr(file, 'size', 0))
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        contenu = file.read()
+        file.seek(0)
+        meta, err = store_attachment(file, company=company)
+        if err:
+            return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            version = services.add_version(
+                document, file_key=meta['file_key'], company=company,
+                filename=meta['filename'], size=len(contenu),
+                mime=meta['mime'],
+                checksum=services.compute_checksum(contenu),
+                uploaded_by=request.user, user=request.user)
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        services.update_search_vector(document)
+        return Response(
+            DocumentVersionSerializer(version, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='restaurer')
     def restaurer(self, request, pk=None):

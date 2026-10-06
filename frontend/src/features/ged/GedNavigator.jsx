@@ -349,6 +349,8 @@ export default function GedNavigator() {
 
   // GED17/WIR249 — cycle de vie documentaire (panneau dédié, voir CycleVieDialog).
   const [cycleVieDoc, setCycleVieDoc] = useState(null)
+  // ADOC18 — geste « Nouvelle version » (D-ADOC-2).
+  const [nouvelleVersionDoc, setNouvelleVersionDoc] = useState(null)
 
   const hasCabinet = cabinetId != null
 
@@ -660,6 +662,9 @@ export default function GedNavigator() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => setNouvelleVersionDoc(d)}>
+                                    <FileUp /> Nouvelle version…
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onSelect={() => ocrPieceAction(d)}>
                                     <ScanText /> Extraire l'OCR
                                   </DropdownMenuItem>
@@ -737,7 +742,69 @@ export default function GedNavigator() {
           onDone={() => { setCycleVieDoc(null); reloadDocuments() }}
         />
       )}
+      {/* ADOC18 — nouvelle version d'un document existant (D-ADOC-2). */}
+      {nouvelleVersionDoc && (
+        <NouvelleVersionDialog
+          document={nouvelleVersionDoc}
+          onClose={() => setNouvelleVersionDoc(null)}
+          onDone={() => { setNouvelleVersionDoc(null); reloadDocuments() }}
+        />
+      )}
     </div>
+  )
+}
+
+// ── ADOC18 — Dialogue : nouvelle version d'un document ─────────────────────
+// Le serveur stocke le fichier, calcule empreinte et taille, et applique les
+// gardes (écriture, verrou, archivage, quota) ; l'historique garde v1.
+function NouvelleVersionDialog({ document: doc, onClose, onDone }) {
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!file || busy) return
+    setBusy(true)
+    try {
+      const res = await gedApi.nouvelleVersionDocument(doc.id, file)
+      toast.success(res?.data?.version
+        ? `Version ${res.data.version} déposée.` : 'Nouvelle version déposée.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Nouvelle version impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nouvelle version de « {doc.nom} »</DialogTitle>
+          <DialogDescription>
+            La version actuelle reste dans l&apos;historique ; le fichier déposé
+            devient la version en vigueur.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-3">
+          <FileUpload accept="application/pdf,image/png,image/jpeg,image/webp"
+            maxSize={10 * 1024 * 1024}
+            onFiles={(files) => setFile(files[0] || null)}
+            onReject={(rej) => toast.error(rej[0]?.error || 'Fichier refusé.')} />
+          {file && (
+            <p className="text-sm text-muted-foreground">
+              Fichier sélectionné : <span className="font-medium text-foreground">{file.name}</span>
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!file || busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <FileUp />}
+              Déposer la version
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

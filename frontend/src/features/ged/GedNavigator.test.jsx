@@ -41,6 +41,8 @@ vi.mock('../../api/gedApi', () => ({
     restaurerVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 24, version: 2 } })),
     // XGED24 — caviardage.
     caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
+    // ADOC18 — geste « Nouvelle version ».
+    nouvelleVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 31, version: 2 } })),
     // ADOC11 — nombre de pages de la version (choix de page 1..N).
     getVersionPages: vi.fn(() => Promise.resolve({ data: { pages: 2 } })),
     // XGED10/17 — scission, fusion, comparaison de versions.
@@ -236,6 +238,31 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
       zones: [{ page: 0, x0: 0, y0: 0, x1: 20, y1: 10 }], version: 22,
     }))
+  })
+
+  it('Nouvelle version téléverse et rafraîchit la version courante', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'contrat.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour contrat\.pdf/i }))
+    await userEvent.click(await screen.findByText('Nouvelle version…'))
+    const dialog = await screen.findByRole('dialog')
+    const input = dialog.querySelector('input[type="file"]')
+    const file = new File(['%PDF-1.4'], 'contrat-v2.pdf', { type: 'application/pdf' })
+    await userEvent.upload(input, file)
+    const appelsAvant = gedApi.getDocuments.mock.calls.length
+    await userEvent.click(within(dialog).getByRole('button', { name: /Déposer la version/i }))
+
+    await waitFor(() => expect(gedApi.nouvelleVersionDocument).toHaveBeenCalledWith(8, file))
+    // La liste est relue (version courante rafraîchie).
+    await waitFor(() => expect(gedApi.getDocuments.mock.calls.length).toBeGreaterThan(appelsAvant))
   })
 
   it('Caviarder propose les pages du document', async () => {

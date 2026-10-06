@@ -41,6 +41,17 @@ const gedApi = {
     })
   },
 
+  // ADOC18 — Geste « Nouvelle version » : téléverse `file` comme NOUVELLE
+  // version du document (stockage, empreinte, gardes côté serveur ; aucune
+  // file_key fournie à la main). Renvoie la version créée.
+  nouvelleVersionDocument: (documentId, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post(`/ged/documents/${documentId}/nouvelle-version/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   // XGED12 — Capture mobile photo → PDF multi-pages classé en GED. `photos`
   // : tableau de `File`/`Blob` (déjà recadrées/pivotées côté client via
   // canvas), une par page dans l'ordre de capture. `folder` cible ; `nom`/
