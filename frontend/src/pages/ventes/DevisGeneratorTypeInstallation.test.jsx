@@ -1,6 +1,6 @@
 // QJR641 — le sélecteur « Type d'installation » disparaît : le Marché est la
 // seule source, et le défaut de la part diurne en dérive. Le curseur est
-// masqué en commercial (sans effet : `commercialDayShare`) et en agricole.
+// masqué en commercial et en agricole.
 // Écran RÉEL rendu (jamais une lecture du source).
 // Run : npx vitest run src/pages/ventes/DevisGeneratorTypeInstallation.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'

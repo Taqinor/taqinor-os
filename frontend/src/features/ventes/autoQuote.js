@@ -5,9 +5,8 @@
    CIQ127 — les QUATRE marchés partent au SERVEUR (`POST /ventes/devis/auto/`) :
    résidentiel (moteur horaire, U3), agricole (pompage, AGR124) et
    commercial / industriel (moteur C&I, CIQ120). Cet écran ne dimensionne,
-   ne compose et n'étudie plus rien : plus de balayage C&I
-   (`parametresBalayageCI`, `optimalKwcByPayback`), plus d'étude locale, plus
-   de `createDevisAtomic`. Lit le lead directement (pas d'état React). */
+   ne compose et n'étudie plus rien : plus de balayage C&I par paliers, plus
+   d'étude locale, plus de `createDevisAtomic`. Lit le lead directement (pas d'état React). */
 import ventesApi from '../../api/ventesApi'
 import {
   estimerMois, panneauxPourKwc,

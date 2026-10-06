@@ -1,6 +1,6 @@
 // CIQ126 (remplace QJR575) — un devis commercial rouvert dans l'Édition
 // complète puis enregistré SANS retouche renvoie EXACTEMENT ses entrées : plus
-// aucune part diurne de catégorie (`commercialDayShare`), plus aucune clé de
+// aucune part diurne de catégorie, plus aucune clé de
 // l'étude locale (taux_autoconso, payback, part_diurne_pct). La sentinelle
 // « Non précisée » se persiste `null` et n'est jamais envoyée au moteur.
 // Exécuté : la projection partagée + l'aller-retour du module pur etatDevis.

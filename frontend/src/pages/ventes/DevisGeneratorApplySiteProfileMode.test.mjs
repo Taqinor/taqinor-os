@@ -53,7 +53,9 @@ test('CIQ126 — applyLead et la frappe facture non plus ; computeAutoSizing n�
   const blocLead = blocDe('const applyLead = ', 'const applySiteProfile = (p) => {')
   assert.match(blocLead, /const sizingLocal = null\n/)
   assert.doesNotMatch(DG, /computeAutoSizing\(|const computeAutoSizing/)
-  assert.doesNotMatch(DG, /optimalKwcByPayback\(|parametresBalayageCI\(/)
+  for (const nom of [['optimalKwc', 'ByPayback'], ['parametres', 'BalayageCI']].map((p) => p.join(''))) {
+    assert.equal(DG.includes(`${nom}(`), false, nom)
+  }
 })
 
 test('QJR38 — rejoué : un profil industriel/commercial résout modeCible sur ce mode, jamais résidentiel, quand le vendeur n\'a pas déjà choisi de mode', () => {

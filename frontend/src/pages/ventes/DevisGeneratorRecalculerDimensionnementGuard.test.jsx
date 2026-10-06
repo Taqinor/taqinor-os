@@ -102,7 +102,7 @@ import DevisGenerator from './DevisGenerator'
 // Catalogue solaire complet (même fixture que DevisGeneratorMarquesPinning.
 // test.jsx) : assez de rôles réels (panneau, onduleur, structures, socles,
 // accessoires, tableau, installation, transport) pour que le balayage
-// palier/payback (`computeAutoSizing`/`optimalKwcByPayback`) chiffre de
+// palier/payback (`computeAutoSizing`) chiffre de
 // VRAIS paliers, pas des lignes placeholder à 0 MAD.
 const PRODUITS = [
   { id: 1, nom: 'Onduleur réseau Huawei 10kW Triphasé', prix_vente: 16666.67, tva: 20, is_archived: false },

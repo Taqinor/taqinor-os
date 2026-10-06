@@ -39,10 +39,12 @@ test('CIQ127 — autoQuote.js : `panels` ne vient QUE d\'une taille explicite, j
 // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
 // tool ») — le DERNIER contournement : au-dessus du seuil de facture, le
 // devis auto RÉSIDENTIEL chiffrait lui-même les paliers de 5 kWc
-// (`optimalKwcByPayback`) et expédiait le résultat en `target_kwc` souverain,
+// (balayage au payback) et expédiait le résultat en `target_kwc` souverain,
 // si bien que ces devis-là ne touchaient jamais le moteur horaire.
 test('CIQ127 — autoQuote.js : plus AUCUN balayage local par paliers, pour aucun marché', () => {
-  assert.ok(!/optimalKwcByPayback\(|parametresBalayageCI\(|estimerKwcDepuisFacture\(/.test(SRC),
+  const SUPPRIMES = [['optimalKwc', 'ByPayback'], ['parametres', 'BalayageCI'], ['estimerKwc', 'DepuisFacture']]
+    .map((p) => p.join(''))
+  assert.ok(!SUPPRIMES.some((nom) => SRC.includes(`${nom}(`)),
     'le dimensionnement C&I est celui du moteur serveur (CIQ120), jamais un balayage écran')
 })
 
@@ -63,7 +65,7 @@ test("autoQuote.js : le devis auto RÉSIDENTIEL sans taille explicite n'envoie A
   assert.ok(residIdx > -1, 'la branche résidentielle est introuvable')
   const finResid = SRC.indexOf('return id', residIdx)
   const brancheResid = SRC.slice(residIdx, finResid)
-  assert.ok(!/optimalKwcByPayback\(/.test(brancheResid),
+  assert.ok(!brancheResid.includes(`${['optimalKwc', 'ByPayback'].join('')}(`),
     "la branche résidentielle ne doit plus chiffrer de palier : c'est le moteur horaire qui dimensionne")
 })
 

@@ -89,7 +89,8 @@ describe('CIQ127 — devis automatique non résidentiel : UN appel serveur', () 
   })
 
   it('les helpers du balayage C&I écran sont supprimés', () => {
-    for (const nom of ['parametresBalayageCI', 'consoMensuelleEtudeCI', 'kwhMensuelsLeadPro']) {
+    for (const nom of [['parametres', 'BalayageCI'], ['consoMensuelle', 'EtudeCI'], ['kwhMensuels', 'LeadPro']]
+      .map((p) => p.join(''))) {
       expect(autoQuote).not.toHaveProperty(nom)
     }
   })

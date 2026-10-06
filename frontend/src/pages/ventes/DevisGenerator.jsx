@@ -250,8 +250,6 @@ const villeEffectiveLead = (lead) => (lead?.ville_effective ?? lead?.ville) || '
 // à la réouverture.
 const INST_TYPE_PAR_MODE = {
   residentiel: 'Résidentielle',
-  industriel: 'Industrielle',
-  commercial: 'Commerciale',
   agricole: 'Agricole',
 }
 const partDiurneParDefaut = (mode) =>
@@ -4373,7 +4371,7 @@ export default function DevisGenerator({
             {/* Règle fondateur du 18/08 — justifie la taille retenue par le
                 dimensionnement facture → paliers : palier de 5 kWc, besoin lu
                 sur la facture d'hiver, payback le plus court parmi les
-                paliers testés (`optimalKwcByPayback`, voir `sizingInfo.paliers`). */}
+                paliers testés (`sizingInfo.paliers`). */}
             {sizingInfo?.kwcOptimal > 0 && (() => {
               // PVMRQ — REPLI : une marque épinglée introuvable au stock ampute
               // CHAQUE palier (lignes placeholder à 0 MAD) ; leur payback serait
