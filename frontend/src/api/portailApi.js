@@ -46,6 +46,13 @@ const portailApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   },
+  // ADOC138 — « Mon équipe » (contrat mon_equipe.json) : invitations/membres,
+  // inviter et révoquer réservés à l'administrateur du portail (403 sinon).
+  equipe: {
+    liste: () => api.get('/portail/mon-equipe/'),
+    inviter: (payload) => api.post('/portail/mon-equipe/', payload),
+    revoquer: (id) => api.post(`/portail/mon-equipe/${id}/revoquer/`, {}),
+  },
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),

@@ -32,6 +32,8 @@ const NAV_CLIENT = [
   { to: '/portail/client/documents', label: 'Documents' },
   // ADOC136 — demandes SAV + fil client du ticket lié.
   { to: '/portail/client/sav', label: 'SAV' },
+  // ADOC138 — membres et invitations (inviter/révoquer : admin seulement).
+  { to: '/portail/client/equipe', label: 'Équipe' },
 ]
 
 export default function PortalClientLayout({ children }) {
