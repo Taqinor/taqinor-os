@@ -66,6 +66,14 @@ def make_installation(company, statut=Installation.Statut.EN_COURS):
         statut=statut)
 
 
+def _seuil_societe(company, valeur):
+    """CIQ626 — écart de Pmax toléré SAISI par la société (CIQ622)."""
+    from apps.parametres.models import CompanyProfile
+    profil = CompanyProfile.get(company)
+    profil.recette_ecart_pmax_pct = Decimal(valeur)
+    profil.save()
+
+
 class CommissioningRecordServiceTests(TestCase):
     def setUp(self):
         self.company = make_company()
@@ -94,7 +102,9 @@ class CommissioningRecordServiceTests(TestCase):
         from apps.installations.models import CommissioningIVReading
         inst = make_installation(self.company)
         record = ensure_commissioning_record(inst)
-        # Sous-performance de 10 % → défaut détecté.
+        # CIQ626 — aucune tolérance codée : le seuil est SAISI par la société
+        # (5 % ici, explicitement) ; sous-performance de 10 % → défaut.
+        _seuil_societe(self.company, '5')
         reading = CommissioningIVReading(
             record=record, company=self.company, string_label='S1',
             pmax_mesure_w=Decimal('900'), pmax_attendu_w=Decimal('1000'))
@@ -190,6 +200,7 @@ class CommissioningApiTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['resultat'], 'conforme')
         self.assertTrue(r.data['passe'])
+        _seuil_societe(self.company, '5')  # CIQ626 — seuil saisi
         r2 = self.api.post(
             f'{BASE}/recettes-commissioning/{rec.id}/ajouter-iv/',
             {'string_label': 'S1', 'pmax_mesure_w': '800',

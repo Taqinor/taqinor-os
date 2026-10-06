@@ -2167,9 +2167,9 @@ def appliquer_landed_cost_au_stock(dossier):
 # création est idempotente (un chantier ↔ une fiche). Un relevé I-V calcule
 # son écart de puissance mesuré vs attendu et lève un drapeau de défaut.
 
-# Tolérance d'écart de puissance (%) au-delà de laquelle un string est signalé
-# défectueux (dégradation/point chaud), valeur usuelle de terrain.
-IV_TOLERANCE_PMAX_PCT = 5
+# CIQ626 — plus AUCUNE tolérance codée : le défaut I-V est jugé contre le
+# seuil SAISI par la société (``recette_ecart_pmax_pct``, CIQ622) ; vide =
+# écart affiché, ``defaut_detecte`` null (aucun verdict).
 
 
 def ensure_commissioning_record(installation, user=None):
@@ -2182,21 +2182,113 @@ def ensure_commissioning_record(installation, user=None):
     return record
 
 
-def compute_iv_ecart(reading):
-    """Calcule l'écart relatif de Pmax (mesuré vs attendu) d'un relevé I-V et
-    positionne `defaut_detecte`. No-op silencieux si une valeur manque."""
+def _reglage_recette(company, champ):
+    """CIQ626 — réglage de recette SAISI par la société (CIQ622), ou None."""
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        return getattr(CompanyProfile.get(company), champ, None)
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def seuil_ecart_pmax(company):
+    """CIQ626 — écart de Pmax toléré (%) saisi par la société, ou None."""
+    return _reglage_recette(company, 'recette_ecart_pmax_pct')
+
+
+def compute_iv_ecart(reading, seuil=None):
+    """Calcule l'écart relatif de Pmax (mesuré vs attendu) d'un relevé I-V.
+
+    CIQ626 — ``defaut_detecte`` est jugé contre le seuil de la société
+    (``recette_ecart_pmax_pct``) : écart négatif au-delà du seuil = défaut ;
+    seuil non saisi (ou valeur manquante) → ``None`` (écart affiché, aucun
+    verdict). ``seuil`` explicite = surcharge (tests, appelant qui l'a lu)."""
     from decimal import Decimal
     mesure = reading.pmax_mesure_w
     attendu = reading.pmax_attendu_w
     if mesure is None or attendu in (None, 0):
         reading.ecart_pmax_pct = None
-        reading.defaut_detecte = False
+        reading.defaut_detecte = None
         return reading
     ecart = (Decimal(mesure) - Decimal(attendu)) / Decimal(attendu) * 100
     reading.ecart_pmax_pct = ecart.quantize(Decimal('0.01'))
-    # Un écart NÉGATIF au-delà de la tolérance = sous-performance/défaut.
-    reading.defaut_detecte = ecart <= Decimal(-IV_TOLERANCE_PMAX_PCT)
+    if seuil is None:
+        seuil = seuil_ecart_pmax(getattr(reading, 'company', None))
+    reading.defaut_detecte = (
+        None if seuil is None else ecart <= -Decimal(str(seuil)))
     return reading
+
+
+#: CIQ626 — libellé OBLIGATOIRE du PR mesuré : jamais un verdict (D-CIQ-12).
+LIBELLE_PR = "à titre d'information"
+
+
+def pr_mesure_recette(record):
+    """CIQ626 — PR mesuré = énergie ÷ (kWc × irradiation mesurée), ou None
+    si une valeur manque. Toujours « à titre d'information »."""
+    from decimal import Decimal
+    kwc = getattr(record.installation, 'puissance_installee_kwc', None)
+    energie = record.energie_mesuree_kwh
+    irradiation = record.irradiation_kwh_m2
+    if not kwc or energie is None or not irradiation:
+        return None
+    pr = Decimal(energie) / (Decimal(kwc) * Decimal(irradiation))
+    return float(pr.quantize(Decimal('0.001')))
+
+
+def etalonnage_expire(instrument):
+    """XFSM12/CIQ626 — étalonnage FG80 expiré d'un instrument (None si
+    l'instrument n'est pas soumis à calibration périodique)."""
+    import datetime
+    if instrument is None or not instrument.intervalle_calibration_mois:
+        return None
+    if instrument.date_prochaine_calibration is None:
+        return True
+    return instrument.date_prochaine_calibration <= datetime.date.today()
+
+
+def instruments_par_essai_detail(record):
+    """CIQ626 — ``{essai: {instrument_id, etalonnage_expire}}``."""
+    from apps.outillage.models import Outillage
+    ids = {essai: iid for essai, iid
+           in (record.instruments_par_essai or {}).items() if iid}
+    outils = {o.pk: o for o in Outillage.objects.filter(
+        pk__in=list(ids.values()), company=record.company)}
+    return {essai: {'instrument_id': iid,
+                    'etalonnage_expire': etalonnage_expire(outils.get(iid))}
+            for essai, iid in ids.items()}
+
+
+def comparaison_recette_ci(record):
+    """CIQ626 — bloc ``comparaison`` du contrat ``recette_ci.json`` (part
+    I-V, PR, avertissements d'étalonnage). Aucun seuil inventé."""
+    from decimal import Decimal
+    readings = list(record.iv_readings.all()) if record.pk else []
+    ecarts = [r.ecart_pmax_pct for r in readings
+              if r.ecart_pmax_pct is not None]
+    defauts = [r.defaut_detecte for r in readings
+               if r.defaut_detecte is not None]
+    seuil = seuil_ecart_pmax(record.company)
+    pr = pr_mesure_recette(record)
+    comparaison = {
+        'ecart_iv_pmax_pct': float(min(ecarts)) if ecarts else None,
+        'seuil_ecart_pmax_pct': float(seuil) if seuil is not None else None,
+        'defaut_detecte': any(defauts) if defauts else None,
+        'pr_mesure': pr,
+        'pr_libelle': LIBELLE_PR,
+        'avertissements': [
+            f"Instrument de l'essai « {essai} » : étalonnage expiré."
+            for essai, detail in instruments_par_essai_detail(record).items()
+            if detail['etalonnage_expire']],
+    }
+    seuil_pr = _reglage_recette(record.company, 'recette_pr_seuil_interne')
+    if seuil_pr is not None and pr is not None:
+        # Drapeau INTERNE (jamais servi au portail client, D-CIQ-12).
+        comparaison['pr_sous_seuil_interne'] = (
+            Decimal(str(pr)) * 100 < Decimal(str(seuil_pr)))
+    return comparaison
 
 
 # ── XFSM13 — re-vérification périodique IEC 62446-2 vs baseline de recette ──
@@ -5500,6 +5592,11 @@ def essais_recette(record, modifications=None):
     modifications = modifications or {}
     essais = [modifications.get(champ, getattr(record, champ, None))
               for champ in ESSAIS_RECETTE]
+    # CIQ626 — un essai C&I (limitation d'injection, découplage) déclaré non
+    # conforme est un essai faux ; « sans objet » ne compte pas.
+    for champ in ('limitation_injection_etat', 'decouplage_etat'):
+        if modifications.get(champ, getattr(record, champ, None)) == 'non_ok':
+            essais.append(False)
     if getattr(record, 'pk', None) is not None and \
             record.iv_readings.filter(defaut_detecte=True).exists():
         essais.append(False)

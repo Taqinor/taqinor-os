@@ -253,6 +253,52 @@ class CommissioningRecord(models.Model):
     # saisies ; les relevés propres à cette fiche vivent dans
     # ``CommissioningIVReading``.
     ventes_recette_id = models.PositiveIntegerField(null=True, blank=True)
+    # ── CIQ626 — sections C&I du contrat ``recette_ci.json`` (additives,
+    #    toutes SAISIES ; aucun seuil, aucune tolérance, aucune correction
+    #    d'irradiance codés). ──
+
+    class SourceIrradiance(models.TextChoices):
+        MESUREE = 'mesuree', 'Mesurée'
+        ESTIMEE = 'estimee', 'Estimée'
+
+    class EtatEssai(models.TextChoices):
+        SANS_OBJET = 'sans_objet', 'Sans objet'
+        A_FAIRE = 'a_faire', 'À faire'
+        OK = 'ok', 'Conforme'
+        NON_OK = 'non_ok', 'Non conforme'
+
+    irradiance_poa_wm2 = models.DecimalField(
+        max_digits=7, decimal_places=1, null=True, blank=True)
+    irradiance_source = models.CharField(
+        max_length=8, choices=SourceIrradiance.choices, null=True,
+        blank=True)
+    temperature_module_c = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True)
+    # Irradiation mesurée sur la fenêtre d'énergie (kWh/m²) : base du PR.
+    irradiation_kwh_m2 = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True)
+    energie_mesuree_kwh = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    energie_fenetre_debut = models.DateTimeField(null=True, blank=True)
+    energie_fenetre_fin = models.DateTimeField(null=True, blank=True)
+    terre_installation_ohm = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    thermographie_faite = models.BooleanField(null=True, blank=True)
+    thermographie_constats = models.TextField(blank=True, null=True)
+    # CIQ663 rendra ces deux essais exigibles en MT ; défaut « sans objet ».
+    limitation_injection_etat = models.CharField(
+        max_length=10, choices=EtatEssai.choices,
+        default=EtatEssai.SANS_OBJET)
+    limitation_injection_consigne = models.CharField(
+        max_length=255, blank=True, null=True)
+    decouplage_etat = models.CharField(
+        max_length=10, choices=EtatEssai.choices,
+        default=EtatEssai.SANS_OBJET)
+    decouplage_piece = models.CharField(max_length=255, blank=True, null=True)
+    echantillon_iv_chaines = models.PositiveIntegerField(
+        null=True, blank=True)
+    # {essai: instrument_id} — validé contre l'outillage de la société.
+    instruments_par_essai = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='commissioning_records_crees')
@@ -330,7 +376,10 @@ class CommissioningIVReading(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True)
     ecart_pmax_pct = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True)
-    defaut_detecte = models.BooleanField(default=False)
+    # CIQ626 — jugé contre le seuil SAISI par la société
+    # (``recette_ecart_pmax_pct``, CIQ622) ; null = écart affiché sans
+    # verdict (aucune tolérance codée).
+    defaut_detecte = models.BooleanField(null=True, blank=True)
     observations = models.TextField(blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
