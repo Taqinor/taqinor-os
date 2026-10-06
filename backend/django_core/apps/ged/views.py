@@ -148,6 +148,24 @@ def _permissions_effectives_csv(lignes, filename_suffix):
     return response
 
 
+def _refus_sous_arbre_non_vide(folder_ids):
+    """ADOC2 — 409 nommé si le sous-arbre contient au moins un document
+    (corbeille comprise) ; ``None`` si la suppression peut se faire.
+
+    Aucune cascade ne doit emporter un document — a fortiori archivé
+    légalement ou sous legal hold : on demande de vider le dossier d'abord."""
+    documents = Document.objects.filter(folder_id__in=list(folder_ids))
+    total = documents.count()
+    if not total:
+        return None
+    en_corbeille = documents.filter(supprime_le__isnull=False).count()
+    return Response(
+        {'detail': (f'Le dossier contient {total} document(s) (dont '
+                    f'{en_corbeille} en corbeille) : videz-le d\'abord.'),
+         'documents': total, 'en_corbeille': en_corbeille},
+        status=status.HTTP_409_CONFLICT)
+
+
 class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
     """Cabinets (armoires racines) d'une société."""
     queryset = Cabinet.objects.all()
@@ -160,6 +178,16 @@ class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+    def destroy(self, request, *args, **kwargs):
+        """ADOC2 — refuse (409) une armoire dont un dossier contient un
+        document ; une armoire vide se supprime toujours."""
+        cabinet = self.get_object()
+        refus = _refus_sous_arbre_non_vide(
+            Folder.objects.filter(cabinet=cabinet).values_list('pk', flat=True))
+        if refus is not None:
+            return refus
+        return super().destroy(request, *args, **kwargs)
 
 
 class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -203,6 +231,16 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # company posée côté serveur (jamais du corps).
         serializer.save(company=self.request.user.company)
+
+    def destroy(self, request, *args, **kwargs):
+        """ADOC2 — refuse (409) un dossier dont le sous-arbre contient un
+        document ; un dossier vide se supprime toujours (204)."""
+        folder = self.get_object()
+        ids = [folder.pk, *folder.descendants().values_list('pk', flat=True)]
+        refus = _refus_sous_arbre_non_vide(ids)
+        if refus is not None:
+            return refus
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['get'], url_path='descendants')
     def descendants(self, request, pk=None):
