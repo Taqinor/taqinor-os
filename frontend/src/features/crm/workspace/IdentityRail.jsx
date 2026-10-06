@@ -213,6 +213,14 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const suggestion = (server.segment_suggere
     && typeof server.segment_suggere === 'object')
     ? server.segment_suggere : null
+  // CIQ419 — un devis commercial/industriel sur un lead d'un autre type :
+  // DEUX boutons (Commercial, Industriel), celui du mode du devis en premier.
+  // Les autres segments gardent le bouton unique d'AGR417.
+  const SEGMENTS_PRO = ['commercial', 'industriel']
+  const choixIncoherence = !incoherence?.mode_devis ? []
+    : SEGMENTS_PRO.includes(incoherence.mode_devis)
+      ? [incoherence.mode_devis, ...SEGMENTS_PRO.filter((s) => s !== incoherence.mode_devis)]
+      : [incoherence.mode_devis]
   const [segmentBusy, setSegmentBusy] = useState(false)
   const changerSegment = async (valeur) => {
     if (!leadId || !valeur || segmentBusy) return
@@ -421,15 +429,16 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           data-testid="lw-incoherence-segment"
         >
           <span>{incoherence.message}</span>
-          {incoherence.mode_devis && (
+          {choixIncoherence.map((valeur) => (
             <Button
+              key={valeur}
               type="button" size="sm" variant="outline"
               disabled={segmentBusy}
-              onClick={() => changerSegment(incoherence.mode_devis)}
+              onClick={() => changerSegment(valeur)}
             >
-              Passer en {SEGMENT_LABELS[incoherence.mode_devis] || incoherence.mode_devis}
+              Passer en {SEGMENT_LABELS[valeur] || valeur}
             </Button>
-          )}
+          ))}
         </div>
       )}
       {/* AGR417 — segment suggéré (AGR406) : jamais écrit par le serveur. */}
@@ -442,7 +451,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             Segment probable : {(SEGMENT_LABELS[suggestion.valeur] || suggestion.valeur).toLowerCase()}
             {suggestion.raison ? ` (${suggestion.raison})` : ''} — à confirmer
           </span>
-          {suggestion.valeur !== incoherence?.mode_devis && (
+          {!choixIncoherence.includes(suggestion.valeur) && (
             <Button
               type="button" size="sm" variant="outline"
               disabled={segmentBusy}

@@ -583,3 +583,61 @@ describe('IdentityRail — AGR417 bandeaux de segment', () => {
     expect(screen.queryByTestId('lw-segment-suggere')).toBeNull()
   })
 })
+
+/* CIQ419 — bandeaux C&I : lead pro à confirmer, et devis commercial/industriel
+   porté par un lead d'un autre type. Fixtures importées du contrat partagé
+   lead_pro.json. Changement TOUJOURS manuel : deux boutons (celui du mode du
+   devis en premier), confirmation, puis un PATCH {type_installation} seul. */
+describe('IdentityRail — CIQ419 bandeaux de segment C&I', () => {
+  const INCOHERENT = exempleContrat('crm', 'lead_pro', 'exemple_incoherent')
+
+  it('le bandeau C&I affiche le message du serveur et deux boutons, le mode du devis en premier', () => {
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={vi.fn()} users={[]} />)
+    const bandeau = screen.getByTestId('lw-incoherence-segment')
+    expect(bandeau.textContent).toContain(INCOHERENT.incoherence_segment.message)
+    const noms = within(bandeau).getAllByRole('button').map((b) => b.textContent)
+    expect(noms).toEqual(['Passer en Commercial', 'Passer en Industriel'])
+  })
+
+  it('devis industriel → « Passer en Industriel » en premier', () => {
+    const inc = { ...INCOHERENT.incoherence_segment, mode_devis: 'industriel' }
+    render(<IdentityRail state={makeState({ ...INCOHERENT, incoherence_segment: inc })} onAction={vi.fn()} users={[]} />)
+    const noms = within(screen.getByTestId('lw-incoherence-segment'))
+      .getAllByRole('button').map((b) => b.textContent)
+    expect(noms).toEqual(['Passer en Industriel', 'Passer en Commercial'])
+  })
+
+  it('le segment pro suggéré s’affiche « à confirmer » avec sa raison', () => {
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={vi.fn()} users={[]} />)
+    const bandeau = screen.getByTestId('lw-segment-suggere')
+    expect(bandeau.textContent).toContain('Segment probable : commercial')
+    expect(bandeau.textContent).toContain(INCOHERENT.segment_suggere.raison)
+    expect(bandeau.textContent).toContain('à confirmer')
+  })
+
+  it('sans clic, aucun PATCH', () => {
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={vi.fn()} users={[]} />)
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('après confirmation : PATCH {type_installation: industriel} seul', async () => {
+    const spy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    crmApi.updateLead.mockResolvedValueOnce({ data: {} })
+    const onAction = vi.fn()
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={onAction} users={[]} />)
+    fireEvent.click(within(screen.getByTestId('lw-incoherence-segment'))
+      .getByRole('button', { name: 'Passer en Industriel' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(INCOHERENT.id, { type_installation: 'industriel' }))
+    expect(crmApi.updateLead).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    spy.mockRestore()
+  })
+
+  it('null côté serveur → aucun bandeau', () => {
+    const lead = exempleContrat('crm', 'lead_pro')
+    render(<IdentityRail state={makeState(lead)} onAction={vi.fn()} users={[]} />)
+    expect(screen.queryByTestId('lw-incoherence-segment')).toBeNull()
+    expect(screen.queryByTestId('lw-segment-suggere')).toBeNull()
+  })
+})
