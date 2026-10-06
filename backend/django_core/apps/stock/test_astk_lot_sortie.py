@@ -97,3 +97,66 @@ class LotSortieTests(TestCase):
         self.assertEqual(self.produit.quantite_stock, 10)
         self.assertFalse(MouvementStock.objects.filter(
             produit=self.produit).exists())
+
+
+class LotExpeditionTests(TestCase):
+    """ASTK205 — l'expédition décrémente le lot assigné par le picking."""
+
+    def setUp(self):
+        from apps.stock.models_wms import LignePicking
+        from apps.stock.services import (
+            ajouter_ligne_unite_logistique, creer_expedition_transporteur,
+            creer_unite_logistique, creer_vague_depuis_besoins,
+            sceller_unite_logistique,
+        )
+
+        self.co = make_company('astk205-co', 'ASTK205 Co')
+        self.resp = User.objects.create_user(
+            username='astk205_resp', password='x', role_legacy='responsable',
+            company=self.co)
+        self.produit = Produit.objects.create(
+            company=self.co, nom='Batterie ASTK205', sku='ASTK205-1',
+            prix_achat=Decimal('100'), prix_vente=Decimal('200'),
+            quantite_stock=10)
+        self.lot_a = LotEntrepot.objects.create(
+            company=self.co, produit=self.produit, numero_lot='LOT-A-205',
+            quantite_recue=6, quantite_restante=6, reference_reception='R-A')
+        self.lot_b = LotEntrepot.objects.create(
+            company=self.co, produit=self.produit, numero_lot='LOT-B-205',
+            quantite_recue=4, quantite_restante=4, reference_reception='R-B')
+        vague = creer_vague_depuis_besoins(
+            company=self.co, user=self.resp,
+            besoins=[{'produit_id': self.produit.id, 'quantite': 5}])
+        # Ligne de picking déterministe : lot A × 5, déjà prélevée.
+        ligne = LignePicking.objects.create(
+            company=self.co, vague=vague, produit=self.produit,
+            quantite_demandee=5, quantite_prelevee=5, lot=self.lot_a)
+        colis = creer_unite_logistique(company=self.co)
+        ajouter_ligne_unite_logistique(
+            company=self.co, unite=colis, produit=self.produit, quantite=5,
+            ligne_picking=ligne)
+        sceller_unite_logistique(unite=colis, user=self.resp)
+        colis.refresh_from_db()
+        self.expedition = creer_expedition_transporteur(
+            company=self.co, unite=colis)
+
+    def test_expedition_decremente_le_lot_picke(self):
+        from unittest import mock
+
+        from apps.stock.services import generer_etiquette_expedition
+
+        with mock.patch('apps.stock.services_wms._stocker_etiquette',
+                        return_value='stock/x/etiquettes/t.pdf'):
+            generer_etiquette_expedition(
+                expedition=self.expedition, user=self.resp)
+
+        self.produit.refresh_from_db()
+        self.lot_a.refresh_from_db()
+        self.lot_b.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 5)
+        self.assertEqual(self.lot_a.quantite_restante, 1)
+        self.assertEqual(self.lot_b.quantite_restante, 4)
+        # Σ lots = stock suivi par lot.
+        self.assertEqual(
+            self.lot_a.quantite_restante + self.lot_b.quantite_restante,
+            self.produit.quantite_stock)

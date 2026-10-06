@@ -773,7 +773,38 @@ def decrementer_stock_expedition(*, expedition, user=None):
                           + (f' — suivi {expedition.numero_suivi}'
                              if expedition.numero_suivi else '')),
                     created_by=user))
+                # ASTK205 — le lot assigné (ligne de colis, sinon ligne de
+                # picking AUD220) est décrémenté de la même sortie : le FEFO
+                # et les alertes de péremption ne portent plus sur un lot
+                # déjà parti.
+                lot_id = ligne.lot_id or (
+                    picking.lot_id if picking is not None else None)
+                if lot_id:
+                    _sortir_lot_expedie(
+                        company=company, lot_id=lot_id, quantite=sortie,
+                        user=user, sscc=colis.sscc)
     return {'mouvements': mouvements, 'lignes_chantier_ignorees': ignorees}
+
+
+def _sortir_lot_expedie(*, company, lot_id, quantite, user, sscc):
+    """ASTK205 — décrémente le lot expédié par LA fonction de lot
+    (``sortir_lot_entrepot``, verrou du lot inclus), plafonné à son restant.
+
+    La marchandise a physiquement quitté le quai : une péremption ne bloque
+    pas cette sortie (``forcer`` + motif tracé « Expédition <SSCC> »)."""
+    from .models import LotEntrepot
+    from .services import sortir_lot_entrepot
+
+    lot = LotEntrepot.objects.select_for_update().filter(
+        pk=lot_id, company=company).first()
+    if lot is None:
+        return
+    prise = min(quantite, lot.quantite_restante)
+    if prise <= 0:
+        return
+    sortir_lot_entrepot(
+        company=company, lot=lot, quantite=prise, user=user, forcer=True,
+        motif=f'Expédition {sscc}')
 
 
 def generer_etiquette_expedition(*, expedition, user=None):
