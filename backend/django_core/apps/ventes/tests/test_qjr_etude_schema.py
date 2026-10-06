@@ -60,8 +60,10 @@ class SchemaTests(SimpleTestCase):
                 self.assertTrue(regle['proprietaire'])
 
     def test_le_bloc_agricole_est_declare(self):
+        # AGR122 — `irrigation_method` a quitté le schéma (D-AGR-13) ; les
+        # sept clés v1 lues par le rendu restent, dérivées du moteur pompage.
         for cle in ('pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h',
-                    'm3_jour', 'champ_kwc', 'irrigation_method'):
+                    'm3_jour', 'champ_kwc', 'heures_pompage'):
             with self.subTest(cle=cle):
                 self.assertIn(cle, S.SCHEMA)
 
@@ -81,10 +83,11 @@ class ContratRoundTripEcran(SimpleTestCase):
     son langage.
     """
 
-    #: Les entrées du marché AGRICOLE que `?edit=` relit.
-    AGRICOLE = ('debit_souhaite_m3h', 'heures_pompage', 'type_pompe', 'alim',
-                'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha',
-                'hmt_static', 'hmt_drawdown')
+    #: Les entrées du marché AGRICOLE que `?edit=` relit — AGR122 : les
+    #: ENTRÉES v2 du contrat AGR2 (`cles_etude_params_v2.entrees`).
+    AGRICOLE = ('mode_pompe', 'plaque', 'besoin', 'source', 'hmt_entrees',
+                'type_pompe', 'alim', 'localisation', 'distance_champ_m',
+                'options_cochees', 'taille')
     #: Les entrées du marché INDUSTRIEL / COMMERCIAL que `?edit=` relit
     #: (`tension_raccordement` est déclaré parmi les entrées générales).
     INDUSTRIEL_COMMERCIAL = ('tension_raccordement', 'repartition_mt',
@@ -126,11 +129,14 @@ class ContratRoundTripEcran(SimpleTestCase):
             'repartition_mt': {'pointe': 10, 'pleines': 50, 'creuses': 40},
         }), [])
         self.assertEqual(S.valider({
-            'pompe_cv': 7.5, 'hmt_m': 60, 'debit_souhaite_m3h': 30,
-            'heures_pompage': 7, 'type_pompe': 'immergee', 'alim': 'tri',
-            'profondeur_m': 45, 'distance_m': 20, 'region': 'souss-massa',
-            'crop': 'agrumes', 'surface_ha': 5, 'hmt_static': 40,
-            'hmt_drawdown': 15, 'irrigation_method': 'goutte',
+            'mode_pompe': 'neuve', 'plaque': None,
+            'besoin': {'mode': 'volume_declare', 'volume_m3_jour': 135,
+                       'region': 'souss-massa'},
+            'source': {'niveau_statique_m': 32, 'niveau_dynamique_m': 40},
+            'hmt_entrees': {'saisie_m': 60}, 'type_pompe': 'immergee',
+            'alim': 'tri', 'localisation': {'ville': 'Taroudant'},
+            'distance_champ_m': 20, 'options_cochees': ['protection_dc'],
+            'taille': 'recommandee',
         }), [])
 
     def test_un_booleen_deguise_en_nombre_reste_refuse(self):
