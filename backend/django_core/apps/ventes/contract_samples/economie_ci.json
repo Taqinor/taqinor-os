@@ -1272,7 +1272,7 @@
     "financement": "présent SEULEMENT si une offre écrite est saisie : {libelle_client, echeance_mad, economie_mensuelle_moyenne_mad, ecart_mensuel_mad, duree_mois, source} — jamais de taux inventé ni de prêteur sans son offre (D-CIQ-15)",
     "hypotheses / omissions": "listes ; chaque valeur absente est NOMMÉE dans `omissions`",
     "alertes_internes": "[{code, message, interne: true}] — dont l'alerte cos φ relayée depuis `etude_ci.alertes` (CIQ134) ; jamais dans une charge utile client",
-    "vue_interne": "{comparaison_cse (null sans `offre_cse_concurrente`), sr500 {statut, motif} (indicateur interne, jamais un montant — D-CIQ-17), apres_impot (null sans `fiscalite_client`)} — lecture interne seulement"
+    "vue_interne": "{comparaison_cse (null sans `offre_cse_concurrente` ; sinon {statut calculee|omise, motif, annees [{annee, kwh_livres, paiement_offre_mad, cumul_offre_mad, cumul_offre_net_mad, cumul_achat_mad}], cumul_offre_mad, cumul_achat_mad, annee_croisement, hypotheses} — tarif HT écrit × kWh livrés, même production/dégradation que `flux_ht`, indexation seulement si écrite, aucun nom de concurrent — CIQ209), sr500 {statut, motif} (indicateur interne, jamais un montant — D-CIQ-17), apres_impot (null sans `fiscalite_client`)} — lecture interne seulement"
   },
   "interdit": [
     "prix_achat",

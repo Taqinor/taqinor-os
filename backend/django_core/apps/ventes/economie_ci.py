@@ -954,3 +954,187 @@ def financement_ci(offre, base_eco, *, mode_installation,
         'duree_mois': duree,
         'source': SOURCE_FINANCEMENT,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ209 — moteur ``economie_ci`` (6/6) : vue INTERNE face à une offre CSE/PPA
+# concurrente, depuis le tarif ÉCRIT du prospect (D-CIQ-16), et
+# :func:`economie_ci_publique`, la SEULE forme servie à un chemin client.
+# ═════════════════════════════════════════════════════════════════════════════
+# Aucune offre de tiers-investisseur de TAQINOR (D-CIQ-16 : le client reste
+# l'autoproducteur, loi 13-09 parquée) ; aucun nom de concurrent stocké ni
+# servi. Le paiement de l'offre = tarif HT ÉCRIT × kWh solaires livrés — la
+# MÊME production et la MÊME dégradation que le flux d'achat ; l'indexation
+# n'existe QUE si elle est écrite sur l'offre (sinon tarif constant, hypothèse
+# nommée). Au-delà de la durée de l'offre rien n'est supposé.
+
+#: Clés INTERNES jamais servies à un chemin client (PDF, /proposition, lien
+#: public, messages) — retirées RÉCURSIVEMENT par :func:`economie_ci_publique`.
+CLES_INTERNES = ('vue_interne', 'alertes_internes', 'comparaison_cse',
+                 'apres_impot', 'sr500')
+MENTION_CSE_INDEXATION_ABSENTE = (
+    "tarif de l'offre constant : aucune indexation écrite sur l'offre "
+    "(hypothèse)")
+MOTIF_CSE_SANS_FLUX_HT = (
+    "flux d'achat HT non construit : l'offre (tarif HT) n'est comparée qu'à "
+    "des économies HT — comparaison non évaluée")
+MOTIF_CSE_SANS_PRODUCTION = (
+    "production annuelle inconnue : kWh livrés par l'offre non calculables — "
+    "comparaison non évaluée")
+
+
+def _nombre_cse(offre, cle, *, requis=False, entier=False, strict=False):
+    champ = f'offre_cse_concurrente.{cle}'
+    brut = offre.get(cle)
+    if brut is None or brut == '':
+        if requis:
+            raise SaisieEconomieCiInvalide(
+                f"{champ} : à saisir depuis l'offre écrite du prospect.",
+                champ=champ)
+        return None
+    try:
+        valeur = float(brut)
+    except (TypeError, ValueError):
+        valeur = None
+    invalide = (valeur is None or valeur != valeur
+                or (strict and valeur <= -100)
+                or (not strict and valeur < 0)
+                or (entier and (valeur != int(valeur) or valeur < 1)))
+    if invalide:
+        raise SaisieEconomieCiInvalide(
+            f"{champ} : valeur « {brut} » refusée.", champ=champ)
+    return int(valeur) if entier else valeur
+
+
+def lire_offre_cse(offre):
+    """``saisies_economie_ci.offre_cse_concurrente`` validée, ou None.
+
+    ``{tarif_kwh_ht, duree_ans, indexation_pct_an (SEULEMENT si écrite),
+    source}`` — tout autre champ (nom du concurrent…) est IGNORÉ, jamais
+    recopié. Refus nommés ``offre_cse_concurrente.<champ>``.
+    """
+    if offre in (None, '', {}):
+        return None
+    if not isinstance(offre, dict):
+        raise SaisieEconomieCiInvalide(
+            "offre_cse_concurrente : un objet est attendu.",
+            champ='offre_cse_concurrente')
+    source = str(offre.get('source') or '').strip()
+    if not source:
+        raise SaisieEconomieCiInvalide(
+            "offre_cse_concurrente.source : la comparaison se construit "
+            "seulement depuis le tarif ÉCRIT de l'offre du prospect.",
+            champ='offre_cse_concurrente.source')
+    return {
+        'tarif_kwh_ht': _nombre_cse(offre, 'tarif_kwh_ht', requis=True),
+        'duree_ans': _nombre_cse(offre, 'duree_ans', requis=True,
+                                 entier=True),
+        'indexation_pct_an': _nombre_cse(offre, 'indexation_pct_an',
+                                         strict=True),
+        'source': source,
+    }
+
+
+def _hypothese_flux(flux, cle):
+    for h in (flux or {}).get('hypotheses') or []:
+        if isinstance(h, dict) and h.get('cle') == cle:
+            return h.get('valeur')
+    return None
+
+
+def comparaison_cse(flux, offre_cse, production):
+    """La comparaison INTERNE achat ↔ offre CSE/PPA (``vue_interne.
+    comparaison_cse`` du contrat ``economie_ci.json``), ou None sans offre.
+
+    ``flux`` : le flux d'achat HT (bloc ``flux_ht`` de :func:`flux_ci`) ;
+    ``offre_cse`` : saisie brute (validée par :func:`lire_offre_cse`) ;
+    ``production`` : production de l'année 1 (kWh) — la même que le flux.
+
+    Par année t ≤ min(durée de l'offre, horizon du flux) : kWh livrés =
+    production × (1 − dégradation du flux)^(t−1) ; paiement de l'offre =
+    tarif × (1 + indexation écrite)^(t−1) × kWh ; gain net de l'offre =
+    économie du flux − paiement ; croisement = première année où le cumul
+    de l'achat atteint le cumul net de l'offre.
+    """
+    offre = lire_offre_cse(offre_cse)
+    if offre is None:
+        return None
+    hypotheses = [{'cle': 'tarif_kwh_ht', 'valeur': offre['tarif_kwh_ht'],
+                   'statut': 'declare', 'source': offre['source']},
+                  {'cle': 'duree_ans', 'valeur': offre['duree_ans'],
+                   'statut': 'declare', 'source': offre['source']}]
+    if offre['indexation_pct_an'] is None:
+        idx = 0.0
+        hypotheses.append({'cle': 'indexation_pct_an', 'valeur': 0.0,
+                           'statut': 'hypothese',
+                           'source': MENTION_CSE_INDEXATION_ABSENTE})
+    else:
+        idx = offre['indexation_pct_an']
+        hypotheses.append({'cle': 'indexation_pct_an', 'valeur': idx,
+                           'statut': 'declare', 'source': offre['source']})
+    sortie = {'statut': 'omise', 'motif': None, 'annees': [],
+              'cumul_offre_mad': None, 'cumul_achat_mad': None,
+              'annee_croisement': None, 'hypotheses': hypotheses}
+    lignes = (flux or {}).get('flux') or []
+    if not lignes:
+        sortie['motif'] = MOTIF_CSE_SANS_FLUX_HT
+        return sortie
+    prod = _montant(production)
+    if not prod:
+        sortie['motif'] = MOTIF_CSE_SANS_PRODUCTION
+        return sortie
+    deg = _f(_hypothese_flux(flux, 'degradation_pct')) / 100.0
+    hypotheses.append({'cle': 'production_annee1_kwh', 'valeur': prod,
+                       'statut': 'source',
+                       'source': "même production que le flux d'achat"})
+    par_annee = {f['annee']: f for f in lignes}
+    horizon = min(offre['duree_ans'], max(par_annee))
+    annees, cumul_offre, cumul_net = [], 0.0, 0.0
+    croisement = None
+    for t in range(1, horizon + 1):
+        ligne = par_annee.get(t)
+        if ligne is None:
+            break
+        kwh = prod * (1.0 - deg) ** (t - 1)
+        paiement = offre['tarif_kwh_ht'] * (1.0 + idx / 100.0) ** (t - 1) * kwh
+        cumul_offre += paiement
+        cumul_net += (ligne.get('economie_mad') or 0.0) - paiement
+        cumul_achat = ligne.get('cumul_mad')
+        if croisement is None and cumul_achat is not None \
+                and cumul_achat >= cumul_net:
+            croisement = t
+        annees.append({'annee': t, 'kwh_livres': int(round(kwh)),
+                       'paiement_offre_mad': round(paiement, 2),
+                       'cumul_offre_mad': round(cumul_offre, 2),
+                       'cumul_offre_net_mad': round(cumul_net, 2),
+                       'cumul_achat_mad': cumul_achat})
+    sortie.update({
+        'statut': 'calculee',
+        'annees': annees,
+        'cumul_offre_mad': round(cumul_offre, 2),
+        'cumul_achat_mad': annees[-1]['cumul_achat_mad'] if annees else None,
+        'annee_croisement': croisement,
+    })
+    return sortie
+
+
+def _sans_internes(objet):
+    if isinstance(objet, dict):
+        return {k: _sans_internes(v) for k, v in objet.items()
+                if k not in CLES_INTERNES}
+    if isinstance(objet, list):
+        return [_sans_internes(v) for v in objet]
+    return objet
+
+
+def economie_ci_publique(bloc):
+    """Le bloc ``economie_ci`` SANS rien d'interne — la SEULE fonction qu'un
+    chemin client appelle (PDF /proposal, /proposition, lien public).
+
+    Retire récursivement ``vue_interne``, ``alertes_internes`` et les clés
+    internes qu'elles portent (:data:`CLES_INTERNES`) ; ne modifie jamais
+    ``bloc`` (copie).
+    """
+    if not isinstance(bloc, dict):
+        return bloc
+    return _sans_internes(bloc)
