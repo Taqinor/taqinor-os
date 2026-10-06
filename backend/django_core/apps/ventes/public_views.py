@@ -1414,12 +1414,18 @@ def proposal_data(request, token):
         # c'est UNE section à l'écran, elle part d'un bloc. On évite même le
         # calcul quand elle n'est pas servie.
         _jour_type_servi = _section_servie(link, 'jour_type')
-        from .courbes_journalieres import construire_courbes_journalieres
-        _courbes = (
-            construire_courbes_journalieres(
+        from .courbes_journalieres import (
+            construire_courbes_ci, construire_courbes_journalieres)
+        # CIQ308 — en C&I, la courbe vient UNIQUEMENT de la sortie horaire du
+        # moteur C&I (``source: 'moteur_ci'``) : jamais l'occupation ni les
+        # équipements d'un LOGEMENT. Sans sortie moteur ⇒ clé ABSENTE.
+        if not _jour_type_servi:
+            _courbes = None
+        elif _ci_public:
+            _courbes = construire_courbes_ci(data)
+        else:
+            _courbes = construire_courbes_journalieres(
                 devis, data, monthly_consumption=_conso_mensuelle)
-            if _jour_type_servi else None
-        )
         if _courbes is not None:
             payload['courbes_journalieres'] = _courbes
         # CJ2b (fondateur, 21/08/2026) — « we cannot see the real calculated
@@ -1458,7 +1464,13 @@ def proposal_data(request, token):
                 _tranche.pop('residuel_kwh_mois', None)
             payload['tranche_tarifaire'] = _tranche
         _bloc_horaire_devis = _etude_params_devis.get('etude_horaire')
-        _regime = _batterie_regime_publique(_dimensionnement, _bloc_horaire_devis)
+        # CIQ308 — régime batterie, balayage de stockage, estimation de
+        # consommation, jours types et dimensionnement par option déclinent
+        # le moteur horaire RÉSIDENTIEL : ABSENTS en C&I (le moteur C&I ne les
+        # sert pas).
+        _regime = (None if _ci_public else
+                   _batterie_regime_publique(_dimensionnement,
+                                             _bloc_horaire_devis))
         if _regime is not None:
             # QJR14 — même règle pour le taux de remplissage, tiré de la
             # batterie OPTIMALE (``recommandation_avec``) et non de celle que
@@ -1474,7 +1486,8 @@ def proposal_data(request, token):
         # batterie + message de sur-stockage sur la page publique : le mini-
         # balayage de stockage (paliers RETENUS + premier REFUSÉ), même patron
         # additif que les clés ci-dessus.
-        _balayage = _balayage_stockage_publique(_dimensionnement)
+        _balayage = (None if _ci_public
+                     else _balayage_stockage_publique(_dimensionnement))
         if _balayage is not None:
             payload['balayage_stockage'] = _balayage
         # L-PCMP (fondateur, 24/08/2026) — « le client doit pouvoir CHANGER son
@@ -1505,10 +1518,12 @@ def proposal_data(request, token):
                 and _section_servie(link, 'economies')) else None)
         if _periodes is not None:
             payload['economies_periodes'] = _periodes
-        _estimation = _estimation_conso_publique(devis)
+        _estimation = (None if _ci_public
+                       else _estimation_conso_publique(devis))
         if _estimation is not None:
             payload['estimation_conso'] = _estimation
-        _jours = _jours_types_publique(devis) if _jour_type_servi else None
+        _jours = (_jours_types_publique(devis)
+                  if (_jour_type_servi and not _ci_public) else None)
         if _jours is not None:
             payload['jours_types'] = _jours
         # PACT10 (« deux optimiseurs », 25/08/2026) — un devis résidentiel
@@ -1520,7 +1535,9 @@ def proposal_data(request, token):
         # la page retombe sur la courbe unique déjà servie
         # (`courbes_journalieres`). Contrat :
         # apps/ventes/contract_samples/dimensionnement_options.json.
-        _dimensionnement_options = _dimensionnement_options_publique(devis, data)
+        _dimensionnement_options = (
+            None if _ci_public
+            else _dimensionnement_options_publique(devis, data))
         if _dimensionnement_options is not None:
             payload['dimensionnement_options'] = _dimensionnement_options
             payload['production_par_option'] = _production_par_option_publique(

@@ -999,7 +999,77 @@
     },
     "courbes_journalieres": {
       "source": "moteur_ci",
-      "note_horaire": "Jours types du moteur C&I (production PVGIS × profil déclaré), heure GMT."
+      "note_horaire": "Heures en heure civile marocaine — l'heure GMT (UTC+0), sans changement d'heure saisonnier.",
+      "unites": {
+        "forme": "part du total du jour (somme = 1)",
+        "kwh_jour": "kWh/jour",
+        "pic_kw": "kW"
+      },
+      "production": {
+        "ete": {
+          "forme": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.000808421052631579,
+            0.02330273684210527,
+            0.04779452631578948,
+            0.06991157894736842,
+            0.0883098947368421,
+            0.10216084210526317,
+            0.1107402105263158,
+            0.11383915789473685,
+            0.11094568421052632,
+            0.10216084210526317,
+            0.08830989473684213,
+            0.06981052631578948,
+            0.04779452631578948,
+            0.02330273684210527,
+            0.000808421052631579,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "kwh_jour": 322.7,
+          "source": "moteur_ci",
+          "pic_kw": 36.73
+        }
+      },
+      "consommation": {
+        "ete": {
+          "forme": [
+            0.02642721476875431,
+            0.024259727481319285,
+            0.02203175217656049,
+            0.02203175217656049,
+            0.02203175217656049,
+            0.02642721476875431,
+            0.039670058028171286,
+            0.0484589669453148,
+            0.05285241327026449,
+            0.0484589669453148,
+            0.044003016335797215,
+            0.044003016335797215,
+            0.0462934959251239,
+            0.0484589669453148,
+            0.0484589669453148,
+            0.0462934959251239,
+            0.044003016335797215,
+            0.0462934959251239,
+            0.05285241327026449,
+            0.05947585116721711,
+            0.05947585116721711,
+            0.05285241327026449,
+            0.04183754531560631,
+            0.033048636398462804
+          ],
+          "kwh_jour": 539.1,
+          "source": "moteur_ci"
+        }
+      }
     },
     "synthese_ci": {
       "version": 1,
@@ -1864,7 +1934,9 @@
     },
     "courbes_journalieres": {
       "source": "moteur_ci",
-      "note_horaire": "Jours types du moteur C&I, heure GMT."
+      "note_horaire": "Heures en heure civile marocaine — l'heure GMT (UTC+0), sans changement d'heure saisonnier.",
+      "profil_suppose": true,
+      "etiquette_profil": "profil type — estimation"
     },
     "synthese_ci": {
       "version": 1,
@@ -2010,7 +2082,7 @@
       "production_par_option"
     ],
     "absents_regle": "Clés ADDITIVES ABSENTES (jamais `null`) tant que le moteur C&I ne les sert pas — règle `additif_vs_null`.",
-    "courbes_journalieres": "En C&I, porte `source: 'moteur_ci'` (jours types du moteur, contrat `etude_ci_preview.json`).",
+    "courbes_journalieres": "CIQ308 — en C&I, UNIQUEMENT la sortie horaire du moteur C&I (`construire_courbes_ci`, contrat `etude_ci_preview.json`) : {source: 'moteur_ci', note_horaire, unites, production{saison: {forme[24], kwh_jour, pic_kw, source}}, consommation{saison: {forme[24], kwh_jour, source}}, profil_suppose? + etiquette_profil? ('profil type — estimation', profil non déclaré)} ; saisons = moyennes des mois (MOIS_PAR_SAISON) pondérées par nb_jours ; heure légale par `decalage_maroc_h`. Jamais `occupation`/`equipements`/`options` d'un logement. Sans sortie moteur : clé ABSENTE. Fragments : `exemple_commercial` montre la saison « ete » (calculée sur l'`exemple` de `etude_ci_preview.json`), `exemple_industriel` les seules clés propres.",
     "synthese_ci": "Clé ADDITIVE, ABSENTE hors C&I et jamais `null` : {version, segment, statut_etude ('estimation_sous_reserve_visite'|'offre_ferme'), a_confirmer[{cle, libelle}], provenance{<entrée>: {origine, detail, date}}, systeme{kwc, nb_panneaux, production_kwh_an}, baseline?{source, estimation, factures_mensuelles?}, energie{taux_autoconso_pct, taux_couverture_pct, methode, definitions{autoconso, couverture}}, option_servie, option_batterie?{totaux, valeur_chiffree, motif}, argent?, hypotheses[{cle, textes{fr,en,ar}, source, date}], categorie?{cle, libelle, accroche, bloc{titre, lignes[{textes{fr,en,ar}}]}}, decarbonation?{cbam, textes}, services{om_option?, suivi_production?, garanties[]}, echeancier[{libelle, pct, montant_ttc, jalon}], entreprise_client?{raison_sociale, ice, rc, if_fiscal, siege, interlocuteur, fonction}, omissions[{bloc, motif}]} — servie IDENTIQUE au PDF et à /proposition. `?` = clé absente quand rien à montrer.",
     "formes_citees": "`argent` = la forme PUBLIQUE de `economie_ci.json` (CIQ3 : sans `vue_interne` ni `alertes_internes`, `economie_ci_publique`) ; `provenance` et `energie` = sorties de `etude_ci_preview.json` (CIQ2) ; colonnes pro et identité = `lead_pro.json` (CIQ1) / `client_entreprise.json` (CIQ8). Jamais redéfinies ici. Aucun `prix_achat`.",
     "signature_entreprise": "Clé ADDITIVE, forme `signature_entreprise` du contrat `acceptation_entreprise.json` (CIQ9) : {raison_sociale, signataire_nom, signataire_qualite, ice, date} — présente une fois un devis C&I accepté en ligne, absente sinon.",
