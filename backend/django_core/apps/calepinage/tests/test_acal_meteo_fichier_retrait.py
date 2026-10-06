@@ -83,7 +83,7 @@ class MeteoFichierRetraitTest(BaseApiCalepinage):
         entree = Activity.objects.filter(
             object_id=self.calepinage.pk,
             body='Fichier météo retiré : site.csv — retour à PVGIS').first()
-        self.assertEqual(entree.user, self.user)
+        self.assertEqual(entree.created_by, self.user)
         # GET meteo-fichier/ → null.
         servi = self.api.get(self.url)
         self.assertEqual(servi.status_code, 200)
