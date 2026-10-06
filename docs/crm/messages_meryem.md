@@ -322,9 +322,10 @@ nombre de régimes. Le plafond FDA et la fenêtre de dépôt cités au round 2 d
 et ne doivent jamais réapparaître ; « trois régimes » 82-21 n'est pas sourcé non plus. On pose LA question ; les
 chiffres viennent du client et de son dossier, jamais du gabarit.
 
-### dossier_8221 — industriel/commercial : où en est le dossier d'autoproduction
-FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.
-DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.
+### dossier_8221 — industriel/commercial (site MT, régularisation ou revente) : raccordement et autorisations du site
+CIQ517 (D-CIQ-6) — ouvert SEULEMENT à un site MT, un lead en régularisation ou un client qui veut revendre ; jamais « loi », jamais « 82-21 », aucun chiffre ni délai (Q9/CAD163). ✎ Texte à valider par le fondateur ; darija à relire par un locuteur natif (CADM1).
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Une question sur votre projet : où en êtes-vous côté raccordement et autorisations du site ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si rien n'est encore lancé, je vous explique les étapes.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديالكم: فين وصلتو من جهة الربط والتراخيص ديال الموقع؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا مازال ما تلانسا والو، كنشرح ليكم المراحل.
 
 ### dossier_fda — agricole : le dossier de subvention
 AGR510 (02/10/2026) — D-AGR-6, Guide FDA 2024 p.22-23 : l'accord se demande AVANT les travaux ; aucun montant, taux ni délai. ✎ Texte à valider par le fondateur.
@@ -485,8 +486,9 @@ fichier : une modification se fait ICI et dans le module, dans le même commit.
 #### objection_loi_8221 — Le client parle lui-même de la loi 82-21 (revente du surplus)
 Décision fondateur du 21/09/2026 (Q9) : **on n'aborde JAMAIS la loi 82-21 spontanément.** Si, et seulement si, le
 client en parle, la réponse tient en une phrase factuelle, dictée mot pour mot par la décision (texte du fondateur :
-rien à valider) — **sans aucun tarif, aucun pourcentage, aucun délai.** Le tarif de cession qui circule n'est confirmé
-par aucune source lue : le prononcer serait un chiffre inventé. Les trois consignes d'écran qui l'entourent (QUAND,
+rien à valider) — **sans aucun tarif, aucun pourcentage, aucun délai.** Note interne (D-CIQ-4, 03/10/2026) : le tarif
+de cession et le plafond sont désormais SOURCÉS (décisions et articles cités au dossier), mais ils ne se disent
+JAMAIS au téléphone — CAD163 tient. Les trois consignes d'écran qui l'entourent (QUAND,
 JAMAIS, ENSUITE) reformulent la décision : ✎ à valider par le fondateur. Darija : aucune version validée (relecture
 native CADM1) — aucune traduction n'est fabriquée.
 QUAND : Seulement si le client aborde lui-même la loi 82-21 ou la revente du surplus — jamais à l'initiative de la commerciale, jamais dans un script d'ouverture.

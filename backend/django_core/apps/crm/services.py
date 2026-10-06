@@ -174,6 +174,12 @@ def _playbook_correspond_au_lead(playbook, lead):
         # AGR525 — le playbook FDA vise le REMPLACEMENT DU BUTANE (Guide FDA
         # 2024, D-AGR-6) : l'énergie de la pompe actuelle est un critère.
         'pompe_alim_actuelle': getattr(lead, 'pompe_alim_actuelle', None),
+        # CIQ517 (D-CIQ-6) — le playbook « raccordement et autorisations du
+        # site » vise un site MT, une régularisation 82-21 ou un client qui
+        # veut revendre : ces trois critères sont lus.
+        'tension_raccordement': getattr(lead, 'tension_raccordement', None),
+        'regularisation_8221': getattr(lead, 'regularisation_8221', None),
+        'objectif_projet': getattr(lead, 'objectif_projet', None),
     }
     try:
         return evaluate_condition_group(playbook.condition, criteres)
@@ -12141,11 +12147,23 @@ CAD124_PAS_D_AXE_SEGMENT = (
 #: `stage` vient de STAGES.py (règle #2), jamais d'un littéral.
 PLAYBOOKS_SEGMENT_CAD125 = (
     {
+        # Le NOM reste la clé d'idempotence du seed (jamais renommé : un
+        # nouveau nom doublerait le playbook des sociétés existantes).
         'nom': 'Segment — dossier d’autoproduction 82-21',
         'segments': ('industriel', 'commercial'),
+        # CIQ517 (D-CIQ-6) — seulement un site MT (contrat CIQ1), une
+        # régularisation 82-21 ou un client qui veut revendre : AU MOINS UN
+        # de ces critères. Un commerce en BT ne reçoit plus la question
+        # (Q9/CAD163 : on n'aborde jamais la loi 82-21 spontanément).
+        'criteres_un_parmi': (
+            ('tension_raccordement', 'mt'),
+            ('regularisation_8221', True),
+            ('objectif_projet', 'injection_8221'),
+        ),
         'cle_message': 'dossier_8221',
-        'tache': ('Demander où en est le dossier d’autoproduction 82-21 '
-                  '(texte « dossier_8221 » au catalogue des messages)'),
+        'tache': ('Demander où en sont le raccordement et les autorisations '
+                  'du site (texte « dossier_8221 » au catalogue des '
+                  'messages)'),
     },
     {
         'nom': 'Segment — dossier de subvention agricole (FDA)',
@@ -12163,10 +12181,22 @@ PLAYBOOKS_SEGMENT_CAD125 = (
 
 def _condition_playbook_segment(entree):
     """La condition `core.rules` d'un playbook de segment : ses segments, ET
-    ses critères supplémentaires (AGR525) quand il en porte."""
+    ses critères supplémentaires (AGR525, tous requis) ou alternatifs
+    (CIQ517, ``criteres_un_parmi`` : au moins un) quand il en porte."""
     criteres = entree.get('criteres') or ()
-    if not criteres:
+    un_parmi = entree.get('criteres_un_parmi') or ()
+    if not (criteres or un_parmi):
         return _condition_segment(entree['segments'])
+    if un_parmi:
+        return {
+            'op': 'and',
+            'conditions': [
+                _condition_segment(entree['segments']),
+                {'op': 'or', 'conditions': [
+                    {'field': champ, 'operator': 'eq', 'value': valeur}
+                    for champ, valeur in un_parmi]},
+            ],
+        }
     feuilles = [
         {'field': 'type_installation', 'operator': 'eq', 'value': segment}
         for segment in entree['segments']]
@@ -12181,6 +12211,10 @@ def _condition_playbook_segment(entree):
 
 
 def _lead_satisfait_criteres(lead, entree):
+    un_parmi = entree.get('criteres_un_parmi') or ()
+    if un_parmi and not any(getattr(lead, champ, None) == valeur
+                            for champ, valeur in un_parmi):
+        return False
     return all(getattr(lead, champ, None) == valeur
                for champ, valeur in (entree.get('criteres') or ()))
 
@@ -12258,12 +12292,36 @@ def rattraper_playbooks_pompe(lead):
     générées pour les étapes déjà atteintes. Idempotent (``get_or_create`` sur
     (lead, tâche)) ; jamais au Froid ni à « Nouveau ». Renvoie les
     progressions créées."""
-    from . import stages as _stages
-    from .models import LeadPlaybookProgress, Playbook
-
     if (getattr(lead, 'type_installation', None) or '') != 'agricole' \
             or getattr(lead, 'pompe_alim_actuelle', None) != 'butane':
         return []
+    return _rattraper_playbooks_lisant(lead, ('pompe_alim_actuelle',))
+
+
+#: CIQ517 — les champs du lead que lit le playbook « raccordement et
+#: autorisations du site ».
+CHAMPS_PLAYBOOK_8221 = ('tension_raccordement', 'regularisation_8221',
+                        'objectif_projet')
+
+
+def rattraper_playbooks_8221(lead):
+    """CIQ517 — un lead commercial/industriel déjà à la prise de contact (ou
+    au-delà) passe en MT, se déclare en régularisation 82-21 ou veut
+    revendre : la tâche « raccordement et autorisations du site » est
+    générée pour les étapes atteintes (idempotent, comme AGR525)."""
+    if (getattr(lead, 'type_installation', None) or '') \
+            not in ('commercial', 'industriel'):
+        return []
+    return _rattraper_playbooks_lisant(lead, CHAMPS_PLAYBOOK_8221)
+
+
+def _rattraper_playbooks_lisant(lead, champs):
+    """AGR525/CIQ517 — génère, pour les étapes DÉJÀ atteintes (prise de
+    contact incluse, jamais Froid), les tâches des playbooks ACTIFS dont la
+    condition lit l'un de ``champs`` ET matche le lead. Idempotent."""
+    from . import stages as _stages
+    from .models import LeadPlaybookProgress, Playbook
+
     ordre = [s for s in _stages.STAGES if s != _stages.COLD]
     if lead.stage not in ordre or ordre.index(lead.stage) < ordre.index(
             _stages.CONTACTED):
@@ -12272,7 +12330,8 @@ def rattraper_playbooks_pompe(lead):
     import json as _json
     created = []
     for playbook in Playbook.objects.filter(company=lead.company, actif=True):
-        if 'pompe_alim_actuelle' not in _json.dumps(playbook.condition or {}):
+        condition = _json.dumps(playbook.condition or {})
+        if not any(champ in condition for champ in champs):
             continue
         if not _playbook_correspond_au_lead(playbook, lead):
             continue

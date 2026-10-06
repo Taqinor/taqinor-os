@@ -77,7 +77,9 @@ class PlaybookCleMessage(_Base):
             self.assertIsNone(ligne['cle_message'])
 
     def test_industriel_cle_dossier_8221(self):
-        lignes = self._playbook(self._lead('industriel'))
+        # CIQ517 — le 82-21 vise un site MT (ou régularisation / revente).
+        lignes = self._playbook(
+            self._lead('industriel', tension_raccordement='mt'))
         self.assertEqual([ligne['cle_message'] for ligne in lignes], ['dossier_8221'])
 
 

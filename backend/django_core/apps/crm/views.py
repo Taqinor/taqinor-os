@@ -1146,6 +1146,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
                 logger.warning('AGR525: tâche FDA non générée (lead #%s)',
                                new_lead.pk, exc_info=True)
+        # CIQ517 — un commercial/industriel déjà contacté passe en MT, en
+        # régularisation 82-21 ou veut revendre : la tâche « raccordement et
+        # autorisations du site » apparaît (idempotent, comme AGR525).
+        if any(getattr(old, champ) != getattr(new_lead, champ)
+               for champ in ('tension_raccordement', 'regularisation_8221',
+                             'objectif_projet')):
+            from .services import rattraper_playbooks_8221
+            try:
+                rattraper_playbooks_8221(new_lead)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('CIQ517: tâche 82-21 non générée (lead #%s)',
+                               new_lead.pk, exc_info=True)
         # QJR590 — une correction d'identité du lead suit sur SA fiche Client
         # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.
         # CIQ403 — un client ENTREPRISE suit aussi son identité légale.
