@@ -455,17 +455,25 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()
         corps = request.data if isinstance(request.data, dict) else {}
+        # ACAL89 — ce que la composition n'a pas pu faire (avertissements,
+        # marques manquantes) revient à l'écran (contrat
+        # ``calepinage_publication.json``), jamais avalé.
+        journal = {}
         try:
             devis, cree = generer_devis(
                 calepinage, user=request.user,
                 taux_tva=corps.get('taux_tva'),
-                remise_globale=corps.get('remise_globale'))
+                remise_globale=corps.get('remise_globale'),
+                journal=journal)
         except DevisRefuse as refus:
             return Response(_refus_devis(refus), status=refus.statut)
         return Response(
             {'devis': devis.pk, 'reference': devis.reference,
              'statut': devis.statut, 'layout_hash': devis.layout_hash or None,
-             'deduplique': not cree},
+             'deduplique': not cree,
+             'avertissements': list(journal.get('avertissements') or ()),
+             'marques_manquantes': list(
+                 journal.get('marques_manquantes') or ())},
             status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
 
     @action(detail=True, methods=['post'], url_path='sync-devis',
