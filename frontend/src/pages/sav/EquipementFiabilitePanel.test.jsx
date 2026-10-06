@@ -8,11 +8,11 @@ import { configureStore } from '@reduxjs/toolkit'
 
 // Radix Select ne s'ouvre pas de façon fiable sous jsdom : <select> natif
 // (même patron que InstallationDetail.cht22.test.jsx).
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
+vi.mock('../../ui', async (importOriginal) => {
+  const original = await importOriginal()
+  const Fragment = ({ children }) => children
   return {
-    ...actual,
+    ...original,
     Select: ({ value, onValueChange, children }) => (
       <select aria-label="Type de relevé" value={value ?? ''}
               onChange={(e) => onValueChange(e.target.value)}>
@@ -21,7 +21,7 @@ vi.mock('../../ui', async (importActual) => {
     ),
     SelectTrigger: () => null,
     SelectValue: () => null,
-    SelectContent: Passthrough,
+    SelectContent: Fragment,
     SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
   }
 })

@@ -18,6 +18,7 @@ import {
 } from '../../ui'
 import ChantierTimeline from './ChantierTimeline'
 import RecettePompageDialog from './RecettePompageDialog'
+import { RECETTE_TRI_ETAT, RECETTE_RESULTATS } from '../../features/installations/statuses'
 
 /* ── WIR202/CH3 — fiche de recette IEC 62446-1 : formulaire de SAISIE ───────
    Le bouton « Ouvrir la fiche de recette » créait un enregistrement VIDE
@@ -27,18 +28,9 @@ import RecettePompageDialog from './RecettePompageDialog'
    Aucun montant, aucun prix d'achat n'apparaît ici — essais uniquement. */
 
 // Les essais sont des booléens NULLABLES (non renseigné ≠ non conforme).
-const TRI_ETAT = [
-  { value: '', label: 'Non renseigné' },
-  { value: 'true', label: 'Conforme' },
-  { value: 'false', label: 'Non conforme' },
-]
+const TRI_ETAT = RECETTE_TRI_ETAT
 
-const RESULTATS = [
-  { value: 'en_cours', label: 'En cours' },
-  { value: 'conforme', label: 'Conforme' },
-  { value: 'reserves', label: 'Conforme avec réserves' },
-  { value: 'non_conforme', label: 'Non conforme' },
-]
+const RESULTATS = RECETTE_RESULTATS
 
 // Les 4 sections du sérialiseur `CommissioningRecordSerializer`.
 const SECTIONS = [

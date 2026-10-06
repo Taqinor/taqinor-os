@@ -5,24 +5,16 @@
 // l'écran ne recalcule ni écart ni verdict. Aucun prix ici.
 import { useState } from 'react'
 import installationsApi from '../../api/installationsApi'
+import { RECETTE_TRI_ETAT, RECETTE_RESULTATS } from '../../features/installations/statuses'
 import {
   Button, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, Input, Textarea, Label,
 } from '../../ui'
 
-const TRI_ETAT = [
-  { value: '', label: 'Non renseigné' },
-  { value: 'true', label: 'Conforme' },
-  { value: 'false', label: 'Non conforme' },
-]
+const TRI_ETAT = RECETTE_TRI_ETAT
 
-const RESULTATS = [
-  { value: 'en_cours', label: 'En cours' },
-  { value: 'conforme', label: 'Conforme' },
-  { value: 'reserves', label: 'Conforme avec réserves' },
-  { value: 'non_conforme', label: 'Non conforme' },
-]
+const RESULTATS = RECETTE_RESULTATS
 
 const METHODES = [
   { value: '', label: 'Non renseignée' },
@@ -230,6 +222,13 @@ export default function RecettePompageDialog({
     }
   }
 
+  // Lecture seule : aucun bouton d'écriture quand la fiche est verrouillée.
+  const boutonEnregistrer = verrouillee ? null : (
+    <Button type="button" loading={busy} onClick={enregistrer}>
+      Enregistrer la fiche
+    </Button>
+  )
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
@@ -344,11 +343,7 @@ export default function RecettePompageDialog({
 
         <DialogFooter className="flex-wrap">
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
-          {!verrouillee && (
-            <Button type="button" loading={busy} onClick={enregistrer}>
-              Enregistrer la fiche
-            </Button>
-          )}
+          {boutonEnregistrer}
         </DialogFooter>
       </DialogContent>
     </Dialog>

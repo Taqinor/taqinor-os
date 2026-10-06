@@ -7,18 +7,12 @@ import userEvent from '@testing-library/user-event'
    partagé `recette_pompage.json` (jamais un mock écrit à la main). */
 
 const api = vi.hoisted(() => ({
-  getEtapesChantier: vi.fn(),
-  avancerEtape: vi.fn(),
-  getRecette: vi.fn(),
-  ouvrirRecette: vi.fn(),
-  getRecetteRecord: vi.fn(),
-  updateRecette: vi.fn(),
-  ajouterReleveIv: vi.fn(),
   getRecettePompage: vi.fn(),
   ouvrirRecettePompage: vi.fn(),
   updateRecettePompage: vi.fn(),
+  getRecette: vi.fn(),
+  getEtapesChantier: vi.fn(),
   getPackRemise: vi.fn(),
-  genererPackRemise: vi.fn(),
 }))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))

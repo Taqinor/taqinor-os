@@ -430,3 +430,19 @@ export function sortInstallations(items, key, dir) {
   })
   return arr
 }
+
+// Recettes de mise en service (IEC 62446-1 PV, IEC 62253 pompage) : un essai
+// est un booléen NULLABLE (non renseigné ≠ non conforme) ; le résultat est
+// saisi par le technicien, jamais déduit.
+export const RECETTE_TRI_ETAT = [
+  { value: '', label: 'Non renseigné' },
+  { value: 'true', label: 'Conforme' },
+  { value: 'false', label: 'Non conforme' },
+]
+
+export const RECETTE_RESULTATS = [
+  { value: 'en_cours', label: 'En cours' },
+  { value: 'conforme', label: 'Conforme' },
+  { value: 'reserves', label: 'Conforme avec réserves' },
+  { value: 'non_conforme', label: 'Non conforme' },
+]
