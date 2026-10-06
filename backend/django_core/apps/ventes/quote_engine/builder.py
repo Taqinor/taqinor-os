@@ -3819,9 +3819,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # CAD122 — marqueur « signé au domicile », lu SUR LE BON DE COMMANDE
         # (jamais une option du corps client : c'est un fait juridique, pas
         # une préférence de rendu). Absent ou faux ⇒ document inchangé.
+        # CIQ327 — la loi 31-08 vise les besoins NON professionnels (art. 2) :
+        # un devis commercial ou industriel ne joint JAMAIS l'annexe de
+        # rétractation, quel que soit le ``type_client`` de la fiche (un
+        # commerçant peut avoir une fiche « particulier »). Règle sur le MODE.
         "signe_au_domicile": bool(
-            getattr(getattr(devis, 'bon_commande', None),
-                    'signe_au_domicile', False)),
+            not _mode_ci
+            and getattr(getattr(devis, 'bon_commande', None),
+                        'signe_au_domicile', False)),
         "taux_tva": tva_pct,
         "tva_note": tva_note,
         "payment_terms": payment_terms,
