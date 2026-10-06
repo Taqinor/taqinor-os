@@ -90,6 +90,14 @@ export const VISITE_POINT_EAU_CONSIGNE = 'Le niveau d’eau ou le débit du fora
   + 'reste inconnu : proposez la visite gratuite de relevé du point d’eau avant '
   + 'le devis.'
 
+// CIQ420 — fin d'appel PRO : si le serveur dit que la visite est requise avant
+// le devis (`devis_auto.visite_avant_devis`, CIQ404 : site MT, puissance ou
+// surface inconnues…), le panneau la propose avec ses motifs. Textes ✎ dans
+// messages_meryem.md.
+export const VISITE_PRO_TITRE = 'Proposer la visite technique avant le devis'
+export const VISITE_PRO_CONSIGNE = 'Des informations du site manquent pour '
+  + 'chiffrer juste : proposez la visite technique gratuite avant le devis.'
+
 /** Message de refus d'un segment non livré — toujours une phrase complète,
  *  qui nomme le segment avec le libellé servi par le serveur (repli sur sa
  *  clé : un refus ne survient que pour un segment NON vide). */
@@ -214,15 +222,41 @@ export const ORDRE_AGRICOLE = Object.freeze([
   }),
 ])
 
-// Industriel et commercial : la consommation en kWh (la donnée pro qui prime
-// sur les dirhams, CAD166), la puissance souscrite du compteur (question
-// PREMIÈRE en pro), la surface disponible, puis qui décide. Les réponses
-// pro qui n'ont AUCUNE colonne (tension, rythme d'activité, groupe
-// électrogène, process critiques) sont des consignes À NOTER, plus bas.
+// CIQ420 (D-CIQ-7) — l'appel pro en CINQ étapes, dans l'ordre du serveur
+// (CIQ410, `ETAPES_PRO`) : (1) la facture, en MAD ou en kWh — le serveur ne
+// sert qu'UNE des deux colonnes, selon le segment et la tension ; (2) le
+// raccordement : tension, puissance souscrite, phase ; (3) l'activité et le
+// rythme : catégorie et ses questions, ou secteur et équipes, jours (sept
+// boutons), heures, mois de fermeture (douze boutons, `choix_multiple`) ;
+// (4) la surface : type, toiture, m² ; (5) qui décide. `champs` liste TOUTES
+// les colonnes d'une étape : le serveur ne sert que celles qui s'appliquent,
+// et la première encore à obtenir porte la question. Le budget de cinq étapes
+// (CAD175) est inchangé : les questions hors de ces cinq (12 factures, ICE,
+// groupe électrogène, PV existant, TVA récupérable) partent au questionnaire.
+// Délai et mode de financement restent des questions ORALES du rappel (Q21).
 export const ORDRE_PRO = Object.freeze([
-  Object.freeze({ etape: 'conso', champs: Object.freeze(['conso_mensuelle_kwh']) }),
-  Object.freeze({ etape: 'puissance_souscrite', champs: Object.freeze(['compteur_puissance_kva']) }),
-  Object.freeze({ etape: 'surface', champs: Object.freeze(['surface_toiture_m2']) }),
+  Object.freeze({
+    etape: 'facture',
+    champs: Object.freeze(['conso_mensuelle_kwh', 'facture_hiver']),
+  }),
+  Object.freeze({
+    etape: 'raccordement',
+    champs: Object.freeze([
+      'tension_raccordement', 'compteur_puissance_kva', 'raccordement',
+    ]),
+  }),
+  Object.freeze({
+    etape: 'activite_rythme',
+    champs: Object.freeze([
+      'categorie_commerciale', 'reponses_categorie', 'secteur_industriel',
+      'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
+      'fermeture_mois',
+    ]),
+  }),
+  Object.freeze({
+    etape: 'surface',
+    champs: Object.freeze(['type_surface', 'type_toiture', 'surface_toiture_m2']),
+  }),
   Object.freeze({ etape: 'decideur', champs: Object.freeze(['decideur']) }),
 ])
 
@@ -674,12 +708,6 @@ export const A_NOTER_FORCE_MOTRICE = 'À noter dans la note d’appel : le '
   + 'compteur de la pompe est-il en abonnement force motrice ?'
 export const A_NOTER_MEILLEUR_MOMENT = 'À noter dans la note d’appel : le '
   + 'meilleur moment pour le joindre (jour de souk, heures au champ).'
-export const A_NOTER_TENSION ='À noter dans la note d’appel : le site est-il '
-  + 'raccordé en basse ou en moyenne tension ?'
-export const A_NOTER_RYTHME = 'À noter dans la note d’appel : le rythme '
-  + "d'activité (journée, jusqu'au soir, en continu) et le week-end."
-export const A_NOTER_GROUPE = 'À noter dans la note d’appel : le site '
-  + 'a-t-il un groupe électrogène ?'
 export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
   + 'critiques, qui ne doivent jamais s’arrêter.'
 
@@ -697,9 +725,9 @@ export const A_NOTER_PAR_FAMILLE = Object.freeze({
   // il ne reste à noter que la force motrice. AGR536 — et le meilleur moment
   // pour joindre l'exploitant, sans aucun créneau imposé (CAD52).
   agricole: Object.freeze([A_NOTER_FORCE_MOTRICE, A_NOTER_MEILLEUR_MOMENT]),
-  pro: Object.freeze([
-    A_NOTER_TENSION, A_NOTER_RYTHME, A_NOTER_GROUPE, A_NOTER_PROCESS,
-  ]),
+  // CIQ420 — tension, rythme et jours ont leur colonne : il ne reste à noter
+  // que les process critiques.
+  pro: Object.freeze([A_NOTER_PROCESS]),
 })
 
 // Garde-fou de CAD175 : le moteur horaire ne sait traiter ni l'agricole ni

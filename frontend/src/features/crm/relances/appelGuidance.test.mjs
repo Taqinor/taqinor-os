@@ -620,21 +620,100 @@ test('AGR418 — aucune clé d\'économie rendue par la guidance agricole', () =
   assert.doesNotMatch(cles, /econom|payback|gain/i)
 })
 
-test('CAD175 — industriel vierge : conso, puissance souscrite, surface, décideur — jamais la présence', () => {
-  const g = guidanceAppel(leadVierge175('industriel', ['compteur_puissance_kva']))
-  assert.deepEqual(g.questions.map((q) => q.champ),
-    ['conso_mensuelle_kwh', 'compteur_puissance_kva', 'surface_toiture_m2', 'decideur'])
-  assert.equal(g.enTete, null)
-  assert.equal(g.profilSuppose, false)
-  assert.equal(g.aNoter.length, 4)
+test('CIQ420 — l\'ordre pro tient en cinq étapes : facture, raccordement, activité, surface, décideur', () => {
+  assert.deepEqual(guidance.ORDRE_PRO.map((e) => e.etape),
+    ['facture', 'raccordement', 'activite_rythme', 'surface', 'decideur'])
+  assert.equal(guidance.ORDRE_PRO.length, BUDGET_APPEL_1)
 })
 
-test('CAD175 — pro : une réponse déjà sur la fiche ne se repose pas, l\'ordre reste figé', () => {
-  const panneau = leadVierge175('commercial', ['compteur_puissance_kva'])
-  panneau.champs_a_poser = panneau.champs_a_poser.filter((q) => q.champ !== 'conso_mensuelle_kwh')
-  panneau.prefill = { conso_mensuelle_kwh: 4200 }
-  assert.deepEqual(guidanceAppel(panneau).questions.map((q) => q.champ),
-    ['compteur_puissance_kva', 'surface_toiture_m2', 'decideur'])
+test('CIQ420 — chaque colonne des cinq étapes pro est servie par le contrat (commercial ou industriel)', () => {
+  const servies = new Set()
+  for (const variante of ['exemple_commercial', 'exemple_industriel']) {
+    for (const q of exemple(variante).champs_a_poser) servies.add(q.champ)
+    for (const champ of Object.keys(exemple(variante).prefill)) servies.add(champ)
+  }
+  for (const { champs } of guidance.ORDRE_PRO) {
+    for (const champ of champs) assert.ok(servies.has(champ), champ)
+  }
+})
+
+test('CIQ420 — industriel (exemple du contrat) : la facture en kWh ouvre, puis le raccordement, le rythme, la surface, le décideur', () => {
+  const g = guidanceAppel(exemple('exemple_industriel'))
+  assert.equal(g.famille, 'pro')
+  assert.deepEqual(g.questions.map((q) => q.etape),
+    ['facture', 'raccordement', 'activite_rythme', 'surface', 'decideur'])
+  assert.deepEqual(g.questions.map((q) => q.champ), [
+    'conso_mensuelle_kwh', 'compteur_puissance_kva', 'secteur_industriel',
+    'type_surface', 'decideur',
+  ])
+  const rythme = g.questions[2]
+  assert.deepEqual(rythme.complements.map((q) => q.champ), [
+    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
+  ])
+  const jours = rythme.complements.find((q) => q.champ === 'jours_ouverture')
+  assert.equal(jours.nature, 'choix_multiple')
+  assert.equal(jours.choix.length, 7)
+  const fermeture = rythme.complements.find((q) => q.champ === 'fermeture_mois')
+  assert.equal(fermeture.choix.length, 12)
+  assert.equal(g.enTete, null)
+  assert.equal(g.profilSuppose, false)
+  assert.deepEqual(g.aNoter, [guidance.A_NOTER_PROCESS])
+})
+
+test('CIQ420 — commercial (exemple du contrat) : une étape déjà répondue est sautée', () => {
+  const g = guidanceAppel(exemple('exemple_commercial'))
+  // `tension_raccordement` et `categorie_commerciale` sont déjà sur la fiche.
+  assert.deepEqual(g.questions.map((q) => q.champ), [
+    'facture_hiver', 'compteur_puissance_kva', 'reponses_categorie',
+    'type_surface', 'decideur',
+  ])
+  assert.equal(g.questions.length, 5)
+  assert.ok(!g.questions.some((q) => q.champ === 'tension_raccordement'))
+})
+
+test('CIQ420 — « avec le conjoint / la famille » est absent pour un pro', () => {
+  for (const variante of ['exemple_commercial', 'exemple_industriel']) {
+    const decideur = guidanceAppel(exemple(variante)).questions.find((q) => q.champ === 'decideur')
+    const libelles = decideur.choix.map((c) => c.libelle).join(' ')
+    assert.ok(!libelles.toLowerCase().includes('conjoint'), libelles)
+    assert.ok(!libelles.toLowerCase().includes('famille'), libelles)
+    assert.ok(!decideur.question.toLowerCase().includes('conjoint'), decideur.question)
+  }
+})
+
+test('CIQ420 — aucune clé d\'économie dans la guidance pro', () => {
+  for (const variante of ['exemple_commercial', 'exemple_industriel']) {
+    const g = guidanceAppel(exemple(variante))
+    assert.doesNotMatch(JSON.stringify(Object.keys(g)), /econom|payback|gain/i)
+    assert.deepEqual(g.gardeFous, [guidance.AUCUNE_ESTIMATION_SEGMENT])
+  }
+})
+
+test('CIQ420 — segment vide + segment probable pro : le bandeau le dit et demande de confirmer', () => {
+  const suggestion = { valeur: 'industriel', raison: 'tension moyenne déclarée' }
+  const g = guidanceAppel({
+    ...exemple('exemple_industriel'), segment: null, segment_libelle: null, segment_suggere: suggestion,
+  })
+  assert.equal(g.avertissement,
+    'Segment probable : industriel (tension moyenne déclarée) — confirmez avec le client.')
+})
+
+test('CIQ420 — pro : une réponse déjà sur la fiche ne se repose pas, l\'ordre reste figé', () => {
+  const panneau = exemple('exemple_industriel')
+  const sans = {
+    ...panneau,
+    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'conso_mensuelle_kwh'),
+    prefill: { ...panneau.prefill, conso_mensuelle_kwh: 42000 },
+  }
+  assert.deepEqual(guidanceAppel(sans).questions.map((q) => q.etape),
+    ['raccordement', 'activite_rythme', 'surface', 'decideur'])
+})
+
+test('CIQ420 — textes de la visite pro : sans chiffre ni crochet', () => {
+  for (const texte of [guidance.VISITE_PRO_TITRE, guidance.VISITE_PRO_CONSIGNE, guidance.A_NOTER_PROCESS]) {
+    assert.doesNotMatch(texte, /[0-9٠-٩۰-۹]/, texte)
+    assert.doesNotMatch(texte, /[[\]]/, texte)
+  }
 })
 
 test('CAD175 — consignes à noter et garde-fous : ni chiffre ni crochet', () => {
