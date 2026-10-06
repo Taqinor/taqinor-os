@@ -351,7 +351,10 @@ class JalonChantierPortailViewSet(_PortailBaseViewSet):
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
 
-    @action(detail=True, methods=['post'])
+    # Garde explicite PAR action (même garde que la classe) : une @action
+    # neuve ne doit pas monter la dette du scanner YRBAC4.
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
     def marquer_non_atteint(self, request, pk=None):
         """ADOC129 — correction tracée d'un jalon marqué atteint à tort."""
         jalon = self.get_object()
@@ -425,7 +428,8 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
             demande.save(update_fields=['statut', 'ticket_id'])
         return Response(self.get_serializer(demande).data)
 
-    @action(detail=True, methods=['post'], url_path='lier-ticket')
+    @action(detail=True, methods=['post'], url_path='lier-ticket',
+            permission_classes=[IsResponsableOrAdmin])
     def lier_ticket(self, request, pk=None):
         """ADOC118 — corrige le ticket SAV lié tant que la demande n'est ni
         résolue ni refusée (409 sinon) ; même borne que la prise en charge."""
