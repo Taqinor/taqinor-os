@@ -205,7 +205,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -233,7 +233,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -358,7 +358,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -384,7 +384,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -451,8 +451,8 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
-      { id: 23, numero: 2, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 23, version: 2, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -465,6 +465,34 @@ describe('GedNavigator — écriture (U14)', () => {
 
     await waitFor(() => expect(gedApi.comparerVersions).toHaveBeenCalledWith(8, '22', '23'))
     expect(await screen.findByText('Comparaison binaire indisponible.')).toBeInTheDocument()
+  })
+
+  it('aperçu prend la version la plus haute et le comparateur affiche v1/v2', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    // Contrat réel (DocumentVersionSerializer) : clé `version`, ordre [v1, v2].
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 23, version: 2, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => {
+      const iframe = dialog.querySelector('iframe')
+      expect(iframe?.getAttribute('src')).toContain('/ged/versions/23/apercu/')
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /Comparer versions…/i }))
+    expect((await screen.findAllByText('v1')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('v2').length).toBeGreaterThan(0)
+    expect(screen.queryByText('vundefined')).toBeNull()
   })
 
   it('GED16 — extrait un document (check-out)', async () => {

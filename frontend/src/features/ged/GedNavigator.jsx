@@ -933,7 +933,8 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
         if (!alive) return
         const list = rows(r)
         setAllVersions(list)
-        const courante = [...list].sort((a, b) => (b.numero || 0) - (a.numero || 0))[0]
+        // ADOC34 — clé `version` du contrat (jamais `numero`).
+        const courante = [...list].sort((a, b) => (b.version || 0) - (a.version || 0))[0]
         if (courante) setVersion(courante)
         else setFailed(true)
       })
@@ -1217,7 +1218,8 @@ function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
 
 // ── XGED17 — Dialogue : comparer deux versions d'un document ───────────────
 function CompareVersionsDialog({ documentId, versions, onClose }) {
-  const sorted = [...versions].sort((a, b) => (b.numero || 0) - (a.numero || 0))
+  // ADOC34 — clé `version` du contrat (jamais `numero`).
+  const sorted = [...versions].sort((a, b) => (b.version || 0) - (a.version || 0))
   const [v1, setV1] = useState(String(sorted[1]?.id ?? sorted[0]?.id ?? ''))
   const [v2, setV2] = useState(String(sorted[0]?.id ?? ''))
   const [diff, setDiff] = useState(null)
@@ -1249,7 +1251,7 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
               <SelectTrigger id="cmp-v1" aria-label="Version A" className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {sorted.map((v) => (
-                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.version}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1260,7 +1262,7 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
               <SelectTrigger id="cmp-v2" aria-label="Version B" className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {sorted.map((v) => (
-                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.version}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
