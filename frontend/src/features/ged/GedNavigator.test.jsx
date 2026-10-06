@@ -92,6 +92,17 @@ import { ThemeProvider } from '../../design/ThemeProvider'
 import { MemoryRouter } from 'react-router-dom'
 
 const ok = (data) => Promise.resolve({ data })
+
+// ADOC30 — enveloppe DRF réelle {count, next, results} sur deux pages.
+const paginer = (items, taille = 50) => (params = {}) => {
+  const page = params.page || 1
+  const debut = (page - 1) * taille
+  return Promise.resolve({ data: {
+    count: items.length,
+    next: debut + taille < items.length ? `?page=${page + 1}` : null,
+    results: items.slice(debut, debut + taille),
+  } })
+}
 const renderGed = () =>
   render(
     <ThemeProvider>
@@ -243,6 +254,38 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
       zones: [{ page: 0, x0: 0, y0: 0, x1: 20, y1: 10 }], version: 22,
     }))
+  })
+
+  it("charge les 60 documents d'un dossier sur deux pages", async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    const docs = Array.from({ length: 60 }, (_, i) => ({
+      id: 100 + i, nom: `doc-${i + 1}.pdf`, updated_at: '2026-06-01T10:00:00Z',
+    }))
+    gedApi.getDocuments.mockImplementation(paginer(docs))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    expect(await screen.findByText('60 documents')).toBeInTheDocument()
+    expect(screen.getAllByText('doc-60.pdf').length).toBeGreaterThan(0)
+    expect(gedApi.getDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({ folder: 5, page: 2 }))
+  })
+
+  it('arbre de 56 dossiers sur deux pages', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    const dossiers = Array.from({ length: 56 }, (_, i) => ({
+      id: 200 + i, nom: `Dossier ${i + 1}`, cabinet: 1, parent: null, path: `/${200 + i}/`,
+    }))
+    gedApi.getDossiers.mockImplementation(paginer(dossiers))
+    gedApi.getDocuments.mockResolvedValue(ok([]))
+
+    renderGed()
+    expect((await screen.findAllByText('Dossier 56')).length).toBeGreaterThan(0)
+    expect(gedApi.getDossiers).toHaveBeenCalledWith(
+      expect.objectContaining({ cabinet: 1, page: 2 }))
   })
 
   it('Modifier renomme le document et relit le nom', async () => {

@@ -8,6 +8,7 @@ import {
   Search, FileText, Tag as TagIcon, Loader2, Inbox, X, Star, Clock, BookmarkPlus, Trash2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { formatDate } from '../../lib/format'
 import {
   Card, CardContent, Button, EmptyState, Badge, Input, Checkbox, toast,
@@ -17,6 +18,14 @@ import { DataTable } from '../../ui/datatable'
 import {
   rows, normalizeQuery, hasActiveSearch, filterDocuments,
 } from './search.js'
+
+// ADOC30 — une liste GED paginée se lit EN ENTIER (StandardPagination : 50
+// par défaut, 200 max) : jamais la seule première page.
+const toutesLesPages = async (appel, params) => {
+  const res = await fetchAllPages(
+    (page) => appel({ ...params, page, page_size: 200 }).then((r) => r?.data))
+  return Array.isArray(res) ? res : (res?.results ?? [])
+}
 
 // VX152 — les résultats de recherche rejoignent le moteur DataTable partagé
 // (fin de la table HTML héritée). Liste seule : résultats pré-filtrés/triés
@@ -112,7 +121,9 @@ export default function GedSearch({ onOpenDocument, ocrActif = false } = {}) {
       ? (semantic
         ? gedApi.semanticSearch({ q })
         : gedApi.searchDocuments({ q }))
-      : gedApi.getDocuments({ tag: tagId })
+      // ADOC30 — liste par tag lue EN ENTIER (toutes les pages).
+      : toutesLesPages(gedApi.getDocuments, { tag: tagId })
+        .then((list) => ({ data: list }))
     call
       .then((r) => {
         setMode(q ? (r?.data?.mode || (semantic ? 'semantique' : 'plein-texte')) : null)

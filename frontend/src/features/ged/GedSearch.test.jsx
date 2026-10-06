@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import gedApi from '../../api/gedApi'
+import { ThemeProvider } from '../../design/ThemeProvider'
 import GedSearch from './GedSearch.jsx'
 
 // Régression GED13 : l'état vide passait un ÉLÉMENT JSX (`icon={<Inbox/>}`) au
@@ -38,6 +40,33 @@ describe('GedSearch — état vide', () => {
       screen.getByText('Aucun document ne correspond à ces critères.'),
     ).toBeInTheDocument()
     expect(gedApi.searchDocuments).toHaveBeenCalledWith({ q: 'facture' })
+  })
+})
+
+describe('ADOC30 GedSearch — liste par tag complète', () => {
+  it('filtre tag sur deux pages', async () => {
+    gedApi.getTags.mockResolvedValue({ data: [{ id: 4, nom: 'Compta' }] })
+    const docs = Array.from({ length: 60 }, (_, i) => ({
+      id: 400 + i, nom: `facture-${i + 1}.pdf`, tags: [{ id: 4, nom: 'Compta' }],
+    }))
+    gedApi.getDocuments.mockImplementation((params = {}) => {
+      const page = params.page || 1
+      const debut = (page - 1) * 50
+      return Promise.resolve({ data: {
+        count: docs.length,
+        next: debut + 50 < docs.length ? `?page=${page + 1}` : null,
+        results: docs.slice(debut, debut + 50),
+      } })
+    })
+    render(<MemoryRouter><ThemeProvider><GedSearch /></ThemeProvider></MemoryRouter>)
+
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Filtrer par tag' }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Compta'))
+    await userEvent.click(screen.getByRole('button', { name: /^Rechercher$/i }))
+
+    expect(await screen.findByText('60 résultats')).toBeInTheDocument()
+    expect(gedApi.getDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: 4, page: 2 }))
   })
 })
 

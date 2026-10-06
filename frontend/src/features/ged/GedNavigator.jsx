@@ -19,6 +19,7 @@ import {
   MessageCircleQuestion,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import { PageHeader } from '../../ui/PageHeader'
 import { formatDate } from '../../lib/format'
@@ -60,6 +61,14 @@ const LIFECYCLE_LABELS = {
 // Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
 // tableau brut, comme partout dans le frontend.
 const rows = (r) => r?.data?.results ?? r?.data ?? []
+
+// ADOC30 — une liste GED paginée se lit EN ENTIER (StandardPagination : 50
+// par défaut, 200 max) : jamais la seule première page.
+const toutesLesPages = async (appel, params) => {
+  const res = await fetchAllPages(
+    (page) => appel({ ...params, page, page_size: 200 }).then((r) => r?.data))
+  return Array.isArray(res) ? res : (res?.results ?? [])
+}
 
 // Message d'erreur lisible à partir d'une réponse axios (premier champ d'erreur
 // DRF, ou message générique). Évite d'afficher un objet brut dans un toast.
@@ -151,8 +160,8 @@ export default function GedNavigator() {
   const loadFolders = (cid) => {
     if (!cid) return
     setLoadingTree(true)
-    gedApi.getDossiers({ cabinet: cid })
-      .then((r) => { setFolders(rows(r)); setError(null) })
+    toutesLesPages(gedApi.getDossiers, { cabinet: cid })
+      .then((list) => { setFolders(list); setError(null) })
       .catch(() => setError('Impossible de charger les dossiers. Réessayez.'))
       .finally(() => setLoadingTree(false))
   }
@@ -175,8 +184,8 @@ export default function GedNavigator() {
   const reloadDocuments = () => {
     if (!selected) return
     setLoadingDocs(true)
-    gedApi.getDocuments({ folder: selected.id })
-      .then((r) => setDocuments(rows(r)))
+    toutesLesPages(gedApi.getDocuments, { folder: selected.id })
+      .then((list) => setDocuments(list))
       .catch(() => setDocuments([]))
       .finally(() => setLoadingDocs(false))
   }
@@ -185,8 +194,8 @@ export default function GedNavigator() {
     let alive = true
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-select loading state
     setLoadingDocs(true)
-    gedApi.getDocuments({ folder: selected.id })
-      .then((r) => { if (alive) setDocuments(rows(r)) })
+    toutesLesPages(gedApi.getDocuments, { folder: selected.id })
+      .then((list) => { if (alive) setDocuments(list) })
       .catch(() => { if (alive) setDocuments([]) })
       .finally(() => { if (alive) setLoadingDocs(false) })
     return () => { alive = false }
@@ -501,6 +510,12 @@ export default function GedNavigator() {
                   <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
                     <FolderOpen className="size-4 text-primary" aria-hidden="true" />
                     <span className="text-sm font-medium">{selected.nom}</span>
+                    {/* ADOC30 — total réel (toutes les pages chargées). */}
+                    {!loadingDocs && (
+                      <span className="text-xs text-muted-foreground">
+                        {documents.length} document{documents.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                     <div className="ml-auto flex items-center gap-1">
                       <Button size="sm" variant="ghost"
                         onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>

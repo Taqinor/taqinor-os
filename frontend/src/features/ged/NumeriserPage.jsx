@@ -13,6 +13,7 @@ import {
   Camera, Trash2, RotateCw, Loader2, FileText, Upload, X, FileUp,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import { PageHeader } from '../../ui/PageHeader'
 import {
@@ -27,6 +28,14 @@ import {
 } from './capture.js'
 
 const rows = (r) => r?.data?.results ?? r?.data ?? []
+
+// ADOC30 — une liste GED paginée se lit EN ENTIER (StandardPagination : 50
+// par défaut, 200 max) : jamais la seule première page.
+const toutesLesPages = async (appel, params) => {
+  const res = await fetchAllPages(
+    (page) => appel({ ...params, page, page_size: 200 }).then((r) => r?.data))
+  return Array.isArray(res) ? res : (res?.results ?? [])
+}
 
 const errText = (e, fallback) => {
   const d = e?.response?.data
@@ -80,8 +89,8 @@ export default function NumeriserPage() {
   useEffect(() => {
     if (cabinetId == null) return
     let alive = true
-    gedApi.getDossiers({ cabinet: cabinetId })
-      .then((r) => { if (alive) setFolders(rows(r)) })
+    toutesLesPages(gedApi.getDossiers, { cabinet: cabinetId })
+      .then((list) => { if (alive) setFolders(list) })
       .catch(() => { if (alive) setFolders([]) })
     return () => { alive = false }
   }, [cabinetId])
