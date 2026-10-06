@@ -87,6 +87,17 @@ const gedApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // ADOC27/XGED11 — Lot SÉPARÉ : les images d'un lot sont découpées en
+  // plusieurs documents PDF à chaque page séparatrice (page blanche / QR).
+  // Renvoie `{documents, …}` — un document par sous-lot détecté.
+  deposerLotScansSepare: ({ folder, files }) => {
+    const fd = new FormData()
+    fd.append('folder', folder)
+    files.forEach((f) => fd.append('files', f))
+    return api.post('/ged/documents/deposer-lot-scans-separe/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
   // GED32/WIR249 — Import en MASSE depuis un CSV de métadonnées (+ ZIP
   // optionnel des binaires, apparié par la colonne `fichier`). Renvoie
   // `{crees, documents, erreurs}` — une ligne en erreur n'interrompt pas l'import.

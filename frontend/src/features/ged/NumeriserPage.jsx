@@ -60,6 +60,9 @@ export default function NumeriserPage() {
   // MÊME dossier cible (folderId) que le flux caméra.
   const [scanFiles, setScanFiles] = useState([])
   const [scanBusy, setScanBusy] = useState(false)
+  // ADOC27 — « un document par séparateur » (page blanche / QR) au lieu
+  // d'un document par fichier.
+  const [separerLot, setSeparerLot] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -135,6 +138,14 @@ export default function NumeriserPage() {
     if (!folderId || scanFiles.length === 0 || scanBusy) return
     setScanBusy(true)
     try {
+      if (separerLot) {
+        // ADOC27 — lot séparé : le serveur découpe aux pages séparatrices.
+        const res = await gedApi.deposerLotScansSepare({ folder: folderId, files: scanFiles })
+        const n = (res?.data?.documents || []).length
+        toast.success(`${n} document${n > 1 ? 's' : ''} créé${n > 1 ? 's' : ''}.`)
+        setScanFiles([])
+        return
+      }
       const res = await gedApi.scanLot({ folder: folderId, files: scanFiles })
       const erreurs = res?.data?.erreurs || []
       const documents = res?.data?.documents || []
@@ -308,6 +319,11 @@ export default function NumeriserPage() {
               disabled={!hasCabinet || !folderId}
               onChange={(e) => setScanFiles(Array.from(e.target.files || []))}
               className="text-[13px]" />
+            <label className="flex items-center gap-2 text-[12.5px]">
+              <input type="checkbox" checked={separerLot}
+                onChange={(e) => setSeparerLot(e.target.checked)} />
+              Séparer par page blanche ou QR (un document par séparateur, images)
+            </label>
             {scanFiles.length > 0 && (
               <ul className="flex flex-col gap-0.5 text-[12.5px] text-muted-foreground">
                 {scanFiles.map((f, i) => <li key={`${f.name}-${i}`}>{f.name}</li>)}
