@@ -25,32 +25,22 @@ def is_industrial(devis, options=None) -> bool:
 
     Industriel market mode + the full/premium format. The industriel ONE-PAGE
     format stays on the legacy engine (fast field send), exactly like the
-    residential/agricole split. The ``include_etude`` format ALSO stays on the
-    legacy engine (see the guard below), exactly like ``residential.is_residential``.
+    residential/agricole split.
+
+    CIQ340 (convention 4, D-QJR5-12, D-CIQ-10) — ``include_etude`` est
+    IGNORÉ : le document industriel est TOUJOURS le premium 4 pages, étude
+    intégrée (synthèse, équipements + chaîne de totaux, rentabilité,
+    conditions et signature). Le garde du 2026-08-14 envoyait au legacy tout
+    devis demandé « avec l'étude » — dont la page d'étude, pour un devis
+    neuf, lisait des clés jamais persistées (C3-VA-04) — pendant que le lien
+    du client et la copie signée recevaient le premium (C3-06). Le legacy ne
+    reste que l'interrupteur de secours (règle #4) et le une-page.
     """
     mode = (getattr(devis, "mode_installation", None) or "").strip().lower()
     if mode != "industriel":
         return False
     opts = options or {}
     if (opts.get("pdf_mode") or "full") not in ("full", "premium"):
-        return False
-    # 2026-08-14 — RÉGRESSION PRODUIT CORRIGÉE (format « étude », 4 pages).
-    # Ce garde manquait depuis QX45 (commit 6fcce23b, 16/07/2026) : le renderer
-    # CFO interceptait AUSSI les devis demandés avec ``include_etude``, que le
-    # dispatch destine explicitement au moteur legacy (cf. le commentaire de
-    # ``builder.generate_premium_devis_pdf`` : « the legacy renderer serves every
-    # other market mode / format (industriel, agricole, one-page, étude) ») et que
-    # ``residential.is_residential`` écarte déjà de la même façon.
-    # Conséquences mesurées sur le devis industriel + étude :
-    #   · la page d'étude d'autoconsommation disparaissait (3 pages au lieu des
-    #     4 exigées par CLAUDE.md — « premium 'full' = 3 pages, +include_etude = 4 ») ;
-    #   · la chaîne de totaux Sous-total HT → Remise → Total HT → TVA → Total TTC,
-    #     elle aussi exigée par CLAUDE.md, n'était plus imprimée du tout : les
-    #     pages CFO n'affichent qu'un « Investissement (TTC, clé en main) ».
-    # Les 4 baselines PNG ``industriel_full_etude_p1..p4`` (committées le
-    # 10/07/2026, AVANT QX45) prouvent le rendu attendu à 4 pages.
-    # Le renderer CFO garde tout son périmètre : industriel full/premium SANS étude.
-    if opts.get("include_etude"):
         return False
     return True
 

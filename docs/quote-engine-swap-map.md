@@ -47,6 +47,12 @@ CIQ332 (D-CIQ-9) — the `commercial` entry ignores `include_etude`: its étude
 commercial devis. The legacy engine serves a commercial devis only as the
 off-switch fallback and for `pdf_mode='onepage'`.
 
+CIQ340 (D-QJR5-12, D-CIQ-10) — same for `industriel`: the document is ALWAYS
+the premium 4 pages, étude intégrée; `is_industrial` ignores `include_etude`
+and the builder no longer forces it. The seller's download, the client link
+and the signed copy are now the same document. The legacy engine serves an
+industriel devis only as the off-switch fallback and for `pdf_mode='onepage'`.
+
 ## Two layers — permanently separate
 
 The founder has confirmed these are two distinct, permanent layers. The new

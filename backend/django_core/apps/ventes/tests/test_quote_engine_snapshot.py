@@ -388,6 +388,9 @@ BASELINE_CASES = [
         'page_count': 3,
         'check_totals': True,
     },
+    # CIQ340 — « Inclure l'étude » ne bascule plus vers le legacy : ce cas
+    # est servi par le renderer PREMIUM industriel (4 pages, étude intégrée)
+    # et ses 4 images de référence ont été refaites sur ce rendu.
     {
         'name': 'industriel_full_etude',
         'reference': 'DEV-SNAP-ETUDE',

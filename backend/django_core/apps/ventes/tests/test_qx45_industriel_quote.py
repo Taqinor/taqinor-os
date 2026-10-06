@@ -33,6 +33,14 @@ class TestIndustrielSelection(SimpleTestCase):
     def test_onepage_industriel_falls_back(self):
         self.assertFalse(renderer.is_industrial(_Devis("industriel"), {"pdf_mode": "onepage"}))
 
+    def test_include_etude_reste_premium(self):
+        """CIQ340 — « Inclure l'étude » ne bascule plus vers le legacy : le
+        document industriel est toujours le premium 4 pages."""
+        self.assertTrue(renderer.is_industrial(
+            _Devis("industriel"), {"pdf_mode": "full", "include_etude": 1}))
+        self.assertFalse(renderer.is_industrial(
+            _Devis("industriel"), {"pdf_mode": "onepage", "include_etude": 1}))
+
     def test_other_modes_not_industriel(self):
         self.assertFalse(renderer.is_industrial(_Devis("residentiel"), {"pdf_mode": "full"}))
         self.assertFalse(renderer.is_industrial(_Devis("agricole"), {"pdf_mode": "full"}))
@@ -190,3 +198,48 @@ class TestIndustrielDispatchEquipements(TestCase):
         self.assertIn('Total TTC', html)
         doc = fitz.open(stream=up.call_args[0][0], filetype='pdf')
         self.assertEqual(len(doc), 4)
+
+
+@tag("pdf")
+class TestCiq340IndustrielToujoursPremium(TestCase):
+    """CIQ340 — par le dispatch RÉEL : un devis industriel demandé « avec
+    l'étude » sort en 4 pages PREMIUM (le legacy n'est pas appelé) ; le
+    une-page reste servi par le legacy, en 1 page."""
+
+    LIGNES = TestIndustrielDispatchEquipements.LIGNES
+    ETUDE = {
+        'kwc': 99.4, 'production_annuelle': 160000, 'conso_annuelle': 300000,
+        'taux_autoconso': 92, 'taux_couverture': 53,
+        'prod_mensuelle': [13333] * 12, 'conso_mensuelle': [25000] * 12,
+    }
+
+    def _rendu(self, pdf_options):
+        import fitz
+        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine import generate_devis_premium as moteur
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_devis, make_user)
+        company = make_company()
+        devis = make_devis(company, make_user(company), make_client(company),
+                           self.LIGNES, reference='DEV-CIQ340-IND',
+                           etude_params=dict(self.ETUDE))
+        devis.mode_installation = 'industriel'
+        devis.save(update_fields=['mode_installation'])
+        with patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket'), \
+                patch('apps.ventes.utils.pdf._upload_pdf') as up, \
+                patch.object(moteur, 'generate_premium_pdf',
+                             wraps=moteur.generate_premium_pdf) as legacy:
+            builder.generate_premium_devis_pdf(devis.id,
+                                               pdf_options=pdf_options)
+        doc = fitz.open(stream=up.call_args[0][0], filetype='pdf')
+        return len(doc), legacy.called
+
+    def test_avec_etude_quatre_pages_premium(self):
+        pages, legacy = self._rendu({'pdf_mode': 'full', 'include_etude': 1})
+        self.assertFalse(legacy)
+        self.assertEqual(pages, 4)
+
+    def test_une_page_reste_legacy(self):
+        pages, legacy = self._rendu({'pdf_mode': 'onepage'})
+        self.assertTrue(legacy)
+        self.assertEqual(pages, 1)
