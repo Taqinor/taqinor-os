@@ -2,13 +2,15 @@
 
 import json
 
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import (
+    SimpleTestCase, TestCase, TransactionTestCase, override_settings)
 from django.urls import reverse
 
 from authentication.models import Company
 from core.test_utils import WideTeardownTimeoutMixin
 
 from .models import Lead, LeadActivity, WebsiteLeadPayload
+from .webhooks import _canal_site_web
 
 SECRET = 'test-secret-webhook-123'
 
@@ -72,7 +74,8 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertEqual(lead.whatsapp, '212661850410')
         self.assertIsNotNone(lead.consent_timestamp)
         self.assertEqual(lead.source, Lead.Source.SITE_WEB)
-        self.assertEqual(lead.canal, Lead.Canal.SITE_WEB)
+        # fbclid + utm_source=facebook ⇒ canal Meta (classement du site).
+        self.assertEqual(lead.canal, Lead.Canal.META_ADS)
         # Historique : « créé via le site web ».
         # MRY6 — un lead SITE_WEB neuf, avec numéro exploitable, déclenche
         # aussi sa cadence `contact` (`demarrer_cadence_contact`, guard par
@@ -630,7 +633,8 @@ class QW3ContactPreferenceTests(TestCase):
     def test_canal_stays_site_web_regardless_of_contact_preference(self):
         # Le canal marketing d'ORIGINE n'est jamais réécrit par la préférence
         # de contact — deux concepts distincts.
-        res = self.post(payload_site(contactPreference='phone_ok'))
+        res = self.post(payload_site(
+            contactPreference='phone_ok', fbclid=None, utm={}))
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(lead.canal, Lead.Canal.SITE_WEB)
 
@@ -1367,3 +1371,82 @@ class Wref2ReferenceServeurTests(TestCase):
         rows = res.json()
         rows = rows.get('results', rows)
         self.assertEqual([r['nom'] for r in rows], ['Hicham Amrani'])
+
+
+class CanalSiteWebClassementTests(SimpleTestCase):
+    """Google Ads — `_canal_site_web` classe le canal d'origine du lead du site."""
+
+    def test_identifiants_de_clic_google(self):
+        for cle in ('gclid', 'gbraid', 'wbraid'):
+            self.assertEqual(
+                _canal_site_web(**{cle: 'abc123'}), Lead.Canal.GOOGLE_ADS, cle)
+
+    def test_utm_source_google(self):
+        for source in ('google', 'AdWords', ' googleads '):
+            self.assertEqual(
+                _canal_site_web(utm_source=source), Lead.Canal.GOOGLE_ADS)
+
+    def test_meta(self):
+        self.assertEqual(_canal_site_web(fbclid='fb.1.2.x'), Lead.Canal.META_ADS)
+        for source in ('facebook', 'fb', 'Instagram', 'ig', 'meta'):
+            self.assertEqual(
+                _canal_site_web(utm_source=source), Lead.Canal.META_ADS)
+
+    def test_identifiant_de_clic_prime_sur_utm(self):
+        self.assertEqual(
+            _canal_site_web(gclid='g1', utm_source='facebook'),
+            Lead.Canal.GOOGLE_ADS)
+        self.assertEqual(
+            _canal_site_web(fbclid='f1', utm_source='google'),
+            Lead.Canal.META_ADS)
+
+    def test_sans_signal_reste_site_web(self):
+        self.assertEqual(_canal_site_web(), Lead.Canal.SITE_WEB)
+        self.assertEqual(
+            _canal_site_web(utm_source='chatgpt.com'), Lead.Canal.SITE_WEB)
+        self.assertEqual(
+            _canal_site_web(utm_source='parrainage'), Lead.Canal.SITE_WEB)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class GoogleAdsWebhookTests(TestCase):
+    """Google Ads — gclid persisté et canal classé à la création par le site."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Test Google', slug='taqinor-test-google')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data), content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def _lead(self, **extra):
+        res = self.post(payload_site(fbclid=None, utm={}, **extra))
+        self.assertEqual(res.status_code, 201, res.content)
+        return Lead.objects.get(pk=res.json()['lead_id'])
+
+    def test_gclid_persiste_et_canal_google(self):
+        lead = self._lead(gclid='Cj0KCQjw-gclid', utm={'utm_source': 'google'})
+        self.assertEqual(lead.gclid, 'Cj0KCQjw-gclid')
+        self.assertEqual(lead.canal, Lead.Canal.GOOGLE_ADS)
+        self.assertEqual(lead.source, Lead.Source.SITE_WEB)
+
+    def test_gbraid_seul_classe_google_sans_stocker_de_gclid(self):
+        lead = self._lead(gbraid='0AAAAA-gbraid')
+        self.assertEqual(lead.gclid, '')
+        self.assertEqual(lead.canal, Lead.Canal.GOOGLE_ADS)
+
+    def test_gclid_tronque_a_255(self):
+        lead = self._lead(gclid='x' * 400)
+        self.assertEqual(len(lead.gclid), 255)
+
+    def test_sans_tracking_reste_site_web(self):
+        lead = self._lead()
+        self.assertEqual(lead.gclid, '')
+        self.assertEqual(lead.canal, Lead.Canal.SITE_WEB)
+
+    def test_utm_meta_sans_fbclid_classe_meta(self):
+        lead = self._lead(utm={'utm_source': 'instagram'})
+        self.assertEqual(lead.canal, Lead.Canal.META_ADS)
