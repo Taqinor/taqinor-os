@@ -1368,6 +1368,9 @@ class MesDocumentsPortailLigneSerializer(serializers.Serializer):
     taille = serializers.IntegerField(allow_null=True)
     mime = serializers.CharField(allow_null=True)
     date_creation = serializers.DateTimeField(allow_null=True)
+    # ADOC134 (D-ADOC-2) — version en vigueur et sa date.
+    version_numero = serializers.IntegerField(allow_null=True)
+    version_date = serializers.DateTimeField(allow_null=True)
 
 
 #: YAPIC6 — même remarque que ``_ID_LIVRAISON`` plus haut.
@@ -1415,6 +1418,12 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
             'mime': version.mime if version else None,
             'date_creation': (document.created_at.isoformat()
                               if document.created_at else None),
+            # ADOC134 (D-ADOC-2, contrat ``mes_documents.json``) — la VERSION
+            # EN VIGUEUR (celle que sert « Télécharger ») et SA date, jamais
+            # la date du document.
+            'version_numero': version.version if version else None,
+            'version_date': (version.created_at.isoformat()
+                             if version and version.created_at else None),
         }
 
     @extend_schema(responses=inline_serializer(
