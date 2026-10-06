@@ -99,6 +99,8 @@ const PortailClientLivraisons = lazy(() => import('../features/portail/client/Po
 const PortailClientChantiers = lazy(() => import('../features/portail/client/PortailClientChantiers'))
 // AUD139 — changement OBLIGATOIRE du mot de passe temporaire (portail client).
 const PortailClientMotDePasse = lazy(() => import('../features/portail/client/PortailClientMotDePasse'))
+// ADOC117 — page PUBLIQUE d'acceptation d'une invitation (hors layout).
+const PortailInvitationAccepter = lazy(() => import('../features/portail/PortailInvitationAccepter'))
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
 const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
 const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
@@ -471,6 +473,9 @@ const router = createBrowserRouter([
     loader: portalLoader(PORTEE_PARTENAIRE),
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireCommissions /></WithPortal>,
   },
+  // ADOC117 — lien de l'e-mail d'invitation : route PUBLIQUE hors layout, sans
+  // `portalLoader` ni coquille ERP (l'invité n'a pas encore de session).
+  { path: '/portail/invitation/accepter', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PortailInvitationAccepter /></Suspense></RouteErrorBoundary> },
 
   // ODY2 — Menu d'accueil : la grille de MES apps. `/dashboard` reste une route
   // valide (l'app « Tableau de bord »), ce n'est plus la porte d'entrée.

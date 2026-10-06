@@ -30,6 +30,12 @@ const portailApi = {
   // prochain jalon chantier). Aucun id envoyé : le scope vient du compte
   // portail connecté, côté serveur.
   tableauDeBord: () => api.get('/portail/client/tableau-de-bord/'),
+  // ADOC117 — acceptation PUBLIQUE d'une invitation (sans session) : corps
+  // `{token, mot_de_passe}` SEULS (contrat invitation_accepter.json).
+  invitation: {
+    accepter: (payload) =>
+      api.post('/public/portail/invitations/accepter/', payload),
+  },
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),
