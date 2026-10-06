@@ -39,6 +39,7 @@ ceux du moteur, seulement exprimés en %), aucun taux fixe (D-CIQ-1), aucun
 from __future__ import annotations
 
 from ..lecture_pure import nombre_normalise
+from .mentions import mentions_ci
 
 #: Version de la forme servie (contrat CIQ4).
 VERSION = 1
@@ -404,6 +405,9 @@ def synthese_ci(data):
         synthese["argent"] = argent
     else:
         omissions.append({"bloc": "argent", "motif": motif})
+    # CIQ305 — les phrases client C&I, sourcées et trilingues (une table).
+    synthese["hypotheses"] = mentions_ci(
+        data, sous_reserve=statut == STATUT_SOUS_RESERVE)
     synthese["echeancier"] = _echeancier(data, option)
     synthese["omissions"] = omissions
     return synthese

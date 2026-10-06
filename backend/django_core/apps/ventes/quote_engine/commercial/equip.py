@@ -12,6 +12,7 @@ from . import categories
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
+from ..ci.mentions import texte_revente
 from ..sequence import sequence_affichage
 
 
@@ -114,9 +115,9 @@ def build(ctx):
     if _inj and _inj > 0:
         injection_html = (
             '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' MAD/an</b> — '
-            'surplus injecté (loi 82-21, net des frais réseau, plafond 20 % de la '
-            'production). <span class="c2-inj-m">Tarif ANRE 03/2026-02/2027, '
-            'plafond en révision.</span></div>')
+            'surplus injecté. <span class="c2-inj-m">'
+            # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
+            + texte_revente() + '.</span></div>')
 
     # QJR619 — « Options proposées (non incluses) » : le SEUL ``total_ttc`` du
     # builder (supplément canonique, QJR616), aucun recalcul. Sans option ⇒ ''.
