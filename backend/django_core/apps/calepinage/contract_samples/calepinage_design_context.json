@@ -93,7 +93,13 @@
     "modifiable": true,
     "raison_lecture_seule": "",
     "avertissements": [],
-    "revision_possible": false
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_sans_devis": {
     "calepinage": {
@@ -168,7 +174,13 @@
     "avertissements": [
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
-    "revision_possible": false
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_vide": {
     "calepinage": {
@@ -211,7 +223,13 @@
       "Aucune géométrie de toiture connue pour ce calepinage : commencez par situer le bâtiment sur la carte.",
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
-    "revision_possible": false
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "forme_serveur_note": "ACAL5 — `partielle` TANT QUE les moitiés back (D02-T15, D06-T19, D08-T06) ne servent pas les clés ajoutées (revision_possible, calepinage.devis_lie, calepinage.lead_supprime, geometrie.empreinte_document / repere_lead / ecart_m / derive / contour_utilisable / source_repere, cible.source / cible.refus) ; la première moitié back remet `complete`.",
   "exemple_contour_inutilisable": {
@@ -290,7 +308,13 @@
     "avertissements": [
       "Le contour du client est inutilisable (points confondus) : tracez le toit sur la carte."
     ],
-    "revision_possible": false
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_cible_lead": {
     "calepinage": {
@@ -374,7 +398,13 @@
     "avertissements": [
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
-    "revision_possible": false
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_cible_refus": {
     "calepinage": {
@@ -458,7 +488,13 @@
     "avertissements": [
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
-    "revision_possible": false
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_derive_a_decider": {
     "calepinage": {
@@ -551,7 +587,13 @@
     "modifiable": true,
     "raison_lecture_seule": "",
     "avertissements": [],
-    "revision_possible": false
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_envoye": {
     "calepinage": {
@@ -644,7 +686,13 @@
     "modifiable": true,
     "raison_lecture_seule": "",
     "avertissements": [],
-    "revision_possible": true
+    "revision_possible": true,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_accepte": {
     "calepinage": {
@@ -737,7 +785,13 @@
     "modifiable": false,
     "raison_lecture_seule": "Devis accepté : sa conception est figée. Utilisez « Réviser » pour créer la version suivante.",
     "avertissements": [],
-    "revision_possible": true
+    "revision_possible": true,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
   },
   "exemple_remplace": {
     "calepinage": {
@@ -830,6 +884,13 @@
     "modifiable": false,
     "raison_lecture_seule": "Remplacé par DEV-202610-0002",
     "avertissements": [],
-    "revision_possible": false
-  }
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ]
+  },
+  "acal312_note": "ACAL312 (D-ACAL-20) — clé racine ADDITIVE `natures_zones` (liste, toujours présente) : les natures de zone d'exclusion ADMISES, servies depuis `services.zones.natures_admises` (le noyau `core.calepinage.types.NatureZone`) — l'atelier lit ICI son sélecteur de nature, jamais une constante recopiée ; POST layout/ et import-layout/ refusent toute autre nature au chemin `exclusionZones.<i>.nature`."
 }

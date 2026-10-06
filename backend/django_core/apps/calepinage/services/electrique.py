@@ -1646,6 +1646,32 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None):
     return blocs, False, '', simulation.get('calcule_le')
 
 
+def _chiffrage_des_zones(document):
+    """ACAL312 — ``pose.zones`` : les zones d'exclusion du DOCUMENT, chiffrées.
+
+    Sommets projetés par LA projection du document
+    (``zones.projection_du_layout``, ACAL281), zones lues par
+    ``zones.zones_moteur_depuis_layout`` (CAL68), aires par
+    ``zones.chiffrage_zones`` (calcul du noyau ``core.calepinage.zones``),
+    au centième de m². LECTURE PURE : des zones illisibles (nature inconnue,
+    contour à 1-2 sommets) rendent ``None`` — le refus nommé appartient à
+    l'écriture, jamais à une lecture qui tomberait.
+    """
+    from .zones import (
+        ZoneRefusee, chiffrage_zones, projection_du_layout,
+        zones_moteur_depuis_layout,
+    )
+
+    if not isinstance(document, dict):
+        return None
+    try:
+        zones = zones_moteur_depuis_layout(
+            document, projection=projection_du_layout(document))
+    except ZoneRefusee:
+        return None
+    return chiffrage_zones(zones, arrondi=2)
+
+
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
                         materiel=None, reglages=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
@@ -1726,6 +1752,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         calepinage, document=document, donnees=donnees, materiel=materiel,
         reglages=reglages)
     pose = bloc_pose(conception)
+    # ACAL312 (D-ACAL-20) — le chiffrage des zones d'exclusion du document
+    # (aire retirée INTERDITE, RESERVEE chiffrée à part, PREFEREE à 0),
+    # recalculé à CHAQUE lecture par ``services.zones`` (calcul du noyau).
+    pose['zones'] = _chiffrage_des_zones(document)
     # CALX70 — la simulation persistée, servie si elle décrit ENCORE ce
     # dossier ; lue ICI parce que le ratio DC/AC en tire son écrêtage.
     blocs, perimee, motif, calcule_le = _simulation_servie(

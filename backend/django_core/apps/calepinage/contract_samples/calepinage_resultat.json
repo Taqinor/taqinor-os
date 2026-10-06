@@ -32,7 +32,32 @@
           "cle": "z2",
           "module_id": "mod-1"
         }
-      ]
+      ],
+      "zones": {
+        "aire_retiree_m2": 30.0,
+        "par_nature": {
+          "ENVELOPPE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "INTERDITE": {
+            "nombre": 1,
+            "aire_m2": 30.0,
+            "aire_retiree_m2": 30.0
+          },
+          "RESERVEE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "PREFEREE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          }
+        }
+      }
     },
     "electrique": {
       "chainage": {
@@ -795,7 +820,32 @@
           "cle": "z2",
           "module_id": "mod-1"
         }
-      ]
+      ],
+      "zones": {
+        "aire_retiree_m2": 0.0,
+        "par_nature": {
+          "ENVELOPPE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "INTERDITE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "RESERVEE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "PREFEREE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          }
+        }
+      }
     },
     "electrique": {
       "chainage": {
@@ -998,7 +1048,32 @@
           "cle": "z1",
           "module_id": "mod-1"
         }
-      ]
+      ],
+      "zones": {
+        "aire_retiree_m2": 0.0,
+        "par_nature": {
+          "ENVELOPPE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "INTERDITE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "RESERVEE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "PREFEREE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          }
+        }
+      }
     },
     "electrique": {
       "chainage": null,
@@ -1128,7 +1203,32 @@
           "cle": "z2",
           "module_id": "mod-1"
         }
-      ]
+      ],
+      "zones": {
+        "aire_retiree_m2": 0.0,
+        "par_nature": {
+          "ENVELOPPE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "INTERDITE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "RESERVEE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          },
+          "PREFEREE": {
+            "nombre": 0,
+            "aire_m2": 0.0,
+            "aire_retiree_m2": 0.0
+          }
+        }
+      }
     },
     "electrique": {
       "chainage": {
@@ -1890,5 +1990,6 @@
         ]
       }
     ]
-  }
+  },
+  "acal312_note": "ACAL312 (D-ACAL-20) — `pose.zones` ADDITIF (recalculé à chaque lecture, `services.electrique._chiffrage_des_zones` → `zones.chiffrage_zones`, calcul du noyau `core.calepinage.zones`) : `aire_retiree_m2` (INTERDITE + RESERVEE) et `par_nature` {nombre, aire_m2, aire_retiree_m2} pour les quatre natures — RESERVEE chiffrée à part, PREFEREE et ENVELOPPE à 0 dans le retiré ; m² au centième, jamais un montant ; `null` quand les zones du document sont illisibles."
 }

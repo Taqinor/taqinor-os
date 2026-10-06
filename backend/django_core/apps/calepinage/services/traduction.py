@@ -603,7 +603,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
     from core.calepinage.surfaces.polygone import SurfacePolygone
     from core.calepinage.types import Parametres, Rives
 
-    from .zones import ZoneRefusee, projeteur_local, zones_moteur_depuis_layout
+    from .zones import CLE_MOTEUR, ZoneRefusee, injecter_zones, projeteur_local
 
     roof_layout = _document(roof_layout)
     pans = _pans(roof_layout)
@@ -669,8 +669,13 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
             propositions_chassis.append((repere_pan, proposition))
 
     try:
-        zones = tuple(_zone_depuis(z) for z in zones_moteur_depuis_layout(
-            roof_layout, projection=vers_repere))
+        # ACAL312 (D-ACAL-20) — les zones d'exclusion du document entrent
+        # par ``zones.injecter_zones`` (CAL68), dans le repère des pans : une
+        # zone INTERDITE réduit le compte serveur comme elle réduit le pavage
+        # de l'atelier. Sans ``exclusionZones`` : aucune zone, octet-identique.
+        injecte = injecter_zones({CLE_MOTEUR: []}, roof_layout,
+                                 projection=vers_repere)
+        zones = tuple(_zone_depuis(z) for z in injecte[CLE_MOTEUR])
     except ZoneRefusee as refus:
         # CAL68 a déjà écrit le refus en français et nommé son champ : le
         # retraduire ici produirait deux formulations de la même règle.

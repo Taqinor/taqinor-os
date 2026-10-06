@@ -219,6 +219,20 @@ def _refuser_contour_croise(document):
         raise ImportLayoutRefuse(message_contour_croise(chemin), champ=chemin)
 
 
+def _refuser_nature_inconnue(document):
+    """ACAL312 (D-ACAL-20) — une zone d'exclusion à nature inconnue est
+    refusée AVANT le schéma, au chemin ``exclusionZones.<i>.nature``, avec la
+    liste ``services.zones.natures_admises`` (le noyau) — jamais la phrase
+    anglaise de l'``enum`` JSON Schema, jamais une liste recopiée."""
+    from .zones import message_nature_inconnue, natures_inconnues
+
+    refusees = natures_inconnues(document)
+    if refusees:
+        chemin, nature = refusees[0]
+        raise ImportLayoutRefuse(message_nature_inconnue(chemin, nature),
+                                 champ=chemin)
+
+
 def valider_document(document):
     """Valide ``document`` contre le schéma v2 (CAL232) — refuse en NOMMANT
     le CHEMIN du champ fautif.
@@ -241,6 +255,7 @@ def valider_document(document):
         from apps.ventes.services import battery_du_document
         document = dict(document, battery=battery_du_document(document))
     _refuser_parcelle_trop_courte(document)
+    _refuser_nature_inconnue(document)
     try:
         jsonschema.validate(document, _schema())
     except jsonschema.exceptions.ValidationError as erreur:
