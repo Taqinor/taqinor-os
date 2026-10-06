@@ -32,6 +32,32 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+def _relations_scopees(view, request, noms):
+    """ASTK6 — résout les FK d'un ``create`` maison par les champs SCOPÉS
+    société du sérialiseur de la vue (``CompanyScopedRelationsMixin``).
+
+    Un id d'une autre société lève la même ``ValidationError`` « objet
+    inexistant » (400) qu'un id qui n'existe pas — au lieu d'être
+    silencieusement ignoré. Renvoie ``{nom: instance ou None}``.
+    """
+    from rest_framework.exceptions import ValidationError
+
+    champs = view.get_serializer().fields
+    resolues, erreurs = {}, {}
+    for nom in noms:
+        valeur = request.data.get(nom)
+        if valeur in (None, ''):
+            resolues[nom] = None
+            continue
+        try:
+            resolues[nom] = champs[nom].to_internal_value(valeur)
+        except ValidationError as exc:
+            erreurs[nom] = exc.detail
+    if erreurs:
+        raise ValidationError(erreurs)
+    return resolues
+
+
 class VaguePickingViewSet(CompanyScopedModelViewSet):
     """NTWMS4 — vagues de prélèvement MULTI-SOURCE.
 
@@ -168,23 +194,14 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..services import creer_unite_logistique
         company = request.user.company
-        parent = None
-        if request.data.get('parent'):
-            parent = UniteLogistique.objects.filter(
-                id=request.data.get('parent'), company=company).first()
-            if parent is None:
-                return Response(
-                    {'detail': 'Palette introuvable dans cette société.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-        vague = None
-        if request.data.get('vague'):
-            vague = VaguePicking.objects.filter(
-                id=request.data.get('vague'), company=company).first()
+        # ASTK6 — parent et vague bornés par les champs scopés du sérialiseur
+        # (une vague étrangère n'est plus silencieusement ignorée).
+        liens = _relations_scopees(self, request, ['parent', 'vague'])
         try:
             unite = creer_unite_logistique(
                 company=company,
                 type_unite=request.data.get('type_unite') or 'colis',
-                parent=parent, vague=vague,
+                parent=liens['parent'], vague=liens['vague'],
                 poids_kg=request.data.get('poids_kg') or None,
                 dimensions=request.data.get('dimensions') or '')
         except ValueError as exc:
@@ -729,25 +746,19 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         """``{produit, quantite, bin?, lot?, reception?,
         motif?}`` — met une quantité en quarantaine (aucun mouvement de stock :
         la marchandise est là, elle n'est plus disponible)."""
-        from ..models import Produit
         from ..services import mettre_en_quarantaine
         company = request.user.company
-        produit = Produit.objects.filter(
-            id=request.data.get('produit'), company=company).first()
-
-        def _lie(nom, valeur):
-            if not valeur:
-                return None
-            modele = BlocageQualite._meta.get_field(nom).related_model
-            return modele.objects.filter(id=valeur, company=company).first()
+        # ASTK6 — FK bornées société ; un id étranger répond 400.
+        liens = _relations_scopees(
+            self, request, ['produit', 'bin', 'lot', 'reception'])
 
         try:
             blocage = mettre_en_quarantaine(
-                company=company, produit=produit,
+                company=company, produit=liens['produit'],
                 quantite=request.data.get('quantite'), user=request.user,
-                bin_quarantaine=_lie('bin', request.data.get('bin')),
-                lot=_lie('lot', request.data.get('lot')),
-                reception=_lie('reception', request.data.get('reception')),
+                bin_quarantaine=liens['bin'],
+                lot=liens['lot'],
+                reception=liens['reception'],
                 motif=request.data.get('motif') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
@@ -819,17 +830,13 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..services import creer_plan_chargement
         company = request.user.company
-
-        def _lie(nom, valeur):
-            if not valeur:
-                return None
-            modele = PlanChargement._meta.get_field(nom).related_model
-            return modele.objects.filter(id=valeur, company=company).first()
+        # ASTK6 — FK bornées société ; un id étranger répond 400.
+        liens = _relations_scopees(self, request, ['livraison', 'expedition'])
 
         plan = creer_plan_chargement(
             company=company, user=request.user,
-            livraison=_lie('livraison', request.data.get('livraison')),
-            expedition=_lie('expedition', request.data.get('expedition')),
+            livraison=liens['livraison'],
+            expedition=liens['expedition'],
             capacite_kg=request.data.get('capacite_kg') or None,
             capacite_m3=request.data.get('capacite_m3') or None,
             note=request.data.get('note') or '')
@@ -924,21 +931,15 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
-        from ..models import Produit
         from ..services import declarer_mouvement_rebut
         company = request.user.company
-        produit = Produit.objects.filter(
-            id=request.data.get('produit'), company=company).first()
-        bin_source = None
-        if request.data.get('bin'):
-            modele_bin = MouvementRebut._meta.get_field('bin').related_model
-            bin_source = modele_bin.objects.filter(
-                id=request.data.get('bin'), company=company).first()
+        # ASTK6 — produit et casier bornés société ; un id étranger → 400.
+        liens = _relations_scopees(self, request, ['produit', 'bin'])
         try:
             rebut = declarer_mouvement_rebut(
-                company=company, user=request.user, produit=produit,
+                company=company, user=request.user, produit=liens['produit'],
                 quantite=request.data.get('quantite'),
-                motif=request.data.get('motif'), bin_source=bin_source,
+                motif=request.data.get('motif'), bin_source=liens['bin'],
                 note=request.data.get('note') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
@@ -984,24 +985,15 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         serveur."""
         from ..services import creer_retour_client
         company = request.user.company
-        modele_client = RetourClient._meta.get_field('client').related_model
-        client = modele_client.objects.filter(
-            id=request.data.get('client'), company=company).first()
-        chantier = None
-        if request.data.get('chantier'):
-            modele_chantier = (
-                RetourClient._meta.get_field('chantier').related_model)
-            chantier = modele_chantier.objects.filter(
-                id=request.data.get('chantier'), company=company).first()
-        ticket = None
-        if request.data.get('ticket'):
-            modele_ticket = RetourClient._meta.get_field('ticket').related_model
-            ticket = modele_ticket.objects.filter(
-                id=request.data.get('ticket'), company=company).first()
+        # ASTK6 — client, chantier et ticket bornés société ; id étranger →
+        # 400 « objet inexistant » (les casiers des lignes sont bornés par le
+        # service).
+        liens = _relations_scopees(
+            self, request, ['client', 'chantier', 'ticket'])
         try:
             retour = creer_retour_client(
-                company=company, user=request.user, client=client,
-                chantier=chantier, ticket=ticket,
+                company=company, user=request.user, client=liens['client'],
+                chantier=liens['chantier'], ticket=liens['ticket'],
                 motif=request.data.get('motif') or '',
                 lignes=request.data.get('lignes'))
         except ValueError as exc:

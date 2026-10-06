@@ -1349,6 +1349,15 @@ def impact_rappel(alerte):
         return {}
     company = alerte.company
     produit = alerte.produit
+    # ASTK6 — un rappel hérité d'avant la borne qui pointe un produit (ou un
+    # lot) d'une AUTRE société ne divulgue jamais son nom, son SKU ni ses
+    # casiers : la portée est vide.
+    if (produit.company_id != alerte.company_id
+            or (alerte.lot_id and alerte.lot.company_id != alerte.company_id)):
+        return {
+            'alerte': alerte.id, 'produit': {}, 'lots': [],
+            'stock_restant': 0, 'casiers': [], 'chantiers': [], 'colis': [],
+        }
     if alerte.lot_id:
         numeros = [alerte.lot.numero_lot]
     else:
@@ -2009,6 +2018,9 @@ def creer_retour_client(*, company, user=None, client, chantier=None,
                           ligne.get('bin')))
     if not preparees:
         raise ValueError('Aucune ligne de retour valide.')
+    # ASTK6 — chaque casier fourni est relu borné à la société.
+    _casiers_de_la_societe(
+        getattr(company, 'id', company), [p[3] for p in preparees])
 
     with transaction.atomic():
         def _save(reference):
@@ -2026,7 +2038,7 @@ def creer_retour_client(*, company, user=None, client, chantier=None,
                 etat_constate=(
                     etat if etat in etats
                     else LigneRetourClient.EtatConstate.REVENDABLE),
-                bin_id=bin_id)
+                bin_id=_entier_ou_none(bin_id))
             for produit, quantite, etat, bin_id in preparees
         ])
     return retour
@@ -2127,6 +2139,10 @@ def inspecter_retour_client(*, retour, lignes=None, user=None):
     etats = {c for c, _ in LigneRetourClient.EtatConstate.choices}
     par_id = {ligne.id: ligne
               for ligne in retour.lignes.select_related('retour').all()}
+    # ASTK6 — les casiers fournis sont relus bornés à la société du retour.
+    _casiers_de_la_societe(
+        retour.company_id,
+        [e.get('bin') for e in list(lignes or []) if 'bin' in e])
     with transaction.atomic():
         for entree in list(lignes or []):
             ligne = par_id.get(_entier_ou_none(entree.get('ligne')))
@@ -2159,6 +2175,29 @@ def _entier_ou_none(valeur):
         return int(valeur)
     except (TypeError, ValueError):
         return None
+
+
+def _casiers_de_la_societe(company_id, valeurs):
+    """ASTK6 — ids de casiers (bruts, venus du corps) BORNÉS à la société.
+
+    Renvoie ``{id: id}`` des seuls casiers de ``company_id`` ; lève
+    ``ValueError`` (400) dès qu'un id fourni n'est pas un casier de cette
+    société — même réponse qu'un casier inexistant, jamais d'écriture d'un
+    casier étranger."""
+    from .models_wms import LigneRetourClient
+
+    demandes = {_entier_ou_none(v) for v in valeurs
+                if v not in (None, '')}
+    if not demandes:
+        return {}
+    if None in demandes:
+        raise ValueError('Casier introuvable dans cette société.')
+    modele_bin = LigneRetourClient._meta.get_field('bin').related_model
+    trouves = set(modele_bin.objects.filter(
+        company_id=company_id, id__in=demandes).values_list('id', flat=True))
+    if trouves != demandes:
+        raise ValueError('Casier introuvable dans cette société.')
+    return {i: i for i in trouves}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
