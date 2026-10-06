@@ -2101,6 +2101,20 @@ def appliquer_ecart_inventaire(*, company, produit_id, ecart, reference,
         reference=reference, note=note, created_by=user)
 
 
+def theorique_a_la_saisie(company, produit_id):
+    """ASTK39 — règle fondateur D-ASTK (ASTK37, 06/10/2026) « stock à la
+    saisie » : l'écart d'inventaire = compté − stock AU MOMENT où la quantité
+    comptée est saisie. Renvoie ce stock (``quantite_stock`` live du produit
+    de la société, 0 si inconnu) ; c'est le snapshot à poser dans
+    ``quantite_theorique`` au moment de la saisie, pour les DEUX chemins
+    (session d'inventaire et comptage cyclique). Lecture seule."""
+    from .models import Produit
+
+    valeur = (Produit.objects.filter(pk=produit_id, company=company)
+              .values_list('quantite_stock', flat=True).first())
+    return valeur or 0
+
+
 def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     """YSTCK1 — poste UN `MouvementStock` AJUSTEMENT par ligne dont
     `quantite_comptee != quantite_theorique` (attribut ``ecart`` non nul, non

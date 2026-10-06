@@ -1089,7 +1089,11 @@ def generer_comptages_tournants(*, company=None, aujourd_hui=None):
                     quantite_theorique=produit.quantite_stock,
                     # Pré-rempli au théorique : valider sans rien toucher
                     # n'émet AUCUN ajustement (une session de comptage ne
-                    # doit jamais bouger le stock toute seule).
+                    # doit jamais bouger le stock toute seule). ASTK39 — ce
+                    # théorique n'est qu'un PRÉ-REMPLISSAGE : dès que le
+                    # compté est saisi, le théorique est re-snapshoté au
+                    # stock de CET instant (règle « stock à la saisie »,
+                    # stock.serializers.InventaireSessionSerializer).
                     quantite_comptee=produit.quantite_stock)
                 for produit in produits
             ])

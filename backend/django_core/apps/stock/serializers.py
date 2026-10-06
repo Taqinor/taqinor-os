@@ -1774,6 +1774,32 @@ class LigneInventaireSerializer(serializers.ModelSerializer):
             'id', 'produit', 'produit_nom',
             'quantite_theorique', 'quantite_comptee', 'ecart',
         ]
+        # ASTK39 — le théorique est snapshoté SERVEUR à la saisie du compté
+        # (règle « stock à la saisie ») ; jamais accepté du corps.
+        read_only_fields = ['quantite_theorique']
+
+
+def _poser_lignes_inventaire(session, lignes_data, anciennes=None):
+    """ASTK39 — crée les lignes d'une session d'inventaire en appliquant la
+    règle fondateur « stock à la saisie » (ASTK37, 06/10/2026) : le
+    théorique est le stock live AU MOMENT où le compté est saisi. Une ligne
+    renvoyée avec le MÊME compté qu'avant (``anciennes`` : produit_id →
+    (théorique, compté)) n'a pas été re-saisie et garde son snapshot ; un
+    compté nouveau ou modifié re-snapshote le théorique maintenant."""
+    from .services import theorique_a_la_saisie
+
+    anciennes = anciennes or {}
+    for ligne in lignes_data:
+        produit = ligne['produit']
+        comptee = ligne['quantite_comptee']
+        ancienne = anciennes.get(produit.id)
+        if ancienne is not None and ancienne[1] == comptee:
+            theorique = ancienne[0]
+        else:
+            theorique = theorique_a_la_saisie(session.company, produit.id)
+        LigneInventaire.objects.create(
+            session=session, produit=produit,
+            quantite_theorique=theorique, quantite_comptee=comptee)
 
 
 class InventaireSessionSerializer(serializers.ModelSerializer):
@@ -1795,11 +1821,22 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
             'date_creation', 'date_mise_a_jour',
         ]
 
+    def validate_lignes(self, value):
+        """ASTK39 — un produit d'une autre société est refusé AVANT toute
+        écriture (la mise à jour remplace les lignes)."""
+        request = self.context.get('request')
+        company_id = getattr(getattr(request, 'user', None), 'company_id',
+                             None)
+        for ligne in value:
+            if ligne['produit'].company_id != company_id:
+                raise serializers.ValidationError(
+                    'Produit inconnu pour cette société.')
+        return value
+
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes', [])
         session = InventaireSession.objects.create(**validated_data)
-        for ligne in lignes_data:
-            LigneInventaire.objects.create(session=session, **ligne)
+        _poser_lignes_inventaire(session, lignes_data)
         return session
 
     def update(self, instance, validated_data):
@@ -1808,9 +1845,12 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         if lignes_data is not None:
+            anciennes = {
+                ligne.produit_id: (ligne.quantite_theorique,
+                                   ligne.quantite_comptee)
+                for ligne in instance.lignes.all()}
             instance.lignes.all().delete()
-            for ligne in lignes_data:
-                LigneInventaire.objects.create(session=instance, **ligne)
+            _poser_lignes_inventaire(instance, lignes_data, anciennes)
         return instance
 
 
