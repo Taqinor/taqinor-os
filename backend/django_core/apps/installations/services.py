@@ -2834,14 +2834,23 @@ def assemble_handover_pieces(installation):
     # ── Garanties (issues du parc SAV — FG70) ──
     garanties = [eq for eq in equipements
                  if getattr(eq, 'date_fin_garantie', None) is not None]
-    pieces.append({
+    piece_garanties = {
         'type': 'garanties',
         'libelle': 'Garanties matériel & production',
         'reference': f'{len(garanties)} équipement(s) couvert(s)'
         if garanties else None,
         'present': bool(garanties),
         'obligatoire': True,
-    })
+    }
+    if est_chantier_industriel(installation):
+        # CIQ634 — garanties de pose et d'étanchéité, listées à côté des
+        # garanties fabricants (résidentiel octet-identique).
+        installateur = garanties_installateur(installation)
+        piece_garanties['installateur'] = installateur
+        piece_garanties['reference'] = " ; ".join(
+            ([piece_garanties['reference']] if garanties else [])
+            + [g['texte'] for g in installateur])
+    pieces.append(piece_garanties)
 
     # ── Certificat de recette IEC 62446-1 (CH3) ──
     # AGR610 — chantier agricole : « Procès-verbal de recette pompage »
@@ -3010,6 +3019,44 @@ def phrase_arret_coupure(installation):
             and not bom_avec_batterie(installation)):
         return PHRASE_ARRET_COUPURE
     return None
+
+
+#: CIQ634 — mention d'une durée de garantie installateur non saisie.
+GARANTIE_NON_RENSEIGNEE = 'non renseignée'
+
+
+def garanties_installateur(installation):
+    """CIQ634 — garanties de pose et d'étanchéité du chantier, durées
+    SAISIES (aucun défaut) : ``[{type, libelle, duree_mois, perimetre,
+    date_fin, texte}]``. Fin = réception PROVISOIRE + durée ; sans durée :
+    « non renseignée ». Jamais de garantie de production (D-CIQ-12)."""
+    from dateutil.relativedelta import relativedelta
+    lignes = []
+    for cle, libelle, mois, perimetre in (
+            ('installation', 'Garantie de pose',
+             installation.garantie_installation_mois,
+             installation.garantie_installation_perimetre),
+            ('etancheite', "Garantie d'étanchéité de la toiture",
+             installation.garantie_etancheite_mois,
+             installation.garantie_etancheite_perimetre)):
+        fin = None
+        if mois is None:
+            texte = f"{libelle} : {GARANTIE_NON_RENSEIGNEE}"
+        elif installation.date_reception is not None:
+            fin = installation.date_reception + relativedelta(months=mois)
+            texte = (f"{libelle} : {mois} mois, jusqu'au "
+                     f"{fin.strftime('%d/%m/%Y')}")
+        else:
+            texte = (f"{libelle} : {mois} mois à compter de la réception "
+                     f"provisoire")
+        perimetre = (perimetre or '').strip()
+        if perimetre:
+            texte += f" ({perimetre})"
+        lignes.append({
+            'type': cle, 'libelle': libelle, 'duree_mois': mois,
+            'perimetre': perimetre,
+            'date_fin': fin.isoformat() if fin else None, 'texte': texte})
+    return lignes
 
 
 def generer_handover_pack(installation, user=None):
