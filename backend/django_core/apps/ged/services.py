@@ -910,11 +910,16 @@ def create_document(*, company, folder, nom, description='', created_by=None,
         raise ValueError("Le dossier doit appartenir à la même société.")
     # ADOC4 — `coffre` (optionnel) : un document DÉRIVÉ hérite de la
     # confidentialité de sa source.
-    return Document.objects.create(
+    document = Document.objects.create(
         company=company, folder=folder, nom=nom,
         description=description, created_by=created_by,
         custom_data=custom_data if custom_data is not None else dict(),
         coffre=coffre)
+    # ADOC24 — tout document créé ici (dépôts d'autres apps compris :
+    # signature, routage, modèles, calepinage, portail, guides) est indexé
+    # en plein-texte dès sa création : une recherche le trouve.
+    update_search_vector(document)
+    return document
 
 
 # ── Dépôt cross-app : enregistrer un fichier/des octets existants en GED ─────
@@ -2753,7 +2758,6 @@ def generer_document(modele, contexte, *, company, created_by=None,
         filename=meta.get('filename', ''), size=len(pdf_bytes),
         mime=meta.get('mime', ''), checksum=compute_checksum(pdf_bytes),
         uploaded_by=created_by)
-    update_search_vector(document)
     return document, True
 
 
@@ -4998,7 +5002,6 @@ def scinder_pdf(version, points_de_coupe, *, created_by=None):
                 new_doc, file_key=key, company=document.company,
                 filename=f'{nom}.pdf', size=len(seg_bytes),
                 mime='application/pdf', uploaded_by=created_by)
-            update_search_vector(new_doc)
             created.append(new_doc)
         return created
     finally:
@@ -5061,7 +5064,6 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
     add_version(
         nouveau, file_key=key, company=company, filename=f'{nom}.pdf',
         size=len(out_bytes), mime='application/pdf', uploaded_by=created_by)
-    update_search_vector(nouveau)
     return nouveau
 
 
@@ -5969,7 +5971,6 @@ def caviarder_document(version, zones, *, created_by=None):
         new_doc, file_key=key, company=document.company,
         filename=f'{nom}.pdf', size=len(out_bytes),
         mime='application/pdf', uploaded_by=created_by)
-    update_search_vector(new_doc)
     return new_doc
 
 
