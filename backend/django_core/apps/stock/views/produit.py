@@ -1612,6 +1612,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             quantite_stock=0,  # un clone démarre sans stock physique propre
             **valeurs,
         )
+        # ASTK94 — le clone naît actif et sans SKU : même garde d'unicité du
+        # nom que la création (400 {nom}, jamais d'IntegrityError 500).
+        from ..serializers import valider_nom_sans_sku
+        valider_nom_sans_sku(request.user.company, nom, None, False)
         clone.full_clean(exclude=['sku'])
         with transaction.atomic():
             clone.save()
@@ -1640,6 +1644,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 {'detail': 'Ce produit n\'est pas archivé.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # ASTK94 — un homonyme actif sans SKU bloquerait le désarchivage par
+        # la contrainte DB (500) : même garde que le serializer, 400 {nom}.
+        from ..serializers import valider_nom_sans_sku
+        valider_nom_sans_sku(
+            produit.company, produit.nom, produit.sku, False, produit)
         produit.is_archived = False
         produit.save(update_fields=['is_archived'])
         serializer = self.get_serializer(produit)

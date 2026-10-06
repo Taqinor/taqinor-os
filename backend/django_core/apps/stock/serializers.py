@@ -235,6 +235,29 @@ def verifier_sku_libre(modele, company, sku, instance=None):
             f'Ce SKU existe déjà ({sku} ≈ {existant.sku}).')
 
 
+MSG_NOM_DOUBLON = 'Un produit actif de ce nom existe déjà.'
+
+
+def valider_nom_sans_sku(company, nom, sku, archive, instance=None):
+    """ASTK94 — garde d'unicité « produit ACTIF SANS SKU de ce nom » (contrainte
+    DB ``stock_produit_company_nom_sans_sku_uniq``), à UN seul endroit : le
+    serializer (create/update), ``unarchive`` et ``dupliquer`` l'appellent
+    tous — un homonyme répond 400 ``{nom: …}``, jamais une IntegrityError 500.
+    ``archive`` = l'état archivé que le produit AURA après l'opération."""
+    sku = (sku or '').strip()
+    # MÊME périmètre que la contrainte : hors de ce périmètre, le doublon
+    # est LÉGITIME (jumeaux SKUés du catalogue, fiche archivée homonyme).
+    if not nom or sku or archive or company is None:
+        return
+    qs = Produit.objects.filter(
+        company=company, nom=nom, is_archived=False,
+    ).filter(models.Q(sku__isnull=True) | models.Q(sku=''))
+    if instance is not None and instance.pk:
+        qs = qs.exclude(pk=instance.pk)
+    if qs.exists():
+        raise serializers.ValidationError({'nom': MSG_NOM_DOUBLON})
+
+
 def _company_du_contexte(serializer):
     request = serializer.context.get('request')
     company = getattr(getattr(request, 'user', None), 'company', None)
@@ -508,7 +531,7 @@ class ProduitSerializer(serializers.ModelSerializer):
     # côté sérialiseur, un simple POST de doublon remontait en 500
     # (IntegrityError non attrapée) au lieu d'un 400 lisible. Le message est
     # posé sur le champ `nom`, comme `validate_code_barres` le fait sur le sien.
-    MSG_NOM_DOUBLON = 'Un produit actif de ce nom existe déjà.'
+    MSG_NOM_DOUBLON = MSG_NOM_DOUBLON
 
     def _valeur_effective(self, attrs, champ, defaut=None):
         """La valeur qu'aura le produit APRÈS écriture (création ou PATCH)."""
@@ -522,23 +545,8 @@ class ProduitSerializer(serializers.ModelSerializer):
         nom = self._valeur_effective(attrs, 'nom')
         sku = (self._valeur_effective(attrs, 'sku') or '').strip()
         archive = bool(self._valeur_effective(attrs, 'is_archived', False))
-        # MÊME périmètre que la contrainte : hors de ce périmètre, le doublon
-        # est LÉGITIME (jumeaux SKUés du catalogue, fiche archivée homonyme).
-        if not nom or sku or archive:
-            return
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            company = getattr(self.instance, 'company', None)
-        if company is None:
-            return
-        qs = Produit.objects.filter(
-            company=company, nom=nom, is_archived=False,
-        ).filter(models.Q(sku__isnull=True) | models.Q(sku=''))
-        if self.instance is not None:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError({'nom': self.MSG_NOM_DOUBLON})
+        company = _company_du_contexte(self)
+        valider_nom_sans_sku(company, nom, sku, archive, self.instance)
 
     def _ecrire(self, ecriture):
         """Filet de course : entre la validation ci-dessus et l'INSERT, une

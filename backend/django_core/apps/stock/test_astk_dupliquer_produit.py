@@ -92,3 +92,51 @@ class DupliquerProduitCompletTests(TestCase):
         self.assertEqual(fiche.pmax_wc, Decimal('550'))
         self.assertEqual(
             FicheTechnique.objects.filter(produit=self.source).count(), 1)
+
+
+class HomonymeTests(TestCase):
+    """ASTK94 — unarchive et dupliquer passent par la garde d'unicité du nom
+    (sonde CAT-11 : IntegrityError 500 sur
+    ``stock_produit_company_nom_sans_sku_uniq``)."""
+
+    def setUp(self):
+        n = next(_seq)
+        self.company = Company.objects.create(
+            nom=f'ASTK94 {n}', slug=f'astk94-{n}')
+        self.user = User.objects.create_superuser(
+            username=f'astk94_admin_{n}', password='x',
+            email=f'astk94-{n}@example.test')
+        self.user.company = self.company
+        self.user.save(update_fields=['company'])
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.source = Produit.objects.create(
+            company=self.company, nom='Source', sku='SRC-94',
+            prix_vente=Decimal('10'))
+        self.archive = Produit.objects.create(
+            company=self.company, nom='Frais', prix_vente=Decimal('10'),
+            is_archived=True)
+        self.actif = Produit.objects.create(
+            company=self.company, nom='Frais', prix_vente=Decimal('10'))
+
+    def test_unarchive_homonyme_400(self):
+        reponse = self.api.patch(
+            f'/api/django/stock/produits/{self.archive.pk}/unarchive/')
+
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(
+            reponse.json()['nom'], ['Un produit actif de ce nom existe déjà.'])
+        self.archive.refresh_from_db()
+        self.assertTrue(self.archive.is_archived)
+
+    def test_dupliquer_homonyme_400(self):
+        avant = Produit.objects.count()
+
+        reponse = self.api.post(
+            f'/api/django/stock/produits/{self.source.pk}/dupliquer/',
+            {'nom': 'Frais'}, format='json')
+
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertIn('nom', reponse.json())
+        self.assertEqual(Produit.objects.count(), avant)
