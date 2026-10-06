@@ -72,7 +72,10 @@ from .sorties import SortiesMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
-from ..services.layout import LayoutRefuse, enregistrer_layout
+from ..services.layout import (
+    DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
+    enregistrer_section,
+)
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
 from ..services.variantes import (
@@ -374,8 +377,13 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()  # borné société par get_queryset
         if request.method.lower() == 'get':
-            return Response({'roof_layout': calepinage.roof_layout,
-                             'layout_hash': calepinage.layout_hash or None})
+            return Response({
+                'roof_layout': calepinage.roof_layout,
+                'layout_hash': calepinage.layout_hash or None,
+                # ACAL22 — le jeton If-Match de la prochaine écriture.
+                'empreinte_document': (
+                    empreinte_document(calepinage.roof_layout) or None),
+            })
 
         payload = _corps_de_layout(request.data)
         if payload is None:
@@ -383,19 +391,51 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                 {'roof_layout': "Conception manquante ou invalide : le corps "
                                 "attendu est le document de conception."},
                 status=status.HTTP_400_BAD_REQUEST)
+        # ACAL22 — If-Match FACULTATIF à ce stade (obligation en M3,
+        # D01-T37) : fourni, il est comparé sous verrou de ligne à
+        # l'empreinte « document » stockée (jamais layout_hash).
+        base = _jeton_if_match(request)
         try:
             resultat = enregistrer_layout(calepinage, payload,
-                                          user=request.user)
+                                          user=request.user,
+                                          base_empreinte=base)
+        except DocumentModifie as conflit:
+            return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
         except LayoutRefuse as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
-        version = resultat['version']
-        return Response({
-            'roof_layout': calepinage.roof_layout,
-            'layout_hash': resultat['layout_hash'] or None,
-            'inchange': resultat['inchange'],
-            'version': version.pk if version is not None else None,
-        })
+        return Response(_reponse_ecriture(calepinage, resultat))
+
+    @action(detail=True, methods=['post'], url_path='layout/section',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def layout_section(self, request, pk=None):
+        """ACAL22 (C-ACAL-044) — écrit UNE section du document.
+
+        Corps (contrat ``calepinage_layout_section.json``) : soit
+        ``{cle ∈ {horizonProfile, poseSurfaces, underlay}, valeur,
+        base_empreinte}``, soit ``{cle: 'zones', zone_id, champs,
+        base_empreinte}``. Jeton périmé ⇒ 409 ``{detail, code:
+        'document_modifie', empreinte_courante}`` et rien n'est écrit ; clé
+        hors liste blanche ⇒ 400 ``{cle}``. L'écriture passe par
+        ``services.layout.enregistrer_section`` → ``enregistrer_layout``
+        (seul écrivain, verrou CAL207 inchangé). Borné société par
+        ``get_queryset`` (404 pour un id étranger).
+        """
+        calepinage = self.get_object()
+        corps = request.data if isinstance(request.data, dict) else {}
+        cle = corps.get('cle')
+        valeur = corps.get('champs') if cle == 'zones' else corps.get('valeur')
+        try:
+            resultat = enregistrer_section(
+                calepinage, cle, valeur,
+                base_empreinte=corps.get('base_empreinte'),
+                zone_id=corps.get('zone_id'), user=request.user)
+        except DocumentModifie as conflit:
+            return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
+        except LayoutRefuse as refus:
+            return Response({refus.champ or 'roof_layout': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(_reponse_ecriture(calepinage, resultat))
 
     # ── Le pont vers le devis : appeler, jamais refaire ────────────────────
     @action(detail=True, methods=['post'], url_path='generer-devis',
@@ -415,17 +455,25 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()
         corps = request.data if isinstance(request.data, dict) else {}
+        # ACAL89 — ce que la composition n'a pas pu faire (avertissements,
+        # marques manquantes) revient à l'écran (contrat
+        # ``calepinage_publication.json``), jamais avalé.
+        journal = {}
         try:
             devis, cree = generer_devis(
                 calepinage, user=request.user,
                 taux_tva=corps.get('taux_tva'),
-                remise_globale=corps.get('remise_globale'))
+                remise_globale=corps.get('remise_globale'),
+                journal=journal)
         except DevisRefuse as refus:
             return Response(_refus_devis(refus), status=refus.statut)
         return Response(
             {'devis': devis.pk, 'reference': devis.reference,
              'statut': devis.statut, 'layout_hash': devis.layout_hash or None,
-             'deduplique': not cree},
+             'deduplique': not cree,
+             'avertissements': list(journal.get('avertissements') or ()),
+             'marques_manquantes': list(
+                 journal.get('marques_manquantes') or ())},
             status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
 
     @action(detail=True, methods=['post'], url_path='sync-devis',
@@ -698,6 +746,31 @@ def _corps_de_layout(donnees):
     return donnees
 
 
+def _jeton_if_match(request):
+    """ACAL22 — l'empreinte portée par l'en-tête ``If-Match``, ou ``None``.
+
+    Les guillemets d'une ETag (``"abc"``) et le préfixe faible ``W/`` sont
+    tolérés ; un en-tête absent ou vide vaut ``None`` (pas de comparaison).
+    """
+    brut = (request.headers.get('If-Match') or '').strip()
+    if brut.startswith('W/'):
+        brut = brut[2:]
+    brut = brut.strip().strip('"').strip()
+    return brut or None
+
+
+def _reponse_ecriture(calepinage, resultat):
+    """La réponse 200 d'une écriture du document (complète ou par section)."""
+    version = resultat['version']
+    return {
+        'roof_layout': calepinage.roof_layout,
+        'layout_hash': resultat['layout_hash'] or None,
+        'inchange': resultat['inchange'],
+        'version': version.pk if version is not None else None,
+        'empreinte_document': resultat.get('empreinte_document') or None,
+    }
+
+
 def _refus_devis(refus):
     """Le corps d'un refus du pont devis — la charge VENTES telle quelle.
 
@@ -731,12 +804,17 @@ def contexte_conception(calepinage, request=None):
     from .. import selectors as cal_selectors
 
     company = getattr(calepinage, 'company', None)
-    contexte_devis = _contexte_devis_lie(calepinage, company)
+    devis = _devis_lie_de(calepinage, company)
+    contexte_devis = _contexte_devis_lie(calepinage, company, devis=devis)
     # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
     geo = cal_selectors.contexte_geographique(calepinage)
     geometrie = _geometrie(calepinage, contexte_devis, geo)
     cible = _cible(calepinage, contexte_devis)
     return {
+        # ACAL36 — « Réviser » est-il possible sur le devis lié ? LU sur ventes
+        # (``devis_modifiabilite``, jamais une règle recopiée) ; ``False`` sans
+        # devis lié.
+        'revision_possible': _revision_possible(devis),
         'calepinage': {
             'id': calepinage.pk,
             'titre': _texte(getattr(calepinage, 'titre', '')) or '',
@@ -757,6 +835,9 @@ def contexte_conception(calepinage, request=None):
             # ``''`` — jamais une clé absente.
             'client_adresse': geo.get('adresse') or '',
             'client_ville': geo.get('ville') or '',
+            # ACAL36 — le devis lié tel que le contexte ventes le décrit
+            # ({id, reference, statut, client_nom}), ou ``None``.
+            'devis_lie': _devis_lie_resume(contexte_devis),
         },
         'geometrie': geometrie,
         'cible': cible,
@@ -767,16 +848,9 @@ def contexte_conception(calepinage, request=None):
     }
 
 
-def _contexte_devis_lie(calepinage, company):
-    """Le contexte d'atelier du DEVIS lié, ou ``None``.
-
-    Lecture cross-app par ``apps.ventes.selectors`` — la MÊME fonction que
-    l'atelier devis, jamais un second calcul de cible ni une seconde façon de
-    dire « lecture seule ».
-    """
-    from apps.ventes.selectors import (
-        contexte_conception_devis, get_devis_by_pk,
-    )
+def _devis_lie_de(calepinage, company):
+    """ACAL36 — le devis lié (même société), ou ``None`` — lu par ventes."""
+    from apps.ventes.selectors import get_devis_by_pk
 
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id or company is None:
@@ -784,7 +858,42 @@ def _contexte_devis_lie(calepinage, company):
     devis = get_devis_by_pk(devis_id)
     if devis is None or devis.company_id != company.pk:
         return None
+    return devis
+
+
+def _contexte_devis_lie(calepinage, company, devis=None):
+    """Le contexte d'atelier du DEVIS lié, ou ``None``.
+
+    Lecture cross-app par ``apps.ventes.selectors`` — la MÊME fonction que
+    l'atelier devis, jamais un second calcul de cible ni une seconde façon de
+    dire « lecture seule ».
+    """
+    from apps.ventes.selectors import contexte_conception_devis
+
+    if devis is None:
+        devis = _devis_lie_de(calepinage, company)
+    if devis is None:
+        return None
     return contexte_conception_devis(devis, company)
+
+
+def _revision_possible(devis):
+    """ACAL36 — ``revision_possible`` du verdict ventes, ``False`` sans devis."""
+    if devis is None:
+        return False
+    from apps.ventes.selectors import devis_modifiabilite
+
+    return bool(devis_modifiabilite(devis).get('revision_possible'))
+
+
+def _devis_lie_resume(contexte_devis):
+    """ACAL36 — ``{id, reference, statut, client_nom}`` du devis lié, ou
+    ``None`` — repris du contexte ventes, jamais recomposé ici."""
+    bloc = (contexte_devis or {}).get('devis') if contexte_devis else None
+    if not isinstance(bloc, dict):
+        return None
+    return {cle: bloc.get(cle)
+            for cle in ('id', 'reference', 'statut', 'client_nom')}
 
 
 def _layout_decrit_une_geometrie(layout):
@@ -878,6 +987,9 @@ def _geometrie(calepinage, contexte_devis, geo=None):
             'pin': pin,
             'outline': outline,
             'contour_client': contour_client,
+            # ACAL22 — le jeton If-Match de l'écriture (empreinte
+            # « document » du document STOCKÉ, D-ACAL-4).
+            'empreinte_document': empreinte_document(layout) or None,
         }
     if geo['pin'] is not None or geo['outline']:
         return {
@@ -886,9 +998,11 @@ def _geometrie(calepinage, contexte_devis, geo=None):
             'pin': geo['pin'],
             'outline': geo['outline'] or [],
             'contour_client': contour_client,
+            'empreinte_document': empreinte_document(layout) or None,
         }
     return {'source': 'none', 'roof_layout': None, 'pin': None,
-            'outline': [], 'contour_client': contour_client}
+            'outline': [], 'contour_client': contour_client,
+            'empreinte_document': empreinte_document(layout) or None}
 
 
 def _cible(calepinage, contexte_devis):
@@ -1012,7 +1126,9 @@ def _peremption_calepinage(calepinage, company):
     liste calepinages (``CalepinageSerializer._peremption``). Sans devis lié,
     la péremption est INCONNUE (``None``), jamais ``False`` : il n'y a rien à
     quoi comparer la conception (CAL188 — l'écran affiche « — »)."""
-    from apps.ventes.selectors import get_devis_by_pk, peremption_layout_devis
+    from apps.ventes.selectors import get_devis_by_pk
+
+    from ..serializers import peremption_du_calepinage
 
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id:
@@ -1021,7 +1137,9 @@ def _peremption_calepinage(calepinage, company):
     if devis is None or (company is not None
                          and devis.company_id != company.pk):
         return {'layout_stale': None, 'layout_nb_panneaux': None}
-    return peremption_layout_devis(devis)
+    # ACAL47 — le calepinage est passé au sélecteur : divergence de conception
+    # et compte du DOCUMENT du calepinage (même helper que la liste).
+    return peremption_du_calepinage(devis, calepinage)
 
 
 def _texte(valeur):

@@ -17,6 +17,7 @@ import assert from 'node:assert/strict'
 import {
   construireCle, hacherLayout, lireBrouillon, ecrireBrouillon, effacerBrouillon,
   brouillonPertinent, creerGestionnaireBrouillon,
+  purgerBrouillonsOrphelins, memoriserReprise, consommerReprise,
 } from './brouillon.js'
 
 /** Stockage en mémoire — MÊME contrat que `localStorage` (getItem/setItem/removeItem). */
@@ -25,6 +26,9 @@ function stockageFactice(donnees = new Map()) {
     getItem: (cle) => (donnees.has(cle) ? donnees.get(cle) : null),
     setItem: (cle, valeur) => { donnees.set(cle, String(valeur)) },
     removeItem: (cle) => { donnees.delete(cle) },
+    // ACAL84 — contrat Web Storage complet (`length`/`key`) pour la purge.
+    get length() { return donnees.size },
+    key: (i) => [...donnees.keys()][i] ?? null,
     _donnees: donnees,
   }
 }
@@ -111,7 +115,12 @@ test('creerGestionnaireBrouillon — deux gestes (repli, sans réglage) écriven
     obtenirLayout: () => layoutCourant,
   })
 
+  // ACAL84 — la PREMIÈRE vue amorce la référence (scène d'ouverture) : aucune écriture.
+  assert.equal(gestionnaire.notifierGeste(), false)
+  assert.equal(storage._donnees.size, 0)
+
   // Geste 1 : un premier tracé.
+  layoutCourant = { zones: [{ id: 'z1', vertices: [[0, 0], [1, 0], [1, 1]] }] }
   assert.equal(gestionnaire.notifierGeste(), true)
   assert.equal(storage._donnees.size, 1)
 
@@ -128,12 +137,14 @@ test('creerGestionnaireBrouillon — deux gestes (repli, sans réglage) écriven
 
 test('notifierGeste — n’écrit PAS deux fois pour le même document (rien n’a changé)', () => {
   const storage = stockageFactice()
-  const layout = { zones: [{ id: 'z1' }] }
+  let layout = { zones: [{ id: 'z1' }] }
   const gestionnaire = creerGestionnaireBrouillon({
     storage, calepinageId: 1, utilisateurId: 2, hashBase: 'h',
     intervalleSecondes: null,
     obtenirLayout: () => layout,
   })
+  assert.equal(gestionnaire.notifierGeste(), false) // ACAL84 — amorce
+  layout = { zones: [{ id: 'z1' }, { id: 'z2' }] }
   assert.equal(gestionnaire.notifierGeste(), true)
   // Même document, un second appel (ex. deux sondages successifs sans geste
   // réel entre les deux) : AUCUNE écriture inutile.
@@ -151,10 +162,10 @@ test('notifierGeste — rien à sauvegarder (aucun pan tracé) ⇒ no-op, aucune
   assert.equal(storage._donnees.size, 0)
 })
 
-test('demarrer — intervalle RÉGLÉ : minuterie active, écriture inconditionnelle par tic, notifierGeste inerte', () => {
+test('demarrer — intervalle RÉGLÉ : minuterie active, un tic n’écrit qu’un document CHANGÉ, notifierGeste inerte', () => {
   const storage = stockageFactice()
   const { minuteur, tic, actives } = minuteurFactice()
-  const layout = { zones: [{ id: 'z1' }] }
+  let layout = { zones: [{ id: 'z1' }] }
   const gestionnaire = creerGestionnaireBrouillon({
     storage, calepinageId: 1, utilisateurId: 2, hashBase: 'h',
     intervalleSecondes: 300, // réglage utilisateur — la minuterie SEULE écrit
@@ -166,7 +177,11 @@ test('demarrer — intervalle RÉGLÉ : minuterie active, écriture inconditionn
   // Le repli est ÉTEINT quand une minuterie est active.
   assert.equal(gestionnaire.notifierGeste(), false)
   assert.equal(storage._donnees.size, 0)
-  // Le tic, lui, écrit — même document, écriture INCONDITIONNELLE (parité PV*SOL).
+  // ACAL84 — un tic SANS geste n'écrit rien (même règle que le repli)…
+  tic(1)
+  assert.equal(storage._donnees.size, 0)
+  // …un tic après un vrai changement, si.
+  layout = { zones: [{ id: 'z1' }, { id: 'z2' }] }
   tic(1)
   assert.equal(storage._donnees.size, 1)
   gestionnaire.arreter()
@@ -188,6 +203,9 @@ test('demarrer — sans réglage : sondage de repli, notifierGeste reste directe
   tic(1) // rien tracé encore
   assert.equal(storage._donnees.size, 0)
   layout = { zones: [{ id: 'z1' }] }
+  tic(1) // ACAL84 — la scène vient d'être hydratée : première vue = amorce
+  assert.equal(storage._donnees.size, 0)
+  layout = { zones: [{ id: 'z1' }, { id: 'z2' }] }
   tic(1) // le sondage détecte le changement
   assert.equal(storage._donnees.size, 1)
   gestionnaire.arreter()
@@ -331,13 +349,73 @@ test('obtenirLayout qui lève (builder pas prêt) — jamais une exception, no-o
 /* ── Effacement après enregistrement réussi ─────────────────────────────── */
 test('effacer() — le brouillon disparaît (appelé par la page après un enregistrement réussi)', () => {
   const storage = stockageFactice()
+  let layout = { zones: [{ id: 'z1' }] }
   const gestionnaire = creerGestionnaireBrouillon({
     storage, calepinageId: 41, utilisateurId: 7, hashBase: 'srv-hash',
     intervalleSecondes: null,
-    obtenirLayout: () => ({ zones: [{ id: 'z1' }] }),
+    obtenirLayout: () => layout,
   })
+  gestionnaire.notifierGeste() // amorce (ACAL84)
+  layout = { zones: [{ id: 'z1' }, { id: 'z2' }] }
   gestionnaire.notifierGeste()
   assert.ok(lireBrouillon(storage, gestionnaire.cle))
   assert.equal(gestionnaire.effacer(), true)
   assert.equal(lireBrouillon(storage, gestionnaire.cle), null)
+})
+
+/* ── ACAL84 — aucune écriture sans geste, clé serveur, purge, reprise ───── */
+test('premier tic sans geste → aucune écriture (les deux modes)', () => {
+  for (const intervalleSecondes of [null, 30]) {
+    const storage = stockageFactice()
+    const { minuteur, tic } = minuteurFactice()
+    const gestionnaire = creerGestionnaireBrouillon({
+      storage, calepinageId: 41, utilisateurId: 7, hashBase: 'e'.repeat(64),
+      intervalleSecondes,
+      obtenirLayout: () => ({ zones: [{ id: 'z1' }] }),
+      minuteur,
+    })
+    gestionnaire.demarrer()
+    tic(1)
+    tic(1)
+    assert.equal(storage._donnees.size, 0, `mode intervalle=${intervalleSecondes}`)
+    assert.equal(gestionnaire.enregistrerMaintenant(), false)
+    assert.equal(storage._donnees.size, 0)
+    gestionnaire.arreter()
+  }
+})
+
+test('clé = empreinte serveur, purge des autres clés', () => {
+  const storage = stockageFactice()
+  const empreinte = 'a'.repeat(64)
+  // Le jeton SERVEUR (design-context / réponse d'écriture) est la clé, tel quel.
+  const courante = construireCle({ calepinageId: 41, utilisateurId: 7, hashBase: empreinte })
+  assert.equal(courante, `calepinage_brouillon:41:7:${empreinte}`)
+  const perimee = construireCle({ calepinageId: 41, utilisateurId: 7, hashBase: 'b'.repeat(64) })
+  const autreUtilisateur = construireCle({ calepinageId: 41, utilisateurId: 8, hashBase: 'c'.repeat(64) })
+  const autreCalepinage = construireCle({ calepinageId: 42, utilisateurId: 7, hashBase: 'd'.repeat(64) })
+  for (const cle of [courante, perimee, autreUtilisateur, autreCalepinage]) {
+    ecrireBrouillon(storage, cle, { zones: [] })
+  }
+  assert.equal(purgerBrouillonsOrphelins({
+    storage, calepinageId: 41, utilisateurId: 7, hashBase: empreinte,
+  }), 1)
+  assert.ok(lireBrouillon(storage, courante))
+  assert.equal(lireBrouillon(storage, perimee), null)
+  assert.ok(lireBrouillon(storage, autreUtilisateur))
+  assert.ok(lireBrouillon(storage, autreCalepinage))
+  // Storage défaillant : 0, jamais une exception.
+  assert.equal(purgerBrouillonsOrphelins({
+    storage: stockageQuiLeve(), calepinageId: 41, utilisateurId: 7, hashBase: empreinte,
+  }), 0)
+})
+
+test('reprise — mémorisée puis consommée UNE fois au boot suivant', () => {
+  const storage = stockageFactice()
+  const ids = { calepinageId: 41, utilisateurId: 7 }
+  assert.equal(consommerReprise(storage, ids), null)
+  assert.equal(memoriserReprise(storage, ids, { zones: [{ id: 'z9' }] }), true)
+  assert.deepEqual(consommerReprise(storage, ids), { layout: { zones: [{ id: 'z9' }] } })
+  assert.equal(consommerReprise(storage, ids), null)
+  assert.equal(memoriserReprise(stockageQuiLeve(), ids, { zones: [] }), false)
+  assert.equal(consommerReprise(stockageQuiLeve(), ids), null)
 })

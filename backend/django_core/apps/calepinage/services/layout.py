@@ -116,9 +116,205 @@ class LayoutRefuse(ValueError):
         self.champ = champ
 
 
+def _contour_lisible(sommets):
+    """Le contour en couples numériques, ou ``None`` s'il est illisible."""
+    if not isinstance(sommets, list):
+        return None
+    pts = []
+    for point in sommets:
+        if (not isinstance(point, (list, tuple)) or len(point) < 2
+                or not all(isinstance(v, (int, float))
+                           and not isinstance(v, bool) for v in point[:2])):
+            return None
+        pts.append((point[0], point[1]))
+    return pts
+
+
+def contours_croises(document):
+    """ACAL76 — ``[(chemin, contour), …]`` des contours qui se CROISENT.
+
+    Contours contrôlés : ``zones[].vertices``, ``zones[].obstacles[].contour``
+    et ``exclusionZones[].vertices`` ; le test est
+    ``core.calepinage.geometrie.est_polygone_simple`` (le noyau, jamais
+    recodé). Un contour illisible est laissé au schéma. Fonction PURE.
+    """
+    from core.calepinage.geometrie import est_polygone_simple
+
+    if not isinstance(document, dict):
+        return []
+    candidats = []
+    zones = document.get('zones')
+    for rang, zone in enumerate(zones if isinstance(zones, list) else ()):
+        if not isinstance(zone, dict):
+            continue
+        candidats.append((f'zones.{rang}.vertices', zone.get('vertices')))
+        obstacles = zone.get('obstacles')
+        for place, obstacle in enumerate(
+                obstacles if isinstance(obstacles, list) else ()):
+            if isinstance(obstacle, dict):
+                candidats.append(
+                    (f'zones.{rang}.obstacles.{place}.contour',
+                     obstacle.get('contour')))
+    exclusions = document.get('exclusionZones')
+    for rang, zone in enumerate(
+            exclusions if isinstance(exclusions, list) else ()):
+        if isinstance(zone, dict):
+            candidats.append((f'exclusionZones.{rang}.vertices',
+                              zone.get('vertices')))
+    croises = []
+    for chemin, sommets in candidats:
+        contour = _contour_lisible(sommets)
+        if contour and not est_polygone_simple(contour):
+            croises.append((chemin, contour))
+    return croises
+
+
+def message_contour_croise(chemin):
+    """ACAL76 — le refus nommé d'un contour qui se croise."""
+    return (f"Conception refusée au champ « {chemin} » : le contour se "
+            "croise (nœud papillon) — redessinez-le sans que deux côtés se "
+            "coupent.")
+
+
+def _refuser_contour_nouvellement_croise(ancien, nouveau):
+    """ACAL76 — refuse un contour croisé ABSENT du document stocké.
+
+    Un contour croisé DÉJÀ stocké et renvoyé inchangé passe : on ne bloque
+    jamais l'édition d'un dossier existant pour un défaut ancien.
+    """
+    croises = contours_croises(nouveau)
+    if not croises:
+        return
+    deja = {json.dumps(contour) for _c, contour in contours_croises(ancien)}
+    for chemin, contour in croises:
+        if json.dumps(contour) not in deja:
+            raise LayoutRefuse(message_contour_croise(chemin), champ=chemin)
+
+
+class DocumentModifie(ValueError):
+    """ACAL22 (C-ACAL-044) — le jeton d'écriture est périmé.
+
+    Le document a été modifié ailleurs (un onglet, un autre navigateur)
+    depuis que l'écrivain l'a lu : son ``base_empreinte`` / ``If-Match`` ne
+    correspond plus à l'empreinte « document » STOCKÉE. Rien n'est écrit ; la
+    vue répond 409 ``{detail, code: 'document_modifie', empreinte_courante}``
+    (contrat ``calepinage_layout_section.json``).
+    """
+
+    code = 'document_modifie'
+    message = ("Le document a été modifié ailleurs depuis votre ouverture : "
+               "rechargez avant d'enregistrer.")
+
+    def __init__(self, empreinte_courante):
+        super().__init__(self.message)
+        self.empreinte_courante = empreinte_courante
+
+    def corps(self):
+        return {'detail': self.message, 'code': self.code,
+                'empreinte_courante': self.empreinte_courante}
+
+
+#: ACAL22 — les SEULES clés racine qu'une écriture par section remplace.
+CLES_SECTION_RACINE = ('horizonProfile', 'poseSurfaces', 'underlay')
+#: ACAL22 — la section ``zones`` : les SEULS champs d'UNE zone qu'elle écrit.
+CHAMPS_SECTION_ZONE = ('pitchDeg', 'pitchSource', 'facingAzimuthDeg',
+                       'facingManual')
+
+
+def _relire_sous_verrou(calepinage, base_empreinte):
+    """Relit le document STOCKÉ sous verrou de ligne et compare le jeton.
+
+    À appeler DANS ``transaction.atomic``. ``select_for_update`` : deux
+    écrivains concurrents se sérialisent — le second relit le document du
+    premier et voit son jeton périmé (409) au lieu de l'écraser.
+    """
+    from ..models import Calepinage
+
+    stocke = (Calepinage.objects.select_for_update()
+              .only('pk', 'roof_layout').get(pk=calepinage.pk))
+    courante = empreinte_document(stocke.roof_layout)
+    if base_empreinte != courante:
+        raise DocumentModifie(courante)
+    return stocke.roof_layout
+
+
+def enregistrer_section(calepinage, cle, valeur, *, base_empreinte,
+                        zone_id=None, user=None):
+    """ACAL22 — écrit UNE section du document, jamais le document entier.
+
+    * ``cle`` ∈ :data:`CLES_SECTION_RACINE` : la clé racine est REMPLACÉE par
+      ``valeur`` (``None`` la retire) ;
+    * ``cle == 'zones'`` : ``valeur`` est un objet de champs ⊂
+      :data:`CHAMPS_SECTION_ZONE`, posés sur la SEULE zone ``zone_id``.
+
+    Le document stocké est relu sous verrou de ligne et ``base_empreinte`` est
+    comparé à son empreinte « document » (jamais ``layout_hash``) :
+    différent ⇒ :class:`DocumentModifie` (409), rien n'est écrit. L'écriture
+    passe ensuite par :func:`enregistrer_layout` (seul écrivain : version si
+    changement, verrou CAL207 inchangé), dans la MÊME transaction.
+
+    Raises:
+        LayoutRefuse: clé hors liste blanche (``champ='cle'``), champ de zone
+            hors liste (``champ='champs'``), zone introuvable
+            (``champ='zone_id'``), jeton absent (``champ='base_empreinte'``).
+        DocumentModifie: jeton périmé.
+    """
+    import copy
+
+    from django.db import transaction
+
+    if calepinage is None or not getattr(calepinage, 'pk', None):
+        raise LayoutRefuse(
+            "Le calepinage n'est pas encore enregistré : impossible d'y "
+            "enregistrer une conception.", champ='calepinage')
+    if cle not in CLES_SECTION_RACINE and cle != 'zones':
+        raise LayoutRefuse(
+            "Clé non autorisée : seules horizonProfile, poseSurfaces, "
+            "underlay et zones s'écrivent par section.", champ='cle')
+    if not isinstance(base_empreinte, str) or not base_empreinte:
+        raise LayoutRefuse(
+            "Jeton manquant : envoyez base_empreinte, l'empreinte du "
+            "document ouvert.", champ='base_empreinte')
+    if cle == 'zones':
+        if not isinstance(valeur, dict) or not valeur:
+            raise LayoutRefuse(
+                "Champs de zone manquants : un objet est attendu.",
+                champ='champs')
+        hors_liste = sorted(set(valeur) - set(CHAMPS_SECTION_ZONE))
+        if hors_liste:
+            raise LayoutRefuse(
+                "Champ de zone non autorisé : " + ', '.join(hors_liste)
+                + " (seuls " + ', '.join(CHAMPS_SECTION_ZONE)
+                + " s'écrivent par section).", champ='champs')
+        if zone_id in (None, ''):
+            raise LayoutRefuse("Zone manquante : zone_id est obligatoire.",
+                               champ='zone_id')
+
+    with transaction.atomic():
+        stocke = _relire_sous_verrou(calepinage, base_empreinte)
+        document = copy.deepcopy(stocke) if isinstance(stocke, dict) else {}
+        if cle == 'zones':
+            zones = document.get('zones')
+            zone = None
+            if isinstance(zones, list):
+                zone = next((z for z in zones if isinstance(z, dict)
+                             and str(z.get('id')) == str(zone_id)), None)
+            if zone is None:
+                raise LayoutRefuse(
+                    f"Zone introuvable dans la conception : {zone_id}.",
+                    champ='zone_id')
+            zone.update(copy.deepcopy(valeur))
+        elif valeur is None:
+            document.pop(cle, None)
+        else:
+            document[cle] = copy.deepcopy(valeur)
+        return enregistrer_layout(calepinage, document, user=user,
+                                  base_empreinte=base_empreinte)
+
+
 def enregistrer_layout(calepinage, roof_layout, *, user=None,
                        libelle='', resultat=None, roof_image=None,
-                       version_moteur=None):
+                       version_moteur=None, base_empreinte=None):
     """Enregistre la conception et historise SEULEMENT si elle a changé.
 
     « A changé » = l'empreinte DOCUMENT (:func:`empreinte_document`) de
@@ -131,9 +327,15 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
         libelle: libellé libre porté par la version créée.
         resultat / roof_image / version_moteur: mis à jour quand ils sont
             fournis ; ``None`` laisse la valeur en place.
+        base_empreinte: ACAL22 — jeton d'écriture (en-tête ``If-Match``) :
+            fourni, il est comparé SOUS VERROU DE LIGNE à l'empreinte
+            « document » stockée ; différent ⇒ :class:`DocumentModifie`.
+            ``None`` (défaut, tous les écrivains serveur) : aucune
+            comparaison.
 
     Returns:
-        ``{'calepinage', 'version', 'layout_hash', 'inchange'}`` —
+        ``{'calepinage', 'version', 'layout_hash', 'inchange',
+        'empreinte_document'}`` —
         ``version`` vaut ``None`` quand rien n'a changé, et ``inchange`` est
         alors ``True``.
 
@@ -164,22 +366,32 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
 
     verifier_ecriture_autorisee(calepinage)
 
-    ancien_layout = calepinage.roof_layout
-    # ACAL39 — « inchangé » se décide sur l'empreinte DOCUMENT de l'ancien
-    # document relu, jamais sur layout_hash (empreinte imprimée, aveugle à
-    # l'horizon, aux champs au sol, à l'épingle…).
-    inchange = (empreinte_document(ancien_layout)
-                == empreinte_document(roof_layout))
-    if inchange and roof_layout is not None:
-        # Un calepinage NÉ avec un document (copie d'un devis, d'un modèle)
-        # n'a encore aucune version : le premier enregistrement la dépose.
-        from .versions import derniere_version
-
-        inchange = derniere_version(calepinage) is not None
     nouvelle = layout_hash(roof_layout) or ''
-
     champs = ['roof_layout', 'layout_hash', 'updated_at']
     with transaction.atomic():
+        if base_empreinte is not None:
+            # ACAL22 — le jeton est comparé au document STOCKÉ relu sous
+            # verrou de ligne (jamais l'instance en mémoire, jamais
+            # layout_hash) ; périmé ⇒ DocumentModifie, rien n'est écrit.
+            calepinage.roof_layout = _relire_sous_verrou(calepinage,
+                                                         base_empreinte)
+        ancien_layout = calepinage.roof_layout
+        # ACAL76 — un contour NOUVELLEMENT croisé (nœud papillon) est refusé
+        # en nommant son chemin ; rien n'est écrit.
+        _refuser_contour_nouvellement_croise(ancien_layout, roof_layout)
+        # ACAL39 — « inchangé » se décide sur l'empreinte DOCUMENT de
+        # l'ancien document relu, jamais sur layout_hash (empreinte imprimée,
+        # aveugle à l'horizon, aux champs au sol, à l'épingle…).
+        inchange = (empreinte_document(ancien_layout)
+                    == empreinte_document(roof_layout))
+        if inchange and roof_layout is not None:
+            # Un calepinage NÉ avec un document (copie d'un devis, d'un
+            # modèle) n'a encore aucune version : le premier enregistrement
+            # la dépose.
+            from .versions import derniere_version
+
+            inchange = derniere_version(calepinage) is not None
+
         calepinage.roof_layout = roof_layout
         calepinage.layout_hash = nouvelle
         if resultat is not None:
@@ -220,4 +432,6 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
         'version': version,
         'layout_hash': nouvelle,
         'inchange': inchange,
+        # ACAL22 — le jeton de la PROCHAINE écriture (If-Match / base).
+        'empreinte_document': empreinte_document(roof_layout),
     }

@@ -126,6 +126,17 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
       .toHaveAttribute('href', DETAIL.image.url)
   })
 
+  // ACAL47 — la péremption compare la conception du calepinage au devis : la
+  // cause dite est la DIVERGENCE et le geste qui la résout est nommé.
+  it('divergence : libellé Resynchroniser', () => {
+    rendre({ ...DETAIL, layout_stale: true, layout_nb_panneaux: 16 })
+
+    const champ = screen.getByTestId('cal-fiche-layout_stale')
+    expect(champ).toHaveTextContent('Non — la conception et le devis divergent : Resynchroniser')
+    expect(champ).not.toHaveTextContent('le devis a changé')
+    expect(screen.getByTestId('cal-fiche-layout_nb_panneaux')).toHaveTextContent('16')
+  })
+
   it('calepinage NEUF : toutes les clés restent rendues, et « — » jamais « 0 »', () => {
     rendre(DETAIL_VIDE)
 

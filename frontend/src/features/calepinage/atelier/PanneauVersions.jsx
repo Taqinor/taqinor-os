@@ -25,7 +25,31 @@ import { formatDateTime } from '../../../lib/format'
    (elle change l'état COURANT), jamais un simple clic.
    ========================================================================== */
 
-export default function PanneauVersions({ calepinageId: idPropose } = {}) {
+/* ACAL23 — le motif d'un refus est celui du SERVEUR : 409 du verrou
+   `{roof_layout: [msg]}`, 409/400 `{detail}` ou un champ nommé. Jamais
+   reformulé ; repli générique seulement quand le serveur n'a rien dit. */
+function messageRefusServeur(err, repli) {
+  const data = err?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  if (data && typeof data === 'object') {
+    const texte = (v) => (Array.isArray(v) ? v.find((x) => typeof x === 'string' && x.trim()) : v)
+    for (const cle of ['detail', 'roof_layout', 'version']) {
+      const v = texte(data[cle])
+      if (typeof v === 'string' && v.trim()) return v.trim()
+    }
+    for (const v of Object.values(data)) {
+      const t = texte(v)
+      if (typeof t === 'string' && t.trim()) return t.trim()
+    }
+  }
+  return repli
+}
+
+/* ACAL23 — APRÈS une restauration réussie, la scène 3D est relue : sans
+   `onRecharger`, « Enregistrer le calepinage » republiait la copie d'avant et
+   annulait la restauration en silence (porte CYC-05). `onRecharger` est
+   relayé par le Rail depuis l'écran de conception (l'unique rechargement). */
+export default function PanneauVersions({ calepinageId: idPropose, onRecharger = null } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
@@ -49,11 +73,14 @@ export default function PanneauVersions({ calepinageId: idPropose } = {}) {
   const confirmerRestauration = (id) => {
     setRestaurationEnCours(id)
     Promise.resolve(calepinageApi.calepinages.restaurerVersion(calepinageId, id))
-      .then(() => {
+      .then(async () => {
         setConfirmationId(null)
-        return charger()
+        await charger()
+        // ACAL23 — la scène relit le document restauré (jamais la copie d'avant).
+        if (typeof onRecharger === 'function') await onRecharger()
       })
-      .catch(() => setErreur('La restauration n’a pas pu être effectuée.'))
+      .catch((err) => setErreur(
+        messageRefusServeur(err, 'La restauration n’a pas pu être effectuée.')))
       .finally(() => setRestaurationEnCours(null))
   }
 

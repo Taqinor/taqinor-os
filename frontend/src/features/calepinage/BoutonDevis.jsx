@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import ventesApi from '../../api/ventesApi'
+import { toastWarning } from '../../lib/toast'
+import { reviserEtOuvrir } from '../ventes/reviserDevis'
 
 /* ============================================================================
    CAL38 — LA SORTIE VERS LE DEVIS d'un calepinage, et elle n'existait nulle
@@ -73,19 +74,59 @@ function refusServeur(erreur) {
   }
 }
 
+/* ACAL95 — CE QUE LA GÉNÉRATION ET LA RESYNCHRO N'ONT PAS PU FAIRE se lit à
+   l'écran AVANT toute navigation ou rechargement (contrat
+   `calepinage_publication.json`) : avertissements et marques manquantes du
+   serveur, MOT POUR MOT ; lignes de kit ajoutées ; « Aucun changement ». Sans
+   rien à dire, le geste reste celui d'aujourd'hui (navigation / rechargement). */
+function messagesDuServeur(data) {
+  const messages = []
+  for (const cle of ['avertissements', 'marques_manquantes']) {
+    for (const m of Array.isArray(data?.[cle]) ? data[cle] : []) {
+      if (typeof m === 'string' && m.trim()) messages.push(m.trim())
+    }
+  }
+  return messages
+}
+
+function libelleLignesAjoutees(n) {
+  const nombre = Number(n) || 0
+  if (nombre <= 0) return null
+  return nombre === 1 ? '1 ligne ajoutée au devis' : `${nombre} lignes ajoutées au devis`
+}
+
+/* ACAL94 — l'écran est ENREGISTRÉ avant « Générer / Resynchroniser » (prop
+   `enregistrerAvant`, l'UNIQUE fonction d'enregistrement de l'atelier) : le
+   serveur compose sur la conception que l'on VOIT, jamais sur l'ancienne.
+   Échec d'enregistrement ⇒ aucun geste serveur, aucun rechargement. « Réviser »
+   prévient des retouches non enregistrées (`aDesRetouches`) sans jamais
+   refuser (D-QJR5-2). */
+export const MESSAGE_ENREGISTREMENT_ECHOUE = 'La conception à l’écran n’a pas pu être '
+  + 'enregistrée : rien n’a été envoyé au devis. Corrigez puis réessayez.'
+export const MESSAGE_RETOUCHES_NON_ENREGISTREES = 'Retouches non enregistrées : elles ne '
+  + 'seront pas reprises dans la V2.'
+
 export default function BoutonDevis({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
+  enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
 }) {
   const navigate = useNavigate()
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
   const [conflit, setConflit] = useState(null)
+  // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
+  // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
+  const [retour, setRetour] = useState(null)
+  // ACAL94 — avertissement (jamais un refus) avant une révision.
+  const [retouches, setRetouches] = useState(false)
 
   // L'ÉTAT VIENT DU SERVEUR, et d'UNE SEULE lecture : l'agrégat de détail
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
   // charger une seconde fois ferait deux appels pour la même vérité — et deux
   // vérités le jour où l'une des deux serait périmée.
-  if (!detail || lectureSeule) return null
+  // ACAL93 — en LECTURE SEULE, le seul geste offert est « Réviser (v2) », quand
+  // le serveur le dit possible (jamais masqué par rôle ni refusé).
+  if (!detail || (lectureSeule && !(revisionPossible && detail?.devis?.id))) return null
 
   const devisLie = detail.devis ?? null
   const variantes = detail.variantes ?? {}
@@ -102,6 +143,7 @@ export default function BoutonDevis({
     if (enCours) return
     setRefus(null)
     setConflit(null)
+    setRetour(null)
     setEnCours(true)
     try {
       return await appel()
@@ -122,31 +164,114 @@ export default function BoutonDevis({
     }
   }
 
+  // ACAL94 — range l'écran d'abord ; `false` = rien ne part au serveur.
+  const enregistrerDabord = async () => {
+    if (typeof enregistrerAvant !== 'function') return true
+    setRefus(null)
+    setConflit(null)
+    setRetour(null)
+    let ok = false
+    try {
+      ok = (await enregistrerAvant()) !== false
+    } catch {
+      ok = false
+    }
+    if (!ok) setRefus({ champ: 'roof_layout', message: MESSAGE_ENREGISTREMENT_ECHOUE })
+    return ok
+  }
+
   const generer = async () => {
+    if (enCours || !(await enregistrerDabord())) return
     const res = await executer(
       () => calepinageApi.calepinages.genererDevis(calepinageId, {}))
     const nouveau = res?.data?.devis
     if (!nouveau) return
+    // ACAL95 — ce que la composition n'a pas pu faire se lit AVANT de partir :
+    // pas de navigation immédiate, un lien « Ouvrir le devis » à la place.
+    const messages = messagesDuServeur(res.data)
+    if (messages.length > 0) {
+      setRetour({ messages, lignes: null, inchange: false, devisId: nouveau, suite: 'ouvrir' })
+      return
+    }
     // On rouvre la conception SUR le devis : c'est là que le commercial
     // continue son geste, exactement comme depuis la fiche lead.
     navigate(`/ventes/devis/${nouveau}/design`)
   }
 
-  const resynchroniser = async () => {
-    const res = await executer(
-      () => calepinageApi.calepinages.syncDevis(calepinageId, {}))
-    if (!res) return
+  const relireEtRecharger = async () => {
     // On RELIT l'agrégat plutôt que de deviner le nouvel état du devis.
     await onRelire?.()
     await onRecharger?.()
   }
 
+  const resynchroniser = async () => {
+    if (enCours || !(await enregistrerDabord())) return
+    const res = await executer(
+      () => calepinageApi.calepinages.syncDevis(calepinageId, {}))
+    if (!res) return
+    const data = res?.data ?? {}
+    const messages = messagesDuServeur(data)
+    const lignes = libelleLignesAjoutees(data.lignes_ajoutees)
+    // ACAL95 — « Aucun changement » se DIT ; rien n'a bougé, rien à recharger.
+    if (data.inchange) {
+      setRetour({ messages, lignes: null, inchange: true, devisId: null, suite: null })
+      return
+    }
+    // Quelque chose à lire : le rechargement attend « J'ai lu ».
+    if (messages.length > 0 || lignes) {
+      setRetour({ messages, lignes, inchange: false, devisId: null, suite: 'recharger' })
+      return
+    }
+    await relireEtRecharger()
+  }
+
+  const confirmerLecture = async () => {
+    setRetour(null)
+    await relireEtRecharger()
+  }
+
   const reviser = async () => {
     if (!devisLie?.id) return
-    const res = await executer(() => ventesApi.reviserDevis(devisLie.id))
-    const nouveau = res?.data?.id
-    if (!nouveau) return
-    navigate(`/ventes/devis/${nouveau}/design`)
+    // ACAL94 — avertir des retouches non enregistrées, et réviser QUAND MÊME.
+    let nonEnregistrees = false
+    try { nonEnregistrees = typeof aDesRetouches === 'function' && !!aDesRetouches() } catch { nonEnregistrees = false }
+    setRetouches(nonEnregistrees)
+    if (nonEnregistrees) toastWarning(MESSAGE_RETOUCHES_NON_ENREGISTREES)
+    // ACAL93 — UNE seule fonction de révision (`reviserEtOuvrir`) ; la V2
+    // s'ouvre sur sa CONCEPTION.
+    if (enCours) return
+    setEnCours(true)
+    let v2 = null
+    try {
+      await reviserEtOuvrir({
+        devis: devisLie,
+        onApres: (nouveau) => { v2 = nouveau },
+        navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
+      })
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  if (lectureSeule) {
+    return (
+      <div className="space-y-2" data-testid="cal-bouton-devis">
+        <button
+          type="button"
+          onClick={reviser}
+          disabled={enCours}
+          data-testid="cal-devis-reviser-lecture-seule"
+          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Réviser (v2)
+        </button>
+        {retouches && (
+          <p className="text-xs text-brass-300" role="status" data-testid="cal-devis-retouches">
+            {MESSAGE_RETOUCHES_NON_ENREGISTREES}
+          </p>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -196,6 +321,49 @@ export default function BoutonDevis({
             {LIBELLE_CHAMP[refus.champ] || refus.champ}
           </p>
           <p className="mt-1 text-sm text-alert-300" role="alert">{refus.message}</p>
+        </div>
+      )}
+
+      {/* ACAL94 — la révision part, mais les retouches non enregistrées sont DITES. */}
+      {retouches && (
+        <p className="text-xs text-brass-300" role="status" data-testid="cal-devis-retouches">
+          {MESSAGE_RETOUCHES_NON_ENREGISTREES}
+        </p>
+      )}
+
+      {/* ACAL95 — le retour du serveur, LU avant de poursuivre. */}
+      {retour && (
+        <div className="border border-brass-400/40 p-3" data-testid="cal-devis-avertissements">
+          {retour.inchange && (
+            <p className="text-sm text-lune-soft" role="status">Aucun changement</p>
+          )}
+          {retour.lignes && (
+            <p className="text-sm text-lune-soft" role="status">{retour.lignes}</p>
+          )}
+          {retour.messages.length > 0 && (
+            <ul className="mt-1 space-y-1 text-sm text-brass-300" role="status">
+              {retour.messages.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
+          {retour.suite === 'recharger' && (
+            <button
+              type="button"
+              onClick={confirmerLecture}
+              data-testid="cal-devis-j-ai-lu"
+              className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-4 py-2 text-sm font-bold text-brass-300"
+            >
+              J’ai lu
+            </button>
+          )}
+          {retour.suite === 'ouvrir' && retour.devisId && (
+            <Link
+              to={`/ventes/devis/${retour.devisId}/design`}
+              data-testid="cal-devis-ouvrir"
+              className="mt-3 inline-block text-sm font-semibold text-brass-300 underline"
+            >
+              Ouvrir le devis
+            </Link>
+          )}
         </div>
       )}
 

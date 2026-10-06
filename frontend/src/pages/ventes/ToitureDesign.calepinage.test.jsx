@@ -27,7 +27,7 @@ vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }
 import '../../test/toitureDesignHarnessCalepinage'
 import {
   initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBoot, reinitialiserBootMinimal,
-  LAYOUT, snapshot,
+  LAYOUT, snapshot, apiBuilder,
 } from '../../test/toitureDesignHarness'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
@@ -85,13 +85,13 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
     // Le bouton du flux LEAD n'existe jamais ici.
     expect(screen.queryByRole('button',
-      { name: /Générer le devis & envoyer au client/ })).toBeNull()
+      { name: /^Générer le devis$/ })).toBeNull()
   })
 
   it('enregistre la conception par POST layout, puis envoie l’aperçu', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockResolvedValue(
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
       { data: { inchange: false, version: 3 } })
     calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
     snapshot.mockReturnValue('data:image/png;base64,aGk=')
@@ -101,8 +101,9 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       { name: /Enregistrer le calepinage/ })
     await userEvent.click(bouton)
 
-    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinage)
-      .toHaveBeenCalledWith(String(CTX.calepinage.id), LAYOUT))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel)
+      .toHaveBeenCalledWith(String(CTX.calepinage.id), LAYOUT,
+        CTX.geometrie.empreinte_document))
     await waitFor(() => expect(calepinageApi.calepinages.envoyerImage)
       .toHaveBeenCalledTimes(1))
     expect(calepinageApi.calepinages.envoyerImage.mock.calls[0][0])
@@ -113,10 +114,43 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(ventesApi.syncDevisLayout).not.toHaveBeenCalled()
   })
 
+  /* ACAL87 — un aperçu vide (snapshot null) n'est JAMAIS téléversé, et l'écran
+     le dit ; un téléversement en échec n'est plus avalé. */
+  it('snapshot null → aucun POST roof-image, message affiché', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 5 } })
+    snapshot.mockResolvedValue(null)
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('apercu-3d-avertissement'))
+      .toHaveTextContent('Aperçu 3D non capturé')
+    expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
+  })
+
+  it('téléversement de l’aperçu en échec → dit, jamais avalé', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 5 } })
+    snapshot.mockResolvedValue('data:image/png;base64,aGk=')
+    calepinageApi.calepinages.envoyerImage.mockRejectedValue(new Error('réseau'))
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('apercu-3d-avertissement'))
+      .toHaveTextContent('Aperçu 3D non envoyé')
+    expect(calepinageApi.calepinages.envoyerImage).toHaveBeenCalledTimes(1)
+  })
+
   it('conception inchangée : on le DIT, et aucune image n’est envoyée', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockResolvedValue(
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
       { data: { inchange: true, version: null } })
     snapshot.mockReturnValue('data:image/png;base64,aGk=')
 
@@ -131,7 +165,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('refus 400 : le message du SERVEUR s’affiche, jamais un texte fabriqué', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockRejectedValue({
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockRejectedValue({
       response: {
         status: 400,
         data: { roof_layout: 'Conception manquante ou invalide : le corps attendu est le document de conception.' },
@@ -144,6 +178,180 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
     expect(await screen.findByTestId('cal-erreur-enregistrement'))
       .toHaveTextContent('Conception manquante ou invalide')
+  })
+
+  /* ACAL23 — le jeton If-Match de l'écriture complète, et le 409
+     « modifiée ailleurs » distinct du verrou. */
+  it('le POST porte If-Match lu au boot', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    const jetonApres = 'b'.repeat(64)
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+      .mockResolvedValueOnce({ data: { inchange: true, version: null, empreinte_document: jetonApres } })
+      .mockResolvedValueOnce({ data: { inchange: true, version: null, empreinte_document: jetonApres } })
+    // ACAL83 — après l'écriture, design-context est relu : il sert le MÊME
+    // jeton que la réponse 2xx (empreinte du document désormais stocké).
+    calepinageApi.calepinages.designContext
+      .mockResolvedValueOnce(reponseContrat('calepinage', 'calepinage_design_context'))
+      .mockResolvedValue({
+        data: { ...CTX, geometrie: { ...CTX.geometrie, empreinte_document: jetonApres } },
+      })
+    expect(CTX.geometrie.empreinte_document).toBeTruthy()
+
+    rendreCalepinage(CTX.calepinage.id)
+    const bouton = await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+    await userEvent.click(bouton)
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel)
+      .toHaveBeenCalledTimes(1))
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mock.calls[0][2])
+      .toBe(CTX.geometrie.empreinte_document)
+    // Le jeton suivant est celui RENDU par la réponse 2xx, jamais celui du boot.
+    await waitFor(() => expect(bouton).not.toBeDisabled())
+    await userEvent.click(bouton)
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel)
+      .toHaveBeenCalledTimes(2))
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mock.calls[1][2])
+      .toBe(jetonApres)
+  })
+
+  it('409 document_modifie → bannière Recharger, pas le conflit verrou', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    const conflit = exempleContrat('calepinage', 'calepinage_layout_section',
+      'exemple_conflit_409')
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockRejectedValue({
+      response: { status: 409, data: conflit },
+    })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    const banniere = await screen.findByTestId('cal-document-modifie')
+    expect(banniere).toHaveTextContent(/modifiée ailleurs/)
+    expect(banniere).toHaveTextContent(conflit.detail)
+    expect(screen.getByTestId('cal-document-modifie-recharger')).toHaveTextContent('Recharger')
+    expect(screen.queryByTestId('cal-conflit-lecture-seule')).toBeNull()
+    expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
+  })
+
+  it('409 verrou → le conflit lecture seule porte le message du serveur, pas la bannière', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockRejectedValue({
+      response: { status: 409, data: { roof_layout: ['Ce calepinage est verrouillé : son devis lié a été envoyé.'] } },
+    })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('cal-conflit-lecture-seule'))
+      .toHaveTextContent('Ce calepinage est verrouillé')
+    expect(screen.queryByTestId('cal-document-modifie')).toBeNull()
+  })
+
+  /* ACAL83 — design-context est RELU après chaque enregistrement réussi :
+     la note « calepinage automatique — à vérifier » s'éteint sans F5. */
+  it('après enregistrement, la bannière calepinage automatique disparaît', async () => {
+    const auto = {
+      ...CTX,
+      geometrie: {
+        ...CTX.geometrie,
+        roof_layout: { ...CTX.geometrie.roof_layout, _origine_calepinage: 'contour_client' },
+      },
+    }
+    expect(CTX.geometrie.roof_layout?._origine_calepinage).toBeUndefined()
+    // Ce que le serveur sert APRÈS l'enregistrement : la conception du
+    // commercial (des pans), sans l'estampille du semis automatique.
+    const apres = {
+      ...CTX,
+      geometrie: {
+        ...CTX.geometrie,
+        roof_layout: {
+          ...CTX.geometrie.roof_layout,
+          zones: [{ id: 'z1', vertices: [[0, 0], [10, 0], [10, 6], [0, 6]] }],
+        },
+      },
+    }
+    calepinageApi.calepinages.designContext
+      .mockResolvedValueOnce({ data: auto })
+      .mockResolvedValue({ data: apres })
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 4 } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeTruthy()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('rp9-calepinage-auto-note')).toBeNull())
+  })
+
+  /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */
+  it('lecture seule → aucun brouillon (le gestionnaire ne démarre pas)', async () => {
+    const espion = vi.spyOn(window, 'setInterval')
+    try {
+      calepinageApi.calepinages.designContext.mockResolvedValue({
+        data: { ...CTX, modifiable: false, raison_lecture_seule: 'Devis accepté.' },
+      })
+      rendreCalepinage(CTX.calepinage.id)
+      await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+      await screen.findByTestId('pv20-lecture-seule')
+      const sondages = espion.mock.calls.filter(([, ms]) => ms === 4000)
+      expect(sondages).toHaveLength(0)
+      expect(Object.keys(window.localStorage)
+        .filter((k) => k.startsWith('calepinage_brouillon'))).toEqual([])
+    } finally {
+      espion.mockRestore()
+    }
+  })
+
+  it('modifiable → le gestionnaire de brouillon démarre (témoin du test précédent)', async () => {
+    const espion = vi.spyOn(window, 'setInterval')
+    try {
+      calepinageApi.calepinages.designContext.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      // ACAL85 — comme le constructeur réel : l'hydratation se termine APRÈS
+      // `onApiReady`, et le brouillon ne démarre qu'une fois la scène hydratée.
+      initRoofToolPro8.mockImplementation((options) => {
+        options?.onApiReady?.(apiBuilder())
+        options?.onHydrationTerminee?.()
+      })
+      rendreCalepinage(CTX.calepinage.id)
+      await waitFor(() => expect(espion.mock.calls.some(([, ms]) => ms === 4000)).toBe(true))
+    } finally {
+      espion.mockRestore()
+    }
+  })
+
+  it('brouillon trouvé → l’atelier boote SANS attendre le choix, clé = empreinte serveur', async () => {
+    const cle = `calepinage_brouillon:${CTX.calepinage.id}:anonyme:${CTX.geometrie.empreinte_document}`
+    const orpheline = `calepinage_brouillon:${CTX.calepinage.id}:anonyme:${'0'.repeat(64)}`
+    window.localStorage.setItem(cle, JSON.stringify({
+      layout: { version: 2, zones: [{ id: 'brouillon' }] }, horodatage: '2026-10-05T09:00:00.000Z',
+    }))
+    window.localStorage.setItem(orpheline, JSON.stringify({
+      layout: { version: 2, zones: [] }, horodatage: '2026-10-01T09:00:00.000Z',
+    }))
+    try {
+      calepinageApi.calepinages.designContext.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      rendreCalepinage(CTX.calepinage.id)
+      expect(await screen.findByTestId('cal-brouillon-bandeau')).toBeTruthy()
+      // Non bloquant : le constructeur a booté sur la conception SERVEUR.
+      await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalledTimes(1))
+      expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.geometrie.roof_layout)
+        .toEqual(CTX.geometrie.roof_layout)
+      // La clé périmée est purgée à l'ouverture, la courante reste.
+      expect(window.localStorage.getItem(orpheline)).toBeNull()
+      expect(window.localStorage.getItem(cle)).not.toBeNull()
+      await userEvent.click(screen.getByTestId('cal-brouillon-ignorer'))
+      expect(screen.queryByTestId('cal-brouillon-bandeau')).toBeNull()
+      expect(initRoofToolPro8).toHaveBeenCalledTimes(1)
+    } finally {
+      window.localStorage.removeItem(cle)
+      window.localStorage.removeItem(orpheline)
+    }
   })
 
   it('cible absente : « non renseignée », jamais une puissance inventée', async () => {

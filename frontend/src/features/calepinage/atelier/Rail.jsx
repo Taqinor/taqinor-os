@@ -130,7 +130,20 @@ function EchecOnglet({ libelle }) {
   )
 }
 
-export default function Rail({ calepinageId: idPropose = null, builderApi = null } = {}) {
+/* ACAL23 — LE RAIL RELAIE AUSSI `onRecharger`, `lectureSeule` ET `documentVivant`.
+   Un onglet qui change le document SERVEUR (restauration de version, import de
+   conception) doit faire relire la scène — sinon « Enregistrer le calepinage »
+   republierait la copie d'avant et annulerait son geste. `onRecharger` est
+   l'UNIQUE rechargement de l'atelier (posé par l'écran de conception) ;
+   `documentVivant = {empreinte, appliquerSection(cle, valeur, empreinteApres)}`
+   porte le jeton d'écriture courant (empreinte « document », contrat
+   `calepinage_layout_section.json`) et la façon d'appliquer UNE section écrite
+   par l'onglet à la scène vivante. Comme `builderApi`, un panneau qui ne les
+   déclare pas les ignore. */
+export default function Rail({
+  calepinageId: idPropose = null, builderApi = null,
+  onRecharger = null, lectureSeule = false, documentVivant = null,
+} = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
 
@@ -230,7 +243,13 @@ export default function Rail({ calepinageId: idPropose = null, builderApi = null
               {/* CALX222 — `builderApi` est relayée à TOUS les panneaux :
                   ceux qui ne la déclarent pas l'ignorent, et le rail
                   continue de ne connaître aucun panneau par son nom. */}
-              <Composant calepinageId={calepinageId} builderApi={builderApi} />
+              <Composant
+                calepinageId={calepinageId}
+                builderApi={builderApi}
+                onRecharger={onRecharger}
+                lectureSeule={lectureSeule}
+                documentVivant={documentVivant}
+              />
             </Suspense>
           </ErrorBoundary>
         </TabsContent>
