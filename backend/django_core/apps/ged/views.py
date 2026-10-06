@@ -1887,7 +1887,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # ``apercu`` est une opération de LECTURE (aperçu inline même-origine),
         # donc ouverte à tout rôle authentifié comme list/retrieve — même motif
         # que les actions de lecture custom des viewsets frères.
-        if self.action in READ_ACTIONS or self.action == 'apercu':
+        if self.action in READ_ACTIONS or self.action in ('apercu', 'pages'):
             return [IsAnyRole()]
         # AUD810 — effacer une VERSION est un effacement RÉEL (pas de
         # corbeille pour les versions) qui peut détruire une preuve sous
@@ -1988,6 +1988,28 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         except PermissionError as exc:
             raise PermissionDenied(str(exc))
         serializer.instance = instance
+
+    @action(detail=True, methods=['get'], url_path='pages')
+    def pages(self, request, pk=None):
+        """ADOC11 — Nombre de pages d'une version PDF (`{"pages": N}`), pour
+        que l'écran Caviarder propose les pages 1..N (jamais une saisie
+        libre). Version bornée aux documents visibles (get_queryset)."""
+        version = self.get_object()
+        data, err = fetch_attachment(version.file_key)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=data, filetype='pdf')
+        except Exception:
+            return Response(
+                {'detail': "Ce fichier n'est pas un PDF lisible."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            nombre = doc.page_count
+        finally:
+            doc.close()
+        return Response({'pages': nombre})
 
     @action(detail=True, methods=['get'], url_path='apercu')
     def apercu(self, request, pk=None):

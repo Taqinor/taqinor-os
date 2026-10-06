@@ -339,6 +339,9 @@ const gedApi = {
     `/api/django/ged/versions/${versionId}/apercu/`,
   // Versions d'un document (pour choisir la version à prévisualiser).
   getVersions: (params) => api.get('/ged/versions/', { params }),
+  // ADOC11 — nombre de pages d'une version PDF (`{ pages }`) : l'écran
+  // Caviarder propose les pages 1..N au lieu d'une saisie libre.
+  getVersionPages: (versionId) => api.get(`/ged/versions/${versionId}/pages/`),
 
   // XGED24 — Caviardage (rédaction) définitif de zones d'un PDF, sur une
   // COPIE publiée (l'original n'est JAMAIS modifié). `zones` : liste de

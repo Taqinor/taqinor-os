@@ -884,11 +884,32 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
 // la page (même convention que les annotations XGED16). Le texte sous la
 // zone est SUPPRIMÉ côté serveur (PyMuPDF) — jamais un simple rectangle
 // visuel — sur une COPIE ; l'original n'est jamais modifié.
-const EMPTY_ZONE = { page: '0', x0: '0', y0: '0', x1: '20', y1: '10' }
+// ADOC11 — aucune zone par défaut n'est envoyée sans geste : les
+// coordonnées partent VIDES et « Caviarder » reste inactif tant qu'une zone
+// n'est pas complète et non vide ; la page se choisit parmi 1..N.
+const EMPTY_ZONE = { page: '0', x0: '', y0: '', x1: '', y1: '' }
+
+const zoneComplete = (z) => {
+  const v = ['x0', 'y0', 'x1', 'y1'].map((k) => (z[k] === '' ? NaN : Number(z[k])))
+  if (v.some((n) => Number.isNaN(n))) return false
+  return Math.abs(v[2] - v[0]) > 0 && Math.abs(v[3] - v[1]) > 0
+}
 
 function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
   const [zones, setZones] = useState([{ ...EMPTY_ZONE }])
   const [busy, setBusy] = useState(false)
+  const [nbPages, setNbPages] = useState(null)
+
+  useEffect(() => {
+    if (!versionId) return
+    let alive = true
+    gedApi.getVersionPages(versionId)
+      .then((r) => { if (alive) setNbPages(Number(r?.data?.pages) || 0) })
+      .catch(() => { if (alive) setNbPages(0) })
+    return () => { alive = false }
+  }, [versionId])
+  const pages = Array.from({ length: nbPages || 0 }, (_, i) => i)
+  const pret = pages.length > 0 && zones.length > 0 && zones.every(zoneComplete)
 
   const updateZone = (i, field, value) =>
     setZones((prev) => prev.map((z, idx) => (idx === i ? { ...z, [field]: value } : z)))
@@ -897,7 +918,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (busy) return
+    if (busy || !pret) return
     setBusy(true)
     try {
       const payload = zones.map((z) => ({
@@ -921,7 +942,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
           <DialogDescription>
             Une COPIE est créée avec les zones ci-dessous définitivement noircies
             (texte supprimé) ; l&apos;original reste intact. Coordonnées en % de
-            la page (page 0 = première page).
+            la page.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-3">
@@ -929,8 +950,11 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
             <div key={i} className="flex items-end gap-1.5">
               <div className="flex flex-col gap-0.5">
                 <label className="text-xs text-muted-foreground" htmlFor={`z-page-${i}`}>Page</label>
-                <Input id={`z-page-${i}`} type="number" min={0} className="w-16"
-                  value={z.page} onChange={(e) => updateZone(i, 'page', e.target.value)} />
+                <select id={`z-page-${i}`} className="h-9 w-20 rounded-md border border-border bg-background px-2 text-sm"
+                  value={z.page} disabled={!pages.length}
+                  onChange={(e) => updateZone(i, 'page', e.target.value)}>
+                  {pages.map((p) => <option key={p} value={String(p)}>{p + 1}</option>)}
+                </select>
               </div>
               <div className="flex flex-col gap-0.5">
                 <label className="text-xs text-muted-foreground" htmlFor={`z-x0-${i}`}>X0 %</label>
@@ -965,7 +989,7 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
           </Button>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || !pret}>
               {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <EyeOff />} Caviarder
             </Button>
           </DialogFooter>

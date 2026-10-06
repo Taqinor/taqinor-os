@@ -5757,23 +5757,47 @@ def caviarder_document(version, zones, *, created_by=None):
         raise ValueError("Au moins une zone à caviarder est requise.")
     doc = fitz.open(stream=data, filetype='pdf')
     try:
+        # ADOC11 — chaque zone est validée AVANT toute rédaction : une zone
+        # hors page ou vide est refusée (jamais ignorée en silence — une
+        # copie « (caviardée) » qui ne masque rien fuirait le texte).
+        a_rediger = []
         for zone in zones:
-            page_no = int(zone.get('page', 0))
+            try:
+                page_no = int(zone.get('page', 0))
+                bornes = [float(zone.get(k, 0)) for k in ('x0', 'y0', 'x1', 'y1')]
+            except (TypeError, ValueError, AttributeError):
+                raise ValueError("Zone invalide.")
             if page_no < 0 or page_no >= doc.page_count:
-                continue
+                raise ValueError(
+                    f"Zone hors page (page {page_no} / {doc.page_count} pages).")
+            zx0, zy0, zx1, zy1 = [min(100.0, max(0.0, v)) for v in bornes]
+            zx0, zx1 = min(zx0, zx1), max(zx0, zx1)
+            zy0, zy1 = min(zy0, zy1), max(zy0, zy1)
+            if zx1 - zx0 <= 0 or zy1 - zy0 <= 0:
+                raise ValueError("Zone vide.")
+            a_rediger.append((page_no, zx0, zy0, zx1, zy1))
+        for page_no, zx0, zy0, zx1, zy1 in a_rediger:
             page = doc[page_no]
             rect = page.rect
-            x0 = rect.x0 + (float(zone.get('x0', 0)) / 100.0) * rect.width
-            y0 = rect.y0 + (float(zone.get('y0', 0)) / 100.0) * rect.height
-            x1 = rect.x0 + (float(zone.get('x1', 0)) / 100.0) * rect.width
-            y1 = rect.y0 + (float(zone.get('y1', 0)) / 100.0) * rect.height
+            x0 = rect.x0 + (zx0 / 100.0) * rect.width
+            y0 = rect.y0 + (zy0 / 100.0) * rect.height
+            x1 = rect.x0 + (zx1 / 100.0) * rect.width
+            y1 = rect.y0 + (zy1 / 100.0) * rect.height
             page.add_redact_annot(
                 fitz.Rect(x0, y0, x1, y1), fill=(0, 0, 0))
         for page in doc:
             # Applique et APLATIT les rédactions : supprime réellement le
             # texte/l'image sous la zone (pas seulement un rectangle visuel).
             page.apply_redactions()
-        out_bytes = doc.tobytes()
+        # ADOC11 — la copie transmise à un tiers ne garde pas les
+        # métadonnées d'origine (auteur, titre, XMP…).
+        doc.set_metadata({})
+        try:
+            doc.del_xml_metadata()
+        except Exception:  # pragma: no cover - selon la version PyMuPDF.
+            pass
+        # garbage=4 : les objets orphelins (texte retiré) quittent le fichier.
+        out_bytes = doc.tobytes(garbage=4, deflate=True)
     finally:
         doc.close()
 

@@ -41,6 +41,8 @@ vi.mock('../../api/gedApi', () => ({
     restaurerVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 24, version: 2 } })),
     // XGED24 — caviardage.
     caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
+    // ADOC11 — nombre de pages de la version (choix de page 1..N).
+    getVersionPages: vi.fn(() => Promise.resolve({ data: { pages: 2 } })),
     // XGED10/17 — scission, fusion, comparaison de versions.
     scinderDocument: vi.fn(() => Promise.resolve({ data: [{ id: 100 }, { id: 101 }] })),
     fusionnerDocuments: vi.fn(() => Promise.resolve({ data: { id: 102 } })),
@@ -222,11 +224,44 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
 
     await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
-    await userEvent.click(await screen.findByRole('button', { name: /^Caviarder$/i }))
+    // ADOC11 — aucune zone par défaut : « Caviarder » inactif sans geste.
+    const bouton = await screen.findByRole('button', { name: /^Caviarder$/i })
+    expect(bouton).toBeDisabled()
+    await userEvent.type(screen.getByLabelText('X0 %'), '0')
+    await userEvent.type(screen.getByLabelText('Y0 %'), '0')
+    await userEvent.type(screen.getByLabelText('X1 %'), '20')
+    await userEvent.type(screen.getByLabelText('Y1 %'), '10')
+    await userEvent.click(screen.getByRole('button', { name: /^Caviarder$/i }))
 
     await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
       zones: [{ page: 0, x0: 0, y0: 0, x1: 20, y1: 10 }], version: 22,
     }))
+  })
+
+  it('Caviarder propose les pages du document', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
+    await waitFor(() => expect(gedApi.getVersionPages).toHaveBeenCalledWith(22))
+    let select = null
+    await waitFor(() => {
+      select = document.getElementById('z-page-0')
+      expect(select?.querySelectorAll('option')).toHaveLength(2)
+    })
+    const libelles = [...select.querySelectorAll('option')].map((o) => o.textContent)
+    expect(libelles).toEqual(['1', '2'])
   })
 
   it('XGED10 — scinde un PDF depuis l’aperçu (points de coupe)', async () => {
