@@ -6,10 +6,89 @@
 import { Button, Card, CardContent, Input, Label } from '../../../ui'
 import { CalendarClock } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
+import { useState } from 'react'
 import {
   JALONS_PROPOSES, UNITE_MONTANT, UNITE_PCT, saisieParDefaut, sommePourcentages,
-  trancheVierge,
+  trancheVierge, echeancierFinanceur,
 } from '../../../features/ventes/echeancierEdition'
+
+const CHAMP = 'h-9 rounded-md border border-input bg-background px-2 text-sm'
+
+function Erreur({ erreurs, champ }) {
+  if (!erreurs?.[champ]) return null
+  return <p className="text-xs text-destructive" data-testid={`erreur-condition-${champ}`}>{erreurs[champ]}</p>
+}
+
+/**
+ * CIQ226 — conditions contractuelles DÉCLARÉES (rien de pré-rempli,
+ * D-CIQ-14) : retenue de garantie (libérée à la réception définitive),
+ * pénalités de retard (taux par semaine ET plafond), caution, organisme
+ * financeur (un client de la société), référence de commande du client.
+ * Libellé « organisme financeur », jamais « crédit-bail ».
+ */
+function ConditionsContractuelles({ conditions, setCondition, erreurs, clients, setSaisie }) {
+  const c = conditions || {}
+  const [acompteFinanceur, setAcompteFinanceur] = useState('')
+  const nombre = (champ, libelle) => (
+    <div className="grid gap-1">
+      <Label htmlFor={`gen-cond-${champ}`}>{libelle}</Label>
+      <Input id={`gen-cond-${champ}`} type="number" min="0" step="any" value={c[champ] ?? ''}
+             onChange={e => setCondition(champ, e.target.value)} />
+      <Erreur erreurs={erreurs} champ={champ} />
+    </div>
+  )
+  return (
+    <fieldset className="grid gap-3 border-t border-border pt-3" data-testid="conditions-contractuelles">
+      <legend className="text-sm font-semibold">Conditions demandées par le client</legend>
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" data-testid="gen-cond-retenue" checked={Boolean(c.retenue)}
+               onChange={e => setCondition('retenue', e.target.checked)} />
+        Le client demande une retenue de garantie (libérée à la réception définitive)
+      </label>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {c.retenue && nombre('retenueTaux', 'Retenue de garantie (%)')}
+        {nombre('penaliteTaux', 'Pénalités de retard (% par semaine)')}
+        {nombre('penalitePlafond', 'Plafond des pénalités (%)')}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-1">
+          <Label htmlFor="gen-cond-cautionNature">Caution (nature)</Label>
+          <Input id="gen-cond-cautionNature" placeholder="ex: caution de bonne exécution"
+                 value={c.cautionNature ?? ''} onChange={e => setCondition('cautionNature', e.target.value)} />
+        </div>
+        {nombre('cautionMontant', 'Caution : montant ou %')}
+        {nombre('cautionPlafond', 'Caution : plafond')}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-1">
+          <Label htmlFor="gen-cond-referenceCommande">Référence de commande du client</Label>
+          <Input id="gen-cond-referenceCommande" maxLength={60} value={c.referenceCommande ?? ''}
+                 onChange={e => setCondition('referenceCommande', e.target.value)} />
+        </div>
+        <div className="grid gap-1">
+          <Label htmlFor="gen-cond-tiersPayeur">Organisme financeur</Label>
+          <select id="gen-cond-tiersPayeur" className={CHAMP} value={c.tiersPayeur ?? ''}
+                  onChange={e => setCondition('tiersPayeur', e.target.value)}>
+            <option value="">— aucun —</option>
+            {(clients || []).map(cl => <option key={cl.id} value={String(cl.id)}>{cl.nom}</option>)}
+          </select>
+        </div>
+        <div className="grid gap-1">
+          <Label htmlFor="gen-cond-acompte-financeur">Acompte client (%)</Label>
+          <div className="flex gap-2">
+            <Input id="gen-cond-acompte-financeur" type="number" min="0" step="any"
+                   value={acompteFinanceur} onChange={e => setAcompteFinanceur(e.target.value)} />
+            <Button type="button" variant="outline" size="sm" data-testid="btn-echeancier-financeur"
+                    disabled={acompteFinanceur === '' || !c.tiersPayeur}
+                    onClick={() => setSaisie(echeancierFinanceur(acompteFinanceur))}>
+              Échéancier organisme financeur
+            </Button>
+          </div>
+        </div>
+      </div>
+    </fieldset>
+  )
+}
 
 // CIQ225 — N jalons : les trois créneaux historiques + les jalons C&I.
 const OPTIONS_JALON = [
@@ -17,7 +96,10 @@ const OPTIONS_JALON = [
   ...JALONS_PROPOSES,
 ]
 
-export default function CarteEcheancier({ saisie, setSaisie, mode, effectifs }) {
+export default function CarteEcheancier({
+  saisie, setSaisie, mode, effectifs,
+  conditions = null, setCondition = null, erreursConditions = null, clients = [],
+}) {
   const modifier = (i, champ, valeur) => {
     setSaisie(prev => (prev || []).map((t, j) => (j === i ? { ...t, [champ]: valeur } : t)))
   }
@@ -125,6 +207,11 @@ export default function CarteEcheancier({ saisie, setSaisie, mode, effectifs }) 
               </Button>
             </div>
           </>
+        )}
+        {setCondition && (
+          <ConditionsContractuelles conditions={conditions} setCondition={setCondition}
+                                    erreurs={erreursConditions} clients={clients}
+                                    setSaisie={setSaisie} />
         )}
       </CardContent>
     </Card>

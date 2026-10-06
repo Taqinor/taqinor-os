@@ -205,6 +205,7 @@ import {
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import CarteEcheancier from './generator/CarteEcheancier'
+import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
@@ -686,6 +687,10 @@ export default function DevisGenerator({
   // CIQ225 — jalons EFFECTIFS de la société (`payment_terms_effectifs`) : le défaut
   // de « Personnaliser l'échéancier » vient d'eux, plus d'une constante JS.
   const [termesEffectifs, setTermesEffectifs] = useState(null)
+  // CIQ226 — conditions contractuelles DÉCLARÉES (retenue, pénalités,
+  // caution, organisme financeur, référence de commande) : rien de pré-rempli.
+  const [conditions, setConditions] = useState(CONDITIONS_VIDES)
+  const setCondition = (champ, valeur) => setConditions((c) => ({ ...c, [champ]: valeur }))
   const setEcheancierSaisie = useCallback((valeur) => {
     echeancierAEnvoyer.current = true
     setEcheancierSaisieBrut(valeur)
@@ -2070,6 +2075,8 @@ export default function DevisGenerator({
       // QJR624 — l'échéancier DU DEVIS.
       echeancierAEnvoyer.current = etat.echeancierAEnvoyer
       setEcheancierSaisieBrut(etat.echeancier)
+      // CIQ226 — les conditions contractuelles du devis, telles que saisies.
+      pose(etat.conditions, setConditions)
       setPrixCible(etat.prixCible)
       setLines(withKeys(etat.lignes))
       linesInitialized.current = true
@@ -3095,6 +3102,10 @@ export default function DevisGenerator({
     const e = {}
     // QJR580 — en édition, le devis a déjà son client (lecture seule).
     if (!editId && !clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
+    // CIQ226 — pénalités = taux ET plafond ; retenue = son taux (sous le champ).
+    if (editId && Object.keys(erreursConditions(conditions)).length) {
+      e.conditions = 'Conditions du client incomplètes : voir sous les champs.'
+    }
     // CIQ125 — commercial ET industriel : sans consommation (saisie, ou
     // reprise de la fiche lead par le serveur) ni taille explicite,
     // l'enregistrement est refusé SOUS le champ.
@@ -3355,6 +3366,7 @@ export default function DevisGenerator({
   const etatEcran = () => ({
     mode: modeInstallation, dateValidite, tauxTva, discountPct, note, prixCible,
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
+    conditions,
     lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
     profilCi, ctxCi: ctxProfilCi, tarifSaisie, aujourdhui: aujourdhuiIso,
     ecoCi: { ...ecoCi, revente_demandee: profilCi.tension === 'mt' && Boolean(profilCi.revente) },
@@ -5304,7 +5316,12 @@ export default function DevisGenerator({
         {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
         {editDevis && (
           <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
-                           mode={modeInstallation} effectifs={termesEffectifs} />
+                           mode={modeInstallation} effectifs={termesEffectifs}
+                           conditions={conditions} setCondition={setCondition}
+                           erreursConditions={erreursConditions(conditions)} clients={clients} />
+        )}
+        {errors.conditions && (
+          <p role="alert" className="text-xs text-destructive" data-testid="erreur-conditions">{errors.conditions}</p>
         )}
 
         {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}

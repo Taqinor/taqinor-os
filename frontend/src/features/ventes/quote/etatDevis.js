@@ -31,7 +31,9 @@ import {
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran,
 } from '../etudePompagePreviewPur.js'
-import { echeancierVersSaisie, saisieVersEcheancier } from '../echeancierEdition.js'
+import {
+  echeancierVersSaisie, saisieVersEcheancier, conditionsDepuisDevis, conditionsVersEntete,
+} from '../echeancierEdition.js'
 import { entreesCiV2, profilDepuisEtude } from './profilCi.js'
 import { tarifDeclareDepuisSaisie, saisiesEconomieCi } from './etudeMarcheBloc.js'
 import { saisieDepuisTarifDeclare, ecoCiDepuisSaisies } from './reouverture.js'
@@ -164,6 +166,9 @@ export function devisVersEtat(d) {
       ? devis.lead_valeurs_modifiees : [],
   }
   etat.echeancierAEnvoyer = etat.echeancier != null
+  // CIQ226 — conditions contractuelles déclarées (retenue, pénalités, caution,
+  // organisme financeur, référence de commande).
+  etat.conditions = conditionsDepuisDevis(devis)
 
   // PVMRQ — gamme du devis.
   if (e.gamme && typeof e.gamme === 'object' && e.gamme.nom) etat.gammeNom = String(e.gamme.nom)
@@ -316,6 +321,8 @@ export function etatVersEcritures(etat, vif = {}) {
   }
   // QJR624 — l'échéancier ne part que s'il était propre au devis ou touché.
   if (etat.echeancierAEnvoyer) entete.echeancier = saisieVersEcheancier(etat.echeancier)
+  // CIQ226 — les conditions partent dans l'en-tête dès que l'écran les porte.
+  if (etat.conditions) Object.assign(entete, conditionsVersEntete(etat.conditions))
 
   const farm = etat.farm || {}
   const etude = projeterEtudeMarche(etat.mode, {

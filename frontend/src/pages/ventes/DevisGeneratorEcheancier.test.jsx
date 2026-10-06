@@ -18,7 +18,12 @@ import { estimerMois } from '../../features/ventes/solar'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import {
   echeancierAvecAcompte, echeancierVersSaisie, saisieVersEcheancier, saisieParDefaut,
+  CONDITIONS_VIDES, conditionsVersEntete, echeancierFinanceur, LIBELLE_TRANCHE_FINANCEUR,
 } from '../../features/ventes/echeancierEdition'
+import { useState } from 'react'
+import CarteEcheancier from './generator/CarteEcheancier'
+import { erreursConditions } from '../../features/ventes/echeancierEdition'
+import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/etatDevis'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -312,3 +317,64 @@ describe('QJR624 — l\'échéancier s\'édite dans l\'Édition complète', () =
     expect(await screen.findByTestId('echeancier-somme')).toHaveTextContent('100 %')
   })
 })
+
+// ══ CIQ226 — conditions déclarées : retenue, pénalités, caution, financeur ══
+function HarnaisConditions({ onEtat }) {
+  const [saisie, setSaisie] = useState(null)
+  const [conditions, setConditions] = useState({ ...CONDITIONS_VIDES })
+  onEtat({ saisie, conditions })
+  return (
+    <CarteEcheancier saisie={saisie} setSaisie={setSaisie} mode="commercial" effectifs={{}}
+                     conditions={conditions} erreursConditions={erreursConditions(conditions)}
+                     setCondition={(c, v) => setConditions((x) => ({ ...x, [c]: v }))}
+                     clients={[{ id: 218, nom: 'Organisme financeur exemple' }]} />
+  )
+}
+
+describe('CIQ226 — conditions demandées par le client', () => {
+  it('pénalité sans plafond ⇒ erreur sous le champ ; avec plafond ⇒ aucune', () => {
+    render(<HarnaisConditions onEtat={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Pénalités de retard (% par semaine)'), { target: { value: '0.5' } })
+    expect(screen.getByTestId('erreur-condition-penalitePlafond')).toHaveTextContent('plafond est obligatoire')
+    fireEvent.change(screen.getByLabelText('Plafond des pénalités (%)'), { target: { value: '10' } })
+    expect(screen.queryByTestId('erreur-condition-penalitePlafond')).toBeNull()
+  })
+
+  it('échéancier organisme financeur 10/90 ⇒ projection exacte (forme du contrat)', () => {
+    let etat = null
+    render(<HarnaisConditions onEtat={(e) => { etat = e }} />)
+    fireEvent.change(screen.getByLabelText('Organisme financeur'), { target: { value: '218' } })
+    fireEvent.change(screen.getByLabelText('Acompte client (%)'), { target: { value: '10' } })
+    fireEvent.click(screen.getByTestId('btn-echeancier-financeur'))
+    expect(saisieVersEcheancier(etat.saisie)).toEqual([
+      { libelle: 'Acompte client à la commande', type: 'acompte', unite: 'pct', pct_or_montant: 10,
+        jalon: 'commande', payeur: 'client' },
+      { libelle: LIBELLE_TRANCHE_FINANCEUR, type: 'solde', unite: 'pct', pct_or_montant: 90,
+        jalon: 'reception_financeur', payeur: 'tiers' },
+    ])
+    expect(conditionsVersEntete(etat.conditions).tiers_payeur).toBe(218)
+    // jamais « crédit-bail » à l'écran
+    expect(screen.queryByText(/crédit-bail/i)).toBeNull()
+    expect(echeancierFinanceur('10')).toHaveLength(2)
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = en-tête identique', () => {
+    const financeur = documentContrat('ventes', 'devis_replace_lines_entete').corps_financeur.entete
+    const devis = {
+      id: 9, mode_installation: 'commercial', taux_tva: '20.00', remise_globale: '0.00', lignes: [],
+      etude_params: {}, echeancier: financeur.echeancier, tiers_payeur: financeur.tiers_payeur,
+      reference_commande_client: financeur.reference_commande_client,
+      retenue_garantie: { taux_pct: 5, liberation: 'reception_definitive' },
+      penalites_retard_livraison: { taux_pct_par_semaine: 0.5, plafond_pct: 10 },
+      caution: { nature: 'caution de bonne exécution', montant_ou_pct: 10, plafond: null },
+    }
+    const ecr1 = etatVersEcritures(devisVersEtat(devis), { entrees: {} })
+    const devis2 = { ...devis, ...ecr1.entete }
+    const ecr2 = etatVersEcritures(devisVersEtat(devis2), { entrees: {} })
+    expect(ecr2.entete).toEqual(ecr1.entete)
+    expect(ecr1.entete.retenue_garantie).toEqual(devis.retenue_garantie)
+    expect(ecr1.entete.penalites_retard_livraison).toEqual(devis.penalites_retard_livraison)
+    expect(ecr1.entete.tiers_payeur).toBe(financeur.tiers_payeur)
+  })
+})
+

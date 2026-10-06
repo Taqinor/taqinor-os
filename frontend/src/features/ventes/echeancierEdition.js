@@ -139,3 +139,91 @@ export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode, effec
   }
   return saisieVersEcheancier(saisie)
 }
+
+// ── CIQ226 — conditions contractuelles déclarées (contrat
+// `devis_replace_lines_entete.json`, `regles_ciq200`) : retenue de garantie,
+// pénalités de retard, caution, organisme financeur, référence de commande.
+// TOUT est facultatif et RIEN n'est pré-rempli (D-CIQ-14) : état d'écran en
+// texte tel que tapé ⇄ clés de l'en-tête.
+export const CONDITIONS_VIDES = Object.freeze({
+  retenue: false, retenueTaux: '',
+  penaliteTaux: '', penalitePlafond: '',
+  cautionNature: '', cautionMontant: '', cautionPlafond: '',
+  tiersPayeur: '', referenceCommande: '',
+})
+
+const vide = (v) => v === null || v === undefined || String(v).trim() === ''
+const nombreOuNull = (v) => (vide(v) ? null : nombre(v))
+const texte = (v) => (v === null || v === undefined ? '' : String(v))
+
+/** Le devis servi → l'état d'écran des conditions. */
+export function conditionsDepuisDevis(devis) {
+  const d = devis || {}
+  const r = d.retenue_garantie
+  const p = d.penalites_retard_livraison
+  const c = d.caution
+  return {
+    retenue: Boolean(r), retenueTaux: texte(r?.taux_pct),
+    penaliteTaux: texte(p?.taux_pct_par_semaine), penalitePlafond: texte(p?.plafond_pct),
+    cautionNature: texte(c?.nature), cautionMontant: texte(c?.montant_ou_pct),
+    cautionPlafond: texte(c?.plafond),
+    tiersPayeur: texte(d.tiers_payeur), referenceCommande: texte(d.reference_commande_client),
+  }
+}
+
+/** L'état d'écran → les clés de l'en-tête (`null` = absente, jamais un défaut). */
+export function conditionsVersEntete(cond) {
+  const c = { ...CONDITIONS_VIDES, ...(cond || {}) }
+  const penalites = vide(c.penaliteTaux) && vide(c.penalitePlafond) ? null : {
+    taux_pct_par_semaine: nombreOuNull(c.penaliteTaux),
+    plafond_pct: nombreOuNull(c.penalitePlafond),
+  }
+  return {
+    retenue_garantie: c.retenue
+      ? { taux_pct: nombreOuNull(c.retenueTaux), liberation: 'reception_definitive' } : null,
+    penalites_retard_livraison: penalites,
+    caution: vide(c.cautionNature) && vide(c.cautionMontant) && vide(c.cautionPlafond) ? null : {
+      nature: texte(c.cautionNature).trim(),
+      montant_ou_pct: nombreOuNull(c.cautionMontant),
+      plafond: nombreOuNull(c.cautionPlafond),
+    },
+    tiers_payeur: vide(c.tiersPayeur) ? null : Number(c.tiersPayeur),
+    reference_commande_client: texte(c.referenceCommande).trim(),
+  }
+}
+
+/**
+ * Les erreurs de saisie des conditions, nommées par champ (sous le champ) :
+ * pénalités = taux ET plafond, ou rien. Aucun nombre n'est corrigé.
+ */
+export function erreursConditions(cond) {
+  const c = { ...CONDITIONS_VIDES, ...(cond || {}) }
+  const out = {}
+  if (!vide(c.penaliteTaux) && vide(c.penalitePlafond)) {
+    out.penalitePlafond = 'Pénalités de retard : le plafond est obligatoire avec le taux par semaine.'
+  }
+  if (vide(c.penaliteTaux) && !vide(c.penalitePlafond)) {
+    out.penaliteTaux = 'Pénalités de retard : le taux par semaine est obligatoire avec le plafond.'
+  }
+  if (c.retenue && vide(c.retenueTaux)) {
+    out.retenueTaux = 'Retenue de garantie : saisissez le taux demandé par le client.'
+  }
+  return out
+}
+
+export const LIBELLE_TRANCHE_FINANCEUR = "Règlement par l'organisme financeur à la réception signée"
+
+/**
+ * « Échéancier organisme financeur » : l'acompte du CLIENT (saisi, en %) à la
+ * commande, le reste payé par l'organisme financeur à la réception signée.
+ * Le reste est la seule valeur dérivée : 100 − acompte saisi.
+ */
+export function echeancierFinanceur(acomptePct) {
+  const acompte = nombre(acomptePct)
+  return [
+    { ...trancheVierge('Acompte client à la commande', 'acompte', String(acompte)),
+      jalon: 'commande', payeur: 'client' },
+    { ...trancheVierge(LIBELLE_TRANCHE_FINANCEUR, 'solde', String(arrondi2(100 - acompte))),
+      jalon: 'reception_financeur', payeur: 'tiers' },
+  ]
+}
