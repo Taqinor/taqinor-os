@@ -84,7 +84,6 @@ EN_ATTENTE_DETAIL = {
 #: (les deux échantillons publient les mêmes blocs).
 EN_ATTENTE_SIMULATION = {
     'simulation.meteo_fichier': 'ACAL146',
-    'cascade.irradiation_incidente_kwh_m2': 'ACAL128',
     'meteo.fichier': 'ACAL146',
     'meteo.heure.provenance_fuseau': 'ACAL129',
 }

@@ -91,7 +91,10 @@ logger = logging.getLogger(__name__)
 #:   publiés sur l'ANNÉE MOYENNE de la fenêtre météo (plus la somme de ses N
 #:   années) ; ``production.annees[]`` = totaux observés. Toute simulation
 #:   ``sim-1`` est périmée.
-VERSION_SIMULATION = 'sim-2'
+#: * ``sim-3`` (ACAL128, 06/10/2026) — ratio de performance sur
+#:   l'irradiation INCIDENTE capturée avant la chaîne (plus celle de la série
+#:   finale, réécrite par les étapes optiques).
+VERSION_SIMULATION = 'sim-3'
 
 #: ACAL48 — les saisies de l'entrée électrique enregistrée qui ENTRENT dans
 #: la simulation (câbles, affectation, polystring, optimiseur, températures
@@ -1194,7 +1197,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['performance'] = bloc_performance(
         serie_production, kwc=meta['kwc'],
         fiche_module=contexte['fiche_module'],
-        pr=total.get('performance_ratio'))
+        pr=total.get('performance_ratio'),
+        irradiation_incidente=cascade.get('irradiation_incidente_kwh_m2'))
 
     reponse_pvgis = None
     if fichier is None and _orientations_identiques(plans_equipes):
@@ -1412,6 +1416,16 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit):
     cascade = cascade_de_la_somme(
         [cascades_pan[plan['cle']] for plan in plans_equipes],
         cascade_onduleur, cascade_site, contexte)
+    # ACAL128 — l'irradiation incidente du site, pondérée par le kWc.
+    ponderee = None
+    for plan in plans_equipes:
+        incidente = cascades_pan[plan['cle']].get(
+            'irradiation_incidente_kwh_m2')
+        if incidente is not None and kwc_total:
+            ponderee = (ponderee or 0.0) + incidente * (plan.get('kwc')
+                                                        or 0.0)
+    cascade['irradiation_incidente_kwh_m2'] = (
+        round(ponderee / kwc_total, 3) if ponderee is not None else None)
     sorties = _sorties_par_pan(series_dc, somme_dc, sortie)
     contexte[CLE_SORTIES_PAR_PAN] = sorties
     contexte[CLE_CASCADES_PAR_PAN] = cascades_pan

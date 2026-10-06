@@ -154,9 +154,13 @@ class AnneeMoyenneTest(SimpleTestCase):
         self.assertIsNotNone(court['production']['total']['p50_kwh'])
 
     def test_version_simulation_bumpee_perime(self):
-        self.assertEqual(service.VERSION_SIMULATION, 'sim-2')
+        # ACAL54 a bumpé ``sim-1`` (somme des années) ; une version
+        # ultérieure (ACAL128 : ``sim-3``) ne la ramène jamais en arrière.
+        self.assertNotEqual(service.VERSION_SIMULATION, 'sim-1')
+        self.assertGreaterEqual(int(service.VERSION_SIMULATION.split('-')[1]),
+                                2)
         self.assertEqual(self.trois['simulation']['version_simulation'],
-                         'sim-2')
+                         service.VERSION_SIMULATION)
         # Une simulation stockée sous ``sim-1`` ne porte plus l'empreinte
         # d'aujourd'hui : elle est servie PÉRIMÉE.
         from unittest import mock

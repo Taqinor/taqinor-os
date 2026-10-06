@@ -136,7 +136,8 @@ MOTIF_TEMPERATURE = (
     f'manquant : « serie_horaire.{COLONNE_TEMPERATURE} ».')
 
 
-def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE):
+def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE,
+                     irradiation_incidente=None):
     """Le bloc ``resultat['performance']`` — ou ses nulls, motivés.
 
     Args:
@@ -153,6 +154,9 @@ def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE):
             Fourni (même ``None``), il est publié TEL QUEL ; ce bloc ne garde
             alors en propre que la variante corrigée en température. Absent,
             le PR est calculé ici sur ``serie`` (appel historique).
+        irradiation_incidente: ACAL128 — l'irradiation INCIDENTE (kWh/m²)
+            capturée avant la chaîne : fournie, c'est elle qui est publiée
+            sous ``irradiation_plan_kwh_m2`` et qui sert de référence.
 
     Returns:
         dict — ``pr``, ``pr_methode``, ``pr_reference``,
@@ -171,7 +175,9 @@ def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE):
 
     colonne = _etapes.colonne_energie(serie)
     heures = _heures(serie)
-    irradiation = _irradiation_kwh_m2(points, heures)
+    irradiation = (_nombre(irradiation_incidente)
+                   if irradiation_incidente is not None
+                   else _irradiation_kwh_m2(points, heures))
     periode = _periode(points)
     puissance = _nombre(kwc)
 

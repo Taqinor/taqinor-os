@@ -402,6 +402,8 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'SOURCE_SAISIE_FORCEE', 'STATUT_APPLIQUE', 'STATUT_ECARTE',
            'STATUT_HORS_CHAINE', 'STATUT_NON_SOURCE', 'STATUT_NON_SIMULE',
            'statuts_des_postes',
+           # ACAL128 — le PR sur l'irradiation incidente.
+           'irradiation_kwh_m2',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -485,8 +487,14 @@ def appliquer_chaine(serie, contexte=None, resultat=None, *, phase=None,
         _refuser_irradiance_horizontale(serie)
         _installer_meteo_partagee(contexte)
         serie = _reindexer_sur_l_heure_du_site(serie, contexte)
+        # ACAL128 — l'irradiation INCIDENTE, capturée UNE fois AVANT la
+        # première étape : les étapes optiques (horizon, ombrage, accès
+        # module, IAM, salissure) réécrivent ``gi_w_m2``, et un PR divisé par
+        # l'irradiation de la série FINALE vaudrait 1,0 quoi qu'il arrive.
+        irradiation_incidente = irradiation_kwh_m2(serie)
     else:
         _installer_meteo_partagee(contexte)
+        irradiation_incidente = None
     courante = serie
     premiere = _arrondi(_etapes.energie_kwh(courante))
     dernier_connu = premiere
@@ -534,6 +542,10 @@ def appliquer_chaine(serie, contexte=None, resultat=None, *, phase=None,
         # ACAL49 — les étapes OMISES de cette chaîne, dans l'ordre.
         'etapes_omises': [etape['etape'] for etape in publiees
                           if etape['motif_omission']],
+        # ACAL128 — Σ G(i) × Δt de la série d'ENTRÉE (kWh/m², fenêtre
+        # entière, comme les kWh de la cascade) ; ``None`` pour les phases
+        # onduleur et site, qui ne reçoivent plus d'irradiance.
+        'irradiation_incidente_kwh_m2': irradiation_incidente,
     }
     if isinstance(resultat, dict):
         _publier(resultat, courante, contexte, cascade)
@@ -708,6 +720,9 @@ def cascade_de_la_somme(cascades_pan, cascade_onduleur, cascade_site,
         'postes_non_sources': postes,
         'hash_entree': contexte.get('hash_entree'),
         'etapes_omises': [nom for nom in ORDRE_ETAPES if nom in omises],
+        # ACAL128 — l'irradiation incidente du SITE, pondérée par le kWc de
+        # chaque pan (posée par ``simulation._chaine_par_phases``).
+        'irradiation_incidente_kwh_m2': None,
     }
 
 
@@ -1208,6 +1223,7 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
     plans = [plan for plan in (contexte.get('plans') or ())
              if isinstance(plan, dict)]
     series = _series_par_pan(serie, contexte, plans)
+    incidentes = _irradiations_incidentes(cascade, contexte, plans)
 
     mensuel = {mois: None for mois in range(1, 13)}
     annuel = {}
@@ -1229,7 +1245,10 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
             lignes.append(ligne)
             bruts_par_pan.append(None)
             continue
-        kwh, mensuel_pan, annuel_pan, irradiation = _sommes(serie_du_pan)
+        kwh, mensuel_pan, annuel_pan, _finale = _sommes(serie_du_pan)
+        # ACAL128 — l'irradiation INCIDENTE du pan (capturée avant la
+        # chaîne), jamais celle de la série finale.
+        irradiation = incidentes.get(_cle_de_pan(plan))
         bruts_par_pan.append(kwh)
         total_kwh = _ajouter(total_kwh, kwh)
         for mois, valeur in mensuel_pan.items():
@@ -1245,7 +1264,9 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
     if not series:
         # Aucun pan n'a de série : le TOTAL reste celui de la chaîne, et les
         # lignes par pan disent qu'elles n'ont pas été alimentées.
-        total_kwh, mensuel, annuel, irradiation = _sommes(serie)
+        total_kwh, mensuel, annuel, _finale = _sommes(serie)
+        irradiation = _flottant((cascade or {}).get(
+            'irradiation_incidente_kwh_m2'))
         if irradiation is not None and total_kwc:
             irradiation_ponderee = irradiation * total_kwc
         if plans:
@@ -1394,6 +1415,35 @@ def completude_de_la_chaine(cascade, contexte=None):
     return {'complete': not socle, 'socle_manquant': socle,
             'mention': mention, 'motif': motif,
             'avertissement': avertissement}
+
+
+def irradiation_kwh_m2(serie):
+    """ACAL128 — ``Σ G(i) × Δt`` (kWh/m²) d'une série, ou ``None``."""
+    pas = float((serie or {}).get('pas_minutes') or _etapes.PAS_MINUTES_PVGIS)
+    heures = pas / 60.0
+    total = None
+    for point in (serie or {}).get('points') or ():
+        if not isinstance(point, dict):
+            continue
+        globale = _flottant(point.get('gi_w_m2'))
+        if globale is not None:
+            total = _ajouter(total, globale / 1000.0 * heures)
+    return None if total is None else round(total, 3)
+
+
+def _irradiations_incidentes(cascade, contexte, plans):
+    """ACAL128 — ``{clé du pan: irradiation incidente}`` : celles des
+    cascades de pan POSÉES (plusieurs pans), sinon celle de la cascade
+    publiée pour l'unique pan équipé."""
+    posees = contexte.get(CLE_CASCADES_PAR_PAN)
+    if isinstance(posees, dict) and posees:
+        return {cle: _flottant((c or {}).get('irradiation_incidente_kwh_m2'))
+                for cle, c in posees.items()}
+    equipes = [plan for plan in plans if _est_equipe(plan)]
+    if len(equipes) == 1:
+        return {_cle_de_pan(equipes[0]): _flottant(
+            (cascade or {}).get('irradiation_incidente_kwh_m2'))}
+    return {}
 
 
 def _moyenne(valeur, annees):
