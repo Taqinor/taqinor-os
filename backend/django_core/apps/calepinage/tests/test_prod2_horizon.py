@@ -22,7 +22,8 @@ import unittest
 import urllib.error
 
 from apps.calepinage.services.horizon import (
-    ClientHorizon, azimut_de_face, lire_profil, profil_saisi,
+    ClientHorizon, azimut_de_face, lire_profil, profil_depuis_document,
+    profil_saisi,
 )
 from apps.calepinage.services.pvgis_serie import (
     _Cache, EntreeInvalide, PvgisIndisponible,
@@ -165,6 +166,22 @@ class ProfilSaisiTest(unittest.TestCase):
         profil = profil_saisi([{'azimut_face_deg': 180.0,
                                 'hauteur_deg': 3.0}])
         self.assertEqual(profil['points'][0]['azimut_pvgis_deg'], 0.0)
+
+    def test_le_profil_du_document_se_lit_comme_une_saisie(self):
+        # ACAL123 — la forme que l'onglet Horizon ENREGISTRE (camelCase v2)
+        # donne le même profil service que la saisie directe.
+        document = {'source': 'saisie', 'hauteurMaxDeg': 12.0, 'points': [
+            {'azimuthDeg': 90.0, 'heightDeg': 12.0},
+            {'azimuthDeg': 180.0, 'heightDeg': 3.0},
+        ]}
+        lu = profil_depuis_document(document)
+        direct = profil_saisi([
+            {'azimut_face_deg': 90.0, 'hauteur_deg': 12.0},
+            {'azimut_face_deg': 180.0, 'hauteur_deg': 3.0},
+        ])
+        self.assertEqual(lu['points'], direct['points'])
+        self.assertEqual(lu['source'], 'saisie')
+        self.assertEqual(lu['hauteur_max_deg'], 12.0)
 
     def test_un_profil_saisi_vide_est_refuse(self):
         with self.assertRaises(EntreeInvalide) as refus:

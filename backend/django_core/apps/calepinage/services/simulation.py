@@ -63,6 +63,7 @@ from .pvgis_serie import (
     BASE_PAR_DEFAUT, ClientPvgis, EntreeInvalide, PvgisIndisponible,
     azimut_pvgis,
 )
+from .horizon import profil_depuis_document
 from .simulation_modules import production_module_par_module
 from .validation import ecart_vs_pvcalc
 from .valeurs import nombre as _nombre
@@ -644,8 +645,11 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'plans': plans,
         'layout': document,
         'ombrage': _ombrage_du_document(document),
-        'horizon': ((document or {}).get('horizonProfile')
-                    if isinstance(document, dict) else None),
+        # ACAL123 — le profil tel que l'écran l'enregistre (camelCase v2),
+        # converti par LE lecteur unique du document.
+        'horizon': profil_depuis_document(
+            (document or {}).get('horizonProfile')
+            if isinstance(document, dict) else None),
         # ── l'électrique (CALX167-175) ──────────────────────────────────
         'entree_electrique': dict(donnees),
         'electrique': electrique,
@@ -877,8 +881,11 @@ def _fournisseur_meteo(*, client, decision, document, fichier=None,
     compteur = compteur if isinstance(compteur, dict) else {}
     compteur.setdefault('appels', 0)
     debut, fin = (decision['fenetre_annees'] or (None, None))
-    horizon = ((document or {}).get('horizonProfile')
-               if isinstance(document, dict) else None)
+    # ACAL123 — même lecteur que ``construire_contexte`` : la requête PVGIS
+    # porte le profil du document converti en forme service.
+    horizon = profil_depuis_document(
+        (document or {}).get('horizonProfile')
+        if isinstance(document, dict) else None)
 
     def fournisseur(plan):
         cle = (plan.get('inclinaison_deg'), plan.get('azimut_pvgis_deg'))
