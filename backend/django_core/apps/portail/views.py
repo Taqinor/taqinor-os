@@ -142,8 +142,12 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         email au client (cf. ``services.provisionner_compte_portail_client``).
         """
         compte = self.get_object()
-        user, cree = services.provisionner_compte_portail_client(
-            request.user.company, compte.client_id)
+        try:
+            user, cree = services.provisionner_compte_portail_client(
+                request.user.company, compte.client_id)
+        except services.ProvisionnementSansEmail as exc:
+            # ADOC123 — refus NOMMÉ : aucun compte créé, aucun e-mail.
+            return Response({'detail': str(exc)}, status=400)
         if user is None:
             return Response(
                 {'detail': 'Client inconnu pour cette société.'}, status=400)

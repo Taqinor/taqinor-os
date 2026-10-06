@@ -262,8 +262,22 @@ def _envoyer_identifiants_portail(
         return False
 
 
+class ProvisionnementSansEmail(Exception):
+    """ADOC123 — ouvrir un accès portail exige l'e-mail du destinataire : le
+    mot de passe temporaire part par e-mail et le « mot de passe oublié » en
+    dépend. Levée AVANT toute création (aucun compte, aucun e-mail)."""
+
+
+MESSAGE_PROVISIONNEMENT_SANS_EMAIL = (
+    "Ajoutez l'adresse e-mail du client avant d'ouvrir son accès portail : "
+    "le mot de passe temporaire part par e-mail.")
+
+
 def provisionner_compte_portail_client(company, client_id):
     """NTPRT2 — Crée (ou relie) le compte utilisateur portail d'un client.
+
+    ADOC123 — un client SANS e-mail lève ``ProvisionnementSansEmail`` avant
+    toute création (jamais un compte muet, sans mot de passe récupérable).
 
     Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé
     par CET appel. Le ``ComptePortailClient`` (avec son ``token_acces``) est
@@ -315,6 +329,12 @@ def provisionner_compte_portail_client(company, client_id):
         if existant is not None:
             return existant, False
 
+        email = (getattr(client, 'email', '') or '').strip()
+        if not email:
+            # La transaction annule aussi un ComptePortailClient tout juste
+            # créé ci-dessus : rien ne reste en base.
+            raise ProvisionnementSansEmail(MESSAGE_PROVISIONNEMENT_SANS_EMAIL)
+
         role, _ = Role.objects.get_or_create(
             company=company,
             nom=ROLE_PORTAIL_CLIENT,
@@ -324,7 +344,6 @@ def provisionner_compte_portail_client(company, client_id):
             },
         )
 
-        email = (getattr(client, 'email', '') or '').strip()
         mot_de_passe = get_random_string(LONGUEUR_MOT_DE_PASSE_TEMPORAIRE)
         user = CustomUser(
             username=_username_portail_disponible(email or f'client-{client.id}'),
@@ -355,8 +374,12 @@ def provisionner_compte_portail_client(company, client_id):
 # login JWT standard — jamais un second système d'auth.
 # ``Partenaire.token_acces`` (lien ponctuel/legacy) reste intact et inchangé.
 
-def provisionner_compte_partenaire(company, partenaire_id):
+def provisionner_compte_partenaire(company, partenaire_id, exiger_email=False):
     """NTPRT4 — Crée (ou relie) le compte utilisateur portail d'un partenaire.
+
+    ADOC123 — ``exiger_email=True`` lève ``ProvisionnementSansEmail`` avant
+    toute création quand le partenaire n'a pas d'e-mail (ADOC124 l'active
+    côté vue). Défaut ``False`` : comportement inchangé.
 
     Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé
     par CET appel. Idempotent SANS effet de bord : un compte déjà rattaché à
@@ -390,6 +413,11 @@ def provisionner_compte_partenaire(company, partenaire_id):
         ).first()
         if existant is not None:
             return existant, False
+
+        if exiger_email and not (partenaire.email or '').strip():
+            raise ProvisionnementSansEmail(
+                "Ajoutez l'adresse e-mail du partenaire avant d'ouvrir son "
+                "accès portail : le mot de passe temporaire part par e-mail.")
 
         role, _ = Role.objects.get_or_create(
             company=company,
