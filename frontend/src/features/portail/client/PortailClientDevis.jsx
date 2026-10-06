@@ -27,6 +27,7 @@ export default function PortailClientDevis() {
   const [aSigner, setASigner] = useState(null)
   const [nom, setNom] = useState('')
   const [consent, setConsent] = useState(false)
+  const [option, setOption] = useState('')
   const [envoi, setEnvoi] = useState(false)
 
   const charger = () => {
@@ -48,15 +49,20 @@ export default function PortailClientDevis() {
     setASigner(devis)
     setNom('')
     setConsent(false)
+    setOption('')
   }
 
   const accepter = async () => {
     if (!aSigner || !nom.trim() || !consent) return
+    if (aSigner.deux_options && !option) return
     setEnvoi(true)
     try {
       await portailApi.devis.accepter(aSigner.id, {
         nom: nom.trim(),
         consent_esign: true,
+        // ADOC114 — devis à deux options : le client choisit, le serveur
+        // refuse (400) un corps sans `option`.
+        ...(aSigner.deux_options ? { option } : {}),
       })
       toast.success('Devis accepté. Merci !')
       setASigner(null)
@@ -161,6 +167,19 @@ export default function PortailClientDevis() {
                      onChange={(e) => setNom(e.target.value)}
                      placeholder="Nom et prénom du signataire" />
             </div>
+            {aSigner?.deux_options && Array.isArray(aSigner.options) && (
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="text-sm font-medium">Option choisie</legend>
+                {aSigner.options.map((o) => (
+                  <label key={o.cle} className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="portail-option" value={o.cle}
+                           checked={option === o.cle}
+                           onChange={() => setOption(o.cle)} />
+                    {o.libelle}
+                  </label>
+                ))}
+              </fieldset>
+            )}
             <label className="flex items-start gap-2 text-sm">
               <Checkbox checked={consent}
                         onCheckedChange={(v) => setConsent(v === true)} />
@@ -174,7 +193,8 @@ export default function PortailClientDevis() {
               Annuler
             </Button>
             <Button onClick={accepter}
-                    disabled={envoi || !nom.trim() || !consent}>
+                    disabled={envoi || !nom.trim() || !consent
+                      || (aSigner?.deux_options && !option)}>
               {envoi ? 'Envoi…' : 'Confirmer l’acceptation'}
             </Button>
           </DialogFooter>

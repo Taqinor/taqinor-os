@@ -30,6 +30,45 @@ const portailApi = {
   // prochain jalon chantier). Aucun id envoyé : le scope vient du compte
   // portail connecté, côté serveur.
   tableauDeBord: () => api.get('/portail/client/tableau-de-bord/'),
+  // ADOC117 — acceptation PUBLIQUE d'une invitation (sans session) : corps
+  // `{token, mot_de_passe}` SEULS (contrat invitation_accepter.json).
+  invitation: {
+    accepter: (payload) =>
+      api.post('/public/portail/invitations/accepter/', payload),
+  },
+  // ADOC135 — « Mes documents » (contrat mes_documents.json). Le
+  // téléchargement est un lien direct (binaire, Content-Disposition attachment) ;
+  // le dépôt est un multipart `{fichier, type_document, libelle?}`.
+  documents: {
+    liste: () => api.get('/portail/mes-documents/'),
+    telechargerUrl: (id) => `/api/django/portail/mes-documents/${id}/telecharger/`,
+    deposer: (formData) => api.post('/portail/mes-documents/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  },
+  // ADOC138 — « Mon équipe » (contrat mon_equipe.json) : invitations/membres,
+  // inviter et révoquer réservés à l'administrateur du portail (403 sinon).
+  equipe: {
+    liste: () => api.get('/portail/mon-equipe/'),
+    inviter: (payload) => api.post('/portail/mon-equipe/', payload),
+    revoquer: (id) => api.post(`/portail/mon-equipe/${id}/revoquer/`, {}),
+  },
+  // ADOC139 — « Mes contrats » de maintenance (contrat
+  // mes_contrats_maintenance.json) ; `demander` = renouvellement/résiliation,
+  // une DEMANDE traitée en interne (jamais une modification du contrat).
+  contrats: {
+    liste: () => api.get('/portail/mes-contrats-maintenance/'),
+    demander: (id, payload) =>
+      api.post(`/portail/mes-contrats-maintenance/${id}/demander/`, payload),
+  },
+  // ADOC140 — « Ma consommation » (contrat ma_consommation.json) : série de
+  // production + alertes ouvertes ; `params.chantier` borne les alertes.
+  consommation: (params) =>
+    api.get('/portail/client/ma-consommation/', { params }),
+  // ADOC141 — recherche scopée au client (contrat recherche_portail.json) et
+  // export « mes données » (binaire zip : lien direct, nom de fichier servi).
+  recherche: (q) => api.get('/portail/client/recherche/', { params: { q } }),
+  exportMesDonneesUrl: () => '/api/django/portail/client/mes-donnees/export/',
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),
@@ -67,6 +106,8 @@ const portailApi = {
     liste: () => api.get('/portail/mes-demandes-sav/'),
     detail: (id) => api.get(`/portail/mes-demandes-sav/${id}/`),
     creer: (payload) => api.post('/portail/mes-demandes-sav/', payload),
+    // ADOC136 — fil client-visible du ticket lié (contrat mes_tickets_fil.json).
+    fil: (id) => api.get(`/portail/mes-demandes-sav/${id}/fil/`),
   },
   // NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11,
   // lecture seule) + galerie photos avant/pendant/après, jamais de donnée
