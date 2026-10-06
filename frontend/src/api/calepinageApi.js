@@ -292,6 +292,11 @@ const calepinageApi = {
     // version) ou acquitte la dérive (`repereAcquitte`). Aucune translation côté navigateur.
     recentrerSurLead: (id) => api.post(`${pivot(id)}recentrer-sur-lead/`, {}), // ACAL
     garderRepere: (id) => api.post(`${pivot(id)}garder-repere/`, {}), // ACAL
+    // ACAL207 (D-ACAL-28, contrat calepinage_releve.json › appliquer_cote) — `{zone_id,
+    // cote_index, longueur_m}` → `{roof_layout, version}` : le SERVEUR recale le côté choisi
+    // par homothétie (400 nommé : cote à confirmer, pan croisé ; 409 : verrou).
+    appliquerCoteReleve: (id, releveId, corps) => api.post( // ACAL
+      `${pivot(id)}releve/${releveId}/appliquer-cote/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

@@ -24,6 +24,16 @@
       "verbe": "post"
     }
   ],
+  "calepinages.appliquerCoteReleve": [
+    {
+      "config": null,
+      "data": {
+        "k": 1
+      },
+      "url": "/calepinage/calepinages/7/releve/3/appliquer-cote/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.appliquerFixation": [
     {
       "config": null,

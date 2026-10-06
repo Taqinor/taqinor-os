@@ -25,7 +25,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutLireOuEcrireCalepinage
+from ..permissions import PeutGererCalepinage, PeutLireOuEcrireCalepinage
 
 __all__ = ['ReleveTerrainMixin']
 
@@ -109,3 +109,44 @@ class ReleveTerrainMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'releve': releve_en_ligne(releve),
                          'releve_courant_id': releve_courant_id(calepinage)})
+
+    @extend_schema(parameters=[OpenApiParameter(
+        name='releve_id', type=OpenApiTypes.INT,
+        location=OpenApiParameter.PATH,
+        description="Identifiant du relevé terrain (sous-ressource).")])
+    @action(detail=True, methods=['post'],
+            url_path=r'releve/(?P<releve_id>[^/.]+)/appliquer-cote',
+            permission_classes=[PeutGererCalepinage])
+    def releve_appliquer_cote(self, request, pk=None, releve_id=None):
+        """ACAL207 (D-ACAL-28) — « Appliquer la cote au pan ».
+
+        Corps ``{zone_id, cote_index, longueur_m}`` (contrat
+        ``calepinage_releve.json`` › ``appliquer_cote``) → ``{roof_layout,
+        version}``. Le côté ``cote_index`` du pan est recalé par homothétie le
+        long de sa direction (``services.releve.appliquer_cote_au_pan``) et
+        une version est déposée. 400 nommé : cote A_CONFIRMER, pan croisé,
+        longueur absente du relevé ; 409 : calepinage verrouillé ; 404 : relevé
+        ou calepinage d'ailleurs. Jamais d'application automatique.
+        """
+        from ..services.releve import ReleveRefuse, appliquer_cote_au_pan
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        corps = request.data if isinstance(request.data, dict) else {}
+        if not (str(releve_id).isdigit() and calepinage.releves_terrain
+                .filter(pk=int(releve_id)).exists()):
+            return Response({'detail': 'Relevé introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        try:
+            resultat = appliquer_cote_au_pan(
+                calepinage, zone_id=corps.get('zone_id'),
+                cote_index=corps.get('cote_index'),
+                longueur_m=corps.get('longueur_m'),
+                releve_id=releve_id, user=request.user)
+        except ReleveRefuse as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        version = resultat['version']
+        return Response({
+            'roof_layout': calepinage.roof_layout,
+            'version': version.pk if version is not None else None,
+        })
