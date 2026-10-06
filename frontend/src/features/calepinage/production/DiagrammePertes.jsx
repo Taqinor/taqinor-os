@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components --
+   `construireCascadeDetaillee` est une fonction PURE (étapes servies → barres) que le test
+   confronte directement, sans monter le graphique. */
 import { useParams } from 'react-router-dom'
 import {
   Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis, Tooltip,
@@ -87,24 +90,48 @@ const SOURCE_LABELS = {
 const libelleSource = (source) => (source ? (SOURCE_LABELS[source] || source) : '—')
 
 /**
- * CALX48 — la cascade construite depuis `resultat['cascade'].etapes` (CALX141),
- * PAS depuis la liste plate : chaque étape porte déjà son `perte_pct` (négatif
- * pour un GAIN, ex. bifacial), donc aucune conversion — une étape OMISE
+ * CALX48 / ACAL140 — la cascade construite depuis `resultat['cascade'].etapes`
+ * (CALX141), PAS depuis la liste plate. Les barres viennent des ÉNERGIES
+ * servies (`kwh_avant` / `kwh_apres`, rapportées à l'énergie incidente =
+ * `kwh_avant` de la première étape), JAMAIS d'une soustraction de pourcentages
+ * relatifs : deux pertes de 10 % composent 19 %, pas 20 % (la composition est
+ * celle du serveur, `chaine_pertes._total_pct`). Un GAIN (bifacial : énergie
+ * après > avant) est posé AU-DESSUS du niveau courant ; une étape OMISE
  * (`perte_pct: null`) traverse à hauteur nulle, hachurée, JAMAIS un zéro qui
- * prétendrait qu'elle n'a rien coûté.
+ * prétendrait qu'elle n'a rien coûté. « Énergie livrée » = 100 − `total_pct`
+ * servi (repli : dernier niveau en énergie).
+ *
+ * Sans énergie servie (aucun `kwh_avant`), repli MULTIPLICATIF sur `perte_pct`
+ * (jamais additif).
  */
-function construireCascadeDetaillee(etapes) {
+export function construireCascadeDetaillee(etapes, totalPct = null) {
+  const reference = Number(etapes[0]?.kwh_avant)
+  const parKwh = Number.isFinite(reference) && reference > 0
+  const niveauKwh = (kwh) => (parKwh && kwh !== null && kwh !== undefined
+    && Number.isFinite(Number(kwh)) ? (Number(kwh) / reference) * 100 : null)
+
   let courant = 100
-  const lignes = [{ nom: CASCADE_DEPART, base: 0, valeur: 100, total: true }]
+  const lignes = [{ nom: CASCADE_DEPART, base: 0, valeur: 100, total: true, niveau: 100 }]
   for (const etape of etapes) {
     const omise = etape.perte_pct === null || etape.perte_pct === undefined
-    const delta = omise ? 0 : (Number(etape.perte_pct) || 0)
-    const bas = courant - delta
+    let haut = courant
+    let bas = courant
+    if (!omise) {
+      const hautKwh = niveauKwh(etape.kwh_avant)
+      const basKwh = niveauKwh(etape.kwh_apres)
+      if (basKwh !== null) {
+        haut = hautKwh ?? courant
+        bas = basKwh
+      } else {
+        bas = courant * (1 - (Number(etape.perte_pct) || 0) / 100)
+      }
+    }
     lignes.push({
       nom: etape.libelle || etape.etape,
-      base: Math.max(Math.min(bas, courant), 0),
-      valeur: Math.abs(delta),
+      base: Math.max(Math.min(haut, bas), 0),
+      valeur: Math.abs(haut - bas),
       total: false,
+      niveau: bas,
       source: etape.source ?? null,
       poste: etape.etape,
       rang: etape.rang,
@@ -113,11 +140,16 @@ function construireCascadeDetaillee(etapes) {
       pertePct: etape.perte_pct,
       kwhAvant: etape.kwh_avant ?? null,
       kwhApres: etape.kwh_apres ?? null,
-      gain: Boolean(etape.gain),
+      gain: Boolean(etape.gain) || bas > haut,
     })
     courant = bas
   }
-  lignes.push({ nom: CASCADE_ARRIVEE, base: 0, valeur: Math.max(courant, 0), total: true })
+  const livree = typeof totalPct === 'number' && Number.isFinite(totalPct)
+    ? 100 - totalPct : courant
+  lignes.push({
+    nom: CASCADE_ARRIVEE, base: 0, valeur: Math.max(livree, 0), total: true,
+    arrivee: true, niveau: livree,
+  })
   return lignes
 }
 
@@ -203,7 +235,7 @@ export default function DiagrammePertes({ calepinageId }) {
       {etapesCascade.length > 0 ? (
         <>
           <MentionSourceCascade cascadeServie />
-          <DiagrammePertesCascadeDetaillee etapes={etapesCascade} />
+          <DiagrammePertesCascadeDetaillee etapes={etapesCascade} totalPct={data?.cascade?.total_pct ?? null} />
         </>
       ) : pertes.length === 0 ? (
         <ChartEmpty
@@ -322,8 +354,8 @@ function DiagrammePertesCascade({ pertes }) {
  * lisible dans la table (colonne dédiée, jamais fondu dans le libellé) et sa
  * colonne « Perte » reste VIDE (Done CALX48), jamais un zéro trompeur.
  */
-function DiagrammePertesCascadeDetaillee({ etapes }) {
-  const lignes = construireCascadeDetaillee(etapes)
+function DiagrammePertesCascadeDetaillee({ etapes, totalPct = null }) {
+  const lignes = construireCascadeDetaillee(etapes, totalPct)
   const dur = animationDuration()
 
   const colonnes = [
@@ -335,9 +367,16 @@ function DiagrammePertesCascadeDetaillee({ etapes }) {
       key: 'pertePct',
       header: 'Perte',
       align: 'right',
-      format: (v, row) => (row.total
-        ? `${formatPercent(row.valeur, { decimals: 1 })} (cumulé)`
-        : pctCascadeDetaillee(v)),
+      format: (v, row) => {
+        if (row.arrivee) return `${formatPercent(100 - row.niveau, { decimals: 1 })} (pertes totales)`
+        return row.total ? '—' : pctCascadeDetaillee(v)
+      },
+    },
+    {
+      key: 'niveau',
+      header: 'Énergie restante',
+      align: 'right',
+      format: (v) => formatPercent(v, { decimals: 1 }),
     },
     { key: 'source', header: 'Source', format: (v, row) => (row.total ? '—' : libelleSource(v)) },
     // Étape omise : le motif publié par le serveur, jamais reconstruit.
@@ -382,7 +421,7 @@ function DiagrammePertesCascadeDetaillee({ etapes }) {
             height={50}
           />
           <YAxis
-            domain={[0, 100]}
+            domain={[0, (max) => Math.max(100, Math.ceil(max))]}
             tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
             tickLine={false}
             axisLine={false}

@@ -22,7 +22,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import DiagrammePertes from './DiagrammePertes'
+import DiagrammePertes, { construireCascadeDetaillee } from './DiagrammePertes'
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -218,5 +218,62 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
       'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
     )
+  })
+})
+
+/* ACAL140 — les barres viennent des énergies SERVIES (kwh_avant / kwh_apres),
+   jamais d'une soustraction de pourcentages relatifs. */
+describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', () => {
+  const deuxEtapes = [
+    { rang: 1, etape: 'a', libelle: 'Étape A', kwh_avant: 100, kwh_apres: 90, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+    { rang: 2, etape: 'b', libelle: 'Étape B', kwh_avant: 90, kwh_apres: 81, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+  ]
+
+  it('énergie livrée = 100 − total_pct servi', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: {
+        ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+        cascade: { ...exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple').cascade,
+          etapes: deuxEtapes, total_pct: 19 },
+      },
+    })
+    rendre()
+
+    const cascade = await screen.findByTestId('calx48-cascade-detaillee')
+    const table = within(cascade).getByRole('table')
+    const ligne = within(table).getByText('Énergie livrée').closest('tr')
+    expect(ligne.querySelector('td[data-label="Énergie restante"]').textContent).toMatch(/^81,0/)
+    expect(ligne.querySelector('td[data-label="Perte"]').textContent).toMatch(/^19,0.*pertes totales/)
+    // La dernière colonne n'est plus libellée « Perte (cumulé) » à tort.
+    expect(within(table).queryByText(/\(cumulé\)/)).toBeNull()
+    // Les barres : 100 → 90 → 81, pas 100 → 90 → 80.
+    const lignes = construireCascadeDetaillee(deuxEtapes, 19)
+    expect(lignes[2].niveau).toBeCloseTo(81, 6)
+    expect(lignes[3].valeur).toBeCloseTo(81, 6)
+  })
+
+  it('gain bifacial au-dessus du niveau courant', () => {
+    const etapes = [
+      { rang: 1, etape: 'a', libelle: 'Perte', kwh_avant: 100, kwh_apres: 90, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+      { rang: 2, etape: 'bif', libelle: 'Gain bifacial', kwh_avant: 90, kwh_apres: 93, perte_pct: -3.33, gain: true, source: 'fiche', motif_omission: '' },
+    ]
+    const lignes = construireCascadeDetaillee(etapes, null)
+    const gain = lignes[2]
+    expect(gain.gain).toBe(true)
+    // La barre démarre à 90 (niveau avant) et monte à 93 : au-dessus.
+    expect(gain.base).toBeCloseTo(90, 6)
+    expect(gain.base + gain.valeur).toBeCloseTo(93, 6)
+    // Sans total_pct servi : dernier niveau en énergie.
+    expect(lignes[3].valeur).toBeCloseTo(93, 6)
+  })
+
+  it('étape omise : hauteur nulle, niveau inchangé', () => {
+    const etapes = [
+      { rang: 1, etape: 'a', libelle: 'A', kwh_avant: 200, kwh_apres: 180, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+      { rang: 2, etape: 'o', libelle: 'Omise', kwh_avant: 180, kwh_apres: null, perte_pct: null, gain: false, source: null, motif_omission: 'pas de données' },
+    ]
+    const lignes = construireCascadeDetaillee(etapes, null)
+    expect(lignes[2].valeur).toBe(0)
+    expect(lignes[2].niveau).toBeCloseTo(90, 6)
   })
 })
