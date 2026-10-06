@@ -320,11 +320,45 @@ class DocumentClientPortailViewSet(_PortailBaseViewSet):
 class JalonChantierPortailViewSet(_PortailBaseViewSet):
     """Jalons d'avancement de chantier exposés au client (FG232). La société est
     posée côté serveur ; ``marquer_atteint`` avance un jalon (côté interne). Le
-    client lit la timeline en lecture-seule côté portail."""
+    client lit la timeline en lecture-seule côté portail.
+
+    ADOC129 (D-ADOC-3) — la timeline client a UNE source : les jalons
+    synchronisés du chantier (``services.upsert_jalon_chantier``, CHT11). Plus
+    aucune création manuelle (POST → 405 : une saisie manuelle doublait la
+    phase synchronisée) ; la correction (PATCH libellé/date/atteint,
+    ``marquer_non_atteint``) est tracée ancien→nouveau au Journal (modèle
+    suivi par ``apps.audit``) ; la suppression est réservée aux jalons HÉRITÉS
+    sans clé de phase (409 pour un jalon issu du chantier).
+    """
     queryset = JalonChantierPortail.objects.all()
     serializer_class = JalonChantierPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
+    http_method_names = ['get', 'patch', 'delete', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(
+            request.method,
+            detail=("Les jalons portail viennent du chantier (synchronisés) : "
+                    "ils ne se créent pas à la main. Corrigez le jalon "
+                    "existant."))
+
+    def destroy(self, request, *args, **kwargs):
+        jalon = self.get_object()
+        if jalon.cle_phase:
+            return Response(
+                {'detail': 'jalon issu du chantier : corrigez-le'},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    def marquer_non_atteint(self, request, pk=None):
+        """ADOC129 — correction tracée d'un jalon marqué atteint à tort."""
+        jalon = self.get_object()
+        if jalon.atteint:
+            jalon.atteint = False
+            jalon.save(update_fields=['atteint'])
+        return Response(self.get_serializer(jalon).data)
 
     @action(detail=True, methods=['post'])
     def marquer_atteint(self, request, pk=None):

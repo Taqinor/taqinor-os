@@ -149,9 +149,14 @@ const portailApi = {
     },
     jalonsChantier: {
       liste: (params) => api.get('/portail/jalons-chantier-portail/', { params }),
-      creer: (payload) => api.post('/portail/jalons-chantier-portail/', payload),
+      // ADOC129 — plus de création manuelle (POST 405 côté serveur) : on
+      // corrige un jalon synchronisé (tracé), on ne supprime qu'un hérité.
+      patch: (id, payload) => api.patch(`/portail/jalons-chantier-portail/${id}/`, payload),
+      supprimer: (id) => api.delete(`/portail/jalons-chantier-portail/${id}/`),
       marquerAtteint: (id) =>
         api.post(`/portail/jalons-chantier-portail/${id}/marquer_atteint/`, {}),
+      marquerNonAtteint: (id) =>
+        api.post(`/portail/jalons-chantier-portail/${id}/marquer_non_atteint/`, {}),
     },
     demandesTicket: {
       liste: (params) => api.get('/portail/demandes-ticket-portail/', { params }),

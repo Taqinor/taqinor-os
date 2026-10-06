@@ -248,20 +248,18 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
 
 class JalonChantierPortailSerializer(serializers.ModelSerializer):
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
-    chantier_id = serializers.IntegerField(min_value=0)
+    # ADOC129 — plus de création manuelle (POST 405) : le chantier, l'ordre et
+    # la clé de phase d'un jalon ne se corrigent pas, seuls le libellé, la
+    # date et ``atteint`` le peuvent (correction tracée au Journal).
+    chantier_id = serializers.IntegerField(min_value=0, read_only=True)
 
     class Meta:
         model = JalonChantierPortail
         fields = [
             'id', 'chantier_id', 'libelle', 'ordre', 'atteint', 'date_jalon',
-            'date_creation',
+            'cle_phase', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
-
-    def validate_chantier_id(self, value):
-        """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
-        return _valider_id_cross_app(
-            self, value, _resoudre_chantier, 'Chantier')
+        read_only_fields = ['ordre', 'cle_phase', 'date_creation']
 
 
 class DemandeTicketPortailSerializer(serializers.ModelSerializer):
