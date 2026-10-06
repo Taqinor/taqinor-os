@@ -163,7 +163,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
             # demandé : la forme de la valeur ne change pas d'une ligne à
             # l'autre ; un taux non entier (5.5) reste tel quel.
             if taux_ligne == taux_ligne.to_integral_value():
-                taux_ligne = taux_ligne.quantize(Decimal('1'))
+                taux_ligne = Decimal(int(taux_ligne))
         facteur = Decimal('1') + taux_ligne / Decimal('100')
         # Le TTC est DÉRIVÉ du HT stocké, jamais l'inverse : l'écran saisit en
         # TTC mais la base fait foi en HT (même aller-retour qu'`htFromTtc`).
