@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
@@ -90,6 +90,7 @@ vi.mock('../../api/ventesApi', () => ({
 }))
 
 import InstallationDetail from './InstallationDetail'
+import installationsApi from '../../api/installationsApi'
 
 function makeStore() {
   return configureStore({
@@ -128,5 +129,58 @@ describe('InstallationDetail — statut bloqué : raisons visibles (CHT22)', () 
     expect(bloc).toHaveTextContent(RAISON)
     // Jamais le message brut générique EN PLUS du format à puces.
     expect(screen.queryByText('Enregistrement impossible.')).toBeNull()
+  })
+})
+
+/* AGR604 — régime « Déclaration hors réseau (loi 82-21, art. 3) » et champ
+   « Raccordement au réseau » de la section 82-21 (même mock Select natif). */
+describe('InstallationDetail — AGR604 hors réseau', () => {
+  const enregistrerSansToucher = async (user, chantier) => {
+    installationsApi.updateInstallation.mockResolvedValueOnce({ data: { id: chantier.id } })
+    const rendu = renderDetail(chantier)
+    await screen.findByLabelText('Régime')
+    await user.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+    await waitFor(() => expect(installationsApi.updateInstallation).toHaveBeenCalled())
+    return rendu
+  }
+
+  it('offre le régime hors réseau et le raccordement, envoyés au PATCH', async () => {
+    installationsApi.updateInstallation.mockResolvedValueOnce({ data: { id: 901 } })
+    const user = userEvent.setup()
+    renderDetail({ id: 901, reference: 'CH-901', statut: 'signe', annule: false })
+
+    const regime = await screen.findByLabelText('Régime')
+    expect(screen.getByRole('option', {
+      name: 'Déclaration hors réseau (loi 82-21, art. 3)',
+    })).toBeInTheDocument()
+    await user.selectOptions(regime, 'declaration_hors_reseau')
+    await user.selectOptions(screen.getByLabelText('Raccordement au réseau'), 'hors_reseau')
+    await user.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+
+    await waitFor(() => expect(installationsApi.updateInstallation).toHaveBeenCalledTimes(1))
+    const [id, data] = installationsApi.updateInstallation.mock.calls[0]
+    expect(id).toBe(901)
+    expect(data.regime_8221).toBe('declaration_hors_reseau')
+    expect(data.raccordement_reseau).toBe('hors_reseau')
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = même PATCH', async () => {
+    const user = userEvent.setup()
+    const chantier = {
+      id: 902, reference: 'CH-902', statut: 'signe', annule: false,
+      regime_8221: 'declaration_hors_reseau', raccordement_reseau: 'hors_reseau',
+    }
+    const premier = await enregistrerSansToucher(user, chantier)
+    premier.unmount()
+    await enregistrerSansToucher(user, chantier)
+    expect(installationsApi.updateInstallation).toHaveBeenCalledTimes(2)
+    expect(installationsApi.updateInstallation.mock.calls[1])
+      .toEqual(installationsApi.updateInstallation.mock.calls[0])
+  })
+
+  it('raccordement non renseigné reste null dans le PATCH', async () => {
+    const user = userEvent.setup()
+    await enregistrerSansToucher(user, { id: 903, reference: 'CH-903', statut: 'signe', annule: false })
+    expect(installationsApi.updateInstallation.mock.calls[0][1].raccordement_reseau).toBeNull()
   })
 })

@@ -75,6 +75,17 @@ const installationsApi = {
   ajouterReleveIv: (recetteId, data) =>
     api.post(`/installations/recettes-commissioning/${recetteId}/ajouter-iv/`, data),
 
+  // AGR613 — recette POMPAGE d'un chantier agricole (contrat
+  // `recette_pompage.json`) : `{installation, record}`. `recetteId` = id de la
+  // FICHE ; le PATCH renvoie l'enveloppe (comparaison au devis recalculée
+  // CÔTÉ SERVEUR, jamais ici).
+  getRecettePompage: (id) =>
+    api.get(`/installations/chantiers/${id}/recette-pompage/`),
+  ouvrirRecettePompage: (id) =>
+    api.post(`/installations/chantiers/${id}/recette-pompage/`, {}),
+  updateRecettePompage: (recetteId, data) =>
+    api.patch(`/installations/recettes-pompage/${recetteId}/`, data),
+
   // CH4 — pack de remise client (handover). GET aperçoit à blanc si absent.
   getPackRemise: (id) => api.get(`/installations/chantiers/${id}/pack-remise/`),
   genererPackRemise: (id) =>
