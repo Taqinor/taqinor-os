@@ -506,16 +506,51 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                     {'nom': self.MSG_NOM_DOUBLON})
             raise
 
+    REFERENCE_STOCK_INITIAL = 'Stock initial'
+
+    def _poser_stock_initial(self, produit, quantite):
+        """ASTK32 — la quantité saisie à la création entre au registre par
+        le service unique de mouvement (ENTREE « stock initial ») : Σ registre
+        = stock dès la première ligne, comme l'import (ERR52)."""
+        from .models import MouvementStock
+        from .services import record_stock_movement
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        record_stock_movement(
+            company=produit.company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+            quantite=quantite, quantite_avant=0, quantite_apres=quantite,
+            reference=self.REFERENCE_STOCK_INITIAL,
+            note='Stock initial (création de la fiche produit)',
+            created_by=user if getattr(user, 'pk', None) else None)
+
     def create(self, validated_data):
-        return self._ecrire(lambda: super(
-            ProduitSerializer, self).create(validated_data))
+        # ASTK32 — le produit naît à 0 ; la quantité initiale éventuelle est
+        # posée par un mouvement, jamais écrite directement.
+        stock_initial = validated_data.pop('quantite_stock', 0) or 0
+
+        def _creer():
+            produit = super(ProduitSerializer, self).create(validated_data)
+            if stock_initial > 0:
+                self._poser_stock_initial(produit, stock_initial)
+            return produit
+        return self._ecrire(_creer)
 
     def update(self, instance, validated_data):
+        # ASTK32 — `quantite_stock` est en lecture seule en modification :
+        # seul le registre des mouvements change le stock (un formulaire
+        # ouvert avant une réception ne l'écrase plus).
+        validated_data.pop('quantite_stock', None)
         return self._ecrire(lambda: super(
             ProduitSerializer, self).update(instance, validated_data))
 
     def validate(self, attrs):
         self._valider_nom_sans_sku(attrs)
+        if (self.instance is None
+                and (attrs.get('quantite_stock') or 0) < 0):
+            raise serializers.ValidationError(
+                {'quantite_stock': 'Le stock initial ne peut pas être '
+                                   'négatif.'})
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # produit contre les définitions du module « produit », même chemin que
         # Lead. À la création on valide toujours (champs obligatoires) ; en
