@@ -68,8 +68,9 @@ def contexte(resultat, langue='fr'):
 
 
 def table_employees(html):
-    """Le fragment HTML entre les deux titres — la table des hypothèses."""
-    return html.split('Non calculé')[0]
+    """Le fragment HTML avant le titre suivant — la table des hypothèses
+    (ACAL313 : la table des coefficients de norme la suit)."""
+    return html.split("Coefficients de la norme")[0]
 
 
 def table_non_calcule(html):

@@ -71,6 +71,7 @@ __all__ = [
     'COLONNES_IRRADIANCE', 'CONVENTION_AZIMUT', 'ClientPvgis',
     'EntreeInvalide', 'MOTIF_COMPOSANTES_ABSENTES', 'MOTIF_TMY_HORIZONTAL',
     'PvgisIndisponible', 'RACINE_API', 'azimut_pvgis', 'cle_de_cache',
+    'AVERTISSEMENT_EST_OUEST_SUPPOSE', 'FAMILLE_EST_OUEST', 'jambes_du_pan',
 ]
 
 #: v5_3 — la version courante de l'API PVGIS. ``apps/ventes/weather_feed.py``
@@ -204,6 +205,96 @@ def azimut_pvgis(azimut_de_face_deg):
             f"L'azimut du pan est illisible (reçu : {azimut_de_face_deg!r}).",
             champ='facingAzimuthDeg')
     return aspect
+
+
+#: ACAL139 — la famille de pose est-ouest du document (``geometry.family``).
+FAMILLE_EST_OUEST = 'eastwest'
+
+#: ACAL139 — l'avertissement publié quand les faces posées sont inconnues.
+AVERTISSEMENT_EST_OUEST_SUPPOSE = (
+    "Pan « {pan} » posé en est-ouest sans face déclarée par module "
+    "(geometry.panels[].face) : répartition est/ouest supposée à 50/50 du "
+    "kWc. Reposez les modules dans l'atelier pour que chaque face compte "
+    "ses modules réels.")
+
+
+def jambes_du_pan(plan):
+    """ACAL139 — les JAMBES d'un pan : ``[{face, azimut_face_deg,
+    inclinaison_deg, part, modules, hypothese}]``.
+
+    Un pan est-ouest (``geometry.family == 'eastwest'``) porte deux faces
+    dos à dos : la face E regarde l'azimut du pan (``azimuthDeg``, 90 pour un
+    faîtage nord-sud), la face O l'azimut opposé (+180). Chacune est simulée
+    à SON aspect PVGIS, pour SA part du kWc — la part vient des modules
+    réellement posés sur chaque face (``geometry.panels[].face`` 'E' / 'W') ;
+    sans face déclarée, ½ / ½ avec ``hypothese=True`` (annoncée, jamais
+    tue). Tout autre pan a UNE jambe (part 1).
+
+    L'orientation d'une pose est-ouest est celle des TABLES
+    (``geometry.azimuthDeg`` / ``geometry.tiltDeg``) : le lecteur unique
+    ``ventes.orientation_du_pan`` la laisse expressément à cette fonction
+    (« EXCEPTION ASSUMÉE », C-ACAL-081) et rend la lecture du TOIT, qui ne
+    sert ici qu'à défaut.
+
+    MIROIR documenté de ``apps/web/src/lib/estimatorBrainV2.ts``
+    ``aspectForAzimuth`` + ``productionKwh`` (eastwest : aspect = azimut − 90,
+    jambes à aspect ∓ 90) : les deux donnent les mêmes aspects ; le
+    survivant serveur est CETTE fonction.
+
+    Args:
+        plan: un plan de simulation (``azimut_deg``, ``modules``,
+            ``geometry`` brute du document).
+    """
+    plan = plan if isinstance(plan, dict) else {}
+    azimut = plan.get('azimut_deg')
+    inclinaison = plan.get('inclinaison_deg')
+    geometrie = plan.get('geometry')
+    geometrie = geometrie if isinstance(geometrie, dict) else {}
+    try:
+        modules = int(plan.get('modules') or 0)
+    except (TypeError, ValueError):
+        modules = 0
+    if geometrie.get('family') == FAMILLE_EST_OUEST:
+        if _flottant(geometrie.get('azimuthDeg')) is not None:
+            azimut = _flottant(geometrie.get('azimuthDeg'))
+        if _flottant(geometrie.get('tiltDeg')) is not None:
+            inclinaison = _flottant(geometrie.get('tiltDeg'))
+    if geometrie.get('family') != FAMILLE_EST_OUEST or azimut is None:
+        return [{'face': None, 'azimut_face_deg': azimut,
+                 'inclinaison_deg': inclinaison, 'part': 1.0,
+                 'modules': modules, 'hypothese': False}]
+    est = ouest = 0
+    for panneau in geometrie.get('panels') or ():
+        face = panneau.get('face') if isinstance(panneau, dict) else None
+        if face == 'E':
+            est += 1
+        elif face == 'W':
+            ouest += 1
+    total = est + ouest
+    hypothese = total == 0
+    if hypothese:
+        # Aucune face déclarée : moitié / moitié, le reste à l'est.
+        est, ouest = modules - modules // 2, modules // 2
+        total = est + ouest
+    if not total:
+        return [{'face': None, 'azimut_face_deg': azimut,
+                 'inclinaison_deg': inclinaison, 'part': 1.0,
+                 'modules': modules, 'hypothese': hypothese}]
+    azimut = float(azimut)
+    jambes = []
+    for face, compte, cap in (('E', est, azimut),
+                              ('W', ouest, (azimut + 180.0) % 360.0)):
+        if compte <= 0:
+            continue
+        jambes.append({'face': face, 'azimut_face_deg': cap,
+                       'inclinaison_deg': inclinaison,
+                       'part': compte / total,
+                       'modules': compte, 'hypothese': hypothese})
+    if hypothese and len(jambes) == 2:
+        # ½ / ½ du kWc, même si le nombre de modules est impair.
+        for jambe in jambes:
+            jambe['part'] = 0.5
+    return jambes
 
 
 def cle_de_cache(service, params):

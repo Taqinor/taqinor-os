@@ -118,6 +118,16 @@ class PanPose:
     #: (``module_produit``). Ajouté EN FIN : aucune construction positionnelle
     #: existante ne bouge.
     module: Optional['ModulePan'] = None
+    #: ACAL139 — pan posé en EST-OUEST (``geometry.family == 'eastwest'``),
+    #: et la face de chaque module dans l'ordre du document ('E' / 'W' ;
+    #: vide quand le document ne les déclare pas — répartition supposée).
+    #: Ajoutés EN FIN : aucune construction positionnelle ne bouge.
+    est_ouest: bool = False
+    faces: Tuple[str, ...] = ()
+    #: ACAL139 — l'orientation des TABLES d'une pose est-ouest
+    #: (``geometry.azimuthDeg`` / ``tiltDeg``) : celle de la face E.
+    azimut_tables_deg: Optional[float] = None
+    inclinaison_tables_deg: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -242,13 +252,81 @@ def pans_poses(layout):
         modules = int(pan.get('modules') or 0)
         if modules <= 0:
             continue
+        est_ouest, faces, tables = _faces_du_pan(pan, zones_par_cle, modules)
         pans.append(PanPose(
             label=str(pan.get('libelle')), modules=modules,
             azimut_deg=_nombre(pan.get('azimut_deg')),
             inclinaison_deg=_nombre(pan.get('inclinaison_deg')),
             source_orientation=_source_orientation(pan, zones_par_cle),
-            module=_module_du_pan(pan)))
+            module=_module_du_pan(pan), est_ouest=est_ouest, faces=faces,
+            azimut_tables_deg=tables[0], inclinaison_tables_deg=tables[1]))
     return tuple(pans)
+
+
+def _faces_du_pan(pan, zones_par_cle, modules):
+    """ACAL139 — ``(est_ouest, faces, (azimut, inclinaison) des tables)``
+    d'un pan de toit du document.
+
+    ``faces`` n'est rempli que si CHAQUE module posé déclare sa face (sinon
+    vide : la répartition ½ / ½ de ``jambes_du_pan`` s'applique, annoncée).
+    """
+    from .pvgis_serie import FAMILLE_EST_OUEST
+
+    if pan.get('kind') != 'toit':
+        return False, (), (None, None)
+    zone = zones_par_cle.get(pan.get('cle')) or {}
+    geometrie = zone.get('geometry')
+    geometrie = geometrie if isinstance(geometrie, dict) else {}
+    if geometrie.get('family') != FAMILLE_EST_OUEST:
+        return False, (), (None, None)
+    tables = (_nombre(geometrie.get('azimuthDeg')),
+              _nombre(geometrie.get('tiltDeg')))
+    panneaux = geometrie.get('panels')
+    faces = tuple((p or {}).get('face') if isinstance(p, dict) else None
+                  for p in (panneaux if isinstance(panneaux, list) else ()))
+    if len(faces) != modules or any(f not in ('E', 'W') for f in faces):
+        return True, (), tables
+    return True, faces, tables
+
+
+def _jambes_electriques(pan):
+    """ACAL139 — ``[(face, nb_modules, azimut_deg, inclinaison_deg)]``
+    d'un pan posé.
+
+    Un pan est-ouest forme DEUX groupes électriques (face E, face O : deux
+    orientations n'atteignent pas leur MPP au même instant) ; les parts
+    viennent de ``pvgis_serie.jambes_du_pan`` — LA lecture des faces, la même
+    que la simulation. Tout autre pan : un groupe.
+    """
+    from .pvgis_serie import FAMILLE_EST_OUEST, jambes_du_pan
+
+    if not pan.est_ouest:
+        return [(None, pan.modules, pan.azimut_deg, pan.inclinaison_deg)]
+    jambes = jambes_du_pan({
+        'azimut_deg': pan.azimut_deg, 'inclinaison_deg': pan.inclinaison_deg,
+        'modules': pan.modules,
+        'geometry': {'family': FAMILLE_EST_OUEST,
+                     'azimuthDeg': pan.azimut_tables_deg,
+                     'tiltDeg': pan.inclinaison_tables_deg,
+                     'panels': [{'face': face} for face in pan.faces]}})
+    return [(jambe['face'], jambe['modules'], jambe['azimut_face_deg'],
+             jambe['inclinaison_deg']) for jambe in jambes]
+
+
+def _groupes_du_pan(pan):
+    """Les ``GroupePan`` du noyau pour UN pan (deux pour un est-ouest).
+
+    Les deux jambes gardent le LIBELLÉ du pan : chaque chaîne reste
+    rattachée à son pan (affectation, polystring, cheminement, rapport) ;
+    seul le noyau voit deux groupes d'orientation, donc deux blocs MPPT.
+    """
+    return tuple(
+        GroupePan(label=pan.label, nb_modules=nombre,
+                  azimut_deg=azimut if azimut is not None else 0.0,
+                  inclinaison_deg=inclinaison
+                  if inclinaison is not None else 0.0)
+        for _face, nombre, azimut, inclinaison in _jambes_electriques(pan)
+        if nombre > 0)
 
 
 def _module_du_pan(pan):
@@ -263,14 +341,10 @@ def _module_du_pan(pan):
 
 
 def groupes_electriques(layout):
-    """Les ``GroupePan`` du noyau — UN groupe par pan, jamais deux mélangés."""
-    return tuple(
-        GroupePan(label=pan.label, nb_modules=pan.modules,
-                  azimut_deg=pan.azimut_deg if pan.azimut_deg is not None
-                  else 0.0,
-                  inclinaison_deg=pan.inclinaison_deg
-                  if pan.inclinaison_deg is not None else 0.0)
-        for pan in pans_poses(layout))
+    """Les ``GroupePan`` du noyau — UN groupe par pan, jamais deux mélangés ;
+    DEUX pour un pan est-ouest, un par face (ACAL139)."""
+    return tuple(groupe for pan in pans_poses(layout)
+                 for groupe in _groupes_du_pan(pan))
 
 
 # ──────────────────────────────────────────────────────── fiches techniques
@@ -636,13 +710,8 @@ def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
         sous_pans = groupes[cle_modele]
         entree = EntreeElectrique(
             module=spec, onduleur=replace(onduleur, n_mppt=part),
-            groupes=tuple(
-                GroupePan(label=pan.label, nb_modules=pan.modules,
-                          azimut_deg=pan.azimut_deg
-                          if pan.azimut_deg is not None else 0.0,
-                          inclinaison_deg=pan.inclinaison_deg
-                          if pan.inclinaison_deg is not None else 0.0)
-                for pan in sous_pans),
+            groupes=tuple(groupe for pan in sous_pans
+                          for groupe in _groupes_du_pan(pan)),
             temp_froid_c=temperatures.froid_c,
             temp_chaud_c=temperatures.chaud_c,
             temp_source=getattr(temperatures, 'source', None),
@@ -869,23 +938,33 @@ def affectation(conception, *, imposee=None):
     nombre = evaluation.nombre if evaluation is not None else 0
     numero_onduleur = 1 if nombre == 1 else None
 
+    repartitions_par_pan = {}
+    for repartition in getattr(conception, 'repartitions', ()) or ():
+        repartitions_par_pan.setdefault(repartition.pan, []).append(
+            repartition)
+
     lignes = []
     for pan in conception.pans:
-        rang_module = 0
-        for chaine in chaines_par_pan.get(pan.label, ()):
-            for _ in range(chaine.nb_modules):
-                rang_module += 1
-                lignes.append({
-                    'module': '%s#%d' % (pan.label, rang_module),
-                    'pan': pan.label,
-                    'chaine': _numero_chaine(chaine),
-                    'onduleur': numero_onduleur,
-                    'mppt': chaine.mppt,
-                    'source': SOURCE_AUTO,
-                })
-        while rang_module < pan.modules:
-            rang_module += 1
-            lignes.append({
+        par_rang = {}
+        for rangs, chaines in _rangs_par_groupe(
+                pan, chaines_par_pan.get(pan.label, ()),
+                repartitions_par_pan.get(pan.label, ())):
+            libres = iter(rangs)
+            for chaine in chaines:
+                for _ in range(chaine.nb_modules):
+                    rang_module = next(libres, None)
+                    if rang_module is None:
+                        break
+                    par_rang[rang_module] = {
+                        'module': '%s#%d' % (pan.label, rang_module),
+                        'pan': pan.label,
+                        'chaine': _numero_chaine(chaine),
+                        'onduleur': numero_onduleur,
+                        'mppt': chaine.mppt,
+                        'source': SOURCE_AUTO,
+                    }
+        for rang_module in range(1, pan.modules + 1):
+            lignes.append(par_rang.get(rang_module) or {
                 'module': '%s#%d' % (pan.label, rang_module),
                 'pan': pan.label,
                 'chaine': None, 'onduleur': None, 'mppt': None,
@@ -893,6 +972,37 @@ def affectation(conception, *, imposee=None):
             })
     # ACAL285 — la teinte est attribuée APRÈS l'affectation manuelle.
     return tuple(_colorer(_appliquer_imposee(lignes, imposee)))
+
+
+def _rangs_par_groupe(pan, chaines, repartitions):
+    """ACAL139 — ``[(rangs des modules du groupe, chaînes du groupe)]``.
+
+    Un pan simple : un groupe, ses rangs 1…N dans l'ordre du document (le
+    comportement historique). Un pan est-ouest : les chaînes de la face E
+    (le premier ``RepartitionPan`` du pan, ``nb_chaines`` chaînes) prennent
+    les rangs des modules posés face E, celles de la face O les autres —
+    jamais un module de l'ouest câblé dans une chaîne de l'est.
+    """
+    chaines = list(chaines)
+    jambes = _jambes_electriques(pan)
+    if len(jambes) < 2 or len(repartitions) < 2:
+        return [(list(range(1, pan.modules + 1)), chaines)]
+    if pan.faces:
+        rangs = {face: [rang + 1 for rang, sienne in enumerate(pan.faces)
+                        if sienne == face] for face in ('E', 'W')}
+    else:
+        # Faces non déclarées : la répartition supposée de jambes_du_pan,
+        # les premiers rangs à l'est.
+        nombre_est = jambes[0][1]
+        rangs = {'E': list(range(1, nombre_est + 1)),
+                 'W': list(range(nombre_est + 1, pan.modules + 1))}
+    groupes = []
+    debut = 0
+    for (face, *_reste), repartition in zip(jambes, repartitions):
+        fin = debut + int(getattr(repartition, 'nb_chaines', 0) or 0)
+        groupes.append((rangs.get(face, []), chaines[debut:fin]))
+        debut = fin
+    return groupes
 
 
 def _appliquer_imposee(lignes, imposee):

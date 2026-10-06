@@ -294,24 +294,19 @@ def acces_solaire_moyen_pct(ombrage, plan=None, layout=None):
     quoi l'accès du champ remonterait tout seul.
     """
     ombrage = ombrage if isinstance(ombrage, dict) else {}
-    acces = ombrage.get('solar_access') or ombrage.get('solarAccess')
-    acces = acces if isinstance(acces, dict) else {}
-
-    valeurs = _facteurs(acces.get('values'))
-    if valeurs is None:
-        valeurs = _facteurs_du_pan(acces, ombrage, plan, layout)
+    # ACAL137 — lu dans la géométrie du pan (``zones[].geometry.
+    # solarAccess``), jamais à la racine du document (clé inexistante).
+    valeurs = _facteurs_du_pan(ombrage, plan, layout)
     mesures = [valeur for valeur in (valeurs or ()) if valeur is not None]
     if not mesures:
         return None, MOTIF_SANS_ACCES_SOLAIRE
     return round(100.0 * sum(mesures) / len(mesures), 2), ''
 
 
-def _facteurs_du_pan(acces, ombrage, plan, layout):
-    """Les facteurs du pan NOMMÉ, lus dans ``par_pan`` ou dans le document."""
-    par_pan = acces.get('par_pan')
-    if not isinstance(par_pan, dict):
-        document = layout or ombrage.get('layout')
-        par_pan = acces_par_module(document) if document else {}
+def _facteurs_du_pan(ombrage, plan, layout):
+    """Les facteurs du pan NOMMÉ, lus dans le document."""
+    document = layout or ombrage.get('layout')
+    par_pan = acces_par_module(document) if document else {}
     if not isinstance(par_pan, dict) or not par_pan:
         return None
     for repere in _reperes_du_plan(plan):

@@ -47,12 +47,11 @@ from .moteur_io import EntreeInvalide
 logger = logging.getLogger(__name__)
 
 
+#: ACAL327 — SEULS les noms qu'un autre module lit (garde AST :
+#: ``tests/test_acal_moteur_symboles_morts.py``). Les deux refus du moteur
+#: sortent par ``erreurs_moteur_calepinage`` (la porte des appelants).
 __all__ = [
-    'MoteurCalepinage', 'EntreeInvalide', 'CalepinageIncoherent',
-    'calepiner', 'cout_estime', 'empreinte_document',
-    'cle_cache', 'resultat_en_cache', 'mettre_en_cache',
-    'multiplicateur_tiroirs', 'multiplicateur_suggestions',
-    'PLAFOND_SUGGESTIONS',
+    'calepiner', 'cout_estime', 'multiplicateur_suggestions',
     'erreurs_moteur_calepinage', 'cout_calepinage', 'calepinage_json',
 ]
 
@@ -60,43 +59,6 @@ __all__ = [
 #: (``PLAFOND_RECOMMANDATIONS``) ; en afficher douze reviendrait à n'en faire
 #: lire aucune. Cinq est ce qu'un panneau montre sans replier.
 PLAFOND_SUGGESTIONS = 5
-
-
-def multiplicateur_tiroirs(budget_appels=None):
-    """PV49 — combien de DP COMPLETS un jeu de tiroirs rejoue, au pire.
-
-    Un tiroir n'affiche AUCUN chiffre saisi : chaque contre-épreuve de kit,
-    chaque impact de rive, chaque point du graphe d'allée est un appel moteur
-    de plus. Le multiplicateur est donc lu SUR LE MOTEUR (``tiroirs`` publie
-    son ``BUDGET_APPELS_DEFAUT`` et rapporte ce qu'il consomme), jamais
-    recopié ici : le jour où le budget du moteur bouge, l'estimation suit.
-
-    ``1`` pour le calcul du plan lui-même, ``+ budget`` pour les impacts,
-    ``+ 1`` pour la recherche d'allée gratuite — que ``donnees_tiroirs``
-    compte à part (``recherches_allee``) parce que sa dichotomie a sa propre
-    borne : l'omettre cacherait un coût réel.
-    """
-    from core.calepinage.tiroirs import BUDGET_APPELS_DEFAUT
-
-    budget = BUDGET_APPELS_DEFAUT if budget_appels is None else int(
-        budget_appels)
-    return 1 + max(0, budget) + 1
-
-
-#: PV44 — ce que la conception ÉLECTRIQUE coûte, exprimé en DP ÉQUIVALENTS.
-#:
-#: Elle n'exécute AUCUN DP : ``core.electrique`` ne balaie aucune position, il
-#: enchaîne quelques passes arithmétiques sur la liste des chaînes (plus UNE
-#: contre-épreuve de répartition quand le dossier est bloqué). Son coût réel est
-#: donc très inférieur à un DP de calepinage. On le compte quand même comme UN
-#: DP entier : le budget synchrone est une PROMESSE de temps de réponse, et sur
-#: une promesse on surestime — jamais l'inverse.
-COUT_ELECTRIQUE_EN_DP = 1
-
-
-def multiplicateur_electrique():
-    """Combien de DP équivalents le tiroir électrique ajoute — PV44."""
-    return COUT_ELECTRIQUE_EN_DP
 
 
 def multiplicateur_suggestions(plafond=None):
@@ -111,48 +73,6 @@ def multiplicateur_suggestions(plafond=None):
 
     plafond = (PLAFOND_RECOMMANDATIONS if plafond is None else int(plafond))
     return 1 + max(0, plafond) + 1
-
-
-#: Durée de vie d'un résultat en cache (12 h). Un résultat n'est jamais
-#: « faux » en cache — la clé porte l'empreinte de l'entrée ET la version du
-#: moteur — mais on ne garde pas indéfiniment des toitures qu'on ne rouvrira
-#: plus.
-DUREE_CACHE_S = 12 * 3600
-
-
-def cle_cache(hash_entree):
-    """Nom de cache d'un résultat de calepinage (AOF61).
-
-    **La version du moteur est DANS la clé.** L'invalidation au bump de
-    version est donc structurelle : les entrées de l'ancien moteur deviennent
-    inatteignables du jour au lendemain, sans purge à ne pas oublier — c'est la
-    seule forme d'invalidation qui ne se dégrade pas avec le temps.
-    """
-    return 'ao:calepinage:%s:%s' % (hash_entree, VERSION_MOTEUR)
-
-
-def resultat_en_cache(company_id, hash_entree):
-    """Résultat déjà calculé pour cette société, ou ``None`` (best-effort)."""
-    from core import cache as cache_tenant
-
-    return cache_tenant.get(company_id, cle_cache(hash_entree))
-
-
-def mettre_en_cache(company_id, resultat, timeout=DUREE_CACHE_S):
-    """Mémorise un résultat, SCOPÉ SOCIÉTÉ (``core.cache.tenant_key``)."""
-    from core import cache as cache_tenant
-
-    cache_tenant.set(company_id, cle_cache(resultat['hash_entree']), resultat,
-                     timeout=timeout)
-    return resultat
-
-
-class VariantePerimee(Exception):
-    """AOF62 — on ne retient jamais une variante dont l'entrée a bougé."""
-
-
-class SansVarianteRetenue(Exception):
-    """PV67 — comparer des alternatives suppose une variante DE RÉFÉRENCE."""
 
 
 class MoteurCalepinage:
@@ -205,9 +125,8 @@ def empreinte_document(document):
     **PV44 — la section ÉLECTRIQUE entre dans l'empreinte, mais seulement
     quand elle existe.** ``hash_entree`` ne hache que le contrat de calepinage
     (il ne connaît pas ``electrique``) : sans ce repli, changer la longueur de
-    chaîne laisserait l'empreinte identique, le cache de résultat rendrait le
-    tiroir électrique d'AVANT, et l'écran afficherait la répartition qu'on
-    vient justement de corriger. La section absente ne change RIEN : toutes les
+    chaîne laisserait l'empreinte identique et un résultat en cache décrirait
+    la saisie d'AVANT. La section absente ne change RIEN : toutes les
     empreintes déjà publiées restent identiques au bit près.
     """
     empreinte = hash_entree(_entree(document))
@@ -220,19 +139,18 @@ def empreinte_document(document):
         ('%s|%s' % (empreinte, canonique)).encode('ascii')).hexdigest()
 
 
-def cout_estime(document, *, budget=None, tiroirs=False, suggestions=False):
+def cout_estime(document, *, budget=None, suggestions=False):
     """Chiffre le travail AVANT de le lancer, sur la surface la plus lourde.
 
     C'est ce chiffre qui pilote la bascule synchrone/asynchrone d'AOF61 : au
     delà du budget, l'API refuse de faire attendre l'utilisateur et renvoie la
     consigne d'appel asynchrone.
 
-    ``tiroirs=True`` (PV49) et ``suggestions=True`` (PV50) chiffrent le travail
-    TOUT COMPRIS : ces deux charges utiles rejouent chacune une dizaine de DP
-    complets, et les publier sans les compter reviendrait à promettre une
-    réponse synchrone qu'on ne peut pas tenir. Les multiplicateurs viennent du
-    moteur, pas d'un chiffre recopié ; le plan de base n'est compté qu'UNE
-    fois même quand les deux sont demandées.
+    ``suggestions=True`` (PV50) chiffre le travail TOUT COMPRIS : la charge
+    utile rejoue une dizaine de DP complets, et la publier sans la compter
+    reviendrait à promettre une réponse synchrone qu'on ne peut pas tenir. Le
+    multiplicateur vient du moteur, pas d'un chiffre recopié. ACAL292 — les
+    cinq tiroirs d'atelier AO ne sont plus calculés : ils ne coûtent plus rien.
     """
     entree = _entree(document)
     obstacles = appliquer_regles(entree.obstacles)
@@ -240,10 +158,6 @@ def cout_estime(document, *, budget=None, tiroirs=False, suggestions=False):
         document, entree.surfaces, obstacles)
     budget = budget or BudgetCalcul()
     supplements = 0
-    if tiroirs:
-        # PV44 : le tiroir ÉLECTRIQUE voyage avec les tiroirs — il est calculé
-        # sous la même garde, donc il est chiffré sous la même garde.
-        supplements += multiplicateur_tiroirs() - 1 + multiplicateur_electrique()
     if suggestions:
         supplements += multiplicateur_suggestions() - 1
     variantes = 1 + supplements
@@ -271,35 +185,25 @@ def cout_estime(document, *, budget=None, tiroirs=False, suggestions=False):
 
 # ───────────────────────────────────────────────── AOF60 — calcul STATELESS
 def calepiner(document, *, company, user=None, moteur=None, budget=None,
-              tiroirs=True, suggestions=True):
+              suggestions=True):
     """Calcule un calepinage COMPLET et renvoie du JSON. N'écrit RIEN.
 
     ``company`` est OBLIGATOIRE : le service refuse de tourner hors société,
     de sorte qu'aucun chemin d'appel ne puisse contourner le cloisonnement
     multi-tenant en oubliant un argument.
 
-    **PV49/PV50 — la sortie porte aussi ``marges``, ``tiroirs`` et
-    ``suggestions``.** ``marges`` publie ce que la passe de robustesse a MESURÉ
-    (``None`` quand elle n'a rien mesuré, jamais ``0``). ``tiroirs`` porte les
-    5 charges utiles de l'atelier et ``suggestions`` les propositions
-    APPLICABLES à gain rejoué — toutes CALCULÉES par le moteur, jamais rédigées
-    ici. Les trois sont toujours présentes comme CLÉS : ``tiroirs`` vaut un jeu
-    dégradé (``donnees: null``) et ``suggestions`` une liste vide quand ils ne
-    sont pas produits, jamais une clé absente.
+    **PV49/PV50 — la sortie porte aussi ``marges`` et ``suggestions``.**
+    ``marges`` publie ce que la passe de robustesse a MESURÉ (``None`` quand
+    elle n'a rien mesuré, jamais ``0``) ; ``suggestions`` les propositions
+    APPLICABLES à gain rejoué, CALCULÉES par le moteur. ACAL292 — les cinq
+    tiroirs d'atelier AO (dont une conception électrique de référence,
+    troisième modèle de chaînage du produit) ne sont plus produits : leur
+    coût dans le pré-vol privait l'écran des suggestions qu'il affiche.
 
-    Les deux charges utiles sont DÉGRADÉES, pas silencieusement payées, dans
-    deux cas :
-
-    * document à PLUSIEURS surfaces — le moteur n'a aucun modèle de tiroir par
-      segment, et en meubler un depuis une seule surface publierait les
-      chiffres d'un segment sous le nom du site. Les SUGGESTIONS, elles, sont
-      bien calculées par surface puis FUSIONNÉES : un patch de paramètres n'est
-      publié que s'il a été mesuré à l'identique sur TOUTES les surfaces (son
-      gain est alors leur somme), sinon l'appliquer aurait un effet non mesuré
-      ailleurs ;
-    * coût estimé HORS budget synchrone — chaque impact chiffré rejoue un DP
-      complet ; les produire quand même tiendrait la promesse d'affichage en
-      brisant celle du temps de réponse.
+    Les suggestions sont calculées par surface puis FUSIONNÉES : un patch de
+    paramètres n'est publié que s'il a été mesuré à l'identique sur TOUTES
+    les surfaces. Elles valent une liste VIDE (jamais une clé absente) quand
+    le coût estimé dépasse le budget synchrone.
 
     Raises:
         EntreeInvalide: document non conforme au contrat (motif français).
@@ -323,8 +227,6 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
     preuves = []
     marges_globales = None
     controles = None
-    dernier_resultat = None
-    pans = []
 
     for surface in entree.surfaces:
         lot = par_surface.get(surface.repere, ())
@@ -360,17 +262,6 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
             kit = entree.parametres.kit(rangee.kit_code)
             total_kwc += rangee.modules * kit.puissance_module_wc / 1000.0
         preuves.append(resultat.preuve)
-        dernier_resultat = resultat
-        # PV44 — un PAN par surface pour le moteur électrique : deux
-        # orientations ne se mélangent jamais sur une entrée MPPT.
-        pans.append({
-            'label': surface.repere,
-            'nb_modules': resultat.plan.modules,
-            'azimut_deg': getattr(surface, 'azimut_deg', 180.0),
-            'inclinaison_deg': max(
-                [entree.parametres.kit(r.kit_code).inclinaison_deg
-                 for r in resultat.plan.rangees] or [0.0]),
-        })
 
     ok_engagement, motifs = engageable(obstacles)
     empreinte = empreinte_document(document)
@@ -385,21 +276,9 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
         pas_recherche_m=entree.parametres.pas_recherche_m)
     sortie['engagement_modules'] = entree.parametres.engagement_modules
     sortie['marges'] = moteur_io.marges_vers_json(marges_globales)
-    # UN SEUL pré-vol pour les deux charges utiles : chacune chiffrée de son
-    # côté, elles pourraient toutes deux « tenir » et ne pas tenir ENSEMBLE —
-    # et la promesse rompue serait celle de la réponse, pas celle d'un tiroir.
-    abordable = (tiroirs or suggestions) and _cout_charge_utile(
-        entree, par_surface, budget=budget, tiroirs=tiroirs,
-        suggestions=suggestions)
-    sortie['tiroirs'] = _tiroirs_publiables(
-        entree, par_surface, dernier_resultat,
-        demandes=bool(tiroirs and abordable))
-    # PV44 — le tiroir ÉLECTRIQUE se calcule sur le SITE, pas sur une surface :
-    # il est donc publié même en multi-surfaces (un pan par segment), là où les
-    # quatre autres restent dégradés faute de modèle de tiroir par segment.
-    sortie['tiroirs']['electrique'] = _tiroir_electrique(
-        document, pans, total_modules, total_kwc,
-        demandes=bool(tiroirs and abordable))
+    # Le pré-vol ne chiffre plus que les suggestions (ACAL292).
+    abordable = suggestions and _cout_charge_utile(
+        entree, par_surface, budget=budget, suggestions=suggestions)
     # Le contrat de l'endpoint agrégé enveloppe la liste dans
     # ``{"suggestions": […]}`` ; ICI la clé du résultat EST la liste, comme
     # ``plans`` et ``rangees`` — chaque ÉLÉMENT, lui, a exactement la forme du
@@ -407,64 +286,6 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
     sortie['suggestions'] = _suggestions_publiables(
         entree, par_surface, demandes=bool(suggestions and abordable))
     return sortie
-
-
-def _tiroirs_publiables(entree, par_surface, resultat, *, demandes=True):
-    """Les 5 tiroirs — ou leur forme DÉGRADÉE, jamais une clé absente.
-
-    Le garde de coût est un PRÉ-VOL fait par l'appelant (``calepiner``), pas un
-    regret : on chiffre le travail AVANT de le lancer et on renonce quand il ne
-    tient pas dans le budget synchrone. La promesse « cet appel répond en
-    synchrone » ne peut donc pas être rompue en douce par un tiroir.
-    """
-    if not demandes or resultat is None or len(entree.surfaces) != 1:
-        return moteur_io.tiroirs_vides()
-    surface = entree.surfaces[0]
-    lot = par_surface.get(surface.repere, ())
-
-    from core.calepinage.recommandations import EntreeMoteur
-    from core.calepinage.tiroirs import donnees_tiroirs
-
-    donnees = donnees_tiroirs(
-        EntreeMoteur(surface=surface, parametres=entree.parametres,
-                     obstacles=tuple(lot), zones=tuple(entree.zones)),
-        resultat, catalogue=entree.kits)
-    return moteur_io.tiroirs_vers_json(donnees, entree.parametres)
-
-
-def _tiroir_electrique(document, pans, total_modules, total_kwc, *,
-                       demandes=True):
-    """PV44 — le tiroir « Contraintes électriques », CALCULÉ par le moteur.
-
-    Il était livré dégradé (``donnees: null``) parce que le calepinage n'a
-    aucun modèle électrique. ``core.electrique`` en a un depuis PV33-39, et il
-    publie déjà la projection exacte que l'écran lit : il ne reste qu'à lui
-    donner l'entrée.
-
-    La puissance unitaire du module est DÉDUITE du plan lui-même
-    (``kWc × 1000 ÷ modules``) et non recopiée d'un kit : sur une toiture qui
-    mélange deux kits de puissances différentes, c'est le seul chiffre qui
-    redonne EXACTEMENT la puissance crête du plan. Sur un kit unique, il vaut
-    sa puissance unitaire au flottant près.
-
-    Le garde de coût est celui des autres tiroirs (pré-vol de ``calepiner``) :
-    hors budget, la forme DÉGRADÉE d'origine est rendue telle quelle.
-    """
-    if not demandes:
-        return moteur_io.tiroirs_vides()['electrique']
-    electrique = (document or {}).get('electrique') or {}
-    taille = electrique.get('taille_chaine')
-    puissance_module_wc = (total_kwc * 1000.0 / total_modules
-                           if total_modules else 0.0)
-    entree_elec = moteur_io.entree_electrique(
-        pans, puissance_module_wc, taille_chaine=taille)
-
-    from core.electrique import concevoir
-
-    resultat = concevoir(entree_elec)
-    return moteur_io.tiroir_electrique_vers_json(
-        (resultat.tiroirs or {}).get('electrique'),
-        entree_elec.longueur_chaine_forcee)
 
 
 def _suggestions_publiables(entree, par_surface, *, demandes=True):
@@ -532,8 +353,7 @@ def _fusionner_suggestions(suggestions, nb_surfaces):
     return fusionnee
 
 
-def _cout_charge_utile(entree, par_surface, *, budget, tiroirs=False,
-                       suggestions=False):
+def _cout_charge_utile(entree, par_surface, *, budget, suggestions=False):
     """Pré-vol d'une charge utile d'atelier — coût CUMULÉ sur les surfaces.
 
     Le cumul est celui de ``cout_estime`` : on additionne les millisecondes de
@@ -542,10 +362,6 @@ def _cout_charge_utile(entree, par_surface, *, budget, tiroirs=False,
     un seul.
     """
     supplements = 0
-    if tiroirs:
-        # PV44 : le tiroir ÉLECTRIQUE voyage avec les tiroirs — il est calculé
-        # sous la même garde, donc il est chiffré sous la même garde.
-        supplements += multiplicateur_tiroirs() - 1 + multiplicateur_electrique()
     if suggestions:
         supplements += multiplicateur_suggestions() - 1
     millisecondes = 0.0
@@ -628,20 +444,18 @@ def erreurs_moteur_calepinage():
     return EntreeInvalide, CalepinageIncoherent
 
 
-def cout_calepinage(document, *, budget=None, tiroirs=False,
-                    suggestions=False):
+def cout_calepinage(document, *, budget=None, suggestions=False):
     """Le coût ESTIMÉ d'un calcul — chiffré AVANT de le lancer.
 
     C'est ce chiffre qui pilote la bascule synchrone/asynchrone : au-delà du
     budget, l'appelant rend 202 et la consigne de suivi, plutôt que de faire
     attendre l'utilisateur devant un écran gelé.
     """
-    return cout_estime(document, budget=budget, tiroirs=tiroirs,
-                       suggestions=suggestions)
+    return cout_estime(document, budget=budget, suggestions=suggestions)
 
 
-def calepinage_json(document, *, company, user=None, tiroirs=True,
-                    suggestions=True, budget=None):
+def calepinage_json(document, *, company, user=None, suggestions=True,
+                    budget=None):
     """Calcule un calepinage et rend le JSON PUBLIÉ du moteur.
 
     ``company`` est OBLIGATOIRE (le service refuse de tourner hors société) et
@@ -649,5 +463,5 @@ def calepinage_json(document, *, company, user=None, tiroirs=True,
     est celle que le contrat fige — une seule sérialisation pour tous les
     consommateurs.
     """
-    return calepiner(document, company=company, user=user, tiroirs=tiroirs,
+    return calepiner(document, company=company, user=user,
                      suggestions=suggestions, budget=budget)

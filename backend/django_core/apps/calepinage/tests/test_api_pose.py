@@ -11,7 +11,8 @@ Ce qui est prouvé ici :
 * le relevé voyage sous ``demande`` ;
 * elle ne REFAIT aucune sérialisation : elle appelle la MÊME porte neutre du
   moteur que ``calculer`` (``moteur_service.calepinage_json``), et ne
-  demande ni tiroirs ni suggestions — on ne paye pas ce qu'on ne publie pas ;
+  demande pas de suggestions — on ne paye pas ce qu'on ne publie pas
+  (ACAL292 : les tiroirs AO n'existent plus) ;
 * le ``verdict`` est GÉNÉRÉ des grandeurs mesurées, jamais rédigé ;
 * un relevé invalide rend 400 en NOMMANT le champ fautif, jamais un 500 ;
 * la route est gardée par ``calepinage_gerer``, pas par ``ao_gerer``.
@@ -43,7 +44,7 @@ CONTRAT = json.loads(
 SORTIE_MOTEUR = dict(
     CONTRAT['exemple'],
     company_id=1, depuis_cache=False, engagement_modules=None,
-    rangees=[], tiroirs={}, suggestions=[])
+    rangees=[], suggestions=[])
 SORTIE_MOTEUR.pop('verdict')
 
 
@@ -71,11 +72,12 @@ class PortePoseTest(BaseApiCalepinage):
         document = self.porte.call_args.args[0]
         self.assertEqual(document['repere'], CONTRAT['demande']['repere'])
 
-    def test_ni_tiroirs_ni_suggestions_ne_sont_payes(self):
+    def test_les_suggestions_ne_sont_pas_payees(self):
         """La pose ne les publie pas : les calculer serait du travail perdu."""
         self._appeler(self.api, {'demande': CONTRAT['demande']})
 
-        self.assertIs(self.porte.call_args.kwargs['tiroirs'], False)
+        # ACAL292 — le paramètre ``tiroirs`` n'existe plus.
+        self.assertNotIn('tiroirs', self.porte.call_args.kwargs)
         self.assertIs(self.porte.call_args.kwargs['suggestions'], False)
 
     def test_corps_vide_refuse_en_nommant_le_champ(self):

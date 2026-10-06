@@ -50,7 +50,8 @@ import statistics
 from .pvgis_serie import ClientPvgis, EntreeInvalide, _coordonnee
 
 __all__ = ['DIRECTIONS_MINIMALES', 'ORIGINES_PUBLIEES', 'SOURCES_HORIZON',
-           'ClientHorizon', 'azimut_de_face', 'lire_profil', 'profil_saisi',
+           'ClientHorizon', 'azimut_de_face', 'lire_profil',
+           'profil_depuis_document', 'profil_saisi',
            'reechantillonner_pour_pvgis']
 
 #: D'où vient un profil d'horizon publié.
@@ -270,6 +271,78 @@ def _hauteur_interpolee(azimuts, releves, cible):
             part = depuis / portee
             return releves[bas] + part * (releves[haut] - releves[bas])
     return releves[azimuts[0]]
+
+
+def profil_depuis_document(horizon_profile):
+    """ACAL123 — LE lecteur du ``horizonProfile`` du document (forme v2).
+
+    L'onglet Horizon (``HorizonPanel.jsx``) et l'atelier public
+    (``prefill.ts serializeHorizonProfile``) écrivent le contrat
+    ``roof_layout_v2 $defs/horizonProfile`` : ``{source, points:
+    [{azimuthDeg, heightDeg}], hauteurMaxDeg}``. La simulation, elle, parle
+    la forme SERVICE (``points: [{azimut_face_deg, hauteur_deg}]``,
+    ``hauteur_max_deg``, ``base_horizon``). Cette fonction est la SEULE
+    conversion document → service ; ``construire_contexte`` et
+    ``_fournisseur_meteo`` l'appellent toutes deux.
+
+    Lecture PURE, sans refus : un profil illisible ou incomplet est rendu
+    tel quel (points convertis au mieux) et c'est
+    :func:`reechantillonner_pour_pvgis` qui le REFUSE en le nommant (« tour
+    incomplet », point illisible) — au moment de l'appel PVGIS, là où la
+    simulation transforme déjà un refus en ``SimulationRefusee`` nommée.
+
+    Args:
+        horizon_profile: le ``roof_layout.horizonProfile`` du document (ou un
+            profil déjà en forme service, rendu tel quel).
+
+    Returns:
+        Le profil en forme service, ou ``None`` si le document n'en porte pas.
+        Le document n'est JAMAIS modifié (il garde sa forme v2 camelCase).
+    """
+    if not isinstance(horizon_profile, dict):
+        return None
+    points = horizon_profile.get('points')
+    if not isinstance(points, list):
+        return dict(horizon_profile)
+    # Une forme service déjà stockée passe telle quelle.
+    if any(isinstance(point, dict) and ('azimut_face_deg' in point
+                                        or 'azimut_pvgis_deg' in point)
+           for point in points):
+        return dict(horizon_profile)
+
+    source = horizon_profile.get('source')
+    convertis = []
+    for point in points:
+        if not isinstance(point, dict):
+            convertis.append(point)
+            continue
+        azimut = point.get('azimuthDeg')
+        try:
+            # Le contrat admet 360 (= nord) : ramené dans [0, 360[.
+            azimut = float(azimut) % 360.0
+        except (TypeError, ValueError):
+            pass
+        convertis.append({'azimut_face_deg': azimut,
+                          'hauteur_deg': point.get('heightDeg')})
+    try:
+        profil = profil_saisi(convertis)
+    except EntreeInvalide:
+        # Illisible ou vide : la forme est convertie, le REFUS nommé viendra
+        # de ``reechantillonner_pour_pvgis`` (jamais un profil inventé).
+        hauteurs = []
+        for point in convertis:
+            try:
+                hauteurs.append(float(point['hauteur_deg']))
+            except (KeyError, TypeError, ValueError):
+                continue
+        profil = {'points': convertis,
+                  'hauteur_max_deg': max(hauteurs) if hauteurs else None,
+                  'base_horizon': None, 'altitude_m': None, 'note': ''}
+    # La provenance est CELLE du document ('pvgis' ⇒ profil_mesure,
+    # 'saisie' ⇒ saisie) — jamais requalifiée ici ; absente, elle reste
+    # absente et ``_horizon_demande`` refuse en la nommant.
+    profil['source'] = source
+    return profil
 
 
 def profil_saisi(points, *, note=''):

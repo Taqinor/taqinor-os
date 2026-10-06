@@ -241,14 +241,23 @@ POSTES_HORS_CHAINE = {
 
 
 def _acces_module_disponible(contexte):
-    """Le document porte-t-il une lecture ``solarAccess`` par module ?"""
-    return bool(_acces_module(contexte))
+    """Le pan porte-t-il une lecture ``solarAccess`` que l'étape APPLIQUE ?
+
+    ACAL137 — même règle que l'étape (``refus_de_methode``) : un accès à
+    méthode texte, d'une autre période ou incluant l'horizon n'est pas
+    appliqué, et n'écarte donc pas la matrice 12×24.
+    """
+    from apps.calepinage.services.etapes.acces_module import refus_de_methode
+
+    acces = _acces_module(contexte)
+    return bool(acces) and refus_de_methode(acces) is None
 
 
 def _rangees_lues_par_acces_module(contexte):
     """``solarAccess`` dit-il couvrir l'ombre des rangées entre elles ?"""
-    acces = _acces_module(contexte)
-    methode = acces.get('method') or acces.get('methode') or {}
+    if not _acces_module_disponible(contexte):
+        return False
+    methode = _acces_module(contexte).get('method') or {}
     return isinstance(methode, dict) and methode.get('rangees') is True
 
 
@@ -259,9 +268,12 @@ def _horizon_deja_dans_la_meteo(contexte):
 
 
 def _acces_module(contexte):
-    ombrage = contexte.get('ombrage') or {}
-    acces = ombrage.get('solar_access') or ombrage.get('solarAccess') or {}
-    return acces if isinstance(acces, dict) else {}
+    """ACAL137 — l'accès solaire du PAN simulé, lu là où l'atelier l'écrit
+    (``zones[].geometry.solarAccess``) par LE lecteur de l'étape — jamais
+    une clé racine du document, qui n'existe pas."""
+    from apps.calepinage.services.etapes.acces_module import acces_du_pan
+
+    return acces_du_pan(contexte) or {}
 
 
 #: LES EXCLUSIVITÉS (D-CALX 16) : trois lectures d'un MÊME ombrage ne se

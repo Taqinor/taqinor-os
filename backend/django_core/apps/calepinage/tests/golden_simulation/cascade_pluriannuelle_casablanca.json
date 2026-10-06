@@ -3,7 +3,7 @@
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
   "produit_le": "2026-10-06",
-  "arbre_sha": "5cecdece7f748fdd7d9dcd09f8aa842b8979a7d0",
+  "arbre_sha": "e4698289780ee856f2e335a95ad646fc84869bcb",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -633,21 +633,24 @@
      "sigma_relatif": 0.05906,
      "source": "pvgis",
      "reference": "seriescalc, 2 années observées",
-     "annees": 2
+     "annees": 2,
+     "origine": "observee"
     },
     {
      "nom": "modele_simulation",
      "sigma_relatif": 0.03,
      "source": "societe",
      "reference": "Réglage de simulation « sigma_modele_pct », provenance societe — Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
-     "annees": null
+     "annees": null,
+     "origine": "saisie"
     },
     {
      "nom": "biais_long_terme",
      "sigma_relatif": 0.01,
      "source": "societe",
      "reference": "Réglage de simulation « sigma_biais_meteo_pct », provenance societe — Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
-     "annees": null
+     "annees": null,
+     "origine": "saisie"
     }
    ],
    "sigma_total": 0.066993,

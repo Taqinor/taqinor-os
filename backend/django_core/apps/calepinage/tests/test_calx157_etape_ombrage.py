@@ -271,7 +271,11 @@ class DansLaChaineTest(SimpleTestCase):
 
     def test_l_exclusivite_de_l_ordonnanceur_prime(self):
         contexte = contexte_de(matrice(0.6))
-        contexte['ombrage']['solar_access'] = {'values': [0.5]}
+        # ACAL137 — l'accès solaire du pan, là où l'atelier l'écrit.
+        contexte['ombrage']['layout'] = {'zones': [
+            {'label': 'PAN-1', 'geometry': {'solarAccess': {
+                'values': [0.5],
+                'method': {'horizon': False, 'rangees': False}}}}]}
         _rendue, cascade = appliquer_chaine(self.serie, contexte)
         etape = next(e for e in cascade['etapes']
                      if e['etape'] == 'ombrage_proche')
