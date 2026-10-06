@@ -229,6 +229,71 @@ function Famille({ famille, label, absence, equipement }) {
   )
 }
 
+/* ACAL264 — LE MATÉRIEL RÉELLEMENT UTILISÉ PAR LE CALCUL. Les familles
+   ci-dessus sont celles du DEVIS ; le calcul (kWc de pose, chaînes,
+   simulation) utilise, lui, le matériel RÉSOLU que sert
+   `GET entree-electrique/` (`materiel`, contrat
+   `calepinage_entree_electrique.json`) : désignation explicite d'abord, la
+   ligne du devis à défaut — et le module de CHAQUE pan quand le plan en porte
+   un autre. On l'affiche tel que servi, jamais recalculé ici. */
+const ROLES_CALCUL = [
+  ['module', 'Module'],
+  ['onduleur', 'Onduleur'],
+  ['optimiseur', 'Optimiseur'],
+]
+const PROVENANCES = {
+  explicite: 'désigné dans l’entrée électrique',
+  devis: 'ligne du devis lié',
+}
+
+function MaterielDuCalcul({ materiel, panneauDevis }) {
+  if (!materiel) return null
+  const module = materiel.module
+  const ecart = module && panneauDevis
+    && module.produit_id != null && panneauDevis.produit != null
+    && String(module.produit_id) !== String(panneauDevis.produit)
+  return (
+    <section className="mt-4" data-testid="cal-fiches-materiel-calcul">
+      <h4 className="tech-label text-lune-faint">Matériel utilisé par le calcul</h4>
+      <ul className="mt-2 space-y-1.5">
+        {ROLES_CALCUL.map(([role, libelle]) => {
+          const bloc = materiel[role]
+          return (
+            <li key={role} className="text-sm text-lune-soft"
+              data-testid={`cal-fiches-materiel-${role}`}>
+              <span className="text-lune">{libelle}</span>
+              {' — '}
+              {bloc
+                ? (
+                  <>
+                    {bloc.designation || `produit ${bloc.produit_id}`}
+                    {bloc.provenance && ` (${PROVENANCES[bloc.provenance] ?? bloc.provenance})`}
+                    {bloc.fiche_complete === false && (bloc.champs_manquants ?? []).length > 0 && (
+                      <span className="text-red-300">
+                        {' '}— fiche incomplète : {bloc.champs_manquants.join(', ')}
+                      </span>
+                    )}
+                  </>
+                )
+                : 'aucun'}
+            </li>
+          )
+        })}
+      </ul>
+      {ecart && (
+        <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-ecart-module">
+          Le calcul utilise « {module.designation} », le devis chiffre
+          « {panneauDevis.designation ?? `produit ${panneauDevis.produit}`} ».
+        </p>
+      )}
+      <p className="mt-2 text-xs text-lune-faint">
+        Un pan qui porte son propre module dans le plan est chiffré et chaîné
+        avec CE module ; le module ci-dessus n’est que le défaut des autres pans.
+      </p>
+    </section>
+  )
+}
+
 export default function FichesIncompletes({ calepinageId: idPropose }) {
   /* Montable des DEUX façons : en panneau de l'atelier (le parent passe
      `calepinageId`) ou en écran à part entière sous `/calepinage/:id/fiches`
@@ -258,6 +323,19 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
         setErreur(e?.response?.data?.detail
           || 'Les équipements de ce calepinage n’ont pas pu être lus.')
       })
+    return () => { annule = true }
+  }, [calepinageId])
+
+  // ACAL264 — le matériel RÉSOLU du calcul. Son échec n'éteint pas le
+  // panneau : le bloc ne s'affiche simplement pas.
+  const [materiel, setMateriel] = useState(null)
+  useEffect(() => {
+    if (!calepinageId) return undefined
+    let annule = false
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.entreeElectrique(calepinageId))
+      .then((res) => { if (!annule) setMateriel(res?.data?.materiel ?? null) })
+      .catch(() => { if (!annule) setMateriel(null) })
     return () => { annule = true }
   }, [calepinageId])
 
@@ -306,6 +384,9 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
           equipement={agregat[famille] ?? null}
         />
       ))}
+
+      <MaterielDuCalcul materiel={materiel} panneauDevis={agregat.panneau ?? null} />
+
     </div>
     </>
   )

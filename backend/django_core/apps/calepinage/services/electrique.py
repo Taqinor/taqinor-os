@@ -1379,6 +1379,42 @@ def _options_entree(entree):
     return options
 
 
+def _fiches_modules_du_document(company, document, materiel):
+    """ACAL264 — ``{produit_id: {'specs', 'designation'}}`` des modules POSÉS
+    sur les pans du document qui DIFFÈRENT du module par défaut.
+
+    Lecture cross-app par SÉLECTEUR uniquement (``get_produit_scoped`` : jamais
+    un produit d'une autre société, puis ``specs_for_produit``). Un produit
+    introuvable n'est pas inventé : son pan garde la puissance que le
+    document recopie (``modules[].pmaxWc``). Aucun prix n'est lu.
+    """
+    from apps.ventes.services import pans_du_document
+
+    if company is None or not isinstance(document, dict):
+        return {}
+    defaut = ((materiel or {}).get('produits') or {}).get('module')
+    produits = []
+    for pan in pans_du_document(document):
+        produit_id = pan.get('produit_id')
+        if (produit_id in (None, '') or int(pan.get('modules') or 0) <= 0
+                or str(produit_id) == str(defaut)
+                or produit_id in produits):
+            continue
+        produits.append(produit_id)
+    if not produits:
+        return {}
+    from apps.stock.selectors import get_produit_scoped, specs_for_produit
+
+    fiches = {}
+    for produit_id in produits:
+        produit = get_produit_scoped(company, produit_id)
+        if produit is None:
+            continue
+        fiches[produit_id] = {'specs': specs_for_produit(produit) or {},
+                              'designation': _designation(produit)}
+    return fiches
+
+
 def conception_du_calepinage(calepinage, *, entree=None, layout=None,
                              materiel=None):
     """La ``Conception`` (CAL124) de CE calepinage, matériel et site compris.
@@ -1402,6 +1438,15 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     if materiel is None:
         materiel = resoudre_materiel(getattr(calepinage, 'company', None),
                                      donnees, calepinage=calepinage)
+    # ACAL264 — le module de CHAQUE pan (``modules[].produitId``), fiche lue
+    # par le sélecteur du stock (bornée société). Posée dans ``materiel``
+    # seulement quand un pan porte un AUTRE produit que le module par
+    # défaut : l'empreinte de simulation d'un champ mono-module ne bouge pas.
+    fiches = (materiel.get('fiches_modules')
+              if 'fiches_modules' in materiel else _fiches_modules_du_document(
+                  getattr(calepinage, 'company', None), document, materiel))
+    if fiches:
+        materiel = {**materiel, 'fiches_modules': fiches}
     # ACAL164 — la fiche module (``noct_c``) fait du chaud TMY une
     # température de CELLULE.
     temperatures = temperatures_pour_calepinage(
@@ -1413,6 +1458,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_designation=materiel['designations']['onduleur'],
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
+        fiches_modules=materiel.get('fiches_modules'),
         **_options_entree(donnees), **_options_batterie(
             calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)

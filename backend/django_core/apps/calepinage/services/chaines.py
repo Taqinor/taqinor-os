@@ -38,7 +38,7 @@ affiche ce qui manque au lieu d'un faux vert.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional, Tuple
 
 from core.electrique.chaines import concevoir_chaines
@@ -49,7 +49,7 @@ from core.electrique.types import (
 from .valeurs import nombre as _nombre
 
 __all__ = [
-    'PanPose', 'Conception', 'REGLE_UNE_ORIENTATION_PAR_CHAINE',
+    'PanPose', 'ModulePan', 'Conception', 'REGLE_UNE_ORIENTATION_PAR_CHAINE',
     'pans_poses', 'groupes_electriques', 'specs_module', 'specs_onduleur',
     'entree_electrique', 'concevoir_par_pan',
     'affectation', 'empreinte_entree', 'bloc_electrique', 'bloc_pose',
@@ -112,6 +112,27 @@ class PanPose:
     azimut_deg: Optional[float] = None
     inclinaison_deg: Optional[float] = None
     source_orientation: Optional[str] = None
+    #: ACAL264 — le MODULE posé sur CE pan (``geometry.moduleId`` →
+    #: ``modules[]``, ou le ``moduleWc`` d'une surface de pose) ; ``None`` =
+    #: pan sans module désigné, qui prend le module par défaut
+    #: (``module_produit``). Ajouté EN FIN : aucune construction positionnelle
+    #: existante ne bouge.
+    module: Optional['ModulePan'] = None
+
+
+@dataclass(frozen=True)
+class ModulePan:
+    """ACAL264 — le module d'un pan : son renvoi au document et sa puissance.
+
+    ``pmax_wc`` est la puissance crête LUE sur la fiche du stock quand le
+    produit est résolu (``concevoir_par_pan(fiches_modules=…)``), à défaut
+    celle que le document recopie (``modules[].pmaxWc`` / ``moduleWc``).
+    """
+
+    module_id: Optional[str] = None
+    produit_id: object = None
+    pmax_wc: Optional[float] = None
+    designation: str = ''
 
 
 #: ACAL162 — le motif publié quand le champ est 100 % micro-onduleurs : il
@@ -225,8 +246,20 @@ def pans_poses(layout):
             label=str(pan.get('libelle')), modules=modules,
             azimut_deg=_nombre(pan.get('azimut_deg')),
             inclinaison_deg=_nombre(pan.get('inclinaison_deg')),
-            source_orientation=_source_orientation(pan, zones_par_cle)))
+            source_orientation=_source_orientation(pan, zones_par_cle),
+            module=_module_du_pan(pan)))
     return tuple(pans)
+
+
+def _module_du_pan(pan):
+    """ACAL264 — le ``ModulePan`` d'une entrée de ``pans_du_document``."""
+    module_id = pan.get('module_id')
+    produit_id = pan.get('produit_id')
+    pmax = _nombre(pan.get('module_wc'))
+    if module_id is None and produit_id is None and pmax is None:
+        return None
+    return ModulePan(module_id=module_id, produit_id=produit_id,
+                     pmax_wc=pmax)
 
 
 def groupes_electriques(layout):
@@ -511,9 +544,155 @@ def _avertissement_coefficients_non_sources(module):
         % (nom_module, details))
 
 
+def _pans_avec_leur_fiche(pans, fiches_modules, module_specs,
+                          module_designation):
+    """ACAL264 — ``(pans, fiches_par_pan)`` : chaque pan porte SON module.
+
+    ``fiches_modules`` = ``{produit_id: {'specs', 'designation'}}``, résolu
+    par l'appelant via le sélecteur du stock (borné société). La puissance
+    crête de la FICHE prime sur la copie du document. ``fiches_par_pan`` ne
+    retient que les pans dont la fiche DIFFÈRE du module par défaut : vide,
+    la conception est celle d'un champ mono-module (chemin inchangé).
+    """
+    fiches_modules = fiches_modules or {}
+    rendus, fiches_par_pan = [], {}
+    for pan in pans:
+        produit = getattr(pan.module, 'produit_id', None)
+        fiche = (fiches_modules.get(produit) or fiches_modules.get(
+            str(produit))) if produit is not None else None
+        if not isinstance(fiche, dict):
+            rendus.append(pan)
+            continue
+        specs = fiche.get('specs') or {}
+        designation = str(fiche.get('designation') or '')
+        pmax = _nombre(specs.get('pmax_wc'))
+        rendus.append(replace(pan, module=replace(
+            pan.module, pmax_wc=pmax if pmax is not None
+            else pan.module.pmax_wc, designation=designation)))
+        if dict(specs) != dict(module_specs or {}):
+            fiches_par_pan[pan.label] = (specs, designation
+                                         or module_designation)
+    return tuple(rendus), fiches_par_pan
+
+
+def _parts_mppt(n_mppt, nombre_groupes):
+    """Les entrées MPPT de chaque modèle de module — jamais une partagée.
+
+    Deux modèles de module ne partagent JAMAIS une entrée MPPT (leurs
+    tensions diffèrent). ``n_mppt`` est réparti au plus juste ; s'il y a plus
+    de modèles que d'entrées, chacun en reçoit une et le DÉPASSEMENT est
+    rendu (le message est publié par l'appelant).
+    """
+    n_mppt = max(1, int(n_mppt or 1))
+    if nombre_groupes <= n_mppt:
+        base, reste = divmod(n_mppt, nombre_groupes)
+        return [base + (1 if rang < reste else 0)
+                for rang in range(nombre_groupes)], False
+    return [1] * nombre_groupes, True
+
+
+def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
+                          temperatures, options):
+    """ACAL264 — un champ à PLUSIEURS modèles de module : un dimensionnement
+    par modèle, chacun avec SA fiche et SES entrées MPPT, puis une seule
+    numérotation des chaînes (CH1…, ordre du document).
+
+    Rend ``(resultat, manquantes, alertes)``. Aucune chaîne ne mélange deux
+    modules : une chaîne ne quitte jamais son pan, et un pan ne porte qu'un
+    module ; deux modèles ne partagent jamais une entrée MPPT.
+    """
+    from core.electrique.chaines import ResultatChaines
+
+    import json
+
+    # Un groupe par FICHE distincte (``None`` = le module par défaut), dans
+    # l'ordre de première apparition dans le document.
+    groupes, ordre = {}, []
+    for pan in pans:
+        fiche = fiches_par_pan.get(pan.label)
+        cle_modele = (None if fiche is None else json.dumps(
+            fiche[0], sort_keys=True, default=str))
+        if cle_modele not in groupes:
+            groupes[cle_modele] = []
+            ordre.append((cle_modele, fiche))
+        groupes[cle_modele].append(pan)
+
+    manquantes, specs_modeles = [], []
+    for cle_modele, fiche in ordre:
+        if fiche is None:
+            specs_modeles.append(module)
+            continue
+        spec, manque = specs_module(fiche[0], fiche[1])
+        manquantes.extend('module « %s » : %s' % (fiche[1] or '?', m)
+                          for m in manque)
+        specs_modeles.append(spec)
+    if manquantes:
+        return None, tuple(manquantes), ()
+
+    parts, depasse = _parts_mppt(onduleur.n_mppt, len(ordre))
+    chaines, repartitions, bloquants, alertes, verdicts = [], [], [], [], []
+    premier, decalage = None, 0
+    for (cle_modele, _fiche), spec, part in zip(ordre, specs_modeles, parts):
+        sous_pans = groupes[cle_modele]
+        entree = EntreeElectrique(
+            module=spec, onduleur=replace(onduleur, n_mppt=part),
+            groupes=tuple(
+                GroupePan(label=pan.label, nb_modules=pan.modules,
+                          azimut_deg=pan.azimut_deg
+                          if pan.azimut_deg is not None else 0.0,
+                          inclinaison_deg=pan.inclinaison_deg
+                          if pan.inclinaison_deg is not None else 0.0)
+                for pan in sous_pans),
+            temp_froid_c=temperatures.froid_c,
+            temp_chaud_c=temperatures.chaud_c,
+            temp_source=getattr(temperatures, 'source', None),
+            temp_mention=getattr(temperatures, 'mention', '') or '',
+            longueur_chaine_forcee=options.get('longueur_forcee'))
+        resultat = concevoir_chaines(entree)
+        if premier is None:
+            premier = resultat
+        for chaine in resultat.chaines:
+            chaines.append(replace(chaine, repere='CH%d' % (len(chaines) + 1),
+                                   mppt=chaine.mppt + decalage))
+        decalage += part
+        repartitions.extend(resultat.repartitions)
+        bloquants.extend(m for m in resultat.bloquants if m not in bloquants)
+        alertes.extend(m for m in resultat.alertes if m not in alertes)
+        verdicts.extend(resultat.verdicts)
+    nom = getattr(onduleur, 'designation', '') or "l'onduleur retenu"
+    messages = [
+        "champ à %d modèles de module : chaque modèle est chaîné avec SA "
+        "fiche sur ses propres entrées MPPT (%s) — aucune chaîne ne mélange "
+        "deux modules" % (len(ordre), ', '.join(
+            '%d entrée(s)' % part for part in parts))]
+    if depasse:
+        messages.append(
+            "%s n'a que %d entrée(s) MPPT pour %d modèles de module : deux "
+            "modèles ne partagent jamais une entrée — prévoir un onduleur à "
+            "plus d'entrées ou un seul modèle de module"
+            % (nom, max(1, int(onduleur.n_mppt or 1)), len(ordre)))
+    resultat = ResultatChaines(
+        chaines=tuple(chaines), fenetre=premier.fenetre,
+        repartitions=tuple(repartitions), bloquants=tuple(bloquants),
+        alertes=tuple(alertes), longueur_forcee=premier.longueur_forcee,
+        longueur_forcee_acceptee=premier.longueur_forcee_acceptee,
+        verdicts=tuple(verdicts))
+    return resultat, (), tuple(messages)
+
+
+def _ecarts_de_module(pans, fiches_par_pan, module_designation):
+    """ACAL264 — l'écart désignation devis ↔ document, PUBLIÉ par pan."""
+    return tuple(
+        "Pan « %s » : module posé « %s », différent du module par défaut "
+        "« %s » — le pan est chaîné et chiffré avec SON module"
+        % (pan.label, fiches_par_pan[pan.label][1] or '?',
+           module_designation or 'non désigné')
+        for pan in pans if pan.label in fiches_par_pan)
+
+
 def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                       module_designation='', onduleur_designation='',
-                      optimiseur_specs=None, **options):
+                      optimiseur_specs=None, fiches_modules=None, **options):
     """CAL124 — le chaînage COMPLET d'un document de conception.
 
     Args:
@@ -527,8 +706,15 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     Returns:
         Une ``Conception``. Fiche incomplète ⇒ ``manquantes`` renseigné,
         ``resultat`` à ``None`` et AUCUN verdict (jamais un faux vert).
+
+    ACAL264 — ``fiches_modules`` (``{produit_id: {'specs', 'designation'}}``,
+    résolu via le sélecteur du stock) donne à CHAQUE pan son module ;
+    ``module_specs`` n'est plus que le défaut d'un pan sans module. Un champ
+    à plusieurs modèles est dimensionné modèle par modèle
+    (``_concevoir_par_module``) ; mono-module, le chemin est inchangé.
     """
-    pans = pans_poses(layout)
+    pans, fiches_par_pan = _pans_avec_leur_fiche(
+        pans_poses(layout), fiches_modules, module_specs, module_designation)
     module, manque_module = specs_module(module_specs, module_designation)
     onduleur, manque_onduleur = specs_onduleur(onduleur_specs,
                                                onduleur_designation)
@@ -561,8 +747,19 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
 
     entree = entree_electrique(layout, module, onduleur, temperatures,
                                **options)
-    resultat = concevoir_chaines(entree)
+    ecarts = ()
+    if fiches_par_pan:
+        resultat, manquantes, par_module = _concevoir_par_module(
+            pans, fiches_par_pan, module, onduleur, temperatures, options)
+        if manquantes:
+            return Conception(pans=pans, manquantes=manquantes,
+                              temperatures=temperatures)
+        ecarts = par_module + _ecarts_de_module(pans, fiches_par_pan,
+                                                module_designation)
+    else:
+        resultat = concevoir_chaines(entree)
     regle, partage, messages = _verdict_mppt(pans, onduleur, onduleur_specs)
+    messages = tuple(messages) + ecarts
     # CALX53 — l'origine des coefficients de température voyage AVEC le
     # verdict : une alerte de plus, jamais un bloquant (la conception tient,
     # c'est sa SOURCE qui manque).
@@ -778,23 +975,48 @@ def bloc_pose(conception):
 
     Même sans simulation électrique, les modules et les kWc sont connus — ils
     restent donc des nombres, jamais ``null`` (discipline du null, CAL244).
+
+    ACAL264 — le kWc est celui du module de CHAQUE pan (fiche du stock, à
+    défaut ``modules[].pmaxWc`` du document) ; le module de l'entrée
+    (``module_produit``) n'est que le défaut d'un pan sans module. Deux pans
+    de 10 modules à 550 et 400 Wc font 9,5 kWc, jamais 11.
+    ``puissance_module_wc`` vaut la puissance commune, ou ``None`` quand les
+    pans portent des modules différents (aucun nombre unique n'est vrai).
     """
     module = getattr(conception.entree, 'module', None)
-    puissance_module = module.pmax_wc if module is not None else None
-    pans = [{
-        'pan': pan.label,
-        'modules': pan.modules,
-        'kwc': (round(pan.modules * puissance_module / 1000.0, 3)
-                if puissance_module else None),
-        'azimut_deg': pan.azimut_deg,
-        'inclinaison_deg': pan.inclinaison_deg,
-    } for pan in conception.pans]
+    defaut = module.pmax_wc if module is not None else None
+    pans, puissances = [], []
+    for pan in conception.pans:
+        puissance = (getattr(pan.module, 'pmax_wc', None) or defaut)
+        puissances.append(puissance)
+        pans.append({
+            'pan': pan.label,
+            'modules': pan.modules,
+            'kwc': (round(pan.modules * puissance / 1000.0, 3)
+                    if puissance else None),
+            'azimut_deg': pan.azimut_deg,
+            'inclinaison_deg': pan.inclinaison_deg,
+            'module_id': getattr(pan.module, 'module_id', None),
+        })
     total = sum(pan.modules for pan in conception.pans)
+    if not conception.pans:
+        commune = defaut
+    elif len(set(puissances)) == 1:
+        commune = puissances[0]
+    else:
+        commune = None
+    if commune:
+        kwc = round(total * commune / 1000.0, 3)
+    elif not conception.pans:
+        kwc = None
+    elif all(puissances):
+        kwc = round(sum(ligne['kwc'] for ligne in pans), 3)
+    else:
+        kwc = None
     return {
         'total_modules': total,
-        'kwc': (round(total * puissance_module / 1000.0, 3)
-                if puissance_module else None),
-        'puissance_module_wc': puissance_module,
+        'kwc': kwc,
+        'puissance_module_wc': commune,
         'pans': pans,
     }
 

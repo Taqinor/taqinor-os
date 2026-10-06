@@ -530,6 +530,13 @@ def empreinte_simulation(calepinage, *, document, donnees, materiel,
             'onduleur': materiel.get('onduleur'),
             'optimiseur': materiel.get('optimiseur'),
             'designations': materiel.get('designations'),
+            # ACAL264 — les fiches des modules PAR PAN, seulement quand un
+            # pan porte un autre produit que le défaut (clé absente sinon :
+            # l'empreinte d'un champ mono-module est inchangée).
+            **({'fiches_modules': {
+                str(cle): valeur for cle, valeur
+                in materiel['fiches_modules'].items()}}
+               if materiel.get('fiches_modules') else {}),
         },
         'entree': {cle: donnees.get(cle)
                    for cle in ENTREES_ELECTRIQUES_SIMULEES
@@ -622,7 +629,11 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'fiche_module': materiel_resolu.get('module') or {},
         'fiche_onduleur': materiel_resolu.get('onduleur') or {},
         'fiche_optimiseur': materiel_resolu.get('optimiseur'),
-        'fiches_modules': [materiel_resolu.get('module') or {}],
+        # ACAL264 — le module par défaut PUIS celui de chaque pan qui en
+        # porte un autre : la simulation lit les modules RÉELLEMENT posés.
+        'fiches_modules': [materiel_resolu.get('module') or {}] + [
+            dict(fiche.get('specs') or {}) for fiche in (
+                materiel_resolu.get('fiches_modules') or {}).values()],
         'designations': dict(materiel_resolu.get('designations') or {}),
         'materiel': {
             'optimiseur': materiel_resolu.get('optimiseur'),
