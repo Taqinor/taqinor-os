@@ -1840,7 +1840,9 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — versions des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -1996,7 +1998,9 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — liens des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2101,7 +2105,9 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — affectations des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2141,7 +2147,9 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC3 — demandes des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -3288,7 +3296,10 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
         return [IsAnyRole()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC3 — validations des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company,
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         en_attente = self.request.query_params.get('en_attente')
         if en_attente in ('1', 'true'):
             qs = qs.filter(valide=False)
@@ -3325,7 +3336,11 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC3 — annotations des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company,
+            version__document_id__in=selectors.document_ids_visibles(
+                self.request.user))
         version = self.request.query_params.get('version')
         if version:
             qs = qs.filter(version_id=version)
@@ -3347,8 +3362,11 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         `GET …/annotations/export-annote/?version=<id>`. Sans PyMuPDF : 400
         explicite."""
         version_id = request.query_params.get('version')
+        # ADOC3 — version d'un document VISIBLE de l'appelant, sinon 404.
         version = DocumentVersion.objects.filter(
-            company=request.user.company, pk=version_id).first()
+            company=request.user.company, pk=version_id,
+            document_id__in=selectors.document_ids_visibles(request.user),
+        ).first()
         if version is None:
             return Response(
                 {'version': 'Version inconnue.'}, status=status.HTTP_404_NOT_FOUND)

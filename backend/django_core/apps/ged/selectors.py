@@ -111,6 +111,16 @@ def documents_visible_to_user(user):
     return qs
 
 
+def document_ids_visibles(user):
+    """ADOC3 — Sous-requête des ids de documents VISIBLES de l'utilisateur
+    (coffre GED8, ACL GED19, corbeille GED26 — exactement
+    `documents_visible_to_user`). Seule source des filtres des listes et
+    actions qui exposent un objet RATTACHÉ à un document (versions, aperçu,
+    annotations, validations OCR, approbations, liens, affectations de tags) :
+    là où GET /documents/<id>/ répond 404, ces routes répondent 404 / 0 ligne."""
+    return documents_visible_to_user(user).values('pk')
+
+
 def mes_recents(user, *, limit=10):
     """ZGED13 — Documents récemment CONSULTÉS par l'appelant, dédupliqués et
     ordonnés par dernier accès (le plus récent en premier).
