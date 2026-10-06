@@ -3651,6 +3651,10 @@ class DemandeDispositionViewSet(TenantMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
+        # ADOC7 — approuver/exécuter une disposition (destruction définitive)
+        # relève du même palier que `purger` : ged_gouvernance.
+        if self.action in ('approuver', 'executer'):
+            return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3668,6 +3672,13 @@ class DemandeDispositionViewSet(TenantMixin,
         d'office ; `company`/`demandeur` posés côté serveur."""
         libelle = (request.data.get('libelle') or '').strip()
         action_disp = request.data.get('action') or 'detruire'
+        # ADOC7 — proposer une DESTRUCTION exige ged_gouvernance.
+        if action_disp == 'detruire':
+            garde = HasPermissionOrLegacy(GED_GOUVERNANCE)()
+            if not garde.has_permission(request, self):
+                return Response(
+                    {'detail': "Droit de gouvernance documentaire requis."},
+                    status=status.HTTP_403_FORBIDDEN)
         document_ids = request.data.get('documents') or []
         if not libelle or not document_ids:
             return Response(

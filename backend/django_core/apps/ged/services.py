@@ -5438,6 +5438,16 @@ def creer_demande_disposition(
     valides = list(
         Document.objects.filter(company=company, pk__in=document_ids or [])
         .values_list('pk', flat=True))
+    # ADOC7 — une DESTRUCTION ne porte que sur des documents ÉCHUS au regard
+    # de leur politique de rétention (jamais un document vivant non échu).
+    if action == 'detruire' and valides:
+        from .selectors import documents_echus
+        echus = {doc.pk for doc, _pol, _j in documents_echus(company)}
+        non_echus = (Document.objects.filter(pk__in=valides)
+                     .exclude(pk__in=echus).order_by('pk'))
+        premier = non_echus.first()
+        if premier is not None:
+            raise ValueError(f"Document non échu : {premier.nom}")
     exclus_hold = _pks_sous_legal_hold(valides)
     retenus = [pk for pk in valides if pk not in exclus_hold]
     if not retenus:
@@ -5475,6 +5485,10 @@ def approuver_demande_disposition(demande, *, user, commentaire=''):
 
     if demande.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Demande de disposition inaccessible.")
+    # ADOC7 — quatre yeux : le demandeur ne peut pas approuver sa demande.
+    if demande.demandeur_id is not None and demande.demandeur_id == user.pk:
+        raise PermissionError(
+            "Le demandeur ne peut pas approuver sa propre demande.")
     if not demande.is_pending:
         raise DemandeDispositionError(
             "Cette demande de disposition a déjà été décidée.")
