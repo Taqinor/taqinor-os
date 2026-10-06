@@ -18,6 +18,7 @@ rendu est inchangé à l'octet près.
 """
 import hashlib
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 
 from django.template.loader import get_template
 from django.utils.html import escape
@@ -154,28 +155,108 @@ def _client_block(client):
     }
 
 
-def _composants(chantier):
-    """Composants installés depuis les lignes du devis d'origine.
+def _quantite_affichee(valeur):
+    """ADOC60 — quantité imprimable d'une ligne de nomenclature, ou ``None``
+    quand la ligne n'a pas de quantité (intertitre, ligne vide) : jamais une
+    cellule « None ». Entier quand la quantité l'est (8.0 → 8), sinon la
+    décimale normalisée (2.50 → 2.5)."""
+    if valeur is None or valeur == '':
+        return None
+    try:
+        d = Decimal(str(valeur))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not d.is_finite() or d <= 0:
+        return None
+    if d == d.to_integral_value():
+        return int(d)
+    return d.normalize()
 
-    On ne renvoie QUE désignation + quantité + garantie texte. Le prix d'achat
-    n'est jamais lu : impossible de le faire fuiter dans un document client.
+
+def _ligne_composant(designation, quantite, produit, marque=''):
+    """ADOC60 — whitelist d'une ligne de matériel : désignation, quantité,
+    marque, garantie texte. Le prix d'achat n'est jamais lu."""
+    garantie = (
+        (getattr(produit, 'garantie', None) or '').strip() if produit else '')
+    marque = (marque or '').strip() or (
+        (getattr(produit, 'marque', None) or '').strip() if produit else '')
+    return {
+        'designation': designation or (
+            getattr(produit, 'nom', '') if produit else ''),
+        'quantite': quantite,
+        'marque': marque,
+        'garantie': garantie or DEFAULT_GARANTIE,
+    }
+
+
+def _composants(chantier):
+    """Matériel vendu du chantier (PV, BL FR/AR, garanties du dossier).
+
+    ADOC60 — source = la nomenclature GELÉE du chantier (``Installation.bom``,
+    figée à la création par ``installations.services._freeze_bom`` : option
+    retenue d'un devis à deux options, ×N villas, sans optionnelles ni
+    intertitres) — plus jamais l'itération brute des lignes du devis qui
+    listait le kit non acheté et des quantités « None ». Garantie lue sur
+    ``Produit.garantie`` via le ``produit_id`` de la ligne (sélecteur stock,
+    scopé société), repli ``DEFAULT_GARANTIE``.
+
+    Chantier sans ``bom`` (créé avant N1) : repli sur la MÊME règle que la
+    facturation, ``apps.ventes.utils.options.option_lines(devis)`` × nombre
+    de propriétés ; lignes sans quantité exclues.
+
+    On ne renvoie QUE désignation + quantité + marque + garantie texte. Le prix
+    d'achat n'est jamais lu : impossible de le faire fuiter dans un document
+    client.
     """
+    bom = getattr(chantier, 'bom', None)
+    if isinstance(bom, list) and bom:
+        from apps.stock.selectors import get_produit_scoped
+        cache = {}
+        items = []
+        for row in bom:
+            if not isinstance(row, dict):
+                continue
+            quantite = _quantite_affichee(row.get('quantite'))
+            if quantite is None:
+                continue
+            produit_id = row.get('produit_id')
+            produit = None
+            if produit_id:
+                if produit_id not in cache:
+                    try:
+                        cache[produit_id] = get_produit_scoped(
+                            chantier.company, produit_id)
+                    except (TypeError, ValueError):
+                        cache[produit_id] = None
+                produit = cache[produit_id]
+            items.append(_ligne_composant(
+                row.get('designation'), quantite, produit,
+                row.get('marque') or ''))
+        return items
+
     devis = getattr(chantier, 'devis', None)
     if devis is None:
         return []
+    from apps.ventes.selectors import nombre_proprietes
+    from apps.ventes.utils.options import option_lines
+    try:
+        n_prop = int(nombre_proprietes(devis) or 1)
+    except (TypeError, ValueError):
+        n_prop = 1
     items = []
-    for ligne in devis.lignes.select_related('produit').all():
-        produit = ligne.produit
-        garantie = (getattr(produit, 'garantie', None) or '').strip() \
-            if produit else ''
-        marque = (getattr(produit, 'marque', None) or '').strip() \
-            if produit else ''
-        items.append({
-            'designation': ligne.designation,
-            'quantite': ligne.quantite,
-            'marque': marque,
-            'garantie': garantie or DEFAULT_GARANTIE,
-        })
+    for ligne in option_lines(devis):
+        brute = getattr(ligne, 'quantite', None)
+        if brute is None:
+            continue
+        try:
+            brute = Decimal(str(brute)) * n_prop
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        quantite = _quantite_affichee(brute)
+        if quantite is None:
+            continue
+        items.append(_ligne_composant(
+            ligne.designation, quantite, getattr(ligne, 'produit', None)))
     return items
 
 
