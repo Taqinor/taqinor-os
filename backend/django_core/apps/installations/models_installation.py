@@ -76,6 +76,16 @@ class Installation(models.Model):
         INDUSTRIEL = 'industriel', 'Industriel / Commercial'
         AGRICOLE = 'agricole', 'Agricole (pompage)'
 
+    # CIQ610 — niveau de tension du site et sa provenance (vocabulaire du
+    # lead pro CIQ1 : ``tension_raccordement`` / ``tension_source``).
+    class NiveauTension(models.TextChoices):
+        BT = 'bt', 'Basse tension (BT)'
+        MT = 'mt', 'Moyenne tension (MT)'
+
+    class NiveauTensionSource(models.TextChoices):
+        MESURE_VISITE = 'mesure_visite', 'Mesuré en visite'
+        DECLARE = 'declare', 'Déclaré'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -138,6 +148,21 @@ class Installation(models.Model):
         max_length=12, choices=Raccordement.choices, blank=True, null=True)
     type_installation = models.CharField(
         max_length=20, choices=TypeInstallation.choices, blank=True, null=True)
+
+    # CIQ610 — niveau de tension du site (BT/MT) et puissance souscrite,
+    # recopiés du lead à la création (colonnes CIQ1, corrigées par la visite
+    # CIQ607) ; null = inconnu, jamais deviné. Éditables sur la fiche. Le
+    # régime, les pièces, la checklist et les essais en dépendent. Aucun 4e
+    # type d'installation : un site commercial reste ``industriel``.
+    niveau_tension = models.CharField(
+        max_length=2, choices=NiveauTension.choices, blank=True, null=True,
+        verbose_name='Niveau de tension')
+    niveau_tension_source = models.CharField(
+        max_length=14, choices=NiveauTensionSource.choices, blank=True,
+        null=True, verbose_name='Provenance du niveau de tension')
+    puissance_souscrite_kva = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance souscrite (kVA)')
 
     technicien_responsable = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

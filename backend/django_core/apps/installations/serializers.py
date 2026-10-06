@@ -455,6 +455,10 @@ class InstallationSerializer(serializers.ModelSerializer):
         source='get_raccordement_display', read_only=True, default=None)
     type_installation_display = serializers.CharField(
         source='get_type_installation_display', read_only=True, default=None)
+    # CIQ610 — niveau de tension recopié du lead (éditable via `niveau_tension`
+    # du `__all__`) ; libellé en lecture seule.
+    niveau_tension_display = serializers.CharField(
+        source='get_niveau_tension_display', read_only=True, default=None)
     # Position dans l'entonnoir — pour un tri non-alphabétique côté UI.
     statut_ordre = serializers.SerializerMethodField()
     # Statut rabattu sur sa colonne canonique (kanban/parc) — les valeurs

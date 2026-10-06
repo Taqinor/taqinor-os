@@ -334,6 +334,30 @@ def _puissance_from(devis, lead, projet=False):
     return None
 
 
+def _niveau_tension_from_lead(lead):
+    """CIQ610 — (niveau_tension, niveau_tension_source, puissance_souscrite_kva)
+    recopiés des colonnes CIQ1 du lead (déjà corrigées par la visite, CIQ607).
+
+    Niveau : seulement 'bt'/'mt' (« ne sait pas » → None). Provenance :
+    ``mesure_visite`` si le relevé vient de la visite, ``declare`` pour toute
+    réponse du client (fiche, appel, facture, site web saisi) ; un défaut
+    pré-coché du site jamais modifié par le client (``site_defaut_visible``)
+    n'est PAS une réponse → niveau None. Sans lead : tout None."""
+    if lead is None:
+        return None, None, None
+    niveau = getattr(lead, 'tension_raccordement', None)
+    source = getattr(lead, 'tension_source', None)
+    if (niveau not in set(Installation.NiveauTension.values)
+            or source == 'site_defaut_visible'):
+        niveau, source_chantier = None, None
+    elif source == Installation.NiveauTensionSource.MESURE_VISITE:
+        source_chantier = Installation.NiveauTensionSource.MESURE_VISITE
+    else:
+        source_chantier = Installation.NiveauTensionSource.DECLARE
+    return niveau, source_chantier, getattr(
+        lead, 'compteur_puissance_kva', None)
+
+
 def _freeze_bom(devis):
     """Nomenclature gelée depuis les lignes du devis (N1) : composants +
     quantités, pour le résumé système et la base parc. Ignore les lignes
@@ -455,6 +479,11 @@ def create_installation_from_devis(devis, user, company):
     # devis quand elle existe.
     date_signature = getattr(devis, 'date_acceptation', None) or None
     installer = default_installer_for(company) or user
+    # CIQ610 — niveau de tension + puissance souscrite recopiés du lead (null
+    # si inconnus ; résidentiel sans colonnes pro → tout null, octet-identique).
+    niveau_tension, niveau_source, puissance_kva = _niveau_tension_from_lead(
+        None if type_install == Installation.TypeInstallation.RESIDENTIEL
+        else lead)
 
     def _create(ref):
         return Installation.objects.create(
@@ -471,6 +500,9 @@ def create_installation_from_devis(devis, user, company):
             puissance_installee_kwc=_puissance_from(devis, lead, projet=True),
             raccordement=raccordement,
             type_installation=type_install,
+            niveau_tension=niveau_tension,
+            niveau_tension_source=niveau_source,
+            puissance_souscrite_kva=puissance_kva,
             regime_8221=regime_suggere,
             raccordement_reseau=raccordement_reseau,
             statut=Installation.Statut.SIGNE,
