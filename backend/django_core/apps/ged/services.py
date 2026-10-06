@@ -3327,6 +3327,20 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
 
     if not destinataires:
         raise ValueError("Au moins un destinataire est requis.")
+    # ADOC76 — rôle FERMÉ et au moins un « signataire » (sinon la demande
+    # resterait en attente à vie), pour TOUS les appelants du service.
+    from .models import ROLE_DESTINATAIRE_CHOICES
+    roles_valides = {code for code, _ in ROLE_DESTINATAIRE_CHOICES}
+    for dest in destinataires:
+        if dest.get('role', ROLE_SIGNATAIRE) not in roles_valides:
+            raise ValueError(
+                f"Rôle de destinataire inconnu : {dest.get('role')!r} "
+                "(signataire, copie ou approbateur).")
+    if not any(dest.get('role', ROLE_SIGNATAIRE) == ROLE_SIGNATAIRE
+               for dest in destinataires):
+        raise ValueError(
+            "Le circuit doit compter au moins un destinataire de rôle "
+            "« signataire ».")
     premier = destinataires[0]
     demande = demander_signature(
         document,

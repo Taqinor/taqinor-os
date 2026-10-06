@@ -2811,6 +2811,14 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             return Response(
                 {'destinataires': 'Au moins un destinataire est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # ADOC76 — corps validé par un serializer : rôle parmi les trois
+        # choix, ordre ≥ 1, expires_at parsé, au moins un « signataire » —
+        # 400 nommé, jamais 500 ni demande en attente à vie.
+        from .serializers import CreerMultiSignatairesSerializer
+        entree = CreerMultiSignatairesSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
+        valide = entree.validated_data
         document = (Document.objects.filter(company=request.user.company)
                     .filter(pk=document_id).first())
         if document is None:
@@ -2819,11 +2827,12 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 status=status.HTTP_404_NOT_FOUND)
         try:
             demande = services.creer_demande_multi_signataires(
-                document, destinataires=destinataires,
+                document,
+                destinataires=[dict(d) for d in valide['destinataires']],
                 company=request.user.company,
-                routage=request.data.get('routage'),
-                expires_at=request.data.get('expires_at'),
-                relance_cadence_jours=request.data.get('relance_cadence_jours'),
+                routage=valide.get('routage'),
+                expires_at=valide.get('expires_at'),
+                relance_cadence_jours=valide.get('relance_cadence_jours'),
                 created_by=request.user, request=request)
         except (PermissionError, ValueError) as exc:
             code = (status.HTTP_403_FORBIDDEN
@@ -4379,6 +4388,15 @@ def public_signataire(request, token):
             {'detail': "Vous avez déjà traité cette demande.",
              'statut': signataire.statut},
             status=status.HTTP_410_GONE))
+    # ADOC76 — une demande qui n'est plus en attente (refusée par un autre
+    # destinataire, signée, close) ferme la cérémonie de TOUS ses
+    # destinataires : 410, rien n'est enregistré.
+    from .models import SIGNATURE_EN_ATTENTE
+    if demande.statut != SIGNATURE_EN_ATTENTE:
+        return _ged_noindex(Response(
+            {'detail': "Cette demande de signature est close.",
+             'demande_statut': demande.statut},
+            status=status.HTTP_410_GONE))
 
     # NTDOC9 — motif « une IP, plusieurs sociétés », best-effort.
     services.surveiller_reutilisation_suspecte(
@@ -4392,6 +4410,13 @@ def public_signataire(request, token):
     if signataire.statut != SIGNATAIRE_NOTIFIE:
         return _signature_echec(request, token, _ged_noindex(Response(
             {'detail': "Ce n'est pas encore votre tour de signer."},
+            status=status.HTTP_403_FORBIDDEN)), document=demande.document)
+    # ADOC76 — seuls les destinataires de rôle « signataire » signent ou
+    # refusent (`is_actionnable`) ; une copie ou un approbateur consulte.
+    if not signataire.is_actionnable:
+        return _signature_echec(request, token, _ged_noindex(Response(
+            {'detail': "Vous êtes destinataire de ce document sans être "
+                       "signataire : vous pouvez le consulter, pas le signer."},
             status=status.HTTP_403_FORBIDDEN)), document=demande.document)
 
     action_demandee = (request.data.get('action') or '').strip().lower()

@@ -74,3 +74,32 @@ describe('ADOC63 ApprobationPage — lien de signature', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Lien de signature copié.'))
   })
 })
+
+describe('ADOC76 ApprobationPage — circuit multi-signataires', () => {
+  it('le rôle est un choix fermé', async () => {
+    gedApi.creerDemandeMultiSignataires.mockResolvedValue({
+      data: { id: 30, document: 4, statut: 'en_attente', lien_signature: null, signataires: [] },
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: /Circuit multi-signataires/i }))[0])
+    const dialog = await screen.findByRole('dialog')
+
+    // Plus aucune saisie libre du rôle.
+    expect(within(dialog).queryByPlaceholderText('Rôle')).not.toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Rôle du destinataire 1' }))
+    const options = within(await screen.findByRole('listbox')).getAllByRole('option')
+    expect(options.map((o) => o.textContent)).toEqual(['Signataire', 'Copie', 'Approbateur'])
+    await userEvent.click(options[2])
+
+    await userEvent.click(within(dialog).getByRole('combobox', { name: /Choisir un document/i }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Bail.pdf'))
+    await userEvent.type(within(dialog).getByPlaceholderText('Nom'), 'Sofia')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Créer le circuit' }))
+
+    await waitFor(() => expect(gedApi.creerDemandeMultiSignataires).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destinataires: [expect.objectContaining({ nom: 'Sofia', role: 'approbateur', ordre: 1 })],
+      })))
+  })
+})

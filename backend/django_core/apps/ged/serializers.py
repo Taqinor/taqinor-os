@@ -1346,3 +1346,44 @@ class PlanificationDocumentSerializer(serializers.ModelSerializer):
             'created_by', 'created_at',
         ]
         read_only_fields = ['notifiee', 'created_by', 'created_at']
+
+
+# ── ADOC76 — validation du corps de creer-multi (400 nommé, jamais 500) ─────
+
+def _codes(model, champ):
+    return [code for code, _ in model._meta.get_field(champ).choices]
+
+
+class DestinataireMultiSerializer(serializers.Serializer):
+    """ADOC76 — Un destinataire du circuit : rôle FERMÉ (signataire / copie /
+    approbateur), ordre ≥ 1."""
+    nom = serializers.CharField(max_length=255)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    telephone = serializers.CharField(
+        required=False, allow_blank=True, max_length=32)
+    role = serializers.ChoiceField(
+        choices=_codes(SignataireDemande, 'role'), default='signataire')
+    ordre = serializers.IntegerField(min_value=1, required=False)
+    role_signataire = serializers.IntegerField(
+        required=False, allow_null=True)
+
+
+class CreerMultiSignatairesSerializer(serializers.Serializer):
+    """ADOC76 — Corps de `demandes-signature/creer-multi/` : routage parmi
+    ses choix, `expires_at` date ISO valide, au moins UN destinataire de rôle
+    « signataire » (sans quoi la demande resterait en attente à vie)."""
+    document = serializers.IntegerField()
+    destinataires = DestinataireMultiSerializer(many=True, allow_empty=False)
+    routage = serializers.ChoiceField(
+        choices=_codes(DemandeSignatureDocument, 'routage'),
+        required=False, allow_null=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    relance_cadence_jours = serializers.IntegerField(
+        min_value=0, required=False, allow_null=True)
+
+    def validate_destinataires(self, value):
+        if not any(d.get('role', 'signataire') == 'signataire' for d in value):
+            raise serializers.ValidationError(
+                "Le circuit doit compter au moins un destinataire de rôle "
+                "« signataire ».")
+        return value
