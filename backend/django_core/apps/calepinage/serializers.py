@@ -74,11 +74,16 @@ def peremption_du_calepinage(devis, calepinage):
         layout_stale = None
     else:
         layout_stale = bool(stale_comptes) or bool(divergente)
-    nb_calepinage = brut.get('calepinage_nb_panneaux')
     document = getattr(calepinage, 'roof_layout', None)
     if not (isinstance(document, dict) and document):
         # Aucun document sur le calepinage : rien à compter de son côté.
         nb_calepinage = None
+    else:
+        # ACAL259 — LA lecture du module (``mesures_du_document``) : le même
+        # compte que la présentation, le journal et les exports.
+        from .services.mesures import mesures_du_document
+
+        nb_calepinage = mesures_du_document(document)['modules']
     return {
         'layout_stale': layout_stale,
         'layout_nb_panneaux': (nb_calepinage if nb_calepinage is not None

@@ -258,6 +258,7 @@ def construire_rapport_ombrage(calepinage, *, langue=None, resultat=None,
         from .. import selectors
 
         site = selectors.contexte_geographique(calepinage)
+    from .provenance_document import provenance_de_simulation
 
     return {
         'code': CODE_DOCUMENT,
@@ -268,11 +269,9 @@ def construire_rapport_ombrage(calepinage, *, langue=None, resultat=None,
         'site': dict(site or {}),
         'styles': dict(styles or {}),
         'etat': dict(etat or {}),
-        'provenance': {
-            'hash_entree': resultat.get('hash_entree') or '',
-            'version_moteur': resultat.get('version_moteur') or '',
-            'calcule_le': resultat.get('calcule_le') or '',
-        },
+        # ACAL145 — l'empreinte de la SIMULATION, lue par
+        # ``provenance_document`` (jamais une clé racine vide).
+        'provenance': provenance_de_simulation(resultat),
         'blocs': blocs,
         'methode_acces': next(iter(methodes), None),
         'matrice_12x24': matrice,

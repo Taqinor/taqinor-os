@@ -518,7 +518,7 @@ def masse_du_layout(layout, *, poids_module_kg=None,
     """
     from apps.ventes.services import aire_du_pan
 
-    from .production import pans_du_layout
+    from .mesures import mesures_du_document
 
     section = section or {}
     poids = (float(poids_module_kg)
@@ -554,7 +554,9 @@ def masse_du_layout(layout, *, poids_module_kg=None,
         surfaces[cle] = aire_du_pan(zone)
 
     pans, total_modules, masse_totale = [], 0, None
-    for pan in pans_du_layout(layout):
+    # ACAL259 — LA lecture du module (mesures_du_document) : le même compte
+    # par pan que la présentation, le journal et les exports.
+    for pan in mesures_du_document(layout)['pans']:
         modules = int(pan.get('modules') or 0)
         total_modules += modules
         surface = surfaces.get(pan['pan'])

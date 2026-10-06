@@ -64,28 +64,10 @@ def _dict(valeur):
     return valeur if isinstance(valeur, dict) else {}
 
 
-def _entier(valeur):
-    nombre = _nombre(valeur)
-    return int(nombre) if nombre is not None else None
-
-
 def _zones(layout):
     zones = layout.get('zones')
     return [z for z in zones if isinstance(z, dict)] \
         if isinstance(zones, (list, tuple)) else []
-
-
-def _modules(layout, zones):
-    """``result.panels`` d'abord ; à défaut, les cellules POSÉES comptées."""
-    total = _entier(_dict(layout.get('result')).get('panels'))
-    if total is not None:
-        return total
-    listes = [_dict(zone.get('geometry')).get('panels') for zone in zones]
-    listes = [liste for liste in listes if isinstance(liste, (list, tuple))]
-    if not listes:
-        return None
-    return sum(1 for liste in listes for cellule in liste
-               if isinstance(cellule, dict))
 
 
 def _orientation(zone):
@@ -120,8 +102,15 @@ def _grandeurs(etat):
     grandeurs = {}
     if isinstance(layout, dict):
         zones = _zones(layout)
-        grandeurs['modules'] = _modules(layout, zones)
-        grandeurs['kwc'] = _nombre(_dict(layout.get('result')).get('kwc'))
+        # ACAL259 — LA lecture du module (``mesures_du_document``) : modules
+        # posés et kWc à la fiche du module, sur le résultat de CET état
+        # (son bloc ``pose`` n'est repris que s'il décrit ce document).
+        from .mesures import mesures_du_document
+
+        mesures = mesures_du_document(layout,
+                                      getattr(etat, 'resultat', None))
+        grandeurs['modules'] = mesures['modules']
+        grandeurs['kwc'] = mesures['kwc']
         grandeurs['pans'] = len(zones)
         grandeurs['obstacles'] = sum(
             len([o for o in zone.get('obstacles') if isinstance(o, dict)])

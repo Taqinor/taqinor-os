@@ -11,8 +11,8 @@ cette présentation ne le remplace jamais.
 Ce que cette pièce fait, et ce qu'elle ne fait pas
 ====================================================
 * page 1 — le plan de pose (SVG « en regard », comme le document as-built) et
-  les totaux (modules, kWc, pans), LUS de la géométrie SEULE
-  (``services.production.pans_du_layout``) : AUCUNE simulation requise, donc
+  les totaux (modules, kWc, pans), LUS par ``services.mesures
+  .mesures_du_document`` (ACAL259) : AUCUNE simulation requise, donc
   cette page existe même pour un calepinage non simulé ;
 * page 2 — la production P50 mensuelle, le ratio de performance et le taux
   d'autoconsommation S'IL est publié — LUS du résultat de moteur ; sans
@@ -31,6 +31,7 @@ from __future__ import annotations
 from html import escape
 
 from ..rapport import nombre_tel_que_servi, verifier_etancheite
+from ..rapport.production import mention_borne_haute, texte_non_publie
 
 __all__ = [
     'CODE_DOCUMENT', 'MENTION_PAS_UN_DEVIS', 'MOTIF_SANS_RESULTAT',
@@ -69,19 +70,20 @@ _LIBELLE_MOIS = {
 _LIRE = object()
 
 
-def totaux_de_pose(roof_layout):
-    """Modules, kWc et pans — LUS de la géométrie SEULE (``pans_du_layout``),
-    AUCUNE simulation requise : la même lecture que ``services/asbuilt.py``
-    pour le prévu."""
-    from ..production import pans_du_layout
+def totaux_de_pose(roof_layout, resultat=None):
+    """Modules, kWc et pans — ACAL259 : LUS par ``mesures.mesures_du_document``
+    (LA lecture du module), AUCUNE simulation requise. Le kWc est celui de la
+    FICHE du module de chaque pan (bloc ``pose`` du résultat servi, sinon la
+    fiche déclarée par le document) — jamais ``geometry.kwc`` ni
+    ``panelWatt`` (wattage de l'outil)."""
+    from ..mesures import mesures_du_document
 
-    pans = pans_du_layout(roof_layout)
-    kwc = [p.get('kwc') for p in pans if p.get('kwc') is not None]
+    mesures = mesures_du_document(roof_layout, resultat)
     return {
-        'pans': pans,
-        'total_modules': sum(p.get('modules') or 0 for p in pans),
-        'total_kwc': sum(kwc) if kwc else None,
-        'nombre_pans': len(pans),
+        'pans': mesures['pans'],
+        'total_modules': mesures['modules'] or 0,
+        'total_kwc': mesures['kwc'],
+        'nombre_pans': mesures['nombre_pans'],
     }
 
 
@@ -150,7 +152,8 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
 
     return {
         'code': CODE_DOCUMENT,
-        'totaux': totaux_de_pose(roof_layout),
+        # ACAL259 — le résultat SERVI porte le bloc ``pose`` (fiche du stock).
+        'totaux': totaux_de_pose(roof_layout, resultat),
         'svg_planche': svg_planche or '',
         'resultat': resultat,
         'motif_perime': motif_perime,
@@ -212,7 +215,18 @@ def _page2_html(resultat, motif_perime=''):
     blocs = []
     if mensuel:
         blocs.append(_table_mensuelle(mensuel))
-    if total.get('performance_ratio') is not None:
+    # ACAL50 / D-ACAL-7 — un résultat incomplet : la mention « borne haute »
+    # SOUS le P50, et le PR « non publié — <motif> » (jamais 100 %). La
+    # complétude est LUE (production.total.complete), jamais recalculée.
+    mention = mention_borne_haute(total)
+    if mention:
+        blocs.append('<p class="mention-borne-haute">%s</p>'
+                     % escape(mention))
+    pr_non_publie = texte_non_publie(total, 'performance_ratio')
+    if pr_non_publie is not None:
+        blocs.append('<p>Ratio de performance (PR) : %s</p>'
+                     % escape(pr_non_publie))
+    elif total.get('performance_ratio') is not None:
         blocs.append('<p>Ratio de performance (PR) : %s</p>'
                      % nombre_tel_que_servi(total.get('performance_ratio')))
     taux = (resultat.get('autoconsommation') or {}).get(

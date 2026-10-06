@@ -39,6 +39,7 @@ __all__ = [
     'NON_CALCULEE', 'NON_PUBLIEE', 'TITRE_FEUILLE', 'ENTETES',
     'LIBELLE_EMPREINTE_LAYOUT', 'LIBELLE_EMPREINTE_SIMULATION',
     'lignes_de_provenance', 'texte_de_ligne', 'lignes_json',
+    'provenance_de_simulation',
 ]
 
 #: La feuille du classeur XLSX, et ses deux colonnes.
@@ -77,3 +78,28 @@ def lignes_json(lignes):
     """``[{libelle, valeur}]`` — la forme du bloc ``provenance`` en JSON."""
     return [{'libelle': libelle, 'valeur': valeur}
             for libelle, valeur in lignes]
+
+
+def provenance_de_simulation(resultat):
+    """ACAL145 — la provenance d'un LIVRABLE (rapport d'étude, manuel
+    propriétaire, rapport d'ombrage, as-built), lue sur l'en-tête
+    ``resultat['simulation']`` publié par la simulation (ACAL48) — ni une
+    clé racine que personne n'écrit, ni ``layout_hash`` (empreinte du
+    document de pose, pas du calcul).
+
+    Returns:
+        ``{hash_entree, version_simulation, version_moteur, calcule_le}`` —
+        une grandeur absente vaut ``''`` (le pied n'imprime rien), jamais une
+        empreinte inventée.
+    """
+    resultat = resultat if isinstance(resultat, dict) else {}
+    simulation = resultat.get('simulation')
+    simulation = simulation if isinstance(simulation, dict) else {}
+    return {
+        'hash_entree': _texte(simulation.get('hash_entree')),
+        'version_simulation': _texte(simulation.get('version_simulation')),
+        'version_moteur': _texte(resultat.get('version_moteur')
+                                 or simulation.get('version_moteur')),
+        'calcule_le': _texte(resultat.get('calcule_le')
+                             or simulation.get('calcule_le')),
+    }
