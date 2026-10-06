@@ -34,6 +34,8 @@ const NAV_CLIENT = [
   { to: '/portail/client/sav', label: 'SAV' },
   // ADOC138 — membres et invitations (inviter/révoquer : admin seulement).
   { to: '/portail/client/equipe', label: 'Équipe' },
+  // ADOC139 — contrats de maintenance + demande de renouvellement/résiliation.
+  { to: '/portail/client/contrats', label: 'Contrats' },
 ]
 
 export default function PortalClientLayout({ children }) {

@@ -53,6 +53,14 @@ const portailApi = {
     inviter: (payload) => api.post('/portail/mon-equipe/', payload),
     revoquer: (id) => api.post(`/portail/mon-equipe/${id}/revoquer/`, {}),
   },
+  // ADOC139 — « Mes contrats » de maintenance (contrat
+  // mes_contrats_maintenance.json) ; `demander` = renouvellement/résiliation,
+  // une DEMANDE traitée en interne (jamais une modification du contrat).
+  contrats: {
+    liste: () => api.get('/portail/mes-contrats-maintenance/'),
+    demander: (id, payload) =>
+      api.post(`/portail/mes-contrats-maintenance/${id}/demander/`, payload),
+  },
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),
