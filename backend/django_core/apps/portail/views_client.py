@@ -1308,8 +1308,11 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         role = request.data.get('role') or 'lecture'
         company, client_id = _scope(request)
+        # ADOC116 — le lien de l'e-mail pointe sur l'hôte ERP de CETTE
+        # requête (patron WIR216), jamais sur SITE_URL (site public).
         invitation = services.inviter_membre_portail(
-            company, client_id, email, role)
+            company, client_id, email, role,
+            base_url=request.build_absolute_uri('/'))
         if invitation is None:
             return Response(
                 {'detail': "Impossible de créer l'invitation."},

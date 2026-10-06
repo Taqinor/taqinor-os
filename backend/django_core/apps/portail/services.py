@@ -589,10 +589,20 @@ def upsert_jalon_chantier(company, chantier_id, cle_phase, libelle,
 DUREE_VALIDITE_INVITATION = timedelta(days=7)
 
 
-def _envoyer_invitation_portail(invitation, company):
+def _envoyer_invitation_portail(invitation, company, base_url=None):
     """Envoie le lien d'invitation à l'email invité. Best-effort, jamais
     fatal — sans email envoyé, l'admin peut toujours transmettre le lien
-    autrement (le token reste valable jusqu'à expiration)."""
+    autrement (le token reste valable jusqu'à expiration).
+
+    ADOC116 — le lien est construit sur l'hôte ERP de la REQUÊTE
+    (``base_url``, patron WIR216 ``request.build_absolute_uri``), jamais sur
+    ``SITE_URL`` : le site public n'a aucune page portail. Sans base
+    explicite (usage programmatique), AUCUN e-mail n'est envoyé plutôt
+    qu'un lien vers un autre hôte.
+    """
+    base = (base_url or '').strip().rstrip('/')
+    if not base:
+        return False
     try:
         from django.conf import settings
         from django.core.mail import send_mail
@@ -600,8 +610,7 @@ def _envoyer_invitation_portail(invitation, company):
         from .branding import marque_portail
         societe = (marque_portail(company).get('nom_affichage')
                    or 'votre prestataire')
-        site = (getattr(settings, 'SITE_URL', '') or '').rstrip('/')
-        lien = (f'{site}/portail/invitation/accepter'
+        lien = (f'{base}/portail/invitation/accepter'
                 f'?token={invitation.token_invitation}')
         send_mail(
             subject=f"Invitation au portail {societe}",
@@ -622,7 +631,7 @@ def _envoyer_invitation_portail(invitation, company):
         return False
 
 
-def inviter_membre_portail(company, client_id, email, role):
+def inviter_membre_portail(company, client_id, email, role, base_url=None):
     """NTPRT6 — Crée une invitation « équipe portail » et l'envoie par email.
 
     ``client_id`` doit correspondre à un ``ComptePortailClient`` déjà
@@ -630,6 +639,10 @@ def inviter_membre_portail(company, client_id, email, role):
     d'invitation flottante sans compte cible). ``role`` invalide retombe sur
     ``lecture`` (le choix le moins permissif — jamais un défaut permissif
     silencieux).
+
+    ADOC116 — ``base_url`` : racine de l'hôte ERP de la requête (construite
+    par la vue) où pointe le lien de l'e-mail ; absente ⇒ invitation créée,
+    aucun e-mail.
     """
     import secrets
 
@@ -654,7 +667,7 @@ def inviter_membre_portail(company, client_id, email, role):
         token_invitation=secrets.token_urlsafe(32),
         expire_le=timezone.now() + DUREE_VALIDITE_INVITATION,
     )
-    _envoyer_invitation_portail(invitation, company)
+    _envoyer_invitation_portail(invitation, company, base_url=base_url)
     return invitation
 
 
