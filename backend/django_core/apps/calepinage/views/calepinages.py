@@ -804,12 +804,17 @@ def contexte_conception(calepinage, request=None):
     from .. import selectors as cal_selectors
 
     company = getattr(calepinage, 'company', None)
-    contexte_devis = _contexte_devis_lie(calepinage, company)
+    devis = _devis_lie_de(calepinage, company)
+    contexte_devis = _contexte_devis_lie(calepinage, company, devis=devis)
     # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
     geo = cal_selectors.contexte_geographique(calepinage)
     geometrie = _geometrie(calepinage, contexte_devis, geo)
     cible = _cible(calepinage, contexte_devis)
     return {
+        # ACAL36 — « Réviser » est-il possible sur le devis lié ? LU sur ventes
+        # (``devis_modifiabilite``, jamais une règle recopiée) ; ``False`` sans
+        # devis lié.
+        'revision_possible': _revision_possible(devis),
         'calepinage': {
             'id': calepinage.pk,
             'titre': _texte(getattr(calepinage, 'titre', '')) or '',
@@ -830,6 +835,9 @@ def contexte_conception(calepinage, request=None):
             # ``''`` — jamais une clé absente.
             'client_adresse': geo.get('adresse') or '',
             'client_ville': geo.get('ville') or '',
+            # ACAL36 — le devis lié tel que le contexte ventes le décrit
+            # ({id, reference, statut, client_nom}), ou ``None``.
+            'devis_lie': _devis_lie_resume(contexte_devis),
         },
         'geometrie': geometrie,
         'cible': cible,
@@ -840,16 +848,9 @@ def contexte_conception(calepinage, request=None):
     }
 
 
-def _contexte_devis_lie(calepinage, company):
-    """Le contexte d'atelier du DEVIS lié, ou ``None``.
-
-    Lecture cross-app par ``apps.ventes.selectors`` — la MÊME fonction que
-    l'atelier devis, jamais un second calcul de cible ni une seconde façon de
-    dire « lecture seule ».
-    """
-    from apps.ventes.selectors import (
-        contexte_conception_devis, get_devis_by_pk,
-    )
+def _devis_lie_de(calepinage, company):
+    """ACAL36 — le devis lié (même société), ou ``None`` — lu par ventes."""
+    from apps.ventes.selectors import get_devis_by_pk
 
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id or company is None:
@@ -857,7 +858,42 @@ def _contexte_devis_lie(calepinage, company):
     devis = get_devis_by_pk(devis_id)
     if devis is None or devis.company_id != company.pk:
         return None
+    return devis
+
+
+def _contexte_devis_lie(calepinage, company, devis=None):
+    """Le contexte d'atelier du DEVIS lié, ou ``None``.
+
+    Lecture cross-app par ``apps.ventes.selectors`` — la MÊME fonction que
+    l'atelier devis, jamais un second calcul de cible ni une seconde façon de
+    dire « lecture seule ».
+    """
+    from apps.ventes.selectors import contexte_conception_devis
+
+    if devis is None:
+        devis = _devis_lie_de(calepinage, company)
+    if devis is None:
+        return None
     return contexte_conception_devis(devis, company)
+
+
+def _revision_possible(devis):
+    """ACAL36 — ``revision_possible`` du verdict ventes, ``False`` sans devis."""
+    if devis is None:
+        return False
+    from apps.ventes.selectors import devis_modifiabilite
+
+    return bool(devis_modifiabilite(devis).get('revision_possible'))
+
+
+def _devis_lie_resume(contexte_devis):
+    """ACAL36 — ``{id, reference, statut, client_nom}`` du devis lié, ou
+    ``None`` — repris du contexte ventes, jamais recomposé ici."""
+    bloc = (contexte_devis or {}).get('devis') if contexte_devis else None
+    if not isinstance(bloc, dict):
+        return None
+    return {cle: bloc.get(cle)
+            for cle in ('id', 'reference', 'statut', 'client_nom')}
 
 
 def _layout_decrit_une_geometrie(layout):

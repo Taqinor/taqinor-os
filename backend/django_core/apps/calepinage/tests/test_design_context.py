@@ -36,8 +36,6 @@ CONTRAT = json.loads(
 #: back : chaque tâche nommée sert sa clé et retire son entrée ; la table
 #: vide, ``forme_serveur`` redevient ``complete``.
 EN_ATTENTE = {
-    'revision_possible': 'ACAL36',
-    'calepinage.devis_lie': 'ACAL36',
     'calepinage.lead_supprime': 'ACAL178',
     'geometrie.repere_lead': 'ACAL191',
     'geometrie.ecart_m': 'ACAL191',
