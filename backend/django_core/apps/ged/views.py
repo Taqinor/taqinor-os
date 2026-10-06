@@ -2590,6 +2590,9 @@ class ArchivageLegalViewSet(TenantMixin,
     def get_queryset(self):
         qs = selectors.archivages_legaux_for_company(
             self.request.user.company)
+        # ADOC37 — archivages des seuls documents visibles de l'appelant.
+        qs = qs.filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2693,6 +2696,9 @@ class LegalHoldViewSet(TenantMixin,
 
     def get_queryset(self):
         qs = selectors.legal_holds_for_company(self.request.user.company)
+        # ADOC37 — holds des seuls documents visibles de l'appelant.
+        qs = qs.filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -2901,6 +2907,9 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
 
     def get_queryset(self):
         qs = selectors.demandes_signature_for_company(self.request.user.company)
+        # ADOC37 — demandes des seuls documents visibles de l'appelant.
+        qs = qs.filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
@@ -3453,7 +3462,13 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC37 — une demande soldée par un document invisible de l'appelant
+        # (coffre d'un collègue, ACL, corbeille) ne lui est pas listée.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company).filter(
+            models.Q(document__isnull=True)
+            | models.Q(document_id__in=selectors.document_ids_visibles(
+                self.request.user)))
         folder = self.request.query_params.get('folder')
         if folder:
             qs = qs.filter(folder_id=folder)
@@ -3744,7 +3759,12 @@ class AclGedViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # ADOC37 — les droits posés sur un document invisible de l'appelant
+        # (coffre d'un collègue, ACL refusée, corbeille) ne lui sont pas listés.
+        qs = super().get_queryset().filter(
+            models.Q(document__isnull=True)
+            | models.Q(document_id__in=selectors.document_ids_visibles(
+                self.request.user)))
         params = self.request.query_params
         folder = params.get('folder')
         if folder:
@@ -4072,7 +4092,10 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(company=self.request.user.company)
+        # ADOC37 — planifications des seuls documents visibles de l'appelant.
+        qs = super().get_queryset().filter(
+            company=self.request.user.company,
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
