@@ -56,7 +56,7 @@ import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
 import BandeauProvenanceProduction from '../../features/calepinage/production/BandeauProvenanceProduction'
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
-import { hacherLayout, creerGestionnaireBrouillon } from '../../features/calepinage/brouillon'
+import { hacherLayout, creerGestionnaireBrouillon, memoriserReprise } from '../../features/calepinage/brouillon'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
@@ -70,7 +70,7 @@ import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 // mécanique que celle de `Vue2DPlan.jsx` (CAL104) — voir l'en-tête du module.
 import {
   dataUrlToBlob, pinDepuisLead, cibleActiveDuContexte, httpMessage,
-  stockageBrouillonLocal, formaterHeureBrouillon,
+  stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
@@ -229,12 +229,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // réussi, ce qui fait démarrer une minuterie/clé neuve et orpheline
   // l'ancien brouillon (jamais réhydraté par erreur). `brouillonPropose` porte
   // le brouillon TROUVÉ à l'ouverture, tant que l'utilisateur n'a pas choisi
-  // « Reprendre » ou « Ignorer » — rien n'est réhydraté sans ce geste : le
-  // boot du constructeur ATTEND cette décision (voir `bootCalepinage`).
+  // « Reprendre » ou « Ignorer » — rien n'est réhydraté sans ce geste.
+  // ACAL84 — `hashBaseBrouillon` est l'empreinte « document » SERVEUR
+  // (design-context au boot, puis celle rendue par chaque écriture), jamais un
+  // djb2 de l'objet client ; et le boot n'attend plus la décision (bandeau
+  // non bloquant).
   const [hashBaseBrouillon, setHashBaseBrouillon] = useState(null)
   const [brouillonPropose, setBrouillonPropose] = useState(null)
   const gestionnaireBrouillonRef = useRef(null)
-  const poursuivreBootRef = useRef(null)
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -262,7 +264,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
     estCalepinage,
     estDevis,
     leadId,
-    poursuivreBootRef,
     reducedMotion,
     setBrouillonPropose,
     setBuilderApiActuel,
@@ -284,17 +285,32 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // le brouillon local n'est PAS effacé pour autant (seul un enregistrement
   // réussi l'efface, CALX68), mais le document serveur, lui, reste intact
   // dans les deux cas : ni l'un ni l'autre ne fait le moindre appel réseau.
-  const reprendreBrouillon = async () => {
-    const poursuivre = poursuivreBootRef.current
+  // ACAL84 — l'atelier a DÉJÀ booté sur la conception serveur (bandeau non
+  // bloquant) : « Reprendre » mémorise le brouillon pour le PROCHAIN boot
+  // (sessionStorage, consommé une fois par `useAtelierBoot`) puis recharge —
+  // le seul moyen d'hydrater le constructeur sur un autre document.
+  // « Ignorer » ferme seulement le bandeau : la conception serveur est déjà
+  // à l'écran et le brouillon local n'est PAS effacé (seul un enregistrement
+  // réussi l'efface).
+  const reprendreBrouillon = () => {
     const brouillon = brouillonPropose
+    if (!brouillon) return
+    const ok = memoriserReprise(stockageSessionLocal(),
+      { calepinageId, utilisateurId: utilisateurCourantId }, brouillon.layout)
+    if (!ok) {
+      setGenError('Reprise impossible : le stockage local de ce navigateur est indisponible.')
+      return
+    }
     setBrouillonPropose(null)
-    if (poursuivre && brouillon) await poursuivre(brouillon.layout)
+    window.location.reload()
   }
-  const ignorerBrouillon = async () => {
-    const poursuivre = poursuivreBootRef.current
+  const ignorerBrouillon = () => {
     setBrouillonPropose(null)
-    if (poursuivre) await poursuivre(undefined)
   }
+
+  // ACAL84 — en lecture seule, aucun brouillon n'est écrit : il n'y aurait
+  // rien à reprendre (aucun enregistrement possible).
+  const lectureSeuleContexte = contexte != null && !contexte.modifiable
 
   // CALX68 — le planificateur d'écriture du brouillon : démarre une fois le
   // constructeur prêt (`builderReady`) et une empreinte de base connue
@@ -303,7 +319,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // LA MÊME fonction que « Enregistrer le calepinage » (CAL37) — donc un
   // brouillon repris est strictement au format d'un enregistrement normal.
   useEffect(() => {
-    if (!estCalepinage || !builderReady || !hashBaseBrouillon) return undefined
+    if (!estCalepinage || !builderReady || !hashBaseBrouillon || lectureSeuleContexte) return undefined
     const gestionnaire = creerGestionnaireBrouillon({
       storage: stockageBrouillonLocal(),
       calepinageId,
@@ -319,7 +335,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       if (gestionnaireBrouillonRef.current === gestionnaire) gestionnaireBrouillonRef.current = null
     }
   }, [estCalepinage, builderReady, calepinageId, utilisateurCourantId,
-    hashBaseBrouillon, intervalleBrouillonSecondes])
+    hashBaseBrouillon, intervalleBrouillonSecondes, lectureSeuleContexte])
 
   // VT13 — la photo réelle du toit se demande sur le LEAD, jamais sur la
   // visite : mode lead (l'id de l'URL) ou mode devis QUAND le devis porte un
@@ -667,7 +683,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // plus récent, il s'efface (repli sur `layout` si `serializeLayout()`
         // n'est déjà plus joignable).
         gestionnaireBrouillonRef.current?.effacer()
-        setHashBaseBrouillon(hacherLayout(layout))
+        setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon) // ACAL84
         toastInfo('Aucun changement')
         setGenStatus(null)
         setSending(false)
@@ -696,7 +712,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
       // ce qui fait démarrer une minuterie/clé neuve pour la suite de la
       // session (l'effet dédié plus haut réagit à `hashBaseBrouillon`).
       gestionnaireBrouillonRef.current?.effacer()
-      setHashBaseBrouillon(hacherLayout(layout))
+      // ACAL84 — la clé suivante est l'empreinte SERVEUR rendue par l'écriture.
+      setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon)
       setGenStatus(null)
       setSending(false)
       setStatus(
@@ -964,9 +981,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
         <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
 
         {/* CALX68 — LE BANDEAU DE REPRISE DE BROUILLON. N'existe QUE tant que
-            l'utilisateur n'a pas choisi : le constructeur 3D n'a pas encore
-            booté (voir `bootCalepinage`/`poursuivreBootCalepinage`), donc
-            « rien n'est réhydraté sans le geste ». */}
+            l'utilisateur n'a pas choisi. ACAL84 — NON BLOQUANT : l'atelier a
+            déjà booté sur la conception serveur ; « Reprendre » recharge sur
+            le brouillon, « Ignorer » ferme le bandeau — « rien n'est
+            réhydraté sans le geste ». */}
         {estCalepinage && brouillonPropose && (
           <div className="cine-card mt-4 border border-brass-400/40 p-4"
             data-testid="cal-brouillon-bandeau">

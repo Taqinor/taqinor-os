@@ -236,6 +236,16 @@ export function stockageBrouillonLocal() {
   }
 }
 
+// ACAL84 — même accès protégé à `sessionStorage` : la reprise d'un brouillon
+// (« Reprendre ») y est mémorisée le temps d'UN rechargement de l'onglet.
+export function stockageSessionLocal() {
+  try {
+    return typeof window !== 'undefined' ? window.sessionStorage : null
+  } catch {
+    return null
+  }
+}
+
 // CALX68 — l'heure du brouillon, pour le bandeau (« Reprendre le brouillon du
 // <heure> »). Un horodatage illisible n'affiche rien plutôt qu'une heure
 // fabriquée.

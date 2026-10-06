@@ -254,6 +254,67 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     await waitFor(() => expect(screen.queryByTestId('rp9-calepinage-auto-note')).toBeNull())
   })
 
+  /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */
+  it('lecture seule → aucun brouillon (le gestionnaire ne démarre pas)', async () => {
+    const espion = vi.spyOn(window, 'setInterval')
+    try {
+      calepinageApi.calepinages.designContext.mockResolvedValue({
+        data: { ...CTX, modifiable: false, raison_lecture_seule: 'Devis accepté.' },
+      })
+      rendreCalepinage(CTX.calepinage.id)
+      await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+      await screen.findByTestId('pv20-lecture-seule')
+      const sondages = espion.mock.calls.filter(([, ms]) => ms === 4000)
+      expect(sondages).toHaveLength(0)
+      expect(Object.keys(window.localStorage)
+        .filter((k) => k.startsWith('calepinage_brouillon'))).toEqual([])
+    } finally {
+      espion.mockRestore()
+    }
+  })
+
+  it('modifiable → le gestionnaire de brouillon démarre (témoin du test précédent)', async () => {
+    const espion = vi.spyOn(window, 'setInterval')
+    try {
+      calepinageApi.calepinages.designContext.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      rendreCalepinage(CTX.calepinage.id)
+      await waitFor(() => expect(espion.mock.calls.some(([, ms]) => ms === 4000)).toBe(true))
+    } finally {
+      espion.mockRestore()
+    }
+  })
+
+  it('brouillon trouvé → l’atelier boote SANS attendre le choix, clé = empreinte serveur', async () => {
+    const cle = `calepinage_brouillon:${CTX.calepinage.id}:anonyme:${CTX.geometrie.empreinte_document}`
+    const orpheline = `calepinage_brouillon:${CTX.calepinage.id}:anonyme:${'0'.repeat(64)}`
+    window.localStorage.setItem(cle, JSON.stringify({
+      layout: { version: 2, zones: [{ id: 'brouillon' }] }, horodatage: '2026-10-05T09:00:00.000Z',
+    }))
+    window.localStorage.setItem(orpheline, JSON.stringify({
+      layout: { version: 2, zones: [] }, horodatage: '2026-10-01T09:00:00.000Z',
+    }))
+    try {
+      calepinageApi.calepinages.designContext.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      rendreCalepinage(CTX.calepinage.id)
+      expect(await screen.findByTestId('cal-brouillon-bandeau')).toBeTruthy()
+      // Non bloquant : le constructeur a booté sur la conception SERVEUR.
+      await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalledTimes(1))
+      expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.geometrie.roof_layout)
+        .toEqual(CTX.geometrie.roof_layout)
+      // La clé périmée est purgée à l'ouverture, la courante reste.
+      expect(window.localStorage.getItem(orpheline)).toBeNull()
+      expect(window.localStorage.getItem(cle)).not.toBeNull()
+      await userEvent.click(screen.getByTestId('cal-brouillon-ignorer'))
+      expect(screen.queryByTestId('cal-brouillon-bandeau')).toBeNull()
+      expect(initRoofToolPro8).toHaveBeenCalledTimes(1)
+    } finally {
+      window.localStorage.removeItem(cle)
+      window.localStorage.removeItem(orpheline)
+    }
+  })
+
   it('cible absente : « non renseignée », jamais une puissance inventée', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context', 'exemple_vide'))
