@@ -70,9 +70,12 @@ class SchemaCiV2Test(SimpleTestCase):
         self.assertIn('cle_inventee_ci', reproches[0])
         self.assertIn('Clé inconnue', reproches[0])
 
-    def test_cles_v1_toujours_declarees(self):
+    def test_cles_v1_retirees_par_ciq129(self):
+        """CIQ129 — les clés `a_retirer_v1` ont quitté le schéma : chacune
+        reçue est refusée en la nommant."""
         for cle in _cles_v2()['a_retirer_v1']:
-            self.assertIn(cle, es.SCHEMA)
+            self.assertNotIn(cle, es.SCHEMA)
+            self.assertIn(cle, es.CLES_RETIREES_CI_V1)
 
     def test_derivees_non_copiees(self):
         self.assertIn('etude_ci', CLES_DERIVEES_NON_COPIEES)

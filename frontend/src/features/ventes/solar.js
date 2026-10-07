@@ -111,7 +111,8 @@ export const COMMERCIAL_CATEGORIES = [
 ]
 
 // Questions 2-4 par catégorie (recherche 2026-07-16). key = clé snake_case
-// stockée dans etude_params (et acceptée par le webhook QX51). type =
+// envoyée au moteur C&I dans `rythme.reponses_categorie` (jamais à plat dans
+// etude_params, CIQ129) et acceptée par le webhook QX51. type =
 // 'number' | 'bool' | 'select' (+ options).
 export const COMMERCIAL_CATEGORY_QUESTIONS = {
   hotel: [

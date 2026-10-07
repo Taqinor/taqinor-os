@@ -539,39 +539,43 @@ def _taux_libelle(taux) -> str:
     return f"{t:g}".replace(".", ",")
 
 
-#: QJR625 — dérivées écran I/C qui décrivent UN kWc précis.
-_DERIVEES_ETUDE_IC = ("taux_autoconso", "taux_couverture", "payback",
-                      "injection_kwh_an", "injection_dh_an")
-#: … et, pour un ancien devis (base = ``etude['kwc']``), la base elle-même et
-#: les chiffres saisis à partir d'elle.
+#: QJR625 — pour un devis I/C dont l'étude porte sa base ``etude['kwc']``, la
+#: base elle-même et les chiffres saisis à partir d'elle. CIQ129 : les
+#: dérivées écran v1 (et leur base ``etude_kwc_base``) ont quitté le schéma ;
+#: elles sont retirées de l'étude rendue dès l'entrée (``_etude_rendue``).
 _DERIVEES_ETUDE_IC_ANCIENNES = ("kwc", "production_annuelle",
                                 "economies_annuelles")
 
 
-def _etude_ic_fraiche(etude, puissance_kwc):
-    """QJR625 — ``(etude, perimee)`` : l'étude I/C sans ses dérivées quand
-    elles ont été calculées pour un autre kWc que celui des lignes.
+def _etude_rendue(etude_params):
+    """CIQ129 (D-CIQ-21) — l'étude RENDUE : une COPIE du bloc stocké, sans les
+    clés retirées du schéma (``etude_schema.CLES_RETIREES_CI_V1``). Un ancien
+    devis qui les porte encore ne les fait plus lire par aucun gabarit ; le
+    bloc stocké n'est jamais muté (règle #4)."""
+    from ..domain.etude_schema import CLES_RETIREES_CI_V1
 
-    Base = ``etude_kwc_base`` (QJR578), sinon ``etude['kwc']`` (anciens
-    devis). Écart relatif > ``pricing._HORAIRE_TOLERANCE_KWC`` ⇒ dérivées
-    retirées d'une COPIE (l'``etude_params`` stocké n'est jamais muté). Sans
-    base ou sans puissance des lignes : étude rendue telle quelle.
+    return {cle: valeur for cle, valeur in dict(etude_params or {}).items()
+            if cle not in CLES_RETIREES_CI_V1}
+
+
+def _etude_ic_fraiche(etude, puissance_kwc):
+    """QJR625 — ``(etude, perimee)`` : l'étude I/C sans ses chiffres saisis
+    quand ils l'ont été pour un autre kWc que celui des lignes.
+
+    Base = ``etude['kwc']``. Écart relatif > ``pricing._HORAIRE_TOLERANCE_KWC``
+    ⇒ chiffres retirés d'une COPIE (l'``etude_params`` stocké n'est jamais
+    muté). Sans base ou sans puissance des lignes : étude rendue telle quelle.
     """
     from .pricing import _HORAIRE_TOLERANCE_KWC
 
-    base = _nombre(etude.get("etude_kwc_base"))
-    ancien = False
-    if not base:
-        base = _nombre(etude.get("kwc"))
-        ancien = True
+    base = _nombre(etude.get("kwc"))
     lignes_kwc = _nombre(puissance_kwc)
     if not base or not lignes_kwc:
         return etude, False
     if abs(base - lignes_kwc) / lignes_kwc <= _HORAIRE_TOLERANCE_KWC:
         return etude, False
     sortie = dict(etude)
-    for cle in _DERIVEES_ETUDE_IC + (
-            _DERIVEES_ETUDE_IC_ANCIENNES if ancien else ()):
+    for cle in _DERIVEES_ETUDE_IC_ANCIENNES:
         sortie.pop(cle, None)
     return sortie, True
 
@@ -2407,7 +2411,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # When the quote carries a stored étude (industrial), its consumption-driven
     # production/savings are canonical; payback and prix/kWc are recomputed from
     # the canonical totals so edited lines can never desynchronize the document.
-    etude = dict(devis_etude_override or {})
+    # CIQ129 — sans les clés retirées du schéma (jamais relues, D-CIQ-21).
+    etude = _etude_rendue(devis_etude_override)
     if _mode_ci:
         # CIQ210 — la toiture ne fournit au C&I que géométrie et production :
         # une économie écrite par un calepinage synchronisé (ou une étude
@@ -2415,11 +2420,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # du seul bloc ``economie_ci``.
         etude.pop("economies_annuelles", None)
     # ── QJR625 — UNE ÉTUDE I/C CALCULÉE POUR UN AUTRE KWC N'EST PAS IMPRIMÉE ─
-    # Les dérivées écran (autoconsommation, couverture, payback, injection)
-    # décrivent le kWc du moment où l'écran les a calculées
-    # (``etude_kwc_base``, QJR578 ; repli ``etude['kwc']`` des anciens devis).
+    # Les chiffres saisis d'une étude I/C décrivent le kWc de sa base
+    # (``etude['kwc']`` ; CIQ129 : les dérivées écran v1 et ``etude_kwc_base``
+    # ne sont plus rendues — le moteur C&I recalcule ``etude_ci``).
     # Une ligne corrigée depuis (D-QJR5-1 : republication sur le même lien)
-    # les rend fausses : au-delà de la tolérance du moteur horaire, elles sont
+    # les rend fausses : au-delà de la tolérance du moteur horaire, ils sont
     # OMISES (jamais recalculées ici — zéro chiffre inventé) et l'équipe en est
     # avertie. Sans base connue : comportement inchangé. Rendu seul (règle #4).
     if (mode or "").strip().lower() in ("industriel", "commercial"):

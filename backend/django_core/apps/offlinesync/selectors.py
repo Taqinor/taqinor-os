@@ -16,14 +16,6 @@ def operations_scoped(company, *, statut=None, module=None):
     return qs
 
 
-def operation_scoped(company, client_op_id):
-    """Une opération par sa clé client, bornée société (ou None)."""
-    if not client_op_id:
-        return None
-    return OfflineOperation.objects.filter(
-        company=company, client_op_id=client_op_id).first()
-
-
 def conflits_ouverts(company):
     """NTMOB2 — opérations EN CONFLIT non encore arbitrées, bornées société.
 
@@ -32,17 +24,3 @@ def conflits_ouverts(company):
     second critère à tenir synchronisé."""
     return operations_scoped(
         company, statut=OfflineOperation.Statut.CONFLIT)
-
-
-def compte_conflits_ouverts(company):
-    """Compteur pour le badge « synchro » (0 quand tout est arbitré)."""
-    return conflits_ouverts(company).count()
-
-
-def compte_par_statut(company):
-    """``{statut: n}`` pour la société — alimente un écran de diagnostic."""
-    from django.db.models import Count
-
-    lignes = (operations_scoped(company)
-              .values('statut').annotate(n=Count('id')))
-    return {ligne['statut']: ligne['n'] for ligne in lignes}

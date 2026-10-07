@@ -722,5 +722,85 @@ class GuardedWriteToolsTests(unittest.TestCase):
             self.assertIn("PROPOSITION", tool.description)
 
 
+# ── AANA18 — preuve HMAC de confirmation (contrat partagé avec Django) ────────
+_CONTRAT_LOGS_CONFIRMER = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "django_core", "apps", "agent", "contract_samples", "logs_confirmer.json")
+
+
+class PreuveConfirmationTests(unittest.TestCase):
+    """C-AANA-008 / C-AANA-032 — la journalisation transmet une preuve HMAC
+    (action + entrées + objet + utilisateur + société) que Django recalcule ;
+    `proposal_hash` = cette preuve, jamais le jeton brut. Le format est le
+    contrat `apps/agent/contract_samples/logs_confirmer.json`, chargé ici ET
+    par `apps/agent/tests_aana_confirmation_prouvee.py`."""
+
+    def setUp(self):
+        self._sec = mock.patch.object(at, "ACTION_PROPOSAL_SECRET", "test-sig-secret")
+        self._sec.start()
+        self.addCleanup(self._sec.stop)
+        self.fake_redis = _FakeRedis()
+        self._rds = mock.patch.object(at, "_proposal_redis", lambda: self.fake_redis)
+        self._rds.start()
+        self.addCleanup(self._rds.stop)
+
+    def test_vecteur_du_contrat(self):
+        with open(_CONTRAT_LOGS_CONFIRMER, encoding="utf-8") as fh:
+            contrat = json.load(fh)
+        vecteur = contrat["preuve"]["vecteur_de_test"]
+        self.assertEqual(at.message_preuve_confirmation(**vecteur["champs"]),
+                         vecteur["message"])
+        self.assertEqual(
+            at.calculer_preuve_confirmation(secret=vecteur["secret"],
+                                            **vecteur["champs"]),
+            vecteur["preuve"])
+        # Le corps d'exemple porte bien les cles que FastAPI envoie.
+        for cle in ("action_key", "risk_level", "inputs", "object_id",
+                    "preuve", "proposal_hash"):
+            self.assertIn(cle, contrat["exemple_corps"])
+
+    def test_journalisation_porte_la_preuve_de_l_appelant(self):
+        import jwt
+        jeton = jwt.encode({"user_id": 12, "token_type": "access"},
+                           "cle-quelconque", algorithm="HS256")
+        ctx = ActionContext(company_id=7, role="admin", permissions=[],
+                            token=jeton)
+        with mock.patch.object(at, "_django_call",
+                               lambda *a, **k: (_ for _ in ()).throw(
+                                   AssertionError("propose only"))):
+            out = at.run_catalogue_action(ctx, _CAT_CLIENT_CREATE,
+                                          {"nom": "Client Confirmé"})
+        token = json.loads(out)["confirm_token"]
+        calls = []
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            calls.append({"path": path, "payload": payload})
+            return {"ok": True, "status": 201, "data": {"id": 42}}
+
+        with mock.patch.dict(os.environ,
+                             {"AGENT_HMAC_SECRET": "secret-de-test-contrat"}), \
+                mock.patch.object(at, "fetch_catalogue",
+                                  lambda c: _GUARDED_WRITES), \
+                mock.patch.object(at, "_django_call", fake_call):
+            res = at.confirm_proposal(ctx, token)
+        self.assertTrue(res["ok"])
+        corps = calls[1]["payload"]
+        self.assertEqual(calls[1]["path"], "/api/django/agent/logs/confirmer/")
+        # Memes champs que le vecteur du contrat => meme preuve.
+        with open(_CONTRAT_LOGS_CONFIRMER, encoding="utf-8") as fh:
+            vecteur = json.load(fh)["preuve"]["vecteur_de_test"]
+        self.assertEqual(corps["preuve"], vecteur["preuve"])
+        self.assertEqual(corps["proposal_hash"], corps["preuve"])
+        self.assertNotIn(token, json.dumps(corps))
+
+    def test_sans_secret_preuve_vide(self):
+        with mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": ""}):
+            self.assertEqual(
+                at.calculer_preuve_confirmation(
+                    action_key="crm.client.create", company_id=7, user_id=12,
+                    inputs={}, object_id=None),
+                "")
+
+
 if __name__ == "__main__":
     unittest.main()

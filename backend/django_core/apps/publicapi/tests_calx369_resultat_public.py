@@ -43,7 +43,7 @@ SIMULATION = json.loads(
 CHAMPS = ('calepinage_id', 'simule', 'production_annuelle_kwh',
           'rendement_specifique_kwh_kwc', 'ratio_performance', 'p50_kwh',
           'p75_kwh', 'p90_kwh', 'pertes', 'calcule_le', 'simulation_perimee',
-          'motif')
+          'motif', 'complet', 'mention_production')
 GRANDEURS = ('production_annuelle_kwh', 'rendement_specifique_kwh_kwc',
              'ratio_performance', 'p50_kwh', 'p75_kwh', 'p90_kwh')
 CHAMPS_POSTE = ('code', 'libelle', 'pourcentage', 'source', 'gain', 'motif')
