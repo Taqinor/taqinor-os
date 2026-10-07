@@ -6,6 +6,8 @@ Sondes RESA de l'audit stock du 2026-10-06 rejouées sur les services réels
     COMPLÉTER la réservation, jamais la réduire ;
   * ASTK122 (RESA-4) — la réservation depuis un BC relit la nomenclature
     gelée (option retenue), jamais toutes les lignes du devis ;
+  * ASTK123 (RESA-5) — annuler un BC (toggle ON) ne libère plus les
+    réservations d'un chantier vivant ;
   * ASTK124 (RESA-6) — prédicat unique `chantier_peut_reserver` : une
     réception ne réactive plus la réservation d'un chantier annulé/clôturé.
 
@@ -27,7 +29,7 @@ from apps.installations.models import (
 from apps.installations.services import (
     changer_statut_chantier, chantier_peut_reserver,
     consommer_reservation_bc, create_installation_from_devis,
-    release_reservations, reserver_stock_depuis_bc,
+    liberer_reservation_bc, release_reservations, reserver_stock_depuis_bc,
 )
 from apps.stock.models import (
     BonCommandeFournisseur, Fournisseur, Produit, ReceptionFournisseur,
@@ -244,3 +246,39 @@ class ChantierMortTests(ResaBase):
         inst.statut = Installation.Statut.CLOTURE
         self.assertFalse(chantier_peut_reserver(inst))
         self.assertFalse(chantier_peut_reserver(None))
+
+
+class AnnulationBcTests(ResaBase):
+    SLUG = 'co-astk123'
+
+    def _bc(self, devis):
+        n = next(_seq)
+        return BonCommande.objects.create(
+            company=self.company, reference=f'BC-ASTK123-{n}', devis=devis,
+            client=devis.client, statut=BonCommande.Statut.CONFIRME)
+
+    def test_annuler_bc_garde_la_reservation_du_chantier_vivant(self):
+        panneau = self.produit('Panneau ASTK123', stock=50)
+        devis = self.devis_accepte([(panneau, 10)])
+        inst, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+        bc = self._bc(devis)
+        reserver_stock_depuis_bc(bc)
+
+        self.assertEqual(liberer_reservation_bc(bc), 0)
+        resa = self.resa(inst, panneau)
+        self.assertEqual((resa.active, resa.quantite), (True, 10))
+
+        self.installer(inst)
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 40)
+
+    def test_chantier_annule_libere(self):
+        panneau = self.produit('Panneau ASTK123 B', stock=50)
+        devis = self.devis_accepte([(panneau, 10)])
+        inst, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+        bc = self._bc(devis)
+        Installation.objects.filter(pk=inst.pk).update(annule=True)
+        self.assertEqual(liberer_reservation_bc(bc), 1)
+        self.assertFalse(self.resa(inst, panneau).active)

@@ -1254,8 +1254,10 @@ def _bc_quantities(bon_commande):
     nomenclature est calculée depuis le devis (`_freeze_bom` : option
     retenue × N) — jamais toutes ses lignes."""
     installation = _installation_pour_bc(bon_commande)
-    if installation is not None:
+    if installation is not None and installation.bom:
         return _bom_quantities(installation)
+    # Chantier sans nomenclature gelée (créé hors `create_installation_from
+    # _devis`) ou pas encore de chantier : même calcul depuis le devis.
     if not bon_commande.devis_id:
         return {}
     return _quantites_depuis_bom(_freeze_bom(bon_commande.devis))
@@ -1303,9 +1305,14 @@ def liberer_reservation_bc(bon_commande):
     """YDOCF7 — libère les réservations du chantier du BC à son ANNULATION.
 
     No-op sûr si aucun chantier associé. Ne touche jamais une réservation
-    déjà consommée (mécanisme `release_reservations` réutilisé tel quel)."""
+    déjà consommée (mécanisme `release_reservations` réutilisé tel quel).
+
+    ASTK123 (C-ASTK-031) — no-op tant que le chantier est VIVANT (ni annulé
+    ni clôturé, `chantier_peut_reserver`) : annuler un BC ne retire plus au
+    chantier la réservation de son propre besoin (N14). La libération d'un
+    chantier mort reste celle de son annulation/clôture."""
     installation = _installation_pour_bc(bon_commande)
-    if installation is None:
+    if installation is None or chantier_peut_reserver(installation):
         return 0
     return release_reservations(installation)
 
