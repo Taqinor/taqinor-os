@@ -399,9 +399,25 @@ export async function textePdf(octets) {
 // Mois de consommation d'un site commercial (kWh), profil saisonnier plausible.
 export const KWH_COMMERCIAL = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
 
+/** Le PROFIL DÉCLARÉ minimal que le moteur C&I exige (D-CIQ-2, CIQ131 :
+ *  « profil déclaré exigé », aucun archétype supposé ; CIQ222 : « aucun prix
+ *  plat supposé » sans contrat) : jours ouverts lundi→samedi, plage des jours
+ *  ouvrés 8 h → 18 h, contrat BT patenté (grille ONEE officielle). Sans ces
+ *  trois saisies l'aperçu serveur rend `taille: null` + une alerte BLOQUANTE
+ *  (`profil_declare_exige`, puis `jours_ouverts_non_declares`, `tarif_omis`),
+ *  Auto-remplir ne pose aucune ligne et « Créer le devis » est refusé
+ *  (« au moins un panneau et un onduleur ») — constaté au nocturne CAD177. */
+export async function declarerProfilCommercial(page) {
+  for (let i = 0; i < 6; i += 1) await page.getByTestId(`gen-ci-jour-${i}`).check()
+  await page.getByTestId('gen-ci-plage-ouvre-debut').fill('8')
+  await page.getByTestId('gen-ci-plage-ouvre-fin').fill('18')
+  await page.locator('#gen-tarif-contrat').selectOption('bt_patente')
+}
+
 /** Crée un devis COMMERCIAL par le vrai générateur, depuis un lead : profil
- *  déclaré (12 mois) → Auto-remplir (aperçu serveur) → « Créer le devis ».
- *  Le client est résolu côté serveur depuis le lead. Renvoie l'id du devis. */
+ *  déclaré (12 mois, calendrier, contrat) → Auto-remplir (aperçu serveur) →
+ *  « Créer le devis ». Le client est résolu côté serveur depuis le lead.
+ *  Renvoie l'id du devis. */
 export async function creerDevisCommercialDepuisLead(page, leadId) {
   await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
@@ -409,6 +425,7 @@ export async function creerDevisCommercialDepuisLead(page, leadId) {
   await page.getByRole('radio', { name: /Commercial/ }).click()
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
+  await declarerProfilCommercial(page)
   await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
   const auto = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
