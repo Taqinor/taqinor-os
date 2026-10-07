@@ -926,6 +926,84 @@ def release_reservations(installation):
             .update(active=False))
 
 
+_MARQUEUR_SOLDE_VENTE = 'reservation_soldee_vente'
+
+
+def solder_reservations_vente(installation, quantites_par_produit, reference,
+                              user=None):
+    """ASTK120 (C-ASTK-028) — « une vente = une sortie ».
+
+    Le matériel d'une vente déjà SORTI du stock par un autre chemin (facture
+    directe, BC livré, livraison directe chantier — appelants ASTK135 /
+    ASTK98, via ce service, doctrine cross-app) SOLDE la réservation N14 du
+    chantier : pour chaque ``{produit_id: quantite}``, la réservation active
+    non consommée est DÉCRÉMENTÉE de la quantité sortie (bornée à zéro) ; à 0
+    elle est marquée consommée (``consomme=True``, ``date_consommation``) —
+    `consume_reservations` à « Installé » ne sort donc plus que le
+    RELIQUAT. Chaque solde laisse une note chatter « soldée par
+    <référence> ».
+
+    IDEMPOTENT par (référence, produit) : un rejeu avec la même référence ne
+    décrémente jamais deux fois (marqueur porté par la note chatter, relu
+    sous verrou). No-op pour un chantier annulé ou clôturé, une quantité
+    nulle, ou un produit sans réservation active. À appeler DANS la
+    transaction de la sortie. Renvoie le nombre de réservations modifiées.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import InstallationActivity
+
+    if installation is None or not quantites_par_produit:
+        return 0
+    if (installation.annule
+            or Installation.canonical_statut(installation.statut)
+            == Installation.Statut.CLOTURE):
+        return 0
+    reference = str(reference or '').strip()
+    modifiees = 0
+    with transaction.atomic():
+        for produit_id, quantite in quantites_par_produit.items():
+            try:
+                qte = int(quantite or 0)
+            except (TypeError, ValueError):
+                continue
+            if not produit_id or qte <= 0:
+                continue
+            resa = (StockReservation.objects.select_for_update()
+                    .select_related('produit')
+                    .filter(installation=installation, produit_id=produit_id,
+                            active=True, consomme=False)
+                    .first())
+            if resa is None:
+                continue
+            deja = InstallationActivity.objects.filter(
+                installation=installation, field=_MARQUEUR_SOLDE_VENTE,
+                old_value=reference, new_value=str(produit_id)).exists()
+            if deja:
+                continue
+            decompte = min(qte, resa.quantite)
+            resa.quantite -= decompte
+            changed = ['quantite']
+            if resa.quantite <= 0:
+                resa.consomme = True
+                resa.date_consommation = timezone.now()
+                changed += ['consomme', 'date_consommation']
+            resa.save(update_fields=changed)
+            ref_produit = (resa.produit.sku or resa.produit.nom
+                           if resa.produit_id else produit_id)
+            reste = (f', reste {resa.quantite} réservé(s)'
+                     if resa.quantite > 0 else '')
+            InstallationActivity.objects.create(
+                company=installation.company, installation=installation,
+                user=user, kind=InstallationActivity.Kind.NOTE,
+                field=_MARQUEUR_SOLDE_VENTE, old_value=reference,
+                new_value=str(produit_id),
+                body=(f'Réservation {ref_produit} soldée par {reference} '
+                      f'({decompte} déjà sorti(s) par la vente{reste}).'))
+            modifiees += 1
+    return modifiees
+
+
 # ── YSTCK4 — retour chantier : matériel non posé rapporté au dépôt ─────────
 # La consommation (N14/F11) est à SENS UNIQUE : rien ne permettait de faire
 # remonter le surplus non installé vers le dépôt. `RetourMateriel`/
