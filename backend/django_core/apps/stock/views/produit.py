@@ -1,9 +1,12 @@
+import copy
 import operator  # noqa: F401
 from functools import reduce  # noqa: F401
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction  # noqa: F401
 from django.db.models import (  # noqa: F401
-    ProtectedError, Count, Min, Max, Prefetch, Q, Func, TextField, Value,
+    ProtectedError, Count, Min, Max, Prefetch, Q, Func, QuerySet, TextField,
+    Value,
 )
 from django.db.models.functions import Lower  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
@@ -71,14 +74,31 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
 #     devis ; renommer la référence laisse sinon les devis parler d'un produit
 #     qui n'existe plus sous ce nom ;
 #   * ``prix_vente`` — c'est le prix catalogue auquel une ligne NON NÉGOCIÉE a
-#     été posée.
+#     été posée ;
+#   * ``tva``, ``prix_fixe_ht``, ``prix_par_panneau_ht`` (ASTK89) — la TVA et
+#     le barème forfaitaire (forfait / par panneau) chiffrent aussi les lignes
+#     d'un devis : les corriger sans émettre laissait les brouillons faux
+#     (l'abonné ventes les retarife, ASTK142 ; il ignore d'ici là les clés
+#     qu'il ne sait pas encore lire).
 #
 # Volontairement ABSENTS : ``description`` / ``marque`` / ``garantie`` /
 # ``garantie_mois`` / la fiche technique. Ce ne sont pas des oublis : le moteur
 # de proposition les relit sur le PRODUIT au moment du rendu (fiches produit du
 # PDF), donc ils se propagent DÉJÀ sans qu'aucune ligne n'ait à être réécrite —
 # les émettre ne ferait que réveiller une tâche Celery pour ne rien changer.
-CHAMPS_PRODUIT_SUIVIS_DEVIS = ('nom', 'prix_vente')
+CHAMPS_PRODUIT_SUIVIS_DEVIS = (
+    'nom', 'prix_vente', 'tva', 'prix_fixe_ht', 'prix_par_panneau_ht')
+
+# ASTK87 — champs NON copiés par ``dupliquer`` (le reste de
+# ``Produit._meta.concrete_fields`` l'est). Chaque entrée a sa raison : identité
+# (id), société (posée côté serveur), nom (fourni), identifiants uniques
+# (sku, code_barres), stock physique propre (quantite_stock), un clone naît
+# actif (is_archived), horodatages auto, photo (pointeur vers UNE pièce jointe
+# — jamais partagée entre deux produits).
+CHAMPS_DUPLICATION_EXCLUS = frozenset({
+    'id', 'company', 'nom', 'sku', 'code_barres', 'quantite_stock',
+    'is_archived', 'date_creation', 'date_mise_a_jour', 'photo',
+})
 
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
@@ -92,6 +112,40 @@ def _texte_champ(valeur):
     rester distinguable d'une chaîne vide côté abonné.
     """
     return '' if valeur is None else str(valeur)
+
+
+def _instantane_suivi(produit):
+    """ASTK88 — instantané AVANT des champs suivis par les devis."""
+    return {champ: getattr(produit, champ, None)
+            for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS}
+
+
+def _champs_modifies(avant, produit):
+    """ASTK88 — calcul UNIQUE des champs suivis qui ont changé :
+    ``{champ: [ancien, nouveau]}`` (textes), vide si rien n'a bougé. Partagé
+    par l'édition unitaire (``perform_update``) et l'édition en masse
+    (``services.apply_product_bulk``)."""
+    champs = {}
+    for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS:
+        apres = getattr(produit, champ, None)
+        if avant[champ] != apres:
+            champs[champ] = [_texte_champ(avant[champ]),
+                             _texte_champ(apres)]
+    return champs
+
+
+def emettre_produit_modifie(produit, champs, company, user):
+    """ASTK88 — annonce ``produit_modifie`` sur le bus (best-effort : un
+    abonné en panne ne bloque jamais l'écriture). Sans champ modifié : rien."""
+    if not champs:
+        return
+    try:
+        from core.events import produit_modifie
+        produit_modifie.send(
+            sender=Produit, produit=produit, company=company, user=user,
+            champs=champs)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture
+        pass
 
 
 def _sans_accents(expression):
@@ -168,6 +222,60 @@ class RechercheProduitSansAccents(filters.SearchFilter):
             for terme in termes
         ]
         return qs.filter(reduce(operator.and_, conditions))
+
+
+def _references_vivantes(produit, exclure=(), avec_protegees=True):
+    """ASTK81 — relations inverses VIVANTES d'un produit (C-ASTK-017).
+
+    Parcourt les relations inverses avec le collecteur Django
+    (``NestedObjects``, celui de l'admin) — jamais une liste de modèles écrite
+    à la main — et compte, par modèle, ce qu'une suppression détacherait
+    (``SET_NULL``), supprimerait en cascade (``CASCADE``) ou refuserait
+    (``PROTECT``, si ``avec_protegees``). Les modèles de ``exclure`` (classes)
+    et le produit lui-même ne comptent pas. Retourne ``{(verbose_name,
+    verbose_name_plural): nombre}``, vide si le produit n'est référencé par
+    rien. Jumeau unique de ``destroy`` et ``force_delete``.
+    """
+    from django.contrib.admin.utils import NestedObjects
+    from django.db import router
+    collector = NestedObjects(using=router.db_for_write(Produit))
+    collector.collect([produit])
+    comptes = {}
+
+    def _ajoute(modele, nombre):
+        if modele is Produit or modele in exclure or not nombre:
+            return
+        cle = (str(modele._meta.verbose_name),
+               str(modele._meta.verbose_name_plural))
+        comptes[cle] = comptes.get(cle, 0) + nombre
+
+    for modele, objets in collector.model_objs.items():
+        _ajoute(modele, len(objets))
+    # Django 5 : `field_updates[(champ, valeur)]` est une LISTE de lots, chaque
+    # lot étant un QuerySet (SET_NULL/SET_DEFAULT) ou une liste d'instances.
+    for (_champ, _valeur), lots in collector.field_updates.items():
+        for lot in lots:
+            if isinstance(lot, QuerySet):
+                _ajoute(lot.model, lot.count())
+                continue
+            for modele in {o.__class__ for o in lot}:
+                _ajoute(modele, sum(1 for o in lot if o.__class__ is modele))
+    if avec_protegees:
+        for modele in {o.__class__ for o in collector.protected}:
+            _ajoute(modele, sum(
+                1 for o in collector.protected if o.__class__ is modele))
+    return comptes
+
+
+def _texte_references(comptes):
+    """« 1 réservation de chantier, 2 lignes de bon de commande… »."""
+    def _minuscule(nom):
+        # En milieu de phrase : « 1 réservation de stock », pas « Réservation ».
+        return nom[:1].lower() + nom[1:]
+
+    return ', '.join(
+        f'{n} {_minuscule(singulier if n == 1 else pluriel)}'
+        for (singulier, pluriel), n in sorted(comptes.items()))
 
 
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
@@ -331,56 +439,49 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         Best-effort : l'émission ne peut pas faire échouer l'enregistrement du
         produit (un abonné en panne ne doit pas bloquer le magasinier).
 
-        PÉRIMÈTRE ASSUMÉ : l'édition EN MASSE (action ``bulk``) n'émet pas —
-        elle passe par ``services.apply_product_bulk``, pas par ce point. C'est
-        un manque CONNU, pas un oubli : le brancher demande de décider ce qu'on
-        fait de N × M devis en une requête (file, lot, plafond), une question
-        qui se tranche à part.
+        ASTK88 : l'édition EN MASSE (action ``bulk``) passe par
+        ``services.apply_product_bulk`` et émet le MÊME événement, avec le même
+        calcul (``_champs_modifies``) — la variation de prix en masse recale
+        les devis comme l'édition unitaire.
         """
-        avant = {champ: getattr(serializer.instance, champ, None)
-                 for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS}
+        avant = _instantane_suivi(serializer.instance)
         # L'écriture PASSE PAR ``super()`` : c'est lui qui force la société côté
         # serveur (``TenantMixin.perform_update``). Sauvegarder soi-même ici
         # défairait cette garde d'isolation.
         super().perform_update(serializer)
         produit = serializer.instance
-        champs = {}
-        for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS:
-            apres = getattr(produit, champ, None)
-            if avant[champ] != apres:
-                champs[champ] = [_texte_champ(avant[champ]),
-                                 _texte_champ(apres)]
-        if not champs:
-            return  # rien de significatif n'a bougé : aucun événement
-        try:
-            from core.events import produit_modifie
-            produit_modifie.send(
-                sender=Produit, produit=produit,
-                company=getattr(self.request.user, 'company', None),
-                user=getattr(self.request, 'user', None),
-                champs=champs)
-        except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture
-            pass
+        # rien de significatif n'a bougé : aucun événement (helper ASTK88)
+        emettre_produit_modifie(
+            produit, _champs_modifies(avant, produit),
+            getattr(self.request.user, 'company', None),
+            getattr(self.request, 'user', None))
 
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()
-        try:
-            return super().destroy(request, *args, **kwargs)
-        except ProtectedError:
-            nb = produit.mouvements.count()
-            produit.is_archived = True
-            produit.save(update_fields=['is_archived'])
-            return Response(
-                {
-                    'archived': True,
-                    'detail': (
-                        f'Ce produit a été archivé car il possède {nb} '
-                        f'mouvement(s) de stock. L\'historique est conservé.'
-                    ),
-                    'nb_mouvements': nb,
-                },
-                status=status.HTTP_200_OK,
-            )
+        # ASTK81 — un produit référencé par une relation vivante (réservation
+        # chantier, ligne BCF, conditionnement…) est ARCHIVÉ, jamais supprimé :
+        # plus de donnée détachée (SET_NULL) ni effacée en cascade.
+        comptes = _references_vivantes(produit)
+        if not comptes:
+            try:
+                return super().destroy(request, *args, **kwargs)
+            except ProtectedError:
+                comptes = _references_vivantes(produit)
+        nb = produit.mouvements.count()
+        produit.is_archived = True
+        produit.save(update_fields=['is_archived'])
+        raison = _texte_references(comptes) or f'{nb} mouvement(s) de stock'
+        return Response(
+            {
+                'archived': True,
+                'detail': (
+                    f'Ce produit a été archivé : il est référencé par '
+                    f'{raison}. L\'historique est conservé.'
+                ),
+                'nb_mouvements': nb,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
@@ -1506,31 +1607,43 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 {'detail': 'Le nom du nouveau produit est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # ASTK87 — copie GÉNÉRIQUE de tous les champs concrets (méta-données
+        # Django) moins ``CHAMPS_DUPLICATION_EXCLUS`` : un champ ajouté plus
+        # tard au modèle est copié par défaut, jamais oublié en silence (le
+        # constructeur explicite d'avant perdait forfait, unité, rôles…).
+        valeurs = {
+            f.attname: copy.deepcopy(getattr(source, f.attname))
+            for f in Produit._meta.concrete_fields
+            if f.name not in CHAMPS_DUPLICATION_EXCLUS
+        }
         clone = Produit(
             company=request.user.company,
             nom=nom,
-            description=source.description,
             sku=None,  # jamais dupliqué : évite un doublon (company, sku)
-            prix_achat=source.prix_achat,
-            prix_vente=source.prix_vente,
             quantite_stock=0,  # un clone démarre sans stock physique propre
-            seuil_alerte=source.seuil_alerte,
-            categorie=source.categorie,
-            fournisseur=source.fournisseur,
-            tva=source.tva,
-            marque=source.marque,
-            garantie=source.garantie,
-            garantie_mois=source.garantie_mois,
-            garantie_production_mois=source.garantie_production_mois,
-            pompe_cv=source.pompe_cv,
-            hmt_m=source.hmt_m,
-            debit_m3j=source.debit_m3j,
-            pompe_kw=source.pompe_kw,
-            tension_v=source.tension_v,
-            courbe_pompe=source.courbe_pompe,
+            **valeurs,
         )
+        # ASTK94 — le clone naît actif et sans SKU : même garde d'unicité du
+        # nom que la création (400 {nom}, jamais d'IntegrityError 500).
+        from ..serializers import valider_nom_sans_sku
+        valider_nom_sans_sku(request.user.company, nom, None, False)
         clone.full_clean(exclude=['sku'])
-        clone.save()
+        with transaction.atomic():
+            clone.save()
+            # La fiche technique (OneToOne) suit : même copie générique.
+            try:
+                fiche = source.fiche_technique
+            except ObjectDoesNotExist:
+                fiche = None
+            if fiche is not None:
+                champs_fiche = {
+                    f.attname: copy.deepcopy(getattr(fiche, f.attname))
+                    for f in type(fiche)._meta.concrete_fields
+                    if f.name not in ('id', 'produit', 'company')
+                }
+                type(fiche).objects.create(
+                    produit=clone, company=request.user.company,
+                    **champs_fiche)
         serializer = self.get_serializer(clone)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -1542,6 +1655,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 {'detail': 'Ce produit n\'est pas archivé.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # ASTK94 — un homonyme actif sans SKU bloquerait le désarchivage par
+        # la contrainte DB (500) : même garde que le serializer, 400 {nom}.
+        from ..serializers import valider_nom_sans_sku
+        valider_nom_sans_sku(
+            produit.company, produit.nom, produit.sku, False, produit)
         produit.is_archived = False
         produit.save(update_fields=['is_archived'])
         serializer = self.get_serializer(produit)
@@ -1559,6 +1677,25 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        # ASTK81 — mêmes références vivantes que destroy (helper commun) : on
+        # archive au lieu de détacher/cascader. Les mouvements restent
+        # supprimés avec le produit (comportement historique) ; les PROTECT
+        # gardent leur refus 409 plus bas.
+        comptes = _references_vivantes(
+            produit, exclure=(MouvementStock,), avec_protegees=False)
+        if comptes:
+            return Response(
+                {
+                    'archived': True,
+                    'detail': (
+                        'Ce produit a été archivé : il est référencé par '
+                        f'{_texte_references(comptes)}. '
+                        'L\'historique est conservé.'
+                    ),
+                    'nb_mouvements': produit.mouvements.count(),
+                },
+                status=status.HTTP_200_OK,
             )
         nb = produit.mouvements.count()
         try:

@@ -68,7 +68,13 @@ class TestProcessP2P(TenantAPITestCase):
             ],
         }, format='json')
         assert resp.status_code == 201, resp.content
-        return BonCommandeFournisseur.objects.get(id=resp.json()['id'])
+        bcf_id = resp.json()['id']
+        # ASTK22 — un BCF brouillon ne se réceptionne plus : le parcours
+        # P2P réel l'envoie d'abord au fournisseur (geste `envoyer`).
+        resp = self.api.post(
+            f'{BASE}/bons-commande-fournisseur/{bcf_id}/envoyer/')
+        assert resp.status_code == 200, resp.content
+        return BonCommandeFournisseur.objects.get(id=bcf_id)
 
     def _recevoir(self, bcf, series=None, numero_lot='LOT-P2P-01'):
         lignes_bcf = {

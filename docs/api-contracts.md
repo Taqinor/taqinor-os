@@ -472,22 +472,18 @@
     cout_rupture_jour:texte, fournisseurs:inconnu, produit:inconnu
 - frontend/src/api/stockApi.js :: deciderCandidatureFournisseur -> /api/django/stock/fournisseurs/<>/decider-candidature
     detail:texte, id:inconnu, statut_validation:inconnu
-- frontend/src/api/stockApi.js :: envoyerEmailBcf -> /api/django/stock/bons-commande-fournisseur/<>/envoyer-email
-    detail:texte, email_statut:inconnu, log_id:inconnu, statut:inconnu
 - frontend/src/api/stockApi.js :: exploserKit -> /api/django/stock/kits/<>/exploser
     detail:texte, kit_id:inconnu, kit_nom:inconnu, lignes:inconnu, quantite_kit:inconnu
 - frontend/src/api/stockApi.js :: forceDeleteFournisseur -> /api/django/stock/fournisseurs/<>/force-delete
     bloquants:inconnu, detail:texte
 - frontend/src/api/stockApi.js :: forceDeleteProduit -> /api/django/stock/produits/<>/force-delete
-    bloquants:inconnu, detail:texte
+    archived:booleen, bloquants:inconnu, detail:texte, nb_mouvements:nombre
 - frontend/src/api/stockApi.js :: getChecklistClotureAchats -> /api/django/stock/achats-parametres/checklist-cloture
     demandes_en_attente_anciennes:liste, detail:texte, documents_expires:inconnu, factures_en_exception:liste, nb_demandes_en_attente_anciennes:nombre, nb_documents_expires:nombre, nb_factures_en_exception:nombre, periode:inconnu, seuil_jours:nombre
 - frontend/src/api/stockApi.js :: getComptesAPayer -> /api/django/stock/factures-fournisseur/comptes-a-payer
     results:inconnu, total_du:texte
 - frontend/src/api/stockApi.js :: getFavorisCatalogueAchat -> /api/django/stock/catalogue-achat/favoris
     epingles:inconnu, produit_ids:inconnu, recents:inconnu
-- frontend/src/api/stockApi.js :: getFournisseur360 -> /api/django/stock/fournisseurs/<>/vue-360
-    accords_prix:inconnu, accords_prix_actifs:nombre, bcf_en_retard:inconnu, bcf_ouverts:inconnu, conformite_documents_manquants:nombre, conformite_ok:booleen, factures_ouvertes:inconnu, fournisseur_id:inconnu, nb_retours_avoirs:inconnu, receptions_attendues:inconnu, score_performance:inconnu, solde_total_du:texte
 - frontend/src/api/stockApi.js :: getKitDisponibilite -> /api/django/stock/kits/<>/disponibilite
     composants:inconnu, detail:texte, goulots:inconnu, kit_id:inconnu, kit_nom:inconnu, kits_assemblables:inconnu
 - frontend/src/api/stockApi.js :: getOnboardingFournisseur -> /api/django/stock/fournisseurs/<>/onboarding
@@ -496,8 +492,6 @@
     chantiers:inconnu, devis:inconnu, leads:inconnu, limite:inconnu
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire
     ajustes:nombre, detail:texte, inchanges:nombre, mouvements:liste
-- frontend/src/api/stockApi.js :: performanceFournisseur -> /api/django/stock/fournisseurs/<>/performance
-    avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
 - frontend/src/api/stockApi.js :: prixEffectifFournisseur -> /api/django/stock/prix-fournisseurs/effectif
     detail:texte, prix_effectif:inconnu
 - frontend/src/api/stockApi.js :: produitPrevisionnel -> /api/django/stock/produits/<>/previsionnel
@@ -514,8 +508,6 @@
     ajustes:inconnu, detail:texte, inchanges:inconnu
 - frontend/src/api/stockApi.js :: valorisation -> /api/django/stock/produits/valorisation
     lignes:inconnu, par_emplacement:liste, total:inconnu
-- frontend/src/api/stockApi.js :: whatsappBcf -> /api/django/stock/bons-commande-fournisseur/<>/whatsapp
-    detail:texte, message:inconnu, phone:inconnu, statut:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/tiersApi.js :: doublons -> /api/django/tiers/tiers/doublons
     clusters:inconnu, count:nombre
 - frontend/src/api/trashApi.js :: restaurer -> /api/django/trash/corbeille/<>/restaurer
@@ -1553,9 +1545,6 @@
 - frontend/src/api/stockApi.js :: createAcompteFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
     champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
     mode ∈ {autre, carte, cheque, effet, especes, virement}
-- frontend/src/api/stockApi.js :: createAvoirFournisseur -> /api/django/stock/avoirs-fournisseur  [AvoirFournisseurSerializer]
-    champs: created_by, date_creation, date_mise_a_jour, facture_origine, fournisseur, fournisseur_nom, id, imputations, montant_disponible, montant_ht, montant_impute, montant_ttc, montant_tva, note, reference, retour, retour_reference, statut, statut_display
-    statut ∈ {brouillon, impute, valide}
 - frontend/src/api/stockApi.js :: createCategorieFournisseur -> /api/django/stock/categories-fournisseur  [CategorieFournisseurSerializer]
     champs: archived, id, nom
 - frontend/src/api/stockApi.js :: createConditionnementProduit -> /api/django/stock/conditionnements  [ConditionnementProduitSerializer]
@@ -1572,9 +1561,6 @@
     champs: bat_c_rate_charge, bat_c_rate_decharge, bat_chimie, bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_temp_max_c, bat_temp_min_c, bat_v_nominal, bifacial, bifacialite_pct, cable_ame, cable_cote, cable_section_mm2, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, lim_i_max_a, lim_marques, lim_mode, lim_onduleurs_max, lim_phases, log_marques, log_onduleurs_max, longueur_mm, noct_c, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_compteurs_compatibles, ond_conso_nuit_w, ond_cos_phi_max, ond_cos_phi_min, ond_courbe_rendement, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_limitation_export, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_relais_decouplage, ond_rendement_cec_pct, ond_rendement_euro_pct, ond_rendement_max_pct, ond_v_demarrage_v, ond_v_max_abs, opt_ac_i_max_a, opt_ac_kw, opt_ac_tension_v, opt_ac_unites_max_par_branche, opt_i_out_max_a, opt_modules_max_par_chaine, opt_pmax_out_w, opt_v_out_max, opt_v_out_min, opt_v_out_nominal_v, pdf, pdf_filename, pdf_mime, pdf_size, pdf_url, pmax_wc, poids_kg, pompe_diametre_ext_mm, pompe_hmt_nominale_m, pompe_i_nominal_a, pompe_immersion_min_m, pompe_nb_etages, pompe_q_nominal_m3h, pompe_rendement_pct, produit, produit_garantie, produit_marque, produit_nom, prot_calibre_a, prot_cote, prot_poles, prot_pouvoir_coupure_ka, prot_tension_v, prot_type, rendement_par_irradiance, rendement_pct, struct_masse_kg_m2, struct_notice, struct_type_pose, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, tolerance_pmax_max_pct, tolerance_pmax_min_pct, type_fiche, uc_w_m2k, uv_w_m3sk, var_i_sortie_nominal_a, var_protection_marche_a_sec, var_rendement_mppt_pct, var_v_sortie_v, var_voc_reco_max_v, var_voc_reco_min_v, vmp_v, voc_v
     bat_chimie ∈ {autre, lfp, lmo, lto, nca, nmc, plomb_agm, plomb_gel, plomb_ouvert}
     type_fiche ∈ {autre, batterie, cable, limiteur, logger, module, onduleur, optimiseur, pompe, protection, structure, variateur_pompage}
-- frontend/src/api/stockApi.js :: createInventaireSession -> /api/django/stock/inventaire-sessions  [InventaireSessionSerializer]
-    champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
-    statut ∈ {annule, brouillon, valide}
 - frontend/src/api/stockApi.js :: createModeleBcf -> /api/django/stock/modeles-bcf  [ModeleBonCommandeFournisseurSerializer]
     champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
 - frontend/src/api/stockApi.js :: createNomenclatureCodeBarres -> /api/django/stock/nomenclatures-code-barres  [NomenclatureCodeBarresSerializer]
@@ -1585,15 +1571,9 @@
 - frontend/src/api/stockApi.js :: createProduit -> /api/django/stock/produits  [ProduitSerializer]
     champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
     politique_facturation_achat ∈ {sur_commande, sur_reception}
-- frontend/src/api/stockApi.js :: createReceptionFournisseur -> /api/django/stock/receptions-fournisseur  [ReceptionFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_reception, fournisseur_nom, id, lignes, note, recu_par, recu_par_username, reference, statut, statut_display, total_recu
-    statut ∈ {annule, brouillon, confirme}
 - frontend/src/api/stockApi.js :: createRegleCodeBarres -> /api/django/stock/regles-code-barres  [RegleCodeBarresSerializer]
     champs: encode, est_regex, id, motif, nomenclature, priorite
     encode ∈ {emplacement, lot, produit, quantite, serie}
-- frontend/src/api/stockApi.js :: createRetourFournisseur -> /api/django/stock/retours-fournisseur  [RetourFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
-    statut ∈ {annule, brouillon, valide}
 - frontend/src/api/stockApi.js :: deleteAcompteFournisseur -> /api/django/stock/acomptes-fournisseur/<>  [AcompteFournisseurSerializer]
     champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
     mode ∈ {autre, carte, cheque, effet, especes, virement}
@@ -1623,9 +1603,6 @@
 - frontend/src/api/stockApi.js :: getAcomptesFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
     champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
     mode ∈ {autre, carte, cheque, effet, especes, virement}
-- frontend/src/api/stockApi.js :: getAvoirsFournisseurDe -> /api/django/stock/avoirs-fournisseur  [AvoirFournisseurSerializer]
-    champs: created_by, date_creation, date_mise_a_jour, facture_origine, fournisseur, fournisseur_nom, id, imputations, montant_disponible, montant_ht, montant_impute, montant_ttc, montant_tva, note, reference, retour, retour_reference, statut, statut_display
-    statut ∈ {brouillon, impute, valide}
 - frontend/src/api/stockApi.js :: getCatalogueAchat -> /api/django/stock/catalogue-achat  [CatalogueAchatSerializer]
     champs: categorie, categorie_nom, fournisseur_prefere, fournisseur_prefere_nom, id, nom, prix_achat_dernier, sku
 - frontend/src/api/stockApi.js :: getCategoriesFournisseur -> /api/django/stock/categories-fournisseur  [CategorieFournisseurSerializer]
@@ -1641,12 +1618,6 @@
     champs: bat_c_rate_charge, bat_c_rate_decharge, bat_chimie, bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_max_decharge_kw, bat_max_modules_par_banc, bat_temp_max_c, bat_temp_min_c, bat_v_nominal, bifacial, bifacialite_pct, cable_ame, cable_cote, cable_section_mm2, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, lim_i_max_a, lim_marques, lim_mode, lim_onduleurs_max, lim_phases, log_marques, log_onduleurs_max, longueur_mm, noct_c, ond_ac_kw, ond_bat_aucune, ond_bat_max_charge_kw, ond_bat_max_decharge_kw, ond_bat_v_max, ond_bat_v_min, ond_compteurs_compatibles, ond_conso_nuit_w, ond_cos_phi_max, ond_cos_phi_min, ond_courbe_rendement, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_limitation_export, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_relais_decouplage, ond_rendement_cec_pct, ond_rendement_euro_pct, ond_rendement_max_pct, ond_v_demarrage_v, ond_v_max_abs, opt_ac_i_max_a, opt_ac_kw, opt_ac_tension_v, opt_ac_unites_max_par_branche, opt_i_out_max_a, opt_modules_max_par_chaine, opt_pmax_out_w, opt_v_out_max, opt_v_out_min, opt_v_out_nominal_v, pdf, pdf_filename, pdf_mime, pdf_size, pdf_url, pmax_wc, poids_kg, pompe_diametre_ext_mm, pompe_hmt_nominale_m, pompe_i_nominal_a, pompe_immersion_min_m, pompe_nb_etages, pompe_q_nominal_m3h, pompe_rendement_pct, produit, produit_garantie, produit_marque, produit_nom, prot_calibre_a, prot_cote, prot_poles, prot_pouvoir_coupure_ka, prot_tension_v, prot_type, rendement_par_irradiance, rendement_pct, struct_masse_kg_m2, struct_notice, struct_type_pose, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, tolerance_pmax_max_pct, tolerance_pmax_min_pct, type_fiche, uc_w_m2k, uv_w_m3sk, var_i_sortie_nominal_a, var_protection_marche_a_sec, var_rendement_mppt_pct, var_v_sortie_v, var_voc_reco_max_v, var_voc_reco_min_v, vmp_v, voc_v
     bat_chimie ∈ {autre, lfp, lmo, lto, nca, nmc, plomb_agm, plomb_gel, plomb_ouvert}
     type_fiche ∈ {autre, batterie, cable, limiteur, logger, module, onduleur, optimiseur, pompe, protection, structure, variateur_pompage}
-- frontend/src/api/stockApi.js :: getInventaireSession -> /api/django/stock/inventaire-sessions/<>  [InventaireSessionSerializer]
-    champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
-    statut ∈ {annule, brouillon, valide}
-- frontend/src/api/stockApi.js :: getInventaireSessions -> /api/django/stock/inventaire-sessions  [InventaireSessionSerializer]
-    champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
-    statut ∈ {annule, brouillon, valide}
 - frontend/src/api/stockApi.js :: getInventairesAnnuels -> /api/django/stock/inventaires-annuels  [InventaireAnnuelSerializer]
     champs: date_creation, date_reference, donnees, exercice, id, nb_lignes, total_valeur
 - frontend/src/api/stockApi.js :: getKits -> /api/django/stock/kits  [KitProduitSerializer]
@@ -1669,21 +1640,6 @@
 - frontend/src/api/stockApi.js :: getProduitsArchived -> /api/django/stock/produits  [ProduitSerializer]
     champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
     politique_facturation_achat ∈ {sur_commande, sur_reception}
-- frontend/src/api/stockApi.js :: getReceptionFournisseur -> /api/django/stock/receptions-fournisseur/<>  [ReceptionFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_reception, fournisseur_nom, id, lignes, note, recu_par, recu_par_username, reference, statut, statut_display, total_recu
-    statut ∈ {annule, brouillon, confirme}
-- frontend/src/api/stockApi.js :: getReceptionsFournisseur -> /api/django/stock/receptions-fournisseur  [ReceptionFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_reception, fournisseur_nom, id, lignes, note, recu_par, recu_par_username, reference, statut, statut_display, total_recu
-    statut ∈ {annule, brouillon, confirme}
-- frontend/src/api/stockApi.js :: getRetourFournisseur -> /api/django/stock/retours-fournisseur/<>  [RetourFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
-    statut ∈ {annule, brouillon, valide}
-- frontend/src/api/stockApi.js :: getRetoursFournisseur -> /api/django/stock/retours-fournisseur  [RetourFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
-    statut ∈ {annule, brouillon, valide}
-- frontend/src/api/stockApi.js :: getRetoursFournisseurDe -> /api/django/stock/retours-fournisseur  [RetourFournisseurSerializer]
-    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
-    statut ∈ {annule, brouillon, valide}
 - frontend/src/api/stockApi.js :: patchProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
     champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
     politique_facturation_achat ∈ {sur_commande, sur_reception}

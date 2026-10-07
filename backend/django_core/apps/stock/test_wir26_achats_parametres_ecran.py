@@ -58,7 +58,7 @@ class Wir26Base(TestCase):
         self.company = _company('wir26-co')
         self.user = _user(
             self.company, 'wir26-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
         self.produit = Produit.objects.create(
             company=self.company, nom='Onduleur WIR26', sku='OND-WIR26',

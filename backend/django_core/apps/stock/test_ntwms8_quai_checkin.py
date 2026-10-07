@@ -125,7 +125,7 @@ class TestEnregistrementArrivee(Ntwms8Base):
 
 
 class TestEndpointPublic(Ntwms8Base):
-    URL = '/api/django/stock/public/quai-checkin/'
+    URL = '/api/django/public/stock/quai-checkin/'
 
     def test_checkin_sans_aucune_authentification(self):
         resp = self.public.post(self.URL, {

@@ -92,7 +92,7 @@
         </span>
       </div>
       <div class="partie-detail">
-        Solde dû : <strong>{{ solde_du }} MAD</strong>
+        Solde dû : <strong>{{ montants_fmt.solde }} MAD</strong>
       </div>
     </div>
   </div>
@@ -157,26 +157,34 @@
   <div class="totaux">
     <div class="totaux-row">
       <span>Total HT</span>
-      <span>{{ facture.montant_ht }} MAD</span>
+      <span>{{ montants_fmt.ht }} MAD</span>
     </div>
     <div class="totaux-row">
       <span>TVA</span>
-      <span>{{ facture.montant_tva }} MAD</span>
+      <span>{{ montants_fmt.tva }} MAD</span>
     </div>
     <div class="totaux-row total">
       <span>Total TTC</span>
-      <span>{{ facture.montant_ttc }} MAD</span>
+      <span>{{ montants_fmt.ttc }} MAD</span>
     </div>
-    {% if total_paye %}
+    {# ASTK104 — chaîne de règlement complète, TOUJOURS rendue : elle boucle
+       au centime (TTC − paiements − acomptes − avoirs = solde dû). #}
     <div class="totaux-row" style="margin-top: 8px;">
-      <span>Déjà payé</span>
-      <span>{{ total_paye }} MAD</span>
+      <span>− Paiements</span>
+      <span>{{ montants_fmt.paiements }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>− Acomptes imputés</span>
+      <span>{{ montants_fmt.acomptes }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>− Avoirs imputés</span>
+      <span>{{ montants_fmt.avoirs }} MAD</span>
     </div>
     <div class="totaux-row total">
       <span>Solde dû</span>
-      <span>{{ solde_du }} MAD</span>
+      <span>{{ montants_fmt.solde }} MAD</span>
     </div>
-    {% endif %}
   </div>
 
   <!-- Paiements -->

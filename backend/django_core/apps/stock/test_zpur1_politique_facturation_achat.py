@@ -56,7 +56,7 @@ class Zpur1Base(TestCase):
         self.company = _company('zpur1-co')
         self.user = _user(
             self.company, 'zpur1-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur ZPUR1')
@@ -120,7 +120,7 @@ class TestMultiTenant(Zpur1Base):
         autre = _company('zpur1-autre')
         autre_user = _user(
             autre, 'zpur1-autre-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         autre_api = _api(autre_user)
         bc = self._bcf([(self.produit_commande, 10, Decimal('100'))])
         resp = autre_api.post(
