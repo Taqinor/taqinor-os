@@ -54,7 +54,6 @@ ECRITURES = (
     ('post', 'roof-image/', {}),
     ('post', 'photos/', {}),
     ('post', 'enregistrer-pertes/', {'pertes': []}),
-    ('post', 'dupliquer/', {}),
 )
 
 
@@ -142,6 +141,19 @@ class LivrablesArchiveTest(TestCase):
         self.assertEqual(apres.resultat, avant.resultat)
         self.assertEqual(apres.titre, avant.titre)
         self.assertEqual(Calepinage.objects.count(), 1)
+
+    def test_dupliquer_un_archive_permis(self):
+        """ACAL187 — une source ARCHIVÉE se duplique (sans cible) : la copie
+        est créée, la source n'est pas écrite et reste archivée."""
+        avant = Calepinage.objects.get(pk=self.calepinage.pk)
+        reponse = self.api.post(self._url('dupliquer/'), {}, format='json')
+        self.assertEqual(reponse.status_code, 201,
+                         getattr(reponse, 'data', None))
+        self.assertEqual(reponse.data['source'], self.calepinage.pk)
+        apres = Calepinage.objects.get(pk=self.calepinage.pk)
+        self.assertIsNotNone(apres.archive_le)
+        self.assertEqual(apres.roof_layout, avant.roof_layout)
+        self.assertEqual(Calepinage.objects.count(), 2)
 
     def test_restaurer_reste_permis(self):
         reponse = self.api.post(self._url('restaurer-corbeille/'))

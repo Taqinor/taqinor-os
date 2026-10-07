@@ -10,9 +10,7 @@ from __future__ import annotations
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.archivage import archiver
 from apps.calepinage.services.modeles import marquer_modele
-from apps.calepinage.services.variantes import (
-    MESSAGE_SOURCE_OUVERTE, dupliquer,
-)
+from apps.calepinage.services.variantes import MESSAGE_SOURCE_OUVERTE
 from apps.crm.models import Lead
 
 from .test_api_liste import BaseApiCalepinage, url_detail
@@ -81,10 +79,13 @@ class DupliquerCible(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 201, reponse.data)
 
     def test_source_archivee_se_duplique_sans_cible(self):
-        # Un archivé n'a pas de route de détail (404) : le SERVICE, seul
-        # chemin de copie, est appelé directement.
+        # Un archivé garde ses routes de détail (ACAL119 : jamais 404) et
+        # « Dupliquer » y est admis (crée une copie, la source n'est pas
+        # écrite) : la route le duplique sans cible, sur le lead source.
         archiver(self.source, user=self.user)
-        copie = dupliquer(self.source, user=self.user)
+        reponse = self._dupliquer(self.source)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        copie = Calepinage.objects.get(pk=reponse.data['calepinage'])
         self.assertEqual(copie.lead_id, self.lead.pk)
 
     def test_cible_d_une_autre_societe_introuvable(self):
