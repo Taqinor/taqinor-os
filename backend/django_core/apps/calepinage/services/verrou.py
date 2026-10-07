@@ -25,7 +25,7 @@ from __future__ import annotations
 from rest_framework.exceptions import APIException
 
 __all__ = [
-    'VerrouilleRefuse', 'GESTE_CALEPINAGE', 'verdict_verrou',
+    'VerrouilleRefuse', 'GESTE_CALEPINAGE',
     'est_verrouille', 'verifier_ecriture_autorisee', 'apres_envoi',
 ]
 
@@ -53,7 +53,7 @@ def _devis_lie(calepinage):
     return getattr(calepinage, 'devis', None)
 
 
-def verdict_verrou(calepinage):
+def _verdict_verrou(calepinage):
     """Le verdict ventes du geste ``CALEPINAGE`` sur le devis lié, ou
     ``None`` sans devis lié (jamais verrouillé)."""
     devis = _devis_lie(calepinage)
@@ -67,7 +67,7 @@ def verdict_verrou(calepinage):
 def est_verrouille(calepinage):
     """``True`` si le calepinage est en lecture seule : devis lié présent ET
     ``not devis_modifiabilite(devis, geste='CALEPINAGE')['modifiable']``."""
-    verdict = verdict_verrou(calepinage)
+    verdict = _verdict_verrou(calepinage)
     return verdict is not None and not verdict.get('modifiable', True)
 
 
@@ -76,7 +76,7 @@ def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
     calepinage est verrouillé (ACAL43 : ``champ`` nomme l'écriture refusée),
     avec le MOTIF de ventes mot pour mot (ex.
     « Devis accepté : révisez-le ») — no-op sinon."""
-    verdict = verdict_verrou(calepinage)
+    verdict = _verdict_verrou(calepinage)
     if verdict is not None and not verdict.get('modifiable', True):
         raise VerrouilleRefuse(
             verdict.get('raison_non_modifiable')

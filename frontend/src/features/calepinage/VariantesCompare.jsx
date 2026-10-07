@@ -450,7 +450,7 @@ export default function VariantesCompare() {
         </Card>
       ) : null}
 
-      {lignes.length ? (
+      {lignes.length > 0 && (
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm" data-testid="cal-tableau-variantes">
           <thead>
@@ -581,9 +581,9 @@ export default function VariantesCompare() {
           </tbody>
         </table>
       </Card>
-      ) : null}
+      )}
 
-      {lignes.length ? <CoteACote lignes={lignes} /> : null}
+      {lignes.length > 0 && <CoteACote lignes={lignes} />}
     </div>
   )
 }

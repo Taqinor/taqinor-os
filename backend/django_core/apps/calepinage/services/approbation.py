@@ -180,7 +180,7 @@ def _decision(calepinage):
     return decision if isinstance(decision, dict) else {}
 
 
-def empreinte_approuvee(calepinage):
+def _empreinte_approuvee(calepinage):
     """ACAL114 (D-ACAL-11) — l'empreinte IMPRIMÉE approuvée, ou ``''``."""
     valeur = _decision(calepinage).get('empreinte_approuvee')
     return valeur if isinstance(valeur, str) else ''
@@ -191,7 +191,7 @@ def approbation_perimee(calepinage):
     donné avant le suivi d'empreinte : « à redécider ») est PÉRIMÉ."""
     if _decision(calepinage).get('etat') != APPROUVE:
         return False
-    approuvee = empreinte_approuvee(calepinage)
+    approuvee = _empreinte_approuvee(calepinage)
     return not approuvee or approuvee != (
         getattr(calepinage, 'layout_hash', '') or '')
 
@@ -215,7 +215,7 @@ def etat_approbation(calepinage):
         'motif': (decision.get('motif') or '') if etat else None,
         'exigee': approbation_exigee(getattr(calepinage, 'company', None)),
         'perimee': approbation_perimee(calepinage),
-        'empreinte_approuvee': empreinte_approuvee(calepinage) if etat else '',
+        'empreinte_approuvee': _empreinte_approuvee(calepinage) if etat else '',
     }
 
 
@@ -228,7 +228,7 @@ def est_approuve(calepinage, *, empreinte=None):
     """
     if _decision(calepinage).get('etat') != APPROUVE:
         return False
-    approuvee = empreinte_approuvee(calepinage)
+    approuvee = _empreinte_approuvee(calepinage)
     attendue = (empreinte if empreinte is not None
                 else (getattr(calepinage, 'layout_hash', '') or ''))
     return bool(approuvee) and approuvee == attendue
