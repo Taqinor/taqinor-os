@@ -24,7 +24,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.stock.models import (
-    EmplacementStock, Fournisseur, PortailFournisseurToken,
+    BonCommandeFournisseur, EmplacementStock, Fournisseur,
+    PortailFournisseurToken,
 )
 from apps.stock.models_wms import Quai, RendezVousTransporteur
 from apps.stock.services_creneaux import (
@@ -151,3 +152,87 @@ class GrilleTests(_Base):
         for cle, messages in reponse.json().items():
             self.assertIsInstance(messages, list)
             self.assertTrue(all(isinstance(m, str) for m in messages))
+
+
+class QuotaTests(_Base):
+    slug = 'astk192'
+
+    def _bcf(self, statut=BonCommandeFournisseur.Statut.ENVOYE,
+             fournisseur=None):
+        return BonCommandeFournisseur.objects.create(
+            company=self.company, reference=f'BCF-{self.slug}-{statut}',
+            fournisseur=fournisseur or self.fournisseur, statut=statut)
+
+    def _creneau(self, heure):
+        return _aware(self.demain, heure).isoformat()
+
+    def test_rdv_porte_fournisseur_et_bcf(self):
+        bcf = self._bcf()
+        autre = Fournisseur.objects.create(
+            company=self.company, nom='Autre fournisseur ASTK192')
+        reponse = self._reserver(
+            self._creneau(9), bon_commande=bcf.id, fournisseur=autre.id)
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        rdv = RendezVousTransporteur.objects.get(pk=reponse.json()['id'])
+        # Posés côté serveur : le `fournisseur` du corps est ignoré.
+        self.assertEqual(rdv.fournisseur_id, self.fournisseur.id)
+        self.assertEqual(rdv.bon_commande_id, bcf.id)
+
+    def test_rdv_sans_bcf_porte_le_fournisseur(self):
+        reponse = self._reserver(self._creneau(10))
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        rdv = RendezVousTransporteur.objects.get(pk=reponse.json()['id'])
+        self.assertEqual(rdv.fournisseur_id, self.fournisseur.id)
+        self.assertIsNone(rdv.bon_commande_id)
+
+    def test_sixieme_reservation_400(self):
+        from apps.stock.services_creneaux import (
+            MAX_RDV_OUVERTS_PAR_FOURNISSEUR,
+        )
+        self.assertEqual(MAX_RDV_OUVERTS_PAR_FOURNISSEUR, 5)
+        for rang in range(MAX_RDV_OUVERTS_PAR_FOURNISSEUR):
+            reponse = self._reserver(self._creneau(8 + rang))
+            self.assertEqual(reponse.status_code, 201,
+                             (rang, reponse.content))
+        avant = RendezVousTransporteur.objects.count()
+        reponse = self._reserver(self._creneau(8 + 5))
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(reponse.json(), {
+            'detail': 'Nombre maximal de rendez-vous ouverts atteint (5).'})
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)
+
+    def test_le_quota_est_par_fournisseur(self):
+        """Un autre fournisseur n'est pas bloqué par le plafond du premier."""
+        autre = Fournisseur.objects.create(
+            company=self.company, nom='Autre fournisseur ASTK192')
+        jeton_autre = PortailFournisseurToken.objects.create(
+            company=self.company, fournisseur=autre)
+        for rang in range(5):
+            self.assertEqual(
+                self._reserver(self._creneau(8 + rang)).status_code, 201)
+        reponse = self.api.post(
+            '/api/django/public/stock/portail-fournisseur/'
+            f'{jeton_autre.token}/reserver-creneau/',
+            {'quai': self.quai.id, 'debut': self._creneau(14)},
+            format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+
+    def test_un_rdv_annule_ne_compte_pas(self):
+        for rang in range(5):
+            reponse = self._reserver(self._creneau(8 + rang))
+            self.assertEqual(reponse.status_code, 201)
+        RendezVousTransporteur.objects.filter(
+            pk=reponse.json()['id']).update(
+                statut=RendezVousTransporteur.Statut.ANNULE)
+        self.assertEqual(
+            self._reserver(self._creneau(15)).status_code, 201)
+
+    def test_bcf_recu_refuse(self):
+        bcf = self._bcf(BonCommandeFournisseur.Statut.RECU)
+        avant = RendezVousTransporteur.objects.count()
+        reponse = self._reserver(self._creneau(9), bon_commande=bcf.id)
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        corps = reponse.json()
+        self.assertEqual(list(corps), ['bon_commande'])
+        self.assertIsInstance(corps['bon_commande'], list)
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)

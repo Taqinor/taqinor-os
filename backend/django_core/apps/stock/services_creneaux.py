@@ -29,6 +29,10 @@ DUREE_CRENEAU_MINUTES = 60
 # Fenêtre maximale consultable d'un coup (garde anti-abus sur un endpoint
 # PUBLIC : sans plafond, un `periode=3650` ferait balayer dix ans de créneaux).
 FENETRE_MAX_JOURS = 30
+# ASTK192 — plafond de rendez-vous FUTURS OUVERTS (planifiés) par fournisseur :
+# sur un endpoint public, un jeton ne doit pas pouvoir réserver sans limite
+# les quais de l'entrepôt.
+MAX_RDV_OUVERTS_PAR_FOURNISSEUR = 5
 
 
 class ErreurChampCreneau(ValueError):
@@ -169,7 +173,7 @@ def reserver_creneau_fournisseur(token_obj, *, quai_id, debut,
     """
     from django.db import IntegrityError, transaction
 
-    from .models import BonCommandeFournisseur
+    from .models import BonCommandeFournisseur, Fournisseur
     from .models_wms import RendezVousTransporteur
 
     company = token_obj.company
@@ -204,29 +208,54 @@ def reserver_creneau_fournisseur(token_obj, *, quai_id, debut,
         if bcf is None:
             # Isolation stricte : on ne dit JAMAIS si le BCF existe ailleurs.
             raise ValueError('Bon de commande introuvable.')
+        # ASTK192 — seul un BCF `envoyé` (marchandise attendue) se livre : un
+        # BCF déjà reçu/annulé/brouillon n'a rien à faire réserver un quai.
+        if bcf.statut != BonCommandeFournisseur.Statut.ENVOYE:
+            raise ErreurChampCreneau(
+                'bon_commande',
+                'Ce bon de commande n\'attend plus de livraison (statut '
+                '« envoyé » requis).')
 
     note = 'NTWMS35 — créneau réservé par le fournisseur via son portail.'
     if bcf is not None:
         note += f' BCF {bcf.reference}.'
-    try:
-        with transaction.atomic():
-            rdv = RendezVousTransporteur(
-                company=company, quai=quai,
-                date_heure_debut=creneau_debut, date_heure_fin=creneau_fin,
-                statut=RendezVousTransporteur.Statut.PLANIFIE,
-                chauffeur_nom=(chauffeur_nom or '').strip()[:120],
-                immatriculation=(immatriculation or '').strip()[:30],
-                note=note)
-            rdv.save()
-    except (ValueError, IntegrityError):
-        # `save()` refuse le chevauchement (NTWMS7) — message métier propre.
-        # AUD214 — sous requêtes CONCURRENTES, `save()` ne voit rien (les deux
-        # SELECT précèdent les deux INSERT) : c'est alors l'ExclusionConstraint
-        # de la base qui refuse la seconde, avec une `IntegrityError`. Cet
-        # endpoint est PUBLIC (`AllowAny`) : les deux refus doivent produire
-        # exactement le MÊME message métier, jamais une 500 ni une trace.
-        raise ValueError('Ce créneau vient d\'être réservé, choisissez-en un '
-                         'autre.')
+    with transaction.atomic():
+        # ASTK192 — plafond de rendez-vous futurs ouverts par fournisseur ;
+        # la ligne du fournisseur est VERROUILLÉE le temps du contrôle +
+        # de l'insertion : deux réservations simultanées ne passent pas
+        # toutes deux sous le plafond. (Hors du `try` ci-dessous : ce refus
+        # garde son propre message.)
+        Fournisseur.objects.select_for_update().get(pk=fournisseur.pk)
+        ouverts = RendezVousTransporteur.objects.filter(
+            company=company, fournisseur=fournisseur,
+            statut=RendezVousTransporteur.Statut.PLANIFIE,
+            date_heure_debut__gte=timezone.now()).count()
+        if ouverts >= MAX_RDV_OUVERTS_PAR_FOURNISSEUR:
+            raise ValueError(
+                'Nombre maximal de rendez-vous ouverts atteint '
+                f'({MAX_RDV_OUVERTS_PAR_FOURNISSEUR}).')
+        try:
+            with transaction.atomic():
+                rdv = RendezVousTransporteur(
+                    company=company, quai=quai, fournisseur=fournisseur,
+                    bon_commande=bcf,
+                    date_heure_debut=creneau_debut,
+                    date_heure_fin=creneau_fin,
+                    statut=RendezVousTransporteur.Statut.PLANIFIE,
+                    chauffeur_nom=(chauffeur_nom or '').strip()[:120],
+                    immatriculation=(immatriculation or '').strip()[:30],
+                    note=note)
+                rdv.save()
+        except (ValueError, IntegrityError):
+            # `save()` refuse le chevauchement (NTWMS7) — message métier
+            # propre. AUD214 — sous requêtes CONCURRENTES, `save()` ne voit
+            # rien (les deux SELECT précèdent les deux INSERT) : c'est alors
+            # l'ExclusionConstraint de la base qui refuse la seconde, avec une
+            # `IntegrityError`. Cet endpoint est PUBLIC (`AllowAny`) : les
+            # deux refus doivent produire exactement le MÊME message métier,
+            # jamais une 500 ni une trace.
+            raise ValueError('Ce créneau vient d\'être réservé, '
+                             'choisissez-en un autre.')
     logger.info('NTWMS35 creneau reserve quai=%s fournisseur=%s',
                 quai.id, fournisseur.id)
     return rdv

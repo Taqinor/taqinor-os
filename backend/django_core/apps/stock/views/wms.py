@@ -444,7 +444,7 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
     occuper le même quai au même moment.
     """
     queryset = RendezVousTransporteur.objects.select_related(
-        'quai', 'transporteur').all()
+        'quai', 'transporteur', 'fournisseur', 'bon_commande').all()
     serializer_class = RendezVousTransporteurSerializer
     ordering = ['date_heure_debut', 'id']
 

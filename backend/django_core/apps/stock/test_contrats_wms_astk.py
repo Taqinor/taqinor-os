@@ -545,10 +545,12 @@ class ContratWmsQuaisTests(WmsBase):
         self.assertEqual(rep.status_code, 200, rep.content)
         corps = rep.json()
         self.assertMemesCles(corps, contrat['exemple'], 'liste')
-        self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
+        # ASTK192 — les clés NOUVELLES (fournisseur, fournisseur_nom,
+        # bon_commande, bon_commande_reference) sont désormais servies : la
+        # réponse réelle = le sur-ensemble déclaré par le contrat.
+        self.assertMemesCles(corps['results'][0],
+                             contrat['exemple_nouveau_astk192'],
                              'rendez-vous')
-        # Les clés NOUVELLES (ASTK192) sont un sur-ensemble déclaré : elles
-        # ne figurent pas encore dans la réponse réelle.
         nouvelles = set(contrat['exemple_nouveau_astk192']) - set(
             contrat['exemple_element'])
         self.assertEqual(nouvelles, set(contrat['cles_nouvelles_astk192']))
