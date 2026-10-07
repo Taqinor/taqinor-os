@@ -57,9 +57,13 @@ def make_installation(company, client, devis=None):
         devis=devis)
 
 
-def make_calepinage(company, client, devis):
+def make_calepinage(company, client, devis, resultat=None,
+                    roof_layout=None):
+    # ACAL107 — le kWc / les modules se lisent sur la CONCEPTION du calepinage
+    # (retenir une variante l'y écrit), plus sur la variante en parallèle.
     return Calepinage.objects.create(
-        company=company, client=client, devis=devis)
+        company=company, client=client, devis=devis, resultat=resultat,
+        roof_layout=roof_layout)
 
 
 def make_variante(company, calepinage, retenue, resultat=None,
@@ -89,11 +93,11 @@ class TestCalepinageRetenuPourDevis(TestCase):
             calepinage_retenu_pour_devis(self.devis.id, self.company))
 
     def test_lit_le_resultat_du_moteur_en_priorite(self):
-        calepinage = make_calepinage(self.company, self.client_obj, self.devis)
-        make_variante(
-            self.company, calepinage, retenue=True,
+        calepinage = make_calepinage(
+            self.company, self.client_obj, self.devis,
             resultat={'pose': {'kwc': 8.64, 'total_modules': 12}},
             roof_layout={'result': {'kwc': 999, 'panels': 999}})
+        make_variante(self.company, calepinage, retenue=True)
         bloc = calepinage_retenu_pour_devis(self.devis.id, self.company)
         self.assertEqual(bloc['id'], calepinage.id)
         self.assertEqual(bloc['kwc'], 8.64)
@@ -101,11 +105,10 @@ class TestCalepinageRetenuPourDevis(TestCase):
         self.assertEqual(bloc['planche_url'], f'/calepinage/{calepinage.id}')
 
     def test_repli_sur_le_resume_de_l_atelier_sans_resultat_moteur(self):
-        calepinage = make_calepinage(self.company, self.client_obj, self.devis)
-        make_variante(
-            self.company, calepinage, retenue=True,
-            resultat=None,
+        calepinage = make_calepinage(
+            self.company, self.client_obj, self.devis, resultat=None,
             roof_layout={'result': {'kwc': 5.76, 'panels': 8}})
+        make_variante(self.company, calepinage, retenue=True)
         bloc = calepinage_retenu_pour_devis(self.devis.id, self.company)
         self.assertEqual(bloc['kwc'], 5.76)
         self.assertEqual(bloc['nb_modules'], 8)
@@ -132,10 +135,10 @@ class TestCalepinageRetenuDuChantier(TestCase):
         self.assertIsNone(calepinage_retenu_du_chantier(chantier))
 
     def test_chantier_avec_calepinage_retenu_renvoie_le_bloc(self):
-        calepinage = make_calepinage(self.company, self.client_obj, self.devis)
-        make_variante(
-            self.company, calepinage, retenue=True,
+        calepinage = make_calepinage(
+            self.company, self.client_obj, self.devis,
             resultat={'pose': {'kwc': 8.64, 'total_modules': 12}})
+        make_variante(self.company, calepinage, retenue=True)
         chantier = make_installation(self.company, self.client_obj, self.devis)
         bloc = calepinage_retenu_du_chantier(chantier)
         self.assertEqual(bloc['calepinage_id'], calepinage.id)

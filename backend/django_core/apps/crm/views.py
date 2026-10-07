@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import APIException
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
@@ -59,6 +60,30 @@ from authentication.permissions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ReportToucheEchoue(APIException):
+    """ALEA30 — le report de la prochaine touche a échoué : la transaction
+    (écriture du lead + chatter + report) est annulée, RIEN n'est écrit, et la
+    réponse le dit explicitement (jamais un 200 sur un état divergent)."""
+    status_code = 500
+    default_detail = ('Le report de la prochaine touche a échoué : rien n’a '
+                      'été enregistré. Réessayez.')
+    default_code = 'report_touche_echoue'
+
+
+def _best_effort(libelle, fn, *args, **kwargs):
+    """ALEA30 — effet secondaire NON critique : exécuté dans son propre point
+    de sauvegarde (une erreur SQL n'empoisonne pas la transaction appelante),
+    sa panne est journalisée et n'échoue jamais l'appelant."""
+    from django.db import transaction
+    try:
+        with transaction.atomic():
+            return fn(*args, **kwargs)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('ALEA30: effet secondaire « %s » échoué', libelle,
+                       exc_info=True)
+        return None
 
 
 def _parse_rappel(date_str, heure_str=''):
@@ -651,7 +676,9 @@ class ClientViewSet(CompanyScopedModelViewSet):
         except (TypeError, ValueError):
             seuil = 90
         company = request.user.company if request.user.company_id else None
-        entries = comptes_dormants(company, seuil_jours=seuil)
+        # ALEA27 — bornée par la portée du viewset (société + équipe).
+        entries = comptes_dormants(
+            company, seuil_jours=seuil, clients=self.get_queryset())
         results = [{
             'id': e['client'].id,
             'nom': str(e['client']),
@@ -916,6 +943,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             qs = qs.annotate(**annotations_signaux())
         return qs
 
+    def _leads_en_portee(self):
+        """ALEA27 — les leads que CET utilisateur peut voir (société + portée
+        équipe/sous-arbre + entité), SANS les annotations de liste : la base
+        de toute action annexe (bulk, doublons, contrôle de doublons). Une
+        seule source de vérité : ``get_queryset()``."""
+        return Lead.objects.filter(
+            pk__in=self.get_queryset().values('pk'))
+
     @staticmethod
     def _annoter_prochaine_touche(qs):
         """MRY5 — la prochaine touche de cadence, EN UNE requête.
@@ -1036,6 +1071,26 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 horodatages.add(f.name)
         return sorted({n for n in noms if n in concrets} | horodatages)
 
+    @staticmethod
+    def _a_un_changement(old, vd):
+        """ALEA29 — vrai si au moins une valeur validée diffère de la base.
+        Prudent : une valeur non comparable (M2M, type inconnu) compte comme
+        un changement."""
+        for nom, valeur in vd.items():
+            try:
+                champ = Lead._meta.get_field(nom)
+            except Exception:  # noqa: BLE001 — champ non modèle
+                return True
+            if getattr(champ, 'many_to_many', False):
+                actuel = set(getattr(old, nom).values_list('pk', flat=True))
+                voulu = {getattr(v, 'pk', v) for v in (valeur or [])}
+                if actuel != voulu:
+                    return True
+                continue
+            if getattr(old, nom) != valeur:
+                return True
+        return False
+
     def perform_update(self, serializer):
         # CAD156 — « Je vous rappelle jeudi à 18 h » : l'HEURE promise au
         # téléphone n'avait aucun champ (`relance_date` est une date). Elle
@@ -1061,6 +1116,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
         instance = serializer.instance
+
+        # ALEA29 — un PATCH SANS changement réel (corps vide ou valeurs
+        # identiques) n’écrit rien : ni date_modification ni updated_by
+        # n'avancent (sinon l'autre onglet affichait un faux « modifié par
+        # ailleurs »). Une heure de rappel dans le corps est un changement.
+        if not brut_heure and not self._a_un_changement(
+                old, serializer.validated_data):
+            return
 
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by. CRX25 : posé
@@ -1099,18 +1162,64 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         for source, derivee in self.COLONNES_DERIVEES.items():
             if source in ecrits:
                 ecrits.add(derivee)
-        with _save_borne_aux_champs(instance, self._champs_ecrivables(ecrits)):
-            super().perform_update(serializer)
+        # ALEA30 — l'écriture, son chatter et le report de la prochaine touche
+        # forment UNE transaction : un report en panne n'écrit RIEN (avant, la
+        # `relance_date` du lead était persistée et la touche restait à son
+        # ancienne date — deux dates divergentes, sonde LCAD-6). Les effets
+        # secondaires non critiques (score, premier contact, émission d'étape)
+        # sont best-effort, chacun dans son point de sauvegarde : leur panne
+        # est journalisée et n'échoue plus un PATCH déjà écrit (LFICHE-5).
+        from django.db import transaction
+        from .services import (
+            _emit_stage_changed, maybe_set_first_contacted_at,
+            recompute_lead_score, reporter_prochaine_touche,
+            sync_relance_activity,
+        )
+        with transaction.atomic():
+            with _save_borne_aux_champs(
+                    instance, self._champs_ecrivables(ecrits)):
+                super().perform_update(serializer)
 
-        new_lead = serializer.instance
-        # CRX25 — l'instance en mémoire peut porter des valeurs PÉRIMÉES sur
-        # les champs NON écrits (une requête concurrente les a changés entre
-        # la lecture et l'écriture) : on relit avant de journaliser, sinon le
-        # chatter annoncerait un changement qui n'a jamais été persisté — et
-        # la réponse renverrait au client un état qui n'est pas celui de la
-        # base.
-        new_lead.refresh_from_db()
-        activity.log_changes(old, new_lead, self.request.user)
+            new_lead = serializer.instance
+            # CRX25 — l'instance en mémoire peut porter des valeurs PÉRIMÉES
+            # sur les champs NON écrits (une requête concurrente les a changés
+            # entre la lecture et l'écriture) : on relit avant de journaliser,
+            # sinon le chatter annoncerait un changement qui n'a jamais été
+            # persisté — et la réponse renverrait au client un état qui n'est
+            # pas celui de la base.
+            new_lead.refresh_from_db()
+            activity.log_changes(old, new_lead, self.request.user)
+            _best_effort('relance', sync_relance_activity,
+                         new_lead, self.request.user)
+            # FG28 — Pose first_contacted_at à la première sortie de NEW.
+            _best_effort('premier contact', maybe_set_first_contacted_at,
+                         old, new_lead)
+            # QJ6 — Recalcule et persiste le score après chaque mise à jour.
+            _best_effort('score', recompute_lead_score, new_lead)
+            # NTCRM12 — édition manuelle de l'étape depuis l'écran lead.
+            _best_effort('étape', _emit_stage_changed, new_lead, old.stage,
+                         new_lead.stage, self.request.user)
+            # MRY10 — UN SEUL système de rappel. Le rival historique
+            # (`CallLogPopover`, qui PATCHe `relance_date` seul) reste
+            # fonctionnel : sur un lead à cadence active, ce PATCH est traité
+            # comme un report de la prochaine touche, sinon les deux dates
+            # divergeraient dès le premier appel — exactement ce que
+            # l'invariant de `sync_relance_activity` interdit.
+            # CAD156 — une HEURE saisie reporte la touche même si la date ne
+            # change pas (« toujours jeudi, mais à 18 h »).
+            if quand_rappel is not None or (
+                    'relance_date' in serializer.validated_data
+                    and new_lead.relance_date
+                    and new_lead.relance_date != old.relance_date):
+                try:
+                    reporter_prochaine_touche(
+                        new_lead, self.request.user,
+                        quand_rappel or new_lead.relance_date)
+                except Exception as exc:  # noqa: BLE001 — tout est annulé
+                    logger.warning(
+                        'ALEA30: report de touche échoué sur le lead #%s — '
+                        'PATCH annulé', new_lead.pk, exc_info=True)
+                    raise ReportToucheEchoue() from exc
         # AGR522 — au passage à « accordé » (approbation préalable FDA), une
         # étape MANUELLE datée rappelle le délai de 3 mois (interne, hors
         # gabarit). Best-effort : jamais bloquant pour l'enregistrement.
@@ -1170,38 +1279,6 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
                 logger.warning(
                     'QJR590: synchronisation client échouée (lead #%s)',
-                    new_lead.pk, exc_info=True)
-        from .services import (
-            _emit_stage_changed, maybe_set_first_contacted_at,
-            recompute_lead_score, sync_relance_activity,
-        )
-        sync_relance_activity(new_lead, self.request.user)
-        # FG28 — Pose first_contacted_at à la première sortie de l'étape NEW.
-        maybe_set_first_contacted_at(old, new_lead)
-        # QJ6 — Recalcule et persiste le score après chaque mise à jour.
-        recompute_lead_score(new_lead)
-        # NTCRM12 — édition manuelle de l'étape depuis l'écran lead.
-        _emit_stage_changed(new_lead, old.stage, new_lead.stage, self.request.user)
-        # MRY10 — UN SEUL système de rappel. Le rival historique
-        # (`CallLogPopover`, qui PATCHe `relance_date` seul) reste
-        # fonctionnel : sur un lead à cadence active, ce PATCH est traité
-        # comme un report de la prochaine touche, sinon les deux dates
-        # divergeraient dès le premier appel — exactement ce que
-        # l'invariant de `sync_relance_activity` interdit.
-        from .services import reporter_prochaine_touche
-        # CAD156 — une HEURE saisie reporte la touche même si la date ne
-        # change pas (« toujours jeudi, mais à 18 h »).
-        if quand_rappel is not None or (
-                'relance_date' in serializer.validated_data
-                and new_lead.relance_date
-                and new_lead.relance_date != old.relance_date):
-            try:
-                reporter_prochaine_touche(
-                    new_lead, self.request.user,
-                    quand_rappel or new_lead.relance_date)
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-                logger.warning(
-                    'MRY10: report de touche échoué sur le lead #%s',
                     new_lead.pk, exc_info=True)
         # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
         # d'étape est déjà couvert par le receiver `lead_stage_changed`.
@@ -1381,27 +1458,35 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def archiver(self, request, pk=None):
         """Archive un lead (réversible). Le retire des vues par défaut."""
+        from django.db import transaction
         from django.utils import timezone
         lead = self.get_object()
         if not lead.is_archived:
             lead.is_archived = True
             lead.archived_by = request.user
             lead.archived_at = timezone.now()
-            lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
-            activity.log_archive(lead, request.user)
+            # ALEA30 — écriture et chatter dans la MÊME transaction.
+            with transaction.atomic():
+                lead.save(update_fields=['is_archived', 'archived_by',
+                                         'archived_at'])
+                activity.log_archive(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
     @action(detail=True, methods=['post'], url_path='restaurer',
             permission_classes=[IsResponsableOrAdmin])
     def restaurer(self, request, pk=None):
         """Restaure un lead archivé (le ramène dans les vues par défaut)."""
+        from django.db import transaction
         lead = self.get_object()
         if lead.is_archived:
             lead.is_archived = False
             lead.archived_by = None
             lead.archived_at = None
-            lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
-            activity.log_restore(lead, request.user)
+            # ALEA30 — écriture et chatter dans la MÊME transaction.
+            with transaction.atomic():
+                lead.save(update_fields=['is_archived', 'archived_by',
+                                         'archived_at'])
+                activity.log_restore(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
     def _whatsapp_devis_message(self, request, lead, *, enregistrer):
@@ -1698,7 +1783,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         rapprochement, et la fusion reste manuelle."""
         from .services import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
-        dups = find_duplicate_leads(lead)
+        dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
         return Response([
             {
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
@@ -1730,7 +1815,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         exclude_pk = exclude if (exclude or '').isdigit() else None
         dups = find_duplicates_by_contact(
             request.user.company, phone=phone, email=email,
-            exclude_pk=exclude_pk)
+            exclude_pk=exclude_pk, queryset=self._leads_en_portee())
         return Response([
             {
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
@@ -1797,7 +1882,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
         clusters, _ = find_duplicate_clusters(
-            request.user.company, include_archived=include_archived)
+            request.user.company, include_archived=include_archived,
+            queryset=self._leads_en_portee())
         # Libellés FR des champs comblés à la fusion (aperçu avant confirmation).
         field_labels = activity.TRACKED_FIELDS
         out = []
@@ -2548,7 +2634,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )
 
         # Recherche directe sur Client
-        client_qs = ClientModel.objects.filter(company=company)
+        # ALEA27 (jumeau) — bornée par la portée client de l'utilisateur
+        # (même règle que ``ClientViewSet.get_queryset``) : un client hors
+        # portée n'est jamais rendu.
+        client_qs = scope_client_queryset(
+            ClientModel.objects.filter(company=company), request.user)
         found = []
         pks_seen = set()
         if phone_norm:
@@ -3091,21 +3181,32 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
                                   'heure HH:MM optionnelle).'},
                     status=status.HTTP_400_BAD_REQUEST)
-        act = LeadActivity.objects.create(
-            lead=lead,
-            company=lead.company,
-            kind=kind,
-            body=body or None,
-            outcome=outcome,
-            user=request.user,
-        )
-        # FG28/MRY19 — tout contact direct = première prise de contact,
-        # posée par LA source unique. Aucune chaîne d'étape ne subsiste ici.
-        from .services import marquer_premier_contact
-        marquer_premier_contact(lead)
-        if quand is not None:
-            from .services import reporter_prochaine_touche
-            reporter_prochaine_touche(lead, request.user, quand)
+        # ALEA30 — l'interaction, le premier contact et le report de la
+        # touche forment UNE transaction : un report en panne n'écrit rien
+        # (avant : chatter écrit puis 500, touche jamais déplacée).
+        from django.db import transaction
+        from .services import (marquer_premier_contact,
+                               reporter_prochaine_touche)
+        with transaction.atomic():
+            act = LeadActivity.objects.create(
+                lead=lead,
+                company=lead.company,
+                kind=kind,
+                body=body or None,
+                outcome=outcome,
+                user=request.user,
+            )
+            # FG28/MRY19 — tout contact direct = première prise de contact,
+            # posée par LA source unique. Aucune chaîne d'étape ici.
+            marquer_premier_contact(lead)
+            if quand is not None:
+                try:
+                    reporter_prochaine_touche(lead, request.user, quand)
+                except Exception as exc:  # noqa: BLE001 — tout est annulé
+                    logger.warning(
+                        'ALEA30: report de touche échoué sur le lead #%s — '
+                        'interaction annulée', lead.pk, exc_info=True)
+                    raise ReportToucheEchoue() from exc
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -3133,9 +3234,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': "Action réservée à l'administrateur."},
                 status=status.HTTP_403_FORBIDDEN)
         try:
+            # ALEA27 — la sélection est bornée par la portée du viewset : un
+            # id hors portée (lead d'un collègue hors équipe) est ignoré.
             result = apply_bulk_action(
                 company=request.user.company, user=request.user,
-                lead_ids=ids, op=op, params=request.data)
+                lead_ids=ids, op=op, params=request.data,
+                queryset=self._leads_en_portee())
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -4807,6 +4911,10 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # ALEA27 — portée équipe/sous-arbre : seuls les RDV d'un lead dans la
+        # portée (responsable visible) ou créés par un utilisateur visible.
+        # Portée 'all' (admin) → inchangé.
+        qs = scope_queryset(qs, self.request.user, ['lead__owner', 'created_by'])
         lead_id = self.request.query_params.get('lead')
         if lead_id:
             qs = qs.filter(lead_id=lead_id)

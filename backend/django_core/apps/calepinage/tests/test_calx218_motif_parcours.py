@@ -167,7 +167,7 @@ class RefusEtOmissionsTest(unittest.TestCase):
 class LongueurDcTest(unittest.TestCase):
     """Le motif SAISI atteint la longueur DC publiée."""
 
-    LAYOUT = {'zones': [{'label': 'PAN-A',
+    LAYOUT = {'zones': [{'id': 'PAN-A', 'label': 'PAN-A',
                          'geometry': {'panels': RANGEE}}]}
 
     def _cheminement(self, motif=None):
@@ -209,7 +209,7 @@ class RefusALaSaisieTest(unittest.TestCase):
         pk = None
         company = None
         resultat = None
-        roof_layout = {'zones': [{'label': 'PAN-A',
+        roof_layout = {'zones': [{'id': 'PAN-A', 'label': 'PAN-A',
                                   'geometry': {'panels': RANGEE}}]}
 
     def _enregistrer(self, motif):

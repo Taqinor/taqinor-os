@@ -372,7 +372,11 @@ def appliquer_systeme(calepinage, systeme_id):
     ``{systeme, systeme_source}`` (contrat ``fixation_post``).
     """
     from .catalogue_fixation import systeme_de_societe
+    from .verrou import verifier_ecriture_autorisee
 
+    # Lot 2 critique #10 — le verrou unique (D-ACAL : devis accepté ⇒
+    # « révisez-le », 409) AVANT toute lecture du choix ou écriture.
+    verifier_ecriture_autorisee(calepinage, champ='systeme_id')
     company = getattr(calepinage, 'company', None)
     if systeme_id is None:
         systeme = None

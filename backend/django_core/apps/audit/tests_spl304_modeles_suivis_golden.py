@@ -3,7 +3,7 @@
 Capture seule : aucun code de production n'est modifié. Le golden est littéral
 dans ce module (``GOLDEN_TRACKED_MODELS`` : les 30 tuples dans l'ordre, relevés
 sur ``apps/audit/signals.py`` actuel). Plancher : ajout toléré, jamais retrait
-ni réordonnancement.
+ni réordonnancement. ASTK145 : +6 données maîtres catalogue/tarif (36).
 """
 import ast
 from pathlib import Path
@@ -51,6 +51,13 @@ GOLDEN_TRACKED_MODELS = [
     ('core', 'DataSubjectRequest'),
     ('core', 'RegistreTraitement'),
     ('ventes', 'RegulatoryDossier'),
+    # ASTK145 — net-additif : six données maîtres catalogue/tarif fournisseur.
+    ('stock', 'Categorie'),
+    ('stock', 'Marque'),
+    ('stock', 'KitProduit'),
+    ('stock', 'KitComposant'),
+    ('achats', 'PrixFournisseur'),
+    ('stock', 'PalierPrixFournisseur'),
 ]
 GOLDEN_SANS_UPDATE = {('cpq', 'PrixContractuel')}
 
@@ -174,7 +181,7 @@ def fautifs_emplacement(noms, emplacement, racine=None):
 class ModelesSuivisGoldenTests(TestCase):
     def test_plancher_tracked_models(self):
         from apps.audit import modeles_suivis
-        self.assertEqual(len(GOLDEN_TRACKED_MODELS), 30)
+        self.assertEqual(len(GOLDEN_TRACKED_MODELS), 36)
         self.assertTrue(
             est_sous_suite(GOLDEN_TRACKED_MODELS,
                            list(modeles_suivis.TRACKED_MODELS)),

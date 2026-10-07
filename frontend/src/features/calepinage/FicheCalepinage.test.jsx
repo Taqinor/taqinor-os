@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { useState } from 'react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
@@ -24,6 +25,18 @@ vi.mock('../../api/calepinageApi', () => ({
       dupliquer: vi.fn(),
     },
   },
+}))
+
+// ACAL181 — la liste des responsables assignables et la recherche de leads
+// (lectures crm de la fiche) ; le serveur de calepinage reste mocké ci-dessus.
+vi.mock('../../api/crmApi', () => ({
+  default: { getAssignableUsers: vi.fn(), getLeads: vi.fn(), searchClients: vi.fn() },
+}))
+
+// ACAL294 — les définitions de champs personnalisés (registre `customfields`)
+// que `CustomFieldsInput` lit pour le module « calepinage ».
+vi.mock('../../api/customFieldsApi', () => ({
+  default: { getDefs: vi.fn() },
 }))
 
 /* ============================================================================
@@ -54,6 +67,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 import calepinageApi from '../../api/calepinageApi'
+import crmApi from '../../api/crmApi'
+import customFieldsApi from '../../api/customFieldsApi'
 import FicheCalepinage from './FicheCalepinage'
 
 const DOC = documentContrat('calepinage', 'calepinage_detail')
@@ -74,6 +89,10 @@ beforeEach(() => {
   // CALX42 — par défaut, la fiche lit la liste des modèles au montage : ce
   // calepinage-ci n'en est pas un.
   calepinageApi.calepinages.modeles.mockResolvedValue({ data: [] })
+  crmApi.getAssignableUsers.mockResolvedValue({ data: [
+    { id: 1, username: 'essai' }, { id: 7, username: 'sami' },
+  ] })
+  customFieldsApi.getDefs.mockResolvedValue({ data: [] })
 })
 afterEach(() => { cleanup() })
 
@@ -155,9 +174,10 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
     // CIQ136 — aucune contrainte de site par défaut : « — », jamais FM.
     expect(screen.getByTestId('cal-fiche-contraintes_site')).toHaveTextContent('—')
     expect(screen.queryByRole('link', { name: 'Voir l’aperçu' })).toBeNull()
-    // Les permissions de l'exemple vide : modifier + supprimer, PAS retenir.
+    // Les permissions de l'exemple vide : modifier + archiver (ACAL120 : le
+    // geste « supprimer » est l'archivage), PAS retenir.
     expect(screen.getByTestId('cal-fiche-permissions'))
-      .toHaveTextContent('modifier, supprimer')
+      .toHaveTextContent('modifier, archiver')
   })
 
   it('agrégat pas encore lu : rien — jamais une fiche de tirets', () => {
@@ -455,6 +475,16 @@ describe('CALX42 — marquer / démarquer un calepinage comme modèle', () => {
    à `true` par défaut (comportement d'aujourd'hui) ; le bouton ouvre le
    NOUVEAU calepinage.
    ========================================================================== */
+// ACAL188 — DETAIL est le calepinage OUVERT d'un lead : la copie vise un
+// AUTRE lead, choisi par le sélecteur partagé (recherche serveur mockée).
+const LEAD_CIBLE = { id: 41, nom: 'Alami', prenom: 'Sara', ville: 'Rabat' }
+const choisirLeadCopie = async () => {
+  crmApi.getLeads.mockResolvedValue({ data: { results: [LEAD_CIBLE] } })
+  const zone = screen.getByTestId('cal-fiche-dupliquer-lead')
+  await userEvent.click(within(zone).getByRole('combobox'))
+  await userEvent.click(await screen.findByText('Alami Sara'))
+}
+
 describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
   it('la confirmation ÉNUMÈRE ce que la copie laisse derrière elle', async () => {
     rendre(DETAIL)
@@ -478,10 +508,11 @@ describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
 
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
     expect(screen.getByTestId('cal-fiche-dupliquer-variantes')).toBeChecked()
+    await choisirLeadCopie()
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
 
     await waitFor(() => expect(calepinageApi.calepinages.dupliquer)
-      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: true }))
+      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: true, lead: LEAD_CIBLE.id }))
     // Le bouton OUVRE la copie.
     expect(navigateMock).toHaveBeenCalledWith('/calepinage/77')
   })
@@ -497,10 +528,11 @@ describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
 
     const boite = screen.getByTestId('cal-fiche-dupliquer-confirmation')
     expect(boite).toHaveTextContent('les variantes ;')
+    await choisirLeadCopie()
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
 
     await waitFor(() => expect(calepinageApi.calepinages.dupliquer)
-      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: false }))
+      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: false, lead: LEAD_CIBLE.id }))
   })
 
   it('« Annuler » referme sans rien dupliquer', async () => {
@@ -521,11 +553,39 @@ describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
     rendre(DETAIL)
 
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await choisirLeadCopie()
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
 
     const bloc = await screen.findByTestId('cal-fiche-dupliquer-erreur')
     expect(bloc).toHaveTextContent(MOTIF)
     expect(bloc).toHaveTextContent('Dupliquer')
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  // ACAL188 (D-ACAL-12) — la cible et le refus « créez une variante ».
+  it('exige une cible pour dupliquer un calepinage ouvert', async () => {
+    rendre(DETAIL)
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
+
+    expect(await screen.findByTestId('cal-fiche-dupliquer-erreur-lead'))
+      .toHaveTextContent('Choisissez le lead ou le client de la copie.')
+    expect(calepinageApi.calepinages.dupliquer).not.toHaveBeenCalled()
+  })
+
+  it('affiche le refus créez une variante sur 409', async () => {
+    const CONFLIT = exempleContrat('calepinage', 'calepinage_dupliquer',
+      'exemple_conflit_409')
+    calepinageApi.calepinages.dupliquer.mockRejectedValue({
+      response: { status: 409, data: CONFLIT },
+    })
+    rendre(DETAIL)
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await choisirLeadCopie()
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
+
+    expect(await screen.findByTestId('cal-fiche-dupliquer-erreur-lead'))
+      .toHaveTextContent(CONFLIT.lead)
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
@@ -583,5 +643,111 @@ describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat',
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('cal-bouton-devis')).toBeInTheDocument()
     vi.doUnmock('../../api/calepinageApi')
+  })
+})
+
+
+/* ============================================================================
+   ACAL181 — changer lead / responsable depuis la fiche, puis RELIRE le détail.
+   Les réponses viennent des échantillons de contrat committés ; l'assertion
+   porte sur le DOM relu (un détail servi, jamais un état local).
+   ========================================================================== */
+describe('FicheCalepinage — rattachement éditable (ACAL181)', () => {
+  const CONFLIT = exempleContrat(
+    'calepinage', 'calepinage_creation_conflit', 'exemple_changement_lead_409')
+
+  // Le parent réel (AtelierPanneaux) relit l'agrégat après un geste.
+  function Parent() {
+    const [detail, setDetail] = useState(DETAIL)
+    return (
+      <MemoryRouter>
+        <FicheCalepinage detail={detail} onRelire={async () => {
+          const res = await calepinageApi.calepinages.get(DETAIL.id)
+          setDetail(res.data)
+        }} />
+      </MemoryRouter>
+    )
+  }
+
+  it('change le responsable puis relit le détail', async () => {
+    calepinageApi.calepinages.update.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.get = vi.fn().mockResolvedValue({
+      data: { ...DETAIL, responsable: { id: 7, nom_complet: 'Sami Relu' } },
+    })
+    render(<Parent />)
+    const champ = screen.getByTestId('cal-fiche-responsable')
+    await userEvent.click(within(champ).getAllByRole('button')[0])
+    await userEvent.click(await screen.findByText('sami'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.update)
+      .toHaveBeenCalledWith(DETAIL.id, { responsable: 7 }))
+    await waitFor(() => expect(screen.getByTestId('cal-fiche-responsable'))
+      .toHaveTextContent('Sami Relu'))
+  })
+
+  it('refuse le changement de lead sur un devis envoyé et affiche le message serveur', async () => {
+    crmApi.getLeads.mockResolvedValue({ data: { results: [
+      { id: 42, nom: 'Autre', prenom: 'Lead', ville: 'Fès' },
+    ] } })
+    calepinageApi.calepinages.update.mockRejectedValue({
+      response: { status: 409, data: CONFLIT },
+    })
+    rendre(DETAIL)
+    const champ = screen.getByTestId('cal-fiche-lead')
+    await userEvent.click(within(champ).getByRole('combobox'))
+    await userEvent.click(await screen.findByText('Autre Lead'))
+
+    const erreur = await screen.findByTestId('cal-fiche-lead-erreur')
+    expect(erreur).toHaveTextContent(CONFLIT.lead)
+    expect(calepinageApi.calepinages.update)
+      .toHaveBeenCalledWith(DETAIL.id, { lead: '42' })
+  })
+
+  it('un lead à la corbeille se dit, sans lien mort vers /crm/leads', () => {
+    rendre({ ...DETAIL, lead: { ...DETAIL.lead, supprime: true } })
+    const champ = screen.getByTestId('cal-fiche-lead')
+    expect(within(champ).getByTestId('cal-fiche-lead-corbeille'))
+      .toHaveTextContent('Lead à la corbeille - restaurez-le')
+    expect(champ.querySelector('a[href^="/crm/leads"]')).toBeNull()
+  })
+})
+
+describe('FicheCalepinage — champs personnalisés (ACAL294)', () => {
+  it('la fiche affiche et enregistre les champs personnalisés', async () => {
+    customFieldsApi.getDefs.mockResolvedValue({ data: [
+      { id: 3, code: 'parcelle', libelle: 'N° de parcelle cadastrale',
+        type: 'text', actif: true, obligatoire: false },
+    ] })
+    calepinageApi.calepinages.update.mockResolvedValue({ data: {} })
+    rendre(DETAIL)
+
+    // La valeur SERVIE reste affichée telle quelle.
+    expect(screen.getByTestId('cal-fiche-custom_data')).toHaveTextContent('toiture_accessible')
+    const saisie = await screen.findByTestId('cal-fiche-custom-data-saisie')
+    expect(customFieldsApi.getDefs).toHaveBeenCalledWith('calepinage')
+    const champ = within(saisie).getByRole('textbox')
+    await userEvent.type(champ, 'T-1234')
+    await userEvent.click(screen.getByTestId('cal-fiche-custom-data-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.update).toHaveBeenCalledWith(
+      DETAIL.id, { custom_data: { ...DETAIL.custom_data, parcelle: 'T-1234' } },
+    ))
+  })
+
+  it('un refus par code est rendu sous le bloc, en NOMMANT le champ', async () => {
+    customFieldsApi.getDefs.mockResolvedValue({ data: [
+      { id: 3, code: 'parcelle', libelle: 'N° de parcelle cadastrale',
+        type: 'text', actif: true, obligatoire: false },
+    ] })
+    calepinageApi.calepinages.update.mockRejectedValue({ response: { status: 400,
+      data: { custom_data: { parcelle: ['Format invalide.'] } } } })
+    rendre(DETAIL)
+
+    const saisie = await screen.findByTestId('cal-fiche-custom-data-saisie')
+    await userEvent.type(within(saisie).getByRole('textbox'), 'x')
+    await userEvent.click(screen.getByTestId('cal-fiche-custom-data-enregistrer'))
+
+    expect(await screen.findByTestId('cal-fiche-custom_data-erreur'))
+      .toHaveTextContent('parcelle : Format invalide.')
   })
 })

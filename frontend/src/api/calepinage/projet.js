@@ -74,7 +74,9 @@ export const projet = {
     // déjà repris (200, `deja_repris`) ; sans visite validée, 400 SOUS le
     // champ `visite_id`, le motif du serveur tel quel.
     releveVisite: (id) => api.get(`${pivot(id)}releve-visite/`),
-    reprendreVisite: (id) => api.post(`${pivot(id)}releve-visite/`),
+    // ACAL211 — `{remplacer: true}` (ACAL210, « Mettre à jour depuis la visite ») : met à jour EN
+    // PLACE un relevé déjà repris ; sans corps, un relevé déjà repris n'est jamais touché.
+    reprendreVisite: (id, corps) => api.post(`${pivot(id)}releve-visite/`, corps),
     // CALX367 — la POSE RÉELLE et ses écarts (contrat
     // `contract_samples/calepinage_asbuilt_ecarts.json`, CALX337 ; porte
     // `views/asbuilt.py`, CALX366). UNE URL, UNE forme en GET comme en POST :

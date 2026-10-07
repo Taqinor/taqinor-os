@@ -63,7 +63,8 @@ class HistoriqueTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertFalse(reponse.data['inchange'])
         apres = CalepinageVersion.objects.filter(calepinage=self.calepinage)
-        self.assertEqual(apres.count(), avant + 1)
+        # ACAL45 — « Avant restauration » + la version restaurée.
+        self.assertEqual(apres.count(), avant + 2)
         # Tous les instantanés d'avant sont TOUJOURS là, inchangés.
         for version in self.versions:
             version.refresh_from_db()

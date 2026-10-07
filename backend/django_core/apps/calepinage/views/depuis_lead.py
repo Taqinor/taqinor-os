@@ -16,7 +16,8 @@ CE QUE CETTE PORTE FAIT, ET CE QU'ELLE NE FAIT PAS
   chemin n'est écrit ;
 * elle est **IDEMPOTENTE** : un lead qui a déjà un calepinage OUVERT reçoit
   CELUI-LÀ, jamais un second. « Ouvert » = non archivé, au sens exact de
-  ``selectors.appliquer_filtres_liste`` (CAL208, ``inclure_archives=False``) :
+  ``selectors.calepinages_actifs`` (ACAL118 : ``archive_le`` du modèle, qui
+  survit à la purge de la corbeille) :
   un calepinage mis à la corbeille ne bloque donc pas une nouvelle
   conception, et il n'est pas non plus ressuscité en silence ;
 * la relecture se fait DANS la transaction, sous le verrou consultatif du

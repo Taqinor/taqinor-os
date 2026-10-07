@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* PV20 — MODE DEVIS de l'écran de conception 3D.
@@ -13,6 +14,11 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    Le mode LEAD est verrouillé par un test GOLDEN (dernier bloc) : il doit
    rester strictement inchangé — même appels, même hydratation, même bouton. */
 
+// ACAL37 — l'atelier ouvert sur un devis monte les panneaux du MODULE (droits lus
+// sur le store) : on fige le droit, comme les autres tests de l'atelier.
+vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
+
+import '../../test/toitureDesignHarnessCalepinage'
 import { navigateMock } from '../../test/toitureDesignHarnessNavigation'
 import {
   initRoofToolPro8, serializeLayout, snapshot, setReferenceContourVisible,
@@ -23,72 +29,63 @@ import userEvent from '@testing-library/user-event'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
+import calepinageApi from '../../api/calepinageApi'
 import { toastInfo } from '../../lib/toast'
+import ToitureDesign from './ToitureDesign'
 
-const CTX = exempleContrat('ventes', 'devis_design_context')
-const CTX_RO = exempleContrat('ventes', 'devis_design_context',
-  'exemple_lecture_seule')
+/* ACAL37 (D-ACAL-1) — `/ventes/devis/:id/design` ouvre le CALEPINAGE lié :
+   `POST calepinages/depuis-modele/ {devis_id}` puis le design-context DU
+   CALEPINAGE (contrat `calepinage_design_context.json`, son `devis_lie`
+   porte l'en-tête). Les charges utiles restent les exemples COMMITTÉS. */
+const CTX_CAL = exempleContrat('calepinage', 'calepinage_design_context')
+const CTX_RO = exempleContrat('calepinage', 'calepinage_design_context',
+  'exemple_accepte')
+const DEVIS_ID = CTX_CAL.calepinage.devis_lie.id
+function servirConceptionDevis(reponse = reponseContrat('calepinage', 'calepinage_design_context')) {
+  calepinageApi.calepinages.depuisModele.mockResolvedValue(
+    { data: { id: reponse.data.calepinage.id } })
+  calepinageApi.calepinages.designContext.mockResolvedValue(reponse)
+}
 beforeEach(() => {
   reinitialiserBoot()
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('ToitureDesign — mode devis (PV20)', () => {
-  it('boote sur UN SEUL appel design-context et hydrate le builder depuis le devis', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+  it('résout le calepinage lié puis boote sur SON design-context (ACAL37)', async () => {
+    servirConceptionDevis()
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    // UN SEUL appel : rien n'est complété par une requête annexe (ni le lead,
-    // ni la config carte — la clé MapTiler vient du contexte).
-    expect(ventesApi.getDevisDesignContext).toHaveBeenCalledTimes(1)
-    expect(ventesApi.getDevisDesignContext)
-      .toHaveBeenCalledWith(String(CTX.devis.id))
-    expect(api.get).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.depuisModele)
+      .toHaveBeenCalledWith({ devis_id: DEVIS_ID })
+    expect(calepinageApi.calepinages.designContext)
+      .toHaveBeenCalledWith(String(CTX_CAL.calepinage.id))
+    // Le contexte DEVIS n'est plus lu : le calepinage est la conception.
+    expect(ventesApi.getDevisDesignContext).not.toHaveBeenCalled()
 
     const options = initRoofToolPro8.mock.calls[0][0]
-    expect(options.maptilerKey).toBe(CTX.carte.maptilerKey)
-    // `hydrate.devis` (PV19) et NON `hydrate.lead` : le devis fait foi.
+    expect(options.maptilerKey).toBe(CTX_CAL.carte.maptilerKey)
     expect(options.hydrate.lead).toBeUndefined()
-    expect(options.hydrate.devis).toEqual({
-      id: CTX.devis.id,
-      geometrie: {
-        roof_layout: CTX.geometrie.roof_layout,
-        roof_point: CTX.geometrie.pin,
-        roof_outline: CTX.geometrie.outline,
-      },
-      cible: {
-        panneaux: CTX.cible.panneaux,
-        panel_watt: CTX.cible.panel_watt,
-        scenario: CTX.cible.scenario,
-      },
-      fullName: CTX.devis.client_nom,
-      // PV23bis — le builder connaît déjà ces deux champs (hydrateFromDevis) :
-      // le contexte serveur les porte, cette projection ne doit plus les taire.
-      phone: CTX.devis.client_telephone,
-      city: CTX.devis.client_ville,
+    expect(options.hydrate.devis.geometrie).toEqual({
+      roof_layout: CTX_CAL.geometrie.roof_layout,
+      roof_point: CTX_CAL.geometrie.pin,
+      roof_outline: CTX_CAL.geometrie.outline,
     })
-    // PV75 — aucune étude bancable rangée sur le devis (mock par défaut) : la
-    // fenêtre de production ne reçoit rien à afficher en plus.
+    // PV75 — aucune étude bancable rangée sur le devis (mock par défaut).
     expect(options.bankable).toBeNull()
 
-    // L'en-tête porte la référence + le client SERVIS par le contexte.
+    // L'en-tête porte la référence + le client du DEVIS lié (servis).
     expect(await screen.findByRole('heading', { level: 1 }))
-      .toHaveTextContent(CTX.devis.reference)
+      .toHaveTextContent(CTX_CAL.calepinage.devis_lie.reference)
     expect(screen.getByRole('heading', { level: 1 }))
-      .toHaveTextContent(CTX.devis.client_nom)
-    // Modifiable : aucun bandeau de lecture seule.
+      .toHaveTextContent(CTX_CAL.calepinage.devis_lie.client_nom)
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
-    // Le bouton du flux LEAD n'existe jamais ici : on ne recrée pas un devis.
     expect(screen.queryByRole('button',
       { name: /^Générer le devis$/ })).toBeNull()
-    // PV23bis — la barre d'adresse est pré-remplie depuis adresse+ville du
-    // devis (même geste que le mode lead, GOLDEN plus bas) : elle donne à la
-    // carte un point de départ tant qu'aucun repère n'est encore posé.
     expect(document.getElementById('rp9-address').value)
-      .toBe(`${CTX.devis.client_adresse}, ${CTX.devis.client_ville}`)
+      .toBe(`${CTX_CAL.calepinage.client_adresse}, ${CTX_CAL.calepinage.client_ville}`)
   })
 
   // Correction fondateur 24/08 — le backend (PV17 + repli GPS) porte déjà le
@@ -96,13 +93,13 @@ describe('ToitureDesign — mode devis (PV20)', () => {
   it('correction 24/08 — sans aucune position (geometrie.pin=null) : message discret affiché', async () => {
     const ctxSansPin = {
       data: {
-        ...exempleContrat('ventes', 'devis_design_context'),
+        ...CTX_CAL,
         geometrie: { source: 'none', roof_layout: null, pin: null, outline: [] },
       },
     }
-    ventesApi.getDevisDesignContext.mockResolvedValue(ctxSansPin)
+    servirConceptionDevis(ctxSansPin)
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(await screen.findByTestId('pv-sans-gps')).toHaveTextContent(
@@ -110,10 +107,10 @@ describe('ToitureDesign — mode devis (PV20)', () => {
   })
 
   it('fondateur 18/08 — bouton Fermer (X) en haut à droite referme la fenêtre (retour SPA)', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
     expect(fermer).toBeInstanceOf(HTMLButtonElement)
@@ -139,12 +136,12 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     }
 
     it('mode devis, serializeLayout change → Fermer demande confirmation, beforeunload armé', async () => {
-      ventesApi.getDevisDesignContext.mockResolvedValue(
-        reponseContrat('ventes', 'devis_design_context'))
+      servirConceptionDevis(
+        reponseContrat('calepinage', 'calepinage_design_context'))
       bootHydrate()
       const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
       try {
-        rendreDevis(CTX.devis.id)
+        rendreDevis(DEVIS_ID)
         const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
         // La référence est prise sur la scène HYDRATÉE.
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
@@ -167,12 +164,12 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     })
 
     it('scène inchangée → Fermer sans confirmation, beforeunload désarmé', async () => {
-      ventesApi.getDevisDesignContext.mockResolvedValue(
-        reponseContrat('ventes', 'devis_design_context'))
+      servirConceptionDevis(
+        reponseContrat('calepinage', 'calepinage_design_context'))
       bootHydrate()
       const confirmer = vi.spyOn(window, 'confirm')
       try {
-        rendreDevis(CTX.devis.id)
+        rendreDevis(DEVIS_ID)
         const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
         await userEvent.click(fermer)
@@ -185,21 +182,24 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     })
 
     it('après un enregistrement réussi, plus aucune alerte', async () => {
-      ventesApi.getDevisDesignContext.mockResolvedValue(
-        reponseContrat('ventes', 'devis_design_context'))
-      ventesApi.syncDevisLayout.mockResolvedValue({ data: { inchange: true, avertissements: [] } })
+      servirConceptionDevis(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+        { data: { inchange: true, empreinte_document: CTX_CAL.geometrie.empreinte_document } })
+      calepinageApi.calepinages.syncDevis.mockResolvedValue(
+        { data: { inchange: true, avertissements: [] } })
       bootHydrate()
       const confirmer = vi.spyOn(window, 'confirm')
       try {
-        rendreDevis(CTX.devis.id)
+        rendreDevis(DEVIS_ID)
         const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
-        const modifie = { ...LAYOUT, result: { panels: CTX.cible.panneaux } }
+        const modifie = { ...LAYOUT, result: { panels: CTX_CAL.cible.panneaux } }
         serializeLayout.mockReturnValue(modifie)
         await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
 
-        await userEvent.click(await screen.findByRole('button', { name: /Enregistrer/ }))
-        await waitFor(() => expect(ventesApi.syncDevisLayout).toHaveBeenCalled())
+        await userEvent.click(await screen.findByRole('button', { name: /Enregistrer la conception/ }))
+        await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalled())
         await waitFor(() => expect(beforeunloadArme()).toBe(false))
         await userEvent.click(fermer)
         expect(confirmer).not.toHaveBeenCalled()
@@ -211,28 +211,22 @@ describe('ToitureDesign — mode devis (PV20)', () => {
   })
 
   it('lecture seule : le MOTIF vient du serveur et le CTA renvoie vers la 3D', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context', 'exemple_lecture_seule'))
+    servirConceptionDevis({ data: CTX_RO })
 
-    rendreDevis(CTX_RO.devis.id)
+    rendreDevis(DEVIS_ID)
 
     const bandeau = await screen.findByTestId('pv20-lecture-seule')
     // Le motif est affiché TEL QUEL — jamais rédigé côté écran.
     expect(bandeau).toHaveTextContent(CTX_RO.raison_lecture_seule)
     const cta = screen.getByRole('link', { name: 'Voir en 3D' })
-    expect(cta).toHaveAttribute('href', `/ventes/devis/${CTX_RO.devis.id}/3d`)
+    expect(cta).toHaveAttribute('href', `/ventes/devis/${DEVIS_ID}/3d`)
     // Le designer boote quand même (consultation), sans action d'enregistrement.
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    expect(screen.queryByRole('button',
-      { name: /^Générer le devis$/ })).toBeNull()
-    // Les avertissements du serveur sont rendus, pas inventés.
-    for (const a of CTX_RO.avertissements) {
-      expect(screen.getByTestId('pv20-avertissements')).toHaveTextContent(a)
-    }
+    expect(screen.queryByRole('button', { name: /Enregistrer la conception/ })).toBeNull()
   })
 
   it('devis introuvable : message FR, aucun boot du builder', async () => {
-    ventesApi.getDevisDesignContext.mockRejectedValue({ response: { status: 404 } })
+    calepinageApi.calepinages.depuisModele.mockRejectedValue({ response: { status: 404 } })
 
     rendreDevis(999)
 
@@ -241,8 +235,8 @@ describe('ToitureDesign — mode devis (PV20)', () => {
   })
 
   it('PV75 — étude bancable rangée : projette pr → `options.bankable`', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
     ventesApi.getDevisById.mockResolvedValueOnce({
       data: {
         etude_params: {
@@ -256,10 +250,10 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       },
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    expect(ventesApi.getDevisById).toHaveBeenCalledWith(String(CTX.devis.id))
+    expect(ventesApi.getDevisById).toHaveBeenCalledWith(String(DEVIS_ID))
     const options = initRoofToolPro8.mock.calls[0][0]
     expect(options.bankable).toEqual({
       p50_kwh: 71800, p90_kwh: 58300, performance_ratio: 0.812,
@@ -268,11 +262,11 @@ describe('ToitureDesign — mode devis (PV20)', () => {
   })
 
   it('PV75 — devis complet indisponible (erreur réseau) : boot inchangé, `bankable` null', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
     ventesApi.getDevisById.mockRejectedValueOnce(new Error('réseau'))
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const options = initRoofToolPro8.mock.calls[0][0]
@@ -297,14 +291,14 @@ const CONTOUR_CLIENT = [
 
 describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur la carte', () => {
   it('mode devis — un contour_client présent affiche le calque + le bouton de bascule', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue({
+    servirConceptionDevis({
       data: {
-        ...CTX,
-        geometrie: { ...CTX.geometrie, contour_client: CONTOUR_CLIENT },
+        ...CTX_CAL,
+        geometrie: { ...CTX_CAL.geometrie, contour_client: CONTOUR_CLIENT },
       },
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(await screen.findByTestId('rp9-toit-client')).toHaveTextContent(
@@ -319,18 +313,18 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     // `outline` (le layout du devis, déjà retouché) diffère de `contour_client`
     // (le dessin d'origine du lead) : le calque doit rester fidèle au SECOND,
     // jamais confondu avec le calepinage courant.
-    ventesApi.getDevisDesignContext.mockResolvedValue({
+    servirConceptionDevis({
       data: {
-        ...CTX,
+        ...CTX_CAL,
         geometrie: {
-          ...CTX.geometrie,
+          ...CTX_CAL.geometrie,
           outline: [[10, 10], [10, 11], [11, 11]],
           contour_client: CONTOUR_CLIENT,
         },
       },
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const options = initRoofToolPro8.mock.calls[0][0]
@@ -349,10 +343,11 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
   })
 
   it('mode devis — sans contour_client (devis muet, comportement actuel) : aucun calque, aucun bouton', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+    servirConceptionDevis({
+      data: { ...CTX_CAL, geometrie: { ...CTX_CAL.geometrie, contour_client: [] } },
+    })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
@@ -539,76 +534,57 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
 /* PV21 — la boucle de finalisation du mode devis : resynchronisation des lignes
    sur le calepinage, « aucun changement », et le geste « Réviser (v2) » quand le
    client a déjà la version sous les yeux. */
-describe('ToitureDesign — PV21 : enregistrer la conception', () => {
+describe('ToitureDesign — PV21 / ACAL37 : enregistrer la conception', () => {
   async function ouvrirModifiable() {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    rendreDevis(CTX.devis.id)
+    servirConceptionDevis()
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 5, empreinte_document: 'c'.repeat(64) } })
+    rendreDevis(DEVIS_ID)
     return screen.findByRole('button', { name: /Enregistrer la conception/ })
   }
 
-  it('resynchronise les lignes, envoie la 3D et confirme sans rien envoyer au client', async () => {
+  it('range la conception sur le calepinage, envoie la 3D du calepinage, puis resynchronise le devis', async () => {
     snapshot.mockReturnValue('data:image/png;base64,QUJD')
-    ventesApi.syncDevisLayout.mockResolvedValue({
-      data: {
-        inchange: false, panneaux: 24, kwc: 17.04, scenario: 'reseau',
-        batterie: false, lignes_modifiees: 1, avertissements: [],
-      },
+    calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({
+      data: { inchange: false, lignes_ajoutees: 0, avertissements: [] },
     })
-    ventesApi.shareLinkDevis.mockResolvedValue({ data: { token: 'tok', path: '/proposition/tok' } })
-    ventesApi.whatsappPreviewDevis.mockResolvedValue({
-      data: { wa_url: 'https://wa.me/212600000000?text=x', preview: true },
-    })
-    api.post.mockResolvedValue({ data: {} })
 
     const bouton = await ouvrirModifiable()
     await userEvent.click(bouton)
 
-    await waitFor(() => expect(ventesApi.syncDevisLayout).toHaveBeenCalled())
-    // Le layout envoyé est celui SÉRIALISÉ par le builder, sous l'enveloppe
-    // `{layout}` que le serveur déballe.
-    expect(ventesApi.syncDevisLayout).toHaveBeenCalledWith(
-      String(CTX.devis.id), { layout: LAYOUT })
-    // Instantané 3D poussé sur le MÊME devis (best-effort, patron du flux lead).
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `/ventes/devis/${CTX.devis.id}/roof-image/`, expect.any(FormData)))
-    // L-SECT (fondateur 24/08/2026) — l'écran CONFIRME, il n'envoie plus :
-    // le lien, le menu WhatsApp, le mailto et le bouton copier ont déménagé
-    // dans la fiche lead (onglet Devis → « Envoyer au client »), le seul
-    // endroit où le niveau, l'OTP et les sections se choisissent.
-    expect(await screen.findByText('Conception enregistrée')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'WhatsApp' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Copier le lien' })).toBeNull()
-    // …et surtout AUCUN lien public n'est frappé au passage.
+    await waitFor(() => expect(calepinageApi.calepinages.syncDevis)
+      .toHaveBeenCalledWith(String(CTX_CAL.calepinage.id), {}))
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel)
+      .toHaveBeenCalledWith(String(CTX_CAL.calepinage.id), LAYOUT,
+        CTX_CAL.geometrie.empreinte_document)
+    // L'aperçu va sur le CALEPINAGE (jamais `roof-image` du devis).
+    expect(calepinageApi.calepinages.envoyerImage).toHaveBeenCalledTimes(1)
+    expect(api.post).not.toHaveBeenCalled()
+    // L'ancien écrivain du mode devis n'est plus jamais appelé.
+    expect(ventesApi.syncDevisLayout).not.toHaveBeenCalled()
     expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
-    // Renvoi explicite vers la fiche lead du devis (contexte : `devis.lead`).
-    expect(screen.getByTestId('rp9-vers-fiche-lead'))
-      .toHaveAttribute('href', `/crm/leads/${CTX.devis.lead}`)
-    // Aucun devis n'a été recréé.
     expect(ventesApi.reviserDevis).not.toHaveBeenCalled()
   })
 
-  it('même calepinage : « Aucun changement », rien n\'est envoyé ni livré', async () => {
-    ventesApi.syncDevisLayout.mockResolvedValue({
-      data: {
-        inchange: true, panneaux: 24, kwc: 17.04, scenario: 'reseau',
-        batterie: false, lignes_modifiees: 0, avertissements: [],
-      },
-    })
-
-    const bouton = await ouvrirModifiable()
-    await userEvent.click(bouton)
+  it('même calepinage : « Aucun changement », le devis est quand même resynchronisé', async () => {
+    servirConceptionDevis()
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, empreinte_document: CTX_CAL.geometrie.empreinte_document } })
+    calepinageApi.calepinages.syncDevis.mockResolvedValue(
+      { data: { inchange: true, avertissements: [] } })
+    rendreDevis(DEVIS_ID)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer la conception/ }))
 
     await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
+    await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalled())
     expect(api.post).not.toHaveBeenCalled()
-    // L-SECT — cet écran ne frappe plus AUCUN lien public : ni au chargement,
-    // ni sur un enregistrement, ni sur un « Aucun changement ».
+    expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
     expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
-    expect(screen.queryByText('Conception enregistrée')).toBeNull()
   })
 
   it('409 révisable : encart « Réviser (v2) » → nouvelle version puis sa conception', async () => {
-    ventesApi.syncDevisLayout.mockRejectedValue({
+    calepinageApi.calepinages.syncDevis.mockRejectedValue({
       response: {
         status: 409,
         data: {
@@ -628,12 +604,12 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Réviser (v2)' }))
     await waitFor(() => expect(ventesApi.reviserDevis)
-      .toHaveBeenCalledWith(String(CTX.devis.id)))
+      .toHaveBeenCalledWith(String(DEVIS_ID)))
     expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/777/design')
   })
 
   it('409 document clos : bandeau de lecture seule, aucune révision proposée', async () => {
-    ventesApi.syncDevisLayout.mockRejectedValue({
+    calepinageApi.calepinages.syncDevis.mockRejectedValue({
       response: {
         status: 409,
         data: {
@@ -646,7 +622,7 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
     const bouton = await ouvrirModifiable()
     await userEvent.click(bouton)
 
-    const bandeau = await screen.findByTestId('pv21-conflit-lecture-seule')
+    const bandeau = await screen.findByTestId('cal-conflit-lecture-seule')
     expect(bandeau).toHaveTextContent('Devis accepté — aucune révision de calepinage possible.')
     expect(screen.queryByTestId('pv21-reviser')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Réviser (v2)' })).toBeNull()
@@ -665,9 +641,9 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
    l'ABSENCE de mint et le renvoi vers la fiche. */
 describe('ToitureDesign — PV86 / L-SECT : plus aucun envoi depuis l’outil 3D', () => {
   it('bloc facture retiré en mode devis (le dimensionnement vient du devis, pas de la facture)', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    rendreDevis(CTX.devis.id)
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByLabelText(/Facture d'électricité/)).toBeNull()
@@ -678,10 +654,10 @@ describe('ToitureDesign — PV86 / L-SECT : plus aucun envoi depuis l’outil 3D
   })
 
   it('au chargement, AUCUN ShareLink n’est frappé et aucun panneau d’envoi n’apparaît', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     // Ouvrir l'outil 3D ne doit RIEN publier : avant L-SECT, le boot mintait
@@ -913,18 +889,18 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
   })
 
   it('mode devis — un roof_layout AVEC zones (calepinage déjà enregistré par un commercial) : aucune note, jamais recouvert', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue({
+    servirConceptionDevis({
       data: {
-        ...CTX,
+        ...CTX_CAL,
         geometrie: {
-          ...CTX.geometrie,
+          ...CTX_CAL.geometrie,
           contour_client: CONTOUR_CLIENT,
           roof_layout: { version: 2, zones: [{ id: 'z1' }] },
         },
       },
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('rp9-calepinage-auto-note')).toBeNull()
@@ -932,18 +908,18 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
   })
 
   it('mode devis — un roof_layout SANS zone + un contour exploitable : la note apparaît', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue({
+    servirConceptionDevis({
       data: {
-        ...CTX,
+        ...CTX_CAL,
         geometrie: {
-          ...CTX.geometrie,
+          ...CTX_CAL.geometrie,
           contour_client: CONTOUR_CLIENT,
           roof_layout: { version: 2, zones: [] },
         },
       },
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeInTheDocument()
@@ -965,11 +941,11 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
      l'absence de zones, qui fait foi. Sans lui, la note se serait tue exactement sur
      le cas qu'elle existe pour signaler. */
   it('mode devis — un layout AUTO estampillé porte la note MÊME avec des zones', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue({
+    servirConceptionDevis({
       data: {
-        ...CTX,
+        ...CTX_CAL,
         geometrie: {
-          ...CTX.geometrie,
+          ...CTX_CAL.geometrie,
           contour_client: CONTOUR_CLIENT,
           roof_layout: {
             version: 2,
@@ -980,7 +956,7 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
       },
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeInTheDocument()
@@ -988,11 +964,11 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
   })
 
   it('mode devis — layout AUTO estampillé mais tracé du lead effacé : la note reste, le bouton disparaît', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue({
+    servirConceptionDevis({
       data: {
-        ...CTX,
+        ...CTX_CAL,
         geometrie: {
-          ...CTX.geometrie,
+          ...CTX_CAL.geometrie,
           contour_client: [],
           roof_layout: {
             version: 2,
@@ -1003,7 +979,7 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
       },
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeInTheDocument()
@@ -1085,8 +1061,8 @@ describe('ToitureDesign — VT13 : la photo réelle du toit sous le tracé', () 
    ========================================================================== */
 describe('ToitureDesign — le calque « Électrique » route vers SA couche, jamais le setLayerState général', () => {
   it('la bascule « Électrique » appelle `electrique.setLayerState`, jamais le setLayerState générique', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
     const setLayerStateGenerique = vi.fn(() => false)
     const electriqueSetLayerState = vi.fn(() => true)
     initRoofToolPro8.mockImplementationOnce((options) => {
@@ -1103,7 +1079,7 @@ describe('ToitureDesign — le calque « Électrique » route vers SA couche, ja
       })
     })
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const bascule = await screen.findByTestId('pc-visible-electrique')
@@ -1131,10 +1107,10 @@ describe('ToitureDesign — le calque « Électrique » route vers SA couche, ja
    ========================================================================== */
 describe('CALX129 — plein écran de la scène 3D', () => {
   it('bascule sans ré-initialiser le builder, l’aspect du rendu suit le conteneur', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
 
-    rendreDevis(CTX.devis.id)
+    rendreDevis(DEVIS_ID)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const appelsAvant = initRoofToolPro8.mock.calls.length
@@ -1172,9 +1148,9 @@ describe('CALX129 — plein écran de la scène 3D', () => {
   })
 
   it('sortie par Échap suivie sans clic (le navigateur quitte de lui-même)', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    rendreDevis(CTX.devis.id)
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreDevis(DEVIS_ID)
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
 
     const wrap = screen.getByTestId('rp9-map-wrap')
@@ -1196,9 +1172,9 @@ describe('CALX129 — plein écran de la scène 3D', () => {
   })
 
   it('navigateur sans API Fullscreen ⇒ repli plein cadre, toujours réversible', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    rendreDevis(CTX.devis.id)
+    servirConceptionDevis(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreDevis(DEVIS_ID)
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
 
     const wrap = screen.getByTestId('rp9-map-wrap')
@@ -1209,5 +1185,26 @@ describe('CALX129 — plein écran de la scène 3D', () => {
 
     await userEvent.click(screen.getByTestId('rp9-plein-ecran-toggle'))
     expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('0')
+  })
+})
+
+/* ACAL209 — le mode lead ne lit plus les mesures de visite passées en query
+   params (pente/orientation/longueur/largeur) : elles n'avaient aucun effet
+   persistant. Le bureau d'études ouvre le module Calepinage (onglet
+   « Reprise de la visite »), qui lit le relevé du serveur. */
+describe('ToitureDesign — mode lead sans mesures en query params (ACAL209)', () => {
+  it('le mode lead ignore les query params de mesures', async () => {
+    simulerApiLead(api)
+    render(
+      <MemoryRouter initialEntries={['/devis-design/88?visite=1&pente=15&orientation=sud&longueur=12&largeur=8']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('pv-mesures-visite-terrain')).toBeNull()
+    expect(screen.queryByText(/Mesures de la visite terrain/)).toBeNull()
+    expect(screen.queryByText(/pente 15°/)).toBeNull()
   })
 })

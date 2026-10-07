@@ -450,17 +450,23 @@ def credit_hold_check(client, *, retard_jours_seuil=0):
     }
 
 
-def get_company_lead(company, lead_id):
+def get_company_lead(company, lead_id, avec_corbeille=False):
     """B1 — Lead borné à la société, ou None. Point d'entrée cross-app pour que
     ventes résolve un lead par id sans importer ``apps.crm.models`` (un id d'une
-    autre société renvoie None → l'appelant répond 404). Lecture seule."""
+    autre société renvoie None → l'appelant répond 404). Lecture seule.
+
+    ACAL178 — ``avec_corbeille=True`` lit aussi les leads de la corbeille
+    (``Lead.all_objects``) : une LECTURE d'un calepinage dont le lead a été
+    supprimé retrouve son nom, sa ville, son pin ; les ÉCRITURES gardent le
+    défaut (vivants seulement, un lead supprimé reste « introuvable »)."""
     if not lead_id:
         return None
     from .models import Lead
-    return Lead.objects.filter(pk=lead_id, company=company).first()
+    gestionnaire = Lead.all_objects if avec_corbeille else Lead.objects
+    return gestionnaire.filter(pk=lead_id, company=company).first()
 
 
-def get_company_leads_by_ids(company, ids):
+def get_company_leads_by_ids(company, ids, avec_corbeille=False):
     """CALX407 — le batch de ``get_company_lead`` : plusieurs leads bornés
     société en UNE requête (``select_related('owner')`` inclus — l'appelant
     cross-app en a besoin pour un repli « responsable », jamais un import
@@ -471,7 +477,8 @@ def get_company_leads_by_ids(company, ids):
     if not ids:
         return {}
     from .models import Lead
-    leads = Lead.objects.filter(
+    gestionnaire = Lead.all_objects if avec_corbeille else Lead.objects
+    leads = gestionnaire.filter(
         company=company, pk__in=list(ids)).select_related('owner')
     return {lead.pk: lead for lead in leads}
 
@@ -5471,7 +5478,7 @@ def portefeuille_commercial(company, user, now=None):
     return out
 
 
-def comptes_dormants(company, seuil_jours=90, now=None):
+def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
     """NTCRM14 — Clients avec au moins un devis/facture passé mais AUCUNE
     activité (dernier devis créé, dernière facture émise, dernier
     `LeadActivity`, dernier `PointContact` sur un lead lié) depuis plus de
@@ -5481,7 +5488,13 @@ def comptes_dormants(company, seuil_jours=90, now=None):
     cross-app respectée — jamais `apps.ventes.models`). Un client sans AUCUN
     devis/facture n'est jamais considéré dormant (rien à réactiver). Renvoie
     une liste de dicts `{'client', 'derniere_activite', 'jours_inactivite'}`
-    triée par inactivité décroissante. Lecture seule."""
+    triée par inactivité décroissante. Lecture seule.
+
+    ALEA27 — ``clients`` (queryset BORNÉ, optionnel) : l'action HTTP
+    ``clients/dormants/`` transmet ``ClientViewSet.get_queryset()`` (société +
+    portée équipe) pour que rien de hors portée ne soit rendu. ``None`` = la
+    société entière, voulu pour la commande système
+    ``detecter_comptes_dormants`` (balayage sans utilisateur)."""
     from django.utils import timezone
 
     from apps.ventes.selectors import (
@@ -5495,8 +5508,9 @@ def comptes_dormants(company, seuil_jours=90, now=None):
     now = now or timezone.now()
     today = now.date() if hasattr(now, 'date') else now
 
+    base = clients if clients is not None else Client.objects.all()
     out = []
-    for client in Client.objects.filter(company=company):
+    for client in base.filter(company=company):
         devis_list = devis_du_client_portail(company, client.id, limit=1)
         factures_list = factures_du_client_portail(company, client.id, limit=1)
         if not devis_list and not factures_list:
@@ -5951,6 +5965,33 @@ def lead_ids_par_identifiant(company, identifiant):
         ids.update(
             qs.filter(phone_normalise=phone).values_list('id', flat=True))
     return sorted(ids)
+
+
+def lead_ids_anonymises(company):
+    """ACAL300 — ids des leads DÉJÀ anonymisés (DSR ou rétention) de la
+    société : le scrub de ``crm.dsr_provider.anonymiser_lead`` pose
+    ``LEAD_NOM_ANONYMISE`` et vide email / téléphone. Lecture bornée société,
+    sans PII ; pour le rattrapage des calepinages (``manage.py
+    anonymiser_calepinages_effaces``)."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
+    from .models import Lead
+
+    if company is None:
+        return []
+    return sorted(Lead.objects.filter(
+        company=company, nom=LEAD_NOM_ANONYMISE, email__isnull=True,
+        telephone__isnull=True).values_list('id', flat=True))
+
+
+def client_ids_anonymises(company):
+    """ACAL300 — ids des clients anonymisés (``is_anonymized``) de la
+    société, bornés société, sans PII."""
+    from .models import Client
+
+    if company is None:
+        return []
+    return sorted(Client.objects.filter(
+        company=company, is_anonymized=True).values_list('id', flat=True))
 
 
 def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):

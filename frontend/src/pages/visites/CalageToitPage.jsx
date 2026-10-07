@@ -22,6 +22,7 @@ import PageHeader from '../../components/layout/PageHeader'
 import { Button, Card, Spinner, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
+import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
 
 const DEFAULT_CENTER = [31.7917, -7.0926] // Maroc — repli si le lead n'a pas de GPS.
 const DELTA = 0.00012 // ≈13 m — écart initial des 4 poignées autour du centre.
@@ -117,11 +118,10 @@ export default function CalageToitPage() {
     const centre = (visite.client_panel?.gps_lat != null && visite.client_panel?.gps_lng != null)
       ? [visite.client_panel.gps_lat, visite.client_panel.gps_lng]
       : DEFAULT_CENTER
-    const map = L.map(containerRef.current, { center: centre, zoom: 20 })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
-      maxZoom: 21,
-    }).addTo(map)
+    // ACAL203 — le MÊME fond de carte que le calage de photo de site (zoom 19,
+    // tuiles au zoom natif 19 : aucune tuile en 400).
+    const map = L.map(containerRef.current, { center: centre, zoom: ZOOM_INITIAL })
+    poserFondCarte(L, map)
 
     const coinsExistants = visite.photo_toit?.texture_calage?.coins
     const positions = Array.isArray(coinsExistants) && coinsExistants.length === 4

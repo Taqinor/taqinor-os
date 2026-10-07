@@ -1929,11 +1929,16 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         """FG69 — enregistre la signature client sur une intervention.
         Corps : {"signature_client": <data_url_ou_vecteur>, "signataire_nom": <str>}.
         Pose `signe_le` côté serveur."""
+        from ..signature_validation import erreur_signature_client
         interv = self.get_object()
-        sig = request.data.get('signature_client', '').strip()
-        nom = request.data.get('signataire_nom', '').strip()
-        if not sig:
-            return Response({'signature_client': 'Signature vide.'},
+        brut = request.data.get('signature_client')
+        sig = brut.strip() if isinstance(brut, str) else ''
+        nom = (request.data.get('signataire_nom') or '').strip()
+        # ADOC78 — même validateur que le chantier : la signature
+        # d'intervention est injectée dans <img src> de la fiche SAV.
+        erreur = erreur_signature_client(sig)
+        if erreur:
+            return Response({'signature_client': erreur},
                             status=status.HTTP_400_BAD_REQUEST)
         interv.signature_client = sig
         if nom:

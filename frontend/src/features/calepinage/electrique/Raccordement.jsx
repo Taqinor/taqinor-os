@@ -15,6 +15,9 @@ import { formatNumber, formatPercent } from '../../../lib/format'
 import { Badge, Button, Card, Input, Label, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
 /* ============================================================================
    CALX244 — L'ONGLET « RACCORDEMENT RÉSEAU » DE L'ATELIER.
    ----------------------------------------------------------------------------
@@ -190,7 +193,7 @@ export function saisieVide(saisie) {
  * visible. Le bouton REMPLIT le formulaire sans rien enregistrer ; absent dès qu'une saisie
  * existe (la proposition reste alors lisible, jamais appliquée).
  */
-function PropositionLead({ proposition, peutReprendre, onReprendre }) {
+function PropositionLead({ proposition, peutReprendre, onReprendre, lectureSeule = false }) {
   if (!proposition) return null
   return (
     <div
@@ -213,7 +216,13 @@ function PropositionLead({ proposition, peutReprendre, onReprendre }) {
       {peutReprendre
         ? (
           <div>
-            <Button type="button" onClick={onReprendre} data-testid="acal158-reprendre">
+            <Button
+              type="button"
+              onClick={onReprendre}
+              disabled={lectureSeule}
+              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
+              data-testid="acal158-reprendre"
+            >
               Reprendre les valeurs du lead
             </Button>
             <span className="ml-2 text-xs text-lune-faint">Rien n’est enregistré avant « Enregistrer ».</span>
@@ -289,7 +298,7 @@ function Verdict({ verdict }) {
   )
 }
 
-export default function Raccordement({ calepinageId } = {}) {
+export default function Raccordement({ calepinageId, lectureSeule = false } = {}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -383,6 +392,7 @@ export default function Raccordement({ calepinageId } = {}) {
           proposition={proposition}
           peutReprendre={saisieVide(bloc?.saisie)}
           onReprendre={reprendreLead}
+          lectureSeule={lectureSeule}
         />
 
         <p className="text-xs text-lune-faint" data-testid="acal156-note-simulation">
@@ -432,7 +442,12 @@ export default function Raccordement({ calepinageId } = {}) {
             ))}
           </div>
           <div>
-            <Button type="submit" disabled={enregistrement} data-testid="calx244-enregistrer">
+            <Button
+              type="submit"
+              disabled={enregistrement || lectureSeule}
+              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
+              data-testid="calx244-enregistrer"
+            >
               {enregistrement ? 'Enregistrement…' : 'Enregistrer le raccordement'}
             </Button>
           </div>

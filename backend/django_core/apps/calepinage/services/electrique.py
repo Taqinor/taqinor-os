@@ -67,6 +67,9 @@ __all__ = [
     'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR', 'regle_de_chaine',
     'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
+    'consigner_derogation_publication', 'CODE_DEROGATION_PUBLICATION',
+    'CHAMP_DEROGATION_PUBLICATION',  # ACAL170
+    'verdict_de_conception',  # ACAL172
     'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
     'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
@@ -629,19 +632,25 @@ def _traces_de_derogation(conception, saisies, *, user=None):
     return traces
 
 
-def _panneaux_du_pan(document, libelle):
-    """Les centres de modules du pan NOMMÉ, ou ``()`` — lecture du document."""
+def _zone_du_pan(document, cle):
+    """ACAL265 — la zone dont la clé STABLE (``production.cle_de_pan`` :
+    ``zone.id``) vaut ``cle``, ou ``None``."""
+    from .production import cle_de_pan
+
     zones = (document or {}).get('zones')
     for rang, zone in enumerate(zones if isinstance(zones, (list, tuple))
                                 else (), start=1):
-        if not isinstance(zone, dict):
-            continue
-        nom = str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
-        if nom != libelle:
-            continue
-        geometrie = zone.get('geometry')
-        if isinstance(geometrie, dict):
-            return geometrie.get('panels') or ()
+        if isinstance(zone, dict) and cle_de_pan(zone, rang) == cle:
+            return zone
+    return None
+
+
+def _panneaux_du_pan(document, cle):
+    """Les centres de modules du pan de clé ``cle``, ou ``()``."""
+    zone = _zone_du_pan(document, cle)
+    geometrie = (zone or {}).get('geometry')
+    if isinstance(geometrie, dict):
+        return geometrie.get('panels') or ()
     return ()
 
 
@@ -669,6 +678,17 @@ def _valider_cheminement(calepinage, cheminement, layout=None):
     document = layout if layout is not None else getattr(
         calepinage, 'roof_layout', None)
     for libelle, saisie in pans.items():
+        # ACAL265 — ``cheminement.pans`` est indexé par la clé STABLE du pan
+        # (``zone.id``) : une clé que le document ne porte pas (libellé d'un
+        # ancien enregistrement, pan supprimé) est refusée en la NOMMANT.
+        if document and _zone_du_pan(document, str(libelle)) is None:
+            from .production import cles_des_pans
+
+            raise EntreeInvalide(
+                "Pan « %s » inconnu du document : le cheminement se saisit "
+                "par la clé du pan (%s)." % (
+                    libelle, ', '.join(cles_des_pans(document)) or 'aucun pan'),
+                champ='cheminement.pans.%s' % libelle)
         if not isinstance(saisie, dict) or not saisie.get('motif_parcours'):
             continue
         try:
@@ -1056,6 +1076,11 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         EntreeInvalide: champ inconnu, corps qui n'est pas un objet, ou
             dérogation refusée (code inconnu, bloquant, auteur ou motif vide).
     """
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture,
+    # dérogations comprises.
+    from .verrou import apres_envoi, verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage, champ=CLE_ENTREE)
     if not isinstance(donnees, dict):
         raise EntreeInvalide(
             "L'entrée électrique doit être un objet "
@@ -1091,6 +1116,8 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
             calepinage, entree=entree)
         traces = _traces_de_derogation(conception, saisies, user=user)
 
+    avant_saisie = dict(entree_stockee(calepinage))
+
     def _poser(resultat):
         # ACAL57 — fusion sur l'entrée RELUE sous verrou, jamais sur la
         # copie lue au début de la requête.
@@ -1102,6 +1129,15 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         return entree
 
     posee = modifier_resultat(calepinage, _poser)
+    if apres_envoi(calepinage):
+        # ACAL43 — une saisie d'un devis ENVOYÉ se TRACE (corrigé après envoi).
+        modifies = sorted(cle for cle, valeur in reglages.items()
+                          if avant_saisie.get(cle) != valeur)
+        if modifies:
+            from .journal import noter
+
+            noter(calepinage, 'Saisie électrique modifiée : '
+                  + ', '.join(modifies), user=user)
     if traces:
         # ACAL283 — chaque dérogation se lit aussi au CHATTER (reflet lisible
         # du fil ``journal_derogations``, seul enregistrement structuré) ;
@@ -1673,8 +1709,13 @@ def _chiffrage_des_zones(document):
 
 
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
-                        materiel=None, reglages=None):
+                        materiel=None, reglages=None, porteur_simulation=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
+
+    ``porteur_simulation`` (ACAL112, lot 2 critique #17) : l'objet dont le
+    ``resultat`` porte la simulation servie — la VARIANTE évaluée avec
+    ``layout=variante.roof_layout`` ; absent, le calepinage. Jamais les blocs
+    du calepinage sous l'étiquette d'une variante.
 
     Les blocs de simulation (``production``, ``pertes``, ``cascade``,
     ``meteo``, ``incertitude``, ``performance``, ``autoconsommation``,
@@ -1764,7 +1805,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # CALX70 — la simulation persistée, servie si elle décrit ENCORE ce
     # dossier ; lue ICI parce que le ratio DC/AC en tire son écrêtage.
     blocs, perimee, motif, calcule_le = _simulation_servie(
-        calepinage, empreinte, defauts=_defauts_simulation(pose))
+        porteur_simulation if porteur_simulation is not None else calepinage,
+        empreinte, defauts=_defauts_simulation(pose))
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
@@ -1954,6 +1996,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'validation': blocs['validation'],
         'simulation_perimee': perimee,
         'motif': motif,
+        # ACAL104 (D-ACAL-6) — l'écart entre la production IMPRIMÉE au
+        # client (moteur du devis) et le P50 de l'étude technique ; ``null``
+        # sans devis lié, sans simulation fraîche ou sans production devis.
+        'ecart_devis': _ecart_devis(calepinage, p50 if simule else None),
         # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
         # simulation, réglages figés, date, durée), servi même périmé : il dit
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
@@ -1965,6 +2011,50 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # simulation est périmée.
         'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
         'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
+    }
+
+
+#: ACAL104 — la mention publiée avec l'écart (contrat
+#: ``calepinage_resultat.json``, ``exemple_ecart_devis``), mot pour mot.
+MENTION_ECART_DEVIS = ("Production imprimée au client = moteur du devis "
+                       "(D-ACAL-6) ; P50 = étude technique du calepinage")
+
+
+def _ecart_devis(calepinage, p50):
+    """ACAL104 (C-ACAL-101) — ``{devis, reference, production_devis_kwh,
+    p50_calepinage_kwh, ecart_pct, mention}`` ou ``None``.
+
+    ``production_devis_kwh`` est la figure IMPRIMÉE au client (moteur du
+    devis, recalée sur les lignes — ``figure_production_du_devis``), LUE par
+    le sélecteur cross-app ``apps.ventes.selectors.
+    production_attendue_pour_devis`` ; ``ecart_pct`` = (P50 − devis) /
+    devis, au dixième. Jamais l'inverse : le devis ne lit pas le P50
+    (D-ACAL-6). ``None`` sans devis lié (ou d'une autre société), sans P50
+    servi (jamais simulé, ou périmé) ou sans production au devis. LECTURE
+    PURE."""
+    devis_id = getattr(calepinage, 'devis_id', None)
+    if not devis_id or not _est_un_nombre(p50):
+        return None
+    from apps.ventes.selectors import (
+        get_devis_by_pk, production_attendue_pour_devis,
+    )
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or devis.company_id != getattr(calepinage,
+                                                    'company_id', None):
+        return None
+    production = production_attendue_pour_devis(devis_id)
+    if production is None or production <= 0:
+        return None
+    production = float(production)
+    p50 = float(p50)
+    return {
+        'devis': devis.pk,
+        'reference': devis.reference or '',
+        'production_devis_kwh': production,
+        'p50_calepinage_kwh': p50,
+        'ecart_pct': round((p50 - production) / production * 100.0, 1),
+        'mention': MENTION_ECART_DEVIS,
     }
 
 
@@ -2205,7 +2295,14 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         imposee, bloquants = (), bloquants + [str(refus)]
     bloquants.extend(verdict_affectation(
         conception, imposee,
-        specs_onduleur=materiel_resolu.get('onduleur')))
+        specs_onduleur=materiel_resolu.get('onduleur'),
+        obsoletes_bloquantes=False))
+    # ACAL266 — une affectation OBSOLÈTE ne bloque pas la saisie d'une autre
+    # chaîne : elle est signalée en alerte (la publication, elle, la refuse
+    # — ``_motifs_de_l_affectation``).
+    obsoletes = [ligne for ligne in verdict_affectation(
+        conception, imposee, specs_onduleur=materiel_resolu.get('onduleur'))
+        if ligne.startswith('Module inconnu du document')]
     # CALX206 — un regroupement polystring met des chaînes en PARALLÈLE :
     # son Isc cumulé se verdicte au même titre que celui du chaînage
     # automatique, sans quoi le regroupement contournerait la garde.
@@ -2217,6 +2314,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))
     alertes = list(alertes_nommees(conception))
+    alertes.extend(obsoletes)
     alertes.extend(poly['alertes'])
     # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
     # jamais un bloquant : rien ne prouve le défaut, la fiche se tait.
@@ -2238,43 +2336,159 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     }
 
 
-def garde_publication(calepinage):
-    """Refuse la publication tant qu'un bloquant subsiste (statut conservé).
+def garde_publication(calepinage, *, derogation=None, user=None):
+    """ACAL170 (D-ACAL-9) — le CLIQUET du geste de publication du devis.
 
-    N'écrit RIEN : c'est une garde, pas une transition. Un calepinage dont la
-    fiche est incomplète n'est pas publiable non plus — mais le refus le dit
-    autrement (on ne peut pas certifier ce qu'on n'a pas pu vérifier).
+    « Générer le devis » et « Resynchroniser le devis » l'appellent AVANT
+    toute écriture (``services/devis.py``). Les bloquants sont lus UNE fois,
+    dans l'agrégateur ``verdict_publiable`` (motifs de statut ``bloquant`` —
+    terre non justifiée comprise, CAL134) : aucune seconde lecture ici.
+
+    * verdict ``bloquant`` sans dérogation ⇒ ``PublicationBloquee`` qui
+      NOMME chaque bloquant ``{code, libelle, detail}`` ;
+    * verdict ``bloquant`` AVEC ``derogation`` ``{motif}`` ⇒ la dérogation
+      est VALIDÉE (motif non vide) et sa trace PRÉPARÉE — auteur (``user``)
+      et instant posés par le serveur, jamais lus du corps — mais RIEN n'est
+      écrit : l'appelant la consigne (``consigner_derogation_publication``)
+      seulement quand le devis est réellement produit ;
+    * verdict ``indetermine`` (fiche incomplète, matériel non désigné, valeur
+      sans provenance) : NE BLOQUE PAS, ``manquantes`` le dit.
+
+    Le droit ``calepinage_approuver`` exigé pour déroger est vérifié par la
+    vue (403 nommé) : un service n'a pas de requête.
+
+    Returns:
+        ``{verdict, bloquants, manquantes, derogation}`` — ``derogation`` est
+        la trace préparée (ou ``None``).
+
+    Raises:
+        PublicationBloquee: au moins un bloquant, aucune dérogation.
+        EntreeInvalide: dérogation illisible ou sans motif (champ
+            ``derogation_electrique``).
     """
-    evaluation = evaluation_electrique(calepinage)
-    # ACAL169 — la garde lit les BLOQUANTS de l'évaluation, pas le
-    # ``publiable`` (désormais celui de l'agrégateur, plus sévère) : elle
-    # refuse EXACTEMENT ce qu'elle refusait (porte devis : D05-T26).
-    if evaluation['verdict'] != 'indetermine' and not evaluation['bloquants']:
-        # CAL134 — la terre est l'autre condition de publication : sans prise
-        # de terre vendue, la continuité de la terre EXISTANTE doit avoir été
-        # justifiée (NF C 15-100 §542). Le refus est levé tel quel : il nomme
-        # son champ.
-        from .terre import garde_terre
+    verdict = verdict_de_conception(calepinage)
+    bloquants = verdict['bloquants']
+    motif_saisi = (None if derogation is None
+                   else _motif_de_derogation(derogation))
+    trace = None
+    if bloquants:
+        if motif_saisi is None:
+            raise PublicationBloquee(
+                "Publication refusée : %d contrainte(s) électrique(s) "
+                "bloquante(s). %s" % (
+                    len(bloquants),
+                    ' '.join(b['libelle'] for b in bloquants)),
+                bloquants=bloquants)
+        trace = _trace_derogation_publication(bloquants, motif_saisi, user)
+    return dict(verdict, derogation=trace)
 
-        conception, _materiel, donnees, _document = conception_du_calepinage(
-            calepinage)
-        from .norme import norme_applicable
 
-        garde_terre(_checklist_terre_tolerante(
-            conception, donnees.get('terre'),
-            norme_applicable(parametres_societe(calepinage)),
-            getattr(calepinage, 'company', None))[0])
-        return evaluation
-    if evaluation['verdict'] == 'indetermine':
-        raise PublicationBloquee(
-            "Publication impossible : le verdict électrique n'a pas pu être "
-            "rendu (%s). Complétez les fiches techniques du matériel retenu."
-            % '; '.join(evaluation['manquantes']),
-            bloquants=evaluation['manquantes'])
-    raise PublicationBloquee(
-        "Publication refusée : %d contrainte(s) onduleur bloquante(s). %s"
-        % (len(evaluation['bloquants']), ' '.join(evaluation['bloquants'])),
-        bloquants=evaluation['bloquants'])
+def verdict_de_conception(calepinage, *, layout=None):
+    """ACAL170/ACAL172 — LA lecture des bloquants, sans rien lever ni écrire.
+
+    ``{verdict, bloquants, manquantes}`` lus dans l'agrégateur
+    ``verdict_publiable`` (motifs de statut ``bloquant`` →
+    ``{code, libelle, detail}``) ; ``verdict`` ∈ ``bloquant`` |
+    ``indetermine`` (fiche incomplète, matériel non désigné, valeur sans
+    provenance — D-ACAL-9 : ne bloque pas) | ``alerte`` | ``conforme``.
+
+    La garde de publication (devis), l'approbation, la retenue d'une
+    variante et le comparatif la lisent TOUS ici. ``layout`` évalue le
+    ``roof_layout`` d'une variante (ACAL172) ; absent, la conception
+    enregistrée.
+    """
+    from core.electrique.types import STATUT_ALERTE, STATUT_BLOQUANT
+
+    rapport, conception, materiel = _rapport_publication(calepinage,
+                                                         layout=layout)
+    motifs = rapport['motifs']
+    bloquants = [{'code': motif['code'], 'libelle': motif['libelle'],
+                  'detail': motif['source']}
+                 for motif in motifs if motif['statut'] == STATUT_BLOQUANT]
+    manquantes = list(getattr(conception, 'manquantes', ()) or ())
+    for absent in (materiel or {}).get('absents') or ():
+        if absent not in manquantes:
+            manquantes.append(absent)
+    # Une valeur qui a jugé SANS provenance ne se certifie pas : elle est
+    # « indéterminée », jamais un bloquant (D-ACAL-9).
+    manquantes.extend(motif['libelle'] for motif in motifs
+                      if motif['statut'] == STATUT_MOTIF_SANS_SOURCE)
+    if bloquants:
+        verdict = 'bloquant'
+    elif manquantes:
+        verdict = 'indetermine'
+    elif any(motif['statut'] == STATUT_ALERTE for motif in motifs):
+        verdict = 'alerte'
+    else:
+        verdict = 'conforme'
+    return {'verdict': verdict, 'bloquants': bloquants,
+            'manquantes': manquantes}
+
+
+#: ACAL170 — le code de la trace d'une dérogation de PUBLICATION, dans le
+#: fil ``journal_derogations`` (même fil que les dérogations d'alerte).
+CODE_DEROGATION_PUBLICATION = 'PUBLICATION_BLOQUANTS'
+
+#: ACAL170 — le champ du corps de generer-devis / sync-devis.
+CHAMP_DEROGATION_PUBLICATION = 'derogation_electrique'
+
+
+def _motif_de_derogation(derogation):
+    """Le motif SAISI d'une dérogation de publication, ou un refus nommé."""
+    if not isinstance(derogation, dict):
+        raise EntreeInvalide(
+            "La dérogation électrique doit être un objet « { motif } ».",
+            champ=CHAMP_DEROGATION_PUBLICATION)
+    motif = str(derogation.get('motif') or '').strip()
+    if not motif:
+        raise EntreeInvalide(
+            "Motif de la dérogation obligatoire : une dérogation sans motif "
+            "saisi n'est pas relisible.", champ=CHAMP_DEROGATION_PUBLICATION)
+    return motif
+
+
+def _trace_derogation_publication(bloquants, motif, user):
+    """La trace d'une publication MALGRÉ des bloquants — n'écrit rien."""
+    from django.utils import timezone
+
+    auteur = _nom_auteur(user)
+    if not auteur:
+        raise EntreeInvalide(
+            "Une dérogation sans auteur n'est pas relisible.",
+            champ=CHAMP_DEROGATION_PUBLICATION)
+    libelles = '; '.join(b['libelle'] for b in bloquants)
+    return {
+        'code': CODE_DEROGATION_PUBLICATION,
+        'libelle': ("Publication du devis malgré %d bloquant(s) "
+                    "électrique(s)" % len(bloquants)),
+        'auteur': auteur,
+        'auteur_id': getattr(user, 'pk', None),
+        'horodatage': timezone.now().isoformat(),
+        'motif': motif,
+        'texte': ("Dérogation de publication par %s — motif : %s — "
+                  "bloquant(s) passé(s) outre : %s"
+                  % (auteur, motif, libelles)),
+    }
+
+
+def consigner_derogation_publication(calepinage, trace, *, user=None):
+    """ACAL170 — écrit la dérogation de publication : fil + chatter.
+
+    Appelé par ``services/devis.py`` UNE fois le devis produit (un refus
+    n'écrit rien). Le fil ``journal_derogations`` reste l'unique
+    enregistrement structuré ; le chatter n'en est que le reflet lisible.
+    """
+    if not trace:
+        return None
+    from .journal import noter
+    from .resultat import modifier_resultat
+
+    modifier_resultat(
+        calepinage,
+        lambda resultat: _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS,
+                                         [trace]))
+    noter(calepinage, trace['texte'], user=user)
+    return trace
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2299,10 +2513,10 @@ def garde_publication(calepinage):
 #     ``non_verifiable``, motif en clair) n'empêche PAS la publication ; une
 #     valeur qui a servi à JUGER sans que rien ne dise d'où elle vient, si.
 #
-# CE VERDICT NE REMPLACE PAS LA GARDE. ``garde_publication`` continue de
-# refuser exactement ce qu'elle refusait (test de non-régression) : la garde
-# est le CLIQUET du geste de publication, ce verdict est le RAPPORT qu'on lit
-# avant de cliquer.
+# ACAL170 (D-ACAL-9) — ``garde_publication`` est le CLIQUET du geste de
+# publication (générer / resynchroniser le devis) et LIT ce rapport : ses
+# bloquants sont les motifs de statut ``bloquant`` ; un motif sans
+# provenance ou une fiche incomplète rend « indéterminé », qui ne bloque pas.
 
 #: Le statut d'une omission ASSUMÉE — le calcul ne s'est pas fait, on DIT
 #: pourquoi, et ça ne bloque pas la publication.
@@ -2420,9 +2634,15 @@ def _onduleurs_poses(conception):
 
 def _motifs_de_la_terre(terre):
     """CALX245 — la justification de continuité, et les omissions assumées."""
+    from .terre import TerreInvalide, garde_terre
+
     motifs = []
-    if terre.get('justification_requise') \
-            and not terre.get('justification_fournie'):
+    try:
+        # ACAL170 — LA règle de terre (CAL134) reste celle de
+        # ``garde_terre`` : son refus devient un motif BLOQUANT de
+        # l'agrégateur, que la garde de publication lit.
+        garde_terre(terre)
+    except TerreInvalide:
         from core.electrique.types import STATUT_BLOQUANT
 
         motifs.append(_motif_publication(
@@ -2532,7 +2752,16 @@ def _motifs_des_micro_onduleurs(conception, materiel):
 
 
 def verdict_publiable(calepinage):
+    """CALX248 — ``{publiable, motifs}`` (voir ``_rapport_publication``)."""
+    return _rapport_publication(calepinage)[0]
+
+
+def _rapport_publication(calepinage, *, layout=None):
     """CALX248 — ``{publiable, motifs}`` : TOUT ce qui empêche de publier.
+
+    ACAL172 — ``layout`` évalue une AUTRE conception du même calepinage (le
+    ``roof_layout`` d'une variante) avec le matériel et les saisies du
+    calepinage ; absent, la conception enregistrée.
 
     Rassemble, en un seul rapport et sans reprononcer aucun calcul : les
     natures de CALX215 (conception), l'omission de norme (D1), les verdicts
@@ -2551,7 +2780,7 @@ def verdict_publiable(calepinage):
     from .troncons import troncons_du_calepinage
 
     conception, materiel, donnees, document = conception_du_calepinage(
-        calepinage)
+        calepinage, layout=layout)
     norme = norme_applicable(parametres_societe(calepinage))
     reglages = _reglages_electrique_societe(calepinage)
 
@@ -2573,7 +2802,8 @@ def verdict_publiable(calepinage):
     motifs.extend(_motifs_de_la_terre(_checklist_terre_tolerante(
         conception, donnees.get('terre'), norme,
         getattr(calepinage, 'company', None))[0]))
-    motifs.extend(_motifs_des_troncons(troncons_du_calepinage(calepinage)))
+    motifs.extend(_motifs_des_troncons(
+        troncons_du_calepinage(calepinage, layout=layout)))
     # ACAL169 — L'AGRÉGATEUR UNIQUE : affectation imposée, polystring et
     # micro-onduleurs entrent ICI (jusqu'ici seule l'évaluation les voyait,
     # et l'écran affichait « Publiable » sur une chaîne de 20 modules pour
@@ -2595,15 +2825,18 @@ def verdict_publiable(calepinage):
         'publiable': not any(motif['statut'] in refusants
                              for motif in motifs),
         'motifs': motifs,
-    }
+    }, conception, materiel
 
 
 def rejouer_apres_layout(calepinage, *, user=None):
     """Rejoue le verdict après un enregistrement de conception (CAL128).
 
-    Le verdict est DÉPOSÉ dans ``resultat['verdict_electrique']`` pour que la
-    fiche l'affiche sans recalculer, et le statut ``brouillon`` est CONSERVÉ
-    quand un bloquant subsiste — un calepinage ne se publie jamais tout seul.
+    ACAL325 — le verdict est CALCULÉ et RENDU à l'appelant, jamais déposé
+    dans ``resultat`` : l'instantané ``resultat['verdict_electrique']`` n'était
+    lu par personne et se recopiait périmé dans chaque version. Le verdict est
+    servi À LA DEMANDE par ``evaluation_electrique`` (``GET resultat/``, garde
+    de publication). La réconciliation de longueur (CAL170) reste journalisée.
+    Aucun statut n'est écrit — un calepinage ne se publie jamais tout seul.
     Ne lève jamais : un verdict en échec ne doit pas faire perdre une
     conception déjà enregistrée.
     """
@@ -2616,18 +2849,9 @@ def rejouer_apres_layout(calepinage, *, user=None):
             'CAL128 : verdict électrique en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
         return None
-    from .resultat import modifier_resultat
-
-    def _poser(resultat):
-        resultat['verdict_electrique'] = evaluation
-
-    # ACAL57 — l'écrivain unique, relecture sous verrou. AUCUN statut n'est
-    # écrit ici — c'est l'invariant du module (le chemin de layout n'écrit
-    # jamais de statut). Le blocage vit dans ``garde_publication``, que le
-    # geste de publication appelle : un brouillon qui reste brouillon, jamais
-    # une rétrogradation surprise déclenchée par un simple enregistrement de
-    # dessin.
-    modifier_resultat(calepinage, _poser)
+    # ACAL325 — AUCUNE écriture de ``resultat`` ici (une seule écriture par
+    # enregistrement de plan, celle de la conception). Le blocage vit dans
+    # ``garde_publication``, que le geste de publication appelle.
 
     # CAL170 — un écart moteur↔fiche au-delà de la tolérance est JOURNALISÉ
     # (jamais un remplacement silencieux), et son historique est conservé.

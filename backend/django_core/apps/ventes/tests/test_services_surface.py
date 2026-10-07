@@ -136,7 +136,6 @@ SURFACE_PUBLIQUE = (
     "battery_du_document",
     "bcf_share_url",
     "build_devis_auto",
-    "build_devis_depuis_calepinage_retenu",
     "build_devis_from_layout",
     "calculer_date_echeance",
     "capturer_configuration_devis",

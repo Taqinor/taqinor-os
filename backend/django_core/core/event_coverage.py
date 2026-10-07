@@ -79,19 +79,17 @@ ALLOWED_UNCONSUMED = {
     # comme les seams ci-dessus.
     "entite_created",
     "entite_deactivated",
-    # NTCRM22 — ``deal_commission_due`` : seam émis par ``apps/crm/receivers.py``
-    # quand la commission d'un ``DealEnregistre`` approuvé devient due. Destiné à
-    # un futur consommateur compta/paie (facture fournisseur, note de frais) ;
-    # ``crm`` n'écrit JAMAIS en compta lui-même (frontière inter-apps). Aucun
-    # abonné requis aujourd'hui — réservé ici plutôt qu'orphelin.
+    # ALEA3 (D-ALEA-3, 07/10/2026) — ``deal_commission_due`` n'est plus ÉMIS
+    # (``apps/crm/receivers.py`` l'envoyait sans aucun abonné : la commission
+    # due se lit par ``deals-enregistres/a-payer/``). Le seam NTCRM22 « émis
+    # sans abonné » est donc RETIRÉ ; la déclaration reste au bus uniquement
+    # parce que le golden SPL283 (``core/tests/test_events_split_golden.py``)
+    # interdit tout retrait de signal — même traitement que les seams des
+    # modules parqués ci-dessous (compta : consommateur historique visé).
+    # ``salle_vente_signal_interet`` (NTCRM27) : RETIRÉ de cette liste — ALEA3
+    # lui a donné un abonné réel (``apps/crm/receivers.py`` : notification au
+    # responsable du lead).
     "deal_commission_due",
-    # NTCRM27 — ``salle_vente_signal_interet`` : seam émis par
-    # ``apps/crm/services.detecter_signal_interet_salle_vente`` quand une salle
-    # de vente cumule ≥3 vues en 48 h sur un lead en QUOTE_SENT. La réaction
-    # métier (note NOTE au chatter du lead) est faite EN LIGNE par le service
-    # lui-même, pas par un récepteur : le signal n'existe que pour qu'une app
-    # future (notification commerciale…) réagisse sans coupler ``apps.crm``.
-    "salle_vente_signal_interet",
     # NTMKT34 — ``lead_maturite_changee`` : seam émis par
     # ``apps/marketing/services.recalculer_scores_maturite_inactivite`` (beat
     # quotidien) quand le score de maturité NTMKT18 d'un lead change. Destiné
@@ -105,15 +103,6 @@ ALLOWED_UNCONSUMED = {
     # sortant) ; ``douane`` n'importe jamais cette app. Aucun abonné requis
     # aujourd'hui — réservé ici plutôt qu'orphelin, comme les seams ci-dessus.
     "dossier_export_cloture",
-    # ACAL91 — ``devis_revise`` : seam émis par
-    # ``apps/ventes/domain/revision.reviser_devis`` après le commit de la V+1.
-    # Son abonné prévu (le calepinage re-lie sa conception à la V+1, D-ACAL-3)
-    # est la tâche ACAL92 : à RETIRER d'ici dans le même commit que cet abonné.
-    "devis_revise",
-    # ASTK55 — ``reception_fournisseur_annulee`` : déclaré avant son émetteur
-    # (ASTK56, stock) et son abonné (ASTK57, installations : extourne GR/IR,
-    # séries, YPROC10). À RETIRER d'ici dans le même commit que l'abonné.
-    "reception_fournisseur_annulee",
     # SOLMVP23 — SEAMS DES MODULES SORTIS DU MVP SOLAIRE (Phase 2,
     # docs/parked-modules.md). Ces sept signaux restent DECLARES sur le bus (ils
     # sont au catalogue d'integration NTPLT12 et la migration de semis les
@@ -153,6 +142,12 @@ ALLOWED_UNCONSUMED = {
     "btp_dgd_finalise",                 # publicapi (webhook sortant BTP)
     "scm_rupture_imminente_detectee",   # publicapi (webhook sortant SCM)
     "scm_cycle_sop_cloture",            # publicapi (webhook sortant SCM)
+    # ALEA3 (D-ALEA-3) — ``ao_depose``/``ao_gagne`` : émetteur UNIQUE dans le
+    # module ``ao`` PARQUÉ (backend/parked/ao) ; l'abonné crm (avance de funnel
+    # AOF13) a été retiré car il ne pouvait plus rien recevoir. Au retour du
+    # module, l'abonnement est à recâbler avec lui (hors périmètre ALEA3).
+    "ao_depose",                        # crm (avance de funnel AOF13, retiré)
+    "ao_gagne",                         # crm (avance de funnel AOF13, retiré)
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
@@ -373,12 +368,10 @@ NO_STATIC_EMITTER = {
     # le premier émetteur RÉEL (``apps/ventes/utils/pdf.py``, source=
     # 'ventes_facture'), donc la parité de payload est désormais vérifiable et
     # DOIT l'être (le cliquet se resserre, il ne se relâche jamais).
-    # ``lead_erased`` (PUB100) : « seam » posé côté récepteur seul — adsengine
-    # (on_lead_erased) anonymise ses miroirs sur effacement CNDP d'un lead CRM,
-    # mais aucun producteur ne l'émet encore dans le code (le flux d'effacement
-    # CRM viendra dans une tâche ultérieure). Son entrée au catalogue reste
-    # documentaire tant qu'un émetteur statique n'existe pas.
-    "lead_erased",
+    # ``lead_erased`` (PUB100) : RETIRÉ de cette réserve — ACAL301 en a posé
+    # l'émetteur UNIQUE (``apps/crm/dsr_provider.anonymiser_lead``, DSR et
+    # rétention) : la parité de payload est désormais vérifiable et DOIT
+    # l'être (le cliquet se resserre, il ne se relâche jamais).
     # ``record_soft_deleted`` (NTUX7) : RETIRÉ de cette réserve — AUD818 en a
     # posé le premier émetteur de PRODUCTION (``core.models.SoftDeleteModel.
     # soft_delete()``, donc tout adoptant du mixin : ``crm.Lead``,
@@ -386,7 +379,10 @@ NO_STATIC_EMITTER = {
     # désormais vérifiable et DOIT l'être (le cliquet se resserre, il ne se
     # relâche jamais) — voir la garde
     # ``core/tests/test_aud818_corbeille_emetteur.py``.
-    # ``ao_depose`` / ``ao_gagne`` (AOF13) : émetteur RÉEL et unique
+    # ``ao_depose`` / ``ao_gagne`` (AOF13) — ALEA3 : le module ``ao`` est
+    # PARQUÉ (``backend/parked/ao``, hors du scan ``apps/``) et l'abonné crm a
+    # été retiré ; la réserve reste VRAIE (aucun émetteur scanné). Historique :
+    # émetteur RÉEL et unique
     # (``apps/ao/services.py::changer_statut_ao``), mais émis par TABLE DE
     # DISPATCH — ``signal = _SIGNAUX_PAR_STATUT.get(nouveau_statut)`` puis
     # ``signal.send(...)``. Le scanner de parité ne résout que
@@ -430,14 +426,6 @@ NO_STATIC_EMITTER = {
     # ``ancienne_langue``, ``nouvelle_langue``, ``user`` : exactement les
     # kwargs du ``send`` unique, et la docstring du signal dit la même chose.
     "langue_changed",
-    # ASTK55 — ``reception_fournisseur_annulee`` : contrat d'abord (PACT10),
-    # DÉCLARÉ et CATALOGUÉ avant son unique émetteur
-    # (``stock.services.annuler_reception_confirmee``, ASTK56, autre plan) :
-    # aucun ``send`` n'existe encore, le scanner verrait « catalogué vs [] ».
-    # À RETIRER d'ici dans le même commit qu'ASTK56 — la parité de payload
-    # (reception, company, user, lignes) redevient alors vérifiable et DOIT
-    # l'être (le cliquet se resserre, il ne se relâche jamais).
-    "reception_fournisseur_annulee",
     # SOLMVP — ÉMETTEUR PARTI AVEC SON MODULE (``core.parked`` /
     # ``docs/parked-modules.md``). Ces signaux restent DÉCLARÉS sur le bus et
     # CATALOGUÉS (contrat d'intégration NTPLT12, semé en base par migration),
@@ -468,6 +456,10 @@ NO_STATIC_EMITTER = {
     # mais la surface RFQ / sous-traitance qui l'appelait est sortie avec les
     # modules achats avancés. Le signal et son entrée de catalogue restent.
     "rfq_attribuee",
+    # ALEA3 (D-ALEA-3) — ``deal_commission_due`` : son seul émetteur
+    # (``apps/crm/receivers.py``) a été retiré ; le signal reste déclaré
+    # (golden SPL283) et catalogué, sans émetteur.
+    "deal_commission_due",
 }
 
 

@@ -20,14 +20,16 @@ CRÉER DEPUIS UN MODÈLE
 -------------------------
 ``creer_depuis_modele`` appelle ``dupliquer`` (CAL14) puis DÉTACHE tout ce
 qui est commercial : ``dupliquer`` ne recopie déjà ni le devis ni l'image ni
-l'historique du modèle — seuls ``lead_id``/``client_id`` sont recopiés par
-défaut (duplication ORDINAIRE), donc ce service les ÉCRASE avec un NOUVEAU
-rattachement fourni par l'appelant. Un calepinage exige au moins un lead ou
+l'historique du modèle — et ce service lui passe EXPLICITEMENT le NOUVEAU
+rattachement fourni par l'appelant (ACAL184 : le client est celui du lead ;
+un lead qui a déjà un calepinage ouvert est refusé, D-ACAL-12). Un calepinage exige au moins un lead ou
 un client (contrainte base) : partir d'un modèle SANS fournir ce nouveau
 rattachement est donc refusé, en nommant le champ — jamais une réutilisation
 silencieuse du lead/client du modèle.
 """
 from __future__ import annotations
+
+import copy
 
 #: Nom du tag SYSTÈME (FG9) qui porte le drapeau « modèle réutilisable ».
 NOM_TAG_MODELE = 'calepinage:modele'
@@ -132,26 +134,39 @@ def calepinages_modeles(company):
     ct = ContentType.objects.get_for_model(Calepinage)
     ids = TaggedItem.objects.filter(
         tag=tag, content_type=ct).values_list('object_id', flat=True)
-    return (Calepinage.objects
-            .filter(company=company, pk__in=list(ids))
+    # ACAL118 — un modèle ARCHIVÉ sort de la bibliothèque.
+    from ..selectors import calepinages_actifs
+
+    return (calepinages_actifs(company)
+            .filter(pk__in=list(ids))
             .order_by('-created_at', '-id'))
 
 
 def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
-                        titre=''):
+                        titre='', regler_conception=None):
     """Crée un NOUVEAU calepinage depuis ``modele`` — jamais un troisième
     chemin de copie (appelle ``services.variantes.dupliquer``, CAL14), puis
     détache tout ce qui est commercial.
+
+    ``regler_conception`` (facultatif) : appliqué à la conception préparée
+    AVANT la copie (jeu de réglages de ``creation.demarrer_depuis_modele``) —
+    la version « Conception d'origine » est donc le document courant.
 
     Raises:
         ModeleInvalide: modèle absent/non marqué, ou aucun nouveau
             rattachement (lead/client) fourni.
     """
-    from .journal import journaliser_creation
     from .variantes import dupliquer
 
     if modele is None or not getattr(modele, 'pk', None):
         raise ModeleInvalide('Modèle introuvable.', champ='modele')
+    from .archivage import est_archive
+
+    if est_archive(modele):
+        # ACAL118 — un modèle archivé ne sert plus de départ.
+        raise ModeleInvalide(
+            'Ce modèle est archivé : restaurez-le avant de vous en servir.',
+            champ='modele')
     if not est_modele(modele):
         raise ModeleInvalide(
             "Ce calepinage n'est pas marqué comme modèle réutilisable.",
@@ -169,17 +184,55 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
             raise ModeleInvalide('Client introuvable dans cette société.',
                                  champ='client')
     if lead_id:
-        from apps.crm.selectors import get_company_lead
+        from apps.crm.selectors import get_company_lead, repere_toit
 
-        if get_company_lead(modele.company, lead_id) is None:
+        lead = get_company_lead(modele.company, lead_id)
+        if lead is None:
             raise ModeleInvalide('Lead introuvable dans cette société.',
+                                 champ='lead')
+        # ACAL184 — le client de la copie est CELUI du lead : un couple
+        # lead/client qui se contredit est refusé en nommant ``client`` (UNE
+        # règle, partagée avec Dupliquer).
+        from .variantes import MESSAGE_CLIENT_PAS_CELUI_DU_LEAD
+
+        client_du_lead = getattr(lead, 'client_id', None)
+        if client_id and client_du_lead and int(client_id) != client_du_lead:
+            raise ModeleInvalide(MESSAGE_CLIENT_PAS_CELUI_DU_LEAD,
                                  champ='client')
+        client_id = client_du_lead or client_id
+        # ACAL117 (D-ACAL-15) — le modèle emporte ses réglages et son
+        # implantation RELATIVE : la conception est translatée sur le repère
+        # toit du lead cible ; sans repère, refus nommé, rien n'est créé.
+        pin, _source, _contour = repere_toit(lead)
+        if pin is None:
+            raise ModeleInvalide(
+                "Le lead n'a pas de repère toit (GPS ou point de toit) : "
+                "placez-le d'abord", champ='lead')
+    else:
+        pin = None
 
-    copie = dupliquer(modele, user=user, titre=titre)
-    copie.lead_id = lead_id or None
-    copie.client_id = client_id or None
-    copie.full_clean(exclude=['company'])
-    copie.save(update_fields=['lead_id', 'client'])
+    def preparer(source):
+        """D-ACAL-15 — la règle de copie d'un document du modèle, UNE pour
+        la conception et chaque variante : translatée sur le repère du lead
+        cible (s'il y en a un), sans la consommation d'un AUTRE client."""
+        if pin is not None:
+            from .translation_conception import translater_conception
 
-    journaliser_creation(copie, user=user)
-    return copie
+            prepare = translater_conception(source, pin)
+        else:
+            prepare = copy.deepcopy(source)
+        if isinstance(prepare, dict):
+            prepare.pop('consumption', None)
+        return prepare
+
+    # ACAL187/ACAL184 — la CIBLE est passée explicitement à ``dupliquer`` :
+    # la copie naît sur ce lead/client (jamais sur le rattachement du
+    # modèle), et un lead qui a déjà un calepinage OUVERT est refusé
+    # (``DuplicationEnConflit``, 409). ``dupliquer`` journalise la création.
+    conception = preparer(modele.roof_layout)
+    if regler_conception is not None:
+        conception = regler_conception(conception)
+    return dupliquer(modele, user=user, titre=titre,
+                     roof_layout=conception,
+                     preparer_document=preparer,
+                     lead_id=lead_id or None, client_id=client_id or None)

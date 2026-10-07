@@ -27,6 +27,8 @@ Idempotente : sans danger si ``ready()`` est invoquée plusieurs fois.
 """
 from __future__ import annotations
 
+from datetime import timedelta
+
 from apps.crm.stages import STAGES
 
 from apps.agent.registry import AgentAction, RISK_INTERNAL, register, _REGISTRY
@@ -177,12 +179,25 @@ _ACTIONS = (
 # enregistré dans le registre technique ``apps.agent.services`` — même sens de
 # dépendance que l'enregistrement du catalogue ci-dessus (CRM → agent, jamais
 # l'inverse : ``apps.agent`` n'importe aucune app métier).
+# AANA49 — délai maximal entre la création du client (exécution réelle de
+# l'action par le relais) et la confirmation journalisée.
+_MARGE_CREATION_AGENT = timedelta(seconds=5)
+
+
 def _annuler_creation_client(log):
     """Supprime le ``Client`` créé par une action ``crm.client.create``
     confirmée — SAUF si des documents (devis/facture) le référencent déjà
     (``ProtectedError``), auquel cas l'annulation dégrade en NO-OP motivé
-    plutôt que de lever une erreur non rattrapée."""
+    plutôt que de lever une erreur non rattrapée.
+
+    AANA49 (C-AANA-008) — n'annule QUE le client créé PAR CE journal :
+    créateur = ``log.user`` et créé au plus tôt
+    ``_MARGE_CREATION_AGENT`` avant ``log.confirmed_at``. Un client
+    préexistant (journal forgé, client réutilisé) n'est jamais supprimé :
+    l'annulation est refusée (409 côté vue), le client reste."""
     from django.db.models import ProtectedError
+
+    from apps.agent.services import ActionNotUndoableError
 
     from .models import Client
 
@@ -192,6 +207,17 @@ def _annuler_creation_client(log):
         pk=log.object_id, company_id=log.company_id).first()
     if client is None:
         return "Client déjà supprimé ou introuvable — rien à annuler."
+    cree_par_ce_journal = (
+        log.user_id is not None
+        and client.created_by_id == log.user_id
+        and log.confirmed_at is not None
+        and client.date_creation is not None
+        and client.date_creation >= log.confirmed_at - _MARGE_CREATION_AGENT
+    )
+    if not cree_par_ce_journal:
+        raise ActionNotUndoableError(
+            f"Annulation refusée : ce client n'a pas été créé par l'agent "
+            f"(journal #{log.pk}) — il n'est pas supprimé.")
     nom = client.nom
     try:
         client.delete()

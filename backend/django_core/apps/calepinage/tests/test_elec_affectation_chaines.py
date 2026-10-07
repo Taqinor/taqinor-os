@@ -95,7 +95,8 @@ class AffectationTest(SimpleTestCase):
         lignes = affectation(_conception())
 
         self.assertEqual(len(lignes), 19)
-        self.assertEqual(lignes[0]['module'], 'PAN-A#1')
+        # ACAL265 — '<zone.id>#<n>' : le libellé n'est plus la clé.
+        self.assertEqual(lignes[0]['module'], 'a#1')
         self.assertEqual(lignes[-1]['pan'], 'PAN-B')
 
     def test_les_cinq_cles_du_contrat_sont_toujours_presentes(self):

@@ -12,12 +12,10 @@ Test coverage:
   (g) gps_lat/gps_lng used when roof_point is absent.
 """
 
-import json
 import sys
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase, RequestFactory
-from rest_framework.test import force_authenticate
+from django.test import TestCase
 
 from apps.crm.roof_detect import (
     _parse_geometry, batiment_non_renseigne, fetch_building_footprint,
@@ -181,111 +179,87 @@ class FetchBuildingFootprintTests(TestCase):
 # ---------------------------------------------------------------------------
 # View tests (company scoping + endpoint behaviour)
 # ---------------------------------------------------------------------------
+#
+# ALEA38 — these used to mock ``Lead.objects`` and the user (MagicMock), so
+# they could not see the permission and scope guards. They now run on REAL
+# rows (company, legacy responsable account, lead); only
+# ``fetch_building_footprint`` (the outbound Overpass call) is patched.
+
 
 class LeadRoofFootprintViewTests(TestCase):
-    """Integration-style tests for lead_roof_footprint view (mocked Lead ORM)."""
+    """Endpoint behaviour on real rows; Overpass is the only stand-in."""
 
     def setUp(self):
-        self.factory = RequestFactory()
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
 
-    def _make_request(self, user, lead_id):
-        request = self.factory.get(f"/api/django/crm/leads/{lead_id}/roof-footprint/")
-        request.user = user
-        # DRF (@api_view) ré-exécute l'authentification sur la requête brute :
-        # force_authenticate fait respecter l'utilisateur au lieu de retomber
-        # sur AnonymousUser (sinon 401 avant d'atteindre la vue).
-        force_authenticate(request, user=user)
-        return request
+        from authentication.models import Company
 
-    def _company_user(self):
-        company = MagicMock()
-        company.pk = 1
-        user = MagicMock()
-        user.is_authenticated = True
-        user.company = company
-        return user
+        self.company = Company.objects.create(
+            nom='Taqinor roof', slug='taqinor-roof-view')
+        self.autre = Company.objects.create(
+            nom='Autre roof', slug='autre-roof-view')
+        self.user = get_user_model().objects.create_user(
+            username='roof-resp', password='x', company=self.company,
+            role_legacy='responsable')
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+
+    def _lead(self, company=None, **champs):
+        from apps.crm.models import Lead
+        return Lead.objects.create(
+            company=company or self.company, nom='Toit', **champs)
+
+    def _get(self, lead_id):
+        return self.api.get(f"/api/django/crm/leads/{lead_id}/roof-footprint/")
 
     def test_company_scoped_returns_polygon(self):
         """(a+d) Correct company + mocked fetch → 200 with polygon."""
-        user = self._company_user()
-
-        lead = MagicMock()
-        lead.roof_point = {"lat": 33.5731, "lng": -7.5898}
-        lead.gps_lat = None
-        lead.gps_lng = None
-
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
         polygon = [
             {"lat": 33.5731, "lng": -7.5898},
             {"lat": 33.5732, "lng": -7.5897},
             {"lat": 33.5733, "lng": -7.5898},
         ]
-
-        with patch("apps.crm.models.Lead.objects") as mock_mgr:
-            mock_mgr.get.return_value = lead
-            request = self._make_request(user, 42)
-            from apps.crm import roof_views as rv
-            empreinte = {"polygon": polygon,
-                         "batiment": batiment_non_renseigne("exemple de test")}
-            with patch.object(rv, "fetch_building_footprint",
-                              return_value=empreinte):
-                response = rv.lead_roof_footprint(request, lead_id=42)
+        from apps.crm import roof_views as rv
+        empreinte = {"polygon": polygon,
+                     "batiment": batiment_non_renseigne("exemple de test")}
+        with patch.object(rv, "fetch_building_footprint",
+                          return_value=empreinte):
+            response = self._get(lead.pk)
 
         self.assertEqual(response.status_code, 200)
-        data = json.loads(response.content)
+        data = response.json()
         self.assertEqual(data["source"], "osm")
         self.assertEqual(len(data["polygon"]), 3)
         # CALX106 — la réponse porte toujours le bloc `batiment`.
         self.assertIn("batiment", data)
 
     def test_wrong_company_returns_404(self):
-        """(d) Lead belongs to company_b; user is company_a → 404."""
-        user = self._company_user()
-
-        from apps.crm.models import Lead
-
-        with patch("apps.crm.models.Lead.objects") as mock_mgr:
-            mock_mgr.get.side_effect = Lead.DoesNotExist
-            request = self._make_request(user, 99)
-            from apps.crm import roof_views as rv
-            response = rv.lead_roof_footprint(request, lead_id=99)
+        """(d) Lead belongs to another company → 404, Overpass untouched."""
+        lead = self._lead(company=self.autre,
+                          roof_point={"lat": 33.5731, "lng": -7.5898})
+        from apps.crm import roof_views as rv
+        with patch.object(rv, "fetch_building_footprint") as fetch:
+            response = self._get(lead.pk)
 
         self.assertEqual(response.status_code, 404)
+        fetch.assert_not_called()
 
     def test_no_gps_returns_400(self):
         """(e) Lead has neither roof_point nor gps_lat/lng → 400."""
-        user = self._company_user()
-
-        lead = MagicMock()
-        lead.roof_point = None
-        lead.gps_lat = None
-        lead.gps_lng = None
-
-        with patch("apps.crm.models.Lead.objects") as mock_mgr:
-            mock_mgr.get.return_value = lead
-            request = self._make_request(user, 7)
-            from apps.crm import roof_views as rv
-            response = rv.lead_roof_footprint(request, lead_id=7)
-
-        self.assertEqual(response.status_code, 400)
+        lead = self._lead()
+        self.assertEqual(self._get(lead.pk).status_code, 400)
 
     def test_overpass_failure_returns_empty_polygon(self):
         """(b) Overpass unreachable → 200 with empty polygon + message."""
-        user = self._company_user()
-
-        lead = MagicMock()
-        lead.roof_point = {"lat": 33.5731, "lng": -7.5898}
-        lead.gps_lat = None
-        lead.gps_lng = None
-
-        with patch("apps.crm.models.Lead.objects") as mock_mgr:
-            mock_mgr.get.return_value = lead
-            request = self._make_request(user, 5)
-            from apps.crm import roof_views as rv
-            with patch.object(rv, "fetch_building_footprint", return_value=None):
-                response = rv.lead_roof_footprint(request, lead_id=5)
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
+        from apps.crm import roof_views as rv
+        with patch.object(rv, "fetch_building_footprint", return_value=None):
+            response = self._get(lead.pk)
 
         self.assertEqual(response.status_code, 200)
-        data = json.loads(response.content)
+        data = response.json()
         self.assertEqual(data["polygon"], [])
         self.assertIn("message", data)
         # CALX106 — Overpass injoignable : le bloc est servi quand même, tout
@@ -293,15 +267,7 @@ class LeadRoofFootprintViewTests(TestCase):
         self.assertIsNone(data["batiment"]["height_m"])
         self.assertIn("height_m", data["batiment"]["non_renseignes"])
 
-    def test_corrected_gps_preferred_over_roof_point(self):
-        """(f) QJR598 — a GPS different from roof_point is a correction: it wins."""
-        user = self._company_user()
-
-        lead = MagicMock()
-        lead.roof_point = {"lat": 33.9999, "lng": -7.9999}
-        lead.gps_lat = 33.0000  # the corrected position
-        lead.gps_lng = -7.0000
-
+    def _captures(self, lead):
         captured = []
 
         def mock_fetch(lat, lng):
@@ -309,38 +275,23 @@ class LeadRoofFootprintViewTests(TestCase):
             return {"polygon": [],
                     "batiment": batiment_non_renseigne("exemple de test")}
 
-        with patch("apps.crm.models.Lead.objects") as mock_mgr:
-            mock_mgr.get.return_value = lead
-            request = self._make_request(user, 3)
-            from apps.crm import roof_views as rv
-            with patch.object(rv, "fetch_building_footprint", side_effect=mock_fetch):
-                rv.lead_roof_footprint(request, lead_id=3)
+        from apps.crm import roof_views as rv
+        with patch.object(rv, "fetch_building_footprint",
+                          side_effect=mock_fetch):
+            self._get(lead.pk)
+        return captured
 
-        self.assertAlmostEqual(captured[0][0], 33.0)
-        self.assertAlmostEqual(captured[0][1], -7.0)
+    def test_corrected_gps_preferred_over_roof_point(self):
+        """(f) QJR598 — a GPS different from roof_point is a correction: it wins."""
+        lead = self._lead(roof_point={"lat": 33.9999, "lng": -7.9999},
+                          gps_lat='33.000000', gps_lng='-7.000000')
+        captured = self._captures(lead)
+        self.assertAlmostEqual(float(captured[0][0]), 33.0)
+        self.assertAlmostEqual(float(captured[0][1]), -7.0)
 
     def test_gps_fields_used_when_no_roof_point(self):
         """(g) When roof_point is absent, gps_lat/gps_lng are used."""
-        user = self._company_user()
-
-        lead = MagicMock()
-        lead.roof_point = None
-        lead.gps_lat = 33.1234
-        lead.gps_lng = -7.4321
-
-        captured = []
-
-        def mock_fetch(lat, lng):
-            captured.append((lat, lng))
-            return {"polygon": [],
-                    "batiment": batiment_non_renseigne("exemple de test")}
-
-        with patch("apps.crm.models.Lead.objects") as mock_mgr:
-            mock_mgr.get.return_value = lead
-            request = self._make_request(user, 4)
-            from apps.crm import roof_views as rv
-            with patch.object(rv, "fetch_building_footprint", side_effect=mock_fetch):
-                rv.lead_roof_footprint(request, lead_id=4)
-
-        self.assertAlmostEqual(captured[0][0], 33.1234)
-        self.assertAlmostEqual(captured[0][1], -7.4321)
+        lead = self._lead(gps_lat='33.123400', gps_lng='-7.432100')
+        captured = self._captures(lead)
+        self.assertAlmostEqual(float(captured[0][0]), 33.1234)
+        self.assertAlmostEqual(float(captured[0][1]), -7.4321)

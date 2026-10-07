@@ -14,6 +14,12 @@ Behavior:
   `lead.stage = stages.FOLLOW_UP` instead (`from apps.crm import stages`, which
   re-exports the repo-root STAGES.py). Test files are exempt: a test may pin a
   literal on purpose to prove the mapping, and it never ships behaviour.
+- AANA46: production Python must not carry a stage key as a *literal* in a
+  dict keyed by stages (`{'SIGNED': ...}`), a comparison (`== 'SIGNED'`) or a
+  keyword/local assignment (`stage='SIGNED'`). The pre-existing sites are
+  frozen per file in LITERAL_ALLOW below — a ceiling that may only DECREASE
+  (a file above its ceiling fails; a file below it must lower the ceiling).
+  Exempt: tests, `STAGES.py`, `apps/crm/stages.py`, migrations, parked code.
 """
 from __future__ import annotations
 
@@ -41,9 +47,58 @@ DECLARATION_RE = re.compile(
 STRING_RE = re.compile(r"['\"]([^'\"]+)['\"]")
 
 # CRX20 — `<something>.stage = 'LITERAL'` (Python and JS share this shape).
-# `==` is deliberately NOT matched: a comparison is a read, and the ratchet
-# targets the WRITES that move a lead through the funnel.
+# This ratchet targets the WRITES; comparisons/dict keys are AANA46 below.
 SCALAR_ASSIGN_RE = re.compile(r"\.stage\s*=\s*(['\"])([A-Za-z_][A-Za-z0-9_]*)\1")
+
+
+# AANA46 — literal stage keys outside a `.stage = '...'` write. Three shapes:
+# dict key, ==/!= comparison, `stage='X'` keyword/local assignment.
+_KEYS = r"(?:NEW|CONTACTED|QUOTE_SENT|FOLLOW_UP|SIGNED|COLD)"
+LITERAL_USE_RE = re.compile(
+    r"(?:^|[{,])\s*['\"]" + _KEYS + r"['\"]\s*:"            # dict key
+    r"|(?:==|!=)\s*['\"]" + _KEYS + r"['\"]"                  # x == 'SIGNED'
+    r"|['\"]" + _KEYS + r"['\"]\s*(?:==|!=)"                  # 'SIGNED' == x
+    r"|(?<![\w.])stage(?:__exact)?\s*=\s*['\"]" + _KEYS + r"['\"]",  # stage='X'
+    re.MULTILINE,
+)
+# Files that ARE the stage vocabulary (never flagged).
+LITERAL_EXEMPT = {
+    "backend/django_core/apps/crm/stages.py",
+}
+# Per-file ceilings (number of literal uses) frozen on 2026-10-07 — DECREASE ONLY.
+LITERAL_ALLOW = {
+    "backend/django_core/apps/crm/selectors.py": 1,
+    "backend/django_core/apps/crm/services.py": 3,
+    "backend/django_core/apps/crm/views.py": 2,
+    "backend/django_core/core/win_probability.py": 6,
+}
+
+
+def count_literal_uses(text: str) -> int:
+    return len(LITERAL_USE_RE.findall(text))
+
+
+def literal_failures(literal_counts: dict[str, int],
+                     allow: dict[str, int] | None = None) -> list[str]:
+    """AANA46 — compare per-file literal counts to the decrease-only ceilings."""
+    allow = LITERAL_ALLOW if allow is None else allow
+    out: list[str] = []
+    for rel, n in sorted(literal_counts.items()):
+        ceiling = allow.get(rel, 0)
+        if n > ceiling:
+            out.append(
+                f"{rel}: {n} literal stage key(s) (dict key / comparison / "
+                f"stage='X'), ceiling {ceiling} — use `from apps.crm import "
+                f"stages` (`stages.SIGNED`) instead"
+            )
+    for rel, ceiling in sorted(allow.items()):
+        n = literal_counts.get(rel, 0)
+        if n < ceiling:
+            out.append(
+                f"{rel}: only {n} literal stage key(s) left, ceiling is "
+                f"{ceiling} — lower LITERAL_ALLOW (decrease-only ratchet)"
+            )
+    return out
 
 
 def is_test_file(path: Path) -> bool:
@@ -84,6 +139,7 @@ def main() -> int:
 
     canonical = set(load_canonical())
     failures: list[str] = []
+    literal_counts: dict[str, int] = {}
 
     for path in ROOT.rglob("*"):
         if path.suffix not in SCANNED_SUFFIXES:
@@ -107,6 +163,12 @@ def main() -> int:
         # CRX20 — scalar stage writes in production code.
         if is_test_file(path):
             continue
+        # AANA46 — dict keys / comparisons / keyword literals (Python only).
+        rel = path.relative_to(ROOT).as_posix()
+        if path.suffix == ".py" and rel not in LITERAL_EXEMPT:
+            n = count_literal_uses(text)
+            if n:
+                literal_counts[rel] = n
         for match in SCALAR_ASSIGN_RE.finditer(text):
             literal = match.group(2)
             if literal not in canonical:
@@ -117,6 +179,8 @@ def main() -> int:
                 f"`.stage = '{literal}'` — import it instead "
                 f"(`from apps.crm import stages` then `stages.{literal}`)"
             )
+
+    failures.extend(literal_failures(literal_counts))
 
     if failures:
         print("Stage-name divergence detected (stage names must come from STAGES.py):")

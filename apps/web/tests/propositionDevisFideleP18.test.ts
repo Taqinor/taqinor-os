@@ -417,10 +417,10 @@ describe('P18 — la page n’a aucun modèle d’économies à elle', () => {
     expect(CODE).not.toMatch(/const\s+BILL_INFLATION/);
   });
 
-  it('le taux de couverture industriel/commercial reste celui servi (mode_kpis)', () => {
+  it('le taux de couverture industriel/commercial reste celui servi (synthese_ci, CIW300)', () => {
     // Deux chemins distincts, jamais deux couvertures sur la même page :
-    // résidentiel → donut `coverage_pct` ; autoconso → KPI `taux_couverture`.
-    expect(CODE).toContain('auto.taux_couverture');
+    // résidentiel → donut `coverage_pct` ; autoconso → `synthese_ci.energie.taux_couverture_pct`.
+    expect(CODE).toContain('ci.energie.couverturePct');
     expect(CODE).not.toMatch(/couverture\s*=\s*.*prodKwh\s*\//);
   });
 });

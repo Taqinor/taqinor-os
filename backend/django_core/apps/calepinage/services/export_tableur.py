@@ -100,35 +100,39 @@ def verifier_absence_de_prix(entetes, lignes, *, colonnes_exclues=()):
             champ='colonnes')
 
 
-def _affectation_par_pan(resultat):
-    """``pan -> [affectations]`` telles que le moteur les publie, dans l'ordre."""
+def _affectation_par_module(resultat):
+    """``{'<zone.id>#<n>': ligne}`` de l'affectation PUBLIÉE (ACAL265)."""
     affectations = (((resultat or {}).get('electrique') or {})
                     .get('affectation') or [])
-    par_pan = {}
-    for entree in affectations:
-        if isinstance(entree, dict):
-            par_pan.setdefault(str(entree.get('pan') or ''), []).append(entree)
-    return par_pan
+    return {str(entree.get('module')): entree for entree in affectations
+            if isinstance(entree, dict) and entree.get('module')}
 
 
 def table_modules(geometrie, resultat=None):
     """Un module POSÉ par ligne. Les quantités sont celles de la géométrie."""
     entetes = ['Pan', 'Bâtiment', 'Rangée', 'Module', 'Est (m)', 'Nord (m)',
                'Azimut (°)', 'Inclinaison (°)', 'Chaîne', 'Onduleur', 'MPPT']
-    par_pan = _affectation_par_pan(resultat)
+    par_module = _affectation_par_module(resultat)
     lignes = []
     for pan in geometrie.get('pans') or ():
         # ACAL230 - la rangée a UNE définition ORIENTÉE (``rangees.py``).
         rangees = rangees_du_pan(pan['modules'], pan.get('azimut_deg'))
-        affectations = par_pan.get(pan['repere'], [])
+        reperes = pan.get('reperes_modules') or {}
         for rang, centre in enumerate(pan['modules'], start=1):
-            affectation = affectations[rang - 1] \
-                if rang - 1 < len(affectations) else {}
+            # ACAL269 — le numéro STABLE (``panels[].n``) et l'étiquette de
+            # rangée que le document porte ; à défaut l'index et la rangée
+            # calculée (document ancien jamais numéroté).
+            numero, rangee = reperes.get(centre) or (None, None)
+            numero = numero if numero is not None else rang
+            # ACAL265 — l'affectation se joint par LA clé de module
+            # (``<repère du pan>#<n>``), jamais par la position dans la liste.
+            affectation = par_module.get('%s#%d' % (pan['repere'], numero)) \
+                or {}
             lignes.append([
                 pan['libelle'] or pan['repere'],
                 pan['batiment'] or '',
-                rangees[centre],
-                rang,
+                rangee if rangee is not None else rangees[centre],
+                numero,
                 round(centre[0], 3),
                 round(centre[1], 3),
                 pan['azimut_deg'],

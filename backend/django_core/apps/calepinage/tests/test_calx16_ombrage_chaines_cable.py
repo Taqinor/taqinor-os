@@ -104,7 +104,8 @@ class AccesPresentTest(SimpleTestCase):
         bloc = _servi(self.LAYOUT)['electrique'][CLE_CHAINE_FAIBLE]
 
         self.assertEqual(bloc['pan'], 'PAN-B')
-        self.assertEqual(bloc['module'], 'PAN-B#2')
+        # ACAL265 — la clé stable du pan (zone.id), plus son libellé.
+        self.assertEqual(bloc['module'], 'b#2')
         self.assertEqual(bloc['acces_solaire'], 0.62)
         self.assertIsNotNone(bloc['chaine'])
 

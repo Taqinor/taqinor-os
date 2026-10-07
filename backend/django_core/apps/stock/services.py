@@ -536,7 +536,7 @@ def _jour(valeur):
     return valeur
 
 
-def average_cost_with_source(produit):
+def average_cost_with_source(produit, a_la_date=None):
     """Coût moyen d'achat pondéré + sa SOURCE.
 
     Renvoie (cout, source) où source vaut 'achats' (dérivé des réceptions de
@@ -554,21 +554,35 @@ def average_cost_with_source(produit):
     inventaire initial) et seules les réceptions POSTÉRIEURES à sa
     validation entrent dans la moyenne pondérée — les réceptions
     antérieures sont supplantées par la revalorisation (comportement
-    historique inchangé quand aucune revalorisation n'existe)."""
+    historique inchangé quand aucune revalorisation n'existe).
+
+    ASTK40 — ``a_la_date`` (date, optionnelle) BORNE le calcul à cette date
+    (incluse) : seules les revalorisations VALIDÉES au plus tard ce jour-là et
+    les lignes de BCF ENTRÉES EN STOCK au plus tard ce jour-là comptent. C'est
+    la même formule que l'écran Valorisation (``a_la_date=None``), de sorte
+    que la valorisation à date du jour = l'écran, au centime."""
     from .models import LigneBonCommandeFournisseur, RevalorisationStock
+    jour = _jour(a_la_date) if a_la_date is not None else None
     # ASTK1 — seuls les documents de la SOCIÉTÉ du produit comptent : une
     # revalorisation ou une ligne BCF d'une autre société pointant (à tort)
     # ce produit ne déplace jamais son coût.
-    revalo = (RevalorisationStock.objects
-              .filter(produit=produit, company_id=produit.company_id,
-                      statut=RevalorisationStock.Statut.VALIDEE)
-              .order_by('-date_validation', '-id').first())
+    revalos = RevalorisationStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        statut=RevalorisationStock.Statut.VALIDEE)
+    if jour is not None:
+        revalos = revalos.filter(date_validation__date__lte=jour)
+    revalo = revalos.order_by('-date_validation', '-id').first()
     lignes_qs = LigneBonCommandeFournisseur.objects.filter(
         produit=produit, bon_commande__company_id=produit.company_id,
         quantite_recue__gt=0)
+    if jour is not None or (
+            revalo is not None and revalo.date_validation is not None):
+        lignes_qs = _annoter_date_entree_stock(lignes_qs)
+    if jour is not None:
+        lignes_qs = lignes_qs.filter(date_entree_stock__lte=jour)
     if revalo is not None and revalo.date_validation is not None:
         # AUD210 — postériorité mesurée sur l'ENTRÉE EN STOCK réelle.
-        lignes_qs = _annoter_date_entree_stock(lignes_qs).filter(
+        lignes_qs = lignes_qs.filter(
             date_entree_stock__gt=_jour(revalo.date_validation))
     lignes = lignes_qs.values_list(
         'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
@@ -585,17 +599,58 @@ def average_cost_with_source(produit):
             pu = pu + (frais / Decimal(str(q_ligne)))
         total_q += q_recue
         total_v += q_recue * pu
+    # ASTK44 — les ENTRÉES DE PRODUCTION (découpe, assemblage, démontage)
+    # portent le coût des sorties qui les produisent (`cout_unitaire`) : elles
+    # sont des couches de coût au même titre qu'une réception, bornées comme
+    # elles (postérieures à la revalorisation, antérieures à `a_la_date`).
+    # Sans elles, la cible d'une découpe retombait sur son prix catalogue et
+    # la transformation créait (ou détruisait) de la valeur.
+    total_q, total_v = _ajouter_couches_production(
+        produit, total_q, total_v, jour=jour, revalo=revalo)
     if total_q:
         source = 'achats' if revalo is None else 'revalorisation'
         return (total_v / total_q).quantize(Decimal('0.01')), source
     return (produit.prix_achat or Decimal('0')), 'catalogue'
 
 
+def _ajouter_couches_production(produit, total_q, total_v, *, jour=None,
+                                revalo=None):
+    """ASTK44 — ajoute aux totaux (quantité, valeur) les entrées de production
+    du produit qui portent un ``cout_unitaire`` (couche de coût). Renvoie le
+    nouveau couple (total_q, total_v). Mêmes bornes que les réceptions :
+    société du produit, après le jour de validation de la revalorisation de
+    départ, au plus tard ``jour`` quand il est fourni."""
+    from .models import MouvementStock
+    qs = MouvementStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+        cout_unitaire__isnull=False, quantite__gt=0)
+    if revalo is not None and revalo.date_validation is not None:
+        qs = qs.filter(date__date__gt=_jour(revalo.date_validation))
+    if jour is not None:
+        qs = qs.filter(date__date__lte=jour)
+    for quantite, cout in qs.values_list('quantite', 'cout_unitaire'):
+        total_q += quantite
+        total_v += quantite * cout
+    return total_q, total_v
+
+
+def cout_entree_production(valeur, quantite):
+    """ASTK44 — coût unitaire d'une entrée de production = valeur transférée
+    ÷ quantité produite (4 décimales, comme ``MouvementStock.cout_unitaire``).
+    ``None`` si rien n'est produit."""
+    if not quantite:
+        return None
+    return (Decimal(str(valeur)) / Decimal(str(quantite))).quantize(
+        Decimal('0.0001'))
+
+
 def average_cost(produit):
     """Coût moyen d'achat pondéré d'un produit, depuis l'historique des
     réceptions de bons de commande fournisseur ; repli sur le prix d'achat
     catalogue si aucun achat reçu. INTERNE."""
-    return average_cost_with_source(produit)[0]
+    # ASTK43 — via l'accesseur unique, méthode coût moyen explicite.
+    return valuation_cost_with_source(produit, method=VALUATION_WAVG)[0]
 
 
 # ── FG67 — Méthode de valorisation : coût moyen pondéré (défaut) ou FIFO ──────
@@ -623,7 +678,7 @@ def stock_valuation_method(company):
     return method if method in (VALUATION_WAVG, VALUATION_FIFO) else VALUATION_WAVG
 
 
-def fifo_cost_with_source(produit):
+def fifo_cost_with_source(produit, a_la_date=None, quantite=None):
     """Coût FIFO unitaire d'un produit + sa SOURCE (FG67).
 
     FIFO : le stock restant est valorisé aux coûts d'achat débarqués des
@@ -632,43 +687,100 @@ def fifo_cost_with_source(produit):
     `quantite_stock` dernières unités reçues. Repli sur le prix d'achat
     catalogue ('catalogue') si aucune réception. INTERNE — jamais client-facing.
 
-    Renvoie (cout_unitaire_moyen_des_couches_restantes, source)."""
-    from .models import LigneBonCommandeFournisseur
+    Renvoie (cout_unitaire_moyen_des_couches_restantes, source).
+
+    ASTK40 — ``a_la_date`` borne les couches aux entrées en stock au plus tard
+    ce jour-là ; ``quantite`` (quantité détenue à cette date) remplace alors
+    ``produit.quantite_stock``.
+
+    ASTK43 — la couche de REVALORISATION (XSTK14) entre aussi en FIFO : une
+    revalorisation VALIDÉE remplace toutes les couches entrées en stock
+    jusqu'au jour de sa validation par une couche unique
+    ``quantite_snapshot`` @ ``nouveau_cout`` ; seules les entrées
+    POSTÉRIEURES restent des couches propres (comme pour le coût moyen).
+    Avant, un produit reçu 10 @ 1 000 revalorisé à 600 restait à 1 000 en
+    FIFO. Les entrées de production à ``cout_unitaire`` (ASTK44) sont des
+    couches au même titre que les réceptions. Seuls les documents de la
+    société du produit comptent (ASTK1)."""
+    from .models import (
+        LigneBonCommandeFournisseur, MouvementStock, RevalorisationStock,
+    )
+    jour = _jour(a_la_date) if a_la_date is not None else None
+    revalos = RevalorisationStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        statut=RevalorisationStock.Statut.VALIDEE)
+    if jour is not None:
+        revalos = revalos.filter(date_validation__date__lte=jour)
+    revalo = revalos.order_by('-date_validation', '-id').first()
+    jour_revalo = (_jour(revalo.date_validation)
+                   if revalo is not None and revalo.date_validation is not None
+                   else None)
     # Couches d'entrée, de la plus récente à la plus ancienne (FIFO -> il reste
     # les dernières entrées). On valorise au coût débarqué unitaire.
     # AUD210 — couches ordonnées par ENTRÉE EN STOCK réelle (date de réception),
     # pas par date de saisie du bon de commande.
-    lignes = (_annoter_date_entree_stock(
+    lignes = _annoter_date_entree_stock(
         LigneBonCommandeFournisseur.objects
-        .filter(produit=produit, quantite_recue__gt=0))
-        .order_by('-date_entree_stock', '-id'))
-    restant = produit.quantite_stock or 0
+        .filter(produit=produit, bon_commande__company_id=produit.company_id,
+                quantite_recue__gt=0))
+    productions = MouvementStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+        cout_unitaire__isnull=False, quantite__gt=0)
+    if jour is not None:
+        lignes = lignes.filter(date_entree_stock__lte=jour)
+        productions = productions.filter(date__date__lte=jour)
+    if jour_revalo is not None:
+        lignes = lignes.filter(date_entree_stock__gt=jour_revalo)
+        productions = productions.filter(date__date__gt=jour_revalo)
+    couches = [
+        ((ligne.date_entree_stock, 0, ligne.id), ligne.quantite_recue,
+         ligne.cout_unitaire_debarque)
+        for ligne in lignes]
+    couches += [
+        ((_jour(mvt.date), 1, mvt.id), mvt.quantite, mvt.cout_unitaire)
+        for mvt in productions]
+    couches.sort(key=lambda couche: couche[0], reverse=True)
+    if revalo is not None:
+        # La couche revalorisée est la plus ANCIENNE encore détenue.
+        couches.append((None, revalo.quantite_snapshot, revalo.nouveau_cout))
+    restant = (quantite if quantite is not None
+               else produit.quantite_stock) or 0
     if restant <= 0:
         return (produit.prix_achat or Decimal('0')), 'catalogue'
     pris_q, pris_v = 0, Decimal('0')
-    for ligne in lignes:
+    for _cle, couche_quantite, couche_cout in couches:
         if restant <= 0:
             break
-        couche_q = min(ligne.quantite_recue, restant)
+        couche_q = min(couche_quantite, restant)
+        if couche_q <= 0:
+            continue
         pris_q += couche_q
-        pris_v += couche_q * ligne.cout_unitaire_debarque
+        pris_v += couche_q * couche_cout
         restant -= couche_q
     if pris_q == 0:
         return (produit.prix_achat or Decimal('0')), 'catalogue'
     cout = (pris_v / pris_q).quantize(Decimal('0.01'))
-    return cout, 'achats'
+    return cout, ('achats' if revalo is None else 'revalorisation')
 
 
-def valuation_cost_with_source(produit, method=None):
+def valuation_cost_with_source(produit, method=None, a_la_date=None,
+                               quantite=None):
     """Coût unitaire de valorisation d'un produit selon la méthode société
     (FG67). 'wavg' -> coût moyen pondéré débarqué ; 'fifo' -> couches FIFO
     restantes. Si `method` n'est pas fourni, on lit le réglage société.
-    Renvoie (cout, source). INTERNE."""
+    Renvoie (cout, source). INTERNE.
+
+    ASTK40 — ACCESSEUR UNIQUE du coût de valorisation, à l'instant présent
+    (écran Valorisation) comme à une date passée (``a_la_date`` : inventaire
+    annuel figé, valorisation à date) ; ``quantite`` = quantité détenue à
+    cette date (FIFO seulement)."""
     if method is None:
         method = stock_valuation_method(produit.company)
     if method == VALUATION_FIFO:
-        return fifo_cost_with_source(produit)
-    return average_cost_with_source(produit)
+        return fifo_cost_with_source(
+            produit, a_la_date=a_la_date, quantite=quantite)
+    return average_cost_with_source(produit, a_la_date=a_la_date)
 
 
 # ── DC28 — UN seul résolveur du coût d'achat courant ─────────────────────────
@@ -834,30 +946,18 @@ def _quantite_produit_a_date(produit, date):
     return mvt.quantite_apres if mvt is not None else 0
 
 
-def _cout_moyen_produit_a_date(produit, date):
-    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les lignes de
-    BCF RÉELLEMENT ENTRÉES EN STOCK au plus tard à `date` (AUD210 : date de
-    réception, pas date de création du bon de commande ; cf.
-    `average_cost_with_source`, borné dans le temps). Repli catalogue si
-    aucun achat reçu avant cette date."""
-    from .models import LigneBonCommandeFournisseur
-    lignes = (_annoter_date_entree_stock(
-        LigneBonCommandeFournisseur.objects
-        .filter(produit=produit, quantite_recue__gt=0))
-        .filter(date_entree_stock__lte=_jour(date))
-        .values_list('quantite_recue', 'prix_achat_unitaire',
-                     'quantite', 'frais_annexes'))
-    total_q, total_v = 0, Decimal('0')
-    for q_recue, pu, q_ligne, frais in lignes:
-        pu = pu or Decimal('0')
-        frais = frais or Decimal('0')
-        if q_ligne and frais:
-            pu = pu + (frais / Decimal(str(q_ligne)))
-        total_q += q_recue
-        total_v += q_recue * pu
-    if total_q:
-        return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
-    return (produit.prix_achat or Decimal('0')), 'catalogue'
+def _cout_moyen_produit_a_date(produit, date, method=None, quantite=None):
+    """Coût de valorisation du produit À `date` (incluse).
+
+    ASTK40 — n'est plus une formule parallèle : c'est un appel à l'accesseur
+    unique ``valuation_cost_with_source`` borné à la date. Avant, cette
+    fonction ignorait les revalorisations validées (XSTK14) : un produit reçu
+    10 @ 1 000 puis revalorisé à 600 valait 6 000 à l'écran mais 10 000 dans
+    l'inventaire annuel figé. Désormais : revalorisations validées ≤ date
+    incluses, réceptions entrées en stock ≤ date (AUD210 : date de réception,
+    pas date de création du BCF), repli catalogue si rien avant cette date."""
+    return valuation_cost_with_source(
+        produit, method=method, a_la_date=date, quantite=quantite)
 
 
 def quantite_de_tiers(company, produit=None):
@@ -901,14 +1001,18 @@ def valorisation_a_date(company, date):
     from .models import Produit
     produits = Produit.objects.filter(company=company)
     de_tiers = quantite_de_tiers(company)
+    # ASTK40 — même méthode société que l'écran Valorisation (résolue une
+    # fois), même accesseur de coût, borné à la date.
+    method = stock_valuation_method(company)
     lignes = []
     total = Decimal('0')
     for p in produits:
-        quantite = _quantite_produit_a_date(p, date)
-        quantite = max(quantite - de_tiers.get(p.id, 0), 0)
+        quantite_detenue = _quantite_produit_a_date(p, date)
+        quantite = max(quantite_detenue - de_tiers.get(p.id, 0), 0)
         if quantite == 0:
             continue
-        cout, source = _cout_moyen_produit_a_date(p, date)
+        cout, source = _cout_moyen_produit_a_date(
+            p, date, method=method, quantite=quantite_detenue)
         valeur = (cout * quantite).quantize(Decimal('0.01'))
         total += valeur
         lignes.append({
@@ -978,14 +1082,18 @@ def export_inventaire_annuel_xlsx(inventaire):
 # ── XSTK14 — Revalorisation manuelle du stock (document tracé) ──────────────
 # INTERNE, admin-only, jamais client-facing.
 
-def creer_revalorisation(*, company, produit, nouveau_cout, motif, user):
+def creer_revalorisation(*, company, produit, nouveau_cout, motif, user,
+                         method=None):
     """Crée une `RevalorisationStock` en BROUILLON : snapshot du coût moyen
     actuel + de la quantité en stock, delta calculé. Motif obligatoire
-    (ValueError sinon)."""
+    (ValueError sinon).
+
+    ASTK43 — l'ancien coût est lu par l'accesseur unique
+    ``valuation_cost_with_source`` (méthode société, ou ``method`` explicite)."""
     from .models import RevalorisationStock
     if not motif or not str(motif).strip():
         raise ValueError('Le motif de la revalorisation est obligatoire.')
-    ancien_cout, _source = average_cost_with_source(produit)
+    ancien_cout, _source = valuation_cost_with_source(produit, method=method)
     nouveau_cout = Decimal(str(nouveau_cout))
     # NTWMS19 — le stock DE TIERS présent dans nos murs n'est pas notre actif :
     # il ne participe jamais au delta de revalorisation (0 sans emplacement
@@ -1479,11 +1587,17 @@ def annuler_reception_confirmee(reception, user):
                         for lg in lignes)):
             raise ValueError(
                 'Marchandise livrée au chantier — passer par un retour.')
+        # ASTK56 — quantités annulées, portées par l'événement émis après
+        # commit (abonné installations : GR/IR, séries, réservation).
+        lignes_annulees = []
         for ligne in lignes:
             # ASTK59 — on défait ce qui est RÉELLEMENT entré, pas la saisie.
             qte = quantite_entree_ligne_reception(ligne)
             if qte <= 0:
                 continue
+            lignes_annulees.append({
+                'ligne': ligne, 'produit': ligne.produit,
+                'quantite_annulee': qte})
             if not _est_stockee(ligne):
                 # ASTK54 — ligne service : seule la quantité reçue de la
                 # ligne de BCF est défaite (le BCF est rouvert plus bas).
@@ -1551,6 +1665,25 @@ def annuler_reception_confirmee(reception, user):
                     and not bc.est_entierement_recu):
                 bc.statut = BonCommandeFournisseur.Statut.ENVOYE
                 bc.save(update_fields=['statut'])
+
+        # ASTK56 (C-ASTK-011) — jumeau d'annulation de
+        # `reception_fournisseur_confirmee` (signal ASTK55) : émis UNE fois,
+        # APRÈS COMMIT — une annulation qui échoue (rollback) n'émet rien.
+        # stock n'importe pas installations : l'abonné (ASTK57) s'abonne dans
+        # son propre apps.py ready().
+        def _emettre_annulation():
+            from core.events import reception_fournisseur_annulee
+            try:
+                reception_fournisseur_annulee.send(
+                    sender=ReceptionFournisseur, reception=reception,
+                    company=reception.company, user=user,
+                    lignes=lignes_annulees)
+            except Exception:  # noqa: BLE001 — après commit : journalisé
+                logger.exception(
+                    'ASTK56: abonné de reception_fournisseur_annulee en '
+                    'échec pour la réception %s', reception.pk)
+
+        transaction.on_commit(_emettre_annulation)
     return reception
 
 
@@ -2180,7 +2313,7 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           created_by, save_produit=True, emplacement_source=None,
                           bin_source=None, bin_destination=None,
                           bin_source_id=None, motif_rebut=None,
-                          verrouiller_produit=True):
+                          verrouiller_produit=True, cout_unitaire=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -2222,9 +2355,21 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     ``select_for_update`` lèverait ``TransactionManagementError``) et jamais
     pour un produit non encore enregistré : sans transaction ouverte, le
     comportement reste strictement historique. Un appelant qui détient déjà le
-    verrou ne paie rien (ré-acquérir dans la même transaction est un no-op)."""
+    verrou ne paie rien (ré-acquérir dans la même transaction est un no-op).
+
+    ASTK44 — ``cout_unitaire`` (mot-clé, optionnel) : coût unitaire porté par
+    une ENTRÉE DE PRODUCTION (découpe, assemblage, démontage) = valeur des
+    sorties qui la produisent ÷ quantité produite. Le coût moyen
+    (``average_cost_with_source``) le lit comme une couche de coût. ``None``
+    (défaut) = comportement historique strictement inchangé.
+
+    ASTK45 — une ``quantite`` non entière (Decimal/float à partie décimale)
+    est REFUSÉE (ValidationError 400 lisible) au lieu d'être tronquée en
+    silence par la colonne entière (classe AUD222)."""
     from django.db import transaction as _transaction
     from .models import MouvementStock, Produit, StockEmplacement
+
+    quantite = exiger_quantite_entiere(quantite, produit)
 
     if (verrouiller_produit and getattr(produit, 'pk', None)
             and _transaction.get_connection().in_atomic_block):
@@ -2247,6 +2392,7 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         note=note,
         created_by=created_by,
         motif_rebut=motif_rebut,
+        cout_unitaire=cout_unitaire,
         **casiers,
     )
     if save_produit:
@@ -2265,6 +2411,33 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         quantite_avant=quantite_avant, quantite_apres=quantite_apres)
     _emit_mouvement_stock_enregistre(mouvement, company)
     return mouvement
+
+
+def _format_quantite_fr(valeur):
+    """``Decimal('1.50')`` → ``'1,5'`` (affichage FR, zéros de queue ôtés)."""
+    texte = format(Decimal(str(valeur)).normalize(), 'f')
+    return texte.replace('.', ',')
+
+
+def exiger_quantite_entiere(quantite, produit=None):
+    """ASTK45 — renvoie ``quantite`` en ``int`` si elle est ENTIÈRE (``3``,
+    ``Decimal('3.000')``, ``3.0``), sinon lève une ValidationError DRF (400
+    lisible) « quantité non entière (1,5) pour <produit> — unité de stock
+    entière exigée ». Le stock se compte en unités entières : une quantité
+    décimale (0,5 m de câble × 3) n'est plus tronquée en silence par la
+    colonne entière du mouvement."""
+    from rest_framework.exceptions import ValidationError
+    if quantite is None or isinstance(quantite, bool):
+        return quantite
+    if isinstance(quantite, int):
+        return quantite
+    valeur = Decimal(str(quantite))
+    if valeur != valeur.to_integral_value():
+        nom = getattr(produit, 'nom', None) or 'ce produit'
+        raise ValidationError({'quantite': [
+            f'Quantité non entière ({_format_quantite_fr(valeur)}) pour '
+            f'{nom} — unité de stock entière exigée.']})
+    return int(valeur)
 
 
 def _emit_mouvement_stock_enregistre(mouvement, company):
@@ -2496,12 +2669,14 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
 
 def rebuter_produit(
         *, company, produit, quantite, motif, user, emplacement=None,
-        reference_chantier=None):
+        reference_chantier=None, method=None):
     """XSTK10 — met au rebut une quantité d'un produit (motif obligatoire :
     casse/obsolète/périmé/vol/défaut/erreur/autre), décrémente l'emplacement
     source (si fourni, N15) en plus du total canonique, respecte le garde
-    XSTK8 (stock négatif) et journalise la VALEUR perdue au coût moyen
-    (`average_cost_with_source`). Renvoie {mouvement, valeur_perdue}."""
+    XSTK8 (stock négatif) et journalise la VALEUR perdue au coût de
+    valorisation (ASTK43 : accesseur unique ``valuation_cost_with_source``,
+    méthode société ou ``method`` explicite). Renvoie {mouvement,
+    valeur_perdue}."""
     from django.db import transaction
     from .models import MouvementStock, Produit, StockEmplacement
 
@@ -2511,7 +2686,7 @@ def rebuter_produit(
     if motif not in valeurs_motif:
         raise ValueError('Motif de rebut invalide.')
 
-    cout_moyen, _source = average_cost_with_source(produit)
+    cout_moyen, _source = valuation_cost_with_source(produit, method=method)
     valeur_perdue = (cout_moyen or Decimal('0')) * Decimal(quantite)
 
     note = f'Rebut ({dict(MouvementStock.MotifRebut.choices).get(motif, motif)})'
@@ -2538,7 +2713,7 @@ def rebuter_produit(
     return {'mouvement': mouvement, 'valeur_perdue': valeur_perdue}
 
 
-def rapport_pertes(company, *, date_debut=None, date_fin=None):
+def rapport_pertes(company, *, date_debut=None, date_fin=None, method=None):
     """XSTK10 — rapport « pertes de la période » : quantités ET valeur (coût
     moyen au moment du calcul) par motif de rebut. Admin-only, JAMAIS
     client-facing (prix_achat interne). Renvoie une liste de dicts
@@ -2554,6 +2729,7 @@ def rapport_pertes(company, *, date_debut=None, date_fin=None):
     if date_fin is not None:
         qs = qs.filter(date__lte=date_fin)
 
+    methode = method or stock_valuation_method(company)
     par_produit = {}
     for mvt in qs.select_related('produit'):
         entry = par_produit.setdefault(mvt.produit_id, {
@@ -2563,7 +2739,10 @@ def rapport_pertes(company, *, date_debut=None, date_fin=None):
             'valeur_totale': Decimal('0'),
             'par_motif': {},
         })
-        cout_moyen, _source = average_cost_with_source(mvt.produit)
+        # ASTK43 — coût par l'accesseur unique (méthode société résolue une
+        # fois, ou ``method`` explicite).
+        cout_moyen, _source = valuation_cost_with_source(
+            mvt.produit, method=methode)
         valeur = (cout_moyen or Decimal('0')) * Decimal(mvt.quantite)
         motif = mvt.motif_rebut or 'autre'
         entry['quantite_totale'] += mvt.quantite
@@ -4384,20 +4563,32 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             "Le kit n'a pas de produit composite (produit_compose) : "
             "impossible de clôturer l'ordre.")
 
+    # ASTK45 — chaque quantité consommée est validée ENTIÈRE avant toute
+    # écriture : 0,5 m × 3 = 1,5 est refusé (400 lisible), jamais tronqué.
+    a_consommer = []
+    for ligne in composants:
+        comp_produit = ligne.produit
+        if comp_produit is None:
+            continue
+        qte_conso = ((ligne.quantite or 0) * quantite_produite if per_unit
+                     else (ligne.quantite or 0))
+        if qte_conso <= 0:
+            continue
+        a_consommer.append(
+            (comp_produit, exiger_quantite_entiere(qte_conso, comp_produit)))
+
     with transaction.atomic():
         mouvements = []
-        for ligne in composants:
-            comp_produit = ligne.produit
-            if comp_produit is None:
-                continue
-            qte_conso = ((ligne.quantite or 0) * quantite_produite if per_unit
-                         else (ligne.quantite or 0))
-            if qte_conso <= 0:
-                continue
+        # ASTK44 — valeur des composants consommés, portée par l'entrée du
+        # composite (coût de l'accesseur unique, lu AVANT la sortie).
+        valeur_consommee = Decimal('0')
+        for comp_produit, qte_conso in a_consommer:
             p = Produit.objects.select_for_update().get(id=comp_produit.id)
             avant = p.quantite_stock
             apres = avant - qte_conso
             check_negative_stock_guard(company, avant, apres)
+            cout_comp, _source = valuation_cost_with_source(p)
+            valeur_consommee += cout_comp * Decimal(str(qte_conso))
             mvt = record_stock_movement(
                 company=company, produit=p,
                 type_mouvement=mouvement_type_sortie(),
@@ -4423,7 +4614,9 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             quantite=quantite_produite, quantite_avant=avant_c,
             quantite_apres=apres_c, reference=reference,
             note=f'Assemblage {reference} — composite kit {kit.id}',
-            created_by=user)
+            created_by=user,
+            cout_unitaire=cout_entree_production(
+                valeur_consommee, quantite_produite))
         mouvements.append(mvt_entree)
         if emplacement_destination is not None and \
                 not emplacement_destination.is_principal:
@@ -4465,6 +4658,30 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
         avant_c = composite.quantite_stock
         qte_sortie = min(quantite_demontee, avant_c) if avant_c > 0 else 0
         apres_c = avant_c - qte_sortie
+        # ASTK44 — la valeur du composite sorti (coût de l'accesseur unique,
+        # lu AVANT la sortie) est répartie sur les composants récupérés au
+        # prorata de leur valeur courante (à défaut : de leur quantité) ;
+        # chaque entrée porte sa part ÷ sa quantité. Rien de sorti ⇒ aucune
+        # valeur transférée (cout_unitaire None, comportement historique).
+        lignes_recuperation = [
+            ligne for ligne in lignes_recuperation
+            if ligne.produit is not None and (ligne.quantite_recuperee or 0) > 0]
+        parts = {}
+        if qte_sortie > 0 and lignes_recuperation:
+            cout_c, _source = valuation_cost_with_source(composite)
+            valeur_sortie = cout_c * Decimal(str(qte_sortie))
+            poids = []
+            for ligne in lignes_recuperation:
+                cout_l, _s = valuation_cost_with_source(ligne.produit)
+                poids.append(cout_l * Decimal(str(ligne.quantite_recuperee)))
+            if sum(poids) <= 0:
+                poids = [Decimal(str(ligne.quantite_recuperee))
+                         for ligne in lignes_recuperation]
+            total_poids = sum(poids)
+            for index, ligne in enumerate(lignes_recuperation):
+                parts[index] = cout_entree_production(
+                    valeur_sortie * poids[index] / total_poids,
+                    ligne.quantite_recuperee)
         mvt_sortie = record_stock_movement(
             company=company, produit=composite,
             type_mouvement=mouvement_type_sortie(),
@@ -4480,13 +4697,9 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
             se.quantite = max(se.quantite - qte_sortie, 0)
             se.save(update_fields=['quantite'])
 
-        for ligne in lignes_recuperation:
+        for index, ligne in enumerate(lignes_recuperation):
             comp_produit = ligne.produit
-            if comp_produit is None:
-                continue
             qte_recup = ligne.quantite_recuperee or 0
-            if qte_recup <= 0:
-                continue
             p = Produit.objects.select_for_update().get(id=comp_produit.id)
             avant = p.quantite_stock
             apres = avant + qte_recup
@@ -4496,7 +4709,7 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
                 quantite=qte_recup, quantite_avant=avant, quantite_apres=apres,
                 reference=reference,
                 note=f'Démontage {reference} — composant récupéré kit {kit.id}',
-                created_by=user)
+                created_by=user, cout_unitaire=parts.get(index))
             mouvements.append(mvt)
             if emplacement_destination is not None and \
                     not emplacement_destination.is_principal:
@@ -6558,12 +6771,23 @@ def resoudre_token_portail_fournisseur(token):
     """XPUR22 — résout un jeton portail valide (non révoqué, non expiré) et
     renvoie son ``PortailFournisseurToken`` (avec `fournisseur` préchargé),
     ou None. LECTURE SEULE — l'appelant public doit toujours passer par
-    cette fonction plutôt que directement par le modèle."""
-    from .models import PortailFournisseurToken
+    cette fonction plutôt que directement par le modèle.
+
+    ASTK179 (C-ASTK-040) — un jeton dont le FOURNISSEUR est archivé, bloqué
+    « total » ou dont la candidature est rejetée est refusé comme un jeton
+    inconnu (None ⇒ 404 INDISTINCT côté vue) : un fournisseur coupé ne voit
+    plus ses montants de factures ni ne modifie une date de BCF."""
+    from .models import Fournisseur, PortailFournisseurToken
     token_obj = (PortailFournisseurToken.objects
                  .select_related('fournisseur', 'company')
                  .filter(token=token).first())
     if token_obj is None or not token_obj.est_valide:
+        return None
+    fournisseur = token_obj.fournisseur
+    if (fournisseur is None or fournisseur.is_archived
+            or fournisseur.statut == Fournisseur.Statut.BLOQUE_TOTAL
+            or fournisseur.statut_validation
+            == Fournisseur.StatutValidation.REJETE):
         return None
     return token_obj
 
@@ -6926,31 +7150,45 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
     return user, True
 
 
-def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif):
+def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif,
+                                       avec_jetons=False):
     """Pose ``actif`` sur le compte portail ET ``is_active`` sur son compte
-    utilisateur, atomiquement. Renvoie ``(compte, nb_utilisateurs)``.
+    utilisateur, atomiquement. Renvoie ``(compte, nb_utilisateurs)`` — ou
+    ``(compte, nb_utilisateurs, nb_jetons_revoques)`` avec ``avec_jetons``.
 
     Les DEUX portes se ferment ensemble : ``actif`` est le drapeau métier
     (« cet accès est-il ouvert ? ») et ``is_active`` est celui que SimpleJWT
     refuse dès l'authentification, y compris sur un jeton déjà distribué. Un
     seul des deux laisserait une porte ouverte.
+
+    ASTK179 (C-ASTK-040) — une FERMETURE (``actif=False``) révoque aussi
+    TOUS les jetons à lien public actifs du fournisseur (XPUR22,
+    ``PortailFournisseurToken``) : la page à jeton était une troisième porte
+    qui restait ouverte 90 jours après la révocation du compte. La
+    réouverture (``actif=True``) ne ressuscite JAMAIS ces jetons : un nouveau
+    lien se génère explicitement.
     """
     from django.db import transaction
 
     from authentication.models import CustomUser
 
-    from .models import CompteFournisseurPortail
+    from .models import CompteFournisseurPortail, PortailFournisseurToken
 
     if company is None or not fournisseur_id:
-        return None, 0
+        return (None, 0, 0) if avec_jetons else (None, 0)
 
     with transaction.atomic():
+        jetons_revoques = 0
+        if not actif:
+            jetons_revoques = PortailFournisseurToken.objects.filter(
+                company=company, fournisseur_id=fournisseur_id,
+                revoked=False).update(revoked=True)
         compte = (CompteFournisseurPortail.objects
                   .select_for_update()
                   .filter(company=company, fournisseur_id=fournisseur_id)
                   .first())
         if compte is None:
-            return None, 0
+            return (None, 0, jetons_revoques) if avec_jetons else (None, 0)
         if compte.actif != actif:
             compte.actif = actif
             compte.save(update_fields=['actif', 'updated_at'])
@@ -6959,18 +7197,24 @@ def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif):
             portee=CustomUser.PORTEE_PORTAIL_FOURNISSEUR,
             portail_fournisseur_id=fournisseur_id,
         ).update(is_active=actif)
+    if avec_jetons:
+        return compte, nb, jetons_revoques
     return compte, nb
 
 
-def revoquer_acces_compte_fournisseur(company, fournisseur_id):
+def revoquer_acces_compte_fournisseur(company, fournisseur_id, *,
+                                      avec_jetons=False):
     """NTPRT3 — ferme l'accès portail d'un fournisseur (les deux portes).
 
     Rien n'est supprimé : la ligne reste pour la traçabilité, et
     ``reactiver_acces_compte_fournisseur`` est l'action EXPLICITE et symétrique
     qui rouvre l'accès — jamais un effet de bord d'un re-provisionnement.
+
+    ASTK179 — coupe TOUTES les portes : compte ET jetons à lien public
+    (``avec_jetons=True`` renvoie aussi le nombre de jetons révoqués).
     """
     return _basculer_acces_compte_fournisseur(
-        company, fournisseur_id, actif=False)
+        company, fournisseur_id, actif=False, avec_jetons=avec_jetons)
 
 
 def reactiver_acces_compte_fournisseur(company, fournisseur_id):
@@ -7752,7 +7996,7 @@ def resoudre_conditionnement(company, *, conditionnement_id=None,
 
 def decouper_produit(*, company, produit_source, quantite_consommee,
                      produit_cible, quantite_produite, user,
-                     emplacement=None, lot_source=None):
+                     emplacement=None, lot_source=None, method=None):
     """XSTK16 — débite `quantite_consommee` unités de `produit_source` et
     crédite `quantite_produite` unités de `produit_cible` (peut être le même
     SKU), en transférant EXACTEMENT la valeur au coût moyen du produit
@@ -7766,20 +8010,27 @@ def decouper_produit(*, company, produit_source, quantite_consommee,
     from .models import LotEntrepot, Produit
     if quantite_consommee <= 0 or quantite_produite <= 0:
         raise ValueError('Les quantités doivent être positives.')
-    if quantite_consommee > (produit_source.quantite_stock or 0):
-        raise ValueError(
-            f'Stock insuffisant sur {produit_source.nom} '
-            f'({produit_source.quantite_stock} disponible).')
     reference = f'DECOUPE-{timezone.now().strftime("%Y%m%d%H%M%S")}-{produit_source.pk}'
-    cout_unitaire, _source = average_cost_with_source(produit_source)
-    valeur_transferee = (cout_unitaire * quantite_consommee).quantize(
-        Decimal('0.01'))
 
     with transaction.atomic():
-        avant_source = produit_source.quantite_stock
+        # ASTK47 — la source est relue SOUS VERROU avant toute lecture de son
+        # stock (comme la cible) : une instance périmée (lue à 50 alors que
+        # la base est à 5) ne laisse plus passer une découpe de 10, et deux
+        # découpes concurrentes se sérialisent ici.
+        source = verrouiller_produit(produit_source.pk)
+        if quantite_consommee > (source.quantite_stock or 0):
+            raise ValueError(
+                f'Stock insuffisant sur {source.nom} '
+                f'({source.quantite_stock} disponible).')
+        # ASTK43 — coût de la source par l'accesseur unique.
+        cout_unitaire, _source = valuation_cost_with_source(
+            source, method=method)
+        valeur_transferee = (cout_unitaire * quantite_consommee).quantize(
+            Decimal('0.01'))
+        avant_source = source.quantite_stock
         apres_source = avant_source - quantite_consommee
         record_stock_movement(
-            company=company, produit=produit_source,
+            company=company, produit=source,
             type_mouvement=mouvement_type_sortie(),
             quantite=quantite_consommee, quantite_avant=avant_source,
             quantite_apres=apres_source, reference=reference,
@@ -7795,7 +8046,11 @@ def decouper_produit(*, company, produit_source, quantite_consommee,
             quantite=quantite_produite, quantite_avant=avant_cible,
             quantite_apres=apres_cible, reference=reference,
             note=f'Découpe : production {cible.nom}',
-            created_by=user)
+            created_by=user,
+            # ASTK44 — l'entrée porte la valeur consommée : la cible est
+            # valorisée à ce coût (couche), jamais à son prix catalogue.
+            cout_unitaire=cout_entree_production(
+                valeur_transferee, quantite_produite))
 
         numero_lot = None
         date_peremption = None

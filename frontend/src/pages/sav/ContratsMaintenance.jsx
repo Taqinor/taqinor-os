@@ -12,6 +12,7 @@ import {
 import savApi from '../../api/savApi'
 import { formatMAD } from '../../lib/format'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import installationsApi from '../../api/installationsApi'
 import api from '../../api/axios'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -340,7 +341,9 @@ export function Component() {
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load() }, [dueOnly])
   useEffect(() => {
-    crmApi.getClients().then((r) => setClients(r.data.results ?? r.data)).catch(() => {})
+    // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
+    fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
     installationsApi.getInstallations()
       .then((r) => setInstallations(r.data.results ?? r.data ?? [])).catch(() => {})
     // L327 — tickets préventifs pour compter les visites générées par contrat.

@@ -1,0 +1,20 @@
+{
+  "//": "Contrôle de types de `npm run check` (après `astro check`) : couvre AUSSI les routes API, le Worker, les scripts et les tests.",
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": [
+    ".astro/types.d.ts",
+    "src/**/*.ts",
+    "src/pages/api/**/*.ts",
+    "worker/**/*.mjs",
+    "scripts/**/*.mjs",
+    "tests/**/*.ts",
+    "*.config.ts"
+  ],
+  "exclude": ["dist", "node_modules", "tests/fixtures/**"]
+}

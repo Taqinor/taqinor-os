@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -30,10 +30,21 @@ const mocks = vi.hoisted(() => ({
   putProfilsTypes: vi.fn(),
   // CALX43 — `PUT parametres/` : la SEULE porte d'écriture des deux sections.
   putParametres: vi.fn(),
-  // CALX42 — « Partir de ce modèle » (action de LISTE).
-  creerDepuisModele: vi.fn(),
+  // ACAL185 — « Partir de ce modèle » : la porte UNIQUE `depuisModele`.
+  depuisModele: vi.fn(),
   // CALX352 — « Marquer comme modèle » (porte `marquer-modele`, CALX42).
   marquerModele: vi.fn(),
+  // ACAL185 — la recherche de calepinages (liste `?q=`) et des leads/clients.
+  listeCalepinages: vi.fn(),
+  getLeads: vi.fn(),
+  searchClients: vi.fn(),
+}))
+
+vi.mock('../../api/crmApi', () => ({
+  default: {
+    getLeads: (...a) => mocks.getLeads(...a),
+    searchClients: (...a) => mocks.searchClients(...a),
+  },
 }))
 
 vi.mock('../../api/calepinageApi', () => ({
@@ -46,8 +57,9 @@ vi.mock('../../api/calepinageApi', () => ({
     },
     calepinages: {
       modeles: (...a) => mocks.getModeles(...a),
-      creerDepuisModele: (...a) => mocks.creerDepuisModele(...a),
+      depuisModele: (...a) => mocks.depuisModele(...a),
       marquerModele: (...a) => mocks.marquerModele(...a),
+      list: (...a) => mocks.listeCalepinages(...a),
     },
   },
 }))
@@ -61,6 +73,11 @@ const { default: Bibliotheque } = await import('./Bibliotheque')
 const MODELES = [
   { id: 5, titre: 'Villa type R+1', statut_libelle: 'Validé' },
 ]
+// ACAL185 — les réponses des portes, lues dans les échantillons COMMITTÉS.
+const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
+const CONFLIT = exempleContrat('calepinage', 'calepinage_creation_conflit')
+const LISTE = exempleContrat('calepinage', 'calepinage_liste')
+const LIGNE = LISTE.results[0]
 
 /* CALX30 — la forme SERVIE par `views/consommation.py` : un profil SAISI par
    la société, puis un profil de REPLI étiqueté « hypothèse interne » avec sa
@@ -464,27 +481,75 @@ describe('CALX42 — créer un calepinage depuis un modèle', () => {
     expect(screen.queryByTestId('cal-biblio-modele-partir-5')).toBeNull()
   })
 
-  it('le rattachement est SAISI — celui du modèle n’est jamais recopié', async () => {
-    mocks.creerDepuisModele.mockResolvedValue({ data: { id: 88 } })
+  it('le rattachement est CHOISI — celui du modèle n’est jamais recopié', async () => {
+    mocks.depuisModele.mockResolvedValue({ data: DETAIL })
+    mocks.searchClients.mockResolvedValue({ data: { results: [
+      { id: 12, nom: 'Atlas', adresse: 'Casablanca' },
+    ] } })
     await rendreModeles()
 
     await userEvent.click(screen.getByTestId('cal-biblio-modele-partir-5'))
-    await userEvent.type(screen.getByTestId('cal-biblio-modele-client'), '12')
+    const client = screen.getByTestId('cal-biblio-modele-client')
+    await userEvent.click(within(client).getByRole('combobox'))
+    await userEvent.click(await screen.findByText('Atlas'))
     await userEvent.click(screen.getByTestId('cal-biblio-modele-creer'))
 
-    await waitFor(() => expect(mocks.creerDepuisModele)
-      .toHaveBeenCalledWith({ modele: 5, client: '12' }))
+    await waitFor(() => expect(mocks.depuisModele)
+      .toHaveBeenCalledWith({ modele_id: 5, client_id: 12 }))
     // Le champ laissé vide n'est PAS envoyé : rien n'est deviné.
-    expect(mocks.creerDepuisModele.mock.calls[0][0].lead).toBeUndefined()
+    expect(mocks.depuisModele.mock.calls[0][0].lead_id).toBeUndefined()
     // Le calepinage créé s'ouvre depuis ici.
     expect(await screen.findByTestId('cal-biblio-modele-ouvrir'))
-      .toHaveAttribute('href', '/calepinage/88')
+      .toHaveAttribute('href', `/calepinage/${DETAIL.id}`)
+  })
+
+  it('crée depuis un modèle avec un lead choisi par le sélecteur', async () => {
+    mocks.depuisModele.mockResolvedValue({ data: DETAIL })
+    mocks.getLeads.mockResolvedValue({ data: { results: [
+      { id: 41, nom: 'Alami', prenom: 'Sara', ville: 'Rabat' },
+    ] } })
+    await rendreModeles()
+
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-partir-5'))
+    // Plus AUCUN identifiant tapé : ni champ « Lead (identifiant) » ni
+    // « Client (identifiant) ».
+    expect(screen.queryByText(/\(identifiant\)/)).toBeNull()
+    const lead = screen.getByTestId('cal-biblio-modele-lead')
+    await userEvent.click(within(lead).getByRole('combobox'))
+    await userEvent.click(await screen.findByText('Alami Sara'))
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-creer'))
+
+    await waitFor(() => expect(mocks.depuisModele)
+      .toHaveBeenCalledWith({ modele_id: 5, lead_id: 41 }))
+    expect(await screen.findByTestId('cal-biblio-modele-ouvrir'))
+      .toHaveAttribute('href', `/calepinage/${DETAIL.id}`)
+  })
+
+  it('409 lead déjà ouvert : « Ouvrir l’existant »', async () => {
+    mocks.depuisModele.mockRejectedValue({
+      response: { status: 409, data: CONFLIT },
+    })
+    mocks.getLeads.mockResolvedValue({ data: { results: [
+      { id: 41, nom: 'Alami', prenom: 'Sara', ville: 'Rabat' },
+    ] } })
+    await rendreModeles()
+
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-partir-5'))
+    const lead = screen.getByTestId('cal-biblio-modele-lead')
+    await userEvent.click(within(lead).getByRole('combobox'))
+    await userEvent.click(await screen.findByText('Alami Sara'))
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-creer'))
+
+    expect(await screen.findByTestId('cal-biblio-modele-erreur'))
+      .toHaveTextContent(CONFLIT.lead)
+    expect(screen.getByTestId('cal-biblio-modele-ouvrir-existant'))
+      .toHaveAttribute('href', `/calepinage/${CONFLIT.calepinage_existant}`)
   })
 
   it('refus serveur : le motif s’affiche tel quel, sous la saisie', async () => {
     const MOTIF = 'Créer un projet depuis un modèle exige un nouveau lead ou client.'
-    mocks.creerDepuisModele.mockRejectedValue({
-      response: { status: 400, data: { client: MOTIF } },
+    mocks.depuisModele.mockRejectedValue({
+      response: { status: 400, data: { client_id: MOTIF } },
     })
     await rendreModeles()
 
@@ -515,36 +580,47 @@ describe('CALX352 — marquer un calepinage comme modèle', () => {
     expect(screen.queryByTestId('cal-biblio-marquer')).toBeNull()
   })
 
-  it('marque le calepinage SAISI puis RELIT la liste du serveur', async () => {
-    mocks.marquerModele.mockResolvedValue({ data: { calepinage: 12, modele: true } })
+  // ACAL185 — le calepinage se CHOISIT dans la liste servie (`?q=`) :
+  // la réponse est l'échantillon committé `calepinage_liste.json`.
+  const choisir = async () => {
+    const choix = screen.getByTestId('cal-biblio-marquer-choix')
+    await userEvent.click(within(choix).getByRole('combobox'))
+    await userEvent.click(await screen.findByText(LIGNE.titre))
+  }
+
+  it('marque un calepinage choisi dans la liste comme modèle', async () => {
+    mocks.listeCalepinages.mockResolvedValue({ data: LISTE })
+    mocks.marquerModele.mockResolvedValue({ data: { calepinage: LIGNE.id, modele: true } })
     await rendreBiblio()
     mocks.getModeles.mockResolvedValue({
-      data: [...MODELES, { id: 12, titre: 'Hangar Maârif' }],
+      data: [...MODELES, { id: LIGNE.id, titre: LIGNE.titre }],
     })
 
-    await userEvent.type(screen.getByTestId('cal-biblio-marquer-id'), '12')
+    await choisir()
+    expect(mocks.listeCalepinages).toHaveBeenCalled()
+    expect(mocks.listeCalepinages.mock.calls[0][0]).toHaveProperty('q')
     await userEvent.click(screen.getByTestId('cal-biblio-marquer-bouton'))
 
-    await waitFor(() => expect(mocks.marquerModele).toHaveBeenCalledWith('12'))
-    expect(await screen.findByTestId('cal-biblio-modele-12'))
-      .toHaveTextContent('Hangar Maârif')
-    expect(screen.getByTestId('cal-biblio-marquer-id')).toHaveValue('')
+    await waitFor(() => expect(mocks.marquerModele)
+      .toHaveBeenCalledWith(String(LIGNE.id)))
+    expect(await screen.findByTestId(`cal-biblio-modele-${LIGNE.id}`))
+      .toHaveTextContent(LIGNE.titre)
   })
 
-  it('un identifiant qui n’en est pas un n’est PAS envoyé : le motif est sous la saisie', async () => {
+  it('rien de choisi : rien n’est envoyé, le motif est sous le sélecteur', async () => {
     await rendreBiblio()
-    await userEvent.type(screen.getByTestId('cal-biblio-marquer-id'), 'villa')
     await userEvent.click(screen.getByTestId('cal-biblio-marquer-bouton'))
     expect(await screen.findByTestId('cal-biblio-marquer-erreur'))
-      .toHaveTextContent(/identifiant numérique/)
+      .toHaveTextContent(/Choisissez le calepinage/)
     expect(mocks.marquerModele).not.toHaveBeenCalled()
   })
 
-  it('refus serveur : le motif s’affiche tel quel, sous la saisie', async () => {
+  it('refus serveur : le motif s’affiche tel quel, sous le sélecteur', async () => {
     const MOTIF = 'Pas trouvé.'
+    mocks.listeCalepinages.mockResolvedValue({ data: LISTE })
     mocks.marquerModele.mockRejectedValue({ response: { status: 404, data: { detail: MOTIF } } })
     await rendreBiblio()
-    await userEvent.type(screen.getByTestId('cal-biblio-marquer-id'), '999')
+    await choisir()
     await userEvent.click(screen.getByTestId('cal-biblio-marquer-bouton'))
     expect(await screen.findByTestId('cal-biblio-marquer-erreur')).toHaveTextContent(MOTIF)
   })

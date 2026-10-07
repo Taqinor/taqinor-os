@@ -74,9 +74,7 @@ def affirmer_non_servies(test, servi, en_attente):
 #: première moitié back de chaque clé la sert, retire son entrée et remet
 #: ``complete`` quand la table est vide.
 EN_ATTENTE_DETAIL = {
-    'custom_data': 'ACAL6 moitié back (D09-T33)',
-    'permissions.peut_deroger': 'ACAL6 moitié back (D-ACAL-9)',
-    'lead.supprime': 'ACAL178',
+    # ACAL178 (lead.supprime) et ACAL294 (custom_data) livrées : clés servies.
 }
 
 #: Clés du bloc de simulation posées par ACAL8 (M0) — chemins relatifs à
@@ -89,8 +87,5 @@ EN_ATTENTE_SIMULATION = {
 #: des blocs de simulation ci-dessus.
 EN_ATTENTE_RESULTAT = {
     **EN_ATTENTE_SIMULATION,
-    'ecart_devis': 'ACAL104',
-    'pose.pans[].cle': 'ACAL265',
     'pose.pans[].module_id': 'ACAL264',
-    'electrique.affectation_obsolete': 'ACAL265',
 }

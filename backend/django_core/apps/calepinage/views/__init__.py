@@ -34,7 +34,6 @@ SOUS_MODULES = (
     'io_layout',      # import/export du document roof_layout
     'equipements',    # CAL243 — @action equipements, rattachée depuis urls.py
     'bibliotheque',   # CAL246 — @action modeles, rattachée depuis urls.py
-    'verrou',         # CAL207 — @action deverrouiller, rattachée depuis urls.py
     'archivage',      # CAL208 — @actions archiver/restaurer-corbeille
     'simulation',     # CAL139 — @actions pertes/enregistrer-pertes
     'consommation',   # CAL149 — profils types de consommation (réglage)

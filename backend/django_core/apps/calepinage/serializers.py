@@ -46,7 +46,8 @@ def _lead_apercu(lead):
     nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
                                getattr(lead, 'prenom', '') or ''] if p).strip()
     ville = (getattr(lead, 'ville', '') or '').strip() or None
-    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville}
+    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville,
+            'supprime': bool(getattr(lead, 'is_deleted', False))}
 
 
 def peremption_du_calepinage(devis, calepinage):
@@ -128,7 +129,7 @@ class _CalepinageListSerializer(serializers.ListSerializer):
                 cache = self.child.__dict__.setdefault(
                     '_calx407_cache_leads', {})
                 for lead_id, lead in get_company_leads_by_ids(
-                        company, ids).items():
+                        company, ids, avec_corbeille=True).items():
                     cache[(company.pk, lead_id)] = lead
         return [self.child.to_representation(ligne) for ligne in lignes]
 
@@ -146,8 +147,11 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     lead = serializers.IntegerField(source='lead_id', required=False,
                                     allow_null=True)
-    statut_libelle = serializers.CharField(source='get_statut_display',
-                                           read_only=True)
+    #: ACAL114 (D-ACAL-19) — ``statut`` et son libellé sont DÉRIVÉS de
+    #: l'approbation (brouillon | valide | perime), en LECTURE SEULE : un
+    #: PATCH ``{statut}`` est sans effet. La colonne reste en base.
+    statut = serializers.SerializerMethodField()
+    statut_libelle = serializers.SerializerMethodField()
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
     layout_stale = serializers.SerializerMethodField()
     layout_nb_panneaux = serializers.SerializerMethodField()
@@ -185,6 +189,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'responsable', 'responsable_nom',  # CALX406
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
             'contraintes_site',  # CIQ136
+            'custom_data',  # ACAL294 — écrit ici, LU par le détail (CAL17)
         ]
         #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
         #: écrivain est ``services.liens.lier_devis`` (refus nommés, journal,
@@ -193,10 +198,41 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
             'created_at', 'updated_at', 'devis',
         ]
+        #: ACAL294 — ``custom_data`` est publié par le DÉTAIL (contrat
+        #: ``calepinage_detail.json``) ; la LISTE ne le porte pas.
+        extra_kwargs = {'custom_data': {'write_only': True}}
 
     # YAPIC6 — la nature est DÉCLARÉE (même patron que le jumeau côté ventes,
     # `apps/ventes/serializers.py`) : sans cela drf-spectacular ne sait pas
     # typer un SerializerMethodField et publie un contrat muet.
+    def validate_custom_data(self, value):
+        """ACAL294 — validé par LE registre ``customfields`` (définitions
+        ACTIVES du module ``calepinage`` de la société de l'appelant) : une
+        clé hors définition est refusée en la NOMMANT (jamais ignorée en
+        silence), un type faux sort sous son code."""
+        from apps.customfields.models import CustomFieldDef
+        from apps.customfields.serializers import validate_custom_data
+
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            raise serializers.ValidationError(
+                "Champs personnalisés : aucune société pour les valider.")
+        if value is not None and not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Les champs personnalisés se donnent en objet "
+                "« code : valeur ».")
+        connus = set(CustomFieldDef.objects.filter(
+            company=company, module='calepinage', actif=True)
+            .values_list('code', flat=True))
+        inconnus = sorted(set(value or {}) - connus)
+        if inconnus:
+            raise serializers.ValidationError(
+                "Champ personnalisé inconnu pour les calepinages : %s. "
+                "Créez-le dans Réglages › Avancé (module Calepinage)."
+                % ', '.join('« %s »' % code for code in inconnus))
+        return validate_custom_data('calepinage', company, value)
+
     def validate_contraintes_site(self, value):
         """CIQ136 — normalisées ; une valeur sans source → 400 FR."""
         from .services.degagements import (
@@ -208,6 +244,19 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         except ContraintesSiteInvalides as refus:
             raise serializers.ValidationError(refus.message)
 
+    @extend_schema_field(serializers.CharField())
+    def get_statut(self, obj):
+        from .services.approbation import statut_derive
+
+        return statut_derive(obj)
+
+    @extend_schema_field(serializers.CharField())
+    def get_statut_libelle(self, obj):
+        from .services.approbation import LIBELLES_STATUT, statut_derive
+
+        return LIBELLES_STATUT[statut_derive(obj)]
+
+    # Lot 2 critique #20 — le type booléen (nullable) revient à SA méthode.
     @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_layout_stale(self, calepinage):
         """``True``/``False`` d'après le DEVIS lié — ``None`` sans devis.
@@ -335,7 +384,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                 if company is None:
                     cache[cle] = None
                     return None
-        lead = get_company_lead(company, lead_id)
+        lead = get_company_lead(company, lead_id, avec_corbeille=True)
         cache[cle] = lead
         return lead
 
@@ -371,14 +420,9 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         lead_id = getattr(instance, 'lead_id', None)
         lead = self._lead_de_la_societe(company_id, lead_id)
         data['lead'] = _lead_apercu(lead)
-        if data.get('responsable') is None and lead is not None:
-            proprietaire = getattr(lead, 'owner', None)
-            if proprietaire is not None:
-                nom = (getattr(proprietaire, 'get_full_name', lambda: '')()
-                       or '').strip()
-                data['responsable'] = proprietaire.pk
-                data['responsable_nom'] = (
-                    nom or getattr(proprietaire, 'username', ''))
+        # ACAL297 — le responsable publié EST la colonne (posée à la création
+        # par ``creation.responsable_par_defaut``, rattrapée par la migration
+        # 0030) : plus de repli sur le propriétaire du lead à la lecture.
         return data
 
     #: ACAL179 — clés ignorées (jamais lues, jamais refusées) d'un PATCH :

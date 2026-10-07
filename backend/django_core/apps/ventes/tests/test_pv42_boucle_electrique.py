@@ -355,6 +355,10 @@ class UnLayoutSansGeometrieNeBougePas(_Base):
         self.assertEqual(ville_calcul, {'ville': '', 'reference': ''},
                          "QJR591 — la ville de chiffrage doit être consignée "
                          "au recalcul des études d'un devis né d'un lead.")
+        # ACAL102 (C-ACAL-113) — la production lue du calepinage porte sa
+        # marque de provenance ``production_source`` : mise de côté ICI et
+        # vérifiée, jamais ignorée.
+        self.assertEqual(etude.pop('production_source', None), 'calepinage')
         self.assertEqual(etude, {
             # PVSCE — le scénario est désormais STOCKÉ dès la création : sans
             # lui, le moteur PDF (QF6) déduit l'option depuis les lignes, et se

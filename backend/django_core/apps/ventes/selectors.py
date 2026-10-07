@@ -107,12 +107,14 @@ def production_attendue_pour_devis(devis_id):
     """
     from decimal import Decimal, InvalidOperation
 
+    from .domain.scenario import figure_production_du_devis
     from .models import Devis
-    devis = Devis.objects.filter(pk=devis_id).only('etude_params').first()
+    devis = Devis.objects.filter(pk=devis_id).first()
     if devis is None:
         return None
-    params = devis.etude_params or {}
-    raw = params.get('production_annuelle')
+    # ACAL101 — la figure RECALÉE sur les lignes quand elle vient du
+    # calepinage (``production_source``), sinon la valeur stockée.
+    raw = figure_production_du_devis(devis)
     if raw is None:
         return None
     try:
@@ -956,14 +958,18 @@ def devis_ouverts_ratio_client(company, client_id, *, limit=200):
     return {'total': total, 'ouverts': ouverts}
 
 
-def devis_modifiabilite(devis):
+def devis_modifiabilite(devis, geste='ENTETE'):
     """QJR516 (contrat QJR500) — le verdict de modifiabilité d'un devis pour
     un AUTRE app (la ligne devis de la fiche lead, ``crm/serializers``) :
     ``{modifiable, raison_non_modifiable, revision_possible, is_active}``.
     Même prédicat que ``DevisSerializer`` (``domain/modifiabilite``), jamais
-    une règle recopiée côté crm."""
+    une règle recopiée côté crm.
+
+    ACAL42 — ``geste`` (clé de ``domain.modifiabilite.GESTES``, ``ENTETE``
+    par défaut, comportement inchangé) : le calepinage passe ``CALEPINAGE``
+    pour que son verrou soit EXACTEMENT ce verdict."""
     from .domain.modifiabilite import verdict
-    resultat = dict(verdict(devis))
+    resultat = dict(verdict(devis, geste))
     resultat['is_active'] = bool(devis.is_active)
     return resultat
 
@@ -1587,6 +1593,45 @@ def devis_predecesseurs_revision_ids(devis):
         ordre.extend(suivants)
         frontiere = suivants
     return ordre
+
+
+def instantane_accepte_en_vigueur(devis_id, company):
+    """ACAL107 (D-ACAL-23) — l'instantané FIGÉ de la version ACCEPTÉE en
+    vigueur de la chaîne de révision de ``devis_id``, ou ``None``.
+
+    On remonte d'abord la chaîne jusqu'à sa tête (``superseded_by``), puis on
+    la redescend (``devis_predecesseurs_revision_ids``) du plus récent au plus
+    ancien : la PREMIÈRE version au statut ``accepte`` est celle en vigueur
+    (V1 tant que la V2 n'est pas acceptée, V2 dès son acceptation). Rend
+    ``{'devis_id', 'roof_layout'}`` — ``roof_layout`` est le
+    ``Devis.roof_layout`` figé à l'envoi (D-ACAL-1). Lecture pure, bornée
+    ``company`` ; ``None`` sans aucune version acceptée."""
+    from .models import Devis
+
+    if company is None or not devis_id:
+        return None
+    company_id = getattr(company, 'pk', company)
+    devis = Devis.objects.filter(pk=devis_id, company_id=company_id).first()
+    if devis is None:
+        return None
+    vus = {devis.pk}
+    tete = devis
+    while tete.superseded_by_id and tete.superseded_by_id not in vus:
+        suivant = Devis.objects.filter(
+            pk=tete.superseded_by_id, company_id=company_id).first()
+        if suivant is None:
+            break
+        vus.add(suivant.pk)
+        tete = suivant
+    ordre = [tete.pk] + devis_predecesseurs_revision_ids(tete)
+    statuts = dict(Devis.objects.filter(pk__in=ordre, company_id=company_id)
+                   .values_list('pk', 'statut'))
+    for pk in ordre:
+        if statuts.get(pk) == Devis.Statut.ACCEPTE:
+            roof_layout = (Devis.objects.filter(pk=pk)
+                           .values_list('roof_layout', flat=True).first())
+            return {'devis_id': pk, 'roof_layout': roof_layout}
+    return None
 
 
 # ── AGR206 — économie de pompage DÉCLARÉE, lecture publique ────────────────

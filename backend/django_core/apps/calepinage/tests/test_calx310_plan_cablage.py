@@ -84,8 +84,10 @@ LAYOUT = {
 
 
 def ligne(rang, chaine, *, mppt=None, onduleur=1, source='automatique',
-          pan='Pan Sud'):
-    return {'module': '%s#%d' % (pan, rang), 'pan': pan, 'chaine': chaine,
+          pan='Pan Sud', cle='z1'):
+    # ACAL265 — le module est repéré par la clé STABLE du pan (zone.id), le
+    # libellé (« Pan Sud ») n'est que l'affichage de la ligne.
+    return {'module': '%s#%d' % (cle, rang), 'pan': pan, 'chaine': chaine,
             'onduleur': onduleur if chaine is not None else None,
             'mppt': (mppt if mppt is not None else chaine)
             if chaine is not None else None,
@@ -130,8 +132,8 @@ class PlanDeCablageTest(unittest.TestCase):
     def test_chaque_module_porte_la_couleur_de_sa_chaine(self):
         couleurs = {e.get('data-module'): (e.get('data-chaine'), e.get('fill'))
                     for e in formes(self.svg, 'module-chaine')}
-        self.assertEqual(couleurs['Pan Sud#1'], ('1', PALETTE_CHAINES[0]))
-        self.assertEqual(couleurs['Pan Sud#12'], ('2', PALETTE_CHAINES[1]))
+        self.assertEqual(couleurs['z1#1'], ('1', PALETTE_CHAINES[0]))
+        self.assertEqual(couleurs['z1#12'], ('2', PALETTE_CHAINES[1]))
 
     def test_la_legende_dit_numero_modules_onduleur_et_mppt(self):
         lignes = lignes_de_legende(self.plan)
@@ -181,7 +183,7 @@ class NonAffectesTest(unittest.TestCase):
         plan = plan_de_cablage(LAYOUT, table)
         svg = svg_de(plan)
         seuls = formes(svg, 'module-non-affecte')
-        self.assertEqual([e.get('data-module') for e in seuls], ['Pan Sud#12'])
+        self.assertEqual([e.get('data-module') for e in seuls], ['z1#12'])
         self.assertEqual(seuls[0].get('fill'), 'none')
         self.assertEqual(seuls[0].get('stroke'), COULEUR_NON_AFFECTE)
         self.assertEqual(seuls[0].get('data-chaine'), '')
@@ -194,11 +196,11 @@ class NonAffectesTest(unittest.TestCase):
         # son voisin — il est non affecté.
         plan = plan_de_cablage(LAYOUT, AFFECTATION[:11])
         dernier = [m for m in plan['modules']
-                   if m['module'] == 'Pan Sud#12'][0]
+                   if m['module'] == 'z1#12'][0]
         self.assertIsNone(dernier['chaine'])
         self.assertIsNone(dernier['couleur'])
         voisin = [m for m in plan['modules']
-                  if m['module'] == 'Pan Sud#11'][0]
+                  if m['module'] == 'z1#11'][0]
         self.assertEqual(voisin['chaine'], 2)
         self.assertEqual(plan['non_affectes'], 1)
         for module in formes(svg_de(plan), 'module-non-affecte'):
@@ -221,7 +223,7 @@ class AffectationManuelleTest(unittest.TestCase):
         svg = svg_de(plan)
         marques = formes(svg, 'marque-manuelle')
         self.assertEqual([m.get('data-module') for m in marques],
-                         ['Pan Sud#3'])
+                         ['z1#3'])
         self.assertEqual(plan['manuels'], 1)
         self.assertIn('× affectation manuelle : 1 module',
                       lignes_de_legende(plan))
@@ -240,10 +242,10 @@ class JointDocumentElectriqueTest(unittest.TestCase):
         geometrie = geometrie_de_planche(donnees)
         reperes = [m['module'] for m in modules_du_plan(donnees, geometrie)]
         self.assertEqual(len(reperes), 11)
-        self.assertNotIn('Pan Sud#5', reperes)
-        self.assertEqual(reperes[4], 'Pan Sud#6')
+        self.assertNotIn('z1#5', reperes)
+        self.assertEqual(reperes[4], 'z1#6')
         plan = plan_de_cablage(donnees, AFFECTATION)
-        sixieme = [m for m in plan['modules'] if m['module'] == 'Pan Sud#6'][0]
+        sixieme = [m for m in plan['modules'] if m['module'] == 'z1#6'][0]
         self.assertEqual(sixieme['chaine'], 1)
         self.assertEqual(plan['non_dessines'], 1)
 

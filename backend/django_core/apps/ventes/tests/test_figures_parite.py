@@ -20,6 +20,13 @@ LES SURFACES, pour un devis réel construit en base :
   * ``api_devis`` — ``GET /api/django/ventes/devis/<id>/``, ce que lisent la
     liste et l'écran interne.
 
+ATOT29 — L'ARITHMÉTIQUE INTERNE de chaque surface : la parité confronte un
+chiffre à lui-même d'une surface à l'autre (deux surfaces qui impriment la même
+chaîne fausse passeraient) ; ``figures.verifier_chaine`` relit CHAQUE surface
+et vérifie que Sous-total − Remise − Arrondi = Total HT et Total HT + Σ TVA
+par taux = TTC (tolérance de résolution). Scénarios dédiés : taux mixtes
+10/20, commercial et industriel remisés (``FiguresChaineInterneTests``).
+
 DEUX GARDES en plus de la parité :
   * chaque clé de ``FIGURE_KEYS`` apparaît au moins une fois dans le corpus
     de documents rendus (un marqueur ne disparaît pas en silence) ;
@@ -49,7 +56,7 @@ from apps.ventes.quote_engine import figures
 from apps.ventes.quote_engine.figures import (
     FIGURE_KEYS, cle_de, cles_inconnues, compare_surfaces, extract_figures,
     figures_depuis_devis_api, figures_depuis_proposition,
-    identites_comparees,
+    identites_comparees, options_de_chaine, verifier_chaine,
 )
 
 User = get_user_model()
@@ -88,6 +95,12 @@ BATTERIE_LINES = [
     ('Panneau Canadien Solar 710W', '14', '1100'),
     ('Structures acier', '14', '375'),
     ('Installation', '1', '4000'),
+]
+#: ATOT29 — taux MIXTES : panneaux à 10 %, le reste (onduleurs, batterie,
+#: pose) au taux du devis (20 %). 4e élément = ``LigneDevis.taux_tva``.
+TAUX_MIXTES_LINES = [
+    (desig, qte, pu, '10' if desig.startswith('Panneau') else '20')
+    for desig, qte, pu in FULL_LINES
 ]
 AGRICOLE_LINES = [
     ('Pompe immergée OSP 30/8 10 CV', '1', '9166.67'),
@@ -190,6 +203,26 @@ CAS = {
         lignes=FULL_LINES, mode='industriel',
         etude_params={**DEUX_OPTIONS, **ETUDE}, formats=('full', 'onepage'),
         requis=('puissance_kwc', 'total_affiche')),
+    # ATOT29 — chaîne à DEUX taux (10 % panneaux, 20 % le reste) : la TVA est
+    # imprimée par taux, et Σ TVA par taux doit refermer le TTC.
+    'residentiel_taux_mixtes': dict(
+        lignes=TAUX_MIXTES_LINES, etude_params={**DEUX_OPTIONS, **ANCRAGE},
+        formats=('full', 'onepage'),
+        requis=('total_ttc@sans', 'total_ttc@avec', 'tva_taux:10@*',
+                'tva_taux:20@*')),
+    # ATOT29 — C&I REMISÉS : la remise (et l'arrondi) entrent dans la chaîne
+    # HT des gabarits commercial / industriel.
+    'commercial_remise': dict(
+        lignes=FULL_LINES, mode='commercial', remise='5',
+        etude_params={**DEUX_OPTIONS, **ETUDE, **ETUDE_CI_BT,
+                      'categorie_commerciale': 'hotel'},
+        formats=('full', 'onepage'),
+        requis=('total_ttc*', 'total_ht*')),
+    'industriel_remise': dict(
+        lignes=FULL_LINES, mode='industriel', remise='5',
+        etude_params={**DEUX_OPTIONS, **ETUDE, **ETUDE_CI_MT},
+        formats=('full', 'onepage'),
+        requis=('total_ttc*', 'total_ht*')),
 }
 
 
@@ -235,8 +268,9 @@ def _requis_satisfait(motif, comparees):
     return motif in comparees
 
 
-class FiguresPariteSurfacesTests(TestCase):
-    """La matrice : chaque devis réel, toutes ses surfaces, zéro écart."""
+class _DevisReelMixin:
+    """Un devis RÉEL en base et ses surfaces (PDF /proposal, proposition
+    publique, API) — partagé par la parité et la chaîne interne (ATOT29)."""
 
     def setUp(self):
         from authentication.models import Company
@@ -266,7 +300,10 @@ class FiguresPariteSurfacesTests(TestCase):
             created_by=self.user,
             mode_installation=spec.get('mode', 'residentiel'),
             etude_params=spec.get('etude_params'))
-        for i, (desig, qte, pu) in enumerate(spec['lignes']):
+        for i, ligne in enumerate(spec['lignes']):
+            desig, qte, pu = ligne[:3]
+            # ATOT29 — 4e élément optionnel : le taux de TVA de la LIGNE.
+            taux = Decimal(ligne[3]) if len(ligne) > 3 else None
             produit = Produit.objects.create(
                 company=self.company, nom=desig, sku=f'{ref[-8:]}-{i}',
                 prix_vente=Decimal(pu), prix_achat=Decimal('1'),
@@ -274,7 +311,7 @@ class FiguresPariteSurfacesTests(TestCase):
             LigneDevis.objects.create(
                 devis=devis, produit=produit, designation=desig,
                 quantite=Decimal(qte), prix_unitaire=Decimal(pu),
-                remise=Decimal('0'), ordre=i)
+                remise=Decimal('0'), ordre=i, taux_tva=taux)
         return devis
 
     def _surfaces(self, devis, spec):
@@ -294,6 +331,18 @@ class FiguresPariteSurfacesTests(TestCase):
         self.assertEqual(detail.status_code, 200, detail.content[:300])
         surfaces['api_devis'] = figures_depuis_devis_api(detail.json())
         return surfaces, marches
+
+    def _chaines_fausses(self, surfaces):
+        """ATOT29 — ``[(surface, anomalie)]`` : chaque surface, chaque option
+        imprimée, relue par ``verifier_chaine``."""
+        return [(nom, anomalie)
+                for nom, figs in surfaces.items()
+                for option in options_de_chaine(figs)
+                for anomalie in verifier_chaine(figs, option)]
+
+
+class FiguresPariteSurfacesTests(_DevisReelMixin, TestCase):
+    """La matrice : chaque devis réel, toutes ses surfaces, zéro écart."""
 
     def _verifier(self, cas):
         spec = CAS[cas]
@@ -334,6 +383,14 @@ class FiguresPariteSurfacesTests(TestCase):
             f'sur aucune paire de surfaces — un marqueur a disparu. '
             f'Identités confrontées : {sorted(comparees)}')
 
+        # ATOT29 — et la chaîne de CHAQUE surface s'additionne.
+        fausses = self._chaines_fausses(surfaces)
+        self.assertEqual(
+            fausses, [],
+            f'\n{cas} (renderers : {marches}) — une chaîne de totaux ne '
+            's\'additionne pas :\n  '
+            + '\n  '.join(f'{nom} : {a}' for nom, a in fausses))
+
     def test_residentiel_deux_options(self):
         self._verifier('residentiel_deux_options')
 
@@ -372,6 +429,58 @@ class FiguresPariteSurfacesTests(TestCase):
     def test_commercial(self):
         self._verifier('commercial')
 
+    def test_residentiel_taux_mixtes(self):
+        self._verifier('residentiel_taux_mixtes')
+
+    def test_commercial_remise(self):
+        self._verifier('commercial_remise')
+
+    def test_industriel_remise(self):
+        self._verifier('industriel_remise')
+
+    def test_acal_production_recalee_decimale_haute(self):
+        """ACAL102 (C-ACAL-113) — la production imprimée (PDF /proposal et
+        proposition publique) est celle du calepinage RECALÉE sur les lignes
+        (8 × 715 W = 5,72 kWc pour un calepinage modélisé à 5,76 kWc), quelle
+        que soit la décimale : la provenance est la marque
+        ``production_source``, plus l'égalité ``int(round())`` qui ratait
+        8843,66 stockée tronquée à 8843."""
+        from apps.ventes.models import Devis
+        lignes = [
+            ('Onduleur réseau Huawei 10kW Triphasé', '1', '11700'),
+            ('Panneau Canadien Solar 715W', '8', '1100'),
+            ('Structures acier', '8', '375'),
+            ('Installation', '1', '4000'),
+        ]
+        for annuel in (8843.49, 8843.5, 8843.66):
+            with self.subTest(annuel=annuel):
+                spec = dict(
+                    lignes=lignes, formats=('full', 'onepage'),
+                    etude_params={**ANCRAGE,
+                                  # Valeur STOCKÉE tronquée (devis réels).
+                                  'production_annuelle': int(annuel),
+                                  'production_source': 'calepinage'})
+                devis = self._devis('acal_production', spec)
+                Devis.objects.filter(pk=devis.pk).update(roof_layout={
+                    'scenario': 'reseau', 'panelWatt': 720,
+                    'result': {'panels': 8, 'kwc': 5.76,
+                               'annualKwh': annuel}})
+                devis.refresh_from_db()
+                attendu = Decimal(int(round(annuel * 5.72 / 5.76)))
+                surfaces, marches = self._surfaces(devis, spec)
+                lues = {
+                    surface: [m.valeur for ident, mesures in figs.items()
+                              if cle_de(ident) == 'production_annuelle_kwh'
+                              for m in mesures]
+                    for surface, figs in surfaces.items()
+                    if surface in ('pdf_full', 'pdf_onepage', 'proposition')}
+                self.assertTrue(lues['proposition'], (marches, surfaces))
+                for surface, valeurs in lues.items():
+                    for valeur in valeurs:
+                        self.assertEqual(valeur, attendu,
+                                         (surface, annuel, marches))
+                self.assertEqual(compare_surfaces(surfaces), [])
+
     def test_ci_proposition_sans_economie_residentielle(self):
         """CIQ300 — la surface proposition d'un devis industriel ou commercial
         ne porte plus ``economie_annuelle`` ni ``payback_ans`` (modèle
@@ -385,6 +494,53 @@ class FiguresPariteSurfacesTests(TestCase):
                 cles = [k.split('@')[0] for k in surfaces['proposition']]
                 self.assertNotIn('economie_annuelle', cles)
                 self.assertNotIn('payback_ans', cles)
+
+
+class FiguresChaineInterneTests(_DevisReelMixin, TestCase):
+    """ATOT29 — l'oracle d'arithmétique intra-surface ATTRAPE une chaîne qui
+    ne s'additionne pas, sur la charge utile RÉELLE (aucun mock)."""
+
+    def _proposition(self, cas):
+        from apps.ventes.models import ShareLink
+        devis = self._devis(cas, CAS[cas])
+        link = ShareLink.objects.create(company=self.company, devis=devis)
+        resp = APIClient().get(
+            f'/api/django/public/proposal/{link.token}/data/')
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        return resp.json()
+
+    def test_surface_sans_arrondi_detectee(self):
+        payload = self._proposition('residentiel_deux_options')
+        figs = figures_depuis_proposition(payload)
+        # Pré-condition : l'arrondi commercial de l'option est NON nul (sinon
+        # l'omettre ne changerait rien), et la chaîne réelle s'additionne.
+        self.assertIn('arrondi@sans', figs)
+        self.assertEqual(verifier_chaine(figs, 'sans'), [])
+        copie = json.loads(json.dumps(payload))
+        for totaux in ((copie.get('option_totals') or {}).get('sans_batterie'),
+                       (copie.get('quote') or {}).get('totaux_sans')):
+            if isinstance(totaux, dict):
+                totaux.pop('arrondi', None)
+        anomalies = verifier_chaine(figures_depuis_proposition(copie), 'sans')
+        self.assertEqual(len(anomalies), 1, anomalies)
+        self.assertIn('arrondi', anomalies[0])
+        self.assertIn('chaîne HT', anomalies[0])
+
+    def test_taux_manquant_detecte(self):
+        payload = self._proposition('residentiel_taux_mixtes')
+        figs = figures_depuis_proposition(payload)
+        self.assertIn('tva_taux:10@avec', figs)
+        self.assertIn('tva_taux:20@avec', figs)
+        self.assertEqual(verifier_chaine(figs, 'avec'), [])
+        copie = json.loads(json.dumps(payload))
+        for totaux in ((copie.get('option_totals') or {}).get('avec_batterie'),
+                       (copie.get('quote') or {}).get('totaux_avec')):
+            if isinstance(totaux, dict):
+                totaux['tva_par_taux'] = [
+                    b for b in totaux.get('tva_par_taux') or []
+                    if float(b.get('taux')) != 10]
+        anomalies = verifier_chaine(figures_depuis_proposition(copie), 'avec')
+        self.assertTrue(any('chaîne TTC' in a for a in anomalies), anomalies)
 
 
 # ── Gardes du vocabulaire (aucune BD) ────────────────────────────────────────
@@ -533,6 +689,32 @@ class FiguresNormaliseurTests(SimpleTestCase):
         self.assertEqual(compare_surfaces({
             'a': {'total_ttc@sans': [m(1000)]},
             'b': {'total_ttc@avec': [m(2000)]}}), [])
+
+    def test_verifier_chaine_sur_un_rendu(self):
+        """ATOT29 — la règle seule, sur des ancres de gabarit (taux mixtes,
+        remise, arrondi, affichage au centime)."""
+        a = figures.ancre
+        chaine = (a('sous_total_ht', '10 000,00', 'avec')
+                  + a('remise', '− 500,00', 'avec')
+                  + a('arrondi', '− 12,50', 'avec')
+                  + a('total_ht', '9 487,50', 'avec')
+                  + a('tva_taux', '300,00', 'avec', 10)
+                  + a('tva_taux', '1 297,50', 'avec', 20)
+                  + a('tva', '1 597,50', 'avec')
+                  + a('total_ttc', '11 085,00', 'avec'))
+        self.assertEqual(verifier_chaine(extract_figures(chaine), 'avec'), [])
+        sans_arrondi = chaine.replace(a('arrondi', '− 12,50', 'avec'), '')
+        anomalies = verifier_chaine(extract_figures(sans_arrondi), 'avec')
+        self.assertEqual(len(anomalies), 1, anomalies)
+        self.assertIn('arrondi', anomalies[0])
+        sans_taux = chaine.replace(a('tva_taux', '300,00', 'avec', 10), '')
+        self.assertTrue(verifier_chaine(extract_figures(sans_taux), 'avec'))
+        # Le gabarit legacy (sans ligne « Total HT ») part du Sous-total.
+        legacy = (a('sous_total_ht', '1 000,00')
+                  + a('tva_taux', '200,00', None, 20)
+                  + a('total_ttc', '1 200,00'))
+        self.assertEqual(verifier_chaine(extract_figures(legacy)), [])
+        self.assertEqual(options_de_chaine(extract_figures(chaine)), ['avec'])
 
     def test_mappeur_proposition(self):
         payload = {

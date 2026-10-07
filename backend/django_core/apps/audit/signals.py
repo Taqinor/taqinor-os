@@ -137,6 +137,12 @@ def _on_post_save(sender, instance, created, **kwargs):
         # conditionnée au champ qui l'intéresse) : en écrire une seconde ici
         # doublerait chaque modification au Journal.
         return
+    if getattr(instance, '_audit_update_dedie', False):
+        # ASTK145 — même règle « un seul écrivain », par INSTANCE : l'import
+        # (``apps.dataimport.services.appliquer_maj_import``) écrit lui-même
+        # la ligne UPDATE « Import … » (diff + nom du fichier) de la fiche
+        # qu'il modifie ; le diff générique en ferait une seconde.
+        return
     changes = _diff_from_snapshot(
         instance, getattr(instance, '_audit_old_values', None))
     recorder.record(AuditLog.Action.UPDATE, instance=instance, changes=changes)

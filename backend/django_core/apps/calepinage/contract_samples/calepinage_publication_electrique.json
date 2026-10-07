@@ -38,7 +38,7 @@
     "avertissements": [],
     "marques_manquantes": [],
     "electrique": {
-      "verdict": "incomplet",
+      "verdict": "indetermine",
       "manquantes": [
         "Onduleur : fiche technique incomplète (vmaxDcV)."
       ],

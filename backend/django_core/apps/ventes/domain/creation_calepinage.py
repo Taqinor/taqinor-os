@@ -3,8 +3,9 @@
 Le devis composé depuis un layout 3D (``build_devis_from_layout``, adaptateur
 de ``pipeline.appliquer`` — origine calepinage), l'arbitrage du compte retenu
 (``_arbitrage_du_calepinage``), le calepinage rangé dans l'étude
-(``_calepinage_range``) et le devis depuis le calepinage RETENU (CAL185 :
-``build_devis_depuis_calepinage_retenu``, ``produits_a_renseigner``). Le
+(``_calepinage_range``) et ``produits_a_renseigner`` (CAL185 ; le devis
+depuis le calepinage RETENU est retiré par ACAL108 : un calepinage se chiffre
+par SON « Générer le devis »). Le
 module construit un Devis : propriété devis ; le calepinage garde la lecture du
 layout (``domain/geometrie``).
 
@@ -387,67 +388,6 @@ def produits_a_renseigner(company):
     return lignes
 
 
-def build_devis_depuis_calepinage_retenu(*, calepinage_id, user, company,
-                                         lead=None, client=None, **options):
-    """CAL185 — chiffrer la VARIANTE RETENUE d'un calepinage, sans second chemin.
-
-    ``from-layout`` savait déjà transformer une conception en lignes de devis,
-    mais rien ne partait d'une variante RETENUE : le commercial comparait ses
-    options dans le calepinage, en choisissait une… et devait la rechiffrer
-    ailleurs. Cette fonction est le chaînon, et elle n'écrit AUCUNE ligne
-    elle-même : elle lit la conception retenue par
-    ``apps.calepinage.selectors.nomenclature_variante_retenue`` (jamais
-    ``apps.calepinage.models``) et la passe à ``build_devis_from_layout``,
-    LE chemin de création de lignes. Chaque ligne pointe donc un
-    ``stock.Produit`` réel, et un produit sans prix de vente n'est jamais
-    chiffré — la garde existante, pas une nouvelle.
-
-    Ce qui est AJOUTÉ : ce que cette garde taisait. Le rapport rendu liste
-    les produits du kit « à renseigner » (sans prix de vente), à côté des
-    canaux existants (``avertissements``, ``marques_manquantes``).
-
-    ``options`` est passé TEL QUEL à ``build_devis_from_layout`` (taux_tva,
-    remise_globale, deux_options, structure_type…) : aucun défaut n'est
-    réinventé ici.
-
-    Returns:
-        ``(devis, rapport)`` — ``rapport`` porte ``calepinage``, ``variante``,
-        ``nom``, ``layout_hash``, ``a_renseigner``, ``avertissements`` et
-        ``marques_manquantes``.
-
-    Raises:
-        ValueError: aucune variante retenue, ou variante sans conception —
-            le message NOMME le geste manquant plutôt que de chiffrer autre
-            chose (jamais un repli silencieux sur la conception parente).
-    """
-    from apps.calepinage.selectors import nomenclature_variante_retenue
-
-    nomenclature = nomenclature_variante_retenue(calepinage_id, company)
-    if nomenclature is None:
-        raise ValueError(
-            "Aucune variante retenue à chiffrer sur ce calepinage : "
-            "comparez vos options, retenez-en une, puis relancez.")
-
-    journal = {}
-    devis = build_devis_from_layout(
-        layout=nomenclature['layout'], user=user, company=company,
-        lead=lead, client=client, journal=journal, **options)
-    # Le devis porte l'empreinte de la VARIANTE : c'est ce qui rend le badge
-    # « à jour » honnête (la fiche devis le compare à celle du calepinage).
-    if nomenclature['layout_hash']:
-        poser_layout_hash(devis, nomenclature['layout_hash'])
-    rapport = {
-        'calepinage': nomenclature['calepinage'],
-        'variante': nomenclature['variante'],
-        'nom': nomenclature['nom'],
-        'layout_hash': nomenclature['layout_hash'],
-        'a_renseigner': produits_a_renseigner(company),
-        'avertissements': list(journal.get('avertissements') or ()),
-        'marques_manquantes': list(journal.get('marques_manquantes') or ()),
-    }
-    return devis, rapport
-
-
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
 from apps.ventes.domain.catalogue import (  # noqa: E402
@@ -459,7 +399,6 @@ from apps.ventes.domain.geometrie import (  # noqa: E402
     arbitrer_compte_calepinage,
     lire_layout,
     modeles_designes,
-    poser_layout_hash,
 )
 from apps.ventes.domain.pipeline import (  # noqa: E402
     ORIGINE_CALEPINAGE,

@@ -272,7 +272,12 @@ def geometrie_de_planche(roof_layout):
                   for lat, lng in _points_geo(zone.get('vertices'), 'lnglat')]
         geometrie = zone.get('geometry') \
             if isinstance(zone.get('geometry'), dict) else {}
-        modules = _modules_du_pan(geometrie, local)
+        # ACAL269 — les numéros STABLES (``panels[].n``) et les étiquettes de
+        # rangée que le document porte, par centre : une structure PARALLÈLE
+        # (``pan['modules']`` reste une liste de centres, clé de dict dans
+        # les rangées, la fixation et le plan de câblage).
+        reperes = {}
+        modules = _modules_du_pan(geometrie, local, reperes)
         pan = {
             'repere': str(zone.get('id') or 'PAN-%d' % rang),
             'libelle': str(zone.get('label') or ''),
@@ -286,6 +291,7 @@ def geometrie_de_planche(roof_layout):
                                  if 'tiltDeg' in geometrie
                                  else zone.get('pitchDeg')),
             'modules': modules,
+            'reperes_modules': reperes,
             # ACAL263 — le module de CE pan (catalogue puis repli kit).
             'module_m': dimensions_module(roof_layout, zone),
             'batiment': str(zone.get('buildingId') or ''),
@@ -445,7 +451,19 @@ def _etendue_avec_parcelle(geometrie, etendue):
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _modules_du_pan(geometrie, local):
+def _repere_du_panneau(panneau):
+    """``(n, rangée)`` que le panneau DÉCLARE — chacun ``None`` s'il est
+    absent ou illisible (jamais un numéro ni une rangée inventés)."""
+    numero = panneau.get('n')
+    if isinstance(numero, bool) or not isinstance(numero, int) or numero < 1:
+        numero = None
+    rangee = panneau.get('rangee')
+    rangee = (str(rangee).strip() or None) if isinstance(rangee, str) \
+        else None
+    return numero, rangee
+
+
+def _modules_du_pan(geometrie, local, reperes=None):
     """Centres des modules POSÉS, en mètres dans le repère de la planche.
 
     ``panels`` porte des centres ENU relatifs à ``origin`` (``[lng, lat]``) :
@@ -467,7 +485,12 @@ def _modules_du_pan(geometrie, local):
         cx, cy = _nombre(panneau.get('cx')), _nombre(panneau.get('cy'))
         if cx is None or cy is None:
             continue
-        centres.append((est0 + cx, nord0 + cy))
+        centre = (est0 + cx, nord0 + cy)
+        centres.append(centre)
+        if reperes is not None:
+            numero, rangee = _repere_du_panneau(panneau)
+            if numero is not None or rangee is not None:
+                reperes[centre] = (numero, rangee)
     return centres
 
 
@@ -1282,14 +1305,27 @@ def nom_de_fichier(calepinage, extension, *, quoi=None):
     return '%s%s.%s' % (base, '-' + assaini[:60] if assaini else '', extension)
 
 
-def rendre_planche_svg(calepinage, *, moment=None, **options):
+def rendre_planche_svg(calepinage, *, moment=None, roof_layout=None,
+                       **options):
     """SVG de la planche d'un ``Calepinage``. Lève ``PlancheRefusee`` si besoin.
 
     CAL173 — le pied de planche porte TOUJOURS l'empreinte du layout et la
     version du moteur telles qu'elles sont STOCKÉES : deux rendus de la même
     conception portent la même, une conception modifiée en change.
+
+    ACAL92 — ``document=`` rend un AUTRE document que la conception courante
+    (l'instantané figé d'un devis remplacé,
+    ``selectors.conception_figee_du_devis``) ; l'appelant fournit alors son
+    ``pied``. ACAL248 — ``roof_layout`` : même rôle (l'instantané accepté que
+    le chantier a reçu, pour l'as-built) ; ``document`` l'emporte si les deux
+    sont donnés.
     """
-    geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    document = options.pop('document', None)
+    if document is None:
+        document = roof_layout
+    geometrie = geometrie_de_planche(
+        document if document is not None
+        else getattr(calepinage, 'roof_layout', None))
     return svg_de_planche(
         geometrie,
         titre=options.pop('titre', None) or str(calepinage),
@@ -1299,15 +1335,16 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
         or pied_du_calepinage(calepinage, moment=moment))
 
 
-def planche_svg_ou_vide(calepinage):
+def planche_svg_ou_vide(calepinage, *, roof_layout=None):
     """ACAL215 — le SVG de la planche « en regard », ``''`` sans conception.
 
     UN survivant pour les deux documents qui l'embarquent (présentation
     compacte, as-built) : ``PlancheRefusee`` est avalée, jamais une planche
-    fabriquée ; le document reste imprimable sans elle.
+    fabriquée ; le document reste imprimable sans elle. ``roof_layout``
+    (ACAL248) : la conception à dessiner, si ce n'est pas le document courant.
     """
     try:
-        return rendre_planche_svg(calepinage)
+        return rendre_planche_svg(calepinage, roof_layout=roof_layout)
     except PlancheRefusee:
         return ''
 
@@ -1371,13 +1408,21 @@ def _reperes_de_pose(pan, vers_feuille):
         return []
 
     morceaux = []
+    reperes = pan.get('reperes_modules') or {}
     for numero, centres in centres_par_rangee(pan['modules'],
                                               pan.get('azimut_deg')):
         depart = vers_feuille(centres[0])
+        # ACAL269 — l'étiquette de rangée que le DOCUMENT porte (la même sur
+        # tous les modules de la rangée), sinon le numéro calculé.
+        etiquettes = {(reperes.get(centre) or (None, None))[1]
+                      for centre in centres}
+        etiquette = (etiquettes.pop() if len(etiquettes) == 1
+                     and None not in etiquettes else 'R%d' % numero)
         morceaux.append(
             '<text x="%s" y="%s" font-size="3" font-weight="bold" '
-            'text-anchor="end" fill="%s">R%d</text>'
-            % (_n(depart[0] - 1.5), _n(depart[1] + 1.0), VERT_MODULE, numero))
+            'text-anchor="end" fill="%s">%s</text>'
+            % (_n(depart[0] - 1.5), _n(depart[1] + 1.0), VERT_MODULE,
+               escape(etiquette)))
         if len(centres) < 2:
             continue
         arrivee = vers_feuille(centres[-1])

@@ -174,6 +174,39 @@ describe('ACAL23 — restauration et rechargement de la scène', () => {
     expect(onRecharger).not.toHaveBeenCalled()
   })
 
+  it('confirmation : liste ce qui est remplacé et conservé', async () => {
+    versionsMock.mockResolvedValue({ data: [V_COURANTE, V_ANCIENNE] })
+    rendre()
+    expect(screen.queryByTestId('cal-versions-confirmation-2')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByTestId('cal-versions-restaurer-2'))
+    const confirmation = await screen.findByTestId('cal-versions-confirmation-2')
+    expect(confirmation).toHaveTextContent('Remplace le dessin et vide le rendu 3D')
+    expect(confirmation).toHaveTextContent(
+      'saisies électriques, pertes et simulation conservées (la simulation devient périmée)')
+    expect(confirmation).toHaveTextContent('« Avant restauration »')
+    expect(restaurerVersion).not.toHaveBeenCalled()
+  })
+
+  it('refus 409 : motif serveur affiché', async () => {
+    versionsMock.mockResolvedValue({ data: [V_COURANTE, V_ANCIENNE] })
+    restaurerVersion.mockRejectedValue({
+      response: { status: 409, data: { roof_layout: ['Devis accepté : révisez-le'] } },
+    })
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-versions-restaurer-2'))
+    fireEvent.click(await screen.findByTestId('cal-versions-confirmer-2'))
+    const erreur = await screen.findByTestId('cal-versions-erreur')
+    expect(erreur).toHaveTextContent('Devis accepté : révisez-le')
+    expect(erreur).not.toHaveTextContent('La restauration n’a pas pu être effectuée.')
+    // Un 400 {version: [...]} : le motif nommé du serveur, pas le générique.
+    restaurerVersion.mockRejectedValue({
+      response: { status: 400, data: { version: ['Cette version n’existe pas : impossible de la restaurer.'] } },
+    })
+    fireEvent.click(await screen.findByTestId('cal-versions-confirmer-2'))
+    await waitFor(() => expect(screen.getByTestId('cal-versions-erreur'))
+      .toHaveTextContent('Cette version n’existe pas : impossible de la restaurer.'))
+  })
+
   it('refus {detail} → le détail du serveur, jamais le texte générique', async () => {
     versionsMock.mockResolvedValue({ data: [V_COURANTE, V_ANCIENNE] })
     restaurerVersion.mockRejectedValue({

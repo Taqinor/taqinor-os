@@ -180,6 +180,23 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       .toHaveTextContent('Conception manquante ou invalide')
   })
 
+  it('409 roof_layout : le motif serveur est affiché', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    // ACAL44 — la forme RÉELLE du 409 de verrou (VerrouilleRefuse) :
+    // `{roof_layout: [motif]}`, jamais `{detail}` (sinon faux vert).
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockRejectedValue({
+      response: { status: 409, data: { roof_layout: ['Devis accepté : révisez-le'] } },
+    })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('cal-conflit-lecture-seule'))
+      .toHaveTextContent('Devis accepté : révisez-le')
+  })
+
   /* ACAL23 — le jeton If-Match de l'écriture complète, et le 409
      « modifiée ailleurs » distinct du verrou. */
   it('le POST porte If-Match lu au boot', async () => {
@@ -521,22 +538,22 @@ describe('ToitureDesign — teinte par chaîne (ACAL286)', () => {
   })
 })
 
-describe('ToitureDesign — le mode devis ne bouge pas (garde CAL37)', () => {
-  it('ne frappe AUCUNE route calepinage', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    const CTX_DEVIS = exempleContrat('ventes', 'devis_design_context')
+describe('ToitureDesign — la route devis ouvre le calepinage lié (ACAL37, D-ACAL-1)', () => {
+  it('passe par le calepinage lié, jamais par le contexte devis', async () => {
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: CTX.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
 
-    rendreDevis(CTX_DEVIS.devis.id)
+    rendreDevis(CTX.calepinage.devis_lie.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    expect(ventesApi.getDevisDesignContext).toHaveBeenCalledTimes(1)
-    for (const appel of Object.values(calepinageApi.calepinages)) {
-      expect(appel).not.toHaveBeenCalled()
-    }
-    // Ni le panneau du module, ni son bouton d'enregistrement.
-    expect(screen.queryByTestId('cal-atelier-panneaux')).toBeNull()
-    expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
+    expect(calepinageApi.calepinages.depuisModele)
+      .toHaveBeenCalledWith({ devis_id: CTX.calepinage.devis_lie.id })
+    expect(ventesApi.getDevisDesignContext).not.toHaveBeenCalled()
+    // Les panneaux du module ET son bouton d'enregistrement sont là.
+    expect(await screen.findByTestId('cal-atelier-panneaux')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-enregistrer-calepinage')).toBeInTheDocument()
   })
 })
 
@@ -662,5 +679,51 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     expect(payload.cible.panneaux).toBeNull()
     expect(await screen.findByTestId('acal-cible-estimee'))
       .toHaveTextContent(ctx.cible.refus)
+  })
+})
+
+describe('ToitureDesign — le fond photo charge le fichier par son URL servie (ACAL201)', () => {
+  const PHOTOS = exempleContrat('calepinage', 'calepinage_photos').photos
+
+  afterEach(() => { vi.unstubAllEnvs() })
+
+  it('le fond photo utilise l’URL relative servie', async () => {
+    const poserFond = vi.fn(() => ({ ok: true }))
+    const photo = PHOTOS[0]
+    reinitialiserBootMinimal({
+      fondDuDocument: vi.fn(() => ({ kind: 'photo', photoSiteId: photo.id })),
+      motifFondRefuse: vi.fn(() => null),
+      poserFond,
+    })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.photos.mockResolvedValue({ data: { photos: PHOTOS } })
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(poserFond).toHaveBeenCalled())
+    // VITE_API_URL vide : le chemin relatif du proxy, tel quel (même origine).
+    expect(photo.url.startsWith('/api/django/calepinage/')).toBe(true)
+    expect(poserFond.mock.calls[0][1].url).toBe(photo.url)
+  })
+
+  it('une origine d’API posée préfixe le chemin relatif', async () => {
+    vi.stubEnv('VITE_API_URL', 'https://api.exemple.test')
+    const poserFond = vi.fn(() => ({ ok: true }))
+    const photo = PHOTOS[0]
+    reinitialiserBootMinimal({
+      fondDuDocument: vi.fn(() => ({ kind: 'photo', photoSiteId: photo.id })),
+      motifFondRefuse: vi.fn(() => null),
+      poserFond,
+    })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.photos.mockResolvedValue({ data: { photos: PHOTOS } })
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(poserFond).toHaveBeenCalled())
+    expect(poserFond.mock.calls[0][1].url)
+      .toBe(`https://api.exemple.test${photo.url}`)
   })
 })

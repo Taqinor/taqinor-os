@@ -50,7 +50,12 @@ class SyncDevisTest(BaseApiCalepinage):
             reponse = self.api.post(url_sync(self.calepinage.pk), {},
                                     format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(reponse.data, attendu)
+        # ACAL170 — la réponse ventes passe TELLE QUELLE, la clé
+        # ``electrique`` (contrat calepinage_publication_electrique.json,
+        # ``sync_devis.exemple``) s'y ajoute.
+        servi = dict(reponse.data)
+        self.assertIn('verdict', servi.pop('electrique'))
+        self.assertEqual(servi, attendu)
         self.assertEqual(sync.call_args.args[0].pk, self.devis.pk)
         self.assertEqual(sync.call_args.args[1], LAYOUT)
         self.assertEqual(sync.call_args.args[2], self.user)

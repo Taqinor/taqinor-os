@@ -26,6 +26,15 @@ coverage gap like M-07/M-08/M-09, it hid live debt.
   * while the function does NOT call ``select_for_update(`` and the modifying
     expression is NOT an ``F(...)`` atomic update.
 
+ASTK53 — STATUS CHECK, same family: a document-status guard
+``if <doc>.statut ...: raise`` followed by writes, where ``<doc>`` is a
+PARAMETER of the function (an instance read BEFORE the transaction), and the
+function never calls ``select_for_update()`` (so the status is not re-read
+under a lock) — two concurrent requests both pass the check and both write
+(MVT-9 pattern). The correct AUD217/AUD320 patterns (lock + re-read inside
+``transaction.atomic()``) pass. Reported as ``path::function (<doc>.statut)``
+and allowlisted the same way.
+
 v1 = ADVISORY via an allowlist: existing, human-reviewed safe sites are
 recorded in ``scripts/read_modify_write_allow.txt`` (one ``path::function``
 per line). A NEW unlocked read-modify-write (not in the allowlist) fails CI —
@@ -193,6 +202,51 @@ def _rmw_sites_in_function(func_node):
     return sites
 
 
+_WRITE_ATTRS = ("save", "update", "create", "bulk_create", "bulk_update",
+                "delete", "update_or_create", "get_or_create")
+
+
+def _params_of(func_node):
+    args = func_node.args
+    noms = [a.arg for a in args.posonlyargs + args.args + args.kwonlyargs]
+    return {n for n in noms if n not in ("self", "cls")}
+
+
+def _status_checked_params(func_node):
+    """Paramètres ``p`` testés par ``if ... p.statut ...: ... raise`` (ASTK53)."""
+    params = _params_of(func_node)
+    trouves = []
+    for sub in ast.walk(func_node):
+        if not isinstance(sub, ast.If):
+            continue
+        if not any(isinstance(n, ast.Raise)
+                   for stmt in sub.body for n in ast.walk(stmt)):
+            continue
+        for n in ast.walk(sub.test):
+            if (isinstance(n, ast.Attribute) and n.attr == "statut"
+                    and isinstance(n.value, ast.Name)
+                    and n.value.id in params and n.value.id not in trouves):
+                trouves.append(n.value.id)
+    return trouves
+
+
+def _function_writes(func_node):
+    for sub in ast.walk(func_node):
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
+            if sub.func.attr in _WRITE_ATTRS:
+                return True
+    return False
+
+
+def _status_findings(func_node):
+    if _function_calls_select_for_update(func_node):
+        return []
+    if not _function_writes(func_node):
+        return []
+    return [(func_node.name, f"{p}.statut")
+            for p in _status_checked_params(func_node)]
+
+
 def check_file(path: Path):
     """Return a list of (funcname, varname.attr) unlocked read-modify-writes."""
     try:
@@ -203,6 +257,7 @@ def check_file(path: Path):
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
+        findings.extend(_status_findings(node))
         if _function_calls_select_for_update(node):
             continue
         for varname, attr in _rmw_sites_in_function(node):

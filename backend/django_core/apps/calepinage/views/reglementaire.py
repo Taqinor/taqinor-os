@@ -194,7 +194,11 @@ def generer_dossier(self, request, pk=None):
     document = pack.get('document')
     dossier.document_id = getattr(document, 'pk', None)
     dossier.genere_le = timezone.now()
-    dossier.save(update_fields=['document_id', 'genere_le'])
+    # ACAL240 — l'empreinte des entrées À LA GÉNÉRATION : GET
+    # dossiers-reglementaires/ en déduit ``genere_sur_conception_perimee``.
+    dossier.genere_empreinte = (pack.get('empreinte') or '')[:64]
+    dossier.save(update_fields=['document_id', 'genere_le',
+                                'genere_empreinte'])
     return Response({
         'dossier': dossier.pk,
         'document': dossier.document_id,

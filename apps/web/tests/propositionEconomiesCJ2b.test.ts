@@ -157,12 +157,16 @@ describe('CJ2b — rawConsumptionShape (via consumptionKwhShape) préfère la fo
     }
   });
 
-  it('hors résidentiel, la forme servie est IGNORÉE — chaque mode garde son propre archétype', () => {
+  it('agricole : la forme servie est IGNORÉE (archétype propre) ; C&I : elle est LA silhouette (CIW302)', () => {
     const dailyKwh = 40;
-    for (const mode of ['industriel', 'commercial', 'agricole'] as const) {
-      const withServed = consumptionKwhShape(dailyKwh, { mode, servedShape: SERVED_FORME });
-      const withoutServed = consumptionKwhShape(dailyKwh, { mode });
-      expect(withServed).toEqual(withoutServed);
+    const agriServed = consumptionKwhShape(dailyKwh, { mode: 'agricole', servedShape: SERVED_FORME });
+    const agriSans = consumptionKwhShape(dailyKwh, { mode: 'agricole' });
+    expect(agriServed).toEqual(agriSans);
+    for (const mode of ['industriel', 'commercial'] as const) {
+      // CIW302 — plus d'archétype C&I : sans forme servie, silhouette nulle ; avec, la forme servie.
+      expect(consumptionKwhShape(dailyKwh, { mode })).toEqual(new Array(24).fill(0));
+      const servie = consumptionKwhShape(dailyKwh, { mode, servedShape: SERVED_FORME });
+      expect(servie.reduce((a, b) => a + b, 0)).toBeCloseTo(dailyKwh, 9);
     }
   });
 

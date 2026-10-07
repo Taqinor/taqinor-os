@@ -947,8 +947,13 @@ def importer_projet(document, company, *, user=None, lead_id=None,
                 enregistrer_layout(
                     calepinage, plan['roof_layout'], user=user,
                     libelle='Import du fichier de projet')
-            if plan['postes']:
-                enregistrer_pertes(calepinage, plan['postes'])
+            # ACAL117 — la MÊME règle de copie que Dupliquer / modèle
+            # (``variantes.CHAMPS_COPIES``) : conception + pertes, jamais le
+            # résultat d'un autre toit (re-simulable).
+            from .variantes import CHAMPS_COPIES
+
+            if plan['postes'] and 'pertes' in CHAMPS_COPIES:
+                enregistrer_pertes(calepinage, plan['postes'], user=user)
             _ecrire_saisies(calepinage, plan['saisies'], user=user)
             avertissements.extend(
                 _creer_variantes(calepinage, plan['variantes'], user=user))
@@ -1030,7 +1035,9 @@ def _creer_variantes(calepinage, variantes, *, user=None):
         if not ligne['retenue']:
             continue
         try:
-            retenir_variante(variante)
+            # ACAL107 — l'import RESTAURE un état : la conception importée
+            # est déjà le document, la retenue ne la réécrit pas.
+            retenir_variante(variante, user=user, appliquer=False)
         except (VarianteRefusee, ValidationError) as refus:
             detail = getattr(refus, 'detail', None) or str(refus)
             avertissements.append(

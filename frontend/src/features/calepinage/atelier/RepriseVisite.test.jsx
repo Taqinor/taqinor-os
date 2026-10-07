@@ -18,7 +18,7 @@
    6. un refus 400 s'affiche SOUS le bouton et le bandeau NOMME le champ. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
@@ -151,5 +151,80 @@ describe('RepriseVisite (CALX365) — reprendre', () => {
     const bandeau = screen.getByTestId('cal-reprise-refus-bandeau')
     expect(bandeau).toHaveTextContent('visite_id')
     expect(bandeau.textContent).not.toMatch(/non enregistré/i)
+  })
+})
+
+/* ACAL208 — RepriseVisite expose le retour vers l'atelier depuis son lien profond. */
+describe('RepriseVisite (ACAL208) — le retour vers l’atelier', () => {
+  it('expose RetourAtelier sur la route profonde /calepinage/:id/reprise-visite', async () => {
+    servir('exemple_avant_reprise')
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1/reprise-visite']}>
+        <Routes>
+          <Route path="/calepinage/:id/:panneau" element={<RepriseVisite />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('cal-reprise-mesures')
+    expect(screen.getByTestId('cal-retour-atelier-lien'))
+      .toHaveAttribute('href', '/calepinage/1?onglet=reprise-visite')
+  })
+
+  it('dans l’atelier (hors lien profond) il ne rend rien', async () => {
+    servir('exemple_avant_reprise')
+    rendre()
+    await screen.findByTestId('cal-reprise-mesures')
+    expect(screen.queryByTestId('cal-retour-atelier')).toBeNull()
+  })
+})
+
+/* ACAL211 — relevé repris, visite modifiée depuis : l'écart et « Mettre à jour depuis la visite ».
+   Réponses lues sur l'échantillon committé (`exemple_a_corriger`, `exemple` pour a_jour: true). */
+describe('RepriseVisite (ACAL211) — écart relevé / visite', () => {
+  it('affiche l’écart et met à jour sur clic', async () => {
+    servir('exemple_a_corriger')
+    calepinageApi.calepinages.reprendreVisite
+      .mockResolvedValue(reponseContrat('calepinage', NOM, 'exemple'))
+    rendre()
+    const ecart = echantillon('exemple_a_corriger').ecart[0]
+    expect(echantillon('exemple_a_corriger').a_jour).toBe(false)
+
+    const tableau = await screen.findByTestId('cal-reprise-ecart')
+    expect(tableau).toBeInTheDocument()
+    expect(screen.getByTestId(`cal-reprise-ecart-${ecart.code}-releve`))
+      .toHaveTextContent(`${ecart.releve} °`)
+    expect(screen.getByTestId(`cal-reprise-ecart-${ecart.code}-visite`))
+      .toHaveTextContent(`${ecart.visite} °`)
+    // Plus de « déjà reprise » trompeur : le bouton « Reprendre » n'est pas proposé.
+    expect(screen.queryByTestId('cal-reprise-bouton')).toBeNull()
+    expect(screen.queryByTestId('cal-reprise-raison')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('cal-reprise-maj'))
+    await vi.waitFor(() => expect(calepinageApi.calepinages.reprendreVisite)
+      .toHaveBeenCalledWith(1, { remplacer: true }))
+    // Rechargé : plus d'écart, « Reprise à jour », plus de bouton de mise à jour.
+    expect(await screen.findByTestId('cal-reprise-a-jour')).toHaveTextContent('Reprise à jour')
+    expect(screen.queryByTestId('cal-reprise-ecart')).toBeNull()
+    expect(screen.queryByTestId('cal-reprise-maj')).toBeNull()
+  })
+
+  it('a_jour: true => « Reprise à jour » sans bouton de mise à jour', async () => {
+    servir('exemple')
+    rendre()
+    expect(await screen.findByTestId('cal-reprise-a-jour')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-reprise-maj')).toBeNull()
+    expect(screen.queryByTestId('cal-reprise-ecart')).toBeNull()
+  })
+})
+
+describe('Lot 2 critique #32 — lecture seule', () => {
+  it('« Reprendre » désactivé, la raison dite, rien n’est envoyé', async () => {
+    servir('exemple_avant_reprise')
+    render(<MemoryRouter><RepriseVisite calepinageId={1} lectureSeule /></MemoryRouter>)
+    const bouton = await screen.findByTestId('cal-reprise-bouton')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('cal-reprise-lecture-seule')).toBeInTheDocument()
+    fireEvent.click(bouton)
+    expect(calepinageApi.calepinages.reprendreVisite).not.toHaveBeenCalled()
   })
 })

@@ -57,6 +57,24 @@ class SyncLayoutError(Exception):
         self.revision_possible = revision_possible
 
 
+def _refus_resynchro(devis):
+    """QJR516 — le refus de statut d'une resynchro (geste ``CALEPINAGE``), ou
+    ``None`` si le devis se resynchronise. ACAL96 — partagé par
+    :func:`reconcilier` (sous verrou) et :func:`ecrire_conception_du_devis`
+    (AVANT d'écrire le calepinage) : un refus n'écrit rien nulle part."""
+    from apps.ventes.domain.modifiabilite import CALEPINAGE, verdict
+    v = verdict(devis, CALEPINAGE)
+    if v['modifiable']:
+        return None
+    if not devis.is_active:
+        detail = v['raison_non_modifiable'] + '.'
+    else:
+        detail = (
+            'Devis « %s » : son calepinage est figé, ce document est '
+            'clos.' % devis.get_statut_display())
+    return SyncLayoutError(detail, revision_possible=v['revision_possible'])
+
+
 def _resynchroniser_instance_appelante(devis, verrou):
     """QJR20 (29/08/2026) — recale l'instance de l'APPELANT sur ce qui vient
     d'être écrit sous verrou.
@@ -344,17 +362,9 @@ def reconcilier(devis, intention):
         # (``fin_de_geste_devis``). Textes des refus restants CONSERVÉS ;
         # ``revision_possible`` vient du prédicat (un accepté/refusé/expiré
         # est révisable, D-QJR5-2 ; un devis remplacé ne l'est pas).
-        from apps.ventes.domain.modifiabilite import CALEPINAGE, verdict
-        v = verdict(verrou, CALEPINAGE)
-        if not v['modifiable']:
-            if not verrou.is_active:
-                detail = v['raison_non_modifiable'] + '.'
-            else:
-                detail = (
-                    'Devis « %s » : son calepinage est figé, ce document est '
-                    'clos.' % verrou.get_statut_display())
-            raise SyncLayoutError(
-                detail, revision_possible=v['revision_possible'])
+        refus = _refus_resynchro(verrou)
+        if refus is not None:
+            raise refus
 
         lignes = _lignes_produit(verrou)
         lignes_panneau = [li for li in lignes
@@ -401,7 +411,15 @@ def reconcilier(devis, intention):
                 'de panneaux la plus grosse, tous groupes confondus.')
 
         # ── Court-circuit : même géométrie → ZÉRO écriture ──
-        if nouveau_hash and verrou.layout_hash == nouveau_hash:
+        # ACAL96 — accepté seulement si le layout STOCKÉ porte déjà
+        # ``_pans_geometry`` quand le toit a des pans : un document stocké
+        # brut (ancien chemin ``POST layout``) est rangé une fois, sinon la
+        # 3D publique et l'annexe « paramètres du site » restent vides.
+        stocke = verrou.roof_layout if isinstance(verrou.roof_layout,
+                                                  dict) else {}
+        range_ok = (not (toiture and toiture.get('pans'))
+                    or bool(stocke.get('_pans_geometry')))
+        if nouveau_hash and verrou.layout_hash == nouveau_hash and range_ok:
             return {
                 'inchange': True,
                 'panneaux': total_panneaux,
@@ -425,6 +443,11 @@ def reconcilier(devis, intention):
         # rien aux panneaux.
         panneaux_ont_change = False
         panneaux_avant = total_panneaux
+        # ACAL100 (C-ACAL-110) — vrai dès qu'une ABSTENTION laisse un écart
+        # de panneaux non appliqué (quantité tapée, ligne commune QJR98,
+        # cible 0) : l'empreinte n'est alors PAS posée, le devis reste « à
+        # resynchroniser » et le clic suivant ré-applique.
+        ecart_residuel = False
 
         # ── DEV-202608-0016 — LE VERROU DE POSSIBILITÉ, AVANT LA PREMIÈRE
         # ÉCRITURE ──
@@ -440,10 +463,11 @@ def reconcilier(devis, intention):
         # ── Panneaux : porter le compte à la cible ──
         if modeles and not devis_variante and cible_panneaux > 0:
             # ── ACAL63 — LIGNE PAR LIGNE, MODÈLE PAR MODÈLE ────────────────
-            modifiees, change = _reconcilier_panneaux_par_modele(
+            modifiees, change, residuel = _reconcilier_panneaux_par_modele(
                 verrou, lignes_panneau, modeles, avertissements)
             lignes_modifiees += modifiees
             panneaux_ont_change = panneaux_ont_change or change
+            ecart_residuel = ecart_residuel or residuel
             total_panneaux = sum(
                 int(li.quantite or 0)
                 for li in _lignes_produit(verrou)
@@ -477,6 +501,7 @@ def reconcilier(devis, intention):
             avertissements.append(
                 'Ce calepinage ne porte aucun panneau : les lignes de '
                 'panneaux du devis n\'ont pas été modifiées.')
+            ecart_residuel = True
         elif lignes_panneau and devis_variante:
             # ── L-2OPT / RÈGLE TOIT — le calepinage est un PLAFOND ──────────
             # Chaque option a son propre compte, choisi par l'économie. Le
@@ -535,6 +560,7 @@ def reconcilier(devis, intention):
                             'ligne de panneaux propre à cette option, ou '
                             'corrigez les quantités à la main.'
                             % (variante, abs(total_vue - cible_panneaux)))
+                        ecart_residuel = True
                         continue
                 # QJR60 / D12 — une quantité TAPÉE par le vendeur n'est pas
                 # réécrite : elle sort du vivier, et si tout le vivier est
@@ -546,6 +572,7 @@ def reconcilier(devis, intention):
                         avertissements, vivier,
                         "l'écart de %d panneau(x) de l'option « %s »"
                         % (abs(total_vue - cible_panneaux), variante))
+                    ecart_residuel = True
                     continue
                 dominante = max(
                     libres,
@@ -579,6 +606,7 @@ def reconcilier(devis, intention):
                     avertissements, lignes_panneau,
                     "l'écart de %d panneau(x)"
                     % abs(cible_panneaux - total_panneaux))
+                ecart_residuel = True
             else:
                 dominante = max(libres,
                                 key=lambda li: Decimal(str(li.quantite or 0)))
@@ -1081,12 +1109,21 @@ def reconcilier(devis, intention):
         # mutation du dict de l'appelant. L'empreinte, elle, est calculée sur
         # le layout D'ORIGINE (clés géométriques seules) : cet enrichissement
         # ne peut donc pas casser le court-circuit au prochain envoi.
-        layout_stocke = dict(layout)
-        if toiture and toiture.get('pans'):
-            layout_stocke['_pans_geometry'] = toiture['pans']
+        # ACAL96 — UN SEUL rangement : celui de la création
+        # (``creation_calepinage._calepinage_range``), plus de copie inline.
+        from apps.ventes.domain.creation_calepinage import _calepinage_range
+        layout_stocke, _etude = _calepinage_range(layout, toiture, None)
 
         verrou.roof_layout = layout_stocke
-        verrou.layout_hash = nouveau_hash or verrou.layout_hash
+        if ecart_residuel:
+            # ACAL100 — l'écart n'a pas été ENTIÈREMENT appliqué : l'ancienne
+            # empreinte reste, le devis est toujours « à resynchroniser ».
+            avertissements.append(
+                'Écart de calepinage non entièrement appliqué : le devis '
+                'reste « à resynchroniser » — corrigez la cause ci-dessus '
+                'puis resynchronisez.')
+        else:
+            verrou.layout_hash = nouveau_hash or verrou.layout_hash
         # QJR62 — la RÈGLE de fusion vient de l'écrivain unique
         # (``domain.etude_schema``) ; seule la PERSISTANCE diffère ici, parce
         # que ce chemin écrit ``roof_layout`` + ``layout_hash`` +
@@ -1163,15 +1200,20 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
       0 et NOMMÉE (jamais une suppression silencieuse) ;
     * une quantité TAPÉE (QJR60 / D12) n'est jamais réécrite : l'écart est
       nommé.
-    Jamais ``quantite_manuelle`` / ``prix_manuel`` posés."""
+    Jamais ``quantite_manuelle`` / ``prix_manuel`` posés.
+
+    ACAL100 — rend ``(lignes_modifiees, a_change, ecart_residuel)`` :
+    ``ecart_residuel`` est vrai quand un écart a été NOMMÉ au lieu d'être
+    appliqué (quantité tapée, fiche non tarifée)."""
     from apps.ventes.domain.geometrie import _produit_designe
 
     modifiees = 0
     change = False
+    residuel = False
     restantes = list(lignes_panneau)
 
     def _porter(lignes_m, cible, libelle):
-        nonlocal modifiees, change
+        nonlocal modifiees, change, residuel
         total = sum(int(li.quantite or 0) for li in lignes_m)
         if total == cible:
             return
@@ -1181,6 +1223,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
                 avertissements, lignes_m,
                 "l'écart de %d panneau(x) « %s »" % (abs(total - cible),
                                                      libelle))
+            residuel = True
             return
         dominante = max(libres, key=lambda li: Decimal(str(li.quantite or 0)))
         nouvelle = max(0, int(dominante.quantite or 0) + (cible - total))
@@ -1221,6 +1264,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
                 'tarifé dans votre catalogue : sa ligne de %d panneau(x) n\'a '
                 'pas été créée — tarifez la fiche puis resynchronisez.'
                 % (produit_id or '?', cible))
+            residuel = residuel or cible > 0
             continue
         if cible > 0:
             creer_ligne(
@@ -1239,6 +1283,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
                 avertissements, [ligne],
                 'la ligne « %s », hors des modules du calepinage'
                 % ligne.designation)
+            residuel = True
             continue
         avertissements.append(
             'La ligne de panneaux « %s » ne correspond à aucun module posé '
@@ -1247,7 +1292,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
         ligne.save(update_fields=['quantite'])
         modifiees += 1
         change = True
-    return modifiees, change
+    return modifiees, change, residuel
 
 
 def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
@@ -1343,6 +1388,83 @@ def resynchroniser_conception(devis, layout, user=None, *, emettre=True,
     from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
     rafraichir_etudes_du_devis(devis)
     return resultat
+
+
+class ConceptionRefusee(Exception):
+    """ACAL96 — refus du CALEPINAGE lié (jeton périmé, document invalide,
+    verrou, devis introuvable) : ``statut`` HTTP et ``corps`` tels que le
+    module les rend, propagés mot pour mot par la vue."""
+
+    def __init__(self, statut, corps):
+        super().__init__(str(corps))
+        self.statut = statut
+        self.corps = corps
+
+
+def _sans_cles_privees(layout):
+    """Le document de conception sans les clés PRIVÉES du devis (racine
+    préfixée ``_`` : ``_pans_geometry``…) — même règle que l'adoption
+    (``apps.calepinage.services.creation``) : jamais recopiées dans la
+    conception ; l'empreinte imprimée ne les lit pas."""
+    return {cle: valeur for cle, valeur in (layout or {}).items()
+            if not str(cle).startswith('_')}
+
+
+def ecrire_conception_du_devis(devis, layout, user=None, *,
+                               base_empreinte=None):
+    """ACAL96 (D-ACAL-1, C-ACAL-102) — ``sync-layout`` et ``POST layout`` du
+    devis écrivent LE CALEPINAGE lié, puis resynchronisent le devis.
+
+    1. refus de statut (prédicat ventes ``CALEPINAGE``) AVANT toute écriture
+       → :class:`SyncLayoutError` (409 existant) ;
+    2. le calepinage du devis : lié, sinon adopté/créé par la porte unique
+       ``apps.calepinage.services.adopter_ou_creer_pour_devis`` ;
+    3. ``enregistrer_layout`` — SEUL écrivain du document (version seulement
+       si changé ; jeton ``If-Match`` comparé s'il est fourni) ;
+    4. :func:`resynchroniser_conception` sur ``calepinage.roof_layout`` —
+       seule à écrire ``Devis.roof_layout`` (rangé par ``_calepinage_range``,
+       avec ``_pans_geometry``). Plus aucune écriture de ``Devis.roof_layout``
+       depuis un corps arbitraire.
+
+    Rend le dict de la resynchro, INCHANGÉ. Aucun statut écrit (règle #4).
+
+    Raises:
+        SyncLayoutError: devis figé (accepté, refusé, expiré, remplacé).
+        ConceptionRefusee: refus du calepinage (statut + corps du module).
+    """
+    refus = _refus_resynchro(devis)
+    if refus is not None:
+        raise refus
+    from apps.calepinage import services as calepinage_services
+
+    try:
+        calepinage, _origine = calepinage_services.adopter_ou_creer_pour_devis(
+            devis.pk, devis.company, user=user)
+        calepinage_services.enregistrer_layout(
+            calepinage, _sans_cles_privees(layout), user=user,
+            base_empreinte=base_empreinte)
+    except calepinage_services.DocumentModifie as conflit:
+        raise ConceptionRefusee(409, conflit.corps()) from None
+    except (calepinage_services.LayoutRefuse,
+            calepinage_services.CreationRefusee) as erreur:
+        champ = getattr(erreur, 'champ', '') or 'roof_layout'
+        raise ConceptionRefusee(400, {champ: str(erreur)}) from None
+    # Lot 2 critique #28 — la resynchro passe par LA porte du module
+    # (``resynchroniser_devis``) : approbation / feu vert à jour (ACAL116) et
+    # garde électrique (ACAL170) s'appliquent ici comme à « Resynchroniser le
+    # devis » du calepinage, avec les MÊMES corps de refus (400 nommé, 422
+    # ``{detail, electrique}``, 409 ``{detail, revision_possible}``). La
+    # conception reste enregistrée ; le devis n'est pas touché sur refus.
+    from rest_framework.exceptions import ValidationError
+
+    try:
+        return calepinage_services.resynchroniser_devis(calepinage, user=user)
+    except calepinage_services.DevisRefuse as refus:
+        raise ConceptionRefusee(
+            refus.statut,
+            refus.donnees or {refus.champ or 'detail': str(refus)}) from None
+    except ValidationError as refus:
+        raise ConceptionRefusee(400, refus.detail) from None
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────

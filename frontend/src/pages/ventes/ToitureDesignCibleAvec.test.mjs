@@ -60,12 +60,15 @@ test('QJR40 — contexteToDevisPayload (mode devis, hydrate.devis du builder 3D)
     'le payload AVEC ne doit pas porter le scénario SANS')
 })
 
-test('QJR40 — la garde anti-divergence d\'enregistrerConception compare contre la MÊME cible que le boot (pas contexte.cible seul)', () => {
-  const idx = SRC.indexOf('const panneauxPoses = Number(layout?.result?.panels) || 0')
-  assert.ok(idx > -1, 'garde anti-divergence introuvable')
-  const bloc = SRC.slice(idx, idx + 700)
-  assert.match(bloc, /const panneauxDevis = Number\(cibleActiveDuContexte\(contexte\)\.panneaux\) \|\| 0/,
-    'panneauxDevis doit être lu via cibleActiveDuContexte, sinon un devis « Les deux » redéclenche le dialogue à tort')
+test('QJR40 — aucun compte de panneaux du devis lu sur contexte.cible seul (garde de divergence retirée avec l\'écrivain du mode devis, ACAL37)', () => {
+  // ACAL37 (D-ACAL-1) a SUPPRIMÉ l'écrivain du mode devis (enregistrerConception
+  // + son dialogue de divergence) : l'écran enregistre le calepinage lié puis
+  // sync-devis. L'invariant QJR40 reste : si une comparaison au devis revient,
+  // elle passe par cibleActiveDuContexte, jamais par contexte.cible seul.
+  assert.equal(SRC.includes('const panneauxPoses = Number(layout?.result?.panels) || 0'), false,
+    'la garde de divergence du mode devis est revenue : la relire via cibleActiveDuContexte')
+  assert.doesNotMatch(SRC, /contexte\??\.cible\??\.panneaux/,
+    'un compte de panneaux lu sur contexte.cible seul recrée la divergence SANS/AVEC (QJR40)')
 })
 
 test('QJR40 — rejoué : devis « Les deux » divergents → la cible 3D cible AVEC, la MÊME option que le SLD (QJR25)', () => {

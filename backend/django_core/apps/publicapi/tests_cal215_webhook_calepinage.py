@@ -86,8 +86,12 @@ class CalepinageValideWebhookTests(TestCase):
         from apps.calepinage.services.variantes import dupliquer
 
         self.retenir(self.variante)
+        # ACAL187 (D-ACAL-12) — la source est le calepinage OUVERT de son
+        # lead : la copie vise un AUTRE lead de la société (sinon 409).
+        autre_lead = django_apps.get_model('crm', 'Lead').objects.create(
+            company=self.co, nom='Toiture copie')
         with mock.patch.object(delivery, 'dispatch_event') as m:
-            copie = dupliquer(self.cal)
+            copie = dupliquer(self.cal, lead_id=autre_lead.pk)
         self.assertNotEqual(copie.pk, self.cal.pk)
         m.assert_not_called()
 

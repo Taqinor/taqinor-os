@@ -40,8 +40,10 @@ from drf_spectacular.utils import (
 from rest_framework import filters, status
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
 from apps.records.views import ChatterViewSetMixin
@@ -57,7 +59,8 @@ from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
     CAL_APPROUVER, CAL_GERER, CAL_VOIR,
-    PeutGererCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
+    PeutApprouverCalepinage, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
+    PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
@@ -72,9 +75,10 @@ from .sorties import SortiesMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
+from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
     DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
-    enregistrer_section,
+    enregistrer_section, layout_decrit_une_geometrie,
 )
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
@@ -166,6 +170,29 @@ def _param_chemin(nom, description):
                             description=description)
 
 
+#: ACAL120 — DELETE / PUT sur ``calepinages/<pk>/`` : 405, archiver est
+#: l'unique geste (le renommage passe par PATCH).
+MESSAGE_DELETE_REFUSE = ('Un calepinage ne se supprime pas : archivez le '
+                         'calepinage (réversible).')
+MESSAGE_PUT_REFUSE = ('Remplacement complet refusé : modifiez par PATCH, ou '
+                      'archivez le calepinage.')
+
+
+class _OrdreStatutDerive(filters.OrderingFilter):
+    """ACAL114 — ``?ordering=statut`` ordonne le statut DÉRIVÉ de
+    l'approbation (annotation ``statut_derive``), jamais la colonne figée."""
+
+    def filter_queryset(self, request, queryset, view):
+        ordre = self.get_ordering(request, queryset, view)
+        if ordre and any(o.lstrip('-') == 'statut' for o in ordre):
+            from ..services.approbation import annoter_statut_derive
+
+            ordre = [('-' if o.startswith('-') else '') + 'statut_derive'
+                     if o.lstrip('-') == 'statut' else o for o in ordre]
+            return annoter_statut_derive(queryset).order_by(*ordre)
+        return super().filter_queryset(request, queryset, view)
+
+
 class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
                         ElectriqueActionsMixin, SortiesMixin,
@@ -184,8 +211,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     queryset = Calepinage.objects.select_related(
         'client', 'devis', 'responsable').all()
     serializer_class = CalepinageSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['created_at', 'updated_at', 'statut', 'titre']
+    filter_backends = [_OrdreStatutDerive]
+    ordering_fields = ['created_at', 'updated_at', 'statut', 'titre',
+                       'statut_derive']
 
     read_permission = CAL_VOIR
 
@@ -243,8 +271,12 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         # ACAL295 — LE prédicat d'accès (``selectors.calepinages_visibles``) :
         # société + filtres de liste + vue restreinte au responsable, le même
         # pour la liste, le détail et chaque action ``detail=True``.
+        # ACAL119 (D-ACAL-25) — seule la LISTE écarte les archivés ; toute
+        # action sur un calepinage de sa société le retrouve (lectures 200
+        # avec mention « archivé », écritures 409 nommées — jamais 404).
         lignes = selectors.calepinages_visibles(
             self.request.user, base=super().get_queryset(),
+            inclure_archives=getattr(self, 'action', None) != 'list',
             lead_id=_entier(params.get('lead'), 'lead'),
             client_id=_entier(params.get('client'), 'client'),
             statut=_statut(params.get('statut')),
@@ -270,6 +302,26 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
             return filtrer_par_etiquette(lignes, valeurs)
         except EtiquetteRefusee as refus:
             raise DrfValidationError({refus.champ: str(refus)})
+
+    #: ACAL119 — la SEULE écriture admise sur un calepinage archivé.
+    #: ACAL187 — « Dupliquer » crée une COPIE (la source n'est pas écrite) :
+    #: une source archivée se duplique, sans cible (``_hors_unicite``).
+    ACTIONS_ADMISES_SUR_ARCHIVE = frozenset({'restaurer_corbeille',
+                                             'dupliquer'})
+
+    def get_object(self):
+        """ACAL119 — le point commun de TOUTES les routes ``detail=True`` du
+        module (vue racine + rattachements) : une méthode non sûre sur un
+        calepinage archivé ⇒ 409 nommé (``refuser_ecriture_si_archive``),
+        sauf « Restaurer » ; une lecture est servie telle quelle."""
+        calepinage = super().get_object()
+        if (self.request.method not in SAFE_METHODS
+                and getattr(self, 'action', None)
+                not in self.ACTIONS_ADMISES_SUR_ARCHIVE):
+            from ..services.archivage import refuser_ecriture_si_archive
+
+            refuser_ecriture_si_archive(calepinage)
+        return calepinage
 
     @extend_schema(responses={201: CalepinageSerializer,
                               409: inline_serializer(
@@ -323,7 +375,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         # Les autres champs écrivables du formulaire (statut, devis…) gardent
         # leur effet d'aujourd'hui, posés sur le calepinage créé.
-        restants = [champ for champ in ('statut', 'devis')
+        # Lot 3 critique #8 — ``custom_data`` (ACAL294) validé au POST est
+        # aussi POSÉ, jamais validé puis jeté.
+        restants = [champ for champ in ('statut', 'devis', 'custom_data')
                     if champ in donnees]
         for champ in restants:
             setattr(calepinage, champ, donnees[champ])
@@ -337,10 +391,24 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         contrat (``calepinage_creation_conflit.json``), rien n'est écrit."""
         from ..services.liens import RattachementRefuse
 
+        if not kwargs.get('partial'):
+            # ACAL120 — PUT (remplacement complet) n'est pas servi : on
+            # modifie par PATCH (R3). L'objet est d'abord RÉSOLU dans la
+            # société : un calepinage d'ailleurs reste 404 (isolation).
+            self.get_object()
+            raise MethodNotAllowed(request.method, detail=MESSAGE_PUT_REFUSE)
         try:
             return super().update(request, *args, **kwargs)
         except RattachementRefuse as refus:
             return Response(refus.corps, status=refus.statut)
+
+    def destroy(self, request, *args, **kwargs):
+        """ACAL120 — un calepinage ne se SUPPRIME jamais : 405, rien n'est
+        détruit (versions, variantes, photos intactes) ; archiver est
+        l'unique geste (``POST archiver/``, réversible). L'objet est
+        d'abord résolu dans la société : d'ailleurs, c'est 404."""
+        self.get_object()
+        raise MethodNotAllowed(request.method, detail=MESSAGE_DELETE_REFUSE)
 
     def perform_update(self, serializer):
         """ACAL180 — lead, client et responsable passent par
@@ -374,7 +442,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         queryset = super().filter_queryset(queryset)
         if getattr(self, 'action', None) == 'list':
-            queryset = queryset.prefetch_related('devis__lignes')
+            # ACAL122 — la liste ne charge JAMAIS ``resultat`` (série horaire
+            # de 8 760 points par ligne) : le sérialiseur ne l'expose pas.
+            # ``roof_layout`` reste chargé (layout_stale / nb_panneaux).
+            queryset = (queryset.prefetch_related('devis__lignes')
+                        .defer('resultat'))
         return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
@@ -501,12 +573,16 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         # marques manquantes) revient à l'écran (contrat
         # ``calepinage_publication.json``), jamais avalé.
         journal = {}
+        refus_droit = _refus_derogation_sans_droit(request, self, corps)
+        if refus_droit is not None:
+            return refus_droit
         try:
             devis, cree = generer_devis(
                 calepinage, user=request.user,
                 taux_tva=corps.get('taux_tva'),
                 remise_globale=corps.get('remise_globale'),
-                journal=journal)
+                journal=journal,
+                derogation_electrique=corps.get('derogation_electrique'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus), status=refus.statut)
         return Response(
@@ -515,7 +591,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
              'deduplique': not cree,
              'avertissements': list(journal.get('avertissements') or ()),
              'marques_manquantes': list(
-                 journal.get('marques_manquantes') or ())},
+                 journal.get('marques_manquantes') or ()),
+             # ACAL170 — verdict, manquantes, dérogation consignée.
+             'electrique': journal.get('electrique')},
             status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
 
     @action(detail=True, methods=['post'], url_path='sync-devis',
@@ -531,8 +609,14 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         (« Générer le devis »).
         """
         calepinage = self.get_object()
+        corps = request.data if isinstance(request.data, dict) else {}
+        refus_droit = _refus_derogation_sans_droit(request, self, corps)
+        if refus_droit is not None:
+            return refus_droit
         try:
-            resultat = resynchroniser_devis(calepinage, user=request.user)
+            resultat = resynchroniser_devis(
+                calepinage, user=request.user,
+                derogation_electrique=corps.get('derogation_electrique'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus), status=refus.statut)
         return Response(resultat)
@@ -587,12 +671,12 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         corps = request.data if isinstance(request.data, dict) else {}
         try:
             if methode == 'delete':
-                supprimer_variante(variante)
+                supprimer_variante(variante, user=request.user)
                 return Response(status=status.HTTP_204_NO_CONTENT)
             variante = modifier_variante(
                 variante, nom=corps.get('nom'),
                 roof_layout=corps.get('roof_layout', ...),
-                resultat=corps.get('resultat', ...))
+                resultat=corps.get('resultat', ...), user=request.user)
         except VarianteRefusee as refus:
             return Response({refus.champ or 'variante': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -618,7 +702,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_404_NOT_FOUND)
 
         def basculer():
-            retenir_variante(variante)
+            try:
+                retenir_variante(variante, user=request.user)
+            except VarianteRefusee as refus:
+                return Response({refus.champ or 'variante': str(refus)},
+                                status=status.HTTP_400_BAD_REQUEST)
             return Response(CalepinageVarianteSerializer(variante).data)
 
         return self.executer_idempotent(request, basculer)
@@ -757,6 +845,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         # aurait répondu « fichier manquant » sur un objet qui, pour cet
         # appelant, n'existe pas — un oracle d'existence par la bande.
         calepinage = self.get_object()  # borné société par get_queryset
+        # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT tout dépôt.
+        from ..services.verrou import verifier_ecriture_autorisee
+
+        verifier_ecriture_autorisee(calepinage, champ='image')
         fichier = request.FILES.get('image') or request.FILES.get('file')
         if fichier is None:
             return Response(
@@ -850,6 +942,19 @@ def _reponse_ecriture(calepinage, resultat):
     }
 
 
+def _refus_derogation_sans_droit(request, vue, corps):
+    """ACAL170 (D-ACAL-9) — 403 NOMMÉ quand ``derogation_electrique`` est
+    posée par un utilisateur sans ``calepinage_approuver`` ; rien n'est
+    écrit. ``None`` quand rien n'est à refuser."""
+    if not corps.get('derogation_electrique') or PeutApprouverCalepinage(
+            ).has_permission(request, vue):
+        return None
+    return Response(
+        {'derogation_electrique': "Dérogation réservée aux approbateurs "
+                                  "(calepinage_approuver)"},
+        status=status.HTTP_403_FORBIDDEN)
+
+
 def _refus_devis(refus):
     """Le corps d'un refus du pont devis — la charge VENTES telle quelle.
 
@@ -902,8 +1007,11 @@ def contexte_conception(calepinage, request=None):
         'calepinage': {
             'id': calepinage.pk,
             'titre': _texte(getattr(calepinage, 'titre', '')) or '',
-            'statut': calepinage.statut,
+            # ACAL114 — le statut DÉRIVÉ de l'approbation (D-ACAL-19).
+            'statut': statut_derive(calepinage),
             'lead': getattr(calepinage, 'lead_id', None),
+            # ACAL178 — le lead rattaché est-il à la corbeille ?
+            'lead_supprime': _lead_supprime(calepinage, company),
             'client': getattr(calepinage, 'client_id', None),
             'devis': getattr(calepinage, 'devis_id', None),
             # L'ADRESSE DU CLIENT, à la MÊME place et sous les MÊMES noms que
@@ -985,39 +1093,6 @@ def _devis_lie_resume(contexte_devis):
             for cle in ('id', 'reference', 'statut', 'client_nom')}
 
 
-def _layout_decrit_une_geometrie(layout):
-    """Ce ``roof_layout`` décrit-il une géométrie RÉELLEMENT exploitable ?
-
-    Pas « contient-il une clé ``zones`` », mais « un pan y porte-t-il au moins
-    trois sommets ». La nuance est TOUT le correctif du 20/09/2026 : le
-    sérialiseur de l'atelier (``apps/web/src/scripts/roofPro11/prefill.ts``,
-    ``serializeLayout``) émet TOUJOURS une zone — il projette ``ctx.areas``,
-    qui contient la zone par défaut même quand personne n'a encore tracé quoi
-    que ce soit. Un premier « Enregistrer le calepinage » fait avant tout
-    dessin écrit donc ``{outline: [], zones: [{vertices: []}]}`` : un layout
-    qui ne dit RIEN de la géométrie, mais que l'ancien test (« ``zones``
-    présent ? ») lisait comme un calepinage déjà dessiné. Le tracé du client
-    était alors jeté (``outline: []``), l'atelier ne trouvait ni pan ni
-    contour, retombait sur l'épingle seule et affichait « tracez le contour du
-    toit pour lancer le calcul » — aucun pan, aucune recommandation, aucune
-    requête de rendement.
-    """
-    if not isinstance(layout, dict):
-        return False
-    contour = layout.get('outline')
-    if isinstance(contour, list) and len(contour) >= 3:
-        return True
-    for cle in ('zones', 'areas'):
-        zones = layout.get(cle)
-        if not isinstance(zones, list):
-            continue
-        for zone in zones:
-            sommets = zone.get('vertices') if isinstance(zone, dict) else None
-            if isinstance(sommets, list) and len(sommets) >= 3:
-                return True
-    return False
-
-
 def _geometrie(calepinage, contexte_devis, geo=None):
     """``{source, roof_layout, pin, outline, contour_client}``.
 
@@ -1063,10 +1138,10 @@ def _geometrie(calepinage, contexte_devis, geo=None):
         #
         # 20/09/2026 — « ne dit RIEN de la géométrie » se DÉCIDE désormais sur
         # les sommets, pas sur la présence d'une clé : voir
-        # ``_layout_decrit_une_geometrie`` (une zone SANS sommet ne décrit
+        # ``layout_decrit_une_geometrie`` (une zone SANS sommet ne décrit
         # aucun toit, et c'est exactement ce qu'écrit un premier
         # enregistrement fait avant tout dessin).
-        if not _layout_decrit_une_geometrie(layout):
+        if not layout_decrit_une_geometrie(layout):
             outline = contour_client or []
             if pin is None:
                 pin = geo['pin']
@@ -1130,7 +1205,7 @@ def _cible_du_lead(calepinage):
     company = getattr(calepinage, 'company', None)
     if company is None or not getattr(calepinage, 'lead_id', None):
         return None
-    lead = get_company_lead(company, calepinage.lead_id)
+    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
     if lead is None:
         return None
     modifie = getattr(lead, 'date_modification', None)
@@ -1226,8 +1301,8 @@ def detail_calepinage(calepinage, request=None):
         'id': calepinage.pk,
         'reference': reference_calepinage(calepinage),
         'nom': _texte(getattr(calepinage, 'titre', '')) or str(calepinage),
-        'statut': calepinage.statut,
-        'statut_libelle': calepinage.get_statut_display(),
+        'statut': statut_derive(calepinage),
+        'statut_libelle': LIBELLES_STATUT[statut_derive(calepinage)],
         'cree_le': _horodatage(getattr(calepinage, 'created_at', None)),
         'modifie_le': _horodatage(getattr(calepinage, 'updated_at', None)),
         'cree_par': _personne(getattr(calepinage, 'cree_par', None)),
@@ -1252,6 +1327,8 @@ def detail_calepinage(calepinage, request=None):
         # CIQ136 — contraintes de site du PROJET ({} = aucune).
         'contraintes_site': getattr(calepinage, 'contraintes_site', None)
         or {},
+        # ACAL294 — les champs personnalisés de la société (objet | null).
+        'custom_data': getattr(calepinage, 'custom_data', None),
         'permissions': _permissions(calepinage, request),
     }
 
@@ -1298,21 +1375,14 @@ def _personne(user):
 
 
 def _responsable(calepinage, company):
-    """Le responsable du CALEPINAGE, sinon celui du LEAD, sinon ``None``.
+    """Le responsable du CALEPINAGE — LA colonne, ou ``None``.
 
-    CALX406 — le calepinage porte désormais SON responsable (le champ
-    ``Calepinage.responsable``, saisi) : il prime. À défaut — tout calepinage
-    existant, et tout calepinage qu'on n'a confié à personne — on rend, comme
-    avant, le responsable du lead rattaché : la personne qui répond réellement
-    du dossier. Jamais un compte deviné, jamais un prénom codé en dur (règle
-    fondateur) : ``None`` quand ni l'un ni l'autre n'existe.
+    ACAL297 — la colonne est posée à la création (propriétaire du lead,
+    ``creation.responsable_par_defaut``) et rattrapée pour l'existant par la
+    migration 0030 : le détail, la liste, le filtre ``?responsable=`` et la
+    vue restreinte lisent la MÊME valeur, jamais un repli recalculé.
     """
-    propre = getattr(calepinage, 'responsable', None)
-    if propre is not None:
-        return _personne(propre)
-    lead = _lead_objet(calepinage, company)
-    return _personne(getattr(lead, 'owner', None)) if lead is not None \
-        else None
+    return _personne(getattr(calepinage, 'responsable', None))
 
 
 # ACAL295 — la clé ``CLE_VUE_RESTREINTE``, le réglage
@@ -1362,7 +1432,14 @@ def _notifier_la_note(calepinage, auteur, texte):
 def _lead_objet(calepinage, company):
     from apps.crm.selectors import get_company_lead
 
-    return get_company_lead(company, getattr(calepinage, 'lead_id', None))
+    return get_company_lead(
+        company, getattr(calepinage, 'lead_id', None), avec_corbeille=True)
+
+
+def _lead_supprime(calepinage, company):
+    """ACAL178 — ``True`` quand le lead rattaché est dans la corbeille."""
+    lead = _lead_objet(calepinage, company)
+    return bool(lead is not None and getattr(lead, 'is_deleted', False))
 
 
 def _lead(calepinage, company):
@@ -1373,7 +1450,8 @@ def _lead(calepinage, company):
     nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
                                getattr(lead, 'prenom', '') or ''] if p).strip()
     return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}',
-            'ville': _texte(getattr(lead, 'ville', ''))}
+            'ville': _texte(getattr(lead, 'ville', '')),
+            'supprime': bool(getattr(lead, 'is_deleted', False))}
 
 
 def _client(calepinage):
@@ -1459,16 +1537,23 @@ def _compteur_variantes(calepinage):
 
 def _permissions(calepinage, request):
     """Ce que L'APPELANT a le droit de faire — jamais un drapeau décoratif."""
+    from ..services.archivage import raison_refus_archivage
+
     user = getattr(request, 'user', None) if request is not None else None
     peut_gerer = bool(user) and PeutGererCalepinage().has_permission(
         request, None)
     return {
         'peut_modifier': peut_gerer,
-        'peut_supprimer': peut_gerer and not getattr(calepinage, 'devis_id',
-                                                     None),
+        # ACAL120 — « supprimer » = ARCHIVER (DELETE est 405) : le MÊME
+        # prédicat que ``services.archivage.archiver``.
+        'peut_supprimer': peut_gerer and not raison_refus_archivage(
+            calepinage),
         'peut_retenir_variante': peut_gerer and bool(
             getattr(calepinage, 'variantes', None)
             and calepinage.variantes.exists()),
+        # ACAL171 (D-ACAL-9) — dérogation électrique : calepinage_approuver.
+        'peut_deroger': bool(user) and PeutApprouverCalepinage(
+            ).has_permission(request, None),
     }
 
 

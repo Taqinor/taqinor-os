@@ -19,3 +19,6 @@ Reda's decisions on the calepinage module (audit D3, Groupe ACAL, dossier `docs/
 - **D-ACAL-22** kit line removed by hand stays removed. **D-ACAL-25** archived = readable with « archivé ». **D-ACAL-26** « Retirer le fichier météo ». **D-ACAL-27** multi-pan capture on the public site. **D-ACAL-28** survey chain recales the chosen side.
 
 How to apply: build through `work on the plan audit_calepinage` (and the other PLAN_AUDIT_* files of the group); the full list incl. the conventional defaults is in the group header of `docs/plans/PLAN_AUDIT_CALEPINAGE.md`. See [[qjr5-decisions-fondateur]], [[devis-parcours-modifiable-qjr5]].
+
+- 07/10/2026 — approbation exigée : retenir puis approuver ; la seule porte est la publication (générer/resynchroniser) ; remplace la règle de retenue de CALX348/ACAL114. Le verdict électrique bloquant (ACAL172) refuse toujours une retenue.
+- 07/10/2026 — auto-approbation : interdite sauf si l'auteur est le SEUL approbateur actif de la société (journalisé « auto-approuvé (seul approbateur) »)

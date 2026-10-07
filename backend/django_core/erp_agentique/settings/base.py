@@ -799,6 +799,10 @@ SPECTACULAR_SETTINGS = {
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
+        # ALEA31 — `portee` est servi par UserSerializer ET MeSerializer
+        # (/auth/me/) : même jeu, deux composants → le générateur ne savait
+        # plus nommer l'enum (« PorteeB4dEnum »). On garde le nom historique.
+        'UserPorteeEnum': 'authentication.models.CustomUser.PORTEE_CHOICES',
         # CIQ (vague 1, 05/10/2026) — deux jeux neufs partagés par deux champs
         # chacun : oui / non (crm.Lead `groupe_electrogene` ET
         # `export_ue_declare`, même Lead.OuiNon) et ac / dc
@@ -1173,6 +1177,8 @@ CELERY_TASK_ROUTES = {
     # NTP2P34 — recalcul quotidien des scores de risque fournisseur (NTP2P8).
     'stock.recompute_scores_risque': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
+    # ALEA1 — réveil saisonnier CAD74 (beat juin → septembre).
+    'crm.poser_reveils_saisonniers': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
     'ventes.pre_echeance_reminders': {'queue': 'scheduled'},
     'ventes.devis_a_facturer_reminder': {'queue': 'scheduled'},

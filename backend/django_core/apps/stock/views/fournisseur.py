@@ -39,6 +39,25 @@ from authentication.permissions import (  # noqa: F401
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+# ASTK190 — valeurs reconnues comme « vrai » par les décisions
+# validation/rejet (decider-candidature, valider-dossier).
+VALEURS_VRAIES = (True, 'true', 'True', '1', 1, 'on')
+
+
+def parse_bool_strict(valeur):
+    """ASTK190 — parse STRICT d'un paramètre de décision (true/false).
+
+    ``None`` (paramètre ABSENT) → ``None`` : l'appelant répond 400, jamais un
+    défaut silencieux (un corps vide validait un dossier d'onboarding).
+    ``True``/``'true'``/``'1'``/``'on'`` → ``True`` ; toute autre valeur
+    (``False``, ``'false'``, ``'0'``…) → ``False`` — jamais une validation par
+    simple vérité Python (``bool('false')`` vaut ``True``). Helper UNIQUE de
+    ``decider-candidature`` et ``valider-dossier``."""
+    if valeur is None:
+        return None
+    return valeur in VALEURS_VRAIES
+
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -268,12 +287,11 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         """
         from ..services import decider_candidature_fournisseur
         fournisseur = self.get_object()
-        brut = request.data.get('valider')
-        if brut is None:
+        valider = parse_bool_strict(request.data.get('valider'))
+        if valider is None:
             return Response(
                 {'detail': 'Le champ « valider » (true/false) est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        valider = brut in (True, 'true', 'True', '1', 1, 'on')
         decider_candidature_fournisseur(fournisseur, valider=valider)
         fournisseur.refresh_from_db(fields=['statut_validation'])
         return Response({
@@ -321,17 +339,19 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         supprimé : la ligne reste, l'accès cesse immédiatement)."""
         from ..services import revoquer_acces_compte_fournisseur
         fournisseur = self.get_object()
-        compte, nb = revoquer_acces_compte_fournisseur(
-            request.user.company, fournisseur.pk)
-        if compte is None:
+        # ASTK179 — compte ET jetons à lien public coupés ensemble.
+        compte, nb, jetons_revoques = revoquer_acces_compte_fournisseur(
+            request.user.company, fournisseur.pk, avec_jetons=True)
+        if compte is None and not jetons_revoques:
             return Response(
                 {'detail': "Ce fournisseur n'a aucun accès portail à "
                            'révoquer.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response({
             'fournisseur_id': fournisseur.pk,
-            'actif': compte.actif,
+            'actif': compte.actif if compte is not None else False,
             'comptes_desactives': nb,
+            'jetons_revoques': jetons_revoques,
             'detail': "L'accès portail de ce fournisseur est fermé.",
         })
 

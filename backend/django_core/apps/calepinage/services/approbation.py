@@ -38,7 +38,8 @@ APPROUVE, REFUSE = 'approuve', 'refuse'
 DECISIONS = {APPROUVE: 'approuvé', REFUSE: 'refusé'}
 
 #: Clé, DANS la section ``presets`` des réglages société (CAL197), qui rend
-#: l'approbation OBLIGATOIRE avant de retenir une variante (CALX348). Absente
+#: l'approbation OBLIGATOIRE avant PUBLICATION (devis / pièces d'exécution ;
+#: décision fondateur 07/10/2026 : plus à la retenue, ex-CALX348). Absente
 #: ou différente de ``True`` ⇒ ``exigee: false`` : comportement d'aujourd'hui.
 CLE_EXIGEE = 'approbation_exigee'
 
@@ -150,8 +151,8 @@ def _suggestions_en_attente(roof_layout):
 
 
 def approbation_exigee(company):
-    """``True`` si la société exige l'approbation avant de retenir une
-    variante (CALX348). Lecture pure ; ``False`` par défaut (D12)."""
+    """``True`` si la société exige l'approbation avant de publier (devis,
+    pièces d'exécution — décision fondateur 07/10/2026 ; plus à la retenue). Lecture pure ; ``False`` par défaut (D12)."""
     from ..selectors import parametres_de_societe
 
     presets = parametres_de_societe(company).get('presets') or {}
@@ -175,14 +176,36 @@ def _decideur(calepinage, decide_par_id):
             'nom_complet': nom or getattr(user, 'username', '')}
 
 
+def _decision(calepinage):
+    decision = getattr(calepinage, 'approbation', None)
+    return decision if isinstance(decision, dict) else {}
+
+
+def _empreinte_approuvee(calepinage):
+    """ACAL114 (D-ACAL-11) — l'empreinte IMPRIMÉE approuvée, ou ``''``."""
+    valeur = _decision(calepinage).get('empreinte_approuvee')
+    return valeur if isinstance(valeur, str) else ''
+
+
+def approbation_perimee(calepinage):
+    """ACAL114 — un ACCORD dont l'empreinte imprimée a changé depuis (ou
+    donné avant le suivi d'empreinte : « à redécider ») est PÉRIMÉ."""
+    if _decision(calepinage).get('etat') != APPROUVE:
+        return False
+    approuvee = _empreinte_approuvee(calepinage)
+    return not approuvee or approuvee != (
+        getattr(calepinage, 'layout_hash', '') or '')
+
+
 def etat_approbation(calepinage):
-    """``{etat, decide_par, decide_le, motif, exigee}`` — le contrat CALX334.
+    """``{etat, decide_par, decide_le, motif, exigee, perimee,
+    empreinte_approuvee}`` — le contrat CALX334 (+ ACAL6/ACAL114).
 
     ``etat`` vaut ``None`` tant que personne n'a décidé ; ``exigee`` reflète
-    le réglage société (jamais supposé).
+    le réglage société (jamais supposé) ; ``perimee`` dit qu'un accord ne
+    couvre plus la conception imprimée d'aujourd'hui.
     """
-    decision = getattr(calepinage, 'approbation', None)
-    decision = decision if isinstance(decision, dict) else {}
+    decision = _decision(calepinage)
     etat = decision.get('etat')
     etat = etat if etat in DECISIONS else None
     return {
@@ -192,13 +215,63 @@ def etat_approbation(calepinage):
         'decide_le': decision.get('decide_le') if etat else None,
         'motif': (decision.get('motif') or '') if etat else None,
         'exigee': approbation_exigee(getattr(calepinage, 'company', None)),
+        'perimee': approbation_perimee(calepinage),
+        'empreinte_approuvee': _empreinte_approuvee(calepinage) if etat else '',
     }
 
 
-def est_approuve(calepinage):
-    """``True`` si la dernière décision enregistrée est un ACCORD."""
-    decision = getattr(calepinage, 'approbation', None)
-    return isinstance(decision, dict) and decision.get('etat') == APPROUVE
+def est_approuve(calepinage, *, empreinte=None):
+    """``True`` si la dernière décision est un ACCORD NON PÉRIMÉ.
+
+    ACAL114 — ``empreinte`` (imprimée) : l'accord doit porter sur CETTE
+    conception (ex. la variante qu'on retient, D-ACAL-2) ; absente, sur la
+    conception courante du calepinage.
+    """
+    if _decision(calepinage).get('etat') != APPROUVE:
+        return False
+    approuvee = _empreinte_approuvee(calepinage)
+    attendue = (empreinte if empreinte is not None
+                else (getattr(calepinage, 'layout_hash', '') or ''))
+    return bool(approuvee) and approuvee == attendue
+
+
+#: ACAL114 (D-ACAL-19) — le statut DÉRIVÉ (lecture seule) et ses libellés.
+STATUT_BROUILLON, STATUT_VALIDE, STATUT_PERIME = (
+    'brouillon', 'valide', 'perime')
+LIBELLES_STATUT = {STATUT_BROUILLON: 'Brouillon', STATUT_VALIDE: 'Validé',
+                   STATUT_PERIME: 'Périmé'}
+
+
+def statut_derive(calepinage):
+    """``brouillon`` | ``valide`` (approuvé non périmé) | ``perime``
+    (approuvé puis empreinte imprimée changée) — jamais stocké."""
+    if est_approuve(calepinage):
+        return STATUT_VALIDE
+    if _decision(calepinage).get('etat') == APPROUVE:
+        return STATUT_PERIME
+    return STATUT_BROUILLON
+
+
+def annoter_statut_derive(queryset):
+    """ACAL114 — annote ``statut_derive`` (même règle que
+    :func:`statut_derive`, en SQL) pour filtrer ``?statut=`` et ordonner."""
+    from django.db.models import Case, CharField, F, Q, Value, When
+    from django.db.models.fields.json import KeyTextTransform
+
+    if 'statut_derive' in queryset.query.annotations:
+        return queryset
+    return (queryset
+            .annotate(_appr_etat=KeyTextTransform('etat', 'approbation'),
+                      _appr_empreinte=KeyTextTransform(
+                          'empreinte_approuvee', 'approbation'))
+            .annotate(statut_derive=Case(
+                When(Q(_appr_etat=APPROUVE)
+                     & Q(_appr_empreinte=F('layout_hash'))
+                     & ~Q(_appr_empreinte=''),
+                     then=Value(STATUT_VALIDE)),
+                When(_appr_etat=APPROUVE, then=Value(STATUT_PERIME)),
+                default=Value(STATUT_BROUILLON),
+                output_field=CharField())))
 
 
 def _valider(decision, motif, roof_layout):
@@ -226,6 +299,14 @@ def _valider(decision, motif, roof_layout):
                 f"humaine — {champs}. Acceptez-les ou refusez-les dans "
                 "l'atelier, puis décidez.",
                 champ=en_attente[0]['champ'], en_attente=en_attente)
+        # ACAL114 — une conception VIDE (aucun pan, aucun contour) ne
+        # s'approuve pas : il n'y a rien à relire.
+        from .layout import layout_decrit_une_geometrie
+
+        if not layout_decrit_une_geometrie(roof_layout):
+            raise ApprobationRefusee(
+                'Rien à approuver : dessinez la toiture',
+                champ='roof_layout')
     return motif
 
 
@@ -250,21 +331,137 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     """
     from django.utils import timezone
 
+    from .verrou import verifier_ecriture_autorisee
+
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    verifier_ecriture_autorisee(calepinage, champ='approbation')
     motif = _valider(decision, motif,
                      getattr(calepinage, 'roof_layout', None))
+    auto_approbation = False
+    if decision == APPROUVE:
+        # ACAL303 (D-ACAL-11) — SÉPARATION DES TÂCHES : qui a conçu ou porte
+        # la conception ne l'approuve pas (un REFUS reste admis). RIEN n'est
+        # écrit. Décision fondateur 07/10/2026 : sauf s'il est le SEUL
+        # approbateur actif de la société (journalisé).
+        auto_approbation = _refuser_auto_approbation(calepinage, user)
+    # ACAL172 (D-ACAL-9) — un ACCORD lit le verdict électrique : bloquant ⇒
+    # refus nommé, rien n'est écrit ; indéterminé ⇒ accord AVEC avertissement.
+    avertissement = (_verdict_electrique_avant_accord(calepinage)
+                     if decision == APPROUVE else '')
     horodatage = maintenant or timezone.now()
     calepinage.approbation = {
         'etat': decision,
         'decide_par_id': getattr(user, 'pk', None),
         'decide_le': horodatage.isoformat(),
         'motif': motif,
+        # ACAL114 (D-ACAL-11) — l'accord porte sur l'empreinte IMPRIMÉE
+        # d'aujourd'hui : qu'elle change, et l'accord est périmé.
+        'empreinte_approuvee': getattr(calepinage, 'layout_hash', '') or '',
     }
     calepinage.save(update_fields=['approbation', 'updated_at'])
 
     from .journal import noter
 
     texte = f"Conception {DECISIONS[decision]} (approbation)"
+    if auto_approbation:
+        texte += f" — {MENTION_SEUL_APPROBATEUR}"
     if motif:
         texte += f" — motif : {motif}"
+    if avertissement:
+        texte += f" — {avertissement}"
     noter(calepinage, texte, user=user)
     return etat_approbation(calepinage)
+
+
+#: Décision fondateur 07/10/2026 — la trace d'une auto-approbation admise
+#: parce que l'auteur est le SEUL approbateur actif de la société.
+MENTION_SEUL_APPROBATEUR = 'auto-approuvé (seul approbateur)'
+
+#: ACAL303 — le refus d'une auto-approbation (champ ``decision``).
+MESSAGE_AUTO_APPROBATION = (
+    "Vous avez conçu ou portez cette conception : l'approbation revient à "
+    "un autre relecteur.")
+
+
+def _concepteurs(calepinage):
+    """Les comptes qui ONT CONÇU ou PORTENT la conception : l'auteur du
+    calepinage, son responsable, l'auteur de sa DERNIÈRE version."""
+    from ..models import CalepinageVersion
+
+    ids = {getattr(calepinage, 'cree_par_id', None),
+           getattr(calepinage, 'responsable_id', None)}
+    if getattr(calepinage, 'pk', None):
+        derniere = (CalepinageVersion.objects
+                    .filter(calepinage_id=calepinage.pk)
+                    .order_by('-created_at', '-id')
+                    .values_list('cree_par_id', flat=True).first())
+        ids.add(derniere)
+    ids.discard(None)
+    return ids
+
+
+def _autre_approbateur_actif(calepinage, user):
+    """Vrai si la société du calepinage compte un AUTRE compte interne
+    ACTIF qui porte ``calepinage_approuver`` (même règle que la garde HTTP
+    ``PeutApprouverCalepinage``)."""
+    from django.contrib.auth import get_user_model
+
+    from core.permissions import _user_has_or_legacy
+
+    from ..permissions import CAL_APPROUVER
+
+    autres = (get_user_model().objects
+              .filter(company_id=calepinage.company_id, is_active=True)
+              .exclude(pk=getattr(user, 'pk', None))
+              .select_related('role'))
+    return any(getattr(autre, 'portee', 'interne') == 'interne'
+               and _user_has_or_legacy(autre, CAL_APPROUVER)
+               for autre in autres)
+
+
+def _refuser_auto_approbation(calepinage, user):
+    """ACAL303 — ``ApprobationRefusee`` (``decision``) quand ``user`` a conçu
+    ou porte la conception.
+
+    Décision fondateur 07/10/2026 : l'auto-approbation reste interdite SAUF
+    quand ``user`` est le SEUL approbateur actif de la société — elle passe
+    alors et rend ``True`` (à journaliser « auto-approuvé (seul
+    approbateur) »). Rend ``False`` pour une approbation ordinaire.
+    """
+    if getattr(user, 'pk', None) not in _concepteurs(calepinage):
+        return False
+    if _autre_approbateur_actif(calepinage, user):
+        raise ApprobationRefusee(MESSAGE_AUTO_APPROBATION, champ='decision')
+    return True
+
+
+def _verdict_electrique_avant_accord(calepinage):
+    """ACAL172 — refuse d'approuver une conception électriquement BLOQUÉE.
+
+    Lit ``electrique.verdict_de_conception`` (la lecture unique des
+    bloquants). Rend l'avertissement à consigner quand le verdict est
+    indéterminé, ``''`` sinon.
+
+    Raises:
+        ApprobationRefusee: au moins un bloquant (champ ``electrique``).
+    """
+    from .electrique import TemperaturesInvalides, verdict_de_conception
+
+    try:
+        verdict = verdict_de_conception(calepinage)
+    except TemperaturesInvalides as refus:
+        # Lot 2 critique #19 — une saisie de températures incohérente est un
+        # refus NOMMÉ (400), jamais un 500.
+        raise ApprobationRefusee(
+            "Cette conception ne peut pas être approuvée : " + str(refus),
+            champ=getattr(refus, 'champ', '') or 'temperatures') from refus
+    if verdict['bloquants']:
+        raise ApprobationRefusee(
+            "Cette conception ne peut pas être approuvée : verdict "
+            "électrique bloquant — "
+            + ' ; '.join(b['libelle'] for b in verdict['bloquants']),
+            champ='electrique')
+    if verdict['verdict'] == 'indetermine':
+        return ("verdict électrique indéterminé : "
+                + ' ; '.join(verdict['manquantes']))
+    return ''

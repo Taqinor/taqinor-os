@@ -137,9 +137,9 @@ def comptes_dormants(company, seuil_jours):
 
 
 # NTMOB6 — accueil mobile PAR DÉFAUT selon le rôle métier (nom du Role fin).
-# Rôles composés (« Commercial responsable », « Technicien responsable »)
-# retombent sur l'accueil de base de leur famille via un préfixe — aucun
-# accueil mobile dédié n'existe encore pour ces variantes « responsable ».
+# Rôles composés (« Commercial responsable », « Technicien responsable ») :
+# accueil d'équipe dédié par nom EXACT (ALEA31) ; les autres variantes
+# retombent sur l'accueil de base de leur famille via un préfixe.
 _MOBILE_HOME_EXACT = {
     'Directeur': '/mobile/cockpit',
     'Administrateur': '/mobile/cockpit',
@@ -148,6 +148,12 @@ _MOBILE_HOME_EXACT = {
     # EXACTE, lue avant les préfixes — sans elle il retomberait sur le préfixe
     # « Commercial » → `/mobile/commercial`, un écran qu'il ne voit pas.
     'Commercial terrain': '/visites',
+    # ALEA31 — les variantes « responsable » ont leur accueil d'équipe dédié
+    # (NTMOB25/26). Cette table est désormais la SEULE : le frontend lit la
+    # route suggérée dans `/auth/me/` (`mobile_home_route_suggeree`), il
+    # n'en garde plus de copie.
+    'Commercial responsable': '/mobile/equipe-commerciale',
+    'Technicien responsable': '/mobile/equipe-terrain',
 }
 _MOBILE_HOME_PREFIX = (
     ('Technicien', '/ma-journee'),
@@ -180,4 +186,7 @@ MOBILE_HOME_ALLOWED_ROUTES = frozenset(
     # À NE PAS confondre avec `/ma-journee`, la journée des TECHNICIENS
     # (post-vente), qui appartient à `apps.installations` — deux métiers, deux
     # routes, jamais fusionnées.
-    {'', '/ma-journee', '/mobile/commercial', '/mobile/cockpit', '/visites'})
+    # ALEA31 — les accueils d'équipe (NTMOB25/26), suggérés par
+    # `default_mobile_home_route` : sans eux, leur persistance était refusée.
+    {'', '/ma-journee', '/mobile/commercial', '/mobile/cockpit', '/visites',
+     '/mobile/equipe-commerciale', '/mobile/equipe-terrain'})

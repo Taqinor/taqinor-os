@@ -62,10 +62,12 @@ const crud = makeResourceFactory(api, '/calepinage')
 // sans lui, un nom dérivé de la source évite un POST refusé pour nom vide.
 // Fonction PURE (aucun appel réseau) : la garde CAL33 exige que chaque
 // `api.<verbe>(` soit le corps direct d'une fonction fléchée.
-function corpsDeCopieVariante(source, nom) {
+// ACAL109 — la copie n'emporte JAMAIS le `resultat` : une simulation décrit la
+// conception qui l'a produite, pas sa copie (elle se relance).
+export function corpsDeCopieVariante(source, nom) {
   const src = source ?? {}
   const nomFinal = nom || (src.nom ? `${src.nom} (copie)` : 'Copie de variante')
-  return { nom: nomFinal, roof_layout: src.roof_layout, resultat: src.resultat }
+  return { nom: nomFinal, roof_layout: src.roof_layout }
 }
 
 const calepinageApi = {
@@ -75,7 +77,9 @@ const calepinageApi = {
      par le serveur fait ouvrir le mauvais objet — on n'en invente donc aucun
      autre ici. */
   calepinages: {
-    ...crud('calepinages'),
+    // ACAL120 — les SEULES méthodes CRUD servies : un calepinage ne se
+    // supprime pas (DELETE/PUT ⇒ 405) — archiver est l'unique geste.
+    ...(({ list, get, create, update }) => ({ list, get, create, update }))(crud('calepinages')),
 
     // CAL199/CAL246 — les calepinages marqués MODÈLE de la société (drapeau
     // `records.Tag`, jamais un champ propre). Lecture pure.
@@ -105,6 +109,12 @@ const calepinageApi = {
     calerPhoto: (id, photoId, coins) =>
       api.patch(`${pivot(id)}photos/${photoId}/calage/`,
         { calage: coins ? { coins } : null }),
+    // ACAL203 — corriger (genre, prise_le, legende) ou retirer une photo de site
+    // (ACAL202 : PATCH → {photo, photos} ; DELETE → {photos}).
+    modifierPhoto: (id, photoId, corps) =>
+      api.patch(`${pivot(id)}photos/${photoId}/`, corps),
+    supprimerPhoto: (id, photoId) =>
+      api.delete(`${pivot(id)}photos/${photoId}/`),
 
     // CAL20 — historique. La restauration REJOUE une version en en créant une
     // NOUVELLE : jamais une réécriture, jamais une suppression d'historique.
@@ -114,7 +124,8 @@ const calepinageApi = {
 
     // CAL21 — variantes. `retenir` est une ACTION (elle dé-retient la
     // précédente), jamais un PATCH de ressource — même patron qu'AO.
-    variantes: (id) => api.get(`${pivot(id)}variantes/`),
+    // ACAL109 — la clé `variantes` (GET liste brute, sans appelant) est
+    // retirée : la liste se lit par `comparer()`.
     retenirVariante: (id, varianteId) =>
       api.post(`${pivot(id)}variantes/${varianteId}/retenir/`),
 
@@ -309,6 +320,17 @@ const calepinageApi = {
     // frontière multipart. Le serveur écrit `underlay` par section et rend `{underlay,
     // empreinte_document}` ; 409 `document_modifie` si le jeton est périmé.
     envoyerFondPlan: (id, corps) => api.post(`${pivot(id)}fond-plan/`, corps), // ACAL
+    // ACAL109 — renommer (PATCH `{nom}`) et supprimer une variante ; le refus
+    // serveur (variante RETENUE) est affiché tel quel par l'écran.
+    modifierVariante: (id, varianteId, corps) => api.patch(`${pivot(id)}variantes/${varianteId}/`, corps), // ACAL
+    supprimerVariante: (id, varianteId) => api.delete(`${pivot(id)}variantes/${varianteId}/`), // ACAL
+    // ACAL113 (D-ACAL-17, contrat calepinage_simulation.json › corps_variante) — simuler UNE
+    // variante : le résultat est écrit SUR LA VARIANTE (202 + job, suivi par useSuiviJob).
+    simulerVariante: (id, varianteId) => api.post(`${pivot(id)}simuler/`, { variante_id: varianteId, forcer: true }), // ACAL
+    // ACAL268 — retirer le relevé de pose d'un pan (ligne ORPHELINE comprise) :
+    // DELETE pose-reelle/<zone_id>/ → 204 ; 404 {detail} sans relevé
+    // (contrat calepinage_asbuilt_ecarts.json › delete_pose_reelle).
+    supprimerPoseReelle: (id, zoneId) => api.delete(`${pivot(id)}pose-reelle/${encodeURIComponent(zoneId)}/`), // ACAL — libellés hérités (« Toit N/E », « Pan 1.2 ») encodés
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
@@ -359,6 +381,18 @@ const calepinageApi = {
     enregistrerProfilsTypes: (profils) =>
       api.put('/calepinage/parametres/profils-types/', { profils }),
   },
+
+  // ACAL — ACAL242 : les GABARITS des dossiers réglementaires de la société
+  // (contrat `gabarits_dossier_reglementaire.json`, porte ACAL238). `creer` part
+  // en multipart (`FormData` : champs + `pieces_attendues`/`champs` en JSON +
+  // `fichier` PDF) ; un 400 nomme le champ fautif, un 409 refuse de supprimer
+  // un gabarit utilisé.
+  gabarits: {
+    liste: () => api.get('/calepinage/gabarits-dossiers/'),
+    creer: (corps) => api.post('/calepinage/gabarits-dossiers/', corps),
+    modifier: (gabaritId, corps) => api.patch(`/calepinage/gabarits-dossiers/${gabaritId}/`, corps),
+    supprimer: (gabaritId) => api.delete(`/calepinage/gabarits-dossiers/${gabaritId}/`),
+  },
 }
 
 export default calepinageApi
@@ -370,3 +404,5 @@ export default calepinageApi
 // ACAL13 — contrat calepinage_photos.json (M0)
 // ACAL15 — contrat gabarits_dossier_reglementaire.json (M0)
 // ACAL21 — contrat calepinage_consommation_proposee.json (M0)
+// ACAL201 — l'URL d'un fichier servi par le proxy Django (chemin relatif + origine d'API).
+export { urlFichierCalepinage } from '../lib/calage/fichierCalepinage'

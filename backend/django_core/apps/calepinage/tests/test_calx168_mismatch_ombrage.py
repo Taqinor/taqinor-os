@@ -70,7 +70,7 @@ SEUIL = {'valeur': 0.5, 'source': 'societe',
 
 def layout_de(acces, *, pan='PAN-A'):
     """Un document de toiture v2 à un pan et ses accès solaires par module."""
-    return {'zones': [{'label': pan, 'geometry': {
+    return {'zones': [{'id': pan, 'label': pan, 'geometry': {
         'solarAccess': {'values': list(acces), 'method': dict(METHODE)}}}]}
 
 
@@ -127,7 +127,7 @@ class OmissionsNommees(SimpleTestCase):
     def test_sans_acces_solaire(self):
         contexte = contexte_de([1.0, 0.4])
         contexte['ombrage']['layout'] = {'zones': [
-            {'label': 'PAN-A', 'geometry': {}}]}
+            {'id': 'PAN-A', 'label': 'PAN-A', 'geometry': {}}]}
         serie, etape = mismatch_ombrage.appliquer(SERIE, contexte)
         self.assertIs(serie, SERIE)
         self.assertIn(MOTIF_SANS_ACCES, etape['motif_omission'])

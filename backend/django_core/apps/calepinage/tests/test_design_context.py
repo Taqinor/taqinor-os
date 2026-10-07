@@ -35,8 +35,8 @@ CONTRAT = json.loads(
 #: ACAL5 (forme_serveur ``partielle``) a posé ces clés avant leurs moitiés
 #: back : chaque tâche nommée sert sa clé et retire son entrée ; la table
 #: vide, ``forme_serveur`` redevient ``complete``.
+# ACAL178 (calepinage.lead_supprime) est livrée : sa clé est servie.
 EN_ATTENTE = {
-    'calepinage.lead_supprime': 'ACAL178',
     'geometrie.contour_utilisable': 'ACAL250',
     'geometrie.source_repere': 'ACAL250',
 }

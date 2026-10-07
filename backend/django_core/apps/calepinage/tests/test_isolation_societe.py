@@ -187,6 +187,9 @@ class BalayageIsolationTest(BaseApiCalepinage):
             'job_id': (self.job_etranger.pk if etranger else 0),
             'photo_id': (self.photo_etrangere.pk if etranger else 0),
             'releve_id': (self.releve_etranger.pk if etranger else 0),
+            # ACAL267 — DELETE pose-reelle/<zone_id>/ : un identifiant de pan
+            # quelconque (le calepinage borne déjà la société).
+            'zone_id': 'z1',
         }
         # ACAL229 — un ``url_path`` à extension s'écrit ``r'nom\.ext'``
         # (point ÉCHAPPÉ dans la regex du routeur) : l'URL réellement servie
@@ -200,6 +203,7 @@ class BalayageIsolationTest(BaseApiCalepinage):
             # part en 301 au lieu du 404/403 que ce balayage exige, sans que
             # les deux gardes ci-dessous ne le voient (``(?P<`` avait disparu).
             chemin = chemin.replace(f'(?P<{nom}>[^/.]+)', str(valeur))
+            chemin = chemin.replace(f'(?P<{nom}>.+)', str(valeur))
             chemin = chemin.replace(f'<int:{nom}>', str(valeur))
             chemin = chemin.replace(f'<{nom}>', str(valeur))
         self.assertNotIn('(?P<', chemin,

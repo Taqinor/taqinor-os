@@ -92,7 +92,59 @@ function SourcePiece({ source }) {
   )
 }
 
-function Pieces({ pieces }) {
+/* ACAL242 — JOINDRE une pièce non fournie : multipart `{dossier|gabarit,
+   piece, fichier}` → la porte ACAL238 ; le serveur répond 201 et la relecture
+   la sert « fournie ». Un refus 400 est rendu SOUS la pièce qu'il concerne. */
+function JoindrePiece({ piece, dossier, calepinageId, onJoint }) {
+  const [fichier, setFichier] = useState(null)
+  const [erreur, setErreur] = useState(null)
+  const [enVol, setEnVol] = useState(false)
+  const joindre = () => {
+    if (!fichier) return
+    setErreur(null)
+    setEnVol(true)
+    const corps = new FormData()
+    Object.entries(corpsDeGeneration(dossier)).forEach(([cle, valeur]) => corps.append(cle, valeur))
+    corps.append('piece', piece.code)
+    corps.append('fichier', fichier)
+    calepinageApi.calepinages.joindrePiece(calepinageId, corps)
+      .then(() => {
+        setFichier(null)
+        if (onJoint) onJoint()
+      })
+      .catch((err) => {
+        const donnees = err?.response?.data
+        setErreur(donnees && typeof donnees === 'object'
+          ? Object.values(donnees).map(messageErreur).join(' ')
+          : 'Pièce refusée par le serveur.')
+      })
+      .finally(() => setEnVol(false))
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="file"
+        aria-label={`Fichier de la pièce ${piece.intitule}`}
+        data-testid={`acal242-fichier-${piece.code}`}
+        onChange={(e) => setFichier(e.target.files?.[0] || null)}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        onClick={joindre}
+        disabled={!fichier || enVol}
+        data-testid={`acal242-joindre-${piece.code}`}
+      >
+        {enVol ? 'Envoi…' : 'Joindre'}
+      </Button>
+      {erreur
+        ? <p className="text-xs text-destructive" data-testid={`acal242-erreur-piece-${piece.code}`}>{erreur}</p>
+        : null}
+    </div>
+  )
+}
+
+function Pieces({ pieces, dossier, calepinageId, onJoint }) {
   if (!pieces?.length) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="cal196-pieces-vide">
@@ -127,6 +179,16 @@ function Pieces({ pieces }) {
             : null}
           {piece.message
             ? <p className="text-xs text-muted-foreground">{piece.message}</p>
+            : null}
+          {piece.etat !== 'fournie' && dossier
+            ? (
+              <JoindrePiece
+                piece={piece}
+                dossier={dossier}
+                calepinageId={calepinageId}
+                onJoint={onJoint}
+              />
+            )
             : null}
           <SourcePiece source={piece.source} />
         </li>
@@ -220,6 +282,26 @@ function ChampsDossier({ dossier, calepinageId, onEnregistre }) {
                 <p className="text-xs text-muted-foreground" data-testid={`cal196-message-${champ.code}`}>
                   {champ.message}
                 </p>
+              )
+              : null}
+            {/* ACAL242 — la saisie diffère de ce que dit le calepinage : la
+                valeur du calepinage est MONTRÉE, jamais écrite d'office —
+                elle ne remplace la saisie que si l'utilisateur la choisit. */}
+            {champ.ecart_saisie && champ.valeur_calepinage != null
+              ? (
+                <div className="flex flex-wrap items-center gap-2" data-testid={`acal242-ecart-${champ.code}`}>
+                  <span className="text-xs text-muted-foreground">
+                    {`Valeur du calepinage : ${champ.valeur_calepinage}`}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => poser(champ.code, String(champ.valeur_calepinage))}
+                    data-testid={`acal242-utiliser-${champ.code}`}
+                  >
+                    Utiliser la valeur du calepinage
+                  </Button>
+                </div>
               )
               : null}
             {/* L'ERREUR SOUS LE CHAMP QU'ELLE CONCERNE. */}
@@ -318,7 +400,25 @@ function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
           : 'Gabarit non déposé : aucun formulaire officiel n’est fabriqué sans le fichier de la société.'}
       </p>
 
-      <Pieces pieces={dossier.pieces} />
+      {dossier.genere_sur_conception_perimee === true
+        ? (
+          <p
+            role="alert"
+            className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive"
+            data-testid={`acal242-perime-${dossier.id}`}
+          >
+            Généré sur une conception périmée : la conception a changé depuis la
+            génération, régénérez le dossier.
+          </p>
+        )
+        : null}
+
+      <Pieces
+        pieces={dossier.pieces}
+        dossier={dossier}
+        calepinageId={calepinageId}
+        onJoint={onGenere}
+      />
       <ChampsDossier
         dossier={dossier}
         calepinageId={calepinageId}
@@ -371,6 +471,18 @@ function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
             ? `Dernière génération : ${formatDateTime(dossier.genere_le)}`
             : 'Jamais généré : —'}
         </p>
+        {/* ACAL242 — le document GED produit (id servi par le serveur). */}
+        {dossier.document != null
+          ? (
+            <a
+              className="text-xs underline"
+              href={`/ged?document=${dossier.document}`}
+              data-testid={`acal242-document-${dossier.id}`}
+            >
+              Ouvrir le document généré (GED)
+            </a>
+          )
+          : null}
       </div>
     </Card>
   )
@@ -390,7 +502,7 @@ function PackFrance({ pack }) {
             {pack.message}
           </p>
           <a
-            href="/calepinage/reglages"
+            href="/calepinage/reglages/gabarits"
             className="text-xs underline"
             data-testid={`acal309-depot-${pack.genre}`}
           >

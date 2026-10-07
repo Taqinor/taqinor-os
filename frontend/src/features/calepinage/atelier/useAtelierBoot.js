@@ -3,11 +3,12 @@ import api from '../../../api/axios'
 import ventesApi from '../../../api/ventesApi'
 import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
+import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
-  pinDepuisLead, leadToBuilderPayload, contexteToDevisPayload,
-  contexteCalepinageVersPayload, bankableFromDevis, reglagesAtelierDuContexte,
+  pinDepuisLead, leadToBuilderPayload,
+  contexteCalepinageVersPayload, bankableFromDevis,
   stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan, messageRefusRepere,
 } from './contexteAtelier.js'
 
@@ -35,7 +36,9 @@ export async function pousserAffectationAtelier(builder, calepinageId) {
 
 export function useAtelierBoot(ctx) {
   // Identifiants et drapeaux de mode, puis refs, puis setters d'état.
-  const { cibleId, calepinageId, devisId, leadId, estCalepinage, estDevis } = ctx
+  // ACAL37 — plus de mode devis écrivain : `devisId` = le devis SYNCHRONISÉ du flux
+  // `/ventes/devis/:id/design` (atelier calepinage), lu pour l'étude bancable (PV75).
+  const { cibleId, calepinageId, devisId, leadId, estCalepinage } = ctx
   const { builderApi, reducedMotion, utilisateurCourantId } = ctx
   const { setBrouillonPropose, setBuilderApiActuel, setBuilderReady, setContexte } = ctx
   const { setCatalogueIndisponible } = ctx
@@ -107,7 +110,7 @@ export function useAtelierBoot(ctx) {
           const res = await calepinageApi.calepinages.photos(calepinageId)
           const photo = (res?.data?.photos ?? [])
             .find((p) => String(p?.id) === String(fond.photoSiteId))
-          if (photo?.url) ressource = { url: photo.url, calagePhoto: photo.calage }
+          if (photo?.url) ressource = { url: urlFichierCalepinage(photo.url), calagePhoto: photo.calage }
         } catch {
           /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
         }
@@ -117,7 +120,7 @@ export function useAtelierBoot(ctx) {
           const res = await calepinageApi.calepinages.planImporte(calepinageId)
           const plan = res?.data
           if (plan?.url) {
-            ressource = { url: plan.url, tailleImage: tailleImagePlan(plan) }
+            ressource = { url: urlFichierCalepinage(plan.url), tailleImage: tailleImagePlan(plan) }
           }
         } catch {
           /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
@@ -251,109 +254,6 @@ export function useAtelierBoot(ctx) {
       setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis ».')
     }
 
-    // ── PV20 — boot MODE DEVIS : UN SEUL appel CRITIQUE (design-context) ────
-    // Identité + géométrie + cible + carte + `modifiable` arrivent ensemble :
-    // l'écran ne fait aucune requête de complément et ne devine aucun motif de
-    // lecture seule (il vient toujours du serveur).
-    async function bootDevis() {
-      // PV75 — étude bancable (P50/P90/PR/pertes), lancée EN PARALLÈLE du
-      // design-context : best-effort, ne bloque jamais le boot, n'invente rien
-      // si l'étude n'a jamais été lancée (endpoint backend `POST .../simuler/`,
-      // PV74 — pas encore câblé côté écran) ou n'est pas encore rangée. Le
-      // contexte agrégé ne porte pas `simulation` (contrat
-      // `devis_design_context.json`, PACT10) donc on la lit à part, sur le devis
-      // complet déjà exposé par `getDevisById`.
-      const bankablePromise = Promise.resolve()
-        .then(() => ventesApi.getDevisById(devisId))
-        .then((res) => bankableFromDevis(res.data))
-        .catch(() => null)
-
-      let ctx = null
-      try {
-        const res = await ventesApi.getDevisDesignContext(devisId)
-        ctx = res.data
-      } catch (err) {
-        if (cancelled) return
-        const code = err?.response?.status
-        setLoadError(
-          code === 404
-            ? 'Devis introuvable.'
-            : 'Impossible de charger le devis — réessayez.'
-        )
-        setStatus(`Devis introuvable (erreur ${code ?? '?'}).`)
-        return
-      }
-      if (cancelled) return
-      setContexte(ctx)
-
-      // L-SECT (fondateur 24/08/2026) — PV86 frappait ICI, AU BOOT, un
-      // ShareLink sans aucune option (`shareLinkDevis(devisId)`) pour afficher
-      // en permanence un panneau d'envoi en bas de page. Deux problèmes : le
-      // lien partait toujours aux DÉFAUTS (jamais le niveau ni les sections
-      // choisis), et ouvrir l'outil 3D mintait un lien public sans que
-      // personne ne l'ait demandé. L'envoi vit désormais dans la fiche lead
-      // (onglet Devis → « Envoyer au client ») : cet écran ne mint plus rien
-      // au chargement.
-
-      const carte = ctx?.carte ?? {}
-      if (!carte.available || !carte.maptilerKey) {
-        setStatus('Carte indisponible (clé MapTiler manquante côté serveur).')
-        setLoadError('Carte indisponible : la clé MapTiler n’est pas configurée sur le serveur ERP.')
-        return
-      }
-
-      const mod = await import('@roofbuilder')
-      const bankable = await bankablePromise
-      if (cancelled) return
-      window.__taqinorRoofBooted = true
-      // Un devis en lecture seule BOOTE quand même : on peut regarder le
-      // calepinage vendu — seule l'action d'enregistrement disparaît.
-      mod.initRoofToolPro8({
-        // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
-        // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
-        rendementPvgis: null,
-        maptilerKey: carte.maptilerKey,
-        mapboxToken: carte.mapboxToken || undefined,
-        reducedMotion: !!reducedMotion,
-        hydrate: { devis: contexteToDevisPayload(ctx) },
-        // L-MAP — le contour ORIGINAL du client (jamais celui, déjà édité, du
-        // layout courant), géo-référencé sur la carte (calque passif). MÊME
-        // garde `contourExploitable` que la légende/bascule (revue
-        // adversariale 26/08) : voir le commentaire jumeau dans `boot()`.
-        referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
-          ? ctx.geometrie.contour_client : null,
-        bankable,
-        // CALX104/CALX403 câblage — les gabarits d'obstacle (`zones_types`) et la
-        // largeur d'allée (`degagements`) de la société, lus DANS le contexte agrégé
-        // (`devis_design_context`, PACT10) : AUCUNE requête annexe n'est ajoutée ici,
-        // la garantie testée du mode DEVIS (« un seul appel ») reste vraie. Transmis
-        // TELS QUELS ; `null` = le contexte ne les porte pas, donc aucun gabarit
-        // proposé et aucune cote de repli.
-        reglagesAtelier: reglagesAtelierDuContexte(ctx),
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
-        // ACAL85 — la référence « non modifiée » se prend APRÈS l'hydratation.
-        onHydrationTerminee: () => { setSceneHydratee?.(true) },
-      })
-      // PV23bis — pré-remplit la barre de recherche d'adresse depuis
-      // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
-      // (`boot()`, `addrEl.value = leadData.ville`) : elle donne à la carte
-      // un point de départ tant que le devis n'a pas ENCORE de repère posé ;
-      // dès qu'un repère existe, l'hydratation ci-dessus centre déjà la carte
-      // et cette barre ne sert plus qu'à chercher ailleurs.
-      const addrEl = document.getElementById('rp9-address')
-      const adresse = [ctx?.devis?.client_adresse, ctx?.devis?.client_ville]
-        .map((v) => (v ?? '').trim())
-        .filter(Boolean)
-        .join(', ')
-      if (addrEl && adresse) addrEl.value = adresse
-      const reference = ctx?.devis?.reference ?? ''
-      setStatus(
-        ctx?.modifiable
-          ? `Devis ${reference} chargé. Ajustez le calepinage, puis « Enregistrer la conception ».`
-          : `Devis ${reference} en lecture seule — consultation du calepinage vendu.`
-      )
-    }
-
     // ── CAL37 — MODE CALEPINAGE : boot en UN SEUL appel (design-context) ──
     // Jumeau NEUTRE de `bootDevis` : le contrat
     // `calepinage_design_context.json` sert les SEPT mêmes clés, toujours
@@ -382,6 +282,14 @@ export function useAtelierBoot(ctx) {
         })
       // CALX104/CALX403 — même porte, même discipline best-effort.
       const reglagesPromise = chargerReglagesAtelier()
+      // PV75 / ACAL37 — l'étude bancable du devis SYNCHRONISÉ (flux
+      // `/ventes/devis/:id/design`), best-effort, jamais bloquante.
+      const bankablePromise = devisId
+        ? Promise.resolve()
+          .then(() => ventesApi.getDevisById(devisId))
+          .then((res) => bankableFromDevis(res.data))
+          .catch(() => null)
+        : Promise.resolve(undefined)
 
       let ctx = null
       try {
@@ -435,6 +343,7 @@ export function useAtelierBoot(ctx) {
         // (le module par défaut de l'atelier reste posé), jamais un boot raté.
         const modulesDisponibles = await modulesPromise
         const reglagesAtelier = await reglagesPromise
+        const bankable = await bankablePromise
         if (cancelled) return
         window.__taqinorRoofBooted = true
         const payload = contexteCalepinageVersPayload(ctx)
@@ -463,6 +372,8 @@ export function useAtelierBoot(ctx) {
           modulesDisponibles,
           // CALX104/CALX403 câblage — voir `boot()` plus haut.
           reglagesAtelier,
+          // PV75 / ACAL37 — l'étude bancable du devis synchronisé (absente hors flux devis).
+          ...(devisId ? { bankable } : {}),
           onApiReady: (a) => {
             builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a)
           },
@@ -539,8 +450,7 @@ export function useAtelierBoot(ctx) {
       await poursuivreBootCalepinage(undefined)
     }
 
-    if (estDevis) bootDevis()
-    else if (estCalepinage) bootCalepinage()
+    if (estCalepinage) bootCalepinage()
     else boot()
     return () => { cancelled = true }
     // CALX68 — `utilisateurCourantId` est un `useMemo([])` (CAL103) :
@@ -549,5 +459,5 @@ export function useAtelierBoot(ctx) {
     // le lit désormais pour la clé du brouillon).
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs de `ctx` : stables (useState/useRef du parent), liste d'origine inchangée
   }, [cibleId, devisId, leadId, calepinageId,
-    estDevis, estCalepinage, reducedMotion, utilisateurCourantId])
+    estCalepinage, reducedMotion, utilisateurCourantId])
 }

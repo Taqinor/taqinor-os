@@ -54,6 +54,12 @@ class CalepinageConfig(AppConfig):
         # ``apps/crm/receivers.py`` n'a aucune connaissance de ce module.
         from . import receivers  # noqa: F401
 
+        # ACAL300 — fournisseur DSR (loi 09-08) : ``core.dsr`` agrège sans
+        # importer le calepinage (patron ``ventes.dsr_provider``).
+        from . import dsr_provider
+
+        dsr_provider.register()
+
         # CAL208 — enregistre le restaurateur dédié de la corbeille
         # transverse (``apps.trash.registry``) : ``Calepinage`` ne porte
         # aucun drapeau de soft-delete, donc le repli GÉNÉRIQUE de

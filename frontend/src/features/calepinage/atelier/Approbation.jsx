@@ -6,6 +6,9 @@ import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
 /* ============================================================================
    CALX349 — L'ONGLET « APPROBATION » DE L'ATELIER.
    ----------------------------------------------------------------------------
@@ -44,10 +47,11 @@ function formaterDate(iso) {
     les suggestions automatiques en attente, chacune sous son chemin de
     document (`buildings[0].hauteurM`) — contrat `refus_suggestions_en_attente`. */
 function suggestionsEnAttente(erreurs) {
-  return Object.keys(erreurs).filter((champ) => !['decision', 'motif', 'detail'].includes(champ))
+  return Object.keys(erreurs)
+    .filter((champ) => !['decision', 'motif', 'detail', 'roof_layout'].includes(champ))
 }
 
-export default function Approbation({ calepinageId: idPropose = null }) {
+export default function Approbation({ calepinageId: idPropose = null, lectureSeule = false }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
   const peutApprouver = useHasPermission('calepinage_approuver')
@@ -113,7 +117,7 @@ export default function Approbation({ calepinageId: idPropose = null }) {
         <h3 className="text-sm font-semibold">Approbation</h3>
         {etat.exigee && (
           <p className="mt-1 text-xs text-muted-foreground" data-testid="calx349-exigee">
-            Une approbation est exigée avant de retenir une variante (réglage société).
+            Une approbation à jour est exigée avant de générer ou resynchroniser le devis et de produire les pièces d’exécution (réglage société). Retenir une variante se fait d’abord ; l’approbation se donne ensuite.
           </p>
         )}
         {etat.etat ? (
@@ -132,6 +136,17 @@ export default function Approbation({ calepinageId: idPropose = null }) {
             Motif : {etat.motif}
           </p>
         )}
+        {/* ACAL115 (D-ACAL-11) — un accord PÉRIMÉ (l'empreinte imprimée a
+            changé depuis) se DIT : il est à redécider. */}
+        {etat.etat === 'approuve' && etat.perimee && (
+          <p
+            role="status"
+            className="mt-2 rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+            data-testid="acal115-approbation-perimee"
+          >
+            {`Conception modifiée depuis l’approbation${etat.decide_le ? ` du ${formaterDate(etat.decide_le)}` : ''} : à redécider`}
+          </p>
+        )}
       </Card>
 
       {champsFautifs.length > 0 && (
@@ -141,6 +156,13 @@ export default function Approbation({ calepinageId: idPropose = null }) {
           className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
         >
           {`Décision refusée — à corriger : ${champsFautifs.join(', ')}`}
+        </p>
+      )}
+
+      {/* ACAL115 — le refus « conception vide » : le motif SERVEUR, tel quel. */}
+      {erreurs.roof_layout && (
+        <p role="alert" data-testid="acal115-refus-conception-vide" className="text-sm text-red-300">
+          {Array.isArray(erreurs.roof_layout) ? erreurs.roof_layout.join(' ') : erreurs.roof_layout}
         </p>
       )}
 
@@ -180,7 +202,8 @@ export default function Approbation({ calepinageId: idPropose = null }) {
             <Button
               type="button"
               variant="success"
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
+              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
               onClick={() => decider('approuve')}
               data-testid="calx349-approuver"
             >
@@ -189,7 +212,8 @@ export default function Approbation({ calepinageId: idPropose = null }) {
             <Button
               type="button"
               variant="destructive"
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
+              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
               onClick={() => decider('refuse')}
               data-testid="calx349-refuser"
             >

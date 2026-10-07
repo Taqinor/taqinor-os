@@ -17,10 +17,13 @@ import {
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import api from '../../api/axios'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import importApi from '../../api/importApi'
 import FactureForm from './FactureForm'
 import FactureKanbanBoard from './FactureKanbanBoard'
 import FactureRow from './factureList/FactureRow'
+// SPL212 — exports comptables (état, gestes, dialogues) extraits en factureList/.
+import useFactureCompta from './factureList/useFactureCompta.js'
+import ComptaDialogs from './factureList/ComptaDialogs.jsx'
 import { isPartiallyPaid, isOverdue, today, STATUTS_HORS_ENCAISSEMENT } from './factureList/factureHelpers.js'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
@@ -29,7 +32,7 @@ import {
   Skeleton, SkeletonTableRow,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -139,51 +142,6 @@ const TYPES_FACTURE = [
 
 // VX230 — MODES_PAIEMENT + défauts intelligents VX92/VX93 (localStorage) ont
 // suivi la modale de paiement dans le composant partagé PaiementDialog.jsx.
-
-// FE-SCA41 — au-delà du seuil (2 000 lignes par défaut, `VENTES_EXPORT_
-// ASYNC_ROW_THRESHOLD` côté serveur), journal-ventes / export-comptable
-// répondent 202 (job Celery accepté) au lieu du .xlsx synchrone habituel.
-// `asyncExportPayload` détecte ce cas — le JSON du 202 arrive encapsulé dans
-// un Blob puisque les deux appels utilisent `responseType: 'blob'` pour le
-// chemin synchrone — et `pollExportJobAndDownload` interroge le statut
-// jusqu'à `ready` (déclenche alors le téléchargement via l'URL MinIO
-// pré-signée renvoyée) ou `error`. Sous le seuil, `res.status` reste 200 et
-// `asyncExportPayload` renvoie `null` : rien ne change pour l'appelant.
-const EXPORT_POLL_INTERVAL_MS = 2000
-const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000
-
-async function asyncExportPayload(res) {
-  if (res.status !== 202) return null
-  try {
-    return JSON.parse(await res.data.text())
-  } catch {
-    return null
-  }
-}
-
-async function pollExportJobAndDownload(jobId, fallbackFilename) {
-  const started = Date.now()
-  for (;;) {
-    if (Date.now() - started > EXPORT_POLL_TIMEOUT_MS) {
-      throw new Error('export-timeout')
-    }
-    await new Promise(resolve => setTimeout(resolve, EXPORT_POLL_INTERVAL_MS))
-    const { data } = await ventesApi.exportStatus(jobId)
-    if (data.status === 'ready') {
-      const a = document.createElement('a')
-      a.href = data.download_url
-      a.download = data.filename || fallbackFilename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      return
-    }
-    if (data.status === 'error') {
-      throw new Error('export-failed')
-    }
-    // 'pending' → on continue de sonder.
-  }
-}
 
 export default function FactureList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
@@ -462,24 +420,11 @@ export default function FactureList() {
   const [actionId, setActionId]       = useState(null)
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
-  const [auditBusy, setAuditBusy] = useState(false)
-  // VX142(a) — Journal comptable : petit Dialog mois/trimestre à la place du
-  // window.prompt() texte libre (regroupé dans le menu « Exporter »).
-  const [journalOpen, setJournalOpen] = useState(false)
-  const [journalMode, setJournalMode] = useState('mois') // 'mois' | 'trimestre'
-  const [journalMois, setJournalMois] = useState(() => new Date().toISOString().slice(0, 7))
-  const [journalAnnee, setJournalAnnee] = useState(() => String(new Date().getFullYear()))
-  const [journalTrimestre, setJournalTrimestre] = useState('1')
-  const [journalBusy, setJournalBusy] = useState(false)
-  // VX142(a) — Export comptable : même traitement, deux champs date au lieu
-  // de deux window.prompt() successifs.
-  const [exportComptableOpen, setExportComptableOpen] = useState(false)
-  const [exportStart, setExportStart] = useState(() => new Date().toISOString().slice(0, 8) + '01')
-  const [exportEnd, setExportEnd] = useState(() => new Date().toISOString().slice(0, 10))
-  const [exportComptableBusy, setExportComptableBusy] = useState(false)
-  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
-  // d'erreur ; ceci ajoute juste l'état chargement manquant).
-  const [xlsxBusy, setXlsxBusy] = useState(false)
+  const compta = useFactureCompta()
+  const {
+    auditBusy, xlsxBusy, setXlsxBusy,
+    setJournalOpen, setExportComptableOpen, handleAuditNumerotation,
+  } = compta
   // ── Envoi WhatsApp : busy par facture (L857), langue (L851), aperçu (L852) ──
   const [waBusy, setWaBusy] = useState({})
   const [waLangue, setWaLangue] = useState('fr')
@@ -634,71 +579,6 @@ export default function FactureList() {
   const nbAEcheoirSoon = useMemo(() => factures.filter(f =>
     f.statut === 'emise' && !isOverdue(f) && f.date_echeance
     && f.date_echeance >= today).length, [factures])
-
-  // VX142(a) — Export comptable DGI (groundwork) : factures validées d'une
-  // plage, en .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux).
-  // Borné société. Plage saisie via le petit Dialog `exportComptableOpen`
-  // (deux champs date), plus de window.prompt().
-  const handleExportComptable = async () => {
-    const start = exportStart
-    const end = exportEnd
-    if (!start || !end) return
-    setExportComptableBusy(true)
-    const dl = async (fmt, ext) => {
-      const res = await api.get('/ventes/export-comptable/', {
-        params: { start, end, fmt }, responseType: 'blob',
-      })
-      const filename = `export-comptable-${start}_${end}.${ext}`
-      // FE-SCA41 — export volumineux : le xlsx part en tâche de fond (202) ;
-      // le CSV reste toujours synchrone (aucun 202 possible pour lui).
-      const job = await asyncExportPayload(res)
-      if (job) {
-        toast.info('Export volumineux — génération en arrière-plan.')
-        await pollExportJobAndDownload(job.job_id, filename)
-        return
-      }
-      openPdfBlob(res.data, filename)
-    }
-    try {
-      await dl('xlsx', 'xlsx')
-      await dl('csv', 'csv')
-      setExportComptableOpen(false)
-    } catch {
-      toast.error('Export comptable impossible.')
-    } finally {
-      setExportComptableBusy(false)
-    }
-  }
-
-  // VX142(a) — Journal des ventes + résumé TVA : plus de window.prompt(), la
-  // période (mois ou trimestre) vient du Dialog `journalOpen`.
-  const handleJournalComptable = async () => {
-    const v = journalMode === 'trimestre'
-      ? `${journalAnnee}-${journalTrimestre}`
-      : journalMois
-    const isQuarter = journalMode === 'trimestre'
-    const params = isQuarter ? { quarter: v } : { month: v }
-    setJournalBusy(true)
-    try {
-      const r = await ventesApi.journalVentes(params)
-      const filename = `journal-ventes-${v}.xlsx`
-      // FE-SCA41 — journal volumineux : bascule 202 → sonde le statut puis
-      // télécharge via l'URL pré-signée dès que prêt.
-      const job = await asyncExportPayload(r)
-      if (job) {
-        toast.info('Export volumineux — génération en arrière-plan.')
-        await pollExportJobAndDownload(job.job_id, filename)
-      } else {
-        downloadXlsx(r.data, filename)
-      }
-      setJournalOpen(false)
-    } catch {
-      toast.error('Journal comptable indisponible.')
-    } finally {
-      setJournalBusy(false)
-    }
-  }
-
   const openNew   = () => { setEditFacture(null); setShowForm(true) }
   const openEdit  = f  => { setEditFacture(f);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);   setEditFacture(null) }
@@ -866,37 +746,6 @@ export default function FactureList() {
     }
   }
 
-  // N31 — audit admin de la numérotation : résumé des trous/doublons.
-  const handleAuditNumerotation = async () => {
-    setAuditBusy(true)
-    try {
-      const { data } = await ventesApi.auditNumerotation()
-      if (data.conforme) {
-        toast.success('Numérotation conforme : aucun trou ni doublon détecté.')
-      } else {
-        const lignes = []
-        const labels = { devis: 'Devis', facture: 'Factures',
-          avoir: 'Avoirs', bon_commande: 'Bons de commande' }
-        for (const cle of Object.keys(labels)) {
-          for (const g of (data[cle] || [])) {
-            const parts = []
-            if (g.manquants.length) parts.push(`manquants : ${g.manquants.join(', ')}`)
-            if (g.doublons.length) parts.push(`doublons : ${g.doublons.join(', ')}`)
-            lignes.push(`${labels[cle]} ${g.radical} → ${parts.join(' ; ')}`)
-          }
-        }
-        toast.error(`Anomalies de numérotation détectées :\n\n${lignes.join('\n')}\n\n`
-          + `(${data.total_manquants} numéro(s) manquant(s), `
-          + `${data.total_doublons} doublon(s)). Aucune renumérotation automatique.`)
-      }
-    } catch (err) {
-      toast.error(err?.response?.data?.detail ?? "Audit de numérotation impossible.")
-    } finally {
-      setAuditBusy(false)
-    }
-  }
-
-  // FG53/WR2b — « Payer en ligne » : crée/réutilise le lien de paiement puis le
   // copie au presse-papier (aucun envoi automatique au client).
   // VX48 — le repli window.open (quand le presse-papier est indisponible) suit
   // un await : onglet pré-ouvert SYNCHRONE (pas un PDF, donc `.win.location`
@@ -1175,79 +1024,7 @@ export default function FactureList() {
         </>
       )}
     >
-      {/* VX142(a) — Journal comptable : Dialog mois/trimestre (remplace le
-          window.prompt() texte libre). */}
-      <Dialog open={journalOpen} onOpenChange={setJournalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Journal comptable</DialogTitle>
-            <DialogDescription>
-              Journal des ventes + résumé TVA (comptable), par mois ou par trimestre.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div role="group" aria-label="Période" className="inline-flex gap-1">
-              {[['mois', 'Mois'], ['trimestre', 'Trimestre']].map(([val, label]) => (
-                <Button key={val} type="button" size="sm"
-                        variant={journalMode === val ? 'default' : 'outline'}
-                        aria-pressed={journalMode === val}
-                        onClick={() => setJournalMode(val)}>
-                  {label}
-                </Button>
-              ))}
-            </div>
-            {journalMode === 'mois' ? (
-              <Input type="month" value={journalMois}
-                     onChange={e => setJournalMois(e.target.value)}
-                     aria-label="Mois du journal" />
-            ) : (
-              <div className="flex gap-2">
-                <Input type="number" className="w-28" value={journalAnnee}
-                       onChange={e => setJournalAnnee(e.target.value)}
-                       aria-label="Année du trimestre" />
-                <Select value={journalTrimestre} onValueChange={setJournalTrimestre}>
-                  <SelectTrigger className="w-32" aria-label="Trimestre">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {['1', '2', '3', '4'].map(q => (
-                      <SelectItem key={q} value={q}>{`T${q}`}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setJournalOpen(false)}>Annuler</Button>
-            <Button loading={journalBusy} onClick={handleJournalComptable}>Télécharger</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* VX142(a) — Export comptable : Dialog plage de dates (remplace les
-          deux window.prompt() successifs). */}
-      <Dialog open={exportComptableOpen} onOpenChange={setExportComptableOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Export comptable</DialogTitle>
-            <DialogDescription>
-              Factures validées d'une plage de dates, en Excel + CSV (ventilation TVA, ICE, totaux).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex gap-2">
-            <Input type="date" value={exportStart} required
-                   onChange={e => setExportStart(e.target.value)}
-                   aria-label="Date de début" />
-            <Input type="date" value={exportEnd} required
-                   onChange={e => setExportEnd(e.target.value)}
-                   aria-label="Date de fin" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setExportComptableOpen(false)}>Annuler</Button>
-            <Button loading={exportComptableBusy} onClick={handleExportComptable}>Télécharger</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ComptaDialogs compta={compta} />
     </PageHeader>
   )
 

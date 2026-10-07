@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4838, operations: 7632, components: 2211}
+counts: {paths: 4836, operations: 7622, components: 2210}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -78,8 +78,6 @@ operations:
 - get /api/django/achats/paiements-fournisseur/ras-tva/export/ -> django_achats_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_destroy
 - get /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_retrieve
-- patch /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_partial_update
-- put /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_update
 - get /api/django/achats/prix-fournisseurs/ -> django_achats_prix_fournisseurs_list
 - post /api/django/achats/prix-fournisseurs/ -> django_achats_prix_fournisseurs_create
 - get /api/django/achats/prix-fournisseurs/effectif/ -> django_achats_prix_fournisseurs_effectif_retrieve
@@ -530,7 +528,6 @@ operations:
 - get /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_list
 - post /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_create
 - post /api/django/calepinage/calepinages/comparer-projets/ -> django_calepinage_calepinages_comparer_projets_create
-- post /api/django/calepinage/calepinages/creer-depuis-modele/ -> django_calepinage_calepinages_creer_depuis_modele_create
 - post /api/django/calepinage/calepinages/depuis-lead/ -> django_calepinage_calepinages_depuis_lead_create
 - post /api/django/calepinage/calepinages/depuis-modele/ -> django_calepinage_calepinages_depuis_modele_create
 - post /api/django/calepinage/calepinages/import-projet/ -> django_calepinage_calepinages_import_projet_create
@@ -552,7 +549,6 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/consommation/proposer/ -> django_calepinage_calepinages_consommation_proposer_create
 - post /api/django/calepinage/calepinages/{id}/demarquer-modele/ -> django_calepinage_calepinages_demarquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/design-context/ -> django_calepinage_calepinages_design_context_retrieve
-- post /api/django/calepinage/calepinages/{id}/deverrouiller/ -> django_calepinage_calepinages_deverrouiller_create
 - get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> django_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> django_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/documents/ -> django_calepinage_calepinages_documents_retrieve
@@ -614,6 +610,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/pompage/ -> django_calepinage_calepinages_pompage_create
 - get /api/django/calepinage/calepinages/{id}/pose-reelle/ -> django_calepinage_calepinages_pose_reelle_retrieve
 - post /api/django/calepinage/calepinages/{id}/pose-reelle/ -> django_calepinage_calepinages_pose_reelle_create
+- delete /api/django/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> django_calepinage_calepinages_pose_reelle_destroy
 - get /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> django_calepinage_calepinages_presentation_compacte.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_retrieve
 - post /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_create
@@ -3239,8 +3236,6 @@ operations:
 - get /api/django/stock/paiements-fournisseur/ras-tva/export/ -> django_stock_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_destroy
 - get /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_retrieve
-- patch /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_partial_update
-- put /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_update
 - get /api/django/stock/parametres-negoce/ -> django_stock_parametres_negoce_retrieve
 - patch /api/django/stock/parametres-negoce/ -> django_stock_parametres_negoce_partial_update
 - get /api/django/stock/plans-chargement/ -> django_stock_plans_chargement_list
@@ -3932,8 +3927,6 @@ operations:
 - get /api/v1/achats/paiements-fournisseur/ras-tva/export/ -> v1_achats_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_destroy
 - get /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_retrieve
-- patch /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_partial_update
-- put /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_update
 - get /api/v1/achats/prix-fournisseurs/ -> v1_achats_prix_fournisseurs_list
 - post /api/v1/achats/prix-fournisseurs/ -> v1_achats_prix_fournisseurs_create
 - get /api/v1/achats/prix-fournisseurs/effectif/ -> v1_achats_prix_fournisseurs_effectif_retrieve
@@ -4384,7 +4377,6 @@ operations:
 - get /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_list
 - post /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_create
 - post /api/v1/calepinage/calepinages/comparer-projets/ -> v1_calepinage_calepinages_comparer_projets_create
-- post /api/v1/calepinage/calepinages/creer-depuis-modele/ -> v1_calepinage_calepinages_creer_depuis_modele_create
 - post /api/v1/calepinage/calepinages/depuis-lead/ -> v1_calepinage_calepinages_depuis_lead_create
 - post /api/v1/calepinage/calepinages/depuis-modele/ -> v1_calepinage_calepinages_depuis_modele_create
 - post /api/v1/calepinage/calepinages/import-projet/ -> v1_calepinage_calepinages_import_projet_create
@@ -4406,7 +4398,6 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/consommation/proposer/ -> v1_calepinage_calepinages_consommation_proposer_create
 - post /api/v1/calepinage/calepinages/{id}/demarquer-modele/ -> v1_calepinage_calepinages_demarquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/design-context/ -> v1_calepinage_calepinages_design_context_retrieve
-- post /api/v1/calepinage/calepinages/{id}/deverrouiller/ -> v1_calepinage_calepinages_deverrouiller_create
 - get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> v1_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/v1/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> v1_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/documents/ -> v1_calepinage_calepinages_documents_retrieve
@@ -4468,6 +4459,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/pompage/ -> v1_calepinage_calepinages_pompage_create
 - get /api/v1/calepinage/calepinages/{id}/pose-reelle/ -> v1_calepinage_calepinages_pose_reelle_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pose-reelle/ -> v1_calepinage_calepinages_pose_reelle_create
+- delete /api/v1/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> v1_calepinage_calepinages_pose_reelle_destroy
 - get /api/v1/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> v1_calepinage_calepinages_presentation_compacte.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_retrieve
 - post /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_create
@@ -7062,8 +7054,6 @@ operations:
 - get /api/v1/stock/paiements-fournisseur/ras-tva/export/ -> v1_stock_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_destroy
 - get /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_retrieve
-- patch /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_partial_update
-- put /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_update
 - get /api/v1/stock/parametres-negoce/ -> v1_stock_parametres_negoce_retrieve
 - patch /api/v1/stock/parametres-negoce/ -> v1_stock_parametres_negoce_partial_update
 - get /api/v1/stock/plans-chargement/ -> v1_stock_plans_chargement_list
@@ -7857,7 +7847,6 @@ components:
 - CalepinageRemiseDocument
 - CalepinageRequest
 - CalepinageSimulationAccuse
-- CalepinageStatutEnum
 - CalepinageSuggestionPenteDemandeRequest
 - CalepinageSuggestionPenteReponse
 - Canal
@@ -8405,6 +8394,7 @@ components:
 - MaterielConsigneStatutEnum
 - MatriceApprobation
 - MatriceApprobationRequest
+- Me
 - MesBcfPortail
 - MesBcfPortailConfirmation
 - MesBcfPortailLigne
@@ -9135,7 +9125,6 @@ components:
 - PatchedOrdreDemontageRequest
 - PatchedOutillageRequest
 - PatchedPaiementFacturePortailRequest
-- PatchedPaiementFournisseurRequest
 - PatchedParametrageRelanceClientRequest
 - PatchedParametresGammesRequest
 - PatchedParrainageRequest

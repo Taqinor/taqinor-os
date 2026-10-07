@@ -46,6 +46,17 @@ CE QUE CETTE GARDE FAIT
    ``check_services_appeles.py`` / ``check_ecrans_atteignables.py`` : refuse
    d'ajouter une dette sauf ``--autoriser-croissance``, reserve au fondateur).
 
+ASTK232 — LA MEME GARDE, PARAMETREE PAR MODULE (aucune seconde garde copiee) :
+la table ``profil()`` couvre ``calepinage`` (comportement historique inchange),
+``stock`` (``apps/stock/views/*.py``) et ``achats`` (``apps/achats/views.py``).
+Pour stock/achats, la garde inventorie en plus les RESSOURCES routees
+(``router.register`` / ``path`` vers une classe de vue du module) : une
+ressource ou une ``@action`` ROUTEE, absente du passif, sans segment trouve
+dans ``frontend/src`` et sans marqueur ``# headless: <raison>`` (raison
+obligatoire, meme regex que ``rapport_backend_sombre.py``) rougit en nommant
+fichier:ligne. Passifs : ``calepinage_actions_allow.txt`` (calepinage) et
+``stock_actions_allow.txt`` (stock + achats) — tous deux decroissants.
+
 Usage
 -----
     python scripts/check_calepinage_actions_consommees.py
@@ -70,6 +81,78 @@ VIEWS_SUBPATH = ("apps", "calepinage", "views")
 VIEWS_MODULE_PREFIX = "apps.calepinage.views"
 FRONTEND_SRC = ROOT / "frontend" / "src"
 BASELINE_PATH = ROOT / "scripts" / "calepinage_actions_allow.txt"
+#: ASTK232 — passif de stock + achats (decroissant, comme celui de calepinage).
+#: ``None`` = ``ROOT/scripts/stock_actions_allow.txt`` calcule A L'APPEL (un test
+#: qui deplace ``ROOT`` ne doit jamais ecrire dans le vrai depot).
+STOCK_BASELINE_PATH = None
+
+
+def _stock_baseline() -> Path:
+    return STOCK_BASELINE_PATH or ROOT / "scripts" / "stock_actions_allow.txt"
+
+
+#: Meme regex que scripts/rapport_backend_sombre.py (MARQUEUR) : la raison est
+#: obligatoire (au moins RAISON_MINIMALE caracteres) — un marqueur nu est refuse.
+MARQUEUR = re.compile(r"#\s*headless\s*:\s*(?P<raison>.*)$")
+RAISON_MINIMALE = 3
+MODULES = ("calepinage", "stock", "achats")
+
+
+def profil(nom: str) -> dict:
+    """Parametres d'un module garde (relus A L'APPEL : les tests
+    monkeypatchent les globales ci-dessus)."""
+    if nom == "calepinage":
+        return {
+            "nom": nom,
+            "fichiers": lambda: _fichiers_dossier(
+                DJANGO_ROOT.joinpath(*VIEWS_SUBPATH)),
+            "prefix": VIEWS_MODULE_PREFIX,
+            "baseline": BASELINE_PATH,
+            "ressources": False,
+        }
+    if nom == "stock":
+        return {
+            "nom": nom,
+            "fichiers": lambda: _fichiers_dossier(
+                DJANGO_ROOT / "apps" / "stock" / "views"),
+            "prefix": "apps.stock.views",
+            "baseline": _stock_baseline(),
+            "ressources": True,
+        }
+    if nom == "achats":
+        return {
+            "nom": nom,
+            "fichiers": lambda: [DJANGO_ROOT / "apps" / "achats" / "views.py"],
+            "prefix": "apps.achats.views",
+            "baseline": _stock_baseline(),
+            "ressources": True,
+        }
+    raise ValueError(nom)
+
+
+def _fichiers_dossier(dossier: Path) -> list:
+    if not dossier.is_dir():
+        return []
+    return [c for c in sorted(dossier.glob("*.py"))
+            if c.name != "__init__.py"
+            and not c.name.startswith(("test_", "tests_"))]
+
+
+def _relatif(chemin: Path) -> str:
+    return (chemin.relative_to(ROOT).as_posix() if chemin.is_relative_to(ROOT)
+            else chemin.as_posix())
+
+
+def marqueur_headless(lignes: list, debut: int, fin: int):
+    """``None`` (pas de marqueur), ``''`` (marqueur SANS raison suffisante) ou
+    la raison. Cherche de la ligne au-dessus de ``debut`` jusqu'a ``fin``
+    (numeros 1-bases, bornes comprises)."""
+    for numero in range(max(debut - 1, 1), min(fin, len(lignes)) + 1):
+        trouve = MARQUEUR.search(lignes[numero - 1])
+        if trouve:
+            raison = trouve.group("raison").strip()
+            return raison if len(raison) >= RAISON_MINIMALE else ""
+    return None
 
 
 def _module_dotted(chemin: Path) -> str:
@@ -84,21 +167,16 @@ def _fonctions(corps) -> list:
     return [n for n in corps if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
 
-def inventaire_actions_declarees() -> list:
-    """[{fichier, ligne, module, fonction, url_path}, ...] — une entree par
-    ``@action`` reellement posee dans ``apps/calepinage/views/*.py``.
+def inventaire_actions_declarees(module: str = "calepinage") -> list:
+    """[{fichier, ligne, module, fonction, url_path, headless, ...}, ...] —
+    une entree par ``@action`` reellement posee dans les vues du module.
 
     Lecture AST DIRECTE (jamais via BackendRoutes) : c'est la seule facon
     d'avoir la ligne exacte de la declaration. La resolution de route reste,
     elle, entierement a BackendRoutes (voir `routes_par_action`).
     """
-    views_root = DJANGO_ROOT.joinpath(*VIEWS_SUBPATH)
     trouvees = []
-    if not views_root.is_dir():
-        return trouvees
-    for chemin in sorted(views_root.glob("*.py")):
-        if chemin.name == "__init__.py" or chemin.name.startswith(("test_", "tests_")):
-            continue
+    for chemin in profil(module)["fichiers"]():
         try:
             source = chemin.read_text(encoding="utf-8")
         except OSError:
@@ -107,9 +185,9 @@ def inventaire_actions_declarees() -> list:
             tree = ast.parse(source, filename=str(chemin))
         except SyntaxError:
             continue
-        module = _module_dotted(chemin)
-        fichier_relatif = chemin.relative_to(ROOT).as_posix() if chemin.is_relative_to(ROOT) \
-            else chemin.as_posix()
+        lignes = source.splitlines()
+        dotted = _module_dotted(chemin)
+        fichier_relatif = _relatif(chemin)
 
         candidats = [(None, f) for f in _fonctions(tree.body)]
         for node in tree.body:
@@ -117,21 +195,73 @@ def inventaire_actions_declarees() -> list:
                 candidats.extend((node.name, f) for f in _fonctions(node.body))
 
         for classe, fonction in candidats:
+            debut = min([fonction.lineno] + [d.lineno
+                                             for d in fonction.decorator_list])
             for detail, url_path, known in contract._actions_du_decorateur(fonction):
                 trouvees.append({
                     "fichier": fichier_relatif,
                     "ligne": fonction.lineno,
-                    "module": module,
+                    "module": dotted,
                     "fonction": fonction.name,
                     "classe": classe,
                     "url_path": url_path,
                     "detail": detail,
                     "known": known,
+                    "domaine": module,
+                    "genre": "action",
+                    "headless": marqueur_headless(lignes, debut, fonction.lineno),
                 })
     return trouvees
 
 
-def routes_par_action(backend: "contract.BackendRoutes") -> dict:
+def inventaire_ressources(backend: "contract.BackendRoutes", module: str) -> list:
+    """Ressources ROUTEES (``router.register`` / ``path`` vers une classe) dont
+    la classe de vue vit dans les fichiers du module (ASTK232). Une entree par
+    route : {fichier, ligne, url_path ('ressource/<segment>'), segment, ...}.
+    Les vues-fonctions et les classes hors du module sont hors perimetre."""
+    prof = profil(module)
+    if not prof["ressources"]:
+        return []
+    fichiers = {_relatif(c): c for c in prof["fichiers"]()}
+    trouvees, vues = [], set()
+    for route, (_owner, ref) in backend.views.items():
+        if not isinstance(ref, tuple) or len(ref) < 2:
+            continue
+        if ref[0] == "viewset" and len(ref) == 3 and ref[2] == "list":
+            nom = ref[1]
+        elif ref[0] == "classe":
+            nom = ref[1]
+        else:
+            continue
+        statiques = [seg for seg in route
+                     if isinstance(seg, str) and seg not in (contract.ANY, contract.PK)]
+        if not statiques:
+            continue
+        segment = statiques[-1]
+        for dotted, node in backend._classes.get(nom, []):
+            chemin = backend._modules.get(dotted, (None, None))[0]
+            if chemin is None:
+                continue
+            rel = _relatif(chemin)
+            if rel not in fichiers or (rel, node.lineno, segment) in vues:
+                continue
+            vues.add((rel, node.lineno, segment))
+            lignes = fichiers[rel].read_text(
+                encoding="utf-8", errors="replace").splitlines()
+            debut = min([node.lineno] + [d.lineno for d in node.decorator_list])
+            trouvees.append({
+                "fichier": rel, "ligne": node.lineno, "module": dotted,
+                "fonction": node.name, "classe": node.name,
+                "url_path": f"ressource/{segment}", "segment": segment,
+                "detail": False, "known": True, "domaine": module,
+                "genre": "ressource",
+                "headless": marqueur_headless(lignes, debut, node.lineno),
+            })
+    return trouvees
+
+
+def routes_par_action(backend: "contract.BackendRoutes",
+                      prefix: str | None = None) -> dict:
     """{(module, fonction): [route complete, ...]} pour chaque ``@action``
     dont le proprietaire est un module de `apps.calepinage.views` — lu
     directement dans `backend.views`, rempli par
@@ -141,6 +271,7 @@ def routes_par_action(backend: "contract.BackendRoutes") -> dict:
     `@action` qui n'apparait jamais ici est du code mort, jamais atteignable,
     donc jamais consomme par construction.
     """
+    prefix = VIEWS_MODULE_PREFIX if prefix is None else prefix
     out: dict = {}
     for route, (owner, ref) in backend.views.items():
         if not (isinstance(ref, tuple) and len(ref) == 3 and ref[0] == "action"):
@@ -151,7 +282,7 @@ def routes_par_action(backend: "contract.BackendRoutes") -> dict:
         # aussi chaque action par (classe du ViewSet, fonction), cle que
         # `analyse` consulte pour une methode declaree dans une classe.
         out.setdefault(("classe", ref[1], ref[2]), []).append(route)
-        if owner != VIEWS_MODULE_PREFIX and not owner.startswith(VIEWS_MODULE_PREFIX + "."):
+        if owner != prefix and not owner.startswith(prefix + "."):
             continue
         out.setdefault((owner, ref[2]), []).append(route)
     return out
@@ -272,15 +403,42 @@ def charger_base(path: Path | None = None) -> dict:
     return base
 
 
-def ecrire_base(constats: list, path: Path | None = None):
+ENTETE_BASE_STOCK = """\
+# Base de reference de check_calepinage_actions_consommees.py pour STOCK et
+# ACHATS — DETTE NOMMEE, RIEN D'AUTRE (ASTK232 ; ressources ET @action).
+#
+# Chaque ligne est une ressource routee ou une `@action` de apps/stock/views/
+# ou apps/achats/views.py qu'AUCUN appel de frontend/src ne consomme et qui ne
+# porte pas de marqueur `# headless: <raison>`. Le passif est amorce APRES les
+# ecrans du groupe (il ne doit contenir que la dette nommee par ASTK233).
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - brancher (ou supprimer, ou marquer `# headless:`) puis `python
+#     scripts/check_calepinage_actions_consommees.py --write-baseline` retire
+#     la ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne ; ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur.
+#
+# Format : `<fichier>:<ligne>  <url_path>  # <raison datee>`
+# (`ressource/<segment>` pour une ressource, le url_path pour une @action).
+"""
+
+
+def ecrire_base(constats: list, path: Path | None = None,
+                entete: str | None = None):
     path = path or BASELINE_PATH
+    if entete is None:
+        entete = ENTETE_BASE if path == BASELINE_PATH else ENTETE_BASE_STOCK
     corps = "\n".join(
         f"{c['fichier']}:{c['ligne']}  {c['url_path']}  "
         f"# non consommee au 23/09/2026 (CALX381)"
+        if c.get("domaine", "calepinage") == "calepinage" else
+        f"{c['fichier']}:{c['ligne']}  {c['url_path']}  "
+        f"# sans consommateur au 07/10/2026 (ASTK232)"
         for c in sorted(constats, key=lambda c: (c["fichier"], c["ligne"]))
     )
     path.write_text(
-        ENTETE_BASE + (corps + "\n" if corps else ""),
+        entete + (corps + "\n" if corps else ""),
         encoding="utf-8", newline="\n",
     )
 
@@ -290,26 +448,46 @@ def ecrire_base(constats: list, path: Path | None = None):
 # ===========================================================================
 
 def analyse() -> tuple:
-    """(constats_non_consommes, stats) — constats = liste des actions
-    declarees non consommees (avant filtrage par le passif)."""
+    """(constats_non_consommes, stats) — constats = liste des actions et
+    ressources declarees non consommees (avant filtrage par le passif), tous
+    modules confondus ; ``stats['par_module']`` detaille, ``stats['invalides']``
+    liste les marqueurs ``# headless:`` sans raison."""
     backend = contract.BackendRoutes(DJANGO_ROOT)
     backend.build()
-    routes = routes_par_action(backend)
     texte = texte_frontend()
-    declarees = inventaire_actions_declarees()
 
-    constats = []
-    for item in declarees:
-        routee = bool(routes.get((item["module"], item["fonction"]))) or bool(
-            item.get("classe")
-            and routes.get(("classe", item["classe"], item["fonction"])))
-        if routee and action_consommee(item["url_path"], texte):
-            continue
-        constats.append(item)
+    constats, invalides, par_module = [], [], {}
+    for nom in MODULES:
+        prof = profil(nom)
+        routes = routes_par_action(backend, prof["prefix"])
+        declarees = inventaire_actions_declarees(nom)
+        ressources = inventaire_ressources(backend, nom)
+        compte = 0
+        for item in declarees + ressources:
+            if item["headless"] == "":
+                invalides.append(item)
+            if item["genre"] == "ressource":
+                consommee = bool(re.search(
+                    r"(?<![\w-])" + re.escape(item["segment"]) + r"(?![\w-])",
+                    texte))
+            else:
+                routee = bool(routes.get((item["module"], item["fonction"]))) or bool(
+                    item.get("classe")
+                    and routes.get(("classe", item["classe"], item["fonction"])))
+                consommee = routee and action_consommee(item["url_path"], texte)
+            if consommee or item["headless"]:
+                continue
+            constats.append(item)
+            compte += 1
+        par_module[nom] = {"actions": len(declarees),
+                           "ressources": len(ressources),
+                           "non_consommees": compte}
 
     stats = {
-        "actions": len(declarees),
+        "actions": sum(m["actions"] for m in par_module.values()),
         "non_consommees": len(constats),
+        "par_module": par_module,
+        "invalides": invalides,
     }
     return constats, stats
 
@@ -335,54 +513,87 @@ def main(argv=None) -> int:
     constats, stats = analyse()
 
     if args.stats:
-        print(f"@action inventoriees dans apps/calepinage/views/ : {stats['actions']}")
-        print(f"  dont sans consommateur (avant passif) : {stats['non_consommees']}")
+        print(f"@action inventoriees dans apps/calepinage/views/ : "
+              f"{stats['par_module']['calepinage']['actions']}")
+        print(f"  dont sans consommateur (avant passif) : "
+              f"{stats['par_module']['calepinage']['non_consommees']}")
+        for nom in MODULES[1:]:
+            m = stats["par_module"][nom]
+            print(f"{nom} : {m['actions']} @action + {m['ressources']} "
+                  f"ressource(s), {m['non_consommees']} sans consommateur "
+                  f"(avant passif)")
 
-    if stats["actions"] == 0:
+    if stats["par_module"]["calepinage"]["actions"] == 0:
         print("\nECHEC : aucune @action trouvee dans apps/calepinage/views/. "
               "Soit le chemin analyse a bouge, soit la lecture a cesse de "
               "fonctionner — dans les deux cas la garde a cesse de garder.")
         return 1
 
-    cles_constats = {_cle_constat(c) for c in constats}
-    base = charger_base()
+    if stats["invalides"]:
+        print(f"\nECHEC : {len(stats['invalides'])} marqueur(s) `# headless:` "
+              "SANS raison (un marqueur nu est un interrupteur, pas une "
+              "intention) :")
+        for c in stats["invalides"]:
+            print(f"  {c['fichier']}:{c['ligne']}  ({c['module']}.{c['fonction']})")
+        return 1
+
+    # Passifs : un fichier par groupe de modules (calepinage ; stock + achats).
+    chemins = {}
+    for nom in MODULES:
+        chemins.setdefault(profil(nom)["baseline"], []).append(nom)
+    bases = {chemin: charger_base(chemin) for chemin in chemins}
+
+    def base_de(c):
+        return bases[profil(c["domaine"])["baseline"]]
 
     if args.write_baseline:
-        ajouts = cles_constats - set(base)
-        amorce = not BASELINE_PATH.is_file()
-        if ajouts and not (args.autoriser_croissance or amorce):
-            print("REFUS : --write-baseline ne peut que RETRECIR la base.")
-            print(f"{len(ajouts)} nouvelle(s) dette(s) voudraient y entrer :")
-            for cle in sorted(ajouts)[:20]:
-                print(f"  + {cle}")
-            print("Branchez l'action sur un vrai consommateur, supprimez-la, ou "
-                  "assumez la dette avec --autoriser-croissance.")
-            return 1
-        ecrire_base(constats)
-        print(f"Base de reference reecrite : {BASELINE_PATH} "
-              f"({len(constats)} entree(s), "
-              f"{len(set(base) - cles_constats)} retiree(s)).")
-        return 0
+        code = 0
+        for chemin, noms in chemins.items():
+            propres = [c for c in constats if c["domaine"] in noms]
+            cles = {_cle_constat(c) for c in propres}
+            base = bases[chemin]
+            ajouts = cles - set(base)
+            amorce = not chemin.is_file()
+            if ajouts and not (args.autoriser_croissance or amorce):
+                print(f"REFUS : --write-baseline ne peut que RETRECIR la base "
+                      f"({chemin.name}).")
+                print(f"{len(ajouts)} nouvelle(s) dette(s) voudraient y entrer :")
+                for cle in sorted(ajouts)[:20]:
+                    print(f"  + {cle}")
+                print("Branchez l'action sur un vrai consommateur, supprimez-la, "
+                      "marquez-la `# headless: <raison>`, ou assumez la dette "
+                      "avec --autoriser-croissance.")
+                code = 1
+                continue
+            ecrire_base(propres, chemin)
+            print(f"Base de reference reecrite : {chemin} "
+                  f"({len(propres)} entree(s), "
+                  f"{len(set(base) - cles)} retiree(s)).")
+        return code
 
-    nouveaux = [c for c in constats if _cle_constat(c) not in base]
-    corriges = set(base) - cles_constats
+    nouveaux = [c for c in constats if _cle_constat(c) not in base_de(c)]
+    cles_constats = {_cle_constat(c) for c in constats}
+    corriges = {cle for base in bases.values() for cle in base} - cles_constats
 
     if nouveaux:
-        print(f"\nECHEC : {len(nouveaux)} @action calepinage SANS consommateur "
+        print(f"\nECHEC : {len(nouveaux)} @action/ressource SANS consommateur "
               f"(hors base de reference).\n")
         for c in nouveaux:
             print(f"  {c['fichier']}:{c['ligne']}  url_path={c['url_path']!r} "
                   f"({c['module']}.{c['fonction']})")
         print("\nQUE FAIRE :")
-        print("  - branchez-la sur `calepinageApi.js` (ou un `window.open`/`href` "
+        print("  - branchez-la sur l'API du frontend (ou un `window.open`/`href` "
               "reel pour un PDF/DXF/XLSX) ;")
         print("  - ou supprimez-la si elle est morte ;")
+        print("  - ou marquez-la `# headless: <raison>` si elle n'a PAS d'ecran "
+              "par conception (portail public, webhook, tache...) ;")
         print("  - ou, dette assumee a drainer plus tard, "
               "`--write-baseline --autoriser-croissance` (fondateur).")
         return 1
 
+    dettes = sum(len(b) for b in bases.values())
     print(f"OK : {stats['actions']} @action lue(s), aucune NOUVELLE sans "
-          f"consommateur ({len(base)} dette(s) historique(s) gelee(s), dont "
+          f"consommateur ({dettes} dette(s) historique(s) gelee(s), dont "
           f"{len(corriges)} desormais branchee(s)).")
     if corriges:
         print("Ces dettes corrigees peuvent quitter la base : "

@@ -57,11 +57,11 @@ describe('PoseReelle (CALX367) — la grille des pans', () => {
     const exemple = echantillon('exemple')
     const lignes = within(grille).getAllByRole('row').slice(1)
     expect(lignes).toHaveLength(exemple.lignes.length)
-    const panB = within(grille).getByTestId('cal-pose-ligne-PAN-B')
-    expect(within(panB).getByTestId('cal-pose-prevu-PAN-B')).toHaveTextContent('4')
-    expect(within(panB).getByTestId('cal-pose-modules-PAN-B')).toHaveValue(3)
-    expect(within(panB).getByTestId('cal-pose-ecart-PAN-B')).toHaveTextContent('-1')
-    expect(within(panB).getByTestId('cal-pose-position-PAN-B'))
+    const panB = within(grille).getByTestId('cal-pose-ligne-z2')
+    expect(within(panB).getByTestId('cal-pose-prevu-z2')).toHaveTextContent('4')
+    expect(within(panB).getByTestId('cal-pose-modules-z2')).toHaveValue(3)
+    expect(within(panB).getByTestId('cal-pose-ecart-z2')).toHaveTextContent('-1')
+    expect(within(panB).getByTestId('cal-pose-position-z2'))
       .toHaveValue(exemple.lignes[1].ecarts_position)
     expect(screen.getByTestId('cal-pose-source')).toHaveTextContent('total posé 11')
   })
@@ -70,10 +70,10 @@ describe('PoseReelle (CALX367) — la grille des pans', () => {
     servir('exemple')
     rendre()
     const grille = await screen.findByTestId('cal-pose-grille')
-    const panC = within(grille).getByTestId('cal-pose-ligne-PAN-C')
-    expect(within(panC).getByTestId('cal-pose-ecart-PAN-C').textContent).toBe('')
-    expect(within(panC).getByTestId('cal-pose-modules-PAN-C')).toHaveValue(null)
-    expect(within(panC).getByTestId('cal-pose-mention-PAN-C'))
+    const panC = within(grille).getByTestId('cal-pose-ligne-z3')
+    expect(within(panC).getByTestId('cal-pose-ecart-z3').textContent).toBe('')
+    expect(within(panC).getByTestId('cal-pose-modules-z3')).toHaveValue(null)
+    expect(within(panC).getByTestId('cal-pose-mention-z3'))
       .toHaveTextContent(echantillon('exemple').lignes[2].mention)
   })
 
@@ -82,7 +82,7 @@ describe('PoseReelle (CALX367) — la grille des pans', () => {
     rendre()
     expect(await screen.findByTestId('cal-pose-source')).toHaveTextContent('aucun pan relevé')
     for (const ligne of echantillon('exemple_vide').lignes) {
-      expect(screen.getByTestId(`cal-pose-ecart-${ligne.pan}`).textContent).toBe('')
+      expect(screen.getByTestId(`cal-pose-ecart-${ligne.zone_id}`).textContent).toBe('')
     }
   })
 
@@ -102,22 +102,22 @@ describe('PoseReelle (CALX367) — saisir un pan', () => {
     const grille = await screen.findByTestId('cal-pose-grille')
     const corps = echantillon('corps_saisie')
 
-    fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-B'),
+    fireEvent.change(within(grille).getByTestId('cal-pose-modules-z2'),
       { target: { value: String(corps.modules_poses) } })
-    fireEvent.change(within(grille).getByTestId('cal-pose-position-PAN-B'),
+    fireEvent.change(within(grille).getByTestId('cal-pose-position-z2'),
       { target: { value: corps.ecarts_position } })
-    fireEvent.change(within(grille).getByTestId('cal-pose-date-PAN-B'),
+    fireEvent.change(within(grille).getByTestId('cal-pose-date-z2'),
       { target: { value: corps.releve_le } })
-    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-B'))
+    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-z2'))
 
     expect(await screen.findByTestId('cal-pose-message')).toHaveTextContent('PAN-B')
     expect(calepinageApi.calepinages.enregistrerPoseReelle).toHaveBeenCalledWith(1, {
-      pan: 'PAN-B',
+      pan: 'z2', // ACAL268 — l'identifiant STABLE du pan, plus son libellé
       modules_poses: String(corps.modules_poses),
       ecarts_position: corps.ecarts_position,
       releve_le: corps.releve_le,
     })
-    expect(screen.getByTestId('cal-pose-ecart-PAN-B')).toHaveTextContent('-1')
+    expect(screen.getByTestId('cal-pose-ecart-z2')).toHaveTextContent('-1')
   })
 
   it('refus `modules_poses` : SOUS le champ du pan fautif, le bandeau nomme pan et champ', async () => {
@@ -127,13 +127,13 @@ describe('PoseReelle (CALX367) — saisir un pan', () => {
       .mockRejectedValue({ response: { status: 400, data: refus } })
     rendre()
     const grille = await screen.findByTestId('cal-pose-grille')
-    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-A'))
+    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-z1'))
 
-    const erreur = await screen.findByTestId('cal-pose-erreur-modules-PAN-A')
+    const erreur = await screen.findByTestId('cal-pose-erreur-modules-z1')
     expect(erreur).toHaveTextContent(refus.modules_poses)
-    expect(within(within(grille).getByTestId('cal-pose-ligne-PAN-A'))
-      .getByTestId('cal-pose-erreur-modules-PAN-A')).toBeInTheDocument()
-    expect(screen.queryByTestId('cal-pose-erreur-modules-PAN-B')).toBeNull()
+    expect(within(within(grille).getByTestId('cal-pose-ligne-z1'))
+      .getByTestId('cal-pose-erreur-modules-z1')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-pose-erreur-modules-z2')).toBeNull()
     const bandeau = screen.getByTestId('cal-pose-bandeau')
     expect(bandeau).toHaveTextContent('PAN-A')
     expect(bandeau).toHaveTextContent('modules_poses')
@@ -147,9 +147,9 @@ describe('PoseReelle (CALX367) — saisir un pan', () => {
       .mockRejectedValue({ response: { status: 400, data: refus } })
     rendre()
     const grille = await screen.findByTestId('cal-pose-grille')
-    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-C'))
+    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-z3'))
 
-    expect(await screen.findByTestId('cal-pose-erreur-pan-PAN-C')).toHaveTextContent(refus.pan)
+    expect(await screen.findByTestId('cal-pose-erreur-pan-z3')).toHaveTextContent(refus.pan)
     expect(screen.getByTestId('cal-pose-bandeau')).toHaveTextContent('pan')
   })
 })
@@ -161,12 +161,12 @@ describe('PoseReelle (ACAL246) — brouillons, date par ligne, message de versio
       .mockResolvedValue(reponseContrat('calepinage', NOM, 'exemple'))
     rendre()
     const grille = await screen.findByTestId('cal-pose-grille')
-    fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-A'), { target: { value: '5' } })
-    fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-B'), { target: { value: '6' } })
-    expect(screen.getByTestId('cal-pose-brouillon-PAN-B')).toBeInTheDocument()
-    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-A'))
+    fireEvent.change(within(grille).getByTestId('cal-pose-modules-z1'), { target: { value: '5' } })
+    fireEvent.change(within(grille).getByTestId('cal-pose-modules-z2'), { target: { value: '6' } })
+    expect(screen.getByTestId('cal-pose-brouillon-z2')).toBeInTheDocument()
+    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-z1'))
     await screen.findByTestId('cal-pose-message')
-    expect(screen.getByTestId('cal-pose-modules-PAN-B')).toHaveValue(6)
+    expect(screen.getByTestId('cal-pose-modules-z2')).toHaveValue(6)
   })
 
   it('préremplit la date par ligne et ne l’envoie pas si inchangée', async () => {
@@ -176,8 +176,8 @@ describe('PoseReelle (ACAL246) — brouillons, date par ligne, message de versio
     rendre()
     const grille = await screen.findByTestId('cal-pose-grille')
     const date = echantillon('exemple').lignes[0].releve_le
-    expect(within(grille).getByTestId('cal-pose-date-PAN-A')).toHaveValue(date)
-    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-A'))
+    expect(within(grille).getByTestId('cal-pose-date-z1')).toHaveValue(date)
+    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-z1'))
     await screen.findByTestId('cal-pose-message')
     const corps = calepinageApi.calepinages.enregistrerPoseReelle.mock.calls[0][1]
     expect(corps).not.toHaveProperty('releve_le')

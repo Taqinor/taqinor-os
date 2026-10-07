@@ -38,8 +38,9 @@ CLES_SAISIES = (
 )
 
 #: Les clés écrites par les MOTEURS (jamais saisies) par ces écrivains.
+#: ACAL325 — ``verdict_electrique`` n'en est plus : le verdict est servi à
+#: la demande, jamais déposé (lot 2 critique #21).
 CLES_SORTIES = (
-    'verdict_electrique',        # CAL128 — verdict rejoué après dessin
     'journal_longueur_chaine',   # CAL170 — fil des écarts de longueur
     'simulation',                # CALX5 — en-tête de la simulation
 )

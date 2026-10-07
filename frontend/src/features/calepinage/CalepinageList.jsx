@@ -10,6 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
+import { urlImage } from './urlImage'
 // CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur que la
 // fiche devis et l'en-tête de l'atelier (CAL189), jamais recalculé ici.
 import BadgePerime from './BadgePerime'
@@ -38,13 +39,29 @@ import { FiltreEtiquettes } from './Etiquettes'
    cassée du navigateur) et jamais une illustration de substitution qui
    laisserait croire qu'un toit a été dessiné.
 
-   LES STATUTS NE SONT PAS RECOPIÉS ICI. Aucun échantillon de contrat ne publie
-   la LISTE des statuts possibles ; en inventer une produirait un menu qui
-   propose des valeurs que le serveur refuse (ou qui en cache). Les options du
-   filtre sont donc construites à partir des couples `statut`/`statut_libelle`
-   RÉELLEMENT présents dans la page chargée — et le libellé affiché est toujours
-   celui du serveur, jamais une traduction maison.
+   LES STATUTS (ACAL197) viennent de `STATUTS_CALEPINAGE`, gardée par un vitest
+   contre `calepinage_liste.json.statuts_publies` ; le libellé d'une ligne reste
+   celui du serveur (`statut_libelle`).
    ========================================================================== */
+
+/* ACAL197 — LES TROIS STATUTS SERVIS (contrat `calepinage_liste.json`,
+   `statuts_publies`) : le filtre les propose TOUJOURS, pas seulement ceux de la
+   page courante. Gardée par un vitest contre l'échantillon de contrat. */
+// eslint-disable-next-line react-refresh/only-export-components -- constante gardée par un vitest
+export const STATUTS_CALEPINAGE = [
+  ['brouillon', 'Brouillon'],
+  ['valide', 'Validé'],
+  ['perime', 'Périmé'],
+]
+
+/* ACAL197 — `image.url` RELATIVE préfixée par l'origine de l'API : le helper
+   partagé avec la fiche (`urlImage.js`). */
+
+/* ACAL197 — le rattachement affiché : la liste publie `client_apercu`
+   `{id, nom, ville}` (`client` n'y est qu'un identifiant), le détail un
+   `client` objet. « Sans rattachement » seulement si rien n'est rattaché. */
+const rattachementDe = (c) => c?.client_apercu?.nom || c?.client?.nom || c?.lead?.nom
+  || 'Sans rattachement'
 
 const errMsg = (e, repli) => e?.response?.data?.detail || repli
 
@@ -83,7 +100,7 @@ function paramsServeur({ q, statut, depuis, lead, client, page, ordering, etique
 
 /** Recherche bornée société côté serveur — jamais un filtrage local. */
 const chercherLeads = async (q) => {
-  const res = await crmApi.getLeads({ q, page_size: 20 })
+  const res = await crmApi.getLeads({ search: q, page_size: 20 })
   return unwrapList(res).map((l) => ({
     value: String(l.id),
     label: l.nom || l.nom_complet || l.raison_sociale || `Lead ${l.id}`,
@@ -125,7 +142,7 @@ const BORNE_COMPARAISON = 5
    cocher ne doit jamais ouvrir l'atelier. Sans elle, la vignette est
    exactement celle d'avant. */
 export function VignetteCalepinage({ calepinage, selection = null }) {
-  const url = calepinage?.image?.url || null
+  const url = urlImage(calepinage?.image?.url) || null
   const titre = calepinage?.nom || calepinage?.reference || 'Calepinage'
   return (
     <Card className="relative overflow-hidden transition-shadow hover:shadow-ui-md">
@@ -178,7 +195,7 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
           <div className="truncate text-xs text-muted-foreground">
             {calepinage?.reference || '—'}
             {' · '}
-            {calepinage?.client?.nom || calepinage?.lead?.nom || 'Sans rattachement'}
+            {rattachementDe(calepinage)}
           </div>
           <div className="text-xs text-muted-foreground">
             {calepinage?.modifie_le ? `Modifié le ${formatDate(calepinage.modifie_le)}` : '—'}
@@ -250,16 +267,8 @@ export default function CalepinageList() {
   const pageSuivante = Array.isArray(data) ? null : data?.next
   const pagePrecedente = Array.isArray(data) ? null : data?.previous
 
-  // Options de statut : les couples RÉELS de la page, jamais une liste recopiée.
-  const optionsStatut = useMemo(() => {
-    const vus = new Map()
-    for (const ligne of lignes) {
-      if (ligne?.statut && !vus.has(ligne.statut)) {
-        vus.set(ligne.statut, ligne.statut_libelle || ligne.statut)
-      }
-    }
-    return [...vus.entries()]
-  }, [lignes])
+  // ACAL197 — options de statut : les trois statuts servis, toujours.
+  const optionsStatut = STATUTS_CALEPINAGE
 
   // CALX406 — options de RESPONSABLE : celles des lignes reçues (même
   // discipline que le statut — aucune liste de personnes recopiée ici).

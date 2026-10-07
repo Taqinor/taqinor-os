@@ -64,7 +64,32 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
           </Link>
         </span>
       )}
+      <EcartDevis ecart={data?.ecart_devis} />
     </p>
+  )
+}
+
+/* ============================================================================
+   ACAL105 (D-ACAL-6) — LA PRODUCTION DU DEVIS ET L'ÉCART, SERVIS PAR LE SERVEUR.
+   ----------------------------------------------------------------------------
+   `GET resultat/` porte `ecart_devis` (ACAL104, contrat
+   `calepinage_resultat.json`) : la production IMPRIMÉE au client (moteur du
+   devis) et l'écart au P50 de l'étude. AUCUN calcul ici : les deux nombres
+   sont affichés tels que servis ; `null` ⇒ rien.
+   ========================================================================== */
+function EcartDevis({ ecart }) {
+  if (!ecart) return null
+  const pct = ecart.ecart_pct
+  const signe = typeof pct === 'number' && pct > 0 ? '+' : ''
+  return (
+    <span className="block" data-testid="acal-ecart-devis">
+      {'Devis : '}
+      {formatNumber(ecart.production_devis_kwh, { decimals: 0 })}
+      {' kWh/an (production imprimée au client)'}
+      {pct !== null && pct !== undefined && (
+        <>{' — écart '}{signe}{formatNumber(pct, { decimals: 1 })}{' %'}</>
+      )}
+    </span>
   )
 }
 

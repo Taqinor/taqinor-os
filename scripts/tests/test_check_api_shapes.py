@@ -1330,21 +1330,24 @@ class PlancherInventaireTests(unittest.TestCase):
 
 
 class CalepinageApiGoldenTests(unittest.TestCase):
-    """SPL291 — fige les 17 fonctions de calepinageApi.js que la garde
-    resout aujourd'hui (16 + ``recalculerSimulations``, ACAL134), AVANT tout eclatement en fragments (SPL292-SPL295).
+    """SPL291 — fige les 16 fonctions de calepinageApi.js que la garde
+    resout aujourd'hui (16 + ``recalculerSimulations``, ACAL134, moins
+    ``creerDepuisModele`` retiree par ACAL185), AVANT tout eclatement en fragments (SPL292-SPL295).
     Un deplacement qui ferait sortir une fonction de l'index (cle (fichier,
     nom) introuvable) passerait a vide — ce test le rougit."""
 
     FACADE = ROOT / "frontend" / "src" / "api" / "calepinageApi.js"
+    # ACAL242 — + les quatre portes ``gabarits`` (liste, creer, modifier,
+    # supprimer) que la garde résout.
     RESOLUES = [
-        "calculer", "comparerProjets", "creerDepuisModele", "depuisLead",
+        "calculer", "comparerProjets", "creer", "depuisLead",
         "depuisModele", "enregistrerProfilsTypes", "get", "importerProjet",
-        "modeles", "pose", "profilsTypes", "recalculerSimulations",
-        "resultat", "suggererPentesIGN",
-        "suggestionPenteDisponible", "update", "zonesLestage",
+        "liste", "modeles", "modifier", "pose", "profilsTypes",
+        "recalculerSimulations", "resultat", "suggererPentesIGN",
+        "suggestionPenteDisponible", "supprimer", "update", "zonesLestage",
     ]
 
-    def test_les_17_fonctions_calepinage_sont_resolues(self):
+    def test_les_16_fonctions_calepinage_sont_resolues(self):
         # SPL293+ : la façade ET ses fragments (rattachés à la façade).
         fichiers = [self.FACADE] + sorted(
             f for f in (self.FACADE.parent / "calepinage").glob("*.js")

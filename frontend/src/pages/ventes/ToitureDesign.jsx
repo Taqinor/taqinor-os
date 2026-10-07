@@ -32,12 +32,20 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
 import { store } from '../../store'
-import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 // CAL37 — TROISIÈME mode du MÊME builder : un CALEPINAGE autonome (module
 // `apps/calepinage`), c'est-à-dire sans devis exigé. Voir le bloc de
 // commentaire de `bootCalepinage` plus bas.
 import calepinageApi from '../../api/calepinageApi'
+// Lot 2 critique #27 — lecture du calepinage d'un devis (fiche devis) quand la
+// porte de résolution est refusée (403, droit de VOIR seulement).
+import ventesApi from '../../api/ventesApi'
+// Lot 2 critique #23 / #29 — LE décodeur des refus du pont devis (partagé
+// avec « Générer / Resynchroniser le devis »).
+import {
+  MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE,
+  bloquageElectrique, refusServeur, texteBloquant,
+} from '../../features/calepinage/refusDevis'
 // CAL37 — l'UNIQUE emplacement où les tâches suivantes (CAL38 le bouton devis,
 // CAL180 l'export image) posent leurs panneaux : aucune d'elles n'a donc à
 // rouvrir ce fichier. SOLMVP15 a retiré CAL242 (reprise de contour AO) avec
@@ -59,7 +67,7 @@ import BandeauProvenanceProduction from '../../features/calepinage/production/Ba
 import { hacherLayout, creerGestionnaireBrouillon, memoriserReprise } from '../../features/calepinage/brouillon'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
-// diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
+// diverge de la cible vendue du devis.
 import { useConfirmDialog } from '../../ui/confirm'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
@@ -71,7 +79,7 @@ import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 // CALX129 — bascule plein écran RÉVERSIBLE du conteneur de la scène 3D, MÊME
 // mécanique que celle de `Vue2DPlan.jsx` (CAL104) — voir l'en-tête du module.
 import {
-  dataUrlToBlob, pinDepuisLead, cibleActiveDuContexte, httpMessage,
+  dataUrlToBlob, pinDepuisLead, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
@@ -81,16 +89,26 @@ import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues
 import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 
-export default function ToitureDesign({ mode = 'lead' }) {
+/** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
+ *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
+const messageResyncRefusee = (raison) => (
+  `Conception enregistrée — devis NON resynchronisé : ${raison}`)
+const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du devis impossible (réseau)'
+
+function AtelierToiture({
+  mode = 'lead', calepinageImpose = null, devisSynchronise = null, lectureSeuleImposee = false,
+}) {
   const { id: idParam } = useParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   // L2 — confirmation maison (APX17) avant d'écrire un calepinage qui diverge de la
-  // cible vendue du devis — voir enregistrerConception.
+  // cible vendue du devis.
   const { confirm } = useConfirmDialog()
   // PV20 — deux modes sur le MÊME écran. `lead` (défaut) est le flux d'origine,
   // strictement inchangé ; `devis` démarre SUR un devis existant.
-  const estDevis = mode === 'devis'
+  // ACAL37 (D-ACAL-1) — l'ancien mode `devis` n'existe plus comme écrivain : la route
+  // `/ventes/devis/:id/design` résout le CALEPINAGE lié (`ConceptionDuDevis`, plus bas)
+  // et ouvre CE mode calepinage, avec `devisSynchronise` = le devis à resynchroniser.
   // Mode `calepinage` (CAL37) — TROISIÈME mode, MÊME écran et MÊME builder,
   // pour un CALEPINAGE du module autonome. La seule chose qu'il retire au mode
   // devis, c'est l'EXIGENCE d'un devis (décision fondateur D3 : un calepinage
@@ -101,26 +119,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // prochain mode en oublierait mécaniquement un.
   // SOLMVP41 — le mode `ao` (affaire d'appel d'offres) est parti avec l'app ao
   // (Groupe SOLMVP) : aucune route ne passe plus `mode="ao"`.
-  const estLead = !estDevis && !estCalepinage
+  const estLead = !estCalepinage
   // Accepte /devis-design/:id ET ?lead=<id> (parité avec l'ancien lien public).
   const leadId = estLead ? (idParam || searchParams.get('lead') || '') : ''
-  const devisId = estDevis ? (idParam || '') : ''
-  const calepinageId = estCalepinage ? (idParam || '') : ''
-  const cibleId = estDevis ? devisId
-    : (estCalepinage ? calepinageId : leadId)
+  const devisId = devisSynchronise ? String(devisSynchronise) : ''
+  const calepinageId = estCalepinage ? String(calepinageImpose || idParam || '') : ''
+  const cibleId = estCalepinage ? calepinageId : leadId
 
-  // VT8 — mesures de la visite terrain, transmises en query params optionnels
-  // par VisiteBureauEtudesPage.jsx (« Ouvrir l'atelier 3D »). `null` si
-  // absent — jamais une valeur par défaut inventée pour un champ non mesuré.
-  const mesuresVisiteTerrain = (estLead && (
-    searchParams.get('pente') || searchParams.get('orientation')
-    || searchParams.get('longueur') || searchParams.get('largeur')
-  )) ? {
-    pente: searchParams.get('pente'),
-    orientation: searchParams.get('orientation'),
-    longueur: searchParams.get('longueur'),
-    largeur: searchParams.get('largeur'),
-  } : null
+  // ACAL209 — le mode lead ne lit plus de mesures en query params (pente/
+  // orientation/longueur/largeur) : elles n'avaient aucun effet persistant. Le
+  // bureau d'études ouvre le module Calepinage, onglet « Reprise de la visite ».
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -130,11 +138,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // dans l'effet) : sans identifiant, on affiche directement le message d'erreur.
   const [status, setStatus] = useState(() => {
     if (cibleId) {
-      if (estDevis) return 'Chargement du devis…'
       if (estCalepinage) return 'Chargement du calepinage…'
       return 'Chargement du lead…'
     }
-    if (estDevis) return 'Aucun devis indiqué (identifiant manquant).'
     if (estCalepinage) return 'Aucun calepinage indiqué (identifiant manquant).'
     return 'Aucun lead indiqué (identifiant manquant).'
   })
@@ -144,7 +150,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [contexte, setContexte] = useState(null)
   const [loadError, setLoadError] = useState(() => {
     if (cibleId) return null
-    if (estDevis) return 'Aucun devis indiqué.'
     if (estCalepinage) return 'Aucun calepinage indiqué.'
     return 'Aucun lead indiqué.'
   })
@@ -187,6 +192,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
   // en silence.
   const [avertissementsSync, setAvertissementsSync] = useState([])
+  // Lot 2 critique #29 — refus électrique de la resynchro du devis lié :
+  // `{detail, bloquants, derogationPossible, peutDeroger}` + le motif saisi.
+  const [bloquageSync, setBloquageSync] = useState(null)
+  const [motifDerogation, setMotifDerogation] = useState('')
+  const [motifDerogationErreur, setMotifDerogationErreur] = useState(null)
   // ACAL87 — l'aperçu de toiture n'a pas pu être capturé (image vide) ou
   // téléversé : on le DIT, au lieu d'un « Conception enregistrée » muet.
   const [apercuMessage, setApercuMessage] = useState(null)
@@ -280,7 +290,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
     cibleId,
     devisId,
     estCalepinage,
-    estDevis,
     leadId,
     reducedMotion,
     setBrouillonPropose,
@@ -360,7 +369,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
   // ACAL84 — en lecture seule, aucun brouillon n'est écrit : il n'y aurait
   // rien à reprendre (aucun enregistrement possible).
-  const lectureSeuleContexte = contexte != null && !contexte.modifiable
+  // Lot 2 critique #27 — `lectureSeuleImposee` : l'utilisateur n'a que le
+  // droit de VOIR (403 sur la porte de résolution) ; aucun brouillon non plus.
+  const lectureSeuleContexte = (contexte != null && !contexte.modifiable)
+    || lectureSeuleImposee
 
   // CALX68 — le planificateur d'écriture du brouillon : démarre une fois le
   // constructeur prêt (`builderReady`) et une empreinte de base connue
@@ -404,9 +416,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // est byte-identique à avant VT13.
   // CAL37 — mode calepinage : le lead est celui que le CALEPINAGE porte
   // (`calepinage.lead` du contexte, nul quand il est né d'un client seul).
-  const leadPourPhoto = estDevis ? (contexte?.devis?.lead ?? null)
-    : (estCalepinage ? (contexte?.calepinage?.lead ?? null)
-      : (leadId || null))
+  const leadPourPhoto = estCalepinage ? (contexte?.calepinage?.lead ?? null)
+    : (leadId || null)
   // La texture est mémorisée AVEC l'id du lead : aucun `setState` synchrone
   // dans le corps de l'effet (react-hooks v7) et jamais la photo d'un lead
   // précédent — un id qui ne correspond plus n'est simplement pas lu.
@@ -452,8 +463,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
       let res = null
       if (estCalepinage && calepinageId) {
         res = await calepinageApi.calepinages.designContext(calepinageId)
-      } else if (estDevis && devisId) {
-        res = await ventesApi.getDevisDesignContext(devisId)
       } else {
         return
       }
@@ -561,118 +570,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
     }
   }
 
-  // ── PV21 — BOUCLE DE FINALISATION MODE DEVIS ───────────────────────────────
-  // Le devis EXISTE : on ne le recrée pas, on resynchronise ses lignes sur le
-  // calepinage. Le statut n'est jamais écrit ici (règle #4) — le serveur refuse
-  // (409) dès que le document est parti chez le client ou clos.
-  const enregistrerConception = async () => {
-    if (sending) return
-    setGenError(null)
-    setApercuMessage(null) // ACAL87
-    setConflit(null)
-    setAvertissementsSync([])
-    const apiTool = builderApi.current
-    if (!apiTool) {
-      setGenError('Outil non prêt — ajustez le calepinage puis réessayez.')
-      return
-    }
-    const layout = apiTool.serializeLayout()
-
-    // L2 — incident PROUVÉ (DEV-202608-0016, onduleur+batterie sans ligne panneau
-    // rempli au boot par erreur) : avant TOUTE écriture, on compare le calepinage
-    // RÉELLEMENT posé à la cible vendue du devis — y COMPRIS une cible de zéro. Un
-    // écart (dans un sens ou l'autre) prévient explicitement AVANT de réécrire les
-    // lignes/câbles/structures du devis ; annuler = AUCUN appel réseau. Cible/posé
-    // égaux (le cas courant) → aucun dialogue, comportement inchangé.
-    const panneauxPoses = Number(layout?.result?.panels) || 0
-    // QJR40 — MÊME cible que celle booté dans le builder (cibleActiveDuContexte :
-    // AVEC quand ce devis la sert, sinon `cible`). Comparer contre `contexte.cible`
-    // seul recréerait ici la divergence SANS/AVEC que ce correctif supprime côté
-    // boot : un devis « Les deux » déclencherait alors ce dialogue à CHAQUE
-    // enregistrement, même sans aucun écart réel.
-    const panneauxDevis = Number(cibleActiveDuContexte(contexte).panneaux) || 0
-    if (panneauxPoses !== panneauxDevis) {
-      const ok = await confirm({
-        title: 'Le calepinage diverge du devis',
-        description:
-          `La conception pose ${panneauxPoses} panneaux ; le devis en porte ${panneauxDevis}. `
-          + `Enregistrer mettra le devis à jour (lignes, câbles, structures). Continuer ?`,
-        confirmLabel: 'Enregistrer quand même',
-      })
-      if (!ok) return
-    }
-
-    setSending(true)
-    setGenStatus('Enregistrement de la conception…')
-    try {
-      // 1) Resynchronisation chirurgicale des lignes sur le calepinage.
-      let resultat
-      try {
-        const res = await ventesApi.syncDevisLayout(devisId, { layout })
-        resultat = res.data
-      } catch (err) {
-        const code = err?.response?.status
-        const data = err?.response?.data
-        setGenStatus(null)
-        setSending(false)
-        if (code === 409) {
-          setConflit({
-            detail: data?.detail || 'Ce devis ne peut plus être resynchronisé.',
-            revision_possible: !!data?.revision_possible,
-          })
-          return
-        }
-        setGenError(httpMessage(code ?? 0, data))
-        return
-      }
-
-      // 1 bis) PVHEAL — ce que le serveur n'a PAS pu faire se dit tout de
-      //    suite (composant absent du catalogue, kit non complété, deux
-      //    onduleurs…), y compris quand rien n'a bougé.
-      setAvertissementsSync(
-        Array.isArray(resultat?.avertissements) ? resultat.avertissements : []
-      )
-
-      // 2) Même géométrie → ZÉRO écriture serveur : on le DIT, sans rien
-      //    prétendre avoir enregistré.
-      if (resultat?.inchange) {
-        toastInfo('Aucun changement')
-        setGenStatus(null)
-        setSending(false)
-        setStatus('Calepinage inchangé — le devis n’a pas bougé.')
-        marquerSceneEnregistree(layout) // ACAL85
-        await rafraichirContexte() // ACAL83
-        return
-      }
-
-      // 3) Capture le PNG de la 3D et l'envoie (multipart, best-effort) —
-      //    même patron que le flux lead.
-      setGenStatus('Capture de la vue 3D…')
-      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `devis-${devisId}.png`,
-        (form) => api.post(`/ventes/devis/${devisId}/roof-image/`, form)))
-
-      // 4) L-SECT — plus AUCUN mint ici : enregistrer une conception ne doit
-      //    pas frapper un lien public aux réglages par défaut. L'écran confirme,
-      //    et renvoie vers la fiche lead où l'envoi se choisit (voir
-      //    blocLivraison). Aucun statut de devis n'est touché, comme avant.
-      setDeliver({ reference: contexte?.devis?.reference ?? '' })
-      setGenStatus(null)
-      setSending(false)
-      const ajoutees = Number(resultat.lignes_ajoutees) || 0
-      setStatus(
-        `Conception enregistrée — ${resultat.panneaux} panneaux (${resultat.kwc} kWc), `
-        + `${resultat.lignes_modifiees} ligne(s) de devis mise(s) à jour`
-        + (ajoutees > 0 ? `, ${ajoutees} ligne(s) de kit ajoutée(s).` : '.')
-      )
-      marquerSceneEnregistree(layout) // ACAL85
-      await rafraichirContexte() // ACAL83
-    } catch {
-      setGenStatus(null)
-      setGenError('Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
-      setSending(false)
-    }
-  }
-
   // ── CAL37 — MODE CALEPINAGE : enregistrement de la conception ──────────
   // MÊMES sémantiques d'enregistrement que le mode devis, MOINS le devis : le
   // document de conception se range sur le calepinage (`POST …/layout/`,
@@ -683,6 +580,81 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // ACAL94 — rend `true` quand la conception de l'écran est rangée (écrite ou
   // « inchangée »), `false` sinon : « Générer / Resynchroniser » l'appellent
   // AVANT leur geste serveur (prop `enregistrerAvant`), UNE seule fonction.
+  // ACAL37 (D-ACAL-1) — flux `/ventes/devis/:id/design` : la conception est rangée sur le
+  // CALEPINAGE, PUIS le devis est resynchronisé par l'enveloppe du module
+  // (`calepinages/<id>/sync-devis/`, D02-T09) — jamais `ventesApi.syncDevisLayout`.
+  // Rend `false` quand le serveur refuse (409 « déjà envoyé » révisable, ou clos).
+  const resynchroniserDevisLie = async (corps = {}) => {
+    if (!devisSynchronise || !calepinageId) return true
+    try {
+      const res = await calepinageApi.calepinages.syncDevis(calepinageId, corps)
+      const donnees = res?.data ?? {}
+      setAvertissementsSync(Array.isArray(donnees.avertissements) ? donnees.avertissements : [])
+      setBloquageSync(null)
+      setMotifDerogation('')
+      setMotifDerogationErreur(null)
+      return true
+    } catch (err) {
+      const code = err?.response?.status
+      const data = err?.response?.data
+      if (code === 409) {
+        setConflit({
+          detail: data?.detail || 'Ce devis ne peut plus être resynchronisé.',
+          revision_possible: !!data?.revision_possible,
+        })
+        return false
+      }
+      // Lot 2 critique #23 — la conception EST enregistrée ; c'est la
+      // resynchro du devis qui est refusée : le motif du SERVEUR, décodé par
+      // le décodeur partagé (`refusDevis.js`), jamais « données invalides ».
+      if (!code) {
+        setGenError(MESSAGE_RESYNC_RESEAU)
+        return false
+      }
+      // Lot 2 critique #29 — refus ÉLECTRIQUE (422) : la liste des bloquants
+      // et, pour un approbateur (`permissions.peut_deroger` SERVI), « Passer
+      // outre » — la même règle que « Resynchroniser le devis ».
+      const electrique = bloquageElectrique(err)
+      if (electrique) {
+        let peutDeroger = false
+        try {
+          const detail = await calepinageApi.calepinages.get(calepinageId)
+          peutDeroger = !!detail?.data?.permissions?.peut_deroger
+        } catch { peutDeroger = false }
+        setBloquageSync({ ...electrique, peutDeroger })
+        setGenError(messageResyncRefusee(electrique.detail || refusServeur(err).message))
+        return false
+      }
+      if (code === 400 && data?.derogation_electrique) {
+        setMotifDerogationErreur(refusServeur(err).message)
+        return false
+      }
+      setGenError(messageResyncRefusee(refusServeur(err).message))
+      return false
+    }
+  }
+
+  // Lot 2 critique #29 — « Passer outre et resynchroniser » : la MÊME resynchro,
+  // relancée avec `derogation_electrique: {motif}` (motif vide refusé sous le champ).
+  const passerOutreSync = async () => {
+    const saisi = motifDerogation.trim()
+    if (!saisi) {
+      setMotifDerogationErreur(MESSAGE_MOTIF_OBLIGATOIRE)
+      return
+    }
+    setMotifDerogationErreur(null)
+    setSending(true)
+    try {
+      const ok = await resynchroniserDevisLie({ derogation_electrique: { motif: saisi } })
+      if (ok) {
+        setGenError(null)
+        setStatus('Devis resynchronisé (dérogation électrique consignée).')
+      }
+    } finally {
+      setSending(false)
+    }
+  }
+
   const enregistrerCalepinage = async () => {
     if (sending) return false
     setGenError(null)
@@ -690,6 +662,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
     setConflit(null)
     setDocumentModifie(null)
     setAvertissementsSync([])
+    setBloquageSync(null) // Lot 2 critique #29
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
@@ -731,7 +704,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
           const motifVerrou = Array.isArray(data?.roof_layout)
             ? data.roof_layout[0] : data?.roof_layout
           setConflit({
-            detail: data?.detail || (typeof motifVerrou === 'string' && motifVerrou)
+            // ACAL44 — la forme RÉELLE du verrou est `{roof_layout: [motif]}` :
+            // son motif passe EN PREMIER.
+            detail: (typeof motifVerrou === 'string' && motifVerrou) || data?.detail
               || 'Ce calepinage ne peut plus être modifié.',
             revision_possible: false,
           })
@@ -766,7 +741,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
         marquerSceneEnregistree(layout) // ACAL85
         await rafraichirContexte() // ACAL83
-        return true
+        return resynchroniserDevisLie() // ACAL37
       }
 
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
@@ -791,7 +766,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       )
       marquerSceneEnregistree(layout) // ACAL85
       await rafraichirContexte() // ACAL83
-      return true
+      return resynchroniserDevisLie() // ACAL37
     } catch (err) {
       setGenStatus(null)
       // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
@@ -828,11 +803,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
   }
   // ACAL93 — le devis à réviser depuis le bandeau « Lecture seule » : celui du
   // mode devis, ou le devis LIÉ du calepinage (contexte, ACAL36).
-  const devisARevise = estDevis
-    ? { id: devisId, reference: contexte?.devis?.reference ?? '' }
-    : (contexte?.calepinage?.devis_lie?.id != null
-      ? { id: contexte.calepinage.devis_lie.id, reference: contexte.calepinage.devis_lie.reference ?? '' }
-      : null)
+  const devisARevise = contexte?.calepinage?.devis_lie?.id != null
+    ? { id: contexte.calepinage.devis_lie.id, reference: contexte.calepinage.devis_lie.reference ?? '' }
+    : null
 
   // Fondateur 18/08 — bouton Fermer (X, haut-droite) : cette fenêtre de
   // calepinage 3D n'avait aucune sortie visible une fois ouverte (lead,
@@ -900,15 +873,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const leadLabel = lead ? `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() : ''
   // PV20 — en mode devis, le titre porte la référence + le client servis par le
   // contexte ; en lecture seule, le motif AFFICHÉ est celui du serveur.
-  const devisLabel = (contexte?.devis?.client_nom ?? '').trim()
-  const devisReference = contexte?.devis?.reference ?? ''
+  // ACAL37 — l'en-tête DEVIS du flux `/ventes/devis/:id/design` est lu sur le devis LIÉ
+  // du calepinage (`calepinage.devis_lie`, contexte ACAL36), jamais recomposé.
+  const devisLie = devisSynchronise ? (contexte?.calepinage?.devis_lie ?? null) : null
+  const devisLabel = (devisLie?.client_nom ?? '').trim()
+  const devisReference = devisLie?.reference ?? ''
   // CAL37 — le titre du calepinage est celui que le serveur sert ; il n'y a
   // AUCUNE référence inventée côté écran (un calepinage neuf s'appelle
   // « Calepinage sans titre » côté serveur, pas ici).
   const calepinageTitre = (contexte?.calepinage?.titre ?? '').trim()
-  const lectureSeule = (estDevis || estCalepinage)
-    && contexte != null && !contexte.modifiable
+  const lectureSeule = estCalepinage
+    && ((contexte != null && !contexte.modifiable) || lectureSeuleImposee)
   const raisonLectureSeule = (contexte?.raison_lecture_seule ?? '').trim()
+    || (lectureSeuleImposee ? RAISON_LECTURE_SEULE_DROIT : '')
   const avertissements = Array.isArray(contexte?.avertissements)
     ? contexte.avertissements : []
   // ACAL192 (D-ACAL-13) — le GPS du lead a été corrigé APRÈS le tracé et l'épingle a été
@@ -941,7 +918,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // de chez le client. Mode AO non concerné (affaire, pas de repli GPS ici).
   const sansPositionGps = !loadError && (
     (estLead && !!lead && !pinDepuisLead(lead))
-    || ((estDevis || estCalepinage) && !!contexte && !contexte?.geometrie?.pin)
+    || (estCalepinage && !!contexte && !contexte?.geometrie?.pin)
   )
 
   const inputClass =
@@ -959,7 +936,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // CAL37 — le contexte calepinage porte `contour_client` à la MÊME place et
   // sous le MÊME nom que le contexte devis (contrat jumeau) : aucune clé n'est
   // devinée, et un contour absent vaut `[]`, que `contourExploitable` refuse.
-  const contourClientBrut = (estDevis || estCalepinage)
+  const contourClientBrut = estCalepinage
     ? (contexte?.geometrie?.contour_client ?? null)
     : (estLead ? (lead?.roof_outline ?? null) : null)
   const toitClientPresent = useMemo(
@@ -993,7 +970,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // lead : son contexte porte aussi `geometrie.roof_layout`, donc dès qu'une
   // conception avec zones existe, quelqu'un a déjà calepiné et la note
   // « automatique » n'a plus lieu d'être.
-  const calepinageAutomatiqueVisible = (estDevis || estCalepinage)
+  const calepinageAutomatiqueVisible = estCalepinage
     ? (layoutPoseAutomatiquement
       || (devisRoofLayoutSansZones && contourExploitable(contourClientOuOutlinePourNote)))
     : (estLead && toitClientPresent)
@@ -1001,7 +978,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // CLIENT et lui seul : il n'est proposé que si ce contour-là existe encore. Sans ce
   // garde-fou la branche `layoutPoseAutomatiquement` pourrait afficher un bouton
   // inerte (layout estampillé, mais tracé du lead effacé depuis).
-  const recommencerDisponible = (estDevis || estCalepinage)
+  const recommencerDisponible = estCalepinage
     ? contourExploitable(contexte?.geometrie?.contour_client)
     : (estLead && toitClientPresent)
 
@@ -1017,9 +994,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // seul point d'envoi, la fiche lead → onglet Devis → « Envoyer au client »,
   // où ces choix existent. Cet écran confirme seulement ce qu'il vient de faire
   // et renvoie là-bas.
-  const leadFiche = estDevis
-    ? (contexte?.devis?.lead ?? null)
-    : (lead?.id ?? (leadId || null))
+  const leadFiche = lead?.id ?? (leadId || null)
   const blocLivraison = () => (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -1027,9 +1002,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         <p className="text-sm text-lune-soft">Devis <span className="font-semibold text-white">{deliver.reference}</span></p>
       </div>
       <p className="text-sm text-lune-soft">
-        {estDevis
-          ? 'La conception est enregistrée et la vue 3D mise à jour.'
-          : 'Le devis est créé et la vue 3D enregistrée.'}
+        Le devis est créé et la vue 3D enregistrée.
         {' '}
         L’envoi au client se fait depuis la fiche lead, onglet Devis : c’est là
         que vous choisissez le niveau, le code de lecture et les sections que le
@@ -1068,13 +1041,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
       <div className="mt-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-          {estDevis && (
+          {devisSynchronise && (
             <h1 className="display text-xl text-white sm:text-2xl">
               Devis <span className="text-brass-300">{devisReference || devisId || '—'}</span> ·{' '}
               <span className="text-lune-soft">{devisLabel || '—'}</span>
             </h1>
           )}
-          {estCalepinage && (
+          {estCalepinage && !devisSynchronise && (
             <h1 className="display text-xl text-white sm:text-2xl">
               Calepinage <span className="text-brass-300">{calepinageId || '—'}</span> ·{' '}
               <span className="text-lune-soft">{calepinageTitre || '—'}</span>
@@ -1157,29 +1130,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
           </div>
         )}
 
-        {/* VT8 — « Ouvrir l'atelier 3D » depuis la revue bureau d'études
-            (VisiteBureauEtudesPage.jsx) porte les mesures RÉELLEMENT prises
-            pendant la visite terrain en query params optionnels (jamais
-            inventées pour un champ non mesuré — simplement omis). Le builder
-            vendored (`@roofbuilder`, jamais édité) n'expose pas d'API pour
-            piloter ses contrôles pente/orientation depuis l'extérieur : ce
-            bandeau les AFFICHE pour que le bureau d'études les reporte
-            manuellement dans l'outil, plutôt que d'inventer un pré-remplissage
-            qui ne serait pas fiable. */}
-        {estLead && mesuresVisiteTerrain && (
-          <div className="mt-2 cine-card border border-brass-400/30 p-3 text-xs text-lune-soft" data-testid="pv-mesures-visite-terrain">
-            <p className="tech-label rule-brass text-brass-300">Mesures de la visite terrain</p>
-            <p className="mt-1">
-              {[
-                mesuresVisiteTerrain.longueur && mesuresVisiteTerrain.largeur
-                  ? `${mesuresVisiteTerrain.longueur} m × ${mesuresVisiteTerrain.largeur} m` : null,
-                mesuresVisiteTerrain.pente ? `pente ${mesuresVisiteTerrain.pente}°` : null,
-                mesuresVisiteTerrain.orientation ? `orientation ${mesuresVisiteTerrain.orientation}` : null,
-              ].filter(Boolean).join(' · ')}
-            </p>
-          </div>
-        )}
-
         {loadError && (
           <p className="mt-3 text-sm text-alert-300" role="alert">{loadError}</p>
         )}
@@ -1196,7 +1146,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
             {/* La visionneuse 3D plein écran est une route DEVIS
                 (`/ventes/devis/:id/3d`) : hors mode devis elle n'existe pas,
                 et un lien mort serait pire que pas de lien. */}
-            {estDevis && (
+            {devisSynchronise && (
               <Link
                 to={`/ventes/devis/${devisId}/3d`}
                 className="mt-4 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
@@ -1265,7 +1215,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         )}
 
         {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…). */}
-        {(estDevis || estCalepinage) && avertissements.length > 0 && (
+        {estCalepinage && avertissements.length > 0 && (
           <ul className="mt-4 space-y-1 text-xs text-lune-faint" data-testid="pv20-avertissements">
             {avertissements.map((a) => <li key={a}>{a}</li>)}
           </ul>
@@ -1454,58 +1404,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
         </div>
         )}
 
-        {/* PV21 — MODE DEVIS : « Enregistrer la conception ». Le devis existe
-            déjà — on resynchronise ses lignes, on ne le recrée jamais. Absent
-            en lecture seule (l'action de sauvegarde disparaît, PV20). */}
-        {estDevis && !lectureSeule && (
-        <div className="cine-card mt-6 p-6">
-          <div>
-            <button type="button" onClick={enregistrerConception} disabled={sending}
-              className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ background: 'var(--rp-ok-600)' }}>
-              {sending && (
-                <span aria-hidden="true"
-                  className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
-              )}
-              <span>{sending ? 'Enregistrement en cours…' : 'Enregistrer la conception'}</span>
-            </button>
-            <p className="mt-3 text-xs text-lune-faint">
-              Le nombre de panneaux, la batterie et l'onduleur suivent le calepinage,
-              et le kit manquant (structures, socles, tableau de protection…) est
-              ajouté : prix négociés, remises et notes du devis restent intacts.
-            </p>
-            {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
-            {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
-
-            {/* 409 « déjà envoyé » : le bon geste est une NOUVELLE version. */}
-            {conflit?.revision_possible && (
-              <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
-                <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
-                <button type="button" onClick={() => reviser()} disabled={sending}
-                  className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
-                  Réviser (v2)
-                </button>
-              </div>
-            )}
-
-            {/* 409 document clos : plus aucune révision possible. */}
-            {conflit && !conflit.revision_possible && (
-              <div className="mt-4 border border-alert-300/40 p-4" data-testid="pv21-conflit-lecture-seule">
-                <p className="tech-label text-alert-300">Lecture seule</p>
-                <p className="mt-2 text-sm text-alert-300" role="alert">{conflit.detail}</p>
-                <Link
-                  to={`/ventes/devis/${devisId}/3d`}
-                  className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
-                >
-                  Voir en 3D
-                </Link>
-              </div>
-            )}
-          </div>
-          {blocAvertissements()}
-        </div>
-        )}
-
         {/* CAL37 — MODE CALEPINAGE : l'UNIQUE emplacement des panneaux du
             module (cible servie par le serveur, comparatif des variantes, et
             les boutons que les tâches suivantes y accrochent). Rendu AUSSI en
@@ -1562,7 +1460,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
               <span aria-hidden="true"
                 className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
             )}
-            <span>{sending ? 'Enregistrement en cours…' : 'Enregistrer le calepinage'}</span>
+            <span>{sending ? 'Enregistrement en cours…'
+              : (devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage')}</span>
           </button>
           <p className="mt-3 text-xs text-lune-faint">
             La conception est rangée sur le calepinage, avec une nouvelle
@@ -1571,6 +1470,50 @@ export default function ToitureDesign({ mode = 'lead' }) {
           </p>
           {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
           {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive" data-testid="cal-erreur-enregistrement">{genError}</p>}
+
+          {/* Lot 2 critique #29 — refus ÉLECTRIQUE de la resynchro du devis :
+              les bloquants du serveur, mot pour mot ; « Passer outre »
+              seulement pour un approbateur (droit SERVI par le détail). */}
+          {bloquageSync?.bloquants && (
+            <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-sync-bloquants">
+              <ul className="space-y-1 text-sm text-alert-300">
+                {bloquageSync.bloquants.map((b, i) => (
+                  <li key={`${b?.code ?? 'b'}-${i}`} data-testid="cal-sync-bloquant">
+                    {texteBloquant(b)}
+                    {b?.detail && <span className="block text-xs text-lune-faint">{b.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+              {bloquageSync.derogationPossible && (bloquageSync.peutDeroger ? (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-xs text-lune-soft" htmlFor="cal-sync-motif">
+                    Motif de la dérogation
+                  </label>
+                  <textarea
+                    id="cal-sync-motif"
+                    value={motifDerogation}
+                    onChange={(e) => { setMotifDerogation(e.target.value); setMotifDerogationErreur(null) }}
+                    data-testid="cal-sync-motif"
+                    className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
+                  />
+                  {motifDerogationErreur && (
+                    <p className="text-xs text-alert-300" role="alert" data-testid="cal-sync-motif-erreur">
+                      {motifDerogationErreur}
+                    </p>
+                  )}
+                  <button type="button" onClick={passerOutreSync} disabled={sending}
+                    data-testid="cal-sync-passer-outre"
+                    className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-alert-300 disabled:cursor-not-allowed disabled:opacity-60">
+                    Passer outre et resynchroniser
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-lune-faint" data-testid="cal-sync-derogation-reservee">
+                  {MESSAGE_DEROGATION_RESERVEE}
+                </p>
+              ))}
+            </div>
+          )}
 
           {/* ACAL23 — 409 `document_modifie` : modifiée AILLEURS, rien n'est
               écrasé ; distinct du verrou ci-dessous. */}
@@ -1589,8 +1532,20 @@ export default function ToitureDesign({ mode = 'lead' }) {
             </div>
           )}
 
+          {/* ACAL37 — 409 RÉVISABLE de la resynchronisation du devis : le bon
+              geste est une NOUVELLE version (même `reviserEtOuvrir`). */}
+          {conflit?.revision_possible && devisId && (
+            <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
+              <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
+              <button type="button" onClick={() => reviser(devisId, devisReference)} disabled={sending}
+                className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
+                Réviser (v2)
+              </button>
+            </div>
+          )}
+
           {/* 409 : le devis lié est parti chez le client — motif du SERVEUR. */}
-          {conflit && (
+          {conflit && !conflit.revision_possible && (
             <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-conflit-lecture-seule">
               <p className="tech-label text-alert-300">Lecture seule</p>
               <p className="mt-2 text-sm text-alert-300" role="alert">{conflit.detail}</p>
@@ -1599,17 +1554,118 @@ export default function ToitureDesign({ mode = 'lead' }) {
         </div>
         )}
 
-        {/* PV86 — panneau de livraison TOUJOURS en bas de page en mode devis :
-            frappé dès le chargement (voir bootDevis, best-effort), mis à jour
-            après un enregistrement. Bloc séparé (jamais remplacé par le
-            précédent) : sans lui, un devis en lecture seule n'aurait plus
-            aucun moyen de renvoyer son lien au client. */}
-        {estDevis && deliver && (
-        <div className="cine-card mt-6 p-6">
-          {blocLivraison()}
-        </div>
-        )}
       </div>
     </div>
   )
+}
+
+
+/* ============================================================================
+   ACAL37 (D-ACAL-1) — `/ventes/devis/:id/design` OUVRE LE CALEPINAGE LIÉ.
+   ----------------------------------------------------------------------------
+   Le calepinage est l'UNIQUE conception d'un devis : la route devis résout
+   (ou crée / adopte) le calepinage lié par `POST calepinages/depuis-modele/
+   {devis_id}` (porte `obtenir_ou_creer_pour_devis`, D02-T10), puis ouvre le
+   MÊME atelier que le module calepinage — fond de plan, catalogue de modules,
+   brouillon, versions — avec l'en-tête du devis et, après chaque
+   enregistrement, la resynchronisation du devis (`sync-devis`). Plus aucune
+   conception n'est éditée dans `Devis.roof_layout` depuis cet écran.
+   ========================================================================== */
+function messageResolution(err) {
+  const code = err?.response?.status
+  const data = err?.response?.data
+  if (data && typeof data === 'object') {
+    if (typeof data.detail === 'string' && data.detail.trim()) return data.detail.trim()
+    const premier = Object.values(data).find((v) => v)
+    if (premier) return Array.isArray(premier) ? premier.join(' ') : String(premier)
+  }
+  if (code === 404) return 'Devis introuvable.'
+  return 'Impossible d’ouvrir la conception de ce devis — réessayez.'
+}
+
+/** Lot 2 critique #22 (ACAL92) — la notice d'un devis RÉVISÉ : la route d'une
+ *  version remplacée ouvre la conception de la version EN VIGUEUR. */
+const noticeDevisRevise = (reference) => (
+  `Ce devis a été révisé — conception de la version en vigueur${reference ? ` (${reference})` : ''}`)
+
+/** Lot 2 critique #27 (ACAL37) — un utilisateur qui n'a que le droit de VOIR
+ *  ouvre la conception du devis en LECTURE SEULE, par une porte de lecture. */
+const RAISON_LECTURE_SEULE_DROIT = 'Lecture seule : vous pouvez consulter cette conception, pas la modifier.'
+const AUCUNE_CONCEPTION_LECTURE = 'Aucune conception pour ce devis — un utilisateur habilité doit la créer.'
+
+function ConceptionDuDevis() {
+  const { id: devisId } = useParams()
+  const navigate = useNavigate()
+  const [resolution, setResolution] = useState(() => (devisId
+    ? { calepinageId: null, erreur: null }
+    : { calepinageId: null, erreur: 'Aucun devis indiqué.' }))
+
+  useEffect(() => {
+    if (!devisId) return undefined
+    let annule = false
+    Promise.resolve(calepinageApi.calepinages.depuisModele({ devis_id: Number(devisId) }))
+      .then((res) => {
+        if (annule) return
+        const calepinageId = res?.data?.id ?? null
+        // Lot 2 critique #22 (ACAL92) — le calepinage résolu est lié à une
+        // AUTRE version (ce devis a été révisé, la conception suit la V2) :
+        // jamais l'atelier éditable sous l'URL de la version remplacée.
+        const lie = res?.data?.devis
+        if (calepinageId && lie?.id != null && String(lie.id) !== String(devisId)) {
+          toastInfo(noticeDevisRevise(lie.reference))
+          navigate(`/ventes/devis/${lie.id}/design`, { replace: true })
+          return
+        }
+        setResolution(calepinageId
+          ? { calepinageId, erreur: null }
+          : { calepinageId: null, erreur: 'Impossible d’ouvrir la conception de ce devis — réessayez.' })
+      })
+      .catch((err) => {
+        if (annule) return
+        if (err?.response?.status !== 403) {
+          setResolution({ calepinageId: null, erreur: messageResolution(err) })
+          return
+        }
+        // Lot 2 critique #27 — la porte de résolution est une ÉCRITURE
+        // possible (créer / adopter) : sans ce droit, le calepinage existant
+        // est lu sur la fiche devis (`calepinage.id`, lecture), puis ouvert
+        // en LECTURE SEULE. Aucune écriture n'est tentée.
+        Promise.resolve(ventesApi.getDevisById(devisId))
+          .then((res) => {
+            if (annule) return
+            const lu = res?.data?.calepinage?.id ?? null
+            setResolution(lu
+              ? { calepinageId: lu, erreur: null, lectureSeule: true }
+              : { calepinageId: null, erreur: AUCUNE_CONCEPTION_LECTURE })
+          })
+          .catch((errLecture) => {
+            if (!annule) setResolution({ calepinageId: null, erreur: messageResolution(errLecture) })
+          })
+      })
+    return () => { annule = true }
+  }, [devisId, navigate])
+
+  if (resolution.calepinageId) {
+    return (
+      <AtelierToiture
+        mode="calepinage"
+        calepinageImpose={resolution.calepinageId}
+        devisSynchronise={devisId}
+        lectureSeuleImposee={!!resolution.lectureSeule}
+      />
+    )
+  }
+  return (
+    <div className="rp9-host" data-testid="acal37-resolution">
+      <p className="tech-label rule-brass text-brass-300">Interne · conception toiture</p>
+      {resolution.erreur
+        ? <p className="mt-3 text-sm text-alert-300" role="alert">{resolution.erreur}</p>
+        : <p className="mt-3 text-sm text-lune-faint" aria-live="polite">Ouverture de la conception du devis…</p>}
+    </div>
+  )
+}
+
+export default function ToitureDesign({ mode = 'lead' }) {
+  if (mode === 'devis') return <ConceptionDuDevis />
+  return <AtelierToiture mode={mode} />
 }

@@ -111,13 +111,14 @@ class DetailContratTest(SimpleTestCase):
         self.assertEqual(vues._responsable(calepinage, None),
                          CONTRAT['exemple_vide']['responsable'])
 
-    def test_a_defaut_le_responsable_du_lead(self):
+    def test_sans_responsable_stocke_aucun_repli_a_la_lecture(self):
+        # ACAL297 — le responsable publié EST la colonne (posée à la création
+        # par ``creation.responsable_par_defaut``) : le lead n'est plus relu.
         calepinage = SimpleNamespace(responsable=None, lead_id=3)
-        lead = SimpleNamespace(owner=personne(pk=9, nom='Porteur du lead'))
         with mock.patch('apps.crm.selectors.get_company_lead',
-                        return_value=lead):
+                        side_effect=AssertionError('lead lu pour rien')):
             rendu = vues._responsable(calepinage, SimpleNamespace(pk=1))
-        self.assertEqual(rendu, {'id': 9, 'nom_complet': 'Porteur du lead'})
+        self.assertIsNone(rendu)
 
     def test_la_cle_est_au_contrat(self):
         self.assertIn('responsable', CONTRAT['exemple'])
