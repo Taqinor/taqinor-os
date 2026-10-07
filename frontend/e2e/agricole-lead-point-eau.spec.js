@@ -218,7 +218,10 @@ test.describe('AGR423 — lead agricole, du site au générateur', () => {
     await expect(page.getByTestId('provenance-lead-pompage')).toBeVisible({ timeout: 30_000 })
     await expect.poll(async () => Number(await page.locator('#gen-hmt').inputValue())).toBe(60)
     // Aucune valeur inventée : pas de 20 m, pas de culture ni de région par défaut.
-    await expect(page.locator('#gen-distance')).toHaveValue('')
+    // La distance est celle MESURÉE à la visite du temps 4 (`site_pv.
+    // distance_forage_champ_m: 120`), remontée sur le lead : AGR420 pré-remplit
+    // les valeurs « déclarées ou mesurées » — 120, jamais le 20 m de l'écran.
+    await expect(page.locator('#gen-distance')).toHaveValue('120')
     await expect(page.locator('#gen-farm-crop')).toContainText('Non renseignée')
     await expect(page.locator('#gen-farm-region')).toContainText('Non renseignée')
     // La pompe ACTUELLE (5 CV) n'est jamais recopiée comme CV cible.
