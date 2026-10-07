@@ -53,7 +53,7 @@ MSG_CRENEAU_NON_PROPOSE = (
     'Créneau non proposé : choisissez un créneau de la liste.')
 
 
-def creneau_est_propose(debut, *, aujourdhui=None):
+def creneau_est_propose(debut, *, aujourdhui=None, company=None):
     """ASTK191 — la grille de créneaux proposée, en UNE fonction.
 
     Un début est PROPOSÉ si et seulement si il tombe sur : une heure pleine
@@ -65,8 +65,11 @@ def creneau_est_propose(debut, *, aujourdhui=None):
     ``reserver_creneau_fournisseur`` refuse tout début qui ne la satisfait pas
     — la grille affichée et la grille appliquée ne peuvent plus diverger.
 
-    Aucun calendrier de jours ouvrés n'existe pour les quais : la grille
-    générée couvre tous les jours de l'horizon, la règle fait de même.
+    Jours ouvrés (ASTK191) : avec ``company``, le jour doit être ouvré selon
+    le calendrier de la société (``notifications.calendar_utils.is_jour_ouvre`` :
+    jours de travail + fériés ; sans configuration, lundi-vendredi) — un
+    week-end ou un férié n'est ni proposé ni réservable. Sans ``company`` la
+    règle ne juge pas le calendrier (pure grille horaire).
     """
     local = timezone.localtime(debut)
     if local.minute or local.second or local.microsecond:
@@ -77,8 +80,13 @@ def creneau_est_propose(debut, *, aujourdhui=None):
     if (local.hour - HEURE_OUVERTURE) % pas_heures:
         return False
     jour0 = aujourdhui or timezone.localdate()
-    return (jour0 <= local.date()
-            <= jour0 + datetime.timedelta(days=FENETRE_MAX_JOURS))
+    if not (jour0 <= local.date()
+            <= jour0 + datetime.timedelta(days=FENETRE_MAX_JOURS)):
+        return False
+    if company is not None:
+        from apps.notifications.calendar_utils import is_jour_ouvre
+        return bool(is_jour_ouvre(local.date(), company))
+    return True
 
 
 def _parse_date(valeur):
@@ -149,7 +157,7 @@ def creneaux_disponibles(company, *, quai_id=None, date_debut=None,
                                 for (d, f) in pris)
                 # ASTK191 — même règle que la réservation (hors horizon, rien
                 # n'est proposé : une réservation y serait refusée).
-                if libre and creneau_est_propose(creneau_debut):
+                if libre and creneau_est_propose(creneau_debut, company=company):
                     resultat.append({
                         'quai': quai.id,
                         'quai_nom': quai.nom,
@@ -195,7 +203,7 @@ def reserver_creneau_fournisseur(token_obj, *, quai_id, debut,
         creneau_debut = timezone.make_aware(creneau_debut)
     if creneau_debut < timezone.now():
         raise ValueError('Ce créneau est déjà passé.')
-    if not creneau_est_propose(creneau_debut):
+    if not creneau_est_propose(creneau_debut, company=company):
         raise ErreurChampCreneau('debut', MSG_CRENEAU_NON_PROPOSE)
     creneau_fin = creneau_debut + datetime.timedelta(
         minutes=DUREE_CRENEAU_MINUTES)

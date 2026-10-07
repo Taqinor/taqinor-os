@@ -496,6 +496,8 @@ class ContratWmsQuaisTests(WmsBase):
             company=self.company, fournisseur=self.fournisseur)
         self.anonyme = APIClient()
         self.demain = timezone.localdate() + datetime.timedelta(days=1)
+        while self.demain.weekday() >= 5:  # ASTK191 : jours ouvrés seulement
+            self.demain += datetime.timedelta(days=1)
 
     def _rdv(self, heure=9):
         from apps.stock.models_wms import RendezVousTransporteur

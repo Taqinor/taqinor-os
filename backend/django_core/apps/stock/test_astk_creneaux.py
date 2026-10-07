@@ -63,6 +63,8 @@ class _Base(TestCase):
         self.token = PortailFournisseurToken.objects.create(
             company=self.company, fournisseur=self.fournisseur)
         self.demain = timezone.localdate() + datetime.timedelta(days=1)
+        while self.demain.weekday() >= 5:  # ASTK191 : jours ouvrés seulement
+            self.demain += datetime.timedelta(days=1)
         self.api = APIClient()
 
     def _url(self, suffixe):
@@ -119,6 +121,26 @@ class GrilleTests(_Base):
         self.assertEqual(reponse.status_code, 400, reponse.content)
         self.assertIn('debut', reponse.json())
 
+    def test_week_end_refuse(self):
+        """ASTK191 — un début un samedi/dimanche (heure pleine, dans la plage,
+        dans l'horizon) est refusé comme un début hors grille ; la génération
+        n'en propose aucun."""
+        jour = timezone.localdate() + datetime.timedelta(days=1)
+        while jour.weekday() != 5:
+            jour += datetime.timedelta(days=1)
+        avant = RendezVousTransporteur.objects.count()
+        for decalage in (0, 1):
+            debut = _aware(jour + datetime.timedelta(days=decalage), 9)
+            reponse = self._reserver(debut.isoformat())
+            self.assertEqual(reponse.status_code, 400, reponse.content)
+            self.assertEqual(reponse.json(), {'debut': [
+                'Créneau non proposé : choisissez un créneau de la liste.']})
+            self.assertFalse(creneau_est_propose(debut, company=self.company))
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)
+        propose = creneaux_disponibles(
+            self.company, date_debut=jour, periode_jours=2)
+        self.assertEqual(propose, [])
+
     def test_creneau_propose_201(self):
         liste = self.api.get(self._url('creneaux-disponibles/'), {
             'date_debut': self.demain.isoformat(), 'periode': 1})
@@ -139,8 +161,9 @@ class GrilleTests(_Base):
         self.assertTrue(generes)
         for creneau in generes:
             debut = datetime.datetime.fromisoformat(creneau['debut'])
-            self.assertTrue(creneau_est_propose(debut), creneau)
-        self.assertFalse(creneau_est_propose(_aware(self.demain, 9, 1)))
+            self.assertTrue(creneau_est_propose(debut, company=self.company), creneau)
+        self.assertFalse(creneau_est_propose(
+            _aware(self.demain, 9, 1), company=self.company))
 
     def test_reponse_conforme_contrat(self):
         contrat = _contrat('public_reserver_creneau')

@@ -35,8 +35,12 @@ def make_company(slug, nom):
 
 
 def _prochain_jour_ouvre():
-    """Un jour FUTUR stable (demain) — la réservation refuse le passé."""
-    return timezone.localdate() + datetime.timedelta(days=1)
+    """Prochain jour OUVRÉ futur — la réservation refuse le passé (ASTK191 :
+    et les week-ends)."""
+    jour = timezone.localdate() + datetime.timedelta(days=1)
+    while jour.weekday() >= 5:  # ASTK191 : la grille n'ouvre que les jours ouvrés
+        jour += datetime.timedelta(days=1)
+    return jour
 
 
 def _creneau(jour, heure):
