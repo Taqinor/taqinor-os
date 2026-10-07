@@ -13,14 +13,6 @@ SCOPE_READ_STOCK = 'read:stock'
 # (plan_code/modules_inclus/sieges_max/sieges_utilises UNIQUEMENT — jamais de
 # prix ni d'historique).
 SCOPE_READ_LICENCE = 'read:licence'
-# NTJUR41 — affaires juridiques (apps.juridique) en LECTURE SEULE : registre
-# des dossiers et budget d'un dossier, pour un usage externe RESTREINT
-# (courtier d'assurance RC, cabinet partenaire). Le filtrage de
-# CONFIDENTIALITÉ s'applique AUSSI à l'accès par clé : une clé n'est jamais un
-# administrateur, donc elle ne voit JAMAIS un dossier `confidentiel`.
-# Identifiant tel que nommé au plan (``juridique:read``) — il ne suit pas le
-# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici.
-SCOPE_READ_JURIDIQUE = 'juridique:read'
 # NTAPI17 — flux d'évènements consommable (`/api/public/v1/events/`). Ce scope
 # ouvre le CANAL, il n'accorde AUCUNE donnée à lui seul : chaque évènement
 # reste filtré par le scope de lecture de SA famille (voir
@@ -48,8 +40,8 @@ SCOPE_READ_CALEPINAGES = 'read:calepinages'
 # `RFQ` FG311) en LECTURE SEULE, pour un donneur d'ordre ou un outil d'achat
 # tiers qui suit l'avancement des réquisitions depuis son propre système.
 # Identifiant tel que nommé au plan (``lecture_achats``) — il ne suit pas le
-# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici (même
-# exception assumée que ``juridique:read``, NTJUR41).
+# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici (exception
+# assumée, NTP2P39).
 # CE SCOPE N'OUVRE AUCUN COÛT D'ACHAT : ni `prix_estime` de ligne, ni
 # `RFQOffre.montant_ht` (documenté « Montants INTERNES »), ni aucune marge —
 # voir `apps/publicapi/public_achats_views.py`, qui justifie chaque omission.
@@ -61,8 +53,7 @@ SCOPE_READ_ACHATS = 'lecture_achats'
 # « Limites & usage » (NTOBS8), toujours scopés à la société de la clé.
 # Identifiant tel que nommé au plan (``fiabilite:lecture``) — il ne suit pas le
 # préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici (même
-# exception assumée que ``juridique:read``, NTJUR41, et ``lecture_achats``,
-# NTP2P39).
+# exception assumée que ``lecture_achats``, NTP2P39).
 # CE SCOPE N'OUVRE AUCUN INTERNE D'INFRASTRUCTURE : ni clé d'objet MinIO, ni
 # taille de dump, ni manifeste de bundle, ni la vue cross-tenant NTOBS4 des
 # crédits dus — voir `apps/publicapi/public_fiabilite_views.py`, qui justifie
@@ -89,8 +80,6 @@ SCOPE_CHOICES = [
     (SCOPE_READ_CHANTIERS, 'Lire les chantiers'),
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
     (SCOPE_READ_LICENCE, 'Lire le statut de licence (plan, modules, sièges)'),
-    (SCOPE_READ_JURIDIQUE,
-     'Lire les dossiers juridiques non confidentiels et leur budget'),
     (SCOPE_READ_EVENTS,
      "Lire le flux d'évènements (limité aux familles déjà autorisées)"),
     (SCOPE_READ_FAVORIS,
