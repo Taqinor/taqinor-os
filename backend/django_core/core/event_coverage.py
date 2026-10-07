@@ -430,6 +430,14 @@ NO_STATIC_EMITTER = {
     # ``ancienne_langue``, ``nouvelle_langue``, ``user`` : exactement les
     # kwargs du ``send`` unique, et la docstring du signal dit la même chose.
     "langue_changed",
+    # ASTK55 — ``reception_fournisseur_annulee`` : contrat d'abord (PACT10),
+    # DÉCLARÉ et CATALOGUÉ avant son unique émetteur
+    # (``stock.services.annuler_reception_confirmee``, ASTK56, autre plan) :
+    # aucun ``send`` n'existe encore, le scanner verrait « catalogué vs [] ».
+    # À RETIRER d'ici dans le même commit qu'ASTK56 — la parité de payload
+    # (reception, company, user, lignes) redevient alors vérifiable et DOIT
+    # l'être (le cliquet se resserre, il ne se relâche jamais).
+    "reception_fournisseur_annulee",
     # SOLMVP — ÉMETTEUR PARTI AVEC SON MODULE (``core.parked`` /
     # ``docs/parked-modules.md``). Ces signaux restent DÉCLARÉS sur le bus et
     # CATALOGUÉS (contrat d'intégration NTPLT12, semé en base par migration),
