@@ -177,7 +177,10 @@ class CrmClientCreateUndoHandlerTests(TestCase):
 
     def test_annulation_supprime_le_client_cree(self):
         client_obj = Client.objects.create(
-            company=self.company, nom='À annuler')
+            company=self.company, nom='À annuler',
+            # AANA49 — seul un client créé PAR l'utilisateur du journal est
+            # annulable (jamais un client préexistant).
+            created_by=self.user)
         log = services.log_confirmed_action(
             company=self.company, user=self.user,
             action_key='crm.client.create',
@@ -196,7 +199,7 @@ class CrmClientCreateUndoHandlerTests(TestCase):
         from apps.ventes.models import Devis
 
         client_obj = Client.objects.create(
-            company=self.company, nom='Référencé')
+            company=self.company, nom='Référencé', created_by=self.user)
         Devis.objects.create(
             company=self.company, client=client_obj, reference='DEV-AUDV27',
             statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'))

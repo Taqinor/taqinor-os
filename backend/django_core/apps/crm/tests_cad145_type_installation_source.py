@@ -24,13 +24,27 @@ _ICI = pathlib.Path(__file__).resolve().parent
 _FICHIERS_A_VERIFIER = ('scoring.py', 'services.py')
 
 
+def _fichiers_a_verifier():
+    """SPL1 — scoring.py, services.py ET les modules crm qui définissent un
+    nom du golden du découpage (la garde suit le code déplacé). JAMAIS
+    models.py : il porte légitimement ``SiteProfile``."""
+    from apps.crm.tests_services_split_golden import (
+        modules_definissant_la_fixture,
+    )
+    noms = list(_FICHIERS_A_VERIFIER)
+    for chemin in modules_definissant_la_fixture():
+        if chemin.name not in noms and chemin.name != 'models.py':
+            noms.append(chemin.name)
+    return noms
+
+
 class SourceUniqueTypeInstallationTests(SimpleTestCase):
 
     def test_scoring_et_services_ne_referencent_jamais_siteprofile(self):
         """Anti-faux-vert incluse : si l'un de ces fichiers importait un jour
         `SiteProfile`, ce test s'arrêterait ici plutôt que de laisser un
         futur lecteur de `.type_installation` passer inaperçu."""
-        for nom in _FICHIERS_A_VERIFIER:
+        for nom in _fichiers_a_verifier():
             chemin = _ICI / nom
             texte = chemin.read_text(encoding='utf-8')
             with self.subTest(fichier=nom):
