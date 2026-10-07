@@ -61,6 +61,33 @@ class ArchivageActifTest(BaseApiCalepinage):
             lignes = lignes.get('results', [])
         return {ligne['id'] for ligne in lignes}
 
+    def test_restaurer_refuse_un_second_ouvert_du_lead(self):
+        """Lot 2 critique #12 — restaurer un archivé dont le lead a déjà un
+        AUTRE calepinage ouvert : 409 nommé (D-ACAL-12), rien restauré ; un
+        MODÈLE du lead ne compte pas comme ouvert."""
+        archiver(self.calepinage, user=self.user)
+        autre = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Le nouveau')
+        reponse = self.api.post(
+            f'{URL}{self.calepinage.pk}/restaurer-corbeille/')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        # (APIException : DRF sert chaque valeur en texte.)
+        self.assertEqual(str(reponse.data['calepinage_existant']),
+                         str(autre.pk))
+        self.assertIn('lead', reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertTrue(est_archive(self.calepinage))
+        # Le second devient un MODÈLE : il n'est plus « l'ouvert » du lead,
+        # la restauration passe.
+        marquer_modele(autre, user=self.user)
+        self.assertEqual(selectors.calepinages_ouverts_du_lead(
+            self.company, self.lead.pk), [])
+        reponse = self.api.post(
+            f'{URL}{self.calepinage.pk}/restaurer-corbeille/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(selectors.calepinages_ouverts_du_lead(
+            self.company, self.lead.pk), [self.calepinage])
+
     def test_archive_survit_a_la_purge(self):
         marquer_modele(self.calepinage, user=self.user)
         reponse = self._archiver_http(self.calepinage)
@@ -115,6 +142,38 @@ class ArchivageActifTest(BaseApiCalepinage):
                     calepinage)
                 devis.refresh_from_db()
                 self.assertEqual(devis.statut, statut)
+
+    def test_restauration_journalisee_au_nom_de_qui_restaure(self):
+        """Lot 2 critique #13 — le re-rattachement du devis au désarchivage
+        est écrit au nom de QUI RESTAURE, jamais de qui avait supprimé."""
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+
+        from apps.calepinage.services import liens
+        from apps.calepinage.services.archivage import restaurer
+
+        restaurateur = get_user_model().objects.create_user(
+            username='cal_restaure', password='x', company=self.company,
+            role=self.role)
+        devis = self._devis(Devis.Statut.BROUILLON, 'DEV-ACAL118-R')
+        calepinage = Calepinage.objects.create(
+            company=self.company, client=self.client_a, devis=devis,
+            titre='Restauré par un autre')
+        archiver(calepinage, user=self.user)
+        calepinage.refresh_from_db()
+        auteurs = []
+        lier = liens.lier_devis
+
+        def espion(*args, **kwargs):
+            auteurs.append(kwargs.get('user'))
+            return lier(*args, **kwargs)
+
+        with mock.patch.object(liens, 'lier_devis', espion):
+            restaurer(calepinage, user=restaurateur)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.devis_id, devis.pk)
+        self.assertEqual(auteurs, [restaurateur])
 
     def test_archiver_brouillon_detache(self):
         devis = self._devis(Devis.Statut.BROUILLON, 'DEV-ACAL118-B')

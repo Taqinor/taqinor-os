@@ -294,8 +294,9 @@ def retenir_variante(variante, *, user=None, appliquer=True):
 #: et ses postes de pertes. JAMAIS : ``resultat`` (production d'un autre toit
 #: + saisies de site), ``roof_image``, ``approbation``, ``devis``,
 #: ``appel_offre_id`` ; les variantes copiées naissent NON retenues et SANS
-#: résultat.
-CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'version_moteur', 'pertes')
+#: résultat. Ni ``version_moteur`` (lot 2 critique #14) : elle qualifie un
+#: RÉSULTAT, et la copie n'en a aucun — vide jusqu'au premier calcul.
+CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'pertes')
 
 
 #: ACAL187 (D-ACAL-12) — Dupliquer un calepinage OUVERT sans cible : la
@@ -303,6 +304,13 @@ CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'version_moteur', 'pertes')
 MESSAGE_SOURCE_OUVERTE = ("Ce lead n'a qu'un calepinage ouvert : créez une "
                           "variante, ou indiquez un autre lead/client pour "
                           "la copie")
+
+
+#: ACAL184 — UNE règle (modèle et Dupliquer) : le client de la copie est
+#: celui du lead ; un couple lead/client qui se contredit est refusé.
+MESSAGE_CLIENT_PAS_CELUI_DU_LEAD = (
+    "Ce client n'est pas celui du lead choisi : laissez le client vide, il "
+    "est repris du lead.")
 
 
 class DuplicationEnConflit(VarianteRefusee):
@@ -343,7 +351,12 @@ def _cible_de_copie(calepinage, lead_id, client_id):
         if lead is None:
             raise VarianteRefusee(f"Lead introuvable (#{lead_id}).",
                                   champ='lead')
-        client_id = getattr(lead, 'client_id', None) or client_id
+        client_du_lead = getattr(lead, 'client_id', None)
+        if client_id and client_du_lead and str(client_id) != str(
+                client_du_lead):
+            raise VarianteRefusee(MESSAGE_CLIENT_PAS_CELUI_DU_LEAD,
+                                  champ='client')
+        client_id = client_du_lead or client_id
         lead_id = lead.pk
     if client_id:
         from apps.crm.selectors import get_company_client
@@ -382,7 +395,8 @@ def _refuser_second_ouvert(calepinage, lead_id, *, user=None):
 
 
 def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
-              roof_layout=..., lead_id=..., client_id=...):
+              roof_layout=..., lead_id=..., client_id=...,
+              preparer_document=None):
     """Recopie la conception (et les variantes) vers un NOUVEAU calepinage.
 
     Le duplicata reste dans la MÊME société et garde le rattachement
@@ -400,13 +414,18 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     rendu ; une version « Conception d'origine (copie de #C) » est déposée.
     ``roof_layout`` (facultatif) remplace la conception copiée (modèle
     translaté sur le repère du lead cible, D-ACAL-15).
+
+    ``preparer_document`` (facultatif) : la MÊME transformation appliquée au
+    document de CHAQUE variante copiée (modèle : translation sur le repère du
+    lead cible, consommation d'un autre client retirée — D-ACAL-15), son
+    empreinte recalculée ; elle reçoit une copie profonde.
     """
     from django.db import transaction
 
     from apps.ventes.services import layout_hash
 
     from ..models import Calepinage, CalepinageVariante
-    from .versions import enregistrer_version
+    from .versions import LIBELLE_CONCEPTION_ORIGINE, enregistrer_version
 
     if calepinage is None or not getattr(calepinage, 'pk', None):
         raise VarianteRefusee(
@@ -415,7 +434,6 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     # ACAL187 — la CIBLE (lead/client) est résolue et le « un seul ouvert
     # par lead » (D-ACAL-12) tenu AVANT toute écriture.
     lead_cible, client_cible = _cible_de_copie(calepinage, lead_id, client_id)
-    _refuser_second_ouvert(calepinage, lead_cible, user=user)
 
     copies = {champ: copy.deepcopy(getattr(calepinage, champ, None))
               for champ in CHAMPS_COPIES}
@@ -423,11 +441,18 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
         copies['roof_layout'] = roof_layout
         copies['layout_hash'] = layout_hash(roof_layout) or ''
     copies['layout_hash'] = copies['layout_hash'] or ''
-    copies['version_moteur'] = copies['version_moteur'] or ''
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
 
-    with transaction.atomic():
+    from .creation import _verrou_creation
+
+    with transaction.atomic(), _verrou_creation(calepinage.company_id,
+                                                lead_cible):
+        # Lot 2 critique #11 — le « un seul ouvert par lead » est relu SOUS
+        # le verrou consultatif du lead cible (même verrou que creation.py /
+        # liens.py), dans la transaction de la création : deux copies
+        # simultanées vers le même lead n'en créent jamais deux.
+        _refuser_second_ouvert(calepinage, lead_cible, user=user)
         copie = Calepinage.objects.create(
             company=calepinage.company,
             lead_id=lead_cible,
@@ -441,12 +466,19 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
                     .filter(calepinage=calepinage).order_by('id'))
                    if avec_variantes else CalepinageVariante.objects.none())
         for source in sources:
+            document_variante = source.roof_layout
+            empreinte_variante = source.layout_hash or ''
+            if preparer_document is not None:
+                document_variante = preparer_document(
+                    copy.deepcopy(document_variante))
+                empreinte_variante = (layout_hash(document_variante) or ''
+                                      if document_variante else '')
             CalepinageVariante.objects.create(
                 company=copie.company,
                 calepinage=copie,
                 nom=source.nom,
-                roof_layout=source.roof_layout,
-                layout_hash=source.layout_hash or '',
+                roof_layout=document_variante,
+                layout_hash=empreinte_variante,
                 resultat=None,
                 retenue=False,
                 cree_par=user,
@@ -456,7 +488,8 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
         if copie.roof_layout is not None:
             enregistrer_version(
                 copie, user=user,
-                libelle=f"Conception d'origine (copie de #{calepinage.pk})",
+                libelle=LIBELLE_CONCEPTION_ORIGINE.format(
+                    source=calepinage.pk),
                 resultat=None, meme_empreinte_admise=True)
     # ACAL187 — l'histoire de la copie commence par sa création ET sa
     # provenance.

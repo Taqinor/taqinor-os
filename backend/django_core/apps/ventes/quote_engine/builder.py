@@ -239,6 +239,12 @@ def _conception_divergente_du_devis(devis) -> bool:
                                       getattr(devis, 'company', None))
         if calepinage is None:
             return False
+        # ACAL92 — devis REMPLACÉ : sa planche vient de SA conception figée
+        # (``_planche_calepinage``), jamais de la conception re-liée à la
+        # version en vigueur — rien à comparer à la conception courante.
+        if str(getattr(calepinage, 'devis_id', '')) != str(
+                getattr(devis, 'pk', None)):
+            return False
         return bool(peremption_layout_devis(
             devis, calepinage=calepinage).get('conception_divergente'))
     except Exception:  # noqa: BLE001 — une lecture ratée ne casse pas un PDF
@@ -275,12 +281,27 @@ def _planche_calepinage(devis):
     try:
         from apps.calepinage import services as _calepinage_services
         from apps.calepinage.selectors import (
-            calepinage_du_devis as _lire_calepinage)
+            calepinage_du_devis as _lire_calepinage,
+            conception_figee_du_devis as _lire_conception_figee)
 
         calepinage = _lire_calepinage(getattr(devis, 'pk', None),
                                       getattr(devis, 'company', None))
         if calepinage is None:
             return "", ""
+        # ACAL92 (D-ACAL-3) — un devis REMPLACÉ (calepinage re-lié à sa
+        # remplaçante) se rend de SA conception figée (« Version envoyée »,
+        # sinon ``Devis.roof_layout``), jamais de la conception courante.
+        figee = _lire_conception_figee(getattr(devis, 'pk', None),
+                                       getattr(devis, 'company', None))
+        if figee is not None:
+            if not figee.get('roof_layout'):
+                return "", ""
+            empreinte = _calepinage_services.texte_d_empreinte(
+                figee.get('layout_hash', ''), '', None)
+            svg = _calepinage_services.rendre_planche_svg(
+                calepinage, pied=empreinte,
+                document=figee['roof_layout']) or ""
+            return _svg_planche_inline(svg), empreinte
         empreinte = _calepinage_services.texte_d_empreinte(
             getattr(calepinage, 'layout_hash', ''),
             getattr(calepinage, 'version_moteur', ''),

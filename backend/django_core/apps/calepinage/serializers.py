@@ -212,17 +212,20 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         except ContraintesSiteInvalides as refus:
             raise serializers.ValidationError(refus.message)
 
-    @extend_schema_field(serializers.BooleanField(allow_null=True))
+    @extend_schema_field(serializers.CharField())
     def get_statut(self, obj):
         from .services.approbation import statut_derive
 
         return statut_derive(obj)
 
+    @extend_schema_field(serializers.CharField())
     def get_statut_libelle(self, obj):
         from .services.approbation import LIBELLES_STATUT, statut_derive
 
         return LIBELLES_STATUT[statut_derive(obj)]
 
+    # Lot 2 critique #20 — le type booléen (nullable) revient à SA méthode.
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_layout_stale(self, calepinage):
         """``True``/``False`` d'après le DEVIS lié — ``None`` sans devis.
 

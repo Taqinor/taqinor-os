@@ -29,6 +29,10 @@ from core.events import (
     devis_revise, layout_finalise, lead_created, lead_trace_toit_recu,
 )
 
+from .services.versions import (
+    LIBELLE_VERSION_ENVOYEE as _LIBELLE_VERSION_ENVOYEE,
+)
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -76,8 +80,9 @@ def rattacher_conception_au_devis(sender, devis, user=None, **kwargs):
             getattr(devis, 'pk', None))
 
 
-#: ACAL92 — le libellé de la version FIGÉE déposée à la révision.
-LIBELLE_VERSION_ENVOYEE = 'Version envoyée — {reference}'
+#: ACAL92 — le libellé de la version FIGÉE déposée à la révision (défini
+#: avec les autres libellés pivots de l'historique, ``services.versions``).
+LIBELLE_VERSION_ENVOYEE = _LIBELLE_VERSION_ENVOYEE
 
 
 @receiver(devis_revise, dispatch_uid='calepinage_relier_au_devis_revise')

@@ -58,6 +58,7 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.source = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='QA-ACAL-MODELE',
             roof_layout=_document(), layout_hash='c' * 64,
+            version_moteur='2.1.0',
             pertes=copy.deepcopy(POSTES),
             resultat={'simulation': {'hash_entree': 'site-origine'},
                       'raccordement_saisie': {'type': 'mono'}},
@@ -74,6 +75,8 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertEqual(copie.pertes, POSTES)
         self.assertIsNone(copie.resultat)
         self.assertEqual(copie.roof_image, '')
+        # Lot 2 critique #14 — pas de version de moteur sans résultat.
+        self.assertEqual(copie.version_moteur, '')
 
     def test_dupliquer_ne_copie_pas_la_retenue(self):
         copie = dupliquer(self.source, user=self.user, lead_id=self.lead_2.pk)
@@ -111,6 +114,27 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertIsNone(copie.resultat)
         self.assertEqual(copie.roof_image, '')
         self.assertEqual(copie.pertes, POSTES)
+
+    def test_modele_variantes_translatees_sans_consommation(self):
+        """Lot 2 critique #6 — chaque VARIANTE du modèle suit la règle de la
+        conception (D-ACAL-15) : translatée sur le lead cible, sans la
+        consommation d'un autre client, empreinte recalculée."""
+        marquer_modele(self.source, user=self.user)
+        cible = Lead.objects.create(company=self.company, nom='Marrakech',
+                                    roof_point=dict(MARRAKECH))
+        copie = creer_depuis_modele(self.source, user=self.user,
+                                    lead_id=cible.pk)
+        variantes = list(CalepinageVariante.objects.filter(calepinage=copie))
+        self.assertEqual(len(variantes), 1)
+        document = variantes[0].roof_layout
+        self.assertAlmostEqual(document['pin']['lat'], MARRAKECH['lat'], 6)
+        premier = document['zones'][0]['vertices'][0]
+        self.assertAlmostEqual(premier[0], MARRAKECH['lng'], 4)
+        self.assertAlmostEqual(premier[1], MARRAKECH['lat'], 4)
+        self.assertNotIn('consumption', document)
+        # La variante SOURCE n'est pas touchée.
+        self.variante.refresh_from_db()
+        self.assertEqual(self.variante.roof_layout, _document())
 
     def test_modele_sans_repere_refuse(self):
         marquer_modele(self.source, user=self.user)

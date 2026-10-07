@@ -11,6 +11,8 @@ Run :
 """
 import copy
 
+from django.test import SimpleTestCase, tag
+
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.approbation import decider
 from apps.calepinage.services.feu_vert import PIECES_EXECUTION
@@ -123,6 +125,44 @@ class PorteeApprobationTest(BaseApiCalepinage):
         planche = rendre_planche_svg(cal, moment=MOMENT)
         self.assertIn(MENTION_NON_APPROUVEE, planche)
 
+    @tag('pdf')
+    def test_livrables_etude_pdf_texte_extrait(self):
+        """Lot 2 critique #34 — la mention est lue dans le TEXTE EXTRAIT des
+        PDF servis (planche, rapport d'étude), jamais dans leurs octets."""
+        from apps.calepinage.services.documents.gabarit_document import (
+            MENTION_NON_APPROUVEE,
+        )
+
+        from .acal_livrables_helpers import (
+            calepinage_simule_reel, exiger_bibliotheques_pdf, patch_materiel,
+        )
+
+        exiger_bibliotheques_pdf()
+        import fitz
+
+        pivot = calepinage_simule_reel(LAYOUT_PLANCHE_SIMULABLE)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            roof_layout=copy.deepcopy(pivot.roof_layout),
+            resultat=copy.deepcopy(pivot.resultat),
+            layout_hash=pivot.layout_hash or '',
+            version_moteur=pivot.version_moteur or '')
+        self._exiger()
+        for route in ('planche.pdf', 'rapport-etude.pdf'):
+            with self.subTest(route=route):
+                with patch_materiel():
+                    reponse = self.api.get(f'{self.base}{route}')
+                self.assertEqual(reponse.status_code, 200,
+                                 getattr(reponse, 'data', None))
+                octets = (b''.join(reponse.streaming_content)
+                          if getattr(reponse, 'streaming', False)
+                          else reponse.content)
+                document = fitz.open(stream=octets, filetype='pdf')
+                try:
+                    texte = ' '.join(page.get_text() for page in document)
+                finally:
+                    document.close()
+                self.assertIn(MENTION_NON_APPROUVEE, ' '.join(texte.split()))
+
     def test_reglages_inactifs_rien_ne_change(self):
         from apps.calepinage.services.documents.gabarit_document import (
             etat_de_conception, mentions_d_etat,
@@ -133,3 +173,30 @@ class PorteeApprobationTest(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         self.assertEqual(mentions_d_etat(etat_de_conception(self.calepinage)),
                          [])
+
+
+class PorteEtSchemaTest(SimpleTestCase):
+    """Lot 2 critique #20 — la porte d'exécution lève une VRAIE exception
+    pour une pièce inconnue (jamais un ``assert``), et chaque méthode du
+    sérialiseur porte SON type de schéma."""
+
+    def test_piece_inconnue_leve(self):
+        from apps.calepinage.views.sorties import porte_execution
+
+        with self.assertRaises(ValueError):
+            porte_execution(object(), 'piece_inconnue')
+
+    def test_types_de_schema_a_leur_methode(self):
+        from rest_framework import serializers
+
+        from apps.calepinage.serializers import CalepinageSerializer
+
+        def champ(methode):
+            return getattr(CalepinageSerializer, methode) \
+                ._spectacular_annotation['field']
+
+        self.assertIsInstance(champ('get_layout_stale'),
+                              serializers.BooleanField)
+        self.assertIsInstance(champ('get_statut'), serializers.CharField)
+        self.assertIsInstance(champ('get_statut_libelle'),
+                              serializers.CharField)

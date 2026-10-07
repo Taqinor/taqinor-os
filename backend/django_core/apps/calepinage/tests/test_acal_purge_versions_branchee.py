@@ -83,6 +83,46 @@ class PurgeVersionsBrancheeTest(BaseApiCalepinage):
         self.assertEqual(
             self.calepinage.roof_layout['zones'][0]['geometry']['count'], 4)
 
+    def test_versions_pivots_jamais_purgees(self):
+        """Lot 2 critique #3 — « Version envoyée » (ACAL92), « Avant
+        restauration » (ACAL45) et « Conception d'origine » (ACAL117)
+        survivent à la borne ; elles ne comptent pas dans la borne."""
+        from apps.calepinage.services.versions import (
+            LIBELLE_CONCEPTION_ORIGINE, LIBELLE_VERSION_ENVOYEE,
+            enregistrer_version)
+
+        self._enregistrer(4)
+        self.calepinage.refresh_from_db()
+        origine = enregistrer_version(
+            self.calepinage, user=self.user, resultat=None,
+            libelle=LIBELLE_CONCEPTION_ORIGINE.format(source=1),
+            meme_empreinte_admise=True)
+        envoyee = enregistrer_version(
+            self.calepinage, user=self.user, resultat=None,
+            libelle=LIBELLE_VERSION_ENVOYEE.format(reference='DEV-1'),
+            meme_empreinte_admise=True)
+        self._borne(2)
+        for modules in (6, 8):
+            self._enregistrer(modules)
+        a_restaurer = self._versions()[0]
+        self._enregistrer(10)
+        self.calepinage.refresh_from_db()
+        restaurer_version(a_restaurer, user=self.user)
+        for modules in (12, 14):
+            self._enregistrer(modules)
+        libelles = [v.libelle for v in self._versions()]
+        pks = [v.pk for v in self._versions()]
+        self.assertIn(origine.pk, pks)
+        self.assertIn(envoyee.pk, pks)
+        self.assertTrue(any(lib.startswith('Avant restauration de #')
+                            for lib in libelles), libelles)
+        # Hors pivots : la borne (2) tient toujours.
+        ordinaires = [lib for lib in libelles
+                      if not lib.startswith(('Avant restauration de #',
+                                             'Version envoyée — ',
+                                             "Conception d'origine"))]
+        self.assertEqual(len(ordinaires), 2, libelles)
+
     def test_borne_invalide_refusee_en_nommant_le_champ(self):
         for valeur in (0, -1, 'deux', 2.5, True):
             with self.subTest(valeur=valeur):

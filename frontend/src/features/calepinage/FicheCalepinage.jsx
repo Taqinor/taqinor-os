@@ -4,6 +4,7 @@ import calepinageApi from '../../api/calepinageApi'
 import AssigneePicker from '../../components/AssigneePicker'
 import SelecteurRattachement from './SelecteurRattachement'
 import useUtilisateursAssignables from './useUtilisateursAssignables'
+import { urlImage } from './urlImage'
 import { formatDateTime } from '../../lib/format'
 // CALX344 — les étiquettes libres (records.Tag), lues/posées/retirées par la
 // porte `etiquettes/` (CALX343) : un composant à part, monté sous la fiche.
@@ -753,7 +754,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
 
         <Champ cle="image" label="Aperçu">
           {image.url
-            ? <a href={image.url} className="underline" target="_blank" rel="noreferrer">
+            ? <a href={urlImage(image.url)} className="underline" target="_blank" rel="noreferrer">
               Voir l’aperçu
             </a>
             : '—'}

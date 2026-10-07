@@ -93,6 +93,11 @@ class CreerDepuisModeleTest(TestCase):
         self.assertEqual(ctx.exception.champ, 'client')
 
     def test_cree_sans_copier_le_commercial_du_modele(self):
+        # Lot 2 critique #7 — la consommation du modèle est celle d'un AUTRE
+        # client : jamais recopiée, même vers un client seul.
+        Calepinage.objects.filter(pk=self.modele.pk).update(
+            roof_layout={'foo': 'bar', 'consumption': {'annualKwh': 9000}})
+        self.modele.refresh_from_db()
         marquer_modele(self.modele)
         client_a = Client.objects.create(company=self.company, nom='Client A')
         copie = creer_depuis_modele(self.modele, client_id=client_a.pk)
@@ -104,8 +109,21 @@ class CreerDepuisModeleTest(TestCase):
         # ACAL117 — la copie porte SA version d'origine (une seule).
         self.assertEqual(CalepinageVersion.objects.filter(
             calepinage=copie).count(), 1)
-        # La géométrie, elle, EST recopiée (c'est le point d'un modèle).
+        # La géométrie, elle, EST recopiée (c'est le point d'un modèle) —
+        # sans la consommation ; le modèle garde la sienne.
         self.assertEqual(copie.roof_layout, {'foo': 'bar'})
+        self.modele.refresh_from_db()
+        self.assertIn('consumption', self.modele.roof_layout)
+
+    def test_lead_introuvable_nomme_le_champ_lead(self):
+        # Lot 2 critique #13 — « Lead introuvable » pointe le champ LEAD.
+        marquer_modele(self.modele)
+        autre = Company.objects.create(nom='Ailleurs 199',
+                                       slug='ailleurs-199')
+        etranger = Lead.objects.create(company=autre, nom='Étranger')
+        with self.assertRaises(ModeleInvalide) as ctx:
+            creer_depuis_modele(self.modele, lead_id=etranger.pk)
+        self.assertEqual(ctx.exception.champ, 'lead')
 
     def test_nouveau_lead_remplace_celui_du_modele(self):
         marquer_modele(self.modele)

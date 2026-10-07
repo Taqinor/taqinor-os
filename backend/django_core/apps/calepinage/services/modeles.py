@@ -29,6 +29,8 @@ silencieuse du lead/client du modèle.
 """
 from __future__ import annotations
 
+import copy
+
 #: Nom du tag SYSTÈME (FG9) qui porte le drapeau « modèle réutilisable ».
 NOM_TAG_MODELE = 'calepinage:modele'
 
@@ -141,10 +143,14 @@ def calepinages_modeles(company):
 
 
 def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
-                        titre=''):
+                        titre='', regler_conception=None):
     """Crée un NOUVEAU calepinage depuis ``modele`` — jamais un troisième
     chemin de copie (appelle ``services.variantes.dupliquer``, CAL14), puis
     détache tout ce qui est commercial.
+
+    ``regler_conception`` (facultatif) : appliqué à la conception préparée
+    AVANT la copie (jeu de réglages de ``creation.demarrer_depuis_modele``) —
+    la version « Conception d'origine » est donc le document courant.
 
     Raises:
         ModeleInvalide: modèle absent/non marqué, ou aucun nouveau
@@ -177,21 +183,22 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         if get_company_client(modele.company, client_id) is None:
             raise ModeleInvalide('Client introuvable dans cette société.',
                                  champ='client')
-    document = ...
     if lead_id:
         from apps.crm.selectors import get_company_lead, repere_toit
 
         lead = get_company_lead(modele.company, lead_id)
         if lead is None:
             raise ModeleInvalide('Lead introuvable dans cette société.',
-                                 champ='client')
+                                 champ='lead')
         # ACAL184 — le client de la copie est CELUI du lead : un couple
-        # lead/client qui se contredit est refusé en nommant ``client``.
+        # lead/client qui se contredit est refusé en nommant ``client`` (UNE
+        # règle, partagée avec Dupliquer).
+        from .variantes import MESSAGE_CLIENT_PAS_CELUI_DU_LEAD
+
         client_du_lead = getattr(lead, 'client_id', None)
         if client_id and client_du_lead and int(client_id) != client_du_lead:
-            raise ModeleInvalide(
-                "Ce client n'est pas celui du lead choisi : laissez le "
-                'client vide, il est repris du lead.', champ='client')
+            raise ModeleInvalide(MESSAGE_CLIENT_PAS_CELUI_DU_LEAD,
+                                 champ='client')
         client_id = client_du_lead or client_id
         # ACAL117 (D-ACAL-15) — le modèle emporte ses réglages et son
         # implantation RELATIVE : la conception est translatée sur le repère
@@ -201,16 +208,31 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
             raise ModeleInvalide(
                 "Le lead n'a pas de repère toit (GPS ou point de toit) : "
                 "placez-le d'abord", champ='lead')
-        from .translation_conception import translater_conception
+    else:
+        pin = None
 
-        document = translater_conception(modele.roof_layout, pin)
-        if isinstance(document, dict):
-            # La consommation est celle d'un AUTRE client : jamais recopiée.
-            document.pop('consumption', None)
+    def preparer(source):
+        """D-ACAL-15 — la règle de copie d'un document du modèle, UNE pour
+        la conception et chaque variante : translatée sur le repère du lead
+        cible (s'il y en a un), sans la consommation d'un AUTRE client."""
+        if pin is not None:
+            from .translation_conception import translater_conception
+
+            prepare = translater_conception(source, pin)
+        else:
+            prepare = copy.deepcopy(source)
+        if isinstance(prepare, dict):
+            prepare.pop('consumption', None)
+        return prepare
 
     # ACAL187/ACAL184 — la CIBLE est passée explicitement à ``dupliquer`` :
     # la copie naît sur ce lead/client (jamais sur le rattachement du
     # modèle), et un lead qui a déjà un calepinage OUVERT est refusé
     # (``DuplicationEnConflit``, 409). ``dupliquer`` journalise la création.
-    return dupliquer(modele, user=user, titre=titre, roof_layout=document,
+    conception = preparer(modele.roof_layout)
+    if regler_conception is not None:
+        conception = regler_conception(conception)
+    return dupliquer(modele, user=user, titre=titre,
+                     roof_layout=conception,
+                     preparer_document=preparer,
                      lead_id=lead_id or None, client_id=client_id or None)

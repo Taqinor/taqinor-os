@@ -144,8 +144,9 @@ def depuis_modele(self, request):
     création strictement identique à la porte d'aujourd'hui.
     """
     from ..services.creation import (
-        CreationRefusee, corps_conflit, creer_pour_client,
-        demarrer_depuis_modele, obtenir_ou_creer_pour_devis,
+        CreationRefusee, DevisTenuParUnArchive, corps_conflit,
+        creer_pour_client, demarrer_depuis_modele,
+        obtenir_ou_creer_pour_devis,
         ouvrir_ou_creer_pour_lead,
     )
     from .calepinages import detail_calepinage
@@ -197,6 +198,9 @@ def depuis_modele(self, request):
         # ACAL184 (D-ACAL-12) — le lead cible a déjà un calepinage OUVERT :
         # 409 du contrat calepinage_creation_conflit.json.
         return Response(conflit.corps, status=status.HTTP_409_CONFLICT)
+    except DevisTenuParUnArchive as refus:
+        # Lot 2 critique #4 — le devis est tenu par un calepinage ARCHIVÉ.
+        return Response(refus.corps(), status=status.HTTP_409_CONFLICT)
     except (CreationRefusee, ModeleInvalide, VarianteRefusee) as refus:
         return _refus_nomme(refus)
     return Response(detail_calepinage(calepinage, request),

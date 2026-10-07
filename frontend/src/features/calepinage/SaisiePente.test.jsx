@@ -134,3 +134,26 @@ describe('ACAL208 — la rose des vents de la visite', () => {
       .toBeNull()
   })
 })
+
+describe('Lot 2 critique #32 — lecture seule et verrou', () => {
+  it('lecture seule : « Enregistrer la pente » désactivé, la raison dite', async () => {
+    render(<MemoryRouter><SaisiePente calepinageId={7} lectureSeule /></MemoryRouter>)
+    expect(await screen.findByTestId('cal-pente-lecture-seule')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-pente-enregistrer')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('cal-pente-enregistrer'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('verrou 409 : le motif serveur, jamais « a changé ailleurs »', async () => {
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: {
+      roof_layout: ['Devis accepté : révisez-le'] } } })
+    rendre()
+    await screen.findByTestId('cal-pente-visite-mesure')
+    await waitFor(() => expect(screen.getByTestId('cal-pente-pan')).toHaveValue('zB'))
+    fireEvent.click(screen.getByTestId('cal-pente-visite-utiliser'))
+    fireEvent.click(screen.getByTestId('cal-pente-enregistrer'))
+    await waitFor(() => expect(screen.getByTestId('cal-pente-message'))
+      .toHaveTextContent('Devis accepté : révisez-le'))
+    expect(screen.getByTestId('cal-pente-message')).not.toHaveTextContent('a changé ailleurs')
+  })
+})

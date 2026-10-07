@@ -217,6 +217,12 @@ class DepuisModeleEnBase(BaseApiCalepinage):
         self.assertEqual(copie.roof_layout['zones'][0]['pitchDeg'], 22)
         self.modele.refresh_from_db()
         self.assertEqual(self.modele.roof_layout, DOCUMENT)
+        # Lot 2 critique #15 — la version « Conception d'origine » EST le
+        # document courant (jeu appliqué), pas l'état d'avant réglage.
+        origine = copie.versions.order_by('created_at', 'id').first()
+        self.assertTrue(origine.libelle.startswith("Conception d'origine"))
+        self.assertEqual(origine.roof_layout, copie.roof_layout)
+        self.assertEqual(origine.roof_layout['zones'][0]['pitchDeg'], 22)
 
     def test_sans_jeu_identique_a_la_copie_d_aujourd_hui(self):
         reponse = self.api.post(URL_DEPUIS_MODELE, {

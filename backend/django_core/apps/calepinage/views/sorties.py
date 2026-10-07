@@ -173,7 +173,10 @@ def porte_execution(calepinage, piece):
         GESTE_EXECUTION, PIECES_EXECUTION, verifier_avant_publication,
     )
 
-    assert piece in PIECES_EXECUTION, piece
+    if piece not in PIECES_EXECUTION:
+        # Lot 2 critique #20 — une vraie exception (``assert`` disparaît
+        # sous ``python -O`` et la pièce passerait sans porte).
+        raise ValueError(f"Pièce d'exécution inconnue : {piece!r}")
     verifier_avant_publication(calepinage, geste=GESTE_EXECUTION)
 
 

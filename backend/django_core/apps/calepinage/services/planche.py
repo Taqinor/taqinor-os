@@ -1288,8 +1288,16 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
     CAL173 — le pied de planche porte TOUJOURS l'empreinte du layout et la
     version du moteur telles qu'elles sont STOCKÉES : deux rendus de la même
     conception portent la même, une conception modifiée en change.
+
+    ACAL92 — ``document=`` rend un AUTRE document que la conception courante
+    (l'instantané figé d'un devis remplacé,
+    ``selectors.conception_figee_du_devis``) ; l'appelant fournit alors son
+    ``pied``.
     """
-    geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    document = options.pop('document', None)
+    geometrie = geometrie_de_planche(
+        document if document is not None
+        else getattr(calepinage, 'roof_layout', None))
     return svg_de_planche(
         geometrie,
         titre=options.pop('titre', None) or str(calepinage),

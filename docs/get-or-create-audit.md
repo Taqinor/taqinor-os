@@ -53,8 +53,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:221` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/automation/templates.py:252` | get_or_create | AutomationRule.objects | company, nom |
 | `backend/django_core/apps/automation/views.py:514` | get_or_create | IncomingWebhookTrigger.objects | rule |
-| `backend/django_core/apps/calepinage/services/modeles.py:55` | get_or_create | Tag.objects | company, nom |
-| `backend/django_core/apps/calepinage/services/modeles.py:88` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
+| `backend/django_core/apps/calepinage/services/modeles.py:57` | get_or_create | Tag.objects | company, nom |
+| `backend/django_core/apps/calepinage/services/modeles.py:90` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/calepinage/views/calepinages.py:148` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
 | `backend/django_core/apps/calepinage/views/reglementaire.py:148` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |

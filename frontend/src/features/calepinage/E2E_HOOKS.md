@@ -33,11 +33,6 @@ retiré plus un hook ajouté.
 | `cal-atelier-panneaux` | atelier panneaux. |
 | `cal-bandeau-lecture-seule` | bandeau lecture seule. |
 | `cal-cible-panneaux` | cible panneaux. |
-| `cal-deverrouiller` | déverrouiller. |
-| `cal-deverrouiller-annuler` | déverrouiller annuler. |
-| `cal-deverrouiller-confirmation` | déverrouiller confirmation. |
-| `cal-deverrouiller-confirmer` | déverrouiller confirmer. |
-| `cal-deverrouiller-refus` | déverrouiller refus serveur. |
 | `cal-lien-photos-calage` | lien photos calage. |
 | `cal-lien-variantes` | lien variantes. |
 
@@ -361,6 +356,7 @@ retiré plus un hook ajouté.
 | `cal-pente-lidar-suggerer` | pente LiDAR suggérer. |
 | `cal-pente-lidar-suggestion` | pente LiDAR suggestion. |
 | `cal-pente-message` | pente message. |
+| `cal-pente-lecture-seule` | pente : raison de la lecture seule (écritures désactivées). |
 | `cal-pente-mode` | pente mode. |
 | `cal-pente-visite-orientation-utiliser` | pente : utiliser l’orientation de la visite (ACAL208). |
 | `cal-pente-visite-orientation-mesure` | pente : orientation de la visite (ACAL208). |
@@ -470,6 +466,8 @@ retiré plus un hook ajouté.
 | `cal-releve-cote-appliquer` | relevé cote : appliquer au pan (ACAL207). |
 | `cal-releve-cote-retour` | relevé cote : retour du serveur / refus nommé (ACAL207). |
 | `cal-releve-azimut-retour` | relevé azimut : retour du serveur / refus nommé (ACAL206). |
+| `cal-releve-azimut-lecture-seule` | relevé azimut : raison de la lecture seule. |
+| `cal-releve-cote-lecture-seule` | relevé cote : raison de la lecture seule. |
 | `cal-releve-azimut-appliquer` | relevé azimut : appliquer au pan (ACAL206). |
 | `cal-releve-azimut-pan` | relevé azimut : choix du pan (ACAL206). |
 | `cal-releve-azimut-mesure` | relevé azimut : valeur et précision relevées (ACAL206). |
@@ -585,6 +583,7 @@ retiré plus un hook ajouté.
 | `cal-reprise-photos` | reprise de visite — liste des photos retenues. |
 | `cal-reprise-photos-vide` | reprise de visite — aucune photo retenue. |
 | `cal-reprise-raison` | reprise de visite — raison du bouton désactivé. |
+| `cal-reprise-lecture-seule` | reprise de visite — raison de la lecture seule. |
 | `cal-reprise-refus-bandeau` | reprise de visite — bandeau qui nomme le champ refusé. |
 | `cal-reprise-a-jour` | reprise de visite — « Reprise à jour » (ACAL211). |
 | `cal-reprise-ecart` | reprise de visite — tableau d’écart relevé / visite, une ligne par mesure (ACAL211). |

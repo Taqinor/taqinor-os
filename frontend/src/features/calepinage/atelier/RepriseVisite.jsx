@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { formatDateTime } from '../../../lib/format'
 import RetourAtelier from './RetourAtelier'
+import { RAISON_LECTURE_SEULE } from '../conflitEcriture'
 
 /* ============================================================================
    CALX365 — LA REPRISE DE LA VISITE TECHNIQUE, EN ONGLET DE L'ATELIER.
@@ -121,7 +122,7 @@ function BandeauReprise({ releve }) {
   )
 }
 
-export default function RepriseVisite({ calepinageId: idPropose } = {}) {
+export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = false } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
@@ -140,7 +141,7 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
   useEffect(() => { charger() }, [charger])
 
   const reprendre = (remplacer = false) => {
-    if (!calepinageId) return
+    if (!calepinageId || lectureSeule) return // Lot 2 critique #32
     setEnCours(true)
     setErreurs({})
     // ACAL211 — « Mettre à jour » envoie `{remplacer: true}` ; la première reprise n'a pas de corps.
@@ -250,7 +251,7 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
               <button
                 type="button"
                 onClick={() => reprendre(true)}
-                disabled={enCours}
+                disabled={enCours || lectureSeule}
                 data-testid="cal-reprise-maj"
                 className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
               >
@@ -267,12 +268,17 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
             <button
               type="button"
               onClick={() => reprendre(false)}
-              disabled={Boolean(raison) || enCours}
+              disabled={Boolean(raison) || enCours || lectureSeule}
               data-testid="cal-reprise-bouton"
               className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
             >
               {enCours ? 'Reprise en cours…' : 'Reprendre dans ce calepinage'}
             </button>
+          )}
+          {lectureSeule && (
+            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-reprise-lecture-seule">
+              {RAISON_LECTURE_SEULE}
+            </p>
           )}
           {raison && !aEcart(etat) && (
             <p className="mt-2 text-xs text-lune-faint" data-testid="cal-reprise-raison">

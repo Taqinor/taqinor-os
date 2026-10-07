@@ -304,7 +304,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
             raise DrfValidationError({refus.champ: str(refus)})
 
     #: ACAL119 — la SEULE écriture admise sur un calepinage archivé.
-    ACTIONS_ADMISES_SUR_ARCHIVE = frozenset({'restaurer_corbeille'})
+    #: ACAL187 — « Dupliquer » crée une COPIE (la source n'est pas écrite) :
+    #: une source archivée se duplique, sans cible (``_hors_unicite``).
+    ACTIONS_ADMISES_SUR_ARCHIVE = frozenset({'restaurer_corbeille',
+                                             'dupliquer'})
 
     def get_object(self):
         """ACAL119 — le point commun de TOUTES les routes ``detail=True`` du

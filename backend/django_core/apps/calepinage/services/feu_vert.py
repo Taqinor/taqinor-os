@@ -165,9 +165,16 @@ def _verifier_verdict_de_la_variante(calepinage, variante):
         return
     from rest_framework.exceptions import ValidationError
 
-    from .electrique import verdict_de_conception
+    from .electrique import TemperaturesInvalides, verdict_de_conception
 
-    verdict = verdict_de_conception(calepinage, layout=document)
+    try:
+        verdict = verdict_de_conception(calepinage, layout=document)
+    except TemperaturesInvalides as refus:
+        # Lot 2 critique #19 — refus NOMMÉ (400), jamais un 500.
+        raise ValidationError({
+            getattr(refus, 'champ', '') or 'temperatures': [
+                "Cette variante ne peut pas être retenue : " + str(refus)]
+        }) from refus
     if verdict['bloquants']:
         raise ValidationError({'electrique': [
             "Cette variante ne peut pas être retenue : verdict électrique "
