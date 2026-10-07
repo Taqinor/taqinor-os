@@ -525,6 +525,50 @@ def journaliser_visite(visite, user, moment, detail=''):
     return crm_services.journaliser_visite(visite, user, moment, detail=detail)
 
 
+def codes_slots_toiture():
+    """Les slots photo qui NOURRISSENT l'assemblage du toit (catégorie
+    ``toiture`` de la checklist — ceux que lit ``tasks._photos_toiture``)."""
+    from . import visite_checklist as checklist
+
+    return {slot['code'] for slot in checklist.slots()
+            if slot['categorie'] == 'toiture'}
+
+
+def invalider_assemblage_toiture(visite):
+    """ALEA14 — dès qu'une photo d'un slot toiture est ajoutée, supprimée ou
+    renvoyée, l'image ASSEMBLÉE ne correspond plus aux photos : elle est
+    oubliée (``photo_toit_key`` vidée, ``assemblage_etat=aucun``,
+    ``texture_calage`` remis à zéro) jusqu'à un nouvel « Assembler ». Sans
+    cela, une revalidation sans réassemblage peignait l'ANCIEN panorama dans
+    l'atelier 3D / le calepinage. Rend True si quelque chose a été remis à
+    zéro."""
+    from .models import VisiteTerrain
+
+    champs = []
+    if visite.photo_toit_key:
+        visite.photo_toit_key = ''
+        champs.append('photo_toit_key')
+    if visite.assemblage_etat != VisiteTerrain.Assemblage.AUCUN:
+        visite.assemblage_etat = VisiteTerrain.Assemblage.AUCUN
+        champs.append('assemblage_etat')
+    if visite.assemblage_erreur:
+        visite.assemblage_erreur = ''
+        champs.append('assemblage_erreur')
+    if visite.texture_calage is not None:
+        visite.texture_calage = None
+        champs.append('texture_calage')
+    if champs:
+        visite.save(update_fields=champs)
+    return bool(champs)
+
+
+def invalider_assemblage_si_toiture(visite, slot_code):
+    """ALEA14 — invalide l'assemblage si ``slot_code`` est un slot toiture."""
+    if slot_code in codes_slots_toiture():
+        return invalider_assemblage_toiture(visite)
+    return False
+
+
 def supprimer_media(media):
     """Retire UNE photo de visite (``VisiteMedia``).
 
@@ -546,7 +590,11 @@ def supprimer_media(media):
 
     attachment = media.attachment
     cle = getattr(attachment, 'file_key', '') or ''
+    visite = media.visite
+    slot_code = media.slot_code
     media.delete()
+    # ALEA14 — une photo toiture en moins : l'assemblage n'est plus juste.
+    invalider_assemblage_si_toiture(visite, slot_code)
     if attachment is not None:
         attachment.delete()
     if cle:
@@ -735,6 +783,12 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
             touchee = True
     if touchee:
         visite.mesures = stockees
+
+    # ALEA14 — une photo toiture renvoyée sera reprise : l'image assemblée
+    # à partir de l'ancienne ne doit plus peindre le toit.
+    toiture = codes_slots_toiture()
+    if any(media.slot_code in toiture for media in medias):
+        invalider_assemblage_toiture(visite)
 
     visite.statut = VisiteTerrain.Statut.A_REFAIRE
     champs = ['statut', 'mesures'] if touchee else ['statut']

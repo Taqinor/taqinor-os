@@ -259,6 +259,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         # hors-ligne ``PHOTO_VISITE`` arrive aussi ici).
         services.remplacer_photo_a_refaire(visite, slot_code,
                                            nouvelle=nouvelle)
+        # ALEA14 — une photo toiture de plus : l'assemblage est périmé.
+        services.invalider_assemblage_si_toiture(visite, slot_code)
         _marquer_en_cours(visite)
         return self._agregat(visite)
 
@@ -277,6 +279,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return _erreur('media_id', 'Cette photo n’existe pas sur cette '
                                        'visite.', status.HTTP_404_NOT_FOUND)
         services.supprimer_media(media)
+        # ALEA14 — la suppression a pu remettre l'assemblage à zéro.
+        visite.refresh_from_db()
         return self._agregat(visite)
 
     # ── Mesures par catégorie ────────────────────────────────────────────────
