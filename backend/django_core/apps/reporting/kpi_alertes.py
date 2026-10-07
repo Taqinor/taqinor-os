@@ -380,13 +380,25 @@ def _resolve_representative_user(company):
     """Un utilisateur actif de la société pour porter le scope des selectors
     qui exigent un ``user`` (ex. ``balance_agee_rows``). Préfère un
     admin/responsable actif ; dégrade proprement à None (KPI ignoré) si
-    aucun utilisateur exploitable."""
+    aucun utilisateur exploitable.
+
+    AANA20 — la préférence est désormais RÉELLE : un admin actif d'abord
+    (``admins_actifs_qs``), sinon un responsable actif. Avant, le premier
+    utilisateur par id était pris, quel que soit son rôle — un commercial à
+    portée « ses enregistrements » faisait alors calculer l'encours échu sur
+    SES seules factures. Aucun admin/responsable → None (KPI ignoré)."""
     from django.contrib.auth import get_user_model
     User = get_user_model()
-    return (User.objects
-            .filter(company=company, is_active=True)
-            .order_by('id')
-            .first())
+    admin = User.admins_actifs_qs(company).order_by('id').first()
+    if admin is not None:
+        return admin
+    for user in (User.objects
+                 .filter(company=company, is_active=True)
+                 .select_related('role')
+                 .order_by('id')):
+        if user.is_responsable:
+            return user
+    return None
 
 
 def evaluate_kpi_alerte(alerte, *, now=None):
