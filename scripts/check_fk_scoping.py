@@ -22,6 +22,12 @@ DB-free AST sweep (mirrors ``check_unique_scoping.py`` /
      ``def validate_<field>`` or a declarative
      ``same_company_fields = (...)`` (``core.mixins.SameCompanyFKSerializerMixin``).
 
+AANA47 / ASTK9 extensions: M2M fields, FK/M2M to the user (``CustomUser``) or
+``roles.Role``, SAME-APP FKs to a tenant model, and ANY app module defining a
+``ModelSerializer`` (``views/*.py`` included) are covered; a serializer that
+inherits ``CompanyScopedRelationsMixin`` / ``CompanyScopedModelSerializer``
+(``core.serializers``) is bounded for every relation.
+
 Pre-existing, human-reviewed sites live in ``scripts/fk_scoping_allow.txt``
 (``path::Serializer.field``); a NEW cross-app FK serializer field without
 validation fails CI.
@@ -52,6 +58,9 @@ FORCED_TENANT_TARGETS = {("authentication", "CustomUser"), ("roles", "Role")}
 #: ``settings.AUTH_USER_MODEL`` / ``get_user_model()`` ne sont pas des chaînes
 #: littérales : on les lit comme ``authentication.CustomUser``.
 USER_MODEL_ALIASES = {"authentication.CustomUser", "auth.User"}
+#: ASTK9 — bases/mixins qui re-scopent TOUTES les relations d'un sérialiseur
+#: (``core.serializers``) : un sérialiseur qui en hérite est borné.
+SCOPING_BASES = {"CompanyScopedRelationsMixin", "CompanyScopedModelSerializer"}
 #: Sous-dossiers jamais balayés pour les sérialiseurs.
 SKIP_DIRS = {"migrations", "tests", "test", "management", "__pycache__",
              "node_modules"}
@@ -194,8 +203,11 @@ def build_model_map():
                     brut = cible.value
                     if brut in USER_MODEL_ALIASES:
                         brut = "authentication.CustomUser"
+                    elif "." not in brut and brut != "self":
+                        brut = f"{app}.{brut}"      # ASTK9 : même app
+                elif isinstance(cible, ast.Name) and cible.id != "self":
+                    brut = f"{app}.{cible.id}"      # ASTK9 : classe locale
                 else:
-                    # FK vers une classe locale (même app) — hors périmètre.
                     continue
                 if "." not in brut:
                     continue
@@ -360,6 +372,7 @@ def collect_sites():
                 continue
 
             read_only, same_company, validates = _serializer_facts(cls)
+            borne_par_base = bool(SCOPING_BASES & set(bases))
             # Héritage intra-APP : une base (même fichier ou autre fichier
             # sérialiseur de l'app) couvre ses sous-classes, transitivement.
             vus = {cls.name}
@@ -370,11 +383,15 @@ def collect_sites():
                 if base_cls is None or b in vus:
                     continue
                 vus.add(b)
+                if b in SCOPING_BASES:
+                    borne_par_base = True
                 b_ro, b_sc, b_val = _serializer_facts(base_cls)
                 read_only |= b_ro
                 same_company |= b_sc
                 validates |= b_val
                 pile.extend(_base_names(base_cls))
+                if SCOPING_BASES & set(_base_names(base_cls)):
+                    borne_par_base = True
 
             noms_exposes = (list(champs_fk)
                             if declared_fields == "__all__" else declared_fields)
@@ -384,13 +401,14 @@ def collect_sites():
                     continue
                 t_app, t_model = cible
                 force = (t_app, t_model) in FORCED_TENANT_TARGETS
-                if not force and (t_app == key[0] or t_app in FOUNDATION_APPS):
+                if not force and t_app in FOUNDATION_APPS:
                     continue
                 if not force and (t_app, t_model) not in tenant:
                     continue          # cible non scopée société : rien à valider
                 if champ in read_only or champ in read_only_meta:
                     continue
-                couvert = champ in same_company or champ in validates
+                couvert = (borne_par_base or champ in same_company
+                           or champ in validates)
                 sites.append((rel, cls.name, champ,
                               f"{t_app}.{t_model}", couvert))
     return sites
