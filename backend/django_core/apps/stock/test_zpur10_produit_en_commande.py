@@ -54,7 +54,10 @@ class Zpur10Base(TestCase):
         self.company = _company('zpur10-co')
         self.user = _user(
             self.company, 'zpur10-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur ZPUR10')
@@ -136,7 +139,10 @@ class TestExpositionFicheProduit(Zpur10Base):
         other_co = _company('zpur10-autre')
         other_user = _user(
             other_co, 'zpur10-autre-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         other_api = _api(other_user)
         statut_envoye = BonCommandeFournisseur.Statut.ENVOYE
         self._bcf('BCF-ZPUR10-0007', statut_envoye,

@@ -120,7 +120,10 @@ class Apx18PhotoApiTests(TestCase):
         self.company = _company('apx18-co')
         self.user = _user(
             self.company, 'apx18-user',
-            permissions=['stock_voir', 'stock_modifier'])
+            permissions=['stock_voir', 'stock_modifier',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.produit = Produit.objects.create(
             company=self.company, nom='Pompe OSP 30-15',
@@ -230,7 +233,10 @@ class Apx18PhotoApiTests(TestCase):
     def test_isolation_societe(self):
         autre = _company('apx18-autre')
         intrus = _user(autre, 'apx18-intrus',
-                       permissions=['stock_voir', 'stock_modifier'])
+                       permissions=['stock_voir', 'stock_modifier',
+                                    # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                                    'achats_commander', 'achats_receptionner',
+                                    'achats_payer', 'catalogue_prix_modifier'])
         r, _ = self._poser(api=_api(intrus))
         self.assertEqual(r.status_code, 404)
         self.produit.refresh_from_db()

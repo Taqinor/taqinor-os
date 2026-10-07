@@ -34,7 +34,8 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['valider', 'imputer']:
-            return [IsResponsableOrAdmin()]
+            # ASTK19 (D-ASTK-3) — créer/valider/imputer un avoir = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]

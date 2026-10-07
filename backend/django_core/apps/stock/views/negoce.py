@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 
 from authentication.permissions import (
-    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
@@ -326,8 +326,10 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-periode_debut', '-id']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + WRITE_ACTIONS + [
-                'calcul', 'generer_avoir']:
+        if self.action == 'generer_avoir':
+            # ASTK19 (D-ASTK-3) — émettre l'avoir RFA = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
+        if self.action in READ_ACTIONS + WRITE_ACTIONS + ['calcul']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 

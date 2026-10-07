@@ -114,11 +114,14 @@
     },
     "taches_reappro_interne_executer": {
       "endpoint": "POST /api/django/stock/taches-reappro-interne/<id>/executer/",
-      "nouveau": "NOUVEAU — ASTK213",
-      "pourquoi": "NOUVEAU — ASTK213 (action NON construite aujourd'hui : exclue du test de forme du contrat). Exécute l'ordre de réappro : un mouvement de transfert tracé bin_source → bin_cible via `record_stock_movement` (jamais un second chemin d'écriture), la tâche passe terminée. NOTE d'alignement pour ASTK213 : la valeur de statut existante est `faite` (TacheReapproInterne.Statut.FAITE) ; la valeur `terminee` ci-dessous est celle posée par le texte de la tâche ASTK160 — ASTK213 tranche l'une des deux et corrige ce fichier dans le même commit.",
+      "nouveau": "ASTK213 — construit",
+      "pourquoi": "ASTK213 — `TacheReapproInterneViewSet.executer` (views/reappro_casier.py) → `services_reappro_casier.executer_tache_reappro_interne`. Exécute l'ordre de réappro UNE fois : un mouvement de transfert tracé bin_source → bin_cible par le chemin du poste scanner (`enregistrer_mouvement_scanne` → `record_stock_movement`, jamais un second chemin d'écriture), la tâche passe `faite`. Statut TRANCHÉ par ASTK213 : la valeur existante `faite` (TacheReapproInterne.Statut.FAITE) est gardée — aucune nouvelle valeur `terminee`, aucune migration. Second appel → 409 {detail:'Tâche déjà exécutée.'} sans second mouvement ; le statut n'est plus éditable par PATCH. Clés affirmées par apps/stock/test_astk_tache_reappro.py.",
+      "exemple_erreur_409": {
+        "detail": "Tâche déjà exécutée."
+      },
       "exemple": {
         "id": 9,
-        "statut": "terminee",
+        "statut": "faite",
         "mouvement_id": 1203,
         "bin_source": 22,
         "bin_cible": 21,

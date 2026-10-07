@@ -43,7 +43,10 @@ class AnnulationMiroirTests(TestCase):
             slug=f'astk54-co-{n}', nom=f'ASTK54 Co {n}')
         role = Role.objects.create(
             company=self.company, nom=f'r-astk54-{n}',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.user = User.objects.create_user(
             username=f'astk54-{n}', password='x', company=self.company,
             role=role, role_legacy='responsable')

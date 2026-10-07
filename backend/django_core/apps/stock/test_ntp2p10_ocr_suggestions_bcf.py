@@ -36,7 +36,10 @@ def _company(slug):
 def _user(company, username):
     role = Role.objects.create(
         company=company, nom=f'r-{username}',
-        permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
+        permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir',
+                     # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                     'achats_commander', 'achats_receptionner',
+                     'achats_payer', 'catalogue_prix_modifier'])
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy='responsable')

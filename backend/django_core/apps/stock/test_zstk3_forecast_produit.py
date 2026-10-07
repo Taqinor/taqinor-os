@@ -54,7 +54,10 @@ class Zstk3Base(TestCase):
         self.company = _company('zstk3-co')
         self.user = _user(
             self.company, 'zstk3-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur ZSTK3')
@@ -144,7 +147,10 @@ class TestEndpoint(Zstk3Base):
         other_co = _company('zstk3-autre')
         other_user = _user(
             other_co, 'zstk3-autre-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         other_api = _api(other_user)
         url = f'/api/django/stock/produits/{self.produit.id}/previsionnel/'
         resp = other_api.get(url)

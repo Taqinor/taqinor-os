@@ -33,7 +33,8 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
-        return [IsResponsableOrAdmin()]
+        # ASTK19 (D-ASTK-3) — verser/imputer un acompte = « payer ».
+        return [HasPermissionOrLegacy('achats_payer')()]
 
     def get_queryset(self):
         qs = super().get_queryset()
