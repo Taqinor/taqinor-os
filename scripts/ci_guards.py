@@ -109,6 +109,13 @@ GARDES = {
         ('Test the reachable-screens checker itself',
          'python -m unittest scripts.tests.test_check_ecrans_atteignables -v',
          '.'),
+        # ADOC38 — classe « liste lue sur la page 1 » (fetchAllPages obligatoire).
+        ('Check listes paginées lues en entier (aucune lecture de la page 1, ADOC38)',
+         'python scripts/check_liste_page1.py',
+         '.'),
+        ('Test the page-1-list checker itself (ADOC38)',
+         'python -m unittest scripts.tests.test_check_liste_page1 -v',
+         '.'),
         # CALX56/57 (lots CALX merges le 21/09/2026 pendant la construction de ce
         # runner — PR #706/#708) : chemins parametres atteignables, et services
         # backend livres sans appelant (passif fige dans
