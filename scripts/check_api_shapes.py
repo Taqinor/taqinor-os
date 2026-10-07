@@ -1676,6 +1676,11 @@ def mocks_contre_serialiseur(serialiseurs, fichiers=None):
 # propres controles.
 
 WEB_ROOT = ROOT / "apps" / "web"
+#: YBW2 — TOUTES les moities site public : `apps/web` (TAQINOR) et
+#: `apps/yanbow-web` (YanBow). Memes controles (a)(b)(c) pour chacune ; une
+#: racine absente est sautee. `apps/web` reste la premiere : ses constats sont
+#: identiques octet pour octet a ceux d'avant YBW2.
+WEB_ROOTS = (WEB_ROOT, ROOT / "apps" / "yanbow-web")
 #: Les deux surfaces TS qui parlent au backend : les modules de `lib/` (dont
 #: `proposition.ts`, `tailleDetail.ts`, `offresTailles.ts`, `lead.ts`) et les
 #: proxys same-origin de `pages/api/`.
@@ -1699,6 +1704,7 @@ def echantillons_web_jumeaux(racine_web: Path = None, racine_apps: Path = None):
 
     racine_web = WEB_ROOT if racine_web is None else racine_web
     racine_apps = APPS_ROOT if racine_apps is None else racine_apps
+    site = _relatif(racine_web)
     backend_par_nom = {f.name: f for f in fichiers_echantillons(racine_apps)}
     constats = []
     for fichier in fichiers_echantillons(racine_web):
@@ -1707,7 +1713,7 @@ def echantillons_web_jumeaux(racine_web: Path = None, racine_apps: Path = None):
         if jumeau is None:
             constats.append((
                 relatif, 1, fichier.stem, "?", "<jumeau>",
-                "cet echantillon de `apps/web` n'a AUCUN jumeau backend "
+                f"cet echantillon de `{site}` n'a AUCUN jumeau backend "
                 f"`apps/<x>/contract_samples/{fichier.name}` : il ne serait "
                 "verifie contre le serveur par personne"))
             continue
@@ -1724,16 +1730,32 @@ def echantillons_web_jumeaux(racine_web: Path = None, racine_apps: Path = None):
         exemple_d = droite.get("exemple") if isinstance(droite, dict) else None
         if isinstance(exemple_g, dict) and isinstance(exemple_d, dict):
             for champ in sorted(set(exemple_g) ^ set(exemple_d)):
-                cote = "apps/web" if champ in exemple_g else "backend"
+                cote = site if champ in exemple_g else "backend"
                 constats.append((
                     relatif, 1, fichier.stem, "?", champ,
                     f"'{champ}' n'existe que du cote {cote} : les deux copies "
                     f"de {fichier.name} ont DIVERGE"))
         constats.append((
             relatif, 1, fichier.stem, "?", "<echantillon>",
-            f"la copie `apps/web` de {fichier.name} n'est plus JSON-egale a "
+            f"la copie `{site}` de {fichier.name} n'est plus JSON-egale a "
             f"`{_relatif(jumeau)}` : recopier la copie backend (elle, est "
             "verifiee contre la reponse REELLE du serveur)"))
+    return constats
+
+
+def controles_sites_publics(shapes, lecteur_serveur=None, racines=None):
+    """YBW2 — (a) jumeaux + (b) controle serveur pour chaque racine de site.
+
+    Une racine absente (site pas encore cree, ou supprime) est SAUTEE : rien
+    a verifier n'est pas un constat.
+    """
+    constats = []
+    for racine in (WEB_ROOTS if racines is None else racines):
+        if not racine.is_dir():
+            continue
+        constats.extend(echantillons_web_jumeaux(racine))
+        constats.extend(echantillons_de_contrat(
+            shapes, racine=racine, lecteur_serveur=lecteur_serveur))
     return constats
 
 
@@ -1817,8 +1839,11 @@ def routes_client_web(known: RouteTrie, fichiers=None):
     """
     if known is None:
         return []
+    if fichiers is None:
+        fichiers = [f for racine in WEB_ROOTS
+                    for f in fichiers_clients_web(racine)]
     constats = []
-    for fichier in (fichiers_clients_web() if fichiers is None else fichiers):
+    for fichier in fichiers:
         relatif = _relatif(fichier)
         try:
             source = fichier.read_text(encoding="utf-8")
@@ -1924,11 +1949,10 @@ def analyse(shapes=None):
     # PACT10 — l'exemple partage ne peut pas pourrir : il derive du serveur ou
     # il rougit. C'est ce qui le rend digne d'etre importe par les deux moities.
     findings.extend(echantillons_de_contrat(shapes, lecteur_serveur=lecteur))
-    # QJR110 (a) — la copie `apps/web` d'un echantillon EGALE sa copie backend.
-    findings.extend(echantillons_web_jumeaux())
-    # QJR110 (b) — et la copie web passe le MEME controle contre le serveur.
-    findings.extend(echantillons_de_contrat(shapes, racine=WEB_ROOT,
-                                            lecteur_serveur=lecteur))
+    # QJR110 (a) + (b), pour CHAQUE site public (YBW2 : `apps/web` puis
+    # `apps/yanbow-web`) — jumeau JSON-egal a la copie backend, puis le MEME
+    # controle contre le serveur.
+    findings.extend(controles_sites_publics(shapes, lecteur))
     # QJR110 (c) — un chemin backend ecrit dans `apps/web/src/lib/*.ts` ou dans
     # un proxy `apps/web/src/pages/api/*.ts` doit resoudre vers une vraie route.
     findings.extend(routes_client_web(known))
