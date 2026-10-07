@@ -10,13 +10,6 @@ import { roofBuilderTsPlugin } from './vite.config.js'
 // ou `features/ao/toiture/RepriseCarte.jsx` (AOF82, `@roofpro/captureBoot`),
 // la résolution de ces spécifieurs échoue au transform (erreur non gérée).
 // On les redirige vers des stubs inertes : aucun test n'exerce leur runtime.
-// Fuseau du produit pour toute la suite : les goldens du générateur (SPL40/SPL41)
-// figent des heures locales (« Brouillon enregistré à 11:00 »). Un
-// `process.env.TZ = …` posé DANS le fichier de test n'atteint pas le runtime des
-// workers sous Linux (CI en UTC → 10:00 au lieu de 11:00) : on le pose ici, avant
-// le démarrage des workers, qui l'héritent.
-process.env.TZ = 'Africa/Casablanca'
-
 const stub = (rel) => fileURLToPath(new URL(rel, import.meta.url))
 
 /* Couche « tests de composants / UX » (RTL + axe), distincte des tests de logique
