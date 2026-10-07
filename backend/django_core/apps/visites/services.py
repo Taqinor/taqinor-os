@@ -484,13 +484,24 @@ def journaliser_visite(visite, user, moment, detail=''):
 TRANSITIONS = {
     'valider': frozenset({'terminee'}),
     'renvoyer': frozenset({'validee', 'terminee'}),
+    # ALEA7 — ce qui part au CRM à « Terminer » (qualification, notes du
+    # retour terrain) ne change plus en silence : on corrige par un RENVOI du
+    # bureau d'études (``a_refaire``), jamais en réécrivant une visite
+    # terminée. (Une visite VALIDÉE est déjà gelée par VT3.)
+    'qualification': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
+    'notes': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
 }
+
+_MESSAGE_TERMINEE = ("Visite terminée : demandez un renvoi au bureau "
+                     "d'études pour corriger.")
 
 #: Le message (FR) qui explique un refus de statut, par action.
 MESSAGES_TRANSITION = {
     'valider': 'La visite doit être terminée avant validation.',
     'renvoyer': ('Seule une visite terminée ou validée peut être renvoyée '
                  'au commercial.'),
+    'qualification': _MESSAGE_TERMINEE,
+    'notes': _MESSAGE_TERMINEE,
 }
 
 

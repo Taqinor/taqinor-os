@@ -162,6 +162,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         refus = self._refus_si_gelee(visite)
         if refus is not None:
             return refus
+        # ALEA7 — les notes d'une visite TERMINÉE sont parties au CRM avec le
+        # retour terrain : un changement réel est refusé (renvoi BE).
+        if ('notes' in request.data
+                and (request.data.get('notes') or '') != (visite.notes or '')):
+            refus = services.refus_transition(visite, 'notes')
+            if refus is not None:
+                return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         # VTA7 — on releve l'assigne AVANT l'ecriture : une REASSIGNATION
         # (changement reel d'assigne) previent le nouveau. Un PATCH qui ne
         # touche pas `commercial` ne notifie personne -- sinon chaque
@@ -350,6 +357,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             visite)
         if refus is not None:
             return refus
+        # ALEA7 — une visite TERMINÉE a déjà envoyé sa qualification au CRM :
+        # la corriger passe par un renvoi du bureau d'études.
+        refus = services.refus_transition(visite, 'qualification')
+        if refus is not None:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         visite, erreurs = services.enregistrer_qualification(
             visite, request.data)
         if erreurs:

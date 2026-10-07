@@ -3,9 +3,11 @@
 Rejoue la sonde V4 LVIS-2 : un POST direct sur ``valider`` d'un brouillon
 vide rendait 200 et posait le feu vert sur 20 éléments manquants.
 """
-from apps.crm.models import Lead
+from apps.crm.models import Lead, LeadActivity
 from apps.visites import selectors, services
 from apps.visites.models import VisiteTerrain
+from apps.visites.tests.test_visite_cadence_terrain import (
+    QUALIFICATION_VALIDE)
 from apps.visites.tests.test_visite_terrain import VisiteTerrainBase, auth
 
 URL = '/api/django/visites/visites/{}/{}/'
@@ -102,3 +104,64 @@ class TransitionsVisiteTests(VisiteTerrainBase):
                     self.assertIn('statut', resp.data)
                     visite.refresh_from_db()
                     self.assertEqual(visite.statut, statut)
+
+
+class QualificationApresTermineeTests(VisiteTerrainBase):
+    """ALEA7 — rejoue la sonde V4 LVIS-7 : la qualification d'une visite
+    TERMINÉE se réécrivait en 200 et le chatter du lead restait périmé."""
+
+    MESSAGE = ("Visite terminée : demandez un renvoi au bureau d'études "
+               'pour corriger.')
+
+    def _qualifier(self, visite_id, **valeurs):
+        return self.api.post(URL.format(visite_id, 'qualification'),
+                             dict(QUALIFICATION_VALIDE, **valeurs),
+                             format='json')
+
+    def _terminee_qualifiee_chaud(self):
+        visite_id = self.creer_visite()
+        self.remplir(visite_id)
+        resp = self._qualifier(visite_id, temperature='chaud')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = self.api.patch(f'/api/django/visites/visites/{visite_id}/',
+                              {'notes': 'Toiture saine.'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = self.api.post(URL.format(visite_id, 'terminer'), {},
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return visite_id
+
+    def test_qualification_terminee_refusee(self):
+        visite_id = self._terminee_qualifiee_chaud()
+        resp = self.api.post(URL.format(visite_id, 'qualification'),
+                             {'temperature': 'froid'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['statut'], [self.MESSAGE])
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertEqual(visite.qualification['temperature'], 'chaud')
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, body__icontains='Client froid').exists())
+
+    def test_notes_terminee_refusees(self):
+        visite_id = self._terminee_qualifiee_chaud()
+        resp = self.api.patch(f'/api/django/visites/visites/{visite_id}/',
+                              {'notes': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['statut'], [self.MESSAGE])
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertEqual(visite.notes, 'Toiture saine.')
+
+    def test_qualification_a_refaire_acceptee(self):
+        visite_id = self._terminee_qualifiee_chaud()
+        renvoi = auth(self.bureau).post(URL.format(visite_id, 'renvoyer'),
+                                        RENVOI, format='json')
+        self.assertEqual(renvoi.status_code, 200, renvoi.data)
+        resp = self._qualifier(visite_id, temperature='froid')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertEqual(visite.qualification['temperature'], 'froid')
+
+    def test_qualification_brouillon_acceptee(self):
+        visite_id = self.creer_visite()
+        resp = self._qualifier(visite_id)
+        self.assertEqual(resp.status_code, 200, resp.data)
