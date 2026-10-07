@@ -1032,11 +1032,17 @@ export default function StockList() {
       dispatch(fetchProduitsArchived())
       toastWithUndo({
         message: 'Produit désarchivé.',
+        // ASTK83 (C-ASTK-017) — « Annuler » RÉ-ARCHIVE le produit (PATCH
+        // is_archived), jamais une suppression : un produit sans relation
+        // aurait sinon disparu pour de bon.
         onUndo: async () => {
           try {
-            await dispatch(deleteProduit(p.id)).unwrap()
+            await stockApi.patchProduit(p.id, { is_archived: true })
             dispatch(fetchProduitsArchived())
-          } catch { toastError('Archivage impossible.') }
+            dispatch(fetchProduits())
+          } catch (err) {
+            toastError(err?.response?.data?.detail ?? 'Ré-archivage impossible.')
+          }
         },
       })
     } catch (err) {
