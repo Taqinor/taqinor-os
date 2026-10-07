@@ -1,8 +1,11 @@
 // @ts-check
 import { existsSync } from 'node:fs';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
+import { ORIGINE_CANONIQUE } from './src/lib/site.ts';
+import { sourcesCsp } from './src/lib/subprocessors.ts';
 
 /**
  * Page sonde « bonjour » (YBW10) : les fichiers `src/pages/_*.astro` ne sont pas
@@ -22,6 +25,53 @@ const sondeBonjour = () => ({
   },
 });
 
+/**
+ * Enveloppe Worker (YBW11). L'adaptateur Cloudflare génère
+ * dist/server/{entry.mjs,wrangler.json} ; ce hook copie le Worker committé
+ * (worker/) à côté, écrit `site-config.mjs` (origine canonique de
+ * src/lib/site.ts + sources CSP de src/lib/subprocessors.ts), pointe le
+ * wrangler.json généré vers `redirect-entry.mjs` et fait passer TOUTES les
+ * requêtes par le Worker sauf `/_astro/*` (CSS/JS hachés) — y compris
+ * `/fonts`, `/brand`, `/og`, pour que la porte de lancement (YBW12) et le cache
+ * immuable s'y appliquent. Vivre dans le build garantit le patch quelle que
+ * soit la commande lancée par Workers Builds.
+ */
+const WORKER_FILES = ['canonical.mjs', 'redirects.mjs', 'cache.mjs', 'headers.mjs', 'pipeline.mjs', 'redirect-entry.mjs'];
+
+const workersDevRedirect = () => ({
+  name: 'yanbow:workers-dev-redirect',
+  hooks: {
+    'astro:build:done': async () => {
+      const serverDir = new URL('./dist/server/', import.meta.url);
+      const wranglerUrl = new URL('wrangler.json', serverDir);
+      let cfg = null;
+      for (let i = 0; i < 40; i++) {
+        try {
+          cfg = JSON.parse(await readFile(wranglerUrl, 'utf-8'));
+          break;
+        } catch {
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
+      if (!cfg) throw new Error('yanbow:workers-dev-redirect : dist/server/wrangler.json introuvable (aucune route serveur ?)');
+
+      for (const f of WORKER_FILES) {
+        await copyFile(new URL(`./worker/${f}`, import.meta.url), new URL(f, serverDir));
+      }
+      await writeFile(
+        new URL('site-config.mjs', serverDir),
+        `// Généré au build depuis src/lib/site.ts et src/lib/subprocessors.ts — ne pas éditer.\n` +
+          `export const CANONICAL_ORIGIN = ${JSON.stringify(ORIGINE_CANONIQUE)};\n` +
+          `export const CSP_SOURCES = ${JSON.stringify(sourcesCsp())};\n`,
+      );
+      cfg.main = 'redirect-entry.mjs';
+      cfg.assets = { ...cfg.assets, run_worker_first: ['/*', '!/_astro/*'] };
+      await writeFile(wranglerUrl, JSON.stringify(cfg));
+      console.log('[yanbow:workers-dev-redirect] entrée Worker enveloppée');
+    },
+  },
+});
+
 // https://astro.build/config
 export default defineConfig({
   // Aucun `site` : le domaine final n'est pas encore choisi (YBWM10). Tant qu'il
@@ -36,6 +86,8 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    // Aucun script en ligne : la CSP est `script-src 'self'` (worker/headers.mjs).
+    build: { assetsInlineLimit: 0 },
   },
-  integrations: [sondeBonjour()],
+  integrations: [sondeBonjour(), workersDevRedirect()],
 });
