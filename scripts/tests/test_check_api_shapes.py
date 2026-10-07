@@ -1337,12 +1337,14 @@ class CalepinageApiGoldenTests(unittest.TestCase):
     nom) introuvable) passerait a vide — ce test le rougit."""
 
     FACADE = ROOT / "frontend" / "src" / "api" / "calepinageApi.js"
+    # ACAL242 — + les quatre portes ``gabarits`` (liste, creer, modifier,
+    # supprimer) que la garde résout.
     RESOLUES = [
-        "calculer", "comparerProjets", "depuisLead",
+        "calculer", "comparerProjets", "creer", "depuisLead",
         "depuisModele", "enregistrerProfilsTypes", "get", "importerProjet",
-        "modeles", "pose", "profilsTypes", "recalculerSimulations",
-        "resultat", "suggererPentesIGN",
-        "suggestionPenteDisponible", "update", "zonesLestage",
+        "liste", "modeles", "modifier", "pose", "profilsTypes",
+        "recalculerSimulations", "resultat", "suggererPentesIGN",
+        "suggestionPenteDisponible", "supprimer", "update", "zonesLestage",
     ]
 
     def test_les_16_fonctions_calepinage_sont_resolues(self):
