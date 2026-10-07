@@ -57,7 +57,8 @@ from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
     CAL_APPROUVER, CAL_GERER, CAL_VOIR,
-    PeutGererCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
+    PeutApprouverCalepinage, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
+    PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
@@ -518,12 +519,16 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         # marques manquantes) revient à l'écran (contrat
         # ``calepinage_publication.json``), jamais avalé.
         journal = {}
+        refus_droit = _refus_derogation_sans_droit(request, self, corps)
+        if refus_droit is not None:
+            return refus_droit
         try:
             devis, cree = generer_devis(
                 calepinage, user=request.user,
                 taux_tva=corps.get('taux_tva'),
                 remise_globale=corps.get('remise_globale'),
-                journal=journal)
+                journal=journal,
+                derogation_electrique=corps.get('derogation_electrique'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus), status=refus.statut)
         return Response(
@@ -532,7 +537,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
              'deduplique': not cree,
              'avertissements': list(journal.get('avertissements') or ()),
              'marques_manquantes': list(
-                 journal.get('marques_manquantes') or ())},
+                 journal.get('marques_manquantes') or ()),
+             # ACAL170 — verdict, manquantes, dérogation consignée.
+             'electrique': journal.get('electrique')},
             status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
 
     @action(detail=True, methods=['post'], url_path='sync-devis',
@@ -548,8 +555,14 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         (« Générer le devis »).
         """
         calepinage = self.get_object()
+        corps = request.data if isinstance(request.data, dict) else {}
+        refus_droit = _refus_derogation_sans_droit(request, self, corps)
+        if refus_droit is not None:
+            return refus_droit
         try:
-            resultat = resynchroniser_devis(calepinage, user=request.user)
+            resultat = resynchroniser_devis(
+                calepinage, user=request.user,
+                derogation_electrique=corps.get('derogation_electrique'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus), status=refus.statut)
         return Response(resultat)
@@ -873,6 +886,19 @@ def _reponse_ecriture(calepinage, resultat):
         'version': version.pk if version is not None else None,
         'empreinte_document': resultat.get('empreinte_document') or None,
     }
+
+
+def _refus_derogation_sans_droit(request, vue, corps):
+    """ACAL170 (D-ACAL-9) — 403 NOMMÉ quand ``derogation_electrique`` est
+    posée par un utilisateur sans ``calepinage_approuver`` ; rien n'est
+    écrit. ``None`` quand rien n'est à refuser."""
+    if not corps.get('derogation_electrique') or PeutApprouverCalepinage(
+            ).has_permission(request, vue):
+        return None
+    return Response(
+        {'derogation_electrique': "Dérogation réservée aux approbateurs "
+                                  "(calepinage_approuver)"},
+        status=status.HTTP_403_FORBIDDEN)
 
 
 def _refus_devis(refus):

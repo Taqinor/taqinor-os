@@ -136,7 +136,8 @@ def _brouillon_reutilisable(company, lead, empreinte, calepinage):
 
 
 def generer_devis(calepinage, *, user=None, taux_tva=None,
-                  remise_globale=None, journal=None):
+                  remise_globale=None, journal=None,
+                  derogation_electrique=None):
     """CAL24 — crée (ou RETROUVE) le devis de ce calepinage.
 
     Args:
@@ -144,6 +145,11 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
             composition n'a pas pu faire (``avertissements``,
             ``marques_manquantes``, canal U3 de ``build_devis_from_layout``) ;
             vide (listes vides) quand un brouillon existant est rendu.
+            ACAL170 — y reçoit aussi ``electrique`` (verdict, manquantes,
+            dérogation consignée).
+        derogation_electrique: ACAL170 — ``{motif}`` qui lève un verdict
+            électrique BLOQUANT (droit vérifié par la vue) ; consignée au
+            fil ``journal_derogations`` et au chatter une fois le devis rendu.
 
     Returns:
         ``(devis, cree)`` — ``cree`` est ``False`` quand la dédup a rendu le
@@ -153,14 +159,11 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
         DevisRefuse: conception absente, rattachement manquant, lead agricole
             (422 ``type_installation``), calepinage déjà rattaché à un devis
             non réutilisable (409 nommé), ou pré-vol de composition en échec
-            (statut 422, messages du serveur ventes propagés MOT POUR MOT).
+            (statut 422, messages du serveur ventes propagés MOT POUR MOT) ;
+            ACAL170 — verdict électrique bloquant sans dérogation (422
+            ``electrique``), dérogation sans motif (400).
     """
     from decimal import Decimal
-
-    from apps.ventes.services import (
-        AutoDevisError, build_devis_from_layout, layout_hash,
-        poser_layout_hash, validate_composition_for_layout,
-    )
 
     if journal is not None:
         journal.setdefault('avertissements', [])
@@ -177,6 +180,25 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     # ACAL277 — les montants sont VALIDÉS avant toute écriture (y compris le
     # rattachement d'un brouillon existant) : un refus n'écrit rien.
     montants = _montants(taux_tva, remise_globale, Decimal)
+    # ACAL170 (D-ACAL-9) — le verdict électrique BLOQUANT refuse AVANT toute
+    # écriture (422 nommant les bloquants) ; l'indéterminé passe.
+    garde = _garde_electrique(calepinage, derogation_electrique, user,
+                              geste='généré')
+    devis, cree = _generer(calepinage, layout, company, lead, client,
+                           montants, user=user, journal=journal)
+    servi = _consigner_et_servir(calepinage, garde, user=user)
+    if journal is not None:
+        journal['electrique'] = servi
+    return devis, cree
+
+
+def _generer(calepinage, layout, company, lead, client, montants, *, user,
+             journal):
+    """CAL24 — la création (ou la dédup) APRÈS toutes les gardes."""
+    from apps.ventes.services import (
+        AutoDevisError, build_devis_from_layout, layout_hash,
+        poser_layout_hash, validate_composition_for_layout,
+    )
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
     # est celui du serveur ventes, mot pour mot (422).
@@ -232,6 +254,56 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
         journal['marques_manquantes'] = list(
             journal_composition.get('marques_manquantes') or ())
     return devis, True
+
+
+def _garde_electrique(calepinage, derogation, user, *, geste):
+    """ACAL170 — ``garde_publication`` traduite en refus du pont devis.
+
+    Bloquant sans dérogation ⇒ 422 ``{detail, electrique{verdict,
+    bloquants, derogation_possible}}`` (contrat
+    ``calepinage_publication_electrique.json``) ; dérogation illisible ou
+    sans motif ⇒ 400 nommant ``derogation_electrique``. N'écrit rien.
+    """
+    from .electrique import (
+        CHAMP_DEROGATION_PUBLICATION, EntreeInvalide, PublicationBloquee,
+        garde_publication,
+    )
+
+    try:
+        return garde_publication(calepinage, derogation=derogation,
+                                 user=user)
+    except PublicationBloquee as refus:
+        detail = ("Le verdict électrique est bloquant : le devis n'est pas "
+                  f"{geste}.")
+        raise DevisRefuse(detail, champ='electrique', statut=422, donnees={
+            'detail': detail,
+            'electrique': {'verdict': 'bloquant',
+                           'bloquants': list(refus.bloquants),
+                           'derogation_possible': True},
+        }) from None
+    except EntreeInvalide as refus:
+        raise DevisRefuse(str(refus), champ=(
+            refus.champ or CHAMP_DEROGATION_PUBLICATION)) from None
+
+
+def _consigner_et_servir(calepinage, garde, *, user=None):
+    """ACAL170 — consigne la dérogation (fil + chatter) et rend la clé
+    ``electrique`` de la réponse ``{verdict, manquantes, derogation}``."""
+    from .electrique import consigner_derogation_publication
+
+    trace = garde.get('derogation')
+    derogation = None
+    if trace:
+        consigner_derogation_publication(calepinage, trace, user=user)
+        derogation = {
+            'motif': trace['motif'],
+            'auteur': {'id': trace.get('auteur_id'),
+                       'nom_complet': trace['auteur']},
+            'horodatage': trace['horodatage'],
+        }
+    return {'verdict': garde['verdict'],
+            'manquantes': list(garde.get('manquantes') or ()),
+            'derogation': derogation}
 
 
 def _poser_affiche(calepinage, devis):
@@ -298,7 +370,8 @@ def _montants(taux_tva, remise_globale, Decimal):
     return montants
 
 
-def resynchroniser_devis(calepinage, *, user=None):
+def resynchroniser_devis(calepinage, *, user=None,
+                         derogation_electrique=None):
     """CAL25 — resynchronise le devis lié sur la conception COURANTE.
 
     Le service ventes fait le travail chirurgical (quantités, batterie,
@@ -323,6 +396,10 @@ def resynchroniser_devis(calepinage, *, user=None):
 
     verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
     layout = _exiger_layout(calepinage)
+    # ACAL170 — même cliquet électrique que la génération, AVANT toute
+    # écriture (un devis ENVOYÉ suit le même refus).
+    garde = _garde_electrique(calepinage, derogation_electrique, user,
+                              geste='resynchronisé')
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id:
         raise DevisRefuse(
@@ -342,7 +419,7 @@ def resynchroniser_devis(calepinage, *, user=None):
         # (UNE fois) : le rattachement n'écrit plus rien sur un calepinage
         # existant (plus de miroir), et l'abonné crm note la conception.
         # ACAL98 — l'affiche du calepinage suit (copie sous la clé du devis).
-        return resynchroniser_conception(
+        resultat = resynchroniser_conception(
             devis, layout, user, emettre=True,
             roof_image=getattr(calepinage, 'roof_image', None) or None)
     except SyncLayoutError as refus:
@@ -350,3 +427,7 @@ def resynchroniser_devis(calepinage, *, user=None):
             refus.detail, champ='devis', statut=409,
             donnees={'detail': refus.detail,
                      'revision_possible': refus.revision_possible}) from refus
+    resultat = dict(resultat or {})
+    resultat['electrique'] = _consigner_et_servir(calepinage, garde,
+                                                  user=user)
+    return resultat
