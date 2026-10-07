@@ -72,6 +72,10 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
         raise VarianteRefusee(
             "Le calepinage n'est pas encore enregistré : impossible d'y "
             "ajouter une variante.", champ='calepinage')
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage, champ='variante')
     libelle = _nom_texte(nom)
     if not libelle:
         raise VarianteRefusee(
@@ -114,6 +118,10 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...):
         raise VarianteRefusee(
             "Cette variante n'existe pas : impossible de la modifier.",
             champ='variante')
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(variante.calepinage, champ='variante')
 
     champs = []
     if nom is not None:
@@ -152,6 +160,10 @@ def supprimer_variante(variante):
         raise VarianteRefusee(
             "Cette variante n'existe pas : impossible de la supprimer.",
             champ='variante')
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(variante.calepinage, champ='variante')
     if variante.retenue:
         raise VarianteRefusee(
             f"« {variante.nom} » est la variante RETENUE : retenez-en une "
@@ -178,6 +190,10 @@ def retenir_variante(variante):
         raise VarianteRefusee(
             "La variante n'est pas encore enregistrée : impossible de la "
             "retenir.", champ='variante')
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(variante.calepinage, champ='variante')
 
     # CAL206 — feu vert bureau d'études : no-op si la société ne l'exige
     # pas, ou si le calepinage n'a ni lead ni devis (la règle ne s'applique

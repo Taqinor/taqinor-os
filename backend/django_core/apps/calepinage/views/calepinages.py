@@ -728,6 +728,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         # aurait répondu « fichier manquant » sur un objet qui, pour cet
         # appelant, n'existe pas — un oracle d'existence par la bande.
         calepinage = self.get_object()  # borné société par get_queryset
+        # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT tout dépôt.
+        from ..services.verrou import verifier_ecriture_autorisee
+
+        verifier_ecriture_autorisee(calepinage, champ='image')
         fichier = request.FILES.get('image') or request.FILES.get('file')
         if fichier is None:
             return Response(

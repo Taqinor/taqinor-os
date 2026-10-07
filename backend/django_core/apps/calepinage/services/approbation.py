@@ -250,6 +250,10 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     """
     from django.utils import timezone
 
+    from .verrou import verifier_ecriture_autorisee
+
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    verifier_ecriture_autorisee(calepinage, champ='approbation')
     motif = _valider(decision, motif,
                      getattr(calepinage, 'roof_layout', None))
     horodatage = maintenant or timezone.now()

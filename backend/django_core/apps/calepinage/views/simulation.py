@@ -128,7 +128,7 @@ def enregistrer_pertes(self, request, pk=None):
     # ACAL135 — le contrat nomme la liste ``postes`` ; ``pertes`` reste lu.
     saisie = corps.get('postes') if 'postes' in corps else corps.get('pertes')
     try:
-        persister_pertes(calepinage, saisie)
+        persister_pertes(calepinage, saisie, user=request.user)
     except PertesInvalides as refus:
         return Response({refus.champ or 'pertes': [str(refus)]},
                         status=status.HTTP_400_BAD_REQUEST)

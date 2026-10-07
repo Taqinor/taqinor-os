@@ -948,7 +948,7 @@ def importer_projet(document, company, *, user=None, lead_id=None,
                     calepinage, plan['roof_layout'], user=user,
                     libelle='Import du fichier de projet')
             if plan['postes']:
-                enregistrer_pertes(calepinage, plan['postes'])
+                enregistrer_pertes(calepinage, plan['postes'], user=user)
             _ecrire_saisies(calepinage, plan['saisies'], user=user)
             avertissements.extend(
                 _creer_variantes(calepinage, plan['variantes'], user=user))

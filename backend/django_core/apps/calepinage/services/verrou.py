@@ -26,7 +26,7 @@ from rest_framework.exceptions import APIException
 
 __all__ = [
     'VerrouilleRefuse', 'GESTE_CALEPINAGE', 'verdict_verrou',
-    'est_verrouille', 'verifier_ecriture_autorisee',
+    'est_verrouille', 'verifier_ecriture_autorisee', 'apres_envoi',
 ]
 
 #: Le geste ventes que le calepinage interroge (``GESTES`` de ventes).
@@ -71,13 +71,21 @@ def est_verrouille(calepinage):
     return verdict is not None and not verdict.get('modifiable', True)
 
 
-def verifier_ecriture_autorisee(calepinage):
+def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
     """Refuse (409, clé ``roof_layout``) toute écriture de conception quand le
-    calepinage est verrouillé, avec le MOTIF de ventes mot pour mot (ex.
+    calepinage est verrouillé (ACAL43 : ``champ`` nomme l'écriture refusée),
+    avec le MOTIF de ventes mot pour mot (ex.
     « Devis accepté : révisez-le ») — no-op sinon."""
     verdict = verdict_verrou(calepinage)
     if verdict is not None and not verdict.get('modifiable', True):
         raise VerrouilleRefuse(
             verdict.get('raison_non_modifiable')
             or 'Devis lié figé : révisez-le (nouvelle version).',
-            champ='roof_layout')
+            champ=champ)
+
+
+def apres_envoi(calepinage):
+    """ACAL43 — ``True`` quand le devis lié est ENVOYÉ (corrigeable, D-QJR5-5)
+    : une saisie écrite alors se TRACE au journal (« corrigé après envoi »)."""
+    devis = _devis_lie(calepinage)
+    return devis is not None and getattr(devis, 'statut', None) == 'envoye'
