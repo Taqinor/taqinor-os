@@ -301,8 +301,12 @@ def portail_fournisseur_reserver_creneau_view(request, token):
             chauffeur_nom=request.data.get('chauffeur_nom') or '',
             immatriculation=request.data.get('immatriculation') or '')
     except ValueError as exc:
-        return _noindex(Response({'detail': str(exc)},
-                                 status=status.HTTP_400_BAD_REQUEST))
+        # ASTK191 — un refus rattaché à un champ (créneau hors grille) répond
+        # `{champ: [message]}` ; les autres refus gardent `{detail}`.
+        champ = getattr(exc, 'champ', None)
+        corps = ({champ: [getattr(exc, 'message', str(exc))]} if champ
+                 else {'detail': str(exc)})
+        return _noindex(Response(corps, status=status.HTTP_400_BAD_REQUEST))
     return _noindex(Response({
         'id': rdv.id, 'quai': rdv.quai_id,
         'debut': rdv.date_heure_debut.isoformat(),
