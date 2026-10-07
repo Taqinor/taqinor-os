@@ -3,6 +3,7 @@ import { formatDateTime } from '../lib/format'
 import { useSelector } from 'react-redux'
 import notificationsApi from '../api/notificationsApi'
 import router from '../router'
+import { isPortalUser } from '../features/portail/portalScope'
 
 /* MSGACC1 — Message d'accueil : posé par un responsable/admin pour UN
    employé précis, affiché EN PLEIN ÉCRAN à sa PREMIÈRE ouverture de l'ERP à
@@ -69,20 +70,24 @@ function formatDateHeure(iso) {
 
 export default function MessageAccueilModal() {
   const isAuthenticated = useSelector((s) => s.auth?.isAuthenticated)
+  // ADOC120 — un compte PORTAIL (client/fournisseur/partenaire) n'a pas accès à
+  // /notifications/messages-accueil/ (403 + toast d'erreur global à chaque
+  // chargement) : message d'accueil interne, jamais pour un compte externe.
+  const portail = useSelector((s) => isPortalUser(s.auth?.user))
   const [messages, setMessages] = useState([])
   const fetchedRef = useRef(false)
 
   useEffect(() => {
-    if (!isAuthenticated || fetchedRef.current) return
+    if (!isAuthenticated || portail || fetchedRef.current) return
     fetchedRef.current = true
     notificationsApi.messagesAccueilALire()
       .then((res) => {
         setMessages(res.data?.messages || [])
       })
       .catch(() => { /* silencieux — jamais bloquer l'ouverture de l'ERP */ })
-  }, [isAuthenticated])
+  }, [isAuthenticated, portail])
 
-  if (messages.length === 0) return null
+  if (portail || messages.length === 0) return null
   const courant = messages[0]
 
   const compris = () => {
