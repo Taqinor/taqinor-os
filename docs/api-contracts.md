@@ -326,8 +326,6 @@
     detail:texte, domaine:inconnu, results:inconnu
 - frontend/src/api/parametresApi.js :: saveTranslationOverrides -> /api/django/parametres/traductions/bulk
     detail:texte, overrides:inconnu
-- frontend/src/api/portailApi.js :: confirmer -> /api/django/portail/mes-bons-commande/<>/confirmer
-    date_confirmee:texte, date_confirmee_fournisseur:inconnu, detail:texte, id:inconnu, numero_confirmation_fournisseur:texte, reference:inconnu
 - frontend/src/api/portailApi.js :: consommation -> /api/django/portail/client/ma-consommation
     alertes_ouvertes:nombre, points:inconnu, provider_configure:inconnu, window_days:inconnu
 - frontend/src/api/portailApi.js :: demander -> /api/django/portail/mes-contrats-maintenance/<>/demander

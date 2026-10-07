@@ -98,7 +98,7 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/stock/models_incident_fournisseur.py:57` | IncidentQualiteFournisseur.cout_impact_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models_negoce_params.py:44` | ParametresNegoce.cout_rupture_jour_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models_rfa.py:35` | AccordRFAFournisseur.montant_fixe | 14 | 2 |
-| `backend/django_core/apps/stock/models_wms.py:497` | ExpeditionTransporteur.cout_reel | 12 | 2 |
+| `backend/django_core/apps/stock/models_wms.py:507` | ExpeditionTransporteur.cout_reel | 12 | 2 |
 | `backend/django_core/apps/ventes/models.py:80` | Devis.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:83` | Devis.remise_globale | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:158` | Devis.acompte_pct | 5 | 2 |

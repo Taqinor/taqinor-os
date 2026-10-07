@@ -435,11 +435,11 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/stock/models_van_sales.py::StockVehicule.produit` | backend/django_core/apps/stock/models_van_sales.py:18 | stock.Produit | PROTECT |
 | `backend/django_core/apps/stock/models_wms.py::LignePicking.produit` | backend/django_core/apps/stock/models_wms.py:129 | stock.Produit | PROTECT |
 | `backend/django_core/apps/stock/models_wms.py::UniteLogistiqueLigne.produit` | backend/django_core/apps/stock/models_wms.py:255 | stock.Produit | PROTECT |
-| `backend/django_core/apps/stock/models_wms.py::AffectationCrossDock.produit` | backend/django_core/apps/stock/models_wms.py:610 | stock.Produit | PROTECT |
-| `backend/django_core/apps/stock/models_wms.py::AlerteRappel.produit` | backend/django_core/apps/stock/models_wms.py:660 | stock.Produit | PROTECT |
-| `backend/django_core/apps/stock/models_wms.py::BlocageQualite.produit` | backend/django_core/apps/stock/models_wms.py:834 | stock.Produit | PROTECT |
-| `backend/django_core/apps/stock/models_wms.py::LigneRetourClient.produit` | backend/django_core/apps/stock/models_wms.py:895 | stock.Produit | PROTECT |
-| `backend/django_core/apps/stock/models_wms.py::MouvementRebut.produit` | backend/django_core/apps/stock/models_wms.py:956 | stock.Produit | PROTECT |
+| `backend/django_core/apps/stock/models_wms.py::AffectationCrossDock.produit` | backend/django_core/apps/stock/models_wms.py:620 | stock.Produit | PROTECT |
+| `backend/django_core/apps/stock/models_wms.py::AlerteRappel.produit` | backend/django_core/apps/stock/models_wms.py:670 | stock.Produit | PROTECT |
+| `backend/django_core/apps/stock/models_wms.py::BlocageQualite.produit` | backend/django_core/apps/stock/models_wms.py:844 | stock.Produit | PROTECT |
+| `backend/django_core/apps/stock/models_wms.py::LigneRetourClient.produit` | backend/django_core/apps/stock/models_wms.py:905 | stock.Produit | PROTECT |
+| `backend/django_core/apps/stock/models_wms.py::MouvementRebut.produit` | backend/django_core/apps/stock/models_wms.py:966 | stock.Produit | PROTECT |
 | `backend/django_core/apps/tiers/models.py::Tiers.company` | backend/django_core/apps/tiers/models.py:29 | authentication.Company | CASCADE |
 | `backend/django_core/apps/uxviews/models.py::UxParametres.company` | backend/django_core/apps/uxviews/models.py:131 | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models.py::Devis.company` | backend/django_core/apps/ventes/models.py:24 | authentication.Company | CASCADE |
