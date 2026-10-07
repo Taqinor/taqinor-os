@@ -61,7 +61,7 @@ from .models import Ligne
 
 
 class LigneSerializer(serializers.ModelSerializer):
-    same_company_fields = ('produit',)
+    same_company_fields = ('produit', 'voisine')
 
     class Meta:
         model = Ligne
@@ -80,6 +80,9 @@ class LigneSerializer(serializers.ModelSerializer):
 
     def validate_produit(self, produit):
         return produit
+
+    def validate_voisine(self, voisine):
+        return voisine
 '''
 
 SER_READ_ONLY = '''
@@ -91,7 +94,31 @@ class LigneSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ligne
         fields = ['id', 'produit', 'referentiel', 'voisine']
-        read_only_fields = ['produit']
+        read_only_fields = ['produit', 'voisine']
+'''
+
+
+MODELS_USER = '''
+from django.conf import settings
+from django.db import models
+
+
+class Tache(models.Model):
+    company = models.ForeignKey('authentication.Company',
+                                on_delete=models.CASCADE)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                    on_delete=models.CASCADE)
+'''
+
+SER_USER = '''
+from rest_framework import serializers
+from .models_x import Tache
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tache
+        fields = ['id', 'responsable']
 '''
 
 
@@ -111,6 +138,7 @@ class BaseArbre(unittest.TestCase):
                                                     encoding="utf-8")
         # SPL72 — fichiers supplémentaires de l'app ``ao`` (scissions).
         for nom, contenu in (extra or {}).items():
+            (apps / "ao" / nom).parent.mkdir(parents=True, exist_ok=True)
             (apps / "ao" / nom).write_text(contenu, encoding="utf-8")
         allow = tmp / "scripts" / "fk_scoping_allow.txt"
         allow.write_text(allowlist, encoding="utf-8")
@@ -149,11 +177,39 @@ class TestDetection(BaseArbre):
         champs = {c for _, _, c, _, _ in sites}
         self.assertNotIn("referentiel", champs)
 
-    def test_fk_meme_app_ignoree(self):
+    def test_fk_meme_app_non_bornee(self):
+        # ASTK9 : une FK MEME-APP vers un modele a societe est une fuite
+        # inter-societes au meme titre qu'une FK cross-app.
         self._monter(SER_NU)
         sites = cfs.collect_sites()
-        champs = {c for _, _, c, _, _ in sites}
-        self.assertNotIn("voisine", champs)
+        champs = {c for _, _, c, _, couvert in sites if not couvert}
+        self.assertIn("voisine", champs)
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("LigneSerializer.voisine", out)
+
+    def test_fk_utilisateur_non_bornee(self):
+        self._monter(SER_NU, extra={
+            "models_x.py": MODELS_USER, "serializers_u.py": SER_USER})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("UserSerializer.responsable", out)
+        self.assertIn("authentication.CustomUser", out)
+
+    def test_serializer_dans_views(self):
+        self._monter(SER_VIDE, extra={"views/api.py": SER_X_NU})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("views/api.py::LigneXSerializer.produit", out)
+
+    def test_base_company_scoped_borne_toutes_les_relations(self):
+        for base in ("CompanyScopedModelSerializer",
+                     "CompanyScopedRelationsMixin, serializers.ModelSerializer"):
+            src = SER_X_NU.replace("serializers.ModelSerializer", base)
+            self._monter(SER_VIDE, extra={"views/api.py": src})
+            code, out = self._main()
+            self.assertEqual(code, 0, out)
+            self._restaurer()
 
 
 class TestCouverture(BaseArbre):
@@ -177,7 +233,9 @@ class TestCouverture(BaseArbre):
             SER_NU,
             allowlist="# constaté, pas approuvé\n"
                       "backend/django_core/apps/ao/serializers.py"
-                      "::LigneSerializer.produit\n")
+                      "::LigneSerializer.produit\n"
+                      "backend/django_core/apps/ao/serializers.py"
+                      "::LigneSerializer.voisine\n")
         code, out = self._main()
         self.assertEqual(code, 0, out)
 

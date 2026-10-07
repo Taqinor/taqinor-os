@@ -779,21 +779,57 @@ def _bom_quantities(installation):
     """Quantités requises par produit (entier ≥ 1) depuis la nomenclature gelée
     du chantier (`Installation.bom`). Ignore les lignes sans produit catalogue
     et les quantités nulles/illisibles. Renvoie {produit_id: quantite}."""
+    return _quantites_depuis_bom(installation.bom)
+
+
+def _quantites_depuis_bom(bom):
+    """Cœur de `_bom_quantities` sur une nomenclature (liste de dicts
+    `{produit_id, quantite}`) — partagé avec `_bc_quantities` (ASTK122)."""
     besoins = {}
-    for ligne in (installation.bom or []):
-        if not isinstance(ligne, dict):
-            continue
-        produit_id = ligne.get('produit_id')
+    for produit_id, _designation, qte in lignes_bom_entieres(bom):
         if not produit_id:
-            continue
-        try:
-            qte = int(round(float(ligne.get('quantite') or 0)))
-        except (TypeError, ValueError):
-            continue
-        if qte <= 0:
             continue
         besoins[produit_id] = besoins.get(produit_id, 0) + qte
     return besoins
+
+
+def lignes_bom_entieres(bom):
+    """ASTK127 (C-ASTK-034) — LE lecteur unique d'une nomenclature gelée :
+    rend ``(produit_id, designation, quantite_entiere)`` pour chaque ligne à
+    quantité > 0, la quantité arrondie AU MÊME ARRONDI que la sortie de la
+    vente (``ventes.domain.facturation_ops.decompter_stock_lignes`` : entier
+    HALF_UP par ligne) — 12,5 m réserve 13 comme la facture en sort 13
+    (``round`` Python arrondissait au pair : 12,5 → 12). Partagé par la
+    réservation N14 (`_bom_quantities`), le BC (`_bc_quantities`) et la
+    réconciliation terrain F11 (``field_capture._bom_quantities``).
+    ``compute_besoin_materiel`` garde son plafond (ERR54 : commande
+    prudente) — écart volontaire."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    for ligne in (bom or []):
+        if not isinstance(ligne, dict):
+            continue
+        try:
+            qte = int(Decimal(str(ligne.get('quantite') or 0)).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        if qte <= 0:
+            continue
+        yield (ligne.get('produit_id'),
+               ligne.get('designation') or 'Article', qte)
+
+
+def chantier_peut_reserver(installation):
+    """ASTK124 (C-ASTK-031) — LE prédicat unique « ce chantier peut-il
+    (encore) engager du stock ? » : ni annulé, ni clôturé. Appelé par les
+    trois écrivains de réservation (`seed_reservations`,
+    `reserver_stock_depuis_bc`, `reserver_stock_recu_pour_chantier`) : une
+    réception ou un BC ne réactive plus la réservation d'un chantier mort.
+    Le contrôle a posteriori de `reporting/integrity.py` reste un filet."""
+    if installation is None or getattr(installation, 'annule', False):
+        return False
+    return (Installation.canonical_statut(installation.statut)
+            != Installation.Statut.CLOTURE)
 
 
 def seed_reservations(installation):
@@ -813,6 +849,8 @@ def seed_reservations(installation):
     (comportement quantitatif strictement inchangé)."""
     from .selectors import calepinage_retenu_du_chantier
     from apps.stock.selectors import valid_produit_ids
+    if not chantier_peut_reserver(installation):
+        return []
     company = installation.company
     besoins = _bom_quantities(installation)
     valid_ids = valid_produit_ids(company, list(besoins)) if besoins else set()
@@ -898,7 +936,7 @@ def consume_reservations(installation, user):
                 quantite=qte_sortie,
                 quantite_avant=qte_avant, quantite_apres=qte_apres,
                 reference=installation.reference,
-                note=f'Consommation chantier {installation.reference}',
+                note=_note_consommation_n14(installation),
                 created_by=user)
             manquant = resa.quantite - qte_sortie
             if manquant > 0:
@@ -926,6 +964,87 @@ def release_reservations(installation):
             .update(active=False))
 
 
+_MARQUEUR_SOLDE_VENTE = 'reservation_soldee_vente'
+
+
+def solder_reservations_vente(installation, quantites_par_produit, reference,
+                              user=None):
+    """ASTK120 (C-ASTK-028) — « une vente = une sortie ».
+
+    Le matériel d'une vente déjà SORTI du stock par un autre chemin (facture
+    directe, BC livré, livraison directe chantier — appelants ASTK135 /
+    ASTK98, via ce service, doctrine cross-app) SOLDE la réservation N14 du
+    chantier : pour chaque ``{produit_id: quantite}``, la réservation active
+    non consommée est DÉCRÉMENTÉE de la quantité sortie (bornée à zéro) ; à 0
+    elle est marquée consommée (``consomme=True``, ``date_consommation``) —
+    `consume_reservations` à « Installé » ne sort donc plus que le
+    RELIQUAT. Chaque solde laisse une note chatter « soldée par
+    <référence> ».
+
+    IDEMPOTENT par (référence, produit) : un rejeu avec la même référence ne
+    décrémente jamais deux fois (marqueur porté par la note chatter, relu
+    sous verrou). No-op pour un chantier annulé ou clôturé, une quantité
+    nulle, ou un produit sans réservation active. À appeler DANS la
+    transaction de la sortie. Renvoie le nombre de réservations modifiées.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import InstallationActivity
+
+    if installation is None or not quantites_par_produit:
+        return 0
+    if (installation.annule
+            or Installation.canonical_statut(installation.statut)
+            == Installation.Statut.CLOTURE):
+        return 0
+    reference = str(reference or '').strip()
+    modifiees = 0
+    with transaction.atomic():
+        for produit_id, quantite in quantites_par_produit.items():
+            try:
+                qte = int(quantite or 0)
+            except (TypeError, ValueError):
+                continue
+            if not produit_id or qte <= 0:
+                continue
+            resa = (StockReservation.objects.select_for_update()
+                    .select_related('produit')
+                    .filter(installation=installation, produit_id=produit_id,
+                            active=True, consomme=False)
+                    .first())
+            if resa is None:
+                continue
+            deja = InstallationActivity.objects.filter(
+                installation=installation, field=_MARQUEUR_SOLDE_VENTE,
+                old_value=reference,
+                new_value__startswith=f'{produit_id}:').exists()
+            if deja:
+                continue
+            decompte = min(qte, resa.quantite)
+            resa.quantite -= decompte
+            changed = ['quantite']
+            if resa.quantite <= 0:
+                resa.consomme = True
+                resa.date_consommation = timezone.now()
+                changed += ['consomme', 'date_consommation']
+            resa.save(update_fields=changed)
+            ref_produit = (resa.produit.sku or resa.produit.nom
+                           if resa.produit_id else produit_id)
+            reste = (f', reste {resa.quantite} réservé(s)'
+                     if resa.quantite > 0 else '')
+            InstallationActivity.objects.create(
+                company=installation.company, installation=installation,
+                user=user, kind=InstallationActivity.Kind.NOTE,
+                field=_MARQUEUR_SOLDE_VENTE, old_value=reference,
+                # « <produit_id>:<quantité soldée> » — relu par
+                # `_quantite_soldee_par_vente` (retournable YSTCK4, ASTK128).
+                new_value=f'{produit_id}:{decompte}',
+                body=(f'Réservation {ref_produit} soldée par {reference} '
+                      f'({decompte} déjà sorti(s) par la vente{reste}).'))
+            modifiees += 1
+    return modifiees
+
+
 # ── YSTCK4 — retour chantier : matériel non posé rapporté au dépôt ─────────
 # La consommation (N14/F11) est à SENS UNIQUE : rien ne permettait de faire
 # remonter le surplus non installé vers le dépôt. `RetourMateriel`/
@@ -933,21 +1052,61 @@ def release_reservations(installation):
 # ENTRÉE référencé à la sortie d'origine, plafonné à ce qui a RÉELLEMENT été
 # sorti pour ce chantier, jamais un ajustement positif libre ».
 
+def _note_consommation_n14(installation):
+    """Note des mouvements SORTIE posés par `consume_reservations` (N14) —
+    UNE définition, relue par `_quantite_sortie_chantier` (ASTK128)."""
+    return f'Consommation chantier {installation.reference}'
+
+
 def _quantite_sortie_chantier(installation, produit_id):
-    """Quantité TOTALE réellement sortie pour ce chantier pour ce produit :
-    somme des `ConsommationLigne.quantite_utilisee` validées (stock_applique)
-    de TOUTES les interventions du chantier (F11 — la seule source qui bouge
-    réellement le stock ; la réservation N14 estimée n'en fait pas partie)."""
+    """Quantité TOTALE réellement sortie pour ce chantier pour ce produit.
+
+    ASTK128 (C-ASTK-034) — TOUTES les sorties réelles du chantier :
+      * F11 : somme des `ConsommationLigne.quantite_utilisee` validées
+        (stock_applique) de toutes les interventions du chantier ;
+      * N14 : les mouvements SORTIE de `consume_reservations` au passage
+        « Installé » (référence du chantier, note N14), au montant réellement
+        sorti (le manque CHT5 n'est pas compté) ;
+      * les réservations soldées par une vente (`solder_reservations_vente`,
+        ASTK120) : le matériel est sorti par la facture/BC/livraison.
+    Les retours validés sont soustraits par `quantite_retournable`."""
     from decimal import Decimal
     from django.db.models import Sum
+    from apps.stock.selectors import mouvements_par_reference
+    from apps.stock.services import mouvement_type_sortie
     from .models import ConsommationLigne
-    total = (
+    f11 = (
         ConsommationLigne.objects
         .filter(consommation__intervention__installation=installation,
                 produit_id=produit_id, stock_applique=True)
         .aggregate(total=Sum('quantite_utilisee'))['total']
-    )
-    return total or Decimal('0')
+    ) or Decimal('0')
+    n14 = (
+        mouvements_par_reference(installation.company, installation.reference)
+        .filter(produit_id=produit_id,
+                type_mouvement=mouvement_type_sortie(),
+                note=_note_consommation_n14(installation))
+        .aggregate(total=Sum('quantite'))['total']
+    ) or 0
+    return (Decimal(str(f11)) + Decimal(str(n14))
+            + _quantite_soldee_par_vente(installation, produit_id))
+
+
+def _quantite_soldee_par_vente(installation, produit_id):
+    """ASTK128 — Σ des quantités de réservation soldées par une vente
+    (marqueurs posés par `solder_reservations_vente`)."""
+    from decimal import Decimal
+    from .models import InstallationActivity
+    total = Decimal('0')
+    for valeur in InstallationActivity.objects.filter(
+            installation=installation, field=_MARQUEUR_SOLDE_VENTE,
+            new_value__startswith=f'{produit_id}:').values_list(
+            'new_value', flat=True):
+        try:
+            total += Decimal(valeur.split(':', 1)[1])
+        except (IndexError, ArithmeticError, ValueError):
+            continue
+    return total
 
 
 def _quantite_deja_retournee(installation, produit_id):
@@ -1041,7 +1200,8 @@ def reserver_stock_recu_pour_chantier(*, reception):
     """YPROC10 — à la confirmation d'une réception fournisseur dont le BCF
     porte un ``chantier_origine`` (distinct de la destination de livraison
     XPUR23), crée/complète les ``StockReservation`` actives du chantier pour
-    les produits/quantités REÇUS sur cette réception.
+    les produits/quantités REÇUS sur cette réception (ASTK121 : complète
+    seulement — ``max(existante, reçu plafonné)``, jamais une réduction).
 
     Plafonné à la quantité COMMANDÉE sur la ligne de BCF (posée par
     ``draft_bcf_for_shortfall`` = le manque au moment du brouillon — jamais de
@@ -1060,7 +1220,7 @@ def reserver_stock_recu_pour_chantier(*, reception):
     if bc is None or not getattr(bc, 'chantier_origine_id', None):
         return 0
     installation = bc.chantier_origine
-    if installation is None:
+    if not chantier_peut_reserver(installation):
         return 0
 
     # Plafond stable par produit = la quantité commandée sur CETTE ligne de
@@ -1103,8 +1263,14 @@ def reserver_stock_recu_pour_chantier(*, reception):
         # Fonction pure du plafond : un rejeu retombe sur la même valeur
         # (jamais d'addition), une réception ultérieure ne fait que monter
         # jusqu'au plafond.
-        if qte_a_reserver != resa.quantite:
-            resa.quantite = qte_a_reserver
+        # ASTK121 (C-ASTK-029) — la réception ne fait que COMPLÉTER la
+        # réservation : max(existante, reçu plafonné), jamais la RÉDUIRE (la
+        # réservation N14 du besoin total du chantier n'est plus ramenée au
+        # seul reçu).
+        existante = resa.quantite if resa.active else 0
+        nouvelle = max(existante, qte_a_reserver)
+        if nouvelle != resa.quantite or not resa.active:
+            resa.quantite = nouvelle
             resa.active = True
             resa.save(update_fields=['quantite', 'active'])
             count += 1
@@ -1136,24 +1302,25 @@ def _installation_pour_bc(bon_commande):
 
 
 def _bc_quantities(bon_commande):
-    """Quantités entières par produit depuis les lignes du DEVIS d'origine du
-    BC (mêmes lignes que celles décrémentées par `marquer-livre`)."""
-    from decimal import Decimal, ROUND_HALF_UP
-    besoins = {}
+    """Quantités entières par produit à réserver pour un BC : la nomenclature
+    GELÉE du chantier du BC (`_bom_quantities` — option RETENUE seulement,
+    déjà ×N villas pour un devis ×N), mêmes lignes que celles que la
+    livraison consomme (toggle ON : `consommer_reservation_bc`).
+
+    ASTK122 (C-ASTK-030) — relisait TOUTES les lignes du devis : sur un devis
+    à deux options accepté « sans batterie », la batterie et l'onduleur
+    hybride non retenus étaient réservés puis sortis à la livraison. Sans
+    chantier encore (devis pas encore converti en chantier), la même
+    nomenclature est calculée depuis le devis (`_freeze_bom` : option
+    retenue × N) — jamais toutes ses lignes."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is not None and installation.bom:
+        return _bom_quantities(installation)
+    # Chantier sans nomenclature gelée (créé hors `create_installation_from
+    # _devis`) ou pas encore de chantier : même calcul depuis le devis.
     if not bon_commande.devis_id:
-        return besoins
-    # ERR-QAC-MULTIVILLA-MATERIEL-XN — mêmes quantités que `marquer-livre` :
-    # ×N villas pour un devis ×N (N=1 → inchangé).
-    n_prop = _nombre_proprietes(bon_commande.devis)
-    for ligne in bon_commande.devis.lignes.all():
-        if not ligne.produit_id:
-            continue
-        qte = int((Decimal(ligne.quantite) * n_prop).quantize(
-            Decimal('1'), rounding=ROUND_HALF_UP))
-        if qte <= 0:
-            continue
-        besoins[ligne.produit_id] = besoins.get(ligne.produit_id, 0) + qte
-    return besoins
+        return {}
+    return _quantites_depuis_bom(_freeze_bom(bon_commande.devis))
 
 
 def reserver_stock_depuis_bc(bon_commande):
@@ -1166,7 +1333,7 @@ def reserver_stock_depuis_bc(bon_commande):
     chantier : idempotent, jamais deux réservations pour le même (chantier,
     produit))."""
     installation = _installation_pour_bc(bon_commande)
-    if installation is None:
+    if not chantier_peut_reserver(installation):
         return []
     besoins = _bc_quantities(bon_commande)
     if not besoins:
@@ -1198,9 +1365,14 @@ def liberer_reservation_bc(bon_commande):
     """YDOCF7 — libère les réservations du chantier du BC à son ANNULATION.
 
     No-op sûr si aucun chantier associé. Ne touche jamais une réservation
-    déjà consommée (mécanisme `release_reservations` réutilisé tel quel)."""
+    déjà consommée (mécanisme `release_reservations` réutilisé tel quel).
+
+    ASTK123 (C-ASTK-031) — no-op tant que le chantier est VIVANT (ni annulé
+    ni clôturé, `chantier_peut_reserver`) : annuler un BC ne retire plus au
+    chantier la réservation de son propre besoin (N14). La libération d'un
+    chantier mort reste celle de son annulation/clôture."""
     installation = _installation_pour_bc(bon_commande)
-    if installation is None:
+    if installation is None or chantier_peut_reserver(installation):
         return 0
     return release_reservations(installation)
 
@@ -4108,8 +4280,9 @@ def provisionner_gr_ir_reception(*, reception, company, user):
     """YPROC3 — crée la provision GR/IR (`ReceptionNonFacturee`) pour une
     réception fournisseur venant d'être CONFIRMÉE.
 
-    Montant = Σ (quantité de la ligne de réception × `prix_achat_unitaire` de
-    sa ligne de BCF). IDEMPOTENTE : une réception déjà provisionnée (à la main
+    Montant = Σ (quantité RÉELLEMENT entrée de la ligne de réception —
+    `quantite_appliquee`, ASTK60 — × `prix_achat_unitaire` de sa ligne de
+    BCF ; aucune provision si rien n'est entré). IDEMPOTENTE : une réception déjà provisionnée (à la main
     ou automatiquement) n'est jamais doublée — renvoie la provision existante.
     Sans BCF lié (réception hors flux normal), no-op (rien à provisionner).
     """
@@ -4127,11 +4300,24 @@ def provisionner_gr_ir_reception(*, reception, company, user):
     if existante is not None:
         return existante
 
+    # ASTK60 — la provision porte sur la quantité RÉELLEMENT entrée
+    # (`quantite_appliquee`, persistée à la confirmation après plafonnement
+    # au reste dû — ASTK59), jamais sur la saisie : une sur-réception ne
+    # gonfle plus la dette latente et une ligne entrée à 0 (déjà soldée)
+    # n'est pas provisionnée.
+    from apps.stock.services import quantite_entree_ligne_reception
     montant = Decimal('0')
+    lignes_entrees = 0
     for ligne in reception.lignes.select_related('ligne_commande').all():
+        qte = quantite_entree_ligne_reception(ligne)
+        if qte <= 0:
+            continue
+        lignes_entrees += 1
         pu = (ligne.ligne_commande.prix_achat_unitaire
               if ligne.ligne_commande else Decimal('0')) or Decimal('0')
-        montant += Decimal(str(ligne.quantite or 0)) * pu
+        montant += Decimal(qte) * pu
+    if not lignes_entrees:
+        return None
 
     date_reception = reception.date_reception
     if date_reception is None and reception.date_creation:
@@ -4151,7 +4337,9 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     commande d'une facture fournisseur venant d'être CRÉÉE.
 
     Solde (`lettre=True`, `facture` posée, `date_lettrage`) les provisions non
-    encore lettrées de ce BCF, à hauteur du montant facturé (HT) — ne touche
+    encore lettrées de ce BCF ENTIÈREMENT couvertes par le cumul facturé (HT)
+    du BCF non encore lettré (ASTK125 — jamais une provision partiellement
+    facturée) — ne touche
     jamais une provision d'un autre bon de commande. IDEMPOTENTE : une
     provision déjà lettrée est ignorée (jamais re-lettrée / re-décrémentée).
     Sans bon de commande sur la facture, no-op.
@@ -4165,13 +4353,27 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     if bc is None:
         return []
 
-    montant_restant = facture.montant_ht or 0
+    # ASTK125 (C-ASTK-032) — lettrage au CUMUL facturé du BCF : une
+    # provision n'est lettrée que si le facturé non encore lettré la COUVRE
+    # entièrement (une facture partielle de 100 sur une provision de 1 000
+    # la laisse OUVERTE ; la facture suivante de 900 la lettre). Ordre FIFO
+    # (date de création) : on s'arrête à la première provision non couverte.
+    from decimal import Decimal
+    from django.db.models import Sum
+    from apps.stock.selectors import montant_facture_bcf
+    deja_lettre = (ReceptionNonFacturee.objects
+                   .filter(company=company, bon_commande=bc, lettre=True)
+                   .aggregate(t=Sum('montant_provision'))['t']
+                   or Decimal('0'))
+    montant_restant = (Decimal(str(montant_facture_bcf(bc) or 0))
+                       - Decimal(str(deja_lettre)))
     lettres = []
     provisions = ReceptionNonFacturee.objects.filter(
         company=company, bon_commande=bc, lettre=False).order_by(
-        'date_creation')
+        'date_creation', 'pk')
     for prov in provisions:
-        if montant_restant <= 0:
+        montant_prov = prov.montant_provision or Decimal('0')
+        if montant_restant < montant_prov or montant_restant <= 0:
             break
         prov.facture = facture
         prov.lettre = True
@@ -4179,8 +4381,27 @@ def lettrer_gr_ir_facture(*, facture, company, user):
         prov.save(update_fields=['facture', 'lettre', 'date_lettrage',
                                  'date_modification'])
         lettres.append(prov)
-        montant_restant -= (prov.montant_provision or 0)
+        montant_restant -= montant_prov
     return lettres
+
+
+def delettrer_gr_ir_facture(facture):
+    """ASTK126 (C-ASTK-018) — inverse UNIQUE de `lettrer_gr_ir_facture` :
+    rouvre (``lettre=False``, ``date_lettrage=None``, ``facture=None``) les
+    provisions GR/IR lettrées par CETTE facture, dans SA société seulement.
+    Appelant prévu : la suppression autorisée d'une facture fournisseur
+    (``stock`` perform_destroy, ASTK86), via ce service. No-op pour une
+    facture sans provision. Renvoie le nombre de provisions rouvertes."""
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if facture is None or getattr(facture, 'pk', None) is None:
+        return 0
+    company_id = getattr(facture, 'company_id', None)
+    if company_id is None:
+        return 0
+    return ReceptionNonFacturee.objects.filter(
+        company_id=company_id, facture_id=facture.pk, lettre=True,
+    ).update(lettre=False, date_lettrage=None, facture=None)
 
 
 # ── YSTCK7 — peuplement auto du registre entrepôt (SerieEntrepot) à la
@@ -4224,6 +4445,103 @@ def peupler_series_entrepot_reception(*, reception, company, user):
             if was_created:
                 created += 1
     return created
+
+
+# ── ASTK57 — abonnés de `reception_fournisseur_annulee` (C-ASTK-011) ──────
+# Jumeaux SYMÉTRIQUES des trois abonnés de `reception_fournisseur_confirmee`
+# (provision GR/IR, registre des séries, réservation YPROC10). Chacun relit
+# l'état PERSISTÉ (jamais le payload seul) et est IDEMPOTENT : un second
+# envoi du signal ne change rien.
+
+def extourner_gr_ir_reception(*, reception, company):
+    """ASTK57 — extourne la provision GR/IR OUVERTE d'une réception annulée :
+    la marchandise est repartie, la dette latente n'existe plus. Une
+    provision déjà lettrée (facture arrivée) n'est jamais touchée. Renvoie le
+    nombre de provisions extournées (0 au rejeu)."""
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or reception is None:
+        return 0
+    deleted, _ = ReceptionNonFacturee.objects.filter(
+        company=company, reception=reception, lettre=False).delete()
+    return deleted
+
+
+def retourner_series_entrepot_reception(*, reception, company):
+    """ASTK57 — repasse en « retourné » les `SerieEntrepot` encore « en
+    stock » créées par cette réception (séries capturées sur ses lignes). Une
+    série déjà sortie/réservée n'est pas touchée. Renvoie le nombre de séries
+    modifiées (0 au rejeu)."""
+    from .models_serie_entrepot import SerieEntrepot
+
+    if company is None or reception is None:
+        return 0
+    count = 0
+    for ligne in reception.lignes.all():
+        if ligne.produit_id is None:
+            continue
+        numeros = [
+            n.strip() if isinstance(n, str) else n
+            for n in (getattr(ligne, 'numeros_serie', None) or [])]
+        numeros = [n for n in numeros if n]
+        if not numeros:
+            continue
+        count += SerieEntrepot.objects.filter(
+            company=company, produit_id=ligne.produit_id,
+            numero_serie__in=numeros,
+            statut=SerieEntrepot.Statut.EN_STOCK,
+        ).update(statut=SerieEntrepot.Statut.RETOURNE)
+    return count
+
+
+def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
+    """ASTK57 — après l'annulation d'une réception d'un BCF « besoin
+    chantier » (YPROC10), re-plafonne la réservation du chantier : elle ne
+    dépasse plus le reçu NET de la ligne de BCF (`quantite_recue`, déjà
+    décrémentée par la contre-passation), sauf le besoin propre de la
+    nomenclature gelée (réservation N14, jamais réduite ici). Ne fait que
+    BAISSER une réservation active non consommée ; à 0, elle est désactivée.
+    Fonction pure de l'état persisté → idempotente. Renvoie le nombre de
+    réservations modifiées."""
+    bc = reception.bon_commande
+    if bc is None or not getattr(bc, 'chantier_origine_id', None):
+        return 0
+    installation = bc.chantier_origine
+    if installation is None:
+        return 0
+    if company is not None and installation.company_id != company.id:
+        return 0
+
+    recu_net = {}
+    for ligne in reception.lignes.select_related('ligne_commande').all():
+        if ligne.produit_id is None or ligne.ligne_commande_id is None:
+            continue
+        ligne_cmd = ligne.ligne_commande
+        ligne_cmd.refresh_from_db()
+        cap = min(int(ligne_cmd.quantite_recue or 0),
+                  int(ligne_cmd.quantite or 0))
+        recu_net[ligne.produit_id] = max(
+            recu_net.get(ligne.produit_id, 0), max(cap, 0))
+    if not recu_net:
+        return 0
+
+    besoins_bom = _bom_quantities(installation)
+    count = 0
+    for produit_id, cap_recu in recu_net.items():
+        plafond = max(cap_recu, besoins_bom.get(produit_id, 0))
+        resa = StockReservation.objects.filter(
+            installation=installation, produit_id=produit_id,
+            active=True, consomme=False).first()
+        if resa is None or resa.quantite <= plafond:
+            continue
+        resa.quantite = plafond
+        changed = ['quantite']
+        if plafond <= 0:
+            resa.active = False
+            changed.append('active')
+        resa.save(update_fields=changed)
+        count += 1
+    return count
 
 
 # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
@@ -6357,3 +6675,72 @@ def recalculer_resultat_recette(record):
         record.resultat = resultat
         record.save(update_fields=['resultat'])
     return resultat
+
+
+# ── ASTK194 — quantité par casier tenue par les mouvements (C-ASTK-046) ────
+
+def appliquer_mouvement_casier(company, produit_id, quantite,
+                               bin_source_id=None, bin_destination_id=None):
+    """ASTK194 — LE seul écrivain de `BinAffectation.quantite` hors CRUD
+    manuel. Pour un mouvement de ``quantite`` unités du produit :
+
+      * casier SOURCE (sortie ou transfert) : décrémenté, plafonné à 0
+        (jamais négatif — PositiveIntegerField) ;
+      * casier DESTINATION (entrée ou transfert) : incrémenté, l'affectation
+        est créée au besoin.
+
+    Société VÉRIFIÉE : un casier ou un produit d'une autre société lève
+    ValueError (rien n'est écrit). Appelant prévu : `stock.record_stock_
+    movement` (ASTK195, import fonction-local via ce service). Renvoie
+    l'ÉCART non couvert côté source (unités demandées au casier source
+    au-delà de ce qu'il portait ; 0 si tout était couvert)."""
+    from django.db import transaction
+    from apps.stock.selectors import valid_produit_ids
+    from .models_bin_location import BinAffectation, BinLocation
+
+    if company is None or not produit_id:
+        raise ValueError('Société et produit requis.')
+    try:
+        qte = int(quantite or 0)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if qte < 0:
+        raise ValueError('Quantité négative.')
+    if bin_source_id is None and bin_destination_id is None:
+        raise ValueError('Casier source ou destination requis.')
+    if produit_id not in valid_produit_ids(company, [produit_id]):
+        raise ValueError("Produit d'une autre société.")
+    bin_ids = [b for b in (bin_source_id, bin_destination_id) if b]
+    if BinLocation.objects.filter(
+            pk__in=bin_ids, company=company).count() != len(set(bin_ids)):
+        raise ValueError("Casier d'une autre société.")
+    if qte == 0:
+        return 0
+
+    ecart = 0
+    with transaction.atomic():
+        if bin_source_id:
+            source = (BinAffectation.objects.select_for_update()
+                      .filter(bin_id=bin_source_id, produit_id=produit_id)
+                      .first())
+            dispo = source.quantite if source is not None else 0
+            retire = min(qte, dispo)
+            ecart = qte - retire
+            if source is not None and retire:
+                source.quantite = dispo - retire
+                source.save(update_fields=['quantite', 'date_modification'])
+        if bin_destination_id:
+            dest, created = (BinAffectation.objects.select_for_update()
+                             .get_or_create(
+                                 bin_id=bin_destination_id,
+                                 produit_id=produit_id,
+                                 defaults={'company': company,
+                                           'quantite': qte}))
+            if not created:
+                dest.quantite = (dest.quantite or 0) + qte
+                changed = ['quantite', 'date_modification']
+                if dest.company_id is None:
+                    dest.company = company
+                    changed.append('company')
+                dest.save(update_fields=changed)
+    return ecart

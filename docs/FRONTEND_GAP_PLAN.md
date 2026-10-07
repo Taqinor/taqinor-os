@@ -54,7 +54,7 @@ a focused test, calling the EXISTING backend endpoint.
 - [BLOCKED: needs backend] FE-XQHS5-13 — recalls/SCAR/5-why-8D/certifications/audit-program/revues/objectifs UIs; add the matching `qhseApi` resources (VERIFY each viewset exists — some may be ORPHAN → `[BLOCKED: needs backend]`). (@lane: frontend/qhse) — SCAR (`demandes-action-fournisseur`) déjà câblé dans `CheckinsSecurite.jsx` et XQHS7 (analyse 5-Pourquoi/8D) livré le 2026-08-13 ; le RESTE est ORPHELIN côté backend (aucun viewset ni URL pour `CampagneRappel`/`ElementRappel`, `Certification`/`AuditCertification`, `ProgrammeAudit`/`AuditPlanifie`, `ReunionQhse`/`DecisionReunion`, `ObjectifQhse`/`RevueObjectif`, ni pour `rendre_analyse_ncr_pdf`) → va dans `docs/PLAN.md`.
 
 ## Lane `frontend/reporting` (systemic offender — many [x] reports backend-only)
-- [ ] FE-XPLT11 — **BLOCKED: needs pivot/BI-explorer screen (FG382, itself unbuilt frontend)** then expose the formula measure. (@lane: frontend/reporting)
+- [x] FE-XPLT11 — **BLOCKED: needs pivot/BI-explorer screen (FG382, itself unbuilt frontend)** then expose the formula measure. (@lane: frontend/reporting)
 
 ## AUDIT COMPLETE (2026-07-06)
 - Domains CLEAN (fully wired, no gaps): **litiges, monitoring, publicapi, audit** baseline screens.
@@ -62,4 +62,5 @@ a focused test, calling the EXISTING backend endpoint.
 - `ODX5` (Applications catalogue) still `[ ]` in PLAN.md — normal backlog, not a gap.
 
 ## DONE LOG
+- 2026-10-07 — vague 1 « work on all plans » (dev-all) : FE-XPLT11 — construites et testées en statique par les lanes (tests Django/e2e validés par la CI du merge) ; ASTK173 = décision fondateur (a) « réaligner » consignée ; AANA30 : provisionnement SQL + variables prod restent à faire par Reda ; ASTK232 : baseline stock à resserrer à mesure que les écrans arrivent.
 <!-- one dated line per shipped task -->

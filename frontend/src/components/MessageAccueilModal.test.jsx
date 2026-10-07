@@ -23,8 +23,8 @@ vi.mock('../router', () => ({ default: { navigate } }))
 
 import MessageAccueilModal from './MessageAccueilModal'
 
-function renderWith(isAuthenticated) {
-  const store = configureStore({ reducer: { auth: (s = { isAuthenticated }) => s } })
+function renderWith(isAuthenticated, user) {
+  const store = configureStore({ reducer: { auth: (s = { isAuthenticated, user }) => s } })
   return render(
     <Provider store={store}>
       <MessageAccueilModal />
@@ -36,6 +36,29 @@ afterEach(() => cleanup())
 beforeEach(() => vi.clearAllMocks())
 
 describe('MSGACC1 — MessageAccueilModal', () => {
+  // ADOC120 — un compte portail (portee portail_client...) ne doit ni appeler
+  // /notifications/messages-accueil/a-lire/ (403 + toast global) ni voir la modale.
+  it('compte portail : aucun appel ni toast', async () => {
+    messagesAccueilALire.mockRejectedValue({
+      response: { status: 403, data: { detail: "Vous n'avez pas la permission" } },
+    })
+    for (const portee of ['portail_client', 'portail_fournisseur', 'portail_partenaire']) {
+      renderWith(true, { username: 'client-294', portee })
+      // laisse passer un cycle d'effets
+      await Promise.resolve()
+      expect(messagesAccueilALire).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('message-accueil')).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      cleanup()
+    }
+  })
+
+  it('utilisateur interne : comportement inchangé (le fetch part)', async () => {
+    messagesAccueilALire.mockResolvedValueOnce({ data: { messages: [] } })
+    renderWith(true, { username: 'demo_admin', portee: 'interne' })
+    await waitFor(() => expect(messagesAccueilALire).toHaveBeenCalledTimes(1))
+  })
+
   it('rien tant que non authentifié — aucun fetch', () => {
     renderWith(false)
     expect(messagesAccueilALire).not.toHaveBeenCalled()

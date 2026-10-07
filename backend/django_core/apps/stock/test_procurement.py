@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client
 from apps.stock.models import (
     Produit, Fournisseur, MouvementStock, BonCommandeFournisseur,
-    LigneBonCommandeFournisseur,
+    LigneBonCommandeFournisseur, ReceptionFournisseur,
 )
 from apps.installations.models import Installation
 from apps.ventes.models import Devis, LigneDevis
@@ -137,10 +137,15 @@ class TestReception(ProcurementBase):
         self.assertEqual(produit.quantite_stock, 9)
         self.assertEqual(ligne.quantite_recue, 4)
         self.assertEqual(bon.statut, BonCommandeFournisseur.Statut.ENVOYE)
-        # Un mouvement ENTREE tracé.
-        mv = MouvementStock.objects.get(reference=bon.reference)
+        # Un mouvement ENTREE tracé. ASTK62 — `recevoir` passe désormais par
+        # une ReceptionFournisseur confirmée : le mouvement porte la
+        # référence de CETTE réception et sa note nomme le BCF.
+        reception = ReceptionFournisseur.objects.get(bon_commande=bon)
+        self.assertEqual(reception.statut, ReceptionFournisseur.Statut.CONFIRME)
+        mv = MouvementStock.objects.get(reference=reception.reference)
         self.assertEqual(mv.type_mouvement, MouvementStock.TypeMouvement.ENTREE)
         self.assertEqual(mv.quantite, 4)
+        self.assertIn(bon.reference, mv.note)
 
     def test_over_reception_caps_at_remaining_idempotent(self):
         produit = make_produit(self.company, 'SKU-C', stock=0)

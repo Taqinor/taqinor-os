@@ -933,8 +933,8 @@ append_only:
     rule: "surface de ré-export pure : ajouter une ligne d'import ; le code va dans models_*.py"
   - path: backend/django_core/apps/parametres/models.py
     rule: "surface de ré-export pure : ajouter une ligne d'import ; le code va dans models_*.py"
-  - path: backend/django_core/apps/notifications/models.py
-    rule: "EventType : un membre ajouté EN FIN avec clé unique (+ son entrée module_map dans le même commit) ; les autres classes restent au propriétaire"
+  - path: backend/django_core/apps/notifications/types_evenements.py
+    rule: "EventType : un membre ajouté EN FIN avec clé unique, + son entrée module_map et sa migration notifications dans le même commit ; jamais renommer ni réordonner (migrations 0039+ dynamiques)"
   - path: backend/django_core/apps/notifications/module_map.py
     rule: "une entrée par nouvel EventType, en fin"
   - path: backend/django_core/core/events.py
@@ -943,11 +943,11 @@ append_only:
     rule: "une entrée par nouvel événement, en fin"
   - path: backend/django_core/core/event_coverage.py
     rule: "une entrée par nouvel événement, en fin"
-  - path: backend/django_core/apps/roles/models.py
-    rule: "un code de droit ajouté EN FIN du groupe de son module dans ALL_PERMISSIONS (+ son entrée PERMISSION_*) ; jamais renommer un code existant"
-  - path: backend/django_core/apps/audit/signals.py
+  - path: backend/django_core/apps/roles/permissions_registre.py
+    rule: "un code de droit ajouté EN FIN du groupe de son module dans ALL_PERMISSIONS (+ son entrée PERMISSION_MODULE et les listes de rôles qui le portent) ; jamais renommer ni réordonner (init_roles compare la liste ordonnée)"
+  - path: backend/django_core/apps/audit/modeles_suivis.py
     rule: "TRACKED_MODELS : un tuple (<app>, <Model>) en fin de liste, commenté de son ID de tâche"
-  - path: backend/django_core/apps/publicapi/constants.py
+  - path: backend/django_core/apps/publicapi/portees.py
     rule: "une constante SCOPE_* en fin du bloc des portées (+ son choix) ; jamais renommer un identifiant publié"
   - path: "backend/django_core/apps/records/platform_baselines/*.txt"
     rule: "cliquet DÉCROISSANT : supprimer seulement les lignes du module corrigé, jamais en ajouter"

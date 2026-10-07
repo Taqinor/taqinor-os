@@ -1,0 +1,21 @@
+{
+	// Worker du site public YanBow (D-YBW-1) — nom UNIQUE, jamais celui du site TAQINOR.
+	// Variables d'exécution : posées par Reda au tableau de bord Cloudflare
+	// (jamais ici) — voir .dev.vars.example. `keep_vars: true` garantit qu'un
+	// déploiement Workers Builds n'efface pas les variables du tableau de bord.
+	// VOLONTAIREMENT ABSENTS : `vars` (aucune valeur en clair), `kv_namespaces`
+	// (l'espace de reprise n'existe que si Reda le crée — YBWM3), `triggers`
+	// (aucun cron). Le drapeau d'ouverture n'apparaît JAMAIS dans ce fichier (YBW12).
+	"name": "yanbow-web",
+	"compatibility_date": "2026-06-11",
+	"compatibility_flags": ["global_fetch_strictly_public"],
+	"main": "@astrojs/cloudflare/entrypoints/server",
+	"keep_vars": true,
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	}
+}

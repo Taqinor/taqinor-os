@@ -70,11 +70,14 @@ class BinLocation(models.Model):
 
 
 class BinAffectation(models.Model):
-    """FG319 — affecte un produit (SKU) à un casier, avec une quantité indicative.
+    """FG319 — affecte un produit (SKU) à un casier, avec sa quantité.
 
     Permet « où se trouve ce produit ? » : un même SKU peut être réparti sur
-    plusieurs casiers. La quantité est INDICATIVE (localisation), elle ne fait
-    pas autorité sur le total canonique `stock.EmplacementStock`."""
+    plusieurs casiers. ASTK194 — la quantité est TENUE PAR LES MOUVEMENTS de
+    stock via le service unique `installations.services.
+    appliquer_mouvement_casier` (décrément source, incrément destination,
+    jamais négatif) ; le CRUD manuel (BinAffectationViewSet) reste le geste
+    de saisie initiale. Le total canonique reste `stock.EmplacementStock`."""
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,

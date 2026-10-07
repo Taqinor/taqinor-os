@@ -17,4 +17,9 @@ Posées par AskUserQuestion pendant `work on the plan audit stock` (docs/plans/P
   = TVA × taux de la facture, ventilée sur les règlements, le dernier portant le solde au centime. Aucun
   champ RAS sur l'acompte. Construit par ASTK175.
 
+- **ASTK173 — V2 acceptée et chantier (07/10/2026).** Réponse : (a) « Réaligner ». Tant que le chantier
+  n'est pas « Installé », l'acceptation d'une V2 réaligne la nomenclature et les réservations NON consommées
+  (ajouts, ajustements, libération des SKU disparus), comme l'argent est réaligné par QJR560 ; remplace la
+  « nomenclature V1 gelée » de QJR559. Construit par ASTK177.
+
 Ne jamais re-demander ces questions.

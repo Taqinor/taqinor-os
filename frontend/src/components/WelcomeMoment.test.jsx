@@ -23,6 +23,23 @@ afterEach(() => {
 })
 
 describe('VX156 — WelcomeMoment', () => {
+  // ADOC120 — un client du portail ne voit jamais l'accueil de la marque ERP.
+  it('compte portail : pas de bienvenue ERP', () => {
+    for (const portee of ['portail_client', 'portail_fournisseur', 'portail_partenaire']) {
+      renderWith({ username: 'client-294', portee })
+      expect(screen.queryByText(/Bienvenue chez Taqinor/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      cleanup()
+    }
+    // et rien n'est marqué « vu » : pas de pollution du flag interne.
+    expect(window.localStorage.getItem('taqinor:welcome:seen:v1')).toBeNull()
+  })
+
+  it('utilisateur interne explicite : bienvenue inchangée', async () => {
+    renderWith({ username: 'reda', portee: 'interne' })
+    expect(await screen.findByText(/Bienvenue chez Taqinor/i)).toBeInTheDocument()
+  })
+
   it('affiché à la première connexion puis plus jamais', async () => {
     renderWith({ username: 'reda' })
     expect(await screen.findByText(/Bienvenue chez Taqinor/i)).toBeInTheDocument()
