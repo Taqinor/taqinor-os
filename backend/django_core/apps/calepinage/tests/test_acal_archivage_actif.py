@@ -61,6 +61,33 @@ class ArchivageActifTest(BaseApiCalepinage):
             lignes = lignes.get('results', [])
         return {ligne['id'] for ligne in lignes}
 
+    def test_restaurer_refuse_un_second_ouvert_du_lead(self):
+        """Lot 2 critique #12 — restaurer un archivé dont le lead a déjà un
+        AUTRE calepinage ouvert : 409 nommé (D-ACAL-12), rien restauré ; un
+        MODÈLE du lead ne compte pas comme ouvert."""
+        archiver(self.calepinage, user=self.user)
+        autre = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Le nouveau')
+        reponse = self.api.post(
+            f'{URL}{self.calepinage.pk}/restaurer-corbeille/')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        # (APIException : DRF sert chaque valeur en texte.)
+        self.assertEqual(str(reponse.data['calepinage_existant']),
+                         str(autre.pk))
+        self.assertIn('lead', reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertTrue(est_archive(self.calepinage))
+        # Le second devient un MODÈLE : il n'est plus « l'ouvert » du lead,
+        # la restauration passe.
+        marquer_modele(autre, user=self.user)
+        self.assertEqual(selectors.calepinages_ouverts_du_lead(
+            self.company, self.lead.pk), [])
+        reponse = self.api.post(
+            f'{URL}{self.calepinage.pk}/restaurer-corbeille/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(selectors.calepinages_ouverts_du_lead(
+            self.company, self.lead.pk), [self.calepinage])
+
     def test_archive_survit_a_la_purge(self):
         marquer_modele(self.calepinage, user=self.user)
         reponse = self._archiver_http(self.calepinage)

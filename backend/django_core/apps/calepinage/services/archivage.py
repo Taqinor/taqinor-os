@@ -38,6 +38,7 @@ __all__ = ['ArchivageInvalide', 'CLE_MODELE', 'CLE_PIECE_JOINTE',
            'EcritureArchiveRefusee', 'MESSAGE_ARCHIVE', 'est_archive',
            'archiver', 'raison_refus_archivage',
            'refuser_ecriture_si_archive', 'restaurer',
+           'RestaurationEnConflit',
            'restaurateur_calepinage', 'restaurateur_piece_jointe']
 
 
@@ -207,11 +208,42 @@ def restaurer(calepinage, *, user=None):
     return calepinage
 
 
+class RestaurationEnConflit(APIException):
+    """Lot 2 critique #12 (D-ACAL-12) — 409 NOMMÉ : restaurer ce calepinage
+    ferait un SECOND calepinage ouvert sur son lead. ``APIException`` : la
+    porte calepinage ET l'écran corbeille (``apps.trash``) répondent 409 sans
+    toucher un seul ``except``."""
+
+    status_code = 409
+    default_code = 'calepinage_restauration_conflit'
+
+
+def _refuser_si_le_lead_a_deja_un_ouvert(calepinage, user=None):
+    """Un calepinage restauré ne peut pas devenir le SECOND ouvert de son
+    lead ; un MODÈLE n'est jamais « l'ouvert » de son lead (ACAL187)."""
+    if not getattr(calepinage, 'lead_id', None):
+        return
+    from ..selectors import calepinage_ouvert_du_lead
+    from .creation import corps_conflit
+    from .modeles import est_modele
+
+    if est_modele(calepinage):
+        return
+    existant = calepinage_ouvert_du_lead(calepinage.company,
+                                         calepinage.lead_id)
+    if existant is not None and existant.pk != calepinage.pk:
+        raise RestaurationEnConflit(corps_conflit(existant, user))
+
+
 def _desarchiver(calepinage, *, devis_id=None, user=None):
     """ACAL118 — remet ``archive_le`` à ``None`` et rattache le devis
     détaché à l'archivage S'IL EST LIBRE (``liens.lier_devis`` refuse un
-    devis déjà pris : il reste alors détaché, sans erreur)."""
+    devis déjà pris : il reste alors détaché, sans erreur).
+
+    Lot 2 critique #12 — refus 409 nommé (``RestaurationEnConflit``) quand
+    le lead a déjà un AUTRE calepinage ouvert (D-ACAL-12)."""
     if calepinage.archive_le is not None:
+        _refuser_si_le_lead_a_deja_un_ouvert(calepinage, user)
         calepinage.archive_le = None
         calepinage.save(update_fields=['archive_le', 'updated_at'])
     if devis_id and not calepinage.devis_id:

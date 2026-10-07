@@ -159,7 +159,17 @@ def calepinage_ouvert_du_lead(company, lead_id):
     """
     if company is None or not lead_id:
         return None
-    return liste_calepinages(company, lead_id=lead_id).first()
+    return _ouverts(company, lead_id).first()
+
+
+def _ouverts(company, lead_id):
+    """Les calepinages OUVERTS d'un lead : non archivés ET non MODÈLES — un
+    modèle n'est pas « le » calepinage ouvert de son lead (ACAL187,
+    ``variantes._hors_unicite``)."""
+    from .services.modeles import calepinages_modeles
+
+    return (liste_calepinages(company, lead_id=lead_id)
+            .exclude(pk__in=calepinages_modeles(company).values('pk')))
 
 
 def calepinages_ouverts_du_lead(company, lead_id):
@@ -172,7 +182,7 @@ def calepinages_ouverts_du_lead(company, lead_id):
     """
     if company is None or not lead_id:
         return []
-    return list(liste_calepinages(company, lead_id=lead_id))
+    return list(_ouverts(company, lead_id))
 
 
 #: ACAL196 — « CAL-AAMM-NNNN » : le numéro à la fin est l'identifiant.
