@@ -15,6 +15,7 @@
 //      FR puis en AR, jointe au rapport.
 // Aucun mock réseau. Base partagée, workers: 1 : nettoyage best-effort.
 import { test, expect } from '@playwright/test'
+import { choisirMarche } from './helpers'
 
 const API = '/api/django'
 const devisIds = []
@@ -58,7 +59,7 @@ test('AGR318 — créer, rouvrir, ré-enregistrer : etude_params identique', asy
   await page.locator('#gen-client').click()
   await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
   await page.locator('[role="option"]').first().click()
-  await page.getByRole('radio', { name: /Agricole/ }).click()
+  await choisirMarche(page, /Agricole/)
   await page.getByRole('radio', { name: 'Pompe neuve' }).click()
   await page.getByRole('radio', { name: 'Volume déclaré' }).click()
   await page.locator('#gen-besoin-volume').fill('40')
