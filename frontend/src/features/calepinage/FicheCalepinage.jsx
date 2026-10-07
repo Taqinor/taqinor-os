@@ -164,6 +164,10 @@ export default function FicheCalepinage({ detail, onRelire }) {
   const [confirmationCopie, setConfirmationCopie] = useState(false)
   const [avecVariantes, setAvecVariantes] = useState(true)
   const [refusCopie, setRefusCopie] = useState(null)
+  // ACAL188 (D-ACAL-12) — la CIBLE de la copie (lead ou client) ; le refus
+  // « créez une variante » (409) s'affiche SOUS le champ lead.
+  const [cibleCopie, setCibleCopie] = useState({ lead: null, client: null })
+  const [refusCibleCopie, setRefusCibleCopie] = useState(null)
   // ACAL181 — le rattachement (lead, client, responsable) éditable : l'erreur
   // du serveur s'affiche SOUS le champ fautif, et le détail est RELU (aucun
   // état local seul : l'écran affiche ce que le serveur sert).
@@ -343,18 +347,34 @@ export default function FicheCalepinage({ detail, onRelire }) {
     }
   }
 
+  // ACAL188 — un calepinage OUVERT d'un lead (ni modèle, ni archivé) ne se
+  // duplique que vers un AUTRE lead ou client : la même toiture se décline
+  // en variante (D-ACAL-12, refus serveur 409 sinon).
+  const cibleExigee = Boolean(detail?.lead) && !archive && estModele !== true
+
   const lancerDuplication = async () => {
-    setEnCours(true)
     setRefusCopie(null)
+    setRefusCibleCopie(null)
+    if (cibleExigee && !cibleCopie.lead && !cibleCopie.client) {
+      setRefusCibleCopie('Choisissez le lead ou le client de la copie.')
+      return
+    }
+    setEnCours(true)
     try {
-      const res = await calepinageApi.calepinages.dupliquer(
-        detail.id, { avec_variantes: avecVariantes })
+      const corps = { avec_variantes: avecVariantes }
+      if (cibleCopie.lead) corps.lead = Number(cibleCopie.lead)
+      if (cibleCopie.client) corps.client = Number(cibleCopie.client)
+      const res = await calepinageApi.calepinages.dupliquer(detail.id, corps)
       const copie = res?.data?.calepinage ?? null
       setConfirmationCopie(false)
       // « Le bouton ouvre la copie » : l'atelier du NOUVEAU calepinage.
       if (copie) naviguer(`/calepinage/${copie}`)
     } catch (erreur) {
-      setRefusCopie(refusChamp(erreur, 'calepinage'))
+      if (erreur?.response?.status === 409 || erreur?.response?.data?.lead) {
+        setRefusCibleCopie(refusChamp(erreur, 'lead'))
+      } else {
+        setRefusCopie(refusChamp(erreur, 'calepinage'))
+      }
     } finally {
       setEnCours(false)
     }
@@ -420,7 +440,12 @@ export default function FicheCalepinage({ detail, onRelire }) {
           {!archive && (
             <button type="button" className={styleBouton} disabled={enCours}
               data-testid="cal-fiche-dupliquer"
-              onClick={() => { setRefusCopie(null); setConfirmationCopie(true) }}>
+              onClick={() => {
+                setRefusCopie(null)
+                setRefusCibleCopie(null)
+                setCibleCopie({ lead: null, client: null })
+                setConfirmationCopie(true)
+              }}>
               Dupliquer
             </button>
           )}
@@ -450,9 +475,36 @@ export default function FicheCalepinage({ detail, onRelire }) {
                 démarre avec sa propre version d’origine.
               </p>
               <p className="mt-1 text-xs text-lune-faint">
-                La copie reste dans votre société et garde le même lead ou
-                client que l’original.
+                La copie reste dans votre société.
+                {cibleExigee
+                  ? ' Ce lead a déjà ce calepinage ouvert : choisissez le lead ou le client de la copie (pour une autre option du même toit, créez une variante).'
+                  : ' Sans cible choisie, elle garde le même lead ou client que l’original.'}
               </p>
+              <div className="mt-2 text-sm text-lune-soft" data-testid="cal-fiche-dupliquer-lead">
+                <span className="block text-xs">Lead de la copie</span>
+                <SelecteurRattachement genre="lead" id="cal-fiche-dupliquer-lead"
+                  valeur={cibleCopie.lead} disabled={enCours}
+                  invalid={Boolean(refusCibleCopie)}
+                  onChange={(id) => {
+                    setCibleCopie((c) => ({ ...c, lead: id }))
+                    setRefusCibleCopie(null)
+                  }} />
+                {refusCibleCopie && (
+                  <p className="mt-1 text-xs text-alert-300" role="alert"
+                    data-testid="cal-fiche-dupliquer-erreur-lead">
+                    {refusCibleCopie}
+                  </p>
+                )}
+              </div>
+              <div className="mt-2 text-sm text-lune-soft" data-testid="cal-fiche-dupliquer-client">
+                <span className="block text-xs">Client de la copie</span>
+                <SelecteurRattachement genre="client" id="cal-fiche-dupliquer-client"
+                  valeur={cibleCopie.client} disabled={enCours}
+                  onChange={(id) => {
+                    setCibleCopie((c) => ({ ...c, client: id }))
+                    setRefusCibleCopie(null)
+                  }} />
+              </div>
               <label className="mt-2 flex items-center gap-2 text-sm text-lune-soft">
                 <input type="checkbox" checked={avecVariantes}
                   disabled={enCours}
