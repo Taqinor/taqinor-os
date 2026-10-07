@@ -40,6 +40,8 @@
     buckets:inconnu, date:texte, granularity:inconnu, period:inconnu, total:inconnu
 - frontend/src/api/automationApi.js :: proposeDraft -> /api/django/agent/actions/automation-draft
     action_type:inconnu, detail:texte, enabled:inconnu, id:inconnu, nom:inconnu, trigger_type:inconnu
+- frontend/src/api/calepinageApi.js :: liste -> /api/django/calepinage/gabarits-dossiers
+    gabarits:liste
 - frontend/src/api/calepinageApi.js :: pose -> /api/django/calepinage/moteur/pose
     engageable:inconnu, hash_entree:inconnu, kwc:inconnu, marges:inconnu, motifs_non_engageable:inconnu, plans:inconnu, preuve:inconnu, repere:inconnu, schema_version:inconnu, total_modules:inconnu, verdict:inconnu, version_moteur:inconnu
 - frontend/src/api/calepinageApi.js :: profilsTypes -> /api/django/calepinage/parametres/profils-types
