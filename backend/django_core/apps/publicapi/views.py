@@ -4,6 +4,7 @@ Montées sous /api/django/publicapi/. Authentifiées par la session/JWT normaux
 (auth DRF par défaut du projet), réservées au palier admin/responsable. La
 société vient TOUJOURS de l'utilisateur connecté, jamais du corps de requête.
 """
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
@@ -15,7 +16,7 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.api_usage import plan_pour_societe
 
 from .constants import ENV_LIVE, ENV_TEST
-from .models import ApiKey, Webhook, WebhookDelivery
+from .models import ApiKey, SandboxTenant, Webhook, WebhookDelivery
 from .serializers import (
     ApiKeySerializer, ApiKeyCreateSerializer, WebhookSerializer,
     WebhookDeliverySerializer, ApiUsagePlanSerializer, scope_catalogue,
@@ -226,6 +227,22 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     serializer_class = ApiKeySerializer
     queryset = ApiKey.objects.select_related('created_by').all()
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        """AANA36 — les clés de la société ET celles de SON bac à sable.
+
+        Une clé ``test`` est émise sur la société-jumelle (NTAPI26/27) : un
+        filtre sur la seule société réelle la rendait introuvable (404) pour
+        la lister, la révoquer, la tourner ou la supprimer — une clé de test
+        fuitée restait active. Le bac à sable d'une AUTRE société n'est
+        jamais atteint (sous-requête sur ``SandboxTenant.company``)."""
+        company = getattr(self.request.user, 'company', None)
+        if company is None:
+            return self.queryset.none()
+        bacs_a_sable = SandboxTenant.objects.filter(
+            company=company).values('sandbox_company_id')
+        return self.queryset.filter(
+            Q(company=company) | Q(company_id__in=bacs_a_sable))
 
     def create(self, request, *args, **kwargs):
         in_ser = ApiKeyCreateSerializer(data=request.data)

@@ -71,8 +71,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
-| `backend/django_core/apps/dataimport/services.py:440` | update_or_create | ImportMapping.objects | company, entity, nom |
-| `backend/django_core/apps/dataimport/services.py:486` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/dataimport/services.py:449` | update_or_create | ImportMapping.objects | company, entity, nom |
+| `backend/django_core/apps/dataimport/services.py:496` | get_or_create | ExternalRef.objects | company, content_type, external_id, external_system |
 | `backend/django_core/apps/dataimport/translations_i18n.py:112` | update_or_create | TranslationOverride.objects | company, key, locale |
 | `backend/django_core/apps/ged/management/commands/migrate_attachments_to_ged.py:57` | get_or_create | Cabinet.objects | company, nom |
 | `backend/django_core/apps/ged/management/commands/migrate_attachments_to_ged.py:163` | get_or_create | DocumentLien.objects | content_type, document, object_id |
@@ -158,7 +158,6 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/portail/views_client.py:645` | get_or_create | AcceptationDevisPortail.objects | company, devis |
 | `backend/django_core/apps/portail/views_client.py:748` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
 | `backend/django_core/apps/portail/views_externes.py:495` | update_or_create | PreferencePortail.objects | utilisateur |
-| `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
 | `backend/django_core/apps/records/services.py:104` | get_or_create | Follower.objects | company, content_type, object_id, sous_type, user |
 | `backend/django_core/apps/records/views.py:956` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/roles/management/commands/init_roles.py:87` | get_or_create | Role.objects | company, nom |
@@ -169,7 +168,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/statuspage/tasks.py:71` | get_or_create | UptimeDayBucket.objects | company, composant, date, region |
 | `backend/django_core/apps/statuspage/tasks.py:137` | update_or_create | ComponentStatus.objects | company, nom, region |
 | `backend/django_core/apps/statuspage/tasks.py:155` | update_or_create | ComponentStatus.objects | company, nom, region |
-| `backend/django_core/apps/statuspage/views.py:349` | get_or_create | StatusSubscriber.objects | email |
+| `backend/django_core/apps/statuspage/views.py:354` | get_or_create | StatusSubscriber.objects | email |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:1843` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:2299` | get_or_create | Categorie.objects | company, nom |
@@ -195,8 +194,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/views/catalogue_achat.py:149` | get_or_create | FavorisCatalogueAchat.objects | company, utilisateur |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
 | `backend/django_core/apps/uxviews/models.py:174` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/uxviews/views.py:98` | update_or_create | EcranRecent.objects | company, ecran, owner |
-| `backend/django_core/apps/uxviews/views.py:585` | get_or_create | FavoriUtilisateur.objects | company, content_type, object_id, owner |
+| `backend/django_core/apps/uxviews/views.py:99` | update_or_create | EcranRecent.objects | company, ecran, owner |
+| `backend/django_core/apps/uxviews/views.py:604` | get_or_create | FavoriUtilisateur.objects | company, content_type, object_id, owner |
 | `backend/django_core/apps/ventes/domain/facturation_ops.py:1041` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/domain/gammes.py:268` | get_or_create | ParametresGammes.objects | company |
 | `backend/django_core/apps/ventes/views/liste_prix.py:90` | update_or_create | LignePrixListe.objects | liste, produit |

@@ -227,21 +227,32 @@ def _mode_kpis(data):
             'champ_kwc': _kpi_num(etude.get('champ_kwc')) or _kpi_num(data.get('puissance_kwc')),
         }
     if mode in ('industriel', 'commercial'):
-        # CIQ300 — ``economies_annuelles`` et ``payback`` ne sont PLUS lus dans
-        # l'étude JS persistée (``etudeMarcheBloc.js`` : payback calculé sur un
-        # prix pondéré par la consommation, pointe comprise — C3-02) : nuls
-        # tant que CIQ306 ne les projette pas depuis ``synthese_ci``. Clés
-        # gardées (forme ``mode_kpis`` C&I v2 du contrat CIQ4).
-        return {
-            'taux_autoconso': _kpi_num(etude.get('taux_autoconso')),
-            'taux_couverture': _kpi_num(etude.get('taux_couverture')),
-            'economies_annuelles': None,
-            'payback': None,
-            # Injection 82-21 (QX50) — présente seulement si calculée sur le devis.
-            'injection_kwh_an': _kpi_num(etude.get('injection_kwh_an')),
-            'injection_dh_an': _kpi_num(etude.get('injection_dh_an')),
-        }
+        # CIQ129 — plus AUCUNE clé d'étude écran v1 lue (retirées du schéma) :
+        # la MÊME projection de ``synthese_ci`` que sert /proposition.
+        from ..quote_engine.ci.synthese import synthese_ci
+        return _mode_kpis_ci(synthese_ci(data) or {})
     return None
+
+
+def _mode_kpis_ci(synthese):
+    """CIQ306 — ``mode_kpis`` C&I v2 : PROJECTION de ``synthese_ci``
+    (contrat ``proposal_data.json`` › ``notes_ciq4.mode_kpis_ci_v2``) —
+    énergie + ``argent.indicateurs.retour_ans`` + ``argent.revente``. Aucune
+    clé d'étude JS lue, aucun calcul ; l'argent omis (ou sa case décochée)
+    ⇒ économies, payback et revente à ``None``. CIQ307 : par
+    ``chiffres_cles`` — la MÊME projection que lisent les gabarits PDF.
+    Les NOMS de sortie sont ceux du contrat (forme ``mode_kpis``), pas des
+    clés d'``etude_params``."""
+    from ..quote_engine.ci.synthese import chiffres_cles
+    c = chiffres_cles(synthese)
+    return {
+        'taux_autoconso': c['taux_autoconso_pct'],
+        'taux_couverture': c['taux_couverture_pct'],
+        'economies_annuelles': c['economie_annuelle_mad'],
+        'payback': c['payback_ans'],
+        'injection_kwh_an': c['revente_kwh_an'],
+        'injection_dh_an': c['revente_mad_an'],
+    }
 
 
 #: PV77 — clés de l'étude bancable qui ne sortent JAMAIS côté client. Le bloc

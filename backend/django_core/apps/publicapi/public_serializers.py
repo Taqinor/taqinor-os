@@ -198,8 +198,44 @@ class PublicFavoriSerializer(serializers.ModelSerializer):
         return obj.cle_modele
 
     def get_libelle(self, obj) -> str | None:
+        # AANA38 — le libellé est une LECTURE de l'entité ciblée : il n'est
+        # publié que si la clé porte le scope de lecture de cette entité
+        # (celui de sa ressource publique). Sans ressource publique, ou sans
+        # le scope, ``null`` — jamais le nom d'un lead lu par `read:favoris`.
+        requete = self.context.get('request')
+        api_key = getattr(requete, 'auth', None)
+        content_type = getattr(obj, 'content_type', None)
+        modele = content_type.model_class() if content_type else None
+        scope = scope_de_lecture_du_modele(modele)
+        if scope is None or not hasattr(api_key, 'has_scope') \
+                or not api_key.has_scope(scope):
+            return None
         cible = obj.cible
         return str(cible) if cible is not None else None
+
+
+def scope_de_lecture_du_modele(modele):
+    """AANA38 — le scope de LECTURE de la ressource publique qui sert
+    ``modele`` (``required_scope`` du ``PublicReadOnlyViewSet`` dont le
+    ``queryset`` porte ce modèle), ``None`` si aucune ressource publique ne
+    le sert (fail-closed).
+
+    Les ressources sont lues sur les sous-classes de ``PublicReadOnlyViewSet``
+    (toutes chargées par le routeur public au démarrage) — jamais en important
+    ``public_urls`` d'ici, ce qui tirerait tout le graphe des vues publiques
+    dans ce module (contrat import-linter)."""
+    if modele is None:
+        return None
+    from .public_views import PublicReadOnlyViewSet
+
+    a_voir = list(PublicReadOnlyViewSet.__subclasses__())
+    while a_voir:
+        viewset = a_voir.pop(0)
+        a_voir.extend(viewset.__subclasses__())
+        queryset = getattr(viewset, 'queryset', None)
+        if getattr(queryset, 'model', None) is modele:
+            return getattr(viewset, 'required_scope', None)
+    return None
 
 
 class PublicCalepinageSerializer(serializers.Serializer):
@@ -362,6 +398,12 @@ class PublicCalepinageResultatSerializer(serializers.Serializer):
     calcule_le = serializers.CharField(read_only=True, allow_null=True)
     simulation_perimee = serializers.BooleanField(read_only=True)
     motif = serializers.CharField(read_only=True, allow_blank=True)
+    # ACAL51 — champs ADDITIFS : la complétude de la simulation servie
+    # (ACAL49, ``production.total.complete``/``mention``), lue, jamais
+    # recalculée ici.
+    complet = serializers.BooleanField(read_only=True, allow_null=True)
+    mention_production = serializers.CharField(read_only=True,
+                                               allow_blank=True)
 
 
 def _texte_ou_null(valeur):
@@ -413,8 +455,18 @@ def resultat_calepinage_public(calepinage_id, servi):
     total = production.get('total') if isinstance(production, dict) else None
     total = total if isinstance(total, dict) else {}
 
+    # ACAL51 / D-ACAL-7 — une simulation INCOMPLÈTE (socle physique non
+    # saisi) ne publie ni PR ni quantile : seul le P50 sort, avec sa mention
+    # « borne haute ». ``complete`` est le verdict de la simulation servie.
+    complet = total.get('complete') if simule else None
+    complet = complet if isinstance(complet, bool) else None
+    incomplet = complet is False
+
     def lire(cle):
         return _nombre_calepinage(total.get(cle)) if simule else None
+
+    def lire_si_complet(cle):
+        return None if incomplet else lire(cle)
 
     p50 = lire('p50_kwh')
     return {
@@ -422,10 +474,10 @@ def resultat_calepinage_public(calepinage_id, servi):
         'simule': simule,
         'production_annuelle_kwh': p50,
         'rendement_specifique_kwh_kwc': lire('specific_yield_kwh_kwc'),
-        'ratio_performance': lire('performance_ratio'),
+        'ratio_performance': lire_si_complet('performance_ratio'),
         'p50_kwh': p50,
-        'p75_kwh': lire('p75_kwh'),
-        'p90_kwh': lire('p90_kwh'),
+        'p75_kwh': lire_si_complet('p75_kwh'),
+        'p90_kwh': lire_si_complet('p90_kwh'),
         'pertes': _postes_de_pertes_publics(servi) if simule else None,
         'calcule_le': (_texte_ou_null(servi.get('calcule_le'))
                        if simule else None),
@@ -433,4 +485,7 @@ def resultat_calepinage_public(calepinage_id, servi):
         'motif': ('' if simule else
                   (str(servi.get('motif') or '').strip()
                    or MOTIF_RESULTAT_NON_SIMULE)),
+        'complet': complet,
+        'mention_production': (str(total.get('mention') or '').strip()
+                               if simule else ''),
     }

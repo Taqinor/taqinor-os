@@ -248,7 +248,13 @@ def dispatch_event(company_id, event, payload):
     """Livre `event` à tous les webhooks activés de la société abonnés, via la
     tâche Celery `deliver_webhook` (retries + backoff). Best-effort, jamais
     bloquant pour l'appelant. Le même `event_id` est partagé par toutes les
-    cibles et toutes les tentatives."""
+    cibles et toutes les tentatives.
+
+    AANA31 — la mise en file n'a lieu qu'AU COMMIT de la transaction courante
+    (``transaction.on_commit``, patron de ``core.events.emit_reliable``) : un
+    geste métier annulé (rollback) ne livre jamais un évènement fantôme. Le
+    journal du flux est écrit DANS la transaction : il est annulé avec elle.
+    Hors transaction (autocommit), ``on_commit`` exécute immédiatement."""
     if not company_id:
         return
     payload = ensure_event_id(payload)
@@ -259,6 +265,19 @@ def dispatch_event(company_id, event, payload):
     # et une table `Webhook` momentanément illisible (early-return ci-dessous)
     # ne doit pas créer un TROU dans le journal consommable.
     _journaliser_flux(company_id, event, payload)
+    from django.db import transaction
+    try:
+        transaction.on_commit(
+            lambda: _mettre_en_file(company_id, event, payload))
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'appelant
+        logger.exception('Could not schedule webhook delivery %s', event)
+
+
+def _mettre_en_file(company_id, event, payload):
+    """AANA31 — met en file la livraison aux webhooks abonnés (après commit).
+
+    Best-effort : ne lève jamais (un rappel ``on_commit`` qui lève casserait
+    les rappels suivants de la même transaction)."""
     try:
         webhooks = list(
             Webhook.objects.filter(company_id=company_id, enabled=True))

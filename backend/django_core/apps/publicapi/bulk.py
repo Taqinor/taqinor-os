@@ -141,22 +141,38 @@ def run_export_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
     writer = None
     written = job.succes
 
+    def ecrire(instance):
+        nonlocal writer
+        row = _serialize_row(serializer_class, instance)
+        if fmt == 'jsonl':
+            buf.write(json.dumps(row, ensure_ascii=False, default=str))
+            buf.write('\n')
+        else:
+            if writer is None:
+                writer = csv.DictWriter(buf, fieldnames=list(row.keys()))
+                writer.writeheader()
+            writer.writerow(row)
+
     try:
+        # AANA35 — le fichier stocké est TOUJOURS complet : sur une reprise,
+        # les lignes déjà comptées avant le curseur sont réécrites dans le
+        # fichier (un export n'a aucun effet de bord) sans être recomptées.
+        # Sans cela, un export repris à cursor=2 ne stockait que la fin.
+        offset = 0
+        while offset < start:
+            chunk = list(queryset[offset:min(offset + batch_size, start)])
+            if not chunk:
+                break
+            for instance in chunk:
+                ecrire(instance)
+            offset += len(chunk)
         offset = start
         while offset < total:
             chunk = list(queryset[offset:offset + batch_size])
             if not chunk:
                 break
             for instance in chunk:
-                row = _serialize_row(serializer_class, instance)
-                if fmt == 'jsonl':
-                    buf.write(json.dumps(row, ensure_ascii=False, default=str))
-                    buf.write('\n')
-                else:
-                    if writer is None:
-                        writer = csv.DictWriter(buf, fieldnames=list(row.keys()))
-                        writer.writeheader()
-                    writer.writerow(row)
+                ecrire(instance)
                 written += 1
             offset += len(chunk)
             job.marquer_progression(traites=offset, succes=written, cursor=offset)
@@ -267,6 +283,15 @@ def _parse_rows(raw_bytes, fmt):
 def _process_lead_row(company, mode, dedup_key, row):
     from apps.crm import services as crm_services
 
+    from .public_write_views import erreurs_champs_lead
+
+    # AANA39 — même validation par champ que l'écriture unitaire : une ligne
+    # au `canal` inconnu ou à l'e-mail invalide est une ligne EN ERREUR
+    # (journalisée champ par champ), jamais un lead stocké tel quel.
+    erreurs = erreurs_champs_lead(row)
+    if erreurs:
+        raise BulkJobError(json.dumps(erreurs, ensure_ascii=False))
+
     if mode == 'upsert' and dedup_key:
         value = (row.get(dedup_key) or '').strip()
         existing = None
@@ -336,7 +361,11 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
 
     job.marquer_progression(total=total, cursor=start)
 
-    for ligne, row in rows[start:]:
+    # AANA35 — le curseur est l'INDEX de la ligne de DONNÉES traitée (rang
+    # dans ``rows``), jamais le numéro de ligne du fichier : un JSONL avec
+    # des lignes vides décale ces deux nombres, et reprendre à
+    # ``rows[numéro_de_ligne:]`` sautait des lignes jamais importées.
+    for rang, (ligne, row) in enumerate(rows[start:], start=start + 1):
         if row.get('__parse_error__'):
             erreurs_count += 1
             error_rows.append({
@@ -353,7 +382,7 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 error_rows.append(
                     {'ligne': ligne, 'erreur': str(exc), 'donnees': row})
         job.marquer_progression(
-            traites=ligne, succes=succes, erreurs=erreurs_count, cursor=ligne)
+            traites=rang, succes=succes, erreurs=erreurs_count, cursor=rang)
 
     erreurs_file_key = ''
     if error_rows:

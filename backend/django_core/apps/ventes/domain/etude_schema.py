@@ -107,9 +107,6 @@ SCHEMA = {
                      '`utils/options.py` en tirent les lignes de l’option '
                      'vendue.', moteur=True),
     'recommended_option': _cle((str,), ECRAN, ENTREE),
-    # QJR528 — part diurne (%) du curseur industriel : entrée de l'étude I/C,
-    # persistée pour que la réouverture ne réécrive pas taux / payback.
-    'part_diurne_pct': _cle((int, float), ECRAN, ENTREE),
     'gamme': _cle((str, dict), ECRAN, ENTREE),
     'mode_installation': _cle((str,), ECRAN, ENTREE),
     'tension_raccordement': _cle((str,), ECRAN, ENTREE),
@@ -308,21 +305,6 @@ SCHEMA = {
                                "des entrées résolues : un défaut n'est "
                                'jamais enregistré comme une saisie.'),
 
-    # ── Les DÉRIVÉES du marché industriel / commercial ───────────────────────
-    'taux_autoconso': _cle((int, float), ECRAN, DERIVEE),
-    'taux_couverture': _cle((int, float), ECRAN, DERIVEE),
-    'payback': _cle((int, float), ECRAN, DERIVEE),
-    'injection_kwh_an': _cle((int, float), ECRAN, DERIVEE),
-    'injection_dh_an': _cle((int, float), ECRAN, DERIVEE),
-    # QJR578 (contrat QJR510) — le kWc des lignes pour lequel l'écran a
-    # calculé les dérivées ci-dessus : sans lui, le builder ne peut pas savoir
-    # qu'une modification de ligne ultérieure les a périmées (QJR625).
-    # Réservée à l'écran (exclusive) : seul celui qui calcule l'étude dit pour
-    # quelle puissance il l'a calculée.
-    'etude_kwc_base': _cle((int, float), ECRAN, ENTREE,
-                           'kWc des lignes pour lequel l\'étude écran a été '
-                           'calculée.', exclusif=True),
-
     # ── QJR66 (même arbitrage) — les ENTRÉES du marché industriel/commercial.
     #    `tension_raccordement` est déclaré plus haut (entrée générale) ; la
     #    RÉPARTITION horaire MT, elle, est la saisie qui l'accompagne : sans
@@ -330,41 +312,13 @@ SCHEMA = {
     #    officielle n'étant publiée, on n'en invente pas).
     'repartition_mt': _cle((dict,), ECRAN, ENTREE),
 
-    # ── QJR66 (même arbitrage) — les RÉPONSES par catégorie commerciale
-    #    (`solar.js: COMMERCIAL_CATEGORY_QUESTIONS`). Le mappeur `?edit=` les
-    #    relit en clés de TÊTE (`e[q.key]`), une par question de la catégorie
-    #    retenue : elles sont donc déclarées à plat, à l'identique. Ce sont des
-    #    faits que le client DÉCLARE sur son site, jamais des calculs — un
-    #    booléen y est déclaré `(bool,)` pour que `valider` refuse un nombre
-    #    déguisé, et un nombre `(int, float)` pour qu'il refuse un booléen.
-    'chambres': _cle((int, float), ECRAN, ENTREE),
-    'occupation_pct': _cle((int, float), ECRAN, ENTREE),
-    'piscine': _cle((bool,), ECRAN, ENTREE),
-    'chambres_froides': _cle((int, float), ECRAN, ENTREE),
-    'horaires': _cle((str,), ECRAN, ENTREE),
-    'cuisson': _cle((str,), ECRAN, ENTREE),
-    'surface_vente_m2': _cle((int, float), ECRAN, ENTREE),
-    'effectif': _cle((int, float), ECRAN, ENTREE),
-    'clim': _cle((bool,), ECRAN, ENTREE),
-    'lits': _cle((int, float), ECRAN, ENTREE),
-    'garde_nuit': _cle((bool,), ECRAN, ENTREE),
-    'internat': _cle((bool,), ECRAN, ENTREE),
-    'fermeture_estivale': _cle((bool,), ECRAN, ENTREE),
-    'surface_m2': _cle((int, float), ECRAN, ENTREE),
-    'chauffe': _cle((str,), ECRAN, ENTREE),
-    'four': _cle((str,), ECRAN, ENTREE),
-    'cuisson_nocturne': _cle((bool,), ECRAN, ENTREE),
-    'temperature_consigne': _cle((int, float), ECRAN, ENTREE),
-    'volume_m3': _cle((int, float), ECRAN, ENTREE),
-    'saisonnalite_recolte': _cle((bool,), ECRAN, ENTREE),
-
     # ── CIQ117 (contrat CIQ2 `etude_ci_preview.json`, `cles_etude_params_ci_v2`)
     #    — le C&I v2 sur UN moteur serveur (D-CIQ-0). ENTRÉES = ce que l'écran
     #    saisit (propriétaire ECRAN) ; DÉRIVÉES EXCLUSIVES `moteur_ci` : un
     #    navigateur ne les écrit jamais, une copie/V2 les recalcule (elles sont
-    #    dans ``CLES_DERIVEES_NON_COPIEES``, QJR117). Les clés ÉCRAN v1 ci-dessus
-    #    (`taux_autoconso`, `payback`…) restent déclarées jusqu'à CIQ129 : le
-    #    moteur de rendu les lit encore. `economie_ci` / `tva_recuperable` sont
+    #    dans ``CLES_DERIVEES_NON_COPIEES``, QJR117). Les clés ÉCRAN v1 et les
+    #    réponses de catégorie à plat ont QUITTÉ le schéma (CIQ129 :
+    #    ``CLES_RETIREES_CI_V1``). `economie_ci` / `tva_recuperable` sont
     #    déclarées par D2 (CIQ3) ; `tarif_declare` par CIQ203.
     'mode': _cle((str,), ECRAN, ENTREE, 'CIQ117 — commercial | industriel.'),
     'site': _cle((dict,), ECRAN, ENTREE,
@@ -408,6 +362,34 @@ SCHEMA = {
         "QJR48 a supprimé son unique écrivain (le récepteur QX24) : aucun "
         "consommateur du dépôt ne la lit. Déclarée ici pour qu'un devis "
         "ANCIEN qui la porte encore ne soit pas signalé comme invalide."),
+}
+
+
+#: CIQ129 (D-CIQ-21) — les clés QUI ONT QUITTÉ le schéma, avec l'endroit où
+#: vit désormais leur valeur. Une clé reçue d'ici ⇒ refus 400 FR qui la NOMME
+#: (:func:`valider`) ; jamais relue sur un ancien devis, jamais migrée.
+#: Le rendu ne les lit plus : ``quote_engine/builder`` les retire de l'étude
+#: rendue et une copie/V2 ne les reprend pas (``domain/etudes``).
+_SOURCE_MOTEUR_CI = ('dérivée du moteur serveur C&I (`etude_ci`, servie par '
+                     '`synthese_ci`) : jamais écrite par l’écran')
+_SOURCE_REPONSE = ('réponse de catégorie : elle s’envoie dans '
+                   '`rythme.reponses_categorie`')
+CLES_RETIREES_CI_V1 = {
+    'taux_autoconso': _SOURCE_MOTEUR_CI,
+    'taux_couverture': _SOURCE_MOTEUR_CI,
+    'payback': _SOURCE_MOTEUR_CI,
+    'injection_kwh_an': _SOURCE_MOTEUR_CI,
+    'injection_dh_an': _SOURCE_MOTEUR_CI,
+    'etude_kwc_base': ('le moteur C&I recalcule `etude_ci` à chaque '
+                       'changement de lignes'),
+    'part_diurne_pct': ('le profil horaire se déclare dans `rythme` '
+                        '(plages, équipes, talon)'),
+    **{cle: _SOURCE_REPONSE for cle in (
+        'chambres', 'occupation_pct', 'piscine', 'chambres_froides',
+        'horaires', 'cuisson', 'surface_vente_m2', 'effectif', 'clim', 'lits',
+        'garde_nuit', 'internat', 'fermeture_estivale', 'surface_m2',
+        'chauffe', 'four', 'cuisson_nocturne', 'temperature_consigne',
+        'volume_m3', 'saisonnalite_recolte')},
 }
 
 
@@ -474,6 +456,11 @@ def valider(etude_params):
     reproches = []
     for cle, valeur in etude_params.items():
         regle = SCHEMA.get(cle)
+        if cle in CLES_RETIREES_CI_V1:
+            reproches.append(
+                "Clé retirée de l'étude : « %s » (CIQ129) — %s."
+                % (cle, CLES_RETIREES_CI_V1[cle]))
+            continue
         if regle is None:
             reproches.append(
                 "Clé inconnue de l'étude : « %s ». Le schéma "

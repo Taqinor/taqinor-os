@@ -2,7 +2,7 @@
 sauvegardées (apps.uxviews), sous /api/public/v1/. Couvre : scope requis,
 isolation multi-société, refus explicite des favoris sans `?owner=`
 (consentement), vues d'équipe visibles sans `?owner=`, vues personnelles
-d'un tiers jamais fuitées sans son `?owner=`.
+jamais publiées, même avec `?owner=` (AANA38).
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -73,15 +73,15 @@ class PublicSavedViewReadOnlyTests(TestCase):
             '/api/public/v1/saved-views/', {'owner': self.user_a1.id})
         self.assertEqual(resp.status_code, 200, resp.data)
         noms = {r['nom'] for r in rows(resp)}
-        # Ses propres vues (personnelle + équipe qu'il possède), jamais celle
-        # de user_a2.
-        self.assertEqual(noms, {'Équipe A', 'Perso A1'})
+        # AANA38 — `?owner=` filtre parmi les vues d'ÉQUIPE ; il n'ouvre
+        # plus jamais une vue personnelle (même celle de cet utilisateur).
+        self.assertEqual(noms, {'Équipe A'})
 
     def test_owner_never_leaks_another_users_personal_view(self):
         resp = key_client(self.raw_a).get(
             '/api/public/v1/saved-views/', {'owner': self.user_a2.id})
         noms = {r['nom'] for r in rows(resp)}
-        self.assertEqual(noms, {'Perso A2'})
+        self.assertEqual(noms, set())
         self.assertNotIn('Perso A1', noms)
 
     def test_cross_tenant_isolation(self):

@@ -17,7 +17,6 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from django.db.models import Count
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -316,18 +315,38 @@ def audit_log(request):
 
 
 # ── N78 — coût de revient par chantier (ADMIN ; marge INTERNE) ───────────────
-def _devis_cost_estimate(devis):
-    """Coût estimé d'un devis = Σ prix_achat × quantité de ses lignes.
+def _marge_devis(devis):
+    """AANA23 — LA marge interne d'un devis (fonction UNIQUE : commissions
+    MARGE_INTERNE, job-costing, rentabilité). INTERNE — ``prix_achat`` n'est
+    lu que côté serveur, jamais rendu dans un export/PDF client.
 
-    Le prix d'achat est lu sur le produit lié à chaque ligne. INTERNE.
+    Seules les lignes COMPTÉES dans les totaux (``compte_dans_totaux`` : ligne
+    produit non optionnelle) entrent. Par ligne :
+      - CA HT = ``ligne.total_ht`` (remise de LIGNE déduite) × (1 − remise
+        GLOBALE du devis) ;
+      - coût = ``prix_achat`` × quantité (0 si le prix d'achat est inconnu).
+    Renvoie ``{'ca_ht', 'cout', 'marge'}`` ; ``marge`` ne somme que les lignes
+    dont le prix d'achat est CONNU (une ligne sans coût connu ne fabrique pas
+    de marge). Utilise ``devis.lignes`` (prefetch conseillé, avec ``produit``).
     """
-    total = Decimal('0')
+    remise_globale = Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
+    facteur = Decimal('1') - remise_globale / Decimal('100')
+    ca_ht = Decimal('0')
+    cout = Decimal('0')
+    marge = Decimal('0')
     for ligne in devis.lignes.all():
+        if not ligne.compte_dans_totaux:
+            continue
+        ca_ligne = Decimal(str(ligne.total_ht)) * facteur
+        ca_ht += ca_ligne
         produit = ligne.produit
-        prix_achat = getattr(produit, 'prix_achat', None) or Decimal('0')
-        qte = ligne.quantite or Decimal('0')
-        total += Decimal(prix_achat) * Decimal(qte)
-    return total
+        prix_achat = getattr(produit, 'prix_achat', None) if produit else None
+        if prix_achat is None:
+            continue
+        cout_ligne = Decimal(prix_achat) * Decimal(ligne.quantite or 0)
+        cout += cout_ligne
+        marge += ca_ligne - cout_ligne
+    return {'ca_ht': ca_ht, 'cout': cout, 'marge': marge}
 
 
 @api_view(['GET'])
@@ -373,7 +392,8 @@ def job_costing(request):
     for ch in chantiers:
         invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
                     if ch.devis_id else Decimal('0'))
-        cost = _devis_cost_estimate(ch.devis) if ch.devis_id else Decimal('0')
+        cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
+                else Decimal('0'))
         margin = invoiced - cost
         margin_pct = (float(margin / invoiced * 100)
                       if invoiced else 0.0)
@@ -454,12 +474,12 @@ def analytics(request):
     co = _co(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
-    from apps.ventes.models import Devis
     from apps.installations.models import Installation
 
     # ── lead → signature : devis acceptés portant un lead ──
-    devis_acceptes = (Devis.objects
-                      .filter(**co, statut=Devis.Statut.ACCEPTE)
+    # AANA19 — devis signés = acceptés ACTIFS (helper unique du reporting).
+    from apps.reporting.pipeline import _devis_signes
+    devis_acceptes = (_devis_signes(co)
                       .exclude(lead__isnull=True)
                       .select_related('lead'))
     lead_to_sign_days = []
@@ -519,26 +539,6 @@ def analytics(request):
     })
 
 
-def _marge_interne_devis(devis, ligne_produit_choice):
-    """XSAL6 — Marge interne (CA − coût d'achat) des lignes PRODUIT d'un devis
-    signé, pour la base `PlanCommission.Base.MARGE_INTERNE` (ADMIN-ONLY :
-    l'unique appelant, `commissions`, est déjà gated `IsAdminRole` — `prix_achat`
-    n'est lu ici que côté serveur, jamais rendu dans un export/PDF client).
-    Utilise `devis.lignes` déjà PREFETCHÉES (`select_related('produit')`) —
-    aucune requête supplémentaire par ligne."""
-    total = Decimal('0')
-    for ligne in devis.lignes.all():
-        if ligne.type_ligne != ligne_produit_choice:
-            continue
-        produit = ligne.produit
-        if produit is None or produit.prix_achat is None:
-            continue
-        quantite = ligne.quantite or Decimal('0')
-        prix_unitaire = ligne.prix_unitaire or Decimal('0')
-        total += (Decimal(prix_unitaire) - Decimal(produit.prix_achat)) * Decimal(quantite)
-    return total
-
-
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def commissions(request):
@@ -565,7 +565,7 @@ def commissions(request):
     from django.db.models import Prefetch
 
     from apps.parametres.models import CompanyProfile
-    from apps.ventes.models import Devis, LigneDevis, PlanCommission
+    from apps.ventes.models import LigneDevis, PlanCommission
     from apps.ventes.selectors import resoudre_plan_commission
     from apps.installations.models import Installation
 
@@ -587,7 +587,9 @@ def commissions(request):
         })
     valeur = Decimal(valeur) if valeur is not None else None
 
-    signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
+    # AANA19 — une révision acceptée n'est pas une seconde vente.
+    from apps.reporting.pipeline import _devis_signes
+    signed = (_devis_signes(co)
               .select_related('lead', 'lead__owner', 'created_by')
               .prefetch_related(
                   Prefetch('lignes', queryset=LigneDevis.objects
@@ -639,7 +641,9 @@ def commissions(request):
                 slot['base'] += kwc
                 slot['commission'] += kwc * (plan.montant_par_kwc or Decimal('0'))
             elif plan.base == PlanCommission.Base.MARGE_INTERNE:
-                marge = _marge_interne_devis(d, LigneDevis.TypeLigne.PRODUIT)
+                # AANA23 — remises de ligne ET globale déduites, lignes
+                # comptées dans les totaux seulement (fonction unique).
+                marge = _marge_devis(d)['marge']
                 slot['base'] += marge
                 slot['commission'] += marge * (plan.taux_pct or Decimal('0')) / Decimal('100')
             continue
@@ -700,13 +704,12 @@ def sales_leaderboard(request):
     co = _co(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
-    from apps.ventes.models import Devis
-    from apps.crm.models import Lead
     from apps.installations.models import Installation
     from decimal import Decimal
 
-    # Devis signés (statut=accepte) bornés à la société.
-    signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
+    # Devis signés (acceptés ACTIFS — AANA19) bornés à la société.
+    from apps.reporting.pipeline import _devis_signes
+    signed = (_devis_signes(co)
               .select_related('lead', 'lead__owner', 'created_by'))
     start = _qdate(request.query_params.get('from'))
     end = _qdate(request.query_params.get('to'))
@@ -724,20 +727,12 @@ def sales_leaderboard(request):
         if kwc:
             kwc_by_devis[devis_id] += Decimal(kwc)
 
-    # Tous les leads de la société pour calculer le nb total par responsable.
-    leads_qs = Lead.objects.filter(**co, is_archived=False)
-    if start:
-        leads_qs = leads_qs.filter(date_creation__gte=start)
-    if end:
-        leads_qs = leads_qs.filter(date_creation__lte=end)
-    leads_by_owner = defaultdict(int)
-    for row in leads_qs.values('owner_id').annotate(n=Count('id')):
-        leads_by_owner[row['owner_id']] = row['n']
-
     # WIR82 — calcul UNIQUE partagé avec commercial.commercial_dashboard via
     # reporting.services.build_leaderboard (plus de doublon divergent).
+    # AANA21/AANA22 — le taux individuel = LE taux de gain partagé, sur la
+    # fenêtre de leads construite DANS build_leaderboard (bornes inclusives).
     from apps.reporting.services import build_leaderboard
-    rows = build_leaderboard(signed, kwc_by_devis, leads_by_owner)
+    rows = build_leaderboard(signed, kwc_by_devis, co, start, end)
 
     x = _maybe_xlsx(
         request, 'classement-commerciaux.xlsx',
@@ -891,10 +886,13 @@ def cohorts(request):
 
     # Buckets par mois d'acquisition.
     cohort_map: dict = defaultdict(lambda: {
-        'leads': [], 'signes': 0, 'durees': []
+        'leads': [], 'actifs': 0, 'signes': 0, 'durees': []
     })
+    # AANA21 / D-AANA-1 — « signé » = SIGNED non perdu ; le taux de la cohorte
+    # est LE taux de gain partagé (gagnés ÷ leads non perdus).
+    from apps.reporting.services import est_lead_gagne
 
-    for lead in qs.only('id', 'stage', 'date_creation', 'canal',
+    for lead in qs.only('id', 'stage', 'perdu', 'date_creation', 'canal',
                         'date_modification').iterator():
         # CRX26/AUD836 — le mois de cohorte se lit dans le fuseau MÉTIER : un
         # `.strftime()` direct sur le datetime chargé (UTC, tel que renvoyé
@@ -908,7 +906,9 @@ def cohorts(request):
             dim_key = f'{month_key}/{canal or "—"}'
 
         cohort_map[dim_key]['leads'].append(lead.id)
-        if lead.stage == 'SIGNED':
+        if not lead.perdu:
+            cohort_map[dim_key]['actifs'] += 1
+        if est_lead_gagne(lead):
             cohort_map[dim_key]['signes'] += 1
             # Proxy : date_modification ≈ date de signature (auto_now).
             if lead.date_modification and lead.date_creation:
@@ -924,7 +924,8 @@ def cohorts(request):
         nb = len(bucket['leads'])
         signes = bucket['signes']
         durees = bucket['durees']
-        taux = round(signes / nb * 100, 1) if nb > 0 else 0.0
+        actifs = bucket['actifs']
+        taux = round(signes / actifs * 100, 1) if actifs > 0 else 0.0
         avg_days = round(sum(durees) / len(durees), 1) if durees else None
         entry = {
             'cohorte': key,
@@ -1021,7 +1022,8 @@ def profitability(request):
 
         invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
                     if ch.devis_id else Decimal('0'))
-        cost = _devis_cost_estimate(ch.devis) if ch.devis_id else Decimal('0')
+        cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
+                else Decimal('0'))
         buckets[key]['count'] += 1
         buckets[key]['revenue'] += invoiced
         buckets[key]['cost'] += cost

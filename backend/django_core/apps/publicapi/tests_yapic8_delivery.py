@@ -54,7 +54,9 @@ class Yapic8DeliveryTests(TestCase):
 
     def test_signature_covers_timestamp(self):
         captured, fake_post = self._capture_post(200)
-        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post):
+        # AANA31 — la mise en file a lieu AU COMMIT : on l'exécute ici.
+        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post), \
+                self.captureOnCommitCallbacks(execute=True):
             delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {'id': 1})
         ts = captured['headers'][delivery.TIMESTAMP_HEADER]
         body = captured['content']
@@ -68,7 +70,9 @@ class Yapic8DeliveryTests(TestCase):
 
     def test_event_id_injected_into_payload_and_recorded(self):
         captured, fake_post = self._capture_post(200)
-        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post):
+        # AANA31 — la mise en file a lieu AU COMMIT : on l'exécute ici.
+        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post), \
+                self.captureOnCommitCallbacks(execute=True):
             delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {'id': 1})
         sent = json.loads(captured['content'].decode('utf-8'))
         self.assertTrue(sent.get('event_id'))
@@ -79,7 +83,9 @@ class Yapic8DeliveryTests(TestCase):
         # First (automatic) delivery, then a replay reusing the same payload:
         # both attempts carry the SAME stable event_id.
         _c, fake_post = self._capture_post(200)
-        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post):
+        # AANA31 — la mise en file a lieu AU COMMIT : on l'exécute ici.
+        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post), \
+                self.captureOnCommitCallbacks(execute=True):
             delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {'id': 1})
         first = WebhookDelivery.objects.get()
         with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post):

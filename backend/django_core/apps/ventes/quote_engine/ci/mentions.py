@@ -223,8 +223,9 @@ def mentions_ci(data, *, sous_reserve=False):
     mt = tension in ("mt", "ht")
     if mt:
         revente = _dict(economie.get("revente"))
-        injection = nombre_normalise(
-            _dict(data.get("etude")).get("injection_dh_an"))
+        # CIQ129 — la valeur de l'injection est celle du moteur C&I
+        # (``economie_ci.revente``), jamais une clé d'étude écran v1.
+        injection = nombre_normalise(revente.get("valeur_mad_an"))
         if revente.get("statut") == "calculee" or (injection or 0) > 0:
             sortie.append(_entree(
                 "revente", TEXTES_82_21,
