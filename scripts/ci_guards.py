@@ -116,6 +116,13 @@ GARDES = {
         ('Test the page-1-list checker itself (ADOC38)',
          'python -m unittest scripts.tests.test_check_liste_page1 -v',
          '.'),
+        # ADOC147 — aucune route portail self-service sans ecran (porte bloquante).
+        ('Check surfaces portail sans écran (route mes-*/mon-*/ma-*/client/* sans appelant, ADOC147)',
+         'python scripts/check_portail_surfaces.py',
+         '.'),
+        ('Test the portal-surfaces checker itself (ADOC147)',
+         'python -m unittest scripts.tests.test_check_portail_surfaces -v',
+         '.'),
         # CALX56/57 (lots CALX merges le 21/09/2026 pendant la construction de ce
         # runner — PR #706/#708) : chemins parametres atteignables, et services
         # backend livres sans appelant (passif fige dans
