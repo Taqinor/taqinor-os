@@ -80,6 +80,12 @@ def migrer_entree(entree, layout):
                 continue
             pan, _diese, rang = module.rpartition('#')
             cible = vues.get(pan)
+            if cible is not None and cible[0] == pan and pan in stables:
+                # Lot 3 critique #7 — ancienne clé == nouvelle (libellé =
+                # id) : la ligne est DÉJÀ stable ; la renuméroter rang -> n à
+                # chaque passe casserait l'idempotence. Gardée telle quelle.
+                sorties.append(ligne)
+                continue
             if cible is None or not rang.isdigit():
                 if pan not in stables or pan in ambigues:
                     non_appariees.append(module)
