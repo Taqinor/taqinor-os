@@ -84,6 +84,7 @@ import {
   resolveRemplacement,
   isOfferDead,
   proposalEndpoint,
+  urlAfficheToiture,
   proposalPdfEndpoint,
   hasProductionSeries,
   monthlySeries,
@@ -533,7 +534,8 @@ const remplacement = ok ? resolveRemplacement(data!) : null;
 // le PDF imprime ; absent ou vide → aucun bloc.
 const noteClient = ok ? resolveNoteClient(data!) : null;
 
-const roofImg = data?.roof_image_url ?? null;
+// ACAL314 — chemin relatif du proxy Django, préfixé par l'origine de l'API.
+const roofImg = urlAfficheToiture(API_BASE, data?.roof_image_url);
 const clientName = data?.client_name || q?.client_name || 'Client';
 const reference = data?.reference || q?.ref || '';
 const proposalDate = data?.date || q?.date || '';

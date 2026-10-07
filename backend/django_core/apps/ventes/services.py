@@ -473,6 +473,10 @@ supprimer_fichier_toiture = _stockage_toiture.supprimer_fichier_toiture
 # ACAL98 — l'affiche du calepinage COPIÉE sous la clé du devis (génération
 # et resynchronisation depuis le module).
 poser_affiche_depuis = _stockage_toiture.poser_affiche_depuis
+# ACAL314 — l'affiche servie MÊME ORIGINE (chemins relatifs + lecture).
+url_fichier_toiture_devis = _stockage_toiture.url_fichier_toiture_devis
+url_fichier_toiture_proposition = _stockage_toiture.url_fichier_toiture_proposition
+lire_image_toiture = _stockage_toiture.lire_image_toiture
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -667,6 +671,9 @@ __all__ = [
     'share_link_for_bcf',
     'stocker_image_toiture',
     'poser_affiche_depuis',
+    'url_fichier_toiture_devis',
+    'url_fichier_toiture_proposition',
+    'lire_image_toiture',
     'supprimer_fichier_toiture',
     'sync_devis_from_layout',
     'type_image_toiture',

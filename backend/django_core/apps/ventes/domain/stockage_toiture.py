@@ -148,3 +148,41 @@ def url_image_toiture(cle, *, expires=3600):
     from ..utils.pdf import roof_image_signed_url
 
     return roof_image_signed_url(cle, expires=expires)
+
+
+# ── ACAL314 (C-ACAL-019 / C-ACAL-107) — l'affiche servie MÊME ORIGINE ───────
+#
+# Une URL pré-signée porte l'hôte INTERNE du magasin (``MINIO_ENDPOINT`` =
+# ``minio:9000``) : le navigateur du client ne l'atteint jamais. L'affiche
+# destinée à un navigateur est donc servie par Django, sous un chemin RELATIF
+# que ce module est le SEUL à fabriquer (jumeau assumé du constructeur
+# calepinage ``apps/calepinage/services/presentation.py`` — frontière
+# inter-apps). ``url_image_toiture`` / ``roof_image_signed_url`` restent pour
+# d'éventuelles lectures serveur, plus jamais pour un navigateur.
+
+#: La racine de l'API ventes, telle que ``config/urls.py`` la monte.
+RACINE_API_VENTES = '/api/django/ventes'
+
+
+def url_fichier_toiture_devis(devis_id):
+    """Chemin AUTHENTIFIÉ (cookie httpOnly) de l'affiche d'un devis."""
+    return f'{RACINE_API_VENTES}/devis/{devis_id}/roof-image/fichier/'
+
+
+def url_fichier_toiture_proposition(token):
+    """Chemin PUBLIC (borné par le jeton de proposition) de l'affiche."""
+    return f'{RACINE_API_VENTES}/proposal/{token}/roof-image/'
+
+
+def lire_image_toiture(cle):
+    """``(octets, type MIME)`` de l'affiche stockée sous ``cle``, ou
+    ``(None, None)`` — clé vide, objet absent, magasin injoignable ou octets
+    qui ne sont pas un PNG/JPEG reconnu. Le MIME vient des OCTETS
+    (:func:`type_image_toiture`), jamais de l'extension de la clé."""
+    donnees = lire_fichier_toiture(cle)
+    if not donnees:
+        return None, None
+    _extension, mime = type_image_toiture(donnees)
+    if mime is None:
+        return None, None
+    return donnees, mime
