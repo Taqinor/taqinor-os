@@ -199,9 +199,16 @@ class EtatEnBaseTest(TestCase):
         self.assertFalse(etat_de_conception(self.calepinage)['verrouille'])
 
     def test_l_archivage_ajoute_la_mention_archivee(self):
-        from apps.calepinage.services.archivage import archiver
+        # ACAL118 — un calepinage lié à un devis ACCEPTÉ ne s'archive plus
+        # (refus nommé) ; un archivé hérité (porté par la migration 0022)
+        # garde ses deux mentions.
+        from django.utils import timezone
 
-        archiver(self.calepinage)
+        from apps.calepinage.models import Calepinage
+
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            archive_le=timezone.now())
+        self.calepinage.refresh_from_db()
         etat = etat_de_conception(self.calepinage)
         self.assertTrue(etat['archive'])
         self.assertTrue(etat['archive_le'])

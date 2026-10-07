@@ -212,8 +212,8 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
 
     CAL208 — ``inclure_archives=False`` (le défaut, y compris pour le
     viewset qui n'appelle PAS cet argument) exclut les calepinages archivés
-    (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
-    import direct de ``ElementSupprime``, frontière inter-apps).
+    — ACAL118 : par le prédicat de ``calepinages_actifs`` (``archive_le``
+    sur le modèle), qui survit à la purge de la corbeille.
 
     ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
     décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
@@ -237,25 +237,41 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     if terme:
         lignes = lignes.filter(_condition_recherche(terme, company))
     if not inclure_archives:
-        from apps.trash.selectors import ids_dans_corbeille
-
-        lignes = lignes.exclude(
-            pk__in=list(ids_dans_corbeille('calepinage.calepinage')))
+        lignes = lignes.filter(**_CONDITION_ACTIF)
     return lignes.order_by('-created_at', '-id')
 
 
-def calepinage_detail(pk, company):
+#: ACAL118 — LE prédicat « actif » (non archivé), lu sur le MODÈLE
+#: (``Calepinage.archive_le``), jamais sur la corbeille que la purge vide.
+_CONDITION_ACTIF = {'archive_le__isnull': True}
+
+
+def calepinages_actifs(company):
+    """ACAL118 — LE sélecteur unique des calepinages ACTIFS (non archivés)
+    de ``company`` : liste, ``depuis-lead``, modèles, comparatifs et
+    ``calepinage_du_devis`` le lisent. ``None`` ⇒ queryset vide."""
+    from .models import Calepinage
+
+    if company is None:
+        return Calepinage.objects.none()
+    return Calepinage.objects.filter(company=company, **_CONDITION_ACTIF)
+
+
+def calepinage_detail(pk, company, *, inclure_archives=False):
     """CAL10 — UN calepinage borné société, ou ``None``.
 
     Un calepinage d'une autre société est INTROUVABLE (``None``), jamais
     « interdit » : l'appelant répond 404 et n'apprend rien de son existence.
+    ACAL118 — un ARCHIVÉ n'est rendu que sur demande explicite
+    (``inclure_archives=True`` : archiver / restaurer).
     """
     from .models import Calepinage
 
     if company is None or not pk:
         return None
-    return (Calepinage.objects
-            .filter(pk=pk, company=company)
+    base = (Calepinage.objects.filter(company=company) if inclure_archives
+            else calepinages_actifs(company))
+    return (base.filter(pk=pk)
             .select_related('client', 'devis')
             .first())
 
@@ -442,12 +458,12 @@ def calepinage_du_devis(devis_id, company):
     Point d'entrée cross-app : ``ventes`` sait si un devis a une conception
     sans jamais importer ``apps.calepinage.models``.
     """
-    from .models import Calepinage
-
     if company is None or not devis_id:
         return None
-    return (Calepinage.objects
-            .filter(company=company, devis_id=devis_id)
+    # ACAL118 — un ARCHIVÉ n'est jamais « le calepinage du devis » (la fiche
+    # devis ne pointe plus vers un 404).
+    return (calepinages_actifs(company)
+            .filter(devis_id=devis_id)
             .order_by('-created_at', '-id')
             .first())
 
