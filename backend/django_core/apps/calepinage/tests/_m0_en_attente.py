@@ -75,7 +75,6 @@ def affirmer_non_servies(test, servi, en_attente):
 #: ``complete`` quand la table est vide.
 EN_ATTENTE_DETAIL = {
     'custom_data': 'ACAL6 moitié back (D09-T33)',
-    'permissions.peut_deroger': 'ACAL6 moitié back (D-ACAL-9)',
     'lead.supprime': 'ACAL178',
 }
 

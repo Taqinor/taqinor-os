@@ -1498,6 +1498,9 @@ def _permissions(calepinage, request):
         'peut_retenir_variante': peut_gerer and bool(
             getattr(calepinage, 'variantes', None)
             and calepinage.variantes.exists()),
+        # ACAL171 (D-ACAL-9) — dérogation électrique : calepinage_approuver.
+        'peut_deroger': bool(user) and PeutApprouverCalepinage(
+            ).has_permission(request, None),
     }
 
 
