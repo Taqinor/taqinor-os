@@ -66,9 +66,13 @@ import FacturesFournisseur from './FacturesFournisseur.jsx'
 import FournisseurFiche360 from './FournisseurFiche360.jsx'
 
 const COMMERCIAL = { role: 'normal', role_nom: 'Commercial', permissions: ['stock_voir'] }
+// Un acheteur qui commande (ASTK21 : `achats_commander`) sans voir les prix.
+const ACHETEUR_SANS_PRIX = {
+  role: 'normal', role_nom: 'Acheteur', permissions: ['stock_voir', 'achats_commander'],
+}
 const DIRECTEUR = {
   role: 'admin', role_nom: 'Directeur',
-  permissions: ['stock_voir', 'stock_modifier', 'prix_achat_voir'],
+  permissions: ['stock_voir', 'stock_modifier', 'prix_achat_voir', 'achats_commander'],
 }
 
 function makeStore(auth) {
@@ -128,7 +132,7 @@ describe('ASTK15 — BCF sans prix d\'achat visibles', () => {
   })
 
   it("n'envoie pas de prix : aucun prix_achat_unitaire dans le payload d'enregistrement", async () => {
-    renderAvec(COMMERCIAL, (
+    renderAvec(ACHETEUR_SANS_PRIX, (
       <BcfDetail bcf={BCF_MASQUE} fournisseurs={[{ id: 3, nom: 'JA Solar' }]}
                  produits={[{ id: 5, nom: 'Onduleur 5 kW', sku: 'OND-5' }]}
                  onClose={() => {}} onSaved={() => {}} />
