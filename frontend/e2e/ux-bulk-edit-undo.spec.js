@@ -28,6 +28,7 @@
 // sur « Planifié », noter son compte N, éditer 3 lignes vers « En cours »
 // (le compte Planifié doit tomber à N-3), annuler (il doit revenir à N).
 import { test, expect } from '@playwright/test'
+import { API_DJANGO, lireJson, listeDe, uniq } from './helpers'
 
 // CAD177 : la liste des tickets (TicketsPage) est servie sur '/sav' (features/sav/
 // module.config.jsx) ; '/sav/tickets' n'a jamais été une route.
@@ -45,14 +46,38 @@ async function chipCount(page, libelle) {
   return m ? Number(m[1]) : NaN
 }
 
+// CAD177 : `seed_demo` ne pose AUCUN ticket « Planifié » (TCK-DEMO-0001..3 =
+// nouveau / en cours / clôturé) — le spec dépendait d'une donnée que le seed
+// n'a jamais promise (run nocturne 37573380397 : « trouvé : 0 »). Il crée donc
+// ses propres 3 tickets, puis les planifie par l'action GARDÉE `planifier`
+// (YDOCF1 — jamais un PATCH de `statut`, qui est en lecture seule).
+async function creerTicketsPlanifies(page, nombre) {
+  const clients = listeDe(await lireJson(
+    await page.request.get(`${API_DJANGO}/crm/clients/`), 'liste des clients'))
+  let clientId = clients[0]?.id
+  if (!clientId) {
+    clientId = (await lireJson(await page.request.post(`${API_DJANGO}/crm/clients/`, {
+      data: { nom: uniq('Client NTUX37') },
+    }), 'création du client')).id
+  }
+  for (let i = 0; i < nombre; i += 1) {
+    const ticket = await lireJson(await page.request.post(`${API_DJANGO}/sav/tickets/`, {
+      data: { client: clientId, description: uniq('NTUX37 ticket') },
+    }), 'création du ticket')
+    const res = await page.request.post(`${API_DJANGO}/sav/tickets/${ticket.id}/planifier/`)
+    expect(res.status(), `planifier le ticket ${ticket.id}`).toBe(200)
+  }
+}
+
 test('NTUX37: édition en masse du statut de 3 tickets, puis annulation dans la fenêtre de 10 s', async ({ page }) => {
+  await creerTicketsPlanifies(page, 3)
   await page.goto(ECRAN_TICKETS)
   await expect(statutChip(page, 'Planifié')).toBeVisible()
 
   const avant = await chipCount(page, 'Planifié')
   expect(
     avant,
-    `la société de démonstration doit avoir au moins 3 tickets « Planifié » pour ce test (trouvé : ${avant})`,
+    `les 3 tickets « Planifié » créés par ce test doivent être comptés (trouvé : ${avant})`,
   ).toBeGreaterThanOrEqual(3)
 
   // ── 1) Filtre sur « Planifié » (chip cliquable, L306) ───────────────────
