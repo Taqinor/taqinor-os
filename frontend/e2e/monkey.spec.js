@@ -96,33 +96,57 @@ const LIBELLES_NEUTRALISES = [
 // (`page.addInitScript(fn, arg)`), donc SANS closure sur une variable du
 // module Node : tout ce dont elle a besoin lui est passé en argument.
 function scriptNeutralisation(libelles) {
+  // CAD177 — COÛT. La version d'origine relisait TOUT le document
+  // (`querySelectorAll` + `innerText`) à CHAQUE mutation : `innerText` force
+  // un layout par élément, et une page React mute sans arrêt sous les
+  // gremlins. Profil CPU mesuré (Chrome, /admin/demo/nouveau) : ~13 s sur
+  // 22 s passés dans ce seul script — les « gremlins sans retour après
+  // 24000 ms » du nocturne n'étaient pas une page gelée mais le singe qui
+  // s'étouffait lui-même. Désormais : `textContent` (aucun layout ; inclut le
+  // texte masqué, donc PLUS prudent, jamais moins) et, après la passe
+  // initiale, seuls les nœuds touchés par la mutation sont examinés.
+  const CIBLES =
+    'button, a[href], input[type="submit"], input[type="button"], [role="button"]'
   function estDangereux(texte) {
     const t = (texte || '').toLowerCase()
     return libelles.some((mot) => t.includes(mot))
   }
-  function neutraliser() {
-    const cibles = document.querySelectorAll(
-      'button, a[href], input[type="submit"], input[type="button"], [role="button"]'
-    )
-    cibles.forEach((el) => {
-      if (el.dataset.monkeyNeutralise) return
-      const texte = [el.innerText, el.getAttribute('aria-label'), el.title]
-        .filter(Boolean)
-        .join(' ')
-      if (!estDangereux(texte)) return
-      el.dataset.monkeyNeutralise = '1'
-      el.setAttribute('disabled', 'true')
-      el.style.pointerEvents = 'none'
-      // <a> ignore `disabled` — seule la neutralisation du `href` empêche la
-      // navigation (ex. `wa.me/...`, `mailto:...`).
-      if (el.tagName === 'A') el.removeAttribute('href')
-    })
+  function neutraliserElement(el) {
+    if (el.dataset.monkeyNeutralise) return
+    const texte = [el.textContent, el.getAttribute('aria-label'), el.title]
+      .filter(Boolean)
+      .join(' ')
+    if (!estDangereux(texte)) return
+    el.dataset.monkeyNeutralise = '1'
+    el.setAttribute('disabled', 'true')
+    el.style.pointerEvents = 'none'
+    // <a> ignore `disabled` — seule la neutralisation du `href` empêche la
+    // navigation (ex. `wa.me/...`, `mailto:...`).
+    if (el.tagName === 'A') el.removeAttribute('href')
+  }
+  function neutraliserSous(racine) {
+    if (!racine || racine.nodeType !== 1) return
+    if (racine.matches(CIBLES)) neutraliserElement(racine)
+    racine.querySelectorAll(CIBLES).forEach(neutraliserElement)
+  }
+  function surMutations(enregistrements) {
+    for (const m of enregistrements) {
+      // Le texte (ou l'aria-label) d'un contrôle existant a pu changer : on
+      // remonte au contrôle qui l'englobe.
+      const cible = m.target.nodeType === 1 ? m.target : m.target.parentElement
+      const controle = cible && cible.closest ? cible.closest(CIBLES) : null
+      if (controle) neutraliserElement(controle)
+      m.addedNodes.forEach(neutraliserSous)
+    }
   }
   const demarrer = () => {
-    neutraliser()
-    new MutationObserver(neutraliser).observe(document.documentElement, {
+    neutraliserSous(document.documentElement)
+    new MutationObserver(surMutations).observe(document.documentElement, {
       childList: true,
       subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['aria-label', 'title', 'href', 'role', 'type'],
     })
   }
   if (document.readyState === 'loading') {
