@@ -9,8 +9,8 @@ Ce qui est prouvé ici, par HTTP réel sur des devis réels :
   geste='CALEPINAGE')['modifiable']`` ;
 * clos : 409 {roof_layout: [motif ventes]} et la porte ``deverrouiller/``
   n'existe plus (404) ;
-* le miroir CAL39 d'un envoyé passe (Calepinage.layout_hash ==
-  Devis.layout_hash) ;
+* sync-layout d'un envoyé passe (et, depuis ACAL38, le calepinage lié n'est
+  plus réécrit par ventes) ;
 * ``design-context.modifiable == not est_verrouille``.
 
 Run :
@@ -122,6 +122,9 @@ class MiroirEnvoyeTest(BaseApiCalepinage):
                 quantite_stock=100)
 
     def test_miroir_d_un_envoye_passe(self):
+        """ACAL42 — sync-layout d'un ENVOYÉ n'est plus refusé. ACAL38 (D-ACAL-1)
+        retire ensuite le miroir : le calepinage lié n'est plus RÉÉCRIT par
+        ventes — il reste la conception (aucun 409, aucune écriture)."""
         from apps.ventes.services import build_devis_from_layout
 
         devis = build_devis_from_layout(
@@ -136,7 +139,5 @@ class MiroirEnvoyeTest(BaseApiCalepinage):
             f'/api/django/ventes/devis/{devis.pk}/sync-layout/',
             _layout(12), format='json')
         self.assertEqual(reponse.status_code, 200, reponse.content)
-        devis.refresh_from_db()
         calepinage.refresh_from_db()
-        self.assertTrue(devis.layout_hash)
-        self.assertEqual(calepinage.layout_hash, devis.layout_hash)
+        self.assertEqual(calepinage.roof_layout, _layout(10))

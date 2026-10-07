@@ -305,7 +305,10 @@ def resynchroniser_devis(calepinage, *, user=None):
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études
         # (étude horaire, profils… décrivent les lignes). L'annonce
         # layout_finalise depuis le module est branchée par D02-T14.
-        return resynchroniser_conception(devis, layout, user, emettre=False)
+        # ACAL38 — la resynchro du MODULE annonce enfin ``layout_finalise``
+        # (UNE fois) : le rattachement n'écrit plus rien sur un calepinage
+        # existant (plus de miroir), et l'abonné crm note la conception.
+        return resynchroniser_conception(devis, layout, user, emettre=True)
     except SyncLayoutError as refus:
         raise DevisRefuse(
             refus.detail, champ='devis', statut=409,
