@@ -456,6 +456,10 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     lignes: lignes
       .filter((l) => l.produit || (l.designation ?? '').trim())
       .map((l) => ({
+        // ASTK68 (C-ASTK-016) — une ligne EXISTANTE part avec son `id` : le
+        // serveur la met à jour par identifiant (ASTK67, frais annexes et
+        // champs non transmis conservés) ; une ligne neuve part sans id.
+        ...(l.id != null ? { id: l.id } : {}),
         produit: l.produit || null,
         designation: l.produit ? '' : (l.designation ?? '').trim(),
         quantite: Number(l.quantite) || 0,
