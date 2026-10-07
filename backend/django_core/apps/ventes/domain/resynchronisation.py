@@ -443,6 +443,11 @@ def reconcilier(devis, intention):
         # rien aux panneaux.
         panneaux_ont_change = False
         panneaux_avant = total_panneaux
+        # ACAL100 (C-ACAL-110) — vrai dès qu'une ABSTENTION laisse un écart
+        # de panneaux non appliqué (quantité tapée, ligne commune QJR98,
+        # cible 0) : l'empreinte n'est alors PAS posée, le devis reste « à
+        # resynchroniser » et le clic suivant ré-applique.
+        ecart_residuel = False
 
         # ── DEV-202608-0016 — LE VERROU DE POSSIBILITÉ, AVANT LA PREMIÈRE
         # ÉCRITURE ──
@@ -458,10 +463,11 @@ def reconcilier(devis, intention):
         # ── Panneaux : porter le compte à la cible ──
         if modeles and not devis_variante and cible_panneaux > 0:
             # ── ACAL63 — LIGNE PAR LIGNE, MODÈLE PAR MODÈLE ────────────────
-            modifiees, change = _reconcilier_panneaux_par_modele(
+            modifiees, change, residuel = _reconcilier_panneaux_par_modele(
                 verrou, lignes_panneau, modeles, avertissements)
             lignes_modifiees += modifiees
             panneaux_ont_change = panneaux_ont_change or change
+            ecart_residuel = ecart_residuel or residuel
             total_panneaux = sum(
                 int(li.quantite or 0)
                 for li in _lignes_produit(verrou)
@@ -495,6 +501,7 @@ def reconcilier(devis, intention):
             avertissements.append(
                 'Ce calepinage ne porte aucun panneau : les lignes de '
                 'panneaux du devis n\'ont pas été modifiées.')
+            ecart_residuel = True
         elif lignes_panneau and devis_variante:
             # ── L-2OPT / RÈGLE TOIT — le calepinage est un PLAFOND ──────────
             # Chaque option a son propre compte, choisi par l'économie. Le
@@ -553,6 +560,7 @@ def reconcilier(devis, intention):
                             'ligne de panneaux propre à cette option, ou '
                             'corrigez les quantités à la main.'
                             % (variante, abs(total_vue - cible_panneaux)))
+                        ecart_residuel = True
                         continue
                 # QJR60 / D12 — une quantité TAPÉE par le vendeur n'est pas
                 # réécrite : elle sort du vivier, et si tout le vivier est
@@ -564,6 +572,7 @@ def reconcilier(devis, intention):
                         avertissements, vivier,
                         "l'écart de %d panneau(x) de l'option « %s »"
                         % (abs(total_vue - cible_panneaux), variante))
+                    ecart_residuel = True
                     continue
                 dominante = max(
                     libres,
@@ -597,6 +606,7 @@ def reconcilier(devis, intention):
                     avertissements, lignes_panneau,
                     "l'écart de %d panneau(x)"
                     % abs(cible_panneaux - total_panneaux))
+                ecart_residuel = True
             else:
                 dominante = max(libres,
                                 key=lambda li: Decimal(str(li.quantite or 0)))
@@ -1105,7 +1115,15 @@ def reconcilier(devis, intention):
         layout_stocke, _etude = _calepinage_range(layout, toiture, None)
 
         verrou.roof_layout = layout_stocke
-        verrou.layout_hash = nouveau_hash or verrou.layout_hash
+        if ecart_residuel:
+            # ACAL100 — l'écart n'a pas été ENTIÈREMENT appliqué : l'ancienne
+            # empreinte reste, le devis est toujours « à resynchroniser ».
+            avertissements.append(
+                'Écart de calepinage non entièrement appliqué : le devis '
+                'reste « à resynchroniser » — corrigez la cause ci-dessus '
+                'puis resynchronisez.')
+        else:
+            verrou.layout_hash = nouveau_hash or verrou.layout_hash
         # QJR62 — la RÈGLE de fusion vient de l'écrivain unique
         # (``domain.etude_schema``) ; seule la PERSISTANCE diffère ici, parce
         # que ce chemin écrit ``roof_layout`` + ``layout_hash`` +
@@ -1182,15 +1200,20 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
       0 et NOMMÉE (jamais une suppression silencieuse) ;
     * une quantité TAPÉE (QJR60 / D12) n'est jamais réécrite : l'écart est
       nommé.
-    Jamais ``quantite_manuelle`` / ``prix_manuel`` posés."""
+    Jamais ``quantite_manuelle`` / ``prix_manuel`` posés.
+
+    ACAL100 — rend ``(lignes_modifiees, a_change, ecart_residuel)`` :
+    ``ecart_residuel`` est vrai quand un écart a été NOMMÉ au lieu d'être
+    appliqué (quantité tapée, fiche non tarifée)."""
     from apps.ventes.domain.geometrie import _produit_designe
 
     modifiees = 0
     change = False
+    residuel = False
     restantes = list(lignes_panneau)
 
     def _porter(lignes_m, cible, libelle):
-        nonlocal modifiees, change
+        nonlocal modifiees, change, residuel
         total = sum(int(li.quantite or 0) for li in lignes_m)
         if total == cible:
             return
@@ -1200,6 +1223,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
                 avertissements, lignes_m,
                 "l'écart de %d panneau(x) « %s »" % (abs(total - cible),
                                                      libelle))
+            residuel = True
             return
         dominante = max(libres, key=lambda li: Decimal(str(li.quantite or 0)))
         nouvelle = max(0, int(dominante.quantite or 0) + (cible - total))
@@ -1240,6 +1264,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
                 'tarifé dans votre catalogue : sa ligne de %d panneau(x) n\'a '
                 'pas été créée — tarifez la fiche puis resynchronisez.'
                 % (produit_id or '?', cible))
+            residuel = residuel or cible > 0
             continue
         if cible > 0:
             creer_ligne(
@@ -1258,6 +1283,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
                 avertissements, [ligne],
                 'la ligne « %s », hors des modules du calepinage'
                 % ligne.designation)
+            residuel = True
             continue
         avertissements.append(
             'La ligne de panneaux « %s » ne correspond à aucun module posé '
@@ -1266,7 +1292,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
         ligne.save(update_fields=['quantite'])
         modifiees += 1
         change = True
-    return modifiees, change
+    return modifiees, change, residuel
 
 
 def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
