@@ -66,6 +66,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     PERMISSIONS_ECRITURE = {
         'create': 'visites_creer',
         'valider': 'visites_valider',
+        # ALEA8 — renvoyer est un geste du BUREAU D'ÉTUDES (« celui qui
+        # relève n'est pas celui qui donne — ou retire — le feu vert ») : le
+        # Technicien responsable (sans ``visites_modifier``) renvoie, le
+        # Commercial terrain ne se renvoie pas sa propre visite validée.
+        'renvoyer': 'visites_valider',
     }
 
     @property
