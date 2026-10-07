@@ -1,6 +1,7 @@
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import DecimalField as ModelDecimalField
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
@@ -730,7 +731,35 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
         return str(total)
 
 
-class _PuissanceKwField(serializers.DecimalField):
+class LeadDecimalField(serializers.DecimalField):
+    """ALEA17 — un nombre décimal du LEAD, NORMALISÉ au lieu d'être refusé.
+
+    Règle fondateur « normaliser plutôt que refuser » (08/09/2026) : un GPS
+    collé à 7 décimales (33.5731104, constaté en direct le 07/10/2026 : 15
+    PATCH 400 en ~20 s, toast « pas plus de 6 chiffres » en boucle) ou une
+    facture « 450,555 » sont des intentions limpides. La valeur est arrondie
+    au nombre de décimales DU MODÈLE (demi-supérieur, ``ROUND_HALF_UP``) et la
+    virgule décimale est acceptée. Ce qui n'est pas un nombre reste refusé en
+    nommant le champ ; ``max_digits`` et les bornes (validateurs du modèle,
+    ex. GPS [-90, 90] / [-180, 180]) restent appliqués par DRF.
+
+    Appliquée à TOUS les ``DecimalField`` de ``Lead`` par le mapping de
+    ``LeadSerializer`` (aucune liste écrite à la main)."""
+
+    def to_internal_value(self, data):
+        brut = data.strip().replace(',', '.') if isinstance(data, str) else data
+        if self.decimal_places is not None and not isinstance(brut, bool):
+            try:
+                valeur = Decimal(str(brut))
+                if valeur.is_finite():
+                    pas = Decimal(1).scaleb(-self.decimal_places)
+                    brut = str(valeur.quantize(pas, rounding=ROUND_HALF_UP))
+            except (InvalidOperation, TypeError, ValueError):
+                pass  # DRF refusera en nommant le champ
+        return super().to_internal_value(brut)
+
+
+class _PuissanceKwField(LeadDecimalField):
     """Puissance d'ÉQUIPEMENT saisie en kW (questionnaire d'appel).
 
     Relevé fondateur 08/09/2026 (lead Ali Mahraz) : une valeur tapée en WATTS
@@ -848,6 +877,15 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # résolution, et si ce re-scope venait à sauter, ``to_internal_value``
     # refuserait encore — avec un message français explicite.
     same_company_fields = ('structure_produit', 'entite')
+
+    # ALEA17 — TOUS les ``DecimalField`` du modèle Lead naissent
+    # ``LeadDecimalField`` (arrondi au nombre de décimales du modèle, virgule
+    # acceptée) : la garde ``tests_alea_lead_decimal_normalise`` le vérifie
+    # par introspection de ``Lead._meta``.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        ModelDecimalField: LeadDecimalField,
+    }
 
     # Relevé fondateur 08/09/2026 — les puissances d'équipement acceptent une
     # saisie en watts (ramenée en kW) au lieu de bloquer l'autosauvegarde.
