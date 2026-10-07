@@ -1,4 +1,4 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class IsAdminRole(BasePermission):
@@ -11,14 +11,61 @@ class IsAdminRole(BasePermission):
         )
 
 
+def module_de_la_vue(view):
+    """ASEC11 — module (clé de ``PERMISSION_MODULE``) dont relève ``view``.
+
+    Attribut explicite ``permission_module`` d'abord, sinon l'app de la classe
+    de vue (``apps.<app>.…`` → ``<app>``) si — et seulement si — le registre
+    des droits porte des codes pour ce module. ``None`` = vue de fondation /
+    satellite sans codes propres (règle historique, cf. ``IsResponsableOrAdmin``
+    et la liste figée du test de matrice)."""
+    if view is None:
+        return None
+    explicite = getattr(view, 'permission_module', None)
+    if explicite:
+        return explicite
+    from apps.roles.permissions_registre import PERMISSION_MODULE
+    parties = (type(view).__module__ or '').split('.')
+    app = parties[1] if parties[0] == 'apps' and len(parties) > 1 \
+        else parties[0]
+    return app if app in set(PERMISSION_MODULE.values()) else None
+
+
+def codes_du_module(module):
+    """ASEC11 — codes du registre rattachés au module ``module``."""
+    from apps.roles.permissions_registre import PERMISSION_MODULE
+    return frozenset(c for c, m in PERMISSION_MODULE.items() if m == module)
+
+
 class IsResponsableOrAdmin(BasePermission):
-    """Responsable or admin role."""
+    """Responsable or admin role — ET, pour un rôle fin, droit sur le MODULE.
+
+    ASEC11 (C-ASEC-004) : ``is_responsable`` est vrai dès qu'un rôle porte UN
+    code d'écriture, quel que soit son module — Commercial terrain (visites) et
+    Admin RH (paie) passaient donc les écritures CRM/Ventes/Facturation/Stock.
+    Désormais, pour un compte à rôle fin non administrateur, la vue doit
+    relever d'un module où le rôle porte :
+      * un code d'ÉCRITURE de ce module pour une méthode d'écriture ;
+      * au moins un code de ce module (lecture comprise) pour une lecture.
+    Toujours AU-DESSUS de ``is_responsable`` (jamais plus large qu'avant).
+    Inchangés : superuser, palier administrateur, comptes hérités sans rôle
+    fin, vues sans module résolu (``module_de_la_vue`` → None)."""
     def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_responsable
-        )
+        user = request.user
+        if not (user and user.is_authenticated and user.is_responsable):
+            return False
+        if getattr(user, 'is_superuser', False) \
+                or getattr(user, 'is_admin_role', False):
+            return True
+        if not getattr(user, 'role_id', None):
+            return True
+        module = module_de_la_vue(view)
+        if module is None:
+            return True
+        codes = codes_du_module(module) & set(user.role.permissions or [])
+        if request.method in SAFE_METHODS:
+            return bool(codes)
+        return user._role_grants_write(codes)
 
 
 class IsAdminOrResponsableTier(BasePermission):
