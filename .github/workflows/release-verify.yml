@@ -346,7 +346,7 @@ jobs:
         working-directory: backend/django_core
         run: |
           gunicorn erp_agentique.wsgi:application \
-            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync\
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
             --access-logfile /tmp/gunicorn-access.log \
             --error-logfile /tmp/gunicorn-error.log --capture-output &
           for i in $(seq 1 30); do
