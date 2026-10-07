@@ -10,9 +10,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const FACTURE_LIST_SRC = readFileSync(join(HERE, 'FactureList.jsx'), 'utf8')
+// SPL212 — les exports comptables vivent en factureList/useFactureCompta.js :
+// la garde lit FactureList.jsx + factureList/* (suit le code où qu'il vive).
+const FACTURE_LIST_SRC = lireSourcesFactureList()
 const VENTES_API_SRC = readFileSync(join(HERE, '../../api/ventesApi.js'), 'utf8')
 
 test('FE-SCA41 : ventesApi expose exportStatus (GET /ventes/export/status/<job_id>/)', () => {
