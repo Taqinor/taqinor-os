@@ -370,16 +370,23 @@ export default function FicheCalepinage({ detail }) {
                 Ce que la copie NE reprend PAS
               </p>
               <ul className="mt-1 list-disc pl-5 text-sm text-lune-soft">
-                <li>l’historique des versions ;</li>
+                <li>l’historique des versions (une version d’origine est déposée) ;</li>
                 <li>
                   {avecVariantes
-                    ? 'les variantes SUIVENT la copie (case cochée ci-dessous) ;'
+                    ? 'les variantes SUIVENT la copie (case cochée ci-dessous), mais aucune n’est retenue et aucune n’emporte sa simulation ;'
                     : 'les variantes ;'}
                 </li>
+                <li>la simulation et les saisies de site (à relancer sur la copie) ;</li>
+                <li>le rendu 3D et l’approbation ;</li>
                 <li>le lien vers le devis ;</li>
                 <li>le fil d’activité ;</li>
                 <li>les pièces produites (exports, documents).</li>
               </ul>
+              {/* ACAL117 — la règle de copie unique (services/variantes.CHAMPS_COPIES). */}
+              <p className="mt-1 text-xs text-lune-faint" data-testid="cal-fiche-dupliquer-copie">
+                La copie reprend la conception et les postes de pertes ; elle
+                démarre avec sa propre version d’origine.
+              </p>
               <p className="mt-1 text-xs text-lune-faint">
                 La copie reste dans votre société et garde le même lead ou
                 client que l’original.

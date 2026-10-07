@@ -19,6 +19,8 @@ second foyer d'écriture rouvrirait exactement ce que ce garde ferme.
 """
 from __future__ import annotations
 
+import copy
+
 # Le verrou lui-même vit dans ``apps/calepinage/garde_retenue.py`` (stdlib
 # pure) : le MODÈLE doit l'interroger, et s'il importait ce service la chaîne
 # ``models -> services.variantes -> apps.ventes.services -> … -> les modèles
@@ -286,8 +288,19 @@ def retenir_variante(variante, *, user=None, appliquer=True):
     return variante
 
 
-def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True):
-    """Recopie layout + variantes vers un NOUVEAU calepinage.
+#: ACAL117 (C-ACAL-011, C-ACAL-090) — LA règle de copie, UNE constante pour
+#: Dupliquer, le modèle (``modeles.creer_depuis_modele`` /
+#: ``creation.demarrer_depuis_modele``) et l'import de projet : la conception
+#: et ses postes de pertes. JAMAIS : ``resultat`` (production d'un autre toit
+#: + saisies de site), ``roof_image``, ``approbation``, ``devis``,
+#: ``appel_offre_id`` ; les variantes copiées naissent NON retenues et SANS
+#: résultat.
+CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'version_moteur', 'pertes')
+
+
+def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
+              roof_layout=...):
+    """Recopie la conception (et les variantes) vers un NOUVEAU calepinage.
 
     Le duplicata reste dans la MÊME société et garde le rattachement
     lead/client (sinon il violerait la contrainte « lead ou client »), mais
@@ -298,15 +311,34 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True):
     comportement du service depuis CAL14, et la décision D12 exige qu'un
     réglage neuf ne change rien pour un appelant qui ne le passe pas. À
     ``False``, seule la conception suit : aucune variante n'est recopiée.
+
+    ACAL117 — ce qui est copié est :data:`CHAMPS_COPIES` (conception +
+    pertes) ; aucun résultat (re-simulable), aucune variante retenue, aucun
+    rendu ; une version « Conception d'origine (copie de #C) » est déposée.
+    ``roof_layout`` (facultatif) remplace la conception copiée (modèle
+    translaté sur le repère du lead cible, D-ACAL-15).
     """
     from django.db import transaction
 
+    from apps.ventes.services import layout_hash
+
     from ..models import Calepinage, CalepinageVariante
+    from .versions import enregistrer_version
 
     if calepinage is None or not getattr(calepinage, 'pk', None):
         raise VarianteRefusee(
             "Le calepinage à dupliquer n'est pas enregistré.",
             champ='calepinage')
+
+    copies = {champ: copy.deepcopy(getattr(calepinage, champ, None))
+              for champ in CHAMPS_COPIES}
+    if roof_layout is not ...:
+        copies['roof_layout'] = roof_layout
+        copies['layout_hash'] = layout_hash(roof_layout) or ''
+    copies['layout_hash'] = copies['layout_hash'] or ''
+    copies['version_moteur'] = copies['version_moteur'] or ''
+    copies['pertes'] = (copies['pertes']
+                        if isinstance(copies['pertes'], list) else [])
 
     with transaction.atomic():
         copie = Calepinage.objects.create(
@@ -315,27 +347,30 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True):
             client_id=calepinage.client_id,
             titre=(titre or '').strip() or _titre_de_copie(calepinage),
             statut=Calepinage.Statut.BROUILLON,
-            roof_layout=calepinage.roof_layout,
-            layout_hash=calepinage.layout_hash or '',
-            version_moteur=calepinage.version_moteur or '',
-            resultat=calepinage.resultat,
             cree_par=user,
+            **copies,
         )
         sources = ((CalepinageVariante.objects
                     .filter(calepinage=calepinage).order_by('id'))
                    if avec_variantes else CalepinageVariante.objects.none())
-        with bascule_autorisee():
-            for source in sources:
-                CalepinageVariante.objects.create(
-                    company=copie.company,
-                    calepinage=copie,
-                    nom=source.nom,
-                    roof_layout=source.roof_layout,
-                    layout_hash=source.layout_hash or '',
-                    resultat=source.resultat,
-                    retenue=source.retenue,
-                    cree_par=user,
-                )
+        for source in sources:
+            CalepinageVariante.objects.create(
+                company=copie.company,
+                calepinage=copie,
+                nom=source.nom,
+                roof_layout=source.roof_layout,
+                layout_hash=source.layout_hash or '',
+                resultat=None,
+                retenue=False,
+                cree_par=user,
+            )
+        # CYC-G2-03 — la copie porte SA version d'origine (historique non
+        # vide, restaurable), sans résultat gelé.
+        if copie.roof_layout is not None:
+            enregistrer_version(
+                copie, user=user,
+                libelle=f"Conception d'origine (copie de #{calepinage.pk})",
+                resultat=None, meme_empreinte_admise=True)
     return copie
 
 

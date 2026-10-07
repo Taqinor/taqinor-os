@@ -947,7 +947,12 @@ def importer_projet(document, company, *, user=None, lead_id=None,
                 enregistrer_layout(
                     calepinage, plan['roof_layout'], user=user,
                     libelle='Import du fichier de projet')
-            if plan['postes']:
+            # ACAL117 — la MÊME règle de copie que Dupliquer / modèle
+            # (``variantes.CHAMPS_COPIES``) : conception + pertes, jamais le
+            # résultat d'un autre toit (re-simulable).
+            from .variantes import CHAMPS_COPIES
+
+            if plan['postes'] and 'pertes' in CHAMPS_COPIES:
                 enregistrer_pertes(calepinage, plan['postes'], user=user)
             _ecrire_saisies(calepinage, plan['saisies'], user=user)
             avertissements.extend(

@@ -158,14 +158,14 @@ class DupliquerTest(BaseVariantes):
         copie = dupliquer(self.pivot)
         self.assertEqual(copie.statut, Calepinage.Statut.BROUILLON)
 
-    def test_les_variantes_sont_recopiees_avec_leur_retenue(self):
+    def test_les_variantes_sont_recopiees_sans_retenue(self):
+        # ACAL117 — une copie ne réquisitionne aucune option retenue : les
+        # variantes suivent, NON retenues et sans résultat.
         copie = dupliquer(self.pivot)
         noms = list(copie.variantes.order_by('id')
                     .values_list('nom', flat=True))
         self.assertEqual(noms, ['Option A', 'Option B'])
-        retenues = list(copie.variantes.filter(retenue=True)
-                        .values_list('nom', flat=True))
-        self.assertEqual(retenues, ['Option B'])
+        self.assertFalse(copie.variantes.filter(retenue=True).exists())
 
     def test_l_original_garde_ses_variantes(self):
         dupliquer(self.pivot)

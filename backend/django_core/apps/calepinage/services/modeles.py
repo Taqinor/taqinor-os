@@ -168,14 +168,30 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         if get_company_client(modele.company, client_id) is None:
             raise ModeleInvalide('Client introuvable dans cette société.',
                                  champ='client')
+    document = ...
     if lead_id:
-        from apps.crm.selectors import get_company_lead
+        from apps.crm.selectors import get_company_lead, repere_toit
 
-        if get_company_lead(modele.company, lead_id) is None:
+        lead = get_company_lead(modele.company, lead_id)
+        if lead is None:
             raise ModeleInvalide('Lead introuvable dans cette société.',
                                  champ='client')
+        # ACAL117 (D-ACAL-15) — le modèle emporte ses réglages et son
+        # implantation RELATIVE : la conception est translatée sur le repère
+        # toit du lead cible ; sans repère, refus nommé, rien n'est créé.
+        pin, _source, _contour = repere_toit(lead)
+        if pin is None:
+            raise ModeleInvalide(
+                "Le lead n'a pas de repère toit (GPS ou point de toit) : "
+                "placez-le d'abord", champ='lead')
+        from .translation_conception import translater_conception
 
-    copie = dupliquer(modele, user=user, titre=titre)
+        document = translater_conception(modele.roof_layout, pin)
+        if isinstance(document, dict):
+            # La consommation est celle d'un AUTRE client : jamais recopiée.
+            document.pop('consumption', None)
+
+    copie = dupliquer(modele, user=user, titre=titre, roof_layout=document)
     copie.lead_id = lead_id or None
     copie.client_id = client_id or None
     copie.full_clean(exclude=['company'])

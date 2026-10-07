@@ -76,8 +76,10 @@ class CreerDepuisModeleTest(TestCase):
         CalepinageVersion.objects.create(
             company=self.company, calepinage=self.modele,
             roof_layout={'foo': 'bar'}, layout_hash='a' * 64)
-        self.lead_client = Lead.objects.create(company=self.company,
-                                               nom='Nouveau lead')
+        # ACAL117 (D-ACAL-15) — un lead cible porte un repère toit.
+        self.lead_client = Lead.objects.create(
+            company=self.company, nom='Nouveau lead',
+            roof_point={'lat': 33.6, 'lng': -7.6})
 
     def test_refuse_si_pas_marque_modele(self):
         with self.assertRaises(ModeleInvalide) as ctx:
@@ -99,8 +101,9 @@ class CreerDepuisModeleTest(TestCase):
         self.assertIsNone(copie.lead_id)
         self.assertIsNone(copie.devis_id)
         self.assertEqual(copie.roof_image, '')
+        # ACAL117 — la copie porte SA version d'origine (une seule).
         self.assertEqual(CalepinageVersion.objects.filter(
-            calepinage=copie).count(), 0)
+            calepinage=copie).count(), 1)
         # La géométrie, elle, EST recopiée (c'est le point d'un modèle).
         self.assertEqual(copie.roof_layout, {'foo': 'bar'})
 
