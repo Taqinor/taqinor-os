@@ -1,29 +1,19 @@
-import { StrictMode, lazy, Suspense } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { RouterProvider } from 'react-router-dom'
 import { store } from './store'
 import router from './router'
-import PwaPrompts from './features/pwa/PwaPrompts'
-// VX156 — moment d'accueil de marque, one-shot à la première connexion.
-import WelcomeMoment from './components/WelcomeMoment'
-// MSGACC1 — message d'accueil (bonjour/consigne) posé par un responsable/
-// admin pour un employé précis, visible dès son heure d'affichage choisie.
-// PAS une notification (aucun canal) : montée ici, comme WelcomeMoment, pour
-// UN SEUL fetch par chargement (jamais dans Layout, remonté à chaque
-// navigation de module).
-// LAZY (budget bundle) : la modale d'accueil ne conditionne pas le premier
-// rendu — son code ne doit pas peser dans le chunk d'entrée.
-// Fichier d'ENTRÉE : aucun HMR de composant ici, la règle ne s'applique pas.
-// eslint-disable-next-line react-refresh/only-export-components
-const MessageAccueilModal = lazy(() => import('./components/MessageAccueilModal'))
+// ADOC146 — composants globaux montés HORS du RouterProvider (Toaster, PWA,
+// message d'accueil, moment d'accueil, langue serveur) : UNE liste, dans
+// components/ShellGlobal.jsx, balayée par un test pour chaque portée portail.
+import ShellGlobal from './components/ShellGlobal'
 import { ThemeProvider } from './design/ThemeProvider'
 import { initTheme } from './design/theme'
-// Providers UX globaux (lane BEHAVIORS). Toaster + ConfirmProvider +
-// SessionProvider sont indépendants du routeur → montés ici, autour du
-// RouterProvider. (La palette ⌘K et les raccourcis, qui ont besoin du contexte
-// routeur, sont montés DANS le router, cf. router/index.jsx → WithLayout.)
-import { Toaster } from './ui/Toaster'
+// Providers UX globaux (lane BEHAVIORS). ConfirmProvider + SessionProvider sont
+// indépendants du routeur → montés ici, autour du RouterProvider. (La palette ⌘K
+// et les raccourcis, qui ont besoin du contexte routeur, sont montés DANS le
+// router, cf. router/index.jsx → WithLayout ; le Toaster vit dans ShellGlobal.)
 import { ConfirmProvider } from './providers/ConfirmProvider'
 import { SessionProvider } from './providers/SessionProvider'
 // N93 — cadre i18n (langue d'interface + RTL). Monté HAUT dans l'arbre pour
@@ -33,10 +23,6 @@ import { I18nProvider } from './i18n'
 // le commentaire du fichier. Fichier PARTAGÉ (main.jsx) : ajout additif
 // minimal (un import + un wrap), signalé au fold.
 import RtlDirectionProvider from './i18n/RtlDirectionProvider'
-// NTI18N3 — langue d'interface persistée serveur (retrouvée d'un autre
-// poste). Composant sans rendu, séparé pour ne pas coupler I18nProvider à
-// Redux (voir son commentaire). Fichier PARTAGÉ : ajout additif minimal.
-import ServerLocaleSync from './i18n/ServerLocaleSync'
 import './index.css'
 // VX61 — capture Web Vitals RÉELS terrain (INP/LCP/CLS/TTFB), hand-roll
 // PerformanceObserver, no-op total si l'API est absente.
@@ -70,20 +56,13 @@ createRoot(document.getElementById('root')).render(
     <Provider store={store}>
       <I18nProvider chargerSurcharges={false}>
         <RtlDirectionProvider>
-          <ServerLocaleSync />
           <ThemeProvider>
             <ConfirmProvider>
               <SessionProvider>
                 <RouterProvider router={router} />
               </SessionProvider>
             </ConfirmProvider>
-            <Toaster />
-            <PwaPrompts />
-            {/* MSGACC1 — affiché EN PREMIER (avant le moment d'accueil de
-                marque) : c'est un message opérationnel posé par un
-                responsable, pas un accueil générique. */}
-            <Suspense fallback={null}><MessageAccueilModal /></Suspense>
-            <WelcomeMoment />
+            <ShellGlobal />
           </ThemeProvider>
         </RtlDirectionProvider>
       </I18nProvider>
