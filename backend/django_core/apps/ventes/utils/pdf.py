@@ -97,7 +97,12 @@ def download_roof_image(key):
 
 
 def roof_image_signed_url(key, expires=3600):
-    """Pre-signed, read-only GET URL for a stored roof-render image (1 h)."""
+    """Pre-signed, read-only GET URL for a stored roof-render image (1 h).
+
+    ACAL314 — JAMAIS pour un navigateur : l'URL porte l'hôte INTERNE du
+    magasin (``MINIO_ENDPOINT`` = ``minio:9000``). Une affiche destinée à un
+    navigateur passe par le proxy Django même origine
+    (``services.url_fichier_toiture_devis`` / ``…_proposition``)."""
     client = get_minio_client()
     return client.generate_presigned_url(
         'get_object',

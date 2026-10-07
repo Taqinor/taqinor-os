@@ -208,6 +208,8 @@ SURFACE_PUBLIQUE = (
     # CALX193 — lecture du fichier toiture (série horaire persistée) par
     # apps/calepinage/services/simulation.py : frontière inter-apps.
     "lire_fichier_toiture",
+    # ACAL314 — l'affiche servie même origine (lecture des octets + MIME).
+    "lire_image_toiture",
     "log_supplier_email",
     "logger",
     "mandat_actif_pour_client",
@@ -233,6 +235,8 @@ SURFACE_PUBLIQUE = (
     "plafond_physique_du_contour",
     "planifier_devis_automatique_pour_lead",
     "planifier_resynchronisation_produit",
+    # ACAL98 — l'affiche du calepinage copiée sous la clé du devis.
+    "poser_affiche_depuis",
     # QJR63 — l'UNIQUE propriétaire du kWc d'un devis : son écriture
     # (``poser_puissance_kwc``, un cache estampillé) et sa lecture
     # (``puissance_kwc_du_devis``, registre sinon dérivation PVUNI, plus bas).
@@ -278,6 +282,9 @@ SURFACE_PUBLIQUE = (
     "supprimer_fichier_toiture",
     "sync_devis_from_layout",
     "type_image_toiture",
+    # ACAL314 — chemins relatifs (proxy Django) de l'affiche.
+    "url_fichier_toiture_devis",
+    "url_fichier_toiture_proposition",
     "url_image_toiture",
     "validate_composition_for_layout",
     "validate_esign_otp",

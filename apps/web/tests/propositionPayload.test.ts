@@ -66,7 +66,9 @@ describe('QJW11 — le lecteur lit l’échantillon du contrat, champ par champ'
   it('mode d’installation, calepinage et schéma', () => {
     expect(p.modeInstallation).toBe('residentiel');
     expect(p.categorieCommerciale).toBe('residentiel');
-    expect(p.roofImageUrl).toBe('https://cdn.taqinor.ma/roofs/abc123.png');
+    // ACAL314 (C-ACAL-019) — un CHEMIN RELATIF borné par le jeton (proxy
+    // Django), que la page préfixe par l’origine de l’API (`urlAfficheToiture`).
+    expect(p.roofImageUrl).toBe('/api/django/ventes/proposal/<token>/roof-image/');
     expect(p.layoutStale).toBe(false);
     expect(p.layoutNbPanneaux).toBe(14);
     expect(p.sldSvg).toContain('<svg');
@@ -592,6 +594,8 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_remplace_par_envoye.remplace_par.url': 'Fragment d’exemple (successeur ENVOYÉ) : le chemin public de la version en vigueur, illustratif — lu par `resolveRemplacement`.',
   'exemple_remplace_par_brouillon.remplace_par.reference': 'Fragment d’exemple (successeur encore BROUILLON) : la référence reste dite, illustrative.',
   'exemple_remplace_par_brouillon.remplace_par.url': 'Fragment d’exemple (successeur encore BROUILLON) : `null`, un brouillon n’est jamais servi au client — illustratif.',
+  // ACAL314 (C-ACAL-019, 07/10/2026)
+  'notes.roof_image_url_acal314': 'Note de contrat : `roof_image_url` est un chemin RELATIF servi par Django derrière le jeton (jamais l’hôte interne du magasin) — documentation ; la valeur est lue via `roof_image_url`.',
   // AGR4 (contrat d'abord PACT10, 03/10/2026)
   'notes.agricole_agr4': 'Note de contrat : pourquoi `exemple_agricole` est un FRAGMENT posé avant ses deux moitiés (AGR4, PACT10) — documentation.',
   // ACAL18 (contrat d'abord PACT10, 05/10/2026)

@@ -348,7 +348,7 @@ export type ObstacleEtendu = Obstacle & ObstacleForme;
 export const SEGMENTS_CERCLE_OBSTACLE = 36;
 
 const FORME_DEG2RAD = Math.PI / 180;
-const FORME_WGS84_RADIUS = 6378137;
+import { WGS84_RADIUS as FORME_WGS84_RADIUS } from '../../lib/geo';
 const FORME_DEG2M = FORME_DEG2RAD * FORME_WGS84_RADIUS;
 
 /** La forme réellement portée par un obstacle (`rectangle` par défaut). */

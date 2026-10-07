@@ -1235,7 +1235,8 @@ export interface PlanView {
 }
 
 const PLAN_DEG2RAD = Math.PI / 180;
-const PLAN_DEG2M = PLAN_DEG2RAD * 6378137;
+const PLAN_DEG2M = PLAN_DEG2RAD * PLAN_WGS84_RADIUS;
+import { WGS84_RADIUS as PLAN_WGS84_RADIUS } from '../../lib/geo';
 
 /**
  * Projette un contour et ses modules en vue PLAN orthographique, nord en haut,

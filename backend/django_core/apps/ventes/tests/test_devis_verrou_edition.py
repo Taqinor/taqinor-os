@@ -110,6 +110,9 @@ class TestDevisVerrouEdition(TestCase):
         jeton = self._jeton(api, devis)
         from apps.ventes.domain.catalogue_events import (
             resynchroniser_devis_pour_produit)
+        # ASTK140 — l'événement suit l'écriture du produit (catalogue à 1500).
+        Produit.objects.filter(pk=self.panneau.pk).update(
+            prix_vente=Decimal('1500'))
         resultat = resynchroniser_devis_pour_produit(
             produit=self.panneau, company=self.company,
             champs={'prix_vente': ['1450', '1500']})
