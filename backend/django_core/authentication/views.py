@@ -263,11 +263,26 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         # contour stable (`otp_required: true`) que le frontend sait gérer —
         # sans divulguer l'état 2FA d'un compte avant que le mot de passe soit
         # validé.
+        from rest_framework.exceptions import AuthenticationFailed
         try:
             response = super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            # ASEC4 — mauvais mot de passe : simplejwt lève AuthenticationFailed
+            # (401), jamais ValidationError — ce chemin n'était PAS compté, le
+            # verrou FG22 restait mort. Compté ici (compte connu uniquement ;
+            # identifiant inconnu → même 401, même corps).
+            if locked_user is not None:
+                register_failed_login(locked_user)
+            raise
         except ValidationError as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get('otp_required'):
+                # ASEC4 — un code OTP FAUX (présenté après un bon mot de passe)
+                # est un échec compté ; l'absence de code (premier aller du
+                # formulaire 2FA) ne l'est pas.
+                if locked_user is not None \
+                        and str(request.data.get('otp') or '').strip():
+                    register_failed_login(locked_user)
                 msg = detail.get('detail')
                 if isinstance(msg, (list, tuple)):
                     msg = msg[0] if msg else None
