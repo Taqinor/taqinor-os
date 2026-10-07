@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
    ACAL37 (D-ACAL-1) — `/ventes/devis/:id/design` ouvre et enregistre le
@@ -21,7 +21,9 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
 
 vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
 
-import '../../test/toitureDesignHarnessCalepinage'
+import {
+  CTX_CALEPINAGE_DEVIS as CTX, DEVIS_ID_CALEPINAGE as DEVIS_ID,
+} from '../../test/toitureDesignHarnessCalepinage'
 import {
   initRoofToolPro8, rendreDevis, reinitialiserBootMinimal,
 } from '../../test/toitureDesignHarness'
@@ -29,8 +31,6 @@ import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
 
-const CTX = exempleContrat('calepinage', 'calepinage_design_context')
-const DEVIS_ID = CTX.calepinage.devis_lie.id
 const MODULES = [{ id: 7, nom: 'Module 500 Wc', puissance_wc: 500 }]
 
 beforeEach(() => {
