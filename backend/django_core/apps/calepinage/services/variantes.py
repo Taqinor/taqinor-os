@@ -421,7 +421,6 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     # ACAL187 — la CIBLE (lead/client) est résolue et le « un seul ouvert
     # par lead » (D-ACAL-12) tenu AVANT toute écriture.
     lead_cible, client_cible = _cible_de_copie(calepinage, lead_id, client_id)
-    _refuser_second_ouvert(calepinage, lead_cible, user=user)
 
     copies = {champ: copy.deepcopy(getattr(calepinage, champ, None))
               for champ in CHAMPS_COPIES}
@@ -433,7 +432,15 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
 
-    with transaction.atomic():
+    from .creation import _verrou_creation
+
+    with transaction.atomic(), _verrou_creation(calepinage.company_id,
+                                                lead_cible):
+        # Lot 2 critique #11 — le « un seul ouvert par lead » est relu SOUS
+        # le verrou consultatif du lead cible (même verrou que creation.py /
+        # liens.py), dans la transaction de la création : deux copies
+        # simultanées vers le même lead n'en créent jamais deux.
+        _refuser_second_ouvert(calepinage, lead_cible, user=user)
         copie = Calepinage.objects.create(
             company=calepinage.company,
             lead_id=lead_cible,

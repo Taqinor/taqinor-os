@@ -37,6 +37,36 @@ class DupliquerCible(BaseApiCalepinage):
         return (api or self.api).post(_url(source.pk, 'dupliquer/'),
                                       corps or {}, format='json')
 
+    def test_unicite_relue_sous_le_verrou_du_lead_cible(self):
+        """Lot 2 critique #11 — la relecture « un seul ouvert » et la
+        création se font SOUS ``_verrou_creation`` (société, lead cible)."""
+        import contextlib
+        from unittest import mock
+
+        from apps.calepinage.services import creation, variantes
+
+        journal = []
+        refuser = variantes._refuser_second_ouvert
+
+        @contextlib.contextmanager
+        def verrou(company_id, lead_id):
+            journal.append(('verrou', company_id, lead_id))
+            yield True
+            journal.append(('libere',))
+
+        def refuser_espion(*args, **kwargs):
+            journal.append(('unicite',))
+            return refuser(*args, **kwargs)
+
+        cible = Lead.objects.create(company=self.company, nom='Cible verrou')
+        with mock.patch.object(creation, '_verrou_creation', verrou), \
+                mock.patch.object(variantes, '_refuser_second_ouvert',
+                                  refuser_espion):
+            reponse = self._dupliquer(self.source, {'lead': cible.pk})
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(journal, [('verrou', self.company.pk, cible.pk),
+                                   ('unicite',), ('libere',)])
+
     def test_dupliquer_sans_cible_sur_source_ouverte_409(self):
         avant = Calepinage.objects.count()
         reponse = self._dupliquer(self.source)
