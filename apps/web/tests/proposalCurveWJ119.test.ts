@@ -186,66 +186,30 @@ describe('WJ119/CJ1 — variante Ramadan (résidentiel) : jour réduit, pic ifta
   });
 });
 
-describe('WJ119 — industriel : profil de régime d’équipes (1x8/2x8/3x8)', () => {
-  it('3x8 ≈ plat (production continue, quasi identique jour et nuit)', () => {
-    const dayShift = consumptionProfile(10, { mode: 'industriel', industrialShift: '3x8' });
-    const nightShift = consumptionProfile(2, { mode: 'industriel', industrialShift: '3x8' });
-    expect(dayShift).toBeCloseTo(nightShift, 9);
-    expect(dayShift).toBeCloseTo(1, 9);
+describe('CIW302 — C&I : plus aucune forme générique (ni 1x8 par défaut, ni boutique 9h-19h)', () => {
+  it('industriel / commercial sans forme servie → silhouette nulle (jamais un poste 1x8 inventé)', () => {
+    for (const mode of ['industriel', 'commercial'] as const) {
+      for (let h = 0; h < 24; h++) {
+        expect(consumptionProfile(h, { mode })).toBe(0);
+        expect(consumptionProfile(h, { mode, variant: 'ete' })).toBe(0);
+        expect(consumptionProfile(h, { mode, variant: 'ramadan' })).toBe(0);
+      }
+    }
   });
 
-  it('1x8 : poste de jour actif, nuit nettement plus basse', () => {
-    const poste = consumptionProfile(10, { mode: 'industriel', industrialShift: '1x8' });
-    const nuit = consumptionProfile(2, { mode: 'industriel', industrialShift: '1x8' });
-    expect(poste).toBeGreaterThan(nuit);
-    expect(nuit).toBeGreaterThan(0); // jamais zéro (veille/éclairage de sécurité)
+  it('la forme SERVIE par le moteur C&I est reprise telle quelle (normalisée à son maximum)', () => {
+    const forme = Array.from({ length: 24 }, (_, h) => (h >= 8 && h < 20 ? 2 : 1));
+    const nuit = consumptionProfile(2, { mode: 'commercial', servedShape: forme });
+    const jour = consumptionProfile(12, { mode: 'industriel', servedShape: forme });
+    expect(jour).toBeCloseTo(1, 9);
+    expect(nuit).toBeCloseTo(0.5, 9);
   });
 
-  it('2x8 : plateau 06h-22h plus large que 1x8 (deux équipes)', () => {
-    // 18h est hors du poste unique 1x8 (8h-16h) mais dans le plateau 2x8 (6h-22h).
-    const shift1x8 = consumptionProfile(18, { mode: 'industriel', industrialShift: '1x8' });
-    const shift2x8 = consumptionProfile(18, { mode: 'industriel', industrialShift: '2x8' });
-    expect(shift2x8).toBeGreaterThan(shift1x8);
-  });
-
-  it('repli 1x8 par défaut quand aucun régime n’est précisé (ESTIMATION documentée)', () => {
-    expect(consumptionProfile(10, { mode: 'industriel' })).toBe(
-      consumptionProfile(10, { mode: 'industriel', industrialShift: '1x8' }),
-    );
-  });
-
-  it('été/Ramadan sont ignorés pour un mode industriel (équipes fixes)', () => {
-    const normal = consumptionProfile(14, { mode: 'industriel', variant: 'normal' });
-    const ete = consumptionProfile(14, { mode: 'industriel', variant: 'ete' });
-    const ramadan = consumptionProfile(14, { mode: 'industriel', variant: 'ramadan' });
-    expect(ete).toBe(normal);
-    expect(ramadan).toBe(normal);
-  });
-});
-
-describe('WJ119 — commercial : UN archétype journée générique (pas de table par catégorie)', () => {
-  it('heures d’ouverture (9h-19h) nettement au-dessus des heures fermées', () => {
-    const open = consumptionProfile(12, { mode: 'commercial' });
-    const closed = consumptionProfile(2, { mode: 'commercial' });
-    expect(open).toBeGreaterThan(closed);
-    expect(closed).toBeGreaterThan(0); // jamais zéro (petit socle hors ouverture)
-  });
-
-  it('la variante été déplace la part vers l’après-midi (climatisation en boutique)', () => {
-    // L'archétype commercial est plat à 1.0 sur les heures d'ouverture ; comme la
-    // courbe est normalisée à son propre maximum (comportement documenté, hérité de
-    // l'ancienne gaussienne), un boost de l'après-midi ramène simplement ce nouveau
-    // maximum à 1.0 — l'effet ÉTÉ est donc visible aux ÉPAULES (le matin/le soir
-    // baissent RELATIVEMENT à l'après-midi climatisé), pas au pic lui-même. On teste
-    // ce déplacement réel : le ratio après-midi (15h, boosté) / matin (10h, non
-    // boosté) augmente en été.
-    const normalRatio =
-      consumptionProfile(15, { mode: 'commercial', variant: 'normal' }) /
-      consumptionProfile(10, { mode: 'commercial', variant: 'normal' });
-    const eteRatio =
-      consumptionProfile(15, { mode: 'commercial', variant: 'ete' }) /
-      consumptionProfile(10, { mode: 'commercial', variant: 'ete' });
-    expect(eteRatio).toBeGreaterThan(normalRatio);
+  it('été/Ramadan ne modulent PAS une forme C&I servie (variantes seulement si servies)', () => {
+    const forme = Array.from({ length: 24 }, (_, h) => 1 + (h % 3));
+    const base = consumptionProfile(14, { mode: 'commercial', servedShape: forme });
+    expect(consumptionProfile(14, { mode: 'commercial', servedShape: forme, variant: 'ete' })).toBe(base);
+    expect(consumptionProfile(14, { mode: 'commercial', servedShape: forme, variant: 'ramadan' })).toBe(base);
   });
 });
 
@@ -281,9 +245,10 @@ describe('WJ119 — renderYearCurve accepte le mode/variante sans rien casser', 
     expect(out.hasRealScale).toBe(true);
   });
 
-  it('la courbe de consommation (curve-cons-line) diffère entre résidentiel et industriel 3x8', () => {
+  it('la courbe de consommation (curve-cons-line) diffère entre résidentiel et industriel à forme servie', () => {
     const res = renderYearCurve(10000, undefined, 'fr', { mode: 'residentiel' });
-    const ind = renderYearCurve(10000, undefined, 'fr', { mode: 'industriel', industrialShift: '3x8' });
+    const servie = Array.from({ length: 24 }, (_, h) => (h >= 6 && h < 22 ? 1 : 0.2));
+    const ind = renderYearCurve(10000, undefined, 'fr', { mode: 'industriel', servedShape: servie });
     const consPath = (svg: string) => svg.match(/class="curve-cons-line" d="([^"]+)"/)?.[1];
     expect(consPath(res.svg)).not.toBe(consPath(ind.svg));
   });

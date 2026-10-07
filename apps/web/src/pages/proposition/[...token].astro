@@ -42,8 +42,17 @@ import {
   resolveInstallMode,
   agricoleKpis,
   autoconsoKpis,
-  hasInjection,
-  autoconsoCashflow,
+  syntheseCi,
+  argentCiCalcule,
+  economieCiHero,
+  injectionCi,
+  batterySimEligibleForMode,
+  valeurOptionBatterieCi,
+  offrePrincipaleCi,
+  signatureEntrepriseRequise,
+  ciEstUneEstimation,
+  ciSousReserveVisite,
+  motifsManquantsCi,
   syntheseAgricole,
   omissionSynthese,
   courbeGeometrie,
@@ -63,7 +72,9 @@ import {
   type SyntheseAgricoleArgent,
   type SyntheseAgricole,
   type Lbl3,
-  commercialArchetype,
+  categorieCi,
+  carteIndustrielleCi,
+  rentabiliteCi,
   MONTHS_SHORT,
   formatMAD,
   formatNumber,
@@ -167,6 +178,7 @@ import {
 import {
   renderYearCurve,
   resolveProposalCurveMode,
+  resolveCiCurve,
   consumptionShapeHours,
   solarProfile,
   type ProposalCurveVariant,
@@ -577,12 +589,22 @@ const isAutoconso = installMode === 'industriel' || installMode === 'commercial'
 const isCommercial = installMode === 'commercial';
 const agri: AgricoleKpis | null = ok ? agricoleKpis(data!) : null;
 const auto: AutoconsoKpis | null = ok ? autoconsoKpis(data!) : null;
-const autoHasInjection = hasInjection(auto);
-// Mini-cashflow 10 ans (industriel/commercial) — même modèle linéaire que le PDF.
-const autoCashflow = ok && isAutoconso ? autoconsoCashflow(data!, reco ?? 'sans_batterie', auto, 10) : null;
-const cashMaxAbs = autoCashflow ? Math.max(...autoCashflow.map((p) => Math.abs(p.cumulative)), 1) : 1;
-// Année du point mort (première année à trésorerie cumulée ≥ 0), pour le libellé.
-const cashBreakEven = autoCashflow ? (autoCashflow.find((p) => p.cumulative >= 0)?.year ?? null) : null;
+// CIW300 — L'ÉNERGIE ET L'ARGENT C&I SERVIS (`synthese_ci`, la MÊME fonction que le PDF).
+// Plus de mini-cashflow ni de cumul « × 25 » : la page LIT, elle ne calcule rien.
+const ci = ok ? syntheseCi(data!) : null;
+const ciArgent = argentCiCalcule(ci);
+const ciEco = economieCiHero(ciArgent);
+const ciInjection = injectionCi(ci);
+const ciManque = motifsManquantsCi(ci);
+const ciEstimation = ciEstUneEstimation(ci);
+const ciSousReserve = ciSousReserveVisite(ci);
+// CIW303 — options C&I : l'offre réseau d'abord ; la batterie est une « option proposée » avec sa
+// seule valeur CHIFFRÉE par le moteur C&I (ou « valeur non chiffrée » + motif). Rien n'est calculé ici.
+const ciOffrePrincipale: OptionKey = offrePrincipaleCi(ci);
+const ciValeurBatterie = valeurOptionBatterieCi(ci);
+// CIW305 — signature d'un devis C&I : raison sociale, nom, qualité du signataire et ICE (D-CIQ-11).
+const entrepriseRequise = signatureEntrepriseRequise(installMode);
+const raisonSocialeServie = ci?.entrepriseClient?.raisonSociale ?? '';
 // AGW303 — LA SYNTHÈSE AGRICOLE SERVIE (`synthese_agricole`, la MÊME fonction que le PDF).
 // La page LIT : besoin vs eau livrée, schéma, courbe + point, provenance, plaque. Aucun
 // calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
@@ -636,8 +658,14 @@ const nonInclusLbl: Lbl3 = (() => {
     ar: `${AGR_ARGENT_LBL.nonInclus.ar}: ${j('ar')}.`,
   };
 })();
-// Archétype de bloc commercial (miroir backend) — seulement en mode commercial.
-const comArchetype = ok && isCommercial ? commercialArchetype(data?.categorie_commerciale) : null;
+// CIW306 — bloc catégorie d'un devis commercial : LU dans `synthese_ci.categorie` (plus de miroir TS).
+const ciCategorie = ok && isCommercial ? categorieCi(ci) : null;
+// CIW307 — carte industrielle : hypothèses et décarbonation SERVIES (mêmes textes que le PDF).
+const ciCarteInd = ok && installMode === 'industriel' ? carteIndustrielleCi(ci) : null;
+// CIW308 — rentabilité industrielle : `synthese_ci.argent` tel que servi (jalons, TRI, LCOE, VAN, sensibilités,
+// financement) ; rien n'est calculé ici. `null` ⇒ la section est omise.
+const ciRent = ok && installMode === 'industriel' ? rentabiliteCi(ci) : null;
+const ciRentBaseTexte = ciRent?.base === 'ttc' ? 'TTC' : 'HT';
 
 // Bloc énergie/économies (résidentiel/industriel). Pompage n'a pas ces champs.
 const puissance = q?.puissance_kwc ?? null;
@@ -738,7 +766,8 @@ const curveMode: ProposalCurveMode =
 // Été/Ramadan n'ont de sens que pour un profil résidentiel/commercial (clim,
 // horaires de jeûne) — jamais pour un poste industriel (équipes fixes) ou un
 // pompage agricole (fenêtre solaire fixe, sans confort thermique à moduler).
-const curveVariantToggle = curveMode === 'residentiel' || curveMode === 'commercial';
+// CIW302 — en C&I, aucune variante Été/Ramadan inventée : seulement ce que le moteur C&I sert.
+const curveVariantToggle = curveMode === 'residentiel';
 const CURVE_VARIANTS: readonly ProposalCurveVariant[] = curveVariantToggle
   ? (['normal', 'ete', 'ramadan'] as const)
   : (['normal'] as const);
@@ -786,9 +815,15 @@ const ecoMensuelles: EconomiesMensuelles | null = ok ? economiesMensuelles(data!
 // libellé en kW (une pointe est une PUISSANCE), et la silhouette de conso est
 // mise à l'échelle du vrai kWh/jour — les deux courbes partagent enfin un axe.
 // Bloc absent ⇒ tout ce qui suit retombe EXACTEMENT sur le rendu d'avant.
+// CIW302 — en C&I, la courbe vient UNIQUEMENT du moteur C&I (`source: 'moteur_ci'`) ; sans elle,
+// `ciCurve` et `dailyCurves` sont `null` et la section « journée » est omise (aucune forme générique).
+const ciCurve = ok && isAutoconso ? resolveCiCurve(data as unknown as Record<string, unknown>) : null;
 const dailyCurves = ok
-  ? parseDailyCurves((data as unknown as Record<string, unknown> | null)?.courbes_journalieres)
+  ? (isAutoconso
+      ? (ciCurve?.curves ?? null)
+      : parseDailyCurves((data as unknown as Record<string, unknown> | null)?.courbes_journalieres))
   : null;
+const dessineCourbeJour = ok && (!isAutoconso || !!ciCurve);
 // Saisons réellement servies + saison de départ = celle de la date du JOUR
 // (bornes identiques au serveur : hiver DJF / été JJA / mi-saison le reste).
 // Elle est SÉRIALISÉE plus bas : le script client la relit au lieu de relire
@@ -808,7 +843,7 @@ const curveOccupancyDefault: OccupancyId = dailyCurves?.occupation ?? 'presence_
 // dans rawConsumptionShape). `null`/invalide ⇒ repli EXACT sur OCCUPANCY_SHAPES
 // dans proposalCurve — byte-identique au rendu d'avant.
 const curveServedShape: number[] | null =
-  curveMode === 'residentiel' && curveSeasonDefault
+  (curveMode === 'residentiel' || isAutoconso) && curveSeasonDefault
     ? (dailyCurves?.consommation[curveSeasonDefault]?.forme ?? null)
     : null;
 // Point GPS du chantier (1er sommet du 1er pan de toiture) pour le coucher de
@@ -850,7 +885,7 @@ const EMPTY_DAILY_CURVE: DailyCurve = {
 const dailyCurvesByVariant: Record<CurveLang, Partial<Record<ProposalCurveVariant, DailyCurve>>> = {
   fr: {}, en: {}, ar: {},
 };
-if (ok) {
+if (dessineCourbeJour) {
   const served = servedScaleFor(curveSeasonDefault);
   for (const lang of ['fr', 'en', 'ar'] as const) {
     for (const variant of CURVE_VARIANTS) {
@@ -881,7 +916,7 @@ const COMPACT_CURVE_OPTS = { annotate: false, sun: false };
 const curveCompactByLang: Record<CurveLang, DailyCurve> = {
   fr: EMPTY_DAILY_CURVE, en: EMPTY_DAILY_CURVE, ar: EMPTY_DAILY_CURVE,
 };
-if (ok) {
+if (dessineCourbeJour) {
   const servedCompact = servedScaleFor(curveSeasonDefault);
   for (const lang of ['fr', 'en', 'ar'] as const) {
     curveCompactByLang[lang] = renderYearCurve(
@@ -939,7 +974,9 @@ const storageSweep: StorageSweepInfo | null = ok ? storageSweepInfo(data!) : nul
 // du devis (5/10 kWh), jamais inventée ; AUCUN prix batterie fabriqué (prix réel du
 // devis quand N correspond à l'offre, sinon « sur étude »). Le recalcul au curseur
 // est 100 % côté client (aucun re-fetch) : les silhouettes + totaux sont sérialisés.
-const batterySimEligible = ok && (curveMode === 'residentiel' || curveMode === 'commercial');
+// CIW303 — résidentiel SEULEMENT : en C&I la valeur d'une batterie est celle du moteur C&I
+// (`synthese_ci.option_batterie`), jamais un second moteur exécuté dans le navigateur.
+const batterySimEligible = ok && batterySimEligibleForMode(curveMode);
 const consMonthly = ok ? monthlySeries(data?.monthly_consumption) : null;
 const annualConsKwh = consMonthly ? consMonthly.reduce((a, b) => a + b, 0) : 0;
 const dailyConsKwh = annualConsKwh > 0 ? annualConsKwh / 365 : 0;
@@ -1419,7 +1456,8 @@ const clientConsommateur = installMode === 'residentiel';
 // `payback` = backend `roi_s`/`roi_a`, `cumulative` = taux backend `eco_a_cumul`
 // × horizon (la MÊME multiplication linéaire que le PDF). La page n'a aucun
 // modèle d'économies à elle — le moteur corrigé se propage tout seul ici.
-const headline = ok ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
+// CIW300 — jamais le cumul « économie × 25 ans » en C&I (l'argent C&I = `synthese_ci`).
+const headline = ok && !isAutoconso ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
 // ── PVCOV (fondateur 2026-08-18) — LA SYNTHÈSE DE LA PAGE 1 DU PDF, SERVIE ──
 // Le « −N % », la facture avant/après et la couverture solaire ne sont plus
 // calculés nulle part sur cette page : ils sont LUS depuis les champs servis
@@ -1639,7 +1677,9 @@ const ecoRetourAns = (variante: 'sans' | 'avec') =>
 // porté par sa propre lane ; cette lane n'a touché que le web.)
 // AGW300 — `null` en agricole : le facteur réseau (0,81 kg CO₂/kWh) ne s'applique
 // pas à une pompe qui remplace du butane ou du gasoil.
-const enviro = ok && !isAgricole ? environmentalImpact(prodKwh) : null;
+// CIW307 — `null` en C&I tant que le facteur d'émission du réseau n'est pas sourcé (AGRM27) : aucune
+// tonne de CO₂ calculée au facteur 0,81 « source à préciser » sur un devis commercial / industriel.
+const enviro = ok && !isAgricole && !isAutoconso ? environmentalImpact(prodKwh) : null;
 
 // ── PV80 — AUCUN CRÉDIT, AUCUNE MENSUALITÉ, AUCUNE BANQUE SUR CETTE PAGE ────
 // Trois blocs « argent emprunté » y vivaient (comparatif éco-prêt WJ10, bloc
@@ -2057,7 +2097,8 @@ const assumptions = ok ? proposalAssumptions(data!) : [];
 // porte vraiment une ligne onduleur (un pompage n'en a pas). Les points
 // génériques de maintenance/SAV restent, eux, toujours vrais.
 const monitoring = monitoringPoints(equipPresence);
-const faq = objectionFaq();
+// CIW304 — FAQ d'entreprise en C&I (questions du directeur, sans chiffre ni promesse).
+const faq = objectionFaq(installMode, ci);
 
 // ── WJ86 — « Nos chantiers » (photos réelles) et « Le mot du fondateur »
 // n'ont AUCUNE source de données réelle aujourd'hui (WG5/WG6, toujours GATED
@@ -2116,6 +2157,8 @@ const signConfig = ok
       // PREVIEW-V3-FIX (audit C1) — l'acompte de CHAQUE option, déjà formaté
       // au rendu (voir `acompteMontantsFmt` dans le frontmatter).
       acompteMontants: acompteMontantsFmt,
+      // CIW305 — commercial / industriel : les quatre champs d'identité d'entreprise sont requis.
+      entrepriseRequise,
     })
   : null;
 
@@ -3429,7 +3472,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       {/* ════════════════════════════════════════════════════════════════════
           WJ126 · VARIANTE AUTOCONSOMMATION (industriel + commercial) — tuiles
           autoconso/couverture/économies/payback + injection 82-21 (si calculée,
-          mention ANRE) + mini-cashflow 10 ans (même modèle linéaire que le PDF).
+          mention servie) — CIW300 : tout est lu dans `synthese_ci`, aucun cashflow.
           ════════════════════════════════════════════════════════════════════ */}
       {isAutoconso && auto && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
@@ -3437,161 +3480,255 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             data-fr={isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}
             data-en={isCommercial ? 'Your self-consumption' : 'Your industrial self-consumption'}
             data-ar={isCommercial ? 'استهلاككم الذاتي' : 'استهلاككم الذاتي الصناعي'}>{isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}</h2>
-          <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {auto.taux_autoconso !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
-                <p class="fig fig-md lum mt-2" dir="ltr">{formatNumber(auto.taux_autoconso)} %</p>
+          <span id="economies" aria-hidden="true"></span>
+          {/* CIW300 — TOUT est LU dans `synthese_ci` (la MÊME fonction que le PDF) : kWc, production,
+              autoconsommation, couverture (définitions servies), économie de l'année 1, retour.
+              Une clé non servie n'imprime rien (jamais un 0 fabriqué). */}
+          {ci ? (
+            <div data-ci-synthese>
+              {ciSousReserve ? (
+                <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-sous-reserve>
+                  <p class="font-semibold text-lune" data-i18n
+                    data-fr="Estimation sous réserve de la visite technique"
+                    data-en="Estimate subject to the technical site visit"
+                    data-ar="تقدير رهين بالزيارة التقنية">Estimation sous réserve de la visite technique</p>
+                  {ci.aConfirmer.length > 0 ? (
+                    <ul class="mt-2 list-disc ps-5 text-xs text-lune-faint">
+                      {ci.aConfirmer.map((c) => <li>{c.libelle}</li>)}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {ci.systeme?.kwc != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance installée" data-en="Installed capacity" data-ar="القدرة المركبة">Puissance installée</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="puissance_kwc">{formatNumber(ci.systeme.kwc, 2)} kWc</p>
+                  </div>
+                ) : null}
+                {ci.systeme?.productionKwhAn != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Production solaire / an" data-en="Solar production / year" data-ar="الإنتاج الشمسي / سنة">Production solaire / an</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="production_annuelle_kwh">{formatNumber(ci.systeme.productionKwhAn)} kWh</p>
+                  </div>
+                ) : null}
+                {ci.energie?.autoconsoPct != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="autoconsommation_pct">{formatNumber(ci.energie.autoconsoPct, 1)} %</p>
+                    {ci.energie.definitions.autoconso ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.autoconso}</p> : null}
+                  </div>
+                ) : null}
+                {ci.energie?.couverturePct != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="couverture_pct">{formatNumber(ci.energie.couverturePct, 1)} %</p>
+                    {ci.energie.definitions.couverture ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.couverture}</p> : null}
+                  </div>
+                ) : null}
+                {ciArgent && ciEco !== null ? (
+                  <div class="cine-card rounded-xl p-5" data-ci-economie>
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Économie de l'année 1" data-en="Year-1 savings" data-ar="توفير السنة الأولى">Économie de l'année 1</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="economie_annuelle">{formatMAD(ciEco)}{ciArgent.base === 'ttc' ? ' TTC' : ' HT'}</p>
+                    {ciArgent.base === 'deux' && ciArgent.economieAnnee1?.ttc != null ? (
+                      <p class="mt-1 text-xs text-lune-faint" dir="ltr">{formatMAD(ciArgent.economieAnnee1.ttc)} TTC</p>
+                    ) : null}
+                    {ciEstimation ? (
+                      <p class="mt-1 text-xs text-brass-300" data-i18n data-fr="estimation" data-en="estimate" data-ar="تقدير">estimation</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {ciArgent && ciArgent.retourAns !== null ? (
+                  <div class="cine-card rounded-xl p-5" data-ci-retour>
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="payback_ans">{formatNumber(ciArgent.retourAns, 1)} <span class="text-base text-lune-soft" data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span></p>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            {auto.taux_couverture !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
-                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(auto.taux_couverture)} %</p>
-              </div>
-            ) : null}
-            {auto.economies_annuelles !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économies estimées / an</p>
-                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(auto.economies_annuelles)}</p>
-              </div>
-            ) : null}
-            {auto.payback !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
-                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(auto.payback, 1)} <span class="text-base text-lune-soft" data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span></p>
-              </div>
-            ) : null}
-          </div>
-          {(auto.taux_autoconso === null && auto.taux_couverture === null && auto.economies_annuelles === null && auto.payback === null) ? (
+              {ciArgent?.tarif && (ciArgent.tarif.mention || ciArgent.tarif.source) ? (
+                <p class="mt-4 text-xs text-lune-faint" data-ci-tarif>
+                  <span data-i18n data-fr="Tarif utilisé :" data-en="Tariff used:" data-ar="التعريفة المعتمدة:">Tarif utilisé :</span>
+                  {' '}{ciArgent.tarif.mention ?? ciArgent.tarif.source}
+                </p>
+              ) : null}
+              {ciManque.length > 0 ? (
+                <div class="mt-4 rounded-xl border border-white/10 p-4 text-sm text-lune-soft" data-ci-manque>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Ce qu'il nous manque" data-en="What we still need" data-ar="ما ينقصنا">Ce qu'il nous manque</p>
+                  <ul class="mt-2 list-disc ps-5 text-xs">
+                    {ciManque.map((m) => <li>{m}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
             <p class="mt-4 text-sm text-lune-faint" data-i18n
               data-fr="Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller."
               data-en="The detailed indicators of your study are confirmed with your advisor."
               data-ar="تُؤكَّد المؤشرات التفصيلية لدراستكم مع مستشاركم.">Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller.</p>
-          ) : null}
+          )}
 
-          {/* Injection 82-21 — UNIQUEMENT si réellement calculée. Mention ANRE
-              obligatoire : l'autoconsommation reste prioritaire, l'injection du
-              surplus dépend de la convention en vigueur (jamais promise). */}
-          {autoHasInjection && auto.injection_kwh_an !== null && (
-            <div class="cine-card mt-5 rounded-xl p-5">
+          {/* Injection 82-21 — UNIQUEMENT si le serveur SERT la revente (`synthese_ci.argent.revente`
+              calculée, MT seulement). La mention est le texte servi (`synthese_ci.hypotheses`,
+              MENTION_82_21) : AUCUNE mention réglementaire n'est écrite dans la page. */}
+          {ciInjection && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-ci-injection>
               <p class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</p>
-              {/* JARGON · DIVULGATION PROGRESSIVE (26/08/2026) — « loi 82-21 »
-                  ne dit rien à qui ne la connaît pas. Une phrase en français
-                  simple est VISIBLE ; le détail réglementaire (tarif ANRE,
-                  convention, plafond) descend dans un <details> natif. Rien
-                  n'est supprimé, rien ne change de sens. */}
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr="En clair : l’électricité que vous produisez sans la consommer peut repartir vers le réseau. C’est la loi 82-21 qui l’autorise."
-                data-en="In plain terms: the electricity you produce without consuming it can flow back to the grid. Law 82-21 is what allows this."
-                data-ar="ببساطة: الكهرباء التي تنتجونها دون استهلاكها يمكن أن تعود إلى الشبكة. القانون 82-21 هو ما يسمح بذلك.">
-                En clair : l’électricité que vous produisez sans la consommer peut repartir vers le réseau. C’est la loi 82-21 qui l’autorise.
-              </p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables${auto.injection_dh_an !== null ? `, soit ≈ ${formatMAD(auto.injection_dh_an)}/an` : ''}.`}
-                data-en={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/year of injectable surplus${auto.injection_dh_an !== null ? `, i.e. ≈ ${formatMAD(auto.injection_dh_an)}/year` : ''}.`}
-                data-ar={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/سنة من الفائض القابل للحقن${auto.injection_dh_an !== null ? `، أي ≈ ${formatMAD(auto.injection_dh_an)}/سنة` : ''}.`}>≈ {formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables{auto.injection_dh_an !== null ? <>, soit ≈ {formatMAD(auto.injection_dh_an)}/an</> : null}.</p>
-              <details class="mt-2">
-                <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
-                  data-fr="Le cadre réglementaire, en détail"
-                  data-en="The regulatory framework, in detail"
-                  data-ar="الإطار التنظيمي بالتفصيل">Le cadre réglementaire, en détail</summary>
-                <p class="mt-1 text-xs text-lune-faint" data-i18n
-                  data-fr="Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie."
-                  data-en="ANRE tariff valid 03/2026–02/2027, cap under revision. Subject to the applicable ANRE/ONEE injection agreement — self-consumption remains the priority (law 82-21). No resale is guaranteed."
-                  data-ar="تعريفة ANRE سارية 03/2026–02/2027، السقف قيد المراجعة. رهْن اتفاقية الحقن السارية لدى ANRE/ONEE — يبقى الاستهلاك الذاتي أولوية (القانون 82-21). لا يُضمن أي إعادة بيع.">Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie.</p>
-              </details>
+              {ciInjection.kwhAn !== null ? (
+                <p class="mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/an de surplus injectables${ciInjection.valeurMadAn !== null ? `, soit ≈ ${formatMAD(ciInjection.valeurMadAn)}/an` : ''}.`}
+                  data-en={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/year of injectable surplus${ciInjection.valeurMadAn !== null ? `, i.e. ≈ ${formatMAD(ciInjection.valeurMadAn)}/year` : ''}.`}
+                  data-ar={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/سنة من الفائض القابل للحقن${ciInjection.valeurMadAn !== null ? `، أي ≈ ${formatMAD(ciInjection.valeurMadAn)}/سنة` : ''}.`}>≈ {formatNumber(ciInjection.kwhAn)} kWh/an de surplus injectables{ciInjection.valeurMadAn !== null ? `, soit ≈ ${formatMAD(ciInjection.valeurMadAn)}/an` : ''}.</p>
+              ) : null}
+              <p class="mt-2 text-xs text-lune-faint" data-i18n
+                data-fr={ciInjection.mention.fr} data-en={ciInjection.mention.en} data-ar={ciInjection.mention.ar}>{ciInjection.mention.fr}</p>
             </div>
           )}
 
-          {/* Mini-cashflow 10 ans : investissement remboursé puis bénéfice net
-              cumulé. Azur = encore en déficit, laiton = bénéfice. Même hypothèse
-              tarif constant que le PDF (aucune dérive inventée). */}
-          {autoCashflow && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Votre trésorerie sur 10 ans" data-en="Your cash flow over 10 years" data-ar="خزينتكم على مدى 10 سنوات">Votre trésorerie sur 10 ans</p>
-              <div class="mt-4 flex items-end gap-1.5" dir="ltr" role="img"
-                aria-label="Trésorerie nette cumulée sur 10 ans">
-                {autoCashflow.map((p) => (
-                  <div class="flex flex-1 flex-col items-center gap-1">
-                    <span class="w-full rounded-t" style={`height:${Math.max(3, Math.round((Math.abs(p.cumulative) / cashMaxAbs) * 60))}px; background: ${p.cumulative >= 0 ? 'var(--color-brass-400, #e8b54a)' : 'var(--color-azur-300, #7fb4e8)'}`}></span>
-                    <span class="text-[10px] text-lune-faint" dir="ltr">{p.year}</span>
-                  </div>
-                ))}
-              </div>
-              <p class="mt-3 text-xs text-lune-faint" data-i18n
-                data-fr={`Trésorerie nette cumulée, année après année${cashBreakEven !== null ? ` — au point mort dès l'année ${cashBreakEven}` : ''}. Azur : investissement pas encore remboursé ; laiton : bénéfice net. Estimation à tarif constant (même hypothèse que votre devis PDF).`}
-                data-en={`Cumulative net cash flow, year after year${cashBreakEven !== null ? ` — breaks even by year ${cashBreakEven}` : ''}. Blue: investment not yet repaid; brass: net profit. Estimate at constant tariff (same assumption as your PDF quote).`}
-                data-ar={`الخزينة الصافية التراكمية سنة بعد سنة${cashBreakEven !== null ? ` — تبلغ نقطة التعادل ابتداءً من السنة ${cashBreakEven}` : ''}. الأزرق: الاستثمار لم يُسترد بعد؛ الذهبي: ربح صافٍ. تقدير بتعريفة ثابتة (نفس افتراض عرض PDF).`}>Trésorerie nette cumulée, année après année{cashBreakEven !== null ? <> — au point mort dès l'année {cashBreakEven}</> : null}. Azur : investissement pas encore remboursé ; laiton : bénéfice net. Estimation à tarif constant (même hypothèse que votre devis PDF).</p>
-            </div>
-          )}
-
-          {/* Industriel uniquement : tranches horaires + décarbonation/CBAM/ISO
-              (qualitatif, aucun chiffre inventé). */}
-          {installMode === 'industriel' && (
-            <div class="mt-5 grid gap-4 sm:grid-cols-2">
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-brass-300" data-i18n data-fr="Écrêter vos tranches horaires" data-en="Shave your time-of-use peaks" data-ar="تقليص فترات الذروة">Écrêter vos tranches horaires</p>
-                {/* JARGON · DIVULGATION PROGRESSIVE — « tranches horaires » et
-                    « puissance souscrite » sont du vocabulaire de facturier. La
-                    phrase visible est en français simple ; la formulation
-                    d'origine, inchangée, descend dans le <details>. */}
-                <p class="mt-2 text-sm text-lune-soft" data-i18n
-                  data-fr="En clair : votre électricité ne coûte pas le même prix à toute heure. Le solaire produit précisément aux heures les plus chères."
-                  data-en="In plain terms: your electricity does not cost the same at every hour. Solar produces precisely during the most expensive hours."
-                  data-ar="ببساطة: كهرباؤكم لا تكلّف الثمن نفسه في كل ساعة. والطاقة الشمسية تنتج تحديداً في أغلى الساعات.">
-                  En clair : votre électricité ne coûte pas le même prix à toute heure. Le solaire produit précisément aux heures les plus chères.
-                </p>
-                <details class="mt-2">
-                  <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
-                    data-fr="Le détail" data-en="The detail" data-ar="التفاصيل">Le détail</summary>
-                  <p class="mt-1 text-sm text-lune-soft" data-i18n
-                    data-fr="Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite."
-                    data-en="Solar produces in the middle of the day, when industrial tariffs peak: you shave your peaks and smooth your subscribed power."
-                    data-ar="تنتج الطاقة الشمسية في وضح النهار، حين يكون التعريف الصناعي في ذروته: تقلّصون ذرواتكم وتُنعّمون القدرة المكتتبة.">Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite.</p>
-                </details>
-              </div>
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-brass-300" data-i18n data-fr="Décarbonation, CBAM et ISO" data-en="Decarbonation, CBAM and ISO" data-ar="إزالة الكربون، CBAM و ISO">Décarbonation, CBAM et ISO</p>
-                {/* JARGON · DIVULGATION PROGRESSIVE — « CBAM » et « ISO
-                    14001/50001 » sont des sigles ; la phrase visible dit la
-                    chose en français simple, le sigle et sa définition restent
-                    intacts dans le <details>. */}
-                <p class="mt-2 text-sm text-lune-soft" data-i18n
-                  data-fr="En clair : produire votre électricité au soleil allège l’empreinte carbone de ce que vous fabriquez — ce que vos clients européens demandent de plus en plus."
-                  data-en="In plain terms: producing your own solar electricity lowers the carbon footprint of what you make — something your European customers increasingly ask for."
-                  data-ar="ببساطة: إنتاج كهربائكم من الشمس يخفّف البصمة الكربونية لما تصنعونه — وهو ما يطلبه عملاؤكم الأوروبيون أكثر فأكثر.">
-                  En clair : produire votre électricité au soleil allège l’empreinte carbone de ce que vous fabriquez — ce que vos clients européens demandent de plus en plus.
-                </p>
-                <details class="mt-2">
-                  <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
-                    data-fr="CBAM, ISO : de quoi parle-t-on ?" data-en="CBAM, ISO: what are these?" data-ar="CBAM و ISO: عمّ نتحدث؟">CBAM, ISO : de quoi parle-t-on ?</summary>
-                  <p class="mt-1 text-sm text-lune-soft" data-i18n
-                    data-fr="Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001."
-                    data-en="Every self-consumed solar kWh removes CO₂ from your footprint — an asset for your European customers (Carbon Border Adjustment Mechanism, CBAM) and your ISO 14001/50001 certifications."
-                    data-ar="كل كيلوواط ساعة شمسي مستهلك ذاتياً يزيل CO₂ من حصيلتكم — ميزة لعملائكم الأوروبيين (آلية تعديل الكربون على الحدود، CBAM) ولشهادات ISO 14001/50001.">Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001.</p>
-                </details>
-              </div>
+          {/* CIW307 — Industriel : la carte lit `synthese_ci` (CIQ305/CIQ344), les MÊMES textes que le
+              PDF. Aucune promesse de prix horaire ni de lissage de la puissance : la redevance de
+              puissance se paie sur la puissance SOUSCRITE, que la centrale ne change pas ;
+              CBAM seulement sur drapeau servi, aucun CO₂ chiffré. */}
+          {ciCarteInd && (ciCarteInd.hypotheses.length > 0 || ciCarteInd.decarbonation) && (
+            <div class="mt-5 grid gap-4 sm:grid-cols-2" data-ci-carte-industrielle>
+              {ciCarteInd.hypotheses.length > 0 && (
+                <div class="cine-card rounded-xl p-5">
+                  <p class="tech-label text-brass-300" data-i18n data-fr="Ce que le solaire change à votre facture" data-en="What solar changes on your bill" data-ar="ما تغيّره الطاقة الشمسية في فاتورتكم">Ce que le solaire change à votre facture</p>
+                  <ul class="mt-2 space-y-2 text-sm text-lune-soft">
+                    {ciCarteInd.hypotheses.map((h) => (
+                      <li data-i18n data-fr={h.textes.fr} data-en={h.textes.en} data-ar={h.textes.ar} data-ci-hypothese={h.cle}>{h.textes.fr}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {ciCarteInd.decarbonation && (
+                <div class="cine-card rounded-xl p-5">
+                  <p class="tech-label text-brass-300" data-i18n
+                    data-fr={ciCarteInd.decarbonation.cbam ? 'Décarbonation et CBAM' : 'Décarbonation'}
+                    data-en={ciCarteInd.decarbonation.cbam ? 'Decarbonation and CBAM' : 'Decarbonation'}
+                    data-ar={ciCarteInd.decarbonation.cbam ? 'إزالة الكربون وآلية CBAM' : 'إزالة الكربون'}>{ciCarteInd.decarbonation.cbam ? 'Décarbonation et CBAM' : 'Décarbonation'}</p>
+                  <p class="mt-2 text-sm text-lune-soft" data-i18n data-ci-decarbonation={ciCarteInd.decarbonation.cbam ? 'cbam' : 'generique'}
+                    data-fr={ciCarteInd.decarbonation.textes.fr} data-en={ciCarteInd.decarbonation.textes.en} data-ar={ciCarteInd.decarbonation.textes.ar}>{ciCarteInd.decarbonation.textes.fr}</p>
+                </div>
+              )}
             </div>
           )}
         </section>
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
-          WJ126 · BLOC CATÉGORIE COMMERCIALE — archétype par secteur (hôtel,
-          restaurant/froid, école, bureau…), miroir QUALITATIF du backend
-          (categories.py). Commercial uniquement ; `autre` en repli honnête.
+          WJ126/CIW306 · BLOC CATÉGORIE COMMERCIALE — rendu de `synthese_ci.categorie` TEL QUE
+          SERVI (titre, accroche, lignes FR/EN/AR ; CIQ330). Aucune copie de `categories.py`
+          dans la page ; sans catégorie servie, le bloc est omis.
           ════════════════════════════════════════════════════════════════════ */}
-      {isCommercial && comArchetype && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat">
+      {ciCategorie && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat" data-ci-categorie={ciCategorie.cle}>
           <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre secteur" data-en="Your sector" data-ar="قطاعكم">Votre secteur</h2>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <p class="text-2xl" aria-hidden="true">{comArchetype.icon}</p>
-            <p class="fig mt-2 text-xl text-lune" data-i18n
-              data-fr={comArchetype.labelFr} data-en={comArchetype.labelEn} data-ar={comArchetype.labelAr}>{comArchetype.labelFr}</p>
-            <p class="mt-2 text-sm text-lune-soft" data-i18n
-              data-fr={comArchetype.accrocheFr} data-en={comArchetype.accrocheEn} data-ar={comArchetype.accrocheAr}>{comArchetype.accrocheFr}</p>
+            {ciCategorie.titre ? <p class="fig text-xl text-lune">{ciCategorie.titre}</p> : ciCategorie.libelle ? <p class="fig text-xl text-lune">{ciCategorie.libelle}</p> : null}
+            {ciCategorie.accroche ? <p class="mt-2 text-sm text-lune-soft">{ciCategorie.accroche}</p> : null}
+            {ciCategorie.lignes.length > 0 ? (
+              <ul class="mt-3 list-disc space-y-1 ps-5 text-sm text-lune-soft">
+                {ciCategorie.lignes.map((l) => (
+                  <li data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
+        </section>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          CIW308 · RENTABILITÉ INDUSTRIELLE — celle du PDF, lue telle quelle dans `synthese_ci.argent`
+          (jalons 5/10/15/20/25, « TRI sur N ans », LCOE face au tarif du client ; VAN, sensibilités et
+          financement SEULEMENT s'ils sont servis). Trois ancres, une par lecteur du comité :
+          #direction (synthèse et rentabilité), #exploitation (schéma, services, suivi), #achats
+          (conditions, échéancier, acceptation). Aucune statistique sur les acheteurs.
+          ════════════════════════════════════════════════════════════════════ */}
+      {installMode === 'industriel' && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="direction" data-ci-lecteurs>
+          <nav class="flex flex-wrap gap-2 text-xs" aria-label="Lire selon votre rôle">
+            <a href="#direction" class="btn-pill px-3 py-1" data-i18n data-fr="Direction" data-en="Management" data-ar="الإدارة">Direction</a>
+            <a href="#exploitation" class="btn-pill px-3 py-1" data-i18n data-fr="Exploitation" data-en="Operations" data-ar="الاستغلال">Exploitation</a>
+            <a href="#achats" class="btn-pill px-3 py-1" data-i18n data-fr="Achats" data-en="Procurement" data-ar="المشتريات">Achats</a>
+          </nav>
+          {ciRent && (
+            <div class="mt-5" id="rentabilite" data-ci-rentabilite>
+              <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Rentabilité de votre projet" data-en="Your project's profitability" data-ar="مردودية مشروعكم">Rentabilité de votre projet</h2>
+              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {ciRent.triPct !== null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n
+                      data-fr={ciRent.triHorizonAns !== null ? `TRI sur ${formatNumber(ciRent.triHorizonAns, 0)} ans` : 'TRI'}
+                      data-en={ciRent.triHorizonAns !== null ? `IRR over ${formatNumber(ciRent.triHorizonAns, 0)} years` : 'IRR'}
+                      data-ar={ciRent.triHorizonAns !== null ? `معدل العائد الداخلي على ${formatNumber(ciRent.triHorizonAns, 0)} سنة` : 'معدل العائد الداخلي'}>{ciRent.triHorizonAns !== null ? `TRI sur ${formatNumber(ciRent.triHorizonAns, 0)} ans` : 'TRI'}</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="tri_pct">{formatNumber(ciRent.triPct, 1)} %</p>
+                  </div>
+                ) : null}
+                {ciRent.lcoeMadKwh !== null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Coût du kWh solaire (LCOE)" data-en="Cost of solar kWh (LCOE)" data-ar="كلفة الكيلوواط ساعة الشمسي (LCOE)">Coût du kWh solaire (LCOE)</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="lcoe_mad_kwh">{formatNumber(ciRent.lcoeMadKwh, 4)}</p>
+                    <p class="mt-1 text-xs text-lune-faint" dir="ltr">MAD/kWh{ciRent.tarifKwhEvite !== null ? ` — ${formatNumber(ciRent.tarifKwhEvite, 4)} MAD/kWh` : ''}</p>
+                    {ciRent.tarifKwhEvite !== null ? (
+                      <p class="mt-1 text-xs text-lune-faint" data-i18n
+                        data-fr="face au prix moyen de votre kWh évité"
+                        data-en="versus the average price of the kWh you avoid"
+                        data-ar="مقابل متوسط ثمن الكيلوواط ساعة الذي تتفادونه">face au prix moyen de votre kWh évité</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {ciRent.vanMad !== null ? (
+                  <div class="cine-card rounded-xl p-5" data-ci-van>
+                    <p class="tech-label text-lune-faint" data-i18n
+                      data-fr={ciRent.tauxActualisationPct !== null ? `VAN au taux déclaré de ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'VAN'}
+                      data-en={ciRent.tauxActualisationPct !== null ? `NPV at your declared rate of ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'NPV'}
+                      data-ar={ciRent.tauxActualisationPct !== null ? `القيمة الحالية الصافية بالمعدل المصرح به ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'القيمة الحالية الصافية'}>{ciRent.tauxActualisationPct !== null ? `VAN au taux déclaré de ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'VAN'}</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(ciRent.vanMad)}</p>
+                  </div>
+                ) : null}
+              </div>
+              {ciRent.jalons.length > 0 ? (
+                <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-ci-jalons>
+                  <p class="tech-label text-lune-faint" data-i18n
+                    data-fr={`Cumul net (${ciRentBaseTexte}) aux jalons`} data-en={`Net cumulative (${ciRentBaseTexte}) at milestones`} data-ar={`الصافي التراكمي (${ciRentBaseTexte}) عند المحطات`}>{`Cumul net (${ciRentBaseTexte}) aux jalons`}</p>
+                  <table class="mt-3 w-full text-sm" dir="ltr">
+                    <tbody>
+                      {ciRent.jalons.map((j) => (
+                        <tr>
+                          <td class="py-1 text-lune-soft">{j.annee}<span data-i18n data-fr=" ans" data-en=" years" data-ar=" سنة"> ans</span></td>
+                          <td class="py-1 text-right text-lune" data-figure={j.annee === 25 ? 'cumul_net_25_ans_mad' : undefined}>{formatMAD(j.cumul)}</td>
+                          {ciRent.jalonsTtc.length > 0 ? (
+                            <td class="py-1 text-right text-lune-faint">{ciRent.jalonsTtc.find((x) => x.annee === j.annee) ? `${formatMAD(ciRent.jalonsTtc.find((x) => x.annee === j.annee)!.cumul)} TTC` : ''}</td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {ciRent.sensibilites.length > 0 ? (
+                <div class="cine-card mt-5 rounded-xl p-5" data-ci-sensibilites>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Sensibilités saisies par la société" data-en="Sensitivities entered by the company" data-ar="الحساسيات المدخلة من طرف الشركة">Sensibilités saisies par la société</p>
+                  <ul class="mt-2 space-y-1 text-sm text-lune-soft">
+                    {ciRent.sensibilites.map((sn) => (
+                      <li dir="ltr">{sn.cle}{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ans` : ''}{sn.triPct !== null ? `, TRI ${formatNumber(sn.triPct, 1)} %` : ''}{sn.motif && sn.retourAns === null ? ` — ${sn.motif}` : ''}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {ciRent.financement ? (
+                <div class="cine-card mt-5 rounded-xl p-5" data-ci-financement>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Financement (offre écrite)" data-en="Financing (written offer)" data-ar="التمويل (عرض مكتوب)">Financement (offre écrite)</p>
+                  {ciRent.financement.libelleClient ? <p class="mt-2 text-sm text-lune-soft">{ciRent.financement.libelleClient}</p> : null}
+                  <ul class="mt-2 space-y-1 text-sm text-lune-soft" dir="ltr">
+                    {ciRent.financement.echeanceMad !== null ? <li>{formatMAD(ciRent.financement.echeanceMad)} / mois{ciRent.financement.dureeMois !== null ? ` — ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}</li> : null}
+                    {ciRent.financement.economieMensuelleMoyenneMad !== null ? <li>{formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} / mois d'économie moyenne</li> : null}
+                    {ciRent.financement.ecartMensuelMad !== null ? <li>{formatMAD(ciRent.financement.ecartMensuelMad)} / mois d'écart</li> : null}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
         </section>
       )}
 
@@ -4126,6 +4263,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                    ses onglets Standard/Été/Ramadan. ───────────────────── */}
             {dailyCurve.svg && (
               <div data-prod-layer="daily" data-curve-config={curveConfig} hidden={!prodLayers.daily}>
+              {/* CIW302 — C&I : l'étiquette SERVIE du profil (« profil type — estimation ») ou « profil
+                  déclaré » quand le serveur ne dit pas que le profil est supposé. */}
+              {ciCurve ? (
+                ciCurve.etiquette ? (
+                  <p class="mb-2 text-xs text-brass-300" data-ci-curve-etiquette>{ciCurve.etiquette}</p>
+                ) : (
+                  <p class="mb-2 text-xs text-lune-faint" data-ci-curve-etiquette data-i18n
+                    data-fr="profil déclaré" data-en="declared profile" data-ar="ملف مصرح به">profil déclaré</p>
+                )
+              ) : null}
               <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
                    ci-dessus (FR visible par défaut). WJ119 — croisées avec la
                    variante été/Ramadan (normal/ete/ramadan) quand le toggle
@@ -5075,6 +5222,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             const totaux = optionTotaux(data!, opt);
             const items = optionItems(data!, opt);
             const isReco = twoOptions && opt === reco;
+            // CIW303 — en C&I l'offre principale est celle que le devis TITRE (réseau d'abord) ;
+            // l'autre carte est « Option proposée » (jamais « Recommandé » sur une batterie).
+            const ciPrincipale = isAutoconso && opt === ciOffrePrincipale;
+            const ciOptionProposee = isAutoconso && twoOptions && opt !== ciOffrePrincipale;
             const eco = opt === 'avec_batterie' ? ecoAvec : ecoSans;
             // WJ83 — un payload totaux-less retombe sur `optionTtc() === 0` (le
             // `?? 0` défensif de la fonction) : sans ce garde-fou, "0 MAD TTC,
@@ -5088,14 +5239,37 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             return (
               <article
                 class="cine-card relative flex flex-col rounded-2xl p-6"
-                style={isReco ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+                style={(isAutoconso ? (twoOptions && ciPrincipale) : isReco) ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
               >
-                {isReco && (
+                {isAutoconso ? (
+                  twoOptions ? (
+                    <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-ci-option-badge={ciPrincipale ? 'principale' : 'option'}
+                      data-i18n
+                      data-fr={ciPrincipale ? 'Offre principale' : 'Option proposée'}
+                      data-en={ciPrincipale ? 'Main offer' : 'Optional extra'}
+                      data-ar={ciPrincipale ? 'العرض الرئيسي' : 'خيار مقترح'}>
+                      {ciPrincipale ? 'Offre principale' : 'Option proposée'}
+                    </span>
+                  ) : null
+                ) : isReco ? (
                   <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
                     Recommandé
                   </span>
+                ) : null}
+                {isAutoconso ? (
+                  <h3 class="display text-xl text-lune" data-i18n
+                    data-fr={opt === 'avec_batterie' ? 'Avec batterie (option)' : 'Offre réseau (autoconsommation)'}
+                    data-en={opt === 'avec_batterie' ? 'With battery (option)' : 'Grid-connected offer (self-consumption)'}
+                    data-ar={opt === 'avec_batterie' ? 'مع بطارية (خيار)' : 'عرض الربط بالشبكة (استهلاك ذاتي)'}>{opt === 'avec_batterie' ? 'Avec batterie (option)' : 'Offre réseau (autoconsommation)'}</h3>
+                ) : (
+                  <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt, avecDifferee)} data-en={optionLabelEn(opt, avecDifferee)} data-ar={optionLabelAr(opt, avecDifferee)}>{optionLabel(opt, avecDifferee)}</h3>
                 )}
-                <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt, avecDifferee)} data-en={optionLabelEn(opt, avecDifferee)} data-ar={optionLabelAr(opt, avecDifferee)}>{optionLabel(opt, avecDifferee)}</h3>
+                {ciOptionProposee && opt === 'avec_batterie' && ciValeurBatterie ? (
+                  <p class="mt-2 text-sm text-lune-soft" data-ci-valeur-batterie={ciValeurBatterie.chiffree ? 'chiffree' : 'non_chiffree'}
+                    data-i18n data-fr={ciValeurBatterie.textes.fr} data-en={ciValeurBatterie.textes.en} data-ar={ciValeurBatterie.textes.ar}>
+                    {ciValeurBatterie.textes.fr}{ciValeurBatterie.motif ? ` — ${ciValeurBatterie.motif}` : ''}
+                  </p>
+                ) : null}
                 {/* L-DEUXOPT — « N panneaux · X kWc » (+ « Batteries : Y kWh »
                     côté avec) : données du contrat UNIQUEMENT, chaque
                     sous-valeur omise individuellement si `null` — jamais un
@@ -6432,6 +6606,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       )}
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
+      {installMode === 'industriel' && <span id="achats" aria-hidden="true"></span>}
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8" data-track-section="signature">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
           <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté).
@@ -6880,6 +7055,32 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint"
                 placeholder="Prénom Nom"
               />
+              {entrepriseRequise && (
+                <div class="mt-3 space-y-3" data-sign-entreprise>
+                  <div>
+                    <label for="sign-raison-sociale" class="block text-xs leading-snug text-lune-faint" data-i18n
+                      data-fr="Raison sociale" data-en="Company name" data-ar="الاسم التجاري للشركة">Raison sociale</label>
+                    <input id="sign-raison-sociale" name="raison_sociale" type="text" autocomplete="organization" required
+                      value={raisonSocialeServie || undefined}
+                      class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
+                    <p id="sign-err-entreprise-raison_sociale" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
+                  </div>
+                  <div>
+                    <label for="sign-qualite" class="block text-xs leading-snug text-lune-faint" data-i18n
+                      data-fr="Qualité (gérant, DAF, DG…)" data-en="Capacity (manager, CFO, CEO…)" data-ar="الصفة (مسير، مدير مالي، مدير عام…)">Qualité (gérant, DAF, DG…)</label>
+                    <input id="sign-qualite" name="signataire_qualite" type="text" autocomplete="organization-title" required
+                      class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
+                    <p id="sign-err-entreprise-signataire_qualite" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
+                  </div>
+                  <div>
+                    <label for="sign-ice" class="block text-xs leading-snug text-lune-faint" data-i18n
+                      data-fr="ICE" data-en="ICE (company identifier)" data-ar="ICE (المعرّف الموحد للمقاولة)">ICE</label>
+                    <input id="sign-ice" name="ice" type="text" inputmode="numeric" autocomplete="off" required
+                      class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
+                    <p id="sign-err-entreprise-ice" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
+                  </div>
+                </div>
+              )}
               {/* PREVIEW-V3 · LA SIGNATURE TAPÉE EST LA SIGNATURE (loi 43-20
                   art. 2 et 7 : la signature électronique SIMPLE est
                   recevable ; aucun texte n'exige un tracé, et un trait dessiné
@@ -6963,6 +7164,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  additif dans le payload d'acceptation. Baymard range « pour le
                  compte d'une société » dans les champs à masquer par défaut :
                  il reste donc derrière un lien. -->
+            {!entrepriseRequise && (
             <details class="fold-native">
               <summary class="cursor-pointer text-brass-300 underline-offset-2 hover:underline" data-i18n
                 data-fr="Signer pour quelqu’un d’autre"
@@ -6996,6 +7198,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </p>
             </div>
             </details>
+            )}
             </div>
 
             {/* ── PREVIEW-V3 · UNE SEULE CASE, CELLE QUE LA LOI EXIGE ──────────
@@ -7219,7 +7422,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       {showSld && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
-        <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
+      <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
           {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — le sur-titre, le <h2> et
               la phrase d'introduction occupaient un écran pour annoncer un
               document que presque personne n'ouvre AVANT de signer (et que le
@@ -7369,6 +7572,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
            WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
            succès (au-dessus, plus haut sur la page). -->
+      {installMode === 'industriel' && <span id="exploitation" aria-hidden="true"></span>}
       <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</h2>
         {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — quatre cartes de
@@ -7424,7 +7628,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       <section id="faq" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</h2>
         <div class="mt-5 space-y-3">
-          {faq.slice(0, 3).map((item) => (
+          {faq.slice(0, isAutoconso ? faq.length : 3).map((item) => (
             <details class="cine-card rounded-xl p-5">
               <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-en={item.questionEn} data-ar={item.questionAr}>{item.question}</summary>
               <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-en={item.answerEn} data-ar={item.answerAr}>{item.answer}</p>
@@ -7775,6 +7979,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   interface SignConfig {
     token: string;
     twoOptions: boolean;
+    /** CIW305 — devis commercial / industriel : raison sociale, qualité et ICE requis. */
+    entrepriseRequise?: boolean;
     preselect: OptionKey | null;
     accepted: boolean;
     acceptedName: string;
@@ -8054,7 +8260,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             ramadan: curveCfg!.ramadan,
             // CJ2b — même règle qu'au premier rendu serveur : la forme SERVIE
             // pour la saison affichée l'emporte, résidentiel uniquement.
-            servedShape: curveCfg!.mode === 'residentiel'
+            servedShape: curveCfg!.mode === 'residentiel' || curveCfg!.mode === 'commercial' || curveCfg!.mode === 'industriel'
               ? (curveCfg!.consommation?.[state.season]?.forme ?? null)
               : null,
           },
@@ -8632,6 +8838,27 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     }
     function clearError(): void {
       if (errorEl) errorEl.hidden = true;
+      // CIW305 — efface aussi les erreurs posées SOUS les champs entreprise.
+      document.querySelectorAll<HTMLElement>('[id^="sign-err-entreprise-"]').forEach((el) => {
+        el.hidden = true;
+        el.textContent = '';
+      });
+    }
+    // CIW305 — l'erreur d'un champ entreprise s'affiche SOUS ce champ (`champ` du contrat :
+    // « entreprise.ice »…) ; un champ inconnu retombe sur le message général.
+    const CHAMP_ENTREPRISE_INPUT: Record<string, string> = {
+      'entreprise.raison_sociale': 'sign-raison-sociale',
+      'entreprise.signataire_qualite': 'sign-qualite',
+      'entreprise.ice': 'sign-ice',
+    };
+    function showFieldError(champ: string | undefined, msg: string): boolean {
+      const inputId = champ ? CHAMP_ENTREPRISE_INPUT[champ] : undefined;
+      const errEl = champ ? document.getElementById(`sign-err-${champ.replace('.', '-')}`) : null;
+      if (!inputId || !errEl) return false;
+      errEl.textContent = msg;
+      errEl.hidden = false;
+      (document.getElementById(inputId) as HTMLInputElement | null)?.focus();
+      return true;
     }
     // ── WJ42 — `successTime` portait le même défaut que le stamp : une chaîne
     // FR figée (« · signé le … ») jamais ré-inscrite au registre. `signedWhen`
@@ -8792,11 +9019,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       // WJ87 — facultatif : « je signe au nom de… » (MRE signant pour ses
       // parents, foyer, etc.). Le signataire enregistré reste `nom` ci-dessus.
       const onBehalfOf = (document.getElementById('sign-on-behalf-of') as HTMLInputElement | null)?.value ?? '';
-      const state: SignFormState = { nom, option: selectedOption() };
+      // CIW305 — devis C&I : l'identité de l'entreprise (raison sociale, qualité, ICE) ; jamais
+      // « signer pour quelqu'un d'autre » (le bloc n'est pas rendu, `onBehalfOf` reste vide).
+      const entreprise = cfg.entrepriseRequise
+        ? {
+            raison_sociale: (document.getElementById('sign-raison-sociale') as HTMLInputElement | null)?.value ?? '',
+            signataire_qualite: (document.getElementById('sign-qualite') as HTMLInputElement | null)?.value ?? '',
+            ice: (document.getElementById('sign-ice') as HTMLInputElement | null)?.value ?? '',
+          }
+        : null;
+      const state: SignFormState = { nom, option: selectedOption(), ...(entreprise ? { entreprise } : {}) };
 
-      const v = validateSign(state, cfg.twoOptions);
+      const v = validateSign(state, cfg.twoOptions, !!cfg.entrepriseRequise);
       if (!v.valid) {
-        showError(v.error ?? 'Formulaire incomplet.');
+        if (!showFieldError(v.champ, v.error ?? 'Formulaire incomplet.')) showError(v.error ?? 'Formulaire incomplet.');
         return;
       }
       if (!accord) {
@@ -8877,6 +9113,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           ok?: boolean;
           detail?: string;
           accepte_par_nom?: string;
+          champ?: string;
         };
         if (res.ok && data.ok) {
           showSuccess(data.accepte_par_nom || nom.trim(), signedAt, signatureDataUrl, true);
@@ -8922,7 +9159,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           if (firstReveal) otpRequestBtn?.click();
           return;
         }
-        showError(uiState.kind === 'error' ? uiState.message : 'Une erreur est survenue. Veuillez réessayer.');
+        // CIW305 — le serveur NOMME le champ fautif (400 {detail, champ}) : on l'affiche sous ce champ.
+        const msgServeur = uiState.kind === 'error' ? uiState.message : 'Une erreur est survenue. Veuillez réessayer.';
+        if (res.status === 400 && showFieldError(data.champ, data.detail || msgServeur)) return;
+        showError(msgServeur);
       } catch (err) {
         // WJ45 — si le navigateur se sait hors-ligne au moment de l'échec, on
         // l'affirme explicitement (bandeau + message dédié, dans la langue
