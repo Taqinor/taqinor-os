@@ -58,6 +58,7 @@ import ReceptionsFournisseur from './ReceptionsFournisseur.jsx'
 import FacturesFournisseur from './FacturesFournisseur.jsx'
 import RetoursFournisseur from './RetoursFournisseur.jsx'
 import { CatalogueTable } from './CatalogueTable.jsx'
+import { installerCalesJsdom } from '../../test/fixtures/calesJsdom'
 
 const COMMERCIAL = {
   role: 'normal', role_nom: 'Commercial',
@@ -109,14 +110,7 @@ const bouton = (nom) => screen.queryByRole('button', { name: nom })
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
+  installerCalesJsdom()
 })
 
 describe('ASTK21 — bons de commande fournisseur', () => {
