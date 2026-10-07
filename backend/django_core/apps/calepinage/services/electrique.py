@@ -2289,7 +2289,14 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         imposee, bloquants = (), bloquants + [str(refus)]
     bloquants.extend(verdict_affectation(
         conception, imposee,
-        specs_onduleur=materiel_resolu.get('onduleur')))
+        specs_onduleur=materiel_resolu.get('onduleur'),
+        obsoletes_bloquantes=False))
+    # ACAL266 — une affectation OBSOLÈTE ne bloque pas la saisie d'une autre
+    # chaîne : elle est signalée en alerte (la publication, elle, la refuse
+    # — ``_motifs_de_l_affectation``).
+    obsoletes = [ligne for ligne in verdict_affectation(
+        conception, imposee, specs_onduleur=materiel_resolu.get('onduleur'))
+        if ligne.startswith('Module inconnu du document')]
     # CALX206 — un regroupement polystring met des chaînes en PARALLÈLE :
     # son Isc cumulé se verdicte au même titre que celui du chaînage
     # automatique, sans quoi le regroupement contournerait la garde.
@@ -2301,6 +2308,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))
     alertes = list(alertes_nommees(conception))
+    alertes.extend(obsoletes)
     alertes.extend(poly['alertes'])
     # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
     # jamais un bloquant : rien ne prouve le défaut, la fiche se tait.

@@ -1360,7 +1360,8 @@ def _numero_impose(valeur, module, quoi):
     return entier
 
 
-def verdict_affectation(conception, imposee, *, specs_onduleur=None):
+def verdict_affectation(conception, imposee, *, specs_onduleur=None,
+                        obsoletes_bloquantes=True):
     """Les REFUS d'une affectation proposée, chacun NOMMANT sa contrainte.
 
     Ne persiste RIEN et ne modifie RIEN : c'est un verdict. Les contrôles
@@ -1394,6 +1395,11 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None):
             # ACAL265 — une ligne ORPHELINE (pan renommé n'en crée plus ; pan
             # réduit ou supprimé) est publiée « obsolète » et bloque la
             # publication tant qu'elle n'est pas retirée par un geste nommé.
+            # ACAL266 — à la SAISIE (évaluation à chaud), elle ne bloque pas
+            # l'enregistrement d'une autre chaîne : elle est gardée et
+            # signalée, la publication reste refusée tant qu'elle existe.
+            if not obsoletes_bloquantes:
+                continue
             refus.append(
                 "Module inconnu du document : « %s » n'est pas posé sur cette "
                 "conception — affectation obsolète, retirez-la dans l'onglet "
