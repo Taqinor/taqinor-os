@@ -5,7 +5,7 @@ import { lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
-  LayoutGrid, Link2, Handshake, BadgePercent,
+  LayoutGrid, Link2, Handshake, BadgePercent, PackageOpen, ShieldAlert,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -72,6 +72,10 @@ const PosteScannerPage = lazy(() => import('../../pages/stock/wms/PosteScannerPa
 const PickingPage = lazy(() => import('../../pages/stock/wms/PickingPage'))
 // ASTK218 — quais, planning, rendez-vous transporteur, ASN.
 const QuaisPage = lazy(() => import('../../pages/stock/wms/QuaisPage'))
+// ASTK220 — expéditions : unités logistiques, plans de chargement, retours, rebuts.
+const ExpeditionsPage = lazy(() => import('../../pages/stock/wms/ExpeditionsPage'))
+// ASTK224 — qualité et rappels : rappels de lots, blocages, échantillonnage, hazmat.
+const QualitePage = lazy(() => import('../../pages/stock/wms/QualitePage'))
 // ASTK223 — liens 3PL (portails-tiers) : générer, lister, révoquer.
 const PortailsTiersPage = lazy(() => import('../../pages/stock/negoce/PortailsTiersPage'))
 // ASTK221 — consignation : dépôts chez les clients, déclarations, réglages négoce.
@@ -140,6 +144,8 @@ const config = {
       { to: '/stock/entrepot/scanner', label: 'Poste scanner', icon: navIcon(ScanLine), roles: ['responsable','admin'] },
       { to: '/stock/entrepot/picking', label: 'Picking', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
       { to: '/stock/entrepot/quais', label: 'Quais et rendez-vous', icon: navIcon(Truck), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/expeditions', label: 'Expéditions', icon: navIcon(PackageOpen), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/qualite', label: 'Qualité et rappels', icon: navIcon(ShieldAlert), roles: ['responsable','admin'] },
       { to: '/stock/negoce/consignations', label: 'Consignation', icon: navIcon(Handshake), roles: ['responsable','admin'] },
       { to: '/stock/negoce/rfa', label: 'Remises arrière (RFA)', icon: navIcon(BadgePercent), roles: ['responsable','admin'] },
       { to: '/stock/negoce/portails-tiers', label: 'Dépôts tiers (3PL)', icon: navIcon(Link2), roles: ['admin'] },
@@ -172,6 +178,8 @@ const config = {
     { path: '/stock/entrepot/scanner', component: PosteScannerPage },
     { path: '/stock/entrepot/picking', component: PickingPage },
     { path: '/stock/entrepot/quais', component: QuaisPage },
+    { path: '/stock/entrepot/expeditions', component: ExpeditionsPage },
+    { path: '/stock/entrepot/qualite', component: QualitePage },
     { path: '/stock/negoce/consignations', component: ConsignationsPage },
     { path: '/stock/negoce/rfa', component: RfaPage },
     { path: '/stock/negoce/portails-tiers', component: PortailsTiersPage },

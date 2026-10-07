@@ -640,12 +640,24 @@
     disponible:booleen, effectif_note:texte, entites:inconnu, total:objet
 - frontend/src/features/entites/entitesApi.js :: noter -> /api/django/entites/entites/<>/noter
     ok:booleen
+- frontend/src/features/stock/api/entrepotCasiersApi.js :: executerTache -> /api/django/stock/taches-reappro-interne/<>/executer
+    bin_cible:inconnu, bin_source:inconnu, detail:texte, id:inconnu, mouvement_id:inconnu, quantite:inconnu, statut:inconnu
+- frontend/src/features/stock/api/expeditionsApi.js :: deplacer -> /api/django/stock/unites-logistiques/<>/deplacer
+    bin_code:inconnu, bin_destination:inconnu, detail:texte, lignes_deplacees:nombre, sscc:inconnu, unite_logistique:inconnu, unites_deplacees:liste
+- frontend/src/features/stock/api/expeditionsApi.js :: tarifs -> /api/django/stock/expeditions/tarifs
+    detail:texte, offres:inconnu, unite_logistique:inconnu
+- frontend/src/features/stock/api/expeditionsApi.js :: tracking -> /api/django/stock/expeditions/<>/tracking
+    a_une_etiquette:booleen, date_expedition:inconnu, destination:inconnu, numero_suivi:inconnu, statut:inconnu, transporteur_provider:inconnu
 - frontend/src/features/stock/api/negoceApi.js :: releve -> /api/django/stock/consignations/<>/releve
     adresse_site:inconnu, client_id:inconnu, date_depot:texte, declarations:liste, depot_id:inconnu, produit_id:inconnu, produit_nom:inconnu, quantite_consommee:inconnu, quantite_deposee:inconnu, quantite_facturee:inconnu, quantite_restante:inconnu, statut:inconnu
 - frontend/src/features/stock/api/quaisApi.js :: importAsn -> /api/django/stock/unites-logistiques/import-asn
     erreurs:inconnu, lignes:inconnu, sscc:inconnu, unite_connue:booleen, valide:booleen
 - frontend/src/features/stock/api/quaisApi.js :: planning -> /api/django/stock/quais/planning
     date_debut:inconnu, date_fin:inconnu, detail:texte, quais:liste, vue:inconnu
+- frontend/src/features/stock/api/qualiteApi.js :: impactRappel -> /api/django/stock/alertes-rappel/<>/impact
+    alerte:inconnu, casiers:inconnu, chantiers:liste, colis:liste, lots:inconnu, produit:objet, stock_restant:inconnu
+- frontend/src/features/stock/api/qualiteApi.js :: leverQuarantaine -> /api/django/stock/blocages-qualite/lever-quarantaine
+    bin:nombre, blocages_leves:inconnu, detail:texte
 - frontend/src/features/stock/api/rfaApi.js :: calcul -> /api/django/stock/accords-rfa-fournisseur/<>/calcul
     accord_id:inconnu, avoir_deja_genere:inconnu, ca_achat:texte, fournisseur_id:inconnu, montant_du:texte, periode_debut:texte, periode_fin:texte, progression_pct:texte, seuil_atteint:inconnu, seuil_ca_achat:texte
 - frontend/src/features/stock/api/rfaApi.js :: genererAvoir -> /api/django/stock/accords-rfa-fournisseur/<>/generer-avoir
@@ -1751,6 +1763,11 @@
     statut ∈ {a_faire, annulee, faite}
 - frontend/src/features/stock/api/entrepotCasiersApi.js :: updateSeuil -> /api/django/stock/seuils-reappro-casier/<>  [SeuilReapproCasierSerializer]
     champs: actif, bin, bin_code, created_at, id, produit, quantite_cible, seuil
+- frontend/src/features/stock/api/expeditionsApi.js :: listCasiers -> /api/django/installations/bin-locations  [BinLocationSerializer]
+    champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
+- frontend/src/features/stock/api/expeditionsApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
+    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/features/stock/api/negoceApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
     champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
     politique_facturation_achat ∈ {sur_commande, sur_reception}
@@ -1764,17 +1781,36 @@
 - frontend/src/features/stock/api/portailsTiersApi.js :: revoquer -> /api/django/stock/portails-tiers/<>  [PortailTiersTokenSerializer]
     champs: created_at, est_valide, expires_at, id, last_used_at, lien_public, revoked, tiers_nom, token
 - frontend/src/features/stock/api/quaisApi.js :: annulerRendezVous -> /api/django/stock/rendez-vous-transporteur/<>  [RendezVousTransporteurSerializer]
-    champs: chauffeur_nom, date_arrivee, date_heure_debut, date_heure_fin, id, immatriculation, note, quai, quai_nom, reference_livraison, statut, transporteur, transporteur_nom
+    champs: bon_commande, bon_commande_reference, chauffeur_nom, date_arrivee, date_heure_debut, date_heure_fin, fournisseur, fournisseur_nom, id, immatriculation, note, quai, quai_nom, reference_livraison, statut, transporteur, transporteur_nom
     statut ∈ {annule, arrive, en_cours, no_show, planifie, termine}
 - frontend/src/features/stock/api/quaisApi.js :: creerRendezVous -> /api/django/stock/rendez-vous-transporteur  [RendezVousTransporteurSerializer]
-    champs: chauffeur_nom, date_arrivee, date_heure_debut, date_heure_fin, id, immatriculation, note, quai, quai_nom, reference_livraison, statut, transporteur, transporteur_nom
+    champs: bon_commande, bon_commande_reference, chauffeur_nom, date_arrivee, date_heure_debut, date_heure_fin, fournisseur, fournisseur_nom, id, immatriculation, note, quai, quai_nom, reference_livraison, statut, transporteur, transporteur_nom
     statut ∈ {annule, arrive, en_cours, no_show, planifie, termine}
 - frontend/src/features/stock/api/quaisApi.js :: listQuais -> /api/django/stock/quais  [QuaiSerializer]
     champs: actif, emplacement, emplacement_nom, id, nom, type_quai
     type_quai ∈ {expedition, mixte, reception}
 - frontend/src/features/stock/api/quaisApi.js :: listRendezVous -> /api/django/stock/rendez-vous-transporteur  [RendezVousTransporteurSerializer]
-    champs: chauffeur_nom, date_arrivee, date_heure_debut, date_heure_fin, id, immatriculation, note, quai, quai_nom, reference_livraison, statut, transporteur, transporteur_nom
+    champs: bon_commande, bon_commande_reference, chauffeur_nom, date_arrivee, date_heure_debut, date_heure_fin, fournisseur, fournisseur_nom, id, immatriculation, note, quai, quai_nom, reference_livraison, statut, transporteur, transporteur_nom
     statut ∈ {annule, arrive, en_cours, no_show, planifie, termine}
+- frontend/src/features/stock/api/qualiteApi.js :: creerHazmat -> /api/django/stock/casiers-hazmat  [CompatibiliteHazmatCasierSerializer]
+    champs: bin, bin_code, classe_danger, created_at, id
+- frontend/src/features/stock/api/qualiteApi.js :: creerPlan -> /api/django/stock/plans-echantillonnage  [PlanEchantillonnageSerializer]
+    champs: actif, categorie, categorie_nom, created_at, id, note, taux_echantillon_pct, updated_at
+- frontend/src/features/stock/api/qualiteApi.js :: declarerRappel -> /api/django/stock/alertes-rappel  [AlerteRappelSerializer]
+    champs: created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
+    statut ∈ {clos, en_cours}
+- frontend/src/features/stock/api/qualiteApi.js :: listCasiers -> /api/django/installations/bin-locations  [BinLocationSerializer]
+    champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
+- frontend/src/features/stock/api/qualiteApi.js :: listHazmat -> /api/django/stock/casiers-hazmat  [CompatibiliteHazmatCasierSerializer]
+    champs: bin, bin_code, classe_danger, created_at, id
+- frontend/src/features/stock/api/qualiteApi.js :: listPlans -> /api/django/stock/plans-echantillonnage  [PlanEchantillonnageSerializer]
+    champs: actif, categorie, categorie_nom, created_at, id, note, taux_echantillon_pct, updated_at
+- frontend/src/features/stock/api/qualiteApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
+    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/features/stock/api/qualiteApi.js :: listRappels -> /api/django/stock/alertes-rappel  [AlerteRappelSerializer]
+    champs: created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
+    statut ∈ {clos, en_cours}
 - frontend/src/features/stock/api/rfaApi.js :: creerAccord -> /api/django/stock/accords-rfa-fournisseur  [AccordRFAFournisseurSerializer]
     champs: avoir_deja_genere, avoir_genere, created_at, fournisseur, fournisseur_nom, id, montant_fixe, note, periode_debut, periode_fin, seuil_ca_achat, statut, taux_pct
     statut ∈ {actif, clos}
