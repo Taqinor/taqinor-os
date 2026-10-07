@@ -173,8 +173,12 @@ export default function MapView({
       latlngs.push([m.lat, m.lng])
     })
     if (fitToMarkers && latlngs.length > 0) {
+      // CAD177 — SANS animation : un zoom animé arme un `setTimeout` de 250 ms
+      // (Leaflet 1.9 `_animateZoom`) que `map.remove()` n'annule pas ; quitter
+      // l'écran pendant ce quart de seconde levait « Cannot read properties of
+      // undefined (reading '_leaflet_pos') » (marcheur aléatoire « parametres »).
       map.fitBounds(L.latLngBounds(latlngs), {
-        padding: [40, 40], maxZoom: 13,
+        padding: [40, 40], maxZoom: 13, animate: false,
       })
     }
   }, [markers, fitToMarkers, onMarkerClick, path])
