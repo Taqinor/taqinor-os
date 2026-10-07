@@ -32,10 +32,23 @@ def _lead_ou_none(company, payload):
     return crm_selectors.get_company_lead(company, payload.get('lead'))
 
 
-def _lead(company, payload):
+def _lead(company, payload, user=None):
     """Résout un lead BORNÉ SOCIÉTÉ via le selector du CRM (jamais ses models).
-    Un id d'une autre société est donc indiscernable d'un id inconnu."""
+    Un id d'une autre société est donc indiscernable d'un id inconnu.
+
+    AANA41 — avec ``user``, le lead doit aussi être dans la PORTÉE de
+    visibilité de l'utilisateur (même règle que ``LeadViewSet`` :
+    ``scope_queryset(..., ['owner'])``) : la file hors-ligne n'est pas un
+    contournement de permission. Un lead hors portée est indiscernable d'un
+    lead inconnu."""
+    from authentication.scoping import scope_queryset
+
     lead = _lead_ou_none(company, payload)
+    if lead is not None and user is not None:
+        visible = scope_queryset(
+            type(lead).objects.filter(pk=lead.pk), user, ['owner'])
+        if not visible.exists():
+            lead = None
     if lead is None:
         raise OfflineOpError('Lead inconnu.')
     return lead
@@ -48,7 +61,7 @@ def h_lead_noter(company, user, payload):
     body = (payload.get('body') or '').strip()
     if not body:
         raise OfflineOpError('Note vide.')
-    lead = _lead(company, payload)
+    lead = _lead(company, payload, user)
     activite = crm_services.ajouter_note_lead(
         company=company, lead_id=lead.id, user=user, body=body)
     return {'lead': lead.id, 'activite': activite.id}
@@ -61,7 +74,7 @@ def h_lead_tag(company, user, payload):
     tag = (payload.get('tag') or '').strip()
     if not tag:
         raise OfflineOpError('Tag vide.')
-    lead = _lead(company, payload)
+    lead = _lead(company, payload, user)
     crm_services.poser_tag_lead(lead, user, tag)
     return {'lead': lead.id, 'tags': lead.tags}
 
