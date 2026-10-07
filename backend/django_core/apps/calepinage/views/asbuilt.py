@@ -21,7 +21,8 @@ de devis ne bouge.
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -66,9 +67,14 @@ def pose_reelle(self, request, pk=None):
     return Response(etat_pose_reelle(calepinage), status=code)
 
 
-@extend_schema(responses={204: None})
+@extend_schema(
+    parameters=[OpenApiParameter(
+        name='zone_id', type=OpenApiTypes.STR,
+        location=OpenApiParameter.PATH,
+        description='Identifiant du pan (zone) dont on retire le relevé.')],
+    responses={204: None})
 @action(detail=True, methods=['delete'],
-        url_path=r'pose-reelle/(?P<zone_id>[^/.]+)',
+        url_path=r'pose-reelle/(?P<zone_id>.+)',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def supprimer_pose_reelle(self, request, pk=None, zone_id=None):
     """ACAL267 — retirer le relevé d'un pan (ligne orpheline comprise).
