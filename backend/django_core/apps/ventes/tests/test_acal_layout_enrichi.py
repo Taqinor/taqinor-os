@@ -191,6 +191,43 @@ class LayoutEnrichiTest(TestCase):
         self.assertEqual(
             Calepinage.objects.filter(devis=devis2).count(), 1)
 
+    def test_sync_layout_passe_par_les_portes_de_publication(self):
+        """Lot 2 critique #28 — ``sync-layout`` / ``POST layout`` du devis
+        resynchronisent par LA porte du module : approbation exigée et non à
+        jour ⇒ 400 ``{approbation}``, verdict électrique bloquant ⇒ 422
+        ``{detail, electrique}`` — lignes du devis inchangées."""
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import PublicationBloquee
+        from apps.calepinage.services.parametres import enregistrer_parametres
+
+        enregistrer_parametres(self.company,
+                               {'presets': {'approbation_exigee': True}})
+        devis = self._devis()
+        for route in ('sync-layout', 'layout'):
+            with self.subTest(route=route):
+                r = self._post(devis, route, _layout(8, 6))
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn('approbation', r.data)
+                self.assertEqual(
+                    int(devis.lignes.get(produit=self.panneau).quantite), 12)
+
+        enregistrer_parametres(self.company,
+                               {'presets': {'approbation_exigee': False}})
+        bloque = PublicationBloquee(
+            'Publication refusée', bloquants=[
+                {'code': 'X', 'libelle': 'Isc hors spécification',
+                 'detail': 'essai'}])
+        with mock.patch(
+                'apps.calepinage.services.electrique.garde_publication',
+                side_effect=bloque):
+            r = self._post(devis, 'sync-layout', _layout(9, 6))
+        self.assertEqual(r.status_code, 422, r.content)
+        self.assertIn('detail', r.data)
+        self.assertEqual(r.data['electrique']['verdict'], 'bloquant')
+        self.assertEqual(
+            int(devis.lignes.get(produit=self.panneau).quantite), 12)
+
     def test_verrou_respecte_409(self):
         for statut in ('accepte', 'refuse', 'expire'):
             with self.subTest(statut=statut):

@@ -1449,7 +1449,22 @@ def ecrire_conception_du_devis(devis, layout, user=None, *,
             calepinage_services.CreationRefusee) as erreur:
         champ = getattr(erreur, 'champ', '') or 'roof_layout'
         raise ConceptionRefusee(400, {champ: str(erreur)}) from None
-    return resynchroniser_conception(devis, calepinage.roof_layout, user)
+    # Lot 2 critique #28 — la resynchro passe par LA porte du module
+    # (``resynchroniser_devis``) : approbation / feu vert à jour (ACAL116) et
+    # garde électrique (ACAL170) s'appliquent ici comme à « Resynchroniser le
+    # devis » du calepinage, avec les MÊMES corps de refus (400 nommé, 422
+    # ``{detail, electrique}``, 409 ``{detail, revision_possible}``). La
+    # conception reste enregistrée ; le devis n'est pas touché sur refus.
+    from rest_framework.exceptions import ValidationError
+
+    try:
+        return calepinage_services.resynchroniser_devis(calepinage, user=user)
+    except calepinage_services.DevisRefuse as refus:
+        raise ConceptionRefusee(
+            refus.statut,
+            refus.donnees or {refus.champ or 'detail': str(refus)}) from None
+    except ValidationError as refus:
+        raise ConceptionRefusee(400, refus.detail) from None
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
