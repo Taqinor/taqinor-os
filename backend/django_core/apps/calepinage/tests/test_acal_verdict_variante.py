@@ -142,6 +142,27 @@ class Gouvernance(BaseApiCalepinage):
                                  {'variante': 999999})
         self.assertEqual(etrangere.status_code, 404)
 
+    def test_temperatures_incoherentes_refus_nomme_jamais_500(self):
+        """Lot 2 critique #19 — une saisie de températures incohérente
+        (maximale absente) : approuver et retenir répondent 400 en nommant le
+        champ, jamais 500."""
+        calepinage = self._calepinage(12)
+        resultat = dict(calepinage.resultat)
+        entree = dict(resultat[CLE_ENTREE])
+        entree.pop('temperature_max_c')
+        resultat[CLE_ENTREE] = entree
+        Calepinage.objects.filter(pk=calepinage.pk).update(resultat=resultat)
+        reponse = self.api.post(self._url(calepinage, 'approbation/'),
+                                {'decision': 'approuve'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('temperature_max_c', reponse.data)
+        variante = self._variante(calepinage, 12)
+        reponse = self.api.post(
+            self._url(calepinage, f'variantes/{variante.pk}/retenir/'), {},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('temperature_max_c', reponse.data)
+
     def test_troncons_de_la_variante_jamais_ceux_du_calepinage(self):
         """Lot 2 critique #16 — le rapport de publication d'une variante lit
         SES tronçons : chaque conception construite pour lui (verdict ET

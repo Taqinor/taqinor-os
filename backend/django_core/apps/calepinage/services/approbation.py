@@ -373,9 +373,16 @@ def _verdict_electrique_avant_accord(calepinage):
     Raises:
         ApprobationRefusee: au moins un bloquant (champ ``electrique``).
     """
-    from .electrique import verdict_de_conception
+    from .electrique import TemperaturesInvalides, verdict_de_conception
 
-    verdict = verdict_de_conception(calepinage)
+    try:
+        verdict = verdict_de_conception(calepinage)
+    except TemperaturesInvalides as refus:
+        # Lot 2 critique #19 — une saisie de températures incohérente est un
+        # refus NOMMÉ (400), jamais un 500.
+        raise ApprobationRefusee(
+            "Cette conception ne peut pas être approuvée : " + str(refus),
+            champ=getattr(refus, 'champ', '') or 'temperatures') from refus
     if verdict['bloquants']:
         raise ApprobationRefusee(
             "Cette conception ne peut pas être approuvée : verdict "
