@@ -55,8 +55,8 @@ RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = RACINE_APP / 'contract_samples' / 'calepinage_approbation.json'
 
 #: ACAL6 (M0) a posé l'approbation liée à l'empreinte avant son producteur :
-#: ACAL114 sert ces deux clés et retire ces entrées.
-EN_ATTENTE = {'perimee': 'ACAL114', 'empreinte_approuvee': 'ACAL114'}
+#: ACAL114 sert désormais ``perimee`` et ``empreinte_approuvee`` — table vide.
+EN_ATTENTE = {}
 
 MAINTENANT = datetime.datetime(2026, 9, 24, 9, 30,
                                tzinfo=datetime.timezone.utc)
@@ -250,7 +250,8 @@ class FormeDeLaReponseTest(SimpleTestCase):
         etat = self._etat(faux_calepinage())
         self.assertEqual(etat, {'etat': None, 'decide_par': None,
                                 'decide_le': None, 'motif': None,
-                                'exigee': False})
+                                'exigee': False, 'perimee': False,
+                                'empreinte_approuvee': ''})
 
     def test_etat_illisible_publie_comme_non_decide(self):
         etat = self._etat(faux_calepinage(approbation={'etat': 'peut-etre'}))
