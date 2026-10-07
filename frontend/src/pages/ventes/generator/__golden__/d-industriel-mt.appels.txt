@@ -1,0 +1,128 @@
+{
+  "replaceLignesDevis": [
+    [
+      401,
+      [
+        {
+          "produit": 101,
+          "designation": "Panneau Canadien Solar 715W",
+          "quantite": "120",
+          "prix_unitaire": "1000.00",
+          "remise": "0",
+          "taux_tva": "10",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 103,
+          "designation": "Onduleur réseau 50kW Triphasé",
+          "quantite": "1",
+          "prix_unitaire": "60000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 1,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": null,
+          "taux_tva": "20.00",
+          "remise_globale": "0",
+          "note": null,
+          "mode_installation": "industriel",
+          "prix_cible_kwc": null
+        },
+        "etude_params": {
+          "scenario": "Sans batterie",
+          "recommended_option": "Sans batterie",
+          "nombre_proprietes": null
+        }
+      }
+    ]
+  ],
+  "createDevisAtomic": [],
+  "patchEtudeParams": [
+    [
+      401,
+      {
+        "scenario": "Sans batterie",
+        "recommended_option": "Sans batterie",
+        "nombre_proprietes": null,
+        "mode": "industriel",
+        "site": {
+          "ville": null,
+          "lat": null,
+          "lon": null
+        },
+        "tension": "mt",
+        "phases": null,
+        "puissance_souscrite_kva": 250,
+        "consommation": {
+          "kwh_mensuels": null,
+          "kwh_annuel": 420000,
+          "factures_mad": [],
+          "registres_mt": null
+        },
+        "rythme": {
+          "jours_ouverts": null,
+          "plages": null,
+          "equipes": null,
+          "debut_equipe_h": null,
+          "fermetures": [],
+          "ramadan": null,
+          "talon": null,
+          "categorie_commerciale": null,
+          "reponses_categorie": null
+        },
+        "courbe_mesuree": null,
+        "toit": {
+          "type_pose": null,
+          "surface_utile_m2": null,
+          "surface_type": null,
+          "pente_deg": null,
+          "azimut_deg": null,
+          "couverture": null,
+          "charge_admissible_kg_m2": null,
+          "charge_admissible_source": null
+        },
+        "contraintes": {
+          "revente_choisie": false,
+          "nb_points_raccordement": null,
+          "longueur_dc_m": null,
+          "longueur_ac_m": null,
+          "besoin_cellule_mt": null
+        },
+        "options": {
+          "batterie_souhaitee": null,
+          "om": null
+        },
+        "taille_explicite_kwc": null,
+        "tarif_declare": null,
+        "saisies_economie_ci": null
+      }
+    ]
+  ],
+  "poserOverrides": [],
+  "regenererOverride": []
+}

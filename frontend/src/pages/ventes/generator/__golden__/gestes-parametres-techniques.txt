@@ -1,0 +1,736 @@
+### refus du moteur horaire rendu verbatim
+Générateur de Devis Solaire
+Nouveau devis · tout est en TTC
+Retour aux devis
+Brouillon enregistré à
+11:00
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+Les deux (Sans + Avec batterie)
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead & Client
+Lead (point de départ)
+*
+— Sélectionner un lead —
+Téléphone
+…ou choisir un client directement (sans lead)
+— Sélectionner un client —
+Nouveau client
+Adresse
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux
+*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+—
+Type de Structure
+Acier galvanisé
+Aluminium
+Ville du site inconnue : le moteur ne peut pas chiffrer la production.
+Consommation diurne (%)
+60
+%
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Estimation locale (hors ligne) — en attente du moteur horaire serveur.
+Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+10 % attendu
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+Total SANS batterie
+0 MAD
+Total AVEC batterie
+⭐
+0 MAD
+Réduction
+%
+TVA
+%
+Prix cible / kWc
+Appliquer via remise
+Modèles de devis
+Texte pour le client (imprimé sur le devis)
+Création du Devis
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+0 MAD
+Réinitialiser
+Annuler
+Créer le devis
+Total sans batterie · TTC
+0 MAD
+Total avec batterie · TTC
+0 MAD
+Option recommandée
+Écart batterie :
+0 MAD
+Système
+— kWc
+Créer le devis
+Annuler
+[champ] gen-num = Généré automatiquement (désactivé)
+[champ] select = reseau
+[champ] select = Les deux (Sans + Avec)
+[champ] checkbox = checked=false
+[champ] select = Auto
+[champ] gen-validite = 
+[champ] select = 
+[champ] gen-tel =  (désactivé)
+[champ] gen-adresse =  (désactivé)
+[champ] gen-hiver = 1200
+[champ] gen-ete = 
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] select = onee
+[champ] gen-realbill = 
+[champ] select = mad
+[champ] gen-kwc-cible = 
+[champ] gen-nbpanneaux = 
+[champ] gen-panelw = 710
+[champ] range = 60
+[champ] checkbox = checked=false
+[champ] Désignation = Onduleur réseau (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Onduleur hybride (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Smart Meter (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Wifi Dongle (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Panneaux (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Batterie (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Batterie (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Structures acier (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Structures aluminium (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Socles (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Accessoires (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Tableau De Protection AC/DC (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Installation (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Transport (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Suivi journalier, maintenance chaque 12 mois pendant 2 ans (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] number = 0
+[champ] number = 20.00
+[champ] ex: 9000 = 
+[champ] Conditions particulières, précisions pour le client… = 
+
+### cible 8 panneaux, ligne panneau à 5
+Générateur de Devis Solaire
+Nouveau devis · tout est en TTC
+Retour aux devis
+Brouillon enregistré à
+11:00
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+Les deux (Sans + Avec batterie)
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead & Client
+Lead (point de départ)
+*
+— Sélectionner un lead —
+Téléphone
+…ou choisir un client directement (sans lead)
+— Sélectionner un client —
+Nouveau client
+Adresse
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux
+*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+5,68 kWp
+Les lignes portent
+5
+panneaux, la cible en vise
+8
+— recomposer ? (Auto-remplir)
+Type de Structure
+Acier galvanisé
+Aluminium
+Ville du site inconnue : le moteur ne peut pas chiffrer la production.
+Consommation diurne (%)
+60
+%
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Estimation locale (hors ligne) — en attente du moteur horaire serveur.
+Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
+Production annuelle
+8 723
+kWh / an
+Sans batterie
+Économies
+9 160
+MAD / an
+ROI
+N/A
+retour sur invest.
+Coût
+0
+MAD TTC
+Avec batterie
+★ Recommandé
+Économies
+9 160
+MAD / an
+ROI
+N/A
+retour sur invest.
+Coût
+0
+MAD TTC
+Capacité batterie non lisible sur au moins une ligne (désignation sans kWh) : les économies et le payback « avec batterie » sont sous-estimés, renseignez le kWh dans la désignation.
+Économies mensuelles estimées (MAD / mois)
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+10 % attendu
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+— Produit —
+HT :
+0 MAD
+0 MAD
+HT :
+0 MAD
+Total SANS batterie
+0 MAD
+Total AVEC batterie
+⭐
+0 MAD
+Réduction
+%
+TVA
+%
+Prix cible / kWc
+Appliquer via remise
+Modèles de devis
+Texte pour le client (imprimé sur le devis)
+Création du Devis
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+0 MAD
+Réinitialiser
+Annuler
+Créer le devis
+Total sans batterie · TTC
+0 MAD
+Total avec batterie · TTC
+0 MAD
+Option recommandée
+Écart batterie :
+0 MAD
+Système
+5,68 kWc
+· 8 panneaux
+Créer le devis
+Annuler
+[champ] gen-num = Généré automatiquement (désactivé)
+[champ] select = reseau
+[champ] select = Les deux (Sans + Avec)
+[champ] checkbox = checked=false
+[champ] select = Auto
+[champ] gen-validite = 
+[champ] select = 
+[champ] gen-tel =  (désactivé)
+[champ] gen-adresse =  (désactivé)
+[champ] gen-hiver = 1200
+[champ] gen-ete = 
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] number = 1200
+[champ] select = onee
+[champ] gen-realbill = 
+[champ] select = mad
+[champ] gen-kwc-cible = 5.68
+[champ] gen-nbpanneaux = 8
+[champ] gen-panelw = 710
+[champ] range = 60
+[champ] checkbox = checked=false
+[champ] Désignation = Onduleur réseau (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Onduleur hybride (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Smart Meter (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Wifi Dongle (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Panneaux (désactivé)
+[champ] line-qty = 5
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Batterie (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Batterie (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Structures acier (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Structures aluminium (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Socles (désactivé)
+[champ] line-qty = 0
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Accessoires (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Tableau De Protection AC/DC (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Installation (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Transport (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Suivi journalier, maintenance chaque 12 mois pendant 2 ans (désactivé)
+[champ] line-qty = 1
+[champ] number = 0
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] number = 0
+[champ] number = 20.00
+[champ] ex: 9000 = 
+[champ] Conditions particulières, précisions pour le client… = 
+
+### appels
+{
+  "ventesApi.replaceLignesDevis": [],
+  "ventesApi.createDevisAtomic": [],
+  "ventesApi.patchEtudeParams": [],
+  "ventesApi.poserOverrides": [],
+  "ventesApi.regenererOverride": [],
+  "ventesApi.composerDevis": [],
+  "ventesApi.getPrixApplicable": [],
+  "ventesApi.contacterSuperieur": [],
+  "ventesApi.postEtudeHorairePreview (dernier appel)": [
+    {
+      "dimensionner": true,
+      "facture_hiver": 1200,
+      "kwc": 3.55
+    },
+    {
+      "signal": {}
+    }
+  ],
+  "window.confirm": []
+}
