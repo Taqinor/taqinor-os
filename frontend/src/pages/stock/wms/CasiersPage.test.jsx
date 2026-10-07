@@ -22,7 +22,6 @@ const TACHES = ROUTES.taches_reappro_interne.exemple
 const SOUS_SEUIL = ROUTES.casiers_a_reapprovisionner.exemple
 const HISTORIQUE = ROUTES.casier_historique.exemple
 const RESLOTTING = ROUTES.reslotting_suggestions.exemple
-const EXECUTE = ROUTES.taches_reappro_interne_executer.exemple
 
 function brancherLectures({ taches = TACHES } = {}) {
   api.get.mockImplementation((url) => {
@@ -52,28 +51,14 @@ describe('ASTK215 — CasiersPage', () => {
     expect(within(section).getByText('37')).toBeInTheDocument()
   })
 
-  it('Exécuter une tâche appelle executer puis recharge', async () => {
-    api.post.mockResolvedValue({ data: EXECUTE })
+  it("Exécuter est désactivé tant que l'action serveur (ASTK213) n'existe pas", async () => {
     monter()
     const section = await screen.findByRole('region', { name: /Tâches de réappro/i })
     const bouton = await within(section).findByRole('button', { name: /Exécuter/i })
-    const lecturesAvant = api.get.mock.calls.filter(([u]) => u.includes('taches-reappro-interne')).length
+    expect(bouton).toBeDisabled()
+    expect(bouton).toHaveAttribute('title', expect.stringMatching(/bient/i))
     fireEvent.click(bouton)
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/stock/taches-reappro-interne/9/executer/'))
-    await waitFor(() => {
-      const apres = api.get.mock.calls.filter(([u]) => u.includes('taches-reappro-interne')).length
-      expect(apres).toBeGreaterThan(lecturesAvant)
-    })
-  })
-
-  it('un 409 serveur est affiché tel quel', async () => {
-    api.post.mockRejectedValue({
-      response: { status: 409, data: { detail: 'Quantité source insuffisante dans S-01-01.' } },
-    })
-    monter()
-    const section = await screen.findByRole('region', { name: /Tâches de réappro/i })
-    fireEvent.click(await within(section).findByRole('button', { name: /Exécuter/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Quantité source insuffisante dans S-01-01.')
+    expect(api.post).not.toHaveBeenCalled()
   })
 
   it('génère les tâches avec POST casiers-a-reapprovisionner', async () => {
