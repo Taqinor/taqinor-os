@@ -1249,6 +1249,12 @@ class DossierReglementaire(TenantModel):
     #: Identifiant OPAQUE du document GED produit (jamais une FK ``ged``).
     document_id = models.PositiveIntegerField('Document (identifiant)',
                                               null=True, blank=True)
+    #: ACAL239 — l'empreinte des ENTRÉES (``empreinte_des_entrees``) au moment
+    #: de la génération : vide tant que le dossier n'a jamais été généré. Elle
+    #: dit si le dossier a été produit sur une conception devenue périmée.
+    genere_empreinte = models.CharField(
+        'Empreinte des entrées à la génération', max_length=64, blank=True,
+        default='')
 
     class Meta:
         verbose_name = 'Dossier réglementaire'
