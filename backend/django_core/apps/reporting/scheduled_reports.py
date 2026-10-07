@@ -48,7 +48,13 @@ def _is_email_configured():
 # ── Rendu d'un rapport → (en-têtes, lignes). Borné à la société. ─────────────
 
 def _company_filter(company):
-    return {'company': company} if company is not None else {}
+    """Filtre société d'un rendu. AANA27 — un rapport SANS société ne voit
+    RIEN (filtre vide) : jamais ``{}``, qui rendait les données de TOUTES les
+    sociétés (258 lignes, produits de 2 sociétés, dans un e-mail ou un lien
+    public)."""
+    if company is None:
+        return {'pk__in': []}
+    return {'company': company}
 
 
 def render_sales(report):
@@ -266,7 +272,8 @@ def _nom_fichier(base):
 def _rendre_legacy(report):
     """Les 3 rapports FIGÉS — rendu inchangé, au format .xlsx."""
     renderer = _RENDERERS.get(report.target_kind)
-    if renderer is None:
+    # AANA27 — aussi gardé ici : `render_report_xlsx` y entre directement.
+    if renderer is None or getattr(report, 'company_id', None) is None:
         return None, None, None, None
     try:
         headers, rows = renderer(report)
@@ -294,6 +301,9 @@ def rendre_rapport(report):
     """
     from .models import SavedReport
 
+    # AANA27 — un rapport sans société n'a AUCUN rendu (ni e-mail, ni lien).
+    if getattr(report, 'company_id', None) is None:
+        return None, None, None, None
     if report.target_kind == SavedReport.TargetKind.DASHBOARD:
         return _rendre_dashboard(report)
     if report.target_kind == SavedReport.TargetKind.QUERY:
