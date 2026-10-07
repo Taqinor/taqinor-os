@@ -428,7 +428,9 @@ function AppliquerCoteAuPan({ calepinageId, releve }) {
    `facingAzimuthDeg`, `facingAzimuthSource = 'releve'` et `facingAzimuthPrecisionDeg` de CE
    pan sont posés — les autres pans et les autres clés ne sont pas touchés. Sans précision
    déclarée, le geste n'existe pas (une valeur nue se lirait comme une mesure exacte). */
-function AppliquerAzimutAuPan({ calepinageId, releve }) {
+function AppliquerAzimutAuPan({
+  calepinageId, releve, documentVivant = null, lectureSeule = false,
+}) {
   const [conception, setConception] = useState(null)
   const [empreinte, setEmpreinte] = useState(null)
   const [zoneId, setZoneId] = useState('')
@@ -456,7 +458,7 @@ function AppliquerAzimutAuPan({ calepinageId, releve }) {
   const zone = zones.find((z) => String(z.id) === zoneId) ?? null
 
   const appliquer = () => {
-    if (!zone) return
+    if (!zone || lectureSeule) return
     setEnCours(true)
     setRetour(null)
     Promise.resolve(calepinageApi.calepinages.enregistrerSectionLayout(calepinageId, {
@@ -467,11 +469,21 @@ function AppliquerAzimutAuPan({ calepinageId, releve }) {
         facingAzimuthSource: 'releve',
         facingAzimuthPrecisionDeg: Number(precision),
       },
-      base_empreinte: empreinte,
+      // Lot 2 critique #24 / #31 — le jeton de l'atelier VIVANT d'abord (comme
+      // SaisiePente) : la base lue au montage, périmée dès la première
+      // retouche, ferait un 409 « changé ailleurs » sur son propre document.
+      base_empreinte: documentVivant?.empreinte || empreinte,
     }))
       .then((res) => {
-        if (res?.data?.roof_layout) setConception(res.data.roof_layout)
-        setEmpreinte(res?.data?.empreinte_document ?? empreinte)
+        const apres = res?.data?.empreinte_document ?? null
+        if (res?.data?.roof_layout) {
+          setConception(res.data.roof_layout)
+          // L'atelier vivant reprend la section ET le jeton rendus.
+          if (Array.isArray(res.data.roof_layout.zones)) {
+            documentVivant?.appliquerSection?.('zones', res.data.roof_layout.zones, apres)
+          }
+        }
+        setEmpreinte(apres ?? empreinte)
         setRetour({ ok: true, texte: `Azimut ${azimut.deg}° (± ${precision}°) appliqué au pan « ${
           zone.label || zone.id} ».` })
       })
@@ -499,7 +511,12 @@ function AppliquerAzimutAuPan({ calepinageId, releve }) {
           {zones.map((z) => <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>)}
         </select>
       </label>
-      <button type="button" onClick={appliquer} disabled={enCours || !zone}
+      {lectureSeule && (
+        <p className="mt-2 text-xs text-lune-faint" data-testid="cal-releve-azimut-lecture-seule">
+          Lecture seule : la conception ne peut pas être modifiée.
+        </p>
+      )}
+      <button type="button" onClick={appliquer} disabled={enCours || !zone || lectureSeule}
         data-testid="cal-releve-azimut-appliquer"
         className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-brass-200 disabled:opacity-50">
         Appliquer l’azimut au pan
@@ -514,7 +531,9 @@ function AppliquerAzimutAuPan({ calepinageId, releve }) {
   )
 }
 
-export default function PanneauReleve({ calepinageId: idPropose }) {
+export default function PanneauReleve({
+  calepinageId: idPropose, lectureSeule = false, documentVivant = null,
+}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
@@ -806,7 +825,8 @@ export default function PanneauReleve({ calepinageId: idPropose }) {
       {/* ACAL207 — geste EXPLICITE : recaler un côté d'un pan sur une cote mesurée. */}
       <AppliquerCoteAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null} />
       {/* ACAL206 — geste EXPLICITE : poser l'azimut relevé (avec sa précision) sur un pan. */}
-      <AppliquerAzimutAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null} />
+      <AppliquerAzimutAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null}
+        documentVivant={documentVivant} lectureSeule={lectureSeule} />
 
     </div>
   )

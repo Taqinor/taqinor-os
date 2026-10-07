@@ -415,6 +415,32 @@ describe('ACAL206 — appliquer l’azimut du relevé à un pan', () => {
     expect(await screen.findByTestId('cal-releve-azimut-retour')).toHaveTextContent('Pan B')
   })
 
+  it('atelier vivant : son jeton fait foi et la section rendue lui revient', async () => {
+    // Lot 2 critique #24 / #31.
+    const documentVivant = { empreinte: 'jeton-vivant', appliquerSection: vi.fn() }
+    render(<MemoryRouter>
+      <PanneauReleve calepinageId={1} documentVivant={documentVivant} />
+    </MemoryRouter>)
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zA' } })
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('jeton-vivant')
+    await waitFor(() => expect(documentVivant.appliquerSection)
+      .toHaveBeenCalledWith('zones', [PAN_A, PAN_B], 'jeton-2'))
+  })
+
+  it('lecture seule : le geste est désactivé et la raison dite', async () => {
+    // Lot 2 critique #24.
+    render(<MemoryRouter><PanneauReleve calepinageId={1} lectureSeule /></MemoryRouter>)
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zA' } })
+    expect(screen.getByTestId('cal-releve-azimut-appliquer')).toBeDisabled()
+    expect(screen.getByTestId('cal-releve-azimut-lecture-seule')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
   it('sans précision déclarée, le bouton est absent', async () => {
     const reponse = reponseContrat('calepinage', 'calepinage_releve')
     const sansPrecision = { ...reponse.data.releves[0],
