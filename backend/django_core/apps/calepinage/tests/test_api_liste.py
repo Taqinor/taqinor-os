@@ -102,6 +102,11 @@ class FiltresListeTest(BaseApiCalepinage):
         self.sur_lead_2 = Calepinage.objects.create(
             company=self.company, lead_id=self.lead_2.pk,
             titre='Hangar Maârif', statut=Calepinage.Statut.VALIDE)
+        # ACAL114 — « validé » est DÉRIVÉ de l'approbation (approuvée sur
+        # l'empreinte courante), jamais lu dans la colonne ``statut``.
+        Calepinage.objects.filter(pk=self.sur_lead_2.pk).update(
+            layout_hash='a' * 64,
+            approbation={'etat': 'approuve', 'empreinte_approuvee': 'a' * 64})
         self.sur_client = Calepinage.objects.create(
             company=self.company, client=self.client_a,
             titre='Usine Atlas', statut=Calepinage.Statut.BROUILLON)
