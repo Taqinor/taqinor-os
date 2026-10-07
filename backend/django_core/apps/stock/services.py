@@ -6771,12 +6771,23 @@ def resoudre_token_portail_fournisseur(token):
     """XPUR22 — résout un jeton portail valide (non révoqué, non expiré) et
     renvoie son ``PortailFournisseurToken`` (avec `fournisseur` préchargé),
     ou None. LECTURE SEULE — l'appelant public doit toujours passer par
-    cette fonction plutôt que directement par le modèle."""
-    from .models import PortailFournisseurToken
+    cette fonction plutôt que directement par le modèle.
+
+    ASTK179 (C-ASTK-040) — un jeton dont le FOURNISSEUR est archivé, bloqué
+    « total » ou dont la candidature est rejetée est refusé comme un jeton
+    inconnu (None ⇒ 404 INDISTINCT côté vue) : un fournisseur coupé ne voit
+    plus ses montants de factures ni ne modifie une date de BCF."""
+    from .models import Fournisseur, PortailFournisseurToken
     token_obj = (PortailFournisseurToken.objects
                  .select_related('fournisseur', 'company')
                  .filter(token=token).first())
     if token_obj is None or not token_obj.est_valide:
+        return None
+    fournisseur = token_obj.fournisseur
+    if (fournisseur is None or fournisseur.is_archived
+            or fournisseur.statut == Fournisseur.Statut.BLOQUE_TOTAL
+            or fournisseur.statut_validation
+            == Fournisseur.StatutValidation.REJETE):
         return None
     return token_obj
 
@@ -7139,31 +7150,45 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
     return user, True
 
 
-def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif):
+def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif,
+                                      avec_jetons=False):
     """Pose ``actif`` sur le compte portail ET ``is_active`` sur son compte
-    utilisateur, atomiquement. Renvoie ``(compte, nb_utilisateurs)``.
+    utilisateur, atomiquement. Renvoie ``(compte, nb_utilisateurs)`` — ou
+    ``(compte, nb_utilisateurs, nb_jetons_revoques)`` avec ``avec_jetons``.
 
     Les DEUX portes se ferment ensemble : ``actif`` est le drapeau métier
     (« cet accès est-il ouvert ? ») et ``is_active`` est celui que SimpleJWT
     refuse dès l'authentification, y compris sur un jeton déjà distribué. Un
     seul des deux laisserait une porte ouverte.
+
+    ASTK179 (C-ASTK-040) — une FERMETURE (``actif=False``) révoque aussi
+    TOUS les jetons à lien public actifs du fournisseur (XPUR22,
+    ``PortailFournisseurToken``) : la page à jeton était une troisième porte
+    qui restait ouverte 90 jours après la révocation du compte. La
+    réouverture (``actif=True``) ne ressuscite JAMAIS ces jetons : un nouveau
+    lien se génère explicitement.
     """
     from django.db import transaction
 
     from authentication.models import CustomUser
 
-    from .models import CompteFournisseurPortail
+    from .models import CompteFournisseurPortail, PortailFournisseurToken
 
     if company is None or not fournisseur_id:
-        return None, 0
+        return (None, 0, 0) if avec_jetons else (None, 0)
 
     with transaction.atomic():
+        jetons_revoques = 0
+        if not actif:
+            jetons_revoques = PortailFournisseurToken.objects.filter(
+                company=company, fournisseur_id=fournisseur_id,
+                revoked=False).update(revoked=True)
         compte = (CompteFournisseurPortail.objects
                   .select_for_update()
                   .filter(company=company, fournisseur_id=fournisseur_id)
                   .first())
         if compte is None:
-            return None, 0
+            return (None, 0, jetons_revoques) if avec_jetons else (None, 0)
         if compte.actif != actif:
             compte.actif = actif
             compte.save(update_fields=['actif', 'updated_at'])
@@ -7172,18 +7197,24 @@ def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif):
             portee=CustomUser.PORTEE_PORTAIL_FOURNISSEUR,
             portail_fournisseur_id=fournisseur_id,
         ).update(is_active=actif)
+    if avec_jetons:
+        return compte, nb, jetons_revoques
     return compte, nb
 
 
-def revoquer_acces_compte_fournisseur(company, fournisseur_id):
+def revoquer_acces_compte_fournisseur(company, fournisseur_id, *,
+                                      avec_jetons=False):
     """NTPRT3 — ferme l'accès portail d'un fournisseur (les deux portes).
 
     Rien n'est supprimé : la ligne reste pour la traçabilité, et
     ``reactiver_acces_compte_fournisseur`` est l'action EXPLICITE et symétrique
     qui rouvre l'accès — jamais un effet de bord d'un re-provisionnement.
+
+    ASTK179 — coupe TOUTES les portes : compte ET jetons à lien public
+    (``avec_jetons=True`` renvoie aussi le nombre de jetons révoqués).
     """
     return _basculer_acces_compte_fournisseur(
-        company, fournisseur_id, actif=False)
+        company, fournisseur_id, actif=False, avec_jetons=avec_jetons)
 
 
 def reactiver_acces_compte_fournisseur(company, fournisseur_id):

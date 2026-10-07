@@ -339,17 +339,19 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         supprimé : la ligne reste, l'accès cesse immédiatement)."""
         from ..services import revoquer_acces_compte_fournisseur
         fournisseur = self.get_object()
-        compte, nb = revoquer_acces_compte_fournisseur(
-            request.user.company, fournisseur.pk)
-        if compte is None:
+        # ASTK179 — compte ET jetons à lien public coupés ensemble.
+        compte, nb, jetons_revoques = revoquer_acces_compte_fournisseur(
+            request.user.company, fournisseur.pk, avec_jetons=True)
+        if compte is None and not jetons_revoques:
             return Response(
                 {'detail': "Ce fournisseur n'a aucun accès portail à "
                            'révoquer.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response({
             'fournisseur_id': fournisseur.pk,
-            'actif': compte.actif,
+            'actif': compte.actif if compte is not None else False,
             'comptes_desactives': nb,
+            'jetons_revoques': jetons_revoques,
             'detail': "L'accès portail de ce fournisseur est fermé.",
         })
 
