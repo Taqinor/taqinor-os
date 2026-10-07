@@ -156,6 +156,7 @@ owners:
       - backend/django_core/apps/ventes/views/releve_import.py
       - backend/django_core/apps/ventes/views/remise_encaissement.py
       - backend/django_core/core/events/facturation.py
+      - backend/django_core/templates/pdf/_chaine_totaux.html
       - backend/django_core/templates/pdf/avoir.html
       - backend/django_core/templates/pdf/bon_commande.html
       - backend/django_core/templates/pdf/bordereau_remise.html

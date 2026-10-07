@@ -3016,13 +3016,16 @@ def chantiers_du_client_portail(company, client_id):
 def chantier_du_client_portail_obj(company, client_id, chantier_id):
     """NTPRT14 — UN chantier (objet ORM) du client, ou ``None``. Le triplet
     (société, client, id) est exigé : un chantier d'un autre client — ou
-    d'une autre société — est INTROUVABLE, jamais « trouvé puis refusé »."""
+    d'une autre société — est INTROUVABLE, jamais « trouvé puis refusé ».
+    ADOC126 — un chantier ANNULÉ l'est aussi (même périmètre que la liste
+    ``chantiers_du_client_portail`` : absent de la liste ⇒ 404 partout)."""
     from .models import Installation
 
     if company is None or not client_id or not chantier_id:
         return None
     return Installation.objects.filter(
-        company=company, client_id=client_id, pk=chantier_id).first()
+        company=company, client_id=client_id, pk=chantier_id,
+        annule=False).first()
 
 
 def reception_chantier(company, chantier_id):

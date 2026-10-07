@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -784,13 +786,18 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         reste possible avec un motif explicite (`motif_override_signature`,
         patron `motif_override_acompte`), journalisé au chatter. Les
         changements eux-mêmes sont désormais suivis (`TRACKED_FIELDS`)."""
+        from ..signature_validation import erreur_signature_client
         inst = self.get_object()
-        sig = (request.data.get('signature_client') or '').strip()
+        brut = request.data.get('signature_client')
+        sig = brut.strip() if isinstance(brut, str) else ''
         nom = (request.data.get('signataire_nom') or '').strip()
         motif = (request.data.get('motif_override_signature')
                  or request.data.get('motif_override') or '').strip()
-        if not sig:
-            return Response({'signature_client': 'Signature vide.'},
+        # ADOC78 — data-URL PNG/JPEG base64 bornée seulement (plus aucune
+        # URL http/file injectée dans <img src> du PV/BL, ni « null »).
+        erreur = erreur_signature_client(sig)
+        if erreur:
+            return Response({'signature_client': erreur},
                             status=status.HTTP_400_BAD_REQUEST)
         if inst.signe_le and not motif:
             return Response(
@@ -837,6 +844,21 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             inst, request.user,
             f"Signature client enregistrée sur le bon de livraison "
             f"({nom or 'anonyme'}).")
+        # ADOC71 — PV et BL figés en GED À L'INSTANT de la signature (le
+        # document remis = l'état signé, même si personne ne le télécharge).
+        # Une panne GED/MinIO n'empêche jamais la signature : avertissement
+        # journalisé + note au chatter ; le premier GET fige alors (ADOC70).
+        try:
+            from apps.documents.builders import figer_documents_signes
+            figer_documents_signes(inst)
+        except Exception as exc:  # noqa: BLE001 — la signature prime
+            logging.getLogger(__name__).warning(
+                "ADOC71 — gel GED du PV/BL du chantier %s impossible : %s",
+                inst.pk, exc)
+            activity.log_note(
+                inst, request.user,
+                "Gel GED du PV et du bon de livraison différé (stockage "
+                "indisponible) : il se fera au premier téléchargement.")
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
