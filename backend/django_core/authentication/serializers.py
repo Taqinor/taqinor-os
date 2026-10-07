@@ -504,6 +504,28 @@ class UserSerializer(serializers.ModelSerializer):
         return instance
 
 
+class MeSerializer(UserSerializer):
+    """ALEA31 — profil de l'utilisateur COURANT (``/auth/me/`` uniquement).
+
+    Ajoute UNE clé en lecture seule : ``mobile_home_route_suggeree``, la route
+    d'accueil mobile que ``selectors.default_mobile_home_route`` suggère pour
+    le rôle de ce compte (fonction pure, rien n'est persisté). Le frontend la
+    lit au premier atterrissage mobile au lieu de garder sa propre table. Elle
+    ne figure PAS dans ``UserSerializer`` : la liste d'équipe (UserViewSet)
+    n'expose rien de plus qu'avant."""
+    mobile_home_route_suggeree = serializers.SerializerMethodField()
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + ('mobile_home_route_suggeree',)
+        read_only_fields = (
+            UserSerializer.Meta.read_only_fields + ('mobile_home_route_suggeree',))
+
+    @extend_schema_field(serializers.CharField())
+    def get_mobile_home_route_suggeree(self, obj):
+        from authentication.selectors import default_mobile_home_route
+        return default_mobile_home_route(obj)
+
+
 class UserSessionSerializer(serializers.ModelSerializer):
     """Session active visible (N96). ``is_current`` marque la session de
     l'appareil courant pour l'UI (« cet appareil »). Le ``jti`` n'est jamais

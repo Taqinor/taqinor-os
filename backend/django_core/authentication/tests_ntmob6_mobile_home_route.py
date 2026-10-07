@@ -46,17 +46,19 @@ class DefaultMobileHomeRouteSelectorTests(TestCase):
         user = _make_user(self.company, 'tech1', role_nom='Technicien')
         self.assertEqual(default_mobile_home_route(user), '/ma-journee')
 
-    def test_technicien_responsable_falls_back_to_technicien_prefix(self):
+    def test_technicien_responsable_a_son_accueil_equipe(self):
+        # ALEA31 — accueil d'équipe dédié (NTMOB25), par nom exact.
         user = _make_user(self.company, 'tech2', role_nom='Technicien responsable')
-        self.assertEqual(default_mobile_home_route(user), '/ma-journee')
+        self.assertEqual(default_mobile_home_route(user), '/mobile/equipe-terrain')
 
     def test_commercial(self):
         user = _make_user(self.company, 'com1', role_nom='Commercial')
         self.assertEqual(default_mobile_home_route(user), '/mobile/commercial')
 
-    def test_commercial_responsable_falls_back_to_commercial_prefix(self):
+    def test_commercial_responsable_a_son_accueil_equipe(self):
+        # ALEA31 — accueil d'équipe dédié (NTMOB26), par nom exact.
         user = _make_user(self.company, 'com2', role_nom='Commercial responsable')
-        self.assertEqual(default_mobile_home_route(user), '/mobile/commercial')
+        self.assertEqual(default_mobile_home_route(user), '/mobile/equipe-commerciale')
 
     def test_directeur(self):
         user = _make_user(self.company, 'dir1', role_nom='Directeur')
