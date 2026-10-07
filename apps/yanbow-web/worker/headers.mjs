@@ -39,7 +39,7 @@ export function buildCsp(sources = {}) {
 
 export const STRICT_TRANSPORT_SECURITY = 'max-age=31536000; includeSubDomains';
 export const REFERRER_POLICY = 'strict-origin-when-cross-origin';
-export const PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()';
+export const PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=(), payment=(), usb=()';
 
 /**
  * Applique les en-têtes : HSTS, nosniff et Referrer-Policy sur TOUTE réponse ;
