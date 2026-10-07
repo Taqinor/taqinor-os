@@ -412,66 +412,60 @@ def _perte_ombrage_cascade(cascade):
     return round(min(1.0, max(0.0, 1.0 - reste)) * 100.0, 2)
 
 
+#: ACAL144 — l'avertissement publié quand l'ombrage du calepinage est
+#: PÉRIMÉ (conception retouchée sans resimuler) : l'étude reprend son propre
+#: chemin et le DIT.
+AVERTISSEMENT_OMBRAGE_PERIME = (
+    'ombrage du calepinage périmé : relancez la simulation')
+
+
 def _ombrage_du_calepinage(devis):
-    """CALX197 — la perte d'ombrage (%) déjà mesurée par le calepinage, ou
-    ``None`` quand ce devis n'en porte pas.
+    """ACAL144 (C-ACAL-075/078) — l'ombrage SERVI du calepinage de ce devis.
 
-    FRONTIÈRE inter-apps : la lecture passe par ``apps.calepinage.selectors``
-    — le sélecteur EXISTANT ``calepinage_retenu_pour_devis`` (qui ne rend
-    quelque chose que si une variante est RETENUE) puis
-    ``calepinage_du_devis`` (l'instance, d'où se lit le ``resultat``
-    publié). Imports FONCTION-LOCAUX : ``apps.ventes`` ne charge aucune app
-    tierce au démarrage, et n'atteint JAMAIS ``apps.calepinage.models`` ni le
-    paquet de services.
+    Une SEULE lecture : ``apps.calepinage.selectors.ombrage_servi`` (import
+    fonction-local, frontière inter-apps), adossée au verdict de fraîcheur de
+    GET resultat/ (empreinte de simulation). Plus de vérification codée à la
+    main (l'ancienne comparaison ``cascade.hash_entree == entete.hash_entree``
+    était une tautologie) ni de condition « une variante est retenue »
+    (D-ACAL-2 : retenir l'écrit comme conception courante).
 
-    TROIS CONDITIONS, sinon ``None`` (l'étude garde alors son chemin actuel) :
-
-    1. une variante est RETENUE sur le calepinage du devis ;
-    2. une simulation a réellement tourné — ``resultat['simulation']
-       ['hash_entree']`` est renseignée (c'est le test que le module
-       calepinage fait lui-même avant de servir ses blocs, CALX70) ;
-    3. la cascade décrit CE document — son ``hash_entree`` est celui de
-       l'en-tête de simulation ; une cascade calculée sur une autre entrée
-       décrit un autre toit et n'a rien à dire sur celui-ci.
-
-    Ne lève JAMAIS (discipline du module) : une lecture impossible retombe sur
-    le chemin d'aujourd'hui, en le journalisant.
+    Rend ``None`` (pas de calepinage simulé), ``{'perime': True, …}``
+    (l'étude reprend son chemin et l'avertit), ou ``{'perime': False,
+    'par_pan': {<label>: pct}, 'global': pct}``. Ne lève JAMAIS.
     """
     try:
-        from apps.calepinage.selectors import (
-            calepinage_du_devis as _lire_calepinage,
-            calepinage_retenu_pour_devis as _lire_retenu,
-        )
+        from apps.calepinage.selectors import ombrage_servi
 
         devis_id = getattr(devis, 'pk', None)
         company = getattr(devis, 'company', None)
         if not devis_id or company is None:
             return None
-        if _lire_retenu(devis_id, company) is None:
-            return None
-
-        calepinage = _lire_calepinage(devis_id, company)
-        resultat = getattr(calepinage, 'resultat', None)
-        if not isinstance(resultat, dict):
-            return None
-
-        entete = resultat.get('simulation')
-        empreinte = (entete.get('hash_entree') or ''
-                     if isinstance(entete, dict) else '')
-        if not empreinte:
-            return None
-
-        cascade = resultat.get('cascade')
-        if not isinstance(cascade, dict):
-            return None
-        if (cascade.get('hash_entree') or '') != empreinte:
-            return None
-
-        return _perte_ombrage_cascade(cascade)
+        return ombrage_servi(devis_id, company)
     except Exception:  # noqa: BLE001 — une étude ne tombe jamais sur une lecture
-        logger.warning("CALX197 : ombrage du calepinage illisible pour le "
+        logger.warning("ACAL144 : ombrage du calepinage illisible pour le "
                        "devis %s", getattr(devis, 'pk', None), exc_info=True)
         return None
+
+
+def _ombrage_de_la_zone(servi, zone, nombre_de_zones):
+    """ACAL144 — la perte d'ombrage (%) de CETTE zone d'étude, ou ``None``.
+
+    Zone d'étude ↔ pan du calepinage par leur LIBELLÉ (la zone d'étude naît
+    du pan du document) : chaque zone lit la valeur de SON pan, jamais une
+    valeur unique pour tous. Une seule zone et un seul total publié : le total.
+    Sans correspondance, ``None`` — la zone garde le chemin d'étude.
+    """
+    if not servi or servi.get('perime'):
+        return None
+    par_pan = servi.get('par_pan') or {}
+    label = str((zone or {}).get('label') or '')
+    if label and label in par_pan:
+        return _maybe_num(par_pan[label])
+    if nombre_de_zones == 1 and len(par_pan) <= 1:
+        if par_pan:
+            return _maybe_num(next(iter(par_pan.values())))
+        return _maybe_num(servi.get('global'))
+    return None
 
 
 def _zone_shading(devis, zone, index, monthly_share, ombrage_calepinage=None):
@@ -996,8 +990,15 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     # CALX197 — UN toit, UN ombrage : la cascade du calepinage simulé est
     # interrogée UNE seule fois, avant la boucle des pans. Absente, tout ce
     # qui suit est le chemin d'hier, inchangé.
-    ombrage_calepinage = _ombrage_du_calepinage(devis)
-    origine_ombrage = (ORIGINE_OMBRAGE_CALEPINAGE if ombrage_calepinage is not None
+    # ACAL144 — UNE lecture servie (fraîcheur comprise), puis zone par zone.
+    servi = _ombrage_du_calepinage(devis)
+    if servi is not None and servi.get('perime'):
+        warnings.append(AVERTISSEMENT_OMBRAGE_PERIME)
+    nombre_de_zones = len(zones or [])
+    ombrages_zones = [_ombrage_de_la_zone(servi, zone or {}, nombre_de_zones)
+                      for zone in (zones or [])]
+    origine_ombrage = (ORIGINE_OMBRAGE_CALEPINAGE
+                       if any(o is not None for o in ombrages_zones)
                        else ORIGINE_OMBRAGE_ETUDE)
 
     zones_out = []
@@ -1008,6 +1009,7 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
 
     for index, zone in enumerate(zones or []):
         zone = zone or {}
+        ombrage_calepinage = ombrages_zones[index]
         ctx = _zone_base_production(
             settings, zone, devis=devis, index=index,
             force_refresh=force_refresh,
