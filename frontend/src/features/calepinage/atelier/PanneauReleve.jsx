@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
+import { RAISON_LECTURE_SEULE, lireConflit } from '../conflitEcriture'
 
 /* ============================================================================
    CALX25 — LE RELEVÉ TERRAIN (CHAÎNES DE COTES) SUR UN PANNEAU.
@@ -322,7 +323,7 @@ function premierMessage(data) {
   return 'La cote n’a pas pu être appliquée — réessayez.'
 }
 
-function AppliquerCoteAuPan({ calepinageId, releve }) {
+function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
   const [conception, setConception] = useState(null)
   const [zoneId, setZoneId] = useState('')
   const [coteIndex, setCoteIndex] = useState('')
@@ -348,7 +349,7 @@ function AppliquerCoteAuPan({ calepinageId, releve }) {
   if (!releve?.id || zones.length === 0 || mesures.length === 0) return null
 
   const appliquer = () => {
-    if (!zone || coteIndex === '' || !mesure) return
+    if (!zone || coteIndex === '' || !mesure || lectureSeule) return
     setEnCours(true)
     setRetour(null)
     Promise.resolve(calepinageApi.calepinages.appliquerCoteReleve(calepinageId, releve.id, {
@@ -361,7 +362,13 @@ function AppliquerCoteAuPan({ calepinageId, releve }) {
         setRetour({ ok: true, texte: `Cote appliquée au côté ${coteIndex} — nouvelle version${
           mesure.precision != null ? ` (précision ± ${mesure.precision} m)` : ''}.` })
       })
-      .catch((err) => setRetour({ ok: false, texte: premierMessage(err?.response?.data) }))
+      .catch((err) => {
+        // Lot 2 critique #32 — jeton périmé ≠ verrou (motif serveur).
+        const conflit = lireConflit(err)
+        setRetour({ ok: false, texte: conflit?.documentModifie
+          ? 'Le calepinage a changé ailleurs : rechargez avant d’appliquer la cote.'
+          : (conflit?.motif ?? premierMessage(err?.response?.data)) })
+      })
       .finally(() => setEnCours(false))
   }
 
@@ -406,8 +413,13 @@ function AppliquerCoteAuPan({ calepinageId, releve }) {
           </select>
         </label>
       </div>
+      {lectureSeule && (
+        <p className="mt-2 text-xs text-lune-faint" data-testid="cal-releve-cote-lecture-seule">
+          {RAISON_LECTURE_SEULE}
+        </p>
+      )}
       <button type="button" onClick={appliquer}
-        disabled={enCours || !zone || coteIndex === '' || !mesure}
+        disabled={enCours || !zone || coteIndex === '' || !mesure || lectureSeule}
         data-testid="cal-releve-cote-appliquer"
         className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-brass-200 disabled:opacity-50">
         Appliquer la cote au pan
@@ -487,12 +499,17 @@ function AppliquerAzimutAuPan({
         setRetour({ ok: true, texte: `Azimut ${azimut.deg}° (± ${precision}°) appliqué au pan « ${
           zone.label || zone.id} ».` })
       })
-      .catch((err) => setRetour({
-        ok: false,
-        texte: err?.response?.status === 409
-          ? 'Le calepinage a changé ailleurs : rechargez avant d’appliquer l’azimut.'
-          : premierMessage(err?.response?.data),
-      }))
+      .catch((err) => {
+        // Lot 2 critique #32 — « changé ailleurs » SEULEMENT pour le jeton
+        // périmé ; le verrou dit SON motif serveur.
+        const conflit = lireConflit(err)
+        setRetour({
+          ok: false,
+          texte: conflit?.documentModifie
+            ? 'Le calepinage a changé ailleurs : rechargez avant d’appliquer l’azimut.'
+            : (conflit?.motif ?? premierMessage(err?.response?.data)),
+        })
+      })
       .finally(() => setEnCours(false))
   }
 
@@ -513,7 +530,7 @@ function AppliquerAzimutAuPan({
       </label>
       {lectureSeule && (
         <p className="mt-2 text-xs text-lune-faint" data-testid="cal-releve-azimut-lecture-seule">
-          Lecture seule : la conception ne peut pas être modifiée.
+          {RAISON_LECTURE_SEULE}
         </p>
       )}
       <button type="button" onClick={appliquer} disabled={enCours || !zone || lectureSeule}
@@ -823,7 +840,8 @@ export default function PanneauReleve({
       )}
 
       {/* ACAL207 — geste EXPLICITE : recaler un côté d'un pan sur une cote mesurée. */}
-      <AppliquerCoteAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null} />
+      <AppliquerCoteAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null}
+        lectureSeule={lectureSeule} />
       {/* ACAL206 — geste EXPLICITE : poser l'azimut relevé (avec sa précision) sur un pan. */}
       <AppliquerAzimutAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null}
         documentVivant={documentVivant} lectureSeule={lectureSeule} />

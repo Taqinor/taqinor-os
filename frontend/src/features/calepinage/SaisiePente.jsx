@@ -8,6 +8,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import useDocumentCalepinage from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
+import { RAISON_LECTURE_SEULE, lireConflit } from './conflitEcriture'
 
 /* ============================================================================
    CAL58 — LA PENTE : en degrés, en pourcentage, OU PAR COTES.
@@ -227,6 +228,7 @@ export function suggestionsEnAttente(document) {
 
 export default function SaisiePente({
   calepinageId: idPropose, onChange = null, persister = true, documentVivant = null,
+  lectureSeule = false,
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
@@ -302,7 +304,7 @@ export default function SaisiePente({
   const suggestions = suggestionsEnAttente(layout)
 
   const decider = async (operation, zoneId = undefined) => {
-    if (doc.etat !== 'ok') return null
+    if (doc.etat !== 'ok' || lectureSeule) return null
     const base = documentVivant?.empreinte || doc.empreinte
     if (!base) {
       setMessageSuggestions('Conception illisible : rien n’est enregistré.')
@@ -324,9 +326,13 @@ export default function SaisiePente({
     } catch (e) {
       const statut = e?.response?.status
       const donnees = e?.response?.data
-      if (statut === 409) {
+      // Lot 2 critique #32 — jeton périmé (relu) ≠ verrou (motif serveur).
+      const conflit = lireConflit(e)
+      if (conflit?.documentModifie) {
         setMessageSuggestions('La conception a changé ailleurs : elle est relue, recommencez.')
         doc.recharger()
+      } else if (conflit) {
+        setMessageSuggestions(conflit.motif)
       } else if (statut === 403) {
         setMessageSuggestions(donnees?.pays || donnees?.detail
           || 'La suggestion IGN n’est pas offerte pour cette société.')
@@ -394,6 +400,7 @@ export default function SaisiePente({
   }
 
   const enregistrer = async () => {
+    if (lectureSeule) return // Lot 2 critique #32
     if (doc.etat !== 'ok') {
       setMessage('Conception illisible : rien n’est enregistré.')
       return
@@ -433,9 +440,13 @@ export default function SaisiePente({
       setOrientationRetenue(false)
       setMessage(`Pente enregistrée sur le pan « ${zone.label || zone.id} ».`)
     } catch (e) {
-      if (e?.response?.status === 409 || e?.response?.status === 428) {
+      // Lot 2 critique #32 — jeton périmé (relu) ≠ verrou (motif serveur).
+      const conflit = lireConflit(e)
+      if (conflit?.documentModifie) {
         setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
         doc.recharger()
+      } else if (conflit) {
+        setMessage(conflit.motif)
       } else {
         setMessage('La pente n’a pas pu être enregistrée.')
       }
@@ -548,10 +559,15 @@ export default function SaisiePente({
         </div>
       </dl>
 
+      {persister && lectureSeule && (
+        <p className="mt-4 text-xs text-lune-faint" data-testid="cal-pente-lecture-seule">
+          {RAISON_LECTURE_SEULE}
+        </p>
+      )}
       {persister && (
-        <button type="button" onClick={enregistrer}
+        <button type="button" onClick={enregistrer} disabled={lectureSeule}
           data-testid="cal-pente-enregistrer"
-          className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
+          className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50">
           Enregistrer la pente
         </button>
       )}
@@ -565,7 +581,8 @@ export default function SaisiePente({
       {ignDisponible && (
         <div className="mt-6 border-t border-white/10 pt-4" data-testid="cal-pente-lidar">
           <p className="tech-label text-lune-faint">Pente par pan, depuis l’IGN</p>
-          <button type="button" onClick={suggererDepuisIGN} disabled={chargementSuggestions}
+          <button type="button" onClick={suggererDepuisIGN}
+            disabled={chargementSuggestions || lectureSeule}
             data-testid="cal-pente-lidar-suggerer"
             className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
             {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
@@ -593,11 +610,13 @@ export default function SaisiePente({
                     </p>
                     <div className="mt-2 flex gap-2">
                       <button type="button" onClick={() => accepterSuggestion(suggestion)}
+                        disabled={lectureSeule}
                         data-testid={`cal-pente-lidar-accepter-${suggestion.zoneId}`}
                         className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-brass-200">
                         Accepter
                       </button>
                       <button type="button" onClick={() => jeterSuggestion(suggestion)}
+                        disabled={lectureSeule}
                         data-testid={`cal-pente-lidar-jeter-${suggestion.zoneId}`}
                         className="rounded px-3 py-1 text-xs text-lune-soft">
                         Jeter

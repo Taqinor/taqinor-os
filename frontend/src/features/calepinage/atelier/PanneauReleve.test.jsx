@@ -441,6 +441,19 @@ describe('ACAL206 — appliquer l’azimut du relevé à un pan', () => {
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
   })
 
+  it('verrou (409 sans document_modifie) : le motif serveur, jamais « a changé ailleurs »', async () => {
+    // Lot 2 critique #32.
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: {
+      roof_layout: ['Devis accepté : révisez-le'] } } })
+    rendre()
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zA' } })
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+    const retour = await screen.findByTestId('cal-releve-azimut-retour')
+    expect(retour).toHaveTextContent('Devis accepté : révisez-le')
+    expect(retour).not.toHaveTextContent('a changé ailleurs')
+  })
+
   it('sans précision déclarée, le bouton est absent', async () => {
     const reponse = reponseContrat('calepinage', 'calepinage_releve')
     const sansPrecision = { ...reponse.data.releves[0],

@@ -19,6 +19,9 @@ export const LIBELLE_CHAMP = {
   detail: 'Devis',
   electrique: 'Verdict électrique',
   derogation_electrique: 'Dérogation électrique',
+  // Lot 2 critique #32 — les portes ACAL116 nomment ces deux champs.
+  approbation: 'Approbation',
+  feu_vert: 'Feu vert bureau d’études',
 }
 
 /* ACAL171 (D-ACAL-9) — dérogation « Passer outre » : offerte SEULEMENT à un

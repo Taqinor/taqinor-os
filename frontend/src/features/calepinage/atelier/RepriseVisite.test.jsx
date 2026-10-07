@@ -216,3 +216,15 @@ describe('RepriseVisite (ACAL211) — écart relevé / visite', () => {
     expect(screen.queryByTestId('cal-reprise-ecart')).toBeNull()
   })
 })
+
+describe('Lot 2 critique #32 — lecture seule', () => {
+  it('« Reprendre » désactivé, la raison dite, rien n’est envoyé', async () => {
+    servir('exemple_avant_reprise')
+    render(<MemoryRouter><RepriseVisite calepinageId={1} lectureSeule /></MemoryRouter>)
+    const bouton = await screen.findByTestId('cal-reprise-bouton')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('cal-reprise-lecture-seule')).toBeInTheDocument()
+    fireEvent.click(bouton)
+    expect(calepinageApi.calepinages.reprendreVisite).not.toHaveBeenCalled()
+  })
+})

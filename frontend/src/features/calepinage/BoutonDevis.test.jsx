@@ -402,3 +402,17 @@ describe('BoutonDevis — verdict électrique (ACAL171)', () => {
     expect(await screen.findByTestId('cal-devis-refus')).toHaveTextContent(MESSAGE)
   })
 })
+
+describe('Lot 2 critique #32 — champs des portes ACAL116 nommés', () => {
+  it('refus 400 {approbation} : le bandeau dit « Approbation »', async () => {
+    const MESSAGE = 'Approbation à jour exigée avant de générer ou resynchroniser le devis'
+    calepinageApi.calepinages.genererDevis.mockRejectedValue({
+      response: { status: 400, data: { approbation: [MESSAGE] } },
+    })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const bloc = await screen.findByTestId('cal-devis-refus')
+    expect(bloc.querySelector('.tech-label')).toHaveTextContent(/^Approbation$/)
+    expect(bloc).toHaveTextContent(MESSAGE)
+  })
+})
