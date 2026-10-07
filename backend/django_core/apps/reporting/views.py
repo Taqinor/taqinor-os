@@ -158,6 +158,13 @@ def dashboard(request):
     nb_factures_emises = factures_qs.exclude(
         statut__in=[Facture.Statut.BROUILLON, Facture.Statut.ANNULEE]
     ).count()
+    # AANA28 (contrat AANA1, dashboard.json) — taux d'acceptation SERVI :
+    # devis acceptés ÷ devis créés, 1 décimale, None sans devis. L'écran le
+    # lit tel quel (fini la formule nb_factures ÷ nb_devis, qui dépassait
+    # 100 %).
+    taux_acceptation_pct = (
+        round(nb_devis_acceptes / nb_devis_total * 100, 1)
+        if nb_devis_total else None)
 
     # ── Stock critique (produits sous seuil, seuil > 0) ───────────────────────
     from django.db.models import F
@@ -300,6 +307,7 @@ def dashboard(request):
             'nb_devis': nb_devis_total,
             'nb_acceptes': nb_devis_acceptes,
             'nb_factures': nb_factures_emises,
+            'taux_acceptation_pct': taux_acceptation_pct,
         },
         'stock_alerte': stock_alerte_list,
         'creances': creances_list,
