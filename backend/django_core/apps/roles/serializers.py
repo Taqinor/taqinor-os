@@ -71,6 +71,15 @@ class RoleSerializer(serializers.ModelSerializer):
                     "Seul un administrateur peut octroyer ces permissions "
                     f"élevées : {sorted(added_elevated)}."
                 )
+            # ASEC10 — symétrique : un non-administrateur ne RETIRE pas
+            # ``roles_gerer`` ni un code élevé d'un rôle (rétrograder un rôle
+            # admin personnalisé = dégrader les administrateurs qui le portent).
+            removed_elevated = (existing & ELEVATED_PERMISSIONS) - set(value)
+            if removed_elevated:
+                raise serializers.ValidationError(
+                    "Seul un administrateur peut retirer ces permissions "
+                    f"élevées : {sorted(removed_elevated)}."
+                )
         return value
 
     def validate(self, attrs):

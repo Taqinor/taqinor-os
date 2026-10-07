@@ -882,6 +882,11 @@ RESPONSABLE_PERMISSIONS = [
     'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     'ux_corbeille_consulter', 'ux_corbeille_restaurer',
     'ux_edition_masse_executer',
+    # ASEC10 / D-ASEC-4 — ``users_gerer`` est désormais APPLIQUÉ côté serveur
+    # (toute écriture de compte) : ce palier gérait déjà les comptes via
+    # ``IsAdminOrResponsableTier``, le code préserve cet accès (décochable ;
+    # migration roles 0008_asec10_users_gerer_alignement).
+    'users_gerer',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -978,6 +983,11 @@ COMMERCIAL_RESP_PERMISSIONS = [
     SCOPE_SUBTREE,
     # ASEC9 / D-ASEC-1 — encaisse par défaut (décochable dans la grille).
     'encaisser',
+    # ASEC10 / D-ASEC-4 — ``users_gerer`` est désormais APPLIQUÉ côté serveur
+    # (toute écriture de compte) : ce palier gérait déjà les comptes via
+    # ``IsAdminOrResponsableTier``, le code préserve cet accès (décochable ;
+    # migration roles 0008_asec10_users_gerer_alignement).
+    'users_gerer',
 ]
 
 # Commercial : l'accès de la « Commerciale » d'aujourd'hui ; voit son équipe
@@ -1108,6 +1118,11 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # ASTK16 / D-ASTK-3 — le responsable technique réceptionne les livraisons
     # fournisseur (chantier) ; il ne commande, ne paie ni ne modifie de prix.
     'achats_receptionner',
+    # ASEC10 / D-ASEC-4 — ``users_gerer`` est désormais APPLIQUÉ côté serveur
+    # (toute écriture de compte) : ce palier gérait déjà les comptes via
+    # ``IsAdminOrResponsableTier``, le code préserve cet accès (décochable ;
+    # migration roles 0008_asec10_users_gerer_alignement).
+    'users_gerer',
 ]
 
 # Technicien : Chantiers/Installations et SAV pour le travail assigné, Stock en

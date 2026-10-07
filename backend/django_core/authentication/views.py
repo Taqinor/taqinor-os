@@ -828,6 +828,34 @@ class LogoutView(generics.GenericAPIView):
 
 
 # ── Gestion utilisateurs (admin) ───────────────────────────────
+class PeutGererComptes(permissions.BasePermission):
+    """ASEC10 / D-ASEC-4 — toute ÉCRITURE de compte (création, modification,
+    désactivation, suppression, photo, réinitialisation du mot de passe) exige
+    le code ``users_gerer`` (ou le palier administrateur). Les comptes hérités
+    sans rôle fin gardent le comportement du palier (repli légacy). La garde de
+    RANG d'ASEC2 s'applique ensuite, dans la vue."""
+    message = {
+        'detail': "Droit « Gérer les utilisateurs » manquant.",
+        'code': 'droit_manquant',
+    }
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_superuser or getattr(user, 'is_admin_role', False):
+            return True
+        if getattr(user, 'role_id', None):
+            return user.has_erp_permission('users_gerer')
+        return True  # légacy sans rôle fin : IsAdminOrResponsableTier tranche
+
+
+_ACTIONS_ECRITURE_COMPTES = frozenset({
+    'create', 'update', 'partial_update', 'destroy', 'avatar',
+    'reinitialiser_mot_de_passe',
+})
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
@@ -840,6 +868,8 @@ class UserViewSet(viewsets.ModelViewSet):
         # reste réservé à l'Administrateur/Responsable promu.
         if getattr(self, 'action', None) == 'avatar_image':
             return [permissions.IsAuthenticated()]
+        if getattr(self, 'action', None) in _ACTIONS_ECRITURE_COMPTES:
+            return [IsAdminOrResponsableTier(), PeutGererComptes()]
         return [IsAdminOrResponsableTier()]
 
     def get_queryset(self):
@@ -898,34 +928,30 @@ class UserViewSet(viewsets.ModelViewSet):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    def _refus_role_plus_large(self, role_id):
+    def _garde_role_plus_large(self, serializer):
         """ASEC2 — 403 ``role_plus_large`` si un acteur non administrateur
-        attribue un rôle portant des codes qu'il n'a pas lui-même."""
+        attribue un rôle portant des codes qu'il n'a pas lui-même. Appelée
+        APRÈS la validation du serializer (``validate_role`` répond d'abord 400
+        sur un rôle étranger ou un rôle administrateur)."""
         actor = self.request.user
-        if role_id in (None, '', 'null') or getattr(actor, 'is_admin_role', False):
-            return None
-        from apps.roles.models import Role
+        role = serializer.validated_data.get('role')
+        if role is None or getattr(actor, 'is_admin_role', False):
+            return
+        instance = getattr(serializer, 'instance', None)
+        if instance is not None and instance.role_id == role.pk:
+            return  # rôle inchangé (PUT complet) : rien n'est attribué
+        from rest_framework.exceptions import PermissionDenied
         from .role_tiers import CODE_ROLE_PLUS_LARGE, codes_plus_larges
-        role = Role.objects.filter(pk=role_id).first()
-        if role is None:
-            return None  # validate_role répond 400 sur un id inconnu.
         acteur_perms = actor.role.permissions if actor.role_id else []
         if codes_plus_larges(acteur_perms, role.permissions):
-            return Response(
-                {'detail': "Ce rôle est plus large que le vôtre : vous ne "
-                           "pouvez pas l'attribuer.",
-                 'code': CODE_ROLE_PLUS_LARGE},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return None
-
-    def create(self, request, *args, **kwargs):
-        refus = self._refus_role_plus_large(request.data.get('role'))
-        if refus is not None:
-            return refus
-        return super().create(request, *args, **kwargs)
+            raise PermissionDenied({
+                'detail': "Ce rôle est plus large que le vôtre : vous ne "
+                          "pouvez pas l'attribuer.",
+                'code': CODE_ROLE_PLUS_LARGE,
+            })
 
     def perform_create(self, serializer):
+        self._garde_role_plus_large(serializer)
         instance = serializer.save(company=self.request.user.company)
         self._audit_user(
             field=f'user:{instance.username}', label='Utilisateur créé',
@@ -939,6 +965,7 @@ class UserViewSet(viewsets.ModelViewSet):
         old_role_id = target.role_id
         old_active = target.is_active
         old_sup_id = target.supervisor_id
+        self._garde_role_plus_large(serializer)
         instance = serializer.save()
         uname = instance.username
         if instance.role_id != old_role_id:
@@ -1085,8 +1112,6 @@ class UserViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN,
                 )
         refus = self._refus_rang(target)
-        if refus is None and 'role' in data:
-            refus = self._refus_role_plus_large(data.get('role'))
         if refus is not None:
             return refus
         return super().update(request, *args, **kwargs)
