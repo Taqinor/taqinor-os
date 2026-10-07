@@ -24,6 +24,19 @@ const publicStockApi = {
     publicClient.post(`${BASE}/quai-checkin/`, { societe, code }),
   // ASTK223 — solde du SEUL dépositaire porteur du jeton (sans prix).
   tiersSolde: (token) => publicClient.get(`${BASE}/tiers/${encodeURIComponent(token)}/solde/`),
+  // ASTK228 — portail fournisseur par lien : documents, confirmation d'un BCF,
+  // créneaux proposés et réservation.
+  portailFournisseur: (token) =>
+    publicClient.get(`${BASE}/portail-fournisseur/${encodeURIComponent(token)}/`),
+  confirmerBcf: (token, bcfId, corps) =>
+    publicClient.post(
+      `${BASE}/portail-fournisseur/${encodeURIComponent(token)}/bcf/${bcfId}/confirmer/`, corps),
+  creneauxDisponibles: (token, params) =>
+    publicClient.get(
+      `${BASE}/portail-fournisseur/${encodeURIComponent(token)}/creneaux-disponibles/`, { params }),
+  reserverCreneau: (token, corps) =>
+    publicClient.post(
+      `${BASE}/portail-fournisseur/${encodeURIComponent(token)}/reserver-creneau/`, corps),
 }
 
 export default publicStockApi
