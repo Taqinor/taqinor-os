@@ -122,6 +122,13 @@ class AfficheDepuisCalepinage(TestCase):
         return devis
 
     def _generer(self, calepinage, devis_construit):
+        # Le devis « construit » par la composition simulée est NEUF : il ne
+        # porte pas encore d'empreinte (``generer_devis`` la pose après
+        # ``build_devis_from_layout``). Avec l'empreinte du calepinage, la
+        # dédup ACAL89 (lead + layout_hash) le retrouverait AVANT la création
+        # et rendrait 200 ``deduplique`` au lieu d'exercer le chemin 201.
+        Devis.objects.filter(pk=devis_construit.pk).update(layout_hash=None)
+        devis_construit.layout_hash = None
         with mock.patch('apps.ventes.services.validate_composition_for_layout',
                         return_value=[]), \
                 mock.patch('apps.ventes.services.build_devis_from_layout',

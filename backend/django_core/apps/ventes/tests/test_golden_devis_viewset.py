@@ -46,8 +46,9 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
     'golden_devis_viewset.json'
 
 #: 54 + ``facturer-complet`` (05/10/2026, ajout de route) + la route de la
-#: vague 1 (fusion du 05/10) + ``revoquer-lien-public`` (ADOC131).
-NB_ROUTES = 58
+#: vague 1 (fusion du 05/10) + ``revoquer-lien-public`` (ADOC131) +
+#: ``roof-image/fichier`` (ACAL314, l'affiche servie même origine).
+NB_ROUTES = 59
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches

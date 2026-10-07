@@ -301,12 +301,17 @@ class TestQ6ProposalData(TestCase):
     def test_roof_image_url_present_when_set(self):
         self.devis.roof_image = f'roofs/{self.company.id}/DEV-Q6-0001.png'
         self.devis.save(update_fields=['roof_image'])
+        # ACAL314 (C-ACAL-019) — plus d'URL pré-signée vers l'hôte interne du
+        # magasin : un chemin RELATIF, même origine, borné par le jeton.
         with mock.patch(
             'apps.ventes.utils.pdf.roof_image_signed_url',
             return_value='https://minio/signed',
-        ):
+        ) as signe:
             resp = self.api.get(self._url(self.link.token))
-        self.assertEqual(resp.data['roof_image_url'], 'https://minio/signed')
+        self.assertEqual(
+            resp.data['roof_image_url'],
+            f'/api/django/ventes/proposal/{self.link.token}/roof-image/')
+        signe.assert_not_called()
 
 
 class TestProposalPdfRoute(TestCase):

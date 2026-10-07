@@ -596,7 +596,9 @@ class DevisCalepinageActionsMixin:
             status=status.HTTP_201_CREATED,
         )
 
-    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY})
+    # api-only: chemin fabriqué côté serveur (url_fichier_toiture_devis),
+    # rendu par roof-image et lu tel quel par un <img src> (ACAL314)
+    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY, 404: None})
     @action(detail=True, methods=['get'], url_path='roof-image/fichier',
             permission_classes=[IsAnyRole])
     def roof_image_fichier(self, request, pk=None):
