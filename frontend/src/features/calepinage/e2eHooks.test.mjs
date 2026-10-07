@@ -644,6 +644,46 @@ export const ALL_HOOKS = [
   'cal-projet-rappel',
   'cal-projet-resultat',
   'cal-projet-telecharger',
+  // Lot 2 ACAL — hooks posés par les lanes du lot (contrat rattrapé à l'intégration)
+  // atelier/PanneauPertes.jsx, atelier/PanneauVersions.jsx, AtelierPanneaux.jsx
+  'cal-pertes-lecture-seule',
+  'cal-versions-confirmation',
+  'cal-bandeau-lecture-seule-raison',
+  'cal-atelier-statut',
+  // Bibliotheque.jsx
+  'cal-biblio-modele-ouvrir-existant',
+  'cal-biblio-marquer-choix',
+  // BoutonDevis.jsx
+  'cal-devis-ce-qui-est-chiffre',
+  'cal-devis-bloquants',
+  'cal-devis-bloquant',
+  'cal-devis-motif',
+  'cal-devis-motif-erreur',
+  'cal-devis-passer-outre',
+  'cal-devis-derogation-reservee',
+  'cal-devis-indetermine',
+  // CalepinageNouveau.jsx
+  'cal-nouveau-preset-aide',
+  'cal-nouveau-responsable',
+  'cal-nouveau-existant',
+  'cal-nouveau-ouvrir-existant',
+  // FicheCalepinage.jsx
+  'cal-fiche--erreur',
+  'cal-fiche-lead-ouvrir-existant',
+  'cal-fiche-dupliquer-copie',
+  'cal-fiche-dupliquer-lead',
+  'cal-fiche-dupliquer-erreur-lead',
+  'cal-fiche-dupliquer-client',
+  'cal-fiche-lead-corbeille',
+  // VariantesCompare.jsx
+  'cal-badge-perimee',
+  'cal-badge-dessin',
+  'cal-variante-simuler',
+  'cal-variantes-bandeau',
+  'cal-variantes-vide',
+  'cal-variante-renommer',
+  'cal-variante-supprimer-confirmer',
+  'cal-variante-supprimer',
 ]
 
 function readDoc() {
