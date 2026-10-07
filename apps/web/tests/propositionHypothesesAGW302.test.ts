@@ -74,9 +74,18 @@ describe('AGW302 — les 4 valeurs réelles d\'inst_type', () => {
     expect(typeLigne(items)?.value).toContain('Pompage solaire');
   });
 
+  // CIW301 — en C&I, les hypothèses (tarif, 82-21…) viennent de `synthese_ci` : voir
+  // propositionHypothesesCiCIW301.test.ts ; ici seul le libellé du type est vérifié.
   it.each([
     ['industriel', 'Industrielle', 'Autoconsommation industrielle'],
     ['commercial', 'Commerciale', 'Autoconsommation commerciale'],
+  ])('« %s / %s » : bon libellé, aucun texte résidentiel (CIW301)', (mode, instType, attendu) => {
+    const items = proposalAssumptions(proposal(mode, instType));
+    expect(typeLigne(items)?.value).toContain(attendu);
+    expect(tout(items)).not.toMatch(/ONEE|SRM|82-21/);
+  });
+
+  it.each([
     ['residentiel', 'Résidentielle', 'Résidentiel (simulateur)'],
   ])('« %s / %s » : bon libellé, distributeur « SRM », plus d\'ONEE', (mode, instType, attendu) => {
     const items = proposalAssumptions(proposal(mode, instType));

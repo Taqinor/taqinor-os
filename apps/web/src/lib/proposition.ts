@@ -3790,6 +3790,41 @@ function provenanceMot(e: unknown): { fr: string; en: string; ar: string } | nul
   return null;
 }
 
+/** CIW301 — intitulé d'une hypothèse servie par sa clé (`synthese_ci.hypotheses[].cle`) ; clé inconnue → « Hypothèse ». */
+const HYPOTHESE_CI_LIBELLES: Record<string, { fr: string; en: string; ar: string }> = {
+  autoconsommation: { fr: 'Autoconsommation', en: 'Self-consumption', ar: 'الاستهلاك الذاتي' },
+  profil: { fr: 'Profil de charge', en: 'Load profile', ar: 'ملف الاستهلاك' },
+  tarif: { fr: 'Tarif de l\'électricité', en: 'Electricity tariff', ar: 'تعريفة الكهرباء' },
+  revente: { fr: 'Revente du surplus (loi 82-21)', en: 'Surplus resale (law 82-21)', ar: 'بيع الفائض (القانون 82-21)' },
+  revente_bt: { fr: 'Revente du surplus (basse tension)', en: 'Surplus resale (low voltage)', ar: 'بيع الفائض (الجهد المنخفض)' },
+  contribution_art13: { fr: 'Contribution d\'accès au réseau', en: 'Grid access contribution', ar: 'مساهمة الولوج إلى الشبكة' },
+  puissance_souscrite: { fr: 'Puissance souscrite', en: 'Subscribed power', ar: 'القدرة المكتتبة' },
+  pointe: { fr: 'Pointe du soir', en: 'Evening peak', ar: 'ذروة المساء' },
+  visite: { fr: 'Visite technique', en: 'Technical visit', ar: 'الزيارة التقنية' },
+};
+
+/**
+ * CIW301 — les lignes « Nos hypothèses » d'un devis C&I : une ligne par hypothèse SERVIE
+ * (`textes{fr,en,ar}` tels quels, source et date servies en fin de ligne). `[]` sans synthèse.
+ */
+export function hypothesesCiItems(ci: SyntheseCi | null): AssumptionItem[] {
+  if (!ci) return [];
+  return ci.hypotheses.map((h) => {
+    const nom = HYPOTHESE_CI_LIBELLES[h.cle] ?? { fr: 'Hypothèse', en: 'Assumption', ar: 'فرضية' };
+    const date = dateJjMmAaaa(h.date);
+    const suite = [h.source, date].filter((x): x is string => !!x).join(', ');
+    const fin = suite ? ` (${suite})` : '';
+    return {
+      label: nom.fr,
+      labelAr: nom.ar,
+      labelEn: nom.en,
+      value: `${h.textes.fr}${fin}`,
+      valueAr: `${h.textes.ar}${fin}`,
+      valueEn: `${h.textes.en}${fin}`,
+    };
+  });
+}
+
 /**
  * WJ32 — Hypothèses RÉELLES qui sous-tendent les chiffres de la page, sourcées
  * UNIQUEMENT depuis des champs backend/constantes déjà affichées ailleurs sur
@@ -3856,6 +3891,12 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
         });
       }
     }
+  } else if (mode === 'commercial' || mode === 'industriel') {
+    // CIW301 — C&I : les hypothèses sont CELLES DU SERVEUR (`synthese_ci.hypotheses`, la même
+    // table que le PDF : textes FR/EN/AR, source, date). AUCUNE phrase C&I n'est codée ici ;
+    // sans hypothèses servies, le bloc est vide — jamais le texte résidentiel (« basse tension,
+    // tarif ONEE constant, 25 ans »).
+    items.push(...hypothesesCiItems(syntheseCi(p)));
   } else {
     items.push(
       {
