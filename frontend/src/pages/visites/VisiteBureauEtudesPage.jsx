@@ -1,7 +1,8 @@
 // VT8 — Revue bureau d'études : visites `terminee` à revoir, viewer photos
 // par catégorie, mesures récapitulées, Valider (feu vert calepinage) /
 // Renvoyer (sélection slots/mesures à refaire + motif OBLIGATOIRE). Après
-// validation, « Ouvrir l'atelier 3D » ouvre ToitureDesign en mode lead.
+// validation, « Ouvrir l'atelier 3D » ouvre le module Calepinage du lead
+// (onglet « Reprise de la visite », ACAL209).
 //
 // `statut` fait partie de la forme LISTE du contrat (id, lead, lead_nom,
 // ville, statut, date_prevue, complet, manquants_count) : le filtre
@@ -10,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
+import calepinageApi from '../../api/calepinageApi'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Button, Card, Spinner, EmptyState, Badge, Checkbox, Textarea, Label,
@@ -268,19 +270,29 @@ function DetailVisite({ visite, onRetour, onChanged }) {
     }
   }
 
-  // VT8 — ouvre l'atelier 3D EN MODE LEAD (route existante `/devis-design/:id`,
-  // `ToitureDesign.jsx`). Les mesures VRAIMENT saisies (jamais une valeur
-  // inventée pour un champ absent) partent en query params optionnels que
-  // l'atelier lit best-effort (voir ToitureDesign.jsx, section VT8/VT11) —
-  // le paramètre est simplement omis si la mesure n'a pas été prise.
-  const ouvrirAtelier = () => {
-    const toiture = visite.mesures?.toiture ?? {}
-    const params = new URLSearchParams({ visite: String(visite.id) })
-    if (toiture.pente_deg != null) params.set('pente', String(toiture.pente_deg))
-    if (toiture.orientation) params.set('orientation', String(toiture.orientation))
-    if (toiture.longueur_m != null) params.set('longueur', String(toiture.longueur_m))
-    if (toiture.largeur_m != null) params.set('largeur', String(toiture.largeur_m))
-    navigate(`/devis-design/${visite.lead}?${params.toString()}`)
+  // ACAL209 — « Ouvrir l'atelier 3D » ouvre le MODULE Calepinage du lead :
+  // la porte serveur `depuis-lead` est IDEMPOTENTE (un lead qui a déjà un
+  // calepinage ouvert reçoit CELUI-LÀ), puis l'atelier s'ouvre sur l'onglet
+  // « Reprise de la visite », qui lit le relevé du serveur. Plus aucune
+  // mesure ne part en query params vers l'ancien atelier lead : elles n'y
+  // avaient aucun effet persistant (C-ACAL-010).
+  const ouvrirAtelier = async () => {
+    try {
+      const res = await calepinageApi.calepinages.depuisLead(visite.lead)
+      const id = res?.data?.calepinage
+      if (!id) {
+        toast.error('Module Calepinage : le serveur n’a rendu aucun calepinage — rien n’a été ouvert.')
+        return
+      }
+      navigate(`/calepinage/${id}?onglet=reprise-visite`)
+    } catch (err) {
+      const corps = err?.response?.data
+      const motif = typeof corps === 'string'
+        ? corps
+        : (corps?.lead ?? corps?.company ?? corps?.detail)
+      toast.error(`Module Calepinage : ${
+        Array.isArray(motif) ? motif.join(' ') : (motif || 'le calepinage n’a pas pu être ouvert.')}`)
+    }
   }
 
   return (
