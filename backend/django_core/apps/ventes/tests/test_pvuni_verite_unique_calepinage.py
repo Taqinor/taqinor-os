@@ -114,6 +114,9 @@ class BaseDevisLive(TestCase):
             etude_params=etude if etude is not None else {
                 'puissance_kwc': KWC_CALEPINAGE,
                 'production_annuelle': PROD_CALEPINAGE,
+                # ACAL101/102 — la figure vient du calepinage : sa
+                # PROVENANCE est marquée (plus d'égalité devinée au rendu).
+                'production_source': 'calepinage',
                 'scenario': 'Avec batterie',
                 'toiture': {'kwc': KWC_CALEPINAGE, 'nb_panneaux': panneaux,
                             'pans': [{'label': 'Zone 1', 'kwc': KWC_CALEPINAGE,
