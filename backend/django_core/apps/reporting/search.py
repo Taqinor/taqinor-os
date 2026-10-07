@@ -252,22 +252,44 @@ def _custom_record_groups(user, co, q):
     return groups
 
 
-def _spec_calepinage(co, q):
+def _spec_calepinage(co, q, user=None):
     """CAL27 — un calepinage se retrouve par son TITRE, et par son client.
 
     Le titre est la seule chaîne que le module porte en propre ; ``lead_id``
     est un entier OPAQUE (jamais une FK dure vers ``crm``), donc la recherche
     ne joint que le client et le sous-libellé se limite à ce que le calepinage
     sait de lui-même.
+
+    ACAL296 — la recherche part du prédicat d'accès
+    ``apps.calepinage.selectors.calepinages_visibles(user)`` (société + vue
+    restreinte au responsable), jamais d'une requête bornée société seule :
+    un calepinage hors vue n'apparaît ni par son titre ni par son client.
+    Sans utilisateur, rien n'est rendu (fermé par défaut). ``co`` reste dans
+    la signature commune des specs ; les archives restent trouvables comme
+    avant (``inclure_archives=True``).
     """
     from apps.calepinage.models import Calepinage
-    qs = Calepinage.objects.filter(**co).filter(
+    from apps.calepinage.selectors import calepinages_visibles
+
+    if user is None:
+        qs = Calepinage.objects.none()
+    else:
+        qs = calepinages_visibles(
+            user, inclure_archives=True,
+            base=Calepinage.objects.select_related('client'))
+    qs = qs.filter(
         Q(titre__icontains=q) | Q(client__nom__icontains=q)
-    ).select_related('client').order_by('-id')
+    ).order_by('-id')
     return 'calepinage', 'Calepinages', qs, lambda c: {
         'id': c.id,
         'label': c.titre or f'Calepinage #{c.id}',
         'sublabel': getattr(c.client, 'nom', '') or c.get_statut_display()}
+
+
+# ACAL296 — specs dont la visibilité dépend de L'UTILISATEUR (et pas
+# seulement de sa société) : ``global_search`` leur transmet
+# ``request.user`` ; les autres gardent la signature ``(co, q)``.
+_SPECS_PAR_UTILISATEUR = frozenset({_spec_calepinage})
 
 
 # Registre LOCAL des specs de recherche, LISTE ORDONNÉE de couples
@@ -353,7 +375,11 @@ def global_search(request):
     for cle, spec_builder in _SEARCH_SPECS:
         if cle not in cherchables:
             continue
-        type_key, label_fr, qs, mapper = spec_builder(co, q)
+        if spec_builder in _SPECS_PAR_UTILISATEUR:
+            type_key, label_fr, qs, mapper = spec_builder(
+                co, q, user=request.user)
+        else:
+            type_key, label_fr, qs, mapper = spec_builder(co, q)
         add(type_key, label_fr, qs, mapper)
 
     # NTEXT35 — objets personnalisés : un groupe par objet actif, jamais un
