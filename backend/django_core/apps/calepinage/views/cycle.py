@@ -46,10 +46,19 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
-from ..services.variantes import VarianteRefusee
+from ..services.variantes import DuplicationEnConflit, VarianteRefusee
 from ..services.variantes import dupliquer as service_dupliquer
 
 __all__ = ['dupliquer']
+
+
+def _identifiant(brut):
+    """Un identifiant entier positif, ou ``None`` (illisible)."""
+    try:
+        valeur = int(str(brut).strip())
+    except (TypeError, ValueError):
+        return None
+    return valeur if valeur > 0 else None
 
 
 def _drapeau(brut, defaut=True):
@@ -83,11 +92,24 @@ def dupliquer(self, request, pk=None):
     calepinage = self.get_object()  # borné société par get_queryset
     corps = request.data if isinstance(request.data, dict) else {}
     avec_variantes = _drapeau(corps.get('avec_variantes'))
+    # ACAL187 (D-ACAL-12) — la CIBLE optionnelle {lead, client} : absente,
+    # la copie garde le rattachement de la source (refusé 409 quand la source
+    # est le calepinage OUVERT d'un lead : « créez une variante »).
+    cible = {}
+    for cle in ('lead', 'client'):
+        if corps.get(cle) not in (None, ''):
+            identifiant = _identifiant(corps.get(cle))
+            if identifiant is None:
+                return Response({cle: f'Identifiant de {cle} illisible.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            cible[f'{cle}_id'] = identifiant
     try:
         copie = service_dupliquer(
             calepinage, user=request.user,
             titre=str(corps.get('titre') or ''),
-            avec_variantes=avec_variantes)
+            avec_variantes=avec_variantes, **cible)
+    except DuplicationEnConflit as conflit:
+        return Response(conflit.corps, status=status.HTTP_409_CONFLICT)
     except VarianteRefusee as refus:
         return Response({refus.champ or 'detail': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
