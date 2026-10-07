@@ -4,17 +4,18 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 
 | Clé (chemin::Modèle.champ) | Fichier:ligne | Cible | Politique |
 |---|---|---|---|
-| `backend/django_core/apps/achats/models.py::PrixFournisseur.company` | backend/django_core/apps/achats/models.py:43 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::PrixFournisseur.produit` | backend/django_core/apps/achats/models.py:46 | stock.Produit | PROTECT |
-| `backend/django_core/apps/achats/models.py::BonCommandeFournisseur.company` | backend/django_core/apps/achats/models.py:115 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneBonCommandeFournisseur.produit` | backend/django_core/apps/achats/models.py:282 | stock.Produit | SET_NULL |
-| `backend/django_core/apps/achats/models.py::ReceptionFournisseur.company` | backend/django_core/apps/achats/models.py:378 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneReceptionFournisseur.produit` | backend/django_core/apps/achats/models.py:426 | stock.Produit | SET_NULL |
-| `backend/django_core/apps/achats/models.py::FactureFournisseur.company` | backend/django_core/apps/achats/models.py:482 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneFactureFournisseur.produit` | backend/django_core/apps/achats/models.py:611 | stock.Produit | SET_NULL |
-| `backend/django_core/apps/achats/models.py::PaiementFournisseur.company` | backend/django_core/apps/achats/models.py:665 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::RetourFournisseur.company` | backend/django_core/apps/achats/models.py:737 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneRetourFournisseur.produit` | backend/django_core/apps/achats/models.py:770 | stock.Produit | PROTECT |
+| `backend/django_core/apps/achats/models.py::PrixFournisseur.company` | backend/django_core/apps/achats/models.py:45 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::PrixFournisseur.produit` | backend/django_core/apps/achats/models.py:48 | stock.Produit | PROTECT |
+| `backend/django_core/apps/achats/models.py::BonCommandeFournisseur.company` | backend/django_core/apps/achats/models.py:117 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::LigneBonCommandeFournisseur.produit` | backend/django_core/apps/achats/models.py:284 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/achats/models.py::ReceptionFournisseur.company` | backend/django_core/apps/achats/models.py:380 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::LigneReceptionFournisseur.produit` | backend/django_core/apps/achats/models.py:428 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/achats/models.py::FactureFournisseur.company` | backend/django_core/apps/achats/models.py:493 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::ImputationAcompteFournisseur.company` | backend/django_core/apps/achats/models.py:630 | authentication.Company | PROTECT |
+| `backend/django_core/apps/achats/models.py::LigneFactureFournisseur.produit` | backend/django_core/apps/achats/models.py:659 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/achats/models.py::PaiementFournisseur.company` | backend/django_core/apps/achats/models.py:713 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::RetourFournisseur.company` | backend/django_core/apps/achats/models.py:785 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::LigneRetourFournisseur.produit` | backend/django_core/apps/achats/models.py:818 | stock.Produit | PROTECT |
 | `backend/django_core/apps/adminops/models.py::SandboxEnvironment.sandbox_company` | backend/django_core/apps/adminops/models.py:54 | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py::DemandeInscription.company_creee` | backend/django_core/apps/adminops/models.py:274 | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py::AdminOpsSettings.company` | backend/django_core/apps/adminops/models.py:421 | authentication.Company | CASCADE |

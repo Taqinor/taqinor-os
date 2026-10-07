@@ -58,6 +58,19 @@ def creer_depot_consignation(*, company, user, client_id, produit_id,
     if not date_depot:
         raise ValueError('La date de dépôt est obligatoire.')
 
+    # ASTK7 — le client est relu BORNÉ à la société (string-FK, jamais un
+    # import de crm.models) : un client d'une autre société est refusé comme
+    # un client inexistant.
+    modele_client = DepotConsignation._meta.get_field('client').related_model
+    client = None
+    try:
+        client = modele_client.objects.filter(
+            id=int(client_id), company=company).first()
+    except (TypeError, ValueError):
+        client = None
+    if client is None:
+        raise ValueError('Client introuvable dans cette société.')
+
     emplacement = None
     if emplacement_id:
         emplacement = EmplacementStock.objects.filter(
@@ -74,7 +87,7 @@ def creer_depot_consignation(*, company, user, client_id, produit_id,
         check_negative_stock_guard(company, qte_avant, qte_apres)
 
         depot = DepotConsignation.objects.create(
-            company=company, client_id=client_id, produit=produit,
+            company=company, client=client, produit=produit,
             quantite_deposee=quantite, date_depot=date_depot,
             adresse_site=(adresse_site or '').strip()[:255],
             emplacement_source=emplacement, note=(note or '').strip(),

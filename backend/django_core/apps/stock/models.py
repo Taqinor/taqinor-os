@@ -2626,6 +2626,7 @@ from apps.achats.models import (  # noqa: E402,F401
     BonCommandeFournisseur,
     DeviseAchat,
     FactureFournisseur,
+    ImputationAcompteFournisseur,
     LigneBonCommandeFournisseur,
     LigneFactureFournisseur,
     LigneReceptionFournisseur,

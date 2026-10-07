@@ -11,12 +11,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ProfilSaisonnier
 
 
-class ProfilSaisonnierSerializer(serializers.ModelSerializer):
+class ProfilSaisonnierSerializer(CompanyScopedRelationsMixin,
+                                 serializers.ModelSerializer):
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     categorie_nom = serializers.CharField(

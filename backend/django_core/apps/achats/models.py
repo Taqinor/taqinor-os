@@ -21,6 +21,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel  # SCA4 — socle multi-tenant
+
 
 # XPUR3 — devises d'achat courantes (imports panneaux/onduleurs). MAD reste le
 # défaut partout : un document sans devise saisie garde le comportement
@@ -428,6 +430,15 @@ class LigneReceptionFournisseur(models.Model):
         null=True, blank=True,
         related_name='lignes_reception_fournisseur')
     quantite = models.IntegerField()
+    # ASTK59 — quantité RÉELLEMENT entrée à la confirmation (plafonnée au
+    # reste dû de la ligne de BCF). Relue par la facturation et l'annulation
+    # au lieu de `quantite` (saisie). NULL = ligne antérieure à ASTK59 :
+    # repli sur `quantite`.
+    quantite_appliquee = models.IntegerField(
+        null=True, blank=True,
+        help_text='ASTK59 — quantité réellement entrée en stock à la '
+                  'confirmation (plafonnée au reste dû). NULL = '
+                  'ligne antérieure : repli sur `quantite`.')
 
     # ── FG61 — Numéros de série à la réception ────────────────────────────
     # Sériaux capturés à l'entrée en stock (pour réconciliation avec
@@ -580,10 +591,13 @@ class FactureFournisseur(models.Model):
 
     @property
     def total_acomptes_imputes(self):
-        """XPUR8 — somme des acomptes fournisseur imputés sur CETTE facture
-        (0 si aucun — comportement historique inchangé)."""
+        """XPUR8/ASTK106 — somme des MONTANTS IMPUTÉS d'acomptes fournisseur
+        sur CETTE facture (table ``ImputationAcompteFournisseur``), jamais le
+        montant brut des acomptes : un acompte de 5 000 imputé 3 000 sur une
+        facture de 3 000 compte 3 000 ici, son reliquat reste ouvert."""
         return sum(
-            (a.montant for a in self.acomptes_imputes.all()), Decimal('0'))
+            (i.montant for i in self.imputations_acompte.all()),
+            Decimal('0'))
 
     @property
     def total_avoirs_imputes(self):
@@ -599,6 +613,40 @@ class FactureFournisseur(models.Model):
         solde = ((self.montant_ttc or Decimal('0')) - self.total_paye
                  - self.total_acomptes_imputes - self.total_avoirs_imputes)
         return max(solde, Decimal('0'))
+
+
+class ImputationAcompteFournisseur(TenantModel):
+    """ASTK106 — trace UNE imputation d'un ``stock.AcompteFournisseur`` sur
+    UNE ``FactureFournisseur`` du même BCF, pour un MONTANT plafonné au solde
+    de la facture (même patron que ``ImputationAvoirFournisseur``). Un
+    acompte peut se répartir sur plusieurs factures ; son reliquat reste
+    ouvert. ``AcompteFournisseur.montant_consomme`` = Σ de ses imputations
+    (cache tenu par ``services.imputer_acomptes_bcf``). Additif, INTERNE.
+
+    SCA4 — hérite de ``TenantModel`` (``created_at``/``updated_at``) ;
+    ``company`` redéclarée (motif ARC1) : nullable comme l'acompte d'origine
+    (recopie des imputations héritées) et JAMAIS en cascade — une imputation
+    est une trace financière."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.PROTECT,  # on_delete: PROTECT — trace financière (règlement d'une facture par acompte) : la suppression d'une société qui en porte est refusée, jamais une purge silencieuse
+        null=True, blank=True,
+        related_name='imputations_acompte_fournisseur',
+        verbose_name='Société')
+    acompte = models.ForeignKey(
+        'stock.AcompteFournisseur', on_delete=models.PROTECT,  # on_delete: PROTECT — un acompte imputé a réglé une facture : le supprimer effacerait ce règlement (montant_consomme) ; refusé (409)
+        related_name='imputations')
+    facture = models.ForeignKey(
+        FactureFournisseur, on_delete=models.PROTECT,  # on_delete: PROTECT — même garde que la vue (ASTK85) : une facture portant un acompte imputé n'est jamais supprimée
+        related_name='imputations_acompte')
+    montant = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        verbose_name = "Imputation d'acompte fournisseur"
+        verbose_name_plural = "Imputations d'acompte fournisseur"
+        ordering = ['created_at', 'id']
+
+    def __str__(self):
+        return f'{self.acompte_id} → {self.facture_id} : {self.montant}'
 
 
 class LigneFactureFournisseur(models.Model):

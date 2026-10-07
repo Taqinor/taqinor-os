@@ -52,6 +52,11 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
         'produit', 'created_by'
     ).all()
     serializer_class = MouvementStockSerializer
+    # ASTK28 — registre APPEND-ONLY par l'API comme par l'admin (AUD215) :
+    # un mouvement posé ne se modifie ni ne se supprime (PUT/PATCH/DELETE →
+    # 405) ; une erreur se corrige par un mouvement inverse. Même patron que
+    # MouvementRebutViewSet (views/wms.py).
+    http_method_names = ['get', 'post', 'head', 'options']
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['produit__nom', 'reference', 'note']
     ordering_fields = ['date', 'type_mouvement', 'quantite']
@@ -128,25 +133,52 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                 sheet_title='Agrégation mouvements')
         return Response(rows)
 
+    #: ASTK34 — types qui ont leur PROPRE chemin (contrôles, emplacements,
+    #: motif) et ne se posent donc jamais par cette route générique.
+    TYPES_REFUSES = {
+        MouvementStock.TypeMouvement.TRANSFERT: (
+            'Un transfert se fait depuis les transferts de stock '
+            '(source et destination), pas par un mouvement libre.'),
+        MouvementStock.TypeMouvement.REBUT: (
+            'Un rebut se déclare par la déclaration de rebut (motif '
+            'obligatoire), pas par un mouvement libre.'),
+    }
+
     def perform_create(self, serializer):
-        from rest_framework.exceptions import PermissionDenied, ValidationError
-        produit = serializer.validated_data['produit']
+        """ASTK34 — tout mouvement saisi passe par ``record_stock_movement``
+        (service unique : registre, ``quantite_stock``, alerte seuil XSTK23,
+        événement ``mouvement_stock_enregistre`` du miroir comptable).
+
+        Sémantique de ``quantite`` conservée côté écran : ENTREE/SORTIE = une
+        quantité ; AJUSTEMENT = le NIVEAU visé, converti ici en écart signé
+        (le mouvement porte ``quantite`` = |écart|, avant → après)."""
+        from rest_framework.exceptions import ValidationError
+        from ..services import record_stock_movement
+        donnees = serializer.validated_data
+        # ASTK5 — le produit d'une autre société est refusé dès la résolution
+        # du champ (sérialiseur borné société : « objet inexistant »).
+        produit = donnees['produit']
         user = self.request.user
-        # Reject cross-tenant produit references before touching stock.
-        if user.company_id and produit.company_id != user.company_id:
-            raise PermissionDenied("Produit hors de votre entreprise.")
-        qte = serializer.validated_data['quantite']
-        type_mv = serializer.validated_data['type_mouvement']
+        qte = donnees['quantite']
+        type_mv = donnees['type_mouvement']
+        if type_mv in self.TYPES_REFUSES:
+            raise ValidationError(
+                {'type_mouvement': self.TYPES_REFUSES[type_mv]})
         # ERR10 — la quantité d'une ENTREE/SORTIE doit être strictement
         # positive : on n'accepte ni 0, ni négatif (un négatif transformerait
         # silencieusement une SORTIE en augmentation de stock — corruption /
-        # fraude). Les ajustements/transferts portent leur propre logique.
+        # fraude).
         if type_mv in (
             MouvementStock.TypeMouvement.ENTREE,
             MouvementStock.TypeMouvement.SORTIE,
         ) and (qte is None or qte <= 0):
             raise ValidationError(
                 {'quantite': 'La quantité doit être strictement positive.'})
+        if (type_mv == MouvementStock.TypeMouvement.AJUSTEMENT
+                and (qte is None or qte < 0)):
+            raise ValidationError(
+                {'quantite': 'Le niveau de stock visé ne peut pas être '
+                             'négatif.'})
         # ERR23 — section critique atomique + verrou de ligne produit pour que
         # des SORTIEs concurrentes ne perdent pas de mise à jour et ne
         # corrompent pas les colonnes d'audit quantite_avant/quantite_apres.
@@ -156,8 +188,10 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             qte_avant = produit.quantite_stock
             if type_mv == MouvementStock.TypeMouvement.ENTREE:
                 qte_apres = qte_avant + qte
+                quantite = qte
             elif type_mv == MouvementStock.TypeMouvement.SORTIE:
                 qte_apres = qte_avant - qte
+                quantite = qte
                 # ERR10 — une SORTIE ne peut jamais faire descendre le stock
                 # sous zéro (garde plancher) : refus explicite en 400.
                 if qte_apres < 0:
@@ -166,12 +200,27 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                             'Stock insuffisant : la sortie dépasse le stock '
                             f'disponible ({qte_avant}).')})
             else:
+                # AJUSTEMENT — niveau visé → écart signé.
                 qte_apres = qte
-            serializer.save(
-                created_by=user,
-                company=produit.company,
-                quantite_avant=qte_avant,
-                quantite_apres=qte_apres,
-            )
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
+                quantite = abs(qte_apres - qte_avant)
+                if quantite == 0:
+                    raise ValidationError(
+                        {'quantite': (
+                            'Le niveau saisi est déjà le stock actuel '
+                            f'({qte_avant}) : aucun ajustement à poser.')})
+            mouvement = record_stock_movement(
+                company=produit.company, produit=produit,
+                type_mouvement=type_mv, quantite=quantite,
+                quantite_avant=qte_avant, quantite_apres=qte_apres,
+                reference=donnees.get('reference'),
+                note=donnees.get('note'), created_by=user,
+                bin_source=donnees.get('bin_source'),
+                bin_destination=donnees.get('bin_destination'))
+            unite = donnees.get('unite_logistique')
+            if unite is not None:
+                # Colonne descriptive du mouvement qui vient d'être posé (le
+                # service ne la porte pas) : jamais une quantité.
+                MouvementStock.objects.filter(pk=mouvement.pk).update(
+                    unite_logistique=unite)
+                mouvement.unite_logistique = unite
+        serializer.instance = mouvement

@@ -9,15 +9,58 @@ from decimal import Decimal
 
 from apps.ventes.utils.pdf import _company_context, _render_html, _html_to_pdf
 
-# NTP2P25 — taux TVA STATUTAIRE marocain par défaut (biens courants, hors
-# liste des taux réduits 7/10/14 %). `LigneBonCommandeFournisseur` ne porte
-# PAS ENCORE de `taux_tva` par ligne (contrairement à XPUR17 côté
-# `LigneFactureFournisseur`) : ce document interne affiche donc le total TVA
-# calculé à ce taux STANDARD, toujours clairement labellisé « (taux
-# standard) » — jamais présenté comme un montant fiscal définitif, et sans
-# effet sur aucun autre total de l'OS (rapprochement 3 voies FG131 reste sur
-# le HT).
+# NTP2P25 / ASTK65 — taux TVA par DÉFAUT (produit sans taux, ligne libre).
+# Depuis ASTK65 la TVA du BCF n'est plus calculée à ce taux fixe : elle est
+# ventilée PAR LIGNE au taux du produit par le helper unique
+# `services.ventiler_tva_achats` — le même que la facture fournisseur qui
+# naît de la réception (TTC du BCF envoyé = TTC de la facture). Le nom est
+# conservé pour compatibilité (même valeur que `TAUX_TVA_ACHAT_DEFAUT`).
 TAUX_TVA_STANDARD_BCF = Decimal('20')
+
+
+def _format_milliers(montant):
+    """ASTK64 — « 1 080.00 » : séparateur de milliers espace, 2 décimales."""
+    return f'{Decimal(montant):,.2f}'.replace(',', ' ')
+
+
+def _format_taux(taux):
+    """ASTK64 — « 10,8 » : taux de change sans zéros superflus, virgule."""
+    texte = format(Decimal(taux).normalize(), 'f')
+    return texte.replace('.', ',')
+
+
+def _montants_document(bon_commande, lignes):
+    """ASTK64 — montants de chaque ligne dans la DEVISE DU DOCUMENT.
+
+    Un BCF en devise (EUR, USD…) imprime ce qui a été convenu avec le
+    fournisseur : ``prix_achat_unitaire_devise`` (à défaut, la contre-valeur
+    MAD ramenée au taux). Un BCF en MAD garde EXACTEMENT les valeurs
+    historiques (``prix_achat_unitaire`` / ``total_achat``) : rendu
+    inchangé. Renvoie ``(devise, en_devise, {ligne.id: {pu, total}},
+    total_document)``."""
+    from ..models import DeviseAchat
+
+    devise = bon_commande.devise or DeviseAchat.MAD
+    taux = bon_commande.taux_change
+    en_devise = bool(devise != DeviseAchat.MAD and taux)
+    montants = {}
+    total = Decimal('0')
+    for ligne in lignes:
+        if en_devise:
+            pu = ligne.prix_achat_unitaire_devise
+            if pu is None:
+                pu = (Decimal(ligne.prix_achat_unitaire or 0)
+                      / Decimal(taux)).quantize(Decimal('0.01'))
+            ligne_total = (Decimal(ligne.quantite or 0) * pu).quantize(
+                Decimal('0.01'))
+        else:
+            pu = ligne.prix_achat_unitaire
+            ligne_total = ligne.total_achat
+        montants[ligne.id] = {'pu': pu, 'total': ligne_total}
+        total += ligne_total
+    if not en_devise:
+        devise = DeviseAchat.MAD
+    return devise, en_devise, montants, total
 
 
 def build_bcf_context(bon_commande):
@@ -29,6 +72,23 @@ def build_bcf_context(bon_commande):
     lignes = list(bon_commande.lignes.select_related('produit').all())
     context['lignes'] = lignes
     context['total_achat'] = bon_commande.total_achat
+    # ASTK64 — le document fournisseur est imprimé dans SA devise ; la
+    # contre-valeur MAD (au taux du document) n'est qu'une mention.
+    devise, en_devise, montants, total_document = _montants_document(
+        bon_commande, lignes)
+    context['devise_doc'] = devise
+    context['en_devise'] = en_devise
+    context['montants_ligne'] = montants
+    context['total_document'] = (
+        total_document if en_devise else context['total_achat'])
+    if en_devise:
+        context['contre_valeur_mad'] = _format_milliers(
+            context['total_achat'] or 0)
+        context['taux_change_affiche'] = _format_taux(
+            bon_commande.taux_change)
+    else:
+        context['contre_valeur_mad'] = None
+        context['taux_change_affiche'] = None
 
     # XPUR14 — code article fournisseur (imprimé sur le PDF pour éviter les
     # erreurs de préparation côté fournisseur). Best-effort : absent =
@@ -57,18 +117,22 @@ def build_bcf_context(bon_commande):
     context['incoterm'] = bon_commande.incoterm or ''
     context['conditions_paiement'] = bon_commande.conditions_paiement or ''
     context['note_bas_page'] = bon_commande.note_bas_page or ''
-    # NTP2P25 — chaîne Total HT → TVA (taux standard) → Total TTC, réservée à
-    # l'affichage (jamais utilisée par le rapprochement 3 voies FG131, qui
-    # reste sur le HT). Omise si le total HT est nul (rien à ventiler).
-    total_ht = context['total_achat'] or Decimal('0')
+    # NTP2P25 / ASTK65 — chaîne Total HT → TVA (ventilée par ligne au taux du
+    # produit, helper unique partagé avec la facture fournisseur) → Total
+    # TTC, dans la devise du document. Omise si le total HT est nul.
+    from ..services import ventiler_tva_achats
+    total_ht = context['total_document'] or Decimal('0')
     if total_ht:
-        context['taux_tva_standard'] = TAUX_TVA_STANDARD_BCF
-        context['total_tva_standard'] = (
-            total_ht * TAUX_TVA_STANDARD_BCF / Decimal('100')
-        ).quantize(Decimal('0.01'))
-        context['total_ttc_standard'] = (
-            total_ht + context['total_tva_standard'])
+        ventilation = ventiler_tva_achats(
+            (montants[ligne.id]['total'], ligne.produit) for ligne in lignes)
+        context['tva_par_taux'] = ventilation['par_taux']
+        taux = {t for t, _ht, _tva in ventilation['par_taux']}
+        # Taux unique : exposé tel quel (compatibilité NTP2P25) ; mixte : None.
+        context['taux_tva_standard'] = taux.pop() if len(taux) == 1 else None
+        context['total_tva_standard'] = ventilation['total_tva']
+        context['total_ttc_standard'] = ventilation['total_ttc']
     else:
+        context['tva_par_taux'] = []
         context['taux_tva_standard'] = None
         context['total_tva_standard'] = None
         context['total_ttc_standard'] = None

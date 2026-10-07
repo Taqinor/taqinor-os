@@ -721,8 +721,7 @@ def decrementer_stock_expedition(*, expedition, user=None):
     """
     from django.db import transaction
 
-    from .models import MouvementStock
-    from .selectors import lock_produit
+    from .models import MouvementStock, Produit
     from .services import record_stock_movement
 
     unite = expedition.unite_logistique
@@ -735,6 +734,12 @@ def decrementer_stock_expedition(*, expedition, user=None):
     mouvements, ignorees = [], 0
     with transaction.atomic():
         for colis in _unites_a_deplacer(unite):
+            # ASTK3 — étanchéité société : une unité (ou un colis enfant)
+            # d'une autre société n'est jamais décomptée ; on lève, la
+            # transaction annule toute sortie déjà posée.
+            if colis.company_id != expedition.company_id:
+                raise ValueError(
+                    'Unité logistique introuvable dans cette société.')
             for ligne in colis.lignes.select_related(
                     'produit', 'ligne_picking').all():
                 if ligne.produit_id is None or (ligne.quantite or 0) <= 0:
@@ -744,7 +749,14 @@ def decrementer_stock_expedition(*, expedition, user=None):
                     # Flux chantier : consommé à l'INSTALLÉ (N14).
                     ignorees += 1
                     continue
-                produit = lock_produit(ligne.produit_id)
+                # ASTK3 — verrou du produit BORNÉ à la société de
+                # l'expédition (``lock_produit`` n'a pas de filtre société).
+                produit = Produit.objects.select_for_update().filter(
+                    pk=ligne.produit_id,
+                    company_id=expedition.company_id).first()
+                if produit is None:
+                    raise ValueError(
+                        'Produit introuvable dans cette société.')
                 avant = produit.quantite_stock
                 # ERR80 — plancher : on ne sort jamais plus que le stock en
                 # main (même garde que la consommation chantier).
@@ -761,7 +773,38 @@ def decrementer_stock_expedition(*, expedition, user=None):
                           + (f' — suivi {expedition.numero_suivi}'
                              if expedition.numero_suivi else '')),
                     created_by=user))
+                # ASTK205 — le lot assigné (ligne de colis, sinon ligne de
+                # picking AUD220) est décrémenté de la même sortie : le FEFO
+                # et les alertes de péremption ne portent plus sur un lot
+                # déjà parti.
+                lot_id = ligne.lot_id or (
+                    picking.lot_id if picking is not None else None)
+                if lot_id:
+                    _sortir_lot_expedie(
+                        company=company, lot_id=lot_id, quantite=sortie,
+                        user=user, sscc=colis.sscc)
     return {'mouvements': mouvements, 'lignes_chantier_ignorees': ignorees}
+
+
+def _sortir_lot_expedie(*, company, lot_id, quantite, user, sscc):
+    """ASTK205 — décrémente le lot expédié par LA fonction de lot
+    (``sortir_lot_entrepot``, verrou du lot inclus), plafonné à son restant.
+
+    La marchandise a physiquement quitté le quai : une péremption ne bloque
+    pas cette sortie (``forcer`` + motif tracé « Expédition <SSCC> »)."""
+    from .models import LotEntrepot
+    from .services import sortir_lot_entrepot
+
+    lot = LotEntrepot.objects.select_for_update().filter(
+        pk=lot_id, company=company).first()
+    if lot is None:
+        return
+    prise = min(quantite, lot.quantite_restante)
+    if prise <= 0:
+        return
+    sortir_lot_entrepot(
+        company=company, lot=lot, quantite=prise, user=user, forcer=True,
+        motif=f'Expédition {sscc}')
 
 
 def generer_etiquette_expedition(*, expedition, user=None):
@@ -775,7 +818,14 @@ def generer_etiquette_expedition(*, expedition, user=None):
     AUD224 — c'est LE point de confirmation d'expédition : la marchandise
     quitte le quai, donc le stock canonique est décrémenté ici
     (``decrementer_stock_expedition``, idempotent lui aussi).
+
+    ASTK52 — la pose de l'étiquette et le décrément forment UNE transaction :
+    une panne du décrément annule l'étiquetage (rien n'est à moitié fait). Et
+    une expédition déjà étiquetée (état hérité d'avant cette garde) REJOUE le
+    décrément au lieu de sortir tôt : il est idempotent par
+    ``reference_sortie_expedition``, donc jamais compté deux fois.
     """
+    from django.db import transaction
     from django.utils import timezone
 
     from .models_wms import ExpeditionTransporteur
@@ -784,21 +834,33 @@ def generer_etiquette_expedition(*, expedition, user=None):
     if expedition.statut == ExpeditionTransporteur.Statut.ANNULE:
         raise ValueError('Cette expédition est annulée.')
     if expedition.etiquette_pdf_key and expedition.numero_suivi:
+        decrementer_stock_expedition(expedition=expedition, user=user)
         return expedition
 
     provider = provider_pour_societe(
         expedition.company, expedition.transporteur_provider)
     numero_suivi, pdf_bytes = provider.creer_expedition(
         expedition.unite_logistique)
-    expedition.numero_suivi = numero_suivi or ''
-    if pdf_bytes:
-        expedition.etiquette_pdf_key = _stocker_etiquette(
-            expedition.company, expedition, pdf_bytes)
-    expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
-    expedition.date_expedition = timezone.now()
-    expedition.save(update_fields=[
-        'numero_suivi', 'etiquette_pdf_key', 'statut', 'date_expedition'])
-    decrementer_stock_expedition(expedition=expedition, user=user)
+    cle = (_stocker_etiquette(expedition.company, expedition, pdf_bytes)
+           if pdf_bytes else expedition.etiquette_pdf_key)
+    # Le rollback annule la base, PAS l'objet en mémoire : sans restauration,
+    # un rappel sur ce même objet croirait l'étiquette posée et sortirait par
+    # la branche « déjà étiquetée » sans jamais enregistrer le statut.
+    champs = ('numero_suivi', 'etiquette_pdf_key', 'statut',
+              'date_expedition')
+    avant = {champ: getattr(expedition, champ) for champ in champs}
+    try:
+        with transaction.atomic():
+            expedition.numero_suivi = numero_suivi or ''
+            expedition.etiquette_pdf_key = cle
+            expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
+            expedition.date_expedition = timezone.now()
+            expedition.save(update_fields=list(champs))
+            decrementer_stock_expedition(expedition=expedition, user=user)
+    except Exception:
+        for champ, valeur in avant.items():
+            setattr(expedition, champ, valeur)
+        raise
     return expedition
 
 
@@ -1089,7 +1151,11 @@ def generer_comptages_tournants(*, company=None, aujourd_hui=None):
                     quantite_theorique=produit.quantite_stock,
                     # Pré-rempli au théorique : valider sans rien toucher
                     # n'émet AUCUN ajustement (une session de comptage ne
-                    # doit jamais bouger le stock toute seule).
+                    # doit jamais bouger le stock toute seule). ASTK39 — ce
+                    # théorique n'est qu'un PRÉ-REMPLISSAGE : dès que le
+                    # compté est saisi, le théorique est re-snapshoté au
+                    # stock de CET instant (règle « stock à la saisie »,
+                    # stock.serializers.InventaireSessionSerializer).
                     quantite_comptee=produit.quantite_stock)
                 for produit in produits
             ])
@@ -1337,6 +1403,15 @@ def impact_rappel(alerte):
         return {}
     company = alerte.company
     produit = alerte.produit
+    # ASTK6 — un rappel hérité d'avant la borne qui pointe un produit (ou un
+    # lot) d'une AUTRE société ne divulgue jamais son nom, son SKU ni ses
+    # casiers : la portée est vide.
+    if (produit.company_id != alerte.company_id
+            or (alerte.lot_id and alerte.lot.company_id != alerte.company_id)):
+        return {
+            'alerte': alerte.id, 'produit': {}, 'lots': [],
+            'stock_restant': 0, 'casiers': [], 'chantiers': [], 'colis': [],
+        }
     if alerte.lot_id:
         numeros = [alerte.lot.numero_lot]
     else:
@@ -1763,10 +1838,19 @@ def ajouter_unite_plan_chargement(*, plan, unite):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _unites_a_deplacer(unite):
-    """L'unité et, si c'est une palette, tous ses colis enfants."""
-    unites = [unite]
-    for enfant in unite.enfants.all():
-        unites.extend(_unites_a_deplacer(enfant))
+    """L'unité et, si c'est une palette, tous ses colis enfants.
+
+    ASTK31 — parcours ITÉRATIF avec ensemble des visités : un ``parent``
+    cyclique hérité (U→U, V→W→V) ne provoque plus de ``RecursionError``
+    (500) ; chaque unité n'apparaît qu'une fois."""
+    unites, vus, a_voir = [], set(), [unite]
+    while a_voir:
+        courante = a_voir.pop(0)
+        if courante.pk in vus:
+            continue
+        vus.add(courante.pk)
+        unites.append(courante)
+        a_voir.extend(courante.enfants.all())
     return unites
 
 
@@ -1997,6 +2081,9 @@ def creer_retour_client(*, company, user=None, client, chantier=None,
                           ligne.get('bin')))
     if not preparees:
         raise ValueError('Aucune ligne de retour valide.')
+    # ASTK6 — chaque casier fourni est relu borné à la société.
+    _casiers_de_la_societe(
+        getattr(company, 'id', company), [p[3] for p in preparees])
 
     with transaction.atomic():
         def _save(reference):
@@ -2014,7 +2101,7 @@ def creer_retour_client(*, company, user=None, client, chantier=None,
                 etat_constate=(
                     etat if etat in etats
                     else LigneRetourClient.EtatConstate.REVENDABLE),
-                bin_id=bin_id)
+                bin_id=_entier_ou_none(bin_id))
             for produit, quantite, etat, bin_id in preparees
         ])
     return retour
@@ -2115,6 +2202,10 @@ def inspecter_retour_client(*, retour, lignes=None, user=None):
     etats = {c for c, _ in LigneRetourClient.EtatConstate.choices}
     par_id = {ligne.id: ligne
               for ligne in retour.lignes.select_related('retour').all()}
+    # ASTK6 — les casiers fournis sont relus bornés à la société du retour.
+    _casiers_de_la_societe(
+        retour.company_id,
+        [e.get('bin') for e in list(lignes or []) if 'bin' in e])
     with transaction.atomic():
         for entree in list(lignes or []):
             ligne = par_id.get(_entier_ou_none(entree.get('ligne')))
@@ -2147,6 +2238,29 @@ def _entier_ou_none(valeur):
         return int(valeur)
     except (TypeError, ValueError):
         return None
+
+
+def _casiers_de_la_societe(company_id, valeurs):
+    """ASTK6 — ids de casiers (bruts, venus du corps) BORNÉS à la société.
+
+    Renvoie ``{id: id}`` des seuls casiers de ``company_id`` ; lève
+    ``ValueError`` (400) dès qu'un id fourni n'est pas un casier de cette
+    société — même réponse qu'un casier inexistant, jamais d'écriture d'un
+    casier étranger."""
+    from .models_wms import LigneRetourClient
+
+    demandes = {_entier_ou_none(v) for v in valeurs
+                if v not in (None, '')}
+    if not demandes:
+        return {}
+    if None in demandes:
+        raise ValueError('Casier introuvable dans cette société.')
+    modele_bin = LigneRetourClient._meta.get_field('bin').related_model
+    trouves = set(modele_bin.objects.filter(
+        company_id=company_id, id__in=demandes).values_list('id', flat=True))
+    if trouves != demandes:
+        raise ValueError('Casier introuvable dans cette société.')
+    return {i: i for i in trouves}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

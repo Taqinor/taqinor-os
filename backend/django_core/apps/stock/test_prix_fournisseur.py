@@ -78,7 +78,8 @@ class TestRecordPurchasePrice(PrixFournisseurBase):
             produit=self.produit, fournisseur=self.f_eco)
         self.assertEqual(obj.prix_achat, Decimal('810'))
         self.assertEqual(obj.date_dernier_achat, d1)
-        # Deuxième achat → met à jour le même enregistrement.
+        # Deuxième achat → même enregistrement ; ASTK90 : le tarif négocié
+        # n'est PAS écrasé par le prix de réception, seule la date avance.
         d2 = datetime.date(2026, 6, 1)
         record_purchase_price(
             company=self.company, produit=self.produit,
@@ -86,7 +87,7 @@ class TestRecordPurchasePrice(PrixFournisseurBase):
         self.assertEqual(PrixFournisseur.objects.filter(
             produit=self.produit, fournisseur=self.f_eco).count(), 1)
         obj.refresh_from_db()
-        self.assertEqual(obj.prix_achat, Decimal('795'))
+        self.assertEqual(obj.prix_achat, Decimal('810'))
         self.assertEqual(obj.date_dernier_achat, d2)
 
 

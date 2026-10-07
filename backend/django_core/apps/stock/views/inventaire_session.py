@@ -18,15 +18,23 @@ from apps.ventes.utils.references import create_with_reference
 from ..models import InventaireSession
 from ..serializers import InventaireSessionSerializer
 from authentication.permissions import IsAdminRole
+from .document_fige import DocumentFigeMixin
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class InventaireSessionViewSet(CompanyScopedModelViewSet):
+class InventaireSessionViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     """FG63 — Sessions de comptage physique du stock (draft → valider)."""
     queryset = InventaireSession.objects.prefetch_related(
         'lignes__produit').all()
     serializer_class = InventaireSessionSerializer
+    # ASTK29 — une session validée a posté ses ajustements (chacun tiré d'une
+    # ligne) ; annulée, elle est close : ni ses lignes ni son motif ne
+    # bougent plus (verrou unique DocumentFigeMixin, ASTK25).
+    messages_document_fige = {
+        InventaireSession.Statut.VALIDE: 'Session validée : non modifiable.',
+        InventaireSession.Statut.ANNULE: 'Session annulée : non modifiable.',
+    }
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'motif']
     ordering_fields = ['date_creation', 'statut', 'reference']
