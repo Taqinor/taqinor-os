@@ -57,7 +57,17 @@ def _lead_et_client(calepinage):
     from apps.crm.selectors import get_company_client, get_company_lead
 
     company = getattr(calepinage, 'company', None)
-    lead = get_company_lead(company, getattr(calepinage, 'lead_id', None))
+    lead = get_company_lead(company, getattr(calepinage, 'lead_id', None),
+                            avec_corbeille=True)
+    if lead is not None and getattr(lead, 'is_deleted', False):
+        # ACAL178 — un lead à la corbeille n'est PAS « jamais rattaché » :
+        # refus nommé, aucun devis créé.
+        nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
+                                   getattr(lead, 'prenom', '') or '']
+                       if p).strip() or f'Lead #{lead.pk}'
+        raise DevisRefuse(
+            f"Le lead #{lead.pk} « {nom} » est à la corbeille : restaurez-le "
+            "avant de générer le devis.", champ='lead')
     client = get_company_client(company, getattr(calepinage, 'client_id',
                                                  None))
     if lead is None and client is None:

@@ -420,7 +420,8 @@ def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
             company, getattr(calepinage, 'client_id', None)))
         if not client:
             lead = get_company_lead(company,
-                                    getattr(calepinage, 'lead_id', None))
+                                    getattr(calepinage, 'lead_id', None),
+                                    avec_corbeille=True)
             if lead is not None:
                 client = ' '.join(filter(None, (
                     _texte(getattr(lead, 'prenom', '')),

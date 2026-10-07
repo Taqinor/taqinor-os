@@ -88,7 +88,7 @@ def verifier_avant_retenue(calepinage):
     if option_active(company):
         lead_id = lead_id_de_reference(calepinage)
         if lead_id:
-            lead = get_company_lead(company, lead_id)
+            lead = get_company_lead(company, lead_id, avec_corbeille=True)
             if lead is None or not getattr(lead, 'visite_effectuee', False):
                 raise ValidationError({
                     'feu_vert': [

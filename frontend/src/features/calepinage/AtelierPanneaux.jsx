@@ -305,7 +305,7 @@ export default function AtelierPanneaux({
       {/* CAL17 — TOUT ce que le serveur publie sur ce calepinage, lu et rendu.
           Silencieuse tant que l'agrégat n'est pas arrivé : jamais une fiche de
           tirets qui aurait l'air de dire « rien à afficher ». */}
-      <FicheCalepinage detail={detail} />
+      <FicheCalepinage detail={detail} onRelire={relire} />
 
       {!cible && (
         <p className="mt-2 text-xs text-lune-faint" role="status">

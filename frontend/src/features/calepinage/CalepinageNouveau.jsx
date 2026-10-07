@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { AlertCircle, MapPin, Plus } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
+import AssigneePicker from '../../components/AssigneePicker'
+import SelecteurRattachement from './SelecteurRattachement'
 import { unwrapList } from '../../api/resource'
 import {
-  Button, Card, Combobox, Input, Label, Tabs, TabsList, TabsTrigger, TabsContent,
+  Button, Card, Input, Label, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 
 /* ============================================================================
@@ -152,6 +154,12 @@ export default function CalepinageNouveau() {
   const [nom, setNom] = useState('')
   const [erreurs, setErreurs] = useState({})
   const [envoi, setEnvoi] = useState(false)
+  // ACAL183 — le lead choisi a-t-il déjà un calepinage OUVERT ? (lu sur la
+  // vraie liste `?lead=<id>`, ou rendu par un 409 `calepinage_existant`.)
+  const [existant, setExistant] = useState(null)
+  // Responsable facultatif : VIDE par défaut (le repli est le propriétaire du lead).
+  const [responsableId, setResponsableId] = useState('')
+  const [responsables, setResponsables] = useState([])
   const refLead = useRef(null)
   const refClient = useRef(null)
   // CALX352 — partir d'un MODÈLE et/ou d'un JEU DE RÉGLAGES société. Rien
@@ -177,6 +185,38 @@ export default function CalepinageNouveau() {
     })
     return () => { annule = true }
   }, [])
+
+  useEffect(() => {
+    let annule = false
+    Promise.resolve()
+      .then(() => crmApi.getAssignableUsers())
+      .then((res) => {
+        if (annule) return
+        const brut = res?.data
+        setResponsables(Array.isArray(brut) ? brut : (brut?.results ?? []))
+      })
+      .catch(() => { if (!annule) setResponsables([]) })
+    return () => { annule = true }
+  }, [])
+
+  useEffect(() => {
+    if (onglet !== 'lead' || !leadId) return undefined
+    let annule = false
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.list({ lead: leadId }))
+      .then((res) => {
+        if (annule) return
+        const premier = unwrapList(res)[0]
+        // Jamais d'effacement ici : `choisirLead` remet déjà l'encart à zéro
+        // au changement de lead, et une réponse tardive ne doit pas défaire
+        // un 409 `calepinage_existant` déjà reçu.
+        if (premier) {
+          setExistant({ id: premier.id, titre: premier.titre || premier.nom || '' })
+        }
+      })
+      .catch(() => {})
+    return () => { annule = true }
+  }, [onglet, leadId])
 
   const modeleChoisi = useMemo(
     () => (modeles || []).find((m) => String(m.id) === String(modeleId)) || null,
@@ -213,6 +253,7 @@ export default function CalepinageNouveau() {
 
   const choisirLead = (valeur) => {
     setLeadId(valeur)
+    setExistant(null)
     setLeadChoisi((refLead.current || []).find((l) => String(l.id) === String(valeur)) || null)
     setErreurs((e) => ({ ...e, lead: undefined, global: undefined }))
   }
@@ -247,29 +288,33 @@ export default function CalepinageNouveau() {
     setEnvoi(true)
     setErreurs({})
     try {
-      let res
-      if (modeleId || presetId) {
-        // CALX352 — la porte CALX351 : un modèle et/ou un jeu, sur le lead
-        // OU le client choisi. Ce qui n'est pas choisi n'est PAS envoyé.
-        const corps = { [`${champCible}_id`]: cibleId }
-        if (modeleId) corps.modele_id = modeleId
-        if (presetId) corps.preset_id = presetId
-        if (nom.trim()) corps.titre = nom.trim()
-        res = await calepinageApi.calepinages.depuisModele(corps)
-      } else {
-        const corps = { [champCible]: cibleId }
-        // ERR-QAH-CALEPINAGE-NOM-CREATION-PERDU — le champ RÉEL du modèle
-        // (et du sérialiseur) est `titre` : `nom` n'existe pas en écriture,
-        // le serveur l'ignorait donc en silence (201 avec `titre: ''`).
-        // Même clé que la branche « depuis un modèle » ci-dessus.
-        if (nom.trim()) corps.titre = nom.trim()
-        res = await calepinageApi.calepinages.create(corps)
-      }
+      // ACAL183 — UNE SEULE PORTE : `depuis-modele`, avec ou sans modèle ni
+      // jeu (ce qui n'est pas choisi n'est PAS envoyé).
+      const corps = { [`${champCible}_id`]: cibleId }
+      if (modeleId) corps.modele_id = modeleId
+      if (presetId) corps.preset_id = presetId
+      if (nom.trim()) corps.titre = nom.trim()
+      const res = await calepinageApi.calepinages.depuisModele(corps)
       const id = res?.data?.id
+      if (id && responsableId) {
+        // Le responsable choisi est ÉCRIT puis relu au détail ; un refus ne
+        // perd pas le calepinage créé (la fiche offre le même sélecteur).
+        try {
+          await calepinageApi.calepinages.update(id, { responsable: responsableId })
+        } catch {
+          // la fiche du calepinage permet de le choisir à nouveau
+        }
+      }
       if (id) navigate(`/calepinage/${id}`)
       else setErreurs({ global: 'Le serveur n’a pas renvoyé l’identifiant du calepinage créé.' })
     } catch (err) {
-      setErreurs(erreursServeur(err))
+      const existantServi = err?.response?.status === 409
+        ? err.response.data?.calepinage_existant : null
+      if (existantServi) {
+        setExistant({ id: existantServi, titre: '' })
+      } else {
+        setErreurs(erreursServeur(err))
+      }
     } finally {
       setEnvoi(false)
     }
@@ -318,13 +363,13 @@ export default function CalepinageNouveau() {
                   calepinage-parcours.spec.js) cherche un DESCENDANT portant
                   le rôle, jamais l'élément qui porte l'id lui-même. */}
               <div id="cal-nouveau-lead">
-                <Combobox
+                <SelecteurRattachement
+                  genre="lead"
                   id="cal-nouveau-lead-champ"
-                  value={leadId}
+                  valeur={leadId}
                   onChange={choisirLead}
                   onSearch={chercherLeads}
                   invalid={Boolean(erreurs.lead)}
-                  placeholder="Rechercher un lead…"
                 />
               </div>
               {erreurs.lead ? (
@@ -349,13 +394,13 @@ export default function CalepinageNouveau() {
           <TabsContent value="client" className="space-y-3 pt-3">
             <div className="space-y-1">
               <Label htmlFor="cal-nouveau-client">Client</Label>
-              <Combobox
+              <SelecteurRattachement
+                genre="client"
                 id="cal-nouveau-client"
-                value={clientId}
+                valeur={clientId}
                 onChange={choisirClient}
                 onSearch={chercherClients}
                 invalid={Boolean(erreurs.client)}
-                placeholder="Rechercher un client…"
               />
               {erreurs.client ? (
                 <p className="text-sm text-destructive" data-testid="erreur-client">{erreurs.client}</p>
@@ -465,11 +510,39 @@ export default function CalepinageNouveau() {
         </div>
       </Card>
 
+      <div className="space-y-1" data-testid="cal-nouveau-responsable">
+        <Label>Responsable (facultatif)</Label>
+        <AssigneePicker
+          users={responsables}
+          value={responsableId}
+          onChange={(id) => setResponsableId(id ?? '')}
+        />
+        <p className="text-xs text-muted-foreground">
+          Laissé vide, le responsable est le propriétaire du lead.
+        </p>
+      </div>
+
+      {existant && surLead ? (
+        <Card className="space-y-2 border-border p-3" data-testid="cal-nouveau-existant">
+          <p className="text-sm">
+            Ce lead a déjà un calepinage ouvert
+            {existant.titre ? ` : « ${existant.titre} »` : ''}. Pour une autre
+            option, ouvrez-le puis créez une variante.
+          </p>
+          <Button type="button" onClick={() => navigate(`/calepinage/${existant.id}`)}
+            data-testid="cal-nouveau-ouvrir-existant">
+            Ouvrir l’existant
+          </Button>
+        </Card>
+      ) : null}
+
       <div className="flex gap-2">
-        <Button type="submit" disabled={envoi}>
-          <Plus size={16} aria-hidden="true" />
-          Créer le calepinage
-        </Button>
+        {existant && surLead ? null : (
+          <Button type="submit" disabled={envoi}>
+            <Plus size={16} aria-hidden="true" />
+            Créer le calepinage
+          </Button>
+        )}
         <Button type="button" variant="ghost" onClick={() => navigate('/calepinage')}>
           Annuler
         </Button>
