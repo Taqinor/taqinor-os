@@ -156,3 +156,64 @@ class RetourReleveCiALaValidation(TestCase):
             LeadActivity.objects.filter(
                 lead=self.lead, kind=LeadActivity.Kind.MODIFICATION).count(),
             nb)
+
+
+class SupplementCosPhiGroupe(TestCase):
+    """CIQ5 (lignes ``factures_mt.cos_phi_constate`` → ``cos_phi`` et
+    ``reactif_secours.groupe_kva`` → ``groupe_kva`` de ``retour_lead_ci``) —
+    constat CAD177 (nocturne e2e CIQ665) : le cos φ relevé à la visite MT ne
+    remontait jamais sur le lead."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='CIQ607b Co', slug='ciq607b-co')
+        self.bureau = User.objects.create_user(
+            username='ciq607b_bureau', password='x',
+            role_legacy='responsable', company=self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Usine MT',
+            type_installation='industriel')
+
+    def test_les_lignes_supplement_sont_dans_le_contrat(self):
+        contrat = {ligne['colonne_lead']: ligne
+                   for ligne in CONTRAT_VISITE['retour_lead_ci']}
+        for _cle, colonne, source in services.RETOUR_LEAD_CI_SUPPLEMENT:
+            with self.subTest(colonne=colonne):
+                self.assertIn(colonne, contrat)
+                attendu = ({'colonne_lead': source,
+                            'valeur': services.ORIGINE_MESURE_VISITE}
+                           if source else None)
+                self.assertEqual(contrat[colonne].get('provenance'), attendu)
+
+    def _valider(self, factures_mt=None, reactif=None):
+        mesures = {'comptage': {'niveau_tension_constate': 'mt'}}
+        if factures_mt is not None:
+            mesures['factures_mt'] = factures_mt
+        if reactif is not None:
+            mesures['reactif_secours'] = reactif
+        visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead, gabarit='ci',
+            statut=VisiteTerrain.Statut.TERMINEE, mesures=mesures)
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+
+    def test_cos_phi_source_connue_remonte_avec_provenance(self):
+        self._valider(factures_mt={'cos_phi_constate': 0.92,
+                                   'source_cos_phi': 'facture'})
+        self.assertEqual(self.lead.cos_phi, Decimal('0.920'))
+        self.assertEqual(self.lead.cos_phi_source, 'mesure_visite')
+
+    def test_cos_phi_source_inconnue_nest_pas_recopie(self):
+        self._valider(factures_mt={'cos_phi_constate': 0.92,
+                                   'source_cos_phi': 'inconnu'})
+        self.assertIsNone(self.lead.cos_phi)
+        self.assertIsNone(self.lead.cos_phi_source)
+
+    def test_cos_phi_hors_bornes_nest_jamais_recopie(self):
+        self._valider(factures_mt={'cos_phi_constate': 1.4,
+                                   'source_cos_phi': 'mesure'})
+        self.assertIsNone(self.lead.cos_phi)
+
+    def test_groupe_kva_remonte(self):
+        self._valider(reactif={'groupe_kva': 150})
+        self.assertEqual(self.lead.groupe_kva, Decimal('150.00'))

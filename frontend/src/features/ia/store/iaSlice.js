@@ -370,7 +370,9 @@ const iaSlice = createSlice({
       })
 
       .addCase(loadChatHistory.fulfilled, (state, action) => {
-        if (action.payload?.length) state.messages = action.payload
+        // CAD177 : seule une liste est un historique valide (un 200 HTML du repli SPA
+        // (service IA absent) portait un `.length` et faisait planter l ecran).
+        if (Array.isArray(action.payload) && action.payload.length) state.messages = action.payload
       })
       .addCase(clearChatHistory.fulfilled, (state) => {
         state.messages = []

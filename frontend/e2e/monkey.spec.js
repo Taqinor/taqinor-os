@@ -84,6 +84,9 @@ const LIBELLES_NEUTRALISES = [
   'envoyer', 'envoi ', 'send',
   'whatsapp',
   'e-mail', 'email', 'courriel',
+  // CAD177 : « Déconnexion » tuait la session du contexte, la reconnexion API
+  // tapait le throttle login (429, 5/min/IP) et le module entier tombait.
+  'déconnect', 'deconnect', 'logout', 'log out', 'sign out',
 ]
 
 // ── Injecté dans la page (jamais exécuté côté Node) ─────────────────────────
@@ -93,33 +96,57 @@ const LIBELLES_NEUTRALISES = [
 // (`page.addInitScript(fn, arg)`), donc SANS closure sur une variable du
 // module Node : tout ce dont elle a besoin lui est passé en argument.
 function scriptNeutralisation(libelles) {
+  // CAD177 — COÛT. La version d'origine relisait TOUT le document
+  // (`querySelectorAll` + `innerText`) à CHAQUE mutation : `innerText` force
+  // un layout par élément, et une page React mute sans arrêt sous les
+  // gremlins. Profil CPU mesuré (Chrome, /admin/demo/nouveau) : ~13 s sur
+  // 22 s passés dans ce seul script — les « gremlins sans retour après
+  // 24000 ms » du nocturne n'étaient pas une page gelée mais le singe qui
+  // s'étouffait lui-même. Désormais : `textContent` (aucun layout ; inclut le
+  // texte masqué, donc PLUS prudent, jamais moins) et, après la passe
+  // initiale, seuls les nœuds touchés par la mutation sont examinés.
+  const CIBLES =
+    'button, a[href], input[type="submit"], input[type="button"], [role="button"]'
   function estDangereux(texte) {
     const t = (texte || '').toLowerCase()
     return libelles.some((mot) => t.includes(mot))
   }
-  function neutraliser() {
-    const cibles = document.querySelectorAll(
-      'button, a[href], input[type="submit"], input[type="button"], [role="button"]'
-    )
-    cibles.forEach((el) => {
-      if (el.dataset.monkeyNeutralise) return
-      const texte = [el.innerText, el.getAttribute('aria-label'), el.title]
-        .filter(Boolean)
-        .join(' ')
-      if (!estDangereux(texte)) return
-      el.dataset.monkeyNeutralise = '1'
-      el.setAttribute('disabled', 'true')
-      el.style.pointerEvents = 'none'
-      // <a> ignore `disabled` — seule la neutralisation du `href` empêche la
-      // navigation (ex. `wa.me/...`, `mailto:...`).
-      if (el.tagName === 'A') el.removeAttribute('href')
-    })
+  function neutraliserElement(el) {
+    if (el.dataset.monkeyNeutralise) return
+    const texte = [el.textContent, el.getAttribute('aria-label'), el.title]
+      .filter(Boolean)
+      .join(' ')
+    if (!estDangereux(texte)) return
+    el.dataset.monkeyNeutralise = '1'
+    el.setAttribute('disabled', 'true')
+    el.style.pointerEvents = 'none'
+    // <a> ignore `disabled` — seule la neutralisation du `href` empêche la
+    // navigation (ex. `wa.me/...`, `mailto:...`).
+    if (el.tagName === 'A') el.removeAttribute('href')
+  }
+  function neutraliserSous(racine) {
+    if (!racine || racine.nodeType !== 1) return
+    if (racine.matches(CIBLES)) neutraliserElement(racine)
+    racine.querySelectorAll(CIBLES).forEach(neutraliserElement)
+  }
+  function surMutations(enregistrements) {
+    for (const m of enregistrements) {
+      // Le texte (ou l'aria-label) d'un contrôle existant a pu changer : on
+      // remonte au contrôle qui l'englobe.
+      const cible = m.target.nodeType === 1 ? m.target : m.target.parentElement
+      const controle = cible && cible.closest ? cible.closest(CIBLES) : null
+      if (controle) neutraliserElement(controle)
+      m.addedNodes.forEach(neutraliserSous)
+    }
   }
   const demarrer = () => {
-    neutraliser()
-    new MutationObserver(neutraliser).observe(document.documentElement, {
+    neutraliserSous(document.documentElement)
+    new MutationObserver(surMutations).observe(document.documentElement, {
       childList: true,
       subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['aria-label', 'title', 'href', 'role', 'type'],
     })
   }
   if (document.readyState === 'loading') {
@@ -158,6 +185,25 @@ async function armerGremlins(page) {
  * VEUT observer tout le budget de temps, pas s'arrêter au premier défaut).
  */
 async function lacherGremlins(page, { dureeMs, graine }) {
+  // CAD177 : garde-fou DUR côté Node. Sans lui, une page gelée ou une requête
+  // synchrone interminable laissait `page.evaluate` pendre jusqu'à l'expiration
+  // du test entier (« Test timeout of 300000ms exceeded » sans dire où). Ici le
+  // blocage ÉCHOUE VITE, nommé, et le singe passe à l'écran suivant.
+  const delaiDurMs = dureeMs + 20_000
+  let minuteur
+  const garde = new Promise((_, rejeter) => {
+    minuteur = setTimeout(() => rejeter(new Error(
+      `gremlins sans retour après ${delaiDurMs} ms (page gelée ? requête bloquante ?)`
+    )), delaiDurMs)
+  })
+  try {
+    await Promise.race([evaluerGremlins(page, { dureeMs, graine }), garde])
+  } finally {
+    clearTimeout(minuteur)
+  }
+}
+
+async function evaluerGremlins(page, { dureeMs, graine }) {
   await page.evaluate(
     async ({ dureeMs, graine, delai }) => {
       const nb = Math.max(20, Math.round(dureeMs / delai))
@@ -190,7 +236,9 @@ for (const [module, chemins] of PAR_MODULE) {
     `@monkey marcheur aléatoire — ${module} (${chemins.length} écran(s))`,
     { tag: '@monkey' },
     async ({ page }) => {
-      test.setTimeout(Math.max(120_000, chemins.length * (DUREE_PAR_ECRAN_MS + 8_000)))
+      // CAD177 : 8 s de marge par écran ne suffisaient pas (goto + coquille +
+      // reprise de session sur un serveur à 3 workers) → budget global élargi.
+      test.setTimeout(Math.max(120_000, chemins.length * (DUREE_PAR_ECRAN_MS + 25_000)))
 
       const casses = []
       let routeActuelle = null
@@ -209,7 +257,14 @@ for (const [module, chemins] of PAR_MODULE) {
         )
       })
       page.on('console', (msg) => {
-        if (msg.type() === 'error') consigner(`console.error : ${msg.text()}`)
+        if (msg.type() !== 'error') return
+        // CAD177 : Chromium journalise en console.error TOUT 4xx (« Failed to
+        // load resource… status of 403 »). Un singe qui clique au hasard
+        // provoque légitimement 401/403/409/400 (droits, état, saisie
+        // invalide) : ce n'est pas un défaut. Les vrais oracles restent les
+        // exceptions JS, les console.error applicatifs et toute réponse >= 500.
+        if (/Failed to load resource: the server responded with a status of 4\d\d/.test(msg.text())) return
+        consigner(`console.error : ${msg.text()}`)
       })
       page.on('response', (res) => {
         if (res.status() >= 500) {
@@ -247,7 +302,16 @@ for (const [module, chemins] of PAR_MODULE) {
           continue // rien à secouer sur un écran qui n'a jamais rendu
         }
 
-        await lacherGremlins(page, { dureeMs: DUREE_PAR_ECRAN_MS, graine: graineActuelle })
+        try {
+          await lacherGremlins(page, { dureeMs: DUREE_PAR_ECRAN_MS, graine: graineActuelle })
+        } catch (err) {
+          // Un gremlin qui clique un lien NAVIGUE : le contexte d'exécution
+          // disparaît, ce n'est pas un défaut. Tout autre échec (dont le
+          // garde-fou de gel) est un constat nommé.
+          if (!/Execution context was destroyed|navigation/i.test(err.message)) {
+            consigner(`gremlins interrompus : ${err.message}`)
+          }
+        }
       }
 
       expect(

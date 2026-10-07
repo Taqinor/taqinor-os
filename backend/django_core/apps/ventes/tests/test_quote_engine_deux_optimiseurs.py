@@ -561,6 +561,13 @@ class TestDeuxOptimiseursFormats(_DevisVariantesMixin, TestCase):
         rendus.append(self._render_legacy(
             self._build(devis, {'pdf_mode': 'onepage'}))[0])
         for html in rendus:
+            # CAD177 — les polices/graphiques sont EMBARQUÉS en base64
+            # (``data:...;base64,``) : une suite de 4 chiffres comme « 9876 »
+            # y apparaît par pur hasard (nocturne 37446060068), sans rapport
+            # avec un prix. Le moteur ne lit d'ailleurs jamais
+            # ``Produit.prix_achat`` (aucune occurrence dans quote_engine/).
+            # On cherche donc dans le TEXTE du document, charges base64 ôtées.
+            html = re.sub(r'data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+', 'data:', html)
             # Le prix d'achat dans TOUTES ses graphies de formatage. Le
             # mot « achat » seul ne serait pas un marqueur exploitable :
             # « rachat » apparaît dans les mentions tarifaires ANRE (F1 : les

@@ -58,7 +58,9 @@ export async function connexionApi(requete, { username, password } = ADMIN) {
 
 /** Session vivante dans `requete` ? (`/auth/me/` 200). */
 async function sessionVivante(requete) {
-  return (await requete.get('/api/django/auth/me/')).ok()
+  // CAD177 : délai dur — un /auth/me/ qui pend échoue vite au lieu de consommer
+  // le budget entier du test.
+  return (await requete.get('/api/django/auth/me/', { timeout: 20_000 })).ok()
 }
 
 /** Rafraîchit AUTH_FILE si sa session est morte ou expire bientôt. */
@@ -397,16 +399,55 @@ export async function textePdf(octets) {
 // Mois de consommation d'un site commercial (kWh), profil saisonnier plausible.
 export const KWH_COMMERCIAL = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
 
+/** Choisit le MARCHÉ du générateur. QX23 : dès que des lignes existent (la
+ *  table par défaut du simulateur en pose une fois le stock chargé), changer
+ *  de marché demande confirmation (« Changer de marché ? ») — on la confirme
+ *  quand elle s'ouvre, puis on exige le marché coché. */
+export async function choisirMarche(page, nom) {
+  const radio = page.getByRole('radio', { name: nom })
+  await radio.click()
+  const confirmation = page.getByRole('alertdialog', { name: 'Changer de marché ?' })
+  await expect.poll(async () => (await confirmation.isVisible()) || (await radio.isChecked()))
+    .toBeTruthy()
+  if (await confirmation.isVisible()) {
+    await confirmation.getByRole('button', { name: 'Changer de marché' }).click()
+  }
+  await expect(radio).toBeChecked()
+}
+
+/** Le PROFIL DÉCLARÉ minimal que le moteur C&I exige (D-CIQ-2, CIQ131 :
+ *  « profil déclaré exigé », aucun archétype supposé ; CIQ222 : « aucun prix
+ *  plat supposé » sans contrat) : jours ouverts lundi→samedi, plage des jours
+ *  ouvrés 8 h → 18 h, contrat BT patenté (grille ONEE officielle) — en MT le
+ *  contrat est le Tarif Général, reconnu par la tension. Sans ces saisies
+ *  l'aperçu serveur rend `taille: null` + une alerte BLOQUANTE
+ *  (`profil_declare_exige`, puis `jours_ouverts_non_declares`, `tarif_omis`)
+ *  — constaté au nocturne CAD177.
+ *  Et une TAILLE SAISIE (D-QJR5-13, souveraine) : le catalogue `seed_catalogue`
+ *  porte des articles C&I « prix à renseigner » (D-CIQ-12, jamais chiffrés
+ *  par la démo), sur lesquels le BALAYAGE s'arrête (`prix_manquants`,
+ *  bloquant) ; la taille saisie est calculée telle quelle, ses lignes
+ *  chiffrées posées par Auto-remplir (même chemin que CIQ127, 20 kWc). */
+export async function declarerProfilCi(page, { contrat = 'bt_patente', tailleKwc = '20' } = {}) {
+  for (let i = 0; i < 6; i += 1) await page.getByTestId(`gen-ci-jour-${i}`).check()
+  await page.getByTestId('gen-ci-plage-ouvre-debut').fill('8')
+  await page.getByTestId('gen-ci-plage-ouvre-fin').fill('18')
+  if (contrat) await page.locator('#gen-tarif-contrat').selectOption(contrat)
+  if (tailleKwc) await page.locator('#gen-ci-taille').fill(tailleKwc)
+}
+
 /** Crée un devis COMMERCIAL par le vrai générateur, depuis un lead : profil
- *  déclaré (12 mois) → Auto-remplir (aperçu serveur) → « Créer le devis ».
- *  Le client est résolu côté serveur depuis le lead. Renvoie l'id du devis. */
+ *  déclaré (12 mois, calendrier, contrat) → Auto-remplir (aperçu serveur) →
+ *  « Créer le devis ». Le client est résolu côté serveur depuis le lead.
+ *  Renvoie l'id du devis. */
 export async function creerDevisCommercialDepuisLead(page, leadId) {
   await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })
-  await page.getByRole('radio', { name: /Commercial/ }).click()
+  await choisirMarche(page, /Commercial/)
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
+  await declarerProfilCi(page)
   await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
   const auto = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
@@ -519,11 +560,14 @@ export async function creerDevisIndustrielDepuisLead(page, leadId, { tension = '
   await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })
-  await page.getByRole('radio', { name: /Industriel/ }).click()
+  await choisirMarche(page, /Industriel/)
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   await expect(page.getByTestId('ci-industriel-mt')).toBeVisible()
   for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_INDUSTRIEL[i]))
   await page.locator('#gen-ci-tension').selectOption(tension)
+  // Calendrier + taille saisie (voir declarerProfilCi) ; en MT le contrat est
+  // le Tarif Général, reconnu par la tension.
+  await declarerProfilCi(page, { contrat: tension === 'mt' ? null : 'bt_patente' })
   await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
   const auto = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
