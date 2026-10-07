@@ -406,7 +406,7 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     from apps.ventes.services import layout_hash
 
     from ..models import Calepinage, CalepinageVariante
-    from .versions import enregistrer_version
+    from .versions import LIBELLE_CONCEPTION_ORIGINE, enregistrer_version
 
     if calepinage is None or not getattr(calepinage, 'pk', None):
         raise VarianteRefusee(
@@ -456,7 +456,8 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
         if copie.roof_layout is not None:
             enregistrer_version(
                 copie, user=user,
-                libelle=f"Conception d'origine (copie de #{calepinage.pk})",
+                libelle=LIBELLE_CONCEPTION_ORIGINE.format(
+                    source=calepinage.pk),
                 resultat=None, meme_empreinte_admise=True)
     # ACAL187 — l'histoire de la copie commence par sa création ET sa
     # provenance.

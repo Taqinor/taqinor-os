@@ -41,6 +41,21 @@ CLE_BORNE_PURGE = 'versions_conservees'
 #: (``selectors.conception_figee_du_devis``).
 LIBELLE_VERSION_ENVOYEE = 'Version envoyée — {reference}'
 
+#: ACAL45 — l'état d'avant une restauration (``restaurer_version``).
+LIBELLE_AVANT_RESTAURATION = 'Avant restauration de #{version}'
+
+#: ACAL117 — la conception d'origine d'une copie (``variantes.dupliquer``).
+LIBELLE_CONCEPTION_ORIGINE = "Conception d'origine (copie de #{source})"
+
+#: Les versions PIVOTS ne sont JAMAIS purgées (``purger_versions``) : la
+#: preuve de ce qui a été envoyé (ACAL92), le retour arrière d'une
+#: restauration (ACAL45), l'origine d'une copie (ACAL117). Préfixes tirés des
+#: libellés ci-dessus — un seul endroit à tenir.
+PREFIXES_VERSIONS_PIVOTS = tuple(
+    gabarit.split('{', 1)[0] for gabarit in (
+        LIBELLE_VERSION_ENVOYEE, LIBELLE_AVANT_RESTAURATION,
+        LIBELLE_CONCEPTION_ORIGINE))
+
 
 class VersionInvalide(ValueError):
     """Erreur métier sur l'historique, avec un message français.
@@ -161,14 +176,21 @@ def purger_versions(calepinage, *, garder=None):
             f"strictement positif (reçu : {garder!r}).",
             champ=CLE_BORNE_PURGE)
 
+    from django.db.models import Q
+
+    # Les versions PIVOTS (PREFIXES_VERSIONS_PIVOTS) sont hors borne : ni
+    # comptées, ni retirées.
+    pivots = Q()
+    for prefixe in PREFIXES_VERSIONS_PIVOTS:
+        pivots |= Q(libelle__startswith=prefixe)
+    purgeables = (CalepinageVersion.objects
+                  .filter(calepinage=calepinage)
+                  .exclude(pivots))
     survivantes = list(
-        CalepinageVersion.objects
-        .filter(calepinage=calepinage)
+        purgeables
         .order_by('-created_at', '-id')
         .values_list('pk', flat=True)[:garder])
-    a_retirer = (CalepinageVersion.objects
-                 .filter(calepinage=calepinage)
-                 .exclude(pk__in=survivantes))
+    a_retirer = purgeables.exclude(pk__in=survivantes)
     retirees = a_retirer.count()
     if retirees:
         a_retirer.delete()
@@ -233,7 +255,7 @@ def restaurer_version(version, *, user=None, libelle=''):
             # MÊME transaction, sans geler un résultat (sorties périmées).
             enregistrer_version(
                 calepinage, user=user,
-                libelle=f'Avant restauration de #{version.pk}',
+                libelle=LIBELLE_AVANT_RESTAURATION.format(version=version.pk),
                 resultat=None, meme_empreinte_admise=True)
             # (2) SEUL le dessin revient : ``Calepinage.resultat`` (saisies
             # électriques, raccordement, schéma, dérogations, simulation)
