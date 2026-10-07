@@ -284,3 +284,77 @@ describe('RapportBuilderPage — édition d’une définition (WIR253)', () => {
     expect(reportingApi.updateRapportDefinition).not.toHaveBeenCalled()
   })
 })
+
+/* FE-XPLT11 — mesure FORMULE du croisement (`core.pivot` : `formula` évaluée
+   PAR CELLULE sur les alias d'`extra_measures`, XPLT11). Le serveur la portait
+   déjà ; l'écran ne savait pas l'exprimer. */
+describe('RapportBuilderPage — mesure formule (FE-XPLT11)', () => {
+  it('enregistre une mesure calculée : formula + extra_measures dans pivot_spec', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+    await screen.findByTestId('rapport-builder-creation')
+
+    await user.type(screen.getByLabelText('Titre'), 'Coût moyen par ticket')
+    await user.selectOptions(screen.getByLabelText('Dataset'), 'sav_tickets')
+    await user.selectOptions(screen.getByLabelText('Lignes'), 'technicien__username')
+    await user.click(screen.getByRole('button', { name: 'Ajouter un agrégat nommé' }))
+    await user.type(screen.getByLabelText("Nom de l'agrégat 1"), 'cout')
+    await user.selectOptions(screen.getByLabelText("Champ de l'agrégat 1"), 'cout_interne')
+    await user.click(screen.getByRole('button', { name: 'Ajouter un agrégat nommé' }))
+    await user.type(screen.getByLabelText("Nom de l'agrégat 2"), 'nb')
+    await user.selectOptions(screen.getByLabelText("Champ de l'agrégat 2"), 'statut')
+    await user.selectOptions(screen.getByLabelText("Calcul de l'agrégat 2"), 'count')
+    await user.type(screen.getByLabelText('Formule (mesure calculée)'), 'cout / nb')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la définition' }))
+
+    expect(reportingApi.createRapportDefinition).toHaveBeenCalledWith({
+      titre: 'Coût moyen par ticket',
+      dataset: 'sav_tickets',
+      spec: { select: [] },
+      pivot_spec: {
+        rows: ['technicien__username'], columns: [],
+        measure: null, agg: 'sum',
+        formula: 'cout / nb',
+        extra_measures: [
+          { alias: 'cout', field: 'cout_interne', agg: 'sum' },
+          { alias: 'nb', field: 'statut', agg: 'count' },
+        ],
+      },
+      partage: 'prive',
+    })
+  })
+
+  it('retire un agrégat nommé avant l’enregistrement', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+    await screen.findByTestId('rapport-builder-creation')
+    await user.click(screen.getByRole('button', { name: 'Ajouter un agrégat nommé' }))
+    expect(screen.getByLabelText("Nom de l'agrégat 1")).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: "Retirer l'agrégat 1" }))
+    expect(screen.queryByLabelText("Nom de l'agrégat 1")).not.toBeInTheDocument()
+  })
+
+  it('pré-remplit la formule et ses agrégats en modification', async () => {
+    const user = userEvent.setup()
+    reportingApi.listRapportDefinitions.mockResolvedValue({
+      data: [{
+        ...DEFINITIONS[0], id: 9,
+        pivot_spec: {
+          rows: ['technicien__username'], columns: [], measure: null,
+          agg: 'sum', formula: 'cout / nb',
+          extra_measures: [
+            { alias: 'cout', field: 'cout_interne', agg: 'sum' },
+            { alias: 'nb', field: 'statut', agg: 'count' },
+          ],
+        },
+      }],
+    })
+    render(<RapportBuilderPage />)
+    const ligne = await screen.findByTestId('rapport-definition-9')
+    await user.click(within(ligne).getByRole('button', { name: 'Modifier' }))
+
+    expect(screen.getByLabelText('Formule (mesure calculée)')).toHaveValue('cout / nb')
+    expect(screen.getByLabelText("Nom de l'agrégat 2")).toHaveValue('nb')
+    expect(screen.getByLabelText("Calcul de l'agrégat 2")).toHaveValue('count')
+  })
+})

@@ -49,7 +49,12 @@ const PARTAGES = [
 const FORM_VIDE = {
   titre: '', dataset: '', select: [], partage: 'prive',
   pivotRows: '', pivotColumns: '', pivotMeasure: '', pivotAgg: 'sum',
+  // FE-XPLT11 — mesure FORMULE du croisement (`core.pivot`, XPLT11) :
+  // `formula` évaluée PAR CELLULE sur les alias d'`extra_measures`.
+  pivotFormule: '', pivotAgregats: [],
 }
+
+const AGREGAT_VIDE = { alias: '', field: '', agg: 'sum' }
 
 function listeDe(reponse) {
   const charge = reponse?.data
@@ -120,6 +125,16 @@ export default function RapportBuilderPage() {
         columns: form.pivotColumns ? [form.pivotColumns] : [],
         measure: form.pivotMeasure || null,
         agg: form.pivotAgg,
+        // FE-XPLT11 — clés posées SEULEMENT quand une formule est saisie : un
+        // croisement simple garde exactement son ancien `pivot_spec`.
+        ...(form.pivotFormule.trim()
+          ? {
+            formula: form.pivotFormule.trim(),
+            extra_measures: form.pivotAgregats
+              .filter((a) => a.alias.trim() && a.field)
+              .map((a) => ({ alias: a.alias.trim(), field: a.field, agg: a.agg })),
+          }
+          : {}),
       }
       : {}
     const payload = {
@@ -164,6 +179,10 @@ export default function RapportBuilderPage() {
       pivotColumns: definition.pivot_spec?.columns?.[0] || '',
       pivotMeasure: definition.pivot_spec?.measure || '',
       pivotAgg: definition.pivot_spec?.agg || 'sum',
+      pivotFormule: definition.pivot_spec?.formula || '',
+      pivotAgregats: (definition.pivot_spec?.extra_measures || []).map((a) => ({
+        alias: a.alias || '', field: a.field || '', agg: a.agg || 'sum',
+      })),
     })
   }
 
@@ -368,6 +387,77 @@ export default function RapportBuilderPage() {
                 <option key={valeur} value={valeur}>{libelle}</option>
               ))}
             </select>
+            {/* FE-XPLT11 — mesure calculée : des agrégats NOMMÉS (alias) par
+                cellule, combinés par une formule (ex. « cout / nb »). Calculée
+                par le serveur (`core.pivot`), jamais ici ; division par zéro =
+                cellule vide. */}
+            <fieldset data-testid="rapport-builder-formule">
+              <legend>Mesure calculée (facultatif)</legend>
+              {form.pivotAgregats.map((agregat, index) => {
+                const n = index + 1
+                const maj = (champ, valeur) => setForm((precedent) => ({
+                  ...precedent,
+                  pivotAgregats: precedent.pivotAgregats.map((a, i) => (
+                    i === index ? { ...a, [champ]: valeur } : a)),
+                }))
+                return (
+                  <div key={index}>
+                    <label htmlFor={`pivot-agregat-alias-${n}`}>{`Nom de l'agrégat ${n}`}</label>
+                    <input
+                      id={`pivot-agregat-alias-${n}`}
+                      value={agregat.alias}
+                      onChange={(e) => maj('alias', e.target.value)}
+                    />
+                    <label htmlFor={`pivot-agregat-champ-${n}`}>{`Champ de l'agrégat ${n}`}</label>
+                    <select
+                      id={`pivot-agregat-champ-${n}`}
+                      value={agregat.field}
+                      onChange={(e) => maj('field', e.target.value)}
+                    >
+                      <option value="">Choisir un champ</option>
+                      {champsDuDataset.map((champ) => (
+                        <option key={champ} value={champ}>{champ}</option>
+                      ))}
+                    </select>
+                    <label htmlFor={`pivot-agregat-calcul-${n}`}>{`Calcul de l'agrégat ${n}`}</label>
+                    <select
+                      id={`pivot-agregat-calcul-${n}`}
+                      value={agregat.agg}
+                      onChange={(e) => maj('agg', e.target.value)}
+                    >
+                      {AGGREGATS.map(([valeur, libelle]) => (
+                        <option key={valeur} value={valeur}>{libelle}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setForm((precedent) => ({
+                        ...precedent,
+                        pivotAgregats: precedent.pivotAgregats.filter((_, i) => i !== index),
+                      }))}
+                    >
+                      {`Retirer l'agrégat ${n}`}
+                    </button>
+                  </div>
+                )
+              })}
+              <button
+                type="button"
+                onClick={() => setForm((precedent) => ({
+                  ...precedent,
+                  pivotAgregats: [...precedent.pivotAgregats, { ...AGREGAT_VIDE }],
+                }))}
+              >
+                Ajouter un agrégat nommé
+              </button>
+              <label htmlFor="pivot-formule">Formule (mesure calculée)</label>
+              <input
+                id="pivot-formule"
+                value={form.pivotFormule}
+                placeholder="ex. cout / nb"
+                onChange={(e) => setForm({ ...form, pivotFormule: e.target.value })}
+              />
+            </fieldset>
           </fieldset>
 
           <label htmlFor="rapport-partage">Visibilité</label>
