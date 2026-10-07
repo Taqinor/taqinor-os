@@ -786,13 +786,18 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         reste possible avec un motif explicite (`motif_override_signature`,
         patron `motif_override_acompte`), journalisé au chatter. Les
         changements eux-mêmes sont désormais suivis (`TRACKED_FIELDS`)."""
+        from ..signature_validation import erreur_signature_client
         inst = self.get_object()
-        sig = (request.data.get('signature_client') or '').strip()
+        brut = request.data.get('signature_client')
+        sig = brut.strip() if isinstance(brut, str) else ''
         nom = (request.data.get('signataire_nom') or '').strip()
         motif = (request.data.get('motif_override_signature')
                  or request.data.get('motif_override') or '').strip()
-        if not sig:
-            return Response({'signature_client': 'Signature vide.'},
+        # ADOC78 — data-URL PNG/JPEG base64 bornée seulement (plus aucune
+        # URL http/file injectée dans <img src> du PV/BL, ni « null »).
+        erreur = erreur_signature_client(sig)
+        if erreur:
+            return Response({'signature_client': erreur},
                             status=status.HTTP_400_BAD_REQUEST)
         if inst.signe_le and not motif:
             return Response(
