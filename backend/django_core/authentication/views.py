@@ -967,6 +967,24 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(
             UserSerializer(target, context={'request': request}).data)
 
+    @action(detail=True, methods=['post'],
+            url_path='reinitialiser-mot-de-passe')
+    def reinitialiser_mot_de_passe(self, request, pk=None):
+        """ASEC3 — réinitialisation du mot de passe d'un compte par un gérant
+        de rang égal ou supérieur : politique de mot de passe, révocation des
+        sessions de la cible, rotation forcée, journal (jamais la valeur)."""
+        from .services import reinitialiser_mot_de_passe
+        target = self.get_object()
+        refus = self._refus_rang(target)
+        if refus is not None:
+            return refus
+        errors = reinitialiser_mot_de_passe(
+            request.user, target, request.data.get('password', ''))
+        if errors:
+            return Response({'password': errors},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Mot de passe réinitialisé.'})
+
     @action(detail=False, methods=['get'], url_path='avatar-image',
             permission_classes=[permissions.IsAuthenticated])
     def avatar_image(self, request):
@@ -1011,6 +1029,14 @@ class UserViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         target = self.get_object()
         data = request.data
+        # ASEC3 — le mot de passe ne passe JAMAIS par l'update générique.
+        if 'password' in data:
+            return Response(
+                {'password': ["Le mot de passe se réinitialise par l'action "
+                              "dédiée « Réinitialiser le mot de passe »."],
+                 'code': 'password_via_reinitialisation'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # Détecte une rétrogradation (perte du rôle admin) ou une
         # désactivation du compte.
         retro = False
