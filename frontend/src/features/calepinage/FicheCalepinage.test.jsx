@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { useState } from 'react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
@@ -24,6 +25,12 @@ vi.mock('../../api/calepinageApi', () => ({
       dupliquer: vi.fn(),
     },
   },
+}))
+
+// ACAL181 — la liste des responsables assignables et la recherche de leads
+// (lectures crm de la fiche) ; le serveur de calepinage reste mocké ci-dessus.
+vi.mock('../../api/crmApi', () => ({
+  default: { getAssignableUsers: vi.fn(), getLeads: vi.fn(), searchClients: vi.fn() },
 }))
 
 /* ============================================================================
@@ -54,6 +61,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 import calepinageApi from '../../api/calepinageApi'
+import crmApi from '../../api/crmApi'
 import FicheCalepinage from './FicheCalepinage'
 
 const DOC = documentContrat('calepinage', 'calepinage_detail')
@@ -74,6 +82,9 @@ beforeEach(() => {
   // CALX42 — par défaut, la fiche lit la liste des modèles au montage : ce
   // calepinage-ci n'en est pas un.
   calepinageApi.calepinages.modeles.mockResolvedValue({ data: [] })
+  crmApi.getAssignableUsers.mockResolvedValue({ data: [
+    { id: 1, username: 'essai' }, { id: 7, username: 'sami' },
+  ] })
 })
 afterEach(() => { cleanup() })
 
@@ -583,5 +594,71 @@ describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat',
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('cal-bouton-devis')).toBeInTheDocument()
     vi.doUnmock('../../api/calepinageApi')
+  })
+})
+
+
+/* ============================================================================
+   ACAL181 — changer lead / responsable depuis la fiche, puis RELIRE le détail.
+   Les réponses viennent des échantillons de contrat committés ; l'assertion
+   porte sur le DOM relu (un détail servi, jamais un état local).
+   ========================================================================== */
+describe('FicheCalepinage — rattachement éditable (ACAL181)', () => {
+  const CONFLIT = exempleContrat(
+    'calepinage', 'calepinage_creation_conflit', 'exemple_changement_lead_409')
+
+  // Le parent réel (AtelierPanneaux) relit l'agrégat après un geste.
+  function Parent() {
+    const [detail, setDetail] = useState(DETAIL)
+    return (
+      <MemoryRouter>
+        <FicheCalepinage detail={detail} onRelire={async () => {
+          const res = await calepinageApi.calepinages.get(DETAIL.id)
+          setDetail(res.data)
+        }} />
+      </MemoryRouter>
+    )
+  }
+
+  it('change le responsable puis relit le détail', async () => {
+    calepinageApi.calepinages.update.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.get = vi.fn().mockResolvedValue({
+      data: { ...DETAIL, responsable: { id: 7, nom_complet: 'Sami Relu' } },
+    })
+    render(<Parent />)
+    const champ = screen.getByTestId('cal-fiche-responsable')
+    await userEvent.click(within(champ).getAllByRole('button')[0])
+    await userEvent.click(await screen.findByText('sami'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.update)
+      .toHaveBeenCalledWith(DETAIL.id, { responsable: 7 }))
+    await waitFor(() => expect(screen.getByTestId('cal-fiche-responsable'))
+      .toHaveTextContent('Sami Relu'))
+  })
+
+  it('refuse le changement de lead sur un devis envoyé et affiche le message serveur', async () => {
+    crmApi.getLeads.mockResolvedValue({ data: { results: [
+      { id: 42, nom: 'Autre', prenom: 'Lead', ville: 'Fès' },
+    ] } })
+    calepinageApi.calepinages.update.mockRejectedValue({
+      response: { status: 409, data: CONFLIT },
+    })
+    rendre(DETAIL)
+    const champ = screen.getByTestId('cal-fiche-lead')
+    await userEvent.click(within(champ).getByRole('combobox'))
+    await userEvent.click(await screen.findByText('Autre Lead'))
+
+    const erreur = await screen.findByTestId('cal-fiche-lead-erreur')
+    expect(erreur).toHaveTextContent(CONFLIT.lead)
+    expect(calepinageApi.calepinages.update)
+      .toHaveBeenCalledWith(DETAIL.id, { lead: '42' })
+  })
+
+  it('un lead à la corbeille se dit, sans lien mort vers /crm/leads', () => {
+    rendre({ ...DETAIL, lead: { ...DETAIL.lead, supprime: true } })
+    const champ = screen.getByTestId('cal-fiche-lead')
+    expect(within(champ).getByTestId('cal-fiche-lead-corbeille'))
+      .toHaveTextContent('Lead à la corbeille - restaurez-le')
+    expect(champ.querySelector('a[href^="/crm/leads"]')).toBeNull()
   })
 })

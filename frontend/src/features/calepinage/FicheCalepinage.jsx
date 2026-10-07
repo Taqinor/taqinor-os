@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import crmApi from '../../api/crmApi'
+import AssigneePicker from '../../components/AssigneePicker'
+import SelecteurRattachement from './SelecteurRattachement'
 import { formatDateTime } from '../../lib/format'
 // CALX344 — les étiquettes libres (records.Tag), lues/posées/retirées par la
 // porte `etiquettes/` (CALX343) : un composant à part, monté sous la fiche.
@@ -134,7 +137,7 @@ function refusChamp(erreur, champ) {
   return "Le serveur n’a rendu aucun motif : rien n’a été enregistré."
 }
 
-export default function FicheCalepinage({ detail }) {
+export default function FicheCalepinage({ detail, onRelire }) {
   // CALX26 — la confirmation en DEUX TEMPS : un premier clic explique ce que
   // l'archivage fait, le second l'exécute. Jamais un archivage au clic seul.
   const [confirmation, setConfirmation] = useState(false)
@@ -161,7 +164,13 @@ export default function FicheCalepinage({ detail }) {
   const [confirmationCopie, setConfirmationCopie] = useState(false)
   const [avecVariantes, setAvecVariantes] = useState(true)
   const [refusCopie, setRefusCopie] = useState(null)
+  // ACAL181 — le rattachement (lead, client, responsable) éditable : l'erreur
+  // du serveur s'affiche SOUS le champ fautif, et le détail est RELU (aucun
+  // état local seul : l'écran affiche ce que le serveur sert).
+  const [refusRattachement, setRefusRattachement] = useState(null)
+  const [responsables, setResponsables] = useState([])
   const identifiant = detail?.id ?? null
+  const peutModifier = detail?.permissions?.peut_modifier === true
   const naviguer = useNavigate()
 
   useEffect(() => {
@@ -180,6 +189,20 @@ export default function FicheCalepinage({ detail }) {
       .catch(() => { if (!annule) setEstModele(null) })
     return () => { annule = true }
   }, [identifiant])
+
+  useEffect(() => {
+    if (!identifiant || !peutModifier) return undefined
+    let annule = false
+    Promise.resolve()
+      .then(() => crmApi.getAssignableUsers())
+      .then((res) => {
+        if (annule) return
+        const brut = res?.data
+        setResponsables(Array.isArray(brut) ? brut : (brut?.results ?? []))
+      })
+      .catch(() => { if (!annule) setResponsables([]) })
+    return () => { annule = true }
+  }, [identifiant, peutModifier])
 
   if (!detail) return null
 
@@ -203,6 +226,45 @@ export default function FicheCalepinage({ detail }) {
   // actions exigent (`PeutGererCalepinage`). Sans elle, aucun geste d'écriture
   // n'est proposé : une permission refusée ne s'annonce pas en bouton grisé.
   const peutGerer = permissions.peut_modifier === true
+
+  const rattacher = async (champ, valeur) => {
+    setEnCours(true)
+    setRefusRattachement(null)
+    try {
+      await calepinageApi.calepinages.update(detail.id, { [champ]: valeur })
+      onRelire?.()
+    } catch (erreur) {
+      const corps = erreur?.response?.data
+      setRefusRattachement({
+        champ,
+        message: refusChamp(erreur, champ),
+        existant: corps && typeof corps === 'object'
+          ? (corps.calepinage_existant ?? null) : null,
+      })
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  const erreurRattachement = (champ) => (
+    refusRattachement && refusRattachement.champ === champ ? (
+      <span className="mt-1 block text-xs text-alert-300" role="alert"
+        data-testid={`cal-fiche-${champ}-erreur`}>
+        {refusRattachement.message}
+        {refusRattachement.existant ? (
+          <>
+            {' '}
+            <Link to={`/calepinage/${refusRattachement.existant}`}
+              className="underline" data-testid="cal-fiche-lead-ouvrir-existant">
+              Ouvrir l’existant
+            </Link>
+          </>
+        ) : null}
+      </span>
+    ) : null
+  )
+
+  const rattachementEditable = peutGerer && !archive
 
   const lancerArchivage = async () => {
     if (!confirmation) {
@@ -517,7 +579,20 @@ export default function FicheCalepinage({ detail }) {
         <Champ cle="statut" label="Code de statut">
           <code className="text-xs text-lune-soft">{texte(detail.statut)}</code>
         </Champ>
-        <Champ cle="responsable" label="Responsable">{personne(detail.responsable)}</Champ>
+        <Champ cle="responsable" label="Responsable">
+          {rattachementEditable ? (
+            <span className="inline-flex items-center gap-2">
+              <AssigneePicker
+                users={responsables}
+                value={detail.responsable?.id ?? ''}
+                disabled={enCours}
+                onChange={(id) => rattacher('responsable', id ?? null)}
+              />
+              <span>{personne(detail.responsable)}</span>
+            </span>
+          ) : personne(detail.responsable)}
+          {erreurRattachement('responsable')}
+        </Champ>
 
         <Champ cle="cree_par" label="Créé par">{personne(detail.cree_par)}</Champ>
         <Champ cle="cree_le" label="Créé le">{moment(detail.cree_le)}</Champ>
@@ -525,13 +600,44 @@ export default function FicheCalepinage({ detail }) {
 
         {/* Rattachement — le lead ET le client peuvent coexister, ou manquer. */}
         <Champ cle="lead" label="Lead">
-          {detail.lead
+          {detail.lead?.supprime ? (
+            <span data-testid="cal-fiche-lead-corbeille">
+              Lead à la corbeille - restaurez-le
+              {detail.lead.nom ? ` (${detail.lead.nom})` : ''}
+            </span>
+          ) : detail.lead
             ? <Link to={`/crm/leads/${detail.lead.id}`} className="underline">
               {texte(detail.lead.nom)}
             </Link>
             : '—'}
+          {rattachementEditable && (
+            <SelecteurRattachement
+              genre="lead"
+              id="cal-fiche-lead-selecteur"
+              valeur={detail.lead?.id ?? null}
+              libelle={detail.lead?.nom ?? ''}
+              disabled={enCours}
+              invalid={refusRattachement?.champ === 'lead'}
+              onChange={(id) => id && rattacher('lead', id)}
+            />
+          )}
+          {erreurRattachement('lead')}
         </Champ>
-        <Champ cle="client" label="Client">{texte(detail.client?.nom)}</Champ>
+        <Champ cle="client" label="Client">
+          {texte(detail.client?.nom)}
+          {rattachementEditable && (
+            <SelecteurRattachement
+              genre="client"
+              id="cal-fiche-client-selecteur"
+              valeur={detail.client?.id ?? null}
+              libelle={detail.client?.nom ?? ''}
+              disabled={enCours}
+              invalid={refusRattachement?.champ === 'client'}
+              onChange={(id) => id && rattacher('client', id)}
+            />
+          )}
+          {erreurRattachement('client')}
+        </Champ>
         <Champ cle="devis" label="Devis">
           {detail.devis
             ? <Link to={`/ventes/devis/${detail.devis.id}/design`} className="underline">
