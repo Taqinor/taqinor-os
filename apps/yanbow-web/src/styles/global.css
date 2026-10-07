@@ -1,0 +1,41 @@
+/*
+ * Styles de base (YBW38) — AUCUNE couleur brute ici : seulement les jetons de
+ * tokens.css (garde tests/styleTokens.test.ts). CSS LOGIQUE seulement.
+ */
+@import './tokens.css';
+
+html {
+  background: var(--fond);
+  color: var(--texte);
+  font-size: 100%;
+}
+
+body {
+  margin: 0;
+  font-size: var(--texte-base);
+  line-height: var(--interligne-texte);
+}
+
+a {
+  color: var(--accent-texte);
+}
+
+/* `<option>` stylé dans CHAQUE schéma (sinon blanc sur blanc en sombre sous certains navigateurs). */
+select,
+option {
+  background-color: var(--fond-surface);
+  color: var(--texte);
+}
+
+.titre-accent {
+  color: var(--accent-graphique);
+  font-size: var(--texte-xl);
+}
+
+.bouton {
+  background-color: var(--bouton-fond);
+  color: var(--bouton-texte);
+  border-radius: var(--rayon-2);
+  padding-block: var(--espace-3);
+  padding-inline: var(--espace-6);
+}

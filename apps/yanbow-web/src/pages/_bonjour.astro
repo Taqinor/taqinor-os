@@ -2,6 +2,7 @@
 // Page sonde (YBW10, gabarit i18n YBW13) — prouve la chaîne de build et le
 // mécanisme i18n ; noindex, liée nulle part, supprimée par YBW61. UN gabarit :
 // la route anglaise (`en/_bonjour.astro`) est une enveloppe mince qui l'importe.
+import '../styles/global.css';
 import { DEFAULT_LOCALE, LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
 import { SONDE } from '../i18n/pages';
 import { alternates, selecteurLangue, t } from '../i18n/utils';
