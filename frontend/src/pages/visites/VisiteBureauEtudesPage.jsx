@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
 import calepinageApi from '../../api/calepinageApi'
+import { apiErrorMessage } from '../../lib/apiError'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Button, Card, Spinner, EmptyState, Badge, Checkbox, Textarea, Label,
@@ -286,12 +287,8 @@ function DetailVisite({ visite, onRetour, onChanged }) {
       }
       navigate(`/calepinage/${id}?onglet=reprise-visite`)
     } catch (err) {
-      const corps = err?.response?.data
-      const motif = typeof corps === 'string'
-        ? corps
-        : (corps?.lead ?? corps?.company ?? corps?.detail)
-      toast.error(`Module Calepinage : ${
-        Array.isArray(motif) ? motif.join(' ') : (motif || 'le calepinage n’a pas pu être ouvert.')}`)
+      // Le refus du serveur, lu par l'extracteur partagé (jamais un message générique).
+      toast.error(`Module Calepinage : ${apiErrorMessage(err, 'le calepinage n’a pas pu être ouvert.')}`)
     }
   }
 
