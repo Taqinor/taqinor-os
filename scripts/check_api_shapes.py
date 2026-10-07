@@ -1293,6 +1293,12 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "qui le sert arrive avec CAD148, et aucun ecran ne l'appelle encore, "
         "donc la garde n'a rien a comparer. Les deux moities (l'@action, puis "
         "l'ecran d'appel) s'appuient sur CET exemple (CAD147)",
+    "crm/demande_rdv_site.json":
+        "POST crm/webhooks/demande-rdv/ — la demande de rendez-vous du site "
+        "YanBow (corps signe + reponse {id, statut}), posee SEULE et EN "
+        "PREMIER (PACT10) : la vue arrive avec YBW51, le registre des champs "
+        "du site et son jumeau avec YBW53 — tous deux s'appuient sur CET "
+        "exemple (YBW50)",
     "calepinage/calepinage_du_devis.json":
         "cle ADDITIVE `calepinage` du detail d'un devis (GET ventes/devis/"
         "<pk>/) : la route est servie, mais par un ModelViewSet dont la forme "
