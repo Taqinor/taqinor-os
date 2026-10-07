@@ -77,9 +77,12 @@ class RattachementPatchTest(BaseApiCalepinage):
                 self.assertEqual(relu.data['nom'], 'Renommé')
                 calepinage.refresh_from_db()
                 self.assertEqual(calepinage.titre, 'Renommé')
+                # ACAL187 : la copie vise ``lead_copie`` (même client).
+                lead = (self.lead_copie if nom == 'dupliquer'
+                        else self.lead_client)
                 self.assertEqual(
                     (calepinage.lead_id, calepinage.client_id),
-                    (self.lead_client.pk, self.client_a.pk))
+                    (lead.pk, self.client_a.pk))
 
     def test_patch_responsable_idem(self):
         for nom, calepinage in self._quatre_calepinages().items():
