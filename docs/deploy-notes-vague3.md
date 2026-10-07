@@ -53,8 +53,9 @@ s'arrête sans rien faire. Toute tâche planifiée ou script qui les lance doit
   garde son fonctionnement : il bloque le compte partout.
 - **Même réponse qu'un mauvais mot de passe (ASEC14).** Un compte bloqué reçoit
   exactement le message « identifiants incorrects » — l'écran n'annonce plus
-  qu'un compte est verrouillé. Un utilisateur bloqué doit attendre 15 minutes
-  (ou demander à un administrateur de le débloquer).
+  qu'un compte est verrouillé. Un utilisateur bloqué doit attendre la fin du
+  verrou (15 minutes) ou se connecter depuis une autre connexion internet ;
+  chaque nouvel essai pendant le verrou est compté.
 
 ## 5. Double authentification : réinscription recommandée (ASEC8)
 
