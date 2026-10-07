@@ -2207,12 +2207,22 @@ class KitComposantSerializer(CompanyScopedRelationsMixin,
 
     class Meta:
         model = KitComposant
+        # ASTK229 — `taux_perte_pct` servi et inscriptible (écran des
+        # nomenclatures) ; absent d'un PUT, il est conservé (ASTK96).
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'prix_vente',
-                  'composant_kit', 'composant_kit_nom', 'quantite']
+                  'composant_kit', 'composant_kit_nom', 'quantite',
+                  'taux_perte_pct']
+        extra_kwargs = {'taux_perte_pct': {'required': False}}
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('La quantité doit être positive.')
+        return value
+
+    def validate_taux_perte_pct(self, value):
+        if value is not None and (value < 0 or value >= 100):
+            raise serializers.ValidationError(
+                'Le taux de perte doit être compris entre 0 et 100 %.')
         return value
 
     def validate(self, attrs):

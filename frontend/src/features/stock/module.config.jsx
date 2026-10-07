@@ -5,7 +5,7 @@ import { lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
-  LayoutGrid, Link2, Handshake, BadgePercent, PackageOpen, ShieldAlert,
+  LayoutGrid, Link2, Handshake, BadgePercent, PackageOpen, ShieldAlert, Blocks,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -82,6 +82,8 @@ const PortailsTiersPage = lazy(() => import('../../pages/stock/negoce/PortailsTi
 const ConsignationsPage = lazy(() => import('../../pages/stock/negoce/ConsignationsPage'))
 // ASTK222 — remises arrière fournisseur (RFA) : accords, calcul, avoir.
 const RfaPage = lazy(() => import('../../pages/stock/negoce/RfaPage'))
+// ASTK229 — nomenclatures de stock (kits vendables) : créer, éditer, dupliquer.
+const KitsStock = lazy(() => import('../../pages/stock/KitsStock'))
 
 const config = {
   key: 'stock',
@@ -133,6 +135,8 @@ const config = {
       { to: '/stock/inventaires-annuels', label: 'Inventaires annuels', k: 'nav.inventaires_annuels', icon: navIcon(Lock), roles: ['admin'] },
       { to: '/stock/revalorisations', label: 'Revalorisations', k: 'nav.revalorisations', icon: navIcon(TrendingUp), roles: ['admin'] },
       { to: '/stock/conditionnements', label: 'Conditionnements', k: 'nav.conditionnements', icon: navIcon(PackagePlus), roles: ['responsable','admin'] },
+      // ASTK229 — pas de clé `k` (catalogue i18n fermé, `tr()` retombe sur le FR).
+      { to: '/stock/kits', label: 'Nomenclatures (kits)', icon: navIcon(Blocks), roles: ['responsable','admin'] },
       // NTWMS29 — cockpit entrepôt. Pas de clé `k` : le catalogue i18n du
       // chrome est un ensemble fermé (fr/en/ar identiques) — `tr()` retombe
       // sur le libellé FR.
@@ -171,6 +175,7 @@ const config = {
     { path: '/stock/inventaires-annuels', component: InventairesAnnuels },
     { path: '/stock/revalorisations', component: RevalorisationsStock },
     { path: '/stock/conditionnements', component: ConditionnementsProduit },
+    { path: '/stock/kits', component: KitsStock },
     // NTWMS29 — route ET entrée de nav déclarées ENSEMBLE (motif PACT150 :
     // un écran livré sans l'une des deux est un écran mort).
     { path: '/stock/entrepot', component: CockpitEntrepot },
