@@ -988,6 +988,38 @@
       "verbe": "get"
     }
   ],
+  "gabarits.creer": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/gabarits-dossiers/",
+      "verbe": "post"
+    }
+  ],
+  "gabarits.liste": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/gabarits-dossiers/",
+      "verbe": "get"
+    }
+  ],
+  "gabarits.modifier": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/gabarits-dossiers/7/",
+      "verbe": "patch"
+    }
+  ],
+  "gabarits.supprimer": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/gabarits-dossiers/7/",
+      "verbe": "delete"
+    }
+  ],
   "moteur.calculer": [
     {
       "config": null,

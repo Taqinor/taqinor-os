@@ -451,6 +451,12 @@ export default function ReglagesSimulation() {
       <p className="mt-1 text-sm text-muted-foreground" data-testid="acal133-priorite">
         Un poste saisi sur un calepinage prime sur ce réglage société.
       </p>
+      {/* ACAL242 — le dépôt des gabarits de dossiers réglementaires. */}
+      <p className="mt-1 text-sm">
+        <a href="/calepinage/reglages/gabarits" className="underline" data-testid="acal242-lien-gabarits">
+          Gabarits des dossiers réglementaires
+        </a>
+      </p>
 
       {champsFautifs.length > 0 && (
         <p

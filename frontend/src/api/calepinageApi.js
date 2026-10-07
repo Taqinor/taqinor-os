@@ -371,6 +371,18 @@ const calepinageApi = {
     enregistrerProfilsTypes: (profils) =>
       api.put('/calepinage/parametres/profils-types/', { profils }),
   },
+
+  // ACAL — ACAL242 : les GABARITS des dossiers réglementaires de la société
+  // (contrat `gabarits_dossier_reglementaire.json`, porte ACAL238). `creer` part
+  // en multipart (`FormData` : champs + `pieces_attendues`/`champs` en JSON +
+  // `fichier` PDF) ; un 400 nomme le champ fautif, un 409 refuse de supprimer
+  // un gabarit utilisé.
+  gabarits: {
+    liste: () => api.get('/calepinage/gabarits-dossiers/'),
+    creer: (corps) => api.post('/calepinage/gabarits-dossiers/', corps),
+    modifier: (gabaritId, corps) => api.patch(`/calepinage/gabarits-dossiers/${gabaritId}/`, corps),
+    supprimer: (gabaritId) => api.delete(`/calepinage/gabarits-dossiers/${gabaritId}/`),
+  },
 }
 
 export default calepinageApi
