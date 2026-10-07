@@ -27,25 +27,13 @@ def _horizon_atp(company):
     return int(getattr(params, 'atp_horizon_jours', None) or 30)
 
 
-def quantite_reservee_produit(company, produit):
-    """Quantité ENGAGÉE par des réservations de chantier encore ouvertes.
-
-    Lue via l'accesseur inverse de la string-FK d'``installations`` — jamais
-    un import de ses modèles. Aucune réservation = 0 (comportement
-    historique).
-    """
-    try:
-        reservations = produit.reservations.filter(
-            active=True, consomme=False)
-    except Exception:  # noqa: BLE001 — relation absente : rien de réservé
-        return 0
-    return sum(int(r.quantite or 0) for r in reservations)
-
-
 def atp_produit(company, produit, *, emplacement=None, aujourdhui=None):
     """NTDST10 — disponibilité DATÉE d'un produit.
 
-    ``disponible_maintenant`` = stock en main − réservé (jamais négatif).
+    ``disponible_maintenant`` = stock en main − réservé canonique (chantier +
+    assemblage, ``installations.selectors.reserved_quantity_for_produit``) −
+    quarantaine qualité (jamais négatif) : même disponible que la liste
+    produits (ASTK100).
     ``disponible_le`` = date de la PREMIÈRE commande fournisseur CONFIRMÉE par
     le fournisseur (``date_confirmee_fournisseur``) dans l'horizon, dont le
     reliquat n'est pas déjà couvert par une réservation.
@@ -58,8 +46,18 @@ def atp_produit(company, produit, *, emplacement=None, aujourdhui=None):
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
 
     aujourdhui = aujourdhui or timezone.localdate()
-    reserve = quantite_reservee_produit(company, produit)
-    maintenant = max(int(produit.quantite_stock or 0) - reserve, 0)
+    from apps.installations.selectors import reserved_quantity_for_produit
+
+    from .services_wms import quantite_en_quarantaine
+
+    stock = int(produit.quantite_stock or 0)
+    reserve = int(reserved_quantity_for_produit(produit) or 0)
+    en_quarantaine = int(quantite_en_quarantaine(
+        company, produit=produit) or 0)
+    maintenant = max(stock - reserve - en_quarantaine, 0)
+    # ASTK101 — le déficit (réservé au-delà du stock) consomme d'abord les
+    # reliquats confirmés : pas de promesse d arrivée déjà due à un chantier.
+    deficit = max(reserve - stock, 0)
 
     horizon = aujourdhui + datetime.timedelta(days=_horizon_atp(company))
     lignes = (LigneBonCommandeFournisseur.objects
@@ -79,6 +77,11 @@ def atp_produit(company, produit, *, emplacement=None, aujourdhui=None):
     for ligne in lignes:
         restant = max(int(ligne.quantite or 0)
                       - int(ligne.quantite_recue or 0), 0)
+        if restant <= 0:
+            continue
+        absorbe = min(deficit, restant)
+        deficit -= absorbe
+        restant -= absorbe
         if restant <= 0:
             continue
         disponible_le = ligne.bon_commande.date_confirmee_fournisseur

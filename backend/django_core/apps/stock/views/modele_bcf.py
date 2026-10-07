@@ -61,7 +61,11 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Fournisseur introuvable dans cette société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        lignes_modele = list(modele.lignes.select_related('produit').all())
+        # ASTK2 — seules les lignes dont le produit est de la société du
+        # modèle sont reprises : jamais le prix d'achat d'une autre société.
+        lignes_modele = list(
+            modele.lignes.select_related('produit')
+            .filter(produit__company_id=modele.company_id))
         if not lignes_modele:
             return Response(
                 {'detail': 'Ce modèle ne contient aucune ligne.'},

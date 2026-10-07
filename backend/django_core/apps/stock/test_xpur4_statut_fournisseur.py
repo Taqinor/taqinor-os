@@ -50,7 +50,7 @@ class Xpur4Base(TestCase):
         self.company = _company('xpur4-co')
         self.user = _user(
             self.company, 'xpur4-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
         self.produit = Produit.objects.create(
             company=self.company, nom='Onduleur', sku='OND-XPUR4',

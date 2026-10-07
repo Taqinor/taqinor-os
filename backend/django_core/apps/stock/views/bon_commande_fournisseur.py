@@ -64,7 +64,15 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # données que `retrieve` expose déjà à tout rôle authentifié. Le
         # laisser en IsResponsableOrAdmin faisait échouer (403) le bouton
         # « PDF (interne) » pour les rôles normaux qui voient pourtant le BCF.
-        if self.action in READ_ACTIONS + ['generer_pdf', 'lignes_import']:
+        # ASTK10 (D-ASTK-2) — le PDF interne, l'historique des prix et le
+        # rapport hors contrat SONT des prix d'achat : `prix_achat_voir`
+        # requis (repli légacy can_view_buy_prices). Le PDF envoyé AU
+        # FOURNISSEUR (envoyer-email / whatsapp) n'est pas concerné.
+        if self.action in ('generer_pdf', 'historique_prix',
+                           'achats_hors_contrat'):
+            from ..permissions import PeutVoirPrixAchat
+            return [IsAnyRole(), PeutVoirPrixAchat()]
+        if self.action in READ_ACTIONS + ['lignes_import']:
             return [IsAnyRole()]
         elif self.action in ('whatsapp', 'envoyer_email'):
             # QS3 — envois fournisseur : permission fine stock_modifier (repli
@@ -84,6 +92,31 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    @staticmethod
+    def _refus_approbation(bc):
+        """YPROC4/ASTK22 — garde d'approbation par palier (FG312) commune à
+        TOUS les gestes qui envoient un BCF brouillon au fournisseur
+        (`envoyer`, `envoyer-email`, `whatsapp`). Renvoie une Response 400
+        (même message partout) ou None. Sans seuil configuré, le sélecteur
+        renvoie True : comportement strictement inchangé. Import paresseux
+        (précédent : stock.services.reserved_quantity)."""
+        if bc.statut != BonCommandeFournisseur.Statut.BROUILLON:
+            return None
+        from apps.installations.selectors import (
+            bcf_approbation_valide, palier_manquant_bcf_detail,
+        )
+        if bcf_approbation_valide(bc.company, bc.id, bc.total_achat):
+            return None
+        palier = palier_manquant_bcf_detail(bc.company, bc.total_achat)
+        return Response(
+            {'detail': (
+                "Ce BCF dépasse le seuil d'approbation : une "
+                f"approbation au palier « {palier} » est requise avant "
+                'envoi (le montant a peut-être augmenté depuis une '
+                'approbation existante).')},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     def _mark_bcf_envoye(self, bc):
         """QS3 — Marque un BCF « envoyé » de façon idempotente et SANS régression.
@@ -114,6 +147,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         from apps.ventes.services import bcf_share_url
 
         bc = self.get_object()
+        # ASTK22 — même garde d'approbation que `envoyer` : aucune commande
+        # non approuvée ne part chez le fournisseur.
+        refus = self._refus_approbation(bc)
+        if refus is not None:
+            return refus
         phone = bc.fournisseur.telephone if bc.fournisseur_id else ''
         if not normalize_phone_e164(phone):
             return Response(
@@ -156,6 +194,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         from ..utils.pdf_fournisseur import generate_bcf_pdf
 
         bc = self.get_object()
+        # ASTK22 — même garde d'approbation que `envoyer` (aucun EmailLog,
+        # aucun PDF envoyé tant que l'approbation manque).
+        refus = self._refus_approbation(bc)
+        if refus is not None:
+            return refus
         to_email = ((request.data.get('to_email') or '').strip()
                     or (bc.fournisseur.email if bc.fournisseur_id else '')
                     or '')
@@ -238,6 +281,18 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 'detail': (
                     'Ce bon de commande fournisseur porte des acomptes '
                     'réellement versés : suppression refusée.'
+                ),
+            })
+        # ASTK84 — un BCF sorti du brouillon, portant une quantité reçue ou
+        # une facture fournisseur liée garde son historique (coût moyen des
+        # réceptions, lien facture↔BCF) : on l'annule, on ne le supprime pas.
+        if (instance.statut != BonCommandeFournisseur.Statut.BROUILLON
+                or instance.lignes.filter(quantite_recue__gt=0).exists()
+                or instance.factures_fournisseur.exists()):
+            raise ValidationError({
+                'detail': (
+                    'Bon de commande reçu ou facturé : suppression refusée '
+                    '(annulez-le).'
                 ),
             })
         instance.delete()
@@ -372,19 +427,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # inchangé (le sélecteur renvoie True). Import paresseux (précédent
         # existant : stock.services.reserved_quantity importe déjà
         # apps.installations.selectors en lazy).
-        from apps.installations.selectors import (
-            bcf_approbation_valide, palier_manquant_bcf_detail,
-        )
-        if not bcf_approbation_valide(bc.company, bc.id, bc.total_achat):
-            palier = palier_manquant_bcf_detail(bc.company, bc.total_achat)
-            return Response(
-                {'detail': (
-                    "Ce BCF dépasse le seuil d'approbation : une "
-                    f"approbation au palier « {palier} » est requise avant "
-                    'envoi (le montant a peut-être augmenté depuis une '
-                    'approbation existante).')},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        refus = self._refus_approbation(bc)
+        if refus is not None:
+            return refus
         bc.statut = BonCommandeFournisseur.Statut.ENVOYE
         bc.save(update_fields=['statut'])
         return Response(self.get_serializer(bc).data)
@@ -527,8 +572,14 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         fournisseur créés la même semaine (LECTURE SEULE, ne fusionne rien —
         l'acheteur confirme via l'action existante `fusionner`, ZPUR6)."""
         from ..selectors import suggestions_consolidation_bcf
-        return Response(
-            suggestions_consolidation_bcf(request.user.company))
+        suggestions = suggestions_consolidation_bcf(request.user.company)
+        # ASTK10 (D-ASTK-2) — montant d'achat de chaque BCF retiré sans
+        # `prix_achat_voir` (la suggestion de fusion reste utilisable).
+        if not getattr(request.user, 'can_view_buy_prices', True):
+            for groupe in suggestions:
+                for bon in groupe.get('bons_commande') or []:
+                    bon.pop('montant', None)
+        return Response(suggestions)
 
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):
@@ -583,6 +634,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             ligne = lignes.get(ligne_id)
+            # ASTK2 — une ligne (héritée) pointant le produit d'une autre
+            # société est traitée comme absente : jamais son stock touché.
+            if ligne is not None and ligne.produit_id is not None and (
+                    ligne.produit.company_id != bc.company_id):
+                ligne = None
             if ligne is None:
                 return Response(
                     {'detail': f'Ligne {ligne_id} introuvable sur ce BCF.'},
@@ -630,7 +686,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 # des réceptions concurrentes du même produit ne perdent pas
                 # d'incrément (au lieu d'un simple refresh_from_db sans verrou).
                 produit = (Produit.objects.select_for_update()
-                           .get(pk=ligne.produit_id))
+                           .get(pk=ligne.produit_id, company=bc.company))
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + qte
                 record_stock_movement(

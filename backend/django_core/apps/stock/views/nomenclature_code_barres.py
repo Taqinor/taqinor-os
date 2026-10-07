@@ -52,10 +52,6 @@ class RegleCodeBarresViewSet(viewsets.ModelViewSet):
             return qs
         return qs.none()
 
-    def perform_create(self, serializer):
-        nomenclature = serializer.validated_data.get('nomenclature')
-        if nomenclature is not None and self.request.user.company_id and \
-                nomenclature.company_id != self.request.user.company_id:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Nomenclature hors de votre entreprise.')
-        serializer.save()
+    # ASTK5 — `nomenclature` est bornée société par le sérialiseur, en
+    # création ET en modification (l'ancienne garde de perform_create seul
+    # laissait passer un PATCH vers la nomenclature d'une autre société).

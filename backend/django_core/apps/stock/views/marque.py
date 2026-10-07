@@ -81,3 +81,19 @@ class MarqueViewSet(CompanyScopedModelViewSet):
                            "archivez-la plutôt."},
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        """ASTK97 — renommer une marque propage le nouveau libellé à
+        ``Produit.marque`` des produits de la société qui portaient l'ancien
+        (une transaction ; chaque produit est sauvé individuellement pour que
+        son journal enregistre le changement)."""
+        ancien = serializer.instance.nom
+        with transaction.atomic():
+            super().perform_update(serializer)
+            nouveau = serializer.instance.nom
+            if nouveau != ancien:
+                produits = Produit.objects.filter(
+                    company=serializer.instance.company, marque=ancien)
+                for produit in produits:
+                    produit.marque = nouveau
+                    produit.save(update_fields=['marque'])
