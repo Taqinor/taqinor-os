@@ -67,6 +67,9 @@ def conception(*, pente='suggeree', hauteur='suggeree'):
     return {
         'zones': [{
             'id': 'z1', 'label': 'Pan Sud', 'pitchDeg': 12,
+            # ACAL114 — un pan DESSINÉ (trois sommets) : une conception vide
+            # ne s'approuve plus (« Rien à approuver »).
+            'vertices': [[0, 0], [10, 0], [10, 6]],
             'pitchSuggestion': {
                 'zoneId': 'z1', 'pitchDeg': 14.5, 'facingAzimuthDeg': 180,
                 'source': 'IGN — RGE ALTI® / LiDAR HD',

@@ -72,9 +72,10 @@ from .sorties import SortiesMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
+from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
     DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
-    enregistrer_section,
+    enregistrer_section, layout_decrit_une_geometrie,
 )
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
@@ -166,6 +167,21 @@ def _param_chemin(nom, description):
                             description=description)
 
 
+class _OrdreStatutDerive(filters.OrderingFilter):
+    """ACAL114 — ``?ordering=statut`` ordonne le statut DÉRIVÉ de
+    l'approbation (annotation ``statut_derive``), jamais la colonne figée."""
+
+    def filter_queryset(self, request, queryset, view):
+        ordre = self.get_ordering(request, queryset, view)
+        if ordre and any(o.lstrip('-') == 'statut' for o in ordre):
+            from ..services.approbation import annoter_statut_derive
+
+            ordre = [('-' if o.startswith('-') else '') + 'statut_derive'
+                     if o.lstrip('-') == 'statut' else o for o in ordre]
+            return annoter_statut_derive(queryset).order_by(*ordre)
+        return super().filter_queryset(request, queryset, view)
+
+
 class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
                         ElectriqueActionsMixin, SortiesMixin,
@@ -184,8 +200,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     queryset = Calepinage.objects.select_related(
         'client', 'devis', 'responsable').all()
     serializer_class = CalepinageSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['created_at', 'updated_at', 'statut', 'titre']
+    filter_backends = [_OrdreStatutDerive]
+    ordering_fields = ['created_at', 'updated_at', 'statut', 'titre',
+                       'statut_derive']
 
     read_permission = CAL_VOIR
 
@@ -881,7 +898,8 @@ def contexte_conception(calepinage, request=None):
         'calepinage': {
             'id': calepinage.pk,
             'titre': _texte(getattr(calepinage, 'titre', '')) or '',
-            'statut': calepinage.statut,
+            # ACAL114 — le statut DÉRIVÉ de l'approbation (D-ACAL-19).
+            'statut': statut_derive(calepinage),
             'lead': getattr(calepinage, 'lead_id', None),
             'client': getattr(calepinage, 'client_id', None),
             'devis': getattr(calepinage, 'devis_id', None),
@@ -964,39 +982,6 @@ def _devis_lie_resume(contexte_devis):
             for cle in ('id', 'reference', 'statut', 'client_nom')}
 
 
-def _layout_decrit_une_geometrie(layout):
-    """Ce ``roof_layout`` décrit-il une géométrie RÉELLEMENT exploitable ?
-
-    Pas « contient-il une clé ``zones`` », mais « un pan y porte-t-il au moins
-    trois sommets ». La nuance est TOUT le correctif du 20/09/2026 : le
-    sérialiseur de l'atelier (``apps/web/src/scripts/roofPro11/prefill.ts``,
-    ``serializeLayout``) émet TOUJOURS une zone — il projette ``ctx.areas``,
-    qui contient la zone par défaut même quand personne n'a encore tracé quoi
-    que ce soit. Un premier « Enregistrer le calepinage » fait avant tout
-    dessin écrit donc ``{outline: [], zones: [{vertices: []}]}`` : un layout
-    qui ne dit RIEN de la géométrie, mais que l'ancien test (« ``zones``
-    présent ? ») lisait comme un calepinage déjà dessiné. Le tracé du client
-    était alors jeté (``outline: []``), l'atelier ne trouvait ni pan ni
-    contour, retombait sur l'épingle seule et affichait « tracez le contour du
-    toit pour lancer le calcul » — aucun pan, aucune recommandation, aucune
-    requête de rendement.
-    """
-    if not isinstance(layout, dict):
-        return False
-    contour = layout.get('outline')
-    if isinstance(contour, list) and len(contour) >= 3:
-        return True
-    for cle in ('zones', 'areas'):
-        zones = layout.get(cle)
-        if not isinstance(zones, list):
-            continue
-        for zone in zones:
-            sommets = zone.get('vertices') if isinstance(zone, dict) else None
-            if isinstance(sommets, list) and len(sommets) >= 3:
-                return True
-    return False
-
-
 def _geometrie(calepinage, contexte_devis, geo=None):
     """``{source, roof_layout, pin, outline, contour_client}``.
 
@@ -1042,10 +1027,10 @@ def _geometrie(calepinage, contexte_devis, geo=None):
         #
         # 20/09/2026 — « ne dit RIEN de la géométrie » se DÉCIDE désormais sur
         # les sommets, pas sur la présence d'une clé : voir
-        # ``_layout_decrit_une_geometrie`` (une zone SANS sommet ne décrit
+        # ``layout_decrit_une_geometrie`` (une zone SANS sommet ne décrit
         # aucun toit, et c'est exactement ce qu'écrit un premier
         # enregistrement fait avant tout dessin).
-        if not _layout_decrit_une_geometrie(layout):
+        if not layout_decrit_une_geometrie(layout):
             outline = contour_client or []
             if pin is None:
                 pin = geo['pin']
@@ -1205,8 +1190,8 @@ def detail_calepinage(calepinage, request=None):
         'id': calepinage.pk,
         'reference': reference_calepinage(calepinage),
         'nom': _texte(getattr(calepinage, 'titre', '')) or str(calepinage),
-        'statut': calepinage.statut,
-        'statut_libelle': calepinage.get_statut_display(),
+        'statut': statut_derive(calepinage),
+        'statut_libelle': LIBELLES_STATUT[statut_derive(calepinage)],
         'cree_le': _horodatage(getattr(calepinage, 'created_at', None)),
         'modifie_le': _horodatage(getattr(calepinage, 'updated_at', None)),
         'cree_par': _personne(getattr(calepinage, 'cree_par', None)),

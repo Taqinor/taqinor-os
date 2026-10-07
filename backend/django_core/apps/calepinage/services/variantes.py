@@ -246,7 +246,7 @@ def retenir_variante(variante, *, user=None, appliquer=True):
     # SEUL chemin d'écriture de « retenue » (CAL9).
     from .feu_vert import verifier_avant_retenue
 
-    verifier_avant_retenue(calepinage)
+    verifier_avant_retenue(calepinage, variante=variante)
     document = (variante.roof_layout
                 if isinstance(variante.roof_layout, dict) else None)
 

@@ -146,8 +146,11 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     lead = serializers.IntegerField(source='lead_id', required=False,
                                     allow_null=True)
-    statut_libelle = serializers.CharField(source='get_statut_display',
-                                           read_only=True)
+    #: ACAL114 (D-ACAL-19) — ``statut`` et son libellé sont DÉRIVÉS de
+    #: l'approbation (brouillon | valide | perime), en LECTURE SEULE : un
+    #: PATCH ``{statut}`` est sans effet. La colonne reste en base.
+    statut = serializers.SerializerMethodField()
+    statut_libelle = serializers.SerializerMethodField()
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
     layout_stale = serializers.SerializerMethodField()
     layout_nb_panneaux = serializers.SerializerMethodField()
@@ -209,6 +212,16 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             raise serializers.ValidationError(refus.message)
 
     @extend_schema_field(serializers.BooleanField(allow_null=True))
+    def get_statut(self, obj):
+        from .services.approbation import statut_derive
+
+        return statut_derive(obj)
+
+    def get_statut_libelle(self, obj):
+        from .services.approbation import LIBELLES_STATUT, statut_derive
+
+        return LIBELLES_STATUT[statut_derive(obj)]
+
     def get_layout_stale(self, calepinage):
         """``True``/``False`` d'après le DEVIS lié — ``None`` sans devis.
 

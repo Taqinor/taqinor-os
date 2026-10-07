@@ -64,7 +64,7 @@ def lead_id_de_reference(calepinage):
     return getattr(devis, 'lead_id', None) if devis is not None else None
 
 
-def verifier_avant_retenue(calepinage):
+def verifier_avant_retenue(calepinage, *, variante=None):
     """Refuse de retenir une variante si l'option est active ET qu'aucun feu
     vert n'a été accordé au lead de référence.
 
@@ -98,7 +98,7 @@ def verifier_avant_retenue(calepinage):
                     ],
                 })
     # CALX348 — la SECONDE vérification, au MÊME point d'entrée.
-    _verifier_approbation_avant_retenue(calepinage)
+    _verifier_approbation_avant_retenue(calepinage, variante=variante)
 
 
 # ── CALX348 — l'approbation exigée avant de retenir une variante ────────────
@@ -143,6 +143,11 @@ def _message_approbation_manquante(calepinage, roles):
         cause = ("sa conception a été REFUSÉE à la relecture"
                  + (f" (motif : {motif})" if motif else '')
                  + " et doit être reprise puis approuvée")
+    elif decision.get('etat') == 'approuve':
+        # ACAL114 — un accord PÉRIMÉ (empreinte imprimée changée depuis, ou
+        # portant sur une autre conception que la variante retenue).
+        cause = ("son approbation ne couvre plus la conception à retenir "
+                 "(conception modifiée depuis l'accord) : elle est à redécider")
     else:
         cause = "sa conception n'a pas encore été approuvée"
     if roles:
@@ -157,7 +162,7 @@ def _message_approbation_manquante(calepinage, roles):
             "variante.")
 
 
-def _verifier_approbation_avant_retenue(calepinage):
+def _verifier_approbation_avant_retenue(calepinage, *, variante=None):
     """Refuse de retenir une variante si la société EXIGE l'approbation et
     que le calepinage n'est pas APPROUVÉ.
 
@@ -174,7 +179,15 @@ def _verifier_approbation_avant_retenue(calepinage):
     company = getattr(calepinage, 'company', None) if calepinage else None
     if not approbation_exigee(company):
         return
-    if est_approuve(calepinage):
+    # ACAL114 (D-ACAL-2, D-ACAL-11) — l'approbation NON périmée doit porter
+    # sur la conception qui VA devenir courante : l'empreinte imprimée de la
+    # variante retenue.
+    empreinte = None
+    if variante is not None:
+        from apps.ventes.services import layout_hash
+
+        empreinte = layout_hash(getattr(variante, 'roof_layout', None)) or ''
+    if est_approuve(calepinage, empreinte=empreinte):
         return
     raise ValidationError({
         'approbation': [_message_approbation_manquante(

@@ -214,7 +214,10 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     if client_id:
         lignes = lignes.filter(client_id=client_id)
     if statut:
-        lignes = lignes.filter(statut=statut)
+        # ACAL114 — ``statut`` est DÉRIVÉ de l'approbation (annotation).
+        from .services.approbation import annoter_statut_derive
+
+        lignes = annoter_statut_derive(lignes).filter(statut_derive=statut)
     if depuis:
         lignes = lignes.filter(created_at__gte=depuis)
     terme = (q or '').strip()

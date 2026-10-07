@@ -42,9 +42,9 @@ CONTRAT_PARAMETRES = json.loads(
     .read_text(encoding='utf-8'))
 
 
-def faux_calepinage(approbation=None):
+def faux_calepinage(approbation=None, layout_hash='e' * 64):
     return SimpleNamespace(company=object(), approbation=approbation,
-                           lead_id=None, devis=None)
+                           lead_id=None, devis=None, layout_hash=layout_hash)
 
 
 class NormalisationPresetsTest(SimpleTestCase):
@@ -142,8 +142,18 @@ class RefusApprobationExigeeTest(SimpleTestCase):
                       str(refus.exception.detail['approbation'][0]))
 
     def test_approuve_passe(self):
-        calepinage = faux_calepinage({'etat': 'approuve'})
+        # ACAL114 — l'accord porte l'empreinte imprimée d'aujourd'hui.
+        calepinage = faux_calepinage({'etat': 'approuve',
+                                      'empreinte_approuvee': 'e' * 64})
         self.assertIsNone(self._verifier(calepinage))
+
+    def test_approuve_mais_perime_refuse(self):
+        calepinage = faux_calepinage({'etat': 'approuve',
+                                      'empreinte_approuvee': 'a' * 64})
+        with self.assertRaises(ValidationError) as refus:
+            self._verifier(calepinage)
+        self.assertIn('redécider',
+                      str(refus.exception.detail['approbation'][0]))
 
 
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
@@ -169,10 +179,18 @@ def url_retenir(pk, vid):
 class RetenirAvecApprobationEnBase(BaseApiCalepinage):
     def setUp(self):
         super().setUp()
+        # ACAL114 — une conception DESSINÉE (approuvable), la même dans la
+        # variante : l'accord porte sur l'empreinte imprimée de la variante.
+        from apps.ventes.services import layout_hash
+
+        dessin = {'zones': [{'id': 'z1', 'label': 'Pan Sud',
+                             'vertices': [[0, 0], [10, 0], [10, 6]]}]}
         self.calepinage = Calepinage.objects.create(
-            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa')
+            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa',
+            roof_layout=dessin, layout_hash=layout_hash(dessin) or '')
         self.variante = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='V1')
+            company=self.company, calepinage=self.calepinage, nom='V1',
+            roof_layout=dessin)
 
     def test_reglage_absent_retenir_marche_comme_aujourd_hui(self):
         retenir_variante(self.variante)
