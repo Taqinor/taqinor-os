@@ -15,7 +15,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.stock.models import (
     BonCommandeFournisseur, Fournisseur, LigneBonCommandeFournisseur, Produit,
 )
-from authentication.models import Company, User
+from authentication.models import Company, CustomUser as User
 
 _seq = itertools.count(1)
 
@@ -42,7 +42,7 @@ class SuppressionProduitTests(TestCase):
             prix_vente=Decimal('150'), is_archived=archive)
 
     def _reservation(self, produit):
-        Client = apps.get_model('ventes', 'Client')
+        Client = apps.get_model('crm', 'Client')
         Installation = apps.get_model('installations', 'Installation')
         StockReservation = apps.get_model('installations', 'StockReservation')
         n = next(_seq)

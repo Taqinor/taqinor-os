@@ -5,7 +5,8 @@ from functools import reduce  # noqa: F401
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction  # noqa: F401
 from django.db.models import (  # noqa: F401
-    ProtectedError, Count, Min, Max, Prefetch, Q, Func, TextField, Value,
+    ProtectedError, Count, Min, Max, Prefetch, Q, Func, QuerySet, TextField,
+    Value,
 )
 from django.db.models.functions import Lower  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
@@ -250,9 +251,15 @@ def _references_vivantes(produit, exclure=(), avec_protegees=True):
 
     for modele, objets in collector.model_objs.items():
         _ajoute(modele, len(objets))
-    for (_champ, _valeur), objets in collector.field_updates.items():
-        for modele in {o.__class__ for o in objets}:
-            _ajoute(modele, sum(1 for o in objets if o.__class__ is modele))
+    # Django 5 : `field_updates[(champ, valeur)]` est une LISTE de lots, chaque
+    # lot étant un QuerySet (SET_NULL/SET_DEFAULT) ou une liste d'instances.
+    for (_champ, _valeur), lots in collector.field_updates.items():
+        for lot in lots:
+            if isinstance(lot, QuerySet):
+                _ajoute(lot.model, lot.count())
+                continue
+            for modele in {o.__class__ for o in lot}:
+                _ajoute(modele, sum(1 for o in lot if o.__class__ is modele))
     if avec_protegees:
         for modele in {o.__class__ for o in collector.protected}:
             _ajoute(modele, sum(
@@ -262,8 +269,12 @@ def _references_vivantes(produit, exclure=(), avec_protegees=True):
 
 def _texte_references(comptes):
     """« 1 réservation de chantier, 2 lignes de bon de commande… »."""
+    def _minuscule(nom):
+        # En milieu de phrase : « 1 réservation de stock », pas « Réservation ».
+        return nom[:1].lower() + nom[1:]
+
     return ', '.join(
-        f'{n} {singulier if n == 1 else pluriel}'
+        f'{n} {_minuscule(singulier if n == 1 else pluriel)}'
         for (singulier, pluriel), n in sorted(comptes.items()))
 
 

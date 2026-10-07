@@ -843,15 +843,24 @@ def generer_etiquette_expedition(*, expedition, user=None):
         expedition.unite_logistique)
     cle = (_stocker_etiquette(expedition.company, expedition, pdf_bytes)
            if pdf_bytes else expedition.etiquette_pdf_key)
-    with transaction.atomic():
-        expedition.numero_suivi = numero_suivi or ''
-        expedition.etiquette_pdf_key = cle
-        expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
-        expedition.date_expedition = timezone.now()
-        expedition.save(update_fields=[
-            'numero_suivi', 'etiquette_pdf_key', 'statut',
-            'date_expedition'])
-        decrementer_stock_expedition(expedition=expedition, user=user)
+    # Le rollback annule la base, PAS l'objet en mémoire : sans restauration,
+    # un rappel sur ce même objet croirait l'étiquette posée et sortirait par
+    # la branche « déjà étiquetée » sans jamais enregistrer le statut.
+    champs = ('numero_suivi', 'etiquette_pdf_key', 'statut',
+              'date_expedition')
+    avant = {champ: getattr(expedition, champ) for champ in champs}
+    try:
+        with transaction.atomic():
+            expedition.numero_suivi = numero_suivi or ''
+            expedition.etiquette_pdf_key = cle
+            expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
+            expedition.date_expedition = timezone.now()
+            expedition.save(update_fields=list(champs))
+            decrementer_stock_expedition(expedition=expedition, user=user)
+    except Exception:
+        for champ, valeur in avant.items():
+            setattr(expedition, champ, valeur)
+        raise
     return expedition
 
 
