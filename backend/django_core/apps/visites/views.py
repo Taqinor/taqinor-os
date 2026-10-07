@@ -44,6 +44,10 @@ from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
 #: IMAGES — un PDF n'est pas une photo de toit.
 MIMES_PHOTO = ('image/png', 'image/jpeg', 'image/webp')
 
+#: ALEA24 — code rendu pour une action d'écriture non déclarée dans
+#: ``PERMISSIONS_ECRITURE`` : il n'existe dans aucun rôle, donc refusé.
+CODE_ACTION_NON_DECLAREE = 'visites_action_non_declaree'
+
 
 def _erreur(champ, message, code=status.HTTP_400_BAD_REQUEST):
     """400 qui NOMME le champ fautif (règle maison)."""
@@ -62,9 +66,26 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     serializer_class = VisiteTerrainSerializer
     read_permission = 'visites_voir'
 
-    #: Codes d'écriture par action (le reste retombe sur ``visites_modifier``).
+    #: ALEA24 — code d'écriture EXPLICITE pour CHAQUE action d'écriture du
+    #: viewset (CRUD + toute ``@action`` non GET). Plus aucun repli implicite
+    #: sur ``visites_modifier`` : une action absente de cette table est
+    #: REFUSÉE (code inexistant), et la garde
+    #: ``tests/test_alea_garde_codes_actions.py`` nomme toute nouvelle
+    #: ``@action`` d'écriture oubliée ici.
     PERMISSIONS_ECRITURE = {
         'create': 'visites_creer',
+        'update': 'visites_modifier',
+        'partial_update': 'visites_modifier',
+        'destroy': 'visites_modifier',
+        'photos': 'visites_modifier',
+        'supprimer_photo': 'visites_modifier',
+        'mesures': 'visites_modifier',
+        'demarrer_route': 'visites_modifier',
+        'arriver': 'visites_modifier',
+        'qualification': 'visites_modifier',
+        'terminer': 'visites_modifier',
+        'assembler_photos': 'visites_modifier',
+        'calage': 'visites_modifier',
         'valider': 'visites_valider',
         # ALEA8 — renvoyer est un geste du BUREAU D'ÉTUDES (« celui qui
         # relève n'est pas celui qui donne — ou retire — le feu vert ») : le
@@ -81,9 +102,16 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         ``ScopedPermission`` (le défaut de la base) lit cet attribut, donc
         aucune garde déclarée sur une ``@action`` ne peut être écrasée en
         silence (garde AUD421).
+
+        ALEA24 — une action d'écriture ABSENTE de la table rend un code qui
+        n'existe dans aucun rôle (refus 403), jamais ``visites_modifier`` par
+        défaut. Seul le cas ``action is None`` (méthode HTTP non routée — DRF
+        répondra 405, aucun handler ne s'exécute) garde ``visites_modifier``.
         """
-        return self.PERMISSIONS_ECRITURE.get(
-            getattr(self, 'action', None), 'visites_modifier')
+        action = getattr(self, 'action', None)
+        if action is None:
+            return 'visites_modifier'
+        return self.PERMISSIONS_ECRITURE.get(action, CODE_ACTION_NON_DECLAREE)
 
     # -- VTA6 : PORTEE DURE "MES VISITES" -------------------------------------
     #
