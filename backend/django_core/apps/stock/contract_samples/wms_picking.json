@@ -411,7 +411,17 @@
       "exemple_erreur_400": {
         "frequence_jours": [
           "La fréquence doit être un nombre de jours positif."
-        ]
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'frequence_jours': [ErrorDetail(string='La fréquence doit être un nombre de jours positif.', code='invalid')]}",
+          "fields": {
+            "frequence_jours": [
+              "La fréquence doit être un nombre de jours positif."
+            ]
+          },
+          "request_id": "<request_id>"
+        }
       }
     },
     "plans_comptage_generer": {

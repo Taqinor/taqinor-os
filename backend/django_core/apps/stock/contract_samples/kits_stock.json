@@ -138,7 +138,21 @@
               "La quantité doit être positive."
             ]
           }
-        ]
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'composants': [{'quantite': [ErrorDetail(string='La quantité doit être positive.', code='invalid')]}]}",
+          "fields": {
+            "composants": [
+              {
+                "quantite": [
+                  "La quantité doit être positive."
+                ]
+              }
+            ]
+          },
+          "request_id": "<request_id>"
+        }
       },
       "exemple_erreur_400_xor": {
         "composants": [
@@ -147,15 +161,49 @@
               "Un composant est soit un produit, soit un sous-kit (jamais les deux, jamais aucun)."
             ]
           }
-        ]
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'composants': [{'non_field_errors': [ErrorDetail(string='Un composant est soit un produit, soit un sous-kit (jamais les deux, jamais aucun).', code='invalid')]}]}",
+          "fields": {
+            "composants": [
+              {
+                "non_field_errors": [
+                  "Un composant est soit un produit, soit un sous-kit (jamais les deux, jamais aucun)."
+                ]
+              }
+            ]
+          },
+          "request_id": "<request_id>"
+        }
       },
       "exemple_erreur_400_auto_reference": {
         "composants": "Un kit ne peut pas se contenir lui-même."
       },
       "exemple_erreur_400_composant_autre_societe": {
-        "avertissement": "Constat ASTK168 : la tâche attendait qu'un composant d'une AUTRE société renvoie la réponse d'un id absent ; aujourd'hui KitComposantSerializer utilise un PrimaryKeyRelatedField non scopé, le refus vient de `_validate_company` (400) avec le texte ci-dessous — qui distingue donc l'id étranger d'un id absent (oracle d'existence). Le comportement CIBLE (réponse identique à un id absent) est NOUVEAU et non construit.",
+        "note": "ASTK5/ASTK168 — un composant d'une AUTRE société reçoit EXACTEMENT la réponse d'un id absent (CompanyScopedRelationsMixin sur KitComposantSerializer) : exemple pour l'id 99999999 ; l'id étranger donne le même corps, son propre id cité.",
         "exemple": {
-          "composants": "Produit hors de votre entreprise."
+          "composants": [
+            {
+              "produit": [
+                "Clé primaire « 99999999 » non valide - l'objet n'existe pas."
+              ]
+            }
+          ],
+          "error": {
+            "code": "validation_error",
+            "message": "{'composants': [{'produit': [ErrorDetail(string=\"Clé primaire «\\xa099999999\\xa0» non valide - l'objet n'existe pas.\", code='does_not_exist')]}]}",
+            "fields": {
+              "composants": [
+                {
+                  "produit": [
+                    "Clé primaire « 99999999 » non valide - l'objet n'existe pas."
+                  ]
+                }
+              ]
+            },
+            "request_id": "<request_id>"
+          }
         }
       }
     },

@@ -115,7 +115,13 @@
         "created_at": "2026-10-01T09:00:00Z"
       },
       "exemple_erreur_403_module_eteint": {
-        "detail": "Le module « consignation » est désactivé pour cette société (Paramètres → Négoce)."
+        "detail": "Le module « consignation » est désactivé pour cette société (Paramètres → Négoce).",
+        "error": {
+          "code": "permission_denied",
+          "message": "Le module « consignation » est désactivé pour cette société (Paramètres → Négoce).",
+          "fields": null,
+          "request_id": "<request_id>"
+        }
       },
       "exemple_erreur_400": {
         "detail": "La quantité déposée doit être positive."
@@ -247,7 +253,13 @@
       "exemple_erreur_400": {
         "non_field_errors": [
           "Renseignez soit un taux (%), soit un montant fixe."
-        ]
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "Renseignez soit un taux (%), soit un montant fixe.",
+          "fields": null,
+          "request_id": "<request_id>"
+        }
       }
     },
     "accord_rfa_calcul": {
@@ -307,7 +319,17 @@
       "exemple_erreur_400": {
         "seuil_alerte_rfa_pct": [
           "Le seuil de progression RFA ne peut pas dépasser 100 %."
-        ]
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'seuil_alerte_rfa_pct': [ErrorDetail(string='Le seuil de progression RFA ne peut pas dépasser 100 %.', code='invalid')]}",
+          "fields": {
+            "seuil_alerte_rfa_pct": [
+              "Le seuil de progression RFA ne peut pas dépasser 100 %."
+            ]
+          },
+          "request_id": "<request_id>"
+        }
       },
       "nouveau_astk201": "NOUVEAU — ASTK201 (réglages réduits aux DEUX lus : consignation_activee, atp_horizon_jours ; non construit, exclu du test de forme)",
       "exemple_nouveau_astk201": {

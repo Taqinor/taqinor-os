@@ -64,6 +64,18 @@ class ContratTestCase(TestCase):
             sorted(reel), sorted(exemple),
             f'Clés réelles ≠ clés du contrat {contexte}')
 
+    def assertErreurContrat(self, rep, exemple):
+        """Corps d'erreur réel == exemple du contrat, enveloppe YAPIC3
+        ``error`` comprise. Seul ``error.request_id`` (propre à chaque
+        requête) est comparé par présence, jamais par valeur."""
+        corps = rep.json()
+        enveloppe = corps.get('error')
+        if isinstance(enveloppe, dict) and 'error' in exemple:
+            self.assertTrue(enveloppe.get('request_id'))
+            corps = dict(corps, error=dict(
+                enveloppe, request_id=exemple['error']['request_id']))
+        self.assertEqual(corps, exemple)
+
 
 class WmsBase(ContratTestCase):
     """Société, admin, dépôt, trois casiers et un produit stocké."""
@@ -434,12 +446,30 @@ class ContratWmsPickingTests(WmsBase):
         rep = self.api.patch(f'{url}{plan_id}/', {'frequence_jours': 0},
                              format='json')
         self.assertEqual(rep.status_code, 400)
-        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+        self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
 
         generer = route('wms_picking', 'plans_comptage_generer')
         rep = self.api.post(f'{url}generer/')
         self.assertEqual(rep.status_code, 201, rep.content)
         self.assertMemesCles(rep.json(), generer['exemple'], 'générer')
+
+
+ID_ABSENT = 99999999
+
+
+def id_cite_vers_absent(corps, pk):
+    """Remplace l'id ``pk`` cité par le message « objet inexistant » par
+    ``ID_ABSENT`` : dans le texte (espaces insécables) et dans la repr de
+    ``error.message`` (séquences ``\\xa0`` littérales)."""
+    if isinstance(corps, dict):
+        return {k: id_cite_vers_absent(v, pk) for k, v in corps.items()}
+    if isinstance(corps, list):
+        return [id_cite_vers_absent(v, pk) for v in corps]
+    if isinstance(corps, str):
+        return (corps.replace(f'\xa0{pk}\xa0', f'\xa0{ID_ABSENT}\xa0')
+                .replace(f'\\xa0{pk}\\xa0',
+                         f'\\xa0{ID_ABSENT}\\xa0'))
+    return corps
 
 
 def texte(valeur):
@@ -681,8 +711,8 @@ class ContratNegoceTests(WmsBase):
         params.save()
         rep = self.api.get(f'{self.BASE}consignations/')
         self.assertEqual(rep.status_code, 403)
-        self.assertEqual(
-            rep.json(), contrat['exemple_erreur_403_module_eteint'])
+        self.assertErreurContrat(
+            rep, contrat['exemple_erreur_403_module_eteint'])
 
     def test_declaration_releve_et_binaires(self):
         depot = self._depot()
@@ -740,7 +770,7 @@ class ContratNegoceTests(WmsBase):
             'periode_debut': '2026-01-01', 'periode_fin': '2026-12-31'},
             format='json')
         self.assertEqual(rep.status_code, 400)
-        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+        self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
 
         rep = self.api.post(url, {
             'fournisseur': self.fournisseur.id,
@@ -785,7 +815,7 @@ class ContratNegoceTests(WmsBase):
         rep = self.api.patch(url, {'seuil_alerte_rfa_pct': 150},
                              format='json')
         self.assertEqual(rep.status_code, 400)
-        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+        self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
         # Les DEUX réglages lus (ASTK201) existent déjà dans la forme réelle.
         self.assertTrue(set(contrat['exemple_nouveau_astk201'])
                         <= set(contrat['exemple']))
@@ -1056,12 +1086,12 @@ class ContratKitsStockTests(WmsBase):
         rep = self.api.post(self.BASE, dict(base, composants=[
             {'produit': self.panneau.id, 'quantite': 0}]), format='json')
         self.assertEqual(rep.status_code, 400, rep.content)
-        self.assertEqual(rep.json(), contrat['exemple_erreur_400_quantite'])
+        self.assertErreurContrat(rep, contrat['exemple_erreur_400_quantite'])
 
         rep = self.api.post(self.BASE, dict(base, composants=[
             {'quantite': 1}]), format='json')
         self.assertEqual(rep.status_code, 400, rep.content)
-        self.assertEqual(rep.json(), contrat['exemple_erreur_400_xor'])
+        self.assertErreurContrat(rep, contrat['exemple_erreur_400_xor'])
 
         rep = self.api.put(f'{self.BASE}{self.kit.id}/', {
             'nom': self.kit.nom, 'sku': self.kit.sku,
@@ -1077,12 +1107,19 @@ class ContratKitsStockTests(WmsBase):
         etranger = Produit.objects.create(
             company=etrangere, nom='Intrus ASTK', sku='INT-ASTK',
             prix_achat=Decimal('1'), prix_vente=Decimal('2'))
-        rep = self.api.post(self.BASE, dict(base, composants=[
-            {'produit': etranger.id, 'quantite': 1}]), format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        # ASTK5 — l'id étranger reçoit la réponse d'un id absent : seul l'id
+        # cité diffère ; l'exemple du contrat est celui de l'id absent.
         attendu = contrat['exemple_erreur_400_composant_autre_societe']
-        self.assertEqual(texte(rep.json()['composants']),
-                         attendu['exemple']['composants'])
+        for pk in (etranger.id, ID_ABSENT):
+            rep = self.api.post(self.BASE, dict(base, composants=[
+                {'produit': pk, 'quantite': 1}]), format='json')
+            self.assertEqual(rep.status_code, 400, rep.content)
+            self.assertNotIn('Intrus ASTK', rep.content.decode())
+            corps = id_cite_vers_absent(rep.json(), pk)
+            self.assertTrue(corps['error']['request_id'])
+            corps['error']['request_id'] = (
+                attendu['exemple']['error']['request_id'])
+            self.assertEqual(corps, attendu['exemple'])
 
     def test_exploser_et_structure(self):
         exploser = route('kits_stock', 'kit_exploser')
