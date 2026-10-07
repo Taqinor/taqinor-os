@@ -622,7 +622,7 @@ class DevisCalepinageActionsMixin:
             status=status.HTTP_201_CREATED,
         )
 
-    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY, 404: None})
     @action(detail=True, methods=['get'], url_path='roof-image/fichier',
             permission_classes=[IsAnyRole])
     def roof_image_fichier(self, request, pk=None):

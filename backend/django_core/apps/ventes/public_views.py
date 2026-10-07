@@ -15,6 +15,7 @@ from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.permissions import AllowAny
@@ -1845,6 +1846,7 @@ def _octets_pdf_signe(devis):
         return None
 
 
+@extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY, 404: None})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
