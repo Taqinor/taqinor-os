@@ -111,3 +111,8 @@ backend/django_core/apps/stock/migrations/0117_ntp2p4_budget_departement.py
 # ventes.RoofLayout, modele retire par 0120_qjr647_retrait_rooflayout (DeleteModel) :
 # plus aucun Meta ne peut le declarer. Migration historique, revue.
 backend/django_core/apps/ventes/migrations/0037_fg245_rooflayout.py
+# 2026-10-07 (AANA10) : dataimport/0001 nommait uniq_dataimport_external_ref,
+# remplacee par uniq_dataimport_external_ref_ct (0005_externalref_unique_content_type,
+# AddConstraint puis RemoveConstraint) : le Meta ne peut plus declarer l'ancien nom.
+# Migration historique, revue.
+backend/django_core/apps/dataimport/migrations/0001_initial.py

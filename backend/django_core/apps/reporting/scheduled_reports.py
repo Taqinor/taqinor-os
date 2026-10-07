@@ -48,7 +48,13 @@ def _is_email_configured():
 # ── Rendu d'un rapport → (en-têtes, lignes). Borné à la société. ─────────────
 
 def _company_filter(company):
-    return {'company': company} if company is not None else {}
+    """Filtre société d'un rendu. AANA27 — un rapport SANS société ne voit
+    RIEN (filtre vide) : jamais ``{}``, qui rendait les données de TOUTES les
+    sociétés (258 lignes, produits de 2 sociétés, dans un e-mail ou un lien
+    public)."""
+    if company is None:
+        return {'pk__in': []}
+    return {'company': company}
 
 
 def render_sales(report):
@@ -59,10 +65,12 @@ def render_sales(report):
     co = _company_filter(report.company)
     leads = Lead.objects.filter(is_archived=False, **co)
     rows = []
+    # AANA21 / D-AANA-1 — même funnel que reports.sales_report : un lead perdu
+    # ne compte dans aucune étape (jamais « signé »).
     for key in stage_mod.STAGES:
         rows.append([
             stage_mod.STAGE_LABELS.get(key, key),
-            leads.filter(stage=key).count(),
+            leads.filter(stage=key, perdu=False).count(),
         ])
     return ['Étape', 'Leads'], rows
 
@@ -151,9 +159,25 @@ def rendre_dashboard_html(report, dashboard):
     tait un widget cassé ment par omission. Un widget sans ligne affiche
     « aucune donnée » plutôt qu'un cadre vide.
     """
+    from types import SimpleNamespace
+
     from core.dashboard_data import executer_dashboard
 
-    donnees = executer_dashboard(dashboard, report.company, report.owner)
+    from .rapport_builder import sans_cles_interdites, spec_sans_champs_gated
+
+    # AANA25 — un PDF de tableau de bord part par e-mail et par lien PUBLIC :
+    # les champs sous permission (``gated_fields``) de chaque widget sont
+    # retirés de sa spec AVANT exécution, puis de ses lignes.
+    layout = dict(dashboard.layout or {})
+    widgets_purges = []
+    for widget in layout.get('widgets') or []:
+        if isinstance(widget, dict) and widget.get('dataset'):
+            widget = {**widget, 'spec': spec_sans_champs_gated(
+                widget['dataset'], widget.get('spec'))}
+        widgets_purges.append(widget)
+    layout['widgets'] = widgets_purges
+    donnees = executer_dashboard(
+        SimpleNamespace(layout=layout), report.company, report.owner)
     blocs = []
     for widget in donnees['widgets']:
         titre = _echappe(widget.get('titre') or widget.get('id') or '')
@@ -162,7 +186,8 @@ def rendre_dashboard_html(report, dashboard):
                 '<section><h2>%s</h2><p class="erreur">%s</p></section>'
                 % (titre, _echappe(widget['erreur'])))
             continue
-        lignes = widget.get('rows') or []
+        lignes = sans_cles_interdites(
+            widget.get('rows') or [], widget.get('dataset'))
         if not lignes:
             blocs.append(
                 '<section><h2>%s</h2><p class="vide">Aucune donnée sur la '
@@ -205,13 +230,19 @@ def _rendre_saved_query(report):
     """``(bytes, titre, filename, content_type)`` du XLSX d'une requête."""
     from core import data_explorer
 
+    from .rapport_builder import (
+        _sans_colonnes_interdites, spec_sans_champs_gated,
+    )
+
     requete = report.resoudre_cible()
     if requete is None:
         return None, None, None, None
     try:
+        # AANA25 — e-mail planifié ET lien public : jamais de champ sous
+        # permission, même si le propriétaire (admin) pouvait le voir.
         lignes = data_explorer.run_query(
             requete.dataset, report.company, report.owner,
-            requete.spec or {})
+            spec_sans_champs_gated(requete.dataset, requete.spec))
     except Exception:
         logger.warning('email_saved_reports: exécution de la requête %s en '
                        'échec (rapport %s)', requete.pk, report.pk,
@@ -219,6 +250,8 @@ def _rendre_saved_query(report):
         return None, None, None, None
     entetes = list(lignes[0].keys()) if lignes else []
     tableau = [[ligne.get(c, '') for c in entetes] for ligne in lignes]
+    entetes, tableau = _sans_colonnes_interdites(
+        entetes, tableau, requete.dataset)
     titre = requete.titre or report.name
     try:
         from apps.records.xlsx import workbook_bytes
@@ -239,7 +272,8 @@ def _nom_fichier(base):
 def _rendre_legacy(report):
     """Les 3 rapports FIGÉS — rendu inchangé, au format .xlsx."""
     renderer = _RENDERERS.get(report.target_kind)
-    if renderer is None:
+    # AANA27 — aussi gardé ici : `render_report_xlsx` y entre directement.
+    if renderer is None or getattr(report, 'company_id', None) is None:
         return None, None, None, None
     try:
         headers, rows = renderer(report)
@@ -267,6 +301,9 @@ def rendre_rapport(report):
     """
     from .models import SavedReport
 
+    # AANA27 — un rapport sans société n'a AUCUN rendu (ni e-mail, ni lien).
+    if getattr(report, 'company_id', None) is None:
+        return None, None, None, None
     if report.target_kind == SavedReport.TargetKind.DASHBOARD:
         return _rendre_dashboard(report)
     if report.target_kind == SavedReport.TargetKind.QUERY:

@@ -382,8 +382,6 @@
     detail:texte, resultats:inconnu
 - frontend/src/api/reportingApi.js :: effectiveDashboardConfig -> /api/django/reporting/dashboard-config/effective
     cards:inconnu, config_id:inconnu, menu_tier:inconnu, source:texte
-- frontend/src/api/reportingApi.js :: evaluerFormuleClasseur -> /api/django/reporting/classeurs/<>/evaluer
-    detail:texte, valeur:inconnu
 - frontend/src/api/reportingApi.js :: executerRapportDefinition -> /api/django/reporting/rapport-definitions/<>/executer
     detail:texte, pivot:inconnu, rows:inconnu
 - frontend/src/api/reportingApi.js :: funnelVelocity -> /api/django/reporting/pipeline/velocity
@@ -1322,17 +1320,7 @@
     champs: body, category, created_at, event_label, event_type, id, is_action, link, read, read_at, reason, reason_label, severity, title
     event_type ∈ {annonce_published, annonce_read_reminder, api_taux_erreur_eleve, api_webhook_desactive, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chantier_materiel_confirme, chat_mention, chat_message, client_contact_request, compte_a_reactiver, consentement_retire_traite, contrat_signe, crm_bilan_hebdo, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, dossier_echeance_depassee, education_reinscription_relance, export_reversibilite_pret, facture_overdue, facture_payee, feedback_digest, feedback_starred, fetes_mobiles_a_saisir, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, intervention_annulee, intervention_assignee, intervention_replanifiee, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, lead_rattrape, maintenance_due, maintenance_window_announced, monitoring_rapport, nps_promoteur, paie_echeance_rappel, paie_rib_divergence, paie_run_pret, portail_devis_pret, portail_facture_echue, portail_jalon_chantier_atteint, portail_ticket_maj, post_social_rappel, premier_contact_depasse, product_announcement, projet_retard, projet_statut_change, relance_due, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, tranche_a_facturer, transport_etape_retard, usage_quota_seuil_franchi, uxviews_favoris_obsoletes, uxviews_vue_equipe_modifiee, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visite_retour_terrain, visite_terrain_a_refaire, visite_terrain_a_valider, visite_terrain_assignee, visite_terrain_validee, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
     reason ∈ {assigne_a_vous, manager, regle_de_routage, vous_suivez}
-- frontend/src/api/offlinesyncApi.js :: getOperation -> /api/django/offlinesync/operations/<>  [OfflineOperationSerializer]
-    champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
-    module ∈ {crm, installations, sav, stock, ventes, visites}
-    resolution ∈ {fusion, mienne, serveur}
-    statut ∈ {appliquee, conflit, en_attente, rejetee}
 - frontend/src/api/offlinesyncApi.js :: listConflits -> /api/django/offlinesync/operations  [OfflineOperationSerializer]
-    champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
-    module ∈ {crm, installations, sav, stock, ventes, visites}
-    resolution ∈ {fusion, mienne, serveur}
-    statut ∈ {appliquee, conflit, en_attente, rejetee}
-- frontend/src/api/offlinesyncApi.js :: listOperations -> /api/django/offlinesync/operations  [OfflineOperationSerializer]
     champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
     module ∈ {crm, installations, sav, stock, ventes, visites}
     resolution ∈ {fusion, mienne, serveur}

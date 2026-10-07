@@ -2,7 +2,7 @@ import os
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import kb, ocr, projets, sql_agent, transcription, voice
+from app.api.endpoints import ocr, sql_agent, voice
 from app.core.database import create_tables
 from app.core.security import verify_token
 
@@ -66,33 +66,12 @@ app.include_router(
     tags=["SQL Agent"],
     dependencies=[Depends(verify_token)],
 )
-app.include_router(
-    transcription.router,
-    prefix="/chat",
-    tags=["Transcription"],
-    dependencies=[Depends(verify_token)],
-)
 # AG10 — Transcription vocale de l'assistant (Groq Whisper). Montee sous le meme
 # prefixe /sql-agent que l'agent (chemin public /api/django/fastapi/sql-agent/
-# transcribe) ; distincte du /chat/transcribe self-heberge S10.
+# transcribe). AANA45 : l'ancien /chat/transcribe (zero appelant) est retire.
 app.include_router(
     voice.router,
     prefix="/sql-agent",
     tags=["Voice"],
-    dependencies=[Depends(verify_token)],
-)
-# XPRJ29 — Génération IA d'un brouillon de plan de tâches depuis un devis.
-app.include_router(
-    projets.router,
-    prefix="/projets",
-    tags=["Projets"],
-    dependencies=[Depends(verify_token)],
-)
-# WIR60 — Assistant IA d'écriture & résumé de l'éditeur KB (XKB23) :
-# générer/reformuler/corriger/traduire/résumer, POST /kb/redaction.
-app.include_router(
-    kb.router,
-    prefix="/kb",
-    tags=["KB"],
     dependencies=[Depends(verify_token)],
 )

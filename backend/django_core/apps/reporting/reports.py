@@ -123,16 +123,19 @@ def sales_report(request):
     if end:
         leads = leads.filter(date_creation__date__lte=end)
 
+    # AANA21 / D-AANA-1 — un lead perdu ne compte dans AUCUNE étape (même
+    # règle que pipeline/commercial) ; « gagné » = SIGNED non perdu.
+    from apps.reporting.services import _leads_gagnes, q_lead_gagne
     funnel = []
     total = leads.count()
     for key in stage_mod.STAGES:
-        n = leads.filter(stage=key).count()
+        n = leads.filter(stage=key, perdu=False).count()
         funnel.append({'stage': key, 'label': stage_mod.STAGE_LABELS.get(key, key),
                        'count': n})
     par_responsable = list(
         leads.values('owner__username')
         .annotate(count=Count('id'),
-                  gagnes=Count('id', filter=models_q_signed()))
+                  gagnes=Count('id', filter=q_lead_gagne()))
         .order_by('-count'))
     par_canal = list(
         leads.values('canal').annotate(count=Count('id')).order_by('-count'))
@@ -142,7 +145,9 @@ def sales_report(request):
 
     # ── Devis par statut (expiration à la volée) — un bucket « Expiré »
     #    apparaît pour les devis en attente dont la validité est dépassée. ──
-    devis_qs = Devis.objects.filter(**co)
+    # AANA19 — seules les versions ACTIVES (une révision remplacée n'est pas
+    # un second devis ; même règle que pipeline.devis_par_statut).
+    devis_qs = Devis.objects.filter(**co, is_active=True)
     if start:
         devis_qs = devis_qs.filter(date_creation__date__gte=start)
     if end:
@@ -205,8 +210,8 @@ def sales_report(request):
         if p_end:
             prev_leads = prev_leads.filter(date_creation__date__lte=p_end)
         prev_total = prev_leads.count()
-        prev_signed = prev_leads.filter(stage='SIGNED').count()
-        curr_signed = leads.filter(stage='SIGNED').count()
+        prev_signed = _leads_gagnes(prev_leads).count()
+        curr_signed = _leads_gagnes(leads).count()
         comparison = {
             'period': compare,
             'prev_start': p_start.isoformat() if p_start else None,
@@ -222,11 +227,6 @@ def sales_report(request):
         'devis_par_statut': devis_par_statut,
         'comparison': comparison,
     })
-
-
-def models_q_signed():
-    from django.db.models import Q
-    return Q(stage='SIGNED')
 
 
 @api_view(['GET'])
@@ -248,7 +248,11 @@ def stock_report(request):
         Sum(F('prix_achat') * F('quantite_stock'), output_field=dec),
         Decimal('0'))
     val_vente = qs.aggregate(t=sum_vente)['t']
-    val_achat = qs.aggregate(t=sum_achat)['t']
+    # AANA26 — la valorisation d'ACHAT n'est servie qu'à `can_view_buy_prices`
+    # (permission `prix_achat_voir`, repli légacy) : la clé est ABSENTE sinon
+    # (même patron que sav_pivot). Pas même calculée pour les autres.
+    voit_achat = bool(getattr(request.user, 'can_view_buy_prices', False))
+    val_achat = qs.aggregate(t=sum_achat)['t'] if voit_achat else None
     par_categorie = list(
         qs.values('categorie__nom')
         .annotate(nb=Count('id'), valeur_vente=sum_vente)
@@ -289,11 +293,18 @@ def stock_report(request):
     if p:
         return p
 
+    par_categorie_out = [
+        {**c, 'valeur_vente': str(c['valeur_vente'])} for c in par_categorie]
+    if not voit_achat:
+        return Response({
+            'valorisation_vente': str(val_vente),
+            'par_categorie': par_categorie_out,
+            'bas_stock': bas_stock,
+        })
     return Response({
         'valorisation_vente': str(val_vente),
         'valorisation_achat': str(val_achat),  # interne, non client-facing
-        'par_categorie': [
-            {**c, 'valeur_vente': str(c['valeur_vente'])} for c in par_categorie],
+        'par_categorie': par_categorie_out,
         'bas_stock': bas_stock,
     })
 
@@ -312,7 +323,9 @@ def service_report(request):
     start, end = _period(request)
     inst_qs = Installation.objects.filter(**co)
     interv_qs = Intervention.objects.filter(**co)
-    ticket_qs = Ticket.objects.filter(**co)
+    # AANA24 / D-AANA-2 — UNE base de tickets : les annulés sont exclus de
+    # tout compte (ouverts, résolus, par statut), comme reports_field.
+    ticket_qs = Ticket.objects.filter(**co, annule=False)
     if start:
         inst_qs = inst_qs.filter(date_creation__date__gte=start)
         interv_qs = interv_qs.filter(date_prevue__gte=start)

@@ -337,7 +337,9 @@ class WebhookDeliveryTests(TestCase):
             captured['content'] = content
             return mock.Mock(status_code=200)
 
-        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post):
+        # AANA31 — la mise en file a lieu AU COMMIT : on l'exécute ici.
+        with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post), \
+                self.captureOnCommitCallbacks(execute=True):
             delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, payload)
 
         # YAPIC8 — la signature couvre `timestamp.body` (le corps réellement
@@ -355,7 +357,8 @@ class WebhookDeliveryTests(TestCase):
     def test_delivery_only_to_subscribed_events(self):
         # Webhook NON abonné à facture.paid ? il l'est ici ; en revanche un
         # évènement non listé n'est jamais livré.
-        with mock.patch.object(delivery.httpx, 'post') as m:
+        with mock.patch.object(delivery.httpx, 'post') as m, \
+                self.captureOnCommitCallbacks(execute=True):
             m.return_value = mock.Mock(status_code=200)
             delivery.dispatch_event(self.co.id, 'devis.accepted', {})
         self.assertEqual(WebhookDelivery.objects.count(), 0)
@@ -374,7 +377,8 @@ class WebhookDeliveryTests(TestCase):
     def test_disabled_webhook_not_delivered(self):
         self.hook.enabled = False
         self.hook.save(update_fields=['enabled'])
-        with mock.patch.object(delivery.httpx, 'post') as m:
+        with mock.patch.object(delivery.httpx, 'post') as m, \
+                self.captureOnCommitCallbacks(execute=True):
             delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {})
         m.assert_not_called()
 
@@ -515,7 +519,8 @@ class WebhookSSRFGuardTests(TestCase):
         hook = Webhook.objects.create(
             company=self.co, target_url='https://127.0.0.1:9000/hook',
             secret='s', events=[EVENT_LEAD_CREATED], enabled=True)
-        with mock.patch.object(delivery.httpx, 'post') as m:
+        with mock.patch.object(delivery.httpx, 'post') as m, \
+                self.captureOnCommitCallbacks(execute=True):
             delivery.dispatch_event(
                 self.co.id, EVENT_LEAD_CREATED, {'event': EVENT_LEAD_CREATED})
         # Jamais de POST réseau vers la cible interne.

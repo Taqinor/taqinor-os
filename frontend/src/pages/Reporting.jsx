@@ -482,11 +482,14 @@ export function Component() {
             <ConversionBar label="Devis créés" value={conversion.nb_devis} max={conversion.nb_devis} tone="info" />
             <ConversionBar label="Devis acceptés" value={conversion.nb_acceptes} max={conversion.nb_devis} tone="success" />
             <ConversionBar label="Factures émises" value={conversion.nb_factures} max={conversion.nb_devis} tone="primary" />
-            {conversion.nb_devis > 0 && (
+            {/* AANA29 — taux SERVI par le backend (contrat AANA1,
+                conversion.taux_acceptation_pct) : jamais recalculé ici. L'ancienne
+                formule factures ÷ devis dépassait 100 %. */}
+            {conversion.taux_acceptation_pct != null && (
               <div className="mt-4 rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
-                Taux de conversion global :{' '}
+                Devis acceptés / créés :{' '}
                 <strong className="tabular-nums text-foreground">
-                  {formatPercent(Math.round((conversion.nb_factures / conversion.nb_devis) * 100))}
+                  {formatPercent(conversion.taux_acceptation_pct)}
                 </strong>
               </div>
             )}
