@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7630, components: 2211}
+counts: {paths: 4834, operations: 7628, components: 2210}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -551,7 +551,6 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/consommation/proposer/ -> django_calepinage_calepinages_consommation_proposer_create
 - post /api/django/calepinage/calepinages/{id}/demarquer-modele/ -> django_calepinage_calepinages_demarquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/design-context/ -> django_calepinage_calepinages_design_context_retrieve
-- post /api/django/calepinage/calepinages/{id}/deverrouiller/ -> django_calepinage_calepinages_deverrouiller_create
 - get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> django_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> django_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/documents/ -> django_calepinage_calepinages_documents_retrieve
@@ -4404,7 +4403,6 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/consommation/proposer/ -> v1_calepinage_calepinages_consommation_proposer_create
 - post /api/v1/calepinage/calepinages/{id}/demarquer-modele/ -> v1_calepinage_calepinages_demarquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/design-context/ -> v1_calepinage_calepinages_design_context_retrieve
-- post /api/v1/calepinage/calepinages/{id}/deverrouiller/ -> v1_calepinage_calepinages_deverrouiller_create
 - get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> v1_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/v1/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> v1_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/documents/ -> v1_calepinage_calepinages_documents_retrieve
@@ -7855,7 +7853,6 @@ components:
 - CalepinageRemiseDocument
 - CalepinageRequest
 - CalepinageSimulationAccuse
-- CalepinageStatutEnum
 - CalepinageSuggestionPenteDemandeRequest
 - CalepinageSuggestionPenteReponse
 - Canal
