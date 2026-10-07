@@ -162,6 +162,19 @@ def calepinage_ouvert_du_lead(company, lead_id):
     return liste_calepinages(company, lead_id=lead_id).first()
 
 
+def calepinages_ouverts_du_lead(company, lead_id):
+    """ACAL177 — TOUS les calepinages OUVERTS (non archivés) d'un lead.
+
+    Lu par ``crm.services.raison_refus_suppression`` : la corbeille d'un lead
+    porteur d'un calepinage ouvert est refusée en le nommant. Même prédicat
+    « ouvert » que ``calepinage_ouvert_du_lead`` (``appliquer_filtres_liste``,
+    ``inclure_archives=False``), borné à ``company``. Liste vide sans lead.
+    """
+    if company is None or not lead_id:
+        return []
+    return list(liste_calepinages(company, lead_id=lead_id))
+
+
 #: ACAL196 — « CAL-AAMM-NNNN » : le numéro à la fin est l'identifiant.
 _REFERENCE_AFFICHEE = re.compile(r'^CAL-(?:\d{4}-)?(\d{1,18})$',
                                  re.IGNORECASE)

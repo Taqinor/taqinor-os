@@ -152,6 +152,71 @@ def _refuser_repointage_d_un_actif(ancien_devis_id, nouveau, company):
         f"{_reference(nouveau)}.", champ='devis')
 
 
+def transferer_lead(company, *, de_lead_id, vers_lead_id, user=None):
+    """ACAL176 — les calepinages d'un lead ABSORBÉ suivent le survivant.
+
+    Appelé par ``crm.services.merge_leads`` (ACAL177) : sans lui, une fusion
+    laissait le dessin accroché à une fiche archivée, et « Ouvrir dans le
+    module Calepinage » sur le survivant en recréait un vide.
+
+    * ``lead_id`` passe à ``vers_lead_id`` pour TOUS les calepinages du lead
+      absorbé, archivés (corbeille) compris ;
+    * ``client`` prend le client du survivant quand le calepinage n'en avait
+      pas ou portait celui de l'absorbé (règle de cohérence ACAL179) ;
+    * conception, empreinte et statut ne sont JAMAIS touchés (``update`` ciblé,
+      aucun ``save()``) ;
+    * si le survivant avait déjà un calepinage OUVERT, les deux restent ouverts
+      (jamais de fusion de dessins) et la ligne de chatter le dit ;
+    * un lead d'une autre société ne déplace rien.
+
+    Returns:
+        La liste des identifiants des calepinages déplacés (vide si rien).
+    """
+    from django.db import transaction
+    from django.db.models import Q
+
+    from apps.crm.selectors import get_company_lead
+
+    from ..models import Calepinage
+    from ..selectors import calepinage_ouvert_du_lead
+    from .journal import noter
+
+    if company is None or not de_lead_id or not vers_lead_id:
+        return []
+    if int(de_lead_id) == int(vers_lead_id):
+        return []
+    absorbe = get_company_lead(company, de_lead_id)
+    survivant = get_company_lead(company, vers_lead_id)
+    if absorbe is None or survivant is None:
+        return []
+
+    deja_ouvert = calepinage_ouvert_du_lead(company, survivant.pk)
+    with transaction.atomic():
+        lignes = Calepinage.objects.filter(company=company,
+                                           lead_id=absorbe.pk)
+        a_deplacer = list(lignes.order_by('pk'))
+        if not a_deplacer:
+            return []
+        ids = [c.pk for c in a_deplacer]
+        Calepinage.objects.filter(pk__in=ids).update(lead_id=survivant.pk)
+        if survivant.client_id:
+            condition = Q(client__isnull=True)
+            if absorbe.client_id:
+                condition |= Q(client_id=absorbe.client_id)
+            (Calepinage.objects.filter(pk__in=ids).filter(condition)
+             .update(client_id=survivant.client_id))
+
+    texte = (f'Rattaché au lead #{survivant.pk} '
+             f'(fusion avec #{absorbe.pk}).')
+    if deja_ouvert is not None:
+        texte += (f' Le lead #{survivant.pk} avait déjà le calepinage '
+                  f'{_etiquette(deja_ouvert)} ouvert : les deux restent '
+                  'ouverts, aucun dessin n\'est fusionné.')
+    for calepinage in a_deplacer:
+        noter(calepinage, texte, user=user)
+    return ids
+
+
 def _exiger_calepinage(calepinage):
     """Le calepinage existe et porte une société — sinon, refus explicite."""
     if calepinage is None or not getattr(calepinage, 'pk', None):
