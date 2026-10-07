@@ -17,6 +17,45 @@ from django.db import migrations
 
 TAILLE_LOT = 200
 MODES = ('degres', 'pourcentage', 'cotes')
+#: Lot 3 critique #5 — la MARQUE posée par l'aller sur ``pitchSource`` : le
+#: retour ne défait QUE les pans que cette migration a écrits.
+MARQUE = 'migrationPenteRacine'
+
+# Lot 3 critique #5 — l'empreinte IMPRIMÉE est RECALCULÉE par la même règle
+# que l'app (``apps.ventes.domain.geometrie.layout_hash``), RECOPIÉE ici : une
+# migration ne lit pas le code vivant, qui changera.
+_CLES_IMPRIMEES_AJOUTEES = (
+    'poseSurfaces', 'exclusionZones', 'modules', 'shading12x24',
+    'environment', 'shadeObstructions', 'horizonProfile', 'modePoseDeclare',
+)
+
+
+def _vide(valeur):
+    return valeur is None or valeur in ('', [], {})
+
+
+def layout_hash(layout):
+    """Copie figée de ``apps.ventes.domain.geometrie.layout_hash``."""
+    import hashlib
+    import json
+
+    if not isinstance(layout, dict):
+        return ''
+    canonical = {
+        'zones': (layout.get('zones') or layout.get('areas')
+                  or layout.get('pans')),
+        'result': layout.get('result'),
+        'scenario': layout.get('scenario'),
+        'panelWatt': layout.get('panelWatt') or layout.get('watt'),
+        'battery': bool(layout.get('battery')),
+    }
+    for cle in _CLES_IMPRIMEES_AJOUTEES:
+        valeur = layout.get(cle)
+        if not _vide(valeur):
+            canonical[cle] = valeur
+    blob = json.dumps(canonical, sort_keys=True, separators=(',', ':'),
+                      default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def _nombre(valeur):
@@ -59,7 +98,8 @@ def migrer_document(layout):
         if pente is not None:
             pan = dict(zones[0])
             pan['pitchDeg'] = pente
-            pan['pitchSource'] = {'mode': _mode(source), 'degres': pente}
+            pan['pitchSource'] = {'mode': _mode(source), 'degres': pente,
+                                  MARQUE: True}
             document['zones'] = [pan]
         return document, None
     if pente is None:
@@ -116,7 +156,7 @@ def migrer_pente_racine(apps, schema_editor):
         if nouveau is None:
             continue
         Calepinage.objects.filter(pk=calepinage.pk).update(
-            roof_layout=nouveau)
+            roof_layout=nouveau, layout_hash=layout_hash(nouveau))
         if note and type_calepinage is not None:
             Activity.objects.create(
                 company_id=calepinage.company_id,
@@ -136,13 +176,20 @@ def restaurer_pente_racine(apps, schema_editor):
                 and isinstance(zones[0], dict)):
             continue
         source = zones[0].get('pitchSource')
-        if not isinstance(source, dict) or source.get('degres') is None:
+        # Seuls les pans MARQUÉS par l'aller sont défaits : une pente saisie
+        # dans l'onglet Pente après la migration n'est jamais remontée.
+        if not isinstance(source, dict) or not source.get(MARQUE) \
+                or source.get('degres') is None:
             continue
         document = dict(layout)
+        pan = dict(zones[0])
+        pan['pitchSource'] = {cle: valeur for cle, valeur in source.items()
+                              if cle != MARQUE}
+        document['zones'] = [pan]
         document['penteDeg'] = source['degres']
         document['penteSource'] = source.get('mode') or 'degres'
         Calepinage.objects.filter(pk=calepinage.pk).update(
-            roof_layout=document)
+            roof_layout=document, layout_hash=layout_hash(document))
 
 
 class Migration(migrations.Migration):

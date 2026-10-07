@@ -14,6 +14,7 @@ from django.apps import apps as registre
 from django.contrib.contenttypes.models import ContentType
 
 from apps.calepinage.models import Calepinage
+from apps.ventes.services import layout_hash
 from apps.records.models import Activity
 
 from .test_api_liste import BaseApiCalepinage
@@ -47,7 +48,11 @@ class MigrationPenteRacineTest(BaseApiCalepinage):
         self.assertNotIn('penteSource', layout)
         self.assertEqual(layout['zones'][0]['pitchDeg'], 30)
         self.assertEqual(layout['zones'][0]['pitchSource'],
-                         {'mode': 'degres', 'degres': 30})
+                         {'mode': 'degres', 'degres': 30,
+                          MIGRATION.MARQUE: True})
+        # Lot 3 critique #5 — l'empreinte imprimée suit le document, calculée
+        # par la MÊME règle que l'app.
+        self.assertEqual(calepinage.layout_hash, layout_hash(layout))
         # Rejouer la migration ne change plus rien (idempotente).
         avant = calepinage.roof_layout
         MIGRATION.migrer_pente_racine(registre, None)
@@ -58,6 +63,23 @@ class MigrationPenteRacineTest(BaseApiCalepinage):
         MIGRATION.restaurer_pente_racine(registre, None)
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.roof_layout['penteDeg'], 30)
+        self.assertNotIn(MIGRATION.MARQUE,
+                         calepinage.roof_layout['zones'][0]['pitchSource'])
+        self.assertEqual(calepinage.layout_hash,
+                         layout_hash(calepinage.roof_layout))
+
+    def test_retour_ne_touche_pas_un_pan_non_marque(self):
+        """Lot 3 critique #5 — une pente saisie APRÈS la migration (pan sans
+        marque) n'est jamais remontée en pente racine par le retour."""
+        layout = {'version': 2, 'zones': [dict(
+            _pan('z1', 'Pan Sud'), pitchDeg=18,
+            pitchSource={'mode': 'degres', 'degres': 18})]}
+        calepinage = self._calepinage(layout)
+
+        MIGRATION.restaurer_pente_racine(registre, None)
+
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.roof_layout, layout)
 
     def test_plusieurs_pans_journalise_sans_deviner(self):
         zones = [_pan('z1', 'Pan Sud'), _pan('z2', 'Pan Nord')]
