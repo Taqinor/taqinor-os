@@ -6066,8 +6066,19 @@ export interface SyntheseCi {
     definitions: { autoconso: string | null; couverture: string | null };
   } | null;
   argent: SyntheseCiArgent | null;
+  /** L'offre que le document TITRE (`option_servie` : `sans_batterie` | `avec_batterie`), ou `null`. */
+  optionServie: string | null;
+  /** CIW303 — la batterie d'un C&I est une OPTION : valeur chiffrée par le moteur, ou son motif. */
+  optionBatterie: SyntheseCiOptionBatterie | null;
   hypotheses: SyntheseCiHypothese[];
   omissions: Array<{ bloc: string; motif: string }>;
+}
+
+export interface SyntheseCiOptionBatterie {
+  /** Texte servi de la valeur chiffrée par le moteur C&I (`valeur_chiffree.textes`), ou `null` = non chiffrée. */
+  valeurChiffree: TextesCi | null;
+  /** Motif servi (« valeur non chiffrée »…), ou `null`. */
+  motif: string | null;
 }
 
 function lireTextesCi(v: unknown): TextesCi | null {
@@ -6177,6 +6188,15 @@ export function syntheseCi(
         }
       : null,
     argent: lireArgentCi(brut.argent),
+    optionServie: texteServi(brut.option_servie),
+    optionBatterie: estRecord(brut.option_batterie)
+      ? {
+          valeurChiffree: estRecord(brut.option_batterie.valeur_chiffree)
+            ? lireTextesCi(brut.option_batterie.valeur_chiffree.textes)
+            : null,
+          motif: texteServi(brut.option_batterie.motif),
+        }
+      : null,
     hypotheses,
     omissions,
   };
@@ -6239,4 +6259,41 @@ export function motifsManquantsCi(ci: SyntheseCi | null): string[] {
   for (const m of ci.argent?.motifsOmission ?? []) ajoute(m);
   for (const o of ci.omissions) if (o.bloc === 'argent' || o.bloc.startsWith('argent.')) ajoute(o.motif);
   return sortie;
+}
+
+// ── CIW303 — Options C&I : l'offre réseau d'abord, la batterie en option ─────
+
+/**
+ * CIW303 — le simulateur batterie (moteur horaire exécuté dans le NAVIGATEUR, calibré sur des
+ * batteries Dyness 5/10 kWh, phrases résidentielles) n'est proposé qu'au RÉSIDENTIEL. En C&I,
+ * la valeur d'une batterie est celle du moteur C&I (`synthese_ci.option_batterie`), jamais un
+ * second moteur côté page.
+ */
+export function batterySimEligibleForMode(mode: string | null | undefined): boolean {
+  return mode === 'residentiel';
+}
+
+const NON_CHIFFREE: TextesCi = {
+  fr: 'valeur non chiffrée',
+  en: 'value not quantified',
+  ar: 'القيمة غير مقدَّرة بالأرقام',
+};
+
+/**
+ * CIW303 — la ligne « valeur » d'une option batterie C&I : le texte SERVI par le moteur quand
+ * il chiffre la valeur ; sinon « valeur non chiffrée » (+ le motif servi). La page ne calcule
+ * jamais une économie de batterie.
+ */
+export function valeurOptionBatterieCi(
+  ci: SyntheseCi | null,
+): { chiffree: boolean; textes: TextesCi; motif: string | null } | null {
+  const ob = ci?.optionBatterie ?? null;
+  if (!ob) return null;
+  if (ob.valeurChiffree) return { chiffree: true, textes: ob.valeurChiffree, motif: null };
+  return { chiffree: false, textes: NON_CHIFFREE, motif: ob.motif && ob.motif !== NON_CHIFFREE.fr ? ob.motif : null };
+}
+
+/** L'offre principale d'un devis C&I (réseau seul sauf `option_servie` = `avec_batterie`). */
+export function offrePrincipaleCi(ci: SyntheseCi | null): OptionKey {
+  return ci?.optionServie === 'avec_batterie' ? 'avec_batterie' : 'sans_batterie';
 }

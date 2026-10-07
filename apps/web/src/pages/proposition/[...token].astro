@@ -46,6 +46,9 @@ import {
   argentCiCalcule,
   economieCiHero,
   injectionCi,
+  batterySimEligibleForMode,
+  valeurOptionBatterieCi,
+  offrePrincipaleCi,
   ciEstUneEstimation,
   ciSousReserveVisite,
   motifsManquantsCi,
@@ -592,6 +595,10 @@ const ciInjection = injectionCi(ci);
 const ciManque = motifsManquantsCi(ci);
 const ciEstimation = ciEstUneEstimation(ci);
 const ciSousReserve = ciSousReserveVisite(ci);
+// CIW303 — options C&I : l'offre réseau d'abord ; la batterie est une « option proposée » avec sa
+// seule valeur CHIFFRÉE par le moteur C&I (ou « valeur non chiffrée » + motif). Rien n'est calculé ici.
+const ciOffrePrincipale: OptionKey = offrePrincipaleCi(ci);
+const ciValeurBatterie = valeurOptionBatterieCi(ci);
 // AGW303 — LA SYNTHÈSE AGRICOLE SERVIE (`synthese_agricole`, la MÊME fonction que le PDF).
 // La page LIT : besoin vs eau livrée, schéma, courbe + point, provenance, plaque. Aucun
 // calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
@@ -955,7 +962,9 @@ const storageSweep: StorageSweepInfo | null = ok ? storageSweepInfo(data!) : nul
 // du devis (5/10 kWh), jamais inventée ; AUCUN prix batterie fabriqué (prix réel du
 // devis quand N correspond à l'offre, sinon « sur étude »). Le recalcul au curseur
 // est 100 % côté client (aucun re-fetch) : les silhouettes + totaux sont sérialisés.
-const batterySimEligible = ok && (curveMode === 'residentiel' || curveMode === 'commercial');
+// CIW303 — résidentiel SEULEMENT : en C&I la valeur d'une batterie est celle du moteur C&I
+// (`synthese_ci.option_batterie`), jamais un second moteur exécuté dans le navigateur.
+const batterySimEligible = ok && batterySimEligibleForMode(curveMode);
 const consMonthly = ok ? monthlySeries(data?.monthly_consumption) : null;
 const annualConsKwh = consMonthly ? consMonthly.reduce((a, b) => a + b, 0) : 0;
 const dailyConsKwh = annualConsKwh > 0 ? annualConsKwh / 365 : 0;
@@ -5117,6 +5126,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             const totaux = optionTotaux(data!, opt);
             const items = optionItems(data!, opt);
             const isReco = twoOptions && opt === reco;
+            // CIW303 — en C&I l'offre principale est celle que le devis TITRE (réseau d'abord) ;
+            // l'autre carte est « Option proposée » (jamais « Recommandé » sur une batterie).
+            const ciPrincipale = isAutoconso && opt === ciOffrePrincipale;
+            const ciOptionProposee = isAutoconso && twoOptions && opt !== ciOffrePrincipale;
             const eco = opt === 'avec_batterie' ? ecoAvec : ecoSans;
             // WJ83 — un payload totaux-less retombe sur `optionTtc() === 0` (le
             // `?? 0` défensif de la fonction) : sans ce garde-fou, "0 MAD TTC,
@@ -5130,14 +5143,37 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             return (
               <article
                 class="cine-card relative flex flex-col rounded-2xl p-6"
-                style={isReco ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+                style={(isAutoconso ? (twoOptions && ciPrincipale) : isReco) ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
               >
-                {isReco && (
+                {isAutoconso ? (
+                  twoOptions ? (
+                    <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-ci-option-badge={ciPrincipale ? 'principale' : 'option'}
+                      data-i18n
+                      data-fr={ciPrincipale ? 'Offre principale' : 'Option proposée'}
+                      data-en={ciPrincipale ? 'Main offer' : 'Optional extra'}
+                      data-ar={ciPrincipale ? 'العرض الرئيسي' : 'خيار مقترح'}>
+                      {ciPrincipale ? 'Offre principale' : 'Option proposée'}
+                    </span>
+                  ) : null
+                ) : isReco ? (
                   <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
                     Recommandé
                   </span>
+                ) : null}
+                {isAutoconso ? (
+                  <h3 class="display text-xl text-lune" data-i18n
+                    data-fr={opt === 'avec_batterie' ? 'Avec batterie (option)' : 'Offre réseau (autoconsommation)'}
+                    data-en={opt === 'avec_batterie' ? 'With battery (option)' : 'Grid-connected offer (self-consumption)'}
+                    data-ar={opt === 'avec_batterie' ? 'مع بطارية (خيار)' : 'عرض الربط بالشبكة (استهلاك ذاتي)'}>{opt === 'avec_batterie' ? 'Avec batterie (option)' : 'Offre réseau (autoconsommation)'}</h3>
+                ) : (
+                  <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt, avecDifferee)} data-en={optionLabelEn(opt, avecDifferee)} data-ar={optionLabelAr(opt, avecDifferee)}>{optionLabel(opt, avecDifferee)}</h3>
                 )}
-                <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt, avecDifferee)} data-en={optionLabelEn(opt, avecDifferee)} data-ar={optionLabelAr(opt, avecDifferee)}>{optionLabel(opt, avecDifferee)}</h3>
+                {ciOptionProposee && opt === 'avec_batterie' && ciValeurBatterie ? (
+                  <p class="mt-2 text-sm text-lune-soft" data-ci-valeur-batterie={ciValeurBatterie.chiffree ? 'chiffree' : 'non_chiffree'}
+                    data-i18n data-fr={ciValeurBatterie.textes.fr} data-en={ciValeurBatterie.textes.en} data-ar={ciValeurBatterie.textes.ar}>
+                    {ciValeurBatterie.textes.fr}{ciValeurBatterie.motif ? ` — ${ciValeurBatterie.motif}` : ''}
+                  </p>
+                ) : null}
                 {/* L-DEUXOPT — « N panneaux · X kWc » (+ « Batteries : Y kWh »
                     côté avec) : données du contrat UNIQUEMENT, chaque
                     sous-valeur omise individuellement si `null` — jamais un
