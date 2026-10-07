@@ -4226,6 +4226,103 @@ def peupler_series_entrepot_reception(*, reception, company, user):
     return created
 
 
+# ── ASTK57 — abonnés de `reception_fournisseur_annulee` (C-ASTK-011) ──────
+# Jumeaux SYMÉTRIQUES des trois abonnés de `reception_fournisseur_confirmee`
+# (provision GR/IR, registre des séries, réservation YPROC10). Chacun relit
+# l'état PERSISTÉ (jamais le payload seul) et est IDEMPOTENT : un second
+# envoi du signal ne change rien.
+
+def extourner_gr_ir_reception(*, reception, company):
+    """ASTK57 — extourne la provision GR/IR OUVERTE d'une réception annulée :
+    la marchandise est repartie, la dette latente n'existe plus. Une
+    provision déjà lettrée (facture arrivée) n'est jamais touchée. Renvoie le
+    nombre de provisions extournées (0 au rejeu)."""
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or reception is None:
+        return 0
+    deleted, _ = ReceptionNonFacturee.objects.filter(
+        company=company, reception=reception, lettre=False).delete()
+    return deleted
+
+
+def retourner_series_entrepot_reception(*, reception, company):
+    """ASTK57 — repasse en « retourné » les `SerieEntrepot` encore « en
+    stock » créées par cette réception (séries capturées sur ses lignes). Une
+    série déjà sortie/réservée n'est pas touchée. Renvoie le nombre de séries
+    modifiées (0 au rejeu)."""
+    from .models_serie_entrepot import SerieEntrepot
+
+    if company is None or reception is None:
+        return 0
+    count = 0
+    for ligne in reception.lignes.all():
+        if ligne.produit_id is None:
+            continue
+        numeros = [
+            n.strip() if isinstance(n, str) else n
+            for n in (getattr(ligne, 'numeros_serie', None) or [])]
+        numeros = [n for n in numeros if n]
+        if not numeros:
+            continue
+        count += SerieEntrepot.objects.filter(
+            company=company, produit_id=ligne.produit_id,
+            numero_serie__in=numeros,
+            statut=SerieEntrepot.Statut.EN_STOCK,
+        ).update(statut=SerieEntrepot.Statut.RETOURNE)
+    return count
+
+
+def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
+    """ASTK57 — après l'annulation d'une réception d'un BCF « besoin
+    chantier » (YPROC10), re-plafonne la réservation du chantier : elle ne
+    dépasse plus le reçu NET de la ligne de BCF (`quantite_recue`, déjà
+    décrémentée par la contre-passation), sauf le besoin propre de la
+    nomenclature gelée (réservation N14, jamais réduite ici). Ne fait que
+    BAISSER une réservation active non consommée ; à 0, elle est désactivée.
+    Fonction pure de l'état persisté → idempotente. Renvoie le nombre de
+    réservations modifiées."""
+    bc = reception.bon_commande
+    if bc is None or not getattr(bc, 'chantier_origine_id', None):
+        return 0
+    installation = bc.chantier_origine
+    if installation is None:
+        return 0
+    if company is not None and installation.company_id != company.id:
+        return 0
+
+    recu_net = {}
+    for ligne in reception.lignes.select_related('ligne_commande').all():
+        if ligne.produit_id is None or ligne.ligne_commande_id is None:
+            continue
+        ligne_cmd = ligne.ligne_commande
+        ligne_cmd.refresh_from_db()
+        cap = min(int(ligne_cmd.quantite_recue or 0),
+                  int(ligne_cmd.quantite or 0))
+        recu_net[ligne.produit_id] = max(
+            recu_net.get(ligne.produit_id, 0), max(cap, 0))
+    if not recu_net:
+        return 0
+
+    besoins_bom = _bom_quantities(installation)
+    count = 0
+    for produit_id, cap_recu in recu_net.items():
+        plafond = max(cap_recu, besoins_bom.get(produit_id, 0))
+        resa = StockReservation.objects.filter(
+            installation=installation, produit_id=produit_id,
+            active=True, consomme=False).first()
+        if resa is None or resa.quantite <= plafond:
+            continue
+        resa.quantite = plafond
+        changed = ['quantite']
+        if plafond <= 0:
+            resa.active = False
+            changed.append('active')
+        resa.save(update_fields=changed)
+        count += 1
+    return count
+
+
 # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
 
 def verifier_gate_acompte_planification(installation):
