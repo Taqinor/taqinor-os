@@ -23,7 +23,7 @@
 import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, lireJson, posterWebhookSite, telephoneMobileUnique,
-  isoDansJours, uniq,
+  isoDansJours, uniq, choisirMarche,
 } from './helpers.js'
 
 const CLE_REPLI = 'taqinor.lw.collapsed'
@@ -212,13 +212,16 @@ test.describe('AGR423 — lead agricole, du site au générateur', () => {
     await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
     await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
       .toBeVisible({ timeout: 30_000 })
-    await page.getByRole('radio', { name: /Agricole/ }).click()
+    await choisirMarche(page, /Agricole/)
     await expect(page.getByTestId('bloc-cas-pompe')).toBeVisible()
     // Les valeurs reprises de la fiche, avec leur provenance.
     await expect(page.getByTestId('provenance-lead-pompage')).toBeVisible({ timeout: 30_000 })
     await expect.poll(async () => Number(await page.locator('#gen-hmt').inputValue())).toBe(60)
     // Aucune valeur inventée : pas de 20 m, pas de culture ni de région par défaut.
-    await expect(page.locator('#gen-distance')).toHaveValue('')
+    // La distance est celle MESURÉE à la visite du temps 4 (`site_pv.
+    // distance_forage_champ_m: 120`), remontée sur le lead : AGR420 pré-remplit
+    // les valeurs « déclarées ou mesurées » — 120, jamais le 20 m de l'écran.
+    await expect(page.locator('#gen-distance')).toHaveValue('120')
     await expect(page.locator('#gen-farm-crop')).toContainText('Non renseignée')
     await expect(page.locator('#gen-farm-region')).toContainText('Non renseignée')
     // La pompe ACTUELLE (5 CV) n'est jamais recopiée comme CV cible.
@@ -256,6 +259,9 @@ test.describe('AGR423 — lead agricole, du site au générateur', () => {
     const confirmation = page.getByRole('alertdialog')
     await expect(confirmation).toBeVisible()
     await confirmation.getByRole('button', { name: 'Annuler' }).click()
+    // La 1re confirmation doit être REFERMÉE avant d'en rouvrir une : un clic
+    // pendant sa fermeture n'ouvre rien (nocturne CAD177 : bandeau cliqué, aucune modale).
+    await expect(confirmation).toHaveCount(0)
     expect((await leadDetail(request, residentiel.id)).type_installation).toBe('residentiel')
 
     await bandeau.getByRole('button', { name: 'Passer en Agricole' }).click()

@@ -11783,8 +11783,28 @@ RETOUR_LEAD_CI = (
     ('type_toiture', 'type_toiture', None),
     ('surface_utile', 'surface_toiture_m2', 'surface_source'),
 )
+#: CIQ5 (lignes ``factures_mt.cos_phi_constate`` et ``reactif_secours.
+#: groupe_kva`` de ``retour_lead_ci``) — relevés HORS comparaison
+#: déclaré/constaté : le sélecteur les sert en ``{constate}`` (le cos φ
+#: seulement si sa source est connue). Même forme que ``RETOUR_LEAD_CI``.
+RETOUR_LEAD_CI_SUPPLEMENT = (
+    ('cos_phi', 'cos_phi', 'cos_phi_source'),
+    ('groupe_kva', 'groupe_kva', None),
+)
 #: La provenance posée par une mesure de visite (forme AGR2/CIQ1).
 ORIGINE_MESURE_VISITE = 'mesure_visite'
+
+
+def _valeur_valide(colonne, valeur):
+    """Les validateurs de la colonne Lead (ex. cos φ dans ]0 ; 1]) : une
+    mesure hors bornes n'est jamais recopiée."""
+    from django.core.exceptions import ValidationError
+
+    try:
+        Lead._meta.get_field(colonne).run_validators(valeur)
+    except ValidationError:
+        return False
+    return True
 
 
 def appliquer_releve_ci(lead, releve, user):
@@ -11804,7 +11824,7 @@ def appliquer_releve_ci(lead, releve, user):
         'date': releve.get('validee_le'),
     }
     ecrites, rendu = [], {}
-    for cle, colonne, source in RETOUR_LEAD_CI:
+    for cle, colonne, source in RETOUR_LEAD_CI + RETOUR_LEAD_CI_SUPPLEMENT:
         bloc = releve.get(cle)
         if not isinstance(bloc, dict) or bloc.get('non_releve'):
             continue
@@ -11812,7 +11832,7 @@ def appliquer_releve_ci(lead, releve, user):
         if brute is None or (isinstance(brute, str) and not brute.strip()):
             continue
         valeur = _valeur_colonne_lead(colonne, brute)
-        if valeur is None:
+        if valeur is None or not _valeur_valide(colonne, valeur):
             continue
         if getattr(lead, colonne) != valeur:
             setattr(lead, colonne, valeur)

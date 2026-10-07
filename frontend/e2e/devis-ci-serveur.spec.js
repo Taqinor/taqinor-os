@@ -10,6 +10,7 @@
 // aucune clé v1 (taux_autoconso, payback, part_diurne_pct…) écrite.
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
+import { choisirMarche, declarerProfilCi } from './helpers'
 
 const API = '/api/django'
 const KWH = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
@@ -46,9 +47,11 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
   await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })
-  await page.getByRole('radio', { name: /Commercial/ }).click()
+  await choisirMarche(page, /Commercial/)
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH[i]))
+  // Calendrier + contrat : le moteur C&I n'en suppose aucun (voir le helper).
+  await declarerProfilCi(page)
 
   // L'aperçu serveur répond (aucun calcul local) : la taille retenue s'affiche.
   const tailleApercu = page.getByTestId('ci-taille-retenue')

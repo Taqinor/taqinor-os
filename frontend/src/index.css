@@ -367,6 +367,15 @@ button:active, [role="button"]:active, a.btn:active,
   /* U2-GUARD: overscroll-behavior:contain empêche le scroll de se propager
      vers un ancêtre quand on atteint le bord (évite rebonds iOS indésirables). */
   overscroll-behavior-y: contain;
+  /* CAD177 (MB6, mesuré au rendu réel 390×844) : bloc conteneur des éléments
+     `position:absolute` sans ancêtre positionné — le <select> natif caché que
+     Radix Select pose à côté de son déclencheur (offsetParent = BODY). Sans
+     lui, ces éléments se plaçaient par rapport au bloc initial, ÉCHAPPAIENT
+     au scrolleur et allongeaient le DOCUMENT (html 2269 px pour 844 de
+     viewport sur le générateur de devis) : un scrollIntoView faisait alors
+     défiler toute la coquille (en-tête hors écran, tab-bar remontée sur le
+     bouton « Créer le devis »). */
+  position: relative;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────── */
