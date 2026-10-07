@@ -1099,6 +1099,30 @@ export function proposalEndpoint(apiBase: string, token: string): string {
 }
 
 /**
+ * ACAL314 (C-ACAL-019) — l'URL CHARGEABLE de l'affiche de toiture.
+ *
+ * Le backend sert désormais `roof_image_url` comme un CHEMIN RELATIF
+ * (`/api/django/ventes/proposal/<token>/roof-image/`, proxy Django borné par
+ * le jeton) — plus une URL pré-signée vers l'hôte interne `minio:9000`,
+ * injoignable du navigateur. Ce site n'est PAS servi par l'origine de l'API :
+ * le chemin est donc préfixé par `apiBase`. Une URL absolue (http/https) est
+ * rendue telle quelle ; vide, absente ou d'une autre forme → `null` (la page
+ * se rend sans affiche, la 3D garde son repli).
+ */
+export function urlAfficheToiture(
+  apiBase: string,
+  roofImageUrl: unknown,
+): string | null {
+  if (typeof roofImageUrl !== 'string') return null;
+  const brut = roofImageUrl.trim();
+  if (!brut) return null;
+  if (/^https?:\/\//i.test(brut)) return brut;
+  if (!brut.startsWith('/') || brut.startsWith('//')) return null;
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}${brut}`;
+}
+
+/**
  * ANALYT1 (audit item 64) — URL backend du beacon d'engagement par section
  * (XSAL16, `apps/ventes/public_views.py proposal_engagement`), endpoint
  * PUBLIC monté sous `public/` (jamais `ventes/`, contrairement à
@@ -3074,7 +3098,7 @@ export const VIEWER_FLAT_TILT_DEG = 15;
 export const VIEWER_MAX_PANELS = 600;
 
 const VIEWER_DEG2RAD = Math.PI / 180;
-const VIEWER_DEG2M = 111_320; // mètres par degré de latitude (WGS84 approx.)
+import { DEG2M_GEO as VIEWER_DEG2M } from './geo';
 
 /** Point-dans-polygone (ray casting) en coordonnées planes. */
 export function viewerPointInRing(pt: [number, number], ring: Array<[number, number]>): boolean {

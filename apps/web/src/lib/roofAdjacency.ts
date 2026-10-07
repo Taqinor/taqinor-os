@@ -44,7 +44,7 @@ export type LngLat = [number, number];
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
-const WGS84_RADIUS = 6378137; // m
+import { WGS84_RADIUS } from './geo';
 const DEG2M = DEG2RAD * WGS84_RADIUS; // mètres par degré (axe nord/sud)
 
 /** Azimut de repli (plein sud) quand aucune adjacence n'est trouvée. */

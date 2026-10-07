@@ -1,12 +1,30 @@
 {
   "endpoint": "POST /api/django/agent/logs/confirmer/",
-  "pourquoi": "AUDV27 (YHARD2) — `log_confirmed_action` existait déjà (testée) mais AUCUN appelant ne l'invoquait après une exécution réelle : le journal des actions IA confirmées restait vide en production. Appelé par le relais FastAPI (`confirm_proposal`) juste après un `_execute_catalogue_action` réussi — jamais à la simple proposition (éphémère côté agent/Redis). Self-service : tout utilisateur authentifié journalise SA PROPRE confirmation (`company`/`user` posés côté serveur) ; la LECTURE (`GET /agent/logs/`) et l'ANNULATION (`POST /agent/logs/<id>/annuler/`) restent admin/Directeur, non touchées ici. `object_id` n'est résolu en `content_type`/`object_id` QUE pour les actions PILOTES connues (table `_RESULTED_OBJECT_MODELS`, aujourd'hui `crm.client.create` uniquement) — une action absente de cette table est quand même journalisée, sans cible résolue.",
+  "forme_serveur": "complete",
+  "pourquoi": "AUDV27 (YHARD2) — `log_confirmed_action` existait déjà (testée) mais AUCUN appelant ne l'invoquait après une exécution réelle : le journal des actions IA confirmées restait vide en production. Appelé par le relais FastAPI (`confirm_proposal` → `_log_confirmed_action`, SEUL appelant) juste après un `_execute_catalogue_action` réussi — jamais à la simple proposition (éphémère côté agent/Redis). `company`/`user` posés côté serveur ; la LECTURE (`GET /agent/logs/`) et l'ANNULATION (`POST /agent/logs/<id>/annuler/`) restent admin/Directeur. AANA18 (C-AANA-008) — un journal n'est accepté QUE pour une proposition réellement émise : l'action doit figurer dans `registry.for_user(user)` au même `risk_level` (permission requise détenue) ET le corps doit porter `preuve`, HMAC-SHA256 calculé par FastAPI avec le secret partagé `AGENT_HMAC_SECRET` (jamais exposé au navigateur) ; sinon 403 et aucun journal. `proposal_hash` journalisé = cette preuve (jamais le jeton brut). Sans secret configuré, toute confirmation est refusée (fail-closed). `object_id` n'est résolu en `content_type`/`object_id` QUE pour les actions PILOTES connues (table `_RESULTED_OBJECT_MODELS`, aujourd'hui `crm.client.create`).",
+  "preuve": {
+    "algorithme": "HMAC-SHA256, clé = AGENT_HMAC_SECRET (UTF-8), sortie hexadécimale minuscule",
+    "message": "json.dumps({v, action_key, company_id, user_id, inputs, object_id}, sort_keys=True, separators=(',', ':'), ensure_ascii=False) encodé en UTF-8 ; company_id/user_id entiers (société ACTIVE et utilisateur de la requête), inputs = objet du corps, object_id = '' si absent sinon str(object_id), v = 1",
+    "vecteur_de_test": {
+      "secret": "secret-de-test-contrat",
+      "champs": {
+        "action_key": "crm.client.create",
+        "company_id": 7,
+        "user_id": 12,
+        "inputs": {"nom": "Client Confirmé"},
+        "object_id": 42
+      },
+      "message": "{\"action_key\":\"crm.client.create\",\"company_id\":7,\"inputs\":{\"nom\":\"Client Confirmé\"},\"object_id\":\"42\",\"user_id\":12,\"v\":1}",
+      "preuve": "b640837fd7675582f58d345f66598beeda5704b4e2fdd94979e1e63d394ca644"
+    }
+  },
   "exemple_corps": {
     "action_key": "crm.client.create",
     "risk_level": "outward",
     "inputs": {"nom": "Client Confirmé"},
-    "proposal_hash": "3a7bd3e2...",
-    "object_id": 42
+    "object_id": 42,
+    "preuve": "b640837fd7675582f58d345f66598beeda5704b4e2fdd94979e1e63d394ca644",
+    "proposal_hash": "b640837fd7675582f58d345f66598beeda5704b4e2fdd94979e1e63d394ca644"
   },
   "exemple": {
     "id": 501,
@@ -21,5 +39,11 @@
   },
   "exemple_erreur_champs_manquants": {
     "detail": "action_key et risk_level (valide) sont requis."
+  },
+  "exemple_erreur_preuve": {
+    "detail": "Preuve de confirmation absente ou invalide."
+  },
+  "exemple_erreur_action": {
+    "detail": "Action non autorisée pour ce compte."
   }
 }

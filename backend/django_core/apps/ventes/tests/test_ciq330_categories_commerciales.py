@@ -37,12 +37,11 @@ INTERDITS = ("OTA", "injectable", "valorisable", "prévisible",
 
 def _data(categorie, reponses, *, tension=None, economie=None):
     data = copy.deepcopy(c_sample.build(categorie))
-    etude = {k: v for k, v in data["etude"].items()
-             if k not in ("chambres", "occupation_pct", "piscine",
-                          "chambres_froides", "horaires", "cuisson", "four",
-                          "cuisson_nocturne", "effectif", "internat",
-                          "fermeture_estivale", "clim")}
-    etude.update(reponses)
+    # CIQ129 — les réponses vivent dans l'entrée v2 du moteur C&I
+    # (``rythme.reponses_categorie``), jamais à plat dans l'étude.
+    etude = dict(data["etude"])
+    etude["rythme"] = {"categorie_commerciale": categorie,
+                       "reponses_categorie": dict(reponses)}
     if tension:
         etude["tension_raccordement"] = tension
     data["etude"] = etude

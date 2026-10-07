@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import SeuilReapproCasier, TacheReapproInterne
@@ -15,7 +16,8 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class SeuilReapproCasierSerializer(serializers.ModelSerializer):
+class SeuilReapproCasierSerializer(CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
     bin_code = serializers.CharField(source='bin.code', read_only=True,
                                      default='')
 
@@ -26,7 +28,8 @@ class SeuilReapproCasierSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
-class TacheReapproInterneSerializer(serializers.ModelSerializer):
+class TacheReapproInterneSerializer(CompanyScopedRelationsMixin,
+                                    serializers.ModelSerializer):
     bin_cible_code = serializers.CharField(source='bin_cible.code',
                                            read_only=True, default='')
     bin_source_code = serializers.CharField(source='bin_source.code',

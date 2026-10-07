@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 628545a52c1524508da917125acee3d9aa6413e05557a41ba16585bafe691606
-Plan fingerprint: 0a57950b5f62fd6e7f85f3b3854c3333f1610cef970d9673a2d9d69a0edef3f9
+Structure fingerprint: df8fefca48926a1a99bd46667ac5ef61a42f3aa9e3eb9e531b4d5a7e5c039291
+Plan fingerprint: 87d1926c9aff5b1596bd2bef4b981414c859ab8841facfc958f32ff00987b714
 
 
 
@@ -224,10 +224,10 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `crm` | `crm/` | 43 | Leads (funnel via STAGES.py), Clients, chatter (`LeadActivity`), canaux/tags/motifs de perte, `SiteProfile`, salle de vente, forecast, parrainage, playbooks, équipes. |
 | `visites` | `visites/` | 2 | Visites techniques terrain (`VisiteTerrain`, `VisiteMedia`) — autonomous app; the field rep has no CRM access. |
 | `calepinage` | `calepinage/` | 10 | Roof design studio: `Calepinage` + variantes/versions, `ReleveTerrain`, `PhotoSite`, `PoseReelle`, `DossierReglementaire`. Holds the villa engine + kit catalogue + roof-marker helper repatriated from `ao`. |
-| `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink` (ADOC131 : `suivi_prolonge_le`/`revoque_le`, action `devis/<id>/revoquer-lien-public/`), listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). Découpes SPL (move-only, goldens dans `tests/golden/` via `tests/split_golden.py`) : `selectors.py` = façade ré-exportant `selectors_{cadence,calepinage,facturation,portail,publicite,stock}.py` ; `public_views.py` garde document/proposal/suivi publics, le reste vit dans `public/` (`noyau`, `lecture_views` engagement, `paiement_views`, `signature_views`, `payload_*`) ; `etude_horaire.py` délègue à `horaire/` (`base`, `batterie_lignes`, `public`, `conso`, `ve_nocturne`) ; `views/devis.py` = viewset réparti en mixins `views/devis_{cadence,calepinage,cycle,edition,envoi,etudes,facturation,gardes,pdf}.py` ; `solar_design.py` ré-exporte `solar_{base,finance,classification}.py` ; `domain/cycle_vie.py`/`creation.py` répartis en `domain/{envoi,revision,creation_auto,creation_calepinage,creation_clone,…}.py` ; frontend `pages/ventes/DevisList.jsx` délègue à `devisList/`. |
+| `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink` (ADOC131 : `suivi_prolonge_le`/`revoque_le`, action `devis/<id>/revoquer-lien-public/`), affiche de toiture servie même origine (ACAL314 : `devis/<id>/roof-image/fichier/` + public `proposal/<token>/roof-image/`, chemins fabriqués par `domain/stockage_toiture.py`), listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). Découpes SPL (move-only, goldens dans `tests/golden/` via `tests/split_golden.py`) : `selectors.py` = façade ré-exportant `selectors_{cadence,calepinage,facturation,portail,publicite,stock}.py` ; `public_views.py` garde document/proposal/suivi publics, le reste vit dans `public/` (`noyau`, `lecture_views` engagement, `paiement_views`, `signature_views`, `payload_*`) ; `etude_horaire.py` délègue à `horaire/` (`base`, `batterie_lignes`, `public`, `conso`, `ve_nocturne`) ; `views/devis.py` = viewset réparti en mixins `views/devis_{cadence,calepinage,cycle,edition,envoi,etudes,facturation,gardes,pdf}.py` ; `solar_design.py` ré-exporte `solar_{base,finance,classification}.py` ; `domain/cycle_vie.py`/`creation.py` répartis en `domain/{envoi,revision,creation_auto,creation_calepinage,creation_clone,…}.py` ; frontend `pages/ventes/DevisList.jsx` délègue à `devisList/`. |
 | `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served. |
 | `stock` | `stock/` | 71 | Catalogue (`Produit`, `Marque`, `Categorie`, kits, `courbe_pompe`), `Fournisseur`, `MouvementStock`, emplacements/lots/inventaires, portail fournisseur. |
-| `achats` | `achats/` | 10 | Supplier POs/receptions/invoices/payments/returns, `PrixFournisseur` — state-only split out of `stock` (ODX19). |
+| `achats` | `achats/` | 11 | Supplier POs/receptions/invoices/payments/returns, `PrixFournisseur`, `ImputationAcompteFournisseur` (ASTK106) — state-only split out of `stock` (ODX19). |
 | `installations` | `installations/` | 115 | Chantiers **core + GPS**: `Installation`, planning, interventions, checklists, field documents, demandes d'achat, `DossierImport`, kitting, livraisons, `RecettePompage` (recette pompage, `/recettes-pompage/`, AGR). |
 | `outillage` | `outillage/` | 3 | Durable tools and loans (`Outillage`, `KitOutillage`). |
 | `sav` | `sav/` | 32 | Equipment registry (`Equipement`, warranty clock), tickets + SLA, `ContratMaintenance`, worksheets, `Probleme`, `KbArticle`, `AlarmeOnduleur`. |
@@ -572,7 +572,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1149)**
+**Done (1150)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -971,6 +971,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ126` — Générateur C&I : Auto-remplir, enregistrer et rouvrir passent par le serveur ; le…
 - `CIQ127` — Devis automatique C&I depuis la fiche lead : un seul appel serveur ; la branche C&I de…
 - `CIQ128` — Supprimer le moteur C&I JS de `solar.js` (aucun second moteur)
+- `CIQ129` — Retirer du schéma les clés ÉCRAN C&I v1 et les réponses de catégorie plates (D-CIQ-21 …
 - `CIQ130` — Commercial : les réponses de catégorie deviennent des éléments d'HORAIRE déclarés…
 - `CIQ131` — Générateur commercial : catégorie, réponses et heures transmises au moteur ; archétype…
 - `CIQ132` — Industriel MT : la courbe de charge se construit depuis les registres de la facture…
@@ -1724,7 +1725,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (123)**
+**Open — to build (122)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1781,7 +1782,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM7` — Lecture SQL de production : les ~10 comptages qui manquent aux deux rondes
 - `CADM8` — Relever quatre valeurs d'environnement en production
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
-- `CIQ129` — Retirer du schéma les clés ÉCRAN C&I v1 et les réponses de catégorie plates (D-CIQ-21 …
 - `CIQ220` — [GATED: critères écrits de l'opérateur SR500 — manuel] Indicateur INTERNE de…
 - `CIQ221` — [GATED: phrase et accord écrits de l'opérateur SR500 — manuel] Phrase client SR500 dans…
 - `CIQ334` — Clôture de la vague commerciale : aller-retour EN DIRECT d'un devis commercial…

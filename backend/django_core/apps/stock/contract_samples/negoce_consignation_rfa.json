@@ -1,0 +1,404 @@
+{
+  "endpoint": "GET /api/django/stock/consignations/?statut=<actif|clos>&client=<id>",
+  "pourquoi": "ASTK164 (M0, PACT10, C-ASTK-045 / C-ASTK-047 / C-ASTK-049) — contrat posé SEUL sur main avant les écrans consignation / RFA / paramètres négoce / portail 3PL (ASTK198 et ASTK201 affirment leurs clés contre ce fichier ; ASTK221-ASTK223 en sont nourris). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; les entrées NOUVEAU (facture_id/facture_reference ASTK198, paramètres réduits ASTK201) sont hors de ce test. Aucun montant d'achat (RFA et avoir à zéro), le solde 3PL public ne porte aucun prix.",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `consignations`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 6,
+        "client": 12,
+        "produit": 88,
+        "produit_nom": "Onduleur 3 kW",
+        "quantite_deposee": 20,
+        "quantite_consommee_declaree": 4,
+        "quantite_restante": 16,
+        "date_depot": "2026-10-01",
+        "adresse_site": "Zone industrielle Agadir",
+        "statut": "actif",
+        "emplacement_source": 3,
+        "note": "",
+        "declarations": [
+          {
+            "id": 8,
+            "depot": 6,
+            "quantite": 4,
+            "date_declaration": "2026-10-10",
+            "statut": "declaree",
+            "document_reference": "",
+            "note": "",
+            "created_at": "2026-10-10T08:30:00Z"
+          }
+        ],
+        "created_at": "2026-10-01T09:00:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  },
+  "routes": {
+    "consignations": {
+      "endpoint": "GET /api/django/stock/consignations/?statut=<actif|clos>&client=<id>",
+      "pourquoi": "NTDST3 — dépôts de consignation chez les clients (`DepotConsignationViewSet`, views/negoce.py:59 ; DepotConsignationSerializer :36). Lecture tout rôle, écriture responsable/admin, suppression admin. Liste paginée. TOUTE la ressource renvoie 403 {detail:'Le module « consignation » est désactivé pour cette société (Paramètres → Négoce).'} quand `consignation_activee` est faux (même pour un admin). POST {client, produit, quantite_deposee, date_depot, adresse_site?, emplacement_source?, note?} (201, même objet, sortie de stock motivée « CONSIGNATION-<id> », AUCUNE facture) ; 400 {detail} réels : « Quantité invalide. », « La quantité déposée doit être positive. », « La date de dépôt est obligatoire. », « Produit introuvable dans cette société. ». `quantite_consommee_declaree`, `quantite_restante`, `statut` évoluent UNIQUEMENT par les services (jamais par PATCH).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 6,
+            "client": 12,
+            "produit": 88,
+            "produit_nom": "Onduleur 3 kW",
+            "quantite_deposee": 20,
+            "quantite_consommee_declaree": 4,
+            "quantite_restante": 16,
+            "date_depot": "2026-10-01",
+            "adresse_site": "Zone industrielle Agadir",
+            "statut": "actif",
+            "emplacement_source": 3,
+            "note": "",
+            "declarations": [
+              {
+                "id": 8,
+                "depot": 6,
+                "quantite": 4,
+                "date_declaration": "2026-10-10",
+                "statut": "declaree",
+                "document_reference": "",
+                "note": "",
+                "created_at": "2026-10-10T08:30:00Z"
+              }
+            ],
+            "created_at": "2026-10-01T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 6,
+        "client": 12,
+        "produit": 88,
+        "produit_nom": "Onduleur 3 kW",
+        "quantite_deposee": 20,
+        "quantite_consommee_declaree": 4,
+        "quantite_restante": 16,
+        "date_depot": "2026-10-01",
+        "adresse_site": "Zone industrielle Agadir",
+        "statut": "actif",
+        "emplacement_source": 3,
+        "note": "",
+        "declarations": [
+          {
+            "id": 8,
+            "depot": 6,
+            "quantite": 4,
+            "date_declaration": "2026-10-10",
+            "statut": "declaree",
+            "document_reference": "",
+            "note": "",
+            "created_at": "2026-10-10T08:30:00Z"
+          }
+        ],
+        "created_at": "2026-10-01T09:00:00Z"
+      },
+      "exemple_erreur_403_module_eteint": {
+        "detail": "Le module « consignation » est désactivé pour cette société (Paramètres → Négoce).",
+        "error": {
+          "code": "permission_denied",
+          "message": "Le module « consignation » est désactivé pour cette société (Paramètres → Négoce).",
+          "fields": null,
+          "request_id": "<request_id>"
+        }
+      },
+      "exemple_erreur_400": {
+        "detail": "La quantité déposée doit être positive."
+      }
+    },
+    "consignation_declarer_consommation": {
+      "endpoint": "POST /api/django/stock/consignations/<id>/declarer-consommation/",
+      "pourquoi": "NTDST3 — le client déclare ce qu'il a consommé (responsable/admin). Corps {quantite, date_declaration, note?}. 201 = la déclaration. Ne retouche JAMAIS le stock (la marchandise est partie à la mise en consignation). `statut` ∈ declaree / facturee ; `document_reference` vide tant que non facturée. 400 {detail} réels : « Quantité invalide. », « La quantité consommée doit être positive. », « La date de déclaration est obligatoire. », « Ce dépôt de consignation est clos. », « Quantité supérieure au restant en dépôt (<n>). ».",
+      "exemple": {
+        "id": 8,
+        "depot": 6,
+        "quantite": 4,
+        "date_declaration": "2026-10-10",
+        "statut": "declaree",
+        "document_reference": "",
+        "note": "",
+        "created_at": "2026-10-10T08:30:00Z"
+      },
+      "exemple_corps": {
+        "quantite": 4,
+        "date_declaration": "2026-10-10",
+        "note": ""
+      },
+      "exemple_erreur_400": {
+        "detail": "Quantité supérieure au restant en dépôt (16)."
+      },
+      "nouveau_astk198": "NOUVEAU — ASTK198 (clés facture_id, facture_reference ; non construites, exclues du test de forme)",
+      "exemple_nouveau_astk198": {
+        "id": 8,
+        "depot": 6,
+        "quantite": 4,
+        "date_declaration": "2026-10-10",
+        "statut": "facturee",
+        "document_reference": "FAC-2026-10-0042",
+        "note": "",
+        "created_at": "2026-10-10T08:30:00Z",
+        "facture_id": 311,
+        "facture_reference": "FAC-2026-10-0042"
+      },
+      "cles_nouvelles_astk198": [
+        "facture_id",
+        "facture_reference"
+      ]
+    },
+    "consignation_releve": {
+      "endpoint": "GET /api/django/stock/consignations/<id>/releve/",
+      "pourquoi": "NTDST3 — relevé cumulé déposé / consommé / facturé / restant avec le détail des déclarations triées par date (services_consignation.releve_consignation, IsAnyRole). LECTURE SEULE. `quantite_facturee` = somme des déclarations au statut facturee. Attention aux noms : les déclarations de CE relevé portent `date` (pas `date_declaration`) et pas de `depot`/`note`.",
+      "exemple": {
+        "depot_id": 6,
+        "client_id": 12,
+        "produit_id": 88,
+        "produit_nom": "Onduleur 3 kW",
+        "date_depot": "2026-10-01",
+        "adresse_site": "Zone industrielle Agadir",
+        "statut": "actif",
+        "quantite_deposee": 20,
+        "quantite_consommee": 4,
+        "quantite_facturee": 0,
+        "quantite_restante": 16,
+        "declarations": [
+          {
+            "id": 8,
+            "date": "2026-10-10",
+            "quantite": 4,
+            "statut": "declaree",
+            "document_reference": ""
+          }
+        ]
+      }
+    },
+    "consignation_releve_pdf": {
+      "endpoint": "GET /api/django/stock/consignations/<id>/releve-pdf/",
+      "pourquoi": "NTDST24 — relevé imprimable remis AU CLIENT comme justificatif (IsAnyRole). RÉPONSE BINAIRE : `application/pdf`, Content-Disposition inline, filename releve-consignation-<id>.pdf. WeasyPrint des documents internes (jamais le moteur de devis, règle #4). Aucun JSON.",
+      "content_type": "application/pdf",
+      "exemple": {}
+    },
+    "consignations_export_xlsx": {
+      "endpoint": "GET /api/django/stock/consignations/export-xlsx/?statut=<actif|clos>",
+      "pourquoi": "NTDST41 — export XLSX de TOUS les dépôts (responsable/admin), pour le contrôle physique multi-sites ; ligne TOTAL en fin de feuille (somme des restants). RÉPONSE BINAIRE : `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, fichier consignations.xlsx. Aucun JSON.",
+      "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "exemple": {}
+    },
+    "accords_rfa_fournisseur": {
+      "endpoint": "GET /api/django/stock/accords-rfa-fournisseur/?fournisseur=<id>&statut=<actif|clos>",
+      "pourquoi": "NTDST5 — accords de remise arrière fournisseur (`AccordRFAFournisseurViewSet`, views/negoce.py:277 ; AccordRFAFournisseurSerializer :240). Montants d'ACHAT : lecture ET écriture responsable/admin, jamais tout rôle ; interne, jamais client-facing. Liste paginée. L'exemple met `seuil_ca_achat` à 0.00 et `taux_pct`/`montant_fixe` à null à dessein — aucun montant d'achat dans ce fichier ; un accord porte SOIT un taux soit un montant fixe. `avoir_genere` = id de l'avoir (null avant génération), jamais posé par PATCH. 400 (corps non-field-errors) réels : « Renseignez soit un taux (%), soit un montant fixe. », « Taux et montant fixe sont exclusifs : choisissez-en un. », « La fin de période doit suivre son début. ».",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 3,
+            "fournisseur": 5,
+            "fournisseur_nom": "Import Solar SARL",
+            "periode_debut": "2026-01-01",
+            "periode_fin": "2026-12-31",
+            "seuil_ca_achat": "0.00",
+            "taux_pct": null,
+            "montant_fixe": null,
+            "statut": "actif",
+            "avoir_genere": null,
+            "avoir_deja_genere": false,
+            "note": "",
+            "created_at": "2026-01-05T10:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 3,
+        "fournisseur": 5,
+        "fournisseur_nom": "Import Solar SARL",
+        "periode_debut": "2026-01-01",
+        "periode_fin": "2026-12-31",
+        "seuil_ca_achat": "0.00",
+        "taux_pct": null,
+        "montant_fixe": null,
+        "statut": "actif",
+        "avoir_genere": null,
+        "avoir_deja_genere": false,
+        "note": "",
+        "created_at": "2026-01-05T10:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "non_field_errors": [
+          "Renseignez soit un taux (%), soit un montant fixe."
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "Renseignez soit un taux (%), soit un montant fixe.",
+          "fields": null,
+          "request_id": "<request_id>"
+        }
+      }
+    },
+    "accord_rfa_calcul": {
+      "endpoint": "GET /api/django/stock/accords-rfa-fournisseur/<id>/calcul/",
+      "pourquoi": "NTDST5 — CA d'achat RÉCEPTIONNÉ sur la période, progression vers le seuil et montant dû (services_rfa.calculer_rfa_fournisseur ; responsable/admin ; LECTURE SEULE). Tous les montants sont du TEXTE décimal ; `montant_du` vaut 0 tant que le seuil n'est pas atteint (jamais de remise partielle). Valeurs de l'exemple à zéro à dessein (aucun montant d'achat dans ce fichier).",
+      "exemple": {
+        "accord_id": 3,
+        "fournisseur_id": 5,
+        "periode_debut": "2026-01-01",
+        "periode_fin": "2026-12-31",
+        "ca_achat": "0.00",
+        "seuil_ca_achat": "0.00",
+        "seuil_atteint": true,
+        "progression_pct": "100",
+        "montant_du": "0.00",
+        "avoir_deja_genere": false
+      }
+    },
+    "accord_rfa_generer_avoir": {
+      "endpoint": "POST /api/django/stock/accords-rfa-fournisseur/<id>/generer-avoir/",
+      "pourquoi": "NTDST5 — matérialise la remise due en AVOIR fournisseur brouillon, UNE SEULE FOIS par accord (responsable/admin). 201 {avoir_id, reference, montant_ttc} (montant_ttc = texte décimal ; zéro dans l'exemple, aucun montant d'achat). 400 {detail} réels : « Un avoir a déjà été généré pour cet accord et cette période. », « Le seuil de CA d'achat de cet accord n'est pas atteint. », « Le montant de remise calculé est nul. ». TVA d'un avoir RFA = décision comptable non tranchée (hors contrat).",
+      "exemple": {
+        "avoir_id": 21,
+        "reference": "AVF-2026-10-0001",
+        "montant_ttc": "0.00"
+      },
+      "exemple_erreur_400": {
+        "detail": "Un avoir a déjà été généré pour cet accord et cette période."
+      }
+    },
+    "produit_atp": {
+      "endpoint": "GET /api/django/stock/produits/<id>/atp/",
+      "pourquoi": "NTDST10 — disponibilité DATÉE d'un produit (`AtpProduitMixin.atp`, views/negoce.py:369, IsAnyRole) : combien MAINTENANT (stock − réservations, plancher 0) et, en rupture, à partir de QUAND selon la première commande fournisseur CONFIRMÉE dans l'horizon `atp_horizon_jours`. LECTURE SEULE, aucun prix, aucun coût. `disponible_le` null = rien d'attendu dans l'horizon ; `emplacement` = id ou null.",
+      "exemple": {
+        "produit": 88,
+        "disponible_maintenant": 0,
+        "quantite_reservee": 0,
+        "disponible_le": "2026-10-20",
+        "quantite_a_cette_date": 50,
+        "emplacement": null
+      }
+    },
+    "parametres_negoce": {
+      "endpoint": "GET /api/django/stock/parametres-negoce/",
+      "pourquoi": "NTDST30 — réglages négoce de LA société (`parametres_negoce_view`, views/negoce.py:454 ; ParametresNegoceSerializer :429 ; singleton créé à la demande ; responsable/admin). GET et PATCH (partiel) renvoient CE même objet ; `company` jamais lue du corps ; `seuil_alerte_rfa_pct` > 100 → 400 {seuil_alerte_rfa_pct:['Le seuil de progression RFA ne peut pas dépasser 100 %.']}. `cout_rupture_jour_mad` est une valeur INTERNE (null = non saisi).",
+      "exemple": {
+        "id": 1,
+        "consignation_activee": true,
+        "van_sales_active": true,
+        "seuil_alerte_rfa_pct": 80,
+        "heures_tournee_defaut": 7,
+        "atp_horizon_jours": 30,
+        "seuil_alerte_marge_pct": null,
+        "cout_rupture_jour_mad": null,
+        "updated_at": "2026-10-01T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "seuil_alerte_rfa_pct": [
+          "Le seuil de progression RFA ne peut pas dépasser 100 %."
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'seuil_alerte_rfa_pct': [ErrorDetail(string='Le seuil de progression RFA ne peut pas dépasser 100 %.', code='invalid')]}",
+          "fields": {
+            "seuil_alerte_rfa_pct": [
+              "Le seuil de progression RFA ne peut pas dépasser 100 %."
+            ]
+          },
+          "request_id": "<request_id>"
+        }
+      },
+      "nouveau_astk201": "NOUVEAU — ASTK201 (réglages réduits aux DEUX lus : consignation_activee, atp_horizon_jours ; non construit, exclu du test de forme)",
+      "exemple_nouveau_astk201": {
+        "consignation_activee": true,
+        "atp_horizon_jours": 30
+      }
+    },
+    "portails_tiers": {
+      "endpoint": "GET /api/django/stock/portails-tiers/?tiers_nom=<texte>",
+      "pourquoi": "NTWMS20 — jetons du portail 3PL (`PortailTiersTokenViewSet`, views/wms.py:1043 ; PortailTiersTokenSerializer serializers_wms.py:247). Administration RÉSERVÉE à l'ADMIN (lecture comprise). Liste paginée. Le `token` est GÉNÉRÉ côté serveur (jamais accepté du client) ; révocation = PATCH {revoked:true}. POST {tiers_nom, expires_at?} (201 = même objet). `lien_public` pointe sur la route publique unique `/api/django/public/stock/tiers/<token>/solde/` (ASTK233 a retiré le doublon `/api/django/stock/public/…`).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 2,
+            "tiers_nom": "Client Alpha",
+            "token": "tk_9f2c…",
+            "lien_public": "/api/django/public/stock/tiers/tk_9f2c…/solde/",
+            "expires_at": "2027-01-01T00:00:00Z",
+            "revoked": false,
+            "est_valide": true,
+            "last_used_at": null,
+            "created_at": "2026-10-01T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 2,
+        "tiers_nom": "Client Alpha",
+        "token": "tk_9f2c…",
+        "lien_public": "/api/django/public/stock/tiers/tk_9f2c…/solde/",
+        "expires_at": "2027-01-01T00:00:00Z",
+        "revoked": false,
+        "est_valide": true,
+        "last_used_at": null,
+        "created_at": "2026-10-01T09:00:00Z"
+      }
+    },
+    "public_tiers_solde": {
+      "endpoint": "GET /api/django/public/stock/tiers/<token>/solde/",
+      "pourquoi": "NTWMS20 — solde de stock DU SEUL dépositaire porteur du jeton (public_views.py:199 ; services_wms.solde_portail_tiers). Public (AllowAny), 30 requêtes/min, noindex, lecture seule. Ne porte QUE produit, sku, emplacement, quantité — AUCUN prix, AUCUNE marge, aucun autre dépositaire, aucun stock interne (vérifié par l'absence de ces clés). Jeton invalide/révoqué/expiré → 404 {detail:'Ce lien de portail est invalide, révoqué ou expiré.'}.",
+      "exemple": {
+        "tiers_nom": "Client Alpha",
+        "lignes": [
+          {
+            "produit": "Panneau 550 W",
+            "sku": "PAN-550",
+            "emplacement": "Dépôt-vente Alpha",
+            "quantite": 7
+          }
+        ],
+        "total_unites": 7
+      },
+      "exemple_vide": {
+        "tiers_nom": "Client Alpha",
+        "lignes": [],
+        "total_unites": 0
+      },
+      "exemple_erreur_404": {
+        "detail": "Ce lien de portail est invalide, révoqué ou expiré."
+      }
+    }
+  }
+}

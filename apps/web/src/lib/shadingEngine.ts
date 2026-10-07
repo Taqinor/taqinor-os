@@ -33,7 +33,7 @@ import { pointInPolygon, type LngLat } from './roof';
 import { DAYS_IN_MONTH, type PerKwcProduction } from './productionEngine';
 
 const DEG2RAD = Math.PI / 180;
-const WGS84_RADIUS = 6378137;
+import { WGS84_RADIUS } from './geo';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 
 /** Hypothèse PAR DÉFAUT du moment de prise de vue de l'imagerie : ~10 h 30 solaire

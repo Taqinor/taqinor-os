@@ -31,9 +31,14 @@ class ExternalRef(models.Model):
 
     class Meta:
         constraints = [
+            # AANA10 — le TYPE de contenu fait partie de la référence : un
+            # lead ``A1`` et un client ``A1`` sont deux références distinctes
+            # (sans lui, un import clients ``maj`` d'``A1`` modifiait le client
+            # qui portait par hasard le même pk que le lead ``A1``).
             models.UniqueConstraint(
-                fields=['company', 'external_system', 'external_id'],
-                name='uniq_dataimport_external_ref'),
+                fields=['company', 'external_system', 'content_type',
+                        'external_id'],
+                name='uniq_dataimport_external_ref_ct'),
         ]
         indexes = [
             models.Index(fields=['content_type', 'object_id']),

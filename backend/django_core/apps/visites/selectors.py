@@ -480,6 +480,19 @@ def releve_ci_de_visite(visite, declare=None):
         None if isinstance(etats, dict)
         and 'besoin_continuite_service' in etats
         else commerce.get('besoin_continuite_service'))
+    # CIQ5 (``retour_lead_ci`` du contrat) / CIQ660 — le cos φ et le groupe
+    # électrogène RELEVÉS, pour le retour lead à la validation. Le cos φ n'est
+    # repris que si sa source est connue (« seulement si `source_cos_phi` ≠
+    # inconnu ») ; une mesure « non relevée » ou vide donne ``constate`` None.
+    cos_phi, motif = _mesure_ci(visite, 'factures_mt', 'cos_phi_constate')
+    source_cos_phi, _motif = _mesure_ci(visite, 'factures_mt', 'source_cos_phi')
+    releve['cos_phi'] = {
+        'constate': (None if motif or cos_phi is None
+                     or source_cos_phi in (None, 'inconnu') else cos_phi),
+        'source': source_cos_phi,
+    }
+    groupe, motif = _mesure_ci(visite, 'reactif_secours', 'groupe_kva')
+    releve['groupe_kva'] = {'constate': None if motif else groupe}
     return releve
 
 

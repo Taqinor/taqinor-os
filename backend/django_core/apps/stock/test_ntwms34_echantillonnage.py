@@ -65,7 +65,9 @@ class Ntwms34Base(TestCase):
         produit = produit or self.produit
         bc = BonCommandeFournisseur.objects.create(
             company=self.company, reference=f'BCF-NTWMS34-{produit.id}',
-            fournisseur=self.fournisseur)
+            fournisseur=self.fournisseur,
+            # ASTK22 — une réception n'est confirmable que sur un BCF envoyé.
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
         ligne_cmd = LigneBonCommandeFournisseur.objects.create(
             bon_commande=bc, produit=produit, quantite=quantite,
             prix_achat_unitaire=Decimal('3000'))

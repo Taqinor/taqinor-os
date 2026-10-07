@@ -1,12 +1,56 @@
 from typing import Optional
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import FieldError
 from rest_framework import serializers
+
+from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import FavoriUtilisateur, SavedView, UxParametres
 
+#: AANA15 — LISTE BLANCHE des types favorisables : les écrans de détail qui
+#: portent un ``FavoriButton`` / une route dans ``FavorisWidget.jsx``, plus les
+#: vues enregistrées. Tout autre ``modele`` (ex. ``authentication.customuser``)
+#: est refusé : un favori n'est pas un lecteur générique de n'importe quelle
+#: table.
+TYPES_FAVORISABLES = frozenset({
+    'crm.lead', 'crm.client', 'ventes.devis', 'facturation.facture',
+    'installations.installation', 'sav.ticket', 'stock.produit',
+    'uxviews.savedview',
+})
 
-class SavedViewSerializer(serializers.ModelSerializer):
+
+def cible_de_la_societe(content_type, object_id, company):
+    """AANA15 — la cible ``(content_type, object_id)`` si elle existe ET
+    appartient à ``company`` ; ``None`` sinon (jamais une cible d'une autre
+    société — un id est devinable)."""
+    if content_type is None or object_id is None or company is None:
+        return None
+    modele = content_type.model_class()
+    if modele is None:
+        return None
+    try:
+        return modele._default_manager.filter(
+            pk=object_id, company=company).first()
+    except (FieldError, ValueError, TypeError):
+        return None
+
+
+def cible_du_favori(favori):
+    """AANA15 — la cible d'un favori, SEULEMENT si elle est de la même société
+    que le favori (une ligne héritée vers une autre société ne fait plus fuir
+    son libellé, ni à l'écran ni dans l'export CSV)."""
+    cible = favori.cible
+    if cible is None or getattr(cible, 'company_id', None) != favori.company_id:
+        return None
+    return cible
+
+
+class SavedViewSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # AANA17 — le rôle d'une vue est un rôle de LA société (les ids de rôle
+    # sont devinables), même garde que `UxParametresSerializer`.
+    same_company_fields = ('role',)
     owner_nom = serializers.SerializerMethodField()
     # NTUX2 — le frontend ne connaît le rôle courant que par son NOM
     # (`state.auth.role_nom`, cf. authSlice.js — aucun id numérique de
@@ -68,7 +112,7 @@ class FavoriUtilisateurSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
     def get_libelle(self, obj) -> Optional[str]:
-        cible = obj.cible
+        cible = cible_du_favori(obj)
         return str(cible) if cible is not None else None
 
     def validate_modele(self, value):
@@ -81,10 +125,36 @@ class FavoriUtilisateurSerializer(serializers.ModelSerializer):
             app_label=app_label, model=model).first()
         if content_type is None:
             raise serializers.ValidationError(f'Modèle inconnu : « {value} ».')
+        if f'{app_label}.{model}' not in TYPES_FAVORISABLES:
+            raise serializers.ValidationError(
+                f'Ce type ne peut pas être épinglé : « {value} ».')
         # Mémorisé pour `create`/`update` (le champ `modele` n'existe pas sur le
         # modèle : c'est `content_type` qui est écrit).
         self._content_type = content_type
         return f'{app_label}.{model}'
+
+    def validate(self, attrs):
+        """AANA15 — la cible DOIT appartenir à la société de l'appelant : un
+        favori vers un client d'une autre société est refusé (400), jamais
+        créé (son libellé exposait le nom du client de l'autre société)."""
+        attrs = super().validate(attrs)
+        content_type = getattr(self, '_content_type', None)
+        if (self.instance is not None and content_type is None
+                and 'object_id' not in attrs):
+            # Mise à jour qui ne touche pas la cible (ex. `ordre`) : rien à
+            # revérifier — un favori mort reste réordonnable.
+            return attrs
+        if content_type is None and self.instance is not None:
+            content_type = self.instance.content_type
+        object_id = attrs.get(
+            'object_id', getattr(self.instance, 'object_id', None))
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if cible_de_la_societe(content_type, object_id, company) is None:
+            raise serializers.ValidationError({
+                'object_id': "Enregistrement introuvable dans votre "
+                             "société."})
+        return attrs
 
     def _appliquer_content_type(self, validated_data):
         validated_data.pop('modele', None)

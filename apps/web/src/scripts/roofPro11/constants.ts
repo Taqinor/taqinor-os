@@ -13,5 +13,6 @@ export const OBSTACLE_TAP_PX = 8; // en deçà : un clic/tap, au-delà : un glis
 export const VERTEX_GRAB_PX = 14; // rayon de saisie d'un sommet du tracé (W92, doigt ⊃ pastille)
 export const LAYOUT_GRAB_PX = 12; // W80 — seuil pixel du glissé-déplacer d'un panneau (touch + souris), doigt ⊃ pastille
 export const DEG2RAD = Math.PI / 180;
-export const WGS84_RADIUS = 6378137;
+import { WGS84_RADIUS } from '../../lib/geo';
+export { WGS84_RADIUS };
 export const DEG2M = DEG2RAD * WGS84_RADIUS;

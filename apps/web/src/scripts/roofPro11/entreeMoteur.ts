@@ -48,7 +48,7 @@ import { ORDRE_RENDU_CALQUES, MAPLIBRE_LAYERS_PAR_CALQUE } from './mapDraw';
 import { anneauObstacle, clearanceForType, degagementObstacle, type ObstacleEtendu } from './types'; // ACAL257
 
 /** Rayon terrestre WGS84 (demi-grand axe) — projection ENU locale. */
-const RAYON_TERRE_M = 6378137;
+import { WGS84_RADIUS as RAYON_TERRE_M } from '../../lib/geo';
 const DEG2RAD = Math.PI / 180;
 
 /** Version du schéma d'échange du moteur (`core/calepinage/version.py`). */

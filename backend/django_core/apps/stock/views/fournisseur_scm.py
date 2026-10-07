@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur
@@ -26,7 +27,16 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class IncidentQualiteFournisseurSerializer(serializers.ModelSerializer):
+def _fenetre_mois_ou_400(valeur, valider):
+    """ASTK183 — ``?fenetre_mois=`` illisible → 400 nommé (jamais 500)."""
+    try:
+        return valider(valeur)
+    except ValueError as exc:
+        raise serializers.ValidationError({'fenetre_mois': [str(exc)]})
+
+
+class IncidentQualiteFournisseurSerializer(CompanyScopedRelationsMixin,
+                                           serializers.ModelSerializer):
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     est_bloquant = serializers.BooleanField(read_only=True)
@@ -110,11 +120,14 @@ class ScmFournisseurActionsMixin:
         """NTSCM8 — OTIF réel sur une fenêtre glissante
         (``?fenetre_mois=12``). À l'heure ET complet : une commande complète
         mais livrée en retard n'est PAS OTIF."""
-        from ..selectors_fournisseur import otif_fournisseur
+        from ..selectors_fournisseur import (
+            otif_fournisseur, valider_fenetre_mois,
+        )
 
+        fenetre = _fenetre_mois_ou_400(
+            request.query_params.get('fenetre_mois'), valider_fenetre_mois)
         return Response(otif_fournisseur(
-            request.user.company, self.get_object(),
-            fenetre_mois=request.query_params.get('fenetre_mois')))
+            request.user.company, self.get_object(), fenetre_mois=fenetre))
 
     @extend_schema(responses={
         200: inline_serializer('StockFournisseurDelaiMesure', {
@@ -137,8 +150,12 @@ class ScmFournisseurActionsMixin:
         """NTSCM11 — délai RÉEL mesuré vs délai ANNONCÉ
         (``?produit=&fenetre_mois=&seuil_ecart_pct=``)."""
         from ..models import Produit
-        from ..selectors_fournisseur import delai_mesure_vs_annonce
+        from ..selectors_fournisseur import (
+            delai_mesure_vs_annonce, valider_fenetre_mois,
+        )
 
+        fenetre = _fenetre_mois_ou_400(
+            request.query_params.get('fenetre_mois'), valider_fenetre_mois)
         company = request.user.company
         produit = None
         produit_id = request.query_params.get('produit')
@@ -147,7 +164,7 @@ class ScmFournisseurActionsMixin:
                 id=produit_id, company=company).first()
         return Response(delai_mesure_vs_annonce(
             company, self.get_object(), produit,
-            fenetre_mois=request.query_params.get('fenetre_mois'),
+            fenetre_mois=fenetre,
             seuil_ecart_pct=request.query_params.get('seuil_ecart_pct')))
 
 

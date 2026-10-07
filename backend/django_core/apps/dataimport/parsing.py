@@ -65,6 +65,18 @@ def _iter_csv_rows(file_bytes):
     return headers, [dict(r) for r in reader]
 
 
+def _valeur_xlsx(valeur):
+    """AANA12 — une cellule numérique ENTIÈRE stockée en flottant par Excel
+    (``612345678.0``) est rendue entière (``612345678``) : sinon un téléphone,
+    un SKU ou une quantité arrivait en texte avec un « .0 » parasite. Une
+    valeur non entière (``2.7``) est rendue telle quelle — c'est à l'appelant
+    de la refuser si le champ exige un entier, jamais au parseur de l'arrondir.
+    """
+    if isinstance(valeur, float) and valeur.is_integer():
+        return int(valeur)
+    return valeur
+
+
 def _iter_xlsx_rows(file_bytes):
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
@@ -76,7 +88,8 @@ def _iter_xlsx_rows(file_bytes):
     for r in it:
         if r is None or all(v is None for v in r):
             continue
-        row = {headers[i]: r[i] for i in range(len(headers)) if i < len(r)}
+        row = {headers[i]: _valeur_xlsx(r[i])
+               for i in range(len(headers)) if i < len(r)}
         rows.append(row)
     return headers, rows
 

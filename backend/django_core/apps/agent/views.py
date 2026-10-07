@@ -9,6 +9,7 @@ d'annulation pour une action réversible.
 """
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
+from rest_framework.exceptions import ParseError, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from drf_spectacular.types import OpenApiTypes
@@ -19,7 +20,10 @@ from authentication.permissions import IsAdminRole
 
 from .models import AgentActionLog
 from .registry import for_user
-from .services import ActionNotUndoableError, annuler_action, log_confirmed_action
+from .services import (
+    ActionNotUndoableError, annuler_action, log_confirmed_action,
+    preuve_confirmation_valide,
+)
 
 # AUDV27 — mappe une ``action_key`` PILOTE vers le modèle (app_label, nom) de
 # l'objet qu'elle crée, pour dériver ``content_type``/``object_id`` du journal
@@ -134,18 +138,39 @@ class AgentActionConfirmerView(APIView):
         data = request.data or {}
         action_key = (data.get('action_key') or '').strip()
         risk_level = data.get('risk_level') or ''
+        # AANA18 — les refus sont LEVES (corps DRF `{detail}`, statut
+        # inchange) : la seule forme RENVOYEE est le journal, que le contrat
+        # `logs_confirmer.json` declare complet (`forme_serveur: complete`).
         if not action_key or risk_level not in AgentActionLog.RiskLevel.values:
-            return Response(
-                {'detail': 'action_key et risk_level (valide) sont requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+            raise ParseError('action_key et risk_level (valide) sont requis.')
         company = request.user.company
         if company is None:
-            return Response(
-                {'detail': "Aucune société associée à l'utilisateur."},
-                status=status.HTTP_400_BAD_REQUEST)
+            raise ParseError("Aucune société associée à l'utilisateur.")
+
+        # AANA18 (C-AANA-008) — n'accepter QUE la confirmation d'une
+        # proposition réellement émise par l'agent POUR CET utilisateur :
+        #   1. l'action figure dans SON catalogue (registry.for_user : module
+        #      actif + permission requise détenue) et au même niveau de risque ;
+        #   2. la preuve HMAC signée par le relais FastAPI (secret partagé
+        #      AGENT_HMAC_SECRET) couvre action + entrées + objet + utilisateur
+        #      + société de CETTE requête. Sinon 403, aucun journal créé.
+        action = next(
+            (a for a in for_user(request.user) if a.key == action_key), None)
+        if action is None or action.risk != risk_level or (
+                action.required_permission
+                and not request.user.has_erp_permission(
+                    action.required_permission)):
+            raise PermissionDenied("Action non autorisée pour ce compte.")
+        inputs = data.get('inputs') or {}
+        object_id = data.get('object_id')
+        preuve = data.get('preuve')
+        if not isinstance(inputs, dict) or not preuve_confirmation_valide(
+                preuve, action_key=action_key, company_id=company.pk,
+                user_id=request.user.pk, inputs=inputs, object_id=object_id):
+            raise PermissionDenied(
+                "Preuve de confirmation absente ou invalide.")
 
         resulted_object = None
-        object_id = data.get('object_id')
         mapping = _RESULTED_OBJECT_MODELS.get(action_key)
         if object_id and mapping:
             from django.apps import apps as django_apps
@@ -159,8 +184,10 @@ class AgentActionConfirmerView(APIView):
 
         log = log_confirmed_action(
             company=company, user=request.user, action_key=action_key,
-            risk_level=risk_level, inputs=data.get('inputs') or {},
-            proposal_hash=data.get('proposal_hash') or '',
+            risk_level=risk_level, inputs=inputs,
+            # AANA18 — l'empreinte journalisée est la preuve HMAC vérifiée,
+            # jamais un jeton brut ni une valeur libre du corps.
+            proposal_hash=preuve,
             resulted_object=resulted_object,
         )
         return Response(_serialize_log(log), status=status.HTTP_201_CREATED)

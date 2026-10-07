@@ -13,7 +13,8 @@
 //   mode               'industriel' | 'commercial' | 'agricole' | autre (résidentiel)
 //   choix              les CHOIX de l'écran (scenario, recommended_option, nombre_proprietes)
 //   entrees            fonction (consoDejaConnue) => entrées réelles, ou objet déjà calculé
-//   categorie, reponses                  catégorie commerciale + réponses du questionnaire
+//   categorie          catégorie commerciale (les réponses partent dans
+//                        `ciEntrees.rythme.reponses_categorie`, CIQ129)
 //   ciEntrees          CIQ125 — les ENTRÉES C&I v2 déjà mises à la forme du contrat
 //                        (`entreesCiV2` de profilCi.js).
 //   pompageEntrees     AGR130 — l'état du corps de l'aperçu pompage (forme du contrat
@@ -25,7 +26,7 @@
 //                        `current_fuel` / `fuel_spend_current`, plus jamais × 12.
 //                        AGR218 : `attestation` {attestee, le, signataire} →
 //                        `attestation_usage_agricole`.
-import { COMMERCIAL_CATEGORY_QUESTIONS, ttcFromHt, tauxTvaOf } from '../solar.js'
+import { ttcFromHt, tauxTvaOf } from '../solar.js'
 
 const nombre = (v) => {
   const n = parseFloat(v)
@@ -38,7 +39,7 @@ const resoudreEntrees = (entrees, consoDejaConnue) => (
 
 export function projeterEtudeMarche(mode, {
   choix = {}, entrees,
-  categorie, reponses = {},
+  categorie,
   pompageEntrees, exploitation = {}, ciEntrees, tarifDeclare, saisiesEcoCi,
 } = {}) {
   if (mode === 'industriel' || mode === 'commercial') {
@@ -59,17 +60,10 @@ export function projeterEtudeMarche(mode, {
     // CIQ223 — les saisies de l'économie C&I (contrat `economie_ci.json`).
     if (saisiesEcoCi !== undefined) bloc.saisies_economie_ci = saisiesEcoCi
     if (mode === 'commercial') {
-      // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
-      // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
-      // IDENTIQUE à celle d'avant, jamais de `prix_achat`.
+      // QX44 — la catégorie. CIQ129 : ses réponses ne partent PLUS à plat
+      // (clés retirées du schéma, refusées en 400) — seulement dans l'entrée
+      // v2 `rythme.reponses_categorie` portée par `ciEntrees` (CIQ131).
       bloc.categorie_commerciale = categorie || null
-      for (const q of (COMMERCIAL_CATEGORY_QUESTIONS[categorie] || [])) {
-        const brut = reponses[q.key]
-        if (brut === undefined || brut === '' || brut === null) continue
-        bloc[q.key] = q.type === 'number'
-          ? (parseFloat(brut) || 0)
-          : q.type === 'bool' ? !!brut : String(brut)
-      }
     }
     return bloc
   }

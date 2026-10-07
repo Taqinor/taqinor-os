@@ -88,13 +88,37 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': 'Quantité invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from ..services import sortir_lot_entrepot
+        from django.db import transaction
+        from ..models import MouvementStock, Produit
+        from ..services import record_stock_movement, sortir_lot_entrepot
+        company = request.user.company
         try:
-            sortir_lot_entrepot(
-                company=request.user.company, lot=lot, quantite=quantite,
-                user=request.user,
-                forcer=bool(request.data.get('forcer')),
-                motif=request.data.get('motif'))
+            # ASTK204 — le lot ET le stock du produit bougent ensemble, dans
+            # UNE transaction : une SORTIE tracée (record_stock_movement,
+            # référence = numéro du lot), produit verrouillé avant lecture.
+            with transaction.atomic():
+                produit = Produit.objects.select_for_update().get(
+                    pk=lot.produit_id, company=company)
+                avant = produit.quantite_stock
+                if quantite > avant:
+                    raise ValueError(
+                        f'Stock insuffisant pour {produit.nom} '
+                        f'({avant} en stock).')
+                sortir_lot_entrepot(
+                    company=company, lot=lot, quantite=quantite,
+                    user=request.user,
+                    forcer=bool(request.data.get('forcer')),
+                    motif=request.data.get('motif'))
+                motif = request.data.get('motif')
+                record_stock_movement(
+                    company=company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    quantite=quantite, quantite_avant=avant,
+                    quantite_apres=avant - quantite,
+                    reference=lot.numero_lot,
+                    note=(f'Sortie du lot {lot.numero_lot}'
+                          + (f' — motif : {motif}' if motif else '')),
+                    created_by=request.user)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

@@ -55,7 +55,7 @@ class Xpur17Base(TestCase):
         self.company = _company('xpur17-co')
         self.user = _user(
             self.company, 'xpur17-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur TVA X17')

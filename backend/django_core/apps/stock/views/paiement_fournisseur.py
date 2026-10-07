@@ -69,6 +69,11 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         # donc l'API sur son écran ; aucun usage existant ne casse.
         if self.action == 'destroy':
             return [IsAdminRole()]
+        if self.action in ('list', 'retrieve'):
+            # ASTK11 (D-ASTK-2) — même palier que la clé `paiements` imbriquée
+            # dans la facture : responsable/admin ET `prix_achat_voir`.
+            from ..permissions import PeutVoirPrixAchat
+            return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

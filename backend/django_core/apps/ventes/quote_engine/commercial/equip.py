@@ -13,6 +13,7 @@ from . import categories
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
 from ..ci.mentions import texte_revente
+from ..ci.synthese import chiffres_cles
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
@@ -182,8 +183,11 @@ def build(ctx):
 
     # QX50 — ligne injection 82-21 (rendue SEULEMENT si l'étude la porte, avec
     # sa mention obligatoire ; jamais affichée sans la mention).
-    _etude = d.get("etude") or {}
-    _inj = _num(_etude.get("injection_dh_an"))
+    # CIQ129 — la valeur de l'injection est celle du moteur C&I
+    # (``synthese_ci.argent.revente``, la projection ``chiffres_cles`` que
+    # lisent couverture et /proposition), jamais une clé d'étude écran v1.
+    _syn = d.get("com_synthese") or d.get("ind_synthese") or {}
+    _inj = _num(chiffres_cles(_syn)["revente_mad_an"])
     injection_html = ""
     if _inj and _inj > 0:
         injection_html = (
