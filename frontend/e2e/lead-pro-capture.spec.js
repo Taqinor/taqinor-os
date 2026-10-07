@@ -198,6 +198,9 @@ test.describe('CIQ424 — lead pro, du site au générateur', () => {
     await expect(confirmation).toBeVisible()
     // Annuler ne change rien non plus.
     await confirmation.getByRole('button', { name: 'Annuler' }).click()
+    // La 1re confirmation doit être REFERMÉE avant d'en rouvrir une : un clic
+    // pendant sa fermeture n'ouvre rien (nocturne CAD177 : bandeau cliqué, aucune modale).
+    await expect(confirmation).toHaveCount(0)
     expect((await leadDetail(request, residentiel.id)).type_installation).toBe('residentiel')
 
     await bandeau.getByRole('button', { name: 'Passer en Industriel' }).click()
