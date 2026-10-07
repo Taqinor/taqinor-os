@@ -29,10 +29,10 @@ const config = {
   key: 'offlinesync',
   order: 65,
   routes: [
-    { path: '/mobile/commercial', component: CommercialHome },
-    { path: '/mobile/cockpit', component: CockpitHome },
-    { path: '/mobile/equipe-terrain', component: EquipeTerrainHome },
-    { path: '/mobile/equipe-commerciale', component: EquipeCommercialeHome },
+    { path: '/mobile/commercial', component: CommercialHome }, // contextuelle: accueil mobile atteint par la route que le SERVEUR suggère (/auth/me/ mobile_home_route_suggeree, ALEA31) puis mémorise — Dashboard y navigue, jamais un lien de menu.
+    { path: '/mobile/cockpit', component: CockpitHome }, // contextuelle: accueil mobile atteint par la route que le SERVEUR suggère (/auth/me/ mobile_home_route_suggeree, ALEA31) puis mémorise — Dashboard y navigue, jamais un lien de menu.
+    { path: '/mobile/equipe-terrain', component: EquipeTerrainHome }, // contextuelle: accueil mobile atteint par la route que le SERVEUR suggère (/auth/me/ mobile_home_route_suggeree, ALEA31) puis mémorise — Dashboard y navigue, jamais un lien de menu.
+    { path: '/mobile/equipe-commerciale', component: EquipeCommercialeHome }, // contextuelle: accueil mobile atteint par la route que le SERVEUR suggère (/auth/me/ mobile_home_route_suggeree, ALEA31) puis mémorise — Dashboard y navigue, jamais un lien de menu.
     { path: '/synchro/conflits', component: SyncConflictsPanel }, // contextuelle: atteinte depuis l'état « en attente de synchro » (badge/bandeau) ; dans le cas nominal il n'y a AUCUN conflit, une entrée de menu permanente serait du bruit.
   ],
 }

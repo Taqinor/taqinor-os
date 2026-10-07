@@ -1,44 +1,40 @@
-// NTMOB6 — Sélecteur de démarrage par rôle : calcule la route d'accueil
-// mobile PAR DÉFAUT pour un rôle donné. Fonction PURE (aucun React, aucun
-// réseau) — testable sous `node --test`, réutilisée par Dashboard.jsx (le
-// seul point d'atterrissage générique post-login). Reflète le même mapping
-// que le sélecteur serveur (`authentication.selectors.
-// default_mobile_home_route`) — petite table dupliquée volontairement pour
-// rester un module frontend pur (même patron que PRIORITY_ORDER dans
-// CommercialHome.jsx).
+// NTMOB6 / ALEA31 — Sélecteur de démarrage mobile. Fonctions PURES (aucun
+// React, aucun réseau) — testables sous `node --test`, exécutées par
+// Dashboard.jsx (le seul point d'atterrissage générique post-login).
 //
-// Technicien → `/ma-journee` (déjà existant, F22) ; Commercial → NTMOB4
-// (`/mobile/commercial`) ; Directeur/Administrateur → NTMOB5
-// (`/mobile/cockpit`) ; tout autre rôle → `''` (dashboard générique,
-// comportement inchangé). Les variantes « responsable » (Commercial
-// responsable, Technicien responsable) ont désormais leur accueil dédié
-// (NTMOB25/26) : elles sont routées par nom EXACT ci-dessous, ce qui prime
-// sur le repli par préfixe. C'est aussi ce qui rend ces deux écrans
-// ATTEIGNABLES (garde PACT150 : une route sans chemin d'accès réel est un
-// écran mort).
-const BY_EXACT_ROLE = {
-  Directeur: '/mobile/cockpit',
-  Administrateur: '/mobile/cockpit',
-  'Technicien responsable': '/mobile/equipe-terrain',
-  'Commercial responsable': '/mobile/equipe-commerciale',
-}
-
-const BY_ROLE_PREFIX = [
-  ['Technicien', '/ma-journee'],
-  ['Commercial', '/mobile/commercial'],
-]
+// ALEA31 — LE SERVEUR EST LA SEULE TABLE. La route suggérée pour un rôle est
+// calculée par `authentication.selectors.default_mobile_home_route` et servie
+// par `/auth/me/` dans `mobile_home_route_suggeree`. Ce module n'en garde
+// AUCUNE copie : l'ancienne table « dupliquée volontairement » avait divergé
+// (le Commercial terrain atterrissait sur `/mobile/commercial`, un écran qu'il
+// ne voit pas, au lieu de `/visites` ; les accueils d'équipe NTMOB25/26
+// étaient refusés par la liste blanche serveur).
 
 /**
- * @param {string|null|undefined} roleNom - nom du Role fin (ex. « Commercial »).
- * @param {string|null|undefined} roleTier - palier de menu hérité
- *   (`admin`/`responsable`/`normal`), repli pour les comptes sans Role fin.
- * @returns {string} route mobile suggérée, ou `''` (dashboard générique).
+ * Route d'accueil mobile suggérée PAR LE SERVEUR pour le compte courant.
+ * @param {object|null|undefined} user - profil `/auth/me/`.
+ * @returns {string} route suggérée, ou `''` (dashboard générique).
  */
-export function defaultMobileHomeRoute(roleNom, roleTier) {
-  const nom = roleNom || ''
-  if (BY_EXACT_ROLE[nom]) return BY_EXACT_ROLE[nom]
-  const match = BY_ROLE_PREFIX.find(([prefix]) => nom.startsWith(prefix))
-  if (match) return match[1]
-  if (!nom && roleTier === 'admin') return '/mobile/cockpit'
-  return ''
+export function routeSuggereeServeur(user) {
+  const route = user?.mobile_home_route_suggeree
+  return typeof route === 'string' ? route : ''
+}
+
+/**
+ * Décide QUOI FAIRE sur ce rendu du Dashboard. Ne fait ni navigation ni appel
+ * réseau — le composant exécute juste le verdict :
+ *   * `{ type: 'navigate', to }` — route déjà mémorisée côté serveur ;
+ *   * `{ type: 'decide', suggested }` — premier atterrissage mobile (valeur
+ *     encore NULL/undefined) : le composant persiste `suggested` (la route du
+ *     SERVEUR) et navigue s'il n'est pas vide ;
+ *   * `null` — desktop, profil pas encore chargé, ou opt-out explicite
+ *     (`mobileHomeRoute === ''`) : comportement inchangé.
+ */
+export function mobileHomeAction({
+  isMobile, hasFullProfile, mobileHomeRoute, suggestedRoute,
+}) {
+  if (!isMobile || !hasFullProfile) return null
+  if (mobileHomeRoute) return { type: 'navigate', to: mobileHomeRoute }
+  if (mobileHomeRoute === '') return null
+  return { type: 'decide', suggested: suggestedRoute || '' }
 }

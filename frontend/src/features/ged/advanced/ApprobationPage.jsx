@@ -1003,7 +1003,8 @@ function EnvoiMasseDialog({ modeles, onClose, onDone }) {
 
   useEffect(() => {
     if (source !== 'clients' || clients.length > 0) return
-    crmApi.getClients().then((res) => {
+    // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
+    toutesLesPages(crmApi.getClients).then((res) => {
       const data = res.data
       setClients(Array.isArray(data) ? data : (data?.results ?? []))
     }).catch(() => setClients([]))
