@@ -391,7 +391,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
 
         if not kwargs.get('partial'):
             # ACAL120 — PUT (remplacement complet) n'est pas servi : on
-            # modifie par PATCH (R3).
+            # modifie par PATCH (R3). L'objet est d'abord RÉSOLU dans la
+            # société : un calepinage d'ailleurs reste 404 (isolation).
+            self.get_object()
             raise MethodNotAllowed(request.method, detail=MESSAGE_PUT_REFUSE)
         try:
             return super().update(request, *args, **kwargs)
@@ -401,7 +403,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     def destroy(self, request, *args, **kwargs):
         """ACAL120 — un calepinage ne se SUPPRIME jamais : 405, rien n'est
         détruit (versions, variantes, photos intactes) ; archiver est
-        l'unique geste (``POST archiver/``, réversible)."""
+        l'unique geste (``POST archiver/``, réversible). L'objet est
+        d'abord résolu dans la société : d'ailleurs, c'est 404."""
+        self.get_object()
         raise MethodNotAllowed(request.method, detail=MESSAGE_DELETE_REFUSE)
 
     def perform_update(self, serializer):
