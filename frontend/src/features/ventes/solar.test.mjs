@@ -15,8 +15,7 @@ import {
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   totauxCanoniquesTtc, appartientAuPanierSans, appartientAuPanierAvec,
   groupProduitsByCategory,
-  KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
-  ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC,
+  KWH_PRICE, AUTOCONSO_SANS, AUTOCONSO_AVEC,
   multiPropertyPreviewTTC,
   productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
   computeCashflowPayback,
@@ -27,6 +26,10 @@ import {
   // STKCAT10 — sélecteur de structures piloté par le catalogue.,
   structureRoleForName, structureChoisie,
 } from './solar.js'
+import {
+  FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
+  ONEE_TRANCHES,
+} from './calc/tarifs.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)

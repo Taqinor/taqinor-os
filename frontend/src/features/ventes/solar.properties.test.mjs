@@ -26,7 +26,10 @@ import assert from 'node:assert/strict'
 import {
   ONEE_TRANCHES, FALLBACK_KWH_PRICE,
   monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures,
-  kwhDepuisFactureMad, factureMad, tppanMad, twoBillsSavings, computeROI, computeCashflowPayback,
+  kwhDepuisFactureMad, factureMad, tppanMad, twoBillsSavings,
+} from './calc/tarifs.js'
+import {
+  computeROI, computeCashflowPayback,
   productibleForCity, PRODUCTIBLE_NET_FACTOR,
   panneauxPourKwc,
   totauxCanoniquesTtc, ttcFromHt, htFromTtc,

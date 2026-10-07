@@ -5,10 +5,11 @@
 // source) par `pages/ventes/DevisGeneratorEditionLead.test.jsx`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { estimerMois } from './solar.js'
 import {
-  controlerFacturesSaisies, estimerMois, chargesFixesTtc,
+  controlerFacturesSaisies, chargesFixesTtc,
   controlerKwhDeclare, factureMad, ONEE_TRANCHES,
-} from './solar.js'
+} from './calc/tarifs.js'
 
 test('DEV-202609-0108 : estimerMois(1, 1600) a deux mois sous le plancher', () => {
   const ctl = controlerFacturesSaisies(estimerMois(1, 1600), { factureHiverLead: 3000 })

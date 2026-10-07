@@ -24,7 +24,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { estimerMois, consoAnnuelleDepuisFactures } from './solar.js'
+import { estimerMois } from './solar.js'
+import { consoAnnuelleDepuisFactures } from './calc/tarifs.js'
 
 const ici = dirname(fileURLToPath(import.meta.url))
 const lire = (rel) => readFileSync(join(ici, rel), 'utf-8')
@@ -189,7 +190,7 @@ test('createAutoQuote : la conso annuelle vient de ./solar (même inverse de bar
   // et l'ascension marginale sur-vend). Une seule formule, donc aucun risque
   // de divergence entre la taille retenue et l'étude envoyée.
   const src = lire('./autoQuote.js')
-  assert.match(src, /consoAnnuelleDepuisFactures,?\s*\n?\} from '\.\/solar'/)
+  assert.match(src, /consoAnnuelleDepuisFactures,?\s*\n?\} from '\.\/calc\/tarifs\.js'/)
   assert.doesNotMatch(src, /kwhFromBill\(/,
     'plus aucune inversion de barème recopiée sur place — tout passe par l\'aide partagée')
 })

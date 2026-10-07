@@ -19,7 +19,7 @@
 // Fonctions PURES : aucun React, aucun réseau (node --test).
 import {
   consoAnnuelleDepuisFactures, consoDescendDesFactures,
-} from '../solar.js'
+} from '../calc/tarifs.js'
 import { SCENARIO_SANS, SCENARIO_AVEC } from './sizingReducer.js'
 import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js'
 import { deriverReouverture } from './reouverture.js'

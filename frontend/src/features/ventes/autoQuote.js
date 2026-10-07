@@ -12,10 +12,12 @@ import {
   estimerMois, panneauxPourKwc,
   // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
   kwcPourPanneaux, PANEL_W_DEFAUT,
+} from './solar'
+import {
   // PACT10/QF-REAL — consommation annuelle RÉELLE du lead (résidentiel),
   // dérivée de ses factures par le barème national (COUV-HOR).
   consoAnnuelleDepuisFactures,
-} from './solar'
+} from './calc/tarifs.js'
 
 // QX52 — parité 4 modes : `commercial` route désormais vers son PROPRE mode
 // (plus le repli historique vers `industriel`). Aucun mode ne tombe dans un

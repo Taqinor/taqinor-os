@@ -38,8 +38,9 @@ import { fileURLToPath } from 'node:url'
 
 import {
   ONEE_TRANCHES, monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures,
-  factureMad, tppanMad, twoBillsSavings, computeROI,
-} from '../src/features/ventes/solar.js'
+  factureMad, tppanMad, twoBillsSavings,
+} from '../src/features/ventes/calc/tarifs.js'
+import { computeROI } from '../src/features/ventes/solar.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(

@@ -16,7 +16,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
-import { estimerMois, consoAnnuelleDepuisFactures } from '../../features/ventes/solar'
+import { estimerMois } from '../../features/ventes/solar'
+import { consoAnnuelleDepuisFactures } from '../../features/ventes/calc/tarifs.js'
 
 vi.mock('../../api/crmApi', () => ({
   default: {

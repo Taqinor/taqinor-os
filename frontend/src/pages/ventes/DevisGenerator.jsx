@@ -113,7 +113,7 @@ import {
   // supprimée : le moteur serveur C&I est la seule source.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
-  tauxTvaOf, tauxTvaOuDefaut, controlerFacturesSaisies,
+  tauxTvaOf, tauxTvaOuDefaut,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
@@ -131,13 +131,9 @@ import {
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  kwhFromBill, multiPropertyPreviewTTC,
+  multiPropertyPreviewTTC,
   productibleForCity,
   COMMERCIAL_CATEGORY_QUESTIONS,
-  // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
-  // sans elle le modèle d'économie ne sature pas et l'ascension marginale
-  // sur-vend jusqu'au plafond du balayage.
-  consoAnnuelleDepuisFactures,
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
@@ -147,9 +143,17 @@ import {
   deriveRoleOrderFromLines,
   // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
   _hasPrix,
+} from '../../features/ventes/solar'
+// SPL195 — modèle tarifaire déplacé tel quel dans calc/tarifs.js.
+import {
+  controlerFacturesSaisies, kwhFromBill,
+  // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
+  // sans elle le modèle d'économie ne sature pas et l'ascension marginale
+  // sur-vend jusqu'au plafond du balayage.
+  consoAnnuelleDepuisFactures,
   // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures du lead.
   controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
-} from '../../features/ventes/solar'
+} from '../../features/ventes/calc/tarifs.js'
 import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
 import { peutEditerDevis } from '../../features/ventes/devisStatuts'
 // CJ2b — aperçu du moteur horaire résidentiel (PVGIS réel × consommation

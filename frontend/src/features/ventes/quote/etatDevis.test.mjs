@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { devisVersEtat, etatVersEcritures } from './etatDevis.js'
-import { consoAnnuelleDepuisFactures } from '../solar.js'
+import { consoAnnuelleDepuisFactures } from '../calc/tarifs.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))

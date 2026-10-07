@@ -697,6 +697,11 @@ REFUS = {
         ("PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing`",
          "COMPORTEMENT"),
         ("REMISE-100-NEGATIF — HT net borné à 0 (miroir de", "COMPORTEMENT")],
+    # SPL195 — le modèle tarifaire a quitté solar.js tel quel : la promesse
+    # QF5 « aligné sur CompanyProfile.onee_tarif_kwh » le suit (table de
+    # nombres, même motif que dans solar.js).
+    "frontend/src/features/ventes/calc/tarifs.js": [
+        ("computeROI", "NOMBRES")],
     "frontend/src/features/ventes/solar.injection.test.mjs": [
         ("Valeurs", "TEST")],
     # QJR402 (02/09/2026) — fichier de test : il CITE la regle QF9 du noyau

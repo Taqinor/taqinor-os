@@ -12,10 +12,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  autoconsoAvecRatio, twoBillsSavings, computeROI, batteryKwhFromLines,
+  autoconsoAvecRatio, computeROI, batteryKwhFromLines,
   AUTOCONSO_SANS, AUTOCONSO_AVEC, DAYS_PER_YEAR, DAYS_IN_MONTH, GHI,
   PRODUCTIBLE_NET_FACTOR, SYSTEM_LOSS_TOTAL,
 } from './solar.js'
+import { twoBillsSavings } from './calc/tarifs.js'
 
 // ── Fixture MIROIR (identique côté Python) ───────────────────────────────────
 // 10 kWc à Casablanca : productible stocké 1651 (PVGIS, déjà net de 14 %)
