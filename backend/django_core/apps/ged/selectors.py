@@ -312,6 +312,21 @@ def latest_version(document):
     return document.versions.order_by('-version').first()
 
 
+def cle_stockage_referencee(cle):
+    """ALEA13-revue — True si une version GED pointe encore sur l'objet de
+    stockage ``cle`` (``DocumentVersion.file_key``).
+
+    Garde-fou AVANT d'effacer un objet MinIO depuis une autre app (photo de
+    visite supprimée…) : un fichier classé en GED ne doit jamais perdre son
+    contenu. Exception délibérée à la règle « bornée à une société » : une
+    clé de stockage est un identifiant physique unique, et le doute doit
+    toujours conserver le fichier."""
+    cle = (cle or '').strip()
+    if not cle:
+        return False
+    return DocumentVersion.objects.filter(file_key=cle).exists()
+
+
 # ── NTPRT13 — "Mes documents" (GED partagée avec le portail CLIENT) ────────
 #
 # Critère d'acceptation : un document GED SANS ACL explicite pour ce client

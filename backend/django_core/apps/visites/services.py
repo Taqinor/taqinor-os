@@ -586,8 +586,6 @@ def supprimer_media(media):
     """
     from django.db import transaction
 
-    from apps.records.storage import delete_attachment
-
     attachment = media.attachment
     cle = getattr(attachment, 'file_key', '') or ''
     visite = media.visite
@@ -598,7 +596,20 @@ def supprimer_media(media):
     if attachment is not None:
         attachment.delete()
     if cle:
-        transaction.on_commit(lambda: delete_attachment(cle))
+        transaction.on_commit(lambda: _effacer_objet_si_orphelin(cle))
+
+
+def _effacer_objet_si_orphelin(cle):
+    """ALEA13-revue — efface l'objet de stockage d'une photo retirée SAUF si
+    une version GED pointe encore sur la même clé (photo classée en GED) :
+    le document GED garderait sinon une version sans contenu. Vérifié au
+    moment de l'effacement (après validation de la transaction)."""
+    from apps.ged.selectors import cle_stockage_referencee
+    from apps.records.storage import delete_attachment
+
+    if cle_stockage_referencee(cle):
+        return
+    delete_attachment(cle)
 
 
 def remplacer_photo_a_refaire(visite, slot_code, *, nouvelle):

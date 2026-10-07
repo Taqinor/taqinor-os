@@ -77,6 +77,32 @@ class PhotoSupprimeeTests(VisiteTerrainBase):
         self.assertTrue(
             Attachment.objects.filter(pk=nouvelle.attachment_id).exists())
 
+    def test_objet_garde_si_une_version_ged_le_reference(self):
+        """ALEA13-revue — une photo classée en GED (même clé de stockage
+        qu'une ``DocumentVersion``) : la suppression de la photo retire le
+        média et la pièce jointe, mais JAMAIS l'objet de stockage, que le
+        document GED lit encore."""
+        from apps.ged.models import Cabinet, Document, DocumentVersion, Folder
+        visite_id = self.creer_visite()
+        media = self._photo(visite_id)
+        cle = media.attachment.file_key
+        cab = Cabinet.objects.create(company=self.company, nom='Cab ALEA')
+        dossier = Folder.objects.create(
+            company=self.company, cabinet=cab, nom='Photos visite')
+        doc = Document.objects.create(
+            company=self.company, folder=dossier, nom='facade.png')
+        DocumentVersion.objects.create(
+            company=self.company, document=doc, version=1, file_key=cle,
+            filename='facade.png', size=1, mime='image/png')
+
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.api.delete(
+                f'/api/django/visites/visites/{visite_id}/photos/{media.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(VisiteMedia.objects.filter(pk=media.id).exists())
+        donnees, _message = fetch_attachment(cle)
+        self.assertIsNotNone(donnees)
+
     def test_service_unique_de_suppression(self):
         visite_id = self.creer_visite()
         media = self._photo(visite_id)
