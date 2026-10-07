@@ -185,6 +185,13 @@ class Calepinage(TenantModel):
     #: ``restaurateur_calepinage``. Lecteur unique : ``selectors.
     #: calepinages_actifs``.
     archive_le = models.DateTimeField('Archivé le', null=True, blank=True)
+    #: ACAL294 (D-ACAL-20) — les CHAMPS PERSONNALISÉS de la société (patron
+    #: ``crm.Lead``) : ``platform.py`` déclare le module cible du registre
+    #: ``customfields`` — la colonne manquait (FieldError au contrôle d'un
+    #: renommage de code). Donnée de GESTION, hors verrou de conception,
+    #: jamais imprimée dans un livrable client. ``None`` = rien de saisi.
+    custom_data = models.JSONField('Champs personnalisés', null=True,
+                                   blank=True)
 
     class Meta:
         verbose_name = 'Calepinage'

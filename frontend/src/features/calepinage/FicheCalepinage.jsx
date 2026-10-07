@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
 import AssigneePicker from '../../components/AssigneePicker'
+import CustomFieldsInput from '../../components/CustomFieldsInput'
 import SelecteurRattachement from './SelecteurRattachement'
 import { formatDateTime } from '../../lib/format'
 // CALX344 — les étiquettes libres (records.Tag), lues/posées/retirées par la
@@ -172,6 +173,10 @@ export default function FicheCalepinage({ detail, onRelire }) {
   // du serveur s'affiche SOUS le champ fautif, et le détail est RELU (aucun
   // état local seul : l'écran affiche ce que le serveur sert).
   const [refusRattachement, setRefusRattachement] = useState(null)
+  // ACAL294 — la SAISIE des champs personnalisés (registre `customfields`,
+  // module « calepinage ») : `null` = rien touché, la valeur servie fait foi.
+  const [champsPerso, setChampsPerso] = useState(null)
+  const [refusChampsPerso, setRefusChampsPerso] = useState(null)
   const [responsables, setResponsables] = useState([])
   const identifiant = detail?.id ?? null
   const peutModifier = detail?.permissions?.peut_modifier === true
@@ -232,6 +237,28 @@ export default function FicheCalepinage({ detail, onRelire }) {
   // actions exigent (`PeutGererCalepinage`). Sans elle, aucun geste d'écriture
   // n'est proposé : une permission refusée ne s'annonce pas en bouton grisé.
   const peutGerer = permissions.peut_modifier === true
+
+  /* ACAL294 — enregistre les champs personnalisés par la même porte que le
+     reste de la fiche (PATCH du calepinage) ; le refus 400 du serveur (champ
+     hors définition, type faux) est rendu SOUS le bloc, jamais avalé. */
+  const enregistrerChampsPerso = async () => {
+    setEnCours(true)
+    setRefusChampsPerso(null)
+    try {
+      await calepinageApi.calepinages.update(detail.id, { custom_data: champsPerso })
+      setChampsPerso(null)
+      onRelire?.()
+    } catch (erreur) {
+      // Un refus par code (`{custom_data: {code: [motif]}}`) NOMME le champ.
+      const parCode = erreur?.response?.data?.custom_data
+      setRefusChampsPerso(parCode && typeof parCode === 'object' && !Array.isArray(parCode)
+        ? Object.entries(parCode)
+          .map(([code, motif]) => `${code} : ${[].concat(motif).join(' ')}`).join(' · ')
+        : refusChamp(erreur, 'custom_data'))
+    } finally {
+      setEnCours(false)
+    }
+  }
 
   const rattacher = async (champ, valeur) => {
     setEnCours(true)
@@ -806,6 +833,34 @@ export default function FicheCalepinage({ detail, onRelire }) {
               </div>
             ))
             : '—'}
+          {/* ACAL294 — la SAISIE, réservée à `calepinage_gerer`, par LE
+              composant commun (aucune saisie maison). */}
+          {peutGerer && !archive ? (
+            <div className="mt-2" data-testid="cal-fiche-custom-data-saisie">
+              <CustomFieldsInput
+                module="calepinage"
+                value={champsPerso ?? detail.custom_data ?? {}}
+                onChange={setChampsPerso}
+              />
+              {champsPerso !== null ? (
+                <button
+                  type="button"
+                  onClick={enregistrerChampsPerso}
+                  disabled={enCours}
+                  data-testid="cal-fiche-custom-data-enregistrer"
+                  className="mt-1 rounded border border-white/20 px-2 py-1 text-xs"
+                >
+                  Enregistrer les champs personnalisés
+                </button>
+              ) : null}
+              {refusChampsPerso ? (
+                <span className="mt-1 block text-xs text-alert-300" role="alert"
+                  data-testid="cal-fiche-custom_data-erreur">
+                  {refusChampsPerso}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </Champ>
         <Champ cle="permissions" label="Vous pouvez">
           {gestes.length > 0 ? gestes.join(', ') : 'consulter seulement'}

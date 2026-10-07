@@ -1318,6 +1318,8 @@ def detail_calepinage(calepinage, request=None):
         # CIQ136 — contraintes de site du PROJET ({} = aucune).
         'contraintes_site': getattr(calepinage, 'contraintes_site', None)
         or {},
+        # ACAL294 — les champs personnalisés de la société (objet | null).
+        'custom_data': getattr(calepinage, 'custom_data', None),
         'permissions': _permissions(calepinage, request),
     }
 

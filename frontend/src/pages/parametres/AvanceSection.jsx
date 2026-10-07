@@ -41,6 +41,9 @@ const CUSTOMFIELD_MODULES = [
   { key: 'contrat', label: 'Contrats' },
   { key: 'vehicule', label: 'Véhicules' },
   { key: 'kb_article', label: 'Articles KB' },
+  // ACAL294 — le calepinage est une cible du registre (`platform.py`) : son
+  // champ se saisit dans la fiche du calepinage.
+  { key: 'calepinage', label: 'Calepinages' },
 ]
 
 /* AGR607 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%),

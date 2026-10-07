@@ -189,6 +189,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'responsable', 'responsable_nom',  # CALX406
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
             'contraintes_site',  # CIQ136
+            'custom_data',  # ACAL294 — écrit ici, LU par le détail (CAL17)
         ]
         #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
         #: écrivain est ``services.liens.lier_devis`` (refus nommés, journal,
@@ -197,10 +198,41 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
             'created_at', 'updated_at', 'devis',
         ]
+        #: ACAL294 — ``custom_data`` est publié par le DÉTAIL (contrat
+        #: ``calepinage_detail.json``) ; la LISTE ne le porte pas.
+        extra_kwargs = {'custom_data': {'write_only': True}}
 
     # YAPIC6 — la nature est DÉCLARÉE (même patron que le jumeau côté ventes,
     # `apps/ventes/serializers.py`) : sans cela drf-spectacular ne sait pas
     # typer un SerializerMethodField et publie un contrat muet.
+    def validate_custom_data(self, value):
+        """ACAL294 — validé par LE registre ``customfields`` (définitions
+        ACTIVES du module ``calepinage`` de la société de l'appelant) : une
+        clé hors définition est refusée en la NOMMANT (jamais ignorée en
+        silence), un type faux sort sous son code."""
+        from apps.customfields.models import CustomFieldDef
+        from apps.customfields.serializers import validate_custom_data
+
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            raise serializers.ValidationError(
+                "Champs personnalisés : aucune société pour les valider.")
+        if value is not None and not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Les champs personnalisés se donnent en objet "
+                "« code : valeur ».")
+        connus = set(CustomFieldDef.objects.filter(
+            company=company, module='calepinage', actif=True)
+            .values_list('code', flat=True))
+        inconnus = sorted(set(value or {}) - connus)
+        if inconnus:
+            raise serializers.ValidationError(
+                "Champ personnalisé inconnu pour les calepinages : %s. "
+                "Créez-le dans Réglages › Avancé (module Calepinage)."
+                % ', '.join('« %s »' % code for code in inconnus))
+        return validate_custom_data('calepinage', company, value)
+
     def validate_contraintes_site(self, value):
         """CIQ136 — normalisées ; une valeur sans source → 400 FR."""
         from .services.degagements import (

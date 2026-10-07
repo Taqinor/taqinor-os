@@ -74,7 +74,6 @@ def affirmer_non_servies(test, servi, en_attente):
 #: première moitié back de chaque clé la sert, retire son entrée et remet
 #: ``complete`` quand la table est vide.
 EN_ATTENTE_DETAIL = {
-    'custom_data': 'ACAL6 moitié back (D09-T33)',
     'lead.supprime': 'ACAL178',
 }
 
