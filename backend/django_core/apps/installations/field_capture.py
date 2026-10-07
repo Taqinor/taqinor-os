@@ -15,7 +15,7 @@ Tout est company-scopé ; la société est posée côté serveur. Additif. La ma
 à états de l'intervention n'est JAMAIS touchée par ces services (séparée du
 chantier et de STAGES.py).
 """
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from django.utils import timezone
 
@@ -53,20 +53,18 @@ def push_serials_to_parc(intervention, user):
 # ── F11 — construction / synchronisation de la réconciliation matériel ────────
 def _bom_quantities(installation):
     """{(produit_id, designation): quantite_prevue Decimal} depuis la
-    nomenclature gelée du chantier. Cumule les lignes identiques."""
+    nomenclature gelée du chantier. Cumule les lignes identiques.
+
+    ASTK127 — plus de copie du lecteur de nomenclature : les lignes viennent
+    de ``services.lignes_bom_entieres`` (le survivant unique, arrondi HALF_UP
+    de la sortie de la vente) — le terrain lit 13 pour 12,5 m comme la
+    réservation N14 et la facture."""
+    from .services import lignes_bom_entieres
     out = {}
-    for ligne in (installation.bom or []):
-        if not isinstance(ligne, dict):
-            continue
-        try:
-            qte = Decimal(str(ligne.get('quantite') or 0))
-        except (InvalidOperation, TypeError, ValueError):
-            continue
-        if qte <= 0:
-            continue
-        key = (ligne.get('produit_id'),
-               ligne.get('designation') or 'Article')
-        out[key] = out.get(key, Decimal('0')) + qte
+    for produit_id, designation, qte in lignes_bom_entieres(
+            installation.bom):
+        key = (produit_id, designation)
+        out[key] = out.get(key, Decimal('0')) + Decimal(qte)
     return out
 
 

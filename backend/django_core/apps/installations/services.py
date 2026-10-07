@@ -786,20 +786,37 @@ def _quantites_depuis_bom(bom):
     """Cœur de `_bom_quantities` sur une nomenclature (liste de dicts
     `{produit_id, quantite}`) — partagé avec `_bc_quantities` (ASTK122)."""
     besoins = {}
-    for ligne in (bom or []):
-        if not isinstance(ligne, dict):
-            continue
-        produit_id = ligne.get('produit_id')
+    for produit_id, _designation, qte in lignes_bom_entieres(bom):
         if not produit_id:
-            continue
-        try:
-            qte = int(round(float(ligne.get('quantite') or 0)))
-        except (TypeError, ValueError):
-            continue
-        if qte <= 0:
             continue
         besoins[produit_id] = besoins.get(produit_id, 0) + qte
     return besoins
+
+
+def lignes_bom_entieres(bom):
+    """ASTK127 (C-ASTK-034) — LE lecteur unique d'une nomenclature gelée :
+    rend ``(produit_id, designation, quantite_entiere)`` pour chaque ligne à
+    quantité > 0, la quantité arrondie AU MÊME ARRONDI que la sortie de la
+    vente (``ventes.domain.facturation_ops.decompter_stock_lignes`` : entier
+    HALF_UP par ligne) — 12,5 m réserve 13 comme la facture en sort 13
+    (``round`` Python arrondissait au pair : 12,5 → 12). Partagé par la
+    réservation N14 (`_bom_quantities`), le BC (`_bc_quantities`) et la
+    réconciliation terrain F11 (``field_capture._bom_quantities``).
+    ``compute_besoin_materiel`` garde son plafond (ERR54 : commande
+    prudente) — écart volontaire."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    for ligne in (bom or []):
+        if not isinstance(ligne, dict):
+            continue
+        try:
+            qte = int(Decimal(str(ligne.get('quantite') or 0)).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        if qte <= 0:
+            continue
+        yield (ligne.get('produit_id'),
+               ligne.get('designation') or 'Article', qte)
 
 
 def chantier_peut_reserver(installation):

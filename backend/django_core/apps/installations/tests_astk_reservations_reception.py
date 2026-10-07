@@ -8,6 +8,8 @@ Sondes RESA de l'audit stock du 2026-10-06 rejouées sur les services réels
     gelée (option retenue), jamais toutes les lignes du devis ;
   * ASTK123 (RESA-5) — annuler un BC (toggle ON) ne libère plus les
     réservations d'un chantier vivant ;
+  * ASTK127 (RESA-14) — réserver avec l'arrondi HALF_UP de la sortie de la
+    vente (12,5 m réserve 13) ;
   * ASTK124 (RESA-6) — prédicat unique `chantier_peut_reserver` : une
     réception ne réactive plus la réservation d'un chantier annulé/clôturé.
 
@@ -282,3 +284,20 @@ class AnnulationBcTests(ResaBase):
         Installation.objects.filter(pk=inst.pk).update(annule=True)
         self.assertEqual(liberer_reservation_bc(bc), 1)
         self.assertFalse(self.resa(inst, panneau).active)
+
+
+class ArrondiTests(ResaBase):
+    SLUG = 'co-astk127'
+
+    def test_demi_unite_arrondie_comme_la_facture(self):
+        from apps.installations.field_capture import (
+            _bom_quantities as besoin_terrain,
+        )
+        cable = self.produit('Câble 6mm² (m)', stock=100)
+        gaine = self.produit('Gaine (m)', stock=100)
+        inst = self.chantier([(cable, '12.5'), (gaine, '2.5')])
+        self.assertEqual(self.resa(inst, cable).quantite, 13)
+        self.assertEqual(self.resa(inst, gaine).quantite, 3)
+        terrain = {pid: qte for (pid, _d), qte in besoin_terrain(inst).items()}
+        self.assertEqual(terrain[cable.id], Decimal('13'))
+        self.assertEqual(terrain[gaine.id], Decimal('3'))
