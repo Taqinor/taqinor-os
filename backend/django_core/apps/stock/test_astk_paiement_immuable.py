@@ -75,9 +75,14 @@ class PaiementImmuableTests(TestCase):
         self.paiement_c = PaiementFournisseur.objects.get(pk=r.data['id'])
 
     def _api(self, role_legacy, username):
+        permissions = ['stock_voir', 'stock_modifier', 'prix_achat_voir']
+        if role_legacy == 'admin':
+            # Un Role fin prime sur role_legacy : l'admin (DELETE réservé,
+            # IsAdminRole) n'est admin que s'il porte `roles_gerer`.
+            permissions.append('roles_gerer')
         role = Role.objects.create(
             company=self.company, nom=f'r-{username}',
-            permissions=['stock_voir', 'stock_modifier', 'prix_achat_voir'])
+            permissions=permissions)
         user = User.objects.create_user(
             username=username, password='pw-astk27-x', company=self.company,
             role=role, role_legacy=role_legacy)
