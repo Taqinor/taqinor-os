@@ -110,7 +110,6 @@ def _forme_reglages(nom, avec_registre=False):
         'gabarits_disposition': serializers.DictField(),
         'presets': serializers.DictField(),
         'favoris_materiel': serializers.DictField(),
-        'gabarits_dossier': serializers.DictField(),
         'norme_electrique': serializers.DictField(),
         'lestage': serializers.DictField(),
         # CALX145 — deux sections à REGISTRE : leurs clés admises sont

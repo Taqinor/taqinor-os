@@ -95,12 +95,12 @@ SOCLE_ELECTRIQUE_SOCIETE = (
     'cos_phi_par_defaut',
 )
 
-#: Les NEUF sections d'avant CALX145, dans leur ordre : elles gardent leur
-#: rang (une section qui change de place, c'est un contrat qui bouge).
+#: Les sections d'avant CALX145, dans leur ordre : elles gardent leur rang
+#: (une section qui change de place, c'est un contrat qui bouge). ACAL320 —
+#: ``gabarits_dossier`` est RETIRÉE (jumelle dormante du modèle).
 SECTIONS_HISTORIQUES = (
     'imagerie', 'degagements', 'zones_types', 'gabarits_disposition',
-    'presets', 'favoris_materiel', 'gabarits_dossier', 'norme_electrique',
-    'lestage',
+    'presets', 'favoris_materiel', 'norme_electrique', 'lestage',
 )
 
 

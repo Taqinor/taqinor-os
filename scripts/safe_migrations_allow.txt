@@ -126,3 +126,8 @@ backend/django_core/apps/crm/migrations/0119_agr401_pompe_actuelle_cv.py
 # (≈40 SKU, filtre role_pompage='' ; jamais un update global de table),
 # réversible (retirer_roles). Pas de verrou long possible.
 backend/django_core/apps/stock/migrations/0162_agr104_roles_pompage.py
+# ACAL320 (C-ACAL-065, D-ACAL decision) — RemoveField de la section JSON
+# ParametresCalepinage.gabarits_dossier, jumelle dormante du modele
+# GabaritDossierReglementaire (aucune lecture hors serialisation). Reversible
+# (colonne recreee, defaut {}). Dry-run en lecture avant deploiement. Revue.
+backend/django_core/apps/calepinage/migrations/0031_acal320_retrait_gabarits_dossier.py

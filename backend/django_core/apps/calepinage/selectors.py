@@ -22,7 +22,8 @@ SECTIONS_PARAMETRES = (
     'gabarits_disposition',
     'presets',
     'favoris_materiel',
-    'gabarits_dossier',
+    # ACAL320 — ``gabarits_dossier`` retirée (jumelle dormante du modèle
+    # ``GabaritDossierReglementaire``).
     # CAL130 — norme électrique applicable + coefficients SAISIS. Section
     # vide = aucune norme choisie (règle D5 : rien n'est supposé au Maroc).
     'norme_electrique',

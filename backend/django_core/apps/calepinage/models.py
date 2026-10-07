@@ -861,7 +861,6 @@ class ParametresCalepinage(TenantModel):
         'gabarits_disposition',  # CAL82 — gabarits de disposition
         'presets',             # CAL197 — presets de conception
         'favoris_materiel',    # CAL200 — matériel épinglé
-        'gabarits_dossier',    # CAL190 — gabarits de dossier réglementaire
         'norme_electrique',    # CAL130 — norme applicable + coefficients
         'lestage',             # CAL163 — paramètres de lestage SAISIS
         'simulation',          # CALX145 — réglages de simulation SAISIS
@@ -877,8 +876,9 @@ class ParametresCalepinage(TenantModel):
     presets = models.JSONField('Presets', default=dict, blank=True)
     favoris_materiel = models.JSONField('Favoris matériel', default=dict,
                                         blank=True)
-    gabarits_dossier = models.JSONField('Gabarits de dossier', default=dict,
-                                        blank=True)
+    # ACAL320 (C-ACAL-065) — la section JSON ``gabarits_dossier`` est RETIRÉE :
+    # jumelle dormante du modèle ``GabaritDossierReglementaire`` (le SEUL
+    # mécanisme réel, lu par ``services/reglementaire.py``).
 
     class Meta:
         verbose_name = 'Réglages de calepinage'
