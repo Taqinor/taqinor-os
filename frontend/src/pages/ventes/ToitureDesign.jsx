@@ -40,6 +40,12 @@ import calepinageApi from '../../api/calepinageApi'
 // Lot 2 critique #27 — lecture du calepinage d'un devis (fiche devis) quand la
 // porte de résolution est refusée (403, droit de VOIR seulement).
 import ventesApi from '../../api/ventesApi'
+// Lot 2 critique #23 / #29 — LE décodeur des refus du pont devis (partagé
+// avec « Générer / Resynchroniser le devis »).
+import {
+  MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE,
+  bloquageElectrique, refusServeur, texteBloquant,
+} from '../../features/calepinage/refusDevis'
 // CAL37 — l'UNIQUE emplacement où les tâches suivantes (CAL38 le bouton devis,
 // CAL180 l'export image) posent leurs panneaux : aucune d'elles n'a donc à
 // rouvrir ce fichier. SOLMVP15 a retiré CAL242 (reprise de contour AO) avec
@@ -82,6 +88,12 @@ import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
+
+/** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
+ *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
+const messageResyncRefusee = (raison) => (
+  `Conception enregistrée — devis NON resynchronisé : ${raison}`)
+const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du devis impossible (réseau)'
 
 function AtelierToiture({
   mode = 'lead', calepinageImpose = null, devisSynchronise = null, lectureSeuleImposee = false,
@@ -189,6 +201,11 @@ function AtelierToiture({
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
   // en silence.
   const [avertissementsSync, setAvertissementsSync] = useState([])
+  // Lot 2 critique #29 — refus électrique de la resynchro du devis lié :
+  // `{detail, bloquants, derogationPossible, peutDeroger}` + le motif saisi.
+  const [bloquageSync, setBloquageSync] = useState(null)
+  const [motifDerogation, setMotifDerogation] = useState('')
+  const [motifDerogationErreur, setMotifDerogationErreur] = useState(null)
   // ACAL87 — l'aperçu de toiture n'a pas pu être capturé (image vide) ou
   // téléversé : on le DIT, au lieu d'un « Conception enregistrée » muet.
   const [apercuMessage, setApercuMessage] = useState(null)
@@ -576,12 +593,15 @@ function AtelierToiture({
   // CALEPINAGE, PUIS le devis est resynchronisé par l'enveloppe du module
   // (`calepinages/<id>/sync-devis/`, D02-T09) — jamais `ventesApi.syncDevisLayout`.
   // Rend `false` quand le serveur refuse (409 « déjà envoyé » révisable, ou clos).
-  const resynchroniserDevisLie = async () => {
+  const resynchroniserDevisLie = async (corps = {}) => {
     if (!devisSynchronise || !calepinageId) return true
     try {
-      const res = await calepinageApi.calepinages.syncDevis(calepinageId, {})
+      const res = await calepinageApi.calepinages.syncDevis(calepinageId, corps)
       const donnees = res?.data ?? {}
       setAvertissementsSync(Array.isArray(donnees.avertissements) ? donnees.avertissements : [])
+      setBloquageSync(null)
+      setMotifDerogation('')
+      setMotifDerogationErreur(null)
       return true
     } catch (err) {
       const code = err?.response?.status
@@ -593,8 +613,54 @@ function AtelierToiture({
         })
         return false
       }
-      setGenError(httpMessage(code ?? 0, data))
+      // Lot 2 critique #23 — la conception EST enregistrée ; c'est la
+      // resynchro du devis qui est refusée : le motif du SERVEUR, décodé par
+      // le décodeur partagé (`refusDevis.js`), jamais « données invalides ».
+      if (!code) {
+        setGenError(MESSAGE_RESYNC_RESEAU)
+        return false
+      }
+      // Lot 2 critique #29 — refus ÉLECTRIQUE (422) : la liste des bloquants
+      // et, pour un approbateur (`permissions.peut_deroger` SERVI), « Passer
+      // outre » — la même règle que « Resynchroniser le devis ».
+      const electrique = bloquageElectrique(err)
+      if (electrique) {
+        let peutDeroger = false
+        try {
+          const detail = await calepinageApi.calepinages.get(calepinageId)
+          peutDeroger = !!detail?.data?.permissions?.peut_deroger
+        } catch { peutDeroger = false }
+        setBloquageSync({ ...electrique, peutDeroger })
+        setGenError(messageResyncRefusee(electrique.detail || refusServeur(err).message))
+        return false
+      }
+      if (code === 400 && data?.derogation_electrique) {
+        setMotifDerogationErreur(refusServeur(err).message)
+        return false
+      }
+      setGenError(messageResyncRefusee(refusServeur(err).message))
       return false
+    }
+  }
+
+  // Lot 2 critique #29 — « Passer outre et resynchroniser » : la MÊME resynchro,
+  // relancée avec `derogation_electrique: {motif}` (motif vide refusé sous le champ).
+  const passerOutreSync = async () => {
+    const saisi = motifDerogation.trim()
+    if (!saisi) {
+      setMotifDerogationErreur(MESSAGE_MOTIF_OBLIGATOIRE)
+      return
+    }
+    setMotifDerogationErreur(null)
+    setSending(true)
+    try {
+      const ok = await resynchroniserDevisLie({ derogation_electrique: { motif: saisi } })
+      if (ok) {
+        setGenError(null)
+        setStatus('Devis resynchronisé (dérogation électrique consignée).')
+      }
+    } finally {
+      setSending(false)
     }
   }
 
@@ -605,6 +671,7 @@ function AtelierToiture({
     setConflit(null)
     setDocumentModifie(null)
     setAvertissementsSync([])
+    setBloquageSync(null) // Lot 2 critique #29
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
@@ -1435,6 +1502,50 @@ function AtelierToiture({
           </p>
           {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
           {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive" data-testid="cal-erreur-enregistrement">{genError}</p>}
+
+          {/* Lot 2 critique #29 — refus ÉLECTRIQUE de la resynchro du devis :
+              les bloquants du serveur, mot pour mot ; « Passer outre »
+              seulement pour un approbateur (droit SERVI par le détail). */}
+          {bloquageSync?.bloquants && (
+            <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-sync-bloquants">
+              <ul className="space-y-1 text-sm text-alert-300">
+                {bloquageSync.bloquants.map((b, i) => (
+                  <li key={`${b?.code ?? 'b'}-${i}`} data-testid="cal-sync-bloquant">
+                    {texteBloquant(b)}
+                    {b?.detail && <span className="block text-xs text-lune-faint">{b.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+              {bloquageSync.derogationPossible && (bloquageSync.peutDeroger ? (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-xs text-lune-soft" htmlFor="cal-sync-motif">
+                    Motif de la dérogation
+                  </label>
+                  <textarea
+                    id="cal-sync-motif"
+                    value={motifDerogation}
+                    onChange={(e) => { setMotifDerogation(e.target.value); setMotifDerogationErreur(null) }}
+                    data-testid="cal-sync-motif"
+                    className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
+                  />
+                  {motifDerogationErreur && (
+                    <p className="text-xs text-alert-300" role="alert" data-testid="cal-sync-motif-erreur">
+                      {motifDerogationErreur}
+                    </p>
+                  )}
+                  <button type="button" onClick={passerOutreSync} disabled={sending}
+                    data-testid="cal-sync-passer-outre"
+                    className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-alert-300 disabled:cursor-not-allowed disabled:opacity-60">
+                    Passer outre et resynchroniser
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-lune-faint" data-testid="cal-sync-derogation-reservee">
+                  {MESSAGE_DEROGATION_RESERVEE}
+                </p>
+              ))}
+            </div>
+          )}
 
           {/* ACAL23 — 409 `document_modifie` : modifiée AILLEURS, rien n'est
               écrasé ; distinct du verrou ci-dessous. */}
