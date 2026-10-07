@@ -27,7 +27,7 @@ transverse : `docs/plans/PLAN_AUDIT_TRANSVERSE.md`. Le registre PRIME sur le cha
   dépendance n'est pas cochée (lancer d'abord l'autre plan ; `--force-wave` = fondateur seulement).
 - Mesurer : `python scripts/check_ownership.py --conflits 40` (fichiers partagés classés par coût).
 - Surfaces `append_only` du registre (migrations/, urls.py, apps.py, façade ventes/services.py,
-  core/events.py, roles/models.py, index.css, router, module.config.jsx…) : tout propriétaire y AJOUTE
+  core/events.py, roles/permissions_registre.py (+ notifications/types_evenements.py, audit/modeles_suivis.py, publicapi/portees.py), index.css, router, module.config.jsx…) : tout propriétaire y AJOUTE
   selon la règle écrite à côté, sans réordonner ni réécrire. Migrations : si deux sessions créent la même
   tête, celle qui fusionne en second régénère SA migration au-dessus (jamais de migration de fusion).
 - Le plan transverse, PLAN_CRM_VENTES.md et les files historiques ne tournent JAMAIS en parallèle d'un

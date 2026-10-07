@@ -530,5 +530,78 @@ class RegistreReelTests(unittest.TestCase):
                     f"{suffixe} absent de append_only dans docs/ownership.yml")
 
 
+class SurfacesRegistresRestreintesTests(unittest.TestCase):
+    """SPL308 — l'append-only ne couvre plus des fichiers ENTIERS : seulement les
+    quatre modules-registres (D-REG-1). Les quatre anciens fichiers retombent chez
+    leur propriétaire seul, donc une tâche qui les réécrit est refusée par la
+    règle (b) et sérialisée par plan_lanes. Registre RÉEL du dépôt, rien de mocké.
+    """
+
+    REGISTRES = (
+        "backend/django_core/apps/roles/permissions_registre.py",
+        "backend/django_core/apps/notifications/types_evenements.py",
+        "backend/django_core/apps/audit/modeles_suivis.py",
+        "backend/django_core/apps/publicapi/portees.py",
+        "backend/django_core/apps/notifications/module_map.py",
+    )
+    ANCIENS = (
+        ("backend/django_core/apps/roles/models.py", "securite"),
+        ("backend/django_core/apps/notifications/models.py", "parametres"),
+        ("backend/django_core/apps/audit/signals.py", "securite"),
+        ("backend/django_core/apps/publicapi/constants.py", "analyse"),
+    )
+    NOUVEAUX = {
+        "backend/django_core/apps/roles/models.py":
+            "backend/django_core/apps/roles/permissions_registre.py",
+        "backend/django_core/apps/notifications/models.py":
+            "backend/django_core/apps/notifications/types_evenements.py",
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.reg = co.charger_registre()
+
+    def test_append_only_limite_aux_modules_registres(self):
+        for chemin in self.REGISTRES:
+            with self.subTest(chemin=chemin):
+                self.assertTrue(self.reg.est_append_only(chemin))
+        for chemin, _ in self.ANCIENS:
+            with self.subTest(chemin=chemin):
+                self.assertFalse(self.reg.est_append_only(chemin))
+
+    def test_regle_b_refuse_l_ancien_fichier_accepte_le_registre(self):
+        plan = "docs/plans/PLAN_AUDIT_STOCK.md"
+
+        def erreurs(chemin):
+            texte = ("## BUILD QUEUE\n- [ ] SPL1 — x. Files: `%s`. (ROUTINE)\n"
+                     % chemin)
+            return co.verifier_plans(self.reg, {plan: texte})
+
+        for ancien, proprio in self.ANCIENS:
+            with self.subTest(ancien=ancien):
+                e = erreurs(ancien)
+                self.assertEqual(len(e), 1, e)
+                self.assertIn(f"appartient à « {proprio} »", e[0])
+        for ancien, nouveau in self.NOUVEAUX.items():
+            with self.subTest(nouveau=nouveau):
+                self.assertEqual(erreurs(nouveau), [])
+
+    def test_plan_lanes_garde_l_ancien_chemin_et_retire_le_registre(self):
+        for ancien, _ in self.ANCIENS:
+            with self.subTest(ancien=ancien):
+                self.assertIn(ancien, pl._task_files(f"x. Files: `{ancien}`."))
+        for nouveau in self.NOUVEAUX.values():
+            with self.subTest(nouveau=nouveau):
+                self.assertNotIn(nouveau, pl._task_files(f"x. Files: `{nouveau}`."))
+
+    def test_memoire_partagee_dit_la_meme_regle_que_le_registre(self):
+        # Jumeau (leçon 6) : la mémoire propriete-fichiers cite le module-registre
+        # des droits, plus l'ancien roles/models.py comme surface append-only.
+        memoire = (ROOT / "docs" / "claude-memory" / "propriete-fichiers.md"
+                   ).read_text(encoding="utf-8")
+        self.assertIn("roles/permissions_registre.py", memoire)
+        self.assertNotIn("core/events.py, roles/models.py", memoire)
+
+
 if __name__ == "__main__":
     unittest.main()
