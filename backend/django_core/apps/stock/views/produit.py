@@ -497,6 +497,15 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'Sélectionnez au moins un produit.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ASTK20 (D-ASTK-3) — la variation de prix en masse = écriture du prix
+        # catalogue : même helper que ProduitSerializer (jumeau unique).
+        from ..serializers import peut_modifier_prix_catalogue
+        if op == 'set_price' and not peut_modifier_prix_catalogue(
+                request.user):
+            return Response(
+                {'detail': ("Permission « catalogue_prix_modifier » requise "
+                            "pour modifier le prix catalogue (prix_vente).")},
+                status=status.HTTP_403_FORBIDDEN)
         try:
             result = apply_product_bulk(
                 company=request.user.company, user=request.user,
