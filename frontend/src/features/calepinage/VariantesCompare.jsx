@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { AlertCircle, Check } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
+import useSuiviJob from './production/useSuiviJob'
 import { formatNumber } from '../../lib/format'
 import {
   Badge, Button, Card, Input, Spinner,
@@ -136,7 +137,50 @@ function EtiquetteVariante({ ligne }) {
       <div className="font-medium">{ligne.nom}</div>
       {ligne.est_retenue ? <Badge>Retenue</Badge> : null}
       {!ligne.simulee ? <Badge variant="outline">Non simulée</Badge> : null}
+      {/* ACAL113 — la fraîcheur et la SOURCE des mesures, servies (contrat
+          variantes_comparer.json) : jamais déduites à l'écran. */}
+      {ligne.simulation_perimee === true ? (
+        <Badge variant="outline" data-testid={`cal-badge-perimee-${ligne.id}`}>
+          simulation périmée
+        </Badge>
+      ) : null}
+      {!ligne.simulee && ligne.source_mesures === 'conception' ? (
+        <Badge variant="outline" data-testid={`cal-badge-dessin-${ligne.id}`}>
+          mesures du dessin
+        </Badge>
+      ) : null}
     </div>
+  )
+}
+
+/* ACAL113 — « Simuler cette variante » : poste `{variante_id, forcer}` et suit le
+   job par LE suivi partagé de PanneauProduction (`useSuiviJob`), jamais un
+   second ; à l'issue, le comparatif est RELU du serveur. */
+function BoutonSimulerVariante({ calepinageId, ligne, onTermine, onRefus }) {
+  const suiviJob = useSuiviJob({
+    intervalleMs: 2000,
+    surIssue: (issue) => {
+      if (issue.etat === 'succes') onTermine?.()
+      else onRefus?.(issue.refus?.motif || 'La simulation de cette variante a échoué.')
+    },
+    surInterruption: () => onRefus?.('Le suivi du calcul de fond a été interrompu.'),
+  })
+  const lancer = () => {
+    suiviJob.lancer(calepinageApi.calepinages.simulerVariante(calepinageId, ligne.id), {
+      surSynchrone: () => onTermine?.(),
+      surErreur: (e) => onRefus?.(errMsg(e, 'Impossible de simuler cette variante.')),
+    })
+  }
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={lancer}
+      disabled={suiviJob.enCours}
+      data-testid={`cal-variante-simuler-${ligne.id}`}
+    >
+      {suiviJob.enCours ? 'Simulation…' : 'Simuler cette variante'}
+    </Button>
   )
 }
 
@@ -485,6 +529,14 @@ export default function VariantesCompare() {
                     >
                       Dupliquer
                     </Button>
+                  </div>
+                  <div>
+                    <BoutonSimulerVariante
+                      calepinageId={id}
+                      ligne={ligne}
+                      onTermine={refetch}
+                      onRefus={setErreurAction}
+                    />
                   </div>
                   <div>
                     <Button

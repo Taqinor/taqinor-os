@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   layout: vi.fn(), creerVariante: vi.fn(), dupliquerVariante: vi.fn(),
   // ACAL109
   modifierVariante: vi.fn(), supprimerVariante: vi.fn(),
+  // ACAL113
+  simulerVariante: vi.fn(), resultatJob: vi.fn(),
 }))
 
 vi.mock('../../api/calepinageApi', () => ({
@@ -34,7 +36,9 @@ vi.mock('../../api/calepinageApi', () => ({
       dupliquerVariante: mocks.dupliquerVariante,
       modifierVariante: mocks.modifierVariante,
       supprimerVariante: mocks.supprimerVariante,
+      simulerVariante: mocks.simulerVariante,
     },
+    moteur: { resultat: mocks.resultatJob },
   },
 }))
 
@@ -363,5 +367,38 @@ describe('VariantesCompare (ACAL109)', () => {
       { nom: 'A', roof_layout: { zones: [] }, resultat: { production: { p50: 1 } } }, '')
     expect(corps).toEqual({ nom: 'A (copie)', roof_layout: { zones: [] } })
     expect('resultat' in corps).toBe(false)
+  })
+})
+
+/* ============================================================================
+   ACAL113 — « Simuler cette variante » et les badges de fraîcheur / source.
+   ========================================================================== */
+describe('VariantesCompare (ACAL113)', () => {
+  it('Simuler cette variante poste variante_id', async () => {
+    mocks.simulerVariante.mockResolvedValue({ data: { job_id: 7, variante_id: AUTRE.id } })
+    mocks.resultatJob.mockResolvedValue({ data: { job_id: 7, statut: 'done', resultat: {} } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    fireEvent.click(screen.getByTestId(`cal-variante-simuler-${AUTRE.id}`))
+    await waitFor(() => expect(mocks.simulerVariante).toHaveBeenCalledWith('1', AUTRE.id))
+    await waitFor(() => expect(mocks.resultatJob).toHaveBeenCalledWith(7))
+  })
+
+  it('badge périmée et mesures du dessin', async () => {
+    const lignes = CONTRAT.lignes.map((l) => {
+      if (l.id === AUTRE.id) return { ...l, simulation_perimee: true }
+      if (l.id === NON_SIMULEE.id) return { ...l, simulee: false, source_mesures: 'conception' }
+      return l
+    })
+    mocks.comparer.mockResolvedValue({ data: { ...CONTRAT, lignes } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    expect(screen.getAllByTestId(`cal-badge-perimee-${AUTRE.id}`)[0])
+      .toHaveTextContent('simulation périmée')
+    expect(screen.getAllByTestId(`cal-badge-dessin-${NON_SIMULEE.id}`)[0])
+      .toHaveTextContent('mesures du dessin')
+    expect(screen.queryByTestId(`cal-badge-perimee-${RETENUE.id}`)).toBeNull()
   })
 })

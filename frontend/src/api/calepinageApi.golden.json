@@ -879,6 +879,17 @@
       "verbe": "post"
     }
   ],
+  "calepinages.simulerVariante": [
+    {
+      "config": null,
+      "data": {
+        "forcer": true,
+        "variante_id": 3
+      },
+      "url": "/calepinage/calepinages/7/simuler/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.sldDxf": [
     {
       "config": {

@@ -316,6 +316,9 @@ const calepinageApi = {
     // serveur (variante RETENUE) est affiché tel quel par l'écran.
     modifierVariante: (id, varianteId, corps) => api.patch(`${pivot(id)}variantes/${varianteId}/`, corps), // ACAL
     supprimerVariante: (id, varianteId) => api.delete(`${pivot(id)}variantes/${varianteId}/`), // ACAL
+    // ACAL113 (D-ACAL-17, contrat calepinage_simulation.json › corps_variante) — simuler UNE
+    // variante : le résultat est écrit SUR LA VARIANTE (202 + job, suivi par useSuiviJob).
+    simulerVariante: (id, varianteId) => api.post(`${pivot(id)}simuler/`, { variante_id: varianteId, forcer: true }), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
