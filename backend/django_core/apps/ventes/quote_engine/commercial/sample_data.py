@@ -26,12 +26,14 @@ def keys():
 def build(category: str = "hotel") -> dict:
     bills = [18000, 16000, 19000, 22000, 26000, 30000,
              33000, 32000, 27000, 22000, 19000, 17000]
+    # CIQ129 — les réponses de catégorie vivent dans l'entrée v2 du moteur
+    # C&I (``rythme.reponses_categorie``), plus à plat dans l'étude.
     etude = {
         "kwc": 90.0, "production_annuelle": 144000, "conso_annuelle": 190000,
-        "taux_autoconso": 78.0, "taux_couverture": 59.1, "prix_kwc": 7200,
-        "categorie_commerciale": category,
+        "prix_kwc": 7200, "categorie_commerciale": category,
+        "rythme": {"categorie_commerciale": category,
+                   "reponses_categorie": dict(_ANSWERS.get(category, {}))},
     }
-    etude.update(_ANSWERS.get(category, {}))
     return {
         "ref": "DEV-COM-DEMO",
         "date": "16/07/2026",

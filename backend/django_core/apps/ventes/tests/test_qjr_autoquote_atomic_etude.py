@@ -101,10 +101,11 @@ class AutoQuoteAtomiqueEtudeTests(TestCase):
         rep = self.api.post(ATOMIC, {
             'lead': lead.id, 'statut': 'brouillon', 'taux_tva': '20.00',
             'remise_globale': '0', 'mode_installation': 'industriel',
+            # CIQ129 — les clés écran v1 (taux, payback, part diurne) ont
+            # quitté le schéma : seules les entrées v2 partent.
             'etude_params': {
-                'scenario': 'Sans batterie', 'taux_autoconso': 82.5,
-                'taux_couverture': 61.0, 'payback': 4.2,
-                'part_diurne_pct': 80,
+                'scenario': 'Sans batterie', 'mode': 'industriel',
+                'tension': 'mt',
             },
             'lignes': [
                 self._ligne(self.commun, '1000', 0),
@@ -117,8 +118,8 @@ class AutoQuoteAtomiqueEtudeTests(TestCase):
         devis = Devis.objects.get(id=rep.data['id'])
         ep = devis.etude_params or {}
         self.assertEqual(ep.get('scenario'), 'Sans batterie')
-        self.assertEqual(ep.get('taux_autoconso'), 82.5)
-        self.assertEqual(ep.get('payback'), 4.2)
+        self.assertEqual(ep.get('tension'), 'mt')
+        self.assertNotIn('payback', ep)
         # UNE option (« sans » : kit commun + onduleur réseau = 3 000 HT),
         # jamais la somme des deux paniers (8 000 HT → 9 600 TTC).
         self.assertNotEqual(devis.total_ttc, Decimal('9600.00'))

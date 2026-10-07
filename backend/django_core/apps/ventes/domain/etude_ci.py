@@ -1177,7 +1177,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
     aucune écriture. Plus aucun panneau ⇒ dérivées RETIRÉES, jamais périmées.
     Ne lève jamais : une étude n'empêche pas d'enregistrer un devis.
     """
-    from .etude_schema import MOTEUR_CI, ecrire
+    from .etude_schema import CLES_RETIREES_CI_V1, MOTEUR_CI, ecrire
     from .etudes import CLES_DERIVEES_NON_COPIEES, puissances_etude_horaire
     try:
         mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
@@ -1193,7 +1193,11 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         company = getattr(devis, 'company', None)
         catalogue = lire_catalogue_ci(company)
         onduleurs = _onduleurs_des_lignes(devis, catalogue)
-        stockees = {k: v for k, v in params.items() if k not in CLES_DERIVEES_NON_COPIEES}
+        # CIQ129 — une clé v1 retirée (jamais une entrée du moteur) n'entre
+        # pas dans l'empreinte.
+        stockees = {k: v for k, v in params.items()
+                    if k not in CLES_DERIVEES_NON_COPIEES
+                    and k not in CLES_RETIREES_CI_V1}
         empreinte = _empreinte(stockees, kwc, onduleurs)
         existant = params.get(CLE_ETUDE_CI) or {}
         if not force and existant.get('empreinte') == empreinte:

@@ -159,9 +159,11 @@ class TestEtudePerimeeQjr625(TestCase):
                 ('Panneau Canadien Solar 710W', '141', '1150'),
                 ('Onduleur réseau Huawei 100kW', '1', '90000'),
             ], reference='DEV-QJR625-IND',
-            etude_params={'etude_kwc_base': 100.11, 'taux_autoconso': 62,
-                          'taux_couverture': 47, 'payback': 3.3,
-                          'conso_annuelle': 300000})
+            # CIQ129 — `etude_kwc_base` et les dérivées écran v1 ont quitté
+            # le schéma : la base d'une étude saisie est `kwc` ; un taux v1
+            # resté sur un ancien devis n'est plus jamais rendu.
+            etude_params={'kwc': 100.11, 'production_annuelle': 150000,
+                          'taux_autoconso': 62, 'conso_annuelle': 300000})
         self.devis.mode_installation = 'industriel'
         self.devis.save(update_fields=['mode_installation'])
         self.ligne_pv = LigneDevis.objects.get(
@@ -186,7 +188,8 @@ class TestEtudePerimeeQjr625(TestCase):
         (moteur C&I) ; un taux d'étude d'écran n'est donc jamais imprimé, même
         frais (aucune étude moteur sur ce devis → « à confirmer »)."""
         data, txt = self._rendu()
-        self.assertEqual(data['etude'].get('taux_autoconso'), 62)
+        self.assertEqual(data['etude'].get('kwc'), 100.11)
+        self.assertNotIn('taux_autoconso', data['etude'])
         self.assertNotIn('62 %', txt)
         self.assertIn('étude du moteur C&I à faire', txt)
         self.assertNotIn("étude industrielle périmée — relancer l'étude",
@@ -199,7 +202,7 @@ class TestEtudePerimeeQjr625(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         data, txt = self._rendu()
         self.assertAlmostEqual(data['puissance_kwc'], 80.23, places=2)
-        for cle in ('taux_autoconso', 'taux_couverture', 'payback'):
+        for cle in ('kwc', 'production_annuelle', 'taux_autoconso'):
             self.assertNotIn(cle, data['etude'])
         self.assertNotIn('62 %', txt)
         self.assertIn("étude industrielle périmée — relancer l'étude",

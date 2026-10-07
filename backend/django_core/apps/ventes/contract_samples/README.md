@@ -85,7 +85,6 @@ rougit pas tant que la route n'existe pas.
 | `devis_replace_lines_entete.json` | POST replace-lines avec `entete` (+ `echeancier`) et `etude_params` en une transaction (QJR504) |
 | `devis_reappliquer_lead.json` | POST reappliquer-lead / acquitter-derive (QJR505) |
 | `devis_preset.json` | GET presets : modèle de devis complet (QJR508) |
-| `etude_ecran_industriel.json` | PATCH etude-params : bloc ECRAN industriel/commercial (QJR510) |
 | `devis_historique_configuration.json` | GET historique-configuration : versions, différences (QJR513) |
 | `proposal_data.json` (étendu) | `remplace_par`, `note_client` (QJR501) — ajoutés au contrat PAR QJR536, en même temps que le serveur qui les émet (contrat gardé `complete`) |
 | `devis_overrides.json` (étendu) | `notes.chemins_non_lus`, `notes.non_lu` (QJR507) |

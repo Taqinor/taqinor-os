@@ -590,6 +590,7 @@ def _rafraichir_etude_ci(devis, *, force=False):
 # inventé » appliquée à la copie : mieux vaut recalculer, ou taire.
 
 from apps.ventes.domain.etude_schema import (  # noqa: E402
+    CLES_RETIREES_CI_V1 as _CLES_RETIREES_CI_V1,
     DERIVEE as _DERIVEE, MOTEUR_POMPAGE as _MOTEUR_POMPAGE,
     SCHEMA as _SCHEMA_ETUDE)
 
@@ -602,7 +603,6 @@ from apps.ventes.domain.etude_schema import (  # noqa: E402
 CLES_DERIVEES_NON_COPIEES = (
     'production_annuelle',
     'economies_annuelles',
-    'payback',
     'etude_horaire',
     CLE_ETUDE_HORAIRE_SANS,
     'dimensionnement',
@@ -641,8 +641,11 @@ CLES_DERIVEES_NON_COPIEES = (
 CLES_ATTRIBUTION_NON_COPIEES = ('attribution',)
 
 #: Ce qu'une copie de devis ne reprend JAMAIS, toutes raisons confondues.
+#: CIQ129 — les clés C&I v1 et les réponses à plat RETIRÉES du schéma : un
+#: ancien devis qui les porte encore ne les transmet pas à sa copie/V2.
 CLES_NON_COPIEES = (
-    CLES_DERIVEES_NON_COPIEES + CLES_ATTRIBUTION_NON_COPIEES)
+    CLES_DERIVEES_NON_COPIEES + CLES_ATTRIBUTION_NON_COPIEES
+    + tuple(_CLES_RETIREES_CI_V1))
 
 
 def etude_params_pour_copie(etude_params):

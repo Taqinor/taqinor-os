@@ -3325,17 +3325,33 @@ def page_etude():
         + _card_if("Consommation annuelle", "conso_annuelle", "\u00a0kWh")
         + _card_if("Prix par kWc", "prix_kwc", "\u00a0MAD")
     )
+    # CIQ129 \u2014 les taux (et, en C&I, le retour) sont ceux du moteur C&I
+    # (``CHIFFRES_CI`` = ``chiffres_cles(synthese_ci)``, la projection de la
+    # couverture et de /proposition) : plus aucune cl\u00e9 d'\u00e9tude \u00e9cran v1. Hors
+    # C&I, aucun taux d'\u00e9tude n'existe : cartes omises ; le retour reste celui
+    # que le builder recalcule sur les totaux (QJR410).
+    _ci = CHIFFRES_CI if isinstance(CHIFFRES_CI, dict) else None
+
+    def _card_ci(label, cle, suffix, fig, accent=True):
+        v = (_ci or {}).get(cle)
+        if v in (None, ""):
+            return ""
+        return card(label, f"{v}{suffix}", accent=accent, fig=fig)
+
     cards2 = (
-        (_card_if("Taux d'autoconsommation", "taux_autoconso", "\u00a0%", accent=True,
+        (_card_ci("Taux d'autoconsommation", "taux_autoconso_pct", "\u00a0%",
                   fig="autoconsommation_pct")
          if has_conso else "")
-        + (_card_if("Taux de couverture", "taux_couverture", "\u00a0%", accent=True,
+        + (_card_ci("Taux de couverture", "taux_couverture_pct", "\u00a0%",
                     fig="couverture_pct")
            if has_conso else "")
         + _card_if("\u00c9conomies annuelles", "economies_annuelles", "\u00a0MAD",
                    fig="economie_annuelle")
-        + _card_if("Retour sur investissement", "payback", "\u00a0ans",
-                   fig="payback_ans")
+        + (_card_ci("Retour sur investissement", "payback_ans", "\u00a0ans",
+                    fig="payback_ans", accent=False)
+           if _ci is not None else
+           _card_if("Retour sur investissement", "payback", "\u00a0ans",
+                    fig="payback_ans"))
     )
     _rates_note = (
         "* Taux d'autoconsommation : part de la production solaire "
