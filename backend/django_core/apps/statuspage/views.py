@@ -305,11 +305,16 @@ class StatusSubscribeThrottle(SimpleRateThrottle):
         return self.cache_format % {'scope': self.scope, 'ident': ident}
 
 
-def _envoyer_email_confirmation(abonne):
+def _envoyer_email_confirmation(abonne, request):
     from django.conf import settings
     from django.core.mail import send_mail
 
-    lien = f'/api/django/statuspage/public/confirmer/{abonne.token_desabonnement}/'
+    # AANA43 — lien ABSOLU. Le point de confirmation vit sur l'hôte de l'API
+    # (derrière le proxy TLS, ``SECURE_PROXY_SSL_HEADER`` donne le bon schéma) ;
+    # ``PUBLIC_SITE_URL`` est l'origine du SITE, où cette route n'existe pas.
+    lien = request.build_absolute_uri(
+        f'/api/django/statuspage/public/confirmer/'
+        f'{abonne.token_desabonnement}/')
     try:
         send_mail(
             'Confirmez votre abonnement au statut Taqinor',
@@ -349,7 +354,7 @@ def public_abonner(request):
     abonne, _created = StatusSubscriber.objects.get_or_create(
         email=email, defaults={'region_filtre': region_filtre})
     if not abonne.confirme:
-        _envoyer_email_confirmation(abonne)
+        _envoyer_email_confirmation(abonne, request)
     return Response(
         {'detail': 'Un e-mail de confirmation a été envoyé.'},
         status=status.HTTP_202_ACCEPTED)

@@ -16,6 +16,7 @@ voir `constants.EXPORT_SCOPE_BY_ENTITY`/`IMPORT_SCOPE_BY_ENTITY`.
 import csv
 import io
 
+from django.db.models import Q
 from django.http import HttpResponse
 
 from rest_framework import status, viewsets
@@ -50,6 +51,29 @@ class HasAnyApiKey(BasePermission):
         return isinstance(getattr(request, 'auth', None), ApiKey)
 
 
+def _scope_de_l_operation(type_job, entite):
+    """Le scope qu'exige l'OPÉRATION d'un job (export ou import de
+    ``entite``), ``None`` pour une entité inconnue (fail-closed)."""
+    mapping = (EXPORT_SCOPE_BY_ENTITY if type_job == BulkJob.TYPE_EXPORT
+               else IMPORT_SCOPE_BY_ENTITY)
+    return mapping.get(entite)
+
+
+def jobs_visibles_q(api_key):
+    """AANA33 — les jobs qu'une clé peut VOIR dans sa société : ceux qu'elle a
+    créés, ou ceux d'une entité dont elle porte le scope de l'opération
+    (même règle que ``HasJobOperationScope``). Une clé ``read:stock`` ne voit
+    donc jamais l'export de leads d'une autre clé — ni son lien de résultat."""
+    visibles = Q(api_key_id=api_key.pk)
+    for type_job, mapping in ((BulkJob.TYPE_EXPORT, EXPORT_SCOPE_BY_ENTITY),
+                              (BulkJob.TYPE_IMPORT, IMPORT_SCOPE_BY_ENTITY)):
+        entites = [entite for entite, scope in mapping.items()
+                   if scope and api_key.has_scope(scope)]
+        if entites:
+            visibles |= Q(type=type_job, entite__in=entites)
+    return visibles
+
+
 class HasJobOperationScope(BasePermission):
     """Exige le scope de l'OPÉRATION que le job rejouerait (NTAPI43).
 
@@ -71,10 +95,7 @@ class HasJobOperationScope(BasePermission):
         api_key = getattr(request, 'auth', None)
         if not isinstance(api_key, ApiKey):
             return False
-        mapping = (
-            EXPORT_SCOPE_BY_ENTITY if obj.type == BulkJob.TYPE_EXPORT
-            else IMPORT_SCOPE_BY_ENTITY)
-        scope = mapping.get(obj.entite)
+        scope = _scope_de_l_operation(obj.type, obj.entite)
         if not scope:
             # Entité inconnue/plus exportable : jamais relançable (fail-closed).
             return False
@@ -160,7 +181,10 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
 
     Un job n'est JAMAIS visible hors de la société de la clé
     (``get_queryset``) — cross-tenant impossible quelle que soit la clé
-    utilisée, aucun scope métier supplémentaire requis (``HasAnyApiKey``)."""
+    utilisée. AANA33 : DANS la société, une clé ne voit (liste, détail,
+    liens présignés, relance) que les jobs qu'elle a créés ou ceux d'une
+    entité dont elle porte le scope (``jobs_visibles_q``) ; un autre job
+    répond 404, jamais son ``resultat_url``."""
     authentication_classes = PUBLIC_AUTHENTICATION_CLASSES
     permission_classes = [HasAnyApiKey]
     throttle_classes = [ApiKeyRateThrottle]
@@ -168,8 +192,11 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
     queryset = BulkJob.objects.all()
 
     def get_queryset(self):
+        api_key = getattr(self.request, 'auth', None)
+        if not isinstance(api_key, ApiKey):
+            return super().get_queryset().none()
         return super().get_queryset().filter(
-            company_id=self.request.auth.company_id)
+            company_id=api_key.company_id).filter(jobs_visibles_q(api_key))
 
     def finalize_response(self, request, response, *args, **kwargs):
         response = super().finalize_response(request, response, *args, **kwargs)

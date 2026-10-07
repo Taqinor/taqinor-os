@@ -740,7 +740,10 @@ export function Component() {
             <ReportCard title="Stock" kind="stock" params={periodParams}>
               <p className="text-sm">
                 Valorisation (vente) : <strong className="tabular-nums">{fmt(stock.valorisation_vente)} DH</strong>
-                {' · '}achat (interne) : <span className="tabular-nums">{fmt(stock.valorisation_achat)} DH</span>
+                {/* AANA26 — clé servie seulement à can_view_buy_prices. */}
+                {stock.valorisation_achat != null && (
+                  <>{' · '}achat (interne) : <span className="tabular-nums">{fmt(stock.valorisation_achat)} DH</span></>
+                )}
               </p>
               <Subhead>Par catégorie</Subhead>
               {/* VX148 — valeur vente HT par catégorie, en graphe (la table

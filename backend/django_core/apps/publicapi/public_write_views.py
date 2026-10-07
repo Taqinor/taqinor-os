@@ -20,9 +20,50 @@ from .portees import (
     SCOPE_WRITE_ACTIVITIES, SCOPE_WRITE_DEVIS, SCOPE_WRITE_LEADS,
     SCOPE_WRITE_TICKETS,
 )
-from .idempotency import get_idempotency_key, replay_or_none, remember
+from .idempotency import executer_idempotent, get_idempotency_key
 from .public_response import PublicApiResponseMixin
 from .public_serializers import PublicLeadSerializer
+
+
+def erreurs_champs_lead(fields):
+    """AANA39 — erreurs PAR CHAMP des champs de lead écrits par l'API
+    publique ou l'import bulk, ``{}`` si tout est valide.
+
+    Seuls les champs de la liste blanche du service CRM
+    (``crm.services.PUBLIC_LEAD_WRITABLE_FIELDS``, inchangée) sont contrôlés,
+    chacun par SON champ de modèle lu sur ``Lead._meta`` (``Field.clean`` :
+    choix ``canal``/``priorite``/``type_installation``/``stage``, format
+    e-mail, longueur max) — jamais une liste de choix recopiée ici. Une
+    valeur vide est ignorée, comme le fait le service.
+    """
+    from django.core.exceptions import (
+        FieldDoesNotExist, ValidationError as ErreurModele,
+    )
+
+    from apps.crm.services import PUBLIC_LEAD_WRITABLE_FIELDS
+
+    fields = fields if hasattr(fields, 'get') else {}
+    erreurs = {}
+    for nom in PUBLIC_LEAD_WRITABLE_FIELDS:
+        valeur = fields.get(nom)
+        if valeur in (None, ''):
+            continue
+        try:
+            champ = Lead._meta.get_field(nom)
+        except FieldDoesNotExist:
+            continue
+        try:
+            champ.clean(valeur, None)
+        except ErreurModele as exc:
+            erreurs[nom] = exc.messages
+    return erreurs
+
+
+def valider_champs_lead(fields):
+    """AANA39 — 400 avec les erreurs par champ, AVANT toute écriture."""
+    erreurs = erreurs_champs_lead(fields)
+    if erreurs:
+        raise ValidationError(erreurs)
 
 
 class PublicWriteAPIView(PublicApiResponseMixin, APIView):
@@ -60,25 +101,16 @@ class PublicWriteAPIView(PublicApiResponseMixin, APIView):
         """Enveloppe commune : rejoue une réponse mémorisée si l'en-tête
         `Idempotency-Key` correspond à un appel identique déjà traité ;
         sinon exécute `perform()` (qui doit renvoyer un ``Response``) et
-        mémorise le résultat pour un futur rejeu."""
-        api_key = request.auth
-        idem_key = get_idempotency_key(request)
-        replay = replay_or_none(
-            api_key=api_key, endpoint=self.endpoint_name,
-            idem_key=idem_key, body=body_for_fingerprint)
-        if replay is not None:
-            resp_status, resp_body = replay
-            return Response(resp_body, status=resp_status)
+        mémorise le résultat pour un futur rejeu.
 
-        response = perform()
-
-        remember(
-            company=self.get_company(), api_key=api_key,
-            endpoint=self.endpoint_name, idem_key=idem_key,
-            body=body_for_fingerprint,
-            response_status=response.status_code, response_body=response.data,
-        )
-        return response
+        AANA34 — clé trop longue ⇒ 400 avant toute écriture ; la clé est
+        réservée AVANT l'action (``idempotency.executer_idempotent``), donc
+        deux requêtes concurrentes ne créent jamais deux objets."""
+        return executer_idempotent(
+            company=self.get_company(), api_key=request.auth,
+            endpoint=self.endpoint_name,
+            idem_key=get_idempotency_key(request),
+            body=body_for_fingerprint, perform=perform)
 
 
 class PublicLeadCreateView(PublicWriteAPIView):
@@ -90,6 +122,7 @@ class PublicLeadCreateView(PublicWriteAPIView):
         from apps.crm.services import create_lead_from_public_api
 
         def _perform():
+            valider_champs_lead(request.data or {})
             try:
                 lead = create_lead_from_public_api(
                     company=self.get_company(), fields=request.data or {})
@@ -113,6 +146,7 @@ class PublicLeadUpdateView(PublicWriteAPIView):
         from apps.crm.services import update_lead_from_public_api
 
         def _perform():
+            valider_champs_lead(request.data or {})
             try:
                 lead = update_lead_from_public_api(
                     company=self.get_company(), lead_id=pk,

@@ -70,9 +70,16 @@ class TestSalesReport(ReportsBase):
 
 class TestStockReport(ReportsBase):
     def test_valuation_includes_internal_buy(self):
+        # AANA26 — la valorisation d'achat est réservée à can_view_buy_prices :
+        # ce test la lit donc en ADMIN.
         Produit.objects.create(company=self.company, nom='P', sku='R-1',
                                prix_vente=Decimal('1000'), prix_achat=Decimal('600'),
                                quantite_stock=10)
+        admin = User.objects.create_user(
+            username='rep_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
         resp = self.api.get('/api/django/reporting/reports/stock/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['valorisation_vente'], '10000.00')

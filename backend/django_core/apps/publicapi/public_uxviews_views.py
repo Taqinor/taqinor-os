@@ -12,15 +12,17 @@ paramètre `?owner=<id>` en tient lieu explicitement :
     strictement personnel (NTUX12, "un favori d'un collègue est invisible,
     même pour un Directeur") : il n'existe aucune vue "company-wide" sûre à
     renvoyer par défaut ;
-  * ``saved-views/`` renvoie par défaut UNIQUEMENT les vues PARTAGÉES À
-    L'ÉQUIPE (déjà visibles en interne par tout collaborateur de la société,
-    cf. `apps.uxviews.views.SavedViewViewSet.get_queryset`) — jamais une vue
-    personnelle d'un tiers sans son `?owner=`.
+  * ``saved-views/`` renvoie UNIQUEMENT les vues PARTAGÉES À L'ÉQUIPE (déjà
+    visibles en interne par tout collaborateur de la société, cf.
+    `apps.uxviews.views.SavedViewViewSet.get_queryset`) — jamais une vue
+    personnelle, même avec `?owner=` (AANA38 : un paramètre que n'importe
+    quelle clé peut poser n'est pas un consentement).
 
 Dans les deux cas, `?owner=<id>` restreint STRICTEMENT aux lignes de CET
 utilisateur (`owner_id=<id>`, scoping composé avec la société de la clé —
 un id d'une autre société ne matche simplement aucune ligne, jamais une
-fuite cross-tenant).
+fuite cross-tenant). Le ``libelle`` d'un favori n'est publié que si la clé
+porte le scope de lecture de l'entité ciblée (AANA38).
 """
 from rest_framework.exceptions import ValidationError
 
@@ -57,10 +59,9 @@ class PublicSavedViewViewSet(PublicReadOnlyViewSet):
     sync_field = 'updated_at'
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        if not self.request.query_params.get('owner'):
-            # Pas de consentement explicite d'un utilisateur précis : seules
-            # les vues déjà visibles en interne de TOUTE la société (jamais
-            # une vue personnelle d'un tiers).
-            qs = qs.filter(visibilite=SavedView.Visibilite.EQUIPE)
-        return qs
+        # AANA38 — `?owner=` n'est PAS un consentement (n'importe quelle clé
+        # peut le poser) : seules les vues déjà visibles en interne de TOUTE
+        # la société sont publiées, avec ou sans `?owner=` (qui ne fait plus
+        # que filtrer parmi elles). Une vue PERSONNELLE ne sort jamais.
+        return super().get_queryset().filter(
+            visibilite=SavedView.Visibilite.EQUIPE)

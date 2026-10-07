@@ -1,3 +1,4 @@
+import logging
 import os
 from urllib.parse import quote_plus
 
@@ -107,11 +108,33 @@ DATABASE_URL = (
 SQL_AGENT_DB_USER = os.environ.get("SQL_AGENT_DB_USER", "")
 SQL_AGENT_DB_PASSWORD = os.environ.get("SQL_AGENT_DB_PASSWORD", "")
 
+#
+# AANA6 (C-AANA-002) — PLUS DE REPLI SILENCIEUX EN PRODUCTION. Le repli sur
+# DATABASE_URL faisait tourner l'agent sous le PROPRIETAIRE de la base (en local
+# `erp_user` : rolsuper=t, rolbypassrls=t) : tout contournement du garde SQL
+# devenait une lecture/ecriture sans limite. En production (DEBUG off) sans
+# SQL_AGENT_DB_USER, l'agent est DESACTIVE (503 explicite qui nomme la
+# variable) ; en developpement (DEBUG on) le repli reste, avec un avertissement.
+SQL_AGENT_DISABLED_REASON = ""
+
 if SQL_AGENT_DB_USER:
     _agent_pw = quote_plus(SQL_AGENT_DB_PASSWORD)
     SQL_AGENT_DATABASE_URL = (
         f"postgresql://{SQL_AGENT_DB_USER}:{_agent_pw}"
         f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     )
-else:
+elif _DEBUG:
+    logging.getLogger(__name__).warning(
+        "SQL_AGENT_DB_USER non defini : en DEVELOPPEMENT l'agent SQL utilise "
+        "la connexion proprietaire (DATABASE_URL). En production il serait "
+        "desactive — definir SQL_AGENT_DB_USER (role Postgres lecture seule)."
+    )
     SQL_AGENT_DATABASE_URL = DATABASE_URL
+else:
+    SQL_AGENT_DATABASE_URL = ""
+    SQL_AGENT_DISABLED_REASON = (
+        "Agent SQL desactive : la variable d'environnement SQL_AGENT_DB_USER "
+        "n'est pas definie (role Postgres dedie en lecture seule obligatoire "
+        "en production)."
+    )
+    logging.getLogger(__name__).error(SQL_AGENT_DISABLED_REASON)

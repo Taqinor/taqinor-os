@@ -9,12 +9,6 @@ const reportingApi = {
   getNotifications: (config) => api.get('/reporting/notifications/', config),
   // Tableau de bord valeur du pipeline (par étape, prévision, devis, pertes).
   getPipeline: () => api.get('/reporting/pipeline/'),
-  // Hub Rapports (T13/T14/T15) — ventes, stock, service.
-  salesReport: () => api.get('/reporting/reports/sales/'),
-  stockReport: () => api.get('/reporting/reports/stock/'),
-  serviceReport: () => api.get('/reporting/reports/service/'),
-  reportXlsx: (kind) =>
-    api.get(`/reporting/reports/${kind}/`, { params: { export: 'xlsx' }, responseType: 'blob' }),
   // Insights (N49/N70/N95/N78/N80) — lecture seule.
   recurringRevenue: () => api.get('/reporting/insights/recurring-revenue/'),
   auditLog: (params) => api.get('/reporting/insights/audit-log/', { params }),
@@ -62,14 +56,6 @@ const reportingApi = {
     : api.post('/reporting/dashboard-config/', data),
   deleteDashboardConfig: (id) =>
     api.delete(`/reporting/dashboard-config/${id}/`),
-  // FG92 — Comparaison périodique (MoM/YoY). ?compare=prev|yoy.
-  dashboardCompare: (compare) =>
-    api.get('/reporting/dashboard/', { params: { compare } }),
-  salesReportCompare: (params) =>
-    api.get('/reporting/reports/sales/', { params }),
-  // FG93 — Classement commerciaux.
-  salesLeaderboard: (params) =>
-    api.get('/reporting/insights/sales-leaderboard/', { params }),
   // FG94 — Données custom-field pour reporting (group-by, filtres ?cf_<code>=).
   cfGroupBy: (module, code, params) =>
     api.get('/reporting/insights/cf-group-by/', {
@@ -135,8 +121,6 @@ const reportingApi = {
   updateClasseur: (id, data) => api.patch(`/reporting/classeurs/${id}/`, data),
   deleteClasseur: (id) => api.delete(`/reporting/classeurs/${id}/`),
   rafraichirClasseur: (id) => api.get(`/reporting/classeurs/${id}/rafraichir/`),
-  evaluerFormuleClasseur: (id, formule) =>
-    api.post(`/reporting/classeurs/${id}/evaluer/`, { formule }),
   // XSAV8 — conformité SLA + KPI SAV avancés.
   savSlaInsight: (params) => api.get('/reporting/insights/sav-sla/', { params }),
   // WIR102 — analytique SAV : pivot tickets (technicien×statut), coût interne

@@ -81,8 +81,10 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
         if jours is not None:
             durees_reelles.append(float(jours))
 
+    # AANA24 / D-AANA-2 — un ticket annulé sort de tout taux (même base que
+    # reports_field / sav_sla).
     ticket_qs = Ticket.objects.filter(
-        company=company, technicien_responsable=technicien)
+        company=company, technicien_responsable=technicien, annule=False)
     if start:
         ticket_qs = ticket_qs.filter(date_creation__date__gte=start)
     if end:
