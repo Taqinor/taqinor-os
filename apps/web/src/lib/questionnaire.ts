@@ -916,6 +916,20 @@ export function buildQuestionnairePostBody(
 }
 
 /**
+ * ALEA4 (D-ALEA-4) — « vu » après un envoi réussi : les valeurs que le client
+ * vient d'ENVOYER deviennent ce qu'il a vu pré-rempli. Le POST suivant porte
+ * donc `prefill_vu = valeurs envoyées` et le serveur ne réécrase pas une
+ * correction de l'équipe sur un champ que le client n'a pas retouché. Pur :
+ * ne mute pas `prefill`, ne touche aucun champ non envoyé.
+ */
+export function prefillApresEnvoi(
+  prefill: Record<string, unknown>,
+  reponses: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...prefill, ...reponses };
+}
+
+/**
  * `true` si le corps POST n'a RIEN de neuf à envoyer (aucune réponse, aucune
  * photo) — la page doit alors sauter l'appel réseau plutôt que poster un
  * objet vide (ex. section déjà répondue et rouverte sans y toucher, ou
