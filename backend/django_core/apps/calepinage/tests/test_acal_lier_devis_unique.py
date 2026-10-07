@@ -76,18 +76,24 @@ class LierDevisSeulEcrivainTest(BaseApiCalepinage):
 
     def test_depuis_modele_devis_libre_passe_par_lier_devis(self):
         # ACAL117 (D-ACAL-15) — le lead cible d'un modèle porte un repère.
-        self.lead.roof_point = {'lat': 33.5, 'lng': -7.6}
-        self.lead.save(update_fields=['roof_point'])
+        # ACAL182 (D-ACAL-12) — un seul calepinage OUVERT par lead : la cible
+        # est un lead SANS calepinage (``lead_2``), son devis est libre.
+        self.lead_2.roof_point = {'lat': 33.5, 'lng': -7.6}
+        self.lead_2.client = self.client_a
+        self.lead_2.save(update_fields=['roof_point', 'client'])
+        devis_libre = Devis.objects.create(
+            company=self.company, client=self.client_a, lead=self.lead_2,
+            reference='DEV-202610-3303')
         modele = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Modèle villa',
             roof_layout=copy.deepcopy(DOCUMENT))
         marquer_modele(modele)
         reponse = self.api.post(URL_DEPUIS_MODELE, {
-            'modele_id': modele.pk, 'lead_id': self.lead.pk,
-            'devis_id': self.devis_2.pk}, format='json')
+            'modele_id': modele.pk, 'lead_id': self.lead_2.pk,
+            'devis_id': devis_libre.pk}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
         copie = Calepinage.objects.get(pk=reponse.data['id'])
-        self.assertEqual(copie.devis_id, self.devis_2.pk)
+        self.assertEqual(copie.devis_id, devis_libre.pk)
 
     def test_lier_devis_refuse_repointage_devis_actif(self):
         with self.assertRaises(LiaisonRefusee) as refus:
