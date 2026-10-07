@@ -180,6 +180,23 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       .toHaveTextContent('Conception manquante ou invalide')
   })
 
+  it('409 roof_layout : le motif serveur est affiché', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    // ACAL44 — la forme RÉELLE du 409 de verrou (VerrouilleRefuse) :
+    // `{roof_layout: [motif]}`, jamais `{detail}` (sinon faux vert).
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockRejectedValue({
+      response: { status: 409, data: { roof_layout: ['Devis accepté : révisez-le'] } },
+    })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('cal-conflit-lecture-seule'))
+      .toHaveTextContent('Devis accepté : révisez-le')
+  })
+
   /* ACAL23 — le jeton If-Match de l'écriture complète, et le 409
      « modifiée ailleurs » distinct du verrou. */
   it('le POST porte If-Match lu au boot', async () => {

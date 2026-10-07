@@ -15,6 +15,9 @@ import { Button, Card, Input, Label, Spinner } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
 import { telechargerBlob } from './exportImage'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
 /* ============================================================================
    CAL195 — LE SCHÉMA UNIFILAIRE, DANS LE MODULE.
    ----------------------------------------------------------------------------
@@ -185,7 +188,7 @@ export function corpsEdition(blocs, saisie) {
   return corps
 }
 
-function EditionSchema({ id, donnees, onPoste }) {
+function EditionSchema({ id, donnees, onPoste, lectureSeule = false }) {
   const blocs = Array.isArray(donnees?.blocs) ? donnees.blocs : []
   const [saisie, setSaisie] = useState({ libelles: {}, reperes: {} })
   const [erreurs, setErreurs] = useState({})
@@ -247,7 +250,12 @@ function EditionSchema({ id, donnees, onPoste }) {
         ))}
       </ul>
       <div>
-        <Button type="submit" disabled={!modifie || enCours} data-testid="acal161-enregistrer">
+        <Button
+          type="submit"
+          disabled={lectureSeule || !modifie || enCours}
+          title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
+          data-testid="acal161-enregistrer"
+        >
           {enCours ? 'Enregistrement…' : 'Enregistrer l’édition'}
         </Button>
       </div>
@@ -255,7 +263,7 @@ function EditionSchema({ id, donnees, onPoste }) {
   )
 }
 
-export default function SchemaUnifilairePanel({ calepinageId }) {
+export default function SchemaUnifilairePanel({ calepinageId, lectureSeule = false }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -357,7 +365,7 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
             {motifExport
               ? <p className="text-sm text-destructive" data-testid="calx236-erreur-export">{motifExport}</p>
               : null}
-            <EditionSchema id={id} donnees={data} onPoste={setPoste} />
+            <EditionSchema id={id} donnees={data} onPoste={setPoste} lectureSeule={lectureSeule} />
           </>
         )
         : <Motifs donnees={data} />}

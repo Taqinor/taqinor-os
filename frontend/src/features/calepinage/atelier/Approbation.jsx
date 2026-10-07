@@ -6,6 +6,9 @@ import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
 /* ============================================================================
    CALX349 — L'ONGLET « APPROBATION » DE L'ATELIER.
    ----------------------------------------------------------------------------
@@ -47,7 +50,7 @@ function suggestionsEnAttente(erreurs) {
   return Object.keys(erreurs).filter((champ) => !['decision', 'motif', 'detail'].includes(champ))
 }
 
-export default function Approbation({ calepinageId: idPropose = null }) {
+export default function Approbation({ calepinageId: idPropose = null, lectureSeule = false }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
   const peutApprouver = useHasPermission('calepinage_approuver')
@@ -180,7 +183,8 @@ export default function Approbation({ calepinageId: idPropose = null }) {
             <Button
               type="button"
               variant="success"
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
+              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
               onClick={() => decider('approuve')}
               data-testid="calx349-approuver"
             >
@@ -189,7 +193,8 @@ export default function Approbation({ calepinageId: idPropose = null }) {
             <Button
               type="button"
               variant="destructive"
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
+              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
               onClick={() => decider('refuse')}
               data-testid="calx349-refuser"
             >

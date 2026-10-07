@@ -5,6 +5,9 @@ import { Badge, Button, Card, EmptyState, Spinner } from '../../../ui'
 import { History } from 'lucide-react'
 import { formatDateTime } from '../../../lib/format'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
 /* ============================================================================
    CALX36 — L'HISTORIQUE DES VERSIONS ET LA RESTAURATION.
    ----------------------------------------------------------------------------
@@ -49,7 +52,7 @@ function messageRefusServeur(err, repli) {
    `onRecharger`, « Enregistrer le calepinage » republiait la copie d'avant et
    annulait la restauration en silence (porte CYC-05). `onRecharger` est
    relayé par le Rail depuis l'écran de conception (l'unique rechargement). */
-export default function PanneauVersions({ calepinageId: idPropose, onRecharger = null } = {}) {
+export default function PanneauVersions({ calepinageId: idPropose, onRecharger = null, lectureSeule = false } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
@@ -163,6 +166,8 @@ export default function PanneauVersions({ calepinageId: idPropose, onRecharger =
                           size="sm"
                           variant="outline"
                           onClick={() => demanderRestauration(version.id)}
+                          disabled={lectureSeule}
+                          title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
                           data-testid={`cal-versions-restaurer-${version.id}`}
                         >
                           Restaurer

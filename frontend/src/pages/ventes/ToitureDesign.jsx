@@ -731,7 +731,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
           const motifVerrou = Array.isArray(data?.roof_layout)
             ? data.roof_layout[0] : data?.roof_layout
           setConflit({
-            detail: data?.detail || (typeof motifVerrou === 'string' && motifVerrou)
+            // ACAL44 — la forme RÉELLE du verrou est `{roof_layout: [motif]}` :
+            // son motif passe EN PREMIER.
+            detail: (typeof motifVerrou === 'string' && motifVerrou) || data?.detail
               || 'Ce calepinage ne peut plus être modifié.',
             revision_possible: false,
           })
