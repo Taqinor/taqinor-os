@@ -21,6 +21,7 @@ from apps.stock.models import (
     ReceptionFournisseur,
 )
 from apps.stock.services import facturer_bcf_sur_commande, facturer_reception
+from testkit.time import frozen
 
 User = get_user_model()
 
@@ -125,12 +126,12 @@ class BuilderUniqueTests(_Base):
             dispatch_uid='astk109-capte')
 
     def test_sur_commande_porte_date_facture(self):
-        facture = facturer_bcf_sur_commande(
-            self.company, self.user, self.bcf)
+        with frozen('2026-10-06 10:00:00'):
+            facture = facturer_bcf_sur_commande(
+                self.company, self.user, self.bcf)
         facture = FactureFournisseur.objects.get(pk=facture.pk)
         self.assertIsNotNone(facture.date_facture)
-        from django.utils import timezone
-        self.assertEqual(facture.date_facture, timezone.now().date())
+        self.assertEqual(facture.date_facture, datetime.date(2026, 10, 6))
         self.assertEqual(self.recus, [facture.pk])
 
     def test_sur_commande_impute_acompte(self):
