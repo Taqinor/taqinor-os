@@ -6675,3 +6675,72 @@ def recalculer_resultat_recette(record):
         record.resultat = resultat
         record.save(update_fields=['resultat'])
     return resultat
+
+
+# ── ASTK194 — quantité par casier tenue par les mouvements (C-ASTK-046) ────
+
+def appliquer_mouvement_casier(company, produit_id, quantite,
+                               bin_source_id=None, bin_destination_id=None):
+    """ASTK194 — LE seul écrivain de `BinAffectation.quantite` hors CRUD
+    manuel. Pour un mouvement de ``quantite`` unités du produit :
+
+      * casier SOURCE (sortie ou transfert) : décrémenté, plafonné à 0
+        (jamais négatif — PositiveIntegerField) ;
+      * casier DESTINATION (entrée ou transfert) : incrémenté, l'affectation
+        est créée au besoin.
+
+    Société VÉRIFIÉE : un casier ou un produit d'une autre société lève
+    ValueError (rien n'est écrit). Appelant prévu : `stock.record_stock_
+    movement` (ASTK195, import fonction-local via ce service). Renvoie
+    l'ÉCART non couvert côté source (unités demandées au casier source
+    au-delà de ce qu'il portait ; 0 si tout était couvert)."""
+    from django.db import transaction
+    from apps.stock.selectors import valid_produit_ids
+    from .models_bin_location import BinAffectation, BinLocation
+
+    if company is None or not produit_id:
+        raise ValueError('Société et produit requis.')
+    try:
+        qte = int(quantite or 0)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if qte < 0:
+        raise ValueError('Quantité négative.')
+    if bin_source_id is None and bin_destination_id is None:
+        raise ValueError('Casier source ou destination requis.')
+    if produit_id not in valid_produit_ids(company, [produit_id]):
+        raise ValueError("Produit d'une autre société.")
+    bin_ids = [b for b in (bin_source_id, bin_destination_id) if b]
+    if BinLocation.objects.filter(
+            pk__in=bin_ids, company=company).count() != len(set(bin_ids)):
+        raise ValueError("Casier d'une autre société.")
+    if qte == 0:
+        return 0
+
+    ecart = 0
+    with transaction.atomic():
+        if bin_source_id:
+            source = (BinAffectation.objects.select_for_update()
+                      .filter(bin_id=bin_source_id, produit_id=produit_id)
+                      .first())
+            dispo = source.quantite if source is not None else 0
+            retire = min(qte, dispo)
+            ecart = qte - retire
+            if source is not None and retire:
+                source.quantite = dispo - retire
+                source.save(update_fields=['quantite', 'date_modification'])
+        if bin_destination_id:
+            dest, created = (BinAffectation.objects.select_for_update()
+                             .get_or_create(
+                                 bin_id=bin_destination_id,
+                                 produit_id=produit_id,
+                                 defaults={'company': company,
+                                           'quantite': qte}))
+            if not created:
+                dest.quantite = (dest.quantite or 0) + qte
+                changed = ['quantite', 'date_modification']
+                if dest.company_id is None:
+                    dest.company = company
+                    changed.append('company')
+                dest.save(update_fields=changed)
+    return ecart
