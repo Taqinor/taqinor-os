@@ -77,6 +77,13 @@ class SavedReportViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # company forcée par TenantMixin ; owner = utilisateur courant.
+        # AANA27 — un appelant SANS société (superuser) ne peut pas créer un
+        # rapport planifié : rendu sans société = données de toutes les
+        # sociétés. Refus 400, au champ.
+        if self.request.user.company is None:
+            raise serializers.ValidationError({
+                'company': "Un rapport planifié doit appartenir à une "
+                           "société : votre compte n'en a pas."})
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
 

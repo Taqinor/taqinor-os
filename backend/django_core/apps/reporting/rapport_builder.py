@@ -167,9 +167,10 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
         de rendu. Un rapport croisé sort avec ses totaux de ligne et de
         colonne ; un rapport plat avec ses en-têtes de champ.
 
-        GARDE PRIX D'ACHAT : toute colonne dont le nom trahit un prix d'achat
-        ou une marge est RETIRÉE du fichier (jamais d'export client-facing
-        d'une donnée de marge, règle du repo), quelle que soit la définition.
+        GARDE PRIX D'ACHAT : toute colonne sous permission du dataset
+        (``gated_fields``, AANA25) ou trahissant un prix d'achat / une marge
+        est RETIRÉE du fichier (jamais d'export client-facing d'une donnée de
+        marge, règle du repo), quelle que soit la définition.
         """
         import csv
         import io
@@ -191,7 +192,9 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
                            "« xlsx »."},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
-            rows, pivot = executer_definition(obj)
+            # AANA25 — l'export s'exécute au nom du LECTEUR (sa portée, ses
+            # permissions), jamais du propriétaire de la définition.
+            rows, pivot = executer_definition(obj, lecteur=request.user)
         except data_explorer.DatasetInconnu as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -202,7 +205,8 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
 
         entetes, lignes = (_lignes_pivot(pivot) if pivot
                            else _lignes_plates(rows))
-        entetes, lignes = _sans_colonnes_interdites(entetes, lignes)
+        entetes, lignes = _sans_colonnes_interdites(
+            entetes, lignes, obj.dataset)
 
         base = obj.titre or obj.dataset or 'rapport'
         nom = ''.join(
@@ -238,27 +242,89 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
         return reponse
 
 
-#: NTEXT11 — fragments de nom de colonne qui ne sortent JAMAIS dans un export
-#: (prix d'achat / marge : donnée interne, jamais client-facing).
-#:
-#: AUD801 — le vocabulaire de cette liste ratait ``cout`` tout court, qui est
-#: précisément le nom du coût interne d'un ticket dans le dataset
-#: ``sav_tickets`` : la garde d'export existait mais ne mordait pas dessus.
-#: Le vrai verrou est désormais dans le MOTEUR (``core.data_explorer``
-#: ``gated_fields``, appliqué aux huit consommateurs) ; ce filtre reste une
-#: défense en profondeur sur le seul rendu d'export.
-COLONNES_INTERDITES = ('prix_achat', 'prixachat', 'marge', 'cout_achat',
-                       'cout')
+#: AANA25 — la liste de noms ``COLONNES_INTERDITES`` est REMPLACÉE par une
+#: DÉRIVATION : les colonnes interdites d'une sortie de rapport sont les
+#: ``gated_fields`` déclarés par le dataset (``core.data_explorer``,
+#: AUD801 : ``prix_achat``/``valeur_achat`` du stock, ``montant`` d'un bon de
+#: commande fournisseur, ``cout`` d'un ticket SAV…). Un nouveau champ sous
+#: permission déclaré par une app est donc filtré PARTOUT sans retoucher ce
+#: fichier. Seuls restent écrits ici les deux invariants du dépôt (CLAUDE.md :
+#: prix d'achat et marge ne figurent jamais dans une sortie client).
+_INVARIANTS_INTERNES = ('prix_achat', 'marge')
 
 
-def _sans_colonnes_interdites(entetes, lignes):
-    """Retire des en-têtes ET des lignes toute colonne de prix d'achat/marge."""
+def champs_gated(dataset=None):
+    """AANA25 — noms des champs sous permission d'un dataset (``gated_fields``).
+
+    ``dataset`` absent : l'UNION de tous les datasets enregistrés (rendu dont
+    la source n'est pas connue). Dataset inconnu : ensemble vide (le moteur
+    lèvera de toute façon ``DatasetInconnu`` à l'exécution)."""
+    from core import data_explorer
+
+    if dataset:
+        try:
+            definition = data_explorer.get_dataset(dataset)
+        except data_explorer.DatasetInconnu:
+            return set()
+        return set((definition.get('gated_fields') or {}).keys())
+    noms = set()
+    for entree in data_explorer.list_datasets():
+        noms |= champs_gated(entree['name'])
+    return noms
+
+
+def _racine(chemin):
+    return str(chemin or '').split('__')[0]
+
+
+def spec_sans_champs_gated(dataset, spec):
+    """AANA25 — copie de ``spec`` d'où les champs sous permission du dataset
+    sont retirés de TOUTES les positions (select, filtres, group_by, tris,
+    agrégats) — même règle que le moteur pour un lecteur sans permission,
+    appliquée ICI quel que soit l'acteur : une sortie de rapport (e-mail,
+    lien public, fichier exporté) ne porte JAMAIS de prix d'achat."""
+    spec = dict(spec or {})
+    interdits = champs_gated(dataset)
+    if not interdits:
+        return spec
+    if 'select' in spec:
+        spec['select'] = [f for f in spec.get('select') or []
+                          if _racine(f) not in interdits]
+    if 'filters' in spec:
+        spec['filters'] = {k: v for k, v in (spec.get('filters') or {}).items()
+                           if _racine(k) not in interdits}
+    if 'group_by' in spec:
+        spec['group_by'] = [f for f in spec.get('group_by') or []
+                            if _racine(f) not in interdits]
+    if 'order_by' in spec:
+        spec['order_by'] = [o for o in spec.get('order_by') or []
+                            if _racine(str(o).lstrip('-')) not in interdits]
+    if 'aggregates' in spec:
+        spec['aggregates'] = [
+            a for a in spec.get('aggregates') or []
+            if _racine((a or {}).get('field') or '') not in interdits]
+    return spec
+
+
+def _colonne_interdite(colonne, interdits):
+    nom = str(colonne).strip().lower().replace(' ', '_')
+    if any(mot in nom for mot in _INVARIANTS_INTERNES):
+        return True
+    return any(nom == champ or nom.startswith(champ + '__')
+               or nom.endswith('_' + champ) for champ in interdits)
+
+
+def _sans_colonnes_interdites(entetes, lignes, dataset=None):
+    """Retire des en-têtes ET des lignes toute colonne sous permission.
+
+    AANA25 — la liste est DÉRIVÉE des ``gated_fields`` du ``dataset`` (union
+    de tous les datasets s'il est inconnu), plus les invariants du dépôt."""
     if not entetes:
         return entetes, lignes
+    interdits = champs_gated(dataset)
     gardes = [
         i for i, entete in enumerate(entetes)
-        if not any(mot in str(entete).lower().replace(' ', '_')
-                   for mot in COLONNES_INTERDITES)
+        if not _colonne_interdite(entete, interdits)
     ]
     if len(gardes) == len(entetes):
         return entetes, lignes
@@ -266,3 +332,10 @@ def _sans_colonnes_interdites(entetes, lignes):
         [entetes[i] for i in gardes],
         [[ligne[i] for i in gardes if i < len(ligne)] for ligne in lignes],
     )
+
+
+def sans_cles_interdites(rows, dataset=None):
+    """AANA25 — même filtre sur des lignes-dictionnaires (widgets, requêtes)."""
+    interdits = champs_gated(dataset)
+    return [{k: v for k, v in (row or {}).items()
+             if not _colonne_interdite(k, interdits)} for row in rows or []]

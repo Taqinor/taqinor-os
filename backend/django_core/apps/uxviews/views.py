@@ -18,7 +18,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import EcranRecent, FavoriUtilisateur, SavedView, UxParametres
 from .permissions import PeutDefinirVueDefautRole, PeutPartagerVueEquipe
 from .serializers import (
-    FavoriUtilisateurSerializer, SavedViewSerializer, UxParametresSerializer,
+    TYPES_FAVORISABLES, FavoriUtilisateurSerializer, SavedViewSerializer,
+    UxParametresSerializer, cible_du_favori,
 )
 
 logger = logging.getLogger(__name__)
@@ -264,6 +265,16 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         role_id = request.data.get('role', instance.role_id)
         if not role_id:
             raise ValidationError({'role': 'Un rôle est requis pour définir une vue par défaut.'})
+        # AANA17 — le rôle doit être de LA société de la vue : un rôle d'une
+        # autre société reçoit la même réponse qu'un id absent.
+        from apps.roles.models import Role
+        try:
+            role_existe = Role.objects.filter(
+                pk=role_id, company=instance.company).exists()
+        except (TypeError, ValueError):
+            role_existe = False
+        if not role_existe:
+            raise ValidationError({'role': f'Rôle introuvable : « {role_id} ».'})
         # NTUX27 — une vue par défaut de rôle EST une vue partagée : si la
         # société a désactivé le partage d'équipe, on ne peut plus en poser.
         parametres = UxParametres.get_or_default(request.user.company)
@@ -524,7 +535,9 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         writer = csv.writer(response)
         writer.writerow(['type', 'champ_identifiant', 'identifiant', 'libelle'])
         for favori in favoris:
-            cible = favori.cible
+            # AANA15 — jamais le libellé/identifiant d'une cible d'une autre
+            # société (ligne héritée d'avant la garde).
+            cible = cible_du_favori(favori)
             champ, valeur = _identifiant_metier(cible)
             writer.writerow([
                 favori.cle_modele, champ or '', valeur or '',
@@ -566,12 +579,18 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
             champ = str(row.get('champ_identifiant') or '').strip()
             valeur = str(row.get('identifiant') or '').strip()
             content_type = None
-            if type_cible and '.' in type_cible:
+            # AANA15 — même liste blanche que la création directe.
+            if type_cible.lower() in TYPES_FAVORISABLES:
                 app_label, _, modele_nom = type_cible.partition('.')
                 content_type = ContentType.objects.filter(
                     app_label=app_label, model=modele_nom).first()
             modele = content_type.model_class() if content_type else None
             cible = None
+            # AANA16 — `champ_identifiant` limité aux identifiants métier
+            # connus : jamais une clé ORM libre (`prix_achat__gte` servait
+            # d'oracle par dichotomie sur le prix d'achat).
+            if champ not in _CHAMPS_IDENTIFIANT_CANDIDATS:
+                champ = ''
             if modele is not None and champ and valeur:
                 manager = getattr(modele, 'all_objects', modele._default_manager)
                 try:
