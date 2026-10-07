@@ -67,10 +67,12 @@ class Faux:
     """Un calepinage EN MÉMOIRE : les seuls attributs que le service lit."""
 
     def __init__(self, pk, *, titre='', statut='brouillon', layout_hash='',
-                 roof_layout=None, resultat=None):
+                 roof_layout=None, resultat=None, approbation=None):
         self.pk = pk
         self.titre = titre
         self.statut = statut
+        # ACAL114 — le statut servi est DÉRIVÉ de l'approbation.
+        self.approbation = approbation
         self.layout_hash = layout_hash
         self.roof_layout = roof_layout
         self.resultat = resultat
@@ -86,6 +88,7 @@ def _faux_de_l_exemple():
     simule = Faux(
         1, titre="Calepinage d'essai A — toiture sud", statut='valide',
         layout_hash=A,
+        approbation={'etat': 'approuve', 'empreinte_approuvee': A},
         resultat={
             'pose': {'total_modules': 12, 'kwc': 8.64},
             'production': {'total': {
