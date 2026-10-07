@@ -54,7 +54,7 @@ class Command(BaseCommand):
             )
         # ASEC16 — une société RÉELLE peut porter le slug ``taqinor-demo`` :
         # seule ``est_demo=True`` autorise le seed (jamais le slug ni DEBUG).
-        from authentication.management.commands.seed_demo_company import (
+        from authentication.selectors import (
             refus_societe_non_demo,
         )
         refus = refus_societe_non_demo('taqinor-demo')

@@ -31,26 +31,12 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+# ASEC16 — la garde vit dans ``authentication.selectors`` (ASEC11-lint) :
+# ``reset_demo_company`` (atteint depuis ``core`` via ``authentication.tasks``)
+# ne doit pas importer CE module, qui tire apps.crm/apps.ventes...
+from authentication.selectors import refus_societe_non_demo
+
 DEMO_PASSWORD = 'DemoFull@2026!'
-
-
-def refus_societe_non_demo(slug):
-    """ASEC16 — message de refus si ``slug`` désigne une société EXISTANTE qui
-    n'est pas marquée ``Company.est_demo=True`` ; ``None`` sinon (société
-    démo, ou société inexistante qui sera créée démo).
-
-    Seul critère : ``est_demo`` — jamais une sous-chaîne « demo » du slug
-    (une société RÉELLE peut s'appeler ``taqinor-demo``), jamais
-    ``settings.DEBUG``. Partagé par reset_demo_company, seed_demo,
-    seed_demo_company et l'assistant de démonstration."""
-    from authentication.models import Company
-    company = Company.objects.filter(slug=slug).only('est_demo').first()
-    if company is not None and not company.est_demo:
-        return (f"Refus : la société « {slug} » n'est pas une société de "
-                "démonstration (Company.est_demo=False). Les commandes et "
-                "l'assistant de démonstration ne touchent QUE les sociétés "
-                "est_demo=True.")
-    return None
 
 
 # Seed fixe → un reset (NTDMO6) reproduit le même nombre d'enregistrements.

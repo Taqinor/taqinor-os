@@ -69,7 +69,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         slug = options['slug']
-        from authentication.management.commands.seed_demo_company import (
+        from authentication.selectors import (
             refus_societe_non_demo,
         )
         refus = refus_societe_non_demo(slug)

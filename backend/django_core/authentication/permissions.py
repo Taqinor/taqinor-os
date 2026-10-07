@@ -11,6 +11,34 @@ class IsAdminRole(BasePermission):
         )
 
 
+# ASEC11-lint — registre module→codes INJECTÉ par ``apps.roles`` depuis son
+# ``AppConfig.ready()`` (``enregistrer_registre_modules``). ``authentication``
+# est une app de fondation importée par ``core`` : elle ne doit avoir AUCUNE
+# arête d'import vers ``apps.*`` (contrat « core imports downward only »). On
+# garde une RÉFÉRENCE au dict (jamais une copie) : comportement identique à
+# l'ancien import fonction-local de ``PERMISSION_MODULE``.
+_REGISTRE_MODULES = None
+
+
+def enregistrer_registre_modules(permission_module):
+    """Branché par ``apps.roles.apps.RolesConfig.ready()`` avec
+    ``apps.roles.permissions_registre.PERMISSION_MODULE``."""
+    global _REGISTRE_MODULES
+    _REGISTRE_MODULES = permission_module
+
+
+def _registre_modules():
+    if _REGISTRE_MODULES is None:
+        from django.core.exceptions import ImproperlyConfigured
+        # Jamais de repli silencieux : un registre absent dégraderait la garde
+        # ASEC11 vers la règle historique (plus permissive).
+        raise ImproperlyConfigured(
+            'Registre des modules de permissions non enregistré : '
+            "'apps.roles' doit figurer dans INSTALLED_APPS (son ready() "
+            'appelle authentication.permissions.enregistrer_registre_modules).')
+    return _REGISTRE_MODULES
+
+
 def module_de_la_vue(view):
     """ASEC11 — module (clé de ``PERMISSION_MODULE``) dont relève ``view``.
 
@@ -24,7 +52,7 @@ def module_de_la_vue(view):
     explicite = getattr(view, 'permission_module', None)
     if explicite:
         return explicite
-    from apps.roles.permissions_registre import PERMISSION_MODULE
+    PERMISSION_MODULE = _registre_modules()
     parties = (type(view).__module__ or '').split('.')
     app = parties[1] if parties[0] == 'apps' and len(parties) > 1 \
         else parties[0]
@@ -33,7 +61,7 @@ def module_de_la_vue(view):
 
 def codes_du_module(module):
     """ASEC11 — codes du registre rattachés au module ``module``."""
-    from apps.roles.permissions_registre import PERMISSION_MODULE
+    PERMISSION_MODULE = _registre_modules()
     return frozenset(c for c, m in PERMISSION_MODULE.items() if m == module)
 
 
