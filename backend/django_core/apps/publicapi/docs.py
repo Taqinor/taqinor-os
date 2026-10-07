@@ -272,10 +272,10 @@ def public_api_reference():
                 'chemin': '/api/public/v1/saved-views/',
                 'scope': 'read:vues',
                 'description': (
-                    "NTUX33 — vues sauvegardées (NTUX1). Sans ?owner=, "
-                    "uniquement les vues déjà partagées à l'équipe ; avec "
-                    "?owner=<id>, les vues de CET utilisateur (personnelles "
-                    "incluses — le paramètre est le proxy de son consentement)."
+                    "NTUX33 — vues sauvegardées (NTUX1) : uniquement les vues "
+                    "déjà partagées à l'équipe ; ?owner=<id> filtre parmi "
+                    "elles celles de CET utilisateur. Une vue personnelle "
+                    "n'est jamais publiée (AANA38)."
                 ),
                 'filtres': ['ecran', 'owner'],
                 'tri': ['id', 'ecran', 'nom'],
@@ -287,7 +287,9 @@ def public_api_reference():
                 'description': (
                     "NTUX33 — favoris épinglés (NTUX12), STRICTEMENT "
                     "personnels : ?owner=<id> est OBLIGATOIRE (400 sans lui), "
-                    "c'est le consentement explicite de l'utilisateur."
+                    "c'est le consentement explicite de l'utilisateur. "
+                    "`libelle` vaut null si la clé n'a pas le scope de "
+                    "lecture de l'entité ciblée (AANA38)."
                 ),
                 'filtres': ['owner'],
                 'tri': ['id', 'ordre'],

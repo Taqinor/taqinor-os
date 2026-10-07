@@ -198,8 +198,35 @@ class PublicFavoriSerializer(serializers.ModelSerializer):
         return obj.cle_modele
 
     def get_libelle(self, obj) -> str | None:
+        # AANA38 — le libellé est une LECTURE de l'entité ciblée : il n'est
+        # publié que si la clé porte le scope de lecture de cette entité
+        # (celui de sa ressource publique). Sans ressource publique, ou sans
+        # le scope, ``null`` — jamais le nom d'un lead lu par `read:favoris`.
+        requete = self.context.get('request')
+        api_key = getattr(requete, 'auth', None)
+        content_type = getattr(obj, 'content_type', None)
+        modele = content_type.model_class() if content_type else None
+        scope = scope_de_lecture_du_modele(modele)
+        if scope is None or not hasattr(api_key, 'has_scope') \
+                or not api_key.has_scope(scope):
+            return None
         cible = obj.cible
         return str(cible) if cible is not None else None
+
+
+def scope_de_lecture_du_modele(modele):
+    """AANA38 — le scope de LECTURE de la ressource publique qui sert
+    ``modele`` (lu sur le routeur public : ``required_scope`` du ViewSet dont
+    le ``queryset`` porte ce modèle), ``None`` si aucune ressource publique ne
+    le sert (fail-closed)."""
+    if modele is None:
+        return None
+    from .public_urls import router
+    for _prefixe, viewset, _nom in router.registry:
+        queryset = getattr(viewset, 'queryset', None)
+        if getattr(queryset, 'model', None) is modele:
+            return getattr(viewset, 'required_scope', None)
+    return None
 
 
 class PublicCalepinageSerializer(serializers.Serializer):
