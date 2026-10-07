@@ -22,12 +22,12 @@ describe('ACAL349 — projection unique', () => {
   it('une seule constante exportée, aucune copie littérale 6378137 ni 111320 hors constants.ts/roof.ts', () => {
     const fichiers = [...sources(SRC), resolve(SRC, '../../../frontend/src/pages/ventes/RoofViewer.jsx')];
     const fautifs = fichiers.filter((f) => {
-      const rel = f.replace(/\/g, '/');
+      const rel = f.split(String.fromCharCode(92)).join('/');
       if (AUTORISES.some((a) => rel.endsWith(a))) return false;
       return /6[_]?378[_]?137|111[_ ]?320/.test(readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ''));
     });
     // geo.ts est la définition unique (déplacée de constants.ts, réexportée par lui).
-    expect(fautifs.map((f) => f.replace(/\/g, '/')).filter((f) => !f.endsWith('lib/geo.ts'))).toEqual([]);
+    expect(fautifs.map((f) => f.split(String.fromCharCode(92)).join('/')).filter((f) => !f.endsWith('lib/geo.ts'))).toEqual([]);
     expect(RAYON_CONSTANTS).toBe(WGS84_RADIUS);
     expect(viaRoof).toBe(metresParDegre);
   });
