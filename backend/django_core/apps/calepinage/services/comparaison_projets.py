@@ -188,11 +188,13 @@ def _ligne_de_comparaison(calepinage):
     """
     from .comparaison import (
         CLES_PRODUCTION, MOTIF_PERIMEE, colonnes_production,
+        simulation_perimee_du_calepinage,
     )
 
     empreinte = getattr(calepinage, 'layout_hash', '') or ''
     simule, production, motif_lu = colonnes_production(
-        getattr(calepinage, 'resultat', None), layout_hash=empreinte or None)
+        getattr(calepinage, 'resultat', None),
+        perimee=simulation_perimee_du_calepinage(calepinage))
     if simule:
         motif = ''
     elif motif_lu == MOTIF_PERIMEE:

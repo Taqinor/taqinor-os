@@ -326,14 +326,18 @@ def _production_comparee(variante):
     Le service de comparaison lit le résultat déposé par le moteur (forme
     imbriquée du module ou forme plate du parcours devis) et déclare « non
     simulée » toute variante sans production — ou dont la production a été
-    calculée sur une AUTRE empreinte de layout que celle d'aujourd'hui. Rien
+    calculée sur une AUTRE empreinte de simulation que celle d'aujourd'hui
+    (ACAL111 : celle de C-ACAL-073 appliquée au ``roof_layout`` de la
+    variante). Rien
     n'est stocké : le comparatif suit l'empreinte sans invalidation.
     """
-    from .services.comparaison import colonnes_production
+    from .services.comparaison import (
+        colonnes_production, simulation_perimee_de_la_variante,
+    )
 
-    return colonnes_production(_mesures_variante(variante),
-                               layout_hash=getattr(variante, 'layout_hash',
-                                                   '') or None)
+    return colonnes_production(
+        _mesures_variante(variante),
+        perimee=simulation_perimee_de_la_variante(variante))
 
 
 def _ligne_comparaison(variante, reference, nombre_de_lignes,
