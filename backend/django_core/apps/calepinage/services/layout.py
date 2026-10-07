@@ -451,8 +451,10 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
 
         version = None
         if not inchange:
+            # ACAL45 — une version de GÉOMÉTRIE ne gèle plus le résultat
+            # (calculé sur l'ANCIENNE conception) : ``resultat=None``.
             version = enregistrer_version(calepinage, user=user,
-                                          libelle=libelle)
+                                          libelle=libelle, resultat=None)
 
     if not inchange:
         # CAL26 — un enregistrement SIGNIFICATIF se journalise ; un renvoi à
