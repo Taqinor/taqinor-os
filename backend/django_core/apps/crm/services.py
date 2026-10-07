@@ -274,11 +274,17 @@ def detecter_signal_interet_salle_vente(salle):
                    .count())
         if nb_vues < SEUIL_VUES_SIGNAL_INTERET:
             return None
-        aujourd_hui = aujourd_hui_local()
+        # ALEA3 — idempotence PAR JOUR LOCAL ET PAR SALLE : borne explicite
+        # « minuit à Casablanca » (jamais le ``__date`` du fuseau actif, qui
+        # dépend de la requête) et la salle nommée en fin de note.
+        from core.dates import maintenant_local
+        debut_jour = maintenant_local().replace(
+            hour=0, minute=0, second=0, microsecond=0)
         deja_note = LeadActivity.objects.filter(
             lead=lead, kind=LeadActivity.Kind.NOTE,
             body__startswith='signal d\'intérêt fort',
-            created_at__date=aujourd_hui,
+            body__endswith=f'(salle de vente « {salle.titre} »)',
+            created_at__gte=debut_jour,
         ).exists()
         if deja_note:
             return None
