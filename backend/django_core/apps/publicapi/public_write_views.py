@@ -25,6 +25,47 @@ from .public_response import PublicApiResponseMixin
 from .public_serializers import PublicLeadSerializer
 
 
+def erreurs_champs_lead(fields):
+    """AANA39 — erreurs PAR CHAMP des champs de lead écrits par l'API
+    publique ou l'import bulk, ``{}`` si tout est valide.
+
+    Seuls les champs de la liste blanche du service CRM
+    (``crm.services.PUBLIC_LEAD_WRITABLE_FIELDS``, inchangée) sont contrôlés,
+    chacun par SON champ de modèle lu sur ``Lead._meta`` (``Field.clean`` :
+    choix ``canal``/``priorite``/``type_installation``/``stage``, format
+    e-mail, longueur max) — jamais une liste de choix recopiée ici. Une
+    valeur vide est ignorée, comme le fait le service.
+    """
+    from django.core.exceptions import (
+        FieldDoesNotExist, ValidationError as ErreurModele,
+    )
+
+    from apps.crm.services import PUBLIC_LEAD_WRITABLE_FIELDS
+
+    fields = fields if hasattr(fields, 'get') else {}
+    erreurs = {}
+    for nom in PUBLIC_LEAD_WRITABLE_FIELDS:
+        valeur = fields.get(nom)
+        if valeur in (None, ''):
+            continue
+        try:
+            champ = Lead._meta.get_field(nom)
+        except FieldDoesNotExist:
+            continue
+        try:
+            champ.clean(valeur, None)
+        except ErreurModele as exc:
+            erreurs[nom] = exc.messages
+    return erreurs
+
+
+def valider_champs_lead(fields):
+    """AANA39 — 400 avec les erreurs par champ, AVANT toute écriture."""
+    erreurs = erreurs_champs_lead(fields)
+    if erreurs:
+        raise ValidationError(erreurs)
+
+
 class PublicWriteAPIView(PublicApiResponseMixin, APIView):
     """Base commune : auth par clé d'API, throttle par clé, scope requis
     déclaré par la sous-classe (`required_scope`), idempotence optionnelle.
@@ -81,6 +122,7 @@ class PublicLeadCreateView(PublicWriteAPIView):
         from apps.crm.services import create_lead_from_public_api
 
         def _perform():
+            valider_champs_lead(request.data or {})
             try:
                 lead = create_lead_from_public_api(
                     company=self.get_company(), fields=request.data or {})
@@ -104,6 +146,7 @@ class PublicLeadUpdateView(PublicWriteAPIView):
         from apps.crm.services import update_lead_from_public_api
 
         def _perform():
+            valider_champs_lead(request.data or {})
             try:
                 lead = update_lead_from_public_api(
                     company=self.get_company(), lead_id=pk,

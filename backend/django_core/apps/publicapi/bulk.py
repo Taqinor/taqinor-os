@@ -283,6 +283,15 @@ def _parse_rows(raw_bytes, fmt):
 def _process_lead_row(company, mode, dedup_key, row):
     from apps.crm import services as crm_services
 
+    from .public_write_views import erreurs_champs_lead
+
+    # AANA39 — même validation par champ que l'écriture unitaire : une ligne
+    # au `canal` inconnu ou à l'e-mail invalide est une ligne EN ERREUR
+    # (journalisée champ par champ), jamais un lead stocké tel quel.
+    erreurs = erreurs_champs_lead(row)
+    if erreurs:
+        raise BulkJobError(json.dumps(erreurs, ensure_ascii=False))
+
     if mode == 'upsert' and dedup_key:
         value = (row.get(dedup_key) or '').strip()
         existing = None
