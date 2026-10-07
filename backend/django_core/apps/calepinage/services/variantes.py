@@ -382,7 +382,8 @@ def _refuser_second_ouvert(calepinage, lead_id, *, user=None):
 
 
 def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
-              roof_layout=..., lead_id=..., client_id=...):
+              roof_layout=..., lead_id=..., client_id=...,
+              preparer_document=None):
     """Recopie la conception (et les variantes) vers un NOUVEAU calepinage.
 
     Le duplicata reste dans la MÊME société et garde le rattachement
@@ -400,6 +401,11 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     rendu ; une version « Conception d'origine (copie de #C) » est déposée.
     ``roof_layout`` (facultatif) remplace la conception copiée (modèle
     translaté sur le repère du lead cible, D-ACAL-15).
+
+    ``preparer_document`` (facultatif) : la MÊME transformation appliquée au
+    document de CHAQUE variante copiée (modèle : translation sur le repère du
+    lead cible, consommation d'un autre client retirée — D-ACAL-15), son
+    empreinte recalculée ; elle reçoit une copie profonde.
     """
     from django.db import transaction
 
@@ -441,12 +447,19 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
                     .filter(calepinage=calepinage).order_by('id'))
                    if avec_variantes else CalepinageVariante.objects.none())
         for source in sources:
+            document_variante = source.roof_layout
+            empreinte_variante = source.layout_hash or ''
+            if preparer_document is not None:
+                document_variante = preparer_document(
+                    copy.deepcopy(document_variante))
+                empreinte_variante = (layout_hash(document_variante) or ''
+                                      if document_variante else '')
             CalepinageVariante.objects.create(
                 company=copie.company,
                 calepinage=copie,
                 nom=source.nom,
-                roof_layout=source.roof_layout,
-                layout_hash=source.layout_hash or '',
+                roof_layout=document_variante,
+                layout_hash=empreinte_variante,
                 resultat=None,
                 retenue=False,
                 cree_par=user,

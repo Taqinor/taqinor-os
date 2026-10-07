@@ -112,6 +112,27 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertEqual(copie.roof_image, '')
         self.assertEqual(copie.pertes, POSTES)
 
+    def test_modele_variantes_translatees_sans_consommation(self):
+        """Lot 2 critique #6 — chaque VARIANTE du modèle suit la règle de la
+        conception (D-ACAL-15) : translatée sur le lead cible, sans la
+        consommation d'un autre client, empreinte recalculée."""
+        marquer_modele(self.source, user=self.user)
+        cible = Lead.objects.create(company=self.company, nom='Marrakech',
+                                    roof_point=dict(MARRAKECH))
+        copie = creer_depuis_modele(self.source, user=self.user,
+                                    lead_id=cible.pk)
+        variantes = list(CalepinageVariante.objects.filter(calepinage=copie))
+        self.assertEqual(len(variantes), 1)
+        document = variantes[0].roof_layout
+        self.assertAlmostEqual(document['pin']['lat'], MARRAKECH['lat'], 6)
+        premier = document['zones'][0]['vertices'][0]
+        self.assertAlmostEqual(premier[0], MARRAKECH['lng'], 4)
+        self.assertAlmostEqual(premier[1], MARRAKECH['lat'], 4)
+        self.assertNotIn('consumption', document)
+        # La variante SOURCE n'est pas touchée.
+        self.variante.refresh_from_db()
+        self.assertEqual(self.variante.roof_layout, _document())
+
     def test_modele_sans_repere_refuse(self):
         marquer_modele(self.source, user=self.user)
         sans = Lead.objects.create(company=self.company, nom='Sans repère')

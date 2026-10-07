@@ -29,6 +29,8 @@ silencieuse du lead/client du modèle.
 """
 from __future__ import annotations
 
+import copy
+
 #: Nom du tag SYSTÈME (FG9) qui porte le drapeau « modèle réutilisable ».
 NOM_TAG_MODELE = 'calepinage:modele'
 
@@ -177,7 +179,6 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         if get_company_client(modele.company, client_id) is None:
             raise ModeleInvalide('Client introuvable dans cette société.',
                                  champ='client')
-    document = ...
     if lead_id:
         from apps.crm.selectors import get_company_lead, repere_toit
 
@@ -201,16 +202,28 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
             raise ModeleInvalide(
                 "Le lead n'a pas de repère toit (GPS ou point de toit) : "
                 "placez-le d'abord", champ='lead')
-        from .translation_conception import translater_conception
+    else:
+        pin = None
 
-        document = translater_conception(modele.roof_layout, pin)
-        if isinstance(document, dict):
-            # La consommation est celle d'un AUTRE client : jamais recopiée.
-            document.pop('consumption', None)
+    def preparer(source):
+        """D-ACAL-15 — la règle de copie d'un document du modèle, UNE pour
+        la conception et chaque variante : translatée sur le repère du lead
+        cible (s'il y en a un), sans la consommation d'un AUTRE client."""
+        if pin is not None:
+            from .translation_conception import translater_conception
+
+            prepare = translater_conception(source, pin)
+        else:
+            prepare = copy.deepcopy(source)
+        if isinstance(prepare, dict):
+            prepare.pop('consumption', None)
+        return prepare
 
     # ACAL187/ACAL184 — la CIBLE est passée explicitement à ``dupliquer`` :
     # la copie naît sur ce lead/client (jamais sur le rattachement du
     # modèle), et un lead qui a déjà un calepinage OUVERT est refusé
     # (``DuplicationEnConflit``, 409). ``dupliquer`` journalise la création.
-    return dupliquer(modele, user=user, titre=titre, roof_layout=document,
+    return dupliquer(modele, user=user, titre=titre,
+                     roof_layout=preparer(modele.roof_layout),
+                     preparer_document=preparer,
                      lead_id=lead_id or None, client_id=client_id or None)
