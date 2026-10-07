@@ -432,7 +432,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         queryset = super().filter_queryset(queryset)
         if getattr(self, 'action', None) == 'list':
-            queryset = queryset.prefetch_related('devis__lignes')
+            # ACAL122 — la liste ne charge JAMAIS ``resultat`` (série horaire
+            # de 8 760 points par ligne) : le sérialiseur ne l'expose pas.
+            # ``roof_layout`` reste chargé (layout_stale / nb_panneaux).
+            queryset = (queryset.prefetch_related('devis__lignes')
+                        .defer('resultat'))
         return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
