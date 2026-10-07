@@ -38,7 +38,8 @@ APPROUVE, REFUSE = 'approuve', 'refuse'
 DECISIONS = {APPROUVE: 'approuvé', REFUSE: 'refusé'}
 
 #: Clé, DANS la section ``presets`` des réglages société (CAL197), qui rend
-#: l'approbation OBLIGATOIRE avant de retenir une variante (CALX348). Absente
+#: l'approbation OBLIGATOIRE avant PUBLICATION (devis / pièces d'exécution ;
+#: décision fondateur 07/10/2026 : plus à la retenue, ex-CALX348). Absente
 #: ou différente de ``True`` ⇒ ``exigee: false`` : comportement d'aujourd'hui.
 CLE_EXIGEE = 'approbation_exigee'
 
@@ -150,8 +151,8 @@ def _suggestions_en_attente(roof_layout):
 
 
 def approbation_exigee(company):
-    """``True`` si la société exige l'approbation avant de retenir une
-    variante (CALX348). Lecture pure ; ``False`` par défaut (D12)."""
+    """``True`` si la société exige l'approbation avant de publier (devis,
+    pièces d'exécution — décision fondateur 07/10/2026 ; plus à la retenue). Lecture pure ; ``False`` par défaut (D12)."""
     from ..selectors import parametres_de_societe
 
     presets = parametres_de_societe(company).get('presets') or {}
