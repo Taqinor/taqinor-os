@@ -66,6 +66,8 @@ const ConditionnementsProduit = lazy(() => import('../../pages/stock/Conditionne
 const CockpitEntrepot = lazy(() => import('../../pages/stock/CockpitEntrepot'))
 // ASTK215 — casiers : seuils, tâches de réappro, étiquettes, reslotting.
 const CasiersPage = lazy(() => import('../../pages/stock/wms/CasiersPage'))
+// ASTK216 — poste scanner (résoudre un code, mouvement scanné, retour fournisseur).
+const PosteScannerPage = lazy(() => import('../../pages/stock/wms/PosteScannerPage'))
 
 const config = {
   key: 'stock',
@@ -125,6 +127,7 @@ const config = {
       // lecture du portail (contrat APX1/ODY34).
       { to: '/stock/entrepot', label: 'Tableau de bord entrepôt', icon: navIcon(Gauge), roles: ['responsable','admin'] },
       { to: '/stock/entrepot/casiers', label: 'Casiers', icon: navIcon(LayoutGrid), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/scanner', label: 'Poste scanner', icon: navIcon(ScanLine), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -151,6 +154,7 @@ const config = {
     // un écran livré sans l'une des deux est un écran mort).
     { path: '/stock/entrepot', component: CockpitEntrepot },
     { path: '/stock/entrepot/casiers', component: CasiersPage },
+    { path: '/stock/entrepot/scanner', component: PosteScannerPage },
   ],
 }
 
