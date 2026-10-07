@@ -130,26 +130,27 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # ── Création ─────────────────────────────────────────────────────────────
 
     def create(self, request, *args, **kwargs):
+        # Le sérialiseur ne fait que LIRE et BORNER le corps (lead/commercial
+        # de la société, date au bon format) ; l'écriture est déléguée.
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        visite = serializer.instance
-        if visite.commercial_id is None:
-            visite.commercial = request.user
-            visite.save(update_fields=['commercial'])
-        # AGR412 — le gabarit suit le type du lead (posé serveur, jamais lu
-        # du corps).
-        if services.recaler_gabarit(visite):
-            visite.save(update_fields=['gabarit'])
-        services.journaliser_visite(visite, request.user, 'creation')
-        # VTA7 — l'assigne apprend tout de suite que sa journee a change.
-        services.notifier_assignation(visite, acteur=request.user)
-        # VISITE-CADENCE — une visite CRÉÉE AVEC une date prévue EST un
-        # rendez-vous : le suivi commercial doit s'y recaler exactement comme
-        # si elle avait été posée depuis la fiche lead. Sans date, rien n'est
-        # émis (le service s'en charge) — un brouillon sans date n'est pas un
-        # rendez-vous.
-        services.emettre_visite_planifiee(visite, request.user)
+        donnees = serializer.validated_data
+        # ALEA9 — UNE porte : ``services.planifier_visite``, la même que la
+        # fiche lead. Mêmes gardes (date passée, commercial inactif → 400
+        # nommant le champ), un rendez-vous EN ATTENTE est DÉPLACÉ au lieu
+        # d'être doublé, et le chatter ne porte qu'UNE note (« Visite
+        # technique planifiée le … » publiée par ``visite_planifiee`` ; une
+        # visite sans date garde « Visite technique créée. »). Le gabarit
+        # (AGR412), la cloche de l'assigné (VTA7) et l'événement
+        # ``visite_planifiee`` (VISITE-CADENCE) sont posés par le service.
+        visite, erreurs = services.planifier_visite(
+            donnees['lead'], request.user, donnees.get('date_prevue'),
+            commercial=donnees.get('commercial'),
+            notes=donnees.get('notes') or '',
+            replanifier=True, date_requise=False,
+            assigne_par_defaut=request.user)
+        if erreurs:
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
         return Response(selectors.contexte_visite_terrain(visite),
                         status=status.HTTP_201_CREATED)
 

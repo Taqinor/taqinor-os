@@ -379,7 +379,8 @@ def annuler_rendez_vous(lead, user, motif=''):
 
 
 def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
-                     replanifier=False):
+                     replanifier=False, date_requise=True,
+                     assigne_par_defaut=None):
     """VISITE-CADENCE — POSE un rendez-vous de visite technique sur un lead.
 
     C'est la porte que le CRM appelle depuis la fiche lead (frontière M3 : il
@@ -414,6 +415,17 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
     à une autre date » DÉPLACE le rendez-vous en attente du lead
     (``visite_en_attente``) au lieu d'en créer un second ; mêmes gardes. S'il
     n'y en a aucun, la visite est créée comme d'habitude.
+
+    ALEA9 — c'est AUSSI la porte de ``POST /api/django/visites/visites/``
+    (écran « Planifier une visite », onglet Visite de la fiche) : une seule
+    fonction, donc les mêmes gardes et UNE seule note de chatter.
+    ``date_requise=False`` (création sans date depuis l'onglet de la fiche)
+    accepte une visite SANS date : ce n'est pas un rendez-vous, aucun
+    ``visite_planifiee`` n'est publié — le chatter garde alors la note
+    « Visite technique créée. » (seule trace de ce geste).
+    ``assigne_par_defaut`` n'assigne qu'une visite NOUVELLE quand
+    ``commercial`` est absent (le créateur, côté API) — jamais un rendez-vous
+    déplacé.
     """
     from django.utils import timezone
 
@@ -421,7 +433,9 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
 
     erreurs = {}
     if date_prevue is None:
-        erreurs['date_prevue'] = ['Date de visite obligatoire (AAAA-MM-JJ).']
+        if date_requise:
+            erreurs['date_prevue'] = [
+                'Date de visite obligatoire (AAAA-MM-JJ).']
     elif date_prevue < timezone.localdate():
         erreurs['date_prevue'] = [
             'La visite ne peut pas être planifiée dans le passé : choisir '
@@ -435,16 +449,21 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
     if erreurs:
         return None, erreurs
 
-    if replanifier:
+    if replanifier and date_prevue is not None:
         en_attente = visite_en_attente(lead)
         if en_attente is not None:
             return (_deplacer_visite(en_attente, user, date_prevue,
                                      commercial, notes), {})
 
     visite = VisiteTerrain.objects.create(
-        company=lead.company, lead=lead, commercial=commercial,
+        company=lead.company, lead=lead,
+        commercial=commercial if commercial is not None else assigne_par_defaut,
         statut=VisiteTerrain.Statut.BROUILLON, date_prevue=date_prevue,
         notes=(notes or '').strip(), gabarit=gabarit_pour_lead(lead))
+    if date_prevue is None:
+        # ALEA9 — sans date, aucun ``visite_planifiee`` ne dira rien au
+        # chatter : la note de création est la seule trace du geste.
+        journaliser_visite(visite, user, 'creation')
     # PAS de ``journaliser_visite(..., 'creation')`` ici : l'abonné CRM de
     # ``visite_planifiee`` pose une note qui dit TOUT (la date ET l'assigné).
     # Les deux ensemble empileraient « Visite technique créée. » juste
