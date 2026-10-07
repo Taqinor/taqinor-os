@@ -65,8 +65,15 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
 
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  // Les entrées C&I v2 partent APRÈS la création, par la fusion
+  // `PATCH …/etude-params/` (QJR62, DevisGenerator) : relire le devis avant
+  // cette réponse lisait un etude_params sans `mode` (nocturne 37585800165).
+  const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
+    && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
+    && r.status() < 300, { timeout: 60_000 })
   await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   const cree = await (await creation).json()
+  await etudeEcrite
   const id = cree.id ?? cree.devis?.id
   expect(id, 'identifiant du devis créé').toBeTruthy()
   devisIds.push(id)
@@ -90,7 +97,7 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
   const sauvegarde = page.waitForResponse((r) => ['PUT', 'POST', 'PATCH'].includes(r.request().method())
     && new RegExp(`/ventes/devis/${id}/replace-lines/`).test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Enregistrer/ }).first().click()
+  await page.locator('#gen-form').getByRole('button', { name: 'Enregistrer les modifications' }).click()
   await sauvegarde
   const apres = await json(await request.get(`${API}/ventes/devis/${id}/`), 'devis rouvert')
   expect(lignesComparables(apres)).toEqual(lignesComparables(avant))

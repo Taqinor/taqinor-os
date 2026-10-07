@@ -3,7 +3,8 @@
 // Pile locale seedée (`seed_demo`), aucun mock réseau. Le devis est créé PAR
 // L'ÉCRAN, relu par l'API, rouvert (`?edit=`) puis ré-enregistré sans toucher :
 //   1. butane 2 bouteilles/jour × 3 jours/semaine, 50 DH, déclaré aujourd'hui ;
-//      mois pré-cochés par la culture puis CONFIRMÉS ; enregistrement ;
+//      mois cochés par le vendeur (volume déclaré : rien de pré-coché, AGR212)
+//      puis CONFIRMÉS ; enregistrement ;
 //   2. la carte « Économie déclarée » montre la dépense détaillée, le retour
 //      SANS aide et l'étiquette « estimation » ;
 //   3. rouvrir + ré-enregistrer = `saisies_economie_pompage` identique (API) ;
@@ -82,8 +83,13 @@ test('AGR222 — butane déclaré : carte, enregistrement, réouverture identiqu
   await creerDevisAgricole(page, await clientDeLaDemo(request))
   await declarerButane(page)
 
-  // Les mois sont pré-cochés par la culture ; le vendeur les CONFIRME.
-  await expect(page.getByTestId('mois-irrigation')).toContainText(/pré-cochés/)
+  // AGR212 (DevisGenerator `moisCalendrier`) : seul un besoin AGRONOMIQUE
+  // (mode « Cultures ») pré-coche les mois. Ici le besoin est un VOLUME
+  // DÉCLARÉ (D-AGR-3, déclaré d'abord) : aucun mois n'est inventé, le vendeur
+  // coche lui-même la saison d'irrigation puis la CONFIRME.
+  const mois = page.getByTestId('mois-irrigation')
+  await expect(mois).not.toContainText(/pré-cochés/)
+  for (const m of [4, 5, 6, 7, 8, 9]) await mois.getByTestId(`mois-irr-${m}`).check()
   await page.getByLabel('Mois confirmés avec le client').check()
 
   // La carte : dépense détaillée, retour SANS aide, étiquette « estimation ».
@@ -96,8 +102,14 @@ test('AGR222 — butane déclaré : carte, enregistrement, réouverture identiqu
 
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  // Les saisies d'économie partent APRÈS la création, par la fusion
+  // `PATCH …/etude-params/` (QJR62) : on attend sa réponse avant de relire.
+  const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
+    && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
+    && r.status() < 300, { timeout: 60_000 })
   await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   const cree = await (await creation).json()
+  await etudeEcrite
   const id = cree.id ?? cree.devis?.id
   expect(id, 'identifiant du devis créé').toBeTruthy()
   ids.push(id)
@@ -118,7 +130,7 @@ test('AGR222 — butane déclaré : carte, enregistrement, réouverture identiqu
   const sauvegarde = page.waitForResponse((r) => ['PUT', 'POST', 'PATCH'].includes(r.request().method())
     && new RegExp(`/ventes/devis/${id}/replace-lines/`).test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Enregistrer/ }).first().click()
+  await page.locator('#gen-form').getByRole('button', { name: 'Enregistrer les modifications' }).click()
   await sauvegarde
   const apres = (await devisParApi(request, id)).etude_params.saisies_economie_pompage
   expect(apres).toEqual(avant)
@@ -157,7 +169,7 @@ test('AGR222 — ligne à 0 % sans base légale, et date de solde relue', async 
   const sauvegarde = page.waitForResponse((r) => ['PUT', 'POST', 'PATCH'].includes(r.request().method())
     && new RegExp(`/ventes/devis/${id}/replace-lines/`).test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Enregistrer/ }).first().click()
+  await page.locator('#gen-form').getByRole('button', { name: 'Enregistrer les modifications' }).click()
   await sauvegarde
   const tranches = (await devisParApi(request, id)).echeancier
   expect(tranches.at(-1).date_prevue).toBe('2027-03-31')

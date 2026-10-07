@@ -86,9 +86,15 @@ async function verifierAllerRetour(page, request, id) {
   const avant = await lireDevis(request, id)
   const etude = avant.etude_params || {}
   // Le navigateur n'a écrit que des entrées : les entrées v2 sont là…
-  for (const cle of ['mode_pompe', 'besoin', 'hmt_entrees', 'taille']) {
+  for (const cle of ['mode_pompe', 'besoin', 'hmt_entrees']) {
     expect(etude[cle], `etude_params.${cle}`).toBeTruthy()
   }
+  // `taille` est une entrée v2 ÉCRITE même quand le vendeur n'a rien choisi :
+  // null = défaut « recommandee » (contrat etude_pompage_preview.json,
+  // corps_regles.taille), sinon l'une des trois tailles du contrat.
+  expect(etude, 'etude_params.taille écrite').toHaveProperty('taille')
+  expect([null, 'recommandee', 'inferieure', 'superieure'], 'etude_params.taille')
+    .toContain(etude.taille)
   // …et toute dérivée présente vient du rafraîchisseur serveur (AGR123),
   // jamais de l'écran : le serveur REFUSE ces clés en 400 côté navigateur.
   const refus = await request.patch(`${API}/ventes/devis/${id}/etude-params/`, {
@@ -112,7 +118,7 @@ async function verifierAllerRetour(page, request, id) {
   const sauvegarde = page.waitForResponse((r) => ['PUT', 'POST', 'PATCH'].includes(r.request().method())
     && new RegExp(`/ventes/devis/${id}/replace-lines/`).test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Enregistrer/ }).first().click()
+  await page.locator('#gen-form').getByRole('button', { name: 'Enregistrer les modifications' }).click()
   await sauvegarde
 
   const apres = await lireDevis(request, id)
