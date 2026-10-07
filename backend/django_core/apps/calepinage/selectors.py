@@ -462,10 +462,35 @@ def calepinage_du_devis(devis_id, company):
         return None
     # ACAL118 — un ARCHIVÉ n'est jamais « le calepinage du devis » (la fiche
     # devis ne pointe plus vers un 404).
-    return (calepinages_actifs(company)
-            .filter(devis_id=devis_id)
-            .order_by('-created_at', '-id')
-            .first())
+    # ACAL92 (D-ACAL-3) — à la révision, le calepinage est RE-LIÉ à la V2 :
+    # un devis REMPLACÉ sans calepinage propre retrouve celui de sa
+    # remplaçante (``superseded_by``, lu par ``ventes.selectors``), chaîne
+    # bornée et sans boucle, toujours dans la même société.
+    from apps.ventes.selectors import get_devis_by_pk
+
+    vus = set()
+    courant = devis_id
+    for _rang in range(_PROFONDEUR_REVISIONS):
+        trouve = (calepinages_actifs(company)
+                  .filter(devis_id=courant)
+                  .order_by('-created_at', '-id')
+                  .first())
+        if trouve is not None:
+            return trouve
+        vus.add(str(courant))
+        devis = get_devis_by_pk(courant)
+        suivant = (getattr(devis, 'superseded_by_id', None)
+                   if devis is not None
+                   and getattr(devis, 'company_id', None) == company.pk
+                   else None)
+        if not suivant or str(suivant) in vus:
+            return None
+        courant = suivant
+    return None
+
+
+#: ACAL92 — profondeur maximale de la chaîne de révision suivie (V1 → V2 → …).
+_PROFONDEUR_REVISIONS = 20
 
 
 def ombrage_servi(devis_id, company):

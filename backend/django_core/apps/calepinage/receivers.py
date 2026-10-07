@@ -26,13 +26,13 @@ import logging
 from django.dispatch import receiver
 
 from core.events import (
-    layout_finalise, lead_created, lead_trace_toit_recu,
+    devis_revise, layout_finalise, lead_created, lead_trace_toit_recu,
 )
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    'rattacher_conception_au_devis',
+    'rattacher_conception_au_devis', 'relier_calepinage_au_devis_revise',
     'reprise_du_trace_public', 'reprise_du_trace_au_renvoi',
 ]
 
@@ -74,6 +74,57 @@ def rattacher_conception_au_devis(sender, devis, user=None, **kwargs):
         logger.exception(
             'ACAL38 : rattachement de conception en échec pour le devis %s',
             getattr(devis, 'pk', None))
+
+
+#: ACAL92 — le libellé de la version FIGÉE déposée à la révision.
+LIBELLE_VERSION_ENVOYEE = 'Version envoyée — {reference}'
+
+
+@receiver(devis_revise, dispatch_uid='calepinage_relier_au_devis_revise')
+def relier_calepinage_au_devis_revise(sender, ancien=None, nouveau=None,
+                                      user=None, **kwargs):
+    """ACAL92 (D-ACAL-3) — à la révision, le calepinage est RE-LIÉ à la V2.
+
+    Le calepinage C lié DIRECTEMENT à la V1 (``ancien``) :
+
+    1. dépose une version FIGÉE « Version envoyée — <référence V1> »
+       (``enregistrer_version``, même empreinte admise : c'est la preuve de ce
+       qui a été envoyé, sans sac de simulation) ;
+    2. est re-lié à la V2 (``liens.lier_devis`` — l'ancien devis est inactif,
+       le re-pointage est donc permis) : variantes, pertes, entrée électrique
+       et versions restent sur C, aucun second calepinage n'est créé à la
+       première sauvegarde de la V2.
+
+    La V1 retrouve son calepinage par la chaîne de révision
+    (``selectors.calepinage_du_devis`` suit ``superseded_by``). Aucun statut
+    n'est écrit (règle #4). BEST-EFFORT : la révision est déjà actée, un
+    échec est journalisé, jamais propagé.
+    """
+    company = getattr(ancien, 'company', None)
+    if ancien is None or nouveau is None or company is None:
+        return
+    try:
+        from django.db import transaction
+
+        from .selectors import calepinage_du_devis
+        from .services.liens import lier_devis
+        from .services.versions import enregistrer_version
+
+        calepinage = calepinage_du_devis(ancien.pk, company)
+        if calepinage is None or calepinage.devis_id != ancien.pk:
+            return
+        reference = (getattr(ancien, 'reference', '') or '').strip() or (
+            f'#{ancien.pk}')
+        with transaction.atomic():
+            enregistrer_version(
+                calepinage, user=user,
+                libelle=LIBELLE_VERSION_ENVOYEE.format(reference=reference),
+                resultat=None, meme_empreinte_admise=True)
+            lier_devis(calepinage, nouveau.pk, user=user)
+    except Exception:  # noqa: BLE001 — une re-liaison ne casse jamais la révision
+        logger.exception(
+            'ACAL92 : re-liaison du calepinage en échec (%s -> %s)',
+            getattr(ancien, 'pk', None), getattr(nouveau, 'pk', None))
 
 
 @receiver(lead_created, dispatch_uid='calepinage_reprise_trace_public')
