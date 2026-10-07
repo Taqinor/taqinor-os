@@ -199,13 +199,13 @@ unites:
     I: 4
     score: 16
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ALEA
     plan: docs/plans/PLAN_AUDIT_LEAD.md
-    plans_alimentes: []
+    plans_alimentes: [docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: null
-    date: null
-    notes: "Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété."
+    date: 2026-10-07
+    notes: "Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété. Audit L2 du 07/10/2026 (dossier docs/audits/2026-10-07-lead.md) : 31 constats (+5 optionnels), 41 tâches ALEA ; boucle d'autosave GPS confirmée en direct."
 
   - id: D1
     rang: 6
