@@ -64,17 +64,14 @@ const FACTURE = {
   remise_globale: '0', lignes: [], updated_at: '2026-10-01T10:00:00Z',
 }
 
-function rendre() {
-  const store = configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: { auth: { user: { id: 1 }, role: 'responsable', permissions: [], isAuthenticated: true, loading: false } },
-  })
-  return render(
-    <Provider store={store}>
-      <FactureForm facture={FACTURE} onClose={() => {}} onSaved={() => {}} />
-    </Provider>,
-  )
-}
+const AUTH = { user: { id: 1 }, role: 'responsable', permissions: [], isAuthenticated: true, loading: false }
+const rien = () => {}
+
+const rendre = () => render(
+  <Provider store={configureStore({ reducer: { auth: authReducer, ventes: ventesReducer }, preloadedState: { auth: AUTH } })}>
+    <FactureForm facture={FACTURE} onClose={rien} onSaved={rien} />
+  </Provider>,
+)
 
 beforeEach(() => { vi.clearAllMocks() })
 
