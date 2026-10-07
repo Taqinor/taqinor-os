@@ -291,8 +291,20 @@ def documents_corbeille(user):
     if getattr(user, 'is_admin_role', False) or user.is_superuser:
         return qs
     # Couche 1 — ACL coffre-fort (GED8), comme `documents_visible_to_user`.
-    return qs.filter(
+    qs = qs.filter(
         Q(coffre__isnull=True) | Q(coffre__proprietaire_id=user.id))
+    # ASEC38 — Couche 2 — ACL GED19, comme `documents_visible_to_user` : un
+    # document de la corbeille gouverné par une ACL n'est visible (donc
+    # restaurable/purgeable) que de qui y a au moins la lecture.
+    if not AclGed.objects.filter(company_id=user.company_id).exists():
+        return qs
+    refuses = [
+        d.pk for d in qs.select_related('folder')
+        if acl_governs_target(d) and acl_effective(d, user) is None
+    ]
+    if refuses:
+        qs = qs.exclude(pk__in=refuses)
+    return qs
 
 
 def latest_version(document):

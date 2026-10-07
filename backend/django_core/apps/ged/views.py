@@ -427,6 +427,12 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         'mettre_en_corbeille', 'tagger', 'detagger', 'classer', 'restaurer',
         'cycle_vie', 'check_out', 'check_in', 'office_sauvegarder',
         'scinder', 'caviarder', 'ocr_piece', 'nouvelle_version',
+        # ASEC38 — corbeille (restaurer / purger), fusion (cible ou dossier
+        # de destination) et opérations par lot : écriture ACL exigée. Les
+        # deux premières résolvent leur document hors `get_object()` et
+        # appellent `check_object_permissions` explicitement ; `fusionner`
+        # et `operations_lot` (liste de documents) vérifient chaque cible.
+        'restaurer_corbeille', 'purger', 'fusionner', 'operations_lot',
     })
 
     def check_object_permissions(self, request, obj):
@@ -1402,6 +1408,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
                 status=status.HTTP_404_NOT_FOUND)
+        self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.restaurer_de_corbeille(document, user=request.user)
         except ArchivageLegalError as exc:  # ADOC22 — 403, jamais 500.
@@ -1426,6 +1433,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
                 status=status.HTTP_404_NOT_FOUND)
+        self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.purger_definitivement(document)
         except (ArchivageLegalError, LegalHoldError) as exc:
@@ -1866,6 +1874,16 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             except services.SignatureEnCoursError as exc:
                 return Response(
                     {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        # ASEC38 — la fusion ÉCRIT la cible (nouvelle version) ou crée un
+        # document dans le dossier du premier : écriture ACL exigée sur la
+        # cible, sinon sur ce dossier de destination.
+        try:
+            selectors.assert_acl_niveau(
+                cible if cible is not None else documents_ordonnes[0].folder,
+                request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         try:
             resultat = services.fusionner_pdf(
                 documents_ordonnes, cible=cible,
@@ -2319,11 +2337,18 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
         if not doc_id:
             return Response({'document': 'Document requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        document = Document.objects.filter(
-            company=company, pk=doc_id).first()
+        # ASEC38 — document VISIBLE de l'appelant (ACL coffre + GED19) et
+        # écriture ACL exigée : lier modifie le document.
+        document = selectors.documents_visible_to_user(
+            request.user).filter(pk=doc_id).first()
         if document is None:
             return Response({'document': 'Document inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
+        try:
+            selectors.assert_acl_niveau(document, request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         # 3) lien idempotent (un doc ne se lie qu'une fois à un objet donné).
         lien, created = DocumentLien.objects.get_or_create(
             document=document, content_type=ct,
