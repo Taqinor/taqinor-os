@@ -447,7 +447,9 @@ def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
         moment = timezone.localtime(timezone.now())
     return {
         'titre_document': _texte(titre_document),
-        'projet': _texte(getattr(calepinage, 'titre', '')),
+        # ACAL300 — « Calepinage #N » à défaut de titre saisi : jamais vide,
+        # jamais le nom d'une personne.
+        'projet': _texte(str(calepinage)),
         'client': client,
         'produit_le': moment.strftime('%d/%m/%Y'),
     }

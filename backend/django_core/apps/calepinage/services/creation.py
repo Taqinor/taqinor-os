@@ -412,7 +412,9 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         company=company,
         lead_id=lead.pk,
         client_id=getattr(lead, 'client_id', None),
-        titre=titre or _titre_depuis(getattr(lead, 'nom', '')),
+        # ACAL300 — jamais le nom d'une personne par défaut : sans titre
+        # saisi, le nom affiché retombe sur « Calepinage #N ».
+        titre=titre or '',
         cree_par=user,
         responsable=responsable,
         **({'roof_layout': document} if document is not None else {}),
@@ -453,7 +455,7 @@ def creer_pour_client(client_id, company, *, user=None, titre='',
     calepinage = Calepinage.objects.create(
         company=company,
         client_id=client.pk,
-        titre=titre or _titre_depuis(getattr(client, 'nom', '')),
+        titre=titre or '',  # ACAL300
         cree_par=user,
         responsable=responsable,
         **({'roof_layout': document} if document is not None else {}),
@@ -472,12 +474,6 @@ def _exiger_responsable(company, responsable):
         raise CreationRefusee(
             'Responsable introuvable dans votre société.',
             champ='responsable')
-
-
-def _titre_depuis(nom):
-    """« Calepinage <nom> » — dérivé de la donnée, jamais d'un nom figé."""
-    nom = (nom or '').strip()
-    return f'Calepinage {nom}'.strip() if nom else ''
 
 
 # ── CALX351 — partir d'un MODÈLE et d'un JEU DE RÉGLAGES société ────────────
