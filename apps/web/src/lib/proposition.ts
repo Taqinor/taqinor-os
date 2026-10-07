@@ -3074,7 +3074,7 @@ export const VIEWER_FLAT_TILT_DEG = 15;
 export const VIEWER_MAX_PANELS = 600;
 
 const VIEWER_DEG2RAD = Math.PI / 180;
-const VIEWER_DEG2M = 111_320; // mètres par degré de latitude (WGS84 approx.)
+import { DEG2M_GEO as VIEWER_DEG2M } from './geo';
 
 /** Point-dans-polygone (ray casting) en coordonnées planes. */
 export function viewerPointInRing(pt: [number, number], ring: Array<[number, number]>): boolean {
