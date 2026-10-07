@@ -346,7 +346,9 @@ jobs:
         working-directory: backend/django_core
         run: |
           gunicorn erp_agentique.wsgi:application \
-            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync &
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync\
+            --access-logfile /tmp/gunicorn-access.log \
+            --error-logfile /tmp/gunicorn-error.log --capture-output &
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" \
               http://127.0.0.1:8000/api/django/admin/login/ || true)
@@ -367,6 +369,14 @@ jobs:
         continue-on-error: true
         working-directory: frontend
         run: npx playwright test --grep @visual --update-snapshots
+      - name: Upload gunicorn logs (CAD177 - diagnostic des blocages monkey)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gunicorn-logs-e2e-full
+          path: /tmp/gunicorn-*.log
+          retention-days: 14
+          if-no-files-found: ignore
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
