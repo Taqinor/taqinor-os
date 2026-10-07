@@ -123,6 +123,10 @@ GARDES = {
         ('Test the portal-surfaces checker itself (ADOC147)',
          'python -m unittest scripts.tests.test_check_portail_surfaces -v',
          '.'),
+        # AANA30 — le role Postgres de l'agent SQL reste restreint (liste blanche).
+        ('Test the SQL-agent Postgres role provisioning (AANA30)',
+         'python -m unittest scripts.tests.test_agent_sql_role -v',
+         '.'),
         # CALX56/57 (lots CALX merges le 21/09/2026 pendant la construction de ce
         # runner — PR #706/#708) : chemins parametres atteignables, et services
         # backend livres sans appelant (passif fige dans
