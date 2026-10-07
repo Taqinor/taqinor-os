@@ -134,25 +134,6 @@ FIELD_MAPS = {
 # jusqu'à leur coquille définitive, qui les retire pour de bon.
 
 
-# SOL2(b) — cible d'import → clé de module PROPRIÉTAIRE, pour les seules cibles
-# dont le mapping d'en-têtes vit ici (``FIELD_MAPS``) alors que l'ÉCRITURE est
-# déléguée à une app PARQUÉE (registre ``core/parked.py``). Les cibles
-# déclarées uniquement par le registre plateforme n'ont pas besoin d'entrée :
-# une app coquillée n'expose plus de ``platform.py``.
-# SOLMVP20 — actuellement VIDE : la seule cible qui portait une entrée
-# (``eleves_education``) a perdu son mapping ``FIELD_MAPS`` (app education
-# PARQUÉE, Groupe SOLMVP) et n'a donc plus besoin de ce suivi.
-CIBLES_MODULE_PROPRIETAIRE = {}
-
-
-def cibles_parquees():
-    """Cibles d'import indisponibles parce que leur app est parquée."""
-    from core.parked import est_parquee
-    return frozenset(
-        cible for cible, module in CIBLES_MODULE_PROPRIETAIRE.items()
-        if est_parquee(module))
-
-
 # ARC32 — l'ensemble des cibles importables lit désormais le REGISTRE plateforme
 # (``core.platform.import_specs``) : chaque app propriétaire déclare ses cibles
 # dans son ``apps/<x>/platform.py`` (surface ``import_specs``), exactement comme
@@ -182,13 +163,7 @@ class _LazyTargets:
             cibles |= set(platform.import_specs(company=None))
         except Exception:  # pragma: no cover - registre indisponible ⇒ FIELD_MAPS seul
             pass
-        # SOL2(b) — une cible portée par une app PARQUÉE par l'édition courante
-        # disparaît du set : `FIELD_MAPS` la déclare littéralement ici (donc le
-        # registre plateforme ne suffit PAS à la faire disparaître), et sans ce
-        # retrait `_commit_raw` tenterait d'importer une app non chargée. Le
-        # refus est alors le refus HISTORIQUE « cible inconnue » (400 clair),
-        # jamais un ImportError.
-        return cibles - cibles_parquees()
+        return cibles
 
     def __contains__(self, item):
         return item in self._resolve()
