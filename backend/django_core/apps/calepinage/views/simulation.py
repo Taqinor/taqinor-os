@@ -216,6 +216,14 @@ def simuler(self, request, pk=None):
         if variante is None:
             return Response({'detail': 'Introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        if not isinstance(variante.roof_layout, dict) \
+                or not variante.roof_layout:
+            # Lot 2 critique #18 — refus nommé AVANT la file : sans
+            # conception, ``layout=None`` aurait évalué celle du calepinage.
+            return Response(
+                {'variante': ["La variante n'a pas de conception : "
+                              "dessinez-la avant de la simuler."]},
+                status=status.HTTP_400_BAD_REQUEST)
 
     # ACAL126 — LES REFUS NOMMÉS D'ABORD, par les MÊMES fonctions que la
     # simulation (mode météo, pan équipé, épingle, températures saisies) :
