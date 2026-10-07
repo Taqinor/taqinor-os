@@ -20,6 +20,10 @@ pour un seul comportement.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class DevisRefuse(ValueError):
     """Refus métier, avec le statut HTTP que la vue doit rendre TEL QUEL."""
@@ -188,6 +192,7 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
         deja = _brouillon_reutilisable(company, lead, empreinte, calepinage)
         if deja is not None:
             _lier(calepinage, deja, user=user)
+            _poser_affiche(calepinage, deja)
             return deja, False
 
     journal_composition = {}
@@ -204,6 +209,7 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     # la dédup possible au clic suivant, et le badge « à jour » honnête.
     poser_layout_hash(devis, empreinte)
     _lier(calepinage, devis, user=user)
+    _poser_affiche(calepinage, devis)
     if journal is not None:
         # ACAL89 — ce que la composition a REFUSÉ de faire, tel quel.
         journal['avertissements'] = list(
@@ -211,6 +217,23 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
         journal['marques_manquantes'] = list(
             journal_composition.get('marques_manquantes') or ())
     return devis, True
+
+
+def _poser_affiche(calepinage, devis):
+    """ACAL98 (C-ACAL-107) — l'affiche 3D du calepinage COPIÉE sur le devis
+    (``apps.ventes.services.poser_affiche_depuis``, clé du devis, jamais une
+    clé partagée). Best-effort : un magasin injoignable ne fait pas échouer
+    une génération déjà réussie (le PDF se rend alors sans affiche)."""
+    cle = getattr(calepinage, 'roof_image', None)
+    if not cle:
+        return
+    from apps.ventes.services import poser_affiche_depuis
+
+    try:
+        poser_affiche_depuis(devis, cle)
+    except Exception:  # noqa: BLE001 — cf. docstring
+        logger.warning('ACAL98 : affiche non copiée du calepinage %s',
+                       getattr(calepinage, 'pk', None), exc_info=True)
 
 
 def _devis_lie_actif(calepinage):
@@ -297,7 +320,10 @@ def resynchroniser_devis(calepinage, *, user=None):
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études
         # (étude horaire, profils… décrivent les lignes). L'annonce
         # layout_finalise depuis le module est branchée par D02-T14.
-        return resynchroniser_conception(devis, layout, user, emettre=False)
+        # ACAL98 — l'affiche du calepinage suit (copie sous la clé du devis).
+        return resynchroniser_conception(
+            devis, layout, user, emettre=False,
+            roof_image=getattr(calepinage, 'roof_image', None) or None)
     except SyncLayoutError as refus:
         raise DevisRefuse(
             refus.detail, champ='devis', statut=409,

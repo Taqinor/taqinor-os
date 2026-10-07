@@ -72,6 +72,37 @@ def lire_fichier_toiture(cle):
         return None
 
 
+def poser_affiche_depuis(devis, cle_source):
+    """ACAL98 (C-ACAL-107) — l'affiche 3D d'un calepinage devient celle du devis.
+
+    COPIE des octets stockés sous ``cle_source`` (le rendu du calepinage,
+    ``roofs/<company>/calepinage-<pk>.png``) vers la clé PROPRE du devis
+    (``roofs/<company>/<reference>.<ext>``, la convention de
+    ``views/devis_calepinage.py::roof_image``), puis ``Devis.roof_image`` est
+    posé (écriture ciblée ``update_fields=['roof_image']`` : aucun statut ne
+    bouge, règle #4). Jamais une clé PARTAGÉE : réécrire ensuite l'image du
+    calepinage ne change pas l'affiche d'un devis (D-ACAL-1 — elle ne change
+    que par un geste explicite : génération ou resynchronisation).
+
+    Rend la clé posée, ou ``None`` (rien n'est écrit) quand la source est
+    vide, illisible ou n'est pas un PNG/JPEG reconnu par ses octets.
+    """
+    if devis is None or not cle_source:
+        return None
+    donnees = lire_fichier_toiture(cle_source)
+    if not donnees:
+        return None
+    extension, mime = type_image_toiture(donnees)
+    if extension is None:
+        return None
+    company_id = getattr(devis, 'company_id', None) or '0'
+    cle = f'roofs/{company_id}/{devis.reference}.{extension}'
+    stocker_image_toiture(donnees, cle, content_type=mime)
+    devis.roof_image = cle
+    devis.save(update_fields=['roof_image'])
+    return cle
+
+
 #: ACAL299 — le SEUL préfixe que :func:`supprimer_fichier_toiture` accepte : le
 #: bucket des PDF porte aussi les devis rendus, jamais effaçables par ici.
 PREFIXE_TOITURE = 'roofs/'

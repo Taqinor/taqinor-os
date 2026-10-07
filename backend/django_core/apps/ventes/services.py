@@ -470,6 +470,9 @@ lire_fichier_toiture = _stockage_toiture.lire_fichier_toiture
 # ACAL299 — l'effacement d'un dépôt (photos de site du calepinage, loi
 # 09-08) : préfixe ``roofs/`` exigé, jamais une autre clé du bucket des PDF.
 supprimer_fichier_toiture = _stockage_toiture.supprimer_fichier_toiture
+# ACAL98 — l'affiche du calepinage COPIÉE sous la clé du devis (génération
+# et resynchronisation depuis le module).
+poser_affiche_depuis = _stockage_toiture.poser_affiche_depuis
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -663,6 +666,7 @@ __all__ = [
     'send_devis_followup_nudges',
     'share_link_for_bcf',
     'stocker_image_toiture',
+    'poser_affiche_depuis',
     'supprimer_fichier_toiture',
     'sync_devis_from_layout',
     'type_image_toiture',
