@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7622, components: 2210}
+counts: {paths: 4838, operations: 7624, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3407,6 +3407,7 @@ operations:
 - get /api/django/stock/taches-reappro-interne/{id}/ -> django_stock_taches_reappro_interne_retrieve
 - patch /api/django/stock/taches-reappro-interne/{id}/ -> django_stock_taches_reappro_interne_partial_update
 - put /api/django/stock/taches-reappro-interne/{id}/ -> django_stock_taches_reappro_interne_update
+- post /api/django/stock/taches-reappro-interne/{id}/executer/ -> django_stock_taches_reappro_interne_executer_create
 - get /api/django/stock/tolerances-rapprochement-categorie/ -> django_stock_tolerances_rapprochement_categorie_list
 - post /api/django/stock/tolerances-rapprochement-categorie/ -> django_stock_tolerances_rapprochement_categorie_create
 - delete /api/django/stock/tolerances-rapprochement-categorie/{id}/ -> django_stock_tolerances_rapprochement_categorie_destroy
@@ -7225,6 +7226,7 @@ operations:
 - get /api/v1/stock/taches-reappro-interne/{id}/ -> v1_stock_taches_reappro_interne_retrieve
 - patch /api/v1/stock/taches-reappro-interne/{id}/ -> v1_stock_taches_reappro_interne_partial_update
 - put /api/v1/stock/taches-reappro-interne/{id}/ -> v1_stock_taches_reappro_interne_update
+- post /api/v1/stock/taches-reappro-interne/{id}/executer/ -> v1_stock_taches_reappro_interne_executer_create
 - get /api/v1/stock/tolerances-rapprochement-categorie/ -> v1_stock_tolerances_rapprochement_categorie_list
 - post /api/v1/stock/tolerances-rapprochement-categorie/ -> v1_stock_tolerances_rapprochement_categorie_create
 - delete /api/v1/stock/tolerances-rapprochement-categorie/{id}/ -> v1_stock_tolerances_rapprochement_categorie_destroy
@@ -9679,6 +9681,7 @@ components:
 - StockScannerRetourErreur
 - StockScannerRetourFournisseurLigne
 - StockSimulationCapacite
+- StockTacheReapproExecutee
 - StockTacheRetour
 - StockTracabiliteChaine
 - StockTracabiliteInconnue
