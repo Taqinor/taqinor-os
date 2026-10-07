@@ -405,6 +405,13 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         lead = None
         if lead_id and 'lead_id' in attrs:
             lead = self._exiger_lead_de_la_societe(lead_id)
+            if (instance is not None and 'client' not in attrs
+                    and lead is not None
+                    and lead_id != getattr(instance, 'lead_id', None)):
+                # ACAL180 — changer le LEAD seul : le client SUIT le lead
+                # (règle de cohérence ACAL179), jamais l'ancien client gardé.
+                attrs['client'] = getattr(lead, 'client', None)
+                client = attrs['client']
         ecrit = 'lead_id' in attrs or 'client' in attrs
         if ecrit and lead_id and client is not None:
             if lead is None:
