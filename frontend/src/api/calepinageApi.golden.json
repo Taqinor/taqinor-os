@@ -174,14 +174,6 @@
       "verbe": "post"
     }
   ],
-  "calepinages.creerDepuisModele": [
-    {
-      "config": null,
-      "data": 7,
-      "url": "/calepinage/calepinages/creer-depuis-modele/",
-      "verbe": "post"
-    }
-  ],
   "calepinages.creerVariante": [
     {
       "config": null,

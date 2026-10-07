@@ -336,6 +336,10 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     verifier_ecriture_autorisee(calepinage, champ='approbation')
     motif = _valider(decision, motif,
                      getattr(calepinage, 'roof_layout', None))
+    # ACAL172 (D-ACAL-9) — un ACCORD lit le verdict électrique : bloquant ⇒
+    # refus nommé, rien n'est écrit ; indéterminé ⇒ accord AVEC avertissement.
+    avertissement = (_verdict_electrique_avant_accord(calepinage)
+                     if decision == APPROUVE else '')
     horodatage = maintenant or timezone.now()
     calepinage.approbation = {
         'etat': decision,
@@ -353,5 +357,32 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     texte = f"Conception {DECISIONS[decision]} (approbation)"
     if motif:
         texte += f" — motif : {motif}"
+    if avertissement:
+        texte += f" — {avertissement}"
     noter(calepinage, texte, user=user)
     return etat_approbation(calepinage)
+
+
+def _verdict_electrique_avant_accord(calepinage):
+    """ACAL172 — refuse d'approuver une conception électriquement BLOQUÉE.
+
+    Lit ``electrique.verdict_de_conception`` (la lecture unique des
+    bloquants). Rend l'avertissement à consigner quand le verdict est
+    indéterminé, ``''`` sinon.
+
+    Raises:
+        ApprobationRefusee: au moins un bloquant (champ ``electrique``).
+    """
+    from .electrique import verdict_de_conception
+
+    verdict = verdict_de_conception(calepinage)
+    if verdict['bloquants']:
+        raise ApprobationRefusee(
+            "Cette conception ne peut pas être approuvée : verdict "
+            "électrique bloquant — "
+            + ' ; '.join(b['libelle'] for b in verdict['bloquants']),
+            champ='electrique')
+    if verdict['verdict'] == 'indetermine':
+        return ("verdict électrique indéterminé : "
+                + ' ; '.join(verdict['manquantes']))
+    return ''

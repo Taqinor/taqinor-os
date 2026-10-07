@@ -268,38 +268,44 @@ class ProvenanceTest(unittest.TestCase):
 
 
 class NonRegressionDeLaGardeTest(unittest.TestCase):
-    """La garde existante refuse EXACTEMENT ce qu'elle refusait."""
+    """ACAL170 — la garde LIT ce rapport : bloquant refusé, indéterminé
+    passé (D-ACAL-9)."""
 
     def test_la_garde_laisse_passer_ce_qu_elle_laissait_passer(self):
         calepinage = _Calepinage()
         with _avec_materiel():
-            evaluation = garde_publication(calepinage)
-        self.assertTrue(evaluation['publiable'])
-        self.assertEqual(evaluation['bloquants'], [])
+            garde = garde_publication(calepinage)
+        self.assertNotEqual(garde['verdict'], 'bloquant')
+        self.assertEqual(garde['bloquants'], [])
+        self.assertIsNone(garde['derogation'])
 
     def test_la_garde_refuse_toujours_un_bloquant_d_onduleur(self):
         with _avec_materiel(ONDULEUR_HORS_SPEC):
             with self.assertRaises(PublicationBloquee):
                 garde_publication(_Calepinage())
 
-    def test_la_garde_refuse_toujours_une_fiche_incomplete(self):
+    def test_une_fiche_incomplete_est_indeterminee_sans_bloquer(self):
         vide = {'module': {}, 'onduleur': {}, 'optimiseur': None,
                 'designations': {'module': '', 'onduleur': '',
                                  'optimiseur': ''},
                 'absents': ('module PV non désigné',)}
         with _avec_materiel(vide):
+            garde = garde_publication(_Calepinage())
+        self.assertEqual(garde['verdict'], 'indetermine')
+        self.assertIn('module PV non désigné', garde['manquantes'])
+
+    def test_les_bloquants_de_la_garde_sont_ceux_du_rapport(self):
+        # ACAL170 — la lecture des bloquants vit UNE fois : les codes
+        # refusés par la garde sont les motifs ``bloquant`` du rapport.
+        with _avec_materiel(ONDULEUR_HORS_SPEC):
+            rapport = verdict_publiable(_Calepinage())
             with self.assertRaises(PublicationBloquee) as refus:
                 garde_publication(_Calepinage())
-        self.assertIn('module PV non désigné', str(refus.exception))
-
-    def test_la_garde_ne_lit_pas_le_verdict_publiable(self):
-        # Le rapport est plus SÉVÈRE que la garde (il voit la norme, les
-        # tronçons, le raccordement) : s'il la pilotait, un dossier
-        # publiable hier cesserait de l'être aujourd'hui.
-        import inspect
-
-        source = inspect.getsource(garde_publication)
-        self.assertNotIn('verdict_publiable', source)
+        attendus = [motif['code'] for motif in rapport['motifs']
+                    if motif['statut'] == STATUT_BLOQUANT]
+        self.assertTrue(attendus)
+        self.assertEqual([b['code'] for b in refus.exception.bloquants],
+                         attendus)
 
 
 def _conception():

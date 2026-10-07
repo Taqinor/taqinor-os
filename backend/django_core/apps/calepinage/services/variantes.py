@@ -298,8 +298,91 @@ def retenir_variante(variante, *, user=None, appliquer=True):
 CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'version_moteur', 'pertes')
 
 
+#: ACAL187 (D-ACAL-12) — Dupliquer un calepinage OUVERT sans cible : la
+#: copie serait un second calepinage ouvert sur le MÊME lead.
+MESSAGE_SOURCE_OUVERTE = ("Ce lead n'a qu'un calepinage ouvert : créez une "
+                          "variante, ou indiquez un autre lead/client pour "
+                          "la copie")
+
+
+class DuplicationEnConflit(VarianteRefusee):
+    """ACAL187 — refus 409 : ``corps`` est la réponse publiée telle quelle."""
+
+    def __init__(self, message, *, corps, champ='lead'):
+        super().__init__(message, champ=champ)
+        self.corps = corps
+
+
+def _cible_de_copie(calepinage, lead_id, client_id):
+    """ACAL187 — ``(lead_id, client_id)`` de la copie, ou un refus.
+
+    Cible EXPLICITE (``lead_id`` et/ou ``client_id`` donnés) : bornée à la
+    société de la source (``get_company_lead`` / ``get_company_client`` —
+    une cible étrangère est « introuvable », jamais « interdite ») ; le
+    client du lead est repris. Sans cible, la copie garde le rattachement de
+    la source — refusé (409) quand la source est un calepinage OUVERT d'un
+    lead (ni modèle, ni archivé) : Dupliquer sert à un AUTRE lead ou à un
+    modèle, la même toiture se décline en VARIANTE.
+    """
+    company = calepinage.company
+    if lead_id is ... and client_id is ...:
+        if calepinage.lead_id and not _hors_unicite(calepinage):
+            raise DuplicationEnConflit(
+                MESSAGE_SOURCE_OUVERTE,
+                corps={'lead': MESSAGE_SOURCE_OUVERTE})
+        return calepinage.lead_id, calepinage.client_id
+    lead_id = None if lead_id is ... else lead_id
+    client_id = None if client_id is ... else client_id
+    if not lead_id and not client_id:
+        raise VarianteRefusee(
+            "Indiquez le lead ou le client de la copie.", champ='lead')
+    if lead_id:
+        from apps.crm.selectors import get_company_lead
+
+        lead = get_company_lead(company, lead_id)
+        if lead is None:
+            raise VarianteRefusee(f"Lead introuvable (#{lead_id}).",
+                                  champ='lead')
+        client_id = getattr(lead, 'client_id', None) or client_id
+        lead_id = lead.pk
+    if client_id:
+        from apps.crm.selectors import get_company_client
+
+        if get_company_client(company, client_id) is None:
+            raise VarianteRefusee(f"Client introuvable (#{client_id}).",
+                                  champ='client')
+    return lead_id or None, client_id or None
+
+
+def _hors_unicite(calepinage):
+    """Une source MODÈLE ou ARCHIVÉE n'est pas « le » calepinage ouvert de
+    son lead : elle se duplique sans cible (ACAL187)."""
+    from .archivage import est_archive
+    from .modeles import est_modele
+
+    return est_archive(calepinage) or est_modele(calepinage)
+
+
+def _refuser_second_ouvert(calepinage, lead_id, *, user=None):
+    """D-ACAL-12 — la cible ne reçoit pas un second calepinage OUVERT (409
+    ``calepinage_creation_conflit.json``). Une source MODÈLE ne compte pas
+    comme l'ouvert de son propre lead."""
+    if not lead_id:
+        return
+    from ..selectors import calepinages_ouverts_du_lead
+    from .creation import corps_conflit
+
+    ouverts = [c for c in calepinages_ouverts_du_lead(calepinage.company,
+                                                      lead_id)
+               if not (c.pk == calepinage.pk and _hors_unicite(calepinage))]
+    if ouverts:
+        corps = corps_conflit(ouverts[0], user)
+        raise DuplicationEnConflit(
+            str(corps.get('lead') or corps.get('detail') or ''), corps=corps)
+
+
 def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
-              roof_layout=...):
+              roof_layout=..., lead_id=..., client_id=...):
     """Recopie la conception (et les variantes) vers un NOUVEAU calepinage.
 
     Le duplicata reste dans la MÊME société et garde le rattachement
@@ -329,6 +412,10 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
         raise VarianteRefusee(
             "Le calepinage à dupliquer n'est pas enregistré.",
             champ='calepinage')
+    # ACAL187 — la CIBLE (lead/client) est résolue et le « un seul ouvert
+    # par lead » (D-ACAL-12) tenu AVANT toute écriture.
+    lead_cible, client_cible = _cible_de_copie(calepinage, lead_id, client_id)
+    _refuser_second_ouvert(calepinage, lead_cible, user=user)
 
     copies = {champ: copy.deepcopy(getattr(calepinage, champ, None))
               for champ in CHAMPS_COPIES}
@@ -343,8 +430,8 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     with transaction.atomic():
         copie = Calepinage.objects.create(
             company=calepinage.company,
-            lead_id=calepinage.lead_id,
-            client_id=calepinage.client_id,
+            lead_id=lead_cible,
+            client_id=client_cible,
             titre=(titre or '').strip() or _titre_de_copie(calepinage),
             statut=Calepinage.Statut.BROUILLON,
             cree_par=user,
@@ -371,6 +458,14 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
                 copie, user=user,
                 libelle=f"Conception d'origine (copie de #{calepinage.pk})",
                 resultat=None, meme_empreinte_admise=True)
+    # ACAL187 — l'histoire de la copie commence par sa création ET sa
+    # provenance.
+    from .journal import journaliser_creation, noter
+
+    journaliser_creation(copie, user=user)
+    source = (getattr(calepinage, 'titre', '') or '').strip()
+    noter(copie, f'Dupliqué depuis #{calepinage.pk}'
+          + (f' (« {source} »)' if source else ''), user=user)
     return copie
 
 

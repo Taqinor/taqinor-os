@@ -111,9 +111,9 @@ class VueRestreinteRoutesTest(BaseApiCalepinage):
                              'lead_id': self.lead_2.pk}),
                            (f'{URL}depuis-modele/',
                             {'modele_id': self.m.pk,
-                             'lead_id': self.lead_2.pk}),
-                           (f'{URL}creer-depuis-modele/',
-                            {'modele': self.k.pk, 'lead': self.lead_2.pk})):
+                             'lead_id': self.lead_2.pk})):
+            # ACAL184 — ``creer-depuis-modele`` est retirée : depuis-modele
+            # est la porte unique.
             with self.subTest(url=url, corps=corps):
                 reponse = self.api_u.post(url, corps, format='json')
                 self.assertEqual(reponse.status_code, 404, reponse.data)

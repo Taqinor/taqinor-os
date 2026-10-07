@@ -104,14 +104,11 @@ export const sorties = {
     restaurerCorbeille: (id) => api.post(`${pivot(id)}restaurer-corbeille/`),
 
     // CALX42 — le drapeau « modèle réutilisable » (`records.Tag`, CAL199 —
-    // jamais un champ propre) et la création d'un calepinage NEUF depuis un
-    // modèle. `creerDepuisModele` est une action de LISTE : elle ne vise
-    // aucun calepinage existant, elle en fabrique un — `{modele, lead,
-    // client, titre}`, le rattachement du modèle n'étant JAMAIS recopié.
+    // jamais un champ propre). ACAL185 — créer DEPUIS un modèle passe par la
+    // porte unique `depuisModele` (`projet.js`) : `creerDepuisModele` est
+    // retirée avec sa route (ACAL184).
     marquerModele: (id) => api.post(`${pivot(id)}marquer-modele/`),
     demarquerModele: (id) => api.post(`${pivot(id)}demarquer-modele/`),
-    creerDepuisModele: (corps) =>
-      api.post('/calepinage/calepinages/creer-depuis-modele/', corps),
 
     // CALX35 — la porte HTTP du service de copie qui existe depuis CAL14
     // (`services/variantes.py::dupliquer`), forme de réponse figée par

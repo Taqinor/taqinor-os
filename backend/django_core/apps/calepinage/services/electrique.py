@@ -67,6 +67,9 @@ __all__ = [
     'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR', 'regle_de_chaine',
     'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
+    'consigner_derogation_publication', 'CODE_DEROGATION_PUBLICATION',
+    'CHAMP_DEROGATION_PUBLICATION',  # ACAL170
+    'verdict_de_conception',  # ACAL172
     'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
     'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
@@ -2302,43 +2305,159 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     }
 
 
-def garde_publication(calepinage):
-    """Refuse la publication tant qu'un bloquant subsiste (statut conservé).
+def garde_publication(calepinage, *, derogation=None, user=None):
+    """ACAL170 (D-ACAL-9) — le CLIQUET du geste de publication du devis.
 
-    N'écrit RIEN : c'est une garde, pas une transition. Un calepinage dont la
-    fiche est incomplète n'est pas publiable non plus — mais le refus le dit
-    autrement (on ne peut pas certifier ce qu'on n'a pas pu vérifier).
+    « Générer le devis » et « Resynchroniser le devis » l'appellent AVANT
+    toute écriture (``services/devis.py``). Les bloquants sont lus UNE fois,
+    dans l'agrégateur ``verdict_publiable`` (motifs de statut ``bloquant`` —
+    terre non justifiée comprise, CAL134) : aucune seconde lecture ici.
+
+    * verdict ``bloquant`` sans dérogation ⇒ ``PublicationBloquee`` qui
+      NOMME chaque bloquant ``{code, libelle, detail}`` ;
+    * verdict ``bloquant`` AVEC ``derogation`` ``{motif}`` ⇒ la dérogation
+      est VALIDÉE (motif non vide) et sa trace PRÉPARÉE — auteur (``user``)
+      et instant posés par le serveur, jamais lus du corps — mais RIEN n'est
+      écrit : l'appelant la consigne (``consigner_derogation_publication``)
+      seulement quand le devis est réellement produit ;
+    * verdict ``indetermine`` (fiche incomplète, matériel non désigné, valeur
+      sans provenance) : NE BLOQUE PAS, ``manquantes`` le dit.
+
+    Le droit ``calepinage_approuver`` exigé pour déroger est vérifié par la
+    vue (403 nommé) : un service n'a pas de requête.
+
+    Returns:
+        ``{verdict, bloquants, manquantes, derogation}`` — ``derogation`` est
+        la trace préparée (ou ``None``).
+
+    Raises:
+        PublicationBloquee: au moins un bloquant, aucune dérogation.
+        EntreeInvalide: dérogation illisible ou sans motif (champ
+            ``derogation_electrique``).
     """
-    evaluation = evaluation_electrique(calepinage)
-    # ACAL169 — la garde lit les BLOQUANTS de l'évaluation, pas le
-    # ``publiable`` (désormais celui de l'agrégateur, plus sévère) : elle
-    # refuse EXACTEMENT ce qu'elle refusait (porte devis : D05-T26).
-    if evaluation['verdict'] != 'indetermine' and not evaluation['bloquants']:
-        # CAL134 — la terre est l'autre condition de publication : sans prise
-        # de terre vendue, la continuité de la terre EXISTANTE doit avoir été
-        # justifiée (NF C 15-100 §542). Le refus est levé tel quel : il nomme
-        # son champ.
-        from .terre import garde_terre
+    verdict = verdict_de_conception(calepinage)
+    bloquants = verdict['bloquants']
+    motif_saisi = (None if derogation is None
+                   else _motif_de_derogation(derogation))
+    trace = None
+    if bloquants:
+        if motif_saisi is None:
+            raise PublicationBloquee(
+                "Publication refusée : %d contrainte(s) électrique(s) "
+                "bloquante(s). %s" % (
+                    len(bloquants),
+                    ' '.join(b['libelle'] for b in bloquants)),
+                bloquants=bloquants)
+        trace = _trace_derogation_publication(bloquants, motif_saisi, user)
+    return dict(verdict, derogation=trace)
 
-        conception, _materiel, donnees, _document = conception_du_calepinage(
-            calepinage)
-        from .norme import norme_applicable
 
-        garde_terre(_checklist_terre_tolerante(
-            conception, donnees.get('terre'),
-            norme_applicable(parametres_societe(calepinage)),
-            getattr(calepinage, 'company', None))[0])
-        return evaluation
-    if evaluation['verdict'] == 'indetermine':
-        raise PublicationBloquee(
-            "Publication impossible : le verdict électrique n'a pas pu être "
-            "rendu (%s). Complétez les fiches techniques du matériel retenu."
-            % '; '.join(evaluation['manquantes']),
-            bloquants=evaluation['manquantes'])
-    raise PublicationBloquee(
-        "Publication refusée : %d contrainte(s) onduleur bloquante(s). %s"
-        % (len(evaluation['bloquants']), ' '.join(evaluation['bloquants'])),
-        bloquants=evaluation['bloquants'])
+def verdict_de_conception(calepinage, *, layout=None):
+    """ACAL170/ACAL172 — LA lecture des bloquants, sans rien lever ni écrire.
+
+    ``{verdict, bloquants, manquantes}`` lus dans l'agrégateur
+    ``verdict_publiable`` (motifs de statut ``bloquant`` →
+    ``{code, libelle, detail}``) ; ``verdict`` ∈ ``bloquant`` |
+    ``indetermine`` (fiche incomplète, matériel non désigné, valeur sans
+    provenance — D-ACAL-9 : ne bloque pas) | ``alerte`` | ``conforme``.
+
+    La garde de publication (devis), l'approbation, la retenue d'une
+    variante et le comparatif la lisent TOUS ici. ``layout`` évalue le
+    ``roof_layout`` d'une variante (ACAL172) ; absent, la conception
+    enregistrée.
+    """
+    from core.electrique.types import STATUT_ALERTE, STATUT_BLOQUANT
+
+    rapport, conception, materiel = _rapport_publication(calepinage,
+                                                         layout=layout)
+    motifs = rapport['motifs']
+    bloquants = [{'code': motif['code'], 'libelle': motif['libelle'],
+                  'detail': motif['source']}
+                 for motif in motifs if motif['statut'] == STATUT_BLOQUANT]
+    manquantes = list(getattr(conception, 'manquantes', ()) or ())
+    for absent in (materiel or {}).get('absents') or ():
+        if absent not in manquantes:
+            manquantes.append(absent)
+    # Une valeur qui a jugé SANS provenance ne se certifie pas : elle est
+    # « indéterminée », jamais un bloquant (D-ACAL-9).
+    manquantes.extend(motif['libelle'] for motif in motifs
+                      if motif['statut'] == STATUT_MOTIF_SANS_SOURCE)
+    if bloquants:
+        verdict = 'bloquant'
+    elif manquantes:
+        verdict = 'indetermine'
+    elif any(motif['statut'] == STATUT_ALERTE for motif in motifs):
+        verdict = 'alerte'
+    else:
+        verdict = 'conforme'
+    return {'verdict': verdict, 'bloquants': bloquants,
+            'manquantes': manquantes}
+
+
+#: ACAL170 — le code de la trace d'une dérogation de PUBLICATION, dans le
+#: fil ``journal_derogations`` (même fil que les dérogations d'alerte).
+CODE_DEROGATION_PUBLICATION = 'PUBLICATION_BLOQUANTS'
+
+#: ACAL170 — le champ du corps de generer-devis / sync-devis.
+CHAMP_DEROGATION_PUBLICATION = 'derogation_electrique'
+
+
+def _motif_de_derogation(derogation):
+    """Le motif SAISI d'une dérogation de publication, ou un refus nommé."""
+    if not isinstance(derogation, dict):
+        raise EntreeInvalide(
+            "La dérogation électrique doit être un objet « { motif } ».",
+            champ=CHAMP_DEROGATION_PUBLICATION)
+    motif = str(derogation.get('motif') or '').strip()
+    if not motif:
+        raise EntreeInvalide(
+            "Motif de la dérogation obligatoire : une dérogation sans motif "
+            "saisi n'est pas relisible.", champ=CHAMP_DEROGATION_PUBLICATION)
+    return motif
+
+
+def _trace_derogation_publication(bloquants, motif, user):
+    """La trace d'une publication MALGRÉ des bloquants — n'écrit rien."""
+    from django.utils import timezone
+
+    auteur = _nom_auteur(user)
+    if not auteur:
+        raise EntreeInvalide(
+            "Une dérogation sans auteur n'est pas relisible.",
+            champ=CHAMP_DEROGATION_PUBLICATION)
+    libelles = '; '.join(b['libelle'] for b in bloquants)
+    return {
+        'code': CODE_DEROGATION_PUBLICATION,
+        'libelle': ("Publication du devis malgré %d bloquant(s) "
+                    "électrique(s)" % len(bloquants)),
+        'auteur': auteur,
+        'auteur_id': getattr(user, 'pk', None),
+        'horodatage': timezone.now().isoformat(),
+        'motif': motif,
+        'texte': ("Dérogation de publication par %s — motif : %s — "
+                  "bloquant(s) passé(s) outre : %s"
+                  % (auteur, motif, libelles)),
+    }
+
+
+def consigner_derogation_publication(calepinage, trace, *, user=None):
+    """ACAL170 — écrit la dérogation de publication : fil + chatter.
+
+    Appelé par ``services/devis.py`` UNE fois le devis produit (un refus
+    n'écrit rien). Le fil ``journal_derogations`` reste l'unique
+    enregistrement structuré ; le chatter n'en est que le reflet lisible.
+    """
+    if not trace:
+        return None
+    from .journal import noter
+    from .resultat import modifier_resultat
+
+    modifier_resultat(
+        calepinage,
+        lambda resultat: _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS,
+                                         [trace]))
+    noter(calepinage, trace['texte'], user=user)
+    return trace
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2363,10 +2482,10 @@ def garde_publication(calepinage):
 #     ``non_verifiable``, motif en clair) n'empêche PAS la publication ; une
 #     valeur qui a servi à JUGER sans que rien ne dise d'où elle vient, si.
 #
-# CE VERDICT NE REMPLACE PAS LA GARDE. ``garde_publication`` continue de
-# refuser exactement ce qu'elle refusait (test de non-régression) : la garde
-# est le CLIQUET du geste de publication, ce verdict est le RAPPORT qu'on lit
-# avant de cliquer.
+# ACAL170 (D-ACAL-9) — ``garde_publication`` est le CLIQUET du geste de
+# publication (générer / resynchroniser le devis) et LIT ce rapport : ses
+# bloquants sont les motifs de statut ``bloquant`` ; un motif sans
+# provenance ou une fiche incomplète rend « indéterminé », qui ne bloque pas.
 
 #: Le statut d'une omission ASSUMÉE — le calcul ne s'est pas fait, on DIT
 #: pourquoi, et ça ne bloque pas la publication.
@@ -2484,9 +2603,15 @@ def _onduleurs_poses(conception):
 
 def _motifs_de_la_terre(terre):
     """CALX245 — la justification de continuité, et les omissions assumées."""
+    from .terre import TerreInvalide, garde_terre
+
     motifs = []
-    if terre.get('justification_requise') \
-            and not terre.get('justification_fournie'):
+    try:
+        # ACAL170 — LA règle de terre (CAL134) reste celle de
+        # ``garde_terre`` : son refus devient un motif BLOQUANT de
+        # l'agrégateur, que la garde de publication lit.
+        garde_terre(terre)
+    except TerreInvalide:
         from core.electrique.types import STATUT_BLOQUANT
 
         motifs.append(_motif_publication(
@@ -2596,7 +2721,16 @@ def _motifs_des_micro_onduleurs(conception, materiel):
 
 
 def verdict_publiable(calepinage):
+    """CALX248 — ``{publiable, motifs}`` (voir ``_rapport_publication``)."""
+    return _rapport_publication(calepinage)[0]
+
+
+def _rapport_publication(calepinage, *, layout=None):
     """CALX248 — ``{publiable, motifs}`` : TOUT ce qui empêche de publier.
+
+    ACAL172 — ``layout`` évalue une AUTRE conception du même calepinage (le
+    ``roof_layout`` d'une variante) avec le matériel et les saisies du
+    calepinage ; absent, la conception enregistrée.
 
     Rassemble, en un seul rapport et sans reprononcer aucun calcul : les
     natures de CALX215 (conception), l'omission de norme (D1), les verdicts
@@ -2615,7 +2749,7 @@ def verdict_publiable(calepinage):
     from .troncons import troncons_du_calepinage
 
     conception, materiel, donnees, document = conception_du_calepinage(
-        calepinage)
+        calepinage, layout=layout)
     norme = norme_applicable(parametres_societe(calepinage))
     reglages = _reglages_electrique_societe(calepinage)
 
@@ -2659,7 +2793,7 @@ def verdict_publiable(calepinage):
         'publiable': not any(motif['statut'] in refusants
                              for motif in motifs),
         'motifs': motifs,
-    }
+    }, conception, materiel
 
 
 def rejouer_apres_layout(calepinage, *, user=None):

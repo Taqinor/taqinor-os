@@ -467,6 +467,16 @@ describe('CALX42 — marquer / démarquer un calepinage comme modèle', () => {
    à `true` par défaut (comportement d'aujourd'hui) ; le bouton ouvre le
    NOUVEAU calepinage.
    ========================================================================== */
+// ACAL188 — DETAIL est le calepinage OUVERT d'un lead : la copie vise un
+// AUTRE lead, choisi par le sélecteur partagé (recherche serveur mockée).
+const LEAD_CIBLE = { id: 41, nom: 'Alami', prenom: 'Sara', ville: 'Rabat' }
+const choisirLeadCopie = async () => {
+  crmApi.getLeads.mockResolvedValue({ data: { results: [LEAD_CIBLE] } })
+  const zone = screen.getByTestId('cal-fiche-dupliquer-lead')
+  await userEvent.click(within(zone).getByRole('combobox'))
+  await userEvent.click(await screen.findByText('Alami Sara'))
+}
+
 describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
   it('la confirmation ÉNUMÈRE ce que la copie laisse derrière elle', async () => {
     rendre(DETAIL)
@@ -490,10 +500,11 @@ describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
 
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
     expect(screen.getByTestId('cal-fiche-dupliquer-variantes')).toBeChecked()
+    await choisirLeadCopie()
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
 
     await waitFor(() => expect(calepinageApi.calepinages.dupliquer)
-      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: true }))
+      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: true, lead: LEAD_CIBLE.id }))
     // Le bouton OUVRE la copie.
     expect(navigateMock).toHaveBeenCalledWith('/calepinage/77')
   })
@@ -509,10 +520,11 @@ describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
 
     const boite = screen.getByTestId('cal-fiche-dupliquer-confirmation')
     expect(boite).toHaveTextContent('les variantes ;')
+    await choisirLeadCopie()
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
 
     await waitFor(() => expect(calepinageApi.calepinages.dupliquer)
-      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: false }))
+      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: false, lead: LEAD_CIBLE.id }))
   })
 
   it('« Annuler » referme sans rien dupliquer', async () => {
@@ -533,11 +545,39 @@ describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
     rendre(DETAIL)
 
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await choisirLeadCopie()
     await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
 
     const bloc = await screen.findByTestId('cal-fiche-dupliquer-erreur')
     expect(bloc).toHaveTextContent(MOTIF)
     expect(bloc).toHaveTextContent('Dupliquer')
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  // ACAL188 (D-ACAL-12) — la cible et le refus « créez une variante ».
+  it('exige une cible pour dupliquer un calepinage ouvert', async () => {
+    rendre(DETAIL)
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
+
+    expect(await screen.findByTestId('cal-fiche-dupliquer-erreur-lead'))
+      .toHaveTextContent('Choisissez le lead ou le client de la copie.')
+    expect(calepinageApi.calepinages.dupliquer).not.toHaveBeenCalled()
+  })
+
+  it('affiche le refus créez une variante sur 409', async () => {
+    const CONFLIT = exempleContrat('calepinage', 'calepinage_dupliquer',
+      'exemple_conflit_409')
+    calepinageApi.calepinages.dupliquer.mockRejectedValue({
+      response: { status: 409, data: CONFLIT },
+    })
+    rendre(DETAIL)
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await choisirLeadCopie()
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
+
+    expect(await screen.findByTestId('cal-fiche-dupliquer-erreur-lead'))
+      .toHaveTextContent(CONFLIT.lead)
     expect(navigateMock).not.toHaveBeenCalled()
   })
 

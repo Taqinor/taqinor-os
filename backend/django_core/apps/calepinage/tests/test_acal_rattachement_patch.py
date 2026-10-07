@@ -47,14 +47,21 @@ class RattachementPatchTest(BaseApiCalepinage):
             company=self.company, client=self.client_a,
             lead=self.lead_client, reference='DEV-202610-1792')
         lier_devis(lie, devis_2.pk)
-        copie = dupliquer(depuis_lead, user=self.user)
+        # ACAL187 (D-ACAL-12) — la source est OUVERTE : la copie vise un
+        # AUTRE lead du même client, dont le client est repris.
+        self.lead_copie = Lead.objects.create(
+            company=self.company, nom='Toiture Oasis', client=self.client_a)
+        copie = dupliquer(depuis_lead, user=self.user,
+                          lead_id=self.lead_copie.pk)
         calepinages = {'depuis-lead': depuis_lead, 'pour-devis': pour_devis,
                        'lier-devis': lie, 'dupliquer': copie}
         for nom, calepinage in calepinages.items():
             calepinage.refresh_from_db()
+            lead = (self.lead_copie if nom == 'dupliquer'
+                    else self.lead_client)
             self.assertEqual(
                 (calepinage.lead_id, calepinage.client_id),
-                (self.lead_client.pk, self.client_a.pk), nom)
+                (lead.pk, self.client_a.pk), nom)
         return calepinages
 
     def test_patch_titre_sur_calepinage_cree_depuis_lead_avec_client(self):

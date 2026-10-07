@@ -154,19 +154,18 @@ class FicheMuetteTest(SimpleTestCase):
         self.assertEqual(evaluation['verdict'], 'indetermine')
         self.assertIn('module PV non désigné', evaluation['manquantes'])
 
-    def test_une_publication_indeterminee_est_refusee_en_le_disant(self):
+    def test_une_publication_indeterminee_passe_en_le_disant(self):
         # Aucun matériel injecté : la garde de PRODUCTION résout le matériel
-        # elle-même, ne trouve aucune désignation et refuse en le disant.
-        with self.assertRaises(PublicationBloquee) as capture:
-            garde_publication(_Calepinage(24))
+        # elle-même et ne trouve aucune désignation. ACAL170 (D-ACAL-9) :
+        # l'indéterminé ne bloque pas, il NOMME ce qui manque.
+        garde = garde_publication(_Calepinage(24))
 
+        self.assertEqual(garde['verdict'], 'indetermine')
         # ACAL56 — l'absence NOMME le geste : « module PV non désigné —
         # désignez-le dans l'onglet Matériel électrique ».
         self.assertIn(
             "module PV non désigné — désignez-le dans l'onglet Matériel "
-            "électrique", capture.exception.bloquants)
-        self.assertIn('Complétez les fiches techniques',
-                      str(capture.exception))
+            "électrique", garde['manquantes'])
 
 
 class EvaluationAChaudTest(SimpleTestCase):

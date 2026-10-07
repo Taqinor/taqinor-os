@@ -438,6 +438,24 @@ describe('CalepinageNouveau — une seule porte et « Ouvrir l’existant » (AC
     expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${DETAIL.id}`)
   })
 
+  it('jeu de réglages actif sans modèle, aide affichée, preset_id envoyé', async () => {
+    // ACAL186 (D-ACAL-20) — sans modèle, le champ reste ACTIF et dit ce que
+    // le jeu fera : il est mémorisé et s'applique à chaque pan dessiné.
+    rendre()
+    await attendreChoix()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    const champ = screen.getByLabelText(/Jeu de réglages société/)
+    expect(champ).not.toBeDisabled()
+    expect(screen.getByLabelText(/Partir d’un modèle/)).toHaveValue('')
+    expect(screen.getByTestId('cal-nouveau-preset-aide'))
+      .toHaveTextContent('S’applique à chaque pan que vous dessinerez.')
+    fireEvent.change(champ, { target: { value: 'villa_standard' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({
+      lead_id: '1', preset_id: 'villa_standard',
+    }))
+  })
+
   it('affiche l’encart sur un 409 calepinage_existant', async () => {
     mocks.depuisModele.mockRejectedValue({ response: { status: 409, data: CONFLIT } })
     rendre()

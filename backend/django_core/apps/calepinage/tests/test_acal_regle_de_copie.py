@@ -68,7 +68,7 @@ class RegleDeCopieTest(BaseApiCalepinage):
         retenir_variante(self.variante, appliquer=False)
 
     def test_dupliquer_copie_pertes_sans_resultat(self):
-        copie = dupliquer(self.source, user=self.user)
+        copie = dupliquer(self.source, user=self.user, lead_id=self.lead_2.pk)
         copie = Calepinage.objects.get(pk=copie.pk)
         self.assertEqual(copie.roof_layout, self.source.roof_layout)
         self.assertEqual(copie.pertes, POSTES)
@@ -76,7 +76,7 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertEqual(copie.roof_image, '')
 
     def test_dupliquer_ne_copie_pas_la_retenue(self):
-        copie = dupliquer(self.source, user=self.user)
+        copie = dupliquer(self.source, user=self.user, lead_id=self.lead_2.pk)
         variantes = CalepinageVariante.objects.filter(calepinage=copie)
         self.assertEqual(variantes.count(), 1)
         for variante in variantes:
@@ -84,7 +84,7 @@ class RegleDeCopieTest(BaseApiCalepinage):
             self.assertIsNone(variante.resultat)
 
     def test_copie_porte_sa_version_d_origine(self):
-        copie = dupliquer(self.source, user=self.user)
+        copie = dupliquer(self.source, user=self.user, lead_id=self.lead_2.pk)
         versions = CalepinageVersion.objects.filter(calepinage=copie)
         self.assertEqual(versions.count(), 1)
         version = versions.get()

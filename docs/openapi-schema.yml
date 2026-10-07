@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4838, operations: 7632, components: 2211}
+counts: {paths: 4836, operations: 7630, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -530,7 +530,6 @@ operations:
 - get /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_list
 - post /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_create
 - post /api/django/calepinage/calepinages/comparer-projets/ -> django_calepinage_calepinages_comparer_projets_create
-- post /api/django/calepinage/calepinages/creer-depuis-modele/ -> django_calepinage_calepinages_creer_depuis_modele_create
 - post /api/django/calepinage/calepinages/depuis-lead/ -> django_calepinage_calepinages_depuis_lead_create
 - post /api/django/calepinage/calepinages/depuis-modele/ -> django_calepinage_calepinages_depuis_modele_create
 - post /api/django/calepinage/calepinages/import-projet/ -> django_calepinage_calepinages_import_projet_create
@@ -4384,7 +4383,6 @@ operations:
 - get /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_list
 - post /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_create
 - post /api/v1/calepinage/calepinages/comparer-projets/ -> v1_calepinage_calepinages_comparer_projets_create
-- post /api/v1/calepinage/calepinages/creer-depuis-modele/ -> v1_calepinage_calepinages_creer_depuis_modele_create
 - post /api/v1/calepinage/calepinages/depuis-lead/ -> v1_calepinage_calepinages_depuis_lead_create
 - post /api/v1/calepinage/calepinages/depuis-modele/ -> v1_calepinage_calepinages_depuis_modele_create
 - post /api/v1/calepinage/calepinages/import-projet/ -> v1_calepinage_calepinages_import_projet_create

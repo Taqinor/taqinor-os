@@ -307,8 +307,9 @@ def garde_terre(checklist):
     a rien à exiger) ni quand la prise de terre est vendue.
     """
     checklist = checklist or {}
-    if not checklist.get('lignes'):
-        return True
+    # Une check-list OMISE porte ``justification_requise: False`` : c'est ce
+    # drapeau, et lui seul, qui décide (ACAL170 — l'agrégateur de
+    # publication relit cette règle sur la check-list telle quelle).
     if checklist.get('justification_requise') and not checklist.get(
             'justification_fournie'):
         raise TerreInvalide(

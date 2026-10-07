@@ -66,7 +66,9 @@ class GenererDevisPortesTest(BaseApiCalepinage):
     def test_copie_genere_nouveau_devis_sans_500(self):
         premier = self._generer(self.original)
         self.assertEqual(premier.status_code, 201, premier.data)
-        copie = dupliquer(self.original, user=self.user)
+        # ACAL187 — source OUVERTE : la copie vise un autre lead.
+        copie = dupliquer(self.original, user=self.user,
+                          lead_id=self.lead_2.pk)
         self.original.refresh_from_db()
         self.assertEqual(copie.layout_hash, self.original.layout_hash)
 
