@@ -802,6 +802,19 @@ def _quantites_depuis_bom(bom):
     return besoins
 
 
+def chantier_peut_reserver(installation):
+    """ASTK124 (C-ASTK-031) — LE prédicat unique « ce chantier peut-il
+    (encore) engager du stock ? » : ni annulé, ni clôturé. Appelé par les
+    trois écrivains de réservation (`seed_reservations`,
+    `reserver_stock_depuis_bc`, `reserver_stock_recu_pour_chantier`) : une
+    réception ou un BC ne réactive plus la réservation d'un chantier mort.
+    Le contrôle a posteriori de `reporting/integrity.py` reste un filet."""
+    if installation is None or getattr(installation, 'annule', False):
+        return False
+    return (Installation.canonical_statut(installation.statut)
+            != Installation.Statut.CLOTURE)
+
+
 def seed_reservations(installation):
     """N14 — réserve le stock des SKU de la nomenclature gelée du chantier.
 
@@ -819,6 +832,8 @@ def seed_reservations(installation):
     (comportement quantitatif strictement inchangé)."""
     from .selectors import calepinage_retenu_du_chantier
     from apps.stock.selectors import valid_produit_ids
+    if not chantier_peut_reserver(installation):
+        return []
     company = installation.company
     besoins = _bom_quantities(installation)
     valid_ids = valid_produit_ids(company, list(besoins)) if besoins else set()
@@ -1145,7 +1160,7 @@ def reserver_stock_recu_pour_chantier(*, reception):
     if bc is None or not getattr(bc, 'chantier_origine_id', None):
         return 0
     installation = bc.chantier_origine
-    if installation is None:
+    if not chantier_peut_reserver(installation):
         return 0
 
     # Plafond stable par produit = la quantité commandée sur CETTE ligne de
@@ -1256,7 +1271,7 @@ def reserver_stock_depuis_bc(bon_commande):
     chantier : idempotent, jamais deux réservations pour le même (chantier,
     produit))."""
     installation = _installation_pour_bc(bon_commande)
-    if installation is None:
+    if not chantier_peut_reserver(installation):
         return []
     besoins = _bc_quantities(bon_commande)
     if not besoins:

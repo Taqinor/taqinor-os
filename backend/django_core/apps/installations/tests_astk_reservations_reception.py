@@ -5,7 +5,9 @@ Sondes RESA de l'audit stock du 2026-10-06 rejouées sur les services réels
   * ASTK121 (RESA-2) — la réception d'un BCF « besoin chantier » ne fait que
     COMPLÉTER la réservation, jamais la réduire ;
   * ASTK122 (RESA-4) — la réservation depuis un BC relit la nomenclature
-    gelée (option retenue), jamais toutes les lignes du devis.
+    gelée (option retenue), jamais toutes les lignes du devis ;
+  * ASTK124 (RESA-6) — prédicat unique `chantier_peut_reserver` : une
+    réception ne réactive plus la réservation d'un chantier annulé/clôturé.
 
 Run :
     python manage.py test apps.installations.tests_astk_reservations_reception
@@ -23,8 +25,9 @@ from apps.installations.models import (
     Installation, InstallationActivity, StockReservation,
 )
 from apps.installations.services import (
-    changer_statut_chantier, consommer_reservation_bc,
-    create_installation_from_devis, reserver_stock_depuis_bc,
+    changer_statut_chantier, chantier_peut_reserver,
+    consommer_reservation_bc, create_installation_from_devis,
+    release_reservations, reserver_stock_depuis_bc,
 )
 from apps.stock.models import (
     BonCommandeFournisseur, Fournisseur, Produit, ReceptionFournisseur,
@@ -197,3 +200,47 @@ class BcPanierTests(ResaBase):
             {r.produit_id: r.quantite for r in StockReservation.objects
              .filter(installation=inst, active=True)},
             {self.reseau.id: 1, self.panneau.id: 10})
+
+
+class ChantierMortTests(ResaBase):
+    SLUG = 'co-astk124'
+
+    def _chantier_mort_puis_reception(self, tuer):
+        panneau = self.produit('Panneau ASTK124', stock=5)
+        inst = self.chantier([(panneau, 20)])
+        bon = self.bcf_du_manque(inst)
+        tuer(inst)
+        release_reservations(inst)
+        self.assertFalse(self.resa(inst, panneau).active)
+        self.confirmer_reception(bon, panneau, 10)
+        return inst, panneau
+
+    def test_reception_ne_reactive_pas_un_chantier_annule(self):
+        def annuler(inst):
+            Installation.objects.filter(pk=inst.pk).update(annule=True)
+            inst.refresh_from_db()
+        inst, panneau = self._chantier_mort_puis_reception(annuler)
+        resa = self.resa(inst, panneau)
+        self.assertFalse(resa.active)
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 15)
+        self.assertEqual(available_quantity(panneau), 15)
+
+    def test_reception_ne_reactive_pas_un_chantier_cloture(self):
+        def cloturer(inst):
+            Installation.objects.filter(pk=inst.pk).update(
+                statut=Installation.Statut.CLOTURE)
+            inst.refresh_from_db()
+        inst, panneau = self._chantier_mort_puis_reception(cloturer)
+        self.assertFalse(self.resa(inst, panneau).active)
+
+    def test_predicat(self):
+        panneau = self.produit('Panneau ASTK124 B', stock=5)
+        inst = self.chantier([(panneau, 1)])
+        self.assertTrue(chantier_peut_reserver(inst))
+        inst.annule = True
+        self.assertFalse(chantier_peut_reserver(inst))
+        inst.annule = False
+        inst.statut = Installation.Statut.CLOTURE
+        self.assertFalse(chantier_peut_reserver(inst))
+        self.assertFalse(chantier_peut_reserver(None))
