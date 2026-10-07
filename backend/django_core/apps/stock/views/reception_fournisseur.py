@@ -91,7 +91,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             # d'où ce cas explicite — sinon repli IsAdminRole.
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-                'confirmer', 'annuler', 'facturer', 'affecter_cross_dock',
+                'confirmer', 'annuler', 'affecter_cross_dock',
                 # NTWMS34 — la saisie du verdict qualité est une ÉCRITURE.
                 'controle_qualite',
                 # NTWMS37 — la saisie d'un relevé réel est une ÉCRITURE.
@@ -100,6 +100,12 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 # ajustement de stock : ÉCRITURE (ce get_permissions prime sur
                 # le permission_classes de l'@action, d'où ce cas explicite).
                 'rapprocher_pesees']:
+            # ASTK18 (D-ASTK-3) — « réceptionner » : créer/confirmer/annuler
+            # une réception, contrôle qualité, pesée, cross-dock exigent le
+            # code fin ``achats_receptionner`` (Administrateur + Technicien
+            # responsable ; repli légacy responsable/admin sans rôle fin).
+            return [HasPermissionOrLegacy('achats_receptionner')()]
+        elif self.action == 'facturer':
             # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
             # mais ce get_permissions l'écrasait vers IsAdminRole (le repli
             # par défaut) — bug préexistant attrapé par le test P2P YTEST6.

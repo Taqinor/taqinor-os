@@ -67,10 +67,15 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'valider', 'annuler', 'generer_avoir',
+            'valider', 'annuler',
             # NTWMS41 — validation depuis le poste scanner : ÉCRITURE.
             'valider_scanne',
         ]:
+            # ASTK18 (D-ASTK-3) — retours fournisseur créer/valider/
+            # valider-scanne = « réceptionner » : ``achats_receptionner``
+            # (repli légacy responsable/admin sans rôle fin).
+            return [HasPermissionOrLegacy('achats_receptionner')()]
+        elif self.action == 'generer_avoir':
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]

@@ -86,7 +86,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             # stock_modifier) exigent le code fin ``achats_commander`` (repli
             # légacy responsable/admin pour les comptes sans rôle fin).
             return [HasPermissionOrLegacy('achats_commander')()]
-        elif self.action in ('recevoir', 'facturer'):
+        elif self.action == 'recevoir':
+            # ASTK18 (D-ASTK-3) — recevoir un BCF = « réceptionner ».
+            return [HasPermissionOrLegacy('achats_receptionner')()]
+        elif self.action == 'facturer':
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
             return [IsAnyRole()]
