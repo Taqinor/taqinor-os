@@ -129,6 +129,10 @@ class SimulerVarianteTest(BaseApiCalepinage):
         lignes = {ligne['nom']: ligne for ligne in reponse.data['lignes']}
         self.assertTrue(lignes['A']['simulee'])
         self.assertEqual(lignes['A']['source_mesures'], 'simulation')
+        # Lot 2 critique #30 — SIMULÉE, la variante garde ses modules / kWc
+        # (lus dans sa conception, les blocs de simulation n'en portent pas).
+        self.assertEqual(lignes['A']['total_modules'], 14)
+        self.assertIsNotNone(lignes['A']['kwc'])
         self.assertFalse(lignes['B']['simulee'])
         self.assertEqual(lignes['B']['source_mesures'], 'conception')
         self.assertEqual(lignes['B']['total_modules'], 10)

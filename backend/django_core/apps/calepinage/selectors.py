@@ -362,18 +362,23 @@ def _mesures_variante(variante):
     ACAL112 — sans résultat (variante non simulée), ``total_modules`` et
     ``kwc`` sont LUS dans la conception de la variante
     (``mesures_du_document`` → ``pans_du_document``) et
-    ``source_mesures`` vaut ``'conception'``."""
-    resultat = getattr(variante, 'resultat', None)
-    if isinstance(resultat, dict) and resultat:
-        return dict(resultat, source_mesures='simulation')
+    ``source_mesures`` vaut ``'conception'``.
+
+    Lot 2 critique #30 — SIMULÉE, les blocs de simulation n'ont aucun
+    ``total_modules``/``kwc`` de tête : ces deux grandeurs restent LUES dans
+    la conception de la variante, les clés de la simulation s'y ajoutent."""
     from .services.mesures import mesures_du_document
 
     document = getattr(variante, 'roof_layout', None)
-    if not isinstance(document, dict):
-        return {'source_mesures': 'conception'}
-    mesures = mesures_du_document(document)
-    return {'total_modules': mesures.get('modules'),
-            'kwc': mesures.get('kwc'), 'source_mesures': 'conception'}
+    conception = {}
+    if isinstance(document, dict):
+        mesures = mesures_du_document(document)
+        conception = {'total_modules': mesures.get('modules'),
+                      'kwc': mesures.get('kwc')}
+    resultat = getattr(variante, 'resultat', None)
+    if isinstance(resultat, dict) and resultat:
+        return dict(resultat, **conception, source_mesures='simulation')
+    return dict(conception, source_mesures='conception')
 
 
 def _production_comparee(variante):
