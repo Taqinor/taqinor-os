@@ -38,7 +38,10 @@ const blocs = [
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{t(dict, 'titre', locale)}</title>
     <meta name="description" content={t(dict, 'description', locale)} />
-    <link rel="icon" href="data:," />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     {liens.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
   </head>
   <body>

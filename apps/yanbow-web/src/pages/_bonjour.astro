@@ -26,8 +26,11 @@ const autres = selecteurLangue(SONDE, locale, locales);
     <meta name="robots" content="noindex, nofollow" />
     <title>{t(dict, 'titre', locale)}</title>
     <meta name="description" content={t(dict, 'description', locale)} />
-    {/* Pas d'icône avant YBW37 : une icône vide évite le 404 /favicon.ico (console). */}
-    <link rel="icon" href="data:," />
+    {/* Icônes (YBW37) : tuile encre opaque, visible sur onglet clair et sombre. */}
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     {liens.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
   </head>
   <body>
