@@ -439,23 +439,22 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     if not etait_perdu and not etait_cold:
         return False
 
-    update_fields = []
     if etait_perdu:
         lead.perdu = False
-        update_fields.append('perdu')
+        lead.save(update_fields=['perdu'])
 
     cible = _STAGE_CONTACTED if lead.first_contacted_at else stages.NEW
+    ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.
     if _rang_funnel(lead.stage) < _rang_funnel(cible):
-        ancien_stage = lead.stage
-        lead.stage = cible
-        update_fields.append('stage')
-    else:
-        ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.
+        etape_avant = lead.stage
+        # ALEA2 — sortie du Froid/Perdu par le point de passage CANONIQUE
+        # (CRX20) : écrit l'étape et émet `lead_stage_changed`.
+        if appliquer_stage_lead(lead, cible):
+            ancien_stage = etape_avant
 
-    if update_fields:
-        lead.save(update_fields=update_fields)
-
-    body = f'auto — réactivation : nouvelle demande {source}'
+    # ALEA2 — libellé lisible au chatter : « Nouvelle demande reçue (site
+    # web) » / « (WhatsApp) ».
+    body = f'auto — réactivation : Nouvelle demande reçue ({source})'
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE, body=body)
@@ -468,7 +467,6 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
             new_value=stages.STAGE_LABELS[cible],
             body=f'auto — réactivation ({source})',
         )
-        _emit_stage_changed(lead, ancien_stage, cible, None)
     # CAD107 — une réouverture pose une CADENCE DE REPRISE, quel que soit le
     # chemin. Best-effort : une nouvelle touche entrante ne doit jamais
     # échouer sur une cadence.
@@ -5799,7 +5797,10 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     """
     candidates = find_duplicates_by_contact(company, phone=telephone)
     non_archives = [c for c in candidates if c.archived_at is None]
-    ouverts = [lead_ for lead_ in non_archives if not lead_.perdu]
+    # ALEA2 — un lead au Froid (non perdu) n'est PAS « ouvert » : il est
+    # réactivable, comme le perdu (alignement sur le webhook du site).
+    ouverts = [lead_ for lead_ in non_archives
+               if not lead_.perdu and lead_.stage != stages.COLD]
     if ouverts:
         lead = sorted(ouverts, key=lambda d: d.date_creation, reverse=True)[0]
         body = 'Nouveau message WhatsApp reçu'
@@ -5812,7 +5813,8 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
 
     # YLEAD11 — aucun lead ouvert : un lead perdu/COLD non archivé est
     # réactivé plutôt que dupliqué.
-    reactivables = [lead_ for lead_ in non_archives if lead_.perdu]
+    reactivables = [lead_ for lead_ in non_archives
+                    if lead_.perdu or lead_.stage == stages.COLD]
     if reactivables:
         lead = sorted(
             reactivables, key=lambda d: d.date_creation, reverse=True)[0]
