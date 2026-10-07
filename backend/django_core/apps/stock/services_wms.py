@@ -433,6 +433,10 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
         from rest_framework.exceptions import ValidationError
         raise ValidationError({'bin_source': [
             'Un transfert scanné exige un casier source ou destination.']})
+    if type_mouvement in ('entree', 'transfert') and bin_destination:
+        # ASTK200 — invariant hazmat au point d'écriture du casier.
+        from .services_hazmat import exiger_casier_compatible
+        exiger_casier_compatible(company, bin_destination.id, produit)
 
     with transaction.atomic():
         verrouille = Produit.objects.select_for_update().get(id=produit.id)
@@ -1948,6 +1952,12 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
               for ligne in u.lignes.select_related('produit').all()]
     if not lignes:
         raise ValueError('Cette unité logistique est vide : rien à déplacer.')
+    # ASTK200 — invariant hazmat : chaque produit de l'unité doit être
+    # admis par le casier de destination, AVANT tout mouvement.
+    from .services_hazmat import exiger_casier_compatible
+    for ligne in lignes:
+        exiger_casier_compatible(
+            unite.company, bin_destination.id, ligne.produit)
 
     mouvements = []
     with transaction.atomic():
@@ -2176,6 +2186,9 @@ def _reintegrer_ligne_retour(ligne, user=None):
     if ligne.etat_constate != LigneRetourClient.EtatConstate.REVENDABLE:
         return None
     produit = Produit.objects.select_for_update().get(id=ligne.produit_id)
+    # ASTK200 — invariant hazmat au point d'écriture du casier.
+    from .services_hazmat import exiger_casier_compatible
+    exiger_casier_compatible(ligne.company, ligne.bin_id, produit)
     avant = produit.quantite_stock
     mouvement = record_stock_movement(
         company=ligne.company, produit=produit,
