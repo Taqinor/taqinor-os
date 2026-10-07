@@ -2465,11 +2465,93 @@ def solde_portail_tiers(token_obj):
     }
 
 
-def cloturer_alerte_rappel(alerte):
-    """Clôt un rappel (idempotent : un rappel déjà clos n'est pas rouvert)."""
-    from django.utils import timezone
-    from .models_wms import AlerteRappel
+def _prefixe_blocage_rappel(alerte):
+    """ASTK199 — marque des blocages posés par UN rappel (motif préfixé ;
+    l'espace final empêche « RAPPEL-1 » de capter « RAPPEL-12 »). Aucune
+    colonne nouvelle : backend seul, sans migration."""
+    return f'RAPPEL-{alerte.id} '
 
+
+def blocages_du_rappel(alerte):
+    """ASTK199 — blocages qualité rattachés à un rappel (tous statuts)."""
+    from .models_wms import BlocageQualite
+
+    if alerte is None or not alerte.pk:
+        return BlocageQualite.objects.none()
+    return (BlocageQualite.objects
+            .filter(company_id=alerte.company_id, produit_id=alerte.produit_id,
+                    motif__startswith=_prefixe_blocage_rappel(alerte))
+            .order_by('id'))
+
+
+def quantite_bloquee_par_lot(company, produit):
+    """ASTK199 — ``{lot_id: quantité en quarantaine active}`` d'un produit."""
+    from .models_wms import BlocageQualite
+
+    carte = {}
+    for lot_id, quantite in (BlocageQualite.objects
+                             .filter(company=company, produit=produit,
+                                     statut=BlocageQualite.Statut
+                                     .EN_QUARANTAINE,
+                                     lot__isnull=False)
+                             .values_list('lot_id', 'quantite')):
+        carte[lot_id] = carte.get(lot_id, 0) + (quantite or 0)
+    return carte
+
+
+def appliquer_quarantaine_rappel(alerte, user=None):
+    """ASTK199 (C-ASTK-048, WMS-11) — un rappel MET EN QUARANTAINE le stock
+    restant du lot rappelé (ou de chaque lot du produit, ou du stock du
+    produit non suivi par lot), par ``mettre_en_quarantaine`` — la MÊME
+    fonction que la quarantaine de réception. Ne bloque jamais deux fois une
+    quantité déjà en quarantaine. Renvoie les blocages créés."""
+    from .models import LotEntrepot
+
+    company = alerte.company
+    produit = alerte.produit
+    if produit.company_id != alerte.company_id:
+        return []
+    motif = f'{_prefixe_blocage_rappel(alerte)}— {alerte.motif}'.strip()
+    if alerte.lot_id:
+        if alerte.lot.company_id != alerte.company_id:
+            return []
+        lots = [alerte.lot]
+    else:
+        lots = list(LotEntrepot.objects
+                    .filter(company=company, produit=produit,
+                            quantite_restante__gt=0)
+                    .order_by('id'))
+    crees = []
+    if lots:
+        deja = quantite_bloquee_par_lot(company, produit)
+        for lot in lots:
+            quantite = (lot.quantite_restante or 0) - deja.get(lot.id, 0)
+            if quantite > 0:
+                crees.append(mettre_en_quarantaine(
+                    company=company, produit=produit, quantite=quantite,
+                    user=user, lot=lot, motif=motif))
+        return crees
+    # Produit non suivi par lot : tout son stock encore disponible.
+    quantite = ((produit.quantite_stock or 0)
+                - quantite_en_quarantaine(company, produit=produit))
+    if quantite > 0:
+        crees.append(mettre_en_quarantaine(
+            company=company, produit=produit, quantite=quantite, user=user,
+            motif=motif))
+    return crees
+
+
+def cloturer_alerte_rappel(alerte, user=None):
+    """Clôt un rappel (idempotent : un rappel déjà clos n'est pas rouvert).
+
+    ASTK199 — la clôture LÈVE les blocages posés par ce rappel
+    (``lever_quarantaine``, idempotent)."""
+    from django.utils import timezone
+    from .models_wms import AlerteRappel, BlocageQualite
+
+    for blocage in blocages_du_rappel(alerte).filter(
+            statut=BlocageQualite.Statut.EN_QUARANTAINE):
+        lever_quarantaine(blocage=blocage, user=user)
     if alerte.statut == AlerteRappel.Statut.CLOS:
         return alerte
     alerte.statut = AlerteRappel.Statut.CLOS

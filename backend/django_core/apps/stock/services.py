@@ -1789,6 +1789,15 @@ def sortir_lot_entrepot(
             raise ValueError(
                 f'Quantité insuffisante dans le lot {frais.numero_lot} '
                 f'({frais.quantite_restante} restant).')
+        # ASTK199 — la part du lot en quarantaine (rappel produit, réception
+        # non conforme) ne sort pas tant que le blocage n'est pas levé.
+        from .services_wms import quantite_bloquee_par_lot
+        bloquee = quantite_bloquee_par_lot(
+            company, frais.produit).get(frais.id, 0)
+        if bloquee and quantite > frais.quantite_restante - bloquee:
+            raise ValueError(
+                f'Le lot {frais.numero_lot} est bloqué en quarantaine '
+                f'({bloquee} unité(s)) — sortie refusée.')
         parametres = AchatsParametres.for_company(company)
         if frais.est_perime and parametres.bloquer_stock_perime and not forcer:
             raise ValueError(
@@ -8556,6 +8565,8 @@ def produits_par_ids(company, ids):
 from .services_wms import (  # noqa: E402,F401
     FENETRE_ROTATION_JOURS,
     affecter_reception_cross_dock,
+    appliquer_quarantaine_rappel,
+    blocages_du_rappel,
     ajouter_ligne_unite_logistique,
     ajouter_unite_plan_chargement,
     assurer_plans_comptage_tournant,

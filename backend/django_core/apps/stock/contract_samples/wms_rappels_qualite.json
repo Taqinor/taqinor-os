@@ -33,7 +33,7 @@
   "routes": {
     "alertes_rappel": {
       "endpoint": "GET /api/django/stock/alertes-rappel/?statut=<en_cours|clos>&produit=<id>",
-      "pourquoi": "NTWMS17 — rappels produit/lot (`AlerteRappelViewSet`, views/wms.py ; AlerteRappelSerializer serializers_wms.py). POST {produit, lot?, motif} → 201 CET objet ; statut/declenchee_par/date_declenchement posés par le serveur ; motif vide → 400 {motif:[...]}. La clé `blocages` (NOUVEAU — ASTK199) est portée par `exemple_nouveau_astk199`, hors affirmation serveur tant que ASTK199 n'est pas construite.",
+      "pourquoi": "NTWMS17 — rappels produit/lot (`AlerteRappelViewSet`, views/wms.py ; AlerteRappelSerializer serializers_wms.py). POST {produit, lot?, motif} → 201 CET objet ; statut/declenchee_par/date_declenchement posés par le serveur ; motif vide → 400 {motif:[...]}. ASTK199 (construit) : la création MET EN QUARANTAINE le stock restant du lot (ou de chaque lot du produit) par mettre_en_quarantaine ; `blocages:[{id, quantite, lot, statut}]` = les blocages qualité rattachés au rappel (affirmé par apps/stock/test_astk_rappel_effet.py) ; le lot rappelé sort du plan de picking FEFO et sa sortie (lots-entrepot/<id>/sortir/) → 400 nommant le lot.",
       "exemple": {
         "count": 1,
         "next": null,
@@ -51,7 +51,15 @@
             "declenchee_par": 1,
             "date_cloture": null,
             "created_at": "2026-10-12T09:00:00Z",
-            "updated_at": "2026-10-12T09:00:00Z"
+            "updated_at": "2026-10-12T09:00:00Z",
+            "blocages": [
+              {
+                "id": 21,
+                "quantite": 4,
+                "lot": 11,
+                "statut": "en_quarantaine"
+              }
+            ]
           }
         ]
       },
@@ -73,7 +81,15 @@
         "declenchee_par": 1,
         "date_cloture": null,
         "created_at": "2026-10-12T09:00:00Z",
-        "updated_at": "2026-10-12T09:00:00Z"
+        "updated_at": "2026-10-12T09:00:00Z",
+        "blocages": [
+          {
+            "id": 21,
+            "quantite": 4,
+            "lot": 11,
+            "statut": "en_quarantaine"
+          }
+        ]
       },
       "exemple_corps": {
         "produit": 5,
@@ -85,7 +101,7 @@
           "Le motif du rappel est obligatoire."
         ]
       },
-      "nouveau_astk199": "NOUVEAU — ASTK199 : l'alerte porte `blocages:[{id, quantite, lot, statut}]` (les blocages qualité rattachés au rappel).",
+      "nouveau_astk199": "ASTK199 — construit : l'alerte porte `blocages:[{id, quantite, lot, statut}]` (les blocages qualité rattachés au rappel).",
       "exemple_nouveau_astk199": {
         "id": 3,
         "produit": 5,
@@ -164,7 +180,7 @@
     },
     "alertes_rappel_cloturer": {
       "endpoint": "POST /api/django/stock/alertes-rappel/<id>/cloturer/",
-      "pourquoi": "Clôt le rappel (idempotent) ; 200 + l'alerte (statut `clos`, `date_cloture` posée).",
+      "pourquoi": "Clôt le rappel (idempotent) ; 200 + l'alerte (statut `clos`, `date_cloture` posée). ASTK199 : la clôture LÈVE les blocages du rappel (`blocages[].statut` = `levee`).",
       "exemple": {
         "id": 3,
         "produit": 5,
@@ -177,7 +193,15 @@
         "declenchee_par": 1,
         "date_cloture": "2026-10-13T09:00:00Z",
         "created_at": "2026-10-12T09:00:00Z",
-        "updated_at": "2026-10-12T09:00:00Z"
+        "updated_at": "2026-10-12T09:00:00Z",
+        "blocages": [
+          {
+            "id": 21,
+            "quantite": 4,
+            "lot": 11,
+            "statut": "levee"
+          }
+        ]
       }
     },
     "blocages_qualite": {

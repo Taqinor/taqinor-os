@@ -9,6 +9,7 @@ client, chantier, livraison, transporteur, quai, vague, unité parente…) est
 bornée à la société de la requête ; un id d'une autre société répond « objet
 inexistant », indiscernable d'un id qui n'existe pas.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.serializers import CompanyScopedRelationsMixin
@@ -268,13 +269,15 @@ class AlerteRappelSerializer(CompanyScopedRelationsMixin,
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     numero_lot = serializers.CharField(
         source='lot.numero_lot', read_only=True, default='')
+    # ASTK199 — blocages qualité posés par ce rappel (levés à la clôture).
+    blocages = serializers.SerializerMethodField()
 
     class Meta:
         model = AlerteRappel
         fields = [
             'id', 'produit', 'produit_nom', 'lot', 'numero_lot', 'motif',
             'date_declenchement', 'statut', 'declenchee_par', 'date_cloture',
-            'created_at', 'updated_at',
+            'created_at', 'updated_at', 'blocages',
         ]
         read_only_fields = [
             'statut', 'declenchee_par', 'date_cloture', 'date_declenchement',
@@ -286,6 +289,14 @@ class AlerteRappelSerializer(CompanyScopedRelationsMixin,
             raise serializers.ValidationError(
                 'Le motif du rappel est obligatoire.')
         return value
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_blocages(self, obj):
+        from .services_wms import blocages_du_rappel
+        return [{
+            'id': blocage.id, 'quantite': blocage.quantite,
+            'lot': blocage.lot_id, 'statut': blocage.statut,
+        } for blocage in blocages_du_rappel(obj)]
 
 
 class PortailTiersTokenSerializer(CompanyScopedRelationsMixin,
