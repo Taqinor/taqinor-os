@@ -26,6 +26,7 @@ from authentication.models import Company
 from . import bulk
 from .models import ApiKey, BulkJob
 from .portees import SCOPE_WRITE_LEADS
+from .public_write_views import erreurs_champs_lead
 
 URL = '/api/public/v1/leads-write/'
 
@@ -47,10 +48,16 @@ class ValidationLeadTest(TestCase):
             'nom': 'X', 'canal': 'nimporte', 'email': 'pas-un-email'},
             format='json')
         self.assertEqual(resp.status_code, 400)
-        corps = json.dumps(resp.data, ensure_ascii=False, default=str)
-        self.assertIn('canal', corps)
-        self.assertIn('email', corps)
+        # Enveloppe publique NTAPI3 (contrat inchangé) : UN ``param`` = le
+        # premier champ fautif ; les deux champs sont bien fautifs.
+        erreur = resp.data['error']
+        self.assertEqual(erreur['code'], 'validation_error')
+        self.assertIn(erreur['param'], ('canal', 'email'))
         self.assertFalse(Lead.objects.filter(company=self.co).exists())
+        # Erreurs PAR CHAMP : chacun des deux champs porte la sienne.
+        erreurs = erreurs_champs_lead(
+            {'nom': 'X', 'canal': 'nimporte', 'email': 'pas-un-email'})
+        self.assertEqual(set(erreurs), {'canal', 'email'})
 
     def test_longueur_depassee_400(self):
         longueur = Lead._meta.get_field('ville').max_length
