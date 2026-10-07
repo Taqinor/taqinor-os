@@ -210,6 +210,35 @@ def _bloc_quantiles(total, incertitude):
             % (''.join(lignes), escape(MENTION_QUANTILES_ANNUELS)))
 
 
+def _signe(pct):
+    return '+' if pct > 0 else ''
+
+
+def _bloc_ecart_devis(ecart, total):
+    """ACAL104 (D-ACAL-6) — la production du DEVIS (imprimée au client), le
+    P50 de l'étude et l'écart, LUS dans ``resultat.ecart_devis`` (mêmes
+    valeurs que le JSON ``GET resultat/``) ; la mention « borne haute » suit
+    le P50 quand des pertes ne sont pas renseignées (D-ACAL-7)."""
+    if not isinstance(ecart, dict):
+        return ''
+    pct = ecart.get('ecart_pct')
+    texte_pct = ('%s%s %%' % (_signe(pct), nombre_tel_que_servi(pct))
+                 if isinstance(pct, (int, float)) else
+                 nombre_tel_que_servi(pct))
+    lignes = [
+        _ligne('Production du devis %s (kWh/an, imprimée au client)'
+               % (ecart.get('reference') or ''),
+               nombre_tel_que_servi(ecart.get('production_devis_kwh'))),
+        _ligne('P50 de l\'étude technique (kWh/an)',
+               _p50_et_mention(dict(total or {},
+                                    p50_kwh=ecart.get('p50_calepinage_kwh')))),
+        _ligne('Écart étude / devis', escape(texte_pct)),
+    ]
+    return ('<table class="production-ecart-devis generique">%s</table>'
+            '<p class="note">%s</p>'
+            % (''.join(lignes), escape(ecart.get('mention') or '')))
+
+
 def html_de_section(contexte):
     """Le corps de la section ``production`` (le titre est posé par
     l'assembleur)."""
@@ -228,4 +257,6 @@ def html_de_section(contexte):
     if par_pan:
         blocs.append(_table_par_pan(par_pan))
     blocs.append(_bloc_quantiles(total, incertitude))
+    # ACAL104 — l'écart devis / étude, seulement quand il est servi.
+    blocs.append(_bloc_ecart_devis(resultat.get('ecart_devis'), total))
     return ''.join(blocs)

@@ -1970,6 +1970,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'validation': blocs['validation'],
         'simulation_perimee': perimee,
         'motif': motif,
+        # ACAL104 (D-ACAL-6) — l'écart entre la production IMPRIMÉE au
+        # client (moteur du devis) et le P50 de l'étude technique ; ``null``
+        # sans devis lié, sans simulation fraîche ou sans production devis.
+        'ecart_devis': _ecart_devis(calepinage, p50 if simule else None),
         # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
         # simulation, réglages figés, date, durée), servi même périmé : il dit
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
@@ -1981,6 +1985,50 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # simulation est périmée.
         'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
         'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
+    }
+
+
+#: ACAL104 — la mention publiée avec l'écart (contrat
+#: ``calepinage_resultat.json``, ``exemple_ecart_devis``), mot pour mot.
+MENTION_ECART_DEVIS = ("Production imprimée au client = moteur du devis "
+                       "(D-ACAL-6) ; P50 = étude technique du calepinage")
+
+
+def _ecart_devis(calepinage, p50):
+    """ACAL104 (C-ACAL-101) — ``{devis, reference, production_devis_kwh,
+    p50_calepinage_kwh, ecart_pct, mention}`` ou ``None``.
+
+    ``production_devis_kwh`` est la figure IMPRIMÉE au client (moteur du
+    devis, recalée sur les lignes — ``figure_production_du_devis``), LUE par
+    le sélecteur cross-app ``apps.ventes.selectors.
+    production_attendue_pour_devis`` ; ``ecart_pct`` = (P50 − devis) /
+    devis, au dixième. Jamais l'inverse : le devis ne lit pas le P50
+    (D-ACAL-6). ``None`` sans devis lié (ou d'une autre société), sans P50
+    servi (jamais simulé, ou périmé) ou sans production au devis. LECTURE
+    PURE."""
+    devis_id = getattr(calepinage, 'devis_id', None)
+    if not devis_id or not _est_un_nombre(p50):
+        return None
+    from apps.ventes.selectors import (
+        get_devis_by_pk, production_attendue_pour_devis,
+    )
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or devis.company_id != getattr(calepinage,
+                                                    'company_id', None):
+        return None
+    production = production_attendue_pour_devis(devis_id)
+    if production is None or production <= 0:
+        return None
+    production = float(production)
+    p50 = float(p50)
+    return {
+        'devis': devis.pk,
+        'reference': devis.reference or '',
+        'production_devis_kwh': production,
+        'p50_calepinage_kwh': p50,
+        'ecart_pct': round((p50 - production) / production * 100.0, 1),
+        'mention': MENTION_ECART_DEVIS,
     }
 
 

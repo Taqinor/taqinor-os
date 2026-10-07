@@ -372,6 +372,49 @@ class FiguresPariteSurfacesTests(TestCase):
     def test_commercial(self):
         self._verifier('commercial')
 
+    def test_acal_production_recalee_decimale_haute(self):
+        """ACAL102 (C-ACAL-113) — la production imprimée (PDF /proposal et
+        proposition publique) est celle du calepinage RECALÉE sur les lignes
+        (8 × 715 W = 5,72 kWc pour un calepinage modélisé à 5,76 kWc), quelle
+        que soit la décimale : la provenance est la marque
+        ``production_source``, plus l'égalité ``int(round())`` qui ratait
+        8843,66 stockée tronquée à 8843."""
+        from apps.ventes.models import Devis
+        lignes = [
+            ('Onduleur réseau Huawei 10kW Triphasé', '1', '11700'),
+            ('Panneau Canadien Solar 715W', '8', '1100'),
+            ('Structures acier', '8', '375'),
+            ('Installation', '1', '4000'),
+        ]
+        for annuel in (8843.49, 8843.5, 8843.66):
+            with self.subTest(annuel=annuel):
+                spec = dict(
+                    lignes=lignes, formats=('full', 'onepage'),
+                    etude_params={**ANCRAGE,
+                                  # Valeur STOCKÉE tronquée (devis réels).
+                                  'production_annuelle': int(annuel),
+                                  'production_source': 'calepinage'})
+                devis = self._devis('acal_production', spec)
+                Devis.objects.filter(pk=devis.pk).update(roof_layout={
+                    'scenario': 'reseau', 'panelWatt': 720,
+                    'result': {'panels': 8, 'kwc': 5.76,
+                               'annualKwh': annuel}})
+                devis.refresh_from_db()
+                attendu = Decimal(int(round(annuel * 5.72 / 5.76)))
+                surfaces, marches = self._surfaces(devis, spec)
+                lues = {
+                    surface: [m.valeur for ident, mesures in figs.items()
+                              if cle_de(ident) == 'production_annuelle_kwh'
+                              for m in mesures]
+                    for surface, figs in surfaces.items()
+                    if surface in ('pdf_full', 'pdf_onepage', 'proposition')}
+                self.assertTrue(lues['proposition'], (marches, surfaces))
+                for surface, valeurs in lues.items():
+                    for valeur in valeurs:
+                        self.assertEqual(valeur, attendu,
+                                         (surface, annuel, marches))
+                self.assertEqual(compare_surfaces(surfaces), [])
+
     def test_ci_proposition_sans_economie_residentielle(self):
         """CIQ300 — la surface proposition d'un devis industriel ou commercial
         ne porte plus ``economie_annuelle`` ni ``payback_ans`` (modèle

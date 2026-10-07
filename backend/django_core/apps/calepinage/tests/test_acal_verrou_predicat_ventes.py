@@ -9,8 +9,8 @@ Ce qui est prouvé ici, par HTTP réel sur des devis réels :
   geste='CALEPINAGE')['modifiable']`` ;
 * clos : 409 {roof_layout: [motif ventes]} et la porte ``deverrouiller/``
   n'existe plus (404) ;
-* sync-layout d'un envoyé passe (et, depuis ACAL38, le calepinage lié n'est
-  plus réécrit par ventes) ;
+* sync-layout d'un envoyé passe ; depuis ACAL96 (D-ACAL-1) la route écrit
+  le calepinage lié (seul écrivain : enregistrer_layout) puis resynchronise ;
 * ``design-context.modifiable == not est_verrouille``.
 
 Run :
@@ -122,9 +122,10 @@ class MiroirEnvoyeTest(BaseApiCalepinage):
                 quantite_stock=100)
 
     def test_miroir_d_un_envoye_passe(self):
-        """ACAL42 — sync-layout d'un ENVOYÉ n'est plus refusé. ACAL38 (D-ACAL-1)
-        retire ensuite le miroir : le calepinage lié n'est plus RÉÉCRIT par
-        ventes — il reste la conception (aucun 409, aucune écriture)."""
+        """ACAL42 — sync-layout d'un ENVOYÉ n'est plus refusé. ACAL96
+        (D-ACAL-1) — la route écrit le calepinage lié par enregistrer_layout
+        (le verrou = prédicat ventes, ouvert sur un envoyé), puis resynchronise
+        le devis depuis lui."""
         from apps.ventes.services import build_devis_from_layout
 
         devis = build_devis_from_layout(
@@ -140,4 +141,6 @@ class MiroirEnvoyeTest(BaseApiCalepinage):
             _layout(12), format='json')
         self.assertEqual(reponse.status_code, 200, reponse.content)
         calepinage.refresh_from_db()
-        self.assertEqual(calepinage.roof_layout, _layout(10))
+        self.assertEqual(calepinage.roof_layout, _layout(12))
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)

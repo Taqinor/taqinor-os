@@ -240,6 +240,58 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
     return auto
 
 
+#: ACAL101 — la clé du ``result`` du layout qui porte chaque figure.
+_CLE_DU_LAYOUT = {'production_annuelle': 'annualKwh',
+                  'economies_annuelles': 'savings'}
+
+
+def figure_production_du_devis(devis, *, cle='production_annuelle',
+                               puissance_kwc=None):
+    """ACAL101 (C-ACAL-113) — LA production (ou, ``cle=
+    'economies_annuelles'``, l'économie) du devis, RECALÉE sur les lignes.
+
+    La provenance est LUE, jamais devinée par égalité numérique :
+
+    * ``etude_params['production_source'] == 'calepinage'`` — la figure vient
+      du calepinage (modélisé à puissance unitaire constante, 720 W) : elle
+      est ramenée à la puissance des LIGNES (``puissance_kwc``, sinon
+      :func:`puissance_kwc_du_devis`) par le facteur ``kWc lignes / kWc du
+      layout``, sur la figure BRUTE du layout (décimales comprises), sinon
+      sur la valeur stockée ;
+    * ``'saisie'`` ou absente — la valeur stockée, telle quelle (une étude
+      saisie reste souveraine).
+
+    ``None`` sans figure stockée. Arrondie à l'entier (jamais tronquée).
+    LECTURE PURE (règle #4).
+    """
+    etude = getattr(devis, 'etude_params', None) or {}
+    stockee = etude.get(cle)
+    if stockee in (None, ''):
+        return None
+    from apps.ventes.domain.etude_schema import PRODUCTION_CALEPINAGE
+    if etude.get('production_source') != PRODUCTION_CALEPINAGE:
+        return stockee
+
+    def _nombre(valeur):
+        try:
+            return float(valeur)
+        except (TypeError, ValueError):
+            return 0.0
+
+    layout = getattr(devis, 'roof_layout', None)
+    resultat = ((layout.get('result') or {}) if isinstance(layout, dict)
+                else {})
+    brut = _nombre(resultat.get(_CLE_DU_LAYOUT.get(cle, ''))) or _nombre(
+        stockee)
+    kwc_layout = _nombre(resultat.get('kwc'))
+    if puissance_kwc is None:
+        puissance_kwc = puissance_kwc_du_devis(devis)
+    puissance = _nombre(puissance_kwc)
+    if kwc_layout > 0 and puissance > 0:
+        return int(round(brut * puissance / kwc_layout))
+    return int(round(brut))
+
+
 def poser_puissance_kwc(devis):
     """QJR63 — L'UNIQUE ÉCRIVAIN de ``etude_params['puissance_kwc']``.
 

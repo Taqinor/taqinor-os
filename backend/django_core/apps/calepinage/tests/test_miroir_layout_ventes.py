@@ -126,11 +126,13 @@ class MiroirLayoutTest(BaseApiCalepinage):
 
     def test_un_abonne_en_echec_ne_casse_pas_l_enregistrement(self):
         url = f'/api/django/ventes/devis/{self.devis.pk}/layout/'
-        # ACAL35 — le récepteur passe par adopter_ou_creer_pour_devis.
-        with mock.patch('apps.calepinage.services.creation'
-                        '.adopter_ou_creer_pour_devis',
-                        side_effect=RuntimeError('miroir cassé')):
+        # ACAL96 — la route écrit elle-même le calepinage lié (porte
+        # adopter_ou_creer_pour_devis) : c'est l'ABONNÉ qui casse ici, à
+        # l'émission de layout_finalise.
+        with mock.patch('core.events.layout_finalise.send',
+                        side_effect=RuntimeError('abonné cassé')):
             reponse = self.api.post(url, LAYOUT, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.roof_layout, LAYOUT)
+        self.assertEqual(self._calepinage().roof_layout, LAYOUT)
