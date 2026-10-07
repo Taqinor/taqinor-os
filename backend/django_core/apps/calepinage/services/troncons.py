@@ -967,7 +967,7 @@ def troncons_de_la_conception(conception, document, norme, branches_ac=()):
                              branches_ac))
 
 
-def troncons_du_calepinage(calepinage):
+def troncons_du_calepinage(calepinage, *, layout=None):
     """CALX224-226 — le métré et la chute, tronçon par tronçon, de CE
     calepinage.
 
@@ -975,6 +975,10 @@ def troncons_du_calepinage(calepinage):
     (``Calepinage.roof_layout``), la norme applicable et la conception
     électrique (toutes trois en LECTURE SEULE), puis passe la main à
     ``troncons_de_la_conception``. Aucune écriture, aucun effet de bord.
+
+    ``layout`` (ACAL172, lot 2 critique #16) : les tronçons d'une AUTRE
+    conception du même calepinage (le ``roof_layout`` d'une variante) —
+    jamais ceux du document enregistré mêlés au verdict de la variante.
     """
     from .electrique import conception_du_calepinage, parametres_societe
     from .norme import coefficients_publies, norme_applicable
@@ -989,7 +993,7 @@ def troncons_du_calepinage(calepinage):
             parametres.get('norme_electrique') or {})
         norme = dict(norme, coefficients=coefficients)
     conception, materiel, _donnees, document = conception_du_calepinage(
-        calepinage)
+        calepinage, layout=layout)
     return troncons_de_la_conception(
         conception, document, norme,
         _branches_micro_du_champ(conception, materiel))

@@ -142,6 +142,30 @@ class Gouvernance(BaseApiCalepinage):
                                  {'variante': 999999})
         self.assertEqual(etrangere.status_code, 404)
 
+    def test_troncons_de_la_variante_jamais_ceux_du_calepinage(self):
+        """Lot 2 critique #16 — le rapport de publication d'une variante lit
+        SES tronçons : chaque conception construite pour lui (verdict ET
+        tronçons) part du document de la variante."""
+        from unittest import mock
+
+        from apps.calepinage.services import electrique
+
+        calepinage = self._calepinage(12)
+        variante = self._variante(calepinage, 24, nom='Dense')
+        vraie = electrique.conception_du_calepinage
+        layouts = []
+
+        def espion(cal, **kwargs):
+            layouts.append(kwargs.get('layout'))
+            return vraie(cal, **kwargs)
+
+        with mock.patch.object(electrique, 'conception_du_calepinage',
+                               espion):
+            electrique._rapport_publication(
+                calepinage, layout=variante.roof_layout)
+        self.assertGreaterEqual(len(layouts), 2, layouts)
+        self.assertTrue(all(lay == _dessin(24) for lay in layouts), layouts)
+
     def test_comparer_porte_verdict_electrique(self):
         calepinage = self._calepinage(12)
         sage = self._variante(calepinage, 12, nom='Sage')

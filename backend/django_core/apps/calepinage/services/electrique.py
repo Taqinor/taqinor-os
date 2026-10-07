@@ -2771,7 +2771,8 @@ def _rapport_publication(calepinage, *, layout=None):
     motifs.extend(_motifs_de_la_terre(_checklist_terre_tolerante(
         conception, donnees.get('terre'), norme,
         getattr(calepinage, 'company', None))[0]))
-    motifs.extend(_motifs_des_troncons(troncons_du_calepinage(calepinage)))
+    motifs.extend(_motifs_des_troncons(
+        troncons_du_calepinage(calepinage, layout=layout)))
     # ACAL169 — L'AGRÉGATEUR UNIQUE : affectation imposée, polystring et
     # micro-onduleurs entrent ICI (jusqu'ici seule l'évaluation les voyait,
     # et l'écran affichait « Publiable » sur une chaîne de 20 modules pour
