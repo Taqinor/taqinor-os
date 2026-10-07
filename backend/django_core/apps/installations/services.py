@@ -779,8 +779,14 @@ def _bom_quantities(installation):
     """Quantités requises par produit (entier ≥ 1) depuis la nomenclature gelée
     du chantier (`Installation.bom`). Ignore les lignes sans produit catalogue
     et les quantités nulles/illisibles. Renvoie {produit_id: quantite}."""
+    return _quantites_depuis_bom(installation.bom)
+
+
+def _quantites_depuis_bom(bom):
+    """Cœur de `_bom_quantities` sur une nomenclature (liste de dicts
+    `{produit_id, quantite}`) — partagé avec `_bc_quantities` (ASTK122)."""
     besoins = {}
-    for ligne in (installation.bom or []):
+    for ligne in (bom or []):
         if not isinstance(ligne, dict):
             continue
         produit_id = ligne.get('produit_id')
@@ -1221,24 +1227,23 @@ def _installation_pour_bc(bon_commande):
 
 
 def _bc_quantities(bon_commande):
-    """Quantités entières par produit depuis les lignes du DEVIS d'origine du
-    BC (mêmes lignes que celles décrémentées par `marquer-livre`)."""
-    from decimal import Decimal, ROUND_HALF_UP
-    besoins = {}
+    """Quantités entières par produit à réserver pour un BC : la nomenclature
+    GELÉE du chantier du BC (`_bom_quantities` — option RETENUE seulement,
+    déjà ×N villas pour un devis ×N), mêmes lignes que celles que la
+    livraison consomme (toggle ON : `consommer_reservation_bc`).
+
+    ASTK122 (C-ASTK-030) — relisait TOUTES les lignes du devis : sur un devis
+    à deux options accepté « sans batterie », la batterie et l'onduleur
+    hybride non retenus étaient réservés puis sortis à la livraison. Sans
+    chantier encore (devis pas encore converti en chantier), la même
+    nomenclature est calculée depuis le devis (`_freeze_bom` : option
+    retenue × N) — jamais toutes ses lignes."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is not None:
+        return _bom_quantities(installation)
     if not bon_commande.devis_id:
-        return besoins
-    # ERR-QAC-MULTIVILLA-MATERIEL-XN — mêmes quantités que `marquer-livre` :
-    # ×N villas pour un devis ×N (N=1 → inchangé).
-    n_prop = _nombre_proprietes(bon_commande.devis)
-    for ligne in bon_commande.devis.lignes.all():
-        if not ligne.produit_id:
-            continue
-        qte = int((Decimal(ligne.quantite) * n_prop).quantize(
-            Decimal('1'), rounding=ROUND_HALF_UP))
-        if qte <= 0:
-            continue
-        besoins[ligne.produit_id] = besoins.get(ligne.produit_id, 0) + qte
-    return besoins
+        return {}
+    return _quantites_depuis_bom(_freeze_bom(bon_commande.devis))
 
 
 def reserver_stock_depuis_bc(bon_commande):
