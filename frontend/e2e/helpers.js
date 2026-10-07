@@ -58,7 +58,9 @@ export async function connexionApi(requete, { username, password } = ADMIN) {
 
 /** Session vivante dans `requete` ? (`/auth/me/` 200). */
 async function sessionVivante(requete) {
-  return (await requete.get('/api/django/auth/me/')).ok()
+  // CAD177 : délai dur — un /auth/me/ qui pend échoue vite au lieu de consommer
+  // le budget entier du test.
+  return (await requete.get('/api/django/auth/me/', { timeout: 20_000 })).ok()
 }
 
 /** Rafraîchit AUTH_FILE si sa session est morte ou expire bientôt. */
