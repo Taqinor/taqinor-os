@@ -7900,20 +7900,25 @@ def decouper_produit(*, company, produit_source, quantite_consommee,
     from .models import LotEntrepot, Produit
     if quantite_consommee <= 0 or quantite_produite <= 0:
         raise ValueError('Les quantités doivent être positives.')
-    if quantite_consommee > (produit_source.quantite_stock or 0):
-        raise ValueError(
-            f'Stock insuffisant sur {produit_source.nom} '
-            f'({produit_source.quantite_stock} disponible).')
     reference = f'DECOUPE-{timezone.now().strftime("%Y%m%d%H%M%S")}-{produit_source.pk}'
-    cout_unitaire, _source = average_cost_with_source(produit_source)
-    valeur_transferee = (cout_unitaire * quantite_consommee).quantize(
-        Decimal('0.01'))
 
     with transaction.atomic():
-        avant_source = produit_source.quantite_stock
+        # ASTK47 — la source est relue SOUS VERROU avant toute lecture de son
+        # stock (comme la cible) : une instance périmée (lue à 50 alors que
+        # la base est à 5) ne laisse plus passer une découpe de 10, et deux
+        # découpes concurrentes se sérialisent ici.
+        source = verrouiller_produit(produit_source.pk)
+        if quantite_consommee > (source.quantite_stock or 0):
+            raise ValueError(
+                f'Stock insuffisant sur {source.nom} '
+                f'({source.quantite_stock} disponible).')
+        cout_unitaire, _source = average_cost_with_source(source)
+        valeur_transferee = (cout_unitaire * quantite_consommee).quantize(
+            Decimal('0.01'))
+        avant_source = source.quantite_stock
         apres_source = avant_source - quantite_consommee
         record_stock_movement(
-            company=company, produit=produit_source,
+            company=company, produit=source,
             type_mouvement=mouvement_type_sortie(),
             quantite=quantite_consommee, quantite_avant=avant_source,
             quantite_apres=apres_source, reference=reference,
