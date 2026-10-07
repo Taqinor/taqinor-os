@@ -883,7 +883,8 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
     try:
         lead = Lead.objects.filter(pk=lead_id).first()
         if lead is not None:
-            ecrire_retour_lead_visite(lead, recap)
+            ecrire_retour_lead_visite(
+                lead, recap, visite_id=getattr(visite, "pk", None))
         journaliser_visite(visite, user, 'validee')
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
