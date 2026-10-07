@@ -868,7 +868,11 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         prix_fixe_ht:        fields.prix_fixe_ht        !== '' ? fields.prix_fixe_ht        : null,
         prix_par_panneau_ht: fields.prix_par_panneau_ht !== '' ? fields.prix_par_panneau_ht : null,
         tva:            fields.tva !== '' ? parseFloat(fields.tva) : null,
-        quantite_stock: parseInt(fields.quantite_stock) || 0,
+        // ASTK33 (C-ASTK-005) — le stock n'est envoyé qu'à la CRÉATION : une
+        // édition de fiche ne réécrit jamais `quantite_stock` (une réception
+        // arrivée entre-temps serait écrasée). Il se corrige par un mouvement
+        // ou un ajustement d'inventaire tracé.
+        ...(isEdit ? {} : { quantite_stock: parseInt(fields.quantite_stock) || 0 }),
         seuil_alerte:   parseInt(fields.seuil_alerte)   || 0,
         categorie_id:   fields.categorie_id   ? parseInt(fields.categorie_id)   : null,
         fournisseur_id: fields.fournisseur_id ? parseInt(fields.fournisseur_id) : null,

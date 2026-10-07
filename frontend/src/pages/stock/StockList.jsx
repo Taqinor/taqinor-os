@@ -909,6 +909,17 @@ export default function StockList() {
   // qu'InlineEdit restaure la valeur si l'enregistrement échoue.
   const onInlineSave = (p, field, value) =>
     dispatch(updateProduit({ id: p.id, data: { [field]: value } })).unwrap()
+  // ASTK33 (C-ASTK-005) — la cellule « Stock » pose un comptage d'inventaire
+  // one-shot (niveau compté → mouvement d'ajustement tracé), puis relit le
+  // catalogue : la valeur affichée est celle du SERVEUR. Un refus rejette la
+  // promesse → la cellule restaure l'ancienne valeur.
+  const onAjusterStock = async (p, value) => {
+    await stockApi.inventaire({
+      motif: 'Correction depuis le catalogue',
+      lignes: [{ produit: p.id, quantite_comptee: parseInt(value, 10) }],
+    })
+    await dispatch(fetchProduits())
+  }
 
   useEffect(() => {
     if (showArchived) dispatch(fetchProduitsArchived())
@@ -1539,6 +1550,7 @@ export default function StockList() {
                 } },
               }) : null}
               onInlineSave={canWrite ? onInlineSave : null}
+              onAjusterStock={canWrite ? onAjusterStock : null}
               selected={visibleSelected}
               onToggleSelect={canWrite ? onToggleSelect : null}
               fichesParProduit={fichesTechniques}

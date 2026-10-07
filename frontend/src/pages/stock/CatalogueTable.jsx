@@ -145,6 +145,10 @@ export function CatalogueTable({
   onHistorique,
   onReapprovisionner,
   onInlineSave,
+  // ASTK33 (C-ASTK-005) — la cellule « Stock » pose un comptage d'inventaire
+  // (ajustement tracé, `onAjusterStock(produit, niveau)`), jamais un PATCH de
+  // `quantite_stock` ; sans ce rappel, la cellule reste en lecture seule.
+  onAjusterStock,
   // ASTK21 (D-ASTK-3) — édition en place du prix de vente réservée au code
   // `catalogue_prix_modifier` (calculé par l'écran, qui a le store).
   canEditPrix = true,
@@ -377,7 +381,7 @@ export function CatalogueTable({
       // a donc une seule hauteur, quelles que soient les données.
       cell: (value, p) => {
         const sev = severiteStock(p)
-        const body = editable
+        const body = canWrite && typeof onAjusterStock === 'function'
           ? (
             <EditableCell
               value={value}
@@ -385,7 +389,7 @@ export function CatalogueTable({
               align="right"
               inputType="number"
               validate={validatePositif}
-              onSave={(v, r) => onInlineSave(r, 'quantite_stock', v)}
+              onSave={(v, r) => onAjusterStock(r, v)}
             />
           )
           : <strong className={sev === SEV_OK ? '' : 'text-destructive'}>{value}</strong>
@@ -452,7 +456,7 @@ export function CatalogueTable({
       },
       exportValue: (p) => p.seuil_alerte,
     },
-  ], [editable, canEditPrix, onInlineSave, selectable, selected, onToggleSelect, fichesParProduit])
+  ], [editable, canWrite, canEditPrix, onInlineSave, onAjusterStock, selectable, selected, onToggleSelect, fichesParProduit])
 
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {
