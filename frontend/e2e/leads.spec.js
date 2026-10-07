@@ -129,6 +129,12 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
     .filter({ has: page.locator('.modal-title', { hasText: 'Passer en « Signé »' }) })
   await expect(dialog).toBeVisible()
   const devisSelect = dialog.locator('#sd-devis')
+  // CAD177 : le <select> n'existe qu'APRÈS « Chargement des devis… » (SigneDialog,
+  // `!loading && devisList.length > 0`) ; `evaluateAll` ne ré-essaie PAS — lu
+  // trop tôt il rendait [] (course, run nocturne 37446060068). On attend donc
+  // qu'il soit là ET qu'il porte au moins une option.
+  await expect(devisSelect).toBeVisible({ timeout: 30_000 })
+  await expect(devisSelect.locator('option[value]:not([value=""])').first()).toBeAttached()
   const values = await devisSelect
     .locator('option')
     .evaluateAll((opts) => opts.map((o) => o.value).filter(Boolean))
