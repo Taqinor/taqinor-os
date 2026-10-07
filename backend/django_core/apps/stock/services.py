@@ -1587,11 +1587,17 @@ def annuler_reception_confirmee(reception, user):
                         for lg in lignes)):
             raise ValueError(
                 'Marchandise livrée au chantier — passer par un retour.')
+        # ASTK56 — quantités annulées, portées par l'événement émis après
+        # commit (abonné installations : GR/IR, séries, réservation).
+        lignes_annulees = []
         for ligne in lignes:
             # ASTK59 — on défait ce qui est RÉELLEMENT entré, pas la saisie.
             qte = quantite_entree_ligne_reception(ligne)
             if qte <= 0:
                 continue
+            lignes_annulees.append({
+                'ligne': ligne, 'produit': ligne.produit,
+                'quantite_annulee': qte})
             if not _est_stockee(ligne):
                 # ASTK54 — ligne service : seule la quantité reçue de la
                 # ligne de BCF est défaite (le BCF est rouvert plus bas).
@@ -1659,6 +1665,25 @@ def annuler_reception_confirmee(reception, user):
                     and not bc.est_entierement_recu):
                 bc.statut = BonCommandeFournisseur.Statut.ENVOYE
                 bc.save(update_fields=['statut'])
+
+        # ASTK56 (C-ASTK-011) — jumeau d'annulation de
+        # `reception_fournisseur_confirmee` (signal ASTK55) : émis UNE fois,
+        # APRÈS COMMIT — une annulation qui échoue (rollback) n'émet rien.
+        # stock n'importe pas installations : l'abonné (ASTK57) s'abonne dans
+        # son propre apps.py ready().
+        def _emettre_annulation():
+            from core.events import reception_fournisseur_annulee
+            try:
+                reception_fournisseur_annulee.send(
+                    sender=ReceptionFournisseur, reception=reception,
+                    company=reception.company, user=user,
+                    lignes=lignes_annulees)
+            except Exception:  # noqa: BLE001 — après commit : journalisé
+                logger.exception(
+                    'ASTK56: abonné de reception_fournisseur_annulee en '
+                    'échec pour la réception %s', reception.pk)
+
+        transaction.on_commit(_emettre_annulation)
     return reception
 
 
