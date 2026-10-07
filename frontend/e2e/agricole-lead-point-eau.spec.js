@@ -23,7 +23,7 @@
 import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, lireJson, posterWebhookSite, telephoneMobileUnique,
-  isoDansJours, uniq,
+  isoDansJours, uniq, choisirMarche,
 } from './helpers.js'
 
 const CLE_REPLI = 'taqinor.lw.collapsed'
@@ -212,7 +212,7 @@ test.describe('AGR423 — lead agricole, du site au générateur', () => {
     await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
     await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
       .toBeVisible({ timeout: 30_000 })
-    await page.getByRole('radio', { name: /Agricole/ }).click()
+    await choisirMarche(page, /Agricole/)
     await expect(page.getByTestId('bloc-cas-pompe')).toBeVisible()
     // Les valeurs reprises de la fiche, avec leur provenance.
     await expect(page.getByTestId('provenance-lead-pompage')).toBeVisible({ timeout: 30_000 })

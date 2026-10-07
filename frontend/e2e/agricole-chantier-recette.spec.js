@@ -150,6 +150,10 @@ test('AGR624 — seuil saisi en Paramètres, recette saisie à l’écran, comme
   const profil = await json(await request.get(`${API}/parametres/`), 'paramètres')
   nettoyage.seuil = profil.recette_pompage_ecart_max_pct ?? null
   await page.goto('/parametres')
+  // Le champ AGR607 vit dans l'onglet « Avancé » (AvanceSection), jamais dans
+  // l'onglet « Société » ouvert par défaut.
+  await page.getByRole('navigation', { name: 'Sections des paramètres' })
+    .getByRole('button', { name: 'Avancé', exact: true }).click({ timeout: 30_000 })
   await expect(page.locator('#pe-ecart-recette')).toBeVisible({ timeout: 30_000 })
   await page.locator('#pe-ecart-recette').fill('1')
   await page.getByRole('button', { name: /Enregistrer/ }).first().click()
