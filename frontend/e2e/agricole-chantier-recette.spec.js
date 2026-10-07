@@ -129,8 +129,10 @@ test('AGR624 — devis agricole accepté → chantier hors réseau, checklist 13
   expect(chantier.regime_8221).toBe('declaration_hors_reseau')
   expect(chantier.raccordement_reseau).toBe('hors_reseau')
 
-  const checklist = liste(await json(await request.get(
-    `${API}/installations/chantiers/${chantier.id}/checklist/`), 'checklist'))
+  // L'action `checklist` rend `{installation, items, completion}` (N4), jamais
+  // une liste paginée : lire `items` (comme les specs CIQ650 / CIQ665).
+  const checklist = (await json(await request.get(
+    `${API}/installations/chantiers/${chantier.id}/checklist/`), 'checklist')).items || []
   expect(checklist.length, 'checklist « Pompage solaire »').toBe(13)
   expect(checklist.some((e) => /onduleur/i.test(e.libelle || e.designation || '')),
     'aucune étape « Onduleur raccordé » en pompage').toBeFalsy()
