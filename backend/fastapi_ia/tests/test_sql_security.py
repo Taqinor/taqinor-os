@@ -121,27 +121,35 @@ class TenantIsolationTests(unittest.TestCase):
     def test_single_table_injects_company_id(self):
         out = self._ok("SELECT nom FROM stock_produit")
         self.assertIn("company_id = 7", out)
+        _assert_every_table_scoped(self, out, self.CID)
 
     def test_single_table_with_where_injects(self):
         out = self._ok("SELECT nom FROM stock_produit WHERE quantite < 5")
         self.assertIn("company_id = 7", out)
+        _assert_every_table_scoped(self, out, self.CID)
 
-    def test_or_1_eq_1_rejected(self):
-        self._reject("SELECT * FROM stock_produit WHERE company_id=7 OR 1=1")
+    def test_or_1_eq_1_neutralise_par_reecriture(self):
+        # AANA2 — le OR ne peut plus rien ouvrir : la table lue EST deja la
+        # sous-requete filtree sur la societe 7.
+        out = self._ok(
+            "SELECT nom FROM stock_produit WHERE company_id=7 OR 1=1")
+        _assert_every_table_scoped(self, out, self.CID)
 
-    def test_join_other_tenant_rejected(self):
-        # Deux tables company_id mais un seul predicat -> refus.
-        self._reject(
-            "SELECT * FROM ventes_devis d JOIN crm_client c "
+    def test_join_une_seule_table_filtree_reecrite(self):
+        # Deux tables mais un seul predicat ecrit par le LLM : la seconde est
+        # quand meme reecrite (plus de « preuve » par comptage de predicats).
+        out = self._ok(
+            "SELECT d.reference FROM ventes_devis d JOIN crm_client c "
             "ON d.client_id=c.id WHERE d.company_id=7"
         )
+        _assert_every_table_scoped(self, out, self.CID)
 
     def test_join_both_scoped_ok(self):
         out = self._ok(
-            "SELECT * FROM crm_client c JOIN ventes_facture f "
+            "SELECT c.nom FROM crm_client c JOIN ventes_facture f "
             "ON f.client_id=c.id WHERE c.company_id=7 AND f.company_id=7"
         )
-        self.assertTrue(out)
+        _assert_every_table_scoped(self, out, self.CID)
 
     def test_union_cross_tenant_rejected(self):
         self._reject(
@@ -155,12 +163,14 @@ class TenantIsolationTests(unittest.TestCase):
     def test_unknown_table_rejected(self):
         self._reject("SELECT * FROM pg_catalog.pg_user")
 
-    def test_tenant_table_requires_id_filter(self):
-        self._reject("SELECT * FROM authentication_company")
+    def test_tenant_table_sans_filtre_reecrite_par_id(self):
+        # La table societe est reecrite en `(SELECT * ... WHERE id = 7)`.
+        out = self._ok("SELECT nom FROM authentication_company")
+        _assert_every_table_scoped(self, out, self.CID)
 
     def test_tenant_table_with_id_ok(self):
         out = self._ok("SELECT nom FROM authentication_company WHERE id=7")
-        self.assertTrue(out)
+        _assert_every_table_scoped(self, out, self.CID)
 
     def test_zero_company_id_refused(self):
         with self.assertRaises(svc.SQLSecurityError):
@@ -168,10 +178,10 @@ class TenantIsolationTests(unittest.TestCase):
 
     def test_subquery_scoped_ok(self):
         out = self._ok(
-            "SELECT * FROM ventes_devis WHERE company_id=7 AND id IN "
+            "SELECT reference FROM ventes_devis WHERE company_id=7 AND id IN "
             "(SELECT devis_id FROM ventes_lignedevis WHERE company_id=7)"
         )
-        self.assertTrue(out)
+        _assert_every_table_scoped(self, out, self.CID)
 
     def test_in_clause_allowed(self):
         # `IN (...)` est legitime (pas un OR) et doit passer apres injection.
@@ -180,6 +190,173 @@ class TenantIsolationTests(unittest.TestCase):
             "WHERE statut IN ('a_planifier','planifie')"
         )
         self.assertIn("company_id = 7", out)
+        _assert_every_table_scoped(self, out, self.CID)
+
+    # ── AANA2 — C-AANA-001 : la « preuve » par regex est contournee ─────────
+    def test_predicat_societe_neutralise_rejete_ou_reecrit(self):
+        """Les 5 requetes de la sonde du 05/10 etaient ACCEPTEES TELLES QUELLES
+        (le texte contenait `company_id = 7`). Chacune doit maintenant etre
+        rejetee ou reecrite pour que TOUTE table lue soit
+        `(SELECT * FROM <t> WHERE company_id = 7)`."""
+        for sql in SONDE_PREDICAT_NEUTRALISE:
+            with self.subTest(sql=sql):
+                try:
+                    out = svc._validate_and_secure(sql, self.CID)
+                except svc.SQLSecurityError:
+                    continue
+                _assert_every_table_scoped(self, out, self.CID)
+
+    def test_cte_reference_reecrite_dans_son_corps(self):
+        out = self._ok(
+            "WITH c AS (SELECT id, nom FROM crm_client) "
+            "SELECT c.nom FROM c JOIN ventes_devis d ON d.client_id = c.id"
+        )
+        _assert_every_table_scoped(self, out, self.CID)
+
+    def test_cte_ne_masque_pas_une_vraie_table(self):
+        # Une CTE n'est visible qu'APRES sa definition : `pg_user` dans le corps
+        # de `a` est la vraie table catalogue -> refus.
+        self._reject(
+            "WITH a AS (SELECT * FROM pg_user), pg_user AS "
+            "(SELECT id FROM crm_client) SELECT * FROM a"
+        )
+
+    def test_cte_homonyme_d_une_table_refusee(self):
+        self._reject(
+            "WITH crm_client AS (SELECT id FROM ventes_devis) "
+            "SELECT id FROM crm_client"
+        )
+
+    def test_schema_etranger_refuse(self):
+        self._reject("SELECT nom FROM autre_schema.crm_client")
+
+    def test_fonction_en_position_de_table_refusee(self):
+        self._reject("SELECT * FROM generate_series(1, 3)")
+
+    def test_with_recursive_refuse(self):
+        self._reject(
+            "WITH RECURSIVE r AS (SELECT id FROM crm_client) "
+            "SELECT id FROM r"
+        )
+
+    def test_commentaires_retires_du_sql_execute(self):
+        out = self._ok("SELECT nom /* company_id = 7 */ FROM crm_client")
+        self.assertNotIn("/*", out)
+        _assert_every_table_scoped(self, out, self.CID)
+
+
+# Sonde C-AANA-001 (dossier docs/audits/2026-10-05-analyse.md §5) : predicat
+# societe present dans le TEXTE mais neutralise dans la LOGIQUE.
+SONDE_PREDICAT_NEUTRALISE = (
+    "SELECT nom,email FROM crm_client WHERE NOT (company_id = 7)",
+    "SELECT nom,email FROM crm_client WHERE (company_id = 7) IS NOT NULL",
+    "SELECT nom,email FROM crm_client WHERE company_id = 7 - 1",
+    "SELECT company_id = 7 AS mine, nom, email FROM crm_client",
+    "SELECT c.nom, c.email FROM crm_client c, ventes_devis d "
+    "WHERE c.company_id = 7 AND 'company_id = 7' <> ''",
+)
+
+
+def _assert_every_table_scoped(test, secured_sql, company_id):
+    """Verifie sur l'ARBRE du SQL reecrit que CHAQUE table lue est
+    `(SELECT * FROM <t> WHERE company_id = <id>)` (ou `id = <id>` pour la
+    table societe) — jamais une table nue."""
+    import sqlglot
+    from sqlglot import exp
+
+    tree = sqlglot.parse_one(secured_sql, read="postgres")
+    ctes = {(c.alias or "").lower() for c in tree.find_all(exp.CTE)}
+    tables = [t for t in tree.find_all(exp.Table)
+              if t.name.lower() not in ctes]
+    test.assertTrue(tables, secured_sql)
+    for table in tables:
+        attendu = "id" if table.name == "authentication_company" else "company_id"
+        select = table.parent.parent if isinstance(table.parent, exp.From) else None
+        test.assertIsInstance(select, exp.Select, secured_sql)
+        test.assertIsInstance(select.parent, exp.Subquery, secured_sql)
+        test.assertEqual(len(select.args.get("joins") or []), 0, secured_sql)
+        test.assertEqual(
+            [type(e) for e in select.expressions], [exp.Star], secured_sql)
+        where = select.args.get("where")
+        test.assertIsNotNone(where, secured_sql)
+        cond = where.this
+        test.assertIsInstance(cond, exp.EQ, secured_sql)
+        test.assertIsInstance(cond.this, exp.Column, secured_sql)
+        test.assertEqual(cond.this.name, attendu, secured_sql)
+        test.assertIsNone(cond.this.args.get("table"), secured_sql)
+        test.assertEqual(cond.expression, exp.Literal.number(company_id),
+                         secured_sql)
+
+
+def _test_engine():
+    """Moteur Postgres de TEST (variables DB_* explicites, comme le job
+    release-verify) ou None : sans base configuree, le test se saute."""
+    if not os.environ.get("DB_HOST"):
+        return None
+    try:
+        from sqlalchemy import create_engine, text
+        from urllib.parse import quote_plus
+        url = "postgresql://{u}:{p}@{h}:{port}/{n}".format(
+            u=os.environ.get("DB_USER", "erp_user"),
+            p=quote_plus(os.environ.get("DB_PASSWORD", "")),
+            h=os.environ["DB_HOST"],
+            port=os.environ.get("DB_PORT", "5432"),
+            n=os.environ.get("DB_NAME", "erp_db"),
+        )
+        engine = create_engine(url, connect_args={"connect_timeout": 3})
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return engine
+    except Exception:
+        return None
+
+
+@unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
+class ReecritureSurPostgresTests(unittest.TestCase):
+    """AANA2 — execution REELLE du SQL reecrit sur Postgres, 2 societes. Aucune
+    table reelle n'est touchee : des tables TEMPORAIRES homonymes (pg_temp est
+    prioritaire dans le search_path) sont creees dans une transaction annulee.
+    Ni la base ni le garde ne sont simules."""
+
+    def test_reecriture_isole_les_societes(self):
+        engine = _test_engine()
+        if engine is None:
+            self.skipTest("Postgres de test non configure (DB_HOST absent).")
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            tx = conn.begin()
+            try:
+                conn.execute(text(
+                    "CREATE TEMP TABLE crm_client (id int, nom text, "
+                    "email text, company_id int)"))
+                conn.execute(text(
+                    "CREATE TEMP TABLE ventes_devis (id int, client_id int, "
+                    "reference text, company_id int)"))
+                conn.execute(text(
+                    "INSERT INTO crm_client VALUES "
+                    "(1,'A7','a@soc7',7),(2,'B7','b@soc7',7),"
+                    "(3,'C8','c@soc8',8),(4,'D8','d@soc8',8),"
+                    "(5,'E8','e@soc8',8)"))
+                conn.execute(text(
+                    "INSERT INTO ventes_devis VALUES "
+                    "(1,1,'D7',7),(2,3,'D8',8)"))
+                # Temoin positif : la societe 7 voit ses 2 clients.
+                temoin = conn.execute(text(svc._validate_and_secure(
+                    "SELECT nom, email FROM crm_client", 7))).fetchall()
+                self.assertEqual(sorted(r[1] for r in temoin),
+                                 ["a@soc7", "b@soc7"])
+                for sql in SONDE_PREDICAT_NEUTRALISE:
+                    with self.subTest(sql=sql):
+                        try:
+                            secured = svc._validate_and_secure(sql, 7)
+                        except svc.SQLSecurityError:
+                            continue
+                        rows = conn.execute(text(secured)).fetchall()
+                        valeurs = " ".join(str(v) for r in rows for v in r)
+                        self.assertNotIn("soc8", valeurs, secured)
+                        self.assertNotIn("C8", valeurs, secured)
+            finally:
+                tx.rollback()
 
 
 @unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
