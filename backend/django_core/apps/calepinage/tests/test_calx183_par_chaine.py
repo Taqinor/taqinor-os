@@ -67,8 +67,8 @@ ONDULEUR = {
     'ac_kw': 10.0, 'phases': 3,
 }
 LAYOUT = {'version': 2, 'zones': [
-    {'id': 'PAN-A', 'label': 'PAN-A', 'geometry': {'count': 12, 'azimuthDeg': 180.0,
-                                    'tiltDeg': 15.0}}]}
+    {'id': 'PAN-A', 'label': 'PAN-A',
+     'geometry': {'count': 12, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]}
 
 
 def _serie(_plan):
