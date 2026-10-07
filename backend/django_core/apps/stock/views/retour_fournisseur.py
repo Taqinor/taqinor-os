@@ -76,7 +76,8 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             # (repli légacy responsable/admin sans rôle fin).
             return [HasPermissionOrLegacy('achats_receptionner')()]
         elif self.action == 'generer_avoir':
-            return [IsResponsableOrAdmin()]
+            # ASTK19 (D-ASTK-3) — créer l'avoir d'un retour = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]

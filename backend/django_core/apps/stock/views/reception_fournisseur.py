@@ -109,7 +109,8 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
             # mais ce get_permissions l'écrasait vers IsAdminRole (le repli
             # par défaut) — bug préexistant attrapé par le test P2P YTEST6.
-            return [IsResponsableOrAdmin()]
+            # ASTK19 (D-ASTK-3) — facturer une réception = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]

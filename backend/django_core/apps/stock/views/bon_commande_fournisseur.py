@@ -90,7 +90,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             # ASTK18 (D-ASTK-3) — recevoir un BCF = « réceptionner ».
             return [HasPermissionOrLegacy('achats_receptionner')()]
         elif self.action == 'facturer':
-            return [IsResponsableOrAdmin()]
+            # ASTK19 (D-ASTK-3) — facturer un BCF = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'en_retard':
             return [IsAnyRole()]
         elif self.action in (
