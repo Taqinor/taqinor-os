@@ -6,4 +6,5 @@ export const en: DictEn<typeof fr> = {
   titre: 'Probe',
   h1: 'Hello',
   langue: 'Language',
+  description: 'Technical probe page of the site.',
 };

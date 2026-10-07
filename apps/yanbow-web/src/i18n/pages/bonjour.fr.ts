@@ -3,4 +3,5 @@ export const fr = {
   titre: 'Sonde',
   h1: 'Bonjour',
   langue: 'Langue',
+  description: 'Page sonde technique du site.',
 } as const;

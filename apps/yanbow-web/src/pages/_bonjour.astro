@@ -25,6 +25,9 @@ const autres = selecteurLangue(SONDE, locale, locales);
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>{t(dict, 'titre', locale)}</title>
+    <meta name="description" content={t(dict, 'description', locale)} />
+    {/* Pas d'icône avant YBW37 : une icône vide évite le 404 /favicon.ico (console). */}
+    <link rel="icon" href="data:," />
     {liens.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
   </head>
   <body>
