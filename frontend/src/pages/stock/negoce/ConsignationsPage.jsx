@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Input } from '../../../ui'
-import { PageHeader } from '../../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../../features/stock/inventaireAccent'
+import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import negoceApi from '../../../features/stock/api/negoceApi'
 import {
   messageServeur, messageServeurBlob, ouvrirBlob,
@@ -202,11 +201,8 @@ export default function ConsignationsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
-        title="Consignation"
+      <EnteteStock
+                title="Consignation"
         subtitle="Dépôts chez les clients, déclarations de consommation et réglages négoce."
       />
       <div role="tablist" aria-label="Sections de la consignation" className="flex gap-2">
@@ -216,11 +212,7 @@ export default function ConsignationsPage() {
         ))}
       </div>
 
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
+      <BandeauxStock erreur={erreur} />
 
       {onglet === 'depots' && (
         <div role="tabpanel" className="space-y-4">

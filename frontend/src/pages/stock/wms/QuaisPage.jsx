@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '../../../ui'
-import { PageHeader } from '../../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../../features/stock/inventaireAccent'
+import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import quaisApi from '../../../features/stock/api/quaisApi'
 import { messageServeur, telechargerTexte } from '../../../features/stock/api/erreurs'
 
@@ -144,22 +143,12 @@ export default function QuaisPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
-        title="Quais et rendez-vous"
+      <EnteteStock
+                title="Quais et rendez-vous"
         subtitle="Planning des quais, rendez-vous transporteur et bordereaux ASN."
       />
 
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
-      {info && (
-        <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">{info}</div>
-      )}
+      <BandeauxStock erreur={erreur} info={info} />
 
       <Section id="planning-quais" titre="Planning">
         <div className="mb-3 flex flex-wrap items-end gap-2">

@@ -25,53 +25,17 @@ import userEvent from '@testing-library/user-event'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import {
-  DATE_FIGEE, CATALOGUE, LEAD, monter, normalise, stabiliser, serialiserAppels,
+  LEAD, monter, normalise, stabiliser, serialiserAppels, preparerEnvironnement, chargerNeuf,
   devisEnvoyeLesDeux, devisIndustrielMt, devisCommercialHotel,
   devisAgricolePompeCourbe, devisMultiVillas, devisAdminRegistre,
   devisResidentielEtudeHoraire,
 } from './DevisGeneratorGoldenHarnais'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(() => Promise.resolve({ data: {} })),
-    patchDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    replaceLignesDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    createDevisAtomic: vi.fn(() => Promise.resolve({ data: { id: 999 } })),
-    patchEtudeParams: vi.fn(() => Promise.resolve({ data: {} })),
-    poserOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    regenererOverride: vi.fn(() => Promise.resolve({ data: {} })),
-    etudeCiPreview: vi.fn(() => Promise.resolve({ data: null })),
-    economieCiPreview: vi.fn(() => Promise.resolve({ data: null })),
-    postEtudeHorairePreview: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
-vi.mock('../../api/axios', () => ({
-  default: {
-    get: vi.fn(() => Promise.resolve({ data: [] })),
-    post: vi.fn(() => Promise.resolve({ data: null })),
-    patch: vi.fn(() => Promise.resolve({ data: null })),
-    put: vi.fn(() => Promise.resolve({ data: null })),
-    delete: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
+vi.mock('../../api/crmApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('crmApi')))
+vi.mock('../../api/stockApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('stockApi')))
+vi.mock('../../api/parametresApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('parametresApi')))
+vi.mock('../../api/ventesApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('ventesApi')))
+vi.mock('../../api/axios', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('axios')))
 
 const DOSSIER = './generator/__golden__'
 // Écran lourd + attente de stabilité (~1 s de calme) : marge large pour un
@@ -84,32 +48,6 @@ const APPELS_ECRITURE = [
 
 // Les fuseaux du poste et de la CI diffèrent : on fige celui du produit.
 globalThis.process.env.TZ = 'Africa/Casablanca'
-
-/**
- * Charge un jeu de modules NEUF (compteur `_keyCounter` de module remis à 0)
- * et renvoie les API mockées de CE jeu + l'écran.
- */
-async function chargerNeuf() {
-  // Les fabriques vi.mock sont mises en cache par vitest : sans remise à zéro,
-  // les appels et les réponses d'un scénario fuiraient dans le suivant.
-  // mockReset rend à chaque vi.fn son implémentation d'origine (la fabrique).
-  vi.resetAllMocks()
-  vi.resetModules()
-  const [crm, stock, parametres, ventes, axios, gen] = await Promise.all([
-    import('../../api/crmApi'),
-    import('../../api/stockApi'),
-    import('../../api/parametresApi'),
-    import('../../api/ventesApi'),
-    import('../../api/axios'),
-    import('./DevisGenerator'),
-  ])
-  const apis = {
-    crmApi: crm.default, stockApi: stock.default, parametresApi: parametres.default,
-    ventesApi: ventes.default, api: axios.default,
-  }
-  apis.stockApi.getProduits.mockResolvedValue({ data: CATALOGUE })
-  return { ...apis, DevisGenerator: gen.default }
-}
 
 async function capturerDom(container, nom) {
   const html = await stabiliser(container)
@@ -124,23 +62,7 @@ async function enregistrerEtCapturer(ventesApi, nom, attendu) {
     .toMatchFileSnapshot(`${DOSSIER}/${nom}.appels.txt`)
 }
 
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(DATE_FIGEE)
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  try { window.sessionStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeEach(() => preparerEnvironnement())
 
 afterEach(() => {
   vi.useRealTimers()

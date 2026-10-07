@@ -11,6 +11,7 @@
 // useId de React — tout ce qui irait plus loin masquerait une vraie dérive ; un
 // golden rouge est un bug du déplacement, jamais une raison de régénérer.
 import { createElement } from 'react'
+import { vi } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -247,4 +248,54 @@ export function devisResidentielEtudeHoraire() {
       ligne(2, ONDULEUR, 1, '9000.00', '20.00', 1),
     ],
   })
+}
+
+// ── Environnement et chargement NEUF partagés par tous les goldens ─────────
+const ECOUTEURS_MQL = [
+  'addListener', 'removeListener', 'addEventListener', 'removeEventListener', 'dispatchEvent',
+]
+const fabriqueMql = (q) => ({
+  matches: false, media: q, onchange: null,
+  ...Object.fromEntries(ECOUTEURS_MQL.map((nom) => [nom, vi.fn()])),
+})
+
+/** À appeler dans `beforeEach` : date figée, stockages vides, polyfills jsdom. */
+export function preparerEnvironnement({ confirmeAccepte = false } = {}) {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(DATE_FIGEE)
+  for (const stockage of ['localStorage', 'sessionStorage']) {
+    try { window[stockage].clear() } catch { /* stockage indisponible */ }
+  }
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  if (!window.matchMedia) window.matchMedia = vi.fn().mockImplementation(fabriqueMql)
+  if (!globalThis.ResizeObserver) {
+    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+  }
+  // Hors <ConfirmProvider>, useConfirm retombe sur window.confirm (jsdom ne
+  // l'implémente pas) : stub accepté, ses appels sont figés par les gestes.
+  if (confirmeAccepte) window.confirm = vi.fn(() => true)
+}
+
+/**
+ * Charge un jeu de modules NEUF (compteur `_keyCounter` de module remis à 0)
+ * et renvoie les API mockées de CE jeu + l'écran.
+ */
+export async function chargerNeuf(catalogue = CATALOGUE) {
+  // Les fabriques vi.mock sont mises en cache par vitest : sans remise à zéro,
+  // les appels et les réponses d'un scénario fuiraient dans le suivant.
+  // mockReset rend à chaque vi.fn son implémentation d'origine (la fabrique).
+  vi.resetAllMocks()
+  vi.resetModules()
+  const modules = await Promise.all([
+    import('../../api/crmApi'), import('../../api/stockApi'),
+    import('../../api/parametresApi'), import('../../api/ventesApi'),
+    import('../../api/axios'), import('./DevisGenerator'),
+  ])
+  const [crm, stock, parametres, ventes, axios, gen] = modules
+  const apis = {
+    crmApi: crm.default, stockApi: stock.default, parametresApi: parametres.default,
+    ventesApi: ventes.default, api: axios.default,
+  }
+  apis.stockApi.getProduits.mockResolvedValue({ data: catalogue })
+  return { ...apis, DevisGenerator: gen.default }
 }
