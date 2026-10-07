@@ -117,7 +117,7 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
         <h3 className="text-sm font-semibold">Approbation</h3>
         {etat.exigee && (
           <p className="mt-1 text-xs text-muted-foreground" data-testid="calx349-exigee">
-            Une approbation est exigée avant de retenir une variante (réglage société).
+            Une approbation à jour est exigée avant de générer ou resynchroniser le devis et de produire les pièces d’exécution (réglage société). Retenir une variante se fait d’abord ; l’approbation se donne ensuite.
           </p>
         )}
         {etat.etat ? (

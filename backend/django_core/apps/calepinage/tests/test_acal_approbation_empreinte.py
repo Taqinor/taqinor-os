@@ -76,25 +76,51 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
         detail = self.api.get(self.base).data
         self.assertEqual(detail['statut'], 'perime')
 
-    def test_retenir_refuse_approbation_perimee(self):
+    def _publier(self, geste='devis'):
+        """La SEULE porte de l'approbation : la publication (ACAL116)."""
+        from apps.calepinage.services.feu_vert import (
+            verifier_avant_publication,
+        )
+
+        cal = Calepinage.objects.get(pk=self.calepinage.pk)
+        return verifier_avant_publication(cal, geste=geste)
+
+    def test_retenir_approbation_perimee_passe_puis_publication_refusee(self):
+        # Décision fondateur 07/10/2026 : retenir -> approuver -> publier.
+        from rest_framework.exceptions import ValidationError
+
         self._approuver()
         self._modifier_le_dessin()
         variante = self._variante(_dessin(12))
         reponse = self._retenir(variante)
-        self.assertEqual(reponse.status_code, 400, reponse.data)
-        self.assertIn('approbation', str(reponse.data))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
         variante.refresh_from_db()
-        self.assertFalse(variante.retenue)
-
-    def test_retenir_exige_l_approbation_de_la_variante(self):
+        self.assertTrue(variante.retenue)
+        with self.assertRaises(ValidationError) as refus:
+            self._publier()
+        self.assertIn('approbation', refus.exception.detail)
         self._approuver()
+        self.assertIsNone(self._publier())
+
+    def test_retenir_autre_variante_perime_l_accord_jusqu_a_reapprobation(
+            self):
+        from rest_framework.exceptions import ValidationError
+
+        self._approuver()
+        self.assertIsNone(self._publier())
         autre = self._variante(_dessin(14), nom='Autre')
         reponse = self._retenir(autre)
-        self.assertEqual(reponse.status_code, 400, reponse.data)
-        self.assertIn('approbation', str(reponse.data))
-        meme = self._variante(_dessin(10), nom='Même')
-        reponse = self._retenir(meme)
         self.assertEqual(reponse.status_code, 200, reponse.data)
+        # La variante retenue est la conception courante : accord périmé.
+        self.assertTrue(self._etat()['perimee'])
+        for geste in ('devis', 'execution'):
+            with self.subTest(geste=geste):
+                with self.assertRaises(ValidationError) as refus:
+                    self._publier(geste)
+                self.assertIn('approbation', refus.exception.detail)
+        self._approuver()
+        self.assertIsNone(self._publier('devis'))
+        self.assertIsNone(self._publier('execution'))
 
     def test_approuver_conception_vide_refuse(self):
         vide = Calepinage.objects.create(company=self.company,
