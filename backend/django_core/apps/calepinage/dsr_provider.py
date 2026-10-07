@@ -144,8 +144,16 @@ def anonymiser_calepinage(calepinage, *, user=None):
             for ligne in modele.objects.filter(calepinage=calepinage):
                 apres = document_anonymise(ligne.roof_layout, epingle)
                 if apres != ligne.roof_layout:
-                    ligne.roof_layout = apres
-                    ligne.save(update_fields=['roof_layout'])
+                    if modele is CalepinageVersion:
+                        # Une version est GELÉE (CAL8 : ``save`` refuse toute
+                        # réécriture) ; l'effacement légal (loi 09-08) est la
+                        # seule exception — écrite par ``update``, qui ne
+                        # passe pas par ``save``.
+                        modele.objects.filter(pk=ligne.pk).update(
+                            roof_layout=apres)
+                    else:
+                        ligne.roof_layout = apres
+                        ligne.save(update_fields=['roof_layout'])
                     change = True
 
         if anonymiser_corps_activite(calepinage, field='calepinage',
