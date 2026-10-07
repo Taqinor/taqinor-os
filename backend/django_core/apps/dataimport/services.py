@@ -710,9 +710,16 @@ def appliquer_maj_import(instance, fields, company, user=None, filename='',
 
     Renvoie ``(changed, modifications, refuses)`` — voir ``_apply_updates``.
     """
-    changed, modifications, refuses = _apply_updates(
-        instance, fields, skip_keys=skip_keys, ecraser=ecraser,
-        valeurs_vides=valeurs_vides)
+    # ASTK145 — un seul écrivain par ligne d'audit : la ligne UPDATE de cette
+    # fiche est celle de ``_journaliser_maj`` (diff + fichier) ; le signal
+    # générique du journal (``apps.audit.signals``) ne la double pas.
+    instance._audit_update_dedie = True
+    try:
+        changed, modifications, refuses = _apply_updates(
+            instance, fields, skip_keys=skip_keys, ecraser=ecraser,
+            valeurs_vides=valeurs_vides)
+    finally:
+        instance._audit_update_dedie = False
     _journaliser_maj(instance, company, user, modifications, filename)
     return changed, modifications, refuses
 

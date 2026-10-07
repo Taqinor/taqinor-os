@@ -58,6 +58,14 @@ class AccordRFAFournisseur(TenantModel):
                 fields=['company', 'fournisseur', 'periode_debut',
                         'periode_fin'],
                 name='stock_accordrfa_co_fourn_periode_uniq'),
+            # ASTK50 — la contrainte PARTIELLE annoncée en tête de module :
+            # un avoir généré n'appartient qu'à UN accord (filet base, même
+            # hors service ; la garde d'idempotence vit dans
+            # `generer_avoir_rfa`, qui relit l'accord sous verrou).
+            models.UniqueConstraint(
+                fields=['avoir_genere'],
+                condition=models.Q(avoir_genere__isnull=False),
+                name='stock_accordrfa_avoir_genere_uniq'),
         ]
         indexes = [
             models.Index(fields=['company', 'statut'],

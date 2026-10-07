@@ -1969,7 +1969,7 @@ def declarer_mouvement_rebut(*, company, user, produit, quantite, motif,
     from django.db import transaction
 
     from .models_wms import MouvementRebut
-    from .services import average_cost_with_source, rebuter_produit
+    from .services import rebuter_produit, valuation_cost_with_source
 
     try:
         quantite = int(quantite)
@@ -1982,7 +1982,8 @@ def declarer_mouvement_rebut(*, company, user, produit, quantite, motif,
     if motif not in dict(MouvementRebut.Motif.choices):
         raise ValueError('Motif de rebut invalide.')
 
-    cout, _source = average_cost_with_source(produit)
+    # ASTK43 — coût par l'accesseur unique (méthode société).
+    cout, _source = valuation_cost_with_source(produit)
     valeur = (Decimal(str(cout or 0)) * Decimal(quantite)).quantize(
         Decimal('0.01'))
     with transaction.atomic():

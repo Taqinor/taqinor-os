@@ -5,7 +5,8 @@ Couvre (toggle `reserver_stock_bc` sur CompanyProfile) :
   * toggle OFF (défaut) : confirmer/annuler/marquer-livre restent
     byte-identiques à avant (décrément direct à la livraison seulement) ;
   * toggle ON : confirmer un BC réserve les quantités (StockReservation),
-    annuler libère, livrer solde la réservation SANS double décrément ;
+    annuler libère (seulement un chantier annulé/clôturé — ASTK123), livrer
+    solde la réservation SANS double décrément ;
   * jamais d'import direct de `installations.models` depuis `ventes` (le
     branchement passe par `installations.services`).
 """
@@ -105,10 +106,27 @@ class TestToggleOn(Ydocf7TestBase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 20)
 
-    def test_annuler_libere_la_reservation(self):
+    def test_annuler_garde_la_reservation_du_chantier_vivant(self):
+        # ASTK123 (C-ASTK-031) — annuler le BC d'un chantier VIVANT ne libère
+        # plus sa réservation (son besoin demeure) ; ce test figeait l'ancien
+        # comportement (libération inconditionnelle).
         self._toggle(True)
         self.api.post(
             f'/api/django/ventes/bons-commande/{self.bc.id}/confirmer/')
+        r = self.api.post(
+            f'/api/django/ventes/bons-commande/{self.bc.id}/annuler/')
+        self.assertEqual(r.status_code, 200, r.data)
+        resa = StockReservation.objects.get(
+            installation=self.installation, produit=self.produit)
+        self.assertTrue(resa.active)
+        self.assertFalse(resa.consomme)
+
+    def test_annuler_libere_la_reservation_du_chantier_annule(self):
+        self._toggle(True)
+        self.api.post(
+            f'/api/django/ventes/bons-commande/{self.bc.id}/confirmer/')
+        Installation.objects.filter(pk=self.installation.pk).update(
+            annule=True)
         r = self.api.post(
             f'/api/django/ventes/bons-commande/{self.bc.id}/annuler/')
         self.assertEqual(r.status_code, 200, r.data)

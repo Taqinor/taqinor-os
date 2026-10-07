@@ -52,6 +52,26 @@ READ_ACTIONS = ['list', 'retrieve']
 _ScaledLigne = namedtuple('_ScaledLigne', ['produit', 'quantite'])
 
 
+def _quantite_entiere_composant(ligne, quantite_produite, quantite_ordre):
+    """ASTK46 — quantité d'une ligne d'ordre remise à l'échelle de la
+    quantité produite, calculée EXACTEMENT (Fraction) : entière → int ;
+    non entière → ValidationError 400 « quantité non entière (1,5) pour
+    <composant> » (jamais d'arrondi muet)."""
+    from fractions import Fraction
+    base = Fraction(int(ligne.quantite or 0))
+    if quantite_ordre:
+        base = base * Fraction(int(quantite_produite), int(quantite_ordre))
+    if base.denominator == 1:
+        return int(base)
+    valeur = f'{float(base):.6f}'.rstrip('0').rstrip('.').replace('.', ',')
+    nom = (getattr(ligne.produit, 'nom', None) or ligne.designation
+           or f'composant {ligne.produit_id}')
+    raise ValidationError({
+        'quantite': f'Quantité non entière ({valeur}) pour {nom} : '
+                    'ajustez la quantité produite ou les lignes de '
+                    "l'ordre."})
+
+
 class KitViewSet(CompanyScopedModelViewSet):
     """FG328 — kits de pré-assemblage. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `active`. XMFG18 : révisions de
@@ -770,31 +790,43 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                     # XMFG6 — lignes personnalisées : quantité déjà TOTALE pour
                     # `ordre.quantite`, remise à l'échelle si `quantite_produite`
                     # en diffère (même tolérance sur/sous-production que XMFG1).
-                    ratio = (quantite_produite / ordre.quantite
-                             if ordre.quantite else 1)
+                    # ASTK46 (C-ASTK-009) — plus d'arrondi muet `round(...)` :
+                    # une quantité remise à l'échelle NON ENTIÈRE (ex. 3 × 1/2
+                    # = 1,5) est refusée en 400 lisible ; rien n'est consommé
+                    # et l'ordre reste non terminé (transaction annulée).
                     composants = [
-                        _ScaledLigne(ligne.produit, round(
-                            (ligne.quantite or 0) * ratio))
+                        _ScaledLigne(ligne.produit, _quantite_entiere_composant(
+                            ligne, quantite_produite, ordre.quantite))
                         for ligne in lignes]
-                    consommer_et_produire_assemblage(
-                        company=ordre.company, kit=ordre.kit,
-                        composants=composants,
-                        produit_compose=ordre.kit.produit_compose,
-                        quantite_produite=quantite_produite,
-                        reference=ordre.reference, user=request.user,
-                        emplacement_source=ordre.emplacement_source,
-                        emplacement_destination=ordre.emplacement_destination,
-                        per_unit=False)
+                    try:
+                        consommer_et_produire_assemblage(
+                            company=ordre.company, kit=ordre.kit,
+                            composants=composants,
+                            produit_compose=ordre.kit.produit_compose,
+                            quantite_produite=quantite_produite,
+                            reference=ordre.reference, user=request.user,
+                            emplacement_source=ordre.emplacement_source,
+                            emplacement_destination=(
+                                ordre.emplacement_destination),
+                            per_unit=False)
+                    except ValueError as exc:
+                        raise ValidationError({'quantite': str(exc)})
                 else:
-                    consommer_et_produire_assemblage(
-                        company=ordre.company, kit=ordre.kit,
-                        composants=ordre.kit.composants.select_related(
-                            'produit').all(),
-                        produit_compose=ordre.kit.produit_compose,
-                        quantite_produite=quantite_produite,
-                        reference=ordre.reference, user=request.user,
-                        emplacement_source=ordre.emplacement_source,
-                        emplacement_destination=ordre.emplacement_destination)
+                    # ASTK45/46 — le refus de quantité non entière du service
+                    # est relayé en 400 lisible (jamais un 500).
+                    try:
+                        consommer_et_produire_assemblage(
+                            company=ordre.company, kit=ordre.kit,
+                            composants=ordre.kit.composants.select_related(
+                                'produit').all(),
+                            produit_compose=ordre.kit.produit_compose,
+                            quantite_produite=quantite_produite,
+                            reference=ordre.reference, user=request.user,
+                            emplacement_source=ordre.emplacement_source,
+                            emplacement_destination=(
+                                ordre.emplacement_destination))
+                    except ValueError as exc:
+                        raise ValidationError({'quantite': str(exc)})
                 ordre.stock_mouvemente = True
                 update_fields.append('stock_mouvemente')
                 # XMFG2 — les réservations composant sont désormais consommées

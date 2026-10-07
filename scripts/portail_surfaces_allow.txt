@@ -1,0 +1,10 @@
+# ADOC147 - surfaces portail self-service VOLONTAIREMENT sans ecran (GATED,
+# ADOC149) : l'API existe cote serveur, l'ecran est differe. Une route par
+# ligne (relevee le 2026-10-07 par scripts/check_portail_surfaces.py).
+# CLIQUET DECROISSANT : des qu'une route recoit son ecran (appelant dans
+# frontend/src/api/portailApi.js utilise par un fichier non-test de
+# frontend/src/features/portail/), sa ligne DOIT etre retiree, sinon la garde
+# echoue (« lignes inutiles »).
+mes-factures-fournisseur
+ma-performance
+ressources

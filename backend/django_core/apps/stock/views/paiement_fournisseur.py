@@ -51,6 +51,12 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_paiement', 'date_creation', 'montant']
     ordering = ['-date_paiement', '-date_creation']
+    # ASTK27 (C-ASTK-004) — un paiement est IMMUABLE par l'API : PUT/PATCH
+    # répondent 405. Un PATCH {facture}/{montant} déplaçait ou réduisait un
+    # règlement sans recalculer ni le statut des factures ni la RAS-TVA. Une
+    # correction passe par l'annulation (DELETE, admin) puis la recréation
+    # (POST), qui recalculent tous deux statut et retenue.
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
 
     def get_permissions(self):
         # AUD419 — la LECTURE des règlements fournisseurs n'est plus ouverte à
