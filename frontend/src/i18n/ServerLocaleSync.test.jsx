@@ -18,6 +18,10 @@ vi.mock('./langueInterfaceApi', () => ({
   patchLangueInterface: (...args) => patchMock(...args),
 }))
 
+vi.mock('./overridesApi', () => ({
+  fetchTranslationOverrides: vi.fn(async () => ({})),
+}))
+
 import { I18nProvider, useI18n } from './index'
 import ServerLocaleSync from './ServerLocaleSync'
 
