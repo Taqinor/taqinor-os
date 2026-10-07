@@ -96,12 +96,17 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
             resultat=resultat,
             cree_par=user,
         )
+        # ACAL110 — la création se journalise AVEC son auteur.
+        from .journal import journaliser_variante_creee
+
+        journaliser_variante_creee(calepinage, variante=variante, user=user)
         if retenir:
             retenir_variante(variante, user=user)
     return variante
 
 
-def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...):
+def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...,
+                      user=None):
     """CAL21 — édite une variante SANS jamais toucher ``retenue``.
 
     ``retenue`` n'a qu'un seul chemin d'écriture (``retenir_variante``, garde
@@ -111,8 +116,14 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...):
 
     ``roof_layout`` / ``resultat`` valent ``...`` (Ellipsis) quand l'appelant
     ne les touche pas : ``None`` est une VALEUR (« efface »), pas une absence.
+
+    ACAL110 — seul un changement RÉEL s'écrit et se journalise (« Variante
+    « X » modifiée (nom | conception) », auteur ``user``) ; un PATCH à
+    l'identique n'écrit rien.
     """
     from apps.ventes.services import layout_hash
+
+    from .layout import empreinte_document
 
     if variante is None or not getattr(variante, 'pk', None):
         raise VarianteRefusee(
@@ -124,32 +135,44 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...):
     verifier_ecriture_autorisee(variante.calepinage, champ='variante')
 
     champs = []
+    changements = []
     if nom is not None:
         libelle = _nom_texte(nom)
         if not libelle:
             raise VarianteRefusee(
                 "Donnez un nom à la variante : c'est lui qui permet de la "
                 "reconnaître dans la comparaison.", champ='nom')
-        variante.nom = libelle
-        champs.append('nom')
+        if libelle != variante.nom:
+            variante.nom = libelle
+            champs.append('nom')
+            changements.append('nom')
     if roof_layout is not ...:
         if roof_layout is not None and not isinstance(roof_layout, dict):
             raise VarianteRefusee(
                 "La conception de la variante doit être un objet "
                 f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
-        variante.roof_layout = roof_layout
-        variante.layout_hash = layout_hash(roof_layout) or ''
-        champs.extend(['roof_layout', 'layout_hash'])
-    if resultat is not ...:
+        if (empreinte_document(roof_layout)
+                != empreinte_document(variante.roof_layout)
+                or (roof_layout is None) != (variante.roof_layout is None)):
+            variante.roof_layout = roof_layout
+            variante.layout_hash = layout_hash(roof_layout) or ''
+            champs.extend(['roof_layout', 'layout_hash'])
+            changements.append('conception')
+    if resultat is not ... and resultat != variante.resultat:
         variante.resultat = resultat
         champs.append('resultat')
 
     if champs:
         variante.save(update_fields=champs + ['updated_at'])
+    if changements:
+        from .journal import journaliser_variante_modifiee
+
+        journaliser_variante_modifiee(variante.calepinage, variante=variante,
+                                      changements=changements, user=user)
     return variante
 
 
-def supprimer_variante(variante):
+def supprimer_variante(variante, *, user=None):
     """CAL21 — retire une variante ; JAMAIS celle qui est retenue.
 
     Supprimer la retenue laisserait le calepinage sans option choisie — la
@@ -168,7 +191,12 @@ def supprimer_variante(variante):
         raise VarianteRefusee(
             f"« {variante.nom} » est la variante RETENUE : retenez-en une "
             "autre avant de la supprimer.", champ='retenue')
+    calepinage, nom = variante.calepinage, variante.nom
     variante.delete()
+    # ACAL110 — la suppression se journalise AVEC son auteur.
+    from .journal import journaliser_variante_supprimee
+
+    journaliser_variante_supprimee(calepinage, nom=nom, user=user)
     return True
 
 

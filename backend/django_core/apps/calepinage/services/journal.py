@@ -31,6 +31,8 @@ __all__ = [
     'journaliser_creation', 'journaliser_lien_devis',
     'journaliser_layout',
     'journaliser_variante_retenue', 'journaliser_restauration',
+    'journaliser_variante_creee', 'journaliser_variante_modifiee',
+    'journaliser_variante_supprimee',
     'journaliser_document_produit', 'noter',
     'journaliser_pose_reelle', 'journaliser_version_pose',
 ]
@@ -106,6 +108,31 @@ def journaliser_variante_retenue(calepinage, *, ancienne=None, nouvelle=None,
                    field_label='Variante retenue',
                    old_value=getattr(ancienne, 'nom', '') or '',
                    new_value=getattr(nouvelle, 'nom', '') or '')
+
+
+def journaliser_variante_creee(calepinage, *, variante, user=None):
+    """ACAL110 — « Variante « X » créée », avec son auteur."""
+    return _ecrire(calepinage, 'CREATION', user=user, field='variante_creee',
+                   field_label='Variante',
+                   new_value=f"Variante « {getattr(variante, 'nom', '')} » "
+                             "créée")
+
+
+def journaliser_variante_modifiee(calepinage, *, variante, changements,
+                                  user=None):
+    """ACAL110 — « Variante « X » modifiée (nom | conception) »."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='variante_modifiee', field_label='Variante',
+                   new_value=f"Variante « {getattr(variante, 'nom', '')} » "
+                             f"modifiée ({' | '.join(changements)})")
+
+
+def journaliser_variante_supprimee(calepinage, *, nom, user=None):
+    """ACAL110 — « Variante « X » supprimée », avec son auteur."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='variante_supprimee', field_label='Variante',
+                   old_value=nom or '',
+                   new_value=f'Variante « {nom} » supprimée')
 
 
 def journaliser_restauration(calepinage, *, version=None, user=None):

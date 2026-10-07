@@ -558,12 +558,12 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         corps = request.data if isinstance(request.data, dict) else {}
         try:
             if methode == 'delete':
-                supprimer_variante(variante)
+                supprimer_variante(variante, user=request.user)
                 return Response(status=status.HTTP_204_NO_CONTENT)
             variante = modifier_variante(
                 variante, nom=corps.get('nom'),
                 roof_layout=corps.get('roof_layout', ...),
-                resultat=corps.get('resultat', ...))
+                resultat=corps.get('resultat', ...), user=request.user)
         except VarianteRefusee as refus:
             return Response({refus.champ or 'variante': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
