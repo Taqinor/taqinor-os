@@ -272,7 +272,12 @@ def geometrie_de_planche(roof_layout):
                   for lat, lng in _points_geo(zone.get('vertices'), 'lnglat')]
         geometrie = zone.get('geometry') \
             if isinstance(zone.get('geometry'), dict) else {}
-        modules = _modules_du_pan(geometrie, local)
+        # ACAL269 — les numéros STABLES (``panels[].n``) et les étiquettes de
+        # rangée que le document porte, par centre : une structure PARALLÈLE
+        # (``pan['modules']`` reste une liste de centres, clé de dict dans
+        # les rangées, la fixation et le plan de câblage).
+        reperes = {}
+        modules = _modules_du_pan(geometrie, local, reperes)
         pan = {
             'repere': str(zone.get('id') or 'PAN-%d' % rang),
             'libelle': str(zone.get('label') or ''),
@@ -286,6 +291,7 @@ def geometrie_de_planche(roof_layout):
                                  if 'tiltDeg' in geometrie
                                  else zone.get('pitchDeg')),
             'modules': modules,
+            'reperes_modules': reperes,
             # ACAL263 — le module de CE pan (catalogue puis repli kit).
             'module_m': dimensions_module(roof_layout, zone),
             'batiment': str(zone.get('buildingId') or ''),
@@ -445,7 +451,19 @@ def _etendue_avec_parcelle(geometrie, etendue):
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _modules_du_pan(geometrie, local):
+def _repere_du_panneau(panneau):
+    """``(n, rangée)`` que le panneau DÉCLARE — chacun ``None`` s'il est
+    absent ou illisible (jamais un numéro ni une rangée inventés)."""
+    numero = panneau.get('n')
+    if isinstance(numero, bool) or not isinstance(numero, int) or numero < 1:
+        numero = None
+    rangee = panneau.get('rangee')
+    rangee = (str(rangee).strip() or None) if isinstance(rangee, str) \
+        else None
+    return numero, rangee
+
+
+def _modules_du_pan(geometrie, local, reperes=None):
     """Centres des modules POSÉS, en mètres dans le repère de la planche.
 
     ``panels`` porte des centres ENU relatifs à ``origin`` (``[lng, lat]``) :
@@ -467,7 +485,12 @@ def _modules_du_pan(geometrie, local):
         cx, cy = _nombre(panneau.get('cx')), _nombre(panneau.get('cy'))
         if cx is None or cy is None:
             continue
-        centres.append((est0 + cx, nord0 + cy))
+        centre = (est0 + cx, nord0 + cy)
+        centres.append(centre)
+        if reperes is not None:
+            numero, rangee = _repere_du_panneau(panneau)
+            if numero is not None or rangee is not None:
+                reperes[centre] = (numero, rangee)
     return centres
 
 
@@ -1379,13 +1402,21 @@ def _reperes_de_pose(pan, vers_feuille):
         return []
 
     morceaux = []
+    reperes = pan.get('reperes_modules') or {}
     for numero, centres in centres_par_rangee(pan['modules'],
                                               pan.get('azimut_deg')):
         depart = vers_feuille(centres[0])
+        # ACAL269 — l'étiquette de rangée que le DOCUMENT porte (la même sur
+        # tous les modules de la rangée), sinon le numéro calculé.
+        etiquettes = {(reperes.get(centre) or (None, None))[1]
+                      for centre in centres}
+        etiquette = (etiquettes.pop() if len(etiquettes) == 1
+                     and None not in etiquettes else 'R%d' % numero)
         morceaux.append(
             '<text x="%s" y="%s" font-size="3" font-weight="bold" '
-            'text-anchor="end" fill="%s">R%d</text>'
-            % (_n(depart[0] - 1.5), _n(depart[1] + 1.0), VERT_MODULE, numero))
+            'text-anchor="end" fill="%s">%s</text>'
+            % (_n(depart[0] - 1.5), _n(depart[1] + 1.0), VERT_MODULE,
+               escape(etiquette)))
         if len(centres) < 2:
             continue
         arrivee = vers_feuille(centres[-1])
