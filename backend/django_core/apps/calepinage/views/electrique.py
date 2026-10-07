@@ -66,8 +66,27 @@ class ElectriqueActionsMixin:
         Lecture PURE : rien n'est écrit, aucun statut n'est touché.
         """
         calepinage = self.get_object()
+        # ACAL172 — ``?variante=<id>`` : le résultat (verdict électrique
+        # compris) calculé sur le ``roof_layout`` de CETTE variante du même
+        # calepinage ; rien n'est écrit. Variante étrangère ⇒ 404.
+        variante = None
+        brut = request.query_params.get('variante')
+        if brut not in (None, ''):
+            from .. import selectors
+
+            variante = (selectors.variantes(calepinage).filter(pk=brut).first()
+                        if str(brut).isdigit() else None)
+            if variante is None:
+                return Response({'variante': 'Variante introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
         try:
-            return Response(resultat_calepinage(calepinage))
+            if variante is None:
+                return Response(resultat_calepinage(calepinage))
+            servi = resultat_calepinage(
+                calepinage, layout=variante.roof_layout
+                if isinstance(variante.roof_layout, dict) else None)
+            servi['variante'] = {'id': variante.pk, 'nom': variante.nom}
+            return Response(servi)
         except _REFUS_DE_LECTURE as refus:
             return Response({refus.champ or 'temperatures': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)

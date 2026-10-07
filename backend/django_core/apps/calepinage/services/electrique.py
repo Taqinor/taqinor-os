@@ -69,6 +69,7 @@ __all__ = [
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
     'consigner_derogation_publication', 'CODE_DEROGATION_PUBLICATION',
     'CHAMP_DEROGATION_PUBLICATION',  # ACAL170
+    'verdict_de_conception',  # ACAL172
     'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
     'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
@@ -2286,9 +2287,41 @@ def garde_publication(calepinage, *, derogation=None, user=None):
         EntreeInvalide: dérogation illisible ou sans motif (champ
             ``derogation_electrique``).
     """
+    verdict = verdict_de_conception(calepinage)
+    bloquants = verdict['bloquants']
+    motif_saisi = (None if derogation is None
+                   else _motif_de_derogation(derogation))
+    trace = None
+    if bloquants:
+        if motif_saisi is None:
+            raise PublicationBloquee(
+                "Publication refusée : %d contrainte(s) électrique(s) "
+                "bloquante(s). %s" % (
+                    len(bloquants),
+                    ' '.join(b['libelle'] for b in bloquants)),
+                bloquants=bloquants)
+        trace = _trace_derogation_publication(bloquants, motif_saisi, user)
+    return dict(verdict, derogation=trace)
+
+
+def verdict_de_conception(calepinage, *, layout=None):
+    """ACAL170/ACAL172 — LA lecture des bloquants, sans rien lever ni écrire.
+
+    ``{verdict, bloquants, manquantes}`` lus dans l'agrégateur
+    ``verdict_publiable`` (motifs de statut ``bloquant`` →
+    ``{code, libelle, detail}``) ; ``verdict`` ∈ ``bloquant`` |
+    ``indetermine`` (fiche incomplète, matériel non désigné, valeur sans
+    provenance — D-ACAL-9 : ne bloque pas) | ``alerte`` | ``conforme``.
+
+    La garde de publication (devis), l'approbation, la retenue d'une
+    variante et le comparatif la lisent TOUS ici. ``layout`` évalue le
+    ``roof_layout`` d'une variante (ACAL172) ; absent, la conception
+    enregistrée.
+    """
     from core.electrique.types import STATUT_ALERTE, STATUT_BLOQUANT
 
-    rapport, conception, materiel = _rapport_publication(calepinage)
+    rapport, conception, materiel = _rapport_publication(calepinage,
+                                                         layout=layout)
     motifs = rapport['motifs']
     bloquants = [{'code': motif['code'], 'libelle': motif['libelle'],
                   'detail': motif['source']}
@@ -2301,19 +2334,8 @@ def garde_publication(calepinage, *, derogation=None, user=None):
     # « indéterminée », jamais un bloquant (D-ACAL-9).
     manquantes.extend(motif['libelle'] for motif in motifs
                       if motif['statut'] == STATUT_MOTIF_SANS_SOURCE)
-    motif_saisi = (None if derogation is None
-                   else _motif_de_derogation(derogation))
-    trace = None
     if bloquants:
         verdict = 'bloquant'
-        if motif_saisi is None:
-            raise PublicationBloquee(
-                "Publication refusée : %d contrainte(s) électrique(s) "
-                "bloquante(s). %s" % (
-                    len(bloquants),
-                    ' '.join(b['libelle'] for b in bloquants)),
-                bloquants=bloquants)
-        trace = _trace_derogation_publication(bloquants, motif_saisi, user)
     elif manquantes:
         verdict = 'indetermine'
     elif any(motif['statut'] == STATUT_ALERTE for motif in motifs):
@@ -2321,7 +2343,7 @@ def garde_publication(calepinage, *, derogation=None, user=None):
     else:
         verdict = 'conforme'
     return {'verdict': verdict, 'bloquants': bloquants,
-            'manquantes': manquantes, 'derogation': trace}
+            'manquantes': manquantes}
 
 
 #: ACAL170 — le code de la trace d'une dérogation de PUBLICATION, dans le
@@ -2655,8 +2677,12 @@ def verdict_publiable(calepinage):
     return _rapport_publication(calepinage)[0]
 
 
-def _rapport_publication(calepinage):
+def _rapport_publication(calepinage, *, layout=None):
     """CALX248 — ``{publiable, motifs}`` : TOUT ce qui empêche de publier.
+
+    ACAL172 — ``layout`` évalue une AUTRE conception du même calepinage (le
+    ``roof_layout`` d'une variante) avec le matériel et les saisies du
+    calepinage ; absent, la conception enregistrée.
 
     Rassemble, en un seul rapport et sans reprononcer aucun calcul : les
     natures de CALX215 (conception), l'omission de norme (D1), les verdicts
@@ -2675,7 +2701,7 @@ def _rapport_publication(calepinage):
     from .troncons import troncons_du_calepinage
 
     conception, materiel, donnees, document = conception_du_calepinage(
-        calepinage)
+        calepinage, layout=layout)
     norme = norme_applicable(parametres_societe(calepinage))
     reglages = _reglages_electrique_societe(calepinage)
 

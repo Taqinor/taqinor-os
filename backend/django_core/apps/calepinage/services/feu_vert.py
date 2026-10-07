@@ -138,6 +138,7 @@ def verifier_avant_publication(calepinage, *, geste=GESTE_RETENUE,
     # CALX348 — la SECONDE vérification, au MÊME point d'entrée.
     if geste == GESTE_RETENUE:
         _verifier_approbation_avant_retenue(calepinage, variante=variante)
+        _verifier_verdict_de_la_variante(calepinage, variante)
         return
     # ACAL116 (D-ACAL-24) — devis / pièce d'exécution : une approbation À
     # JOUR (non refusée, non périmée) quand la société l'exige.
@@ -148,6 +149,30 @@ def verifier_avant_publication(calepinage, *, geste=GESTE_RETENUE,
             'approbation': [MESSAGES_APPROBATION.get(
                 geste, MESSAGES_APPROBATION[GESTE_EXECUTION])],
         })
+
+
+def _verifier_verdict_de_la_variante(calepinage, variante):
+    """ACAL172 (D-ACAL-9, D-ACAL-2) — retenir une variante en fait la
+    conception chiffrée : SON verdict électrique (évalué sur son
+    ``roof_layout``) ne peut pas porter un bloquant. L'indéterminé passe.
+
+    Raises:
+        rest_framework.exceptions.ValidationError: champ ``electrique``
+            nommant les bloquants — converti en 400 par l'enveloppe globale.
+    """
+    document = getattr(variante, 'roof_layout', None) if variante else None
+    if calepinage is None or not isinstance(document, dict) or not document:
+        return
+    from rest_framework.exceptions import ValidationError
+
+    from .electrique import verdict_de_conception
+
+    verdict = verdict_de_conception(calepinage, layout=document)
+    if verdict['bloquants']:
+        raise ValidationError({'electrique': [
+            "Cette variante ne peut pas être retenue : verdict électrique "
+            "bloquant — " + ' ; '.join(b['libelle']
+                                       for b in verdict['bloquants'])]})
 
 
 # ── CALX348 — l'approbation exigée avant de retenir une variante ────────────

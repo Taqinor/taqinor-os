@@ -373,7 +373,9 @@ def _production_comparee(variante):
 
 def _ligne_comparaison(variante, reference, nombre_de_lignes,
                        reference_p50=None):
-    from .services.comparaison import MOTIF_PERIMEE
+    from .services.comparaison import (
+        MOTIF_PERIMEE, verdict_electrique_de_la_variante,
+    )
 
     mesures = _mesures_variante(variante)
     simulee, production, _motif = _production_comparee(variante)
@@ -420,6 +422,9 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
             None if mesures.get('source_mesures') != 'simulation'
             else _motif == MOTIF_PERIMEE),
         'source_mesures': ('simulation' if simulee else 'conception'),
+        # ACAL172 — le verdict électrique de LA variante (contrat
+        # calepinage_publication_electrique.json, ligne de comparer/).
+        'verdict_electrique': verdict_electrique_de_la_variante(variante),
     }
 
 

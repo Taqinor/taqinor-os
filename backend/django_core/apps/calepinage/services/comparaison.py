@@ -39,7 +39,29 @@ from __future__ import annotations
 from .valeurs import nombre as _nombre
 
 __all__ = ['CLES_PRODUCTION', 'MOTIF_NON_SIMULEE', 'MOTIF_PERIMEE',
-           'NOMBRE_PERTES_DOMINANTES', 'colonnes_production']
+           'NOMBRE_PERTES_DOMINANTES', 'colonnes_production',
+           'verdict_electrique_de_la_variante']
+
+
+def verdict_electrique_de_la_variante(variante):
+    """ACAL172 — ``{verdict, bloquants}`` de LA variante (codes des
+    bloquants), évalué sur SON ``roof_layout`` par la lecture unique
+    ``electrique.verdict_de_conception``. Lecture pure ; une variante sans
+    conception, ou des entrées illisibles, rendent ``indetermine``."""
+    from .electrique import TemperaturesInvalides, verdict_de_conception
+
+    indetermine = {'verdict': 'indetermine', 'bloquants': []}
+    calepinage = getattr(variante, 'calepinage', None)
+    document = getattr(variante, 'roof_layout', None)
+    if calepinage is None or not isinstance(document, dict) or not document:
+        return indetermine
+    try:
+        verdict = verdict_de_conception(calepinage, layout=document)
+    except TemperaturesInvalides:
+        return indetermine
+    return {'verdict': verdict['verdict'],
+            'bloquants': [b['code'] for b in verdict['bloquants']]}
+
 
 #: Les colonnes de production du contrat ``variantes_comparer.json`` —
 #: ``pertes_dominantes`` est traitée à part (c'est une liste, jamais ``None``).
