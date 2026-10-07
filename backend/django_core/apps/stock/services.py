@@ -599,10 +599,50 @@ def average_cost_with_source(produit, a_la_date=None):
             pu = pu + (frais / Decimal(str(q_ligne)))
         total_q += q_recue
         total_v += q_recue * pu
+    # ASTK44 — les ENTRÉES DE PRODUCTION (découpe, assemblage, démontage)
+    # portent le coût des sorties qui les produisent (`cout_unitaire`) : elles
+    # sont des couches de coût au même titre qu'une réception, bornées comme
+    # elles (postérieures à la revalorisation, antérieures à `a_la_date`).
+    # Sans elles, la cible d'une découpe retombait sur son prix catalogue et
+    # la transformation créait (ou détruisait) de la valeur.
+    total_q, total_v = _ajouter_couches_production(
+        produit, total_q, total_v, jour=jour, revalo=revalo)
     if total_q:
         source = 'achats' if revalo is None else 'revalorisation'
         return (total_v / total_q).quantize(Decimal('0.01')), source
     return (produit.prix_achat or Decimal('0')), 'catalogue'
+
+
+def _ajouter_couches_production(produit, total_q, total_v, *, jour=None,
+                                revalo=None):
+    """ASTK44 — ajoute aux totaux (quantité, valeur) les entrées de production
+    du produit qui portent un ``cout_unitaire`` (couche de coût). Renvoie le
+    nouveau couple (total_q, total_v). Mêmes bornes que les réceptions :
+    société du produit, après le jour de validation de la revalorisation de
+    départ, au plus tard ``jour`` quand il est fourni."""
+    from .models import MouvementStock
+    qs = MouvementStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+        cout_unitaire__isnull=False, quantite__gt=0)
+    if revalo is not None and revalo.date_validation is not None:
+        qs = qs.filter(date__date__gt=_jour(revalo.date_validation))
+    if jour is not None:
+        qs = qs.filter(date__date__lte=jour)
+    for quantite, cout in qs.values_list('quantite', 'cout_unitaire'):
+        total_q += quantite
+        total_v += quantite * cout
+    return total_q, total_v
+
+
+def cout_entree_production(valeur, quantite):
+    """ASTK44 — coût unitaire d'une entrée de production = valeur transférée
+    ÷ quantité produite (4 décimales, comme ``MouvementStock.cout_unitaire``).
+    ``None`` si rien n'est produit."""
+    if not quantite:
+        return None
+    return (Decimal(str(valeur)) / Decimal(str(quantite))).quantize(
+        Decimal('0.0001'))
 
 
 def average_cost(produit):
@@ -2200,7 +2240,7 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           created_by, save_produit=True, emplacement_source=None,
                           bin_source=None, bin_destination=None,
                           bin_source_id=None, motif_rebut=None,
-                          verrouiller_produit=True):
+                          verrouiller_produit=True, cout_unitaire=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -2242,7 +2282,13 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     ``select_for_update`` lèverait ``TransactionManagementError``) et jamais
     pour un produit non encore enregistré : sans transaction ouverte, le
     comportement reste strictement historique. Un appelant qui détient déjà le
-    verrou ne paie rien (ré-acquérir dans la même transaction est un no-op)."""
+    verrou ne paie rien (ré-acquérir dans la même transaction est un no-op).
+
+    ASTK44 — ``cout_unitaire`` (mot-clé, optionnel) : coût unitaire porté par
+    une ENTRÉE DE PRODUCTION (découpe, assemblage, démontage) = valeur des
+    sorties qui la produisent ÷ quantité produite. Le coût moyen
+    (``average_cost_with_source``) le lit comme une couche de coût. ``None``
+    (défaut) = comportement historique strictement inchangé."""
     from django.db import transaction as _transaction
     from .models import MouvementStock, Produit, StockEmplacement
 
@@ -2267,6 +2313,7 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         note=note,
         created_by=created_by,
         motif_rebut=motif_rebut,
+        cout_unitaire=cout_unitaire,
         **casiers,
     )
     if save_produit:
@@ -4406,6 +4453,9 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
 
     with transaction.atomic():
         mouvements = []
+        # ASTK44 — valeur des composants consommés, portée par l'entrée du
+        # composite (coût de l'accesseur unique, lu AVANT la sortie).
+        valeur_consommee = Decimal('0')
         for ligne in composants:
             comp_produit = ligne.produit
             if comp_produit is None:
@@ -4418,6 +4468,8 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             avant = p.quantite_stock
             apres = avant - qte_conso
             check_negative_stock_guard(company, avant, apres)
+            cout_comp, _source = valuation_cost_with_source(p)
+            valeur_consommee += cout_comp * Decimal(str(qte_conso))
             mvt = record_stock_movement(
                 company=company, produit=p,
                 type_mouvement=mouvement_type_sortie(),
@@ -4443,7 +4495,9 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             quantite=quantite_produite, quantite_avant=avant_c,
             quantite_apres=apres_c, reference=reference,
             note=f'Assemblage {reference} — composite kit {kit.id}',
-            created_by=user)
+            created_by=user,
+            cout_unitaire=cout_entree_production(
+                valeur_consommee, quantite_produite))
         mouvements.append(mvt_entree)
         if emplacement_destination is not None and \
                 not emplacement_destination.is_principal:
@@ -4485,6 +4539,30 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
         avant_c = composite.quantite_stock
         qte_sortie = min(quantite_demontee, avant_c) if avant_c > 0 else 0
         apres_c = avant_c - qte_sortie
+        # ASTK44 — la valeur du composite sorti (coût de l'accesseur unique,
+        # lu AVANT la sortie) est répartie sur les composants récupérés au
+        # prorata de leur valeur courante (à défaut : de leur quantité) ;
+        # chaque entrée porte sa part ÷ sa quantité. Rien de sorti ⇒ aucune
+        # valeur transférée (cout_unitaire None, comportement historique).
+        lignes_recuperation = [
+            ligne for ligne in lignes_recuperation
+            if ligne.produit is not None and (ligne.quantite_recuperee or 0) > 0]
+        parts = {}
+        if qte_sortie > 0 and lignes_recuperation:
+            cout_c, _source = valuation_cost_with_source(composite)
+            valeur_sortie = cout_c * Decimal(str(qte_sortie))
+            poids = []
+            for ligne in lignes_recuperation:
+                cout_l, _s = valuation_cost_with_source(ligne.produit)
+                poids.append(cout_l * Decimal(str(ligne.quantite_recuperee)))
+            if sum(poids) <= 0:
+                poids = [Decimal(str(ligne.quantite_recuperee))
+                         for ligne in lignes_recuperation]
+            total_poids = sum(poids)
+            for index, ligne in enumerate(lignes_recuperation):
+                parts[index] = cout_entree_production(
+                    valeur_sortie * poids[index] / total_poids,
+                    ligne.quantite_recuperee)
         mvt_sortie = record_stock_movement(
             company=company, produit=composite,
             type_mouvement=mouvement_type_sortie(),
@@ -4500,13 +4578,9 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
             se.quantite = max(se.quantite - qte_sortie, 0)
             se.save(update_fields=['quantite'])
 
-        for ligne in lignes_recuperation:
+        for index, ligne in enumerate(lignes_recuperation):
             comp_produit = ligne.produit
-            if comp_produit is None:
-                continue
             qte_recup = ligne.quantite_recuperee or 0
-            if qte_recup <= 0:
-                continue
             p = Produit.objects.select_for_update().get(id=comp_produit.id)
             avant = p.quantite_stock
             apres = avant + qte_recup
@@ -4516,7 +4590,7 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
                 quantite=qte_recup, quantite_avant=avant, quantite_apres=apres,
                 reference=reference,
                 note=f'Démontage {reference} — composant récupéré kit {kit.id}',
-                created_by=user)
+                created_by=user, cout_unitaire=parts.get(index))
             mouvements.append(mvt)
             if emplacement_destination is not None and \
                     not emplacement_destination.is_principal:
@@ -7815,7 +7889,11 @@ def decouper_produit(*, company, produit_source, quantite_consommee,
             quantite=quantite_produite, quantite_avant=avant_cible,
             quantite_apres=apres_cible, reference=reference,
             note=f'Découpe : production {cible.nom}',
-            created_by=user)
+            created_by=user,
+            # ASTK44 — l'entrée porte la valeur consommée : la cible est
+            # valorisée à ce coût (couche), jamais à son prix catalogue.
+            cout_unitaire=cout_entree_production(
+                valeur_transferee, quantite_produite))
 
         numero_lot = None
         date_peremption = None
