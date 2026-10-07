@@ -44,7 +44,7 @@
 // omission. En local : `npx playwright test i18n-quote-journey.spec.js`.
 import { expect, test } from '@playwright/test'
 
-import { uniq } from './helpers'
+import { API_DJANGO, lireJson, listeDe, uniq } from './helpers'
 
 // Libellés de l'option « arabe » : « Arabe » quand l'interface est en français,
 // « العربية » après la bascule (catalogues i18n, clé `client.langue_document.ar`).
@@ -140,6 +140,28 @@ test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', 
   // Écran de succès du générateur — texte stable, jamais un libellé de bouton
   // (les actions proposées y évoluent).
   await expect(page.getByText('Devis enregistré')).toBeVisible({ timeout: 45_000 })
+
+  // CAD177 — la composition libre ne porte QUE des lignes sans matériel
+  // (accessoires, pose, transport, suivi) : le moteur REFUSE de rendre un devis
+  // dont aucune option ne contient d'onduleur (500 « règle de sécurité »,
+  // nocturne 37585800165). Ce parcours teste la LANGUE du document, pas le
+  // dimensionnement : on y ajoute par l'API un onduleur et des panneaux du
+  // catalogue (lignes ordinaires, prix catalogue), pour que le moteur rende.
+  const devisCree = await reponseCreation.json()
+  for (const [recherche, motCle, quantite] of [
+    ['Onduleur', /onduleur/i, 1], ['Panneau', /panneau/i, 10],
+  ]) {
+    const produits = listeDe(await lireJson(await page.request.get(
+      `${API_DJANGO}/stock/produits/?search=${encodeURIComponent(recherche)}`), `catalogue ${recherche}`))
+    const produit = produits.find((p) => motCle.test(p.nom) && Number(p.prix_vente) > 0)
+    expect(produit, `un produit « ${recherche} » prix renseigné au catalogue de démonstration`).toBeTruthy()
+    await lireJson(await page.request.post(`${API_DJANGO}/ventes/devis-lignes/`, {
+      data: {
+        devis: devisCree.id, produit: produit.id, designation: produit.nom,
+        quantite: String(quantite), prix_unitaire: String(produit.prix_vente),
+      },
+    }), `ligne ${recherche}`)
+  }
 
   // ── 4. Le PDF premium se génère pour un client arabe ─────────────────────
   await page.goto('/ventes/devis')
