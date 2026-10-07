@@ -11,6 +11,7 @@ le profil via un import paresseux pour ne créer aucun cycle au chargement.
 """
 import re
 
+from django.conf import settings
 from django.utils import timezone
 
 
@@ -100,14 +101,25 @@ def register_failed_login(user):
     if user is None:
         return
     profile = get_policy(getattr(user, 'company', None))
-    max_attempts = getattr(profile, 'lockout_max_attempts', 0) or 0
-    if max_attempts <= 0:
-        return  # verrouillage désactivé → comportement historique
+    societe = getattr(profile, 'lockout_max_attempts', 0) or 0
+    # ASEC4 — plancher PLATEFORME : même quand la société n'a pas armé son
+    # verrou (seuil 0), un compte actif est verrouillé après
+    # ``LOGIN_PLANCHER_ECHECS`` échecs CONSÉCUTIFS (remis à 0 au succès) pour
+    # ``LOGIN_PLANCHER_VERROU_MINUTES``. Un seuil société plus strict prime.
+    plancher = int(getattr(settings, 'LOGIN_PLANCHER_ECHECS', 10) or 0)
+    seuils = [s for s in (societe, plancher) if s > 0]
+    if not seuils:
+        return
+    max_attempts = min(seuils)
     user.failed_login_count = (user.failed_login_count or 0) + 1
     fields = ['failed_login_count']
     reached = user.failed_login_count >= max_attempts
     if reached:
-        minutes = getattr(profile, 'lockout_duration_minutes', 15) or 15
+        if societe > 0 and max_attempts == societe:
+            minutes = getattr(profile, 'lockout_duration_minutes', 15) or 15
+        else:
+            minutes = int(getattr(
+                settings, 'LOGIN_PLANCHER_VERROU_MINUTES', 15) or 15)
         user.locked_until = timezone.now() + timezone.timedelta(
             minutes=minutes)
         user.failed_login_count = 0

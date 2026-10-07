@@ -17,6 +17,7 @@ from testkit.base import TenantAPITestCase
 from testkit.factories import CompanyFactory
 
 
+@override_settings(TENANT_SIGNUP_ENABLED=True)  # ASEC13 — inscription parquée par défaut
 class SignupBrandingSeedRegistryTest(TenantAPITestCase):
     def test_hook_branding_enregistre(self):
         from core.signup_hooks import registered_hooks

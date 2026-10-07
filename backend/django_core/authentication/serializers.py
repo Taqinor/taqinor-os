@@ -63,6 +63,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                     code='otp_required',
                 )
             if not user.verify_totp(otp):
+                if getattr(user, '_totp_rejeu', False):
+                    # ASEC5 — code déjà consommé (anti-rejeu).
+                    raise serializers.ValidationError(
+                        {'otp_required': True, 'code': 'otp_deja_utilise',
+                         'detail': 'Ce code a déjà été utilisé. Attendez le '
+                                   'code suivant.'},
+                        code='otp_deja_utilise',
+                    )
                 raise serializers.ValidationError(
                     {'otp_required': True,
                      'detail': 'Code de double authentification invalide.'},
@@ -473,6 +481,37 @@ class UserSerializer(serializers.ModelSerializer):
         from .avatars import presign_avatar
         return presign_avatar(obj.avatar_key)
 
+    def validate(self, attrs):
+        """ASEC3 — le mot de passe ne s'écrit qu'à la CRÉATION (obligatoire,
+        politique de la société appliquée comme ``RegisterSerializer``) ; une
+        modification passe par l'action dédiée ``reinitialiser-mot-de-passe``
+        (jamais par l'update générique)."""
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            if 'password' in attrs:
+                raise serializers.ValidationError({
+                    'password': ["Le mot de passe se réinitialise par l'action "
+                                 "dédiée, jamais par une modification."],
+                })
+            return attrs
+        password = attrs.get('password')
+        if not password:
+            raise serializers.ValidationError(
+                {'password': ['Le mot de passe est requis.']})
+        from .password_policy import validate_new_password
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        candidate = CustomUser(
+            username=attrs.get('username') or '',
+            email=attrs.get('email') or '',
+            first_name=attrs.get('first_name') or '',
+            last_name=attrs.get('last_name') or '',
+        )
+        errors = validate_new_password(password, company, user=candidate)
+        if errors:
+            raise serializers.ValidationError({'password': errors})
+        return attrs
+
     def create(self, validated_data):
         password = validated_data.pop('password')
         user = CustomUser(**validated_data)
@@ -488,7 +527,9 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
     def update(self, instance, validated_data):
-        password = validated_data.pop('password', None)
+        # ASEC3 — jamais d'écriture du hash par l'update générique (``validate``
+        # refuse déjà le champ ; ceinture ici).
+        validated_data.pop('password', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         # Quand le rôle change, role_legacy doit se réaligner sur son palier —
@@ -498,8 +539,6 @@ class UserSerializer(serializers.ModelSerializer):
                 CustomUser.tier_for_role(validated_data.get('role'))
                 or CustomUser.ROLE_NORMAL
             )
-        if password:
-            instance.set_password(password)
         instance.save()
         return instance
 

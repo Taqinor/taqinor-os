@@ -25,7 +25,7 @@ périmètre se lit via ``user.role.entites_visibles``, une simple traversée
 d'ORM, jamais un import de ``apps.roles``/``apps.entites``).
 """
 from django.db.models import Q
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 __all__ = [
     'entite_id_demandee',
@@ -108,6 +108,25 @@ def scope_entite_queryset(qs, user, champ='entite'):
         Q(**{f'{champ}_id__isnull': True}) | Q(**{f'{champ}_id__in': ids}))
 
 
+def _assert_entite_de_la_societe(user, entite_id):
+    """ASEC7 — lève ``ValidationError`` (400, champ ``entite``) si l'entité
+    ``entite_id`` n'est pas une entité de la société de ``user``.
+
+    Sans société de référence (superuser plateforme, appel hors requête) :
+    aucune vérification, comme le scoping de lecture. Lecture du modèle par
+    ``apps.get_model`` — ``core`` n'importe aucune app."""
+    company_id = getattr(user, 'company_id', None)
+    if company_id is None:
+        return
+    from django.apps import apps as django_apps
+    try:
+        Entite = django_apps.get_model('entites', 'Entite')
+    except LookupError:  # app entités absente : rien à rattacher
+        return
+    if not Entite.objects.filter(pk=entite_id, company_id=company_id).exists():
+        raise ValidationError({'entite': ['Entité introuvable.']})
+
+
 def assert_entite_assignable(user, entite_id):
     """NTADM3 — lève ``PermissionDenied`` (403) si ``user`` n'a pas le droit
     de rattacher une ligne à l'entité ``entite_id``.
@@ -117,12 +136,18 @@ def assert_entite_assignable(user, entite_id):
     """
     if entite_id in (None, '', 'null'):
         return
-    ids = entites_visibles_ids(user)
-    if ids is None:
-        return
     try:
         valeur = int(entite_id)
     except (TypeError, ValueError):
+        return
+    # ASEC7 — l'entité doit appartenir à la société de l'utilisateur, MÊME
+    # quand son rôle ne porte aucun périmètre (``entites_visibles_ids`` =
+    # None) : avant, ce cas rendait la main sans rien vérifier et une entité
+    # d'une AUTRE société était acceptée. 400 sur ``entite``, réponse
+    # identique pour un id étranger et un id inexistant (aucun oracle).
+    _assert_entite_de_la_societe(user, valeur)
+    ids = entites_visibles_ids(user)
+    if ids is None:
         return
     if valeur not in ids:
         raise PermissionDenied("Cette entité est hors de votre périmètre.")

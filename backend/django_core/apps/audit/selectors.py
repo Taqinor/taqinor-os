@@ -59,6 +59,8 @@ def reconstruct_as_of(instance_or_ct, object_id=None, dt=None, *, company=None):
     if company is not None:
         qs = qs.filter(company=company)
 
+    from .redaction import caviarder_valeur
+    modele = content_type.model_class()
     fields: Dict[str, Any] = {}
     covered = 0
     for entry in qs:
@@ -73,7 +75,9 @@ def reconstruct_as_of(instance_or_ct, object_id=None, dt=None, *, company=None):
                 continue
             if not field:
                 continue
-            fields[field] = new
+            # ASEC8 — un champ secret n'est jamais restitué en clair (même une
+            # ligne écrite avant le caviardage).
+            fields[field] = caviarder_valeur(modele, field, new)
             covered += 1
 
     return {

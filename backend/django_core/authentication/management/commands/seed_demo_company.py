@@ -32,6 +32,27 @@ from django.db import transaction
 from django.utils import timezone
 
 DEMO_PASSWORD = 'DemoFull@2026!'
+
+
+def refus_societe_non_demo(slug):
+    """ASEC16 — message de refus si ``slug`` désigne une société EXISTANTE qui
+    n'est pas marquée ``Company.est_demo=True`` ; ``None`` sinon (société
+    démo, ou société inexistante qui sera créée démo).
+
+    Seul critère : ``est_demo`` — jamais une sous-chaîne « demo » du slug
+    (une société RÉELLE peut s'appeler ``taqinor-demo``), jamais
+    ``settings.DEBUG``. Partagé par reset_demo_company, seed_demo,
+    seed_demo_company et l'assistant de démonstration."""
+    from authentication.models import Company
+    company = Company.objects.filter(slug=slug).only('est_demo').first()
+    if company is not None and not company.est_demo:
+        return (f"Refus : la société « {slug} » n'est pas une société de "
+                "démonstration (Company.est_demo=False). Les commandes et "
+                "l'assistant de démonstration ne touchent QUE les sociétés "
+                "est_demo=True.")
+    return None
+
+
 # Seed fixe → un reset (NTDMO6) reproduit le même nombre d'enregistrements.
 RNG_SEED = 42
 
@@ -74,6 +95,10 @@ class Command(BaseCommand):
                 "à mot de passe connu. Relancez avec --force si vous ciblez "
                 "bien un environnement de démo.")
 
+        refus = refus_societe_non_demo(slug)
+        if refus:
+            raise CommandError(refus)
+
         rng = random.Random(RNG_SEED)
         company, admin, resp = self._ensure_company(slug)
 
@@ -102,12 +127,12 @@ class Command(BaseCommand):
         from authentication.models import Company, CustomUser
         from apps.parametres.models import CompanyProfile
 
+        # ASEC16 — ``est_demo`` est posé à la CRÉATION seulement : une société
+        # existante non démo est refusée en amont (``refus_societe_non_demo``),
+        # jamais convertie en démo en silence.
         company, _ = Company.objects.get_or_create(
-            slug=slug, defaults={'nom': 'TAQINOR Démo (complet)'})
-        # NTDMO8 — marque la société comme démo (idempotent).
-        if not company.est_demo:
-            company.est_demo = True
-            company.save(update_fields=['est_demo'])
+            slug=slug, defaults={'nom': 'TAQINOR Démo (complet)',
+                                 'est_demo': True})
 
         profile = CompanyProfile.get(company)
         profile.nom = 'TAQINOR Démo (complet)'

@@ -52,6 +52,14 @@ class Command(BaseCommand):
                 "de passe connu (demo_admin/demo_resp). Relancez avec --force "
                 "si vous êtes certain de cibler un environnement de démo."
             )
+        # ASEC16 — une société RÉELLE peut porter le slug ``taqinor-demo`` :
+        # seule ``est_demo=True`` autorise le seed (jamais le slug ni DEBUG).
+        from authentication.management.commands.seed_demo_company import (
+            refus_societe_non_demo,
+        )
+        refus = refus_societe_non_demo('taqinor-demo')
+        if refus:
+            raise CommandError(refus)
         from authentication.models import Company, CustomUser
         from apps.parametres.models import CompanyProfile
         from apps.stock.models import (
@@ -64,7 +72,7 @@ class Command(BaseCommand):
 
         company, created = Company.objects.get_or_create(
             slug='taqinor-demo',
-            defaults={'nom': 'TAQINOR Démo'},
+            defaults={'nom': 'TAQINOR Démo', 'est_demo': True},
         )
         if not created and company.produits.exists():
             # QAH12 — les bases déjà semées reçoivent aussi le portail + SAV
