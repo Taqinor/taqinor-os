@@ -44,6 +44,27 @@ class VerdictNonPersisteTest(BaseApiCalepinage):
         document['zones'][0]['geometry']['count'] += 1
         return document
 
+    def test_sorties_ne_declarent_plus_verdict_electrique(self):
+        # Lot 2 critique #21 — aucun écrivain ne pose plus la clé.
+        from apps.calepinage.services.resultat import CLES_SORTIES
+
+        self.assertNotIn('verdict_electrique', CLES_SORTIES)
+
+    def test_sans_en_tete_de_simulation_rien_n_est_perime(self):
+        """Lot 2 critique #21 — un résultat SANS ``simulation.hash_entree``
+        (jamais simulé) n'est pas « périmé »."""
+        from apps.calepinage.services.electrique import resultat_calepinage
+
+        resultat = copy.deepcopy(self.calepinage.resultat)
+        resultat.pop('simulation', None)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            resultat=resultat)
+        cal = Calepinage.objects.get(pk=self.calepinage.pk)
+        with patch_materiel():
+            servi = resultat_calepinage(cal)
+        self.assertFalse(servi['simulation_perimee'])
+        self.assertFalse(servi.get('motif'))
+
     def test_enregistrer_layout_n_ecrit_pas_verdict_electrique(self):
         with patch_materiel():
             enregistrer_layout(self.calepinage, self._document_modifie(),
