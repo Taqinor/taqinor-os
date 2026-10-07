@@ -95,7 +95,11 @@ class ResponsableStockeTest(BaseApiCalepinage):
         self.assertIsNone(sur_client.responsable_id)
 
     def test_reprise_publique_sans_auteur_a_un_responsable(self):
-        lead = self._lead('Public', roof_outline=CONTOUR)
+        # Le tracé est posé APRÈS la création (``update`` n'émet aucun
+        # signal) : un lead CRÉÉ avec un tracé déclenche déjà la reprise via
+        # ``lead_created`` (CAL110), le geste mesuré serait alors un rejeu.
+        lead = self._lead('Public')
+        Lead.objects.filter(pk=lead.pk).update(roof_outline=CONTOUR)
 
         calepinage = reprendre_trace_public(lead.pk, self.company, user=None)
 
