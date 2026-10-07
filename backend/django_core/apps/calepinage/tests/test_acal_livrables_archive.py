@@ -39,7 +39,7 @@ BASE = '/api/django/calepinage/calepinages/'
 
 #: Les lectures d'un archivé : 200 (un calepinage de SA société).
 LECTURES = ('', 'layout/', 'resultat/', 'documents/', 'versions/',
-            'variantes/', 'planche.svg')
+            'variantes/', 'planche.svg/')
 
 #: Les écritures : 409 nommé, rien n'est écrit.
 ECRITURES = (
@@ -93,7 +93,7 @@ class LivrablesArchiveTest(TestCase):
         import fitz
 
         with patch_materiel():
-            reponse = self.api.get(self._url('rapport-etude.pdf'))
+            reponse = self.api.get(self._url('rapport-etude.pdf/'))
         self.assertEqual(reponse.status_code, 200,
                          getattr(reponse, 'data', None))
         octets = b''.join(reponse.streaming_content) if getattr(
@@ -115,7 +115,7 @@ class LivrablesArchiveTest(TestCase):
                                  getattr(reponse, 'data', None))
         # La planche (pièce produite) porte la mention « archivée ».
         with patch_materiel():
-            planche = self.api.get(self._url('planche.svg'))
+            planche = self.api.get(self._url('planche.svg/'))
         texte = b''.join(planche.streaming_content).decode('utf-8') if \
             getattr(planche, 'streaming', False) else \
             planche.content.decode('utf-8')
