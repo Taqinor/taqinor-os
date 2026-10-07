@@ -42,6 +42,19 @@ APPS_DIR = DJANGO_CORE / "apps"
 ALLOWLIST_PATH = ROOT / "scripts" / "fk_scoping_allow.txt"
 
 FK_CALLS = ("ForeignKey", "OneToOneField")
+#: AANA47 — les champs M2M écrivent eux aussi des clés d'une autre ligne.
+M2M_CALLS = ("ManyToManyField",)
+#: AANA47 — cibles TOUJOURS scopées société, même si leur modèle n'est pas dans
+#: ``apps/*/models*.py`` (``CustomUser`` vit dans ``authentication/``) et malgré
+#: ``FOUNDATION_APPS`` : une FK/M2M vers un utilisateur ou un rôle accepte sinon
+#: la clé d'un compte d'une AUTRE société.
+FORCED_TENANT_TARGETS = {("authentication", "CustomUser"), ("roles", "Role")}
+#: ``settings.AUTH_USER_MODEL`` / ``get_user_model()`` ne sont pas des chaînes
+#: littérales : on les lit comme ``authentication.CustomUser``.
+USER_MODEL_ALIASES = {"authentication.CustomUser", "auth.User"}
+#: Sous-dossiers jamais balayés pour les sérialiseurs.
+SKIP_DIRS = {"migrations", "tests", "test", "management", "__pycache__",
+             "node_modules"}
 #: SPL72 — UNE seule découverte par garde : ``models.py`` ET ses scissions
 #: ``models_<x>.py``, ``serializers.py`` ET ``serializers_<x>.py`` /
 #: ``<x>_serializers.py`` (plus les dossiers ``models/`` / ``serializers/``).
@@ -91,6 +104,15 @@ def _assigned_targets(stmt):
     return []
 
 
+def _is_user_model_ref(node) -> bool:
+    """``settings.AUTH_USER_MODEL`` ou ``get_user_model()`` (AANA47)."""
+    if isinstance(node, ast.Attribute):
+        return node.attr == "AUTH_USER_MODEL"
+    if isinstance(node, ast.Name):
+        return node.id == "AUTH_USER_MODEL"
+    return _call_name(node) == "get_user_model"
+
+
 def _base_names(cls: ast.ClassDef):
     names = []
     for base in cls.bases:
@@ -134,12 +156,14 @@ def _iter_model_files():
 
 
 def build_model_map():
-    """→ (fks, tenant_models)
+    """→ (fks, tenant_models, name_to_keys, m2m_fields)
 
-    ``fks``: ``{(app, Model): {field: (target_app, target_model)}}``
+    ``fks``: ``{(app, Model): {field: (target_app, target_model)}}`` (FK, 1-1
+    ET M2M — AANA47) ; ``m2m_fields``: ``{((app, Model), field)}`` des M2M.
     ``tenant_models``: ``{(app, Model)}`` portant une société.
     """
     fks = {}
+    m2m_fields = set()
     declares_company = set()
     bases_of = {}
     name_to_keys = {}
@@ -159,14 +183,20 @@ def build_model_map():
                 if not noms:
                     continue
                 value = getattr(stmt, "value", None)
-                if _call_name(value) not in FK_CALLS:
+                if _call_name(value) not in FK_CALLS + M2M_CALLS:
                     continue
+                est_m2m = _call_name(value) in M2M_CALLS
                 cible = value.args[0] if value.args else None
-                if not (isinstance(cible, ast.Constant)
+                if _is_user_model_ref(cible):
+                    brut = "authentication.CustomUser"
+                elif (isinstance(cible, ast.Constant)
                         and isinstance(cible.value, str)):
+                    brut = cible.value
+                    if brut in USER_MODEL_ALIASES:
+                        brut = "authentication.CustomUser"
+                else:
                     # FK vers une classe locale (même app) — hors périmètre.
                     continue
-                brut = cible.value
                 if "." not in brut:
                     continue
                 t_app, t_model = brut.split(".", 1)
@@ -174,6 +204,8 @@ def build_model_map():
                     if nom == "company":
                         declares_company.add(key)
                     champs[nom] = (t_app, t_model)
+                    if est_m2m:
+                        m2m_fields.add((key, nom))
 
     # Fixpoint : un modèle est tenant s'il déclare ``company`` ou hérite d'une
     # base tenant (nom de base connu, ou modèle tenant du dépôt).
@@ -196,18 +228,36 @@ def build_model_map():
                         break
                 if key in tenant:
                     break
-    return fks, tenant, name_to_keys
+    return fks, tenant, name_to_keys, m2m_fields
 
 
 # ── 2. balayage des sérialiseurs ───────────────────────────────────────────
 
 def _iter_serializer_files():
+    """AANA47 — TOUT module d'app qui définit un ``ModelSerializer`` (pas
+    seulement ``serializers*.py`` : ``views/*.py``, ``api.py``…), hors
+    migrations/tests/commandes. Un filtre texte évite de parser les modules
+    sans sérialiseur."""
     if not APPS_DIR.is_dir():
         return
     for app_dir in sorted(APPS_DIR.iterdir()):
         if not app_dir.is_dir():
             continue
-        for f in _iter_app_files(app_dir, SERIALIZER_GLOBS, "serializers"):
+        for f in sorted(app_dir.rglob("*.py")):
+            rel_parts = f.relative_to(app_dir).parts
+            if any(part in SKIP_DIRS for part in rel_parts[:-1]):
+                continue
+            nom = f.name
+            if nom.startswith(("test_", "tests_")) or nom in (
+                    "tests.py", "conftest.py"):
+                continue
+            if nom.startswith("models") and f.parent == app_dir:
+                continue
+            try:
+                if "ModelSerializer" not in f.read_text(encoding="utf-8"):
+                    continue
+            except (OSError, UnicodeDecodeError):
+                continue
             yield app_dir.name, f
 
 
@@ -252,7 +302,7 @@ def _serializer_facts(cls: ast.ClassDef):
 
 
 def collect_sites():
-    fks, tenant, name_to_keys = build_model_map()
+    fks, tenant, name_to_keys, _m2m = build_model_map()
     sites = []   # (rel, cls, field, target, couvert)
 
     # SPL72 — l'héritage se résout sur TOUTES les classes sérialiseurs d'une MÊME
@@ -333,9 +383,10 @@ def collect_sites():
                 if cible is None:
                     continue
                 t_app, t_model = cible
-                if t_app == key[0] or t_app in FOUNDATION_APPS:
+                force = (t_app, t_model) in FORCED_TENANT_TARGETS
+                if not force and (t_app == key[0] or t_app in FOUNDATION_APPS):
                     continue
-                if (t_app, t_model) not in tenant:
+                if not force and (t_app, t_model) not in tenant:
                     continue          # cible non scopée société : rien à valider
                 if champ in read_only or champ in read_only_meta:
                     continue
