@@ -42,4 +42,14 @@ l'aperçu vers `frontend/src/features/ventes/calc/totaux.js`, la tâche édite c
 
 ---
 
+## Groupe ALEA — audit lead du 2026-10-07 (dossier docs/audits/2026-10-07-lead.md)
+
+**Provenance, décisions gravées, séquencement, NE PAS FAIRE et non couvert :** dans l'en-tête du groupe ALEA de
+`docs/plans/PLAN_AUDIT_LEAD.md` — ils valent ICI à l'identique (METHODE §D.3 règle 6). Ce fichier : 1 tâche (M2).
+
+### ALEA — M2
+- [ ] ALEA40 — **Faire chercher par le serveur (ou paginer entièrement) les sélecteurs client et lead du générateur de devis (`DevisGenerator.jsx` l.1125-1126, 3546, 3551) : un client ou un lead hors des 50 plus récents est sélectionnable** : Constat : C-ALEA-023 (critère C13, gravité S3) ; Priorité : P2. Given une société avec 60 clients et 60 leads When l'utilisateur ouvre /ventes/devis/nouveau et cherche le client puis le lead le plus ancien Then les deux sont proposés et sélectionnables ; le devis créé porte ce client/lead (résolution serveur inchangée, `resolve_client_for_lead`). CLAUSE PERSISTANCE : enregistrer le devis puis le rouvrir → client et lead identiques à ceux choisis. CLAUSE CLIENT : n/a (aucun chiffre ni PDF touché ; le client choisi est celui qui sera imprimé — vérifié en relisant `/proposal` à la preuve live). Test rouge d'abord : frontend/src/pages/ventes/DevisGenerator.selecteurAncien.test.jsx (serveur factice à vraie pagination DRF 50/200 et vraie `SearchFilter` — assertion sur les options rendues) — rouge sur 51f22174f (`getLeads()`/`getClients()` nus = 50 premiers). Test-du-test : remettre l'appel nu ⇒ l'élément 60 disparaît, échec. Source réelle : `crmApi.getLeads/getClients` + `fetchAllPages` réels. Appelants : les 4 sites cités (grep `getLeads()\|getClients()` dans DevisGenerator.jsx refait dans le commit) ; QJR580 (« jamais leads.find : lead hors page 1 ») reste la règle pour le lead du devis. Jumeaux : écrans lead (ALEA20), autres (ALEA33). Listes figées : n/a. Contrat partagé : n/a. Déployable : `check_dockerfile_context.mjs` vert ; eslint ; `vite build`. Preuve en direct : P4.1 — démo : nouveau devis sur un client ancien ⇒ sélectionnable, /proposal montre ce client. Hors périmètre : toute logique de chiffrage (règle #4, moteur). Files: `frontend/src/pages/ventes/DevisGenerator.jsx`, `frontend/src/pages/ventes/DevisGenerator.selecteurAncien.test.jsx` (ROUTINE) (@lane: alea-generateur/selecteurs) (@model: sonnet)
+
+---
+
 ## DONE LOG
