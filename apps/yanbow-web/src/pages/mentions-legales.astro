@@ -5,6 +5,7 @@
 // (mentionsLegalesCompletes), la route est retirée du build et le Worker la
 // sert en 404 (porte YBW12). La version française fait foi.
 import '../styles/global.css';
+import { POLICES_PRECHARGEES } from '../lib/typo';
 import { DEFAULT_LOCALE, LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
 import { PAGES } from '../i18n/pages';
 import { alternates, selecteurLangue, t } from '../i18n/utils';
@@ -39,6 +40,7 @@ const blocs = [
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{t(dict, 'titre', locale)}</title>
     <meta name="description" content={t(dict, 'description', locale)} />
+    {POLICES_PRECHARGEES.map((p) => <link rel="preload" href={p} as="font" type="font/woff2" crossorigin />)}
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />

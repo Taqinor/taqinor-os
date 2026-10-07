@@ -3,6 +3,7 @@
  * tokens.css (garde tests/styleTokens.test.ts). CSS LOGIQUE seulement.
  */
 @import './tokens.css';
+@import './fonts.css';
 
 html {
   background: var(--fond);

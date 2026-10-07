@@ -3,6 +3,7 @@
 // mécanisme i18n ; noindex, liée nulle part, supprimée par YBW61. UN gabarit :
 // la route anglaise (`en/_bonjour.astro`) est une enveloppe mince qui l'importe.
 import '../styles/global.css';
+import { POLICES_PRECHARGEES } from '../lib/typo';
 import { DEFAULT_LOCALE, LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
 import { SONDE } from '../i18n/pages';
 import { alternates, selecteurLangue, t } from '../i18n/utils';
@@ -28,6 +29,7 @@ const autres = selecteurLangue(SONDE, locale, locales);
     <title>{t(dict, 'titre', locale)}</title>
     <meta name="description" content={t(dict, 'description', locale)} />
     {/* Icônes (YBW37) : tuile encre opaque, visible sur onglet clair et sombre. */}
+    {POLICES_PRECHARGEES.map((p) => <link rel="preload" href={p} as="font" type="font/woff2" crossorigin />)}
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
