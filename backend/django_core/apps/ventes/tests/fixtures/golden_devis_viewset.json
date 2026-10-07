@@ -431,6 +431,15 @@
       ]
     },
     {
+      "nom": "roof_image_fichier",
+      "url_path": "roof-image/fichier",
+      "url_name": "roof-image-fichier",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "save_preset",
       "url_path": "save-preset",
       "url_name": "save-preset",
@@ -653,6 +662,7 @@
     "reviser",
     "revoquer_lien_public",
     "roof_image",
+    "roof_image_fichier",
     "save_preset",
     "schema",
     "serializer_class",

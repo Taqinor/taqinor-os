@@ -16,7 +16,7 @@ import {
 import { roofImageRequest } from '../src/lib/roofConfig';
 
 const DEG2RAD = Math.PI / 180;
-const DEG2M = 111_320; // même constante que VIEWER_DEG2M (lib/proposition.ts)
+import { DEG2M_GEO as DEG2M } from '../src/lib/geo'; // ACAL349 : constante unique
 
 // Contour [lat,lng] — MÊME convention que captureOutline (Casablanca, ~20 m).
 const OUTLINE: Array<[number, number]> = [

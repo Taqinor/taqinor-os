@@ -326,14 +326,11 @@ def _nombre_calepinage(valeur):
 
 
 def _url_apercu_calepinage(obj):
-    cle = (getattr(obj, 'roof_image', None) or '').strip()
-    if not cle:
-        return None
-    try:
-        from apps.ventes.utils.pdf import roof_image_signed_url
-        return roof_image_signed_url(cle)
-    except Exception:  # noqa: BLE001 — best-effort : jamais un 500 sur un lien
-        return None
+    """ACAL314 (C-ACAL-019) — le chemin RELATIF du proxy Django de l'aperçu
+    (``apps.calepinage.selectors.url_apercu_calepinage``), plus jamais une URL
+    pré-signée portant l'hôte interne du magasin (``minio:9000``)."""
+    from apps.calepinage.selectors import url_apercu_calepinage
+    return url_apercu_calepinage(obj)
 
 
 # ── CALX369 — le RÉSULTAT DE SIMULATION d'un calepinage, en lecture ────────

@@ -15,6 +15,7 @@ from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.permissions import AllowAny
@@ -1154,13 +1155,14 @@ def proposal_data(request, token):
         # `_economies_mensuelles_publiques` plus bas (retirer un bloc
         # d'affichage ne doit pas changer un calcul).
         synthese_pub = synthese if _section_servie(link, 'economies') else None
+        # ACAL314 (C-ACAL-019) — l'affiche est servie par Django, MÊME
+        # ORIGINE, sous un chemin relatif borné par CE jeton
+        # (``proposal_roof_image``) : plus jamais une URL pré-signée portant
+        # l'hôte interne du magasin (``minio:9000``), injoignable du client.
         roof_url = None
         if data.get('roof_image_key'):
-            try:
-                from .utils.pdf import roof_image_signed_url
-                roof_url = roof_image_signed_url(data['roof_image_key'])
-            except Exception:  # noqa: BLE001 — un rendu absent ne casse rien
-                roof_url = None
+            from .services import url_fichier_toiture_proposition
+            roof_url = url_fichier_toiture_proposition(token)
         # CORRECTION #8 (26/08/2026) — les trois blocs ci-dessous étaient
         # calculés EN LIGNE dans le littéral `payload`. Ils en sortent parce
         # que le calepinage PAR OPTION les RÉUTILISE : il dérive ses dessins du
@@ -1823,6 +1825,37 @@ def _octets_pdf_signe(devis):
             'QJR670: exemplaire signé illisible (devis %s, clé %s) — re-rendu',
             getattr(devis, 'reference', '?'), cle)
         return None
+
+
+@extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY, 404: None})
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_roof_image(request, token):
+    """ACAL314 (C-ACAL-019) — les OCTETS de l'affiche de toiture derrière le
+    jeton de proposition, servis par Django (même origine que l'API).
+
+    Borné par le jeton : jeton inconnu / expiré / révoqué ⇒ 404 muet (même
+    réponse que ``proposal_data``), devis sans affiche ⇒ même 404. Même gate
+    ``otp_lecture`` que la lecture des données (une image est une lecture).
+    Aucun stamp de vue, aucune notification : l'image accompagne une page
+    déjà comptée. Image seule — aucun montant, aucun prix d'achat. Lecture
+    seule, aucun statut touché (règle #4)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    from .services import lire_image_toiture, otp_lecture_verified
+    if not link.via_interne and not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+    octets, mime = lire_image_toiture(
+        (getattr(link.devis, 'roof_image', None) or '').strip())
+    if octets is None:
+        return _not_found()
+    reponse = HttpResponse(octets, content_type=mime)
+    reponse['Cache-Control'] = 'private, max-age=300'
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    return _noindex(reponse)
 
 
 @api_view(['GET'])

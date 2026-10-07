@@ -332,6 +332,35 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(self.get_serializer(calepinage).data,
                         status=status.HTTP_201_CREATED)
 
+    def update(self, request, *args, **kwargs):
+        """ACAL180 — un refus de rattachement répond 409 avec le corps du
+        contrat (``calepinage_creation_conflit.json``), rien n'est écrit."""
+        from ..services.liens import RattachementRefuse
+
+        try:
+            return super().update(request, *args, **kwargs)
+        except RattachementRefuse as refus:
+            return Response(refus.corps, status=refus.statut)
+
+    def perform_update(self, serializer):
+        """ACAL180 — lead, client et responsable passent par
+        ``liens.changer_rattachement`` (brouillon seulement, un seul ouvert
+        par lead, chatter ancien → nouveau) ; le reste du corps est écrit par
+        le sérialiseur, dans la MÊME transaction."""
+        from django.db import transaction
+
+        from ..services.liens import changer_rattachement
+
+        donnees = serializer.validated_data
+        rattachement = {cle: donnees.pop(cle)
+                        for cle in ('lead_id', 'client', 'responsable')
+                        if cle in donnees}
+        with transaction.atomic():
+            if rattachement:
+                changer_rattachement(serializer.instance,
+                                     user=self.request.user, **rattachement)
+            super().perform_update(serializer)
+
     def filter_queryset(self, queryset):
         """CALX390 — la LISTE charge d'avance les lignes du devis lié.
 

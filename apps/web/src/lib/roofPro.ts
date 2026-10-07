@@ -30,7 +30,7 @@ export const PERIMETER_SETBACK_M = 0.5; // retrait de rive
 export const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une même rangée
 export const FRONT_STRUT_M = 0.08; // hauteur du montant avant (bas) du châssis
 
-const WGS84_RADIUS = 6378137; // m
+import { WGS84_RADIUS } from './geo';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000; // garde-fou anti-calepinage pathologique

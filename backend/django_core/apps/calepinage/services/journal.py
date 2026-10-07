@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'journaliser_creation', 'journaliser_lien_devis',
+    'journaliser_rattachement',
     'journaliser_layout',
     'journaliser_variante_retenue', 'journaliser_restauration',
     'journaliser_verrou', 'journaliser_document_produit', 'noter',
@@ -82,6 +83,16 @@ def journaliser_lien_devis(calepinage, *, ancien=None, nouveau=None,
     """Rattachement (ou changement) du devis lié, ancien → nouveau."""
     return _ecrire(calepinage, 'MODIFICATION', user=user, field='devis',
                    field_label='Devis lié',
+                   old_value='' if ancien is None else str(ancien),
+                   new_value='' if nouveau is None else str(nouveau))
+
+
+def journaliser_rattachement(calepinage, *, champ, libelle, ancien=None,
+                             nouveau=None, user=None):
+    """ACAL180 — changement de lead, de client ou de responsable : « Lead :
+    A vers B ». Valeurs déjà mises en texte par l'appelant (``''`` = vide)."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user, field=champ,
+                   field_label=libelle,
                    old_value='' if ancien is None else str(ancien),
                    new_value='' if nouveau is None else str(nouveau))
 

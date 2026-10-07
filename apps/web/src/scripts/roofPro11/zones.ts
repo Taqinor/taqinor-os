@@ -1021,7 +1021,7 @@ export const ZONE_MAX_SETBACK_M = 10;
 export const ZONE_MAX_HEIGHT_M = 60;
 
 const ZONE_DEG2RAD = Math.PI / 180;
-const ZONE_WGS84_RADIUS = 6378137;
+import { WGS84_RADIUS as ZONE_WGS84_RADIUS } from '../../lib/geo';
 const ZONE_DEG2M = ZONE_DEG2RAD * ZONE_WGS84_RADIUS;
 
 function clampNum(v: number, lo: number, hi: number): number {
