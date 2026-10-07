@@ -15,22 +15,21 @@ vi.mock('../../../api/calepinageApi', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import BandeauProvenanceProduction from './BandeauProvenanceProduction'
 
-const servir = (variante) => {
-  calepinageApi.calepinages.resultat
-    .mockResolvedValue(reponseContrat('calepinage', 'calepinage_resultat', variante))
+// Charge du contrat partagé (variante nommée), servie par le mock d'API,
+// puis bandeau rendu sous un routeur mémoire.
+function afficherAvec(variante) {
+  calepinageApi.calepinages.resultat.mockResolvedValue(
+    reponseContrat('calepinage', 'calepinage_resultat', variante))
+  return render(
+    <MemoryRouter><BandeauProvenanceProduction calepinageId={1} /></MemoryRouter>)
 }
 
-const rendre = () => render(
-  <MemoryRouter><BandeauProvenanceProduction calepinageId={1} /></MemoryRouter>,
-)
-
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => vi.clearAllMocks())
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('BandeauProvenanceProduction — écart devis (ACAL105)', () => {
   it('affiche la production du devis et l’écart', async () => {
-    servir('exemple_ecart_devis')
-    rendre()
+    afficherAvec('exemple_ecart_devis')
 
     const ecart = await screen.findByTestId('acal-ecart-devis')
     // `production_devis_kwh` 12600 et `ecart_pct` 3.2 de l'échantillon,
@@ -41,8 +40,7 @@ describe('BandeauProvenanceProduction — écart devis (ACAL105)', () => {
   })
 
   it('rien sans ecart_devis', async () => {
-    servir('exemple')
-    rendre()
+    afficherAvec('exemple')
 
     await screen.findByTestId('calx65-simulation')
     expect(screen.queryByTestId('acal-ecart-devis')).toBeNull()
