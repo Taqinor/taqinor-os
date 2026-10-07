@@ -297,11 +297,16 @@ export function FactureDetail({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">
+        {/* ASTK105 (C-ASTK-035) — la chaîne boucle à l'écran : TTC − payé −
+            acomptes imputés − avoirs imputés = solde dû (même chaîne que le
+            PDF interne, clés servies par le serializer). */}
+        <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm sm:grid-cols-5">
           <div><span className="text-muted-foreground">Total TTC</span><div className="font-semibold tabular-nums">{fmtMad(facture.montant_ttc)}</div></div>
           <div><span className="text-muted-foreground">Déjà payé</span><div className="font-semibold tabular-nums">{fmtMad(facture.total_paye)}</div></div>
+          <div><span className="text-muted-foreground">Acomptes imputés</span><div className="font-semibold tabular-nums">{fmtMad(facture.total_acomptes_imputes)}</div></div>
+          <div><span className="text-muted-foreground">Avoirs imputés</span><div className="font-semibold tabular-nums">{fmtMad(facture.total_avoirs_imputes)}</div></div>
           <div><span className="text-muted-foreground">Solde dû</span><div className="font-bold tabular-nums text-warning">{fmtMad(facture.solde_du)}</div></div>
-          <div className="sm:col-span-3 text-xs text-muted-foreground">
+          <div className="sm:col-span-5 text-xs text-muted-foreground">
             Échéance : {fmtDateFR(facture.date_echeance)}
             {facture.date_facture ? ` · Facture du ${fmtDateFR(facture.date_facture)}` : ''}
           </div>
