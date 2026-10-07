@@ -185,6 +185,40 @@ def _django_call(
     return _normalize_error(resp, data)
 
 
+# ── AANA8 — permissions de l'appelant (source DB, via /auth/me/) ─────────────
+# Django n'emet PLUS le claim JWT `permissions` (authentication/serializers.py :
+# cookie trop gros, 502 nginx du 2026-07-16) ; le lire donnait toujours [] et
+# un role porteur de `prix_achat_voir` n'obtenait jamais le prix d'achat
+# (C-AANA-033). La seule source est `UserSerializer.permissions` (role en base)
+# exposee par `GET /api/django/auth/me/` — la meme que lit le frontend.
+_ME_PATH = "/api/django/auth/me/"
+
+
+def fetch_caller_permissions(ctx: Optional["ActionContext"]) -> list[str]:
+    """Permissions du role de l'appelant, lues par `/auth/me/` (JWT relaye).
+
+    FAIL-CLOSED : Django injoignable, jeton absent ou reponse inattendue =>
+    [] (aucune permission accordee sans preuve). Ne leve jamais."""
+    if not DJANGO_INTERNAL_URL or ctx is None or not ctx.token:
+        return []
+    res = _django_call(ctx, _ME_PATH, method="GET")
+    if not res.get("ok"):
+        logger.warning("Permissions de l'appelant indisponibles (/auth/me/): %s",
+                       res.get("error"))
+        return []
+    data = res.get("data")
+    perms = data.get("permissions") if isinstance(data, dict) else None
+    if not isinstance(perms, list):
+        return []
+    return [p for p in perms if isinstance(p, str)]
+
+
+def resolve_caller_permissions(ctx: "ActionContext") -> "ActionContext":
+    """Remplit `ctx.permissions` depuis `/auth/me/` (jamais depuis le jeton)."""
+    ctx.permissions = fetch_caller_permissions(ctx)
+    return ctx
+
+
 def _normalize_error(resp, data) -> dict[str, Any]:
     """Construit un message d'erreur lisible et masque les internes."""
     ok = 200 <= resp.status_code < 300

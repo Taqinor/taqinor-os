@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -6,7 +8,9 @@ from app.core.security import get_raw_token, verify_token
 # AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
 # partage avec l'OCR ; le nom local est garde pour les appelants.
 from app.core.security import require_company_id as _require_company_id
-from app.services.action_tools import ActionContext
+from app.services.action_tools import (
+    ActionContext, resolve_caller_permissions,
+)
 from app.services.sql_agent_service import sql_agent_service
 
 router = APIRouter()
@@ -71,7 +75,8 @@ async def query_database(
     N86 — l'agent peut aussi effectuer des ACTIONS d'ecriture (ticket SAV,
     brouillon de bon de commande, planification de visite) quand l'appelant a
     le droit d'ecriture. Le contexte d'action porte le role/les permissions du
-    JWT + le jeton brut (relaye a l'API Django interne, qui tranche).
+    JWT, les permissions du role (lues par /auth/me/, AANA8) + le jeton brut
+    (relaye a l'API Django interne, qui tranche).
     """
     user_id = int(token_payload.get("user_id", 0))
     # ERR44 — exige un company_id present et non nul (403 sinon).
@@ -84,10 +89,13 @@ async def query_database(
     action_ctx = ActionContext(
         company_id=company_id,
         role=token_payload.get("role", ""),
-        permissions=token_payload.get("permissions") or [],
+        # AANA8 — plus jamais le claim JWT `permissions` (il n'est plus emis :
+        # toujours []) : la source est /auth/me/ de Django, resolue ci-dessous.
+        permissions=[],
         token=raw_token,
         is_superuser=bool(token_payload.get("is_superuser", False)),
     )
+    await asyncio.to_thread(resolve_caller_permissions, action_ctx)
 
     result = await sql_agent_service.query(
         question=request.question,
@@ -168,10 +176,13 @@ async def confirm_action(
     action_ctx = ActionContext(
         company_id=company_id,
         role=token_payload.get("role", ""),
-        permissions=token_payload.get("permissions") or [],
+        # AANA8 — plus jamais le claim JWT `permissions` (il n'est plus emis :
+        # toujours []) : la source est /auth/me/ de Django, resolue ci-dessous.
+        permissions=[],
         token=raw_token,
         is_superuser=bool(token_payload.get("is_superuser", False)),
     )
+    await asyncio.to_thread(resolve_caller_permissions, action_ctx)
 
     result = await sql_agent_service.confirm_action(action_ctx, request.token.strip())
     if not result.get("ok"):

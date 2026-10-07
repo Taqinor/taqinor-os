@@ -118,6 +118,16 @@ class SqlAgentLimitesTests(unittest.TestCase):
         patcher = mock.patch.object(_ep.sql_agent_service, "query", fake_query)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # AANA8 — /query lit les permissions par /auth/me/ de Django (service
+        # HTTP externe) : reponse simulee, sinon chaque requete attendrait le
+        # reseau et la rafale sortirait de la fenetre du limiteur.
+        from app.services import action_tools as _at
+        patcher = mock.patch.object(
+            _at, "_django_call",
+            lambda ctx, path, method="POST", payload=None: {
+                "ok": True, "status": 200, "data": {"permissions": []}})
+        patcher.start()
+        self.addCleanup(patcher.stop)
         return calls
 
     def _patch_redis(self, fake):
