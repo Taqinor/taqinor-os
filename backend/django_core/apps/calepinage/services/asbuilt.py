@@ -253,7 +253,10 @@ def ecarts_du_calepinage(calepinage, *, conception=None):
 
     prevus, source = pans_prevus(calepinage, conception=conception)
     saisies = [
-        {'pan': pose.pan, 'zone_id': pose.zone_id or pose.pan,
+        # ACAL267 — ``zone_id`` VIDE pour un relevé historique (libellé
+        # seul) : ``comparer`` le rattache alors au pan prévu de même libellé
+        # s'il est unique, au lieu d'en faire un faux orphelin.
+        {'pan': pose.pan, 'zone_id': pose.zone_id or '',
          'libelle': pose.pan, 'modules_poses': pose.modules_poses,
          'ecarts_position': pose.ecarts_position, 'releve_le': pose.releve_le,
          'releve_par': _auteur_publie(pose.releve_par),
@@ -554,6 +557,11 @@ def supprimer_pose(calepinage, zone_id, *, user=None):
     with transaction.atomic():
         pose = (PoseReelle.objects.select_for_update()
                 .filter(calepinage=calepinage, zone_id=zone_id).first())
+        if pose is None and zone_id:
+            # Relevé historique sans identifiant : sa ligne porte le libellé.
+            pose = (PoseReelle.objects.select_for_update()
+                    .filter(calepinage=calepinage, zone_id='',
+                            pan=zone_id).first())
         if pose is None:
             raise PoseRefusee(MESSAGE_AUCUNE_POSE, 'detail')
         ancien, libelle = pose.modules_poses, pose.pan
