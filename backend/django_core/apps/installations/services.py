@@ -4108,8 +4108,9 @@ def provisionner_gr_ir_reception(*, reception, company, user):
     """YPROC3 — crée la provision GR/IR (`ReceptionNonFacturee`) pour une
     réception fournisseur venant d'être CONFIRMÉE.
 
-    Montant = Σ (quantité de la ligne de réception × `prix_achat_unitaire` de
-    sa ligne de BCF). IDEMPOTENTE : une réception déjà provisionnée (à la main
+    Montant = Σ (quantité RÉELLEMENT entrée de la ligne de réception —
+    `quantite_appliquee`, ASTK60 — × `prix_achat_unitaire` de sa ligne de
+    BCF ; aucune provision si rien n'est entré). IDEMPOTENTE : une réception déjà provisionnée (à la main
     ou automatiquement) n'est jamais doublée — renvoie la provision existante.
     Sans BCF lié (réception hors flux normal), no-op (rien à provisionner).
     """
@@ -4127,11 +4128,24 @@ def provisionner_gr_ir_reception(*, reception, company, user):
     if existante is not None:
         return existante
 
+    # ASTK60 — la provision porte sur la quantité RÉELLEMENT entrée
+    # (`quantite_appliquee`, persistée à la confirmation après plafonnement
+    # au reste dû — ASTK59), jamais sur la saisie : une sur-réception ne
+    # gonfle plus la dette latente et une ligne entrée à 0 (déjà soldée)
+    # n'est pas provisionnée.
+    from apps.stock.services import quantite_entree_ligne_reception
     montant = Decimal('0')
+    lignes_entrees = 0
     for ligne in reception.lignes.select_related('ligne_commande').all():
+        qte = quantite_entree_ligne_reception(ligne)
+        if qte <= 0:
+            continue
+        lignes_entrees += 1
         pu = (ligne.ligne_commande.prix_achat_unitaire
               if ligne.ligne_commande else Decimal('0')) or Decimal('0')
-        montant += Decimal(str(ligne.quantite or 0)) * pu
+        montant += Decimal(qte) * pu
+    if not lignes_entrees:
+        return None
 
     date_reception = reception.date_reception
     if date_reception is None and reception.date_creation:
