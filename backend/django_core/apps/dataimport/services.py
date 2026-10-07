@@ -808,59 +808,58 @@ def _check_mode(target, mode):
 # ment. Les deux passent donc par ces mêmes fonctions (aucune duplication de la
 # logique de rapprochement).
 
+def _lead_par_contact(company, f):
+    """AANA13 (D-AANA-3) — LE rapprochement contact des leads, partagé par le
+    mode ``creer`` (doublon → ligne ignorée) et ``maj``/``upsert`` : e-mail OU
+    téléphone NORMALISÉ (``crm.services.find_duplicates_by_contact``).
+    Remplace l'ancien ``_doublon_lead`` (e-mail exact d'abord, et téléphone
+    STRICTEMENT identique seulement sans e-mail) : ``b@x.ma,+212 612345678``
+    passait à côté d'un lead ``a@x.ma,0612345678``."""
+    from apps.crm.services import find_duplicates_by_contact
+    dupes = find_duplicates_by_contact(
+        company, phone=f.get('telephone'), email=f.get('email'))
+    return dupes[0] if dupes else None
+
+
+def _client_par_contact(company, f):
+    """AANA13 (D-AANA-3) — le MÊME rapprochement pour les clients : e-mail
+    (insensible à la casse) OU téléphone normalisé (clé QW10), via les
+    sélecteurs ``crm.selectors`` (jamais ``crm.models``). Renvoie
+    ``(client, cle)`` où ``cle`` nomme ce qui a RÉELLEMENT matché
+    (``'email'``/``'telephone'``), ``(None, None)`` sinon.
+
+    AUD824 — conserve le repli téléphone (un carnet terrain SANS colonne
+    e-mail rejoué deux fois ne crée plus de second client) et l'étend : une
+    ligne AVEC un e-mail nouveau mais le téléphone d'un client existant est
+    aussi un doublon."""
+    from apps.crm.selectors import find_client_by_email, find_client_by_phone
+    if f.get('email'):
+        client = find_client_by_email(str(f['email']), company=company)
+        if client is not None:
+            return client, 'email'
+    if f.get('telephone'):
+        client = find_client_by_phone(company, f['telephone'])
+        if client is not None:
+            return client, 'telephone'
+    return None, None
+
+
 def _match_lead(company, f, ext_id, external_system):
     """Lead rapproché en mode maj/upsert : identifiant externe d'abord, sinon
     contact normalisé (email/téléphone)."""
     from apps.crm.models import Lead
-    from apps.crm.services import find_duplicates_by_contact
     existing = _find_by_external_id(company, external_system, ext_id, Lead)
     if existing is None:
-        dupes = find_duplicates_by_contact(
-            company, phone=f.get('telephone'), email=f.get('email'))
-        existing = dupes[0] if dupes else None
+        existing = _lead_par_contact(company, f)
     return existing
 
 
 def _match_client(company, f, ext_id, external_system):
     from apps.crm.models import Client
     existing = _find_by_external_id(company, external_system, ext_id, Client)
-    if existing is None and f.get('email'):
-        existing = Client.objects.filter(
-            company=company, email__iexact=f['email']).first()
+    if existing is None:
+        existing = _client_par_contact(company, f)[0]
     return existing
-
-
-def _doublon_lead(company, f):
-    """Fiche existante qui fait IGNORER la ligne en mode ``creer``."""
-    from apps.crm.models import Lead
-    if f.get('email'):
-        return Lead.objects.filter(
-            company=company, email__iexact=f['email']).first()
-    if f.get('telephone'):
-        return Lead.objects.filter(
-            company=company, telephone=f['telephone']).first()
-    return None
-
-
-def _doublon_client(company, f):
-    """Fiche existante qui fait IGNORER la ligne en mode ``creer``.
-
-    AUD824 — MÊME patron que ``_doublon_lead`` ci-dessus : email d'abord, repli
-    sur le téléphone. Sans ce repli, un carnet d'adresses terrain (nom +
-    téléphone + adresse, SANS colonne email) rejoué deux fois créait un
-    deuxième ``Client`` identique à chaque passage — ``crm.Client`` ne porte
-    aucune ``UniqueConstraint`` sur (company, email) ni (company, telephone),
-    donc rien n'arrêtait la ligne, ni en Python ni en base. L'aperçu, qui
-    rejoue CETTE fonction, mentait de la même façon.
-    """
-    from apps.crm.models import Client
-    if f.get('email'):
-        return Client.objects.filter(
-            company=company, email__iexact=f['email']).first()
-    if f.get('telephone'):
-        return Client.objects.filter(
-            company=company, telephone=f['telephone']).first()
-    return None
 
 
 def _doublon_produit(company, f):
@@ -938,11 +937,11 @@ def _valider_ligne_produit(f):
     return champs, ouverture, None
 
 
-def _raison_doublon_client(f):
+def _raison_doublon_client(cle):
     """AUD824 — même convention que ``_raison_doublon_produit`` : le motif
-    affiché nomme la clé qui a RÉELLEMENT matché. Depuis le repli téléphone,
-    « doublon (email existe) » aurait menti sur toutes les lignes sans email."""
-    return ('doublon (email existe)' if f.get('email')
+    affiché nomme la clé qui a RÉELLEMENT matché (``cle`` renvoyée par
+    ``_client_par_contact``)."""
+    return ('doublon (email existe)' if cle == 'email'
             else 'doublon (téléphone existe)')
 
 
@@ -986,7 +985,7 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
                     action = 'ignoree'
                     raison = 'aucune correspondance (maj seule)'
             else:
-                existing = _doublon_lead(company, f)
+                existing = _lead_par_contact(company, f)
                 if existing is not None:
                     action, raison = 'ignoree', 'doublon (existe déjà)'
         elif target == 'clients':
@@ -996,9 +995,9 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
                     action = 'ignoree'
                     raison = 'aucune correspondance (maj seule)'
             else:
-                existing = _doublon_client(company, f)
+                existing, cle = _client_par_contact(company, f)
                 if existing is not None:
-                    action, raison = 'ignoree', _raison_doublon_client(f)
+                    action, raison = 'ignoree', _raison_doublon_client(cle)
         elif target == 'products':
             existing = _doublon_produit(company, f)
             if existing is not None:
@@ -1134,7 +1133,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
                 # Création (mode=creer, ou mode=upsert sans correspondance).
                 if mode == 'creer':
-                    if _doublon_lead(company, f) is not None:
+                    if _lead_par_contact(company, f) is not None:
                         skipped.append({'ligne': i, 'raison': 'doublon (existe déjà)'})
                         continue
                 tags = (f.pop('tags', '') or '')
@@ -1178,10 +1177,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                         {'ligne': i, 'raison': 'aucune correspondance (maj seule)'})
                     continue
 
-                if mode == 'creer' and _doublon_client(company, f) is not None:
-                    skipped.append(
-                        {'ligne': i, 'raison': _raison_doublon_client(f)})
-                    continue
+                if mode == 'creer':
+                    doublon, cle = _client_par_contact(company, f)
+                    if doublon is not None:
+                        skipped.append(
+                            {'ligne': i, 'raison': _raison_doublon_client(cle)})
+                        continue
                 client = Client.objects.create(company=company, **f)
                 if ext_id:
                     _get_or_create_ref(company, external_system, ext_id, client)
