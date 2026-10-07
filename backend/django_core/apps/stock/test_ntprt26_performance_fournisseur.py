@@ -53,7 +53,10 @@ def make_company(slug, nom):
 def make_interne(company, username):
     role = Role.objects.create(
         company=company, nom=f'r-{username}',
-        permissions=['stock_voir', 'stock_modifier'])
+        permissions=['stock_voir', 'stock_modifier',
+                     # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                     'achats_commander', 'achats_receptionner',
+                     'achats_payer', 'catalogue_prix_modifier'])
     return CustomUser.objects.create_user(
         username=username, password='motdepasse-test-1234',
         company=company, role=role, role_legacy='responsable')

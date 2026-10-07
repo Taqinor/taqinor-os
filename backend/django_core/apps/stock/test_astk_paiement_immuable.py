@@ -77,7 +77,10 @@ class PaiementImmuableTests(TestCase):
     def _api(self, role_legacy, username):
         role = Role.objects.create(
             company=self.company, nom=f'r-{username}',
-            permissions=['stock_voir', 'stock_modifier', 'prix_achat_voir'])
+            permissions=['stock_voir', 'stock_modifier', 'prix_achat_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         user = User.objects.create_user(
             username=username, password='pw-astk27-x', company=self.company,
             role=role, role_legacy=role_legacy)

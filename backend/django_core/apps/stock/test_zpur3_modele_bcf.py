@@ -52,7 +52,10 @@ class Zpur3Base(TestCase):
         self.company = _company('zpur3-co')
         self.user = _user(
             self.company, 'zpur3-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur ZPUR3')
@@ -126,7 +129,10 @@ class TestMultiTenant(Zpur3Base):
         autre = _company('zpur3-autre')
         autre_user = _user(
             autre, 'zpur3-autre-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         autre_api = _api(autre_user)
         modele = ModeleBonCommandeFournisseur.objects.create(
             company=self.company, nom='Modèle privé',

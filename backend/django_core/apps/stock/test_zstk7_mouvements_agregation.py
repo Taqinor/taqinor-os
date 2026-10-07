@@ -50,7 +50,10 @@ class Zstk7Base(TestCase):
         self.company = _company('zstk7-co')
         self.user = _user(
             self.company, 'zstk7-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.produit = Produit.objects.create(
             company=self.company, nom='Panneau ZSTK7', sku='PAN-ZSTK7',

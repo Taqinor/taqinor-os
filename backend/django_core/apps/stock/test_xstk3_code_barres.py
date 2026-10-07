@@ -56,7 +56,10 @@ class Xstk3Base(TestCase):
         self.company = _company('xstk3-co')
         self.user = _user(
             self.company, 'xstk3-user',
-            permissions=['stock_modifier', 'stock_voir', 'stock_creer'],
+            permissions=['stock_modifier', 'stock_voir', 'stock_creer',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'],
             role_nom='Commercial responsable')
         self.api = _api(self.user)
         self.produit = Produit.objects.create(

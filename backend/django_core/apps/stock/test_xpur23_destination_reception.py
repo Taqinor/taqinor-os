@@ -64,7 +64,10 @@ class Xpur23Base(TestCase):
         self.company = _company('xpur23-co')
         self.user = _user(
             self.company, 'xpur23-user',
-            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur X23')
