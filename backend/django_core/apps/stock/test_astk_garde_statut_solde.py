@@ -61,7 +61,8 @@ class GardeStatutSolde(TestCase):
             nom='astk111-co', slug='astk111-co')
         role = Role.objects.create(
             company=self.company, nom='r-astk111',
-            permissions=['stock_voir', 'stock_modifier', 'prix_achat_voir'])
+            permissions=['stock_voir', 'stock_modifier', 'prix_achat_voir',
+                         'achats_payer'])
         self.user = User.objects.create_user(
             username='astk111-user', password='x', company=self.company,
             role=role, role_legacy='responsable')
