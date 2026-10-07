@@ -2,8 +2,16 @@
 
 ``company`` n'est JAMAIS exposé ni accepté : il est posé côté serveur par
 ``CompanyScopedModelViewSet`` (règle multi-tenant).
+
+ASTK6 (C-ASTK-001) — TOUS les sérialiseurs portent
+``CompanyScopedRelationsMixin`` : chaque FK inscriptible (produit, lot, casier,
+client, chantier, livraison, transporteur, quai, vague, unité parente…) est
+bornée à la société de la requête ; un id d'une autre société répond « objet
+inexistant », indiscernable d'un id qui n'existe pas.
 """
 from rest_framework import serializers
+
+from core.serializers import CompanyScopedRelationsMixin
 
 from .models_wms import (
     AlerteRappel, BlocageQualite, ExpeditionTransporteur, LignePicking,
@@ -13,7 +21,8 @@ from .models_wms import (
 )
 
 
-class LignePickingSerializer(serializers.ModelSerializer):
+class LignePickingSerializer(CompanyScopedRelationsMixin,
+                             serializers.ModelSerializer):
     """NTWMS4 — ligne d'une vague de prélèvement (lecture)."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -37,7 +46,8 @@ class LignePickingSerializer(serializers.ModelSerializer):
         ]
 
 
-class VaguePickingSerializer(serializers.ModelSerializer):
+class VaguePickingSerializer(CompanyScopedRelationsMixin,
+                             serializers.ModelSerializer):
     """NTWMS4 — vague de prélèvement multi-source. La référence est posée
     côté serveur (`core.numbering`), jamais acceptée du client."""
 
@@ -64,7 +74,8 @@ class VaguePickingSerializer(serializers.ModelSerializer):
         return obj.lignes.count()
 
 
-class UniteLogistiqueLigneSerializer(serializers.ModelSerializer):
+class UniteLogistiqueLigneSerializer(CompanyScopedRelationsMixin,
+                                     serializers.ModelSerializer):
     """NTWMS6 — contenu d'un colis / d'une palette."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -80,7 +91,8 @@ class UniteLogistiqueLigneSerializer(serializers.ModelSerializer):
         read_only_fields = ['unite', 'scanne_le', 'scanne_par']
 
 
-class UniteLogistiqueSerializer(serializers.ModelSerializer):
+class UniteLogistiqueSerializer(CompanyScopedRelationsMixin,
+                                serializers.ModelSerializer):
     """NTWMS6 — colis / palette adressable. Le SSCC est GÉNÉRÉ côté serveur
     (norme GS1) : jamais accepté du client."""
 
@@ -104,8 +116,25 @@ class UniteLogistiqueSerializer(serializers.ModelSerializer):
     def get_nb_enfants(self, obj) -> int:
         return obj.enfants.count()
 
+    def validate_parent(self, value):
+        """ASTK31 — un parent égal à soi ou qui forme un cycle est refusé
+        (sinon le déplacement récursif tombait en 500)."""
+        if value is None or self.instance is None:
+            return value
+        vus = set()
+        courant = value
+        while courant is not None and courant.pk not in vus:
+            if courant.pk == self.instance.pk:
+                raise serializers.ValidationError(
+                    'Ce parent formerait un cycle (une unité ne peut pas se '
+                    'contenir elle-même).')
+            vus.add(courant.pk)
+            courant = courant.parent
+        return value
 
-class QuaiSerializer(serializers.ModelSerializer):
+
+class QuaiSerializer(CompanyScopedRelationsMixin,
+                     serializers.ModelSerializer):
     """NTWMS7 — quai de réception/expédition."""
 
     emplacement_nom = serializers.CharField(
@@ -127,7 +156,8 @@ class QuaiSerializer(serializers.ModelSerializer):
         return value
 
 
-class RendezVousTransporteurSerializer(serializers.ModelSerializer):
+class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
     """NTWMS7 — créneau transporteur sur un quai.
 
     Le chevauchement est refusé PAR LE SERVEUR (garde dans
@@ -168,8 +198,13 @@ class RendezVousTransporteurSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ExpeditionTransporteurSerializer(serializers.ModelSerializer):
+class ExpeditionTransporteurSerializer(CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
     """NTWMS9 — expédition d'une unité logistique par un transporteur.
+
+    ASTK3 — ``unite_logistique`` et ``transporteur`` sont bornés à la société
+    de la requête : un id d'une autre société répond « objet inexistant »,
+    exactement comme un id qui n'existe pas.
 
     Le numéro de suivi et la clé d'étiquette sont POSÉS PAR LE SERVEUR (via le
     connecteur) : jamais acceptés du client."""
@@ -199,7 +234,8 @@ class ExpeditionTransporteurSerializer(serializers.ModelSerializer):
         return bool(obj.etiquette_pdf_key)
 
 
-class PlanComptageTournantSerializer(serializers.ModelSerializer):
+class PlanComptageTournantSerializer(CompanyScopedRelationsMixin,
+                                     serializers.ModelSerializer):
     """NTWMS13 — fréquence de recomptage d'une classe ABC."""
 
     class Meta:
@@ -217,7 +253,8 @@ class PlanComptageTournantSerializer(serializers.ModelSerializer):
         return value
 
 
-class AlerteRappelSerializer(serializers.ModelSerializer):
+class AlerteRappelSerializer(CompanyScopedRelationsMixin,
+                             serializers.ModelSerializer):
     """NTWMS17 — rappel produit/lot. Le statut et l'auteur sont posés côté
     serveur (jamais acceptés du corps de requête)."""
 
@@ -244,7 +281,8 @@ class AlerteRappelSerializer(serializers.ModelSerializer):
         return value
 
 
-class PortailTiersTokenSerializer(serializers.ModelSerializer):
+class PortailTiersTokenSerializer(CompanyScopedRelationsMixin,
+                                  serializers.ModelSerializer):
     """NTWMS20 — jeton du portail 3PL. Le jeton lui-même est GÉNÉRÉ côté
     serveur et n'est jamais accepté du client ; il n'est lisible que par les
     utilisateurs ERP autorisés qui envoient le lien au dépositaire."""
@@ -261,7 +299,7 @@ class PortailTiersTokenSerializer(serializers.ModelSerializer):
         read_only_fields = ['token', 'last_used_at', 'created_at']
 
     def get_lien_public(self, obj) -> str:
-        return f'/api/django/stock/public/tiers/{obj.token}/solde/'
+        return f'/api/django/public/stock/tiers/{obj.token}/solde/'
 
     def validate_tiers_nom(self, value):
         if not (value or '').strip():
@@ -270,7 +308,8 @@ class PortailTiersTokenSerializer(serializers.ModelSerializer):
         return value
 
 
-class BlocageQualiteSerializer(serializers.ModelSerializer):
+class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
     """NTWMS31 — blocage qualité (quarantaine). Le statut et l'auteur sont
     posés côté serveur ; la levée passe par l'action dédiée."""
 
@@ -290,7 +329,8 @@ class BlocageQualiteSerializer(serializers.ModelSerializer):
         ]
 
 
-class PlanChargementSerializer(serializers.ModelSerializer):
+class PlanChargementSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
     """NTWMS26 — plan de chargement camion. La référence est posée côté
     serveur ; les unités s'ajoutent par l'action dédiée (qui renvoie
     l'avertissement de capacité)."""
@@ -312,7 +352,8 @@ class PlanChargementSerializer(serializers.ModelSerializer):
         return obj.unites_logistiques.count()
 
 
-class MouvementRebutSerializer(serializers.ModelSerializer):
+class MouvementRebutSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
     """NTWMS24 — déclaration de perte motivée. La valeur de perte et le
     mouvement de stock sont posés côté serveur (jamais acceptés du client) ;
     la valeur reste INTERNE."""
@@ -335,7 +376,8 @@ class MouvementRebutSerializer(serializers.ModelSerializer):
         ]
 
 
-class LigneRetourClientSerializer(serializers.ModelSerializer):
+class LigneRetourClientSerializer(CompanyScopedRelationsMixin,
+                                  serializers.ModelSerializer):
     """NTWMS23 — ligne d'un retour client (lecture)."""
 
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -351,7 +393,8 @@ class LigneRetourClientSerializer(serializers.ModelSerializer):
         read_only_fields = ['retour', 'stock_mouvemente']
 
 
-class RetourClientSerializer(serializers.ModelSerializer):
+class RetourClientSerializer(CompanyScopedRelationsMixin,
+                             serializers.ModelSerializer):
     """NTWMS23 — retour client (RMA). Référence et statut posés côté
     serveur ; les lignes sont fournies à la création."""
 

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4842, operations: 7642, components: 2212}
+counts: {paths: 4838, operations: 7632, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3227,10 +3227,7 @@ operations:
 - post /api/django/stock/mouvements/ -> django_stock_mouvements_create
 - get /api/django/stock/mouvements/agregation/ -> django_stock_mouvements_agregation_retrieve
 - post /api/django/stock/mouvements/export-xlsx/ -> django_stock_mouvements_export_xlsx_create
-- delete /api/django/stock/mouvements/{id}/ -> django_stock_mouvements_destroy
 - get /api/django/stock/mouvements/{id}/ -> django_stock_mouvements_retrieve
-- patch /api/django/stock/mouvements/{id}/ -> django_stock_mouvements_partial_update
-- put /api/django/stock/mouvements/{id}/ -> django_stock_mouvements_update
 - get /api/django/stock/nomenclatures-code-barres/ -> django_stock_nomenclatures_code_barres_list
 - post /api/django/stock/nomenclatures-code-barres/ -> django_stock_nomenclatures_code_barres_create
 - delete /api/django/stock/nomenclatures-code-barres/{id}/ -> django_stock_nomenclatures_code_barres_destroy
@@ -3333,8 +3330,6 @@ operations:
 - get /api/django/stock/profils-saisonniers/{id}/ -> django_stock_profils_saisonniers_retrieve
 - patch /api/django/stock/profils-saisonniers/{id}/ -> django_stock_profils_saisonniers_partial_update
 - put /api/django/stock/profils-saisonniers/{id}/ -> django_stock_profils_saisonniers_update
-- post /api/django/stock/public/quai-checkin/ -> django_stock_public_quai_checkin_create
-- get /api/django/stock/public/tiers/{token}/solde/ -> django_stock_public_tiers_solde_retrieve
 - get /api/django/stock/quais/ -> django_stock_quais_list
 - post /api/django/stock/quais/ -> django_stock_quais_create
 - get /api/django/stock/quais/planning/ -> django_stock_quais_planning_retrieve
@@ -7055,10 +7050,7 @@ operations:
 - post /api/v1/stock/mouvements/ -> v1_stock_mouvements_create
 - get /api/v1/stock/mouvements/agregation/ -> v1_stock_mouvements_agregation_retrieve
 - post /api/v1/stock/mouvements/export-xlsx/ -> v1_stock_mouvements_export_xlsx_create
-- delete /api/v1/stock/mouvements/{id}/ -> v1_stock_mouvements_destroy
 - get /api/v1/stock/mouvements/{id}/ -> v1_stock_mouvements_retrieve
-- patch /api/v1/stock/mouvements/{id}/ -> v1_stock_mouvements_partial_update
-- put /api/v1/stock/mouvements/{id}/ -> v1_stock_mouvements_update
 - get /api/v1/stock/nomenclatures-code-barres/ -> v1_stock_nomenclatures_code_barres_list
 - post /api/v1/stock/nomenclatures-code-barres/ -> v1_stock_nomenclatures_code_barres_create
 - delete /api/v1/stock/nomenclatures-code-barres/{id}/ -> v1_stock_nomenclatures_code_barres_destroy
@@ -7161,8 +7153,6 @@ operations:
 - get /api/v1/stock/profils-saisonniers/{id}/ -> v1_stock_profils_saisonniers_retrieve
 - patch /api/v1/stock/profils-saisonniers/{id}/ -> v1_stock_profils_saisonniers_partial_update
 - put /api/v1/stock/profils-saisonniers/{id}/ -> v1_stock_profils_saisonniers_update
-- post /api/v1/stock/public/quai-checkin/ -> v1_stock_public_quai_checkin_create
-- get /api/v1/stock/public/tiers/{token}/solde/ -> v1_stock_public_tiers_solde_retrieve
 - get /api/v1/stock/quais/ -> v1_stock_quais_list
 - post /api/v1/stock/quais/ -> v1_stock_quais_create
 - get /api/v1/stock/quais/planning/ -> v1_stock_quais_planning_retrieve
@@ -9135,7 +9125,6 @@ components:
 - PatchedMonitoringConfigRequest
 - PatchedMonitoringSettingsRequest
 - PatchedMotifPerteRequest
-- PatchedMouvementStockRequest
 - PatchedNetworkPolicyRequest
 - PatchedNomenclatureCodeBarresRequest
 - PatchedNotificationRoutingRuleRequest

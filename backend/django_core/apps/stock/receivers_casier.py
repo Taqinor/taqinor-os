@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 _CONNECTE = False
 
 
+def _auteur_id():
+    """ASTK91 — utilisateur de la requête en cours (None hors requête)."""
+    try:
+        from apps.audit.recorder import current_user
+        user = current_user()
+        return getattr(user, 'pk', None)
+    except Exception:  # pragma: no cover — défensif, jamais bloquant
+        return None
+
+
 def _valeur(obj, champ):
     return '' if getattr(obj, champ, None) is None else str(getattr(obj, champ))
 
@@ -41,10 +51,11 @@ def _post_save_bin(sender, instance, created, **kwargs):
         # Le journal est multi-tenant : sans société, on ne journalise pas
         # (plutôt que d'inventer un rattachement).
         return
+    auteur_id = _auteur_id()
     try:
         if created:
             HistoriqueCasier.objects.create(
-                company_id=company_id, bin=instance,
+                company_id=company_id, bin=instance, auteur_id=auteur_id,
                 action=HistoriqueCasier.Action.CREATION,
                 nouvelle_valeur=_valeur(instance, 'code')[:200])
             return
@@ -57,14 +68,14 @@ def _post_save_bin(sender, instance, created, **kwargs):
             nouveau = _valeur(instance, champ)
             if ancien != nouveau:
                 lignes.append(HistoriqueCasier(
-                    company_id=company_id, bin=instance,
+                    company_id=company_id, bin=instance, auteur_id=auteur_id,
                     action=HistoriqueCasier.Action.MODIFICATION,
                     champ=champ, ancienne_valeur=ancien[:200],
                     nouvelle_valeur=nouveau[:200]))
         if bool(avant.get('archived')) != bool(
                 getattr(instance, 'archived', False)):
             lignes.append(HistoriqueCasier(
-                company_id=company_id, bin=instance,
+                company_id=company_id, bin=instance, auteur_id=auteur_id,
                 action=(HistoriqueCasier.Action.ARCHIVAGE
                         if instance.archived
                         else HistoriqueCasier.Action.REACTIVATION),

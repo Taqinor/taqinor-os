@@ -12,12 +12,17 @@ Idempotent and strictly additive:
   - existing products are NEVER modified or duplicated — only missing ones
     are created (a skipped collision is listed in the output).
 
-Les fiches (commerciales et techniques) sont RÉ-APPLIQUÉES à chaque run, ce qui
-rattrape une base de production restée en arrière du catalogue — c'est pourquoi
-``scripts/deploy-prod.ps1`` appelle cette commande à chaque déploiement. Sur une
-fiche technique DÉJÀ existante, le défaut est de COMBLER les champs vides sans
-jamais écraser une valeur saisie par le fondateur (``--reappliquer-fiches``
-rouvre explicitement cette porte pour une correction de datasheet).
+Les fiches (commerciales et techniques) sont COMBLÉES à chaque run — jamais
+écrasées : ``scripts/deploy-prod.ps1`` appelle cette commande à chaque
+déploiement, ce qui rattrape une base de production restée en arrière du
+catalogue (champ VIDE → valeur du catalogue). Une valeur DÉJÀ saisie — marque,
+description, garantie, garantie_mois d'un produit ; champ d'une fiche technique
+— n'est JAMAIS réécrite par un run nu (décision fondateur 06/10/2026, ASTK172).
+La seule porte d'écrasement est ``--reappliquer-fiches`` : elle repose les
+fiches commerciales et techniques déclarées par le catalogue, applique le
+renommage « pendent → pendant » et la conversion TVA 10 % des panneaux (qui
+réécrit prix de vente/d'achat). Sans le drapeau, ces deux dernières corrections
+sont seulement RAPPORTÉES dans la sortie.
 
 Run:
   docker compose exec django_core python manage.py seed_catalogue
@@ -1800,12 +1805,15 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--reappliquer-fiches', action='store_true',
-            help=("Repose les champs de FicheTechnique DÉCLARÉS par le "
-                  "catalogue PAR-DESSUS les valeurs existantes (porte des "
-                  "CORRECTIONS de datasheet, PV85). Sans ce drapeau — et donc "
-                  "à chaque déploiement — le seeder se contente de COMBLER "
-                  "les champs vides : une saisie du fondateur n'est JAMAIS "
-                  "écrasée."),
+            help=("Seule porte d'ÉCRASEMENT du seeder : repose par-dessus "
+                  "les valeurs existantes les champs de FicheTechnique ET "
+                  "les fiches commerciales (marque, description, garantie, "
+                  "garantie_mois) DÉCLARÉS par le catalogue (porte des "
+                  "CORRECTIONS de datasheet, PV85), et applique le renommage "
+                  "« pendent → pendant » et la conversion TVA 10 % des "
+                  "panneaux. Sans ce drapeau — et donc à chaque déploiement "
+                  "— le seeder se contente de COMBLER les champs vides : une "
+                  "saisie du fondateur n'est JAMAIS écrasée."),
         )
 
     @transaction.atomic
@@ -2168,19 +2176,35 @@ class Command(BaseCommand):
 
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs
         #    descriptifs (marque/description/garantie) — jamais prix/quantités ──
+        # ASTK176 — `--reappliquer-fiches` est la SEULE porte d'écrasement :
+        # fiches commerciales, fiches techniques, renommage « pendent » et
+        # conversion TVA des panneaux (un run nu ne fait que COMBLER du vide).
+        reappliquer = bool(options.get('reappliquer_fiches'))
         fiches_updated = 0
         for sku, fiche in FICHES.items():
             produit = Produit.objects.filter(company=company, sku=sku).first()
             if not produit:
                 continue
             # `garantie_mois` (structuré, lu par theme.warranties_for) suit le
-            # même contrat de ré-application que le texte de garantie.
+            # même contrat que le texte de garantie.
+            # ASTK176 (décision fondateur 06/10/2026, option a) — règle
+            # « VIDES SEULEMENT » : le run nu (donc chaque déploiement) ne
+            # comble que les champs vides ; une valeur saisie par le fondateur
+            # n'est JAMAIS écrasée. Seul `--reappliquer-fiches` réécrit.
+            champs_fiche = []
             for field in ('marque', 'description', 'garantie', 'garantie_mois'):
-                if field in fiche:
-                    setattr(produit, field, fiche[field])
-            produit.save(update_fields=[
-                f for f in ('marque', 'description', 'garantie', 'garantie_mois')
-                if f in fiche])
+                if field not in fiche:
+                    continue
+                actuel = getattr(produit, field)
+                if actuel == fiche[field]:
+                    continue  # déjà à jour — aucune écriture (idempotence)
+                if not reappliquer and not _fiche_champ_vide(actuel):
+                    continue  # valeur SAISIE : elle appartient au fondateur
+                setattr(produit, field, fiche[field])
+                champs_fiche.append(field)
+            if not champs_fiche:
+                continue
+            produit.save(update_fields=champs_fiche)
             fiches_updated += 1
 
         # ── L-FORFAIT — barème forfaitaire au panneau (cf. BAREMES_FORFAIT) ──
@@ -2310,10 +2334,17 @@ class Command(BaseCommand):
         # SKU semés (AUD201) : un produit hors catalogue portant la même
         # coquille dans son nom n'est que RAPPORTÉ.
         hors_catalogue_renommage = 0
+        renommage_en_attente = 0
+        tva_conversion_en_attente = 0
         for produit in Produit.objects.filter(
                 company=company, nom__contains='pendent 2 ans'):
             if produit.sku not in SKUS_SEMES:
                 hors_catalogue_renommage += 1
+                continue
+            if not reappliquer:
+                # ASTK176 — renommer écrase une valeur existante : réservé à
+                # `--reappliquer-fiches` ; le run nu se contente de le dire.
+                renommage_en_attente += 1
                 continue
             produit.nom = produit.nom.replace('pendent 2 ans', 'pendant 2 ans')
             produit.save(update_fields=['nom'])
@@ -2340,6 +2371,12 @@ class Command(BaseCommand):
                     # un chiffre) : sans TVA connue, impossible de dériver le
                     # HT en sécurité — rapporté, jamais converti.
                     tva_refusee_vide += 1
+                    continue
+                if not reappliquer:
+                    # ASTK176 — la conversion RÉÉCRIT prix de vente, prix
+                    # d'achat et TVA : écrasement, donc réservé à
+                    # `--reappliquer-fiches` (rapporté, jamais silencieux).
+                    tva_conversion_en_attente += 1
                     continue
                 facteur = (Decimal(100) + produit.tva) / Decimal(110)
                 produit.prix_vente = (produit.prix_vente * facteur).quantize(Decimal('0.01'))
@@ -2376,6 +2413,14 @@ class Command(BaseCommand):
                 f"renommés, {hors_catalogue_tva} auraient vu leur TVA/prix "
                 "touchés — vérifier manuellement si un rattachement au "
                 "catalogue est légitime."
+            ))
+        if renommage_en_attente or tva_conversion_en_attente:
+            self.stdout.write(self.style.WARNING(
+                "\nASTK176 — corrections NON appliquées (run nu : le seeder "
+                f"ne comble que le vide) : {renommage_en_attente} "
+                "renommage(s) « pendent → pendant », "
+                f"{tva_conversion_en_attente} conversion(s) TVA panneau — "
+                "relancer avec --reappliquer-fiches pour les appliquer."
             ))
         if tva_refusee_vide:
             self.stdout.write(self.style.WARNING(
