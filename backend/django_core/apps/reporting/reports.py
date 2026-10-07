@@ -312,7 +312,9 @@ def service_report(request):
     start, end = _period(request)
     inst_qs = Installation.objects.filter(**co)
     interv_qs = Intervention.objects.filter(**co)
-    ticket_qs = Ticket.objects.filter(**co)
+    # AANA24 / D-AANA-2 — UNE base de tickets : les annulés sont exclus de
+    # tout compte (ouverts, résolus, par statut), comme reports_field.
+    ticket_qs = Ticket.objects.filter(**co, annule=False)
     if start:
         inst_qs = inst_qs.filter(date_creation__date__gte=start)
         interv_qs = interv_qs.filter(date_prevue__gte=start)
