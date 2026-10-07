@@ -1046,6 +1046,26 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 horodatages.add(f.name)
         return sorted({n for n in noms if n in concrets} | horodatages)
 
+    @staticmethod
+    def _a_un_changement(old, vd):
+        """ALEA29 — vrai si au moins une valeur validée diffère de la base.
+        Prudent : une valeur non comparable (M2M, type inconnu) compte comme
+        un changement."""
+        for nom, valeur in vd.items():
+            try:
+                champ = Lead._meta.get_field(nom)
+            except Exception:  # noqa: BLE001 — champ non modèle
+                return True
+            if getattr(champ, 'many_to_many', False):
+                actuel = set(getattr(old, nom).values_list('pk', flat=True))
+                voulu = {getattr(v, 'pk', v) for v in (valeur or [])}
+                if actuel != voulu:
+                    return True
+                continue
+            if getattr(old, nom) != valeur:
+                return True
+        return False
+
     def perform_update(self, serializer):
         # CAD156 — « Je vous rappelle jeudi à 18 h » : l'HEURE promise au
         # téléphone n'avait aucun champ (`relance_date` est une date). Elle
@@ -1071,6 +1091,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
         instance = serializer.instance
+
+        # ALEA29 — un PATCH SANS changement réel (corps vide ou valeurs
+        # identiques) n’écrit rien : ni date_modification ni updated_by
+        # n'avancent (sinon l'autre onglet affichait un faux « modifié par
+        # ailleurs »). Une heure de rappel dans le corps est un changement.
+        if not brut_heure and not self._a_un_changement(
+                old, serializer.validated_data):
+            return
 
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by. CRX25 : posé
