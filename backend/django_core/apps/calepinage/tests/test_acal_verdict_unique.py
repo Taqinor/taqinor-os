@@ -76,14 +76,16 @@ class VerdictUnique(BaseApiCalepinage):
                 if motif['code'] == code]
 
     def test_affectation_bloquante_visible_des_deux_cotes(self):
-        imposee = [{'module': 'PAN-A#%d' % rang, 'chaine': 2, 'mppt': 1,
+        # ACAL265 — la clé de module est '<zone.id>#<n>' (zone 'a'), le
+        # libellé « PAN-A » n'est plus une clé.
+        imposee = [{'module': 'a#%d' % rang, 'chaine': 2, 'mppt': 1,
                     'onduleur': 1} for rang in range(1, 21)]
         calepinage = self._calepinage(affectation_manuelle=imposee)
         verdict = verdict_publiable(calepinage)
         motifs = self._motifs(verdict, CODE_AFFECTATION)
         self.assertTrue(motifs, verdict['motifs'])
         self.assertTrue(motifs[0]['libelle'].startswith(
-            'Chaîne 2 (pan PAN-A) : 20 modules, maximum'))
+            'Chaîne 2 (pan a) : 20 modules, maximum'), motifs[0])
         self.assertIn(motifs[0]['statut'], REFUSANTS)
         self.assertFalse(verdict['publiable'])
         self.assertFalse(evaluation_electrique(calepinage)['publiable'])
