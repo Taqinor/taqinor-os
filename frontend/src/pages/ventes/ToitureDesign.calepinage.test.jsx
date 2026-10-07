@@ -538,22 +538,22 @@ describe('ToitureDesign — teinte par chaîne (ACAL286)', () => {
   })
 })
 
-describe('ToitureDesign — le mode devis ne bouge pas (garde CAL37)', () => {
-  it('ne frappe AUCUNE route calepinage', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    const CTX_DEVIS = exempleContrat('ventes', 'devis_design_context')
+describe('ToitureDesign — la route devis ouvre le calepinage lié (ACAL37, D-ACAL-1)', () => {
+  it('passe par le calepinage lié, jamais par le contexte devis', async () => {
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: CTX.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
 
-    rendreDevis(CTX_DEVIS.devis.id)
+    rendreDevis(CTX.calepinage.devis_lie.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    expect(ventesApi.getDevisDesignContext).toHaveBeenCalledTimes(1)
-    for (const appel of Object.values(calepinageApi.calepinages)) {
-      expect(appel).not.toHaveBeenCalled()
-    }
-    // Ni le panneau du module, ni son bouton d'enregistrement.
-    expect(screen.queryByTestId('cal-atelier-panneaux')).toBeNull()
-    expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
+    expect(calepinageApi.calepinages.depuisModele)
+      .toHaveBeenCalledWith({ devis_id: CTX.calepinage.devis_lie.id })
+    expect(ventesApi.getDevisDesignContext).not.toHaveBeenCalled()
+    // Les panneaux du module ET son bouton d'enregistrement sont là.
+    expect(await screen.findByTestId('cal-atelier-panneaux')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-enregistrer-calepinage')).toBeInTheDocument()
   })
 })
 
