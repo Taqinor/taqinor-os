@@ -1,11 +1,30 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.core import database as _database
 from app.core.security import get_raw_token, verify_token
 from app.services.action_tools import ActionContext
 from app.services.sql_agent_service import sql_agent_service
 
 router = APIRouter()
+
+# AANA5 (C-AANA-034) — bornes de l'agent : une question de 1 Mo ou une rafale
+# de requetes ne doit ni saturer le LLM (payant) ni la base.
+SQL_AGENT_QUESTION_MAX_LENGTH = 2000      # caracteres ; 422 au-dela
+SQL_AGENT_RATE_LIMIT_MAX = 20             # requetes max par utilisateur...
+SQL_AGENT_RATE_LIMIT_WINDOW = 60          # ...sur une fenetre de 60 s
+
+
+def _check_sql_agent_rate_limit(user_id) -> None:
+    """Limiteur Redis partage (fenetre glissante, fail-closed comme l'OCR)."""
+    _database.check_rate_limit(
+        "sql_agent_rate", user_id,
+        SQL_AGENT_RATE_LIMIT_MAX, SQL_AGENT_RATE_LIMIT_WINDOW,
+        detail=(
+            f"Limite atteinte : {SQL_AGENT_RATE_LIMIT_MAX} questions par "
+            "minute. Reessayez dans un instant."
+        ),
+    )
 
 
 def _require_company_id(token_payload: dict) -> int:
@@ -28,7 +47,8 @@ def _require_company_id(token_payload: dict) -> int:
 
 
 class SQLQuery(BaseModel):
-    question: str
+    # AANA5 — 422 automatique au-dela de la borne (avant tout appel LLM).
+    question: str = Field(..., max_length=SQL_AGENT_QUESTION_MAX_LENGTH)
 
 
 class SQLResponse(BaseModel):
@@ -72,6 +92,8 @@ async def query_database(
     user_id = int(token_payload.get("user_id", 0))
     # ERR44 — exige un company_id present et non nul (403 sinon).
     company_id = _require_company_id(token_payload)
+    # AANA5 — plafond de debit (429) ; Redis injoignable => 503 (fail-closed).
+    _check_sql_agent_rate_limit(user_id)
 
     action_ctx = ActionContext(
         company_id=company_id,

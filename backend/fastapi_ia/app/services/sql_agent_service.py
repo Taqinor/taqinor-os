@@ -46,7 +46,6 @@ from app.core.config import (
     GROQ_API_KEY,
     OPENAI_API_KEY,
     REDIS_CHAT_URL,
-    SQL_AGENT_DATABASE_URL,
     SQL_AGENT_MODEL,
     SQL_AGENT_PROVIDER,
 )
@@ -1118,8 +1117,10 @@ class SQLAgentService:
         # SQL_AGENT_DB_USER n'est pas defini (non-cassant).
         # ERR43 — sample_rows_in_table_info=0 : aucune ligne reelle n'est injectee
         # dans le contexte du LLM (sinon fuite incidente inter-tenant).
-        db = SQLDatabase.from_uri(
-            SQL_AGENT_DATABASE_URL,
+        # AANA5 — moteur cree par app.core.database (statement_timeout 15 s).
+        from app.core import database as _database
+        db = SQLDatabase(
+            _database.create_sql_agent_engine(),
             include_tables=relevant_tables,
             sample_rows_in_table_info=0,
         )
