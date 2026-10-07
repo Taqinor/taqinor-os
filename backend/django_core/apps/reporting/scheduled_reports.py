@@ -59,10 +59,12 @@ def render_sales(report):
     co = _company_filter(report.company)
     leads = Lead.objects.filter(is_archived=False, **co)
     rows = []
+    # AANA21 / D-AANA-1 — même funnel que reports.sales_report : un lead perdu
+    # ne compte dans aucune étape (jamais « signé »).
     for key in stage_mod.STAGES:
         rows.append([
             stage_mod.STAGE_LABELS.get(key, key),
-            leads.filter(stage=key).count(),
+            leads.filter(stage=key, perdu=False).count(),
         ])
     return ['Étape', 'Leads'], rows
 

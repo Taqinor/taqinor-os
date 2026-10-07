@@ -115,10 +115,10 @@ def commercial_dashboard(request):
         })
 
     # ── Taux de victoire global ───────────────────────────────────────────────
-    nb_signes = len([le for le in leads if le.stage == 'SIGNED' and not le.perdu])
-    win_rate_pct = (
-        round(nb_signes / total_active * 100, 1) if total_active else 0.0
-    )
+    # AANA21 / D-AANA-1 — LE taux de gain partagé (gagnés ÷ non perdus).
+    from apps.reporting.services import _leads_gagnes, taux_gain
+    nb_signes = len(_leads_gagnes(leads))
+    win_rate_pct = taux_gain(leads) or 0.0
 
     # ── Temps moyen par étape (LeadActivity stage changes) ───────────────────
     stage_dwell = {key: [] for key in stage_mod.STAGES}
@@ -201,14 +201,10 @@ def commercial_dashboard(request):
         if kwc:
             kwc_by_devis[devis_id] += Decimal(kwc)
 
-    # Nb de leads par responsable (pour win rate individuel).
-    leads_by_owner = defaultdict(int)
-    for le in leads:
-        uid = le.owner_id or 0
-        leads_by_owner[uid] += 1
-
+    # AANA21 — le taux individuel est LE taux de gain partagé, calculé par
+    # build_leaderboard sur les leads de la fenêtre.
     from apps.reporting.services import build_leaderboard
-    leaderboard = build_leaderboard(signed_devis, kwc_by_devis, leads_by_owner)
+    leaderboard = build_leaderboard(signed_devis, kwc_by_devis, leads)
 
     # ── QX31be — délai jusqu'au PREMIER contact (speed-to-lead) ──────────────
     # De la création du lead à la première activité SORTANTE (appel/e-mail),
@@ -311,6 +307,8 @@ def win_loss_by_source(request):
 
     leads = list(leads_qs.only(
         'stage', 'perdu', 'canal', 'source', 'motif_perte'))
+    # AANA21 / D-AANA-1 — « gagné » = SIGNED non perdu (helper partagé).
+    from apps.reporting.services import est_lead_gagne
 
     # ── Par canal marketing ───────────────────────────────────────────────────
     canal_labels = dict(Lead.Canal.choices)
@@ -319,7 +317,7 @@ def win_loss_by_source(request):
         canal = le.canal or 'autre'
         b = canal_buckets.setdefault(canal, {'total': 0, 'won': 0})
         b['total'] += 1
-        if le.stage == 'SIGNED' and not le.perdu:
+        if est_lead_gagne(le):
             b['won'] += 1
 
     by_canal = []
@@ -343,7 +341,7 @@ def win_loss_by_source(request):
         src = le.source or 'os_native'
         b = source_buckets.setdefault(src, {'total': 0, 'won': 0})
         b['total'] += 1
-        if le.stage == 'SIGNED' and not le.perdu:
+        if est_lead_gagne(le):
             b['won'] += 1
 
     by_source_technique = []
@@ -374,7 +372,7 @@ def win_loss_by_source(request):
 
     # ── Récapitulatif global ──────────────────────────────────────────────────
     nb_total = len(leads)
-    nb_won = sum(1 for le in leads if le.stage == 'SIGNED' and not le.perdu)
+    nb_won = sum(1 for le in leads if est_lead_gagne(le))
     nb_lost = len(perdus)
     overall_close_rate = (
         round(nb_won / nb_total * 100, 1) if nb_total else 0.0

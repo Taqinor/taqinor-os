@@ -17,7 +17,6 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from django.db.models import Count
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -732,14 +731,13 @@ def sales_leaderboard(request):
         leads_qs = leads_qs.filter(date_creation__gte=start)
     if end:
         leads_qs = leads_qs.filter(date_creation__lte=end)
-    leads_by_owner = defaultdict(int)
-    for row in leads_qs.values('owner_id').annotate(n=Count('id')):
-        leads_by_owner[row['owner_id']] = row['n']
-
     # WIR82 — calcul UNIQUE partagé avec commercial.commercial_dashboard via
     # reporting.services.build_leaderboard (plus de doublon divergent).
+    # AANA21 — le taux individuel = LE taux de gain partagé (leads chargés).
     from apps.reporting.services import build_leaderboard
-    rows = build_leaderboard(signed, kwc_by_devis, leads_by_owner)
+    rows = build_leaderboard(
+        signed, kwc_by_devis,
+        list(leads_qs.only('id', 'owner_id', 'stage', 'perdu')))
 
     x = _maybe_xlsx(
         request, 'classement-commerciaux.xlsx',
@@ -893,10 +891,13 @@ def cohorts(request):
 
     # Buckets par mois d'acquisition.
     cohort_map: dict = defaultdict(lambda: {
-        'leads': [], 'signes': 0, 'durees': []
+        'leads': [], 'actifs': 0, 'signes': 0, 'durees': []
     })
+    # AANA21 / D-AANA-1 — « signé » = SIGNED non perdu ; le taux de la cohorte
+    # est LE taux de gain partagé (gagnés ÷ leads non perdus).
+    from apps.reporting.services import est_lead_gagne
 
-    for lead in qs.only('id', 'stage', 'date_creation', 'canal',
+    for lead in qs.only('id', 'stage', 'perdu', 'date_creation', 'canal',
                         'date_modification').iterator():
         # CRX26/AUD836 — le mois de cohorte se lit dans le fuseau MÉTIER : un
         # `.strftime()` direct sur le datetime chargé (UTC, tel que renvoyé
@@ -910,7 +911,9 @@ def cohorts(request):
             dim_key = f'{month_key}/{canal or "—"}'
 
         cohort_map[dim_key]['leads'].append(lead.id)
-        if lead.stage == 'SIGNED':
+        if not lead.perdu:
+            cohort_map[dim_key]['actifs'] += 1
+        if est_lead_gagne(lead):
             cohort_map[dim_key]['signes'] += 1
             # Proxy : date_modification ≈ date de signature (auto_now).
             if lead.date_modification and lead.date_creation:
@@ -926,7 +929,8 @@ def cohorts(request):
         nb = len(bucket['leads'])
         signes = bucket['signes']
         durees = bucket['durees']
-        taux = round(signes / nb * 100, 1) if nb > 0 else 0.0
+        actifs = bucket['actifs']
+        taux = round(signes / actifs * 100, 1) if actifs > 0 else 0.0
         avg_days = round(sum(durees) / len(durees), 1) if durees else None
         entry = {
             'cohorte': key,

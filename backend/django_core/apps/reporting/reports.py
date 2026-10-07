@@ -123,16 +123,19 @@ def sales_report(request):
     if end:
         leads = leads.filter(date_creation__date__lte=end)
 
+    # AANA21 / D-AANA-1 — un lead perdu ne compte dans AUCUNE étape (même
+    # règle que pipeline/commercial) ; « gagné » = SIGNED non perdu.
+    from apps.reporting.services import _leads_gagnes, q_lead_gagne
     funnel = []
     total = leads.count()
     for key in stage_mod.STAGES:
-        n = leads.filter(stage=key).count()
+        n = leads.filter(stage=key, perdu=False).count()
         funnel.append({'stage': key, 'label': stage_mod.STAGE_LABELS.get(key, key),
                        'count': n})
     par_responsable = list(
         leads.values('owner__username')
         .annotate(count=Count('id'),
-                  gagnes=Count('id', filter=models_q_signed()))
+                  gagnes=Count('id', filter=q_lead_gagne()))
         .order_by('-count'))
     par_canal = list(
         leads.values('canal').annotate(count=Count('id')).order_by('-count'))
@@ -207,8 +210,8 @@ def sales_report(request):
         if p_end:
             prev_leads = prev_leads.filter(date_creation__date__lte=p_end)
         prev_total = prev_leads.count()
-        prev_signed = prev_leads.filter(stage='SIGNED').count()
-        curr_signed = leads.filter(stage='SIGNED').count()
+        prev_signed = _leads_gagnes(prev_leads).count()
+        curr_signed = _leads_gagnes(leads).count()
         comparison = {
             'period': compare,
             'prev_start': p_start.isoformat() if p_start else None,
@@ -224,11 +227,6 @@ def sales_report(request):
         'devis_par_statut': devis_par_statut,
         'comparison': comparison,
     })
-
-
-def models_q_signed():
-    from django.db.models import Q
-    return Q(stage='SIGNED')
 
 
 @api_view(['GET'])
