@@ -1062,7 +1062,8 @@ MOUVEMENTS_AGREGES_GROUP_BY = ('produit', 'type', 'mois', 'emplacement')
 def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
     """ZSTK7 — « Reporting ▸ Moves History » : agrège `MouvementStock` par
     ``group_by`` (produit/type/mois/emplacement) sur la période optionnelle,
-    en quantités ENTRÉES/SORTIES/NETTES. LECTURE SEULE, INTERNE.
+    en quantités ENTRÉES/SORTIES/REBUTS/AJUSTEMENTS/NETTES (net = variation
+    réelle Σ(après − avant), ASTK208). LECTURE SEULE, INTERNE.
 
     ``group_by='emplacement'`` réutilise `stock_breakdown_map` (ventilation
     ACTUELLE par emplacement — le modèle `MouvementStock` ne trace pas
@@ -1097,18 +1098,34 @@ def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
             return (key, key)
         return None  # 'emplacement' traité séparément ci-dessous.
 
+    REBUT = MouvementStock.TypeMouvement.REBUT
+    AJUSTEMENT = MouvementStock.TypeMouvement.AJUSTEMENT
+
+    def _vide(cle, libelle):
+        return {'cle': cle, 'libelle': libelle, 'entrees': 0, 'sorties': 0,
+                'rebuts': 0, 'ajustements': 0, 'net': 0}
+
+    def _cumuler(entry, m, part=1):
+        """ASTK208 (C-ASTK-053) — le net est la VARIATION réelle
+        Σ(après − avant) : il réconcilie avec le stock (rebuts, ajustements
+        signés compris ; un transfert vaut 0)."""
+        variation = (m.quantite_apres or 0) - (m.quantite_avant or 0)
+        if m.type_mouvement == ENTREE:
+            entry['entrees'] += m.quantite * part
+        elif m.type_mouvement == SORTIE:
+            entry['sorties'] += m.quantite * part
+        elif m.type_mouvement == REBUT:
+            entry['rebuts'] += m.quantite * part
+        elif m.type_mouvement == AJUSTEMENT:
+            entry['ajustements'] += variation * part
+        entry['net'] += variation * part
+
     buckets = {}
     for m in qs:
         if group_by == 'emplacement':
             continue
         cle, libelle = _cle(m)
-        entry = buckets.setdefault(
-            cle, {'cle': cle, 'libelle': libelle,
-                  'entrees': 0, 'sorties': 0})
-        if m.type_mouvement == ENTREE:
-            entry['entrees'] += m.quantite
-        elif m.type_mouvement == SORTIE:
-            entry['sorties'] += m.quantite
+        _cumuler(buckets.setdefault(cle, _vide(cle, libelle)), m)
 
     if group_by == 'emplacement':
         from .services import stock_breakdown_map
@@ -1119,13 +1136,8 @@ def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
             for r in rows:
                 part = r['quantite'] / total
                 cle = (r['emplacement_id'], r['emplacement_nom'])
-                entry = buckets.setdefault(
-                    cle, {'cle': cle, 'libelle': r['emplacement_nom'],
-                          'entrees': 0, 'sorties': 0})
-                if m.type_mouvement == ENTREE:
-                    entry['entrees'] += m.quantite * part
-                elif m.type_mouvement == SORTIE:
-                    entry['sorties'] += m.quantite * part
+                _cumuler(buckets.setdefault(
+                    cle, _vide(cle, r['emplacement_nom'])), m, part)
 
     out = []
     for entry in buckets.values():
@@ -1133,7 +1145,9 @@ def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
             'libelle': entry['libelle'],
             'entrees': entry['entrees'],
             'sorties': entry['sorties'],
-            'net': entry['entrees'] - entry['sorties'],
+            'rebuts': entry['rebuts'],
+            'ajustements': entry['ajustements'],
+            'net': entry['net'],
         })
     out.sort(key=lambda e: e['libelle'] or '')
     return out
