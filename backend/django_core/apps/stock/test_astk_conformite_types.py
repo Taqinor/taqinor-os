@@ -7,14 +7,15 @@ Sonde FOUR-16 : conformite_ok=True, manquants=0 pour un fournisseur neuf.
 Source réelle : DocumentConformiteFournisseur.Type,
 services.fournisseur_conformite_manquante, vue-360 — aucun mock.
 
-Note : `test_vue360_conforme_contrat` (contrat fournisseur_conformite.json,
-ASTK166) n'est pas ici — le contrat n'est pas encore sur la branche ; la clé
-est affirmée par sa forme (liste de codes de types) ci-dessous.
+`test_vue360_conforme_contrat` affirme la forme de la vue-360 contre
+`contract_samples/fournisseur_conformite.json` (ASTK166).
 
 Run :
     python manage.py test apps.stock.test_astk_conformite_types -v 2
 """
+import json
 from datetime import timedelta
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -34,6 +35,8 @@ from authentication.models import Company
 User = get_user_model()
 
 TOUS = {'arf', 'cnss', 'rc', 'assurance'}
+CONTRAT = (Path(__file__).resolve().parent / 'contract_samples'
+           / 'fournisseur_conformite.json')
 
 
 class ConformiteTests(TestCase):
@@ -108,3 +111,19 @@ class ConformiteTests(TestCase):
         data = self._vue360()
         self.assertTrue(data['conformite_ok'])
         self.assertEqual(data['conformite_documents_manquants'], [])
+
+    def test_vue360_conforme_contrat(self):
+        """ASTK188 — mêmes clés que l'exemple « NOUVEAU — ASTK188 » du contrat
+        (hors `solde_total_du`, retiré sans `prix_achat_voir`, ASTK13) et
+        `conformite_documents_manquants` = LISTE de types, plus un entier."""
+        contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))[
+            'routes']['fournisseurs_vue_360']['exemple_vue_360_nouveau_astk188']
+        self._piece('arf')
+        self._piece('rc')
+        data = self._vue360()
+        attendues = set(contrat) - {'solde_total_du'}
+        self.assertEqual(set(data) - {'solde_total_du'}, attendues)
+        self.assertIsInstance(data['conformite_documents_manquants'], list)
+        self.assertEqual(set(data['conformite_documents_manquants']),
+                         set(contrat['conformite_documents_manquants']))
+        self.assertEqual(data['conformite_ok'], contrat['conformite_ok'])
