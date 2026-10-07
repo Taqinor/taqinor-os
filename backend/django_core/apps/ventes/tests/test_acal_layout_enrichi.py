@@ -180,7 +180,7 @@ class LayoutEnrichiTest(TestCase):
         lead = Lead.objects.create(company=self.company, nom='Lead ACAL96',
                                    telephone='+212600009696')
         ouvert = Calepinage.objects.create(
-            company=self.company, lead=lead, titre='Ouvert ACAL96',
+            company=self.company, lead_id=lead.pk, titre='Ouvert ACAL96',
             roof_layout=_layout(5, 5), layout_hash=layout_hash(_layout(5, 5)))
         devis2 = self._devis(lead=lead)
         r = self._post(devis2, 'sync-layout', _layout(7, 5))

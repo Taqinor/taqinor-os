@@ -30,7 +30,8 @@ from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 from .acal_livrables_helpers import (
-    calepinage_simule_reel, exiger_bibliotheques_pdf, patch_materiel,
+    LAYOUT_PLANCHE_SIMULABLE, calepinage_simule_reel,
+    exiger_bibliotheques_pdf, patch_materiel,
 )
 
 User = get_user_model()
@@ -72,7 +73,9 @@ class LivrablesArchiveTest(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
         lead = Lead.objects.create(company=societe, nom='Toiture 119')
-        pivot = calepinage_simule_reel()
+        # Un contour et des pans STOCKÉS : la planche se compose de la
+        # géométrie enregistrée (jamais d'un tracé reconstitué, sinon 400).
+        pivot = calepinage_simule_reel(LAYOUT_PLANCHE_SIMULABLE)
         self.calepinage = Calepinage.objects.create(
             company=societe, lead_id=lead.pk, titre='QA-ACAL archivé',
             roof_layout=copy.deepcopy(pivot.roof_layout),
