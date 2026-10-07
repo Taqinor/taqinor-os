@@ -9,11 +9,12 @@ import { ThemeProvider } from '../../design/ThemeProvider'
 const H = vi.hoisted(() => ({
   campList: vi.fn(() => Promise.resolve({ data: [
     { id: 1, nom: 'Q3 2026', statut: 'ouverte', items: [
-      { id: 10, user: 5, role_snapshot: 'Commercial', decision: 'en_attente' },
+      // Forme serveur : accessreview.services.generate_items fige un objet.
+      { id: 10, user: 5, role_snapshot: { role_id: 3, role_nom: 'Commercial' }, decision: 'en_attente' },
     ] },
   ] })),
   campGet: vi.fn(() => Promise.resolve({ data: { id: 1, nom: 'Q3 2026', statut: 'ouverte', items: [
-    { id: 10, user: 5, role_snapshot: 'Commercial', decision: 'revoque' },
+    { id: 10, user: 5, role_snapshot: { role_id: 3, role_nom: 'Commercial' }, decision: 'revoque' },
   ] } })),
   campCreate: vi.fn(() => Promise.resolve({ data: { id: 2 } })),
   attester: vi.fn(() => Promise.resolve({ data: {} })),
@@ -48,6 +49,8 @@ describe('WIR135 GouvernanceAccesPage', () => {
   it('révoque un item de campagne (retire le rôle via le serveur)', async () => {
     renderPage()
     fireEvent.click(await screen.findByText('Q3 2026'))
+    // Le rôle figé s'affiche par son libellé (jamais l'objet brut : React #31).
+    expect(await screen.findByText('Commercial')).toBeInTheDocument()
     fireEvent.click(await screen.findByText('Révoquer'))
     await waitFor(() => expect(H.attester).toHaveBeenCalledWith(1,
       expect.objectContaining({ item: 10, decision: 'revoque' })))
