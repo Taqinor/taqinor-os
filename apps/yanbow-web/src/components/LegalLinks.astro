@@ -1,0 +1,35 @@
+---
+// Liens juridiques (YBW30) — pied de page de chaque page FR et EN, et lien
+// « Confidentialité » du formulaire (`pages={['confidentialite']}`).
+// Toujours dans la langue de la page ; JAMAIS de lien vers une route
+// juridique fermée (incomplète → 404, porte YBW12) : seules les routes
+// déclarées complètes par `src/lib/legal.ts` sont liées.
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { L, t } from '../i18n/utils';
+import { fr } from '../i18n/components/liens-juridiques.fr';
+import { en } from '../i18n/components/liens-juridiques.en';
+import { routesJuridiquesCompletes } from '../lib/legal';
+
+type PageJuridique = 'mentionsLegales' | 'confidentialite';
+
+interface Props {
+  locale?: Locale;
+  /** Pages à lier (pied de page : les deux ; formulaire : confidentialité). */
+  pages?: readonly PageJuridique[];
+  /** Routes complètes (sans barre finale) — surcharge réservée aux tests. */
+  completes?: readonly string[];
+}
+const { locale = DEFAULT_LOCALE, pages = ['mentionsLegales', 'confidentialite'], completes = routesJuridiquesCompletes() } = Astro.props;
+const dict = locale === 'en' ? en : fr;
+const sansBarre = (p: string) => (p.length > 1 ? p.replace(/\/+$/, '') : p);
+const liens = pages
+  .map((page) => ({ page, href: L(page, locale) }))
+  .filter((l) => completes.map(sansBarre).includes(sansBarre(l.href)));
+---
+{liens.length > 0 && (
+  <nav aria-label={t(dict, 'nav', locale)} data-liens-juridiques>
+    {liens.map((l) => (
+      <a href={l.href} data-page={l.page}>{t(dict, l.page, locale)}</a>
+    ))}
+  </nav>
+)}

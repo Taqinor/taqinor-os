@@ -9,7 +9,8 @@ import { PAGES } from '../i18n/pages';
 import { alternates, selecteurLangue, t } from '../i18n/utils';
 import { fr } from '../i18n/pages/mentions-legales.fr';
 import { en } from '../i18n/pages/mentions-legales.en';
-import { LEGAL, type Legal, lignesCommunes, lignesEditeur, lignesMaroc } from '../lib/legal';
+import { LEGAL, type Legal, lignesCommunes, lignesEditeur, lignesMaroc, routesJuridiquesCompletes } from '../lib/legal';
+import LegalLinks from '../components/LegalLinks.astro';
 
 interface Props {
   locale?: Locale;
@@ -63,6 +64,9 @@ const blocs = [
         </nav>
       )}
     </main>
+    <footer>
+      <LegalLinks locale={locale} completes={routesJuridiquesCompletes(legal)} />
+    </footer>
     <script>
       import '../scripts/client-error';
     </script>
