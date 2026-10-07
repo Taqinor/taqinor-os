@@ -15,12 +15,12 @@
 //   3. un devis se crée pour ce client via le générateur (combobox
 //      `#gen-client`, pages/ventes/DevisGenerator.jsx), SANS lead : la langue
 //      du document vient donc bien du client, pas du chrome ;
-//   4. la génération du PDF premium ABOUTIT pour un client arabe — la ligne du
-//      devis finit par exposer l'action « Télécharger », qui n'existe que
-//      lorsque `devis.fichier_pdf` est présent côté serveur. Si le chemin de
-//      rendu arabe (NTI18N5, `apps/ventes/utils/libelles_ar.py` + moteur
-//      `/proposal`) échouait, aucun fichier ne serait produit et cette étape
-//      tomberait.
+//   4. la génération du PDF premium ABOUTIT pour un client arabe — l'écran
+//      lance `generer-pdf` (202) et le moteur rend le document par le chemin
+//      canonique `/proposal` (200, un vrai PDF). Si le chemin de rendu arabe
+//      (NTI18N5, `apps/ventes/utils/libelles_ar.py` + moteur `/proposal`)
+//      échouait, cette étape tomberait (CAD177 : plus d'attente de
+//      « Télécharger », qui exige un worker Celery absent du job e2e-full).
 //
 // CE QUE CE SPEC N'ASSERTE PAS, ET POURQUOI — le critère de la tâche demandait
 // aussi de vérifier, PAR EXTRACTION DE TEXTE DU PDF, que les libellés
@@ -66,6 +66,8 @@ test.afterEach(async ({ page }) => {
 })
 
 test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', async ({ page }) => {
+  // Générateur (≤45 s de chargement du stock) + rendu premium synchrone.
+  test.setTimeout(180_000)
   // ── 1. Bascule de l'interface en arabe (NTI18N8) ─────────────────────────
   await page.goto('/crm')
   await page.getByTestId('lang-switcher').click()
@@ -146,19 +148,34 @@ test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', 
     .first()
   await expect(ligneDevis).toBeVisible({ timeout: 30_000 })
 
+  // CAD177 — le bouton « Générer » du dialogue lance la génération ASYNCHRONE
+  // (`generer-pdf` → tâche Celery, 202). Le job e2e-full ne démarre AUCUN
+  // worker Celery (release-verify.yml : gunicorn seul) : la tâche reste
+  // « en_cours » pour toujours et « Télécharger » n'apparaît jamais (run
+  // nocturne 37573380397 : 50 s d'`etat-pdf` en_cours, puis délai du test).
+  // On prouve donc (a) que l'écran déclenche bien la génération pour ce devis
+  // (202), puis (b) que LE MOTEUR rend le document de ce client arabe par le
+  // chemin canonique synchrone `/proposal` (règle #4 — même moteur que la
+  // tâche, `langue_sortie` résolue depuis `Client.langue_document`, NTI18N4).
+  const idLigne = await ligneDevis.getAttribute('id')
+  const devisId = Number(String(idLigne).replace('devis-row-', ''))
+  expect(devisId, `id du devis lu sur la ligne (${idLigne})`).toBeGreaterThan(0)
+
   await ligneDevis.getByRole('button', { name: /^PDF$/ }).click()
   const dialogPdf = page.getByRole('dialog')
   await expect(dialogPdf).toBeVisible()
+  const lancement = page.waitForResponse((r) => r.request().method() === 'POST'
+    && new URL(r.url()).pathname.endsWith(`/ventes/devis/${devisId}/generer-pdf/`),
+  { timeout: 30_000 })
   await dialogPdf.getByRole('button', { name: /^Générer$/ }).click()
+  const reponseLancement = await lancement
+  expect(reponseLancement.status(), `generer-pdf : ${await reponseLancement.text()}`)
+    .toBeLessThan(300)
 
-  // « Télécharger » n'apparaît dans le menu « Plus d'actions » de la ligne que
-  // lorsque `devis.fichier_pdf` existe : son apparition PROUVE que le moteur a
-  // rendu le document de ce client arabe sans échouer. La génération premium
-  // prend plusieurs dizaines de secondes (cf. `generateAutoDevis`, 45 s), d'où
-  // la relance du menu par `toPass` au lieu d'un unique clic.
-  await expect(async () => {
-    await ligneDevis.getByRole('button', { name: /Plus d'actions/ }).click()
-    await expect(page.getByRole('menuitem', { name: /Télécharger/ }).first())
-      .toBeVisible({ timeout: 5_000 })
-  }).toPass({ timeout: 120_000 })
+  const pdf = await page.request.get(
+    `/api/django/ventes/devis/${devisId}/proposal/?pdf_mode=full`, { timeout: 90_000 })
+  expect(pdf.status(), '/proposal du devis du client arabe').toBe(200)
+  expect(pdf.headers()['content-type'] || '').toContain('application/pdf')
+  const octets = await pdf.body()
+  expect(octets.subarray(0, 5).toString('latin1'), 'en-tête PDF').toBe('%PDF-')
 })
