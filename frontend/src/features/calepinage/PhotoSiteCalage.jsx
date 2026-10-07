@@ -8,6 +8,8 @@ import { useParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import calepinageApi from '../../api/calepinageApi'
+import { urlFichierCalepinage, crossOriginFichierCalepinage } from '../../api/fichierCalepinage'
+import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
 import useDocumentCalepinage, { ecrireSection } from './useDocumentCalepinage'
 import {
   Button, Card, FileUpload, Input, Label, Select, SelectContent, SelectItem,
@@ -93,6 +95,14 @@ export function coinsDepuisMarqueurs(marqueurs) {
   })
 }
 
+/** ACAL203 — le motif d'un 400 de calage (`{calage: "…"}`), tel que le serveur le dit. */
+function motifCalage(donnees) {
+  const brut = donnees?.calage ?? donnees?.detail
+  if (Array.isArray(brut)) return brut.filter(Boolean).join(' ') || null
+  if (brut && typeof brut === 'object') return brut.detail || brut.motif || null
+  return typeof brut === 'string' && brut ? brut : null
+}
+
 function numeroteIcon(n) {
   return L.divIcon({
     html: `<div class="grid size-7 place-items-center rounded-full border-2 border-white bg-primary text-xs font-bold text-primary-foreground shadow">${n}</div>`,
@@ -108,6 +118,13 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
 
   const [photos, setPhotos] = useState([])
   const [contexte, setContexte] = useState(null)
+  const [imagerie, setImagerie] = useState(null)
+  // ACAL203 — la photo dont une poignée a été déplacée (jamais de calage fabriqué).
+  const [toucheeId, setToucheeId] = useState(null)
+  const [erreurCalage, setErreurCalage] = useState(null)
+  const [edition, setEdition] = useState(null) // {genre, prise_le, legende} | null
+  const [suppressionDemandee, setSuppressionDemandee] = useState(false)
+  const [erreursEdition, setErreursEdition] = useState({})
   const [photoId, setPhotoId] = useState(null)
   const [opacite, setOpacite] = useState(0.85)
   const [enregistrement, setEnregistrement] = useState(false)
@@ -136,10 +153,13 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     Promise.all([
       Promise.resolve(calepinageApi.calepinages.photos(calepinageId)),
       Promise.resolve(calepinageApi.calepinages.get(calepinageId)),
+      // ACAL203 — l'imagerie de la société (meilleur effort : repli OSM).
+      Promise.resolve(calepinageApi.parametres?.get?.()).catch(() => null),
     ])
-      .then(([resPhotos, resDetail]) => {
+      .then(([resPhotos, resDetail, resParametres]) => {
         const liste = resPhotos?.data?.photos ?? []
         setPhotos(liste)
+        setImagerie(resParametres?.data?.imagerie ?? null)
         setContexte(resDetail?.data?.contexte_geographique ?? null)
         setPhotoId((courant) => (
           courant && liste.some((p) => p.id === courant)
@@ -223,11 +243,10 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     const centre = (pin?.lat != null && pin?.lng != null)
       ? [pin.lat, pin.lng]
       : DEFAULT_CENTER
-    const map = L.map(containerRef.current, { center: centre, zoom: 20 })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
-      maxZoom: 21,
-    }).addTo(map)
+    // ACAL203 — zoom 19 + tuiles au zoom natif 19 (aucune tuile en 400) ; la tuile
+    // du fournisseur d'imagerie de la société quand elle en a réglé un.
+    const map = L.map(containerRef.current, { center: centre, zoom: ZOOM_INITIAL })
+    poserFondCarte(L, map, imagerie)
 
     // Le tracé de référence — le calage doit rester visible SOUS lui.
     const outline = contexte?.outline
@@ -241,6 +260,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     markersRef.current = positions.map((pos, i) => {
       const marker = L.marker(pos, { draggable: true, icon: numeroteIcon(i + 1) }).addTo(map)
       marker.on('drag', redessiner)
+      marker.on('dragend', () => setToucheeId(photo.id))
       return marker
     })
     map.on('move zoom', redessiner)
@@ -260,13 +280,64 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     if (!photo || markersRef.current.length !== 4) return
     setEnregistrement(true)
     setMessage(null)
+    setErreurCalage(null)
     const coins = coinsDepuisMarqueurs(markersRef.current)
     Promise.resolve(calepinageApi.calepinages.calerPhoto(calepinageId, photo.id, coins))
       .then(() => {
         setMessage('Calage enregistré.')
         recharger()
       })
-      .catch(() => setMessage('Le calage n’a pas pu être enregistré.'))
+      .catch((e) => {
+        // ACAL203 — un calage refusé (400 {calage}) dit POURQUOI, sous « Calage ».
+        const motif = e?.response?.status === 400 ? motifCalage(e.response.data) : null
+        if (motif) setErreurCalage(motif)
+        else setMessage('Le calage n’a pas pu être enregistré.')
+      })
+      .finally(() => setEnregistrement(false))
+  }
+
+  // ACAL203 — modifier (genre, date, légende) / supprimer la photo ouverte.
+  const ouvrirEdition = () => {
+    setErreursEdition({})
+    setEdition({
+      genre: photo.genre || '',
+      prise_le: photo.prise_le || '',
+      legende: photo.legende || '',
+    })
+  }
+
+  const enregistrerEdition = () => {
+    if (!photo || !edition) return
+    setEnregistrement(true)
+    setMessage(null)
+    Promise.resolve(calepinageApi.calepinages.modifierPhoto(calepinageId, photo.id, edition))
+      .then(() => {
+        setEdition(null)
+        setErreursEdition({})
+        setMessage('Photo modifiée.')
+        recharger()
+      })
+      .catch((e) => {
+        const donnees = e?.response?.data
+        if (donnees && typeof donnees === 'object') setErreursEdition(donnees)
+        else setMessage('La photo n’a pas pu être modifiée.')
+      })
+      .finally(() => setEnregistrement(false))
+  }
+
+  const supprimerLaPhoto = () => {
+    if (!photo) return
+    setEnregistrement(true)
+    setMessage(null)
+    Promise.resolve(calepinageApi.calepinages.supprimerPhoto(calepinageId, photo.id))
+      .then(() => {
+        setSuppressionDemandee(false)
+        setEdition(null)
+        setPhotoId(null)
+        setMessage('Photo supprimée.')
+        recharger()
+      })
+      .catch((e) => setMessage(e?.response?.data?.detail || 'La photo n’a pas pu être supprimée.'))
       .finally(() => setEnregistrement(false))
   }
 
@@ -413,7 +484,10 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <Select
             value={photoId ? String(photoId) : undefined}
-            onValueChange={(v) => setPhotoId(Number(v))}
+            onValueChange={(v) => {
+              setPhotoId(Number(v)); setEdition(null); setSuppressionDemandee(false)
+              setErreurCalage(null)
+            }}
           >
             <SelectTrigger className="w-64" data-testid="cal-photo-calage-select">
               <SelectValue placeholder="Choisir une photo…" />
@@ -460,11 +534,11 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
           </div>
           <img
             ref={imageRef}
-            src={photo.url}
+            src={urlFichierCalepinage(photo.url)}
             alt=""
             hidden
             onLoad={redessiner}
-            crossOrigin="anonymous"
+            crossOrigin={crossOriginFichierCalepinage()}
           />
 
           <p className="mt-2 text-xs text-lune-faint">
@@ -474,10 +548,32 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
           </p>
 
           <div className="mt-3 flex flex-wrap gap-3">
-            <Button type="button" onClick={enregistrer} disabled={enregistrement}
+            <Button type="button" onClick={enregistrer}
+              disabled={enregistrement || (!photo.calage && toucheeId !== photo.id)}
               data-testid="cal-photo-calage-enregistrer">
               Enregistrer le calage
             </Button>
+            <Button type="button" variant="outline" onClick={ouvrirEdition}
+              disabled={enregistrement} data-testid="cal-photo-modifier">
+              Modifier la photo
+            </Button>
+            {!suppressionDemandee ? (
+              <Button type="button" variant="ghost" onClick={() => setSuppressionDemandee(true)}
+                disabled={enregistrement} data-testid="cal-photo-supprimer">
+                Supprimer la photo
+              </Button>
+            ) : (
+              <>
+                <Button type="button" variant="destructive" onClick={supprimerLaPhoto}
+                  disabled={enregistrement} data-testid="cal-photo-supprimer-confirmer">
+                  Confirmer la suppression
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setSuppressionDemandee(false)}
+                  data-testid="cal-photo-supprimer-annuler">
+                  Annuler
+                </Button>
+              </>
+            )}
             {photo.calage && (
               <Button type="button" variant="ghost" onClick={effacer}
                 disabled={enregistrement} data-testid="cal-photo-calage-effacer">
@@ -497,6 +593,70 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
               </Button>
             )}
           </div>
+
+          {!photo.calage && toucheeId !== photo.id && (
+            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-photo-calage-non-cale">
+              Photo non calée : déplacez une poignée pour poser un calage.
+            </p>
+          )}
+
+          {erreurCalage && (
+            <p role="alert" className="mt-2 text-xs text-destructive"
+              data-testid="cal-photo-calage-erreur">
+              Calage : {erreurCalage}
+            </p>
+          )}
+
+          {edition && (
+            <Card className="mt-3 space-y-3 p-4" data-testid="cal-photo-edition">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="cal-photo-edition-genre">Genre</Label>
+                  <Select value={edition.genre || undefined}
+                    onValueChange={(v) => setEdition({ ...edition, genre: v })}>
+                    <SelectTrigger id="cal-photo-edition-genre" data-testid="cal-photo-edition-genre">
+                      <SelectValue placeholder="Genre…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GENRES_PHOTO.map(([valeur, libelle]) => (
+                        <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {erreursEdition.genre && (
+                    <p role="alert" className="text-xs text-destructive">{erreursEdition.genre}</p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="cal-photo-edition-date">Prise de vue le</Label>
+                  <Input id="cal-photo-edition-date" type="date" value={edition.prise_le}
+                    data-testid="cal-photo-edition-date"
+                    onChange={(e) => setEdition({ ...edition, prise_le: e.target.value })} />
+                  {erreursEdition.prise_le && (
+                    <p role="alert" className="text-xs text-destructive">{erreursEdition.prise_le}</p>
+                  )}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="cal-photo-edition-legende">Légende</Label>
+                <Input id="cal-photo-edition-legende" value={edition.legende}
+                  data-testid="cal-photo-edition-legende"
+                  onChange={(e) => setEdition({ ...edition, legende: e.target.value })} />
+              </div>
+              {erreursEdition.detail && (
+                <p role="alert" className="text-xs text-destructive">{erreursEdition.detail}</p>
+              )}
+              <div className="flex gap-3">
+                <Button type="button" onClick={enregistrerEdition} disabled={enregistrement}
+                  data-testid="cal-photo-edition-enregistrer">
+                  Enregistrer les modifications
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setEdition(null)}>
+                  Annuler
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {message && (
             <p className="mt-3 text-sm text-lune-soft" role="status"

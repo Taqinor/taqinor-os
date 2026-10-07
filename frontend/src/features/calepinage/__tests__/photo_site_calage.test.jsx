@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /* ============================================================================
@@ -44,8 +44,9 @@ vi.mock('leaflet', () => {
   function fakeMarker(pos) {
     let latlng = Array.isArray(pos) ? { lat: pos[0], lng: pos[1] } : pos
     const marker = {
-      addTo: () => marker,
-      on: () => marker,
+      addTo: () => { (globalThis.__marqueursCalage ||= []).push(marker); return marker },
+      // ACAL203 — retient les gestionnaires pour pouvoir simuler un déplacement.
+      on: (evt, fn) => { (marker.gestionnaires ||= {})[evt] = fn; return marker },
       getLatLng: () => latlng,
       setLatLng: (p) => { latlng = Array.isArray(p) ? { lat: p[0], lng: p[1] } : p },
     }
@@ -170,6 +171,8 @@ describe('CAL53 — l’écran affiche, cale et persiste', () => {
     calerPhoto.mockResolvedValue({ data: {} })
     rendre()
     await screen.findByTestId('cal-photo-calage-carte')
+    // ACAL203 — une photo non calée ne s'enregistre qu'après un geste réel.
+    act(() => { globalThis.__marqueursCalage.at(-1).gestionnaires.dragend() })
 
     fireEvent.click(screen.getByTestId('cal-photo-calage-enregistrer'))
     await waitFor(() => expect(calerPhoto).toHaveBeenCalledTimes(1))
