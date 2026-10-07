@@ -330,7 +330,7 @@ const calepinageApi = {
     // ACAL268 — retirer le relevé de pose d'un pan (ligne ORPHELINE comprise) :
     // DELETE pose-reelle/<zone_id>/ → 204 ; 404 {detail} sans relevé
     // (contrat calepinage_asbuilt_ecarts.json › delete_pose_reelle).
-    supprimerPoseReelle: (id, zoneId) => api.delete(`${pivot(id)}pose-reelle/${zoneId}/`), // ACAL
+    supprimerPoseReelle: (id, zoneId) => api.delete(`${pivot(id)}pose-reelle/${encodeURIComponent(zoneId)}/`), // ACAL — libellés hérités (« Toit N/E », « Pan 1.2 ») encodés
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
