@@ -8,6 +8,7 @@
     "checkJs": true
   },
   "include": [
+    ".astro/types.d.ts",
     "src/**/*.ts",
     "src/pages/api/**/*.ts",
     "worker/**/*.mjs",

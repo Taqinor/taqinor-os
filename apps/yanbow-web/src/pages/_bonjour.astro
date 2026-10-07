@@ -1,18 +1,40 @@
 ---
-// Page sonde (YBW10) — prouve la chaîne de build ; noindex, liée nulle part,
-// supprimée par YBW61. Aucun texte public définitif.
+// Page sonde (YBW10, gabarit i18n YBW13) — prouve la chaîne de build et le
+// mécanisme i18n ; noindex, liée nulle part, supprimée par YBW61. UN gabarit :
+// la route anglaise (`en/_bonjour.astro`) est une enveloppe mince qui l'importe.
+import { DEFAULT_LOCALE, LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
+import { SONDE } from '../i18n/pages';
+import { alternates, selecteurLangue, t } from '../i18n/utils';
+import { fr } from '../i18n/pages/bonjour.fr';
+import { en } from '../i18n/pages/bonjour.en';
+
+interface Props {
+  locale?: Locale;
+  /** Surcharge des langues actives — réservée aux tests (fixture). */
+  locales?: readonly Locale[];
+}
+const { locale = DEFAULT_LOCALE, locales = LOCALES_ACTIVES } = Astro.props;
+const dict = locale === 'en' ? en : fr;
+const liens = alternates(SONDE, locales);
+const autres = selecteurLangue(SONDE, locale, locales);
 ---
 <!doctype html>
-<html lang="fr">
+<html lang={LANG_HTML[locale]}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Sonde</title>
+    <title>{t(dict, 'titre', locale)}</title>
+    {liens.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
   </head>
   <body>
     <main>
-      <h1>Bonjour</h1>
+      <h1>{t(dict, 'h1', locale)}</h1>
+      {autres.length > 0 && (
+        <nav aria-label={t(dict, 'langue', locale)}>
+          {autres.map((l) => <a href={l.href} hreflang={l.locale} lang={LANG_HTML[l.locale]}>{NOM_LANGUE[l.locale]}</a>)}
+        </nav>
+      )}
     </main>
   </body>
 </html>

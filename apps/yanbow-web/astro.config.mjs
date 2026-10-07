@@ -1,11 +1,14 @@
 // @ts-check
 import { existsSync } from 'node:fs';
-import { copyFile, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, rm, writeFile } from 'node:fs/promises';
 import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
 import { ORIGINE_CANONIQUE } from './src/lib/site.ts';
 import { sourcesCsp } from './src/lib/subprocessors.ts';
+import { LOCALES_ACTIVES } from './src/i18n/config.ts';
+
+const EN_ACTIVE = /** @type {readonly string[]} */ (LOCALES_ACTIVES).includes('en');
 
 /**
  * Page sonde « bonjour » (YBW10) : les fichiers `src/pages/_*.astro` ne sont pas
@@ -21,6 +24,26 @@ const sondeBonjour = () => ({
       if (existsSync(new URL('./src/pages/_bonjour.astro', import.meta.url))) {
         injectRoute({ pattern: '/bonjour', entrypoint: './src/pages/_bonjour.astro', prerender: true });
       }
+      if (EN_ACTIVE && existsSync(new URL('./src/pages/en/_bonjour.astro', import.meta.url))) {
+        injectRoute({ pattern: '/en/bonjour', entrypoint: './src/pages/en/_bonjour.astro', prerender: true });
+      }
+    },
+  },
+});
+
+/**
+ * Langues actives (YBW13) : tant que `en` n'est pas dans LOCALES_ACTIVES
+ * (src/i18n/config.ts), aucune route `/en/*` n'est publiée — le dossier
+ * construit `dist/client/en/` est retiré après le build.
+ */
+const localesActives = () => ({
+  name: 'yanbow:locales-actives',
+  hooks: {
+    /** @param {{ dir: URL }} p */
+    'astro:build:done': async ({ dir }) => {
+      if (EN_ACTIVE) return;
+      await rm(new URL('en/', dir), { recursive: true, force: true });
+      console.log('[yanbow:locales-actives] anglais inactif : aucune route /en/ publiée');
     },
   },
 });
@@ -91,5 +114,5 @@ export default defineConfig({
     // Aucun script en ligne : la CSP est `script-src 'self'` (worker/headers.mjs).
     build: { assetsInlineLimit: 0 },
   },
-  integrations: [sondeBonjour(), workersDevRedirect()],
+  integrations: [sondeBonjour(), localesActives(), workersDevRedirect()],
 });
