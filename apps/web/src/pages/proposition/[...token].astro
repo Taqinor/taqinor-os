@@ -172,6 +172,7 @@ import {
 import {
   renderYearCurve,
   resolveProposalCurveMode,
+  resolveCiCurve,
   consumptionShapeHours,
   solarProfile,
   type ProposalCurveVariant,
@@ -746,7 +747,8 @@ const curveMode: ProposalCurveMode =
 // Été/Ramadan n'ont de sens que pour un profil résidentiel/commercial (clim,
 // horaires de jeûne) — jamais pour un poste industriel (équipes fixes) ou un
 // pompage agricole (fenêtre solaire fixe, sans confort thermique à moduler).
-const curveVariantToggle = curveMode === 'residentiel' || curveMode === 'commercial';
+// CIW302 — en C&I, aucune variante Été/Ramadan inventée : seulement ce que le moteur C&I sert.
+const curveVariantToggle = curveMode === 'residentiel';
 const CURVE_VARIANTS: readonly ProposalCurveVariant[] = curveVariantToggle
   ? (['normal', 'ete', 'ramadan'] as const)
   : (['normal'] as const);
@@ -794,9 +796,15 @@ const ecoMensuelles: EconomiesMensuelles | null = ok ? economiesMensuelles(data!
 // libellé en kW (une pointe est une PUISSANCE), et la silhouette de conso est
 // mise à l'échelle du vrai kWh/jour — les deux courbes partagent enfin un axe.
 // Bloc absent ⇒ tout ce qui suit retombe EXACTEMENT sur le rendu d'avant.
+// CIW302 — en C&I, la courbe vient UNIQUEMENT du moteur C&I (`source: 'moteur_ci'`) ; sans elle,
+// `ciCurve` et `dailyCurves` sont `null` et la section « journée » est omise (aucune forme générique).
+const ciCurve = ok && isAutoconso ? resolveCiCurve(data as unknown as Record<string, unknown>) : null;
 const dailyCurves = ok
-  ? parseDailyCurves((data as unknown as Record<string, unknown> | null)?.courbes_journalieres)
+  ? (isAutoconso
+      ? (ciCurve?.curves ?? null)
+      : parseDailyCurves((data as unknown as Record<string, unknown> | null)?.courbes_journalieres))
   : null;
+const dessineCourbeJour = ok && (!isAutoconso || !!ciCurve);
 // Saisons réellement servies + saison de départ = celle de la date du JOUR
 // (bornes identiques au serveur : hiver DJF / été JJA / mi-saison le reste).
 // Elle est SÉRIALISÉE plus bas : le script client la relit au lieu de relire
@@ -816,7 +824,7 @@ const curveOccupancyDefault: OccupancyId = dailyCurves?.occupation ?? 'presence_
 // dans rawConsumptionShape). `null`/invalide ⇒ repli EXACT sur OCCUPANCY_SHAPES
 // dans proposalCurve — byte-identique au rendu d'avant.
 const curveServedShape: number[] | null =
-  curveMode === 'residentiel' && curveSeasonDefault
+  (curveMode === 'residentiel' || isAutoconso) && curveSeasonDefault
     ? (dailyCurves?.consommation[curveSeasonDefault]?.forme ?? null)
     : null;
 // Point GPS du chantier (1er sommet du 1er pan de toiture) pour le coucher de
@@ -858,7 +866,7 @@ const EMPTY_DAILY_CURVE: DailyCurve = {
 const dailyCurvesByVariant: Record<CurveLang, Partial<Record<ProposalCurveVariant, DailyCurve>>> = {
   fr: {}, en: {}, ar: {},
 };
-if (ok) {
+if (dessineCourbeJour) {
   const served = servedScaleFor(curveSeasonDefault);
   for (const lang of ['fr', 'en', 'ar'] as const) {
     for (const variant of CURVE_VARIANTS) {
@@ -889,7 +897,7 @@ const COMPACT_CURVE_OPTS = { annotate: false, sun: false };
 const curveCompactByLang: Record<CurveLang, DailyCurve> = {
   fr: EMPTY_DAILY_CURVE, en: EMPTY_DAILY_CURVE, ar: EMPTY_DAILY_CURVE,
 };
-if (ok) {
+if (dessineCourbeJour) {
   const servedCompact = servedScaleFor(curveSeasonDefault);
   for (const lang of ['fr', 'en', 'ar'] as const) {
     curveCompactByLang[lang] = renderYearCurve(
@@ -4150,6 +4158,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                    ses onglets Standard/Été/Ramadan. ───────────────────── */}
             {dailyCurve.svg && (
               <div data-prod-layer="daily" data-curve-config={curveConfig} hidden={!prodLayers.daily}>
+              {/* CIW302 — C&I : l'étiquette SERVIE du profil (« profil type — estimation ») ou « profil
+                  déclaré » quand le serveur ne dit pas que le profil est supposé. */}
+              {ciCurve ? (
+                ciCurve.etiquette ? (
+                  <p class="mb-2 text-xs text-brass-300" data-ci-curve-etiquette>{ciCurve.etiquette}</p>
+                ) : (
+                  <p class="mb-2 text-xs text-lune-faint" data-ci-curve-etiquette data-i18n
+                    data-fr="profil déclaré" data-en="declared profile" data-ar="ملف مصرح به">profil déclaré</p>
+                )
+              ) : null}
               <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
                    ci-dessus (FR visible par défaut). WJ119 — croisées avec la
                    variante été/Ramadan (normal/ete/ramadan) quand le toggle
@@ -8078,7 +8096,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             ramadan: curveCfg!.ramadan,
             // CJ2b — même règle qu'au premier rendu serveur : la forme SERVIE
             // pour la saison affichée l'emporte, résidentiel uniquement.
-            servedShape: curveCfg!.mode === 'residentiel'
+            servedShape: curveCfg!.mode === 'residentiel' || curveCfg!.mode === 'commercial' || curveCfg!.mode === 'industriel'
               ? (curveCfg!.consommation?.[state.season]?.forme ?? null)
               : null,
           },

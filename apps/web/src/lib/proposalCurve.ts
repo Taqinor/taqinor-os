@@ -42,6 +42,10 @@
 import {
   OCCUPANCY_SHAPES,
   SEASON_INLINE,
+  SEASON_IDS,
+  parseDailyCurves,
+  servedSeasons,
+  type DailyCurves,
   type EquipmentLayers,
   type OccupancyId,
   type RamadanWindow,
@@ -82,14 +86,9 @@ export type ProposalCurveMode = 'residentiel' | 'industriel' | 'commercial' | 'a
 /** Variante saisonnière/religieuse — n'a de sens que pour résidentiel/commercial. */
 export type ProposalCurveVariant = 'normal' | 'ete' | 'ramadan';
 
-/** Régime d'équipes d'un site industriel — 1x8 par défaut (aucun champ backend
- *  ne le porte encore aujourd'hui, cf. resolveProposalCurveMode). */
-export type IndustrialShift = '1x8' | '2x8' | '3x8';
-
 export interface ConsumptionShapeOptions {
   mode?: ProposalCurveMode;
   variant?: ProposalCurveVariant;
-  industrialShift?: IndustrialShift;
   /**
    * CJ1 — silhouette d'occupation RÉSIDENTIELLE choisie (présent / absent /
    * partiel en journée). Ignorée hors résidentiel : une usine ou un forage
@@ -246,33 +245,10 @@ function applySeasonalVariant(
   return out;
 }
 
-/** WJ119 — Profil industriel par régime d'équipes. Poids plats : 1 = poste actif,
- *  `INDUSTRIAL_STANDBY_WEIGHT` = veille/éclairage de sécurité hors poste (jamais
- *  zéro : un site industriel garde toujours un socle hors production). Aucun champ
- *  backend ne porte le régime aujourd'hui → repli 1x8 (ESTIMATION documentée). */
-const INDUSTRIAL_STANDBY_WEIGHT = 0.15;
-
-function industrialShape(shift: IndustrialShift): number[] {
-  if (shift === '3x8') return new Array(24).fill(1); // continu, trois équipes qui se relaient
-  const out = new Array(24).fill(INDUSTRIAL_STANDBY_WEIGHT);
-  // 1x8 : poste de jour unique (8h-16h) ; 2x8 : plateau 06h-22h (deux équipes).
-  const [start, end] = shift === '2x8' ? [6, 22] : [8, 16];
-  for (let h = start; h < end; h++) out[h] = 1;
-  return out;
-}
-
-/** WJ119 — Archétype commercial GÉNÉRIQUE (horaires commerce courants 9h-19h) —
- *  UNE seule forme, pas de table par catégorie (QX44 pas encore construite) :
- *  ESTIMATION honnête, jamais présentée comme mesurée. */
-const COMMERCIAL_OPEN_HOUR = 9;
-const COMMERCIAL_CLOSE_HOUR = 19;
-const COMMERCIAL_OFFHOURS_WEIGHT = 0.1;
-
-function commercialShape(): number[] {
-  const out = new Array(24).fill(COMMERCIAL_OFFHOURS_WEIGHT);
-  for (let h = COMMERCIAL_OPEN_HOUR; h < COMMERCIAL_CLOSE_HOUR; h++) out[h] = 1;
-  return out;
-}
+// CIW302 — plus AUCUNE forme générique C&I (poste industriel « 1x8 » par défaut, journée
+// de boutique 9 h-19 h pour tout commerce) : la silhouette d'un site C&I est CELLE du moteur
+// C&I (`courbes_journalieres.consommation[saison].forme`, `source: 'moteur_ci'`, CIQ308),
+// passée par `servedShape` ; sans elle la page ne dessine pas de courbe (cf. `resolveCiCurve`).
 
 /** WJ119 — Fenêtre de pompage agricole = heures de JOUR (le pompage solaire
  *  tourne SUR le soleil, sans onduleur ni batterie — CLAUDE.md) : plate le jour,
@@ -293,12 +269,12 @@ function rawConsumptionShape(options: ConsumptionShapeOptions): number[] {
   const ramadan = options.ramadan ?? null;
   switch (mode) {
     case 'industriel':
-      return industrialShape(options.industrialShift ?? '1x8');
-    case 'commercial':
-      // Été/Ramadan restent pertinents pour un commerce (clim, horaires resserrés
-      // pendant le jeûne) — même modulation que le résidentiel, appliquée à
-      // l'archétype commercial plutôt qu'à une silhouette de logement.
-      return applySeasonalVariant(commercialShape(), variant, ramadan);
+    case 'commercial': {
+      // CIW302 — forme SERVIE par le moteur C&I, telle quelle (ni variante été/Ramadan, ni
+      // régime d'équipes inventé). Absente → silhouette nulle : rien n'est dessiné d'inventé.
+      const served = options.servedShape;
+      return served && served.length === 24 ? served.slice() : new Array(24).fill(0);
+    }
     case 'agricole':
       return agricoleShape();
     case 'residentiel':
@@ -892,4 +868,57 @@ export function renderYearCurve(
     `</svg>`;
 
   return { svg, hasRealScale, hasServedShape, hasRealConsScale, hasBatteryLayer };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CIW302 — La courbe du jour d'un devis C&I : CELLE du moteur C&I, sinon aucune.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** La courbe journalière servie par le moteur C&I (CIQ308), prête à dessiner. */
+export interface CiCurve {
+  /** `courbes_journalieres` normalisé : séries reprises TELLES QUELLES (saisons complètes seulement). */
+  curves: DailyCurves;
+  /** Étiquette SERVIE (« profil type — estimation ») ; `null` quand le profil est déclaré. */
+  etiquette: string | null;
+  /** Vrai quand le serveur dit que le profil est supposé (archétype). */
+  profilSuppose: boolean;
+}
+
+/**
+ * CIW302 — résout la courbe du jour d'un devis commercial / industriel. UNIQUEMENT depuis
+ * `courbes_journalieres` quand `source === 'moteur_ci'` ET qu'au moins une saison porte à la
+ * fois la production et la forme de consommation. Sinon `null` : jamais de forme générique,
+ * jamais de poste « 1x8 » par défaut. Hors C&I → `null` (le résidentiel a sa propre voie).
+ */
+export function resolveCiCurve(
+  p: { mode_installation?: unknown; quote?: unknown; courbes_journalieres?: unknown } | null | undefined,
+): CiCurve | null {
+  if (!p) return null;
+  const mode = String(
+    p.mode_installation ?? (p.quote as { mode_installation?: unknown } | undefined)?.mode_installation ?? '',
+  ).toLowerCase();
+  if (mode !== 'commercial' && mode !== 'industriel') return null;
+  const brut = p.courbes_journalieres;
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
+  const rec = brut as Record<string, unknown>;
+  if (rec.source !== 'moteur_ci') return null;
+  const parsed = parseDailyCurves(brut);
+  if (!parsed) return null;
+  const completes = SEASON_IDS.filter(
+    (sa) => !!parsed.production[sa] && !!parsed.consommation[sa]?.forme,
+  );
+  if (completes.length === 0) return null;
+  const production: DailyCurves['production'] = {};
+  const consommation: DailyCurves['consommation'] = {};
+  for (const sa of completes) {
+    production[sa] = parsed.production[sa];
+    consommation[sa] = parsed.consommation[sa];
+  }
+  const curves: DailyCurves = { ...parsed, production, consommation, options: [], batterieKwh: null, equipements: {} };
+  // `servedSeasons(curves)` = completes (production OU consommation, ici les deux).
+  if (servedSeasons(curves).length === 0) return null;
+  const etiquette = typeof rec.etiquette_profil === 'string' && rec.etiquette_profil.trim() !== ''
+    ? rec.etiquette_profil
+    : null;
+  return { curves, etiquette, profilSuppose: rec.profil_suppose === true };
 }
