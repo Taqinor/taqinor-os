@@ -2330,19 +2330,28 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 and (puissance_kwc or 0) > 0):
             _recalage = puissance_kwc / _kwc_layout
         _stored = dict(devis.etude_params or {})
+        # ACAL102 (C-ACAL-113) — la provenance est LUE (``production_source``,
+        # ACAL101), jamais devinée par égalité numérique : l'égalité
+        # ``int(round())`` ratait toute production tronquée à décimale ≥ 0,5
+        # (8843,66 stockée 8843 ≠ 8844) et imprimait 8 843 kWh à 5,72 kWc.
+        from apps.ventes.domain.etude_schema import PRODUCTION_CALEPINAGE
+        from apps.ventes.domain.scenario import figure_production_du_devis
+        _du_calepinage = (_stored.get("production_source")
+                          == PRODUCTION_CALEPINAGE)
         for _cle, _brut in (("production_annuelle", _res.get("annualKwh")),
                             ("economies_annuelles", _res.get("savings"))):
             if not _brut:
                 continue
-            _recale = int(round(_nombre(_brut) * _recalage))
             if not _stored.get(_cle):
-                _stored[_cle] = _recale
-            elif _est_la_figure_du_calepinage(_stored.get(_cle), _brut):
-                # Figure POSÉE par le calepinage : ``sync_devis_from_layout``
-                # la recopie telle quelle dans ``etude_params``, donc elle
-                # porte la même base 720 W que son kWc. On la recale sur les
-                # lignes — une étude SAISIE (valeur différente) reste souveraine.
-                _stored[_cle] = _recale
+                _stored[_cle] = int(round(_nombre(_brut) * _recalage))
+            elif _du_calepinage:
+                # Figure POSÉE par le calepinage (base 720 W) : recalée sur
+                # les lignes par SON propriétaire — une étude SAISIE (ou non
+                # marquée) reste souveraine.
+                _stored[_cle] = figure_production_du_devis(
+                    devis, cle=_cle,
+                    puissance_kwc=(puissance_kwc if puissance_des_lignes
+                                   else 0))
         # Le kWc stocké dans l'étude est SERVI tel quel (payload public
         # ``etude.puissance_kwc``, ``etude.toiture.kwc``) : il suit la même
         # règle, sans quoi la page publiait encore la base 720 W sous un autre
@@ -4659,21 +4668,6 @@ def _nombre(valeur) -> float:
         return float(valeur)
     except (TypeError, ValueError):
         return 0.0
-
-
-def _est_la_figure_du_calepinage(valeur_stockee, valeur_layout) -> bool:
-    """La figure stockée dans l'étude est-elle la RECOPIE de celle du calepinage ?
-
-    PVUNI — ``sync_devis_from_layout`` recopie ``result.annualKwh`` /
-    ``result.savings`` dans ``etude_params`` sans les transformer. Une égalité à
-    l'entier près prouve donc que la figure vient du calepinage (et porte sa base
-    720 W) ; toute autre valeur est une étude SAISIE, qu'on ne touche jamais.
-    """
-    try:
-        return (int(round(float(valeur_stockee)))
-                == int(round(float(valeur_layout))))
-    except (TypeError, ValueError):
-        return False
 
 
 def _compte_du_layout(roof_layout) -> int:
