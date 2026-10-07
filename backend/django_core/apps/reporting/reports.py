@@ -248,7 +248,11 @@ def stock_report(request):
         Sum(F('prix_achat') * F('quantite_stock'), output_field=dec),
         Decimal('0'))
     val_vente = qs.aggregate(t=sum_vente)['t']
-    val_achat = qs.aggregate(t=sum_achat)['t']
+    # AANA26 — la valorisation d'ACHAT n'est servie qu'à `can_view_buy_prices`
+    # (permission `prix_achat_voir`, repli légacy) : la clé est ABSENTE sinon
+    # (même patron que sav_pivot). Pas même calculée pour les autres.
+    voit_achat = bool(getattr(request.user, 'can_view_buy_prices', False))
+    val_achat = qs.aggregate(t=sum_achat)['t'] if voit_achat else None
     par_categorie = list(
         qs.values('categorie__nom')
         .annotate(nb=Count('id'), valeur_vente=sum_vente)
@@ -289,11 +293,18 @@ def stock_report(request):
     if p:
         return p
 
+    par_categorie_out = [
+        {**c, 'valeur_vente': str(c['valeur_vente'])} for c in par_categorie]
+    if not voit_achat:
+        return Response({
+            'valorisation_vente': str(val_vente),
+            'par_categorie': par_categorie_out,
+            'bas_stock': bas_stock,
+        })
     return Response({
         'valorisation_vente': str(val_vente),
         'valorisation_achat': str(val_achat),  # interne, non client-facing
-        'par_categorie': [
-            {**c, 'valeur_vente': str(c['valeur_vente'])} for c in par_categorie],
+        'par_categorie': par_categorie_out,
         'bas_stock': bas_stock,
     })
 
