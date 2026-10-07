@@ -1119,7 +1119,8 @@ def reserver_stock_recu_pour_chantier(*, reception):
     """YPROC10 — à la confirmation d'une réception fournisseur dont le BCF
     porte un ``chantier_origine`` (distinct de la destination de livraison
     XPUR23), crée/complète les ``StockReservation`` actives du chantier pour
-    les produits/quantités REÇUS sur cette réception.
+    les produits/quantités REÇUS sur cette réception (ASTK121 : complète
+    seulement — ``max(existante, reçu plafonné)``, jamais une réduction).
 
     Plafonné à la quantité COMMANDÉE sur la ligne de BCF (posée par
     ``draft_bcf_for_shortfall`` = le manque au moment du brouillon — jamais de
@@ -1181,8 +1182,14 @@ def reserver_stock_recu_pour_chantier(*, reception):
         # Fonction pure du plafond : un rejeu retombe sur la même valeur
         # (jamais d'addition), une réception ultérieure ne fait que monter
         # jusqu'au plafond.
-        if qte_a_reserver != resa.quantite:
-            resa.quantite = qte_a_reserver
+        # ASTK121 (C-ASTK-029) — la réception ne fait que COMPLÉTER la
+        # réservation : max(existante, reçu plafonné), jamais la RÉDUIRE (la
+        # réservation N14 du besoin total du chantier n'est plus ramenée au
+        # seul reçu).
+        existante = resa.quantite if resa.active else 0
+        nouvelle = max(existante, qte_a_reserver)
+        if nouvelle != resa.quantite or not resa.active:
+            resa.quantite = nouvelle
             resa.active = True
             resa.save(update_fields=['quantite', 'active'])
             count += 1
