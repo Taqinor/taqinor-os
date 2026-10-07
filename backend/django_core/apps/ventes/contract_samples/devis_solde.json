@@ -1,0 +1,53 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ATOT18 (PACT10, C-ATOT-001) — contrat du bloc `solde` servi par la fiche ET la liste devis (DevisSerializer.get_solde, MÊME sérialiseur pour GET /devis/ et /devis/<id>/), posé SEUL avant ses deux moitiés : ATOT2 (producteur, utils/echeancier.solde_devis) et ATOT31 (consommateur : DevisTab / DevisRow). Une vente ne se facture qu'une fois : la porte suivante est DITE par le serveur (`porte_facturation`) au lieu d'être redérivée par l'écran à partir des montants. Ce fichier ne décrit que la clé `solde` ; le reste du détail de devis est inchangé.",
+  "notes": {
+    "types": "toutes les valeurs du bloc sont des CHAÎNES (get_solde applique str()) : montants en texte décimal à 2 décimales ('12000.00'), compteurs en texte entier ('3'), porte_facturation en mot.",
+    "porte_facturation": "NOUVELLE clé : 'libre' (aucune facture active : « Facturer » le devis entier est ouvert), 'tranche' (un échéancier est en cours : seule la tranche suivante peut être facturée), 'aucune' (tout est facturé, ou plus rien à facturer : aucune nouvelle facture possible).",
+    "restant": "total_ttc − paye − avoirs (restant DÛ, pas restant à facturer) ; texte décimal.",
+    "additif": "porte_facturation est ajoutée ; aucune clé existante du bloc n'est retirée ni renommée."
+  },
+  "exemple": {
+    "id": 412,
+    "reference": "DEV-202609-0011",
+    "solde": {
+      "total_ttc": "120000.00",
+      "facture": "36000.00",
+      "paye": "36000.00",
+      "avoirs": "0.00",
+      "restant": "84000.00",
+      "tranches_total": "3",
+      "tranches_facturees": "1",
+      "porte_facturation": "tranche"
+    }
+  },
+  "exemple_vide": {
+    "id": 413,
+    "reference": "DEV-202609-0012",
+    "solde": {
+      "total_ttc": "54000.00",
+      "facture": "0.00",
+      "paye": "0.00",
+      "avoirs": "0.00",
+      "restant": "54000.00",
+      "tranches_total": "0",
+      "tranches_facturees": "0",
+      "porte_facturation": "libre"
+    }
+  },
+  "exemple_tout_facture": {
+    "id": 414,
+    "reference": "DEV-202609-0013",
+    "solde": {
+      "total_ttc": "54000.00",
+      "facture": "54000.00",
+      "paye": "20000.00",
+      "avoirs": "0.00",
+      "restant": "34000.00",
+      "tranches_total": "0",
+      "tranches_facturees": "1",
+      "porte_facturation": "aucune"
+    }
+  }
+}
