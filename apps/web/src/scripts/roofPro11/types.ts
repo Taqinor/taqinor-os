@@ -634,6 +634,11 @@ export interface AreaRecord {
   obstacles: Obstacle[];
   roofType: RoofType;
   pitchDeg: number;
+  /** ACAL252 — PROVENANCE de la pente du pan (`zones[].pitchSource` du document, écrite par l'onglet
+   *  Pente) : le mode (degres | pourcentage | cotes) et SES champs. Optionnelle, additive : absente =
+   *  jamais renseignée. Réémise telle quelle par `serializeLayout` tant qu'elle décrit encore
+   *  `pitchDeg`. */
+  pitchSource?: Record<string, unknown>;
   facingAzimuthDeg: number;
   /** W106 — la face de ce pan a-t-elle été fixée À LA MAIN (override par zone) ? Si oui,
    *  l'auto-inférence d'adjacence ne l'écrase jamais. Optionnel (rétro-compatible, défaut false). */

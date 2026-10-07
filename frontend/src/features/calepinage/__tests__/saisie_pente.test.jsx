@@ -189,6 +189,70 @@ describe('CAL58 — l’écran', () => {
   })
 })
 
+/* ── 3. ACAL252 — la pente est celle d'UN PAN, relue dans SON mode ───────── */
+
+describe('ACAL252 — écrit la pente du pan choisi et la relit', () => {
+  const PAN_A = { id: 'zA', label: 'Pan A', pitchDeg: 22 }
+  const PAN_B = { id: 'zB', label: 'Pan B', pitchDeg: 15 }
+
+  it('écrit la pente du pan choisi et la relit en pourcentage', async () => {
+    layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [PAN_A, PAN_B], activeAreaId: 'zB' },
+      empreinte_document: 'EMPREINTE-LUE',
+    } })
+    enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'EMPREINTE-2' } })
+    rendre()
+    await screen.findByTestId('cal-pente')
+    // Le pan par défaut est le pan ACTIF de l'atelier.
+    await waitFor(() => expect(screen.getByTestId('cal-pente-pan')).toHaveValue('zB'))
+
+    fireEvent.click(screen.getByTestId('cal-pente-mode-pourcentage'))
+    fireEvent.change(screen.getByLabelText(/Pente \(%\)/), { target: { value: '57.735' } })
+    fireEvent.click(screen.getByTestId('cal-pente-enregistrer'))
+
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const [id, corps] = enregistrerSectionLayout.mock.calls[0]
+    expect(id).toBe(7)
+    // Le pan zB et lui seul ; aucune clé racine penteDeg/penteSource.
+    expect(corps.zone_id).toBe('zB')
+    expect(Object.keys(corps.champs).sort()).toEqual(['pitchDeg', 'pitchSource'])
+    expect(corps.champs.pitchDeg).toBeCloseTo(30, 3)
+    expect(corps.champs.pitchSource).toEqual({ mode: 'pourcentage', pourcentage: 57.735 })
+
+    // Réouverture : le document relu porte la pente de zB dans son mode.
+    cleanup()
+    layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [PAN_A, { ...PAN_B, pitchDeg: corps.champs.pitchDeg,
+        pitchSource: corps.champs.pitchSource }], activeAreaId: 'zB' },
+      empreinte_document: 'EMPREINTE-2',
+    } })
+    rendre()
+    expect(await screen.findByLabelText(/Pente \(%\)/)).toHaveValue(57.735)
+    expect(screen.getByTestId('cal-pente-mode-pourcentage')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('cal-pente-valeur')).toHaveTextContent('30.0')
+  })
+
+  it('changer de pan relit la pente de CE pan (l’autre pan n’est pas touché)', async () => {
+    layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [PAN_A, PAN_B], activeAreaId: 'zB' }, empreinte_document: 'J' } })
+    rendre()
+    expect(await screen.findByLabelText(/Pente \(°\)/)).toHaveValue(15)
+    fireEvent.change(screen.getByTestId('cal-pente-pan'), { target: { value: 'zA' } })
+    await waitFor(() => expect(screen.getByLabelText(/Pente \(°\)/)).toHaveValue(22))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('un document sans pan refuse d’enregistrer, sans clé racine de repli', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: {}, empreinte_document: 'J' } })
+    rendre()
+    await screen.findByTestId('cal-pente')
+    fireEvent.change(screen.getByLabelText(/Pente \(°\)/), { target: { value: '20' } })
+    fireEvent.click(screen.getByTestId('cal-pente-enregistrer'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cal-pente-message')).toHaveTextContent('Aucun pan')
+  })
+})
+
 describe('CAL58 — l’écran est ATTEIGNABLE', () => {
   it('le module déclare la route `/calepinage/:id/pente` avec ses rôles', async () => {
     const { default: config } = await import('../module.config.jsx')
