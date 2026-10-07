@@ -3522,3 +3522,27 @@ def produits_par_type_fiche_qs(company, type_fiche):
                     is_archived=False)
             .select_related('fiche_technique')
             .order_by('nom', 'id'))
+
+
+# ── ASTK41 — Valeur du stock par produit : SOURCE UNIQUE (écran = BI) ───────
+
+def valeur_stock_par_produit(company):
+    """ASTK41 (C-ASTK-008) — valeur du stock de CHAQUE produit de la société,
+    ``{produit_id: Decimal}``, calculée EXACTEMENT comme l'écran Valorisation
+    (``services.stock_valuation_by_location``) : coût de l'accesseur unique
+    ``valuation_cost_with_source`` (coût moyen débarqué / revalorisation /
+    FIFO selon la société, repli catalogue) × quantité par emplacement, la
+    marchandise d'un TIERS (emplacement DE_TIERS) exclue, produits archivés
+    exclus. Un produit sans stock valorisé est absent de la carte (valeur 0).
+
+    Remplace ``prix_achat × quantite_stock`` (jeu BI ``valeur_achat``) qui
+    valait 1 000,00 pour un produit catalogue 100 reçu 10 @ 50 quand l'écran
+    disait 500,00. INTERNE — donnée d'achat, jamais client-facing (le jeu BI
+    la garde sous ``can_view_buy_prices``)."""
+    from decimal import Decimal
+    from .services import stock_valuation_by_location
+    carte = {}
+    for ligne in stock_valuation_by_location(company)['lignes']:
+        carte[ligne['produit_id']] = (
+            carte.get(ligne['produit_id'], Decimal('0')) + ligne['valeur'])
+    return carte

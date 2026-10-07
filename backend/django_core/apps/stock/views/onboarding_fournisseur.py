@@ -118,10 +118,37 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
 
         Corps : ``{"valider": true|false, "motif_rejet": "…"}``. Une
         validation exige que TOUTES les pièces requises soient présentes et
-        non expirées (400 explicite sinon)."""
+        non expirées (400 explicite sinon).
+
+        ASTK190 (C-ASTK-043) — ``valider`` est OBLIGATOIRE et parsé
+        strictement (``parse_bool_strict``, le helper de
+        decider-candidature) : un corps vide répondait 200 « valide »
+        (défaut ``True``) et la chaîne ``"false"`` VALIDAIT (``bool("false")``
+        vaut ``True``). Un rejet exige un motif ; un dossier déjà décidé
+        (validé ou rejeté) ne se re-décide pas (409)."""
+        from .fournisseur import parse_bool_strict
+
         dossier = self.get_object()
-        valider = request.data.get('valider')
-        valider = True if valider is None else bool(valider)
+        valider = parse_bool_strict(request.data.get('valider'))
+        if valider is None:
+            return Response(
+                {'valider': ['Paramètre requis (true/false).']},
+                status=status.HTTP_400_BAD_REQUEST)
+        motif_rejet = (request.data.get('motif_rejet') or '')
+        motif_rejet = motif_rejet.strip() if isinstance(motif_rejet, str) \
+            else ''
+        if not valider and not motif_rejet:
+            return Response(
+                {'motif_rejet': ['Le motif du rejet est obligatoire.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        decides = (DossierOnboardingFournisseur.Statut.VALIDE,
+                   DossierOnboardingFournisseur.Statut.REJETE)
+        if dossier.statut in decides:
+            return Response(
+                {'detail': 'Ce dossier est déjà décidé '
+                           f'({dossier.get_statut_display().lower()}) : il '
+                           'ne peut pas être re-décidé.'},
+                status=status.HTTP_409_CONFLICT)
         if valider:
             detail = selectors.progression_onboarding(dossier)
             if not detail['complet']:
@@ -136,8 +163,7 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
             dossier.motif_rejet = ''
         else:
             dossier.statut = DossierOnboardingFournisseur.Statut.REJETE
-            dossier.motif_rejet = (
-                request.data.get('motif_rejet') or '').strip()
+            dossier.motif_rejet = motif_rejet
         dossier.valide_par = request.user
         dossier.date_decision = timezone.now()
         dossier.save(update_fields=['statut', 'motif_rejet', 'valide_par',

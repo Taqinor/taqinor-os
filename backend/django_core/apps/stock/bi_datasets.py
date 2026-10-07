@@ -112,13 +112,31 @@ def produits_queryset(company, user):
     sérialiseur produit (``seuil_alerte > 0 AND quantite_stock <=
     seuil_alerte``) — jamais une seconde définition concurrente.
     """
+    from decimal import Decimal
+
     from django.db.models import (
-        BooleanField, Case, DecimalField, ExpressionWrapper, F, Q, Value, When,
+        BooleanField, Case, DecimalField, F, Q, Value, When,
     )
 
     from .models import Produit
+    from .selectors import valeur_stock_par_produit
 
     valeur_field = DecimalField(max_digits=16, decimal_places=2)
+    # ASTK41 — ``valeur_achat`` = la valeur de l'écran Valorisation (coût de
+    # l'accesseur unique × quantité hors marchandise de tiers), lue par le
+    # sélecteur source unique — plus ``prix_achat × quantite_stock`` (qui
+    # ignorait achats réels, frais annexes, revalorisations et DE_TIERS).
+    # Portée en SQL par un CASE par produit valorisé pour que le moteur
+    # puisse filtrer / grouper / agréger dessus comme sur une colonne.
+    valeurs = valeur_stock_par_produit(company)
+    zero = Value(Decimal('0.00'), output_field=valeur_field)
+    if valeurs:
+        valeur_achat = Case(
+            *[When(pk=pid, then=Value(valeur, output_field=valeur_field))
+              for pid, valeur in valeurs.items()],
+            default=zero, output_field=valeur_field)
+    else:
+        valeur_achat = zero
     return Produit.objects.filter(
         company=company, is_archived=False,
     ).annotate(
@@ -129,9 +147,7 @@ def produits_queryset(company, user):
             default=Value(False),
             output_field=BooleanField(),
         ),
-        valeur_achat=ExpressionWrapper(
-            F('prix_achat') * F('quantite_stock'),
-            output_field=valeur_field),
+        valeur_achat=valeur_achat,
     )
 
 

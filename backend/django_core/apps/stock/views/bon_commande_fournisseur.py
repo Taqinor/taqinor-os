@@ -596,7 +596,19 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         Corps : {"receptions": [{"ligne": <id>, "quantite": <int>}, ...]}.
         Idempotent/sûr : on ne reçoit jamais plus que le reste dû ; le stock
         n'augmente que des quantités effectivement reçues.
+
+        ASTK62 (C-ASTK-013) — plus de réimplémentation inline : l'action
+        CRÉE une ``ReceptionFournisseur`` (lignes = le plan validé ici) puis
+        appelle ``confirm_reception_fournisseur``, dans UNE transaction.
+        Contrôle qualité, lots, séries, destination (dépôt / livraison
+        directe chantier), événement de confirmation (GR/IR, réservation MTO,
+        séries), annulation et facturation sont donc IDENTIQUES par les deux
+        portes ; la réception créée est visible, annulable et facturable. Une
+        quantité non entière répond 400 (plus de ``int()`` muet). Réponse
+        inchangée : le BCF sérialisé.
         """
+        from decimal import Decimal, InvalidOperation
+
         bc = self.get_object()
         if bc.statut in (
             BonCommandeFournisseur.Statut.BROUILLON,
@@ -627,8 +639,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         for rec in receptions:
             try:
                 ligne_id = int(rec.get('ligne'))
-                qte = int(rec.get('quantite'))
-            except (TypeError, ValueError):
+                qte_brute = Decimal(str(rec.get('quantite')))
+                if not qte_brute.is_finite():
+                    raise ValueError
+            except (TypeError, ValueError, InvalidOperation):
                 return Response(
                     {'detail': 'Réception invalide.'},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -644,6 +658,20 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     {'detail': f'Ligne {ligne_id} introuvable sur ce BCF.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            # ASTK62 — quantité non entière : 400 lisible, jamais tronquée.
+            if qte_brute != qte_brute.to_integral_value():
+                designation = (
+                    ligne.produit.nom if ligne.produit_id
+                    else (ligne.designation or f'ligne {ligne_id}'))
+                affichee = format(qte_brute.normalize(), 'f').replace(
+                    '.', ',')
+                return Response(
+                    {'quantite': [
+                        f'Quantité non entière ({affichee}) pour '
+                        f'{designation} — unité de stock entière exigée.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qte = int(qte_brute)
             if qte <= 0:
                 continue
             # XSTK15 — conditionnement optionnel (touret/carton…) : la
@@ -668,59 +696,34 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             )
 
         from django.utils import timezone
-        from ..services import (
-            record_purchase_price, credit_emplacement_destination,
-            affecter_livraison_directe_chantier, record_stock_movement,
-        )
+        from ..services import confirm_reception_fournisseur
         today = timezone.now().date()
-        with transaction.atomic():
-            for ligne, qte in plan:
-                # XPUR16 — ligne libre/service (sans_stock ou produit=null) :
-                # aucun MouvementStock, la quantité reçue est simplement
-                # actée (compte pour le total/l'approbation/la facturation).
-                if ligne.sans_stock or ligne.produit_id is None:
-                    ligne.quantite_recue += qte
-                    ligne.save(update_fields=['quantite_recue'])
-                    continue
-                # ERR24 — verrou de ligne produit dans la transaction pour que
-                # des réceptions concurrentes du même produit ne perdent pas
-                # d'incrément (au lieu d'un simple refresh_from_db sans verrou).
-                produit = (Produit.objects.select_for_update()
-                           .get(pk=ligne.produit_id, company=bc.company))
-                qte_avant = produit.quantite_stock
-                qte_apres = qte_avant + qte
-                record_stock_movement(
-                    company=bc.company,
-                    produit=produit,
-                    type_mouvement=MouvementStock.TypeMouvement.ENTREE,
-                    quantite=qte,
-                    quantite_avant=qte_avant,
-                    quantite_apres=qte_apres,
-                    reference=bc.reference,
-                    note=f'Réception BCF {bc.reference}',
-                    created_by=request.user,
-                )
-                ligne.quantite_recue += qte
-                ligne.save(update_fields=['quantite_recue'])
-                # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.
-                record_purchase_price(
-                    company=bc.company, produit=produit,
-                    fournisseur=bc.fournisseur,
-                    prix_achat=ligne.prix_achat_unitaire, date=today)
-                # XPUR23 — destination de réception : dépôt cible OU
-                # chantier de livraison directe (l'un ou l'autre, jamais les
-                # deux en usage normal ; défaut = dépôt principal inchangé).
-                if bc.chantier_livraison_id:
-                    affecter_livraison_directe_chantier(
-                        bc.company, request.user, bc, produit, qte,
-                        bc.reference)
-                elif bc.emplacement_destination_id:
-                    credit_emplacement_destination(
-                        bc.company, produit, bc.emplacement_destination, qte)
-            bc.refresh_from_db()
-            if bc.est_entierement_recu:
-                bc.statut = BonCommandeFournisseur.Statut.RECU
-                bc.save(update_fields=['statut'])
+        try:
+            with transaction.atomic():
+                def _creer(reference):
+                    return ReceptionFournisseur.objects.create(
+                        company=bc.company, reference=reference,
+                        bon_commande=bc,
+                        statut=ReceptionFournisseur.Statut.BROUILLON,
+                        date_reception=today, recu_par=request.user,
+                        created_by=request.user,
+                        note=f'Réception par le BCF {bc.reference}')
+
+                reception = create_with_reference(
+                    ReceptionFournisseur, 'REC', bc.company, _creer)
+                for ligne, qte in plan:
+                    reception.lignes.create(
+                        ligne_commande=ligne,
+                        produit=ligne.produit if ligne.produit_id else None,
+                        quantite=qte)
+                # ASTK62 — survivant UNIQUE (XPUR16 lignes libres, XPUR23
+                # destination, YPROC* GR/IR + réservation, NTWMS34 qualité,
+                # XSTK6 lots) : la confirmation de réception.
+                confirm_reception_fournisseur(reception, request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        bc.refresh_from_db()
         return Response(self.get_serializer(bc).data)
 
     @action(detail=True, methods=['get'], url_path='pdf')

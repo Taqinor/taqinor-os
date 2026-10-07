@@ -189,7 +189,9 @@ class MouvementStockSerializer(CompanyScopedRelationsMixin,
 
     class Meta:
         model = MouvementStock
-        fields = '__all__'
+        # ASTK44 — `cout_unitaire` (coût d'une entrée de production) est une
+        # donnée de coût INTERNE : jamais servie ni acceptée par l'API.
+        exclude = ['cout_unitaire']
         # company is force-assigned in perform_create — never accept it from the body.
         read_only_fields = [
             'quantite_avant', 'quantite_apres', 'created_by', 'date', 'company',

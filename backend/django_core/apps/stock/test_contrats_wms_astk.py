@@ -952,8 +952,10 @@ class ContratFournisseurJetonsTests(WmsBase):
 
         rep = self.api.post(f'{base}revoquer-acces/')
         self.assertEqual(rep.status_code, 200, rep.content)
-        self.assertMemesCles(rep.json(), rev['exemple'], 'révocation')
-        # `jetons_revoques` (ASTK179) : sur-ensemble déclaré, pas encore servi.
+        # ASTK179 — `jetons_revoques` est désormais SERVI : la réponse réelle
+        # porte exactement les clés de `exemple_nouveau_astk179`.
+        self.assertMemesCles(
+            rep.json(), rev['exemple_nouveau_astk179'], 'révocation')
         self.assertEqual(
             set(rev['exemple_nouveau_astk179']) - set(rev['exemple']),
             set(rev['cles_nouvelles_astk179']))
