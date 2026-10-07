@@ -81,7 +81,7 @@ describe('AGW300 — la page n\'a qu\'UNE définition de ces chiffres et un CO�
     expect(page).not.toMatch(/const paybackHero =/);
     expect(page).not.toMatch(/const ecoSans = q\?\.eco_s_ann/);
   });
-  it('enviro (CO₂) vaut null en agricole', () => {
-    expect(page).toContain('const enviro = ok && !isAgricole ? environmentalImpact(prodKwh) : null;');
+  it('enviro (CO₂) vaut null en agricole (et en C&I : CIW307)', () => {
+    expect(page).toContain('const enviro = ok && !isAgricole && !isAutoconso ? environmentalImpact(prodKwh) : null;');
   });
 });

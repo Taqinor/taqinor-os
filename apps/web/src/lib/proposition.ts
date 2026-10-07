@@ -6110,6 +6110,8 @@ export interface SyntheseCi {
   services: { omLibelle: string | null; suiviDelaiHeures: number | null } | null;
   /** CIW306 — le bloc catégorie d'un devis commercial, tel que servi (`synthese_ci.categorie`). */
   categorie: SyntheseCiCategorie | null;
+  /** CIW307 — décarbonation SERVIE (CIQ344) : `cbam` = drapeau serveur, `textes` = la phrase du PDF. */
+  decarbonation: { cbam: boolean; textes: TextesCi } | null;
   /** CIW305 — la raison sociale du client entreprise si le devis la porte (pré-remplit le formulaire). */
   entrepriseClient: { raisonSociale: string | null } | null;
   hypotheses: SyntheseCiHypothese[];
@@ -6278,6 +6280,9 @@ export function syntheseCi(
         }
       : null,
     categorie: lireCategorieCi(brut.categorie),
+    decarbonation: estRecord(brut.decarbonation) && lireTextesCi(brut.decarbonation.textes)
+      ? { cbam: brut.decarbonation.cbam === true, textes: lireTextesCi(brut.decarbonation.textes)! }
+      : null,
     entrepriseClient: estRecord(brut.entreprise_client)
       ? { raisonSociale: texteServi(brut.entreprise_client.raison_sociale) }
       : null,
@@ -6398,4 +6403,27 @@ export function categorieCi(ci: SyntheseCi | null): SyntheseCiCategorie | null {
   if (!c) return null;
   if (!c.libelle && !c.accroche && !c.titre && c.lignes.length === 0) return null;
   return c;
+}
+
+// ── CIW307 — la carte industrielle de /proposition : les MÊMES textes que le PDF ─────────────
+
+/** Les clés d'hypothèses servies que la carte industrielle reprend (CIQ305), dans cet ordre. */
+const CLES_CARTE_INDUSTRIELLE = ['puissance_souscrite', 'pointe'] as const;
+
+/**
+ * CIW307 — la carte industrielle lit `synthese_ci` : (a) les hypothèses `puissance_souscrite`
+ * (« la puissance souscrite et la prime fixe ne changent pas ») et `pointe` (« la pointe n'est
+ * sécurisée qu'avec un stockage ») — le texte EXACT du PDF ; (b) la décarbonation servie
+ * (CIQ344) : la phrase CBAM SEULEMENT si le serveur lève le drapeau `cbam` (export UE déclaré de
+ * ciment ou d'engrais), sinon la phrase générique. Aucun texte n'est écrit dans la page ; aucun
+ * CO₂ chiffré. `null` hors industriel.
+ */
+export function carteIndustrielleCi(
+  ci: SyntheseCi | null,
+): { hypotheses: SyntheseCiHypothese[]; decarbonation: { cbam: boolean; textes: TextesCi } | null } | null {
+  if (!ci || ci.segment !== 'industriel') return null;
+  const hypotheses = CLES_CARTE_INDUSTRIELLE.map((c) => ci.hypotheses.find((h) => h.cle === c)).filter(
+    (h): h is SyntheseCiHypothese => !!h,
+  );
+  return { hypotheses, decarbonation: ci.decarbonation };
 }
