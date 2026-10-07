@@ -53,11 +53,21 @@ def auth(user):
     return api
 
 
-def make_bcf(company, fournisseur, *, prevue=None, confirmee=None):
-    return BonCommandeFournisseur.objects.create(
+def make_bcf(company, fournisseur, *, prevue=None, confirmee=None,
+             recue=None):
+    """``recue`` = date de la réception CONFIRMÉE (ASTK186 : la ponctualité
+    se mesure sur la réception réelle, via ``otd_stats``)."""
+    from apps.achats.models import ReceptionFournisseur
+    bcf = BonCommandeFournisseur.objects.create(
         company=company, fournisseur=fournisseur,
         reference=f'BCF-T-{next(_seq):04d}',
         date_livraison_prevue=prevue, date_confirmee_fournisseur=confirmee)
+    if recue is not None:
+        ReceptionFournisseur.objects.create(
+            company=company, reference=f'REC-T-{next(_seq):04d}',
+            bon_commande=bcf, statut=ReceptionFournisseur.Statut.CONFIRME,
+            date_reception=recue)
+    return bcf
 
 
 def facteur(resultat, code):
@@ -79,14 +89,14 @@ class ScoreRisqueTests(TestCase):
         self.assertEqual(resultat['score'], 100)
         self.assertEqual(resultat['niveau'], 'faible')
         self.assertEqual(resultat['penalite_totale'], 0)
-        self.assertEqual(len(resultat['facteurs']), 4)
+        self.assertEqual(len(resultat['facteurs']), 5)
 
     def test_trois_retards_et_un_document_expire_score_sous_50(self):
         """CRITÈRE D'ACCEPTATION NTP2P8."""
         prevue = date(2026, 3, 1)
         for _ in range(3):
             make_bcf(self.company, self.fournisseur,
-                     prevue=prevue, confirmee=prevue + timedelta(days=7))
+                     prevue=prevue, recue=prevue + timedelta(days=7))
 
         dossier = DossierOnboardingFournisseur.objects.create(
             company=self.company, fournisseur=self.fournisseur)
@@ -117,7 +127,7 @@ class ScoreRisqueTests(TestCase):
         prevue = date(2026, 3, 1)
         for _ in range(3):
             make_bcf(self.company, self.fournisseur,
-                     prevue=prevue, confirmee=prevue)
+                     prevue=prevue, recue=prevue)
         resultat = stock_selectors.score_risque_fournisseur(
             self.company, self.fournisseur.pk)
         self.assertEqual(facteur(resultat, 'ponctualite')['penalite'], 0)
@@ -134,10 +144,10 @@ class ScoreRisqueTests(TestCase):
     def test_un_retard_sur_quatre_penalise_proportionnellement(self):
         prevue = date(2026, 3, 1)
         make_bcf(self.company, self.fournisseur,
-                 prevue=prevue, confirmee=prevue + timedelta(days=3))
+                 prevue=prevue, recue=prevue + timedelta(days=3))
         for _ in range(3):
             make_bcf(self.company, self.fournisseur,
-                     prevue=prevue, confirmee=prevue)
+                     prevue=prevue, recue=prevue)
         resultat = stock_selectors.score_risque_fournisseur(
             self.company, self.fournisseur.pk)
         self.assertEqual(facteur(resultat, 'ponctualite')['penalite'],
@@ -166,7 +176,7 @@ class ScoreRisqueTests(TestCase):
     def test_score_borne_a_zero(self):
         prevue = date(2026, 3, 1)
         make_bcf(self.company, self.fournisseur,
-                 prevue=prevue, confirmee=prevue + timedelta(days=30))
+                 prevue=prevue, recue=prevue + timedelta(days=30))
         RetourFournisseur.objects.create(
             company=self.company, fournisseur=self.fournisseur,
             reference=f'RF-{next(_seq)}')
@@ -196,7 +206,7 @@ class ScoreRisqueTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['score'], 100)
         self.assertEqual(resp.data['fournisseur_id'], self.fournisseur.pk)
-        self.assertEqual(len(resp.data['facteurs']), 4)
+        self.assertEqual(len(resp.data['facteurs']), 5)
 
     def test_fournisseur_dune_autre_societe_jamais_note(self):
         autre = make_company()

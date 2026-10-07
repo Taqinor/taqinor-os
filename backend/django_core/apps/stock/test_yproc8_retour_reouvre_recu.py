@@ -123,9 +123,10 @@ class TestMultiTenant(Yproc8Base):
         autre = _company('yproc8-autre')
         bc, ligne = self._bcf_recu(quantite=20)
         retour = self._retour(bc, 5)
-        # Sanity : le retour et le BCF sont bien de la MÊME société (le
-        # scoping réel est garanti par la vue/le serializer — ce test isole
-        # juste la logique de service).
+        # Sanity : le retour et le BCF sont bien de la MÊME société. Ce test
+        # isole juste la logique de service ; le refus par l'API d'un BCF,
+        # fournisseur ou produit d'une autre société est prouvé par ASTK2
+        # (test_astk_fk_retour_modele_bcf.py).
         self.assertEqual(retour.company_id, self.company.id)
         self.assertNotEqual(retour.company_id, autre.id)
         apply_retour_fournisseur(retour, user=None)

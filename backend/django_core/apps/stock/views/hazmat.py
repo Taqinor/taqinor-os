@@ -4,6 +4,7 @@ from rest_framework import serializers
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import CompatibiliteHazmatCasier, Produit
@@ -12,7 +13,8 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class CompatibiliteHazmatCasierSerializer(serializers.ModelSerializer):
+class CompatibiliteHazmatCasierSerializer(CompanyScopedRelationsMixin,
+                                          serializers.ModelSerializer):
     bin_code = serializers.CharField(source='bin.code', read_only=True,
                                      default='')
 

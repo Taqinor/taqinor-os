@@ -43,18 +43,40 @@ def _fmt_dec(value):
     return s or '0'
 
 
+def valider_fenetre_mois(valeur):
+    """ASTK183 — parse STRICT de ``?fenetre_mois=`` : entier de 1 à 36.
+
+    Absent/vide → défaut (``FENETRE_MOIS_DEFAUT``). Illisible ou hors bornes →
+    ``ValueError`` (les vues la traduisent en 400 nommé).
+    """
+    if valeur is None or str(valeur).strip() == '':
+        return FENETRE_MOIS_DEFAUT
+    try:
+        mois = int(str(valeur).strip())
+    except (TypeError, ValueError):
+        raise ValueError('Entier de 1 à 36 attendu.')
+    if not 1 <= mois <= 36:
+        raise ValueError('Entier de 1 à 36 attendu.')
+    return mois
+
+
+def _mois_fenetre(fenetre_mois):
+    """Parse TOLÉRANT partagé (début de fenêtre ET valeur renvoyée)."""
+    try:
+        mois = int(fenetre_mois or FENETRE_MOIS_DEFAUT)
+    except (TypeError, ValueError):
+        mois = FENETRE_MOIS_DEFAUT
+    return max(1, mois)
+
+
 def _debut_fenetre(fenetre_mois, aujourdhui=None):
     """Date de début d'une fenêtre glissante en MOIS (30 jours par mois —
     approximation assumée, identique pour tous les fournisseurs comparés)."""
     import datetime
 
     aujourdhui = aujourdhui or timezone.localdate()
-    try:
-        mois = int(fenetre_mois or FENETRE_MOIS_DEFAUT)
-    except (TypeError, ValueError):
-        mois = FENETRE_MOIS_DEFAUT
-    mois = max(1, mois)
-    return aujourdhui - datetime.timedelta(days=30 * mois)
+    return aujourdhui - datetime.timedelta(
+        days=30 * _mois_fenetre(fenetre_mois))
 
 
 def _bcf_de_la_fenetre(company, fournisseur, debut):
@@ -126,7 +148,7 @@ def otif_fournisseur(company, fournisseur, *, fenetre_mois=None,
                 * Decimal('100')).quantize(Decimal('0.01'))
     return {
         'fournisseur_id': fournisseur.id,
-        'fenetre_mois': int(fenetre_mois or FENETRE_MOIS_DEFAUT),
+        'fenetre_mois': _mois_fenetre(fenetre_mois),
         'debut': debut.isoformat(),
         'total_livraisons': total,
         'nb_otif': a_lheure_et_complet,
@@ -215,7 +237,7 @@ def delai_mesure_vs_annonce(company, fournisseur, produit=None, *,
     return {
         'fournisseur_id': fournisseur.id,
         'produit_id': produit_id,
-        'fenetre_mois': int(fenetre_mois or FENETRE_MOIS_DEFAUT),
+        'fenetre_mois': _mois_fenetre(fenetre_mois),
         'nb_mesures': len(mesures),
         'delai_annonce_jours': (round(delai_annonce, 1)
                                 if delai_annonce is not None else None),

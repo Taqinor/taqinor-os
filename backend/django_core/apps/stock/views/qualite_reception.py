@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ControleReception, PlanEchantillonnage
@@ -21,7 +22,8 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class PlanEchantillonnageSerializer(serializers.ModelSerializer):
+class PlanEchantillonnageSerializer(CompanyScopedRelationsMixin,
+                                    serializers.ModelSerializer):
     categorie_nom = serializers.CharField(
         source='categorie.nom', read_only=True, default='')
 
@@ -48,7 +50,8 @@ class PlanEchantillonnageSerializer(serializers.ModelSerializer):
 # cassent le schema : on renomme CELUI-CI (le plus recent) pour laisser
 # intact le nom deja publie par qhse.
 @extend_schema_serializer(component_name='ControleReceptionStock')
-class ControleReceptionSerializer(serializers.ModelSerializer):
+class ControleReceptionSerializer(CompanyScopedRelationsMixin,
+                                  serializers.ModelSerializer):
     class Meta:
         model = ControleReception
         fields = [

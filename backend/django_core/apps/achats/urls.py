@@ -23,16 +23,22 @@ from .views import (
 )
 
 router = DefaultRouter()
+# headless: miroir API achats (ODX20), aucun client ne l'appelle
 router.register(r'bons-commande-fournisseur', BonCommandeFournisseurViewSet,
                 basename='ach-bon-commande-fournisseur')
+# headless: miroir API achats (ODX20), aucun client ne l'appelle
 router.register(r'receptions-fournisseur', ReceptionFournisseurViewSet,
                 basename='ach-reception-fournisseur')
+# headless: miroir API achats (ODX20), aucun client ne l'appelle
 router.register(r'factures-fournisseur', FactureFournisseurViewSet,
                 basename='ach-facture-fournisseur')
+# headless: miroir API achats (ODX20), aucun client ne l'appelle
 router.register(r'paiements-fournisseur', PaiementFournisseurViewSet,
                 basename='ach-paiement-fournisseur')
+# headless: miroir API achats (ODX20), aucun client ne l'appelle
 router.register(r'retours-fournisseur', RetourFournisseurViewSet,
                 basename='ach-retour-fournisseur')
+# headless: miroir API achats (ODX20), aucun client ne l'appelle
 router.register(r'prix-fournisseurs', PrixFournisseurViewSet,
                 basename='ach-prix-fournisseur')
 
