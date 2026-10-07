@@ -7151,7 +7151,7 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
 
 
 def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif,
-                                      avec_jetons=False):
+                                       avec_jetons=False):
     """Pose ``actif`` sur le compte portail ET ``is_active`` sur son compte
     utilisateur, atomiquement. Renvoie ``(compte, nb_utilisateurs)`` — ou
     ``(compte, nb_utilisateurs, nb_jetons_revoques)`` avec ``avec_jetons``.
