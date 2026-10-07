@@ -541,6 +541,23 @@ def _find_by_external_id(company, external_system, external_id, model):
     return model.objects.filter(company=company, pk=ref.object_id).first()
 
 
+RAISON_DOUBLON_REF = 'doublon'
+
+
+def _document_deja_importe(company, external_system, external_id, app_label,
+                           model_name):
+    """AANA11 — vrai si ``external_id`` est DÉJÀ rattaché à un document vivant
+    (devis/facture) de cette société. Le modèle est résolu par le registre
+    d'apps (aucun import de ``models`` d'une autre app) ; la recherche est la
+    MÊME que le rapprochement leads/clients (``_find_by_external_id``)."""
+    if not external_id:
+        return False
+    from django.apps import apps as django_apps
+    model = django_apps.get_model(app_label, model_name)
+    return _find_by_external_id(
+        company, external_system, external_id, model) is not None
+
+
 def _txt(valeur):
     """Forme texte stable d'une valeur (comparaison + journalisation)."""
     return '' if valeur is None else str(valeur)
@@ -1257,6 +1274,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
                 ext_id = f.pop('external_id', None)
+                # AANA11 — rejeu idempotent : AVANT toute création (donc avant
+                # de consommer un numéro DEV-…).
+                if _document_deja_importe(
+                        company, external_system, ext_id, 'ventes', 'Devis'):
+                    skipped.append({'ligne': i, 'raison': RAISON_DOUBLON_REF})
+                    continue
                 statut, message, devis = creer_devis_import(
                     company, f, external_system=external_system, user=user)
                 if statut == 'cree':
@@ -1276,6 +1299,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
                 ext_id = f.pop('external_id', None)
+                # AANA11 — même garde que les devis (aucun numéro FAC consommé).
+                if _document_deja_importe(
+                        company, external_system, ext_id,
+                        'facturation', 'Facture'):
+                    skipped.append({'ligne': i, 'raison': RAISON_DOUBLON_REF})
+                    continue
                 statut, message, facture = creer_facture_import(
                     company, f, external_system=external_system, user=user)
                 if statut == 'cree':
