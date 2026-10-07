@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import crmApi from '../../api/crmApi'
 import AssigneePicker from '../../components/AssigneePicker'
 import SelecteurRattachement from './SelecteurRattachement'
+import useUtilisateursAssignables from './useUtilisateursAssignables'
 import { formatDateTime } from '../../lib/format'
 // CALX344 — les étiquettes libres (records.Tag), lues/posées/retirées par la
 // porte `etiquettes/` (CALX343) : un composant à part, monté sous la fiche.
@@ -172,7 +172,6 @@ export default function FicheCalepinage({ detail, onRelire }) {
   // du serveur s'affiche SOUS le champ fautif, et le détail est RELU (aucun
   // état local seul : l'écran affiche ce que le serveur sert).
   const [refusRattachement, setRefusRattachement] = useState(null)
-  const [responsables, setResponsables] = useState([])
   const identifiant = detail?.id ?? null
   const peutModifier = detail?.permissions?.peut_modifier === true
   const naviguer = useNavigate()
@@ -194,19 +193,8 @@ export default function FicheCalepinage({ detail, onRelire }) {
     return () => { annule = true }
   }, [identifiant])
 
-  useEffect(() => {
-    if (!identifiant || !peutModifier) return undefined
-    let annule = false
-    Promise.resolve()
-      .then(() => crmApi.getAssignableUsers())
-      .then((res) => {
-        if (annule) return
-        const brut = res?.data
-        setResponsables(Array.isArray(brut) ? brut : (brut?.results ?? []))
-      })
-      .catch(() => { if (!annule) setResponsables([]) })
-    return () => { annule = true }
-  }, [identifiant, peutModifier])
+  const responsables = useUtilisateursAssignables(
+    Boolean(identifiant && peutModifier), identifiant)
 
   if (!detail) return null
 

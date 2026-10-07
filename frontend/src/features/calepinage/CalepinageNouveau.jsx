@@ -5,6 +5,7 @@ import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
 import AssigneePicker from '../../components/AssigneePicker'
 import SelecteurRattachement from './SelecteurRattachement'
+import useUtilisateursAssignables from './useUtilisateursAssignables'
 import { unwrapList } from '../../api/resource'
 import {
   Button, Card, Input, Label, Tabs, TabsList, TabsTrigger, TabsContent,
@@ -159,7 +160,7 @@ export default function CalepinageNouveau() {
   const [existant, setExistant] = useState(null)
   // Responsable facultatif : VIDE par défaut (le repli est le propriétaire du lead).
   const [responsableId, setResponsableId] = useState('')
-  const [responsables, setResponsables] = useState([])
+  const responsables = useUtilisateursAssignables()
   const refLead = useRef(null)
   const refClient = useRef(null)
   // CALX352 — partir d'un MODÈLE et/ou d'un JEU DE RÉGLAGES société. Rien
@@ -183,19 +184,6 @@ export default function CalepinageNouveau() {
         ? jeuxDeReglages(resParametres.value?.data?.presets)
         : [])
     })
-    return () => { annule = true }
-  }, [])
-
-  useEffect(() => {
-    let annule = false
-    Promise.resolve()
-      .then(() => crmApi.getAssignableUsers())
-      .then((res) => {
-        if (annule) return
-        const brut = res?.data
-        setResponsables(Array.isArray(brut) ? brut : (brut?.results ?? []))
-      })
-      .catch(() => { if (!annule) setResponsables([]) })
     return () => { annule = true }
   }, [])
 
