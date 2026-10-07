@@ -267,9 +267,60 @@ class DepotReelTests(unittest.TestCase):
     def test_la_base_committee_ne_gele_que_des_modules_de_services(self):
         for ligne in csa.charger_base():
             module, _, nom = ligne.partition("::")
-            self.assertIn("/services/", module, ligne)
+            # paquet `services/` ou module-fichier (ALEA44)
+            self.assertTrue(
+                "/services/" in module
+                or module.endswith("/services.py")
+                or "/cadence_" in module, ligne)
             self.assertTrue(nom and not nom.startswith("_"), ligne)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ===========================================================================
+# ALEA44 — modules-FICHIERS de service (`services.py`, `cadence_*.py` du crm)
+# ===========================================================================
+
+class ModuleFichierTests(BaseBackend):
+    def test_module_fichier_services_scanne(self):
+        """`apps/<app>/services.py` (fichier, pas paquet) est lu : sa
+        fonction publique sans appelant de production est signalee."""
+        self.depot.fichier("services.py", "def orpheline(x):\n    return x\n")
+        self.assertEqual(self.sans_appelant(), ["orpheline"])
+
+    def test_motif_cadence_scanne_pour_le_crm(self):
+        csa.APPS_SURVEILLEES = ("x",)
+        avant = dict(csa.FICHIERS_SERVICES_PAR_APP)
+        self.addCleanup(lambda: (csa.FICHIERS_SERVICES_PAR_APP.clear(),
+                                 csa.FICHIERS_SERVICES_PAR_APP.update(avant)))
+        csa.FICHIERS_SERVICES_PAR_APP["x"] = ("cadence_*.py",)
+        self.depot.fichier("cadence_a.py", "def poser(x):\n    return x\n")
+        self.assertEqual(self.sans_appelant(), ["poser"])
+
+    def test_nouvelle_fonction_orpheline_echoue(self):
+        """Base gelee = la dette du jour ; une fonction ajoutee ensuite sans
+        appelant hors tests fait echouer la garde, nommee `<module>::<f>`."""
+        self.depot.fichier("services.py", "def ancienne(x):\n    return x\n")
+        constats, _ = csa.analyse()
+        csa.ecrire_base({c[0] for c in constats})
+        self.depot.fichier(
+            "services.py",
+            "def ancienne(x):\n    return x\n\n\ndef nouvelle(x):\n    return x\n")
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = csa.main([])
+        self.assertEqual(code, 1)
+        self.assertIn("nouvelle", sortie.getvalue())
+        self.assertNotIn("(ancienne)", sortie.getvalue())
+
+    def test_appelee_par_une_vue_ne_rougit_pas(self):
+        self.depot.fichier("services.py", "def utile(x):\n    return x\n")
+        self.depot.fichier("views.py", "from .services import utile\n\n\ndef v():\n    return utile(1)\n")
+        self.assertEqual(self.sans_appelant(), [])
+
+    def test_fichier_tests_underscore_ne_compte_pas_comme_appelant(self):
+        self.depot.fichier("services.py", "def testee(x):\n    return x\n")
+        self.depot.fichier("tests_x.py", "from .services import testee\n\n\ndef t():\n    testee(1)\n")
+        self.assertEqual(self.sans_appelant(), ["testee"])
