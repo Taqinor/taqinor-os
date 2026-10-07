@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4834, operations: 7628, components: 2211}
+counts: {paths: 4838, operations: 7632, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3602,6 +3602,7 @@ operations:
 - post /api/django/ventes/devis/{id}/reviser/ -> django_ventes_devis_reviser_create
 - post /api/django/ventes/devis/{id}/revoquer-lien-public/ -> django_ventes_devis_revoquer_lien_public_create
 - post /api/django/ventes/devis/{id}/roof-image/ -> django_ventes_devis_roof_image_create
+- get /api/django/ventes/devis/{id}/roof-image/fichier/ -> django_ventes_devis_roof_image_fichier_retrieve
 - post /api/django/ventes/devis/{id}/save-preset/ -> django_ventes_devis_save_preset_create
 - get /api/django/ventes/devis/{id}/schema-unifilaire/ -> django_ventes_devis_schema_unifilaire_retrieve
 - post /api/django/ventes/devis/{id}/share-link/ -> django_ventes_devis_share_link_create
@@ -3767,6 +3768,7 @@ operations:
 - post /api/django/ventes/proposal/{token}/otp-lecture/verifier/ -> django_ventes_proposal_otp_lecture_verifier_create
 - post /api/django/ventes/proposal/{token}/otp/ -> django_ventes_proposal_otp_create
 - get /api/django/ventes/proposal/{token}/pdf/ -> django_ventes_proposal_pdf_retrieve
+- get /api/django/ventes/proposal/{token}/roof-image/ -> django_ventes_proposal_roof_image_retrieve
 - post /api/django/ventes/proposal/{token}/virement/ -> django_ventes_proposal_virement_create
 - get /api/django/ventes/recettes-mes/ -> django_ventes_recettes_mes_list
 - post /api/django/ventes/recettes-mes/ -> django_ventes_recettes_mes_create
@@ -7420,6 +7422,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/reviser/ -> v1_ventes_devis_reviser_create
 - post /api/v1/ventes/devis/{id}/revoquer-lien-public/ -> v1_ventes_devis_revoquer_lien_public_create
 - post /api/v1/ventes/devis/{id}/roof-image/ -> v1_ventes_devis_roof_image_create
+- get /api/v1/ventes/devis/{id}/roof-image/fichier/ -> v1_ventes_devis_roof_image_fichier_retrieve
 - post /api/v1/ventes/devis/{id}/save-preset/ -> v1_ventes_devis_save_preset_create
 - get /api/v1/ventes/devis/{id}/schema-unifilaire/ -> v1_ventes_devis_schema_unifilaire_retrieve
 - post /api/v1/ventes/devis/{id}/share-link/ -> v1_ventes_devis_share_link_create
@@ -7585,6 +7588,7 @@ operations:
 - post /api/v1/ventes/proposal/{token}/otp-lecture/verifier/ -> v1_ventes_proposal_otp_lecture_verifier_create
 - post /api/v1/ventes/proposal/{token}/otp/ -> v1_ventes_proposal_otp_create
 - get /api/v1/ventes/proposal/{token}/pdf/ -> v1_ventes_proposal_pdf_retrieve
+- get /api/v1/ventes/proposal/{token}/roof-image/ -> v1_ventes_proposal_roof_image_retrieve
 - post /api/v1/ventes/proposal/{token}/virement/ -> v1_ventes_proposal_virement_create
 - get /api/v1/ventes/recettes-mes/ -> v1_ventes_recettes_mes_list
 - post /api/v1/ventes/recettes-mes/ -> v1_ventes_recettes_mes_create

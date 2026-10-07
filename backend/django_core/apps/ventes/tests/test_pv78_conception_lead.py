@@ -87,20 +87,26 @@ class ConceptionPourLeadTest(TestCase):
         self.assertEqual(conception_pour_lead(self.lead, self.company),
                          {'kwc': None, 'image_url': None})
 
-    def test_image_url_presignee(self):
-        self._devis(image='ventes/1/rendu.png')
+    def test_image_url_chemin_relatif_meme_origine(self):
+        # ACAL314 — un chemin RELATIF servi par Django, plus une URL
+        # pré-signée (hôte interne minio:9000, injoignable du navigateur).
+        devis = self._devis(image='ventes/1/rendu.png')
         with mock.patch('apps.ventes.utils.pdf.roof_image_signed_url',
                         return_value='https://minio/signed?x=1') as signe:
             resultat = conception_pour_lead(self.lead, self.company)
-        self.assertEqual(resultat['image_url'], 'https://minio/signed?x=1')
-        signe.assert_called_once_with('ventes/1/rendu.png')
+        self.assertEqual(
+            resultat['image_url'],
+            f'/api/django/ventes/devis/{devis.pk}/roof-image/fichier/')
+        signe.assert_not_called()
 
     def test_stockage_indisponible_ne_casse_rien(self):
+        # Le chemin ne lit pas le magasin : une panne de stockage ne touche
+        # ni le kWc ni la fiche (le proxy répondra 404 au navigateur).
         self._devis(image='ventes/1/rendu.png')
         with mock.patch('apps.ventes.utils.pdf.roof_image_signed_url',
                         side_effect=RuntimeError('MinIO down')):
             resultat = conception_pour_lead(self.lead, self.company)
-        self.assertIsNone(resultat['image_url'])
+        self.assertTrue(resultat['image_url'].startswith('/api/django/'))
         self.assertEqual(resultat['kwc'], 7.7)
 
     def test_selecteur_crm_passe_plat(self):

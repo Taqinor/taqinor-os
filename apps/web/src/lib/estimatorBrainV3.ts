@@ -66,7 +66,7 @@ import {
 export { PANEL2_WATT };
 
 const DEG2RAD = Math.PI / 180;
-const WGS84_RADIUS = 6378137;
+import { WGS84_RADIUS } from './geo';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000;
 const PANEL_SIDE_GAP_M = 0.02;

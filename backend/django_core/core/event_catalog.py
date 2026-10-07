@@ -106,6 +106,11 @@ CATALOG = {
     'reception_fournisseur_confirmee': _e(
         'Une réception fournisseur est confirmée.',
         ['reception', 'company', 'user']),
+    # ASTK55 — émetteur stock (ASTK56), abonné installations (ASTK57 : GR/IR,
+    # séries, YPROC10).
+    'reception_fournisseur_annulee': _e(
+        'Une réception fournisseur confirmée est annulée.',
+        ['reception', 'company', 'user', 'lignes']),
     'employe_sorti': _e(
         'Un employé quitte l’entreprise (sortie RH).',
         ['dossier', 'user', 'motif']),

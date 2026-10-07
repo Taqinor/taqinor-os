@@ -72,6 +72,37 @@ def lire_fichier_toiture(cle):
         return None
 
 
+def poser_affiche_depuis(devis, cle_source):
+    """ACAL98 (C-ACAL-107) — l'affiche 3D d'un calepinage devient celle du devis.
+
+    COPIE des octets stockés sous ``cle_source`` (le rendu du calepinage,
+    ``roofs/<company>/calepinage-<pk>.png``) vers la clé PROPRE du devis
+    (``roofs/<company>/<reference>.<ext>``, la convention de
+    ``views/devis_calepinage.py::roof_image``), puis ``Devis.roof_image`` est
+    posé (écriture ciblée ``update_fields=['roof_image']`` : aucun statut ne
+    bouge, règle #4). Jamais une clé PARTAGÉE : réécrire ensuite l'image du
+    calepinage ne change pas l'affiche d'un devis (D-ACAL-1 — elle ne change
+    que par un geste explicite : génération ou resynchronisation).
+
+    Rend la clé posée, ou ``None`` (rien n'est écrit) quand la source est
+    vide, illisible ou n'est pas un PNG/JPEG reconnu par ses octets.
+    """
+    if devis is None or not cle_source:
+        return None
+    donnees = lire_fichier_toiture(cle_source)
+    if not donnees:
+        return None
+    extension, mime = type_image_toiture(donnees)
+    if extension is None:
+        return None
+    company_id = getattr(devis, 'company_id', None) or '0'
+    cle = f'roofs/{company_id}/{devis.reference}.{extension}'
+    stocker_image_toiture(donnees, cle, content_type=mime)
+    devis.roof_image = cle
+    devis.save(update_fields=['roof_image'])
+    return cle
+
+
 #: ACAL299 — le SEUL préfixe que :func:`supprimer_fichier_toiture` accepte : le
 #: bucket des PDF porte aussi les devis rendus, jamais effaçables par ici.
 PREFIXE_TOITURE = 'roofs/'
@@ -117,3 +148,41 @@ def url_image_toiture(cle, *, expires=3600):
     from ..utils.pdf import roof_image_signed_url
 
     return roof_image_signed_url(cle, expires=expires)
+
+
+# ── ACAL314 (C-ACAL-019 / C-ACAL-107) — l'affiche servie MÊME ORIGINE ───────
+#
+# Une URL pré-signée porte l'hôte INTERNE du magasin (``MINIO_ENDPOINT`` =
+# ``minio:9000``) : le navigateur du client ne l'atteint jamais. L'affiche
+# destinée à un navigateur est donc servie par Django, sous un chemin RELATIF
+# que ce module est le SEUL à fabriquer (jumeau assumé du constructeur
+# calepinage ``apps/calepinage/services/presentation.py`` — frontière
+# inter-apps). ``url_image_toiture`` / ``roof_image_signed_url`` restent pour
+# d'éventuelles lectures serveur, plus jamais pour un navigateur.
+
+#: La racine de l'API ventes, telle que ``config/urls.py`` la monte.
+RACINE_API_VENTES = '/api/django/ventes'
+
+
+def url_fichier_toiture_devis(devis_id):
+    """Chemin AUTHENTIFIÉ (cookie httpOnly) de l'affiche d'un devis."""
+    return f'{RACINE_API_VENTES}/devis/{devis_id}/roof-image/fichier/'
+
+
+def url_fichier_toiture_proposition(token):
+    """Chemin PUBLIC (borné par le jeton de proposition) de l'affiche."""
+    return f'{RACINE_API_VENTES}/proposal/{token}/roof-image/'
+
+
+def lire_image_toiture(cle):
+    """``(octets, type MIME)`` de l'affiche stockée sous ``cle``, ou
+    ``(None, None)`` — clé vide, objet absent, magasin injoignable ou octets
+    qui ne sont pas un PNG/JPEG reconnu. Le MIME vient des OCTETS
+    (:func:`type_image_toiture`), jamais de l'extension de la clé."""
+    donnees = lire_fichier_toiture(cle)
+    if not donnees:
+        return None, None
+    _extension, mime = type_image_toiture(donnees)
+    if mime is None:
+        return None, None
+    return donnees, mime

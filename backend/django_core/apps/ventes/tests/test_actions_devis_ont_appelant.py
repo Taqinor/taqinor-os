@@ -27,12 +27,12 @@ RACINE = os.path.abspath(os.path.join(
 VUES = Path(RACINE) / 'backend' / 'django_core' / 'apps' / 'ventes' / 'views'
 EXTENSIONS = ('.js', '.jsx', '.ts', '.tsx', '.mjs', '.astro')
 MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
-#: 55 ``@action`` de ``views/devis.py`` (dont ``facturer-complet``, 05/10, et
-#: ``revoquer-lien-public``, ADOC131) +
+#: 56 ``@action`` de ``views/devis.py`` (dont ``facturer-complet``, 05/10,
+#: ``revoquer-lien-public``, ADOC131, et ``roof-image/fichier``, ACAL314) +
 #: ``economie`` (views/economie.py) + ``economie_pompage``
 #: (views/economie_pompage.py, AGR206) + ``economie_ci``
 #: (views/economie_ci.py, CIQ210).
-NB_ACTIONS = 58
+NB_ACTIONS = 59
 
 
 def _vues_devis():

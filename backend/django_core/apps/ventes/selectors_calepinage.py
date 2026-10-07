@@ -20,9 +20,10 @@ def conception_pour_lead(lead, company):
     * ``kwc`` — la puissance crête RÉELLEMENT calepinée, lue dans le layout du
       devis (``roof_layout['result']['kwc']``), à défaut la puissance de
       l'étude. C'est le chiffre de la TOITURE, pas une cible commerciale ;
-    * ``image_url`` — URL PRÉ-SIGNÉE (lecture seule, expirante) du rendu 3D
-      stocké, via le helper existant ``utils.pdf.roof_image_signed_url``.
-      Jamais une URL de bucket publique.
+    * ``image_url`` — ACAL314 : chemin RELATIF du rendu 3D servi par Django
+      (``/api/django/ventes/devis/<id>/roof-image/fichier/``, même origine,
+      cookie httpOnly) — jamais une URL pré-signée portant l'hôte interne du
+      magasin, jamais une URL de bucket publique.
 
     Company-scopée : seul un devis de ``company`` est regardé (un lead d'une
     autre société ne fait rien fuiter). Point d'entrée cross-app pour
@@ -52,12 +53,9 @@ def conception_pour_lead(lead, company):
         kwc = None
 
     image_url = None
-    if devis.roof_image:
-        try:
-            from .utils.pdf import roof_image_signed_url
-            image_url = roof_image_signed_url(devis.roof_image)
-        except Exception:  # noqa: BLE001 — un rendu absent ne casse pas la fiche
-            image_url = None
+    if (devis.roof_image or '').strip():
+        from .domain.stockage_toiture import url_fichier_toiture_devis
+        image_url = url_fichier_toiture_devis(devis.pk)
     return {'kwc': kwc, 'image_url': image_url}
 
 

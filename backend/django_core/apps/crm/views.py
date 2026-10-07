@@ -1659,13 +1659,13 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         financières). L'événement est journalisé (qui/quand) côté serveur ; la
         réponse porte l'``corbeille_id`` pour l'undo-toast du front."""
         import logging
+        from .services import raison_refus_suppression
         lead = self.get_object()
-        if lead.devis.exists():
-            return Response(
-                {'detail': "Ce lead a des devis liés. Supprimer le lead "
-                           "détacherait ces pièces — archivez-le plutôt."},
-                status=status.HTTP_409_CONFLICT,
-            )
+        # ACAL177 — UNE garde (devis liés + calepinage ouvert), partagée avec
+        # l'opération en masse ``delete``.
+        refus = raison_refus_suppression(lead)
+        if refus is not None:
+            return Response(refus, status=status.HTTP_409_CONFLICT)
         logging.getLogger('crm.audit').warning(
             'SOFT DELETE lead id=%s "%s" par user=%s (company=%s)',
             lead.id, lead, getattr(request.user, 'username', '?'),
@@ -5669,8 +5669,14 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
         from apps.portail import services as portail_services
 
         partenaire = self.get_object()
-        user, cree = portail_services.provisionner_compte_partenaire(
-            request.user.company, partenaire.id)
+        try:
+            # ADOC124 — jumeau d'ADOC123 (vue client) : sans e-mail, le mot
+            # de passe temporaire ne part nulle part ⇒ refus NOMMÉ, aucun
+            # compte créé, aucun e-mail.
+            user, cree = portail_services.provisionner_compte_partenaire(
+                request.user.company, partenaire.id, exiger_email=True)
+        except portail_services.ProvisionnementSansEmail as exc:
+            return Response({'detail': str(exc)}, status=400)
         if user is None:
             return Response(
                 {'detail': 'Partenaire inconnu pour cette société.'},

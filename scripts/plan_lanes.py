@@ -1326,10 +1326,20 @@ def apply_external_after_gate(
     if force_wave:
         return tasks, []
     ids = {t["id"] for t in tasks}
+    # Incident du 07/10/2026 (plan audit calepinage) : une dépendance du MÊME
+    # run marquée `[BLOCKED]`/`[GATED]` comptait comme satisfaite — ACAL96 et
+    # ACAL107 sont partis avant ACAL42/ACAL43 (bloquées, jamais construites).
+    # Une dépendance gatée n'est construite par personne dans ce run : refuser.
+    gatees = {t["id"] for t in tasks if t.get("gate") == "gated"}
     ok: list[dict] = []
     refusees: list[dict] = []
     for t in tasks:
         raisons = []
+        if t.get("gate") != "gated":
+            raisons += [
+                f"attend {dep}, marquée [BLOCKED]/[GATED] dans le plan — la "
+                f"débloquer (ou la construire) d'abord, jamais la supposer faite"
+                for dep in t.get("deps", ()) if dep in gatees]
         for dep in t.get("deps", ()):
             if dep in ids or dep not in index:
                 continue
@@ -1352,6 +1362,8 @@ def apply_external_after_gate(
     while change:
         change = False
         for t in list(ok):
+            if t.get("gate") == "gated":
+                continue        # reste dans la section « Gated », telle quelle
             attente = [d for d in t.get("deps", ()) if d in refusees_ids]
             if attente:
                 ok.remove(t)
@@ -1447,6 +1459,26 @@ def _merge_lanes_by_shared_files(
     return out, merges
 
 
+def _ordre_topologique(taches: list[dict]) -> list[dict]:
+    """Tri topologique STABLE d'une lane : chaque tâche après ses @after de la
+    même lane, l'ordre d'origine départageant. Un cycle (plan incohérent) est
+    rendu dans l'ordre d'origine plutôt que perdu."""
+    ids = {t["id"] for t in taches}
+    restantes = list(taches)
+    placees: set[str] = set()
+    out: list[dict] = []
+    while restantes:
+        for t in restantes:
+            if all(d in placees for d in t.get("deps", ()) if d in ids and d != t["id"]):
+                break
+        else:
+            t = restantes[0]
+        restantes.remove(t)
+        placees.add(t["id"])
+        out.append(t)
+    return out
+
+
 def schedule(
     tasks: list[dict],
     max_lanes: int,
@@ -1486,6 +1518,11 @@ def schedule(
     # ``files`` so they never collapse parallelism. Tasks with no ``Files:`` are
     # untouched → byte-identical to the pre-file behaviour for those.
     lanes, file_merges = _merge_lanes_by_shared_files(lanes)
+    # Une lane fusionnée garde l'ordre du FICHIER plan, pas celui des @after :
+    # le 07/10/2026, ACAL102 (@after ACAL101) précédait ACAL101 dans la lane, le
+    # repli « heads all blocked » l'émettait quand même, à l'envers. Ordonner
+    # chaque lane topologiquement (stable : l'ordre du plan départage).
+    lanes = {k: _ordre_topologique(v) for k, v in lanes.items()}
 
     # Longest lane first => start the long chains early (critical-path heuristic).
     lane_order = sorted(lanes, key=lambda k: (-len(lanes[k]), k))
