@@ -168,6 +168,12 @@ class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
         source='quai.nom', read_only=True, default='')
     transporteur_nom = serializers.CharField(
         source='transporteur.nom', read_only=True, default='')
+    # ASTK192 — fournisseur et BCF d'un rendez-vous réservé par jeton :
+    # LECTURE SEULE (posés par le serveur à la réservation publique).
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default='')
+    bon_commande_reference = serializers.CharField(
+        source='bon_commande.reference', read_only=True, default='')
 
     class Meta:
         model = RendezVousTransporteur
@@ -175,9 +181,10 @@ class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
             'id', 'quai', 'quai_nom', 'transporteur', 'transporteur_nom',
             'reference_livraison', 'date_heure_debut', 'date_heure_fin',
             'statut', 'chauffeur_nom', 'immatriculation', 'note',
-            'date_arrivee',
+            'date_arrivee', 'fournisseur', 'fournisseur_nom',
+            'bon_commande', 'bon_commande_reference',
         ]
-        read_only_fields = ['date_arrivee']
+        read_only_fields = ['date_arrivee', 'fournisseur', 'bon_commande']
 
     def validate_quai(self, value):
         request = self.context.get('request')

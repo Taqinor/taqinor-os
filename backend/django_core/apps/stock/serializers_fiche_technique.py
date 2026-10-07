@@ -5,6 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
+from core.serializers import CompanyScopedRelationsMixin
 
 # Import DIRECT du module du modèle (pas la façade ``.models``) : sans cycle
 # (``models_fiche_technique`` n'importe rien de stock), et c'est ce que lit
@@ -15,6 +16,7 @@ from .models_fiche_technique import FicheTechnique
 
 
 class FicheTechniqueSerializer(AttachmentSerializerMixin,
+                               CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """DC35 — datasheet rattachée à un produit. Expose en LECTURE quelques
     champs du produit (marque/garantie/nom) pour éviter au front de re-saisir
