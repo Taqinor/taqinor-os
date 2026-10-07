@@ -134,7 +134,7 @@ def commercial_dashboard(request):
             .filter(lead=lead, kind=LeadActivity.Kind.MODIFICATION, field='stage')
             .order_by('created_at')
         )
-        events = [(lead.date_creation, 'NEW')]
+        events = [(lead.date_creation, stage_mod.NEW)]
         for ch in changes:
             try:
                 key = next(

@@ -36,13 +36,15 @@ def _co_filter(user):
 # (probabilité PAR lead à partir de ses features), et ne retombe sur cette table
 # d'étape que si les features sont absentes (dégradation propre). La table de
 # base du scorer reproduit ces mêmes poids, donc le repli est identique 1:1.
+# AANA44 — clés lues dans `apps.crm.stages` (STAGES.py, règle #2), jamais en
+# littéral.
 _STAGE_WEIGHTS = {
-    'NEW': Decimal('0.10'),
-    'CONTACTED': Decimal('0.20'),
-    'QUOTE_SENT': Decimal('0.40'),
-    'FOLLOW_UP': Decimal('0.60'),
-    'SIGNED': Decimal('1.00'),
-    'COLD': Decimal('0.05'),
+    stage_mod.NEW: Decimal('0.10'),
+    stage_mod.CONTACTED: Decimal('0.20'),
+    stage_mod.QUOTE_SENT: Decimal('0.40'),
+    stage_mod.FOLLOW_UP: Decimal('0.60'),
+    stage_mod.SIGNED: Decimal('1.00'),
+    stage_mod.COLD: Decimal('0.05'),
 }
 
 
@@ -215,7 +217,8 @@ def pipeline(request):
     ]
 
     # ── Gains / pertes ───────────────────────────────────────────────────
-    gagnes = [le for le in leads if le.stage == 'SIGNED' and not le.perdu]
+    gagnes = [le for le in leads
+              if le.stage == stage_mod.SIGNED and not le.perdu]
     perdus = [le for le in leads if le.perdu]
     perte_par_motif = {}
     for le in perdus:
@@ -269,7 +272,7 @@ def funnel_velocity(request):
             .order_by('created_at')
         )
         # Ajouter l'entrée depuis la création (étape initiale = NEW)
-        events = [(lead.date_creation, 'NEW')]
+        events = [(lead.date_creation, stage_mod.NEW)]
         for ch in changes:
             try:
                 # Retrouver la clé depuis le label
