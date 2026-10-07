@@ -184,8 +184,9 @@ class ComparerTest(BaseVariantes):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         # ACAL7 (M0) a posé les colonnes de fraîcheur avant leurs
         # producteurs : chaque tâche nommée sert sa clé et retire l'entrée.
-        en_attente = {'lignes[].simulation_perimee': 'ACAL111',
-                      'lignes[].source_mesures': 'ACAL112'}
+        # ACAL111 (simulation_perimee) et ACAL112 (source_mesures) sont
+        # livrées : plus rien en attente.
+        en_attente = {}
         affirmer_non_servies(self, reponse.data, en_attente)
         exemple = sans(CONTRAT['exemple'], en_attente)
         self.assertEqual(set(reponse.data), set(exemple))
