@@ -33,7 +33,7 @@ class _Base(TestCase):
             nom=f'{self.slug}-co', slug=f'{self.slug}-co')
         role = Role.objects.create(
             company=self.company, nom=f'r-{self.slug}',
-            permissions=['stock_voir', 'stock_modifier'])
+            permissions=['stock_voir', 'stock_modifier', 'prix_achat_voir'])
         self.user = User.objects.create_user(
             username=f'{self.slug}-user', password='x', company=self.company,
             role=role, role_legacy='responsable')

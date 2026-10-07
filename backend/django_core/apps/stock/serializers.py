@@ -266,7 +266,7 @@ def valider_nom_sans_sku(company, nom, sku, archive, instance=None):
     if instance is not None and instance.pk:
         qs = qs.exclude(pk=instance.pk)
     if qs.exists():
-        raise serializers.ValidationError({'nom': MSG_NOM_DOUBLON})
+        raise serializers.ValidationError({'nom': [MSG_NOM_DOUBLON]})
 
 
 def _company_du_contexte(serializer):

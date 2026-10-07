@@ -156,7 +156,8 @@ class PrixAchatFacturesTests(TestCase):
         rep = _api(self.commercial).get(
             '/api/django/stock/paiements-fournisseur/')
         self.assertEqual(rep.status_code, 403)
-        self.assertNotIn(b'montant', rep.content)
+        # Le 403 ne porte aucune donnée d'achat (le message cite le mot).
+        self.assertNotIn(b'"montant', rep.content)
 
     def test_administrateur_inchange(self):
         api = _api(self.admin)

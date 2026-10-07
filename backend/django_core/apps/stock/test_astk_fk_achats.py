@@ -294,8 +294,9 @@ class FkAchatsTests(TestCase):
         self._post_compare('/api/django/stock/contacts-fournisseur/',
                            {'nom': 'Contact'}, 'fournisseur', self.fb.pk)
         self.assertFalse(ContactFournisseur.objects.exists())
-        # Fournisseur B toujours supprimable (aucune ligne de A ne le tient).
-        self.fb.delete()
+        # Aucune ligne de A ne tient le fournisseur B.
+        self.assertFalse(
+            ContactFournisseur.objects.filter(fournisseur=self.fb).exists())
 
     def test_document_conformite_fournisseur_etranger(self):
         self._serializer_compare(S.DocumentConformiteFournisseurSerializer, {
