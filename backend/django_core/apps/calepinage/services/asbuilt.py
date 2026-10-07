@@ -47,6 +47,15 @@ MENTION_SANS_PREVU = (
     "Ce pan n'existe pas dans la conception prévue : il n'y a rien à quoi "
     "comparer le posé."
 )
+#: ACAL267 — un relevé dont le pan n'existe plus (supprimé du document) :
+#: GARDÉ, hors totaux, retirable (DELETE pose-reelle/<zone_id>/).
+MENTION_ORPHELIN = (
+    "Ce pan n'existe plus dans la conception : la ligne est conservée, hors "
+    "totaux."
+)
+#: ACAL267 — le refus d'un DELETE sur un pan sans relevé (contrat
+#: ``delete_pose_reelle.refus_404``).
+MESSAGE_AUCUNE_POSE = "Aucune pose réelle n'est saisie pour ce pan."
 #: ACAL248 — le prévu FIGÉ au relevé diffère de la conception d'aujourd'hui.
 MENTION_CONCEPTION_MODIFIEE = 'conception modifiée depuis le relevé'
 
@@ -63,6 +72,8 @@ __all__ = [
     # CALX366 — la porte HTTP ``pose-reelle/``.
     'PREFIXE_VERSION_POSE', 'PoseRefusee', 'etat_pose_reelle',
     'enregistrer_pose', 'version_depuis_ecarts',
+    # ACAL267 — retirer le relevé d'un pan (ligne orpheline comprise).
+    'MENTION_ORPHELIN', 'MESSAGE_AUCUNE_POSE', 'supprimer_pose',
 ]
 
 
@@ -85,21 +96,46 @@ def comparer(prevus, saisies):
     un pan SAISI qui n'existe pas au prévu sort avec ``prevu = None`` — les
     deux cas sont VISIBLES, aucun n'est silencieusement écarté.
     """
+    # ACAL267 — la clé d'une ligne est l'identifiant STABLE du pan
+    # (``zone_id``), à défaut son ancien libellé : deux pans de même libellé
+    # sont deux lignes, et un pan renommé garde son relevé.
+    # Une saisie SANS ``zone_id`` (forme historique : le libellé seul) se
+    # rattache au pan prévu de même libellé, s'il est UNIQUE.
+    par_libelle = {}
+    for prevu in prevus or []:
+        libelle = str((prevu or {}).get('libelle') or prevu.get('pan') or '')
+        par_libelle.setdefault(libelle, []).append(_cle_de_ligne(prevu))
     par_pan = {}
     for saisie in saisies or []:
-        pan = str((saisie or {}).get('pan') or '').strip()
-        if pan:
-            par_pan[pan] = saisie
+        cle = _cle_de_ligne(saisie)
+        if not (saisie or {}).get('zone_id'):
+            memes = par_libelle.get(cle) or []
+            cle = memes[0] if len(memes) == 1 else cle
+        if cle:
+            par_pan[cle] = saisie
 
     lignes, vus = [], set()
     for prevu in prevus or []:
-        pan = str((prevu or {}).get('pan') or '').strip()
-        vus.add(pan)
-        lignes.append(_ligne(pan, prevu.get('modules'), par_pan.get(pan)))
-    for pan, saisie in par_pan.items():
-        if pan not in vus:
-            lignes.append(_ligne(pan, None, saisie))
+        cle = _cle_de_ligne(prevu)
+        vus.add(cle)
+        libelle = str((prevu or {}).get('libelle') or prevu.get('pan')
+                      or cle)
+        lignes.append(_ligne(cle, prevu.get('modules'), par_pan.get(cle),
+                             libelle=libelle))
+    for cle, saisie in par_pan.items():
+        if cle not in vus:
+            # Un relevé dont le pan n'existe plus : ORPHELIN, hors totaux.
+            lignes.append(_ligne(
+                cle, None, saisie, orphelin=True,
+                libelle=str(saisie.get('libelle') or saisie.get('pan')
+                            or cle)))
     return lignes
+
+
+def _cle_de_ligne(element):
+    """La clé d'un prévu / d'une saisie : ``zone_id``, sinon ``pan``."""
+    element = element or {}
+    return str(element.get('zone_id') or element.get('pan') or '').strip()
 
 
 def _entier(valeur):
@@ -110,28 +146,38 @@ def _entier(valeur):
     return None
 
 
-def _ligne(pan, modules_prevus, saisie):
+def _ligne(pan, modules_prevus, saisie, *, libelle=None, orphelin=False):
     actuel = _entier(modules_prevus)
     fige = _entier((saisie or {}).get('modules_prevus'))
     prevu_fige = fige is not None
-    # Un pan qui n'existe plus au prévu garde « hors prévu » : son prévu figé
-    # ne fabrique pas un écart contre une conception où il n'est plus.
-    prevu = fige if (prevu_fige and actuel is not None) else actuel
+    # Un pan qui n'existe plus au prévu (ORPHELIN) garde son prévu figé pour
+    # mémoire, mais aucun écart n'est calculé contre une conception où il
+    # n'est plus.
+    prevu = fige if (prevu_fige and (actuel is not None or orphelin)) \
+        else actuel
     pose = _entier((saisie or {}).get('modules_poses'))
-    if pose is None:
+    if orphelin:
+        mention = MENTION_ORPHELIN
+    elif pose is None:
         mention = MENTION_SANS_SAISIE
     elif prevu is None:
         mention = MENTION_SANS_PREVU
     else:
         mention = ''
+    libelle = libelle or pan
     return {
-        'pan': pan,
+        # ACAL267 — ``pan`` est le libellé AFFICHÉ du pan vivant ; pour un
+        # orphelin, son identifiant (le libellé figé reste dans ``libelle``).
+        'pan': pan if orphelin else libelle,
+        'zone_id': pan,
+        'libelle': libelle,
+        'orphelin': bool(orphelin),
         'prevu': prevu,
         'pose': pose,
         # L'écart n'existe QUE quand les deux nombres sont des saisies
         # réelles — jamais une différence avec un zéro supposé.
         'ecart': (pose - prevu if pose is not None and prevu is not None
-                  else None),
+                  and not orphelin else None),
         'ecarts_position': ((saisie or {}).get('ecarts_position') or ''),
         'releve_le': (saisie or {}).get('releve_le'),
         'releve_par': (saisie or {}).get('releve_par'),
@@ -184,9 +230,16 @@ def pans_prevus(calepinage, *, conception=None):
     # compte par pan que la présentation, le journal et les exports.
     from .mesures import mesures_du_document
 
+    from .production import cles_des_pans
+
     document, source = (conception if conception is not None
                         else conception_du_chantier(calepinage))
-    return mesures_du_document(document)['pans'], source
+    # ACAL267 — chaque pan porte son identifiant STABLE (``zone_id``) à côté
+    # de son libellé (``pan``) : la pose réelle s'y rattache.
+    pans = [dict(pan, zone_id=cle, libelle=pan['pan'])
+            for pan, cle in zip(mesures_du_document(document)['pans'],
+                                cles_des_pans(document))]
+    return pans, source
 
 
 def ecarts_du_calepinage(calepinage, *, conception=None):
@@ -200,7 +253,8 @@ def ecarts_du_calepinage(calepinage, *, conception=None):
 
     prevus, source = pans_prevus(calepinage, conception=conception)
     saisies = [
-        {'pan': pose.pan, 'modules_poses': pose.modules_poses,
+        {'pan': pose.pan, 'zone_id': pose.zone_id or pose.pan,
+         'libelle': pose.pan, 'modules_poses': pose.modules_poses,
          'ecarts_position': pose.ecarts_position, 'releve_le': pose.releve_le,
          'releve_par': _auteur_publie(pose.releve_par),
          # ACAL248 — le prévu FIGÉ au relevé (``None`` : relevé ancien).
@@ -208,7 +262,8 @@ def ecarts_du_calepinage(calepinage, *, conception=None):
         for pose in PoseReelle.objects.filter(calepinage=calepinage)
         .select_related('releve_par')
     ]
-    lignes = comparer([{'pan': pan['pan'], 'modules': pan['modules']}
+    lignes = comparer([{'pan': pan['pan'], 'zone_id': pan['zone_id'],
+                        'libelle': pan['libelle'], 'modules': pan['modules']}
                        for pan in prevus], saisies)
     return _agreger(calepinage.pk, source, lignes)
 
@@ -228,14 +283,17 @@ def _agreger(calepinage_id, source, lignes):
     du contrat se rejoue sans base : même ``total_pose`` à ``None`` tant que
     rien n'est relevé, même ``ecart_total`` à ``None`` sans pan comparable.
     """
-    releves = [ligne for ligne in lignes if ligne['pose'] is not None]
-    comparables = [ligne for ligne in lignes if ligne['ecart'] is not None]
+    # ACAL267 — une ligne ORPHELINE (pan supprimé) reste visible mais HORS
+    # totaux : son relevé ne se compare plus à rien.
+    vivantes = [ligne for ligne in lignes if not ligne.get('orphelin')]
+    releves = [ligne for ligne in vivantes if ligne['pose'] is not None]
+    comparables = [ligne for ligne in vivantes if ligne['ecart'] is not None]
     return {
         'calepinage': calepinage_id,
         'source_prevu': source,
         'pans': lignes,
         'pans_releves': len(releves),
-        'total_prevu': sum(ligne['prevu'] for ligne in lignes
+        'total_prevu': sum(ligne['prevu'] for ligne in vivantes
                            if ligne['prevu'] is not None),
         'total_pose': (sum(ligne['pose'] for ligne in releves)
                        if releves else None),
@@ -288,6 +346,10 @@ def _ligne_du_contrat(ligne):
                       if hasattr(ligne.get('releve_le'), 'isoformat')
                       else ligne.get('releve_le')),
         'releve_par': ligne.get('releve_par'),
+        # ACAL267 — l'identifiant STABLE du pan, son libellé et l'orphelin.
+        'zone_id': ligne.get('zone_id') or ligne['pan'],
+        'libelle': ligne.get('libelle') or ligne['pan'],
+        'orphelin': bool(ligne.get('orphelin')),
         # ACAL248 — le prévu figé au relevé, et la conception d'aujourd'hui.
         'prevu_fige': bool(ligne.get('prevu_fige')),
         'prevu_actuel': ligne.get('prevu_actuel'),
@@ -363,6 +425,28 @@ def _releve_le(brut):
     return releve_le
 
 
+def _zone_de_la_saisie(pan, pans):
+    """ACAL267 — ``(zone_id, libellé)`` désigné par ``pan`` : l'identifiant
+    STABLE d'un pan prévu, à défaut son libellé s'il est UNIQUE. ``pans`` :
+    ``[{zone_id, libelle}]`` (ou des libellés seuls, forme historique)."""
+    pans = [p if isinstance(p, dict) else {'zone_id': p, 'libelle': p}
+            for p in pans or ()]
+    for prevu in pans:
+        if prevu['zone_id'] == pan:
+            return prevu['zone_id'], prevu['libelle']
+    memes = [prevu for prevu in pans if prevu['libelle'] == pan]
+    if len(memes) == 1:
+        return memes[0]['zone_id'], memes[0]['libelle']
+    if len(memes) > 1:
+        raise PoseRefusee(
+            f"Plusieurs pans portent le libellé « {pan} » : désignez le pan "
+            f"par son identifiant ({', '.join(p['zone_id'] for p in memes)}).",
+            'pan')
+    raise PoseRefusee(
+        f"Pan inconnu du document : « {pan} ». Pans prévus : "
+        f"{', '.join(p['libelle'] for p in pans) or 'aucun'}.", 'pan')
+
+
 def _valider_saisie(donnees, pans, deja_releves=()):
     """La saisie d'UN pan, validée contre les pans PRÉVUS — PURE.
 
@@ -370,21 +454,21 @@ def _valider_saisie(donnees, pans, deja_releves=()):
     puis ``releve_le`` — un message par champ, la forme ``refus_*`` du
     contrat. ACAL245 : ``releve_le`` n'est facultative qu'en CORRECTION d'un
     pan deja releve (``deja_releves``) ; la premiere saisie reste refusee.
+    ACAL267 : ``pan`` désigne le pan par son identifiant STABLE (le libellé
+    unique reste admis) ; ``deja_releves`` porte des identifiants.
     """
     if not isinstance(donnees, dict):
         raise PoseRefusee("Le corps attendu est la saisie d'un pan : "
                           "{pan, modules_poses, ecarts_position, releve_le}.",
                           'pan')
     pan = str(donnees.get('pan') or '').strip()
-    if pan not in pans:
-        raise PoseRefusee(
-            f"Pan inconnu du document : « {pan} ». Pans prévus : "
-            f"{', '.join(pans) or 'aucun'}.", 'pan')
+    zone_id, libelle = _zone_de_la_saisie(pan, pans)
     return {
-        'pan': pan,
+        'pan': libelle,
+        'zone_id': zone_id,
         'modules_poses': _modules_poses(donnees.get('modules_poses')),
         'ecarts_position': str(donnees.get('ecarts_position') or ''),
-        'releve_le': (None if pan in deja_releves
+        'releve_le': (None if zone_id in deja_releves
                       and not str(donnees.get('releve_le') or '').strip()
                       else _releve_le(donnees.get('releve_le'))),
     }
@@ -393,7 +477,7 @@ def _valider_saisie(donnees, pans, deja_releves=()):
 def enregistrer_pose(calepinage, donnees, *, user=None):
     """POST — enregistre (ou met à jour) la pose réelle d'UN pan.
 
-    Un seul relevé par pan (contrainte ``uniq_pose_reelle_par_pan``) : une
+    Un seul relevé par pan (contrainte ``uniq_pose_reelle_par_zone``) : une
     seconde saisie du même pan le CORRIGE, sous verrou de ligne. La société
     et l'auteur viennent du serveur ; le geste est journalisé.
 
@@ -409,18 +493,24 @@ def enregistrer_pose(calepinage, donnees, *, user=None):
 
     prevus, source = pans_prevus(calepinage)
     deja = set(PoseReelle.objects.filter(calepinage=calepinage)
-               .values_list('pan', flat=True))
-    saisie = _valider_saisie(donnees, [pan['pan'] for pan in prevus], deja)
+               .values_list('zone_id', flat=True))
+    saisie = _valider_saisie(
+        donnees, [{'zone_id': pan['zone_id'], 'libelle': pan['libelle']}
+                  for pan in prevus], deja)
     prevu_du_pan = next((pan['modules'] for pan in prevus
-                         if pan['pan'] == saisie['pan']), None)
+                         if pan['zone_id'] == saisie['zone_id']), None)
     auteur = user if getattr(user, 'pk', None) else None
     with transaction.atomic():
         pose = (PoseReelle.objects.select_for_update()
-                .filter(calepinage=calepinage, pan=saisie['pan']).first())
+                .filter(calepinage=calepinage, zone_id=saisie['zone_id'])
+                .first())
         ancien = pose.modules_poses if pose is not None else None
         if pose is None:
             pose = PoseReelle(company=calepinage.company,
-                              calepinage=calepinage, pan=saisie['pan'])
+                              calepinage=calepinage,
+                              zone_id=saisie['zone_id'])
+        # Le libellé AFFICHÉ (figé pour un pan qui disparaîtrait).
+        pose.pan = saisie['pan']
         if ancien is None or ancien != saisie['modules_poses']:
             # ACAL248 — le prévu est FIGÉ à la saisie (et re-figé quand le
             # nombre posé change) : retoucher le toit après coup ne réécrit
@@ -448,6 +538,31 @@ def enregistrer_pose(calepinage, donnees, *, user=None):
     return pose
 
 
+def supprimer_pose(calepinage, zone_id, *, user=None):
+    """ACAL267 — DELETE ``pose-reelle/<zone_id>/`` : retire le relevé d'un pan
+    (ligne ORPHELINE comprise), geste journalisé.
+
+    Raises:
+        PoseRefusee: aucun relevé pour ce pan (champ ``detail`` → 404).
+    """
+    from django.db import transaction
+
+    from ..models import PoseReelle
+    from .journal import journaliser_pose_reelle
+
+    zone_id = str(zone_id or '').strip()
+    with transaction.atomic():
+        pose = (PoseReelle.objects.select_for_update()
+                .filter(calepinage=calepinage, zone_id=zone_id).first())
+        if pose is None:
+            raise PoseRefusee(MESSAGE_AUCUNE_POSE, 'detail')
+        ancien, libelle = pose.modules_poses, pose.pan
+        pose.delete()
+    journaliser_pose_reelle(calepinage, pan=libelle, ancien=ancien,
+                            nouveau=None,
+                            user=user if getattr(user, 'pk', None) else None)
+
+
 def _libelle_version(ecarts):
     """Le libellé qui NOMME les pans en écart — PUR, borné à 200 caractères.
 
@@ -457,7 +572,10 @@ def _libelle_version(ecarts):
     """
     en_ecart, non_releves = [], []
     for ligne in ecarts['pans']:
-        if ligne['pose'] is None:
+        if ligne.get('orphelin'):
+            en_ecart.append(f"{ligne.get('libelle') or ligne['pan']} "
+                            "(hors prévu)")
+        elif ligne['pose'] is None:
             non_releves.append(ligne['pan'])
         elif ligne['prevu'] is None:
             en_ecart.append(f"{ligne['pan']} (hors prévu)")

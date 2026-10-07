@@ -42,43 +42,40 @@ CONTRAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_asbuilt_ecarts.json')
     .read_text(encoding='utf-8'))
 
-#: ACAL16 (contrat as-built v2) a posé ces champs de ligne, et une ligne
-#: ORPHELINE (pan supprimé, hors totaux), avant leur producteur : ACAL267
-#: les sert et retire ce tableau (``SERVI`` redevient ``CONTRAT``).
-#: ``releve_le`` / ``releve_par`` sont servis depuis ACAL245 ; ``prevu_fige``,
-#: ``prevu_actuel`` et ``conception_modifiee`` depuis ACAL248.
-EN_ATTENTE_ACAL267 = ('zone_id', 'libelle', 'orphelin')
-
-
-def _sans_v2(etat):
-    """Un état du contrat v2 ramené à ce que le serveur sert aujourd'hui."""
-    servi = copy.deepcopy(etat)
-    servi['lignes'] = [
-        {cle: valeur for cle, valeur in ligne.items()
-         if cle not in EN_ATTENTE_ACAL267}
-        for ligne in servi['lignes'] if not ligne.get('orphelin')]
-    return servi
-
-
-SERVI = {etat: _sans_v2(CONTRAT[etat])
+#: Le contrat as-built v2 (ACAL16) est SERVI EN ENTIER : ``releve_le`` /
+#: ``releve_par`` depuis ACAL245, ``prevu_fige`` / ``prevu_actuel`` /
+#: ``conception_modifiee`` depuis ACAL248, ``zone_id`` / ``libelle`` /
+#: ``orphelin`` (et la ligne ORPHELINE hors totaux) depuis ACAL267.
+SERVI = {etat: copy.deepcopy(CONTRAT[etat])
          for etat in ('exemple', 'exemple_version_creee', 'exemple_vide')}
 
-PANS = ['PAN-A', 'PAN-B', 'PAN-C']
-PREVUS = [{'pan': 'PAN-A', 'modules': 8}, {'pan': 'PAN-B', 'modules': 4},
-          {'pan': 'PAN-C', 'modules': 2}]
+#: Les pans prévus : identifiant STABLE (``zone_id``) et libellé affiché.
+PANS = [{'zone_id': 'z1', 'libelle': 'PAN-A'},
+        {'zone_id': 'z2', 'libelle': 'PAN-B'},
+        {'zone_id': 'z3', 'libelle': 'PAN-C'}]
+PREVUS = [{'pan': 'PAN-A', 'zone_id': 'z1', 'libelle': 'PAN-A', 'modules': 8},
+          {'pan': 'PAN-B', 'zone_id': 'z2', 'libelle': 'PAN-B', 'modules': 4},
+          {'pan': 'PAN-C', 'zone_id': 'z3', 'libelle': 'PAN-C', 'modules': 2}]
 #: ACAL248 — l'``exemple`` du contrat : PAN-B a été RETOUCHÉ à 5 modules
 #: après son relevé (prévu figé 4) — ``conception_modifiee`` sur cette ligne.
 PREVUS_RETOUCHES = [dict(pan, modules=5) if pan['pan'] == 'PAN-B' else pan
                     for pan in PREVUS]
 SAISIES = [
-    {'pan': 'PAN-A', 'modules_poses': 8, 'ecarts_position': '',
-     'releve_le': '2026-09-22', 'modules_prevus': 8,
+    {'pan': 'PAN-A', 'zone_id': 'z1', 'modules_poses': 8,
+     'ecarts_position': '', 'releve_le': '2026-09-22', 'modules_prevus': 8,
      'releve_par': CONTRAT['exemple']['lignes'][0]['releve_par']},
-    {'pan': 'PAN-B', 'modules_poses': 3,
+    {'pan': 'PAN-B', 'zone_id': 'z2', 'modules_poses': 3,
      'ecarts_position': CONTRAT['corps_saisie']['ecarts_position'],
      'releve_le': '2026-09-22', 'modules_prevus': 4,
      'releve_par': CONTRAT['exemple']['lignes'][1]['releve_par']},
 ]
+#: ACAL267 — l'``exemple`` porte aussi un relevé dont le pan a été SUPPRIMÉ
+#: (``z9``, libellé figé « Ancien pan supprimé ») : orphelin, hors totaux.
+ORPHELIN = {'pan': CONTRAT['exemple']['lignes'][3]['libelle'],
+            'zone_id': 'z9', 'libelle': CONTRAT['exemple']['lignes'][3]['libelle'],
+            'modules_poses': 2, 'ecarts_position': '',
+            'releve_le': '2026-09-22', 'modules_prevus': 0,
+            'releve_par': CONTRAT['exemple']['lignes'][3]['releve_par']}
 
 
 def ecarts(prevus=PREVUS, saisies=SAISIES, source=service.SOURCE_VARIANTE):
@@ -91,7 +88,9 @@ class ContratCommitteTest(SimpleTestCase):
 
     def test_exemple(self):
         self.assertEqual(
-            service._forme_contrat(ecarts(prevus=PREVUS_RETOUCHES), None),
+            service._forme_contrat(ecarts(prevus=PREVUS_RETOUCHES,
+                                          saisies=SAISIES + [ORPHELIN]),
+                                   None),
             SERVI['exemple'])
 
     def test_exemple_version_creee(self):
@@ -121,7 +120,7 @@ class ContratCommitteTest(SimpleTestCase):
     def test_corps_saisie_du_contrat_accepte(self):
         saisie = service._valider_saisie(CONTRAT['corps_saisie'], PANS)
         self.assertEqual(saisie, {
-            'pan': 'PAN-B', 'modules_poses': 3,
+            'pan': 'PAN-B', 'zone_id': 'z2', 'modules_poses': 3,
             'ecarts_position': CONTRAT['corps_saisie']['ecarts_position'],
             'releve_le': datetime.date(2026, 9, 22)})
 
@@ -221,7 +220,9 @@ class VersionDepuisEcartsTest(SimpleTestCase):
         calepinage = self.calepinage()
         gelee = SimpleNamespace(pk=31, libelle='Pose réelle — …')
         with mock.patch.object(service, 'ecarts_du_calepinage',
-                               return_value=ecarts(prevus=PREVUS_RETOUCHES)), \
+                               return_value=ecarts(
+                                   prevus=PREVUS_RETOUCHES,
+                                   saisies=SAISIES + [ORPHELIN])), \
                 mock.patch.object(service, '_derniere_version_pose',
                                   return_value=None), \
                 mock.patch.object(versions_service, 'enregistrer_version',
@@ -248,7 +249,9 @@ class VersionDepuisEcartsTest(SimpleTestCase):
                 'total_pose': 11, 'lignes': SERVI['exemple']['lignes']}
         precedente = SimpleNamespace(pk=31, resultat={'asbuilt': bloc})
         with mock.patch.object(service, 'ecarts_du_calepinage',
-                               return_value=ecarts(prevus=PREVUS_RETOUCHES)), \
+                               return_value=ecarts(
+                                   prevus=PREVUS_RETOUCHES,
+                                   saisies=SAISIES + [ORPHELIN])), \
                 mock.patch.object(service, '_derniere_version_pose',
                                   return_value=precedente), \
                 mock.patch.object(versions_service,

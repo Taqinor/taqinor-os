@@ -1322,9 +1322,14 @@ class PoseReelle(TenantModel):
         related_name='poses_reelles',
         verbose_name='Calepinage',
     )
-    #: Le LIBELLÉ du pan, tel que le document le nomme (``label`` ou ``id``) —
-    #: jamais un index de tableau, qui changerait au premier pan redessiné.
+    #: Le LIBELLÉ du pan au moment de la saisie (``label`` ou ``id``) — figé
+    #: pour l'AFFICHAGE d'une ligne dont le pan a disparu (ACAL267).
     pan = models.CharField('Pan', max_length=120)
+    #: ACAL267 — l'identifiant STABLE du pan (``production.cle_de_pan`` :
+    #: ``zone.id``, ``PAN-<rang>`` sans id) : renommer le pan ne détache plus
+    #: le relevé ; c'est LA clé d'unicité (un relevé par pan).
+    zone_id = models.CharField('Identifiant du pan', max_length=120,
+                               blank=True, default='')
     modules_poses = models.PositiveIntegerField('Modules réellement posés')
     ecarts_position = models.TextField("Écarts de position (texte libre)",
                                        blank=True, default='')
@@ -1352,10 +1357,12 @@ class PoseReelle(TenantModel):
         ordering = ['pan', 'id']
         constraints = [
             # Un seul relevé par pan : deux comptes posés pour un même pan,
-            # c'est un écart qui dépend de la ligne qu'on regarde.
+            # c'est un écart qui dépend de la ligne qu'on regarde. ACAL267 —
+            # le pan est son identifiant STABLE, plus son libellé (deux pans
+            # de même libellé sont deux relevés indépendants).
             models.UniqueConstraint(
-                fields=['calepinage', 'pan'],
-                name='uniq_pose_reelle_par_pan'),
+                fields=['calepinage', 'zone_id'],
+                name='uniq_pose_reelle_par_zone'),
         ]
         indexes = [
             models.Index(fields=['company', 'calepinage'],
