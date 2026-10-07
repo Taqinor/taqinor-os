@@ -42,7 +42,8 @@ export default function CoffresPage() {
       const [c, cl, u] = await Promise.all([
         // ADOC31 — toutes les pages, jamais la seule première.
         toutesLesPages(gedApi.getCoffres),
-        crmApi.getClients().catch(() => ({ data: [] })),
+        // ALEA33 — idem pour les clients (jamais les 50 premiers seulement).
+        toutesLesPages(crmApi.getClients).catch(() => ({ data: [] })),
         gedApi.getUsers().catch(() => ({ data: [] })),
       ])
       setCoffres(unpage(c.data))

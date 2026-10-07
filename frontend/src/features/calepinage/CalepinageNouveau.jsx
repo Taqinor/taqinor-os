@@ -218,7 +218,7 @@ export default function CalepinageNouveau() {
   /* Recherches SERVEUR. On conserve l'objet complet renvoyé pour l'aperçu du
      contexte : une seconde requête de détail ne dirait rien de plus. */
   const chercherLeads = async (q) => {
-    const res = await crmApi.getLeads({ q, page_size: 20 })
+    const res = await crmApi.getLeads({ search: q, page_size: 20 })
     const lignes = unwrapList(res)
     refLead.current = lignes
     return lignes.map((l) => ({

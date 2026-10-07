@@ -15,6 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .models import CustomUser, Company, UserSession
 from .serializers import (
+    MeSerializer,
     RegisterSerializer,
     UserSerializer,
     CompanySerializer,
@@ -653,7 +654,9 @@ class RegisterCompanyView(generics.GenericAPIView):
 # ── Profil courant ─────────────────────────────────────────────
 class MeView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = UserSerializer
+    # ALEA31 — MeSerializer = UserSerializer + la route d'accueil mobile
+    # suggérée par le serveur (seule table, `default_mobile_home_route`).
+    serializer_class = MeSerializer
 
     def get_object(self):
         return self.request.user

@@ -5478,7 +5478,7 @@ def portefeuille_commercial(company, user, now=None):
     return out
 
 
-def comptes_dormants(company, seuil_jours=90, now=None):
+def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
     """NTCRM14 — Clients avec au moins un devis/facture passé mais AUCUNE
     activité (dernier devis créé, dernière facture émise, dernier
     `LeadActivity`, dernier `PointContact` sur un lead lié) depuis plus de
@@ -5488,7 +5488,13 @@ def comptes_dormants(company, seuil_jours=90, now=None):
     cross-app respectée — jamais `apps.ventes.models`). Un client sans AUCUN
     devis/facture n'est jamais considéré dormant (rien à réactiver). Renvoie
     une liste de dicts `{'client', 'derniere_activite', 'jours_inactivite'}`
-    triée par inactivité décroissante. Lecture seule."""
+    triée par inactivité décroissante. Lecture seule.
+
+    ALEA27 — ``clients`` (queryset BORNÉ, optionnel) : l'action HTTP
+    ``clients/dormants/`` transmet ``ClientViewSet.get_queryset()`` (société +
+    portée équipe) pour que rien de hors portée ne soit rendu. ``None`` = la
+    société entière, voulu pour la commande système
+    ``detecter_comptes_dormants`` (balayage sans utilisateur)."""
     from django.utils import timezone
 
     from apps.ventes.selectors import (
@@ -5502,8 +5508,9 @@ def comptes_dormants(company, seuil_jours=90, now=None):
     now = now or timezone.now()
     today = now.date() if hasattr(now, 'date') else now
 
+    base = clients if clients is not None else Client.objects.all()
     out = []
-    for client in Client.objects.filter(company=company):
+    for client in base.filter(company=company):
         devis_list = devis_du_client_portail(company, client.id, limit=1)
         factures_list = factures_du_client_portail(company, client.id, limit=1)
         if not devis_list and not factures_list:

@@ -1,7 +1,13 @@
 from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema_field
+from django.db.models import Q
 from rest_framework import serializers
+
+from core.mixins import SameCompanyFKSerializerMixin
+from core.serializers import (
+    CompanyScopedPrimaryKeyRelatedField, request_company_id,
+)
 from .models import (
     Devis, LigneDevis, BonCommande, DevisActivity, DevisPreset,
     ListePrix, LignePrixListe, RegleListePrix,
@@ -50,8 +56,38 @@ def _fallback_taux_tva(company, designation):
     return Decimal('20')
 
 
-class LigneDevisSerializer(serializers.ModelSerializer):
+class _ProduitSocieteOuCatalogueGlobalField(CompanyScopedPrimaryKeyRelatedField):
+    """ASEC22 — ``stock.Produit`` borné à la société de la requête OU au
+    catalogue GLOBAL (``company IS NULL``).
+
+    PV15 — le catalogue global est quotable : c'est la portée exacte que le
+    jumeau ``domain/lignes.py`` (``replace-lines``) et ``services._pick_product``
+    retiennent. Le borné strict de ``CompanyScopedPrimaryKeyRelatedField``
+    refuserait ces produits sur une simple modification de ligne. Le produit
+    d'une AUTRE société reste refusé comme un id absent (« objet inexistant »,
+    aucun oracle d'existence inter-sociétés — ACAL298)."""
+
+    def get_queryset(self):
+        queryset = serializers.PrimaryKeyRelatedField.get_queryset(self)
+        if queryset is None:
+            return queryset
+        company_id = request_company_id(self.context)
+        if company_id is None:
+            return queryset
+        return queryset.filter(
+            Q(company_id=company_id) | Q(company__isnull=True))
+
+
+class LigneDevisSerializer(SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
     """La ligne d'un devis, telle que l'écran la lit et l'écrit.
+
+    ASEC22 (C-ASEC-005 site b) — ``produit`` et ``lot`` sont BORNÉS à la
+    société de la requête : l'id d'une autre société (ou un id absent) donne
+    400 sur le champ, sans écriture. ``produit`` admet en plus le catalogue
+    global (``_ProduitSocieteOuCatalogueGlobalField``, parité avec le jumeau
+    ``domain/lignes.py``). ``devis`` reste gardé par la vue (``_check_tenant``,
+    message « Devis inconnu. » inchangé).
 
     QJR59 / décision fondateur D12 — ``quantite_manuelle`` et ``prix_manuel``
     voyagent des DEUX côtés (``fields = '__all__'``) : une quantité ou un prix
@@ -72,9 +108,25 @@ class LigneDevisSerializer(serializers.ModelSerializer):
         source='produit.tva', max_digits=5, decimal_places=2,
         read_only=True, allow_null=True, default=None)
 
+    same_company_fields = ('produit', 'lot')
+    #: Sous-ensemble de ``same_company_fields`` qui admet aussi le catalogue
+    #: global (``company IS NULL``) — PV15.
+    champs_catalogue_global = ('produit',)
+
     class Meta:
         model = LigneDevis
         fields = '__all__'
+
+    def get_fields(self):
+        fields = super().get_fields()
+        for nom in self.champs_catalogue_global:
+            champ = fields.get(nom)
+            # Seul un champ DÉJÀ borné par ``same_company_fields`` est élargi
+            # au catalogue global : retirer le nom de ``same_company_fields``
+            # retire la borne entière (garde du test ASEC22).
+            if type(champ) is CompanyScopedPrimaryKeyRelatedField:
+                champ.__class__ = _ProduitSocieteOuCatalogueGlobalField
+        return fields
 
     def validate(self, attrs):
         """XSAL14 — cohérence produit vs section/note.
@@ -923,8 +975,25 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
                             'statut', 'date_envoi', 'date_acceptation',
                             'accepte_par_nom', 'date_refus', 'motif_refus',
                             'option_acceptee', 'superseded_by',
-                            'version_parent', 'version']
+                            'version_parent', 'version',
+                            # ASEC22 (C-ASEC-008) — la clé du toit n'est
+                            # écrite QUE par la génération du calepinage
+                            # (``roofs/<company_id>/<ref>.png``,
+                            # ``devis_calepinage.roof_image``) ; l'auteur de
+                            # la dernière modification est posé par le
+                            # serveur (``request.user``), jamais du corps.
+                            'roof_image', 'updated_by']
         extra_kwargs = {'client': {'required': False}}
+
+    def create(self, validated_data):
+        """ASEC22 — l'auteur est TOUJOURS ``request.user`` (le corps ne
+        choisit pas ``updated_by`` : lecture seule). En mise à jour,
+        ``DevisViewSet.perform_update`` le repose après le geste (VX98)."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and getattr(user, 'is_authenticated', False):
+            validated_data['updated_by'] = user
+        return super().create(validated_data)
 
 
 class DevisActivitySerializer(serializers.ModelSerializer):
@@ -981,8 +1050,16 @@ class LignePrixListeSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
-class RegleListePrixSerializer(serializers.ModelSerializer):
-    """XSAL2 — règle de prix / palier de quantité."""
+class RegleListePrixSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
+    """XSAL2 — règle de prix / palier de quantité.
+
+    ASEC22 — ``produit`` borné à la société de la requête (parité avec la
+    sœur ``ListePrixViewSet.lignes``, CRX18, ``get_produit_scoped``) : l'id
+    d'une autre société ou un id absent → 400 sur ``produit``. Exige le
+    ``request`` dans le contexte (``ListePrixViewSet.regles`` le passe)."""
+    same_company_fields = ('produit',)
+
     class Meta:
         model = RegleListePrix
         fields = [

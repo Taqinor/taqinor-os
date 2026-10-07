@@ -1,0 +1,59 @@
+{
+  "endpoint": "POST /api/django/ventes/proposal/<str:token>/otp-lecture/verifier/",
+  "pourquoi": "ASEC1 (PACT10, C-ASEC-025, D-ASEC-3) — contrat de la preuve OTP de LECTURE « par navigateur » de la proposition publique, posé SEUL avant ses deux moitiés : ASEC23 (backend : cycle_vie.validate_otp_lecture / otp_lecture_verified + public/signature_views.py + public_views.py) et ASEC53 (apps/web : proxy pages/api/proposition-otp.ts qui pose le cookie, SSR + chaque proxy qui relaie l'en-tête). Faute fermée : aujourd'hui la vérification pose un drapeau GLOBAL au jeton (clé cache `otp_lecture_verified:<token>`, TTL 1 h) — un SEUL navigateur vérifié déverrouille la lecture pour quiconque détient le lien. Demain, la vérification rend une PREUVE opaque propre au navigateur qui l'a obtenue ; seule une requête qui la porte lit/agit.",
+  "forme_serveur": "partielle",
+  "regles": {
+    "verification": "POST …/otp-lecture/verifier/ avec {\"otp_code\": \"123456\"} : succès 200 => `verifie` (true), `preuve` (chaîne opaque, ≥ 32 octets aléatoires issus de `secrets`, encodée base64 url-safe sans remplissage), `expire_dans` (secondes, = OTP_LECTURE_VERIFIED_TTL = 3600). `detail` reste présent (« Code vérifié. ») : le proxy apps/web le relaie déjà tel quel. Échec : 400 {detail: <message FR>} inchangé ; lien sans OTP de lecture : 200 {detail: 'Aucun code requis pour ce lien.'} inchangé (aucune preuve émise).",
+    "stockage_serveur": "le serveur ne garde que l'empreinte (hachage) de la preuve, rattachée au jeton du lien, TTL = expire_dans ; une preuve d'un autre lien ne vaut rien ici ; une nouvelle vérification émet une nouvelle preuve sans invalider les précédentes encore valides (plusieurs navigateurs du même client).",
+    "en_tete": "chaque requête serveur→backend concernée porte l'en-tête `X-Proposition-Preuve: <preuve>` (côté Django : request.META['HTTP_X_PROPOSITION_PREUVE']). Le navigateur ne l'envoie jamais lui-même : le SSR et les proxies apps/web le lisent dans le cookie et le relaient.",
+    "cookie": "apps/web pose, à la réponse 200 du proxy /api/proposition-otp (mode lecture + code), le cookie `tq_prop_preuve=<preuve>` : HttpOnly ; Secure ; SameSite=Lax ; Path=/ ; Max-Age=<expire_dans>. La preuve n'apparaît jamais dans le corps JSON renvoyé au navigateur ni dans une URL.",
+    "refus": "requête sans preuve valide sur un lien `otp_lecture` => 403 {\"detail\": \"otp_required\"} — forme INCHANGÉE (c'est celle que lisent déjà isOtpRequiredDetail et les pages) ; lien sans `otp_lecture` => aucune preuve exigée (comportement d'aujourd'hui).",
+    "apercu_interne": "jeton interne (via_interne) : inchangé — lit sans OTP, ne peut ni vérifier ni signer."
+  },
+  "exemple": {
+    "detail": "Code vérifié.",
+    "verifie": true,
+    "preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ",
+    "expire_dans": 3600
+  },
+  "exemple_refus_sans_preuve": {
+    "detail": "otp_required"
+  },
+  "consommateurs": {
+    "lecture_ssr": {
+      "requete": "GET /api/django/ventes/proposal/<token>/",
+      "en_tetes": {"X-Proposition-Preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ"},
+      "relaye_par": "apps/web/src/pages/proposition/[token].astro (SSR) — lit le cookie tq_prop_preuve de la requête entrante"
+    },
+    "accept": {
+      "requete": "POST /api/django/ventes/proposal/<token>/accept/",
+      "en_tetes": {"X-Proposition-Preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ"},
+      "relaye_par": "apps/web/src/pages/api/proposition-accept.ts"
+    },
+    "activer_option": {
+      "requete": "POST /api/django/ventes/proposal/<token>/activer-option/",
+      "en_tetes": {"X-Proposition-Preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ"},
+      "relaye_par": "apps/web/src/pages/api/proposition-option.ts"
+    },
+    "suivi": {
+      "requete": "GET /api/django/ventes/suivi/<token>/",
+      "en_tetes": {"X-Proposition-Preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ"},
+      "relaye_par": "apps/web/src/pages/suivi/[token].astro (SSR)"
+    },
+    "contact": {
+      "requete": "POST /api/django/ventes/proposal/<token>/contact/",
+      "en_tetes": {"X-Proposition-Preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ"},
+      "relaye_par": "apps/web/src/pages/api/proposition-contact.ts"
+    },
+    "engagement": {
+      "requete": "POST /api/django/public/proposal/<token>/engagement/",
+      "en_tetes": {"X-Proposition-Preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ"},
+      "relaye_par": "apps/web/src/pages/api/proposition-engagement.ts"
+    },
+    "taille": {
+      "requete": "GET /api/django/public/proposal/<token>/taille/<cle>/?variante=…",
+      "en_tetes": {"X-Proposition-Preuve": "q3L8xZ0vK1n2Wm7cR9tY4uB6pE5hJ0sA2dF8gH1kLzQ"},
+      "relaye_par": "apps/web/src/pages/api/proposition-taille.ts"
+    }
+  }
+}

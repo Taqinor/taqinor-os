@@ -79,19 +79,17 @@ ALLOWED_UNCONSUMED = {
     # comme les seams ci-dessus.
     "entite_created",
     "entite_deactivated",
-    # NTCRM22 — ``deal_commission_due`` : seam émis par ``apps/crm/receivers.py``
-    # quand la commission d'un ``DealEnregistre`` approuvé devient due. Destiné à
-    # un futur consommateur compta/paie (facture fournisseur, note de frais) ;
-    # ``crm`` n'écrit JAMAIS en compta lui-même (frontière inter-apps). Aucun
-    # abonné requis aujourd'hui — réservé ici plutôt qu'orphelin.
+    # ALEA3 (D-ALEA-3, 07/10/2026) — ``deal_commission_due`` n'est plus ÉMIS
+    # (``apps/crm/receivers.py`` l'envoyait sans aucun abonné : la commission
+    # due se lit par ``deals-enregistres/a-payer/``). Le seam NTCRM22 « émis
+    # sans abonné » est donc RETIRÉ ; la déclaration reste au bus uniquement
+    # parce que le golden SPL283 (``core/tests/test_events_split_golden.py``)
+    # interdit tout retrait de signal — même traitement que les seams des
+    # modules parqués ci-dessous (compta : consommateur historique visé).
+    # ``salle_vente_signal_interet`` (NTCRM27) : RETIRÉ de cette liste — ALEA3
+    # lui a donné un abonné réel (``apps/crm/receivers.py`` : notification au
+    # responsable du lead).
     "deal_commission_due",
-    # NTCRM27 — ``salle_vente_signal_interet`` : seam émis par
-    # ``apps/crm/services.detecter_signal_interet_salle_vente`` quand une salle
-    # de vente cumule ≥3 vues en 48 h sur un lead en QUOTE_SENT. La réaction
-    # métier (note NOTE au chatter du lead) est faite EN LIGNE par le service
-    # lui-même, pas par un récepteur : le signal n'existe que pour qu'une app
-    # future (notification commerciale…) réagisse sans coupler ``apps.crm``.
-    "salle_vente_signal_interet",
     # NTMKT34 — ``lead_maturite_changee`` : seam émis par
     # ``apps/marketing/services.recalculer_scores_maturite_inactivite`` (beat
     # quotidien) quand le score de maturité NTMKT18 d'un lead change. Destiné
@@ -148,6 +146,12 @@ ALLOWED_UNCONSUMED = {
     "btp_dgd_finalise",                 # publicapi (webhook sortant BTP)
     "scm_rupture_imminente_detectee",   # publicapi (webhook sortant SCM)
     "scm_cycle_sop_cloture",            # publicapi (webhook sortant SCM)
+    # ALEA3 (D-ALEA-3) — ``ao_depose``/``ao_gagne`` : émetteur UNIQUE dans le
+    # module ``ao`` PARQUÉ (backend/parked/ao) ; l'abonné crm (avance de funnel
+    # AOF13) a été retiré car il ne pouvait plus rien recevoir. Au retour du
+    # module, l'abonnement est à recâbler avec lui (hors périmètre ALEA3).
+    "ao_depose",                        # crm (avance de funnel AOF13, retiré)
+    "ao_gagne",                         # crm (avance de funnel AOF13, retiré)
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
@@ -379,7 +383,10 @@ NO_STATIC_EMITTER = {
     # désormais vérifiable et DOIT l'être (le cliquet se resserre, il ne se
     # relâche jamais) — voir la garde
     # ``core/tests/test_aud818_corbeille_emetteur.py``.
-    # ``ao_depose`` / ``ao_gagne`` (AOF13) : émetteur RÉEL et unique
+    # ``ao_depose`` / ``ao_gagne`` (AOF13) — ALEA3 : le module ``ao`` est
+    # PARQUÉ (``backend/parked/ao``, hors du scan ``apps/``) et l'abonné crm a
+    # été retiré ; la réserve reste VRAIE (aucun émetteur scanné). Historique :
+    # émetteur RÉEL et unique
     # (``apps/ao/services.py::changer_statut_ao``), mais émis par TABLE DE
     # DISPATCH — ``signal = _SIGNAUX_PAR_STATUT.get(nouveau_statut)`` puis
     # ``signal.send(...)``. Le scanner de parité ne résout que
@@ -461,6 +468,10 @@ NO_STATIC_EMITTER = {
     # mais la surface RFQ / sous-traitance qui l'appelait est sortie avec les
     # modules achats avancés. Le signal et son entrée de catalogue restent.
     "rfq_attribuee",
+    # ALEA3 (D-ALEA-3) — ``deal_commission_due`` : son seul émetteur
+    # (``apps/crm/receivers.py``) a été retiré ; le signal reste déclaré
+    # (golden SPL283) et catalogué, sans émetteur.
+    "deal_commission_due",
 }
 
 
