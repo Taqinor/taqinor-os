@@ -8,6 +8,7 @@
 // Exécuté en CI : node --test src/ui/contrast.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 // ── Conversion OKLCH -> sRGB (algorithme Björn Ottosson, référence CSS Color
 // 4). Utilisée pour les tokens du thème SOMBRE, définis en oklch() dans
@@ -107,4 +108,29 @@ test('thème sombre : --warning-text ≥ 4.5:1', () => {
     contrastRatio(DARK_WARNING, DARK_BG) >= AA_TEXT,
     `contraste ${contrastRatio(DARK_WARNING, DARK_BG).toFixed(2)}:1`,
   )
+})
+
+// ── CAD177 (LB34, axe sur la pastille « Signé » de la liste des leads) —
+// le Badge `success` écrit son texte SUR son propre fond `bg-success/12`
+// (12 % de --success sur blanc). Valeurs LUES dans tokens.css (premier bloc
+// = thème clair), le fond composé comme le navigateur le peint.
+const TOKENS_CSS = readFileSync(new URL('../design/tokens.css', import.meta.url), 'utf8')
+function tokenClair(nom) {
+  const m = TOKENS_CSS.match(new RegExp(`--${nom}:\\s*(#[0-9a-fA-F]{6})\\s*;`))
+  assert.ok(m, `--${nom} introuvable (hex) dans tokens.css`)
+  return hexToRgb(m[1])
+}
+const surBlanc = (rgb, alpha) => rgb.map((c) => Math.round(alpha * c + (1 - alpha) * 255))
+
+test('CAD177 régression : --success EN TEXTE sur sa pastille success/12 sous AA', () => {
+  const succes = tokenClair('success')
+  assert.ok(contrastRatio(succes, surBlanc(succes, 0.12)) < AA_TEXT)
+})
+
+test('thème clair : --success-text sur la pastille success/12 ≥ 4.5:1 (et sur blanc)', () => {
+  const pastille = surBlanc(tokenClair('success'), 0.12)
+  const texte = tokenClair('success-text')
+  assert.ok(contrastRatio(texte, pastille) >= AA_TEXT,
+    `contraste ${contrastRatio(texte, pastille).toFixed(2)}:1`)
+  assert.ok(contrastRatio(texte, [255, 255, 255]) >= AA_TEXT)
 })
