@@ -1,0 +1,806 @@
+### note client saisie
+Générateur de Devis Solaire
+Édition — DEV-202610-0406
+Retour aux devis
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+Sans batterie seulement
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead & Client
+Lead / client du devis
+…
+Changer de client = créer un nouveau devis.
+Téléphone
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux
+*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+5,72 kWp
+Type de Structure
+Acier galvanisé
+Aluminium
+Consommation diurne (%)
+60
+%
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Estimation locale (hors ligne) — en attente du moteur horaire serveur.
+Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
+Production annuelle
+8 785
+kWh / an
+Sans batterie
+★ Recommandé
+Économies
+9 224
+estimation d'exemple
+MAD / an
+ROI
+2.3 ans
+estimation d'exemple
+retour sur invest.
+Coût
+21 300
+MAD TTC
+Économies mensuelles estimées (MAD / mois)
+Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
+Tailles Éco / Recommandé / Max
+Les tailles ne sont pas encore disponibles pour ce devis.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+Panneau Canadien Solar 715W
+HT :
+1 200 MAD
+10 560 MAD
+HT :
+9 600 MAD
+Onduleur réseau 5kW Monophasé
+HT :
+9 000 MAD
+10 800 MAD
+HT :
+9 000 MAD
+Total SANS batterie
+⭐
+21 300 MAD
+Réduction
+%
+TVA
+%
+Prix / kWc
+3 724 MAD
+/kWc
+Prix cible / kWc
+Appliquer via remise
+Marge indicative (interne)
+7 060 MAD
+(33 %)
+Modèles de devis
+Ajouter le BOQ électrique
+Reporte le bordereau de la conception électrique en lignes du devis. Enregistrez d’abord vos modifications en cours : l’écran est rechargé.
+Lots / multi-sites
+Afficher
+Pièces jointes
+0
+pièce(s) jointe(s)
+Glissez un fichier ici ou
+cliquez pour choisir
+PDF · PNG · JPEG · WEBP
+—
+max 10,0 Mo
+· PDF/PNG/JPEG/WebP — 10 Mo max
+PDF/PNG/JPEG/WebP — 10 Mo max
+Aucune pièce jointe.
+Échéancier de paiement
+Ce devis suit l'échéancier de la société (Paramètres → Devis).
+Personnaliser l'échéancier
+Conditions demandées par le client
+Le client demande une retenue de garantie (libérée à la réception définitive)
+Pénalités de retard (% par semaine)
+Plafond des pénalités (%)
+Caution (nature)
+Caution : montant ou %
+Caution : plafond
+Référence de commande du client
+Organisme financeur
+— aucun —
+Acompte client (%)
+Échéancier organisme financeur
+Texte pour le client (imprimé sur le devis)
+Acompte 30 % à la commande.
+Modification du devis DEV-202610-0406
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+21 300 MAD
+Contacter mon supérieur
+Réinitialiser
+Annuler
+Enregistrer les modifications
+Total sans batterie · TTC
+21 300 MAD
+Marge indicative (interne)
+7 060 MAD
+(33 %)
+Système
+5,72 kWc
+· 8 panneaux
+Enregistrer
+Annuler
+[champ] gen-num = Généré automatiquement (désactivé)
+[champ] select = reseau
+[champ] select = Sans batterie
+[champ] checkbox = checked=false
+[champ] select = Auto
+[champ] gen-validite = 
+[champ] gen-tel =  (désactivé)
+[champ] gen-hiver = 
+[champ] gen-ete = 
+[champ] number = 500
+[champ] number = 450
+[champ] number = 400
+[champ] number = 380
+[champ] number = 360
+[champ] number = 500
+[champ] number = 700
+[champ] number = 680
+[champ] number = 580
+[champ] number = 480
+[champ] number = 430
+[champ] number = 480
+[champ] select = onee
+[champ] gen-realbill = 
+[champ] select = mad
+[champ] gen-kwc-cible = 5.72
+[champ] gen-nbpanneaux = 8
+[champ] gen-panelw = 715
+[champ] range = 60
+[champ] checkbox = checked=false
+[champ] Désignation = Panneau Canadien Solar 715W (désactivé)
+[champ] line-qty = 8
+[champ] number = 1320
+[champ] number = 10
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Onduleur réseau 5kW Monophasé (désactivé)
+[champ] line-qty = 1
+[champ] number = 10800
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] number = 0
+[champ] number = 20.00
+[champ] ex: 9000 = 
+[champ] «id1» = 
+[champ] checkbox = checked=false
+[champ] gen-cond-penaliteTaux = 
+[champ] gen-cond-penalitePlafond = 
+[champ] gen-cond-cautionNature = 
+[champ] gen-cond-cautionMontant = 
+[champ] gen-cond-cautionPlafond = 
+[champ] gen-cond-referenceCommande = 
+[champ] gen-cond-tiersPayeur = 
+[champ] gen-cond-acompte-financeur = 
+[champ] Conditions particulières, précisions pour le client… = Acompte 30 % à la commande.
+
+### supérieur notifié
+Générateur de Devis Solaire
+Édition — DEV-202610-0406
+Retour aux devis
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+Sans batterie seulement
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead & Client
+Lead / client du devis
+…
+Changer de client = créer un nouveau devis.
+Téléphone
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux
+*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+5,72 kWp
+Type de Structure
+Acier galvanisé
+Aluminium
+Consommation diurne (%)
+60
+%
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Estimation locale (hors ligne) — en attente du moteur horaire serveur.
+Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
+Production annuelle
+8 785
+kWh / an
+Sans batterie
+★ Recommandé
+Économies
+9 224
+estimation d'exemple
+MAD / an
+ROI
+2.3 ans
+estimation d'exemple
+retour sur invest.
+Coût
+21 300
+MAD TTC
+Économies mensuelles estimées (MAD / mois)
+Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
+Tailles Éco / Recommandé / Max
+Les tailles ne sont pas encore disponibles pour ce devis.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+Panneau Canadien Solar 715W
+HT :
+1 200 MAD
+10 560 MAD
+HT :
+9 600 MAD
+Onduleur réseau 5kW Monophasé
+HT :
+9 000 MAD
+10 800 MAD
+HT :
+9 000 MAD
+Total SANS batterie
+⭐
+21 300 MAD
+Réduction
+%
+TVA
+%
+Prix / kWc
+3 724 MAD
+/kWc
+Prix cible / kWc
+Appliquer via remise
+Marge indicative (interne)
+7 060 MAD
+(33 %)
+Modèles de devis
+Ajouter le BOQ électrique
+Reporte le bordereau de la conception électrique en lignes du devis. Enregistrez d’abord vos modifications en cours : l’écran est rechargé.
+Lots / multi-sites
+Afficher
+Pièces jointes
+0
+pièce(s) jointe(s)
+Glissez un fichier ici ou
+cliquez pour choisir
+PDF · PNG · JPEG · WEBP
+—
+max 10,0 Mo
+· PDF/PNG/JPEG/WebP — 10 Mo max
+PDF/PNG/JPEG/WebP — 10 Mo max
+Aucune pièce jointe.
+Échéancier de paiement
+Ce devis suit l'échéancier de la société (Paramètres → Devis).
+Personnaliser l'échéancier
+Conditions demandées par le client
+Le client demande une retenue de garantie (libérée à la réception définitive)
+Pénalités de retard (% par semaine)
+Plafond des pénalités (%)
+Caution (nature)
+Caution : montant ou %
+Caution : plafond
+Référence de commande du client
+Organisme financeur
+— aucun —
+Acompte client (%)
+Échéancier organisme financeur
+Texte pour le client (imprimé sur le devis)
+Acompte 30 % à la commande.
+Modification du devis DEV-202610-0406
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Votre supérieur a été notifié.
+Total TTC
+21 300 MAD
+Contacter mon supérieur
+Réinitialiser
+Annuler
+Enregistrer les modifications
+Total sans batterie · TTC
+21 300 MAD
+Marge indicative (interne)
+7 060 MAD
+(33 %)
+Système
+5,72 kWc
+· 8 panneaux
+Enregistrer
+Annuler
+[champ] gen-num = Généré automatiquement (désactivé)
+[champ] select = reseau
+[champ] select = Sans batterie
+[champ] checkbox = checked=false
+[champ] select = Auto
+[champ] gen-validite = 
+[champ] gen-tel =  (désactivé)
+[champ] gen-hiver = 
+[champ] gen-ete = 
+[champ] number = 500
+[champ] number = 450
+[champ] number = 400
+[champ] number = 380
+[champ] number = 360
+[champ] number = 500
+[champ] number = 700
+[champ] number = 680
+[champ] number = 580
+[champ] number = 480
+[champ] number = 430
+[champ] number = 480
+[champ] select = onee
+[champ] gen-realbill = 
+[champ] select = mad
+[champ] gen-kwc-cible = 5.72
+[champ] gen-nbpanneaux = 8
+[champ] gen-panelw = 715
+[champ] range = 60
+[champ] checkbox = checked=false
+[champ] Désignation = Panneau Canadien Solar 715W (désactivé)
+[champ] line-qty = 8
+[champ] number = 1320
+[champ] number = 10
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Onduleur réseau 5kW Monophasé (désactivé)
+[champ] line-qty = 1
+[champ] number = 10800
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] number = 0
+[champ] number = 20.00
+[champ] ex: 9000 = 
+[champ] «id1» = 
+[champ] checkbox = checked=false
+[champ] gen-cond-penaliteTaux = 
+[champ] gen-cond-penalitePlafond = 
+[champ] gen-cond-cautionNature = 
+[champ] gen-cond-cautionMontant = 
+[champ] gen-cond-cautionPlafond = 
+[champ] gen-cond-referenceCommande = 
+[champ] gen-cond-tiersPayeur = 
+[champ] gen-cond-acompte-financeur = 
+[champ] Conditions particulières, précisions pour le client… = Acompte 30 % à la commande.
+
+### réinitialiser : confirmation refusée, rien ne change
+Générateur de Devis Solaire
+Édition — DEV-202610-0406
+Retour aux devis
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+Sans batterie seulement
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead & Client
+Lead / client du devis
+…
+Changer de client = créer un nouveau devis.
+Téléphone
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux
+*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+5,72 kWp
+Type de Structure
+Acier galvanisé
+Aluminium
+Consommation diurne (%)
+60
+%
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Estimation locale (hors ligne) — en attente du moteur horaire serveur.
+Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
+Production annuelle
+8 785
+kWh / an
+Sans batterie
+★ Recommandé
+Économies
+9 224
+estimation d'exemple
+MAD / an
+ROI
+2.3 ans
+estimation d'exemple
+retour sur invest.
+Coût
+21 300
+MAD TTC
+Économies mensuelles estimées (MAD / mois)
+Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
+Tailles Éco / Recommandé / Max
+Les tailles ne sont pas encore disponibles pour ce devis.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+Panneau Canadien Solar 715W
+HT :
+1 200 MAD
+10 560 MAD
+HT :
+9 600 MAD
+Onduleur réseau 5kW Monophasé
+HT :
+9 000 MAD
+10 800 MAD
+HT :
+9 000 MAD
+Total SANS batterie
+⭐
+21 300 MAD
+Réduction
+%
+TVA
+%
+Prix / kWc
+3 724 MAD
+/kWc
+Prix cible / kWc
+Appliquer via remise
+Marge indicative (interne)
+7 060 MAD
+(33 %)
+Modèles de devis
+Ajouter le BOQ électrique
+Reporte le bordereau de la conception électrique en lignes du devis. Enregistrez d’abord vos modifications en cours : l’écran est rechargé.
+Lots / multi-sites
+Afficher
+Pièces jointes
+0
+pièce(s) jointe(s)
+Glissez un fichier ici ou
+cliquez pour choisir
+PDF · PNG · JPEG · WEBP
+—
+max 10,0 Mo
+· PDF/PNG/JPEG/WebP — 10 Mo max
+PDF/PNG/JPEG/WebP — 10 Mo max
+Aucune pièce jointe.
+Échéancier de paiement
+Ce devis suit l'échéancier de la société (Paramètres → Devis).
+Personnaliser l'échéancier
+Conditions demandées par le client
+Le client demande une retenue de garantie (libérée à la réception définitive)
+Pénalités de retard (% par semaine)
+Plafond des pénalités (%)
+Caution (nature)
+Caution : montant ou %
+Caution : plafond
+Référence de commande du client
+Organisme financeur
+— aucun —
+Acompte client (%)
+Échéancier organisme financeur
+Texte pour le client (imprimé sur le devis)
+Acompte 30 % à la commande.
+Modification du devis DEV-202610-0406
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Votre supérieur a été notifié.
+Total TTC
+21 300 MAD
+Contacter mon supérieur
+Réinitialiser
+Annuler
+Enregistrer les modifications
+Total sans batterie · TTC
+21 300 MAD
+Marge indicative (interne)
+7 060 MAD
+(33 %)
+Système
+5,72 kWc
+· 8 panneaux
+Enregistrer
+Annuler
+[champ] gen-num = Généré automatiquement (désactivé)
+[champ] select = reseau
+[champ] select = Sans batterie
+[champ] checkbox = checked=false
+[champ] select = Auto
+[champ] gen-validite = 
+[champ] gen-tel =  (désactivé)
+[champ] gen-hiver = 
+[champ] gen-ete = 
+[champ] number = 500
+[champ] number = 450
+[champ] number = 400
+[champ] number = 380
+[champ] number = 360
+[champ] number = 500
+[champ] number = 700
+[champ] number = 680
+[champ] number = 580
+[champ] number = 480
+[champ] number = 430
+[champ] number = 480
+[champ] select = onee
+[champ] gen-realbill = 
+[champ] select = mad
+[champ] gen-kwc-cible = 5.72
+[champ] gen-nbpanneaux = 8
+[champ] gen-panelw = 715
+[champ] range = 60
+[champ] checkbox = checked=false
+[champ] Désignation = Panneau Canadien Solar 715W (désactivé)
+[champ] line-qty = 8
+[champ] number = 1320
+[champ] number = 10
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] Désignation = Onduleur réseau 5kW Monophasé (désactivé)
+[champ] line-qty = 1
+[champ] number = 10800
+[champ] number = 20
+[champ] Ligne optionnelle (add-on hors total) = checked=false
+[champ] number = 0
+[champ] number = 20.00
+[champ] ex: 9000 = 
+[champ] «id1» = 
+[champ] checkbox = checked=false
+[champ] gen-cond-penaliteTaux = 
+[champ] gen-cond-penalitePlafond = 
+[champ] gen-cond-cautionNature = 
+[champ] gen-cond-cautionMontant = 
+[champ] gen-cond-cautionPlafond = 
+[champ] gen-cond-referenceCommande = 
+[champ] gen-cond-tiersPayeur = 
+[champ] gen-cond-acompte-financeur = 
+[champ] Conditions particulières, précisions pour le client… = Acompte 30 % à la commande.
+
+### annuler → retour à la liste
+APRES-ENREGISTREMENT
+
+
+### appels
+{
+  "ventesApi.replaceLignesDevis": [],
+  "ventesApi.createDevisAtomic": [],
+  "ventesApi.patchEtudeParams": [],
+  "ventesApi.poserOverrides": [],
+  "ventesApi.regenererOverride": [],
+  "ventesApi.composerDevis": [],
+  "ventesApi.getPrixApplicable": [
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ]
+  ],
+  "ventesApi.contacterSuperieur": [
+    [
+      406
+    ]
+  ],
+  "window.confirm": [
+    [
+      "Toutes les saisies en cours seront perdues."
+    ]
+  ]
+}
