@@ -10,6 +10,8 @@ Sondes RESA de l'audit stock du 2026-10-06 rejouées sur les services réels
     réservations d'un chantier vivant ;
   * ASTK127 (RESA-14) — réserver avec l'arrondi HALF_UP de la sortie de la
     vente (12,5 m réserve 13) ;
+  * ASTK128 (RESA-12) — le retournable compte toutes les sorties réelles
+    (N14 consommée à « Installé », soldée par une vente, F11) ;
   * ASTK124 (RESA-6) — prédicat unique `chantier_peut_reserver` : une
     réception ne réactive plus la réservation d'un chantier annulé/clôturé.
 
@@ -31,7 +33,9 @@ from apps.installations.models import (
 from apps.installations.services import (
     changer_statut_chantier, chantier_peut_reserver,
     consommer_reservation_bc, create_installation_from_devis,
-    liberer_reservation_bc, release_reservations, reserver_stock_depuis_bc,
+    liberer_reservation_bc, quantite_retournable, release_reservations,
+    reserver_stock_depuis_bc, solder_reservations_vente,
+    valider_retour_materiel,
 )
 from apps.stock.models import (
     BonCommandeFournisseur, Fournisseur, Produit, ReceptionFournisseur,
@@ -301,3 +305,42 @@ class ArrondiTests(ResaBase):
         terrain = {pid: qte for (pid, _d), qte in besoin_terrain(inst).items()}
         self.assertEqual(terrain[cable.id], Decimal('13'))
         self.assertEqual(terrain[gaine.id], Decimal('3'))
+
+
+class RetournableTests(ResaBase):
+    SLUG = 'co-astk128'
+
+    def test_retour_apres_installe(self):
+        from apps.installations.models import (
+            RetourMateriel, RetourMaterielLigne,
+        )
+        from apps.stock.models import MouvementStock
+        panneau = self.produit('Panneau ASTK128', stock=30)
+        inst = self.chantier([(panneau, 10)])
+        self.installer(inst)
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 20)
+        self.assertEqual(quantite_retournable(inst, panneau.id), 10)
+
+        retour = RetourMateriel.objects.create(
+            company=self.company, installation=inst, created_by=self.user)
+        RetourMaterielLigne.objects.create(
+            retour=retour, produit=panneau, designation=panneau.nom,
+            quantite=Decimal('1'))
+        self.assertEqual(valider_retour_materiel(retour, self.user), 1)
+        retour.refresh_from_db()
+        self.assertEqual(retour.statut, RetourMateriel.Statut.VALIDE)
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 21)
+        self.assertTrue(MouvementStock.objects.filter(
+            produit=panneau, reference=f'RETOUR-{inst.reference}',
+            type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+            quantite=1).exists())
+        self.assertEqual(quantite_retournable(inst, panneau.id), 9)
+
+    def test_reservation_soldee_par_une_vente_compte(self):
+        panneau = self.produit('Panneau ASTK128 B', stock=30)
+        inst = self.chantier([(panneau, 10)])
+        solder_reservations_vente(inst, {panneau.id: 10}, 'FAC-ASTK128')
+        self.installer(inst)
+        self.assertEqual(quantite_retournable(inst, panneau.id), 10)

@@ -936,7 +936,7 @@ def consume_reservations(installation, user):
                 quantite=qte_sortie,
                 quantite_avant=qte_avant, quantite_apres=qte_apres,
                 reference=installation.reference,
-                note=f'Consommation chantier {installation.reference}',
+                note=_note_consommation_n14(installation),
                 created_by=user)
             manquant = resa.quantite - qte_sortie
             if manquant > 0:
@@ -1016,7 +1016,8 @@ def solder_reservations_vente(installation, quantites_par_produit, reference,
                 continue
             deja = InstallationActivity.objects.filter(
                 installation=installation, field=_MARQUEUR_SOLDE_VENTE,
-                old_value=reference, new_value=str(produit_id)).exists()
+                old_value=reference,
+                new_value__startswith=f'{produit_id}:').exists()
             if deja:
                 continue
             decompte = min(qte, resa.quantite)
@@ -1035,7 +1036,9 @@ def solder_reservations_vente(installation, quantites_par_produit, reference,
                 company=installation.company, installation=installation,
                 user=user, kind=InstallationActivity.Kind.NOTE,
                 field=_MARQUEUR_SOLDE_VENTE, old_value=reference,
-                new_value=str(produit_id),
+                # « <produit_id>:<quantité soldée> » — relu par
+                # `_quantite_soldee_par_vente` (retournable YSTCK4, ASTK128).
+                new_value=f'{produit_id}:{decompte}',
                 body=(f'Réservation {ref_produit} soldée par {reference} '
                       f'({decompte} déjà sorti(s) par la vente{reste}).'))
             modifiees += 1
@@ -1049,21 +1052,61 @@ def solder_reservations_vente(installation, quantites_par_produit, reference,
 # ENTRÉE référencé à la sortie d'origine, plafonné à ce qui a RÉELLEMENT été
 # sorti pour ce chantier, jamais un ajustement positif libre ».
 
+def _note_consommation_n14(installation):
+    """Note des mouvements SORTIE posés par `consume_reservations` (N14) —
+    UNE définition, relue par `_quantite_sortie_chantier` (ASTK128)."""
+    return f'Consommation chantier {installation.reference}'
+
+
 def _quantite_sortie_chantier(installation, produit_id):
-    """Quantité TOTALE réellement sortie pour ce chantier pour ce produit :
-    somme des `ConsommationLigne.quantite_utilisee` validées (stock_applique)
-    de TOUTES les interventions du chantier (F11 — la seule source qui bouge
-    réellement le stock ; la réservation N14 estimée n'en fait pas partie)."""
+    """Quantité TOTALE réellement sortie pour ce chantier pour ce produit.
+
+    ASTK128 (C-ASTK-034) — TOUTES les sorties réelles du chantier :
+      * F11 : somme des `ConsommationLigne.quantite_utilisee` validées
+        (stock_applique) de toutes les interventions du chantier ;
+      * N14 : les mouvements SORTIE de `consume_reservations` au passage
+        « Installé » (référence du chantier, note N14), au montant réellement
+        sorti (le manque CHT5 n'est pas compté) ;
+      * les réservations soldées par une vente (`solder_reservations_vente`,
+        ASTK120) : le matériel est sorti par la facture/BC/livraison.
+    Les retours validés sont soustraits par `quantite_retournable`."""
     from decimal import Decimal
     from django.db.models import Sum
+    from apps.stock.selectors import mouvements_par_reference
+    from apps.stock.services import mouvement_type_sortie
     from .models import ConsommationLigne
-    total = (
+    f11 = (
         ConsommationLigne.objects
         .filter(consommation__intervention__installation=installation,
                 produit_id=produit_id, stock_applique=True)
         .aggregate(total=Sum('quantite_utilisee'))['total']
-    )
-    return total or Decimal('0')
+    ) or Decimal('0')
+    n14 = (
+        mouvements_par_reference(installation.company, installation.reference)
+        .filter(produit_id=produit_id,
+                type_mouvement=mouvement_type_sortie(),
+                note=_note_consommation_n14(installation))
+        .aggregate(total=Sum('quantite'))['total']
+    ) or 0
+    return (Decimal(str(f11)) + Decimal(str(n14))
+            + _quantite_soldee_par_vente(installation, produit_id))
+
+
+def _quantite_soldee_par_vente(installation, produit_id):
+    """ASTK128 — Σ des quantités de réservation soldées par une vente
+    (marqueurs posés par `solder_reservations_vente`)."""
+    from decimal import Decimal
+    from .models import InstallationActivity
+    total = Decimal('0')
+    for valeur in InstallationActivity.objects.filter(
+            installation=installation, field=_MARQUEUR_SOLDE_VENTE,
+            new_value__startswith=f'{produit_id}:').values_list(
+            'new_value', flat=True):
+        try:
+            total += Decimal(valeur.split(':', 1)[1])
+        except (IndexError, ArithmeticError, ValueError):
+            continue
+    return total
 
 
 def _quantite_deja_retournee(installation, produit_id):
