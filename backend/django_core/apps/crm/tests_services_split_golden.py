@@ -120,34 +120,9 @@ def genre(noeud):
     return 'assign'
 
 
-def _dump_stable(noeud):
-    """``ast.dump`` au format Python 3.13 (``show_empty=False``), quelle que
-    soit la version qui tourne : listes vides et champs optionnels à ``None``
-    omis. Le golden a été capturé sous 3.13 ; la CI tourne en 3.11, dont
-    ``ast.dump`` affiche ``decorator_list=[]``, ``keywords=[]``… — sans ce
-    format figé, TOUTES les empreintes divergeraient d'une version à l'autre."""
-    if isinstance(noeud, ast.AST):
-        cls = type(noeud)
-        args = []
-        for nom in noeud._fields:
-            try:
-                valeur = getattr(noeud, nom)
-            except AttributeError:
-                continue
-            if valeur is None and getattr(cls, nom, ...) is None:
-                continue
-            if isinstance(valeur, list) and not valeur:
-                continue
-            args.append(f'{nom}={_dump_stable(valeur)}')
-        return f'{cls.__name__}({", ".join(args)})'
-    if isinstance(noeud, list):
-        return '[' + ', '.join(_dump_stable(x) for x in noeud) + ']'
-    return repr(noeud)
-
-
 def empreinte(noeuds):
-    """sha256 du dump AST stable (sans positions) du ou des nœuds."""
-    texte = '\n'.join(_dump_stable(n) for n in noeuds)
+    """sha256 de ``ast.dump`` (sans positions) du ou des nœuds définissants."""
+    texte = '\n'.join(ast.dump(n) for n in noeuds)
     return hashlib.sha256(texte.encode('utf-8')).hexdigest()
 
 
