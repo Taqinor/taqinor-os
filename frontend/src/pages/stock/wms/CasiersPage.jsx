@@ -47,6 +47,7 @@ export default function CasiersPage() {
   const [taches, setTaches] = useState([])
   const [sousSeuil, setSousSeuil] = useState([])
   const [reslotting, setReslotting] = useState([])
+  const [casiers, setCasiers] = useState([])
   const [emplacements, setEmplacements] = useState([])
   const [produits, setProduits] = useState([])
   const [erreur, setErreur] = useState(null)
@@ -74,6 +75,8 @@ export default function CasiersPage() {
 
   useEffect(() => {
     Promise.resolve().then(charger)
+    entrepotCasiersApi.listCasiers()
+      .then((r) => setCasiers(liste(r.data))).catch(() => {})
     entrepotCasiersApi.listEmplacements()
       .then((r) => setEmplacements(liste(r.data))).catch(() => {})
     entrepotCasiersApi.listProduits()
@@ -81,7 +84,7 @@ export default function CasiersPage() {
   }, [charger])
 
   const nomProduit = (id) => produits.find((p) => p.id === id)?.nom ?? `Produit #${id}`
-  const libEmplacement = (e) => e.code || e.nom
+  const libEmplacement = (e) => e.nom || e.code
 
   // Un geste : appelle l'API, relit le serveur, affiche l'erreur telle quelle.
   const geste = async (cle, action, repli, succes) => {
@@ -247,7 +250,7 @@ export default function CasiersPage() {
             <span>Casier</span>
             <select value={form.bin} onChange={champ('bin')} className={selectCls}>
               <option value="">—</option>
-              {emplacements.map((e) => <option key={e.id} value={e.id}>{libEmplacement(e)}</option>)}
+              {casiers.map((c) => <option key={c.id} value={c.id}>{c.code}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-xs">
