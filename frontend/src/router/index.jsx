@@ -64,6 +64,8 @@ const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
 // ASTK219 — kiosque de quai public (check-in chauffeur par code, sans login).
 const KiosqueQuaiPage = lazy(() => import('../pages/stock/KiosqueQuaiPage'))
+// ASTK223 — solde public du dépositaire 3PL (sans login).
+const DepotTiersSoldePage = lazy(() => import('../pages/stock/DepotTiersSoldePage'))
 // NTCRM18 — page publique de la salle de vente digitale (sans login).
 const PublicSalleVentePage = lazy(() => import('../pages/crm/salle-vente/PublicSalleVentePage'))
 // XGED1/XGED2 — cérémonie de signature électronique publique (sans login).
@@ -390,6 +392,8 @@ const router = createBrowserRouter([
   { path: '/rdv/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense></RouteErrorBoundary> },
   // ASTK219 — kiosque de quai public (sans login, sans layout ERP).
   { path: '/quai/checkin', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><KiosqueQuaiPage /></Suspense></RouteErrorBoundary> },
+  // ASTK223 — solde du dépositaire 3PL par lien (sans login, sans layout ERP).
+  { path: '/depot-tiers/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DepotTiersSoldePage /></Suspense></RouteErrorBoundary> },
   // NTCRM18 — salle de vente digitale publique (sans login, sans layout ERP).
   { path: '/salle-vente/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSalleVentePage /></Suspense></RouteErrorBoundary> },
   // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
