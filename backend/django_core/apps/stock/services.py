@@ -649,7 +649,8 @@ def average_cost(produit):
     """Coût moyen d'achat pondéré d'un produit, depuis l'historique des
     réceptions de bons de commande fournisseur ; repli sur le prix d'achat
     catalogue si aucun achat reçu. INTERNE."""
-    return average_cost_with_source(produit)[0]
+    # ASTK43 — via l'accesseur unique, méthode coût moyen explicite.
+    return valuation_cost_with_source(produit, method=VALUATION_WAVG)[0]
 
 
 # ── FG67 — Méthode de valorisation : coût moyen pondéré (défaut) ou FIFO ──────
@@ -690,34 +691,77 @@ def fifo_cost_with_source(produit, a_la_date=None, quantite=None):
 
     ASTK40 — ``a_la_date`` borne les couches aux entrées en stock au plus tard
     ce jour-là ; ``quantite`` (quantité détenue à cette date) remplace alors
-    ``produit.quantite_stock``."""
-    from .models import LigneBonCommandeFournisseur
+    ``produit.quantite_stock``.
+
+    ASTK43 — la couche de REVALORISATION (XSTK14) entre aussi en FIFO : une
+    revalorisation VALIDÉE remplace toutes les couches entrées en stock
+    jusqu'au jour de sa validation par une couche unique
+    ``quantite_snapshot`` @ ``nouveau_cout`` ; seules les entrées
+    POSTÉRIEURES restent des couches propres (comme pour le coût moyen).
+    Avant, un produit reçu 10 @ 1 000 revalorisé à 600 restait à 1 000 en
+    FIFO. Les entrées de production à ``cout_unitaire`` (ASTK44) sont des
+    couches au même titre que les réceptions. Seuls les documents de la
+    société du produit comptent (ASTK1)."""
+    from .models import (
+        LigneBonCommandeFournisseur, MouvementStock, RevalorisationStock,
+    )
+    jour = _jour(a_la_date) if a_la_date is not None else None
+    revalos = RevalorisationStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        statut=RevalorisationStock.Statut.VALIDEE)
+    if jour is not None:
+        revalos = revalos.filter(date_validation__date__lte=jour)
+    revalo = revalos.order_by('-date_validation', '-id').first()
+    jour_revalo = (_jour(revalo.date_validation)
+                   if revalo is not None and revalo.date_validation is not None
+                   else None)
     # Couches d'entrée, de la plus récente à la plus ancienne (FIFO -> il reste
     # les dernières entrées). On valorise au coût débarqué unitaire.
     # AUD210 — couches ordonnées par ENTRÉE EN STOCK réelle (date de réception),
     # pas par date de saisie du bon de commande.
     lignes = _annoter_date_entree_stock(
         LigneBonCommandeFournisseur.objects
-        .filter(produit=produit, quantite_recue__gt=0))
-    if a_la_date is not None:
-        lignes = lignes.filter(date_entree_stock__lte=_jour(a_la_date))
-    lignes = lignes.order_by('-date_entree_stock', '-id')
+        .filter(produit=produit, bon_commande__company_id=produit.company_id,
+                quantite_recue__gt=0))
+    productions = MouvementStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+        cout_unitaire__isnull=False, quantite__gt=0)
+    if jour is not None:
+        lignes = lignes.filter(date_entree_stock__lte=jour)
+        productions = productions.filter(date__date__lte=jour)
+    if jour_revalo is not None:
+        lignes = lignes.filter(date_entree_stock__gt=jour_revalo)
+        productions = productions.filter(date__date__gt=jour_revalo)
+    couches = [
+        ((ligne.date_entree_stock, 0, ligne.id), ligne.quantite_recue,
+         ligne.cout_unitaire_debarque)
+        for ligne in lignes]
+    couches += [
+        ((_jour(mvt.date), 1, mvt.id), mvt.quantite, mvt.cout_unitaire)
+        for mvt in productions]
+    couches.sort(key=lambda couche: couche[0], reverse=True)
+    if revalo is not None:
+        # La couche revalorisée est la plus ANCIENNE encore détenue.
+        couches.append((None, revalo.quantite_snapshot, revalo.nouveau_cout))
     restant = (quantite if quantite is not None
                else produit.quantite_stock) or 0
     if restant <= 0:
         return (produit.prix_achat or Decimal('0')), 'catalogue'
     pris_q, pris_v = 0, Decimal('0')
-    for ligne in lignes:
+    for _cle, couche_quantite, couche_cout in couches:
         if restant <= 0:
             break
-        couche_q = min(ligne.quantite_recue, restant)
+        couche_q = min(couche_quantite, restant)
+        if couche_q <= 0:
+            continue
         pris_q += couche_q
-        pris_v += couche_q * ligne.cout_unitaire_debarque
+        pris_v += couche_q * couche_cout
         restant -= couche_q
     if pris_q == 0:
         return (produit.prix_achat or Decimal('0')), 'catalogue'
     cout = (pris_v / pris_q).quantize(Decimal('0.01'))
-    return cout, 'achats'
+    return cout, ('achats' if revalo is None else 'revalorisation')
 
 
 def valuation_cost_with_source(produit, method=None, a_la_date=None,
@@ -1038,14 +1082,18 @@ def export_inventaire_annuel_xlsx(inventaire):
 # ── XSTK14 — Revalorisation manuelle du stock (document tracé) ──────────────
 # INTERNE, admin-only, jamais client-facing.
 
-def creer_revalorisation(*, company, produit, nouveau_cout, motif, user):
+def creer_revalorisation(*, company, produit, nouveau_cout, motif, user,
+                         method=None):
     """Crée une `RevalorisationStock` en BROUILLON : snapshot du coût moyen
     actuel + de la quantité en stock, delta calculé. Motif obligatoire
-    (ValueError sinon)."""
+    (ValueError sinon).
+
+    ASTK43 — l'ancien coût est lu par l'accesseur unique
+    ``valuation_cost_with_source`` (méthode société, ou ``method`` explicite)."""
     from .models import RevalorisationStock
     if not motif or not str(motif).strip():
         raise ValueError('Le motif de la revalorisation est obligatoire.')
-    ancien_cout, _source = average_cost_with_source(produit)
+    ancien_cout, _source = valuation_cost_with_source(produit, method=method)
     nouveau_cout = Decimal(str(nouveau_cout))
     # NTWMS19 — le stock DE TIERS présent dans nos murs n'est pas notre actif :
     # il ne participe jamais au delta de revalorisation (0 sans emplacement
@@ -2596,12 +2644,14 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
 
 def rebuter_produit(
         *, company, produit, quantite, motif, user, emplacement=None,
-        reference_chantier=None):
+        reference_chantier=None, method=None):
     """XSTK10 — met au rebut une quantité d'un produit (motif obligatoire :
     casse/obsolète/périmé/vol/défaut/erreur/autre), décrémente l'emplacement
     source (si fourni, N15) en plus du total canonique, respecte le garde
-    XSTK8 (stock négatif) et journalise la VALEUR perdue au coût moyen
-    (`average_cost_with_source`). Renvoie {mouvement, valeur_perdue}."""
+    XSTK8 (stock négatif) et journalise la VALEUR perdue au coût de
+    valorisation (ASTK43 : accesseur unique ``valuation_cost_with_source``,
+    méthode société ou ``method`` explicite). Renvoie {mouvement,
+    valeur_perdue}."""
     from django.db import transaction
     from .models import MouvementStock, Produit, StockEmplacement
 
@@ -2611,7 +2661,7 @@ def rebuter_produit(
     if motif not in valeurs_motif:
         raise ValueError('Motif de rebut invalide.')
 
-    cout_moyen, _source = average_cost_with_source(produit)
+    cout_moyen, _source = valuation_cost_with_source(produit, method=method)
     valeur_perdue = (cout_moyen or Decimal('0')) * Decimal(quantite)
 
     note = f'Rebut ({dict(MouvementStock.MotifRebut.choices).get(motif, motif)})'
@@ -2638,7 +2688,7 @@ def rebuter_produit(
     return {'mouvement': mouvement, 'valeur_perdue': valeur_perdue}
 
 
-def rapport_pertes(company, *, date_debut=None, date_fin=None):
+def rapport_pertes(company, *, date_debut=None, date_fin=None, method=None):
     """XSTK10 — rapport « pertes de la période » : quantités ET valeur (coût
     moyen au moment du calcul) par motif de rebut. Admin-only, JAMAIS
     client-facing (prix_achat interne). Renvoie une liste de dicts
@@ -2654,6 +2704,7 @@ def rapport_pertes(company, *, date_debut=None, date_fin=None):
     if date_fin is not None:
         qs = qs.filter(date__lte=date_fin)
 
+    methode = method or stock_valuation_method(company)
     par_produit = {}
     for mvt in qs.select_related('produit'):
         entry = par_produit.setdefault(mvt.produit_id, {
@@ -2663,7 +2714,10 @@ def rapport_pertes(company, *, date_debut=None, date_fin=None):
             'valeur_totale': Decimal('0'),
             'par_motif': {},
         })
-        cout_moyen, _source = average_cost_with_source(mvt.produit)
+        # ASTK43 — coût par l'accesseur unique (méthode société résolue une
+        # fois, ou ``method`` explicite).
+        cout_moyen, _source = valuation_cost_with_source(
+            mvt.produit, method=methode)
         valeur = (cout_moyen or Decimal('0')) * Decimal(mvt.quantite)
         motif = mvt.motif_rebut or 'autre'
         entry['quantite_totale'] += mvt.quantite
@@ -7886,7 +7940,7 @@ def resoudre_conditionnement(company, *, conditionnement_id=None,
 
 def decouper_produit(*, company, produit_source, quantite_consommee,
                      produit_cible, quantite_produite, user,
-                     emplacement=None, lot_source=None):
+                     emplacement=None, lot_source=None, method=None):
     """XSTK16 — débite `quantite_consommee` unités de `produit_source` et
     crédite `quantite_produite` unités de `produit_cible` (peut être le même
     SKU), en transférant EXACTEMENT la valeur au coût moyen du produit
@@ -7912,7 +7966,9 @@ def decouper_produit(*, company, produit_source, quantite_consommee,
             raise ValueError(
                 f'Stock insuffisant sur {source.nom} '
                 f'({source.quantite_stock} disponible).')
-        cout_unitaire, _source = average_cost_with_source(source)
+        # ASTK43 — coût de la source par l'accesseur unique.
+        cout_unitaire, _source = valuation_cost_with_source(
+            source, method=method)
         valeur_transferee = (cout_unitaire * quantite_consommee).quantize(
             Decimal('0.01'))
         avant_source = source.quantite_stock
