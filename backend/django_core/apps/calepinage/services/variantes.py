@@ -244,9 +244,10 @@ def retenir_variante(variante, *, user=None, appliquer=True):
     # CAL206 — feu vert bureau d'études / approbation : AVANT toute écriture.
     # C'est ICI, et nulle part ailleurs, que le refus doit vivre : c'est le
     # SEUL chemin d'écriture de « retenue » (CAL9).
-    from .feu_vert import verifier_avant_retenue
+    from .feu_vert import GESTE_RETENUE, verifier_avant_publication
 
-    verifier_avant_retenue(calepinage, variante=variante)
+    verifier_avant_publication(calepinage, geste=GESTE_RETENUE,
+                               variante=variante)
     document = (variante.roof_layout
                 if isinstance(variante.roof_layout, dict) else None)
 

@@ -165,6 +165,18 @@ def inventaire_des_sorties(calepinage):
     }
 
 
+def porte_execution(calepinage, piece):
+    """ACAL116 — la porte UNIQUE des pièces d'exécution
+    (``feu_vert.PIECES_EXECUTION``) : feu vert / approbation à jour, sinon
+    400 ``{approbation | feu_vert}`` nommé et RIEN n'est produit."""
+    from ..services.feu_vert import (
+        GESTE_EXECUTION, PIECES_EXECUTION, verifier_avant_publication,
+    )
+
+    assert piece in PIECES_EXECUTION, piece
+    verifier_avant_publication(calepinage, geste=GESTE_EXECUTION)
+
+
 class SortiesMixin:
     """Les ``@action`` de sortie, greffées sur le viewset pivot du module."""
 
@@ -245,6 +257,8 @@ class SortiesMixin:
         """CAL211 — le plan de pose de l'équipe terrain (aucun montant)."""
         from ..services.planche import CONTENU_POSE
 
+        porte_execution(self.get_object(), 'plan_pose')  # ACAL116
+
         return self._plan(CONTENU_POSE)
 
     @action(detail=True, methods=['get'], url_path=r'plan-toiture\.pdf',
@@ -294,6 +308,7 @@ class SortiesMixin:
         from ..services.planche import PlancheRefusee, nom_de_fichier
 
         calepinage = self.get_object()  # borné société par get_queryset
+        porte_execution(calepinage, 'export_dxf')  # ACAL116
         try:
             octets = exporter_dxf(calepinage)
         except PlancheRefusee as refus:
@@ -322,6 +337,7 @@ class SortiesMixin:
         from ..services.planche import PlancheRefusee, nom_de_fichier
 
         calepinage = self.get_object()  # borné société par get_queryset
+        porte_execution(calepinage, 'export_%s' % extension)  # ACAL116
         params = getattr(self.request, 'query_params', {}) or {}
         try:
             if extension == 'csv':
@@ -350,6 +366,7 @@ class SortiesMixin:
         from ..services.pack_technique import PackRefuse, construire_pack
 
         calepinage = self.get_object()  # borné société par get_queryset
+        porte_execution(calepinage, 'pack_technique')  # ACAL116
         try:
             resultat = construire_pack(calepinage,
                                        company=calepinage.company,

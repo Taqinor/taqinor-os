@@ -2,7 +2,7 @@
 
 Ce qui est prouvé ici :
 
-* ÉQUIVALENCE (D12) : réglage absent ⇒ ``verifier_avant_retenue`` ne lit
+* ÉQUIVALENCE (D12) : réglage absent ⇒ ``verifier_avant_publication`` ne lit
   même pas la décision d'approbation, et retenir une variante marche comme
   aujourd'hui sur un calepinage jamais approuvé ;
 * la clé ``approbation_exigee`` de la section ``presets`` est VALIDÉE
@@ -102,7 +102,7 @@ class EquivalenceSansReglageTest(SimpleTestCase):
                 mock.patch.object(feu_vert, 'option_active',
                                   return_value=False), \
                 mock.patch('apps.crm.selectors.get_company_lead') as lead:
-            self.assertIsNone(feu_vert.verifier_avant_retenue(calepinage))
+            self.assertIsNone(feu_vert.verifier_avant_publication(calepinage))
         est_approuve.assert_not_called()
         lead.assert_not_called()
 
@@ -117,7 +117,7 @@ class RefusApprobationExigeeTest(SimpleTestCase):
                                   return_value=False), \
                 mock.patch.object(feu_vert, '_roles_approbateurs',
                                   return_value=list(roles)):
-            return feu_vert.verifier_avant_retenue(calepinage)
+            return feu_vert.verifier_avant_publication(calepinage)
 
     def test_non_approuve_refuse_sur_le_champ_approbation(self):
         with self.assertRaises(ValidationError) as refus:

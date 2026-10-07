@@ -151,6 +151,11 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     if journal is not None:
         journal.setdefault('avertissements', [])
         journal.setdefault('marques_manquantes', [])
+    # ACAL116 (D-ACAL-24) — feu vert / approbation à jour AVANT toute
+    # écriture ; no-op quand la société n'exige rien.
+    from .feu_vert import GESTE_DEVIS, verifier_avant_publication
+
+    verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
     layout = _exiger_layout(calepinage)
     company = calepinage.company
     lead, client = _lead_et_client(calepinage)
@@ -281,6 +286,9 @@ def resynchroniser_devis(calepinage, *, user=None):
     from apps.ventes.services import (
         SyncLayoutError, resynchroniser_conception)
 
+    from .feu_vert import GESTE_DEVIS, verifier_avant_publication
+
+    verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
     layout = _exiger_layout(calepinage)
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id:
