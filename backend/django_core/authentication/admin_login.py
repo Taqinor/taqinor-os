@@ -46,27 +46,39 @@ class AdminLoginForm(AdminAuthenticationForm):
 
     def clean(self):
         compte = _compte(self.cleaned_data.get('username'))
+        ip = self._ip()
         try:
             cleaned = super().clean()
         except ValidationError:
             # Mauvais identifiants (ou compte non autorisé) : échec compté,
             # même message pour un compte inconnu.
             if compte is not None:
-                register_failed_login(compte)
+                register_failed_login(compte, ip)
             raise
         user = self.get_user()
-        if is_locked(user):
+        if is_locked(user, ip):
             raise ValidationError(self.error_messages['compte_verrouille'],
                                   code='compte_verrouille')
         if getattr(user, 'totp_enabled', False):
             code = (self.cleaned_data.get('otp') or '').strip()
             if not code or not user.verify_totp(code):
-                register_failed_login(user)
+                register_failed_login(user, ip)
                 raise ValidationError(self.error_messages['otp_requis'],
                                       code='otp_requis')
-        reset_failed_login(user)
+        reset_failed_login(user, ip)
         self._tracer_session(user)
         return cleaned
+
+    def _ip(self):
+        """IP de la requête par LA primitive (ADOC79) ; None hors requête."""
+        request = getattr(self, 'request', None)
+        if request is None:
+            return None
+        from core.throttling import ip_de_requete
+        try:
+            return ip_de_requete(request)
+        except Exception:  # noqa: BLE001
+            return None
 
     def confirm_login_allowed(self, user):
         """``is_staff`` (contrôle Django) ET superuser : l'admin Django est un

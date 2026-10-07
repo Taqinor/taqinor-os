@@ -229,7 +229,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [LoginRateThrottle]
 
     @staticmethod
-    def _refus_apres_mot_de_passe(user):
+    def _refus_apres_mot_de_passe(user, ip=None):
         """ASEC14 — 403 ``compte_verrouille`` (FG22) ou ``sso_required``
         (NTSEC4 : IdP actif avec ``enforce_sso`` ; super-admin et break-glass
         exemptés par le sélecteur) — appelé UNIQUEMENT après un mot de passe
@@ -237,7 +237,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         from .password_policy import is_locked
         if user is None:
             return None
-        if is_locked(user):
+        if is_locked(user, ip):
             return Response(
                 {'detail': 'Compte temporairement verrouillé après trop de '
                            'tentatives. Réessayez plus tard.',
@@ -272,6 +272,10 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         raw_uname0 = (request.data.get('username') or '').strip()
         locked_user = CustomUser.objects.filter(
             username__iexact=raw_uname0).first() if raw_uname0 else None
+        # ASEC4-revue — le plancher plateforme verrouille le couple
+        # (compte, IP) : IP lue par LA primitive (ADOC79).
+        from core.throttling import ip_de_requete
+        ip = ip_de_requete(request)
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
@@ -286,14 +290,14 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             # verrou FG22 restait mort. Compté ici (compte connu uniquement ;
             # identifiant inconnu → même 401, même corps).
             if locked_user is not None:
-                register_failed_login(locked_user)
+                register_failed_login(locked_user, ip)
             raise
         except ValidationError as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get('otp_required'):
                 # ASEC14 — ``otp_required`` = mot de passe PROUVÉ : le verrou
                 # et le SSO obligatoire peuvent être annoncés maintenant.
-                refus = self._refus_apres_mot_de_passe(locked_user)
+                refus = self._refus_apres_mot_de_passe(locked_user, ip)
                 if refus is not None:
                     return refus
                 # ASEC4 — un code OTP FAUX (présenté après un bon mot de passe)
@@ -301,7 +305,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 # formulaire 2FA) ne l'est pas.
                 if locked_user is not None \
                         and str(request.data.get('otp') or '').strip():
-                    register_failed_login(locked_user)
+                    register_failed_login(locked_user, ip)
                 msg = detail.get('detail')
                 if isinstance(msg, (list, tuple)):
                     msg = msg[0] if msg else None
@@ -316,7 +320,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             # FG22 — échec d'identifiants : compte le tentative ratée et
             # verrouille au seuil société. No-op si le verrouillage est off.
             if locked_user is not None:
-                register_failed_login(locked_user)
+                register_failed_login(locked_user, ip)
             raise
         if response.status_code == 200:
             access = response.data.pop('access', None)
@@ -324,7 +328,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             # ASEC14 — mot de passe (et OTP) prouvés : verrou / SSO obligatoire
             # annoncés ici ; les jetons émis ne sont jamais remis (refresh
             # blacklisté best-effort).
-            refus = self._refus_apres_mot_de_passe(locked_user)
+            refus = self._refus_apres_mot_de_passe(locked_user, ip)
             if refus is not None:
                 try:
                     RefreshToken(refresh).blacklist()
@@ -338,7 +342,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             u = CustomUser.objects.filter(username__iexact=raw_uname).first()
             # FG22 — connexion réussie : remet à zéro le compteur d'échecs et
             # lève tout verrou éventuel. No-op si rien n'était posé.
-            reset_failed_login(u)
+            reset_failed_login(u, ip)
             # FG22 — expiration du mot de passe : si dépassée (société l'a
             # activée), on arme la rotation forcée à cette session (le frontend
             # lit must_change_password dans /auth/me/). Inerte si expiry=0.
