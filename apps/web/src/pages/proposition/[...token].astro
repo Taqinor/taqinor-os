@@ -42,8 +42,13 @@ import {
   resolveInstallMode,
   agricoleKpis,
   autoconsoKpis,
-  hasInjection,
-  autoconsoCashflow,
+  syntheseCi,
+  argentCiCalcule,
+  economieCiHero,
+  injectionCi,
+  ciEstUneEstimation,
+  ciSousReserveVisite,
+  motifsManquantsCi,
   syntheseAgricole,
   omissionSynthese,
   courbeGeometrie,
@@ -577,12 +582,15 @@ const isAutoconso = installMode === 'industriel' || installMode === 'commercial'
 const isCommercial = installMode === 'commercial';
 const agri: AgricoleKpis | null = ok ? agricoleKpis(data!) : null;
 const auto: AutoconsoKpis | null = ok ? autoconsoKpis(data!) : null;
-const autoHasInjection = hasInjection(auto);
-// Mini-cashflow 10 ans (industriel/commercial) — même modèle linéaire que le PDF.
-const autoCashflow = ok && isAutoconso ? autoconsoCashflow(data!, reco ?? 'sans_batterie', auto, 10) : null;
-const cashMaxAbs = autoCashflow ? Math.max(...autoCashflow.map((p) => Math.abs(p.cumulative)), 1) : 1;
-// Année du point mort (première année à trésorerie cumulée ≥ 0), pour le libellé.
-const cashBreakEven = autoCashflow ? (autoCashflow.find((p) => p.cumulative >= 0)?.year ?? null) : null;
+// CIW300 — L'ÉNERGIE ET L'ARGENT C&I SERVIS (`synthese_ci`, la MÊME fonction que le PDF).
+// Plus de mini-cashflow ni de cumul « × 25 » : la page LIT, elle ne calcule rien.
+const ci = ok ? syntheseCi(data!) : null;
+const ciArgent = argentCiCalcule(ci);
+const ciEco = economieCiHero(ciArgent);
+const ciInjection = injectionCi(ci);
+const ciManque = motifsManquantsCi(ci);
+const ciEstimation = ciEstUneEstimation(ci);
+const ciSousReserve = ciSousReserveVisite(ci);
 // AGW303 — LA SYNTHÈSE AGRICOLE SERVIE (`synthese_agricole`, la MÊME fonction que le PDF).
 // La page LIT : besoin vs eau livrée, schéma, courbe + point, provenance, plaque. Aucun
 // calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
@@ -1419,7 +1427,8 @@ const clientConsommateur = installMode === 'residentiel';
 // `payback` = backend `roi_s`/`roi_a`, `cumulative` = taux backend `eco_a_cumul`
 // × horizon (la MÊME multiplication linéaire que le PDF). La page n'a aucun
 // modèle d'économies à elle — le moteur corrigé se propage tout seul ici.
-const headline = ok ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
+// CIW300 — jamais le cumul « économie × 25 ans » en C&I (l'argent C&I = `synthese_ci`).
+const headline = ok && !isAutoconso ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
 // ── PVCOV (fondateur 2026-08-18) — LA SYNTHÈSE DE LA PAGE 1 DU PDF, SERVIE ──
 // Le « −N % », la facture avant/après et la couverture solaire ne sont plus
 // calculés nulle part sur cette page : ils sont LUS depuis les champs servis
@@ -3429,7 +3438,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       {/* ════════════════════════════════════════════════════════════════════
           WJ126 · VARIANTE AUTOCONSOMMATION (industriel + commercial) — tuiles
           autoconso/couverture/économies/payback + injection 82-21 (si calculée,
-          mention ANRE) + mini-cashflow 10 ans (même modèle linéaire que le PDF).
+          mention servie) — CIW300 : tout est lu dans `synthese_ci`, aucun cashflow.
           ════════════════════════════════════════════════════════════════════ */}
       {isAutoconso && auto && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
@@ -3437,92 +3446,107 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             data-fr={isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}
             data-en={isCommercial ? 'Your self-consumption' : 'Your industrial self-consumption'}
             data-ar={isCommercial ? 'استهلاككم الذاتي' : 'استهلاككم الذاتي الصناعي'}>{isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}</h2>
-          <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {auto.taux_autoconso !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
-                <p class="fig fig-md lum mt-2" dir="ltr">{formatNumber(auto.taux_autoconso)} %</p>
+          <span id="economies" aria-hidden="true"></span>
+          {/* CIW300 — TOUT est LU dans `synthese_ci` (la MÊME fonction que le PDF) : kWc, production,
+              autoconsommation, couverture (définitions servies), économie de l'année 1, retour.
+              Une clé non servie n'imprime rien (jamais un 0 fabriqué). */}
+          {ci ? (
+            <div data-ci-synthese>
+              {ciSousReserve ? (
+                <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-sous-reserve>
+                  <p class="font-semibold text-lune" data-i18n
+                    data-fr="Estimation sous réserve de la visite technique"
+                    data-en="Estimate subject to the technical site visit"
+                    data-ar="تقدير رهين بالزيارة التقنية">Estimation sous réserve de la visite technique</p>
+                  {ci.aConfirmer.length > 0 ? (
+                    <ul class="mt-2 list-disc ps-5 text-xs text-lune-faint">
+                      {ci.aConfirmer.map((c) => <li>{c.libelle}</li>)}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {ci.systeme?.kwc != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance installée" data-en="Installed capacity" data-ar="القدرة المركبة">Puissance installée</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="puissance_kwc">{formatNumber(ci.systeme.kwc, 2)} kWc</p>
+                  </div>
+                ) : null}
+                {ci.systeme?.productionKwhAn != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Production solaire / an" data-en="Solar production / year" data-ar="الإنتاج الشمسي / سنة">Production solaire / an</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="production_annuelle_kwh">{formatNumber(ci.systeme.productionKwhAn)} kWh</p>
+                  </div>
+                ) : null}
+                {ci.energie?.autoconsoPct != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="autoconsommation_pct">{formatNumber(ci.energie.autoconsoPct, 1)} %</p>
+                    {ci.energie.definitions.autoconso ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.autoconso}</p> : null}
+                  </div>
+                ) : null}
+                {ci.energie?.couverturePct != null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="couverture_pct">{formatNumber(ci.energie.couverturePct, 1)} %</p>
+                    {ci.energie.definitions.couverture ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.couverture}</p> : null}
+                  </div>
+                ) : null}
+                {ciArgent && ciEco !== null ? (
+                  <div class="cine-card rounded-xl p-5" data-ci-economie>
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Économie de l'année 1" data-en="Year-1 savings" data-ar="توفير السنة الأولى">Économie de l'année 1</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="economie_annuelle">{formatMAD(ciEco)}{ciArgent.base === 'ttc' ? ' TTC' : ' HT'}</p>
+                    {ciArgent.base === 'deux' && ciArgent.economieAnnee1?.ttc != null ? (
+                      <p class="mt-1 text-xs text-lune-faint" dir="ltr">{formatMAD(ciArgent.economieAnnee1.ttc)} TTC</p>
+                    ) : null}
+                    {ciEstimation ? (
+                      <p class="mt-1 text-xs text-brass-300" data-i18n data-fr="estimation" data-en="estimate" data-ar="تقدير">estimation</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {ciArgent && ciArgent.retourAns !== null ? (
+                  <div class="cine-card rounded-xl p-5" data-ci-retour>
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="payback_ans">{formatNumber(ciArgent.retourAns, 1)} <span class="text-base text-lune-soft" data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span></p>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            {auto.taux_couverture !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
-                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(auto.taux_couverture)} %</p>
-              </div>
-            ) : null}
-            {auto.economies_annuelles !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économies estimées / an</p>
-                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(auto.economies_annuelles)}</p>
-              </div>
-            ) : null}
-            {auto.payback !== null ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
-                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(auto.payback, 1)} <span class="text-base text-lune-soft" data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span></p>
-              </div>
-            ) : null}
-          </div>
-          {(auto.taux_autoconso === null && auto.taux_couverture === null && auto.economies_annuelles === null && auto.payback === null) ? (
+              {ciArgent?.tarif && (ciArgent.tarif.mention || ciArgent.tarif.source) ? (
+                <p class="mt-4 text-xs text-lune-faint" data-ci-tarif>
+                  <span data-i18n data-fr="Tarif utilisé :" data-en="Tariff used:" data-ar="التعريفة المعتمدة:">Tarif utilisé :</span>
+                  {' '}{ciArgent.tarif.mention ?? ciArgent.tarif.source}
+                </p>
+              ) : null}
+              {ciManque.length > 0 ? (
+                <div class="mt-4 rounded-xl border border-white/10 p-4 text-sm text-lune-soft" data-ci-manque>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Ce qu'il nous manque" data-en="What we still need" data-ar="ما ينقصنا">Ce qu'il nous manque</p>
+                  <ul class="mt-2 list-disc ps-5 text-xs">
+                    {ciManque.map((m) => <li>{m}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
             <p class="mt-4 text-sm text-lune-faint" data-i18n
               data-fr="Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller."
               data-en="The detailed indicators of your study are confirmed with your advisor."
               data-ar="تُؤكَّد المؤشرات التفصيلية لدراستكم مع مستشاركم.">Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller.</p>
-          ) : null}
-
-          {/* Injection 82-21 — UNIQUEMENT si réellement calculée. Mention ANRE
-              obligatoire : l'autoconsommation reste prioritaire, l'injection du
-              surplus dépend de la convention en vigueur (jamais promise). */}
-          {autoHasInjection && auto.injection_kwh_an !== null && (
-            <div class="cine-card mt-5 rounded-xl p-5">
-              <p class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</p>
-              {/* JARGON · DIVULGATION PROGRESSIVE (26/08/2026) — « loi 82-21 »
-                  ne dit rien à qui ne la connaît pas. Une phrase en français
-                  simple est VISIBLE ; le détail réglementaire (tarif ANRE,
-                  convention, plafond) descend dans un <details> natif. Rien
-                  n'est supprimé, rien ne change de sens. */}
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr="En clair : l’électricité que vous produisez sans la consommer peut repartir vers le réseau. C’est la loi 82-21 qui l’autorise."
-                data-en="In plain terms: the electricity you produce without consuming it can flow back to the grid. Law 82-21 is what allows this."
-                data-ar="ببساطة: الكهرباء التي تنتجونها دون استهلاكها يمكن أن تعود إلى الشبكة. القانون 82-21 هو ما يسمح بذلك.">
-                En clair : l’électricité que vous produisez sans la consommer peut repartir vers le réseau. C’est la loi 82-21 qui l’autorise.
-              </p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables${auto.injection_dh_an !== null ? `, soit ≈ ${formatMAD(auto.injection_dh_an)}/an` : ''}.`}
-                data-en={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/year of injectable surplus${auto.injection_dh_an !== null ? `, i.e. ≈ ${formatMAD(auto.injection_dh_an)}/year` : ''}.`}
-                data-ar={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/سنة من الفائض القابل للحقن${auto.injection_dh_an !== null ? `، أي ≈ ${formatMAD(auto.injection_dh_an)}/سنة` : ''}.`}>≈ {formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables{auto.injection_dh_an !== null ? <>, soit ≈ {formatMAD(auto.injection_dh_an)}/an</> : null}.</p>
-              <details class="mt-2">
-                <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
-                  data-fr="Le cadre réglementaire, en détail"
-                  data-en="The regulatory framework, in detail"
-                  data-ar="الإطار التنظيمي بالتفصيل">Le cadre réglementaire, en détail</summary>
-                <p class="mt-1 text-xs text-lune-faint" data-i18n
-                  data-fr="Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie."
-                  data-en="ANRE tariff valid 03/2026–02/2027, cap under revision. Subject to the applicable ANRE/ONEE injection agreement — self-consumption remains the priority (law 82-21). No resale is guaranteed."
-                  data-ar="تعريفة ANRE سارية 03/2026–02/2027، السقف قيد المراجعة. رهْن اتفاقية الحقن السارية لدى ANRE/ONEE — يبقى الاستهلاك الذاتي أولوية (القانون 82-21). لا يُضمن أي إعادة بيع.">Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie.</p>
-              </details>
-            </div>
           )}
 
-          {/* Mini-cashflow 10 ans : investissement remboursé puis bénéfice net
-              cumulé. Azur = encore en déficit, laiton = bénéfice. Même hypothèse
-              tarif constant que le PDF (aucune dérive inventée). */}
-          {autoCashflow && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Votre trésorerie sur 10 ans" data-en="Your cash flow over 10 years" data-ar="خزينتكم على مدى 10 سنوات">Votre trésorerie sur 10 ans</p>
-              <div class="mt-4 flex items-end gap-1.5" dir="ltr" role="img"
-                aria-label="Trésorerie nette cumulée sur 10 ans">
-                {autoCashflow.map((p) => (
-                  <div class="flex flex-1 flex-col items-center gap-1">
-                    <span class="w-full rounded-t" style={`height:${Math.max(3, Math.round((Math.abs(p.cumulative) / cashMaxAbs) * 60))}px; background: ${p.cumulative >= 0 ? 'var(--color-brass-400, #e8b54a)' : 'var(--color-azur-300, #7fb4e8)'}`}></span>
-                    <span class="text-[10px] text-lune-faint" dir="ltr">{p.year}</span>
-                  </div>
-                ))}
-              </div>
-              <p class="mt-3 text-xs text-lune-faint" data-i18n
-                data-fr={`Trésorerie nette cumulée, année après année${cashBreakEven !== null ? ` — au point mort dès l'année ${cashBreakEven}` : ''}. Azur : investissement pas encore remboursé ; laiton : bénéfice net. Estimation à tarif constant (même hypothèse que votre devis PDF).`}
-                data-en={`Cumulative net cash flow, year after year${cashBreakEven !== null ? ` — breaks even by year ${cashBreakEven}` : ''}. Blue: investment not yet repaid; brass: net profit. Estimate at constant tariff (same assumption as your PDF quote).`}
-                data-ar={`الخزينة الصافية التراكمية سنة بعد سنة${cashBreakEven !== null ? ` — تبلغ نقطة التعادل ابتداءً من السنة ${cashBreakEven}` : ''}. الأزرق: الاستثمار لم يُسترد بعد؛ الذهبي: ربح صافٍ. تقدير بتعريفة ثابتة (نفس افتراض عرض PDF).`}>Trésorerie nette cumulée, année après année{cashBreakEven !== null ? <> — au point mort dès l'année {cashBreakEven}</> : null}. Azur : investissement pas encore remboursé ; laiton : bénéfice net. Estimation à tarif constant (même hypothèse que votre devis PDF).</p>
+          {/* Injection 82-21 — UNIQUEMENT si le serveur SERT la revente (`synthese_ci.argent.revente`
+              calculée, MT seulement). La mention est le texte servi (`synthese_ci.hypotheses`,
+              MENTION_82_21) : AUCUNE mention réglementaire n'est écrite dans la page. */}
+          {ciInjection && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-ci-injection>
+              <p class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</p>
+              {ciInjection.kwhAn !== null ? (
+                <p class="mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/an de surplus injectables${ciInjection.valeurMadAn !== null ? `, soit ≈ ${formatMAD(ciInjection.valeurMadAn)}/an` : ''}.`}
+                  data-en={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/year of injectable surplus${ciInjection.valeurMadAn !== null ? `, i.e. ≈ ${formatMAD(ciInjection.valeurMadAn)}/year` : ''}.`}
+                  data-ar={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/سنة من الفائض القابل للحقن${ciInjection.valeurMadAn !== null ? `، أي ≈ ${formatMAD(ciInjection.valeurMadAn)}/سنة` : ''}.`}>≈ {formatNumber(ciInjection.kwhAn)} kWh/an de surplus injectables{ciInjection.valeurMadAn !== null ? `, soit ≈ ${formatMAD(ciInjection.valeurMadAn)}/an` : ''}.</p>
+              ) : null}
+              <p class="mt-2 text-xs text-lune-faint" data-i18n
+                data-fr={ciInjection.mention.fr} data-en={ciInjection.mention.en} data-ar={ciInjection.mention.ar}>{ciInjection.mention.fr}</p>
             </div>
           )}
 

@@ -2188,6 +2188,12 @@ export function savingsHeadline(
   opt: OptionKey,
   years: number = SAVINGS_HORIZON_YEARS,
 ): SavingsHeadline {
+  // CIW300 — le cumul « économie × 25 ans » ne sert plus le C&I (commercial / industriel) :
+  // son argent est `synthese_ci.argent`, servi par le moteur. Tout à `null`.
+  const modeCi = resolveInstallMode(p);
+  if (modeCi === 'commercial' || modeCi === 'industriel') {
+    return { annual: null, cumulative: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
+  }
   const annualRaw = opt === 'avec_batterie' ? p.quote?.eco_a_ann : p.quote?.eco_s_ann;
   const annual = typeof annualRaw === 'number' && Number.isFinite(annualRaw) && annualRaw > 0
     ? annualRaw : null;
@@ -4201,7 +4207,17 @@ export function chiffresEconomiePhare(
     ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null,
   };
   if (!p) return vide;
-  if (resolveInstallMode(p) === 'agricole') return vide;
+  const mode = resolveInstallMode(p);
+  if (mode === 'agricole') return vide;
+  if (mode === 'commercial' || mode === 'industriel') {
+    // CIW300 — en C&I, l'argent vient UNIQUEMENT de `synthese_ci.argent` (servi, calculé) ;
+    // `quote.eco_s_ann` / `roi_s` (clés résidentielles) ne sont jamais lus. Argent absent
+    // ou omis → tout à `null` (aucun chiffre d'argent), jamais un repli résidentiel.
+    const a = argentCiCalcule(syntheseCi(p));
+    const eco = economieCiHero(a);
+    const retour = a ? formatPayback(a.retourAns) : null;
+    return { ...vide, ecoSans: eco, ecoHero: eco, paybackSans: retour, paybackHero: retour };
+  }
   const q = p.quote as
     | { eco_s_ann?: number | null; eco_a_ann?: number | null; roi_s?: number | string | null; roi_a?: number | string | null }
     | undefined;
@@ -4268,43 +4284,8 @@ export function hasInjection(k: AutoconsoKpis | null): boolean {
   return !!k && k.injection_kwh_an !== null && k.injection_kwh_an > 0;
 }
 
-/** WJ126 — Un point du mini-cashflow autoconsommation (net cumulé, MAD). */
-export interface CashflowPoint {
-  /** Année (0 = mise en service). */
-  year: number;
-  /** Trésorerie nette cumulée à cette année (négative avant le point mort). */
-  cumulative: number;
-}
-
-/**
- * WJ126 — Mini-cashflow 10 ans (industriel/commercial) : `-investissement TTC`
- * + `économies_annuelles × année`. MÊME modèle linéaire que le PDF et
- * `savingsHeadline` (0 % d'escalade tarifaire, `BILL_INFLATION_RATE`) — aucune
- * dérive inventée. Renvoie `null` si l'économie annuelle ou le TTC réel manque
- * (jamais un cashflow construit sur un chiffre fabriqué).
- */
-export function autoconsoCashflow(
-  p: ProposalResponse,
-  opt: OptionKey,
-  k: AutoconsoKpis | null,
-  years: number = 10,
-): CashflowPoint[] | null {
-  if (!k) return null;
-  const annual = k.economies_annuelles;
-  const outlay = optionTtc(p, opt);
-  if (
-    annual === null || annual <= 0 ||
-    !Number.isFinite(outlay) || outlay <= 0 ||
-    years <= 0
-  ) {
-    return null;
-  }
-  const pts: CashflowPoint[] = [];
-  for (let y = 0; y <= years; y++) {
-    pts.push({ year: y, cumulative: Math.round(-outlay + annual * y) });
-  }
-  return pts;
-}
+// CIW300 — le mini-cashflow linéaire 10 ans (`autoconsoCashflow`) est supprimé : le C&I lit
+// `synthese_ci.argent` (économie de l'année 1, retour servi), jamais un modèle écrit dans la page.
 
 // ════════════════════════════════════════════════════════════════════════════
 // AGW303 — Jumeau web du document agricole (1/2) : `synthese_agricole`.
@@ -5985,4 +5966,236 @@ export function lireProposal(payload: unknown): Proposal | null {
     coveragePct: finiteOrNull(p.coverage_pct),
     coverageEstimated: booleenOuNull(p.coverage_estimated),
   };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CIW300 — Jumeau web du document C&I : `synthese_ci` (commercial / industriel).
+//
+// LA PAGE NE CALCULE RIEN. Le serveur sert `synthese_ci` (CIQ306 — la MÊME
+// fonction pure du moteur que le PDF, contrat partagé `proposal_data.json` ›
+// `exemple_commercial.synthese_ci` / `exemple_industriel.synthese_ci`). Cet
+// extracteur la LIT, défensivement : clé absente → `null`, jamais un 0 fabriqué.
+// Remplace le mini-cashflow linéaire, le cumul « économie × 25 ans » et les
+// mentions 82-21 écrites dans la page (CIW300).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Un texte servi en trois langues (`textes{fr,en,ar}` du contrat). */
+export interface TextesCi {
+  fr: string;
+  en: string;
+  ar: string;
+}
+
+export interface SyntheseCiHypothese {
+  cle: string;
+  textes: TextesCi;
+  source: string | null;
+  date: string | null;
+}
+
+export interface SyntheseCiArgent {
+  /** `calcule` | `omis` (servi tel quel). */
+  statut: string | null;
+  /** `ht` | `ttc` | `deux` — la base de l'économie (D-CIQ-3). */
+  base: string | null;
+  motifBase: string | null;
+  /** Le tarif utilisé : phrase servie + la source de la 1re ligne de tarif. */
+  tarif: { mention: string | null; source: string | null; origine: string | null; releveLe: string | null } | null;
+  /** Économie de l'année 1 (MAD) — telle que servie, HT et/ou TTC. */
+  economieAnnee1: { ht: number | null; ttc: number | null } | null;
+  /** Retour sur investissement en années (servi : `indicateurs.retour_ans`). */
+  retourAns: number | null;
+  /** Revente du surplus (MT seulement) : `statut === 'calculee'` ou rien. */
+  revente: { statut: string | null; kwhAn: number | null; valeurMadAn: number | null } | null;
+  motifsOmission: string[];
+}
+
+export interface SyntheseCi {
+  version: number | null;
+  segment: string | null;
+  /** `estimation_sous_reserve_visite` | `offre_ferme`. */
+  statutEtude: string | null;
+  aConfirmer: Array<{ cle: string; libelle: string }>;
+  systeme: { kwc: number | null; nbPanneaux: number | null; productionKwhAn: number | null } | null;
+  energie: {
+    autoconsoPct: number | null;
+    couverturePct: number | null;
+    /** Méthode servie (`horaire_declare`, `profil_type`…) — « estimation » quand elle le dit. */
+    methode: string | null;
+    definitions: { autoconso: string | null; couverture: string | null };
+  } | null;
+  argent: SyntheseCiArgent | null;
+  hypotheses: SyntheseCiHypothese[];
+  omissions: Array<{ bloc: string; motif: string }>;
+}
+
+function lireTextesCi(v: unknown): TextesCi | null {
+  if (!estRecord(v)) return null;
+  const fr = texteServi(v.fr);
+  if (fr === null) return null;
+  return { fr, en: texteServi(v.en) ?? fr, ar: texteServi(v.ar) ?? fr };
+}
+
+function lireArgentCi(v: unknown): SyntheseCiArgent | null {
+  if (!estRecord(v) || Object.keys(v).length === 0) return null;
+  const tarifBrut = estRecord(v.tarif) ? v.tarif : null;
+  const premierePoste =
+    tarifBrut && Array.isArray(tarifBrut.tarifs_par_poste) && estRecord(tarifBrut.tarifs_par_poste[0])
+      ? (tarifBrut.tarifs_par_poste[0] as Record<string, unknown>)
+      : null;
+  const eco = estRecord(v.economie_annee1) ? v.economie_annee1 : null;
+  const ind = estRecord(v.indicateurs) ? v.indicateurs : null;
+  const rev = estRecord(v.revente) ? v.revente : null;
+  const ht = eco ? nombreServi(eco.total_mad) : null;
+  const ttc = eco ? nombreServi(eco.total_mad_ttc) : null;
+  return {
+    statut: texteServi(v.statut),
+    base: texteServi(v.base),
+    motifBase: texteServi(v.motif_base),
+    tarif: tarifBrut
+      ? {
+          mention: texteServi(tarifBrut.mention),
+          source: premierePoste ? texteServi(premierePoste.source) : null,
+          origine: texteServi(tarifBrut.origine),
+          releveLe: premierePoste ? texteServi(premierePoste.releve_le) : null,
+        }
+      : null,
+    economieAnnee1: ht !== null || ttc !== null ? { ht, ttc } : null,
+    retourAns: ind ? nombreServi(ind.retour_ans) : null,
+    revente: rev
+      ? { statut: texteServi(rev.statut), kwhAn: nombreServi(rev.kwh_an), valeurMadAn: nombreServi(rev.valeur_mad_an) }
+      : null,
+    motifsOmission: Array.isArray(v.motifs_omission)
+      ? v.motifs_omission.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+      : [],
+  };
+}
+
+/**
+ * CIW300 — extracteur PUR de `synthese_ci`. `null` hors commercial/industriel,
+ * quand la clé est absente ou vide. Aucune valeur n'est calculée, convertie ni
+ * complétée ici (une chaîne n'est jamais convertie en nombre).
+ */
+export function syntheseCi(
+  p: Pick<ProposalResponse, 'mode_installation' | 'quote'> | null | undefined,
+): SyntheseCi | null {
+  if (!p) return null;
+  const mode = resolveInstallMode(p);
+  if (mode !== 'commercial' && mode !== 'industriel') return null;
+  const brut = (p as { synthese_ci?: unknown }).synthese_ci;
+  if (!estRecord(brut) || Object.keys(brut).length === 0) return null;
+
+  const sys = estRecord(brut.systeme) ? brut.systeme : null;
+  const en = estRecord(brut.energie) ? brut.energie : null;
+  const defs = en && estRecord(en.definitions) ? en.definitions : {};
+  const aConfirmer: Array<{ cle: string; libelle: string }> = [];
+  if (Array.isArray(brut.a_confirmer)) {
+    for (const a of brut.a_confirmer) {
+      if (estRecord(a) && texteServi(a.cle) && texteServi(a.libelle)) {
+        aConfirmer.push({ cle: a.cle as string, libelle: a.libelle as string });
+      }
+    }
+  }
+  const hypotheses: SyntheseCiHypothese[] = [];
+  if (Array.isArray(brut.hypotheses)) {
+    for (const h of brut.hypotheses) {
+      if (!estRecord(h)) continue;
+      const cle = texteServi(h.cle);
+      const textes = lireTextesCi(h.textes);
+      if (cle && textes) {
+        hypotheses.push({ cle, textes, source: texteServi(h.source), date: texteServi(h.date) });
+      }
+    }
+  }
+  const omissions: Array<{ bloc: string; motif: string }> = [];
+  if (Array.isArray(brut.omissions)) {
+    for (const o of brut.omissions) {
+      if (estRecord(o) && texteServi(o.bloc) && texteServi(o.motif)) {
+        omissions.push({ bloc: o.bloc as string, motif: o.motif as string });
+      }
+    }
+  }
+  return {
+    version: nombreServi(brut.version),
+    segment: texteServi(brut.segment),
+    statutEtude: texteServi(brut.statut_etude),
+    aConfirmer,
+    systeme: sys
+      ? {
+          kwc: nombreServi(sys.kwc),
+          nbPanneaux: nombreServi(sys.nb_panneaux),
+          productionKwhAn: nombreServi(sys.production_kwh_an),
+        }
+      : null,
+    energie: en
+      ? {
+          autoconsoPct: nombreServi(en.taux_autoconso_pct),
+          couverturePct: nombreServi(en.taux_couverture_pct),
+          methode: texteServi(en.methode),
+          definitions: { autoconso: texteServi(defs.autoconso), couverture: texteServi(defs.couverture) },
+        }
+      : null,
+    argent: lireArgentCi(brut.argent),
+    hypotheses,
+    omissions,
+  };
+}
+
+/** L'argent C&I n'existe que si le serveur l'a CALCULÉ (`statut: 'calcule'`) et servi. */
+export function argentCiCalcule(ci: SyntheseCi | null): SyntheseCiArgent | null {
+  const a = ci?.argent ?? null;
+  return a && a.statut === 'calcule' ? a : null;
+}
+
+/**
+ * Économie de l'année 1 à mettre en avant, selon la base SERVIE : TTC quand la
+ * base est `ttc`, sinon HT (`ht` ou `deux`, le TTC restant lisible à part).
+ */
+export function economieCiHero(a: SyntheseCiArgent | null): number | null {
+  const e = a?.economieAnnee1 ?? null;
+  if (!e) return null;
+  const v = a!.base === 'ttc' ? (e.ttc ?? e.ht) : (e.ht ?? e.ttc);
+  return v !== null && v > 0 ? v : null;
+}
+
+/**
+ * Le bloc « Injection du surplus (loi 82-21) » d'un devis C&I : SEULEMENT si
+ * `synthese_ci.argent.revente` est calculée (MT) — jamais sur la seule présence
+ * d'une injection dans `mode_kpis`. La mention est le texte servi par
+ * `synthese_ci.hypotheses[cle='revente']` (MENTION_82_21, CIQ305) ; sans elle, le
+ * bloc est omis plutôt que d'écrire une mention dans la page.
+ */
+export function injectionCi(
+  ci: SyntheseCi | null,
+): { kwhAn: number | null; valeurMadAn: number | null; mention: TextesCi } | null {
+  const rev = ci?.argent?.revente ?? null;
+  if (!ci || !rev || rev.statut !== 'calculee') return null;
+  const mention = ci.hypotheses.find((h) => h.cle === 'revente')?.textes ?? null;
+  if (!mention) return null;
+  return { kwhAn: rev.kwhAn, valeurMadAn: rev.valeurMadAn, mention };
+}
+
+/** Vrai quand la méthode SERVIE se dit estimation (profil type, méthode inconnue) — l'étiquette « estimation ». */
+export function ciEstUneEstimation(ci: SyntheseCi | null): boolean {
+  return !!ci?.energie?.methode && ci.energie.methode.includes('estimation');
+}
+
+/** Vrai quand le serveur dit « estimation sous réserve de la visite technique » (CIQ303). */
+export function ciSousReserveVisite(ci: SyntheseCi | null): boolean {
+  return ci?.statutEtude === 'estimation_sous_reserve_visite';
+}
+
+/**
+ * « Ce qu'il nous manque » : les motifs d'omission SERVIS de l'argent (ceux du bloc
+ * `argent` et ceux des `omissions` dont le bloc est `argent…`), dédoublonnés, dans l'ordre servi.
+ */
+export function motifsManquantsCi(ci: SyntheseCi | null): string[] {
+  if (!ci) return [];
+  const sortie: string[] = [];
+  const ajoute = (m: string) => {
+    if (!sortie.includes(m)) sortie.push(m);
+  };
+  for (const m of ci.argent?.motifsOmission ?? []) ajoute(m);
+  for (const o of ci.omissions) if (o.bloc === 'argent' || o.bloc.startsWith('argent.')) ajoute(o.motif);
+  return sortie;
 }

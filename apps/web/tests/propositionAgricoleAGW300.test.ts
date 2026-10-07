@@ -57,9 +57,10 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     expect(avec.paybackHero).toBe(avec.paybackAvec);
   });
 
-  it('industriel / commercial / mode absent gardent leurs chiffres', () => {
-    for (const m of ['industriel', 'commercial', '']) {
-      expect(chiffresEconomiePhare(payload(m), 'sans_batterie').ecoHero).toBe(24000);
+  it('mode absent garde ses chiffres ; industriel / commercial ne lisent plus eco_s_ann (CIW300 : synthese_ci)', () => {
+    expect(chiffresEconomiePhare(payload(''), 'sans_batterie').ecoHero).toBe(24000);
+    for (const m of ['industriel', 'commercial']) {
+      expect(chiffresEconomiePhare(payload(m), 'sans_batterie').ecoHero).toBeNull();
     }
   });
 

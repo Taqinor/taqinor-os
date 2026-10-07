@@ -10,15 +10,13 @@
 //  - chaque extracteur de KPI ne renvoie rien hors de son mode (zéro fuite
 //    inter-mode) et met chaque champ manquant à `null` (omission honnête, jamais
 //    un 0 fabriqué) ;
-//  - le mini-cashflow se dégrade en `null` quand la
-//    donnée source manque.
+//  - (CIW300 : le mini-cashflow 10 ans est supprimé, l'argent C&I = `synthese_ci`).
 import { describe, expect, it } from 'vitest';
 import {
   resolveInstallMode,
   agricoleKpis,
   autoconsoKpis,
   hasInjection,
-  autoconsoCashflow,
   commercialArchetype,
   MONTHS_SHORT,
   type ProposalResponse,
@@ -225,34 +223,10 @@ describe('WJ126 — hasInjection', () => {
   });
 });
 
-describe('WJ126 — autoconsoCashflow (mini-cashflow 10 ans)', () => {
-  it('trace -TTC puis +économies/an (11 points, modèle linéaire)', () => {
-    const cf = autoconsoCashflow(INDUSTRIEL, 'sans_batterie', autoconsoKpis(INDUSTRIEL), 10)!;
-    expect(cf).toHaveLength(11);
-    expect(cf[0]).toEqual({ year: 0, cumulative: -1080000 });
-    expect(cf[10].cumulative).toBe(-1080000 + 420000 * 10);
-    // Monotone croissant + franchit zéro (point mort ~ année 3).
-    for (let i = 1; i < cf.length; i++) expect(cf[i].cumulative).toBeGreaterThan(cf[i - 1].cumulative);
-    expect(cf.find((p) => p.cumulative >= 0)!.year).toBe(3);
-  });
-
-  it('null quand l\'économie annuelle manque', () => {
-    const auto = autoconsoKpis(makeProposal({ mode_installation: 'industriel', mode_kpis: { taux_autoconso: 80 } }));
-    expect(autoconsoCashflow(INDUSTRIEL, 'sans_batterie', auto, 10)).toBeNull();
-  });
-
-  it('null quand aucun prix TTC réel (jamais bâti sur un montant fabriqué)', () => {
-    const noPrice = makeProposal({
-      mode_installation: 'industriel',
-      mode_kpis: { economies_annuelles: 420000 },
-      quote: { totaux_sans: undefined },
-      option_totals: { sans_batterie: 0, avec_batterie: 0, display_total: 0, nb_options: 1 },
-    });
-    expect(autoconsoCashflow(noPrice, 'sans_batterie', autoconsoKpis(noPrice), 10)).toBeNull();
-  });
-
-  it('null quand auto est null (résidentiel/agricole)', () => {
-    expect(autoconsoCashflow(RESIDENTIEL, 'sans_batterie', null, 10)).toBeNull();
+describe('CIW300 — le mini-cashflow linéaire 10 ans est supprimé', () => {
+  it('plus d\'export autoconsoCashflow : l\'argent C&I vient de synthese_ci', async () => {
+    const lib = await import('../src/lib/proposition');
+    expect((lib as Record<string, unknown>).autoconsoCashflow).toBeUndefined();
   });
 });
 
@@ -289,7 +263,6 @@ describe('WJ126 — zéro fuite inter-mode (le contrat central de la vitrine)', 
   it('page AGRICOLE : aucun bloc autoconsommation ne se calcule', () => {
     expect(resolveInstallMode(AGRICOLE)).toBe('agricole');
     expect(autoconsoKpis(AGRICOLE)).toBeNull();
-    expect(autoconsoCashflow(AGRICOLE, 'sans_batterie', autoconsoKpis(AGRICOLE), 10)).toBeNull();
     expect(agricoleKpis(AGRICOLE)).not.toBeNull();
   });
 
