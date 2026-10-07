@@ -1336,6 +1336,15 @@ class PoseReelle(TenantModel):
         related_name='calepinage_poses_reelles',
         verbose_name='Relevé par',
     )
+    #: ACAL247 — le PRÉVU de la conception FIGÉ au moment du relevé : retoucher
+    #: le toit après coup ne réécrit plus l'écart passé. ``None`` = relevé
+    #: ancien, prévu encore calculé en vivant (jamais rejoué après coup : un
+    #: prévu reconstitué serait un chiffre inventé).
+    modules_prevus = models.PositiveIntegerField(
+        'Modules prévus au relevé', null=True, blank=True)
+    #: D'où vient ce prévu figé (ex. « conception ») — vide si non figé.
+    prevu_source = models.CharField('Source du prévu figé', max_length=20,
+                                    blank=True, default='')
 
     class Meta:
         verbose_name = 'Pose réelle (as-built)'
