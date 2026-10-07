@@ -75,8 +75,14 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
 
   // L'identifiant du devis créé, lu sur la RÉPONSE de création (jamais deviné
   // dans une liste partagée par les autres specs).
+  // ERR-E2E-AUTODEVIS-LENT — même budget que `generateAutoDevis` (45 s pour
+  // création + aperçu) : sans délai explicite, ce wait héritait des 15 s par
+  // défaut, PLUS strict que la chaîne qu'il encadre ; en CI (worker gunicorn
+  // à froid + specs en parallèle) le POST /devis/auto/ — pur calcul, aucun
+  // appel réseau — l'a dépassé (PR #823/#836/#840).
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
-    && CREATION_DEVIS.test(new URL(r.url()).pathname) && r.status() < 300)
+    && CREATION_DEVIS.test(new URL(r.url()).pathname) && r.status() < 300,
+  { timeout: 45_000 })
   await generateAutoDevis(page)
   const devisId = (await (await creation).json()).id
   expect(devisId, 'identifiant du devis créé').toBeTruthy()
