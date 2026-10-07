@@ -17,12 +17,31 @@ from django.http import HttpResponse
 from rest_framework.decorators import (
     api_view, authentication_classes, permission_classes, throttle_classes,
 )
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.throttling import IdentIpPartageeMixin
+
+
+class PeutReplanifierCalendrier(BasePermission):
+    """ASEC11-revue (décision fondateur « rendre le calendrier seulement »).
+
+    Glisser-déposer un évènement de l'agenda est un geste COURANT : depuis
+    ASEC11, ``IsResponsableOrAdmin`` exigeait un code d'ÉCRITURE du module
+    ``reporting`` pour ce POST, que Commercial et Technicien ne portent pas
+    (lecture seule du reporting) → 403. La replanification se garde donc au
+    niveau LECTURE du module : même règle qu'``IsResponsableOrAdmin`` (palier
+    responsable requis, Viewer et Commercial terrain toujours refusés), mais
+    un code ``reporting`` de lecture suffit. Rapports sauvegardés, config du
+    tableau de bord et alertes KPI restent admin/responsable."""
+
+    def has_permission(self, request, view):
+        from types import SimpleNamespace
+        lecture = SimpleNamespace(user=request.user, method='GET')
+        return IsResponsableOrAdmin().has_permission(lecture, view)
+
 
 # Types éditables (une date stockée) → replanifiables par glisser-déposer.
 EDITABLE_TYPES = {'pose', 'mise_en_service', 'intervention', 'activite'}
@@ -234,7 +253,7 @@ def calendar_events(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([PeutReplanifierCalendrier])
 def calendar_reschedule(request):
     """Replanifie un évènement à date éditable (glisser-déposer).
 
