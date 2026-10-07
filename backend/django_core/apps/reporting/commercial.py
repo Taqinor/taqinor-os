@@ -201,10 +201,11 @@ def commercial_dashboard(request):
         if kwc:
             kwc_by_devis[devis_id] += Decimal(kwc)
 
-    # AANA21 — le taux individuel est LE taux de gain partagé, calculé par
-    # build_leaderboard sur les leads de la fenêtre.
+    # AANA21/AANA22 — le taux individuel est LE taux de gain partagé, calculé
+    # par build_leaderboard sur SA fenêtre de leads (bornes inclusives).
     from apps.reporting.services import build_leaderboard
-    leaderboard = build_leaderboard(signed_devis, kwc_by_devis, leads)
+    leaderboard = build_leaderboard(
+        signed_devis, kwc_by_devis, co, start, end)
 
     # ── QX31be — délai jusqu'au PREMIER contact (speed-to-lead) ──────────────
     # De la création du lead à la première activité SORTANTE (appel/e-mail),

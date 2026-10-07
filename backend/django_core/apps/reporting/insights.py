@@ -701,7 +701,6 @@ def sales_leaderboard(request):
     co = _co(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
-    from apps.crm.models import Lead
     from apps.installations.models import Installation
     from decimal import Decimal
 
@@ -725,19 +724,12 @@ def sales_leaderboard(request):
         if kwc:
             kwc_by_devis[devis_id] += Decimal(kwc)
 
-    # Tous les leads de la société pour calculer le nb total par responsable.
-    leads_qs = Lead.objects.filter(**co, is_archived=False)
-    if start:
-        leads_qs = leads_qs.filter(date_creation__gte=start)
-    if end:
-        leads_qs = leads_qs.filter(date_creation__lte=end)
     # WIR82 — calcul UNIQUE partagé avec commercial.commercial_dashboard via
     # reporting.services.build_leaderboard (plus de doublon divergent).
-    # AANA21 — le taux individuel = LE taux de gain partagé (leads chargés).
+    # AANA21/AANA22 — le taux individuel = LE taux de gain partagé, sur la
+    # fenêtre de leads construite DANS build_leaderboard (bornes inclusives).
     from apps.reporting.services import build_leaderboard
-    rows = build_leaderboard(
-        signed, kwc_by_devis,
-        list(leads_qs.only('id', 'owner_id', 'stage', 'perdu')))
+    rows = build_leaderboard(signed, kwc_by_devis, co, start, end)
 
     x = _maybe_xlsx(
         request, 'classement-commerciaux.xlsx',

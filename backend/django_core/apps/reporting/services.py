@@ -57,7 +57,21 @@ def taux_gain(leads):
     return round(len(_leads_gagnes(actifs)) / len(actifs) * 100, 1)
 
 
-def build_leaderboard(signed_devis, kwc_by_devis, leads):
+def leads_de_la_fenetre(co, start=None, end=None):
+    """AANA22 — LA fenêtre de leads du classement : leads non archivés de la
+    société, bornes ``date_creation__date`` INCLUSIVES (un lead créé le jour
+    ``end`` à 15 h est dedans). Unique construction, partagée par le tableau
+    commercial et l'export classement."""
+    from apps.crm.models import Lead
+    qs = Lead.objects.filter(**co, is_archived=False)
+    if start:
+        qs = qs.filter(date_creation__date__gte=start)
+    if end:
+        qs = qs.filter(date_creation__date__lte=end)
+    return list(qs.only('id', 'owner_id', 'stage', 'perdu'))
+
+
+def build_leaderboard(signed_devis, kwc_by_devis, co, start=None, end=None):
     """WIR82 — calcul UNIQUE du classement commercial.
 
     Source partagée consommée à la fois par
@@ -69,9 +83,11 @@ def build_leaderboard(signed_devis, kwc_by_devis, leads):
       - ``signed_devis`` : itérable de Devis signés (statut ACCEPTE), avec
         ``lead``/``lead__owner``/``created_by`` select_related.
       - ``kwc_by_devis`` : dict {devis_id: Decimal(kWc installé)}.
-      - ``leads`` : itérable des leads de la fenêtre (``owner_id``,
-        ``stage``, ``perdu``) — AANA21 : le taux de victoire individuel est
-        LE taux de gain partagé (``taux_gain`` : gagnés ÷ non perdus).
+      - ``co`` / ``start`` / ``end`` : portée société et fenêtre (dates).
+        AANA22 — la fenêtre de leads est construite ICI
+        (``leads_de_la_fenetre``), jamais par l'appelant : les deux écrans ne
+        peuvent plus diverger. AANA21 : le taux de victoire individuel est LE
+        taux de gain partagé (``taux_gain`` : gagnés ÷ non perdus).
 
     Retourne la liste de lignes triée par CA HT décroissant (mêmes clés et
     formats qu'avant l'extraction : chaînes pour les décimaux).
@@ -100,7 +116,7 @@ def build_leaderboard(signed_devis, kwc_by_devis, leads):
     # AANA21 — leads groupés par propriétaire, propriétaire absent = clé 0
     # (même clé que les devis ci-dessus).
     leads_by_owner = {}
-    for le in leads:
+    for le in leads_de_la_fenetre(co, start, end):
         leads_by_owner.setdefault(le.owner_id or 0, []).append(le)
 
     rows = []
