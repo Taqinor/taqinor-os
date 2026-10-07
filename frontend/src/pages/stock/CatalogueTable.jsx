@@ -145,6 +145,9 @@ export function CatalogueTable({
   onHistorique,
   onReapprovisionner,
   onInlineSave,
+  // ASTK21 (D-ASTK-3) — édition en place du prix de vente réservée au code
+  // `catalogue_prix_modifier` (calculé par l'écran, qui a le store).
+  canEditPrix = true,
   onDetail,
   // WIR221/XSTK10 — mise au rebut (motif obligatoire).
   onRebut,
@@ -320,7 +323,7 @@ export function CatalogueTable({
         const fmt = (v, r) => (sansPrix(r)
           ? <Badge tone="warning">prix à renseigner</Badge>
           : `${formatMAD(v, { withSymbol: false })} HT`)
-        if (!editable) return <span className="tabular-nums">{fmt(value, p)}</span>
+        if (!editable || !canEditPrix) return <span className="tabular-nums">{fmt(value, p)}</span>
         return (
           <EditableCell
             value={value}
@@ -449,7 +452,7 @@ export function CatalogueTable({
       },
       exportValue: (p) => p.seuil_alerte,
     },
-  ], [editable, onInlineSave, selectable, selected, onToggleSelect, fichesParProduit])
+  ], [editable, canEditPrix, onInlineSave, selectable, selected, onToggleSelect, fichesParProduit])
 
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {

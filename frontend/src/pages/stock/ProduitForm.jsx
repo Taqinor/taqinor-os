@@ -10,6 +10,7 @@ import {
   createFournisseur,
 } from '../../features/stock/store/stockSlice'
 import { useIsAdmin } from '../../hooks/useHasPermission'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import stockApi from '../../api/stockApi'
 import { formatMAD, formatPercent } from '../../lib/format'
 import {
@@ -416,6 +417,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const { categories, fournisseurs, produits } = useSelector(s => s.stock)
   const isAdmin = useIsAdmin()
   const isEdit = !!produit
+  // ASTK21 (D-ASTK-3) — changer le prix de vente d'un produit existant exige
+  // `catalogue_prix_modifier` (le serveur refuse sinon, 403) : champ figé.
+  const peutModifierPrix = usePermissionAchats('catalogue_prix_modifier')
+  const prixVenteFige = isEdit && !peutModifierPrix
 
   const [saving, setSaving] = useState(false)
   // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
@@ -1227,10 +1232,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           </FormSection>
 
           <FormSection title="Prix & TVA">
-            <FormField label="Prix de vente HT" required htmlFor="pf-vente" error={errors.prix_vente}>
+            <FormField label="Prix de vente HT" required htmlFor="pf-vente" error={errors.prix_vente}
+                       hint={prixVenteFige ? 'Modification réservée à la permission « catalogue_prix_modifier ».' : undefined}>
               {/* step="any" + saisie libre : ne jamais snapper/rejeter un nombre tapé. */}
               <Input id="pf-vente" type="number" min="0" step="any" inputMode="decimal"
                      invalid={!!errors.prix_vente} value={fields.prix_vente}
+                     readOnly={prixVenteFige} disabled={prixVenteFige}
                      onChange={e => setField('prix_vente', e.target.value)} />
               {/* Avertissement marge négative — interne, jamais bloquant. */}
               {margeNegative && (

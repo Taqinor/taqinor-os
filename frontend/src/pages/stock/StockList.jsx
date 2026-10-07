@@ -35,6 +35,7 @@ import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -686,6 +687,8 @@ export default function StockList() {
   const canWriteViaPerm = useHasPermission('stock_modifier')
   const canWriteViaRole = useIsAdminOrResponsable()
   const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  // ASTK21 (D-ASTK-3) — édition en place du prix de vente du catalogue.
+  const canEditPrix = usePermissionAchats('catalogue_prix_modifier')
   const canDelete = useIsAdmin()
   // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
   // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
@@ -1521,6 +1524,7 @@ export default function StockList() {
               produits={filtered}
               loading={loading}
               canWrite={canWrite}
+              canEditPrix={canEditPrix}
               canDelete={canDelete}
               onEdit={openEdit}
               onDelete={handleDelete}

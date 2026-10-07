@@ -11,6 +11,7 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 
 // L744 — Liste consultable des RETOURS FOURNISSEUR (RetourFournisseurViewSet
 // existait sans écran). Référence RF, fournisseur, statut, date + consultation
@@ -44,7 +45,9 @@ const fmtDateFR = (iso) => {
 // track LOCALEMENT le succès de cette session (le serializer du retour
 // n'expose aucun champ « a un avoir » — un second clic après rechargement
 // reste refusé honnêtement par le 400 serveur, affiché tel quel).
-export function RetourDetail({ retour, onClose, onAvoirGenere }) {
+// ASTK21 (D-ASTK-3) — générer l'avoir d'un retour = « payer » côté serveur ;
+// `peutPayer` est une PROP (les tests montent ce détail sans Provider).
+export function RetourDetail({ retour, onClose, onAvoirGenere, peutPayer = true }) {
   const lignes = retour?.lignes ?? []
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -121,7 +124,7 @@ export function RetourDetail({ retour, onClose, onAvoirGenere }) {
         )}
 
         <DialogFooter>
-          {retour.statut === 'valide' && !avoirGenere && (
+          {peutPayer && retour.statut === 'valide' && !avoirGenere && (
             <Button type="button" variant="outline" loading={busy} onClick={genererAvoir}>
               <FileMinus2 /> Générer l&apos;avoir
             </Button>
@@ -134,6 +137,7 @@ export function RetourDetail({ retour, onClose, onAvoirGenere }) {
 }
 
 export default function RetoursFournisseur() {
+  const peutPayer = usePermissionAchats('achats_payer')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -204,7 +208,7 @@ export default function RetoursFournisseur() {
       />
 
       {selected && (
-        <RetourDetail retour={selected} onClose={() => setSelected(null)} />
+        <RetourDetail retour={selected} peutPayer={peutPayer} onClose={() => setSelected(null)} />
       )}
     </div>
   )
