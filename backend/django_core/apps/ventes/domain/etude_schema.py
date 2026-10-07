@@ -201,6 +201,12 @@ SCHEMA = {
     'production_source': _cle((str,), CALEPINAGE, DERIVEE,
                               'ACAL101 — « calepinage » | « saisie » ; lue '
                               'par `scenario.figure_production_du_devis`.'),
+    # ACAL102 — trace de la migration 0132 (backfill de la marque ci-dessus
+    # sur les devis existants) : seul son retour la lit, aucun écrivain.
+    'production_source_backfill': _cle(
+        (bool,), ORPHELINE, DERIVEE,
+        'ACAL102 — posée par la migration ventes 0132 ; lue par son seul '
+        'retour (retrait des marques qu’elle a posées).'),
     'economies_annuelles': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_sans': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_avec': _cle((int, float), CALEPINAGE, DERIVEE),

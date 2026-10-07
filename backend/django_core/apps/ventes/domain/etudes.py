@@ -602,6 +602,10 @@ from apps.ventes.domain.etude_schema import (  # noqa: E402
 CLES_DERIVEES_NON_COPIEES = (
     'production_annuelle',
     'economies_annuelles',
+    # ACAL101/102 — la provenance suit les figures qu'elle qualifie : une
+    # copie qui les purge purge aussi leur marque (et sa trace de backfill).
+    'production_source',
+    'production_source_backfill',
     'payback',
     'etude_horaire',
     CLE_ETUDE_HORAIRE_SANS,
