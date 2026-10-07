@@ -6085,6 +6085,31 @@ export interface SyntheseCiArgent {
   /** Revente du surplus (MT seulement) : `statut === 'calculee'` ou rien. */
   revente: { statut: string | null; kwhAn: number | null; valeurMadAn: number | null } | null;
   motifsOmission: string[];
+  /** CIW308 — jalons de cumul net (années 5/10/15/20/25), tels que servis ; `[]` si absents. */
+  jalons: Array<{ annee: number; cumul: number }>;
+  /** Les mêmes jalons en TTC quand la base servie est « deux ». */
+  jalonsTtc: Array<{ annee: number; cumul: number }>;
+  /** CIW308 — indicateurs de rentabilité servis (aucun n'est calculé ici). */
+  indicateurs: {
+    triPct: number | null;
+    triHorizonAns: number | null;
+    lcoeMadKwh: number | null;
+    tarifKwhEvite: number | null;
+    vanMad: number | null;
+    vanMotif: string | null;
+  } | null;
+  /** Taux d'actualisation DÉCLARÉ par le client (hypothèse du flux servi), jamais un défaut. */
+  tauxActualisationPct: number | null;
+  /** Sensibilités SAISIES par la société (industriel seulement) ; `[]` sans scénario. */
+  sensibilites: Array<{ cle: string; variationPct: number | null; retourAns: number | null; triPct: number | null; motif: string | null }>;
+  /** Offre de financement SERVIE (offre écrite), ou `null` — jamais un taux inventé. */
+  financement: {
+    libelleClient: string | null;
+    echeanceMad: number | null;
+    economieMensuelleMoyenneMad: number | null;
+    ecartMensuelMad: number | null;
+    dureeMois: number | null;
+  } | null;
 }
 
 export interface SyntheseCi {
@@ -6194,7 +6219,64 @@ function lireArgentCi(v: unknown): SyntheseCiArgent | null {
     motifsOmission: Array.isArray(v.motifs_omission)
       ? v.motifs_omission.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
       : [],
+    jalons: lireJalonsCi(v.jalons),
+    jalonsTtc: lireJalonsCi(v.jalons_ttc),
+    indicateurs: ind
+      ? {
+          triPct: nombreServi(ind.tri_pct),
+          triHorizonAns: nombreServi(ind.tri_horizon_ans),
+          lcoeMadKwh: nombreServi(ind.lcoe_mad_kwh),
+          tarifKwhEvite: nombreServi(ind.tarif_kwh_evite_moyen),
+          vanMad: nombreServi(ind.van_mad),
+          vanMotif: texteServi(ind.van_motif),
+        }
+      : null,
+    tauxActualisationPct: lireTauxActualisationCi(v),
+    sensibilites: Array.isArray(v.sensibilites)
+      ? v.sensibilites.filter(estRecord).flatMap((x) => {
+          const cle = texteServi(x.cle);
+          return cle
+            ? [{
+                cle,
+                variationPct: nombreServi(x.variation_pct),
+                retourAns: nombreServi(x.retour_ans),
+                triPct: nombreServi(x.tri_pct),
+                motif: texteServi(x.motif),
+              }]
+            : [];
+        })
+      : [],
+    financement: estRecord(v.financement)
+      ? {
+          libelleClient: texteServi(v.financement.libelle_client),
+          echeanceMad: nombreServi(v.financement.echeance_mad),
+          economieMensuelleMoyenneMad: nombreServi(v.financement.economie_mensuelle_moyenne_mad),
+          ecartMensuelMad: nombreServi(v.financement.ecart_mensuel_mad),
+          dureeMois: nombreServi(v.financement.duree_mois),
+        }
+      : null,
   };
+}
+
+function lireJalonsCi(v: unknown): Array<{ annee: number; cumul: number }> {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((j) => {
+    if (!estRecord(j)) return [];
+    const annee = nombreServi(j.annee);
+    const cumul = nombreServi(j.cumul_mad);
+    return annee !== null && cumul !== null ? [{ annee, cumul }] : [];
+  });
+}
+
+function lireTauxActualisationCi(argent: Record<string, unknown>): number | null {
+  for (const cle of ['flux_ht', 'flux_ttc']) {
+    const flux = argent[cle];
+    if (!estRecord(flux) || !Array.isArray(flux.hypotheses)) continue;
+    for (const h of flux.hypotheses) {
+      if (estRecord(h) && h.cle === 'taux_actualisation_pct') return nombreServi(h.valeur);
+    }
+  }
+  return null;
 }
 
 /**
@@ -6426,4 +6508,64 @@ export function carteIndustrielleCi(
     (h): h is SyntheseCiHypothese => !!h,
   );
   return { hypotheses, decarbonation: ci.decarbonation };
+}
+
+// ── CIW308 — la rentabilité d'un devis INDUSTRIEL : celle du PDF, lue telle quelle ───────────
+
+/** Les jalons affichés (D-CIQ-10) : 5 / 10 / 15 / 20 / 25 ans. */
+export const JALONS_RENTABILITE_ANS = [5, 10, 15, 20, 25] as const;
+
+export interface RentabiliteCi {
+  /** Base servie : `ht` | `ttc` | `deux`. */
+  base: string | null;
+  /** Jalons de cumul net dans la base principale (TTC seulement si la base servie est `ttc`). */
+  jalons: Array<{ annee: number; cumul: number }>;
+  /** Jalons TTC (base « deux » seulement). */
+  jalonsTtc: Array<{ annee: number; cumul: number }>;
+  triPct: number | null;
+  /** « TRI sur N ans » — l'horizon SERVI. */
+  triHorizonAns: number | null;
+  /** LCOE servi et le prix moyen du kWh évité du client, face à face. */
+  lcoeMadKwh: number | null;
+  tarifKwhEvite: number | null;
+  /** VAN seulement si servie (taux déclaré) ; sinon `null` — le bloc VAN est omis. */
+  vanMad: number | null;
+  tauxActualisationPct: number | null;
+  sensibilites: SyntheseCiArgent['sensibilites'];
+  financement: SyntheseCiArgent['financement'];
+}
+
+/**
+ * CIW308 — la section rentabilité d'un devis INDUSTRIEL : `synthese_ci.argent` tel que servi
+ * (jalons 5/10/15/20/25, TRI sur N ans, LCOE face au tarif, VAN et sensibilités seulement si
+ * servies, financement s'il est servi). `null` hors industriel, argent omis/non calculé, ou si
+ * rien d'exploitable n'est servi (aucun jalon, TRI, LCOE) : la section est alors omise.
+ */
+export function rentabiliteCi(ci: SyntheseCi | null): RentabiliteCi | null {
+  if (!ci || ci.segment !== 'industriel') return null;
+  const a = argentCiCalcule(ci);
+  if (!a) return null;
+  const garde = (j: Array<{ annee: number; cumul: number }>) =>
+    JALONS_RENTABILITE_ANS.flatMap((an) => {
+      const x = j.find((e) => e.annee === an);
+      return x ? [x] : [];
+    });
+  const principal = a.base === 'ttc' && a.jalonsTtc.length > 0 ? a.jalonsTtc : a.jalons;
+  const jalons = garde(principal);
+  const ind = a.indicateurs;
+  const r: RentabiliteCi = {
+    base: a.base,
+    jalons,
+    jalonsTtc: a.base === 'deux' ? garde(a.jalonsTtc) : [],
+    triPct: ind?.triPct ?? null,
+    triHorizonAns: ind?.triHorizonAns ?? null,
+    lcoeMadKwh: ind?.lcoeMadKwh ?? null,
+    tarifKwhEvite: ind?.tarifKwhEvite ?? null,
+    vanMad: ind?.vanMad ?? null,
+    tauxActualisationPct: a.tauxActualisationPct,
+    sensibilites: a.sensibilites,
+    financement: a.financement,
+  };
+  if (r.jalons.length === 0 && r.triPct === null && r.lcoeMadKwh === null) return null;
+  return r;
 }

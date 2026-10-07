@@ -74,6 +74,7 @@ import {
   type Lbl3,
   categorieCi,
   carteIndustrielleCi,
+  rentabiliteCi,
   MONTHS_SHORT,
   formatMAD,
   formatNumber,
@@ -661,6 +662,10 @@ const nonInclusLbl: Lbl3 = (() => {
 const ciCategorie = ok && isCommercial ? categorieCi(ci) : null;
 // CIW307 — carte industrielle : hypothèses et décarbonation SERVIES (mêmes textes que le PDF).
 const ciCarteInd = ok && installMode === 'industriel' ? carteIndustrielleCi(ci) : null;
+// CIW308 — rentabilité industrielle : `synthese_ci.argent` tel que servi (jalons, TRI, LCOE, VAN, sensibilités,
+// financement) ; rien n'est calculé ici. `null` ⇒ la section est omise.
+const ciRent = ok && installMode === 'industriel' ? rentabiliteCi(ci) : null;
+const ciRentBaseTexte = ciRent?.base === 'ttc' ? 'TTC' : 'HT';
 
 // Bloc énergie/économies (résidentiel/industriel). Pompage n'a pas ces champs.
 const puissance = q?.puissance_kwc ?? null;
@@ -3632,6 +3637,101 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </section>
       )}
 
+      {/* ════════════════════════════════════════════════════════════════════
+          CIW308 · RENTABILITÉ INDUSTRIELLE — celle du PDF, lue telle quelle dans `synthese_ci.argent`
+          (jalons 5/10/15/20/25, « TRI sur N ans », LCOE face au tarif du client ; VAN, sensibilités et
+          financement SEULEMENT s'ils sont servis). Trois ancres, une par lecteur du comité :
+          #direction (synthèse et rentabilité), #exploitation (schéma, services, suivi), #achats
+          (conditions, échéancier, acceptation). Aucune statistique sur les acheteurs.
+          ════════════════════════════════════════════════════════════════════ */}
+      {installMode === 'industriel' && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="direction" data-ci-lecteurs>
+          <nav class="flex flex-wrap gap-2 text-xs" aria-label="Lire selon votre rôle">
+            <a href="#direction" class="btn-pill px-3 py-1" data-i18n data-fr="Direction" data-en="Management" data-ar="الإدارة">Direction</a>
+            <a href="#exploitation" class="btn-pill px-3 py-1" data-i18n data-fr="Exploitation" data-en="Operations" data-ar="الاستغلال">Exploitation</a>
+            <a href="#achats" class="btn-pill px-3 py-1" data-i18n data-fr="Achats" data-en="Procurement" data-ar="المشتريات">Achats</a>
+          </nav>
+          {ciRent && (
+            <div class="mt-5" id="rentabilite" data-ci-rentabilite>
+              <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Rentabilité de votre projet" data-en="Your project's profitability" data-ar="مردودية مشروعكم">Rentabilité de votre projet</h2>
+              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {ciRent.triPct !== null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n
+                      data-fr={ciRent.triHorizonAns !== null ? `TRI sur ${formatNumber(ciRent.triHorizonAns, 0)} ans` : 'TRI'}
+                      data-en={ciRent.triHorizonAns !== null ? `IRR over ${formatNumber(ciRent.triHorizonAns, 0)} years` : 'IRR'}
+                      data-ar={ciRent.triHorizonAns !== null ? `معدل العائد الداخلي على ${formatNumber(ciRent.triHorizonAns, 0)} سنة` : 'معدل العائد الداخلي'}>{ciRent.triHorizonAns !== null ? `TRI sur ${formatNumber(ciRent.triHorizonAns, 0)} ans` : 'TRI'}</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="tri_pct">{formatNumber(ciRent.triPct, 1)} %</p>
+                  </div>
+                ) : null}
+                {ciRent.lcoeMadKwh !== null ? (
+                  <div class="cine-card rounded-xl p-5">
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Coût du kWh solaire (LCOE)" data-en="Cost of solar kWh (LCOE)" data-ar="كلفة الكيلوواط ساعة الشمسي (LCOE)">Coût du kWh solaire (LCOE)</p>
+                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="lcoe_mad_kwh">{formatNumber(ciRent.lcoeMadKwh, 4)}</p>
+                    <p class="mt-1 text-xs text-lune-faint" dir="ltr">MAD/kWh{ciRent.tarifKwhEvite !== null ? ` — ${formatNumber(ciRent.tarifKwhEvite, 4)} MAD/kWh` : ''}</p>
+                    {ciRent.tarifKwhEvite !== null ? (
+                      <p class="mt-1 text-xs text-lune-faint" data-i18n
+                        data-fr="face au prix moyen de votre kWh évité"
+                        data-en="versus the average price of the kWh you avoid"
+                        data-ar="مقابل متوسط ثمن الكيلوواط ساعة الذي تتفادونه">face au prix moyen de votre kWh évité</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {ciRent.vanMad !== null ? (
+                  <div class="cine-card rounded-xl p-5" data-ci-van>
+                    <p class="tech-label text-lune-faint" data-i18n
+                      data-fr={ciRent.tauxActualisationPct !== null ? `VAN au taux déclaré de ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'VAN'}
+                      data-en={ciRent.tauxActualisationPct !== null ? `NPV at your declared rate of ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'NPV'}
+                      data-ar={ciRent.tauxActualisationPct !== null ? `القيمة الحالية الصافية بالمعدل المصرح به ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'القيمة الحالية الصافية'}>{ciRent.tauxActualisationPct !== null ? `VAN au taux déclaré de ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'VAN'}</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(ciRent.vanMad)}</p>
+                  </div>
+                ) : null}
+              </div>
+              {ciRent.jalons.length > 0 ? (
+                <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-ci-jalons>
+                  <p class="tech-label text-lune-faint" data-i18n
+                    data-fr={`Cumul net (${ciRentBaseTexte}) aux jalons`} data-en={`Net cumulative (${ciRentBaseTexte}) at milestones`} data-ar={`الصافي التراكمي (${ciRentBaseTexte}) عند المحطات`}>{`Cumul net (${ciRentBaseTexte}) aux jalons`}</p>
+                  <table class="mt-3 w-full text-sm" dir="ltr">
+                    <tbody>
+                      {ciRent.jalons.map((j) => (
+                        <tr>
+                          <td class="py-1 text-lune-soft">{j.annee}<span data-i18n data-fr=" ans" data-en=" years" data-ar=" سنة"> ans</span></td>
+                          <td class="py-1 text-right text-lune" data-figure={j.annee === 25 ? 'cumul_net_25_ans_mad' : undefined}>{formatMAD(j.cumul)}</td>
+                          {ciRent.jalonsTtc.length > 0 ? (
+                            <td class="py-1 text-right text-lune-faint">{ciRent.jalonsTtc.find((x) => x.annee === j.annee) ? `${formatMAD(ciRent.jalonsTtc.find((x) => x.annee === j.annee)!.cumul)} TTC` : ''}</td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {ciRent.sensibilites.length > 0 ? (
+                <div class="cine-card mt-5 rounded-xl p-5" data-ci-sensibilites>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Sensibilités saisies par la société" data-en="Sensitivities entered by the company" data-ar="الحساسيات المدخلة من طرف الشركة">Sensibilités saisies par la société</p>
+                  <ul class="mt-2 space-y-1 text-sm text-lune-soft">
+                    {ciRent.sensibilites.map((sn) => (
+                      <li dir="ltr">{sn.cle}{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ans` : ''}{sn.triPct !== null ? `, TRI ${formatNumber(sn.triPct, 1)} %` : ''}{sn.motif && sn.retourAns === null ? ` — ${sn.motif}` : ''}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {ciRent.financement ? (
+                <div class="cine-card mt-5 rounded-xl p-5" data-ci-financement>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Financement (offre écrite)" data-en="Financing (written offer)" data-ar="التمويل (عرض مكتوب)">Financement (offre écrite)</p>
+                  {ciRent.financement.libelleClient ? <p class="mt-2 text-sm text-lune-soft">{ciRent.financement.libelleClient}</p> : null}
+                  <ul class="mt-2 space-y-1 text-sm text-lune-soft" dir="ltr">
+                    {ciRent.financement.echeanceMad !== null ? <li>{formatMAD(ciRent.financement.echeanceMad)} / mois{ciRent.financement.dureeMois !== null ? ` — ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}</li> : null}
+                    {ciRent.financement.economieMensuelleMoyenneMad !== null ? <li>{formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} / mois d'économie moyenne</li> : null}
+                    {ciRent.financement.ecartMensuelMad !== null ? <li>{formatMAD(ciRent.financement.ecartMensuelMad)} / mois d'écart</li> : null}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </section>
+      )}
+
       <!-- ── WJ25 · VOTRE TOIT EN 3D (lecture seule — layout backend optionnel) -->
       {/* Rendu UNIQUEMENT quand le backend fournit un roof_layout exploitable
           (QJ26). Sans layout : rien ici — le héros statique reste inchangé.
@@ -6506,6 +6606,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       )}
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
+      {installMode === 'industriel' && <span id="achats" aria-hidden="true"></span>}
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8" data-track-section="signature">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
           <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté).
@@ -7321,7 +7422,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       {showSld && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
-        <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
+      <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
           {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — le sur-titre, le <h2> et
               la phrase d'introduction occupaient un écran pour annoncer un
               document que presque personne n'ouvre AVANT de signer (et que le
@@ -7471,6 +7572,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
            WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
            succès (au-dessus, plus haut sur la page). -->
+      {installMode === 'industriel' && <span id="exploitation" aria-hidden="true"></span>}
       <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</h2>
         {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — quatre cartes de
