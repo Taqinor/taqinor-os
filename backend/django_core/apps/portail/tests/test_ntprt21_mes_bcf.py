@@ -202,13 +202,13 @@ class MesBcfConfirmationTests(TestCase):
     def test_date_manquante_nomme_le_champ_fautif(self):
         res = self.api.post(url_confirmer(self.bcf_a.id), {}, format='json')
         self.assertEqual(res.status_code, 400)
-        self.assertIn('date_confirmee', res.data)
+        self.assertIn('date_confirmee_fournisseur', res.data)
 
     def test_date_invalide_nomme_le_champ_fautif(self):
         res = self.api.post(url_confirmer(self.bcf_a.id),
                             {'date_confirmee': '18/03/2026'}, format='json')
         self.assertEqual(res.status_code, 400)
-        self.assertIn('date_confirmee', res.data)
+        self.assertIn('date_confirmee_fournisseur', res.data)
 
     def test_un_compte_client_ne_peut_pas_confirmer(self):
         client_user = make_portal_user(
