@@ -19,7 +19,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 
 from apps.calepinage.models import Calepinage, CalepinageVersion
-from apps.calepinage.services.approbation import MESSAGE_AUTO_APPROBATION
+from apps.calepinage.services.approbation import (
+    MESSAGE_AUTO_APPROBATION, MENTION_SEUL_APPROBATEUR,
+)
 from apps.records.models import Activity
 
 from .test_api_liste import BaseApiCalepinage, url_detail
@@ -96,3 +98,53 @@ class AutoApprobationTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(reponse.data['etat'], 'approuve')
         self.assertEqual(reponse.data['decide_par']['id'], self.tiers.pk)
+
+
+class SeulApprobateurTest(BaseApiCalepinage):
+    """Décision fondateur 07/10/2026 — l'auto-approbation est permise au SEUL
+    approbateur actif de la société, et journalisée « auto-approuvé (seul
+    approbateur) ». ``self.user`` (Directeur) est l'unique approbateur de la
+    société : ``user_sans`` (Technicien) n'approuve pas, ``user_autre`` est
+    d'une autre société."""
+
+    def _calepinage(self):
+        return Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Seul',
+            roof_layout=DESSIN, cree_par=self.user, responsable=self.user)
+
+    def _approuver_et_verifier_journal(self):
+        calepinage = self._calepinage()
+
+        reponse = self.api.post(f'{url_detail(calepinage.pk)}approbation/',
+                                {'decision': 'approuve'}, format='json')
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['etat'], 'approuve')
+        notes = Activity.objects.filter(
+            content_type=ContentType.objects.get_for_model(Calepinage),
+            object_id=calepinage.pk, kind='note',
+            body__contains=MENTION_SEUL_APPROBATEUR)
+        self.assertEqual(notes.count(), 1)
+        self.assertEqual(MENTION_SEUL_APPROBATEUR,
+                         'auto-approuvé (seul approbateur)')
+
+    def test_seul_approbateur_s_auto_approuve_journalise(self):
+        self._approuver_et_verifier_journal()
+
+    def test_autre_approbateur_inactif_ne_compte_pas(self):
+        User.objects.create_user(
+            username='acal303_inactif', password='x', company=self.company,
+            role=self.role, is_active=False)
+        self._approuver_et_verifier_journal()
+
+    def test_autre_approbateur_actif_refuse_toujours(self):
+        User.objects.create_user(
+            username='acal303_actif', password='x', company=self.company,
+            role=self.role)
+        calepinage = self._calepinage()
+
+        reponse = self.api.post(f'{url_detail(calepinage.pk)}approbation/',
+                                {'decision': 'approuve'}, format='json')
+
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.data, {'decision': MESSAGE_AUTO_APPROBATION})
