@@ -245,6 +245,83 @@ class TenantIsolationTests(unittest.TestCase):
         _assert_every_table_scoped(self, out, self.CID)
 
 
+@unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
+class FunctionWhitelistTests(unittest.TestCase):
+    """AANA3 — C-AANA-002 : toute fonction hors liste blanche (agregats,
+    dates, chaines, arrondis) est refusee AVANT execution. La sonde du 05/10
+    montrait `query_to_xml` lisant 155 clients de 2 societes et `pg_read_file`
+    lisant un fichier du serveur."""
+
+    CID = 7
+
+    def test_fonctions_hors_liste_rejetees(self):
+        hostiles = (
+            "SELECT query_to_xml('select nom,email,company_id from crm_client'"
+            ",true,true,'') FROM stock_categorie WHERE company_id = 7 LIMIT 1",
+            "SELECT pg_read_file('/etc/passwd') FROM stock_categorie "
+            "WHERE company_id = 7",
+            "SELECT lo_export(1, '/tmp/x') FROM stock_categorie "
+            "WHERE company_id = 7",
+            "SELECT lo_import('/etc/passwd') FROM stock_categorie "
+            "WHERE company_id = 7",
+            "SELECT set_config('app.current_company','8',false) "
+            "FROM stock_categorie WHERE company_id = 7",
+            "SELECT pg_sleep(100000) FROM stock_categorie WHERE company_id = 7",
+            "SELECT nom FROM crm_client WHERE company_id = 7 "
+            "AND pg_sleep(100000) IS NOT NULL",
+            "SELECT dblink('host=x', 'select 1') FROM stock_categorie "
+            "WHERE company_id = 7",
+            "SELECT current_setting('app.current_company') FROM crm_client",
+            # Appel qualifie par un schema : meme un nom « autorise » est
+            # refuse (il viserait une fonction homonyme d'un autre schema).
+            "SELECT pg_catalog.pg_read_file('x') FROM crm_client",
+            "SELECT public.sum(id) FROM crm_client",
+            # Fonction-table en sous-requete.
+            "SELECT nom FROM crm_client WHERE id IN "
+            "(SELECT * FROM generate_series(1, 10))",
+        )
+        for sql in hostiles:
+            with self.subTest(sql=sql):
+                with self.assertRaises(svc.SQLSecurityError):
+                    svc._validate_and_secure(sql, self.CID)
+
+    def test_fonctions_metier_acceptees(self):
+        acceptees = (
+            "SELECT count(*), date_trunc('month', date_creation) "
+            "FROM ventes_devis GROUP BY 2",
+            "SELECT round(avg(montant_ttc), 2), sum(montant_ttc), "
+            "max(date_echeance) FROM ventes_facture",
+            "SELECT upper(nom), coalesce(email, ''), length(nom) "
+            "FROM crm_client ORDER BY 1 LIMIT 100",
+            "SELECT extract(year FROM date_creation), count(DISTINCT client_id)"
+            " FROM ventes_devis GROUP BY 1",
+            "SELECT to_char(date_creation, 'YYYY-MM'), "
+            "row_number() OVER (ORDER BY date_creation) FROM ventes_devis",
+            "SELECT numero_serie FROM sav_equipement WHERE date_fin_garantie "
+            "BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '3 months')",
+            "SELECT nom FROM crm_client c WHERE EXISTS (SELECT 1 FROM "
+            "ventes_devis d WHERE d.client_id = c.id)",
+            "SELECT CASE WHEN quantite <= seuil_alerte THEN 'rupture' "
+            "ELSE 'ok' END, CAST(quantite AS INT) FROM stock_produit",
+        )
+        for sql in acceptees:
+            with self.subTest(sql=sql):
+                out = svc._validate_and_secure(sql, self.CID)
+                _assert_every_table_scoped(self, out, self.CID)
+
+    def test_instructions_non_select_toujours_refusees(self):
+        for sql in (
+            "SELECT nom FROM crm_client FOR UPDATE",
+            "SET app.current_company = '8'",
+            "SELECT set_config('x', '1', false)",
+            "WITH x AS (UPDATE crm_client SET nom = 'x' RETURNING id) "
+            "SELECT id FROM x",
+        ):
+            with self.subTest(sql=sql):
+                with self.assertRaises(svc.SQLSecurityError):
+                    svc._validate_and_secure(sql, self.CID)
+
+
 # Sonde C-AANA-001 (dossier docs/audits/2026-10-05-analyse.md §5) : predicat
 # societe present dans le TEXTE mais neutralise dans la LOGIQUE.
 SONDE_PREDICAT_NEUTRALISE = (

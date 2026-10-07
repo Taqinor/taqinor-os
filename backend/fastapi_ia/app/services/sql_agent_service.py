@@ -28,7 +28,6 @@ import sqlglot
 import sqlglot.errors
 import sqlparse
 from sqlglot import exp
-from sqlparse.tokens import DDL, DML, Keyword, Punctuation
 
 try:
     # langchain < 1.0
@@ -310,30 +309,22 @@ autorise a divulguer ces informations. N'inclus JAMAIS la colonne prix_achat \
 dans une requete ou une reponse.
 """
 
-# ── Securite : validation single-SELECT + isolation tenant (parser) ───────────
-# ERR1/ERR2 — Le prompt LLM ne suffit pas. On valide CHAQUE requete au niveau du
-# CODE avant execution, avec un parser (sqlparse), et on ECHOUE FERME (rejet) sur
-# tout ce qu'on ne peut pas prouver sur. La requete doit etre EXACTEMENT une (1)
-# instruction SELECT en lecture seule (aucun INSERT/UPDATE/DELETE/DROP/ALTER/
-# CREATE/GRANT/TRUNCATE/COPY/CALL/... ni instructions multiples ni CTE-avec-DML),
-# et chaque table de base referencee doit etre dans l'allowlist scoped-tenant.
+# ── Securite : lecture seule + liste blanche de fonctions (arbre sqlglot) ─────
+# ERR1 — Le prompt LLM ne suffit pas. Chaque requete est PARSEE (sqlglot) et on
+# ECHOUE FERME (rejet) sur tout ce qu'on ne peut pas prouver sur : EXACTEMENT une
+# (1) requete de lecture (SELECT / UNION...), aucun noeud d'ecriture, de DDL,
+# d'administration, de verrou ou de `SELECT ... INTO` nulle part (CTE et
+# sous-requetes comprises).
+# AANA3 (C-AANA-002) — et AUCUNE fonction hors d'une LISTE BLANCHE (agregats,
+# dates, chaines, arrondis, fenetres). L'ancienne liste NOIRE de mots-cles
+# textuels laissait passer `query_to_xml('select ... from crm_client')` (lecture
+# de toutes les societes depuis une chaine), `pg_read_file`, `lo_export`,
+# `set_config('app.current_company', ...)`, `pg_sleep`, `dblink`... Une liste
+# blanche refuse par defaut tout ce qui n'a pas ete juge sur.
 
 
 class SQLSecurityError(Exception):
     """Levee quand une requete ne peut PAS etre prouvee sure (echec ferme)."""
-
-
-# Mots-cles d'ecriture / DDL / administration interdits n'importe ou dans la
-# requete (le parser categorise deja DML/DDL, mais on double avec une liste de
-# tokens explicites pour les mots non categorises par sqlparse selon la version).
-_FORBIDDEN_KEYWORDS = frozenset({
-    "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE",
-    "GRANT", "REVOKE", "MERGE", "REPLACE", "UPSERT", "CALL", "DO", "EXECUTE",
-    "COPY", "VACUUM", "ANALYZE", "REINDEX", "CLUSTER", "REFRESH", "COMMENT",
-    "SET", "RESET", "LOCK", "PREPARE", "DEALLOCATE", "DECLARE", "FETCH",
-    "MOVE", "LISTEN", "NOTIFY", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT",
-    "INTO",  # SELECT ... INTO cree une table → interdit
-})
 
 
 def _strip_sql_comments(sql: str) -> str:
@@ -342,61 +333,104 @@ def _strip_sql_comments(sql: str) -> str:
     return sqlparse.format(sql or "", strip_comments=True).strip()
 
 
-def _enforce_single_select(sql: str) -> None:
-    """ERR1 — Rejette tout ce qui n'est pas EXACTEMENT une instruction SELECT en
-    lecture seule. Leve SQLSecurityError sinon (echec ferme).
-
-    Defenses :
-      - une seule instruction (rejet des `;` separant plusieurs requetes) ;
-      - le premier token significatif doit etre SELECT (ou WITH ... SELECT) ;
-      - aucun mot-cle d'ecriture/DDL/admin nulle part (y compris dans les CTE,
-        sous-requetes, UNION) ;
-      - aucune DML/DDL categorisee par le parser.
-    """
-    cleaned = _strip_sql_comments(sql)
-    if not cleaned:
-        raise SQLSecurityError("Requete vide.")
-
-    # Plusieurs instructions ? sqlparse les separe ; on n'en autorise qu'une.
-    statements = [s for s in sqlparse.parse(cleaned) if str(s).strip()]
-    if len(statements) != 1:
-        raise SQLSecurityError(
-            "Une seule instruction SELECT est autorisee (lecture seule)."
+# Noeuds qui ne doivent apparaitre NULLE PART dans une requete de lecture.
+_NOEUDS_INTERDITS = tuple(
+    cls for cls in (
+        getattr(exp, name, None) for name in (
+            "DML", "DDL", "Into", "Lock", "Command", "Set", "SetItem",
+            "Transaction", "Commit", "Rollback", "Copy", "Grant", "Revoke",
+            "Use", "Pragma", "Describe", "Show", "Analyze", "Kill",
+            "Summarize", "LoadData", "Refresh", "Cache", "Uncache",
         )
+    ) if isinstance(cls, type)
+)
 
-    stmt = statements[0]
-
-    # Type global de l'instruction : doit etre SELECT (sqlparse.get_type()).
-    stmt_type = stmt.get_type()
-    if stmt_type != "SELECT":
-        raise SQLSecurityError(
-            f"Seules les requetes SELECT sont autorisees (recu: {stmt_type})."
+# Fonctions reconnues (typees) par sqlglot et jugees sures : agregats,
+# fenetres, dates, chaines, arrondis, conditionnelles. Toute AUTRE classe de
+# fonction est refusee (fail-closed), y compris celles qu'une future version de
+# sqlglot ajouterait.
+_FONCTIONS_TYPEES_AUTORISEES = tuple(
+    cls for cls in (
+        getattr(exp, name, None) for name in (
+            # agregats
+            "Count", "Sum", "Avg", "Min", "Max", "ArrayAgg", "GroupConcat",
+            "LogicalAnd", "LogicalOr", "Stddev", "StddevPop", "StddevSamp",
+            "Variance", "VariancePop", "PercentileCont", "PercentileDisc",
+            "Mode",
+            # fenetres
+            "RowNumber", "Rank", "DenseRank", "Ntile", "Lag", "Lead",
+            "FirstValue", "LastValue",
+            # conditionnelles / types
+            "Case", "If", "Coalesce", "Nullif", "Greatest", "Least", "Cast",
+            "Exists",
+            # nombres
+            "Abs", "Round", "Floor", "Ceil", "Trunc", "Pow", "Sqrt", "Sign",
+            "ToNumber",
+            # dates
+            "CurrentDate", "CurrentTime", "CurrentTimestamp", "Localtimestamp",
+            "Date", "DateTrunc", "TimestampTrunc", "Extract", "TimeToStr",
+            "StrToDate", "StrToTime",
+            # chaines
+            "Upper", "Lower", "Initcap", "Length", "Concat", "ConcatWs",
+            "Substring", "Trim", "Replace", "Left", "Right", "Pad",
+            "StrPosition", "SplitPart", "Reverse",
         )
+    ) if isinstance(cls, type)
+)
 
-    # Premier token DML doit etre SELECT ; un eventuel WITH (CTE) doit aboutir a
-    # un SELECT et ne contenir aucune DML.
-    saw_select = False
-    for token in stmt.flatten():
-        ttype = token.ttype
-        value = token.value.upper()
-        if ttype in (DML,):
-            if value != "SELECT":
-                raise SQLSecurityError(
-                    f"Instruction de modification interdite: {value}."
-                )
-            saw_select = True
-        elif ttype in (DDL,):
-            raise SQLSecurityError(f"Instruction DDL interdite: {value}.")
-        elif ttype in Keyword and value in _FORBIDDEN_KEYWORDS:
-            raise SQLSecurityError(f"Mot-cle interdit: {value}.")
-        # Un `;` interne (hors fin) signale une seconde instruction masquee.
-        elif ttype in (Punctuation,) and token.value == ";":
-            # Tolere uniquement un `;` final unique (deja retire via rstrip plus
-            # haut dans le flux d'appel) — ici on refuse tout `;` restant.
-            raise SQLSecurityError("Instructions multiples interdites.")
+# Fonctions Postgres que sqlglot laisse « anonymes » (non typees) et jugees
+# sures. Nom NON qualifie uniquement (un appel `schema.f()` est refuse).
+_FONCTIONS_ANONYMES_AUTORISEES = frozenset({
+    "age", "date_part", "make_date", "make_timestamp", "justify_days",
+    "justify_hours", "justify_interval", "char_length", "character_length",
+    "btrim", "ltrim", "rtrim", "substr", "strpos", "mod", "ceiling", "trunc",
+    "to_char", "to_date", "to_timestamp",
+})
 
-    if not saw_select:
-        raise SQLSecurityError("Aucune instruction SELECT detectee.")
+
+_OPERATEURS = (exp.Binary, exp.Connector, exp.Unary)
+
+
+def _assert_lecture_seule(tree: exp.Expression) -> None:
+    """ERR1 — aucun noeud d'ecriture / DDL / admin / verrou / INTO, ou qu'il
+    soit dans l'arbre."""
+    for node in tree.walk():
+        if isinstance(node, _NOEUDS_INTERDITS):
+            raise SQLSecurityError(
+                f"Instruction interdite ({type(node).__name__}) : seules les "
+                "lectures (SELECT) sont autorisees."
+            )
+
+
+def _assert_fonctions_autorisees(tree: exp.Expression) -> None:
+    """AANA3 — toute fonction appelee doit etre dans la liste blanche."""
+    for func in tree.find_all(exp.Func):
+        if isinstance(func, _OPERATEURS):
+            # sqlglot range certains OPERATEURS (AND, OR, ~, ->, ^...) parmi
+            # les « fonctions » : operateurs integres, pas des appels.
+            continue
+        if isinstance(func.parent, exp.Dot) and func.arg_key == "expression":
+            raise SQLSecurityError(
+                "Appel de fonction qualifie par un schema interdit."
+            )
+        if isinstance(func, exp.Anonymous):
+            nom = func.name.lower()
+            if nom in _FONCTIONS_ANONYMES_AUTORISEES:
+                continue
+            raise SQLSecurityError(f"Fonction non autorisee : {nom}.")
+        if not isinstance(func, _FONCTIONS_TYPEES_AUTORISEES):
+            raise SQLSecurityError(
+                f"Fonction non autorisee : {type(func).__name__}."
+            )
+
+
+def _enforce_single_select(sql: str) -> exp.Query:
+    """ERR1 — Rejette tout ce qui n'est pas EXACTEMENT une requete de lecture
+    (SELECT / WITH ... SELECT / UNION ...) sans aucun noeud d'ecriture.
+    Leve SQLSecurityError sinon (echec ferme) ; renvoie l'arbre valide."""
+    tree = _parse_single_query(sql)
+    _assert_lecture_seule(tree)
+    return tree
 
 
 # ── AANA2 — Isolation societe par REECRITURE D'ARBRE (sqlglot) ──────────────
@@ -573,7 +607,8 @@ def _inject_company_filter(sql: str, company_id: int) -> str:
         # Sans company_id on ne peut RIEN garantir -> refus total (ERR44
         # garantit deja un company_id non nul cote endpoint ; 2e barriere).
         raise SQLSecurityError("Contexte societe absent : requete refusee.")
-    tree = _parse_single_query(sql)
+    tree = _enforce_single_select(sql)
+    _assert_fonctions_autorisees(tree)
     _assert_no_foreign_company_literal(tree, company_id)
     found: list[str] = []
     tree = _rewrite_node(tree, frozenset(), int(company_id), found)
@@ -673,6 +708,7 @@ def _references_secret_column(sql: str) -> bool:
 def _validate_and_secure(sql: str, company_id: int) -> str:
     """Point d'entree unique de securisation d'une requete generee :
       ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
+      AANA3 : refuse toute fonction hors liste blanche ;
       AUD401 : refuse toute lecture d'un secret de compte (hash de mot de passe,
              graine 2FA, drapeaux d'elevation), nommee ou etoilee ;
       AANA2 : REECRIT l'arbre pour que chaque table lue soit la sous-requete
