@@ -43,6 +43,18 @@ export async function messageServeurBlob(err, repli = 'Une erreur est survenue.'
   return messageServeur(err, repli)
 }
 
+/** Télécharge un contenu texte (ex. un ASN JSON) comme fichier local. */
+export function telechargerTexte(nom, contenu, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([contenu], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nom
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60000)
+}
+
 /** Ouvre un Blob reçu (PDF…) dans un nouvel onglet. */
 export function ouvrirBlob(blob, type = 'application/pdf') {
   const url = URL.createObjectURL(new Blob([blob], { type }))

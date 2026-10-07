@@ -70,6 +70,8 @@ const CasiersPage = lazy(() => import('../../pages/stock/wms/CasiersPage'))
 const PosteScannerPage = lazy(() => import('../../pages/stock/wms/PosteScannerPage'))
 // ASTK217 — picking : vagues, prélèvement, comptages tournants, productivité.
 const PickingPage = lazy(() => import('../../pages/stock/wms/PickingPage'))
+// ASTK218 — quais, planning, rendez-vous transporteur, ASN.
+const QuaisPage = lazy(() => import('../../pages/stock/wms/QuaisPage'))
 
 const config = {
   key: 'stock',
@@ -131,6 +133,7 @@ const config = {
       { to: '/stock/entrepot/casiers', label: 'Casiers', icon: navIcon(LayoutGrid), roles: ['responsable','admin'] },
       { to: '/stock/entrepot/scanner', label: 'Poste scanner', icon: navIcon(ScanLine), roles: ['responsable','admin'] },
       { to: '/stock/entrepot/picking', label: 'Picking', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/quais', label: 'Quais et rendez-vous', icon: navIcon(Truck), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -159,6 +162,7 @@ const config = {
     { path: '/stock/entrepot/casiers', component: CasiersPage },
     { path: '/stock/entrepot/scanner', component: PosteScannerPage },
     { path: '/stock/entrepot/picking', component: PickingPage },
+    { path: '/stock/entrepot/quais', component: QuaisPage },
   ],
 }
 
