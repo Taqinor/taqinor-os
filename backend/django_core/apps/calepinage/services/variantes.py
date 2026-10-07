@@ -320,6 +320,16 @@ class DuplicationEnConflit(VarianteRefusee):
         super().__init__(message, champ=champ)
         self.corps = corps
 
+    def __reduce__(self):
+        # Argument mot-clé obligatoire : sans ce réducteur l'exception ne se
+        # « dé-picklise » pas (le lanceur de tests parallèle s'y bloquait).
+        return (_reconstruire_duplication_en_conflit,
+                (str(self), self.corps, self.champ))
+
+
+def _reconstruire_duplication_en_conflit(message, corps, champ):
+    return DuplicationEnConflit(message, corps=corps, champ=champ)
+
 
 def _cible_de_copie(calepinage, lead_id, client_id):
     """ACAL187 — ``(lead_id, client_id)`` de la copie, ou un refus.
