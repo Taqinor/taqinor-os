@@ -221,7 +221,7 @@ class VersionDepuisEcartsTest(SimpleTestCase):
         calepinage = self.calepinage()
         gelee = SimpleNamespace(pk=31, libelle='Pose réelle — …')
         with mock.patch.object(service, 'ecarts_du_calepinage',
-                               return_value=ecarts()), \
+                               return_value=ecarts(prevus=PREVUS_RETOUCHES)), \
                 mock.patch.object(service, '_derniere_version_pose',
                                   return_value=None), \
                 mock.patch.object(versions_service, 'enregistrer_version',
@@ -248,7 +248,7 @@ class VersionDepuisEcartsTest(SimpleTestCase):
                 'total_pose': 11, 'lignes': SERVI['exemple']['lignes']}
         precedente = SimpleNamespace(pk=31, resultat={'asbuilt': bloc})
         with mock.patch.object(service, 'ecarts_du_calepinage',
-                               return_value=ecarts()), \
+                               return_value=ecarts(prevus=PREVUS_RETOUCHES)), \
                 mock.patch.object(service, '_derniere_version_pose',
                                   return_value=precedente), \
                 mock.patch.object(versions_service,
