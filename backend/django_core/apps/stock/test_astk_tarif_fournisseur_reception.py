@@ -21,7 +21,7 @@ from apps.stock.models import (
 from apps.stock.services import (
     confirm_reception_fournisseur, prix_effectif_fournisseur,
 )
-from authentication.models import Company, User
+from authentication.models import Company, CustomUser as User
 
 _seq = itertools.count(1)
 

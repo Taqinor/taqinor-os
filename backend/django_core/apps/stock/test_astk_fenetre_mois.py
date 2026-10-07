@@ -24,17 +24,25 @@ class FenetreMoisTests(TestCase):
         self.base = (f'/api/django/stock/fournisseurs/'
                      f'{self.fournisseur.id}/')
 
+    def _assert_400_nomme(self, r):
+        # Forme DRF native à la racine + enveloppe YAPIC3 `error` (son
+        # `request_id` change à chaque requête : comparé hors du corps).
+        corps = r.json()
+        enveloppe = corps.pop('error')
+        attendu = {'fenetre_mois': ['Entier de 1 à 36 attendu.']}
+        self.assertEqual(corps, attendu)
+        self.assertEqual(enveloppe['code'], 'validation_error')
+        self.assertEqual(enveloppe['fields'], attendu)
+
     def test_otif_valeur_illisible_400(self):
         r = self.api.get(self.base + 'otif/?fenetre_mois=abc')
         self.assertEqual(r.status_code, 400)
-        self.assertEqual(
-            r.json(), {'fenetre_mois': ['Entier de 1 à 36 attendu.']})
+        self._assert_400_nomme(r)
 
     def test_delai_mesure_valeur_illisible_400(self):
         r = self.api.get(self.base + 'delai-mesure/?fenetre_mois=abc')
         self.assertEqual(r.status_code, 400)
-        self.assertEqual(
-            r.json(), {'fenetre_mois': ['Entier de 1 à 36 attendu.']})
+        self._assert_400_nomme(r)
 
     def test_hors_bornes_400(self):
         r = self.api.get(self.base + 'otif/?fenetre_mois=99')

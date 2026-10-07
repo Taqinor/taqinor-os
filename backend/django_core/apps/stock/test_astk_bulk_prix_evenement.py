@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.stock.models import Produit
-from authentication.models import Company, User
+from authentication.models import Company, CustomUser as User
 from core.events import produit_modifie
 
 _seq = itertools.count(1)

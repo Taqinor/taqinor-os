@@ -48,8 +48,16 @@ def _inexistant(pk):
 
 
 def _sans_id(corps, pk):
-    """Remplace le message « objet inexistant » de ``pk`` par un jeton."""
+    """Remplace le message « objet inexistant » de ``pk`` par un jeton.
+
+    L'enveloppe YAPIC3 ``error`` porte un ``request_id`` propre à chaque
+    requête et un ``message`` (repr du détail, qui cite l'id) : neutralisés ;
+    ses ``fields`` restent comparés, id neutralisé, comme le corps racine."""
     if isinstance(corps, dict):
+        enveloppe = corps.get('error')
+        if isinstance(enveloppe, dict) and 'request_id' in enveloppe:
+            corps = dict(corps, error=dict(
+                enveloppe, request_id='<REQUEST_ID>', message='<MESSAGE>'))
         return {k: _sans_id(v, pk) for k, v in corps.items()}
     if isinstance(corps, (list, tuple)):
         return [_sans_id(v, pk) for v in corps]

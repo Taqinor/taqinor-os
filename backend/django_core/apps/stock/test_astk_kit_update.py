@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.stock.models import KitComposant, KitProduit, Produit
 from apps.stock.services import snapshot_revision_kit
-from authentication.models import Company, User
+from authentication.models import Company, CustomUser as User
 
 _seq = itertools.count(1)
 

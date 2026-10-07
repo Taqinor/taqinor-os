@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.stock.models import Produit
 from apps.stock.models_fiche_technique import FicheTechnique
 from apps.stock.views.produit import CHAMPS_DUPLICATION_EXCLUS
-from authentication.models import Company, User
+from authentication.models import Company, CustomUser as User
 
 _seq = itertools.count(1)
 
@@ -58,6 +58,7 @@ class DupliquerProduitCompletTests(TestCase):
 
     def test_clone_copie_tous_les_champs(self):
         clone = self._dupliquer()  # relu depuis la base
+        self.source.refresh_from_db()  # comparé à sa forme STOCKÉE
 
         for champ in Produit._meta.concrete_fields:
             if champ.name in CHAMPS_DUPLICATION_EXCLUS:

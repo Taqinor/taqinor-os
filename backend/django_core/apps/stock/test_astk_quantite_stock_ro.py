@@ -18,6 +18,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from apps.stock.models import MouvementStock, Produit
 from apps.stock.services import record_stock_movement
 
@@ -39,6 +41,15 @@ class QuantiteStockLectureSeuleTests(TestCase):
             username='astk32-admin', password='x', company=self.co,
             role_legacy='admin')
         self.api = _api(self.admin)
+        # QG4 — la CRÉATION de produit est réservée au Directeur (et au
+        # Commercial responsable) : les POST passent par un Directeur réel.
+        perms = dict(CANONICAL_SYSTEM_ROLES)['Directeur']
+        directeur = User.objects.create_user(
+            username='astk32-directeur', password='x', company=self.co,
+            role=Role.objects.create(
+                company=self.co, nom='Directeur', permissions=list(perms),
+                est_systeme=True))
+        self.api_creation = _api(directeur)
         self.produit = Produit.objects.create(
             company=self.co, nom='Onduleur ASTK32', sku='OND-ASTK32',
             prix_vente=Decimal('50'), quantite_stock=10)
@@ -70,7 +81,7 @@ class QuantiteStockLectureSeuleTests(TestCase):
             MouvementStock.objects.filter(produit=self.produit).count(), 1)
 
     def test_creation_pose_mouvement_initial(self):
-        r = self.api.post(URL, {
+        r = self.api_creation.post(URL, {
             'nom': 'Batterie ASTK32', 'sku': 'BAT-ASTK32',
             'prix_vente': '120', 'quantite_stock': 7,
         }, format='json')
@@ -89,7 +100,7 @@ class QuantiteStockLectureSeuleTests(TestCase):
         self.assertEqual(self._dernier_apres(produit), produit.quantite_stock)
 
     def test_creation_sans_quantite_aucun_mouvement(self):
-        r = self.api.post(URL, {
+        r = self.api_creation.post(URL, {
             'nom': 'Câble ASTK32', 'sku': 'CAB-ASTK32', 'prix_vente': '5',
         }, format='json')
         self.assertEqual(r.status_code, 201, r.content)
@@ -99,7 +110,7 @@ class QuantiteStockLectureSeuleTests(TestCase):
             produit=produit).exists())
 
     def test_creation_quantite_negative_refusee(self):
-        r = self.api.post(URL, {
+        r = self.api_creation.post(URL, {
             'nom': 'Neg ASTK32', 'sku': 'NEG-ASTK32', 'prix_vente': '5',
             'quantite_stock': -2,
         }, format='json')

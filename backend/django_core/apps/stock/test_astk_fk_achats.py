@@ -57,8 +57,16 @@ def _inexistant(pk):
 
 def _sans_id(corps, pk):
     """Le message DRF « objet inexistant » cite l'id : on le remplace par un
-    jeton pour comparer la réponse d'un id étranger à celle d'un id absent."""
+    jeton pour comparer la réponse d'un id étranger à celle d'un id absent.
+
+    L'enveloppe YAPIC3 ``error`` porte un ``request_id`` propre à chaque
+    requête et un ``message`` (repr du détail, qui cite l'id) : neutralisés ;
+    ses ``fields`` restent comparés, id neutralisé, comme le corps racine."""
     if isinstance(corps, dict):
+        enveloppe = corps.get('error')
+        if isinstance(enveloppe, dict) and 'request_id' in enveloppe:
+            corps = dict(corps, error=dict(
+                enveloppe, request_id='<REQUEST_ID>', message='<MESSAGE>'))
         return {k: _sans_id(v, pk) for k, v in corps.items()}
     if isinstance(corps, (list, tuple)):
         return [_sans_id(v, pk) for v in corps]
@@ -165,12 +173,16 @@ class FkAchatsTests(TestCase):
         self._assert_comme_absent(r, r_absent, self.pb.pk)
 
     def test_bcf_patch_acheteur_autre_societe(self):
-        url = f'/api/django/stock/bons-commande-fournisseur/{self.bc_a.pk}/'
+        # Un BCF ENVOYÉ est figé (« réviser ») : le PATCH vise un brouillon.
+        brouillon = BonCommandeFournisseur.objects.create(
+            company=self.co_a, reference='BCFA-BROUILLON', fournisseur=self.fa,
+            statut=BonCommandeFournisseur.Statut.BROUILLON)
+        url = f'/api/django/stock/bons-commande-fournisseur/{brouillon.pk}/'
         r = self.api.patch(url, {'acheteur': self.user_b.pk}, format='json')
         r_absent = self.api.patch(url, {'acheteur': ID_ABSENT}, format='json')
         self._assert_comme_absent(r, r_absent, self.user_b.pk)
-        self.bc_a.refresh_from_db()
-        self.assertIsNone(self.bc_a.acheteur_id)
+        brouillon.refresh_from_db()
+        self.assertIsNone(brouillon.acheteur_id)
 
     # ── Réception ────────────────────────────────────────────────────────
 

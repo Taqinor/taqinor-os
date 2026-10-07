@@ -53,8 +53,16 @@ def _inexistant(pk):
 
 def _sans_id(corps, pk):
     """Le message DRF « objet inexistant » cite l'id : on le remplace par un
-    jeton pour comparer la réponse d'un id étranger à celle d'un id absent."""
+    jeton pour comparer la réponse d'un id étranger à celle d'un id absent.
+
+    L'enveloppe YAPIC3 ``error`` porte un ``request_id`` propre à chaque
+    requête et un ``message`` (repr du détail, qui cite l'id) : neutralisés ;
+    ses ``fields`` restent comparés, id neutralisé, comme le corps racine."""
     if isinstance(corps, dict):
+        enveloppe = corps.get('error')
+        if isinstance(enveloppe, dict) and 'request_id' in enveloppe:
+            corps = dict(corps, error=dict(
+                enveloppe, request_id='<REQUEST_ID>', message='<MESSAGE>'))
         return {k: _sans_id(v, pk) for k, v in corps.items()}
     if isinstance(corps, (list, tuple)):
         return [_sans_id(v, pk) for v in corps]

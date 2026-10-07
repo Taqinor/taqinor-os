@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.stock.models import Categorie, ProfilSaisonnier, Produit
-from authentication.models import Company, User
+from authentication.models import Company, CustomUser as User
 
 _seq = itertools.count(1)
 
