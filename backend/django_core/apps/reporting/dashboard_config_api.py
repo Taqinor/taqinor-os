@@ -18,6 +18,8 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from core.mixins import TenantMixin
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     DashboardConfig,
     ROLE_DEFAULT_CARDS,
@@ -26,7 +28,11 @@ from .models import (
 )
 
 
-class DashboardConfigSerializer(serializers.ModelSerializer):
+class DashboardConfigSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
+    # AANA17 — une config ne peut viser qu'un utilisateur de LA société.
+    same_company_fields = ('user',)
+
     class Meta:
         model = DashboardConfig
         fields = [

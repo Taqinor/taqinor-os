@@ -265,6 +265,16 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         role_id = request.data.get('role', instance.role_id)
         if not role_id:
             raise ValidationError({'role': 'Un rôle est requis pour définir une vue par défaut.'})
+        # AANA17 — le rôle doit être de LA société de la vue : un rôle d'une
+        # autre société reçoit la même réponse qu'un id absent.
+        from apps.roles.models import Role
+        try:
+            role_existe = Role.objects.filter(
+                pk=role_id, company=instance.company).exists()
+        except (TypeError, ValueError):
+            role_existe = False
+        if not role_existe:
+            raise ValidationError({'role': f'Rôle introuvable : « {role_id} ».'})
         # NTUX27 — une vue par défaut de rôle EST une vue partagée : si la
         # société a désactivé le partage d'équipe, on ne peut plus en poser.
         parametres = UxParametres.get_or_default(request.user.company)

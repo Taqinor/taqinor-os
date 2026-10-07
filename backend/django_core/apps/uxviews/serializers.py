@@ -4,6 +4,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldError
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import FavoriUtilisateur, SavedView, UxParametres
 
 #: AANA15 — LISTE BLANCHE des types favorisables : les écrans de détail qui
@@ -44,7 +46,11 @@ def cible_du_favori(favori):
     return cible
 
 
-class SavedViewSerializer(serializers.ModelSerializer):
+class SavedViewSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # AANA17 — le rôle d'une vue est un rôle de LA société (les ids de rôle
+    # sont devinables), même garde que `UxParametresSerializer`.
+    same_company_fields = ('role',)
     owner_nom = serializers.SerializerMethodField()
     # NTUX2 — le frontend ne connaît le rôle courant que par son NOM
     # (`state.auth.role_nom`, cf. authSlice.js — aucun id numérique de

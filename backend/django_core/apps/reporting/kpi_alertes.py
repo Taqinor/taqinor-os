@@ -27,10 +27,17 @@ from rest_framework import serializers, viewsets
 from authentication.permissions import IsResponsableOrAdmin
 from core.mixins import TenantMixin
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import KpiAlerte
 
 
-class KpiAlerteSerializer(serializers.ModelSerializer):
+class KpiAlerteSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # AANA17 — un destinataire d'une AUTRE société est refusé (400) : l'alerte
+    # lui enverrait le chiffre de la société courante.
+    same_company_fields = ('destinataires_utilisateurs',)
+
     kpi_label = serializers.CharField(source='get_kpi_display', read_only=True)
     operateur_label = serializers.CharField(
         source='get_operateur_display', read_only=True)
