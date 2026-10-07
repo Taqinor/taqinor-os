@@ -119,7 +119,7 @@ def _meme_valeur(saisie, reference):
     nombre_saisi = _nombre_saisi(saisie)
     nombre_ref = _nombre_saisi(reference)
     if nombre_saisi is not None and nombre_ref is not None:
-        return abs(float(nombre_saisi) - float(nombre_ref)) < 1e-9
+        return float(nombre_saisi) == float(nombre_ref)
     return str(saisie).strip() == str(reference).strip()
 
 
@@ -689,7 +689,7 @@ def _octets_attachment(company, attachment_id):
 
 
 def _est_octets_pdf(octets):
-    return bool(octets) and bytes(octets[:5]) == b'%PDF-'
+    return bool(octets) and bytes(octets).startswith(b'%PDF-')
 
 
 def _texte_valeur(valeur):
