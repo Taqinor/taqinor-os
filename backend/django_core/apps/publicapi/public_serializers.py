@@ -365,6 +365,12 @@ class PublicCalepinageResultatSerializer(serializers.Serializer):
     calcule_le = serializers.CharField(read_only=True, allow_null=True)
     simulation_perimee = serializers.BooleanField(read_only=True)
     motif = serializers.CharField(read_only=True, allow_blank=True)
+    # ACAL51 — champs ADDITIFS : la complétude de la simulation servie
+    # (ACAL49, ``production.total.complete``/``mention``), lue, jamais
+    # recalculée ici.
+    complet = serializers.BooleanField(read_only=True, allow_null=True)
+    mention_production = serializers.CharField(read_only=True,
+                                               allow_blank=True)
 
 
 def _texte_ou_null(valeur):
@@ -416,8 +422,18 @@ def resultat_calepinage_public(calepinage_id, servi):
     total = production.get('total') if isinstance(production, dict) else None
     total = total if isinstance(total, dict) else {}
 
+    # ACAL51 / D-ACAL-7 — une simulation INCOMPLÈTE (socle physique non
+    # saisi) ne publie ni PR ni quantile : seul le P50 sort, avec sa mention
+    # « borne haute ». ``complete`` est le verdict de la simulation servie.
+    complet = total.get('complete') if simule else None
+    complet = complet if isinstance(complet, bool) else None
+    incomplet = complet is False
+
     def lire(cle):
         return _nombre_calepinage(total.get(cle)) if simule else None
+
+    def lire_si_complet(cle):
+        return None if incomplet else lire(cle)
 
     p50 = lire('p50_kwh')
     return {
@@ -425,10 +441,10 @@ def resultat_calepinage_public(calepinage_id, servi):
         'simule': simule,
         'production_annuelle_kwh': p50,
         'rendement_specifique_kwh_kwc': lire('specific_yield_kwh_kwc'),
-        'ratio_performance': lire('performance_ratio'),
+        'ratio_performance': lire_si_complet('performance_ratio'),
         'p50_kwh': p50,
-        'p75_kwh': lire('p75_kwh'),
-        'p90_kwh': lire('p90_kwh'),
+        'p75_kwh': lire_si_complet('p75_kwh'),
+        'p90_kwh': lire_si_complet('p90_kwh'),
         'pertes': _postes_de_pertes_publics(servi) if simule else None,
         'calcule_le': (_texte_ou_null(servi.get('calcule_le'))
                        if simule else None),
@@ -436,4 +452,7 @@ def resultat_calepinage_public(calepinage_id, servi):
         'motif': ('' if simule else
                   (str(servi.get('motif') or '').strip()
                    or MOTIF_RESULTAT_NON_SIMULE)),
+        'complet': complet,
+        'mention_production': (str(total.get('mention') or '').strip()
+                               if simule else ''),
     }

@@ -95,6 +95,16 @@ CHAMPS_RESULTAT_CALEPINAGE = [
          "depuis : ses grandeurs ne sont alors pas publiées.")},
     {'nom': 'motif', 'type': 'string', 'nullable': False,
      'description': "Pourquoi rien n'est publié (vide quand `simule`)."},
+    # ACAL51 — champs additifs : la complétude de la simulation servie.
+    {'nom': 'complet', 'type': 'boolean', 'nullable': True,
+     'description': (
+         "Faux quand le socle physique des pertes n'est pas saisi : la "
+         "production est alors une borne haute et `ratio_performance`, "
+         "`p75_kwh`, `p90_kwh` valent null. Null si non simulé.")},
+    {'nom': 'mention_production', 'type': 'string', 'nullable': False,
+     'description': (
+         "Mention publiée avec la production (« borne haute — N pertes non "
+         "renseignées »), vide sinon.")},
 ]
 
 #: CALX368 — la charge utile de ``calepinage.simule``, clé par clé, dans
