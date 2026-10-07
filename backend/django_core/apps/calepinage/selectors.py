@@ -767,6 +767,19 @@ def photos_site(calepinage):
     return [photo_en_ligne(photo) for photo in lignes]
 
 
+def url_apercu_calepinage(calepinage):
+    """ACAL314 — le chemin RELATIF (proxy Django même origine, ACAL200) de
+    l'aperçu de toiture d'un calepinage, ou ``None`` sans aperçu. Jamais une
+    URL pré-signée portant l'hôte interne ``minio:9000``. Lecture pure."""
+    from .services.presentation import url_fichier_roof_image
+
+    if calepinage is None or getattr(calepinage, 'pk', None) is None:
+        return None
+    if not (getattr(calepinage, 'roof_image', None) or '').strip():
+        return None
+    return url_fichier_roof_image(calepinage.pk)
+
+
 def releves_terrain(calepinage):
     """CAL64 — les relevés terrain d'un calepinage, du plus récent au plus
     ancien (par date de RELEVÉ, jamais par date d'envoi : le terrain et le

@@ -77,6 +77,8 @@ FIGEE = {
     'facturer_complet': RESP,
     # ADOC131 (D-ADOC-4) : « Révoquer le lien client » (écriture).
     'revoquer_lien_public': RESP,
+    # ACAL314 : LECTURE des octets de l'affiche (proxy même origine).
+    'roof_image_fichier': ANY,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

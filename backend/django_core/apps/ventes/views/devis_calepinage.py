@@ -10,10 +10,12 @@ dans les corps (patchs ``apps.ventes.utils.pdf.*``,
 ``apps.ventes.quote_engine.*``, ``apps.ventes.services.*``,
 ``core.events.layout_finalise.send``).
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
 from .devis_gardes import _pourcentage_saisi  # ACAL278
@@ -579,9 +581,12 @@ class DevisCalepinageActionsMixin:
         ``devis.roof_image``. La société est forcée côté serveur (clé dérivée
         du devis, lui-même borné à la société par ``get_queryset``) ; rien
         n'est lu du corps hors le fichier. Aucun statut ne bouge (règle #4).
-        Renvoie l'URL pré-signée de relecture (lecture seule, 1 h)."""
-        from ..utils.pdf import upload_roof_image, roof_image_signed_url
+        ACAL314 — renvoie le chemin RELATIF de relecture servi par Django
+        (``roof-image/fichier/``), jamais une URL pré-signée vers l'hôte
+        interne du magasin."""
+        from ..utils.pdf import upload_roof_image
         from ..quote_engine.builder import _ensure_pdf_bucket
+        from ..services import url_fichier_toiture_devis
 
         # QJR516 — garde (geste ETUDE) AVANT l'upload MinIO : un devis
         # accepté ne reçoit plus de rendu, et aucun objet n'est écrit.
@@ -613,6 +618,37 @@ class DevisCalepinageActionsMixin:
         devis.roof_image = key
         devis.save(update_fields=['roof_image'])
         return Response(
-            {'roof_image': key, 'url': roof_image_signed_url(key)},
+            {'roof_image': key, 'url': url_fichier_toiture_devis(devis.pk)},
             status=status.HTTP_201_CREATED,
         )
+
+    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY})
+    @action(detail=True, methods=['get'], url_path='roof-image/fichier',
+            permission_classes=[IsAnyRole])
+    def roof_image_fichier(self, request, pk=None):
+        """ACAL314 (C-ACAL-019) — les OCTETS de l'affiche du devis, par Django.
+
+        Même origine (cookie httpOnly), jamais l'hôte interne ``minio:9000``
+        d'une URL pré-signée. La clé est celle que porte le devis
+        (``Devis.roof_image``), lue par ``services.lire_image_toiture`` ;
+        le MIME vient des octets. Un devis d'une AUTRE société, un devis sans
+        affiche ou un objet absent rendent le MÊME 404 : aucun oracle
+        d'existence. Lecture seule, aucun statut touché (règle #4)."""
+        from django.http import Http404, HttpResponse
+
+        from ..services import lire_image_toiture
+
+        introuvable = Response({'detail': 'Fichier introuvable.'},
+                               status=status.HTTP_404_NOT_FOUND)
+        try:
+            devis = self.get_object()  # borné société par get_queryset
+        except Http404:
+            return introuvable
+        octets, mime = lire_image_toiture(
+            (getattr(devis, 'roof_image', None) or '').strip())
+        if octets is None:
+            return introuvable
+        reponse = HttpResponse(octets, content_type=mime)
+        reponse['Cache-Control'] = 'private, max-age=300'
+        reponse['X-Content-Type-Options'] = 'nosniff'
+        return reponse
