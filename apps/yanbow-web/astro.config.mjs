@@ -36,7 +36,7 @@ const sondeBonjour = () => ({
  * immuable s'y appliquent. Vivre dans le build garantit le patch quelle que
  * soit la commande lancée par Workers Builds.
  */
-const WORKER_FILES = ['canonical.mjs', 'redirects.mjs', 'cache.mjs', 'headers.mjs', 'pipeline.mjs', 'redirect-entry.mjs'];
+const WORKER_FILES = ['canonical.mjs', 'redirects.mjs', 'cache.mjs', 'headers.mjs', 'pipeline.mjs', 'launchGate.mjs', 'redirect-entry.mjs'];
 
 const workersDevRedirect = () => ({
   name: 'yanbow:workers-dev-redirect',
@@ -62,7 +62,9 @@ const workersDevRedirect = () => ({
         new URL('site-config.mjs', serverDir),
         `// Généré au build depuis src/lib/site.ts et src/lib/subprocessors.ts — ne pas éditer.\n` +
           `export const CANONICAL_ORIGIN = ${JSON.stringify(ORIGINE_CANONIQUE)};\n` +
-          `export const CSP_SOURCES = ${JSON.stringify(sourcesCsp())};\n`,
+          `export const CSP_SOURCES = ${JSON.stringify(sourcesCsp())};\n` +
+          // YBW12 — routes juridiques déclarées complètes (rempli par YBW28 depuis legal.ts).
+          `export const ROUTES_JURIDIQUES_COMPLETES = [];\n`,
       );
       cfg.main = 'redirect-entry.mjs';
       cfg.assets = { ...cfg.assets, run_worker_first: ['/*', '!/_astro/*'] };
