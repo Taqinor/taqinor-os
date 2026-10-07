@@ -137,7 +137,8 @@ def _dossier_reel(champs_saisis=None):
     from authentication.models import Company
 
     societe = Company.objects.create(nom='CALX41', slug='calx41')
-    calepinage = Calepinage.objects.create(company=societe, titre='CALX41')
+    calepinage = Calepinage.objects.create(company=societe, lead_id=999999,
+                                           titre='CALX41')
     gabarit = GabaritDossierReglementaire.objects.create(
         company=societe, pays='ma', code='dp', intitule='DP',
         champs=[dict(champ) for champ in CHAMPS_GABARIT])

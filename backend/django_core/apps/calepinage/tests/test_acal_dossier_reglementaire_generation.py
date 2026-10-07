@@ -253,6 +253,7 @@ class SaisiesConcurrentesTest(TransactionTestCase):
 
         societe = Company.objects.create(nom='ACAL240', slug='acal240')
         calepinage = Calepinage.objects.create(company=societe,
+                                               lead_id=999999,
                                                titre='ACAL240')
         gabarit = GabaritDossierReglementaire.objects.create(
             company=societe, pays='ma', code='dp', intitule='DP',
