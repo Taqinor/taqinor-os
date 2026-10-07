@@ -498,6 +498,88 @@ def calepinage_du_devis(devis_id, company):
 _PROFONDEUR_REVISIONS = 20
 
 
+def conception_figee_du_devis(devis_id, company):
+    """ACAL92 (D-ACAL-3) — la conception FIGÉE d'un devis REMPLACÉ, ou ``None``.
+
+    « La conception lue pour une V1 n'est jamais la conception courante
+    re-liée » : à la révision, le calepinage C est re-lié à la V2 et continue
+    d'évoluer. Le PDF d'un devis envoyé/accepté puis remplacé se rend donc de
+    ce qui a été ENVOYÉ :
+
+    * la version « Version envoyée — <référence> » déposée par
+      ``receivers.relier_calepinage_au_devis_revise`` ;
+    * à défaut, l'instantané ``Devis.roof_layout`` du devis lui-même.
+
+    Rend ``None`` quand le calepinage trouvé est celui DU devis (lien direct :
+    la conception courante est la bonne) ou qu'il n'y en a aucun ; sinon
+    ``{'calepinage', 'roof_layout', 'layout_hash', 'source'}`` —
+    ``roof_layout`` vaut ``None`` quand aucun instantané n'existe (le rendu
+    est alors OMIS, jamais tiré de la conception courante). ``source`` vaut
+    ``'version'`` / ``'devis'`` / ``None``. Lecture PURE, bornée société.
+    """
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None or str(calepinage.devis_id) == str(devis_id):
+        return None
+    return _conception_figee(calepinage, devis_id)
+
+
+def _conception_figee(calepinage, devis_id):
+    from apps.ventes.selectors import get_devis_by_pk
+
+    from .models import CalepinageVersion
+    from .services.versions import LIBELLE_VERSION_ENVOYEE
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is not None and devis.company_id != calepinage.company_id:
+        devis = None
+    figee = {'calepinage': calepinage, 'roof_layout': None,
+             'layout_hash': '', 'source': None}
+    if devis is None:
+        return figee
+    reference = (getattr(devis, 'reference', '') or '').strip() or (
+        f'#{devis.pk}')
+    version = (CalepinageVersion.objects
+               .filter(calepinage=calepinage,
+                       libelle=LIBELLE_VERSION_ENVOYEE.format(
+                           reference=reference))
+               .order_by('-created_at', '-id')
+               .first())
+    if (version is not None and isinstance(version.roof_layout, dict)
+            and version.roof_layout):
+        figee.update(roof_layout=version.roof_layout,
+                     layout_hash=version.layout_hash or '',
+                     source='version')
+        return figee
+    instantane = getattr(devis, 'roof_layout', None)
+    if isinstance(instantane, dict) and instantane:
+        figee.update(roof_layout=instantane,
+                     layout_hash=getattr(devis, 'layout_hash', '') or '',
+                     source='devis')
+    return figee
+
+
+def _calepinage_lisible_pour_devis(devis_id, company):
+    """ACAL92 — le calepinage dont les DONNÉES (simulation servie, entrée
+    électrique) décrivent encore ce devis, ou ``None``.
+
+    Lien direct : le calepinage. Devis REMPLACÉ : le calepinage re-lié
+    seulement tant que sa conception courante est IDENTIQUE (empreinte
+    document) à la conception figée envoyée — sinon ses chiffres sont ceux de
+    la version en vigueur, jamais ceux de ce devis (``None`` : l'appelant
+    reprend son propre chemin).
+    """
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None or str(calepinage.devis_id) == str(devis_id):
+        return calepinage
+    from .services.layout import empreinte_document
+
+    document = _conception_figee(calepinage, devis_id)['roof_layout']
+    if document is None or (empreinte_document(document)
+                            != empreinte_document(calepinage.roof_layout)):
+        return None
+    return calepinage
+
+
 def ombrage_servi(devis_id, company):
     """ACAL143 — la perte d'OMBRAGE de la conception d'un devis, PAR PAN,
     lue sur le résultat SERVI (même verdict de fraîcheur que GET resultat/,
@@ -516,7 +598,9 @@ def ombrage_servi(devis_id, company):
     """
     from .services.chaine_pertes import perte_ombrage_de_la_cascade
 
-    calepinage = calepinage_du_devis(devis_id, company)
+    # ACAL92 — un devis REMPLACÉ ne lit jamais l'ombrage d'une conception
+    # re-liée qui a changé depuis son envoi.
+    calepinage = _calepinage_lisible_pour_devis(devis_id, company)
     if calepinage is None:
         return None
     servi = resultat_servi(calepinage)
@@ -607,8 +691,11 @@ def entree_electrique_du_devis(devis_id, company):
       jamais une longueur ni un régime.
 
     Lecture PURE, bornée société, ne lève jamais.
+
+    ACAL92 — un devis REMPLACÉ ne lit ces grandeurs que tant que la
+    conception re-liée est celle qu'il a envoyée (``None`` sinon).
     """
-    calepinage = calepinage_du_devis(devis_id, company)
+    calepinage = _calepinage_lisible_pour_devis(devis_id, company)
     if calepinage is None:
         return None
     from .services.electrique import (

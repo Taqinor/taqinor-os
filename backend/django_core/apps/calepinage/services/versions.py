@@ -35,6 +35,12 @@ from __future__ import annotations
 #: société (CAL45). Absente ⇒ purge DÉSACTIVÉE (rien n'est jamais retiré).
 CLE_BORNE_PURGE = 'versions_conservees'
 
+#: ACAL92 — le libellé de la version FIGÉE déposée à la révision d'un devis
+#: (``receivers.relier_calepinage_au_devis_revise``) : la conception ENVOYÉE
+#: au client, relue pour rendre le PDF du devis remplacé
+#: (``selectors.conception_figee_du_devis``).
+LIBELLE_VERSION_ENVOYEE = 'Version envoyée — {reference}'
+
 
 class VersionInvalide(ValueError):
     """Erreur métier sur l'historique, avec un message français.
