@@ -159,7 +159,9 @@ test('CAL33 — les neuf actions exigées par la tâche sont déclarées', () =>
     layout: /layout: \(id\) => api\.get\(`\$\{pivot\(id\)\}layout\/`\)/,
     image: /envoyerImage: \(id, corps\) => api\.post\(`\$\{pivot\(id\)\}roof-image\/`, corps\)/,
     versions: /versions: \(id\) => api\.get\(`\$\{pivot\(id\)\}versions\/`\)/,
-    variantes: /variantes: \(id\) => api\.get\(`\$\{pivot\(id\)\}variantes\/`\)/,
+    // ACAL109 : la liste vient de comparer/ (le GET variantes/ n'avait plus
+    // d'appelant, retiré par la garde d'usage) ; la ressource reste servie.
+    variantes: /creerVariante: \(id, corps\) => api\.post\(`\$\{pivot\(id\)\}variantes\/`, corps\)/,
     retenir: /retenirVariante: \(id, varianteId\) =>\s*\n?\s*api\.post\(`\$\{pivot\(id\)\}variantes\/\$\{varianteId\}\/retenir\/`\)/,
     comparer: /comparer: \(id\) => api\.get\(`\$\{pivot\(id\)\}comparer\/`\)/,
     moteur: /calculer: \(corps\) => api\.post\('\/calepinage\/moteur\/calculer\/', corps\)/,
@@ -172,7 +174,10 @@ test('CAL33 — les neuf actions exigées par la tâche sont déclarées', () =>
 })
 
 test('CAL33 — `retenir` est une ACTION POST, jamais un PATCH de ressource', () => {
-  assert.doesNotMatch(code, /api\.patch\(`\$\{pivot\(id\)\}variantes/)
+  // ACAL109 : renommer une variante est un PATCH légitime (modifierVariante) ;
+  // ce qui reste interdit, c'est de RETENIR par un PATCH de ressource.
+  assert.doesNotMatch(code, /api\.patch\([^\n]*retenir/)
+  assert.doesNotMatch(code, /modifierVariante[^\n]*retenu/)
 })
 
 test('CAL33 — RÈGLE #4 : le client ne connaît aucun chemin de PDF de devis', () => {
