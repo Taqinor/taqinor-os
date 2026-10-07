@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
+import { unwrapList } from '../../api/resource'
 import { useHasPermission } from '../../hooks/useHasPermission'
-import { Badge, Card, Spinner } from '../../ui'
+import { Badge, Card, Combobox, Spinner } from '../../ui'
+import SelecteurRattachement from './SelecteurRattachement'
 
 /* ============================================================================
    CAL201 — L'ÉCRAN « BIBLIOTHÈQUE » DU MODULE (presets, kits, modèles,
@@ -320,14 +322,29 @@ export default function Bibliotheque() {
   const [ecritureFavoris, setEcritureFavoris] = useState(false)
   // CALX42 — « Partir de ce modèle » : le modèle ouvert, la saisie du NOUVEAU
   // rattachement, le refus du serveur, et le calepinage créé.
+  // ACAL185 — le rattachement est CHOISI par `SelecteurRattachement` (plus
+  // d'identifiant tapé) ; un 409 « lead déjà ouvert » offre l'existant.
   const [modeleOuvert, setModeleOuvert] = useState(null)
-  const [depart, setDepart] = useState({ lead: '', client: '' })
+  const [depart, setDepart] = useState({ lead: null, client: null })
   const [refusDepart, setRefusDepart] = useState(null)
+  const [existantDepart, setExistantDepart] = useState(null)
   const [creation, setCreation] = useState(false)
   const [calepinageCree, setCalepinageCree] = useState(null)
-  // CALX352 — « Marquer comme modèle » : l'identifiant SAISI, le refus du
-  // serveur (sous la saisie), l'envoi en cours.
+  // CALX352 / ACAL185 — « Marquer comme modèle » : le calepinage CHOISI dans
+  // la liste (recherche `?q=`), le refus du serveur (sous le sélecteur).
   const [marquageId, setMarquageId] = useState('')
+  const [marquageLibelle, setMarquageLibelle] = useState('')
+  const lignesCalepinages = useRef([])
+  const chercherCalepinages = useMemo(() => async (q) => {
+    const res = await calepinageApi.calepinages.list({ q, page_size: 20 })
+    const lignes = unwrapList(res)
+    lignesCalepinages.current = lignes
+    return lignes.map((c) => ({
+      value: String(c.id),
+      label: c.titre || `Calepinage #${c.id}`,
+      description: c.reference || undefined,
+    }))
+  }, [])
   const [refusMarquage, setRefusMarquage] = useState(null)
   const [marquageEnCours, setMarquageEnCours] = useState(false)
 
@@ -483,26 +500,32 @@ export default function Bibliotheque() {
   // ── CALX42 — partir d'un modèle ──────────────────────────────────────────
   const ouvrirDepart = (modeleId) => {
     setRefusDepart(null)
+    setExistantDepart(null)
     setCalepinageCree(null)
-    setDepart({ lead: '', client: '' })
+    setDepart({ lead: null, client: null })
     setModeleOuvert(modeleId)
   }
 
   const partirDuModele = async () => {
     setCreation(true)
     setRefusDepart(null)
+    setExistantDepart(null)
     try {
-      // Le rattachement n'est PAS deviné : ce qui est laissé vide n'est pas
-      // envoyé, et le serveur refuse quand les deux manquent, en nommant le
-      // champ (`services/modeles.py::creer_depuis_modele`).
-      const corps = { modele: modeleOuvert }
-      if (depart.lead.trim()) corps.lead = depart.lead.trim()
-      if (depart.client.trim()) corps.client = depart.client.trim()
-      const res = await calepinageApi.calepinages.creerDepuisModele(corps)
+      // ACAL185 — LA porte unique `depuisModele` (ACAL184). Le rattachement
+      // n'est PAS deviné : ce qui n'est pas choisi n'est pas envoyé, et le
+      // serveur refuse quand les deux manquent, en nommant le champ ; le
+      // client du lead est repris par le serveur.
+      const corps = { modele_id: modeleOuvert }
+      if (depart.lead) corps.lead_id = Number(depart.lead)
+      if (depart.client) corps.client_id = Number(depart.client)
+      const res = await calepinageApi.calepinages.depuisModele(corps)
       const cree = res?.data?.id ?? null
       setCalepinageCree(cree)
       if (cree) setModeleOuvert(null)
     } catch (e) {
+      const existant = e?.response?.status === 409
+        ? e.response.data?.calepinage_existant : null
+      if (existant) setExistantDepart(existant)
       setRefusDepart(refusSection(e))
     } finally {
       setCreation(false)
@@ -511,11 +534,11 @@ export default function Bibliotheque() {
 
   // ── CALX352 — marquer un calepinage comme modèle ─────────────────────────
   const marquerCommeModele = async () => {
-    const id = marquageId.trim()
-    // Un modèle se DÉSIGNE par l'identifiant d'un calepinage : ce qui n'en
-    // est pas un ne désigne rien, et n'est pas envoyé.
+    const id = String(marquageId || '').trim()
+    // ACAL185 — un modèle se CHOISIT dans la liste des calepinages : rien de
+    // choisi, rien n'est envoyé.
     if (!/^\d+$/.test(id)) {
-      setRefusMarquage('Indiquez l’identifiant numérique du calepinage à marquer comme modèle.')
+      setRefusMarquage('Choisissez le calepinage à marquer comme modèle.')
       return
     }
     setMarquageEnCours(true)
@@ -528,6 +551,7 @@ export default function Bibliotheque() {
       const liste = res?.data
       setModeles(Array.isArray(liste) ? liste : (liste?.results ?? []))
       setMarquageId('')
+      setMarquageLibelle('')
     } catch (e) {
       setRefusMarquage(refusSection(e))
     } finally {
@@ -728,22 +752,23 @@ export default function Bibliotheque() {
                         data-testid={`cal-biblio-modele-depart-${modele.id}`}>
                         <p className="text-xs text-muted-foreground">
                           Le lead ou le client du modèle n’est jamais recopié :
-                          désignez le NOUVEAU rattachement.
+                          choisissez le NOUVEAU rattachement (le client d’un
+                          lead est repris).
                         </p>
-                        <label className="mt-2 block text-xs text-muted-foreground">
-                          Lead (identifiant)
-                          <input type="text" value={depart.lead} disabled={creation}
-                            data-testid="cal-biblio-modele-lead"
-                            onChange={(e) => setDepart((d) => ({ ...d, lead: e.target.value }))}
-                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
-                        </label>
-                        <label className="mt-2 block text-xs text-muted-foreground">
-                          Client (identifiant)
-                          <input type="text" value={depart.client} disabled={creation}
-                            data-testid="cal-biblio-modele-client"
-                            onChange={(e) => setDepart((d) => ({ ...d, client: e.target.value }))}
-                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
-                        </label>
+                        <div className="mt-2 text-xs text-muted-foreground"
+                          data-testid="cal-biblio-modele-lead">
+                          <span className="block">Lead</span>
+                          <SelecteurRattachement genre="lead" id="cal-biblio-modele-lead"
+                            valeur={depart.lead} disabled={creation}
+                            onChange={(v) => setDepart((d) => ({ ...d, lead: v }))} />
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground"
+                          data-testid="cal-biblio-modele-client">
+                          <span className="block">Client</span>
+                          <SelecteurRattachement genre="client" id="cal-biblio-modele-client"
+                            valeur={depart.client} disabled={creation}
+                            onChange={(v) => setDepart((d) => ({ ...d, client: v }))} />
+                        </div>
                         <div className="mt-2 flex flex-wrap items-center gap-3">
                           <button type="button" disabled={creation}
                             className="text-xs font-semibold underline"
@@ -764,6 +789,13 @@ export default function Bibliotheque() {
                             {refusDepart}
                           </p>
                         )}
+                        {existantDepart && (
+                          <a className="mt-1 inline-block text-xs font-semibold underline"
+                            data-testid="cal-biblio-modele-ouvrir-existant"
+                            href={`/calepinage/${existantDepart}`}>
+                            Ouvrir l’existant
+                          </a>
+                        )}
                       </div>
                     )}
                   </li>
@@ -775,13 +807,24 @@ export default function Bibliotheque() {
               porte `marquer-modele`, CALX42). La liste se relit ensuite. */}
           {peutGerer ? (
             <div className="mt-3 border border-border p-2" data-testid="cal-biblio-marquer">
-              <label className="block text-xs text-muted-foreground">
-                Calepinage à marquer comme modèle (identifiant)
-                <input type="text" value={marquageId} disabled={marquageEnCours}
-                  data-testid="cal-biblio-marquer-id"
-                  onChange={(e) => { setMarquageId(e.target.value); setRefusMarquage(null) }}
-                  className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
-              </label>
+              <div className="text-xs text-muted-foreground"
+                data-testid="cal-biblio-marquer-choix">
+                <span className="block">Calepinage à marquer comme modèle</span>
+                <Combobox id="cal-biblio-marquer-id"
+                  value={marquageId || null}
+                  options={marquageId && marquageLibelle
+                    ? [{ value: String(marquageId), label: marquageLibelle }] : []}
+                  onSearch={chercherCalepinages}
+                  disabled={marquageEnCours}
+                  placeholder="Rechercher un calepinage…"
+                  onChange={(v) => {
+                    const ligne = lignesCalepinages.current
+                      .find((c) => String(c.id) === String(v))
+                    setMarquageId(v ?? '')
+                    setMarquageLibelle(ligne ? (ligne.titre || `Calepinage #${ligne.id}`) : '')
+                    setRefusMarquage(null)
+                  }} />
+              </div>
               <button type="button" disabled={marquageEnCours}
                 className="mt-2 text-xs font-semibold underline"
                 data-testid="cal-biblio-marquer-bouton"
