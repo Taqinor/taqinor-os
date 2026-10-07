@@ -3913,7 +3913,6 @@ def comparer_fournisseurs(company, produit):
 def supplier_performance(company, fournisseur):
     """Scorecard performance fournisseur : délai moyen, taux de remplissage,
     taux de retour, dépenses totales. INTERNE."""
-    from decimal import Decimal
     from .models import BonCommandeFournisseur, RetourFournisseur
 
     bons = (BonCommandeFournisseur.objects
@@ -3922,14 +3921,16 @@ def supplier_performance(company, fournisseur):
             .prefetch_related('receptions', 'lignes'))
 
     nb_bons = bons.count()
-    total_achats = Decimal('0')
     lead_times = []
     fill_rates = []
 
-    for bc in bons:
-        # Dépense totale HT (prix d'achat interne)
-        total_achats += bc.total_achat or Decimal('0')
+    # ASTK189 — dépense totale HT = sélecteur UNIQUE des achats effectifs
+    # (ni brouillon ni annulé), le même que l'export conformité et le top
+    # fournisseurs.
+    from .selectors import achats_effectifs_fournisseur
+    total_achats = achats_effectifs_fournisseur(company, fournisseur.id)
 
+    for bc in bons:
         # Délai de livraison = date_reception - date_commande (en jours)
         if bc.date_commande:
             for rec in bc.receptions.filter(statut='confirme'):

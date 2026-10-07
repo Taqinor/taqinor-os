@@ -2614,27 +2614,55 @@ def _dernier_retard_otd(company, fournisseur_id, *, debut=None, fin=None):
     return dernier.date_livraison_prevue, jours
 
 
-def _montant_achete(company, fournisseur_id, *, debut=None, fin=None):
-    """Σ des lignes de BCF (HT interne) du fournisseur sur la période."""
-    from decimal import Decimal
-    from django.db.models import DecimalField, F, Sum
-    from django.db.models.functions import Coalesce
+def _lignes_achats_effectifs(company, *, debut=None, fin=None):
+    """ASTK189 — lignes de BCF qui comptent comme ACHAT : ni brouillon (pas
+    encore commandé) ni annulé. Période bornée sur ``date_commande``."""
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
 
-    from .models import LigneBonCommandeFournisseur
-
-    qs = LigneBonCommandeFournisseur.objects.filter(
-        bon_commande__company=company,
-        bon_commande__fournisseur_id=fournisseur_id)
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut__in=[
+              BonCommandeFournisseur.Statut.BROUILLON,
+              BonCommandeFournisseur.Statut.ANNULE]))
     if debut:
         qs = qs.filter(bon_commande__date_commande__gte=debut)
     if fin:
         qs = qs.filter(bon_commande__date_commande__lte=fin)
-    total = qs.aggregate(total=Coalesce(
+    return qs
+
+
+def _somme_lignes_achat():
+    """Σ quantité × prix d'achat unitaire (HT interne), 0 si vide."""
+    from decimal import Decimal
+    from django.db.models import DecimalField, F, Sum
+    from django.db.models.functions import Coalesce
+
+    return Coalesce(
         Sum(F('quantite') * F('prix_achat_unitaire'),
             output_field=DecimalField(max_digits=18, decimal_places=2)),
         Decimal('0'),
-        output_field=DecimalField(max_digits=18, decimal_places=2)))['total']
+        output_field=DecimalField(max_digits=18, decimal_places=2))
+
+
+def achats_effectifs_fournisseur(company, fournisseur_id, debut=None,
+                                 fin=None):
+    """ASTK189 (C-ASTK-043, FOUR-17) — montant acheté (HT interne) à UN
+    fournisseur : Σ des lignes de BCF ni brouillon ni annulés. SEULE source
+    de l'export conformité, du top fournisseurs et de la performance
+    fournisseur (les trois rendent le même chiffre). INTERNE."""
+    from decimal import Decimal
+
+    total = (_lignes_achats_effectifs(company, debut=debut, fin=fin)
+             .filter(bon_commande__fournisseur_id=fournisseur_id)
+             .aggregate(total=_somme_lignes_achat())['total'])
     return total or Decimal('0')
+
+
+def _montant_achete(company, fournisseur_id, *, debut=None, fin=None):
+    """Σ des lignes de BCF (HT interne) du fournisseur sur la période —
+    ASTK189 : délègue à ``achats_effectifs_fournisseur``."""
+    return achats_effectifs_fournisseur(
+        company, fournisseur_id, debut=debut, fin=fin)
 
 
 def conformite_fournisseurs(company, *, debut=None, fin=None):
@@ -2707,26 +2735,15 @@ def _budgets_departement_du_mois(company, aujourdhui):
 def _top_fournisseurs_par_volume(company, *, debut=None, fin=None, limite=5):
     """Fournisseurs classés par volume d'achat (Σ lignes BCF HT interne) sur
     la période — jamais de ``prix_achat`` exposé côté client, cette agrégation
-    reste un rapport INTERNE (achats)."""
-    from decimal import Decimal
-    from django.db.models import DecimalField, F, Sum
-    from django.db.models.functions import Coalesce
-    from .models import LigneBonCommandeFournisseur
+    reste un rapport INTERNE (achats).
 
-    qs = LigneBonCommandeFournisseur.objects.filter(
-        bon_commande__company=company)
-    if debut:
-        qs = qs.filter(bon_commande__date_commande__gte=debut)
-    if fin:
-        qs = qs.filter(bon_commande__date_commande__lte=fin)
+    ASTK189 — mêmes lignes que ``achats_effectifs_fournisseur`` (ni
+    brouillon ni annulé) : le top concorde avec l'export et la performance."""
+    qs = _lignes_achats_effectifs(company, debut=debut, fin=fin)
     agreges = (
         qs.values('bon_commande__fournisseur_id',
                   'bon_commande__fournisseur__nom')
-        .annotate(volume=Coalesce(
-            Sum(F('quantite') * F('prix_achat_unitaire'),
-                output_field=DecimalField(max_digits=18, decimal_places=2)),
-            Decimal('0'),
-            output_field=DecimalField(max_digits=18, decimal_places=2)))
+        .annotate(volume=_somme_lignes_achat())
         .order_by('-volume')[:limite])
     return [
         {'fournisseur_id': row['bon_commande__fournisseur_id'],
