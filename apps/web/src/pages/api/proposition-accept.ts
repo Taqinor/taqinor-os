@@ -70,9 +70,22 @@ export const POST: APIRoute = async ({ request }) => {
   const optRaw = body.option;
   const option: OptionKey | null =
     optRaw === 'sans_batterie' || optRaw === 'avec_batterie' ? optRaw : null;
+  // CIW305 — bloc `entreprise` (contrat `acceptation_entreprise.json`) : relayé tel quel, trois
+  // chaînes bornées. Absent / mal formé → non relayé (le serveur répond 400 + `champ` si requis).
+  const entRaw = body.entreprise;
+  const bornee = (v: unknown): string => (typeof v === 'string' ? v.trim().slice(0, 200) : '');
+  const entreprise =
+    entRaw && typeof entRaw === 'object' && !Array.isArray(entRaw)
+      ? {
+          raison_sociale: bornee((entRaw as Record<string, unknown>).raison_sociale),
+          signataire_qualite: bornee((entRaw as Record<string, unknown>).signataire_qualite),
+          ice: bornee((entRaw as Record<string, unknown>).ice),
+        }
+      : null;
   const form: SignFormState = {
     nom: typeof body.nom === 'string' ? body.nom : '',
     option,
+    ...(entreprise ? { entreprise } : {}),
   };
 
   // `twoOptions` est transmis par le client (il connaît l'état rendu de la page).

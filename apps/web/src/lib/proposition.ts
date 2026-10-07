@@ -1040,15 +1040,37 @@ export function resolveNoteClient(
 
 // ── Formulaire de signature : validation + mise en forme de la requête ───────
 
+/**
+ * CIW305 (D-CIQ-11) — l'entreprise qui signe un devis C&I : raison sociale, qualité du signataire
+ * (gérant, DAF, DG…) et ICE. Contrat partagé `acceptation_entreprise.json` (bloc `entreprise`).
+ */
+export interface SignEntreprise {
+  raison_sociale: string;
+  signataire_qualite: string;
+  ice: string;
+}
+
 export interface SignFormState {
   nom: string;
   option: OptionKey | null;
+  /** CIW305 — requis (3 champs) quand le devis est commercial / industriel ; ignoré sinon. */
+  entreprise?: SignEntreprise | null;
 }
+
+/** Les champs que `validateSign` ou le serveur peuvent désigner (`champ` du contrat : « entreprise.ice »…). */
+export type SignChamp =
+  | 'nom'
+  | 'option'
+  | 'entreprise.raison_sociale'
+  | 'entreprise.signataire_qualite'
+  | 'entreprise.ice';
 
 export interface SignValidation {
   valid: boolean;
   /** Message FR à afficher quand invalide (null si valide). */
   error: string | null;
+  /** CIW305 — le champ fautif (l'erreur s'affiche SOUS lui), ou absent. */
+  champ?: SignChamp;
 }
 
 /**
@@ -1056,11 +1078,29 @@ export interface SignValidation {
  * - nom non vide,
  * - option choisie OBLIGATOIRE quand il y a deux options.
  */
-export function validateSign(form: SignFormState, twoOptions: boolean): SignValidation {
+export function validateSign(
+  form: SignFormState,
+  twoOptions: boolean,
+  entrepriseRequise = false,
+): SignValidation {
   const nom = (form.nom ?? '').trim();
-  if (!nom) return { valid: false, error: 'Veuillez saisir votre nom complet.' };
+  if (!nom) return { valid: false, error: 'Veuillez saisir votre nom complet.', champ: 'nom' };
+  // CIW305 — commercial / industriel : les TROIS champs entreprise sont OBLIGATOIRES ; l'erreur
+  // nomme le champ fautif. Aucune règle de format ici (l'ICE est validé par le serveur, une seule règle).
+  if (entrepriseRequise) {
+    const e = form.entreprise ?? { raison_sociale: '', signataire_qualite: '', ice: '' };
+    if (!(e.raison_sociale ?? '').trim()) {
+      return { valid: false, error: 'Veuillez saisir la raison sociale de l’entreprise.', champ: 'entreprise.raison_sociale' };
+    }
+    if (!(e.signataire_qualite ?? '').trim()) {
+      return { valid: false, error: 'Veuillez indiquer votre qualité (gérant, DAF, DG…).', champ: 'entreprise.signataire_qualite' };
+    }
+    if (!(e.ice ?? '').trim()) {
+      return { valid: false, error: 'Veuillez saisir l’ICE de l’entreprise.', champ: 'entreprise.ice' };
+    }
+  }
   if (twoOptions && form.option !== 'sans_batterie' && form.option !== 'avec_batterie') {
-    return { valid: false, error: 'Veuillez choisir une option avant de signer.' };
+    return { valid: false, error: 'Veuillez choisir une option avant de signer.', champ: 'option' };
   }
   return { valid: true, error: null };
 }
@@ -1068,6 +1108,8 @@ export function validateSign(form: SignFormState, twoOptions: boolean): SignVali
 export interface AcceptRequestBody {
   nom: string;
   option?: OptionKey;
+  /** CIW305 — bloc ADDITIF (contrat `acceptation_entreprise.json`), seulement pour un devis C&I. */
+  entreprise?: SignEntreprise;
 }
 
 /**
@@ -1079,6 +1121,16 @@ export function buildAcceptBody(form: SignFormState, twoOptions: boolean): Accep
   const body: AcceptRequestBody = { nom: (form.nom ?? '').trim() };
   if (twoOptions && (form.option === 'sans_batterie' || form.option === 'avec_batterie')) {
     body.option = form.option;
+  }
+  // CIW305 — `entreprise` (trois champs trimés) seulement quand le formulaire en porte une saisie.
+  const e = form.entreprise;
+  if (e) {
+    const entreprise: SignEntreprise = {
+      raison_sociale: (e.raison_sociale ?? '').trim(),
+      signataire_qualite: (e.signataire_qualite ?? '').trim(),
+      ice: (e.ice ?? '').trim(),
+    };
+    if (entreprise.raison_sociale || entreprise.signataire_qualite || entreprise.ice) body.entreprise = entreprise;
   }
   return body;
 }
@@ -1741,6 +1793,8 @@ export interface AcceptResult {
   detail: string;
   reference?: string;
   accepte_par_nom?: string;
+  /** CIW305 — le champ que le serveur désigne en 400 (« entreprise.ice »…), pour l'afficher sous le bon champ. */
+  champ?: string;
 }
 
 export function normalizeAcceptResponse(status: number, payload: unknown): AcceptResult {
@@ -1764,7 +1818,8 @@ export function normalizeAcceptResponse(status: number, payload: unknown): Accep
         : status === 400
           ? 'La demande est invalide. Vérifiez votre saisie.'
           : 'Une erreur est survenue. Veuillez réessayer.';
-  return { ok: false, status, detail: detail || fallback };
+  const champ = typeof body.champ === 'string' && body.champ.trim() ? body.champ.trim() : undefined;
+  return { ok: false, status, detail: detail || fallback, ...(champ ? { champ } : {}) };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -6151,6 +6206,8 @@ export interface SyntheseCi {
   optionBatterie: SyntheseCiOptionBatterie | null;
   /** CIW304 — services servis : l'option O&M nommée du devis et le délai de suivi (heures), si servis. */
   services: { omLibelle: string | null; suiviDelaiHeures: number | null } | null;
+  /** CIW305 — la raison sociale du client entreprise si le devis la porte (pré-remplit le formulaire). */
+  entrepriseClient: { raisonSociale: string | null } | null;
   hypotheses: SyntheseCiHypothese[];
   omissions: Array<{ bloc: string; motif: string }>;
 }
@@ -6286,6 +6343,9 @@ export function syntheseCi(
             : null,
         }
       : null,
+    entrepriseClient: estRecord(brut.entreprise_client)
+      ? { raisonSociale: texteServi(brut.entreprise_client.raison_sociale) }
+      : null,
     hypotheses,
     omissions,
   };
@@ -6385,4 +6445,9 @@ export function valeurOptionBatterieCi(
 /** L'offre principale d'un devis C&I (réseau seul sauf `option_servie` = `avec_batterie`). */
 export function offrePrincipaleCi(ci: SyntheseCi | null): OptionKey {
   return ci?.optionServie === 'avec_batterie' ? 'avec_batterie' : 'sans_batterie';
+}
+
+/** CIW305 — un devis C&I exige l'identité de l'entreprise à la signature (commercial / industriel). */
+export function signatureEntrepriseRequise(mode: string | null | undefined): boolean {
+  return mode === 'commercial' || mode === 'industriel';
 }

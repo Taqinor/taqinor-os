@@ -49,6 +49,7 @@ import {
   batterySimEligibleForMode,
   valeurOptionBatterieCi,
   offrePrincipaleCi,
+  signatureEntrepriseRequise,
   ciEstUneEstimation,
   ciSousReserveVisite,
   motifsManquantsCi,
@@ -599,6 +600,9 @@ const ciSousReserve = ciSousReserveVisite(ci);
 // seule valeur CHIFFRÉE par le moteur C&I (ou « valeur non chiffrée » + motif). Rien n'est calculé ici.
 const ciOffrePrincipale: OptionKey = offrePrincipaleCi(ci);
 const ciValeurBatterie = valeurOptionBatterieCi(ci);
+// CIW305 — signature d'un devis C&I : raison sociale, nom, qualité du signataire et ICE (D-CIQ-11).
+const entrepriseRequise = signatureEntrepriseRequise(installMode);
+const raisonSocialeServie = ci?.entrepriseClient?.raisonSociale ?? '';
 // AGW303 — LA SYNTHÈSE AGRICOLE SERVIE (`synthese_agricole`, la MÊME fonction que le PDF).
 // La page LIT : besoin vs eau livrée, schéma, courbe + point, provenance, plaque. Aucun
 // calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
@@ -2143,6 +2147,8 @@ const signConfig = ok
       // PREVIEW-V3-FIX (audit C1) — l'acompte de CHAQUE option, déjà formaté
       // au rendu (voir `acompteMontantsFmt` dans le frontmatter).
       acompteMontants: acompteMontantsFmt,
+      // CIW305 — commercial / industriel : les quatre champs d'identité d'entreprise sont requis.
+      entrepriseRequise,
     })
   : null;
 
@@ -6959,6 +6965,32 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint"
                 placeholder="Prénom Nom"
               />
+              {entrepriseRequise && (
+                <div class="mt-3 space-y-3" data-sign-entreprise>
+                  <div>
+                    <label for="sign-raison-sociale" class="block text-xs leading-snug text-lune-faint" data-i18n
+                      data-fr="Raison sociale" data-en="Company name" data-ar="الاسم التجاري للشركة">Raison sociale</label>
+                    <input id="sign-raison-sociale" name="raison_sociale" type="text" autocomplete="organization" required
+                      value={raisonSocialeServie || undefined}
+                      class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
+                    <p id="sign-err-entreprise-raison_sociale" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
+                  </div>
+                  <div>
+                    <label for="sign-qualite" class="block text-xs leading-snug text-lune-faint" data-i18n
+                      data-fr="Qualité (gérant, DAF, DG…)" data-en="Capacity (manager, CFO, CEO…)" data-ar="الصفة (مسير، مدير مالي، مدير عام…)">Qualité (gérant, DAF, DG…)</label>
+                    <input id="sign-qualite" name="signataire_qualite" type="text" autocomplete="organization-title" required
+                      class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
+                    <p id="sign-err-entreprise-signataire_qualite" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
+                  </div>
+                  <div>
+                    <label for="sign-ice" class="block text-xs leading-snug text-lune-faint" data-i18n
+                      data-fr="ICE" data-en="ICE (company identifier)" data-ar="ICE (المعرّف الموحد للمقاولة)">ICE</label>
+                    <input id="sign-ice" name="ice" type="text" inputmode="numeric" autocomplete="off" required
+                      class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
+                    <p id="sign-err-entreprise-ice" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
+                  </div>
+                </div>
+              )}
               {/* PREVIEW-V3 · LA SIGNATURE TAPÉE EST LA SIGNATURE (loi 43-20
                   art. 2 et 7 : la signature électronique SIMPLE est
                   recevable ; aucun texte n'exige un tracé, et un trait dessiné
@@ -7042,6 +7074,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  additif dans le payload d'acceptation. Baymard range « pour le
                  compte d'une société » dans les champs à masquer par défaut :
                  il reste donc derrière un lien. -->
+            {!entrepriseRequise && (
             <details class="fold-native">
               <summary class="cursor-pointer text-brass-300 underline-offset-2 hover:underline" data-i18n
                 data-fr="Signer pour quelqu’un d’autre"
@@ -7075,6 +7108,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </p>
             </div>
             </details>
+            )}
             </div>
 
             {/* ── PREVIEW-V3 · UNE SEULE CASE, CELLE QUE LA LOI EXIGE ──────────
@@ -7854,6 +7888,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   interface SignConfig {
     token: string;
     twoOptions: boolean;
+    /** CIW305 — devis commercial / industriel : raison sociale, qualité et ICE requis. */
+    entrepriseRequise?: boolean;
     preselect: OptionKey | null;
     accepted: boolean;
     acceptedName: string;
@@ -8711,6 +8747,27 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     }
     function clearError(): void {
       if (errorEl) errorEl.hidden = true;
+      // CIW305 — efface aussi les erreurs posées SOUS les champs entreprise.
+      document.querySelectorAll<HTMLElement>('[id^="sign-err-entreprise-"]').forEach((el) => {
+        el.hidden = true;
+        el.textContent = '';
+      });
+    }
+    // CIW305 — l'erreur d'un champ entreprise s'affiche SOUS ce champ (`champ` du contrat :
+    // « entreprise.ice »…) ; un champ inconnu retombe sur le message général.
+    const CHAMP_ENTREPRISE_INPUT: Record<string, string> = {
+      'entreprise.raison_sociale': 'sign-raison-sociale',
+      'entreprise.signataire_qualite': 'sign-qualite',
+      'entreprise.ice': 'sign-ice',
+    };
+    function showFieldError(champ: string | undefined, msg: string): boolean {
+      const inputId = champ ? CHAMP_ENTREPRISE_INPUT[champ] : undefined;
+      const errEl = champ ? document.getElementById(`sign-err-${champ.replace('.', '-')}`) : null;
+      if (!inputId || !errEl) return false;
+      errEl.textContent = msg;
+      errEl.hidden = false;
+      (document.getElementById(inputId) as HTMLInputElement | null)?.focus();
+      return true;
     }
     // ── WJ42 — `successTime` portait le même défaut que le stamp : une chaîne
     // FR figée (« · signé le … ») jamais ré-inscrite au registre. `signedWhen`
@@ -8871,11 +8928,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       // WJ87 — facultatif : « je signe au nom de… » (MRE signant pour ses
       // parents, foyer, etc.). Le signataire enregistré reste `nom` ci-dessus.
       const onBehalfOf = (document.getElementById('sign-on-behalf-of') as HTMLInputElement | null)?.value ?? '';
-      const state: SignFormState = { nom, option: selectedOption() };
+      // CIW305 — devis C&I : l'identité de l'entreprise (raison sociale, qualité, ICE) ; jamais
+      // « signer pour quelqu'un d'autre » (le bloc n'est pas rendu, `onBehalfOf` reste vide).
+      const entreprise = cfg.entrepriseRequise
+        ? {
+            raison_sociale: (document.getElementById('sign-raison-sociale') as HTMLInputElement | null)?.value ?? '',
+            signataire_qualite: (document.getElementById('sign-qualite') as HTMLInputElement | null)?.value ?? '',
+            ice: (document.getElementById('sign-ice') as HTMLInputElement | null)?.value ?? '',
+          }
+        : null;
+      const state: SignFormState = { nom, option: selectedOption(), ...(entreprise ? { entreprise } : {}) };
 
-      const v = validateSign(state, cfg.twoOptions);
+      const v = validateSign(state, cfg.twoOptions, !!cfg.entrepriseRequise);
       if (!v.valid) {
-        showError(v.error ?? 'Formulaire incomplet.');
+        if (!showFieldError(v.champ, v.error ?? 'Formulaire incomplet.')) showError(v.error ?? 'Formulaire incomplet.');
         return;
       }
       if (!accord) {
@@ -8956,6 +9022,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           ok?: boolean;
           detail?: string;
           accepte_par_nom?: string;
+          champ?: string;
         };
         if (res.ok && data.ok) {
           showSuccess(data.accepte_par_nom || nom.trim(), signedAt, signatureDataUrl, true);
@@ -9001,7 +9068,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           if (firstReveal) otpRequestBtn?.click();
           return;
         }
-        showError(uiState.kind === 'error' ? uiState.message : 'Une erreur est survenue. Veuillez réessayer.');
+        // CIW305 — le serveur NOMME le champ fautif (400 {detail, champ}) : on l'affiche sous ce champ.
+        const msgServeur = uiState.kind === 'error' ? uiState.message : 'Une erreur est survenue. Veuillez réessayer.';
+        if (res.status === 400 && showFieldError(data.champ, data.detail || msgServeur)) return;
+        showError(msgServeur);
       } catch (err) {
         // WJ45 — si le navigateur se sait hors-ligne au moment de l'échec, on
         // l'affirme explicitement (bandeau + message dédié, dans la langue
