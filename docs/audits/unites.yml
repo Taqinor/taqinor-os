@@ -267,13 +267,13 @@ unites:
     I: 5
     score: 15
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: ASEC
     plan: docs/plans/PLAN_AUDIT_SECURITE.md
-    plans_alimentes: []
+    plans_alimentes: [docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: null
-    date: null
-    notes: "core/events.py et core/event_coverage.py sont à X3 (plus spécifiques). Lecture par checklist, pas intégrale."
+    date: 2026-10-07
+    notes: "core/events.py et core/event_coverage.py sont à X3 (plus spécifiques). Lecture par checklist, pas intégrale. Audit L3 du 07/10/2026 (dossier docs/audits/2026-10-07-securite.md) : 29 constats, 53 tâches ASEC (lane asec-p0 à construire en premier) ; prod servie avec settings.dev constatée."
 
   - id: X4
     rang: 8
