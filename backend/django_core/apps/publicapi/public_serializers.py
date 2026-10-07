@@ -216,13 +216,22 @@ class PublicFavoriSerializer(serializers.ModelSerializer):
 
 def scope_de_lecture_du_modele(modele):
     """AANA38 — le scope de LECTURE de la ressource publique qui sert
-    ``modele`` (lu sur le routeur public : ``required_scope`` du ViewSet dont
-    le ``queryset`` porte ce modèle), ``None`` si aucune ressource publique ne
-    le sert (fail-closed)."""
+    ``modele`` (``required_scope`` du ``PublicReadOnlyViewSet`` dont le
+    ``queryset`` porte ce modèle), ``None`` si aucune ressource publique ne
+    le sert (fail-closed).
+
+    Les ressources sont lues sur les sous-classes de ``PublicReadOnlyViewSet``
+    (toutes chargées par le routeur public au démarrage) — jamais en important
+    ``public_urls`` d'ici, ce qui tirerait tout le graphe des vues publiques
+    dans ce module (contrat import-linter)."""
     if modele is None:
         return None
-    from .public_urls import router
-    for _prefixe, viewset, _nom in router.registry:
+    from .public_views import PublicReadOnlyViewSet
+
+    a_voir = list(PublicReadOnlyViewSet.__subclasses__())
+    while a_voir:
+        viewset = a_voir.pop(0)
+        a_voir.extend(viewset.__subclasses__())
         queryset = getattr(viewset, 'queryset', None)
         if getattr(queryset, 'model', None) is modele:
             return getattr(viewset, 'required_scope', None)
