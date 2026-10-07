@@ -5,6 +5,7 @@ import { lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
+  LayoutGrid, Link2, Handshake, BadgePercent,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -63,6 +64,20 @@ const ConditionnementsProduit = lazy(() => import('../../pages/stock/Conditionne
 // NTWMS29 — cockpit entrepôt (remplissage par zone, vagues en retard,
 // comptages dus, expéditions du jour, lots proches de péremption).
 const CockpitEntrepot = lazy(() => import('../../pages/stock/CockpitEntrepot'))
+// ASTK215 — casiers : seuils, tâches de réappro, étiquettes, reslotting.
+const CasiersPage = lazy(() => import('../../pages/stock/wms/CasiersPage'))
+// ASTK216 — poste scanner (résoudre un code, mouvement scanné, retour fournisseur).
+const PosteScannerPage = lazy(() => import('../../pages/stock/wms/PosteScannerPage'))
+// ASTK217 — picking : vagues, prélèvement, comptages tournants, productivité.
+const PickingPage = lazy(() => import('../../pages/stock/wms/PickingPage'))
+// ASTK218 — quais, planning, rendez-vous transporteur, ASN.
+const QuaisPage = lazy(() => import('../../pages/stock/wms/QuaisPage'))
+// ASTK223 — liens 3PL (portails-tiers) : générer, lister, révoquer.
+const PortailsTiersPage = lazy(() => import('../../pages/stock/negoce/PortailsTiersPage'))
+// ASTK221 — consignation : dépôts chez les clients, déclarations, réglages négoce.
+const ConsignationsPage = lazy(() => import('../../pages/stock/negoce/ConsignationsPage'))
+// ASTK222 — remises arrière fournisseur (RFA) : accords, calcul, avoir.
+const RfaPage = lazy(() => import('../../pages/stock/negoce/RfaPage'))
 
 const config = {
   key: 'stock',
@@ -121,6 +136,13 @@ const config = {
       // glyphe d'APP du module Magasin — le réutiliser ici brouillerait la
       // lecture du portail (contrat APX1/ODY34).
       { to: '/stock/entrepot', label: 'Tableau de bord entrepôt', icon: navIcon(Gauge), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/casiers', label: 'Casiers', icon: navIcon(LayoutGrid), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/scanner', label: 'Poste scanner', icon: navIcon(ScanLine), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/picking', label: 'Picking', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/quais', label: 'Quais et rendez-vous', icon: navIcon(Truck), roles: ['responsable','admin'] },
+      { to: '/stock/negoce/consignations', label: 'Consignation', icon: navIcon(Handshake), roles: ['responsable','admin'] },
+      { to: '/stock/negoce/rfa', label: 'Remises arrière (RFA)', icon: navIcon(BadgePercent), roles: ['responsable','admin'] },
+      { to: '/stock/negoce/portails-tiers', label: 'Dépôts tiers (3PL)', icon: navIcon(Link2), roles: ['admin'] },
     ],
   },
   routes: [
@@ -146,6 +168,13 @@ const config = {
     // NTWMS29 — route ET entrée de nav déclarées ENSEMBLE (motif PACT150 :
     // un écran livré sans l'une des deux est un écran mort).
     { path: '/stock/entrepot', component: CockpitEntrepot },
+    { path: '/stock/entrepot/casiers', component: CasiersPage },
+    { path: '/stock/entrepot/scanner', component: PosteScannerPage },
+    { path: '/stock/entrepot/picking', component: PickingPage },
+    { path: '/stock/entrepot/quais', component: QuaisPage },
+    { path: '/stock/negoce/consignations', component: ConsignationsPage },
+    { path: '/stock/negoce/rfa', component: RfaPage },
+    { path: '/stock/negoce/portails-tiers', component: PortailsTiersPage },
   ],
 }
 
