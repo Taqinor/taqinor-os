@@ -35,7 +35,7 @@ import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_THICK_M } from '../src/lib/roofPr
 // ── Aides géo : un toit rectangulaire réaliste au Maroc ─────────────────────
 const LAT0 = 33.5;
 const LNG0 = -7.6;
-const DEG2M = 111_320;
+import { DEG2M_GEO as DEG2M } from '../src/lib/geo'; // ACAL349 : constante unique
 const COS = Math.cos((LAT0 * Math.PI) / 180);
 function at(x: number, y: number): [number, number] {
   return [LNG0 + x / (DEG2M * COS), LAT0 + y / DEG2M];
