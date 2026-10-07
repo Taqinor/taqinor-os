@@ -79,12 +79,22 @@ class ElectriqueActionsMixin:
             if variante is None:
                 return Response({'variante': 'Variante introuvable.'},
                                 status=status.HTTP_404_NOT_FOUND)
+            if not isinstance(variante.roof_layout, dict) \
+                    or not variante.roof_layout:
+                # Lot 2 critique #17 — jamais le résultat du calepinage sous
+                # l'étiquette d'une variante sans conception.
+                return Response(
+                    {'variante': "La variante n'a pas de conception : "
+                                 "dessinez-la avant de l'évaluer."},
+                    status=status.HTTP_400_BAD_REQUEST)
         try:
             if variante is None:
                 return Response(resultat_calepinage(calepinage))
+            # Lot 2 critique #17 — la simulation servie est celle de LA
+            # variante (ACAL112 l'écrit sur ``variante.resultat``).
             servi = resultat_calepinage(
-                calepinage, layout=variante.roof_layout
-                if isinstance(variante.roof_layout, dict) else None)
+                calepinage, layout=variante.roof_layout,
+                porteur_simulation=variante)
             servi['variante'] = {'id': variante.pk, 'nom': variante.nom}
             return Response(servi)
         except _REFUS_DE_LECTURE as refus:

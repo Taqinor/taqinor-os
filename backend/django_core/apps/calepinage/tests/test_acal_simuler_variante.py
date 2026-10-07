@@ -77,6 +77,32 @@ class SimulerVarianteTest(BaseApiCalepinage):
             (self.a.resultat['production'].get('total') or {})
             .get('p50_kwh'))
 
+    def test_get_resultat_variante_sert_sa_simulation(self):
+        """Lot 2 critique #17 — ``GET resultat/?variante=`` sert la
+        simulation de LA variante (``variante.resultat``) ; une variante sans
+        conception ⇒ 400 ``variante``, jamais le calepinage sous son nom."""
+        self._simuler_service(self.a)
+        self.a.refresh_from_db()
+        with patch_materiel():
+            reponse = self.api.get(f'{self.base}resultat/',
+                                   {'variante': self.a.pk})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertFalse(reponse.data['simulation_perimee'],
+                         reponse.data.get('motif'))
+        self.assertEqual(reponse.data['production'],
+                         self.a.resultat['production'])
+        # Le calepinage, lui, n'a jamais été simulé.
+        with patch_materiel():
+            courant = self.api.get(f'{self.base}resultat/')
+        self.assertNotEqual(courant.data['production'],
+                            self.a.resultat['production'])
+        vide = CalepinageVariante.objects.create(
+            company=self.company, calepinage=self.calepinage, nom='Vide',
+            roof_layout=None)
+        reponse = self.api.get(f'{self.base}resultat/', {'variante': vide.pk})
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('variante', reponse.data)
+
     def test_resultat_du_calepinage_intact(self):
         avant = copy.deepcopy(Calepinage.objects.get(
             pk=self.calepinage.pk).resultat)

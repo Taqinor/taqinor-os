@@ -1692,8 +1692,13 @@ def _chiffrage_des_zones(document):
 
 
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
-                        materiel=None, reglages=None):
+                        materiel=None, reglages=None, porteur_simulation=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
+
+    ``porteur_simulation`` (ACAL112, lot 2 critique #17) : l'objet dont le
+    ``resultat`` porte la simulation servie — la VARIANTE évaluée avec
+    ``layout=variante.roof_layout`` ; absent, le calepinage. Jamais les blocs
+    du calepinage sous l'étiquette d'une variante.
 
     Les blocs de simulation (``production``, ``pertes``, ``cascade``,
     ``meteo``, ``incertitude``, ``performance``, ``autoconsommation``,
@@ -1783,7 +1788,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # CALX70 — la simulation persistée, servie si elle décrit ENCORE ce
     # dossier ; lue ICI parce que le ratio DC/AC en tire son écrêtage.
     blocs, perimee, motif, calcule_le = _simulation_servie(
-        calepinage, empreinte, defauts=_defauts_simulation(pose))
+        porteur_simulation if porteur_simulation is not None else calepinage,
+        empreinte, defauts=_defauts_simulation(pose))
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
