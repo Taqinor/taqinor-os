@@ -279,12 +279,30 @@ export function statusOrder(key) {
 }
 
 // source-choix: installations.Installation.regime_8221
+// CIQ637 — libellés SANS seuil (le seuil et sa base légale viennent du
+// serveur : `regime_suggere`, dossier 82-21) ; `a_qualifier` = puissance ou
+// niveau de tension encore inconnus, jamais « non concerné » par défaut.
 export const REGIME_8221_LABELS = {
   non_concerne: 'Non concerné',
-  declaration_bt: 'Déclaration (< 11 kW, BT)',
+  declaration_bt: 'Déclaration',
   accord_raccordement: 'Accord de raccordement',
-  autorisation_anre: 'Autorisation ANRE (> 1 MW)',
+  autorisation_anre: 'Autorisation (ministère)',
   declaration_hors_reseau: 'Déclaration hors réseau (loi 82-21, art. 3)',
+  a_qualifier: 'À qualifier',
+}
+
+// CIQ637 — niveau de tension du site et provenance de la valeur (relevée en
+// visite ou déclarée par le client).
+// source-choix: installations.Installation.niveau_tension
+export const NIVEAU_TENSION_LABELS = {
+  bt: 'Basse tension (BT)',
+  mt: 'Moyenne tension (MT)',
+}
+
+// source-choix: installations.Installation.niveau_tension_source
+export const NIVEAU_TENSION_SOURCE_LABELS = {
+  mesure_visite: 'Mesuré en visite',
+  declare: 'Déclaré',
 }
 
 // source-choix: installations.Installation.raccordement_reseau

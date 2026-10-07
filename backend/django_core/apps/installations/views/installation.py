@@ -199,6 +199,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'recette_pompage',
             # CH4 — pack de remise client (lecture ; POST auto-gardé).
             'pack_remise',
+            # CIQ628 — réserves du chantier (lecture ; POST auto-gardé).
+            'reserves',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -216,6 +218,12 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'creer_interventions_standard',
             # ZSTK11 — réservation stock explicite (mode manuel).
             'reserver_stock',
+            # CIQ628 — levée d'une réserve du chantier.
+            'lever_reserve',
+            # CIQ629 — réception définitive.
+            'reception_definitive',
+            # CIQ633 — import en lot des numéros de série.
+            'series_lot',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -593,26 +601,27 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         item.save(update_fields=['fait', 'fait_par', 'fait_le'])
 
         # N9 — saisie optionnelle de n° de série → équipements du parc.
-        created_equip = 0
+        # CIQ633 — UNE transaction, un résultat PAR LIGNE (créé | doublon |
+        # autre société), jamais d'erreur 500 sur un doublon.
+        from ..services import enregistrer_series_lot
+        lignes = [eq for eq in (request.data.get('equipements') or [])
+                  if isinstance(eq, dict) and eq.get('produit')]
+        resultats_series = enregistrer_series_lot(
+            inst, lignes, user=request.user)
+        created_equip = sum(
+            1 for r in resultats_series if r['statut'] == 'cree')
+        noms = {}
         captures = []  # libellés « produit (n° série) » des relevés créés.
-        for eq in (request.data.get('equipements') or []):
-            produit_id = eq.get('produit')
-            serie = (eq.get('numero_serie') or '').strip()
-            if not produit_id:
+        for ligne, resultat in zip(lignes, resultats_series):
+            if resultat['statut'] != 'cree':
                 continue
-            from apps.stock.selectors import get_produit_scoped
-            from apps.sav.services import create_equipement_from_serial
-            produit = get_produit_scoped(inst.company, produit_id)
-            if produit is None:
-                continue
-            create_equipement_from_serial(
-                company=inst.company, produit=produit, installation=inst,
-                numero_serie=serie or None,
-                date_pose=inst.date_pose_reelle or timezone.localdate(),
-                created_by=request.user)
-            created_equip += 1
+            if ligne['produit'] not in noms:
+                from apps.stock.selectors import get_produit_scoped
+                produit = get_produit_scoped(inst.company, ligne['produit'])
+                noms[ligne['produit']] = produit.nom if produit else ''
+            serie = resultat['numero_serie']
             captures.append(
-                f"{produit.nom}"
+                f"{noms[ligne['produit']]}"
                 + (f" (n° {serie})" if serie else " (sans n° de série)"))
 
         # N16 — la note liste les produits/séries capturés (pas juste un compte).
@@ -632,6 +641,65 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'items': ChantierChecklistItemSerializer(items, many=True).data,
             'completion': round(100 * done / len(items)) if items else None,
             'equipements_crees': created_equip,
+            'resultats_series': resultats_series,
+        })
+
+    @action(detail=True, methods=['post'], url_path='series-lot',
+            permission_classes=[IsResponsableOrAdmin])
+    def series_lot(self, request, pk=None):
+        """CIQ633 — import en lot des numéros de série d'un chantier.
+
+        Corps : ``lignes`` = [{"produit", "numero_serie", "chaine"?}] ou
+        ``texte`` (collage / contenu CSV, « série;chaîne » par ligne, avec
+        ``produit`` par défaut) ; ``non_releves`` = [{"produit", "motif"}]
+        (un motif vide retire l'entrée). Un résultat par ligne (créé |
+        doublon | autre société | erreur), jamais d'erreur 500."""
+        from apps.stock.selectors import get_produit_scoped
+        from ..services import (
+            _gate_check_series, enregistrer_series_lot, lire_lignes_series,
+        )
+        inst = self.get_object()
+        lignes = [x for x in (request.data.get('lignes') or [])
+                  if isinstance(x, dict)]
+        texte = request.data.get('texte')
+        fichier = request.FILES.get('fichier') if request.FILES else None
+        if fichier is not None:
+            texte = fichier.read().decode('utf-8-sig', errors='replace')
+        if texte:
+            lignes += lire_lignes_series(
+                texte, produit_defaut=request.data.get('produit'))
+        resultats = enregistrer_series_lot(inst, lignes, user=request.user)
+
+        non_releves = dict(inst.series_non_relevees or {})
+        changed = False
+        for entree in (request.data.get('non_releves') or []):
+            if not isinstance(entree, dict):
+                continue
+            produit = get_produit_scoped(inst.company, entree.get('produit'))
+            if produit is None:
+                continue
+            motif = str(entree.get('motif') or '').strip()
+            if motif:
+                non_releves[str(produit.id)] = motif
+            else:
+                non_releves.pop(str(produit.id), None)
+            changed = True
+        if changed:
+            inst.series_non_relevees = non_releves
+            inst.save(update_fields=['series_non_relevees'])
+
+        crees = sum(1 for r in resultats if r['statut'] == 'cree')
+        if resultats or changed:
+            activity.log_note(
+                inst, request.user,
+                f"Séries : lot de {len(resultats)} ligne(s), {crees} "
+                f"créée(s)" + (" ; produits « non relevés » mis à jour"
+                               if changed else ""))
+        return Response({
+            'resultats': resultats,
+            'crees': crees,
+            'series_non_relevees': inst.series_non_relevees or {},
+            'manquantes': _gate_check_series(inst),
         })
 
     @action(detail=True, methods=['post'], url_path='checklist-photo',
@@ -740,6 +808,24 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             inst.signataire_nom = nom
         inst.signe_le = timezone.now()
         fields = ['signature_client', 'signataire_nom', 'signe_le']
+        # CIQ631 — signataire nommé (fonction, société) et co-signature
+        # facultative. La société est préremplie depuis la raison sociale du
+        # client entreprise (contrat CIQ8) quand elle n'est pas saisie.
+        for champ, longueur in (
+                ('signataire_fonction', 120), ('signataire_societe', 255),
+                ('cosignataire_nom', 120), ('cosignataire_fonction', 120),
+                ('cosignataire_organisme', 255)):
+            if champ in request.data:
+                valeur = (request.data.get(champ) or '').strip()[:longueur]
+                setattr(inst, champ, valeur or None)
+                fields.append(champ)
+        client = inst.client
+        if (not inst.signataire_societe and client is not None
+                and getattr(client, 'type_client', None) == 'entreprise'
+                and (client.nom or '').strip()):
+            inst.signataire_societe = client.nom.strip()[:255]
+            if 'signataire_societe' not in fields:
+                fields.append('signataire_societe')
         inst.save(update_fields=fields)
         activity.log_changes(old, inst, request.user)
         if old.signe_le and motif:
@@ -1198,6 +1284,89 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         if record is None:
             return Response({'installation': inst.id, 'record': None})
         return Response(CommissioningRecordSerializer(record).data)
+
+    # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
+    @action(detail=True, methods=['get', 'post'], url_path='reserves',
+            permission_classes=[IsAnyRole])
+    def reserves(self, request, pk=None):
+        """CIQ628 — GET : réserves du chantier (format du contrat
+        ``recette_ci.json``). POST (Responsable/Admin) : ajoute une réserve
+        {description, origine, bloquante, date_echeance, responsable} ;
+        ``company`` vient du chantier, jamais du corps."""
+        from ..services import (
+            creer_reserve_chantier, reserve_contrat, reserves_contrat,
+        )
+        inst = self.get_object()
+        if request.method == 'GET':
+            return Response(reserves_contrat(inst))
+        if not request.user.is_responsable:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        data = request.data
+        description = (data.get('description') or '').strip()
+        if not description:
+            return Response({'description': 'Description obligatoire.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        origine = data.get('origine') or Reserve.Origine.RECETTE
+        if origine not in Reserve.Origine.values:
+            return Response({'origine': 'Origine inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        echeance = None
+        if data.get('date_echeance'):
+            from django.utils.dateparse import parse_date
+            try:
+                echeance = parse_date(str(data.get('date_echeance')))
+            except ValueError:
+                echeance = None
+            if echeance is None:
+                return Response(
+                    {'date_echeance': 'Date invalide (AAAA-MM-JJ).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        bloquante = data.get('bloquante') in (True, 'true', '1', 1, 'on')
+        reserve = creer_reserve_chantier(
+            inst, request.user, description=description, origine=origine,
+            bloquante=bloquante, date_echeance=echeance,
+            responsable=(data.get('responsable') or '').strip()[:120])
+        return Response(reserve_contrat(reserve),
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'reserves/(?P<rid>\d+)/lever',
+            permission_classes=[IsResponsableOrAdmin])
+    def lever_reserve(self, request, pk=None, rid=None):
+        """CIQ628 — lève une réserve du chantier (scopée société et
+        chantier : une réserve d'ailleurs → 404)."""
+        from django.db.models import Q
+        from ..services import lever_reserve_chantier, reserve_contrat
+        inst = self.get_object()
+        reserve = Reserve.objects.filter(
+            Q(installation=inst) | Q(intervention__installation=inst),
+            company=inst.company, pk=rid).first()
+        if reserve is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        lever_reserve_chantier(
+            reserve, request.user,
+            resolution=(request.data.get('resolution') or '').strip())
+        return Response(reserve_contrat(reserve))
+
+    # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──
+    @action(detail=True, methods=['post'], url_path='reception-definitive',
+            permission_classes=[IsResponsableOrAdmin])
+    def reception_definitive(self, request, pk=None):
+        """CIQ629 — prononce la réception définitive (Directeur ou
+        Responsable). Refusée (400 FR listant les réserves) avant la
+        provisoire ou tant qu'une réserve est ouverte. Rend le bloc
+        ``reception`` du contrat ``recette_ci.json``."""
+        from ..services import (
+            ReceptionDefinitiveRefusee, prononcer_reception_definitive,
+            reception_contrat,
+        )
+        inst = self.get_object()
+        try:
+            prononcer_reception_definitive(inst, request.user)
+        except ReceptionDefinitiveRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(reception_contrat(inst))
 
     # ── CH4 — pack de remise client (handover) ──────────────────────────────
     @action(detail=True, methods=['get', 'post'], url_path='pack-remise',

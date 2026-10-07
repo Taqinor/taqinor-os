@@ -255,6 +255,12 @@ jobs:
       DB_PORT: '5432'
       REDIS_HOST: redis
       REDIS_PORT: '6379'
+      # AGR423 / CIQ424 — secret de TEST du récepteur de leads du site : sans
+      # lui, le récepteur répond 401 et les étapes « lead arrivé du site » des
+      # specs se sautent. Valeur factice, propre au CI (jamais celle de prod) ;
+      # Playwright lit la même via E2E_WEBHOOK_SECRET (frontend/e2e/helpers.js).
+      WEBSITE_LEAD_WEBHOOK_SECRET: e2e-webhook-secret
+      E2E_WEBHOOK_SECRET: e2e-webhook-secret
       # Emplacement des navigateurs bakés dans l'image `ci-e2e` (chromium ET
       # webkit, VX68) — doit rester identique à l'ENV PLAYWRIGHT_BROWSERS_PATH
       # de `.github/ci-image/Dockerfile.e2e`, sinon Playwright les chercherait

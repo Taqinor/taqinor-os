@@ -80,6 +80,10 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     && Object.keys(pdfTarget.etude_params).length > 0)
   // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
   const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
+  // CIQ325 — le C&I a son document (3 pages commercial, 4 pages industriel,
+  // étude intégrée) : ni case « Inclure l'étude » ni « Économies mensuelles ».
+  const targetMode = pdfTarget?.mode_installation
+  const targetIsCi = targetMode === 'commercial' || targetMode === 'industriel'
 
   // Incident fondateur 01/09 round 2 — un devis « Composition libre » (ou tout
   // devis dont aucune ligne ne classe onduleur réseau/hybride/hors réseau)
@@ -109,10 +113,10 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     setDevisFinal(false)
     setPaymentMode('standard')
     setCustomAcompte('')
-    // T12/T13 — étude cochée par défaut pour un devis industriel disposant de
-    // données d'étude ; sinon décochée (et désactivée plus bas si absente).
-    const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
-    setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
+    // CIQ325 — plus de pré-coche « Inclure l'étude » : cochée pour un
+    // industriel, elle envoyait le rendu au moteur legacy alors que le lien du
+    // client reçoit le premium. L'étude C&I est intégrée au document.
+    setIncludeEtude(false)
     setIncludeCalepinage('auto')
   }
 
@@ -148,11 +152,9 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     const d = previewDevis
     if (!d) return null
     try {
-      const params = proposalParams(
-        'full',
-        d.mode_installation === 'industriel'
-          && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
-      )
+      // CIQ325 — jamais d'`include_etude` : l'aperçu rend le MÊME premium que
+      // le lien du client (aucun détour par le moteur legacy).
+      const params = proposalParams('full', false)
       const res = await ventesApi.getProposalPdf(d.id, params)
       return pdfBlob(res.data)
     } catch (err) {
@@ -171,6 +173,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     devis_final: devisFinal,
     // T12/T13 — étude uniquement si premium ET données d'étude présentes.
     include_etude: pdfMode === 'full' && includeEtude
+      && !(d?.mode_installation === 'commercial' || d?.mode_installation === 'industriel')
       && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
     // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
     // `null` = auto (le serveur ajoute la planche si le devis en porte une),
@@ -428,6 +431,8 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     setIncludeCalepinage,
     pdfModeAutoOnepage,
     targetHasEtude,
+    targetIsCi,
+    targetMode,
     targetIsAgricole,
     openPdfModal,
     openBatchPdfModal,

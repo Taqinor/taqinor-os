@@ -50,6 +50,7 @@ from core.electrique.types import (
     Chaine,
     Conformite,
     EntreeElectrique,
+    EtageMt,
     GroupePan,
     LigneNomenclature,
     Protection,
@@ -57,6 +58,7 @@ from core.electrique.types import (
     ResultatElectrique,
     SpecModule,
     SpecOnduleur,
+    TransformateurMt,
     fr,
 )
 from core.electrique.version import (
@@ -77,6 +79,7 @@ __all__ = [
     "Chaine",
     "Conformite",
     "EntreeElectrique",
+    "EtageMt",
     "GroupePan",
     "LigneNomenclature",
     "Protection",
@@ -84,6 +87,7 @@ __all__ = [
     "ResultatElectrique",
     "SpecModule",
     "SpecOnduleur",
+    "TransformateurMt",
 ]
 
 

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4826, operations: 7618, components: 2211}
+counts: {paths: 4834, operations: 7628, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1703,6 +1703,7 @@ operations:
 - get /api/django/installations/chantiers/{id}/rapport-energie/ -> django_installations_chantiers_rapport_energie_retrieve
 - post /api/django/installations/chantiers/{id}/reactiver/ -> django_installations_chantiers_reactiver_create
 - get /api/django/installations/chantiers/{id}/readiness/ -> django_installations_chantiers_readiness_retrieve
+- post /api/django/installations/chantiers/{id}/reception-definitive/ -> django_installations_chantiers_reception_definitive_create
 - get /api/django/installations/chantiers/{id}/recette-pompage/ -> django_installations_chantiers_recette_pompage_retrieve
 - post /api/django/installations/chantiers/{id}/recette-pompage/ -> django_installations_chantiers_recette_pompage_create
 - get /api/django/installations/chantiers/{id}/recette/ -> django_installations_chantiers_recette_retrieve
@@ -1710,6 +1711,10 @@ operations:
 - get /api/django/installations/chantiers/{id}/releves/ -> django_installations_chantiers_releves_retrieve
 - get /api/django/installations/chantiers/{id}/remise-garantie/ -> django_installations_chantiers_remise_garantie_retrieve
 - post /api/django/installations/chantiers/{id}/reserver-stock/ -> django_installations_chantiers_reserver_stock_create
+- get /api/django/installations/chantiers/{id}/reserves/ -> django_installations_chantiers_reserves_retrieve
+- post /api/django/installations/chantiers/{id}/reserves/ -> django_installations_chantiers_reserves_create
+- post /api/django/installations/chantiers/{id}/reserves/{rid}/lever/ -> django_installations_chantiers_reserves_lever_create
+- post /api/django/installations/chantiers/{id}/series-lot/ -> django_installations_chantiers_series_lot_create
 - post /api/django/installations/chantiers/{id}/signer-client/ -> django_installations_chantiers_signer_client_create
 - post /api/django/installations/chantiers/{id}/supprimer-releve/ -> django_installations_chantiers_supprimer_releve_create
 - get /api/django/installations/checklist-etapes/ -> django_installations_checklist_etapes_list
@@ -5550,6 +5555,7 @@ operations:
 - get /api/v1/installations/chantiers/{id}/rapport-energie/ -> v1_installations_chantiers_rapport_energie_retrieve
 - post /api/v1/installations/chantiers/{id}/reactiver/ -> v1_installations_chantiers_reactiver_create
 - get /api/v1/installations/chantiers/{id}/readiness/ -> v1_installations_chantiers_readiness_retrieve
+- post /api/v1/installations/chantiers/{id}/reception-definitive/ -> v1_installations_chantiers_reception_definitive_create
 - get /api/v1/installations/chantiers/{id}/recette-pompage/ -> v1_installations_chantiers_recette_pompage_retrieve
 - post /api/v1/installations/chantiers/{id}/recette-pompage/ -> v1_installations_chantiers_recette_pompage_create
 - get /api/v1/installations/chantiers/{id}/recette/ -> v1_installations_chantiers_recette_retrieve
@@ -5557,6 +5563,10 @@ operations:
 - get /api/v1/installations/chantiers/{id}/releves/ -> v1_installations_chantiers_releves_retrieve
 - get /api/v1/installations/chantiers/{id}/remise-garantie/ -> v1_installations_chantiers_remise_garantie_retrieve
 - post /api/v1/installations/chantiers/{id}/reserver-stock/ -> v1_installations_chantiers_reserver_stock_create
+- get /api/v1/installations/chantiers/{id}/reserves/ -> v1_installations_chantiers_reserves_retrieve
+- post /api/v1/installations/chantiers/{id}/reserves/ -> v1_installations_chantiers_reserves_create
+- post /api/v1/installations/chantiers/{id}/reserves/{rid}/lever/ -> v1_installations_chantiers_reserves_lever_create
+- post /api/v1/installations/chantiers/{id}/series-lot/ -> v1_installations_chantiers_series_lot_create
 - post /api/v1/installations/chantiers/{id}/signer-client/ -> v1_installations_chantiers_signer_client_create
 - post /api/v1/installations/chantiers/{id}/supprimer-releve/ -> v1_installations_chantiers_supprimer_releve_create
 - get /api/v1/installations/checklist-etapes/ -> v1_installations_checklist_etapes_list

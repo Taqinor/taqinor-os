@@ -182,7 +182,7 @@
     "rythme.ramadan": "{plages déclarées} ou null — jamais supposé",
     "rythme.talon": "{kw | part_pct | inconnu}",
     "rythme.categorie_commerciale": "les 9 catégories commerciales du lead (hors industriel) ; `reponses_categorie` = réponses propres à la catégorie",
-    "courbe_mesuree": "{pas_minutes, points, source, date} ou null — passe devant tout profil déclaré",
+    "courbe_mesuree": "{pas_minutes, points, source, date} OU un fichier lu par le parseur du serveur {contenu (texte CSV), source, colonne?, unite?, debut?} ; null sinon — passe devant tout profil déclaré",
     "toit": "{type_pose (vocabulaire CIQ7), surface_utile_m2, surface_type declaree|mesuree|calepinage, pente_deg, azimut_deg, couverture, charge_admissible_kg_m2 + charge_admissible_source}",
     "contraintes": "{revente_choisie, nb_points_raccordement, longueur_dc_m, longueur_ac_m, besoin_cellule_mt}",
     "tva_recuperable": "oui | non | inconnu — lu par l'économie (D-CIQ-3)",

@@ -74,6 +74,32 @@ def _gabarit(visite):
     return getattr(visite, 'gabarit', None) or 'toiture'
 
 
+def contexte_checklist(visite):
+    """CIQ651 / CIQ660 — ce qui fait varier la checklist ``ci`` d'UNE visite :
+    ``{niveau, type_lead, locataire}`` (``{}`` pour les autres gabarits).
+
+    ``niveau`` = la mesure saisie ``comptage.niveau_tension_constate`` (le
+    supplément MT s'affiche quand elle vaut ``mt``) ; ``type_lead`` = le type
+    du lead (``site_commerce`` requise pour un commercial) ; ``locataire`` =
+    ce que le lead DÉCLARE, lu par ``crm.selectors`` — jamais ressaisi."""
+    if _gabarit(visite) != 'ci':
+        return {}
+    from apps.crm import selectors as crm_selectors
+
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    comptage = saisies.get('comptage')
+    niveau = comptage.get('niveau_tension_constate') if isinstance(
+        comptage, dict) else None
+    lead = visite.lead
+    statut = crm_selectors.releve_declare_ci(lead)['statut_occupation']
+    return {
+        'niveau': niveau,
+        'type_lead': (getattr(lead, 'type_installation', None)
+                      or 'inconnu'),
+        'locataire': statut == 'locataire',
+    }
+
+
 def _visite_checklist(visite, medias):
     from . import visite_checklist as checklist
 
@@ -81,7 +107,8 @@ def _visite_checklist(visite, medias):
     for media in medias:
         par_slot.setdefault(media.slot_code, []).append(_visite_photo(media))
     blocs = []
-    for cat in checklist.categories(_gabarit(visite)):
+    for cat in checklist.categories(_gabarit(visite),
+                                    **contexte_checklist(visite)):
         slots = []
         for declaration in cat['slots']:
             photos = par_slot.get(declaration['code'], [])
@@ -114,7 +141,7 @@ def _visite_mesures(visite):
     saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
     rendu = {}
     gabarit = _gabarit(visite)
-    for cat in checklist.categories(gabarit):
+    for cat in checklist.categories(gabarit, **contexte_checklist(visite)):
         champs = cat['mesures']
         # CIQ600 — le contrat ``ci`` rend aussi les catégories sans mesure
         # (``general: {}``) ; les autres gabarits restent identiques.
@@ -152,7 +179,8 @@ def _non_releves_plats(visite):
         return {}
     saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
     plats = {}
-    for cat in checklist.categories(checklist.GABARIT_CI):
+    for cat in checklist.categories(checklist.GABARIT_CI,
+                                    **contexte_checklist(visite)):
         bloc = saisies.get(cat['categorie']) or {}
         etats = bloc.get(checklist.CLE_NON_RELEVES) or {}
         if not isinstance(etats, dict):
@@ -164,7 +192,7 @@ def _non_releves_plats(visite):
 
 
 def _visite_manquants(blocs, mesures_rendues, gabarit=None,
-                      non_releves=None):
+                      non_releves=None, contexte=None):
     from . import visite_checklist as checklist
 
     # CIQ601 — une mesure « non relevée » AVEC son motif est traitée : elle
@@ -187,7 +215,7 @@ def _visite_manquants(blocs, mesures_rendues, gabarit=None,
                     'code': slot['code'],
                     'libelle': slot['libelle'],
                 })
-    for cat in checklist.categories(gabarit):
+    for cat in checklist.categories(gabarit, **(contexte or {})):
         valeurs = mesures_rendues.get(cat['categorie']) or {}
         for champ in cat['mesures']:
             if champ['nature'] == checklist.LISTE:
@@ -255,7 +283,8 @@ def visite_terrain_manquants(visite):
     medias = list(visite.medias.select_related('attachment').all())
     blocs = _visite_checklist(visite, medias)
     return _visite_manquants(blocs, _visite_mesures(visite),
-                             _gabarit(visite), _non_releves_plats(visite))
+                             _gabarit(visite), _non_releves_plats(visite),
+                             contexte_checklist(visite))
 
 
 def contexte_visite_terrain(visite):
@@ -265,7 +294,7 @@ def contexte_visite_terrain(visite):
     mesures_rendues = _visite_mesures(visite)
     non_releves = _non_releves_plats(visite)
     manquants = _visite_manquants(blocs, mesures_rendues, _gabarit(visite),
-                                  non_releves)
+                                  non_releves, contexte_checklist(visite))
     commercial = visite.commercial
     agregat = {
         'id': visite.id,
@@ -431,6 +460,26 @@ def releve_ci_de_visite(visite, declare=None):
     trajets = (saisies.get('cheminement') or {}).get('trajets')
     releve['trajets'] = [t for t in (trajets or []) if isinstance(t, dict)]
     releve['non_releves'] = _non_releves_plats(visite)
+    # CIQ652 — le besoin de continuité DÉCLARÉ à la visite (``True`` /
+    # ``False`` ; ``None`` = non renseigné ou « non relevé »). Un fait déclaré :
+    # le CRM en tire une note interne, jamais un dimensionnement.
+    commerce = saisies.get('site_commerce')
+    commerce = commerce if isinstance(commerce, dict) else {}
+    etats = commerce.get(checklist.CLE_NON_RELEVES)
+    # CIQ664 — le poste de livraison RELEVÉ (transformateurs, cellule), seulement
+    # pour un niveau de tension CONSTATÉ ``mt`` : c'est ce que le moteur
+    # électrique lit pour dessiner l'étage MT, jamais une déduction.
+    poste = saisies.get('poste_mt')
+    poste = poste if isinstance(poste, dict) else {}
+    releve['poste_mt'] = ({
+        'cellule_protection': poste.get('cellule_protection') or None,
+        'transformateurs': [t for t in (poste.get('transformateurs') or [])
+                            if isinstance(t, dict)],
+    } if constate['niveau_tension'] == 'mt' else None)
+    releve['besoin_continuite_service'] = (
+        None if isinstance(etats, dict)
+        and 'besoin_continuite_service' in etats
+        else commerce.get('besoin_continuite_service'))
     return releve
 
 
@@ -629,7 +678,8 @@ def recap_visite_terrain(visite):
 
         connus = {
             cat['categorie']: {m['code']: m for m in cat['mesures']}
-            for cat in checklist.categories('ci')}
+            for cat in checklist.categories(
+                'ci', **contexte_checklist(visite))}
         for cle, motif in _non_releves_plats(visite).items():
             categorie_code, _, reste = cle.partition('.')
             libelle = checklist.libelle_cle_non_releve(

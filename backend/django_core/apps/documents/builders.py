@@ -419,16 +419,142 @@ def empreinte_signature(chantier):
     d'une simple régénération à la volée depuis l'état LIVE du chantier.
     """
     signe_le = getattr(chantier, 'signe_le', None)
-    graine = '|'.join([
+    parts = [
         str(getattr(chantier, 'reference', '') or ''),
         str(getattr(chantier, 'signataire_nom', '') or ''),
         signe_le.isoformat() if signe_le is not None else '',
         str(getattr(chantier, 'signature_client', '') or ''),
-    ])
+    ]
+    # CIQ631 — signataire nommé, co-signature, recette et réserves C&I :
+    # ajoutés SEULEMENT quand ils existent (résidentiel : empreinte
+    # octet-identique quand ces champs sont vides).
+    extras = [str(getattr(chantier, champ, '') or '')
+              for champ in _CHAMPS_SIGNATAIRE_CI]
+    if any(extras):
+        parts.extend(extras)
+    contenu_ci = _contenu_ci_empreinte(chantier)
+    if contenu_ci:
+        parts.append(contenu_ci)
+    graine = '|'.join(parts)
     return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]
 
 
-def generate_pv_reception(chantier, fige_le=None):
+#: CIQ631 — champs du signataire nommé et de la co-signature.
+_CHAMPS_SIGNATAIRE_CI = (
+    'signataire_fonction', 'signataire_societe', 'cosignataire_nom',
+    'cosignataire_fonction', 'cosignataire_organisme',
+)
+
+
+def _pv_ci(chantier):
+    """CIQ631 — résumé liste blanche (recette + réserves ouvertes) d'un
+    chantier industriel, via le sélecteur installations ; None ailleurs."""
+    from apps.installations.selectors import pv_recette_ci
+    try:
+        return pv_recette_ci(chantier)
+    except Exception:  # pragma: no cover - défensif (PV jamais bloqué)
+        logger.exception('CIQ631 — résumé recette C&I indisponible')
+        return None
+
+
+def _contenu_ci_empreinte(chantier):
+    """CIQ631 — hachage du résultat de recette et de la liste des réserves
+    d'un chantier industriel ('' ailleurs)."""
+    resume = _pv_ci(chantier)
+    if resume is None:
+        return ''
+    recette = resume['recette'] or {}
+    morceaux = [str(recette.get('resultat') or ''),
+                str(recette.get('date') or ''),
+                str(recette.get('pr') or '')]
+    morceaux.extend(f"{e['libelle']}={e['ok']}"
+                    for e in recette.get('essais') or [])
+    morceaux.extend(
+        f"{r['description']}/{r['date_echeance']}/{r['responsable']}"
+        for r in resume['reserves'])
+    return hashlib.sha256(
+        '|'.join(morceaux).encode('utf-8')).hexdigest()
+
+
+def _arret_coupure_fragment(chantier):
+    """CIQ632 — phrase « arrêt sur coupure du réseau » d'un site pro
+    raccordé sans batterie ; '' ailleurs."""
+    from apps.installations.services import phrase_arret_coupure
+    phrase = phrase_arret_coupure(chantier)
+    if not phrase:
+        return ''
+    return '<p class="arret-coupure"><strong>{}.</strong></p>'.format(
+        escape(phrase))
+
+
+def _signataire_ci_fragment(chantier):
+    """CIQ631 — fonction et société du signataire, co-signataire
+    facultatif ; '' quand tout est vide (PV résidentiel identique)."""
+    fonction = (getattr(chantier, 'signataire_fonction', '') or '').strip()
+    societe = (getattr(chantier, 'signataire_societe', '') or '').strip()
+    co_nom = (getattr(chantier, 'cosignataire_nom', '') or '').strip()
+    co_fonction = (
+        getattr(chantier, 'cosignataire_fonction', '') or '').strip()
+    co_org = (getattr(chantier, 'cosignataire_organisme', '') or '').strip()
+    lignes = []
+    if fonction or societe:
+        lignes.append('Signataire : {}{}{}'.format(
+            escape(getattr(chantier, 'signataire_nom', '') or '—'),
+            ', ' + escape(fonction) if fonction else '',
+            ' — ' + escape(societe) if societe else ''))
+    if co_nom:
+        lignes.append('Co-signataire : {}{}{}'.format(
+            escape(co_nom),
+            ', ' + escape(co_fonction) if co_fonction else '',
+            ' — ' + escape(co_org) if co_org else ''))
+    if not lignes:
+        return ''
+    return '<p class="signataires">{}</p>'.format('<br />'.join(lignes))
+
+
+def _pv_ci_fragment(chantier):
+    """CIQ631 — PV d'un chantier industriel : résumé de recette (date,
+    résultat, PR « à titre d'information », essais) et réserves ouvertes
+    avec échéance et responsable. '' hors chantier industriel. Jamais de
+    prix ni ``prix_achat`` (liste blanche du sélecteur)."""
+    resume = _pv_ci(chantier)
+    if resume is None:
+        return ''
+    html = '<div class="section-title">Recette de mise en service</div>'
+    recette = resume['recette']
+    if recette is None:
+        html += '<p>Aucune fiche de recette.</p>'
+    else:
+        lignes = [
+            ("Date de l'essai", (recette['date'].strftime('%d/%m/%Y')
+                                 if recette['date'] else '—')),
+            ('Résultat', recette['resultat']),
+            ('PR mesuré ({})'.format(recette['pr_libelle']),
+             _fr_mesure(recette['pr'])),
+        ]
+        lignes.extend((e['libelle'], _oui_non(e['ok']))
+                      for e in recette['essais'])
+        html += '<table><tbody>{}</tbody></table>'.format(''.join(
+            '<tr><td>{}</td><td>{}</td></tr>'.format(
+                escape(libelle), escape(valeur))
+            for libelle, valeur in lignes))
+    html += '<div class="section-title">Réserves ouvertes</div>'
+    if not resume['reserves']:
+        html += '<p>Aucune réserve ouverte.</p>'
+    else:
+        html += ('<table><thead><tr><th>Réserve</th><th>Échéance</th>'
+                 '<th>Responsable</th></tr></thead><tbody>{}</tbody>'
+                 '</table>').format(''.join(
+                     '<tr><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
+                         escape(r['description'] or '—'),
+                         (r['date_echeance'].strftime('%d/%m/%Y')
+                          if r['date_echeance'] else '—'),
+                         escape(r['responsable'] or '—'))
+                     for r in resume['reserves']))
+    return html
+
+
+def generate_pv_reception(chantier, fige_le=None, definitive=False):
     """N21 — Procès-verbal de réception des travaux.
 
     AUD306 — le PV réutilise désormais le patron de `generate_bon_livraison`
@@ -444,6 +570,9 @@ def generate_pv_reception(chantier, fige_le=None):
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
     ctx['checklist'] = _checklist_summary(chantier)
+    # CIQ631 — PV de réception DÉFINITIVE : même gabarit, son titre.
+    if definitive:
+        ctx['doc_titre'] = 'PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE'
     if chantier.signature_client:
         ctx['signature_client'] = chantier.signature_client
         ctx['signataire_nom'] = chantier.signataire_nom or None
@@ -458,6 +587,14 @@ def generate_pv_reception(chantier, fige_le=None):
     # art. 3 (fragment vide ailleurs : PV strictement inchangé).
     html = _inject_before(html, '<div class="signature-section">',
                           _recette_pompage_fragment(chantier))
+    # CIQ631 — chantier industriel : recette + réserves ouvertes ; signataire
+    # nommé et co-signataire (fragments vides ailleurs : PV identique).
+    fragment = _pv_ci_fragment(chantier) + _signataire_ci_fragment(chantier)
+    if definitive:
+        date_def = getattr(chantier, 'date_reception_definitive', None)
+        fragment = '<p>Réception définitive prononcée le {}.</p>'.format(
+            date_def.strftime('%d/%m/%Y') if date_def else '—') + fragment
+    html = _inject_before(html, '<div class="signature-section">', fragment)
     return _html_to_pdf(html)
 
 
@@ -786,6 +923,10 @@ def generate_dossier_remise(chantier):
     if pack is not None:
         ctx['pack_remise'] = pack
     html = get_template('document_dossier_remise.html').render(ctx)
+    # CIQ632 — site pro raccordé sans batterie : phrase FIXE, sans chiffre
+    # (fragment vide ailleurs : dossier résidentiel octet-identique).
+    html = _inject_before(html, '<div class="footer">',
+                          _arret_coupure_fragment(chantier))
     html = _inject_before(
         html, '<div class="footer">', _equipements_poses_fragment(chantier))
     # AGR611 — le MÊME fragment que le PV de réception (jumeaux du geste).

@@ -48,7 +48,7 @@
   <div class="header">
     <div class="header-left">
       {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
-      <div class="doc-title">PROCÈS-VERBAL DE RÉCEPTION</div>
+      <div class="doc-title">{{ doc_titre or 'PROCÈS-VERBAL DE RÉCEPTION' }}</div>
       <div class="doc-ref">Chantier {{ chantier.reference }}</div>
     </div>
     <div class="company-info">

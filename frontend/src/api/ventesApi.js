@@ -260,6 +260,10 @@ const ventesApi = {
     api.get(`/ventes/${resource}/`, { params }),
   getCalendrierReglementaire: (params) =>
     api.get('/ventes/calendrier-reglementaire/', { params }),
+  // CIQ638 — écriture des champs saisis d'un dossier (étude, capacité,
+  // convention, exploitation). Même liste blanche de ressources que ci-dessus.
+  patchReglementaire: (resource, id, data) =>
+    api.patch(`/ventes/${resource}/${id}/`, data),
 
   // ── WIR103 — Palier avancé facturation : note de débit + proforma ──
   // Les deux étaient complets et testés côté serveur mais n'avaient AUCUN

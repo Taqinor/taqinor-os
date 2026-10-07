@@ -21,10 +21,14 @@ const api = vi.hoisted(() => ({
   ajouterReleveIv: vi.fn(),
   getPackRemise: vi.fn(),
   genererPackRemise: vi.fn(),
+  getReservesChantier: vi.fn(),
+  ajouterReserveChantier: vi.fn(),
+  leverReserveChantier: vi.fn(),
 }))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 import ChantierGateTimeline from './ChantierGateTimeline'
 
 const ETAPES = {
@@ -101,7 +105,7 @@ describe('ChantierGateTimeline — WIR202 fiche de recette IEC 62446-1', () => {
     expect(dialog.querySelector('form')).toHaveAttribute('novalidate')
   })
 
-  it('saisie + resultat=conforme → PATCH de la fiche, badge « Conforme »', async () => {
+  it('saisie des essais → PATCH de la fiche, badge « Conforme » (calculé)', async () => {
     const user = userEvent.setup()
     await ouvrirFormulaire(user)
 
@@ -111,7 +115,6 @@ describe('ChantierGateTimeline — WIR202 fiche de recette IEC 62446-1', () => {
     const isolement = screen.getByLabelText('Résistance d’isolement (MΩ)')
     await user.clear(isolement)
     await user.type(isolement, '12.75')
-    await user.selectOptions(screen.getByLabelText('Résultat'), 'conforme')
 
     // Après l'écriture, le serveur sert la fiche À PLAT (forme réelle du GET).
     api.getRecette.mockResolvedValue({ data: FICHE_CONFORME })
@@ -122,7 +125,8 @@ describe('ChantierGateTimeline — WIR202 fiche de recette IEC 62446-1', () => {
     await waitFor(() => expect(api.updateRecette).toHaveBeenCalledTimes(1))
     const [id, payload] = api.updateRecette.mock.calls[0]
     expect(id).toBe(9)
-    expect(payload.resultat).toBe('conforme')
+    // CIQ636 — résultat calculé côté serveur : jamais envoyé, sauf « reserves ».
+    expect(payload).not.toHaveProperty('resultat')
     expect(payload.doc_dossier_ok).toBe(true)
     expect(payload.visuel_structure_ok).toBe(true)
     expect(payload.continuite_terre_ok).toBe(true)
@@ -169,5 +173,170 @@ describe('ChantierGateTimeline — WIR202 fiche de recette IEC 62446-1', () => {
       await within(screen.getByTestId('ch6-recette')).findByText('Conforme'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Modifier la fiche de recette/ })).toBeInTheDocument()
+  })
+})
+
+/* CIQ636 — recette C&I : résultat AFFICHÉ (calculé par le serveur), sections
+   irradiance / énergie / thermographie / terre (+ limitation d'injection et
+   découplage en MT), comparaison au devis et panneau Réserves. Les charges
+   utiles viennent du contrat COMMITTÉ `installations/recette_ci.json`. */
+const CI = exempleContrat('installations', 'recette_ci')
+const CI_MT = exempleContrat('installations', 'recette_ci', 'exemple_mt')
+const ESSAIS_VRAIS = {
+  doc_dossier_ok: true, doc_schema_ok: true, doc_datasheets_ok: true,
+  visuel_structure_ok: true, visuel_cablage_ok: true, visuel_terre_ok: true,
+  continuite_terre_ok: true, polarite_ok: true, isolement_ok: true,
+  performance_ok: true, securite_coupure_ok: true,
+  securite_signalisation_ok: true,
+}
+const CHANTIER_BT = { type_installation: 'industriel', niveau_tension: 'bt' }
+const CHANTIER_MT = { type_installation: 'industriel', niveau_tension: 'mt' }
+
+async function ouvrirModifier(user, installation, contrat, extraRecord = {}) {
+  const enveloppe = {
+    ...contrat,
+    record: { ...contrat.record, ...extraRecord },
+  }
+  api.getRecette.mockResolvedValue({ data: enveloppe })
+  render(<ChantierGateTimeline installationId={1} installation={installation} />)
+  await waitFor(() => expect(api.getRecette).toHaveBeenCalledWith(1))
+  await user.click(await screen.findByRole('button', { name: /Modifier la fiche de recette/ }))
+  return screen.findByRole('dialog')
+}
+
+describe('ChantierGateTimeline — CIQ636 recette C&I', () => {
+  it('le résultat est affiché, jamais modifiable', async () => {
+    const user = userEvent.setup()
+    const dialog = await ouvrirModifier(user, CHANTIER_BT, CI, ESSAIS_VRAIS)
+    expect(within(dialog).queryByLabelText('Résultat')).toBeNull()
+    expect(within(dialog).getByTestId('recette-resultat')).toHaveTextContent(
+      'Conforme avec réserves')
+  })
+
+  it('« conforme avec réserves » exige tous les essais vrais ET une réserve ouverte', async () => {
+    const user = userEvent.setup()
+    // Aucune réserve ouverte : le choix est refusé.
+    let dialog = await ouvrirModifier(
+      user, CHANTIER_BT, { ...CI, reserves: [] },
+      { ...ESSAIS_VRAIS, resultat: 'conforme' })
+    const casse = within(dialog).getByLabelText('Conforme avec réserves')
+    expect(casse).toBeDisabled()
+    cleanup()
+
+    // Réserve de recette ouverte (celle du contrat) : le choix est offert.
+    dialog = await ouvrirModifier(
+      user, CHANTIER_BT, CI, { ...ESSAIS_VRAIS, resultat: 'conforme' })
+    expect(within(dialog).getByLabelText('Conforme avec réserves')).toBeEnabled()
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = même PATCH', async () => {
+    const user = userEvent.setup()
+    let dialog = await ouvrirModifier(user, CHANTIER_BT, CI, ESSAIS_VRAIS)
+    api.updateRecette.mockImplementation((id, payload) => Promise.resolve({
+      data: { ...CI.record, ...ESSAIS_VRAIS, ...payload, id },
+    }))
+    await user.click(within(dialog).getByRole('button', { name: /Enregistrer la fiche/ }))
+    await waitFor(() => expect(api.updateRecette).toHaveBeenCalledTimes(1))
+    const premier = api.updateRecette.mock.calls[0][1]
+    // La saisie du contrat part telle quelle (rien d'arrondi ni d'inventé).
+    expect(premier.irradiance_poa_wm2).toBe(CI.record.irradiance.irradiance_poa_wm2)
+    expect(premier.energie_mesuree_kwh).toBe(CI.record.energie.energie_mesuree_kwh)
+    expect(premier.energie_fenetre_debut).toBe(CI.record.energie.fenetre_debut)
+    expect(premier.resultat).toBe('reserves')
+
+    // Réouverture depuis la fiche renvoyée par le serveur, sans retouche.
+    api.getRecette.mockResolvedValue({
+      data: { ...CI.record, ...ESSAIS_VRAIS, ...premier, id: CI.record.id },
+    })
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await user.click(await screen.findByRole('button', { name: /Modifier la fiche de recette/ }))
+    dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /Enregistrer la fiche/ }))
+    await waitFor(() => expect(api.updateRecette).toHaveBeenCalledTimes(2))
+    expect(api.updateRecette.mock.calls[1][1]).toEqual(premier)
+  })
+
+  it('tous les champs numériques C&I restent en step="any" (formulaire noValidate)', async () => {
+    const user = userEvent.setup()
+    const dialog = await ouvrirModifier(user, CHANTIER_MT, CI_MT, ESSAIS_VRAIS)
+    const nombres = dialog.querySelectorAll('input[type="number"]')
+    expect(nombres.length).toBeGreaterThan(6)
+    for (const input of nombres) expect(input.getAttribute('step')).toBe('any')
+    expect(dialog.querySelector('form')).toHaveAttribute('novalidate')
+  })
+
+  it('limitation d’injection et découplage ne sont proposés qu’en MT', async () => {
+    const user = userEvent.setup()
+    let dialog = await ouvrirModifier(user, CHANTIER_BT, CI, ESSAIS_VRAIS)
+    expect(within(dialog).queryByTestId('recette-mt')).toBeNull()
+    cleanup()
+    dialog = await ouvrirModifier(user, CHANTIER_MT, CI_MT, ESSAIS_VRAIS)
+    expect(within(dialog).getByTestId('recette-mt')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Découplage')).toBeInTheDocument()
+  })
+
+  it('compare à la promesse figée : PR « à titre d’information », seuil non saisi', async () => {
+    const user = userEvent.setup()
+    const dialog = await ouvrirModifier(user, CHANTIER_BT, CI, ESSAIS_VRAIS)
+    const bloc = within(dialog).getByTestId('recette-comparaison')
+    expect(bloc).toHaveTextContent(
+      String(CI.comparaison.promesse_figee.production_annuelle_kwh))
+    expect(bloc).toHaveTextContent(CI.record.energie.libelle)
+    expect(bloc).toHaveTextContent('seuil non saisi en Paramètres')
+  })
+
+  it('une fiche résidentielle garde ses champs, sans section C&I', async () => {
+    const user = userEvent.setup()
+    api.getRecette.mockResolvedValue({ data: FICHE_CONFORME })
+    render(<ChantierGateTimeline installationId={1}
+                                 installation={{ type_installation: 'residentiel' }} />)
+    await user.click(await screen.findByRole('button', { name: /Modifier la fiche de recette/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByTestId('recette-ci')).toBeNull()
+    expect(within(dialog).getByTestId('recette-resultat')).toHaveTextContent('Conforme')
+  })
+
+  it('panneau Réserves : ajouter puis lever relisent la liste du serveur', async () => {
+    const user = userEvent.setup()
+    const dialog = await ouvrirModifier(user, CHANTIER_BT, CI, ESSAIS_VRAIS)
+    const reserve = CI.reserves[0]
+    expect(within(dialog).getByText(reserve.description)).toBeInTheDocument()
+    expect(within(dialog).getByText(`échéance ${reserve.date_echeance}`)).toBeInTheDocument()
+
+    api.ajouterReserveChantier.mockResolvedValue({ data: { id: 99 } })
+    api.getReservesChantier.mockResolvedValue({ data: [
+      reserve,
+      { ...reserve, id: 99, description: 'Peinture à reprendre', bloquante: true },
+    ] })
+    await user.type(within(dialog).getByLabelText('Réserve à ajouter'), 'Peinture à reprendre')
+    await user.click(within(dialog).getByLabelText('Bloquante'))
+    await user.click(within(dialog).getByRole('button', { name: 'Ajouter la réserve' }))
+    await waitFor(() => expect(api.ajouterReserveChantier).toHaveBeenCalledWith(1, {
+      description: 'Peinture à reprendre', origine: 'recette', bloquante: true,
+      date_echeance: null, responsable: '',
+    }))
+    expect(await within(dialog).findByText('Peinture à reprendre')).toBeInTheDocument()
+
+    api.leverReserveChantier.mockResolvedValue({ data: {} })
+    api.getReservesChantier.mockResolvedValue({ data: [
+      { ...reserve, statut: 'resolue' },
+    ] })
+    await user.click(within(dialog).getByRole('button', {
+      name: `Lever la réserve ${reserve.description}` }))
+    await waitFor(() => expect(api.leverReserveChantier).toHaveBeenCalledWith(1, reserve.id))
+    await waitFor(() => expect(within(dialog).queryByRole('button', {
+      name: `Lever la réserve ${reserve.description}` })).toBeNull())
+  })
+
+  it('une erreur 400 du serveur s’affiche sous le champ fautif', async () => {
+    const user = userEvent.setup()
+    const dialog = await ouvrirModifier(user, CHANTIER_BT, CI, ESSAIS_VRAIS)
+    api.updateRecette.mockRejectedValue({
+      response: { data: { resultat: ['Aucune réserve de recette ouverte.'] } },
+    })
+    await user.click(within(dialog).getByRole('button', { name: /Enregistrer la fiche/ }))
+    expect(await within(dialog).findByText('Aucune réserve de recette ouverte.'))
+      .toBeInTheDocument()
   })
 })

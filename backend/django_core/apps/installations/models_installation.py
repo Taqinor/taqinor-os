@@ -264,8 +264,27 @@ class Installation(models.Model):
     duree_pose_jours = models.PositiveSmallIntegerField(null=True, blank=True)
     date_pose_reelle = models.DateField(null=True, blank=True)
     date_mise_en_service = models.DateField(null=True, blank=True)
-    date_reception = models.DateField(null=True, blank=True)
+    # CIQ629 — ``date_reception`` est la réception PROVISOIRE ; la
+    # définitive n'est prononcée qu'une fois toutes les réserves levées.
+    date_reception = models.DateField(
+        null=True, blank=True, verbose_name='Réception provisoire')
+    date_reception_definitive = models.DateField(
+        null=True, blank=True, verbose_name='Réception définitive')
     date_cloture = models.DateField(null=True, blank=True)
+    # CIQ633 — site pro : produit suivi dont les séries n'ont PAS été
+    # relevées, avec son motif ({"<produit_id>": "<motif>"}). Écrit par
+    # l'action ``series-lot`` uniquement (``read_only_fields``).
+    series_non_relevees = models.JSONField(default=dict, blank=True)
+    # CIQ634 — garanties de l'INSTALLATEUR (pose) et d'étanchéité de la
+    # toiture : durées en mois SAISIES par la société, AUCUN défaut (null =
+    # « non renseignée »), avec leur périmètre. Aucune garantie de production
+    # (D-CIQ-12) ; le calcul « sous garantie » du SAV est inchangé.
+    garantie_installation_mois = models.PositiveSmallIntegerField(
+        null=True, blank=True)
+    garantie_installation_perimetre = models.TextField(blank=True, default='')
+    garantie_etancheite_mois = models.PositiveSmallIntegerField(
+        null=True, blank=True)
+    garantie_etancheite_perimetre = models.TextField(blank=True, default='')
     # AUD326 — « Clôturé » est un ÉTAT GELÉ. Le drapeau est posé côté serveur
     # à l'entrée en CLOTURE (jamais lu du corps : `read_only_fields`) ; tant
     # qu'il est vrai, un recul de statut exige un motif ET le rôle Directeur,
@@ -301,6 +320,19 @@ class Installation(models.Model):
     signature_client = models.TextField(blank=True, null=True)
     signataire_nom = models.CharField(max_length=120, blank=True, null=True)
     signe_le = models.DateTimeField(null=True, blank=True)
+    # CIQ631 — signataire NOMMÉ du PV (fonction, société — préremplie depuis
+    # la raison sociale du client entreprise, contrat CIQ8) et co-signature
+    # facultative (bureau de contrôle, maître d'œuvre…). Saisis par l'action
+    # `signer-client` ; vides = PV résidentiel octet-identique.
+    signataire_fonction = models.CharField(
+        max_length=120, blank=True, null=True)
+    signataire_societe = models.CharField(
+        max_length=255, blank=True, null=True)
+    cosignataire_nom = models.CharField(max_length=120, blank=True, null=True)
+    cosignataire_fonction = models.CharField(
+        max_length=120, blank=True, null=True)
+    cosignataire_organisme = models.CharField(
+        max_length=255, blank=True, null=True)
 
     class Meta:
         verbose_name = 'Chantier'

@@ -34,7 +34,8 @@ test('L423 : détail par option (kWc / total TTC) affiché à côté des radios'
 // le vendeur l'ait vue).
 test('VX40/VX155 : acceptation confirmée déclenche la carte de victoire', () => {
   assert.match(SRC, /from '\.\.\/\.\.\/\.\.\/ui\/DealSignedCelebration'/)
-  assert.match(SRC, /await ventesApi\.accepterDevis\(selected\.id, \{ nom, date, option \}\)/)
+  assert.match(SRC, /corpsAcceptation\(\{ nom, date, option \}, selected, entreprise\)/)
+  assert.match(SRC, /await ventesApi\.accepterDevis\(selected\.id, corps\)/)
   // WIR188 — la charge utile de la carte est nommée (`victoire`) : elle doit
   // ATTENDRE l'avertissement crédit quand il y en a un, donc être posée à deux
   // endroits (immédiatement en mode « aucun », après « J'ai compris » sinon).

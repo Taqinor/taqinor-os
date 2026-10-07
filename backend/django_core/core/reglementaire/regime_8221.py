@@ -181,6 +181,16 @@ def regime_8221(puissance_dc_kwc=None, puissance_ac_kw=None, niveau=None,
     return _forme(code, _REGIMES[code], puissance, False)
 
 
+def forme_regime(code, puissance_kw=None):
+    """Forme ``regime`` du contrat CIQ12 d'un code DÉJÀ CHOISI (régime stocké
+    d'un dossier), avec sa base légale et son guichet — sans recalculer le
+    régime depuis la puissance. Code inconnu ou vide → « À qualifier »."""
+    info = _REGIMES.get(code)
+    if info is None:
+        return _forme(None, _A_QUALIFIER, _kw(puissance_kw), True)
+    return _forme(code, info, _kw(puissance_kw), False)
+
+
 def regime_8221_suggere(puissance_kw, hors_reseau=False):
     """Alias de lecture simple (moteur C&I CIQ118, ``constants_82_21`` CIQ201).
 

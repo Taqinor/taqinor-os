@@ -211,7 +211,7 @@
 - frontend/src/api/installationsApi.js :: besoinMateriel -> /api/django/installations/chantiers/<>/besoin-materiel
     installation:inconnu, items:inconnu, nb_manques:nombre, reference:inconnu
 - frontend/src/api/installationsApi.js :: cocherChecklist -> /api/django/installations/chantiers/<>/cocher-checklist
-    completion:inconnu, detail:texte, equipements_crees:inconnu, items:inconnu
+    completion:inconnu, detail:texte, equipements_crees:inconnu, items:inconnu, resultats_series:inconnu
 - frontend/src/api/installationsApi.js :: confirmerToolReturn -> /api/django/installations/interventions/<>/confirmer-tool-return
     non_rendus:inconnu, tool_returns:inconnu
 - frontend/src/api/installationsApi.js :: creerInterventionsStandard -> /api/django/installations/chantiers/<>/creer-interventions-standard
@@ -252,6 +252,8 @@
     count:nombre, next:inconnu, previous:inconnu, results:inconnu
 - frontend/src/api/installationsApi.js :: getTourneeLivraison -> /api/django/installations/tournee-livraison
     depart:texte, jour:texte, sans_gps:inconnu, total:inconnu, tournee:inconnu
+- frontend/src/api/installationsApi.js :: leverReserveChantier -> /api/django/installations/chantiers/<>/reserves/<>/lever
+    bloquante:inconnu, date_echeance:inconnu, description:texte, id:inconnu, levee_le:inconnu, origine:inconnu, responsable:texte, statut:inconnu
 - frontend/src/api/installationsApi.js :: ouvrirRecettePompage -> /api/django/installations/chantiers/<>/recette-pompage
     detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
@@ -1168,7 +1170,7 @@
 - frontend/src/api/installationsApi.js :: getReceptionsNonFacturees -> /api/django/installations/receptions-non-facturees  [ReceptionNonFactureeSerializer]
     champs: bon_commande, created_by, date_creation, date_lettrage, date_modification, date_reception, facture, id, lettre, libelle, montant_a_provisionner, montant_provision, note, reception
 - frontend/src/api/installationsApi.js :: getRecetteRecord -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
-    champs: comparaison, continuite_terre_ohm, continuite_terre_ok, date_essai, decouplage, decouplage_etat, decouplage_piece, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, echantillon_iv, echantillon_iv_chaines, energie, energie_fenetre_debut, energie_fenetre_fin, energie_mesuree_kwh, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, instruments_par_essai, irradiance, irradiance_poa_wm2, irradiance_source, irradiation_kwh_m2, isolement_mohm, isolement_ok, iv_readings, limitation_injection, limitation_injection_consigne, limitation_injection_etat, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, promesse_figee, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, temperature_module_c, terre_installation_ohm, thermographie, thermographie_constats, thermographie_faite, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    champs: comparaison, continuite_terre_ohm, continuite_terre_ok, date_essai, decouplage, decouplage_etat, decouplage_piece, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, echantillon_iv, echantillon_iv_chaines, energie, energie_fenetre_debut, energie_fenetre_fin, energie_mesuree_kwh, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, instruments_par_essai, irradiance, irradiance_poa_wm2, irradiance_source, irradiation_kwh_m2, isolement_mohm, isolement_ok, iv_readings, limitation_injection, limitation_injection_consigne, limitation_injection_etat, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, promesse_figee, reception, reserves, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, temperature_module_c, terre_installation_ohm, thermographie, thermographie_constats, thermographie_faite, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
     decouplage_etat ∈ {a_faire, non_ok, ok, sans_objet}
     irradiance_source ∈ {estimee, mesuree}
     limitation_injection_etat ∈ {a_faire, non_ok, ok, sans_objet}
@@ -1242,7 +1244,7 @@
 - frontend/src/api/installationsApi.js :: updatePreuveLivraison -> /api/django/installations/preuves-livraison/<>  [PreuveLivraisonSerializer]
     champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
 - frontend/src/api/installationsApi.js :: updateRecette -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
-    champs: comparaison, continuite_terre_ohm, continuite_terre_ok, date_essai, decouplage, decouplage_etat, decouplage_piece, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, echantillon_iv, echantillon_iv_chaines, energie, energie_fenetre_debut, energie_fenetre_fin, energie_mesuree_kwh, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, instruments_par_essai, irradiance, irradiance_poa_wm2, irradiance_source, irradiation_kwh_m2, isolement_mohm, isolement_ok, iv_readings, limitation_injection, limitation_injection_consigne, limitation_injection_etat, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, promesse_figee, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, temperature_module_c, terre_installation_ohm, thermographie, thermographie_constats, thermographie_faite, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    champs: comparaison, continuite_terre_ohm, continuite_terre_ok, date_essai, decouplage, decouplage_etat, decouplage_piece, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, echantillon_iv, echantillon_iv_chaines, energie, energie_fenetre_debut, energie_fenetre_fin, energie_mesuree_kwh, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, instruments_par_essai, irradiance, irradiance_poa_wm2, irradiance_source, irradiation_kwh_m2, isolement_mohm, isolement_ok, iv_readings, limitation_injection, limitation_injection_consigne, limitation_injection_etat, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, promesse_figee, reception, reserves, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, temperature_module_c, terre_installation_ohm, thermographie, thermographie_constats, thermographie_faite, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
     decouplage_etat ∈ {a_faire, non_ok, ok, sans_objet}
     irradiance_source ∈ {estimee, mesuree}
     limitation_injection_etat ∈ {a_faire, non_ok, ok, sans_objet}

@@ -35,7 +35,7 @@ __all__ = [
     "Bloc", "blocs_du_schema", "lignes_tableau", "rendre_schema",
     # CALX233-235 (crochet de phase 2) — l'API PUBLIQUE du dessin, pour que
     # les services applicatifs cessent d'importer les privés de ce module.
-    "GeometrieSchema", "GEOMETRIE", "places_du_schema", "bloc_svg",
+    "GeometrieSchema", "GEOMETRIE", "places_du_schema", "bloc_svg", "MENTION_A_CONFIRMER", "MENTION_DECOUPLAGE", "blocs_etage_mt",
 ]
 
 #: Formats de planche, en pixels CSS à 96 ppp (A4 paysage 297 × 210 mm,
@@ -115,6 +115,12 @@ _TEINTES = (
     ("ddr", "#f3eefb"),
     ("compteur_production", "#f3eefb"),
     ("tgbt", "#f3eefb"),
+    # CIQ664 — étage MOYENNE TENSION (site livré en MT seulement).
+    ("transformateur_mt", "#fdf6e3"),
+    ("cellule_mt", "#fdf6e3"),
+    ("decouplage_mt", "#fdf6e3"),
+    ("compteur_production_mt", "#f3eefb"),
+    ("limiteur_injection", "#fdf6e3"),
     ("reseau", "#fdeeee"),
 )
 
@@ -288,8 +294,76 @@ def blocs_du_schema(entree, resultat, standard=False, branches_onduleur=None):
                           "énergie produite"))
         blocs.append(Bloc("tgbt", "TGBT",
                           _conducteurs_texte(entree)))
+        etage_mt = getattr(entree, "etage_mt", None)
+        if etage_mt is not None:
+            blocs.extend(blocs_etage_mt(etage_mt, standard))
         blocs.append(Bloc("reseau", "Compteur ONEE",
                           "injection / soutirage"))
+    return tuple(blocs)
+
+
+#: CIQ664 — la mention posée EN TÊTE du sous-titre de chaque bloc MT : aucune
+#: règle sourcée ne les fixe, donc le schéma le DIT. En tête, parce que la boîte
+#: coupe la fin d'un texte trop long et que c'est ce que le lecteur ne doit pas
+#: perdre.
+MENTION_A_CONFIRMER = "à confirmer"
+#: CIQ664 — la protection de découplage n'a pas de réglage à nous : c'est
+#: l'étude du distributeur qui les fixe.
+MENTION_DECOUPLAGE = "réglages fixés par l'étude du distributeur"
+
+
+def _detail_transformateurs(transformateurs, standard):
+    """« 1 × 400 kVA » — ce qui a été RELEVÉ, sinon rien d'inventé.
+
+    ``standard`` : le niveau de partage « standard » montre la topologie, pas
+    les puissances — seulement le nombre d'unités."""
+    valides = [t for t in transformateurs if int(t.nb or 0) > 0]
+    if not valides:
+        return ""
+    if standard:
+        total = sum(int(t.nb) for t in valides)
+        return "%d u" % total
+    if len(valides) > 2:
+        return "%d transformateurs" % sum(int(t.nb) for t in valides)
+    texte = " + ".join("%d × %s kVA" % (int(t.nb), fr(t.kva, 0))
+                       for t in valides)
+    rapports = {t.rapport for t in valides if t.rapport}
+    if len(rapports) == 1 and len(valides) == 1:
+        texte += " · %s" % next(iter(rapports))
+    return texte
+
+
+def blocs_etage_mt(etage, standard=False):
+    """CIQ664 — les blocs de l'étage MOYENNE TENSION : transformateur, cellule,
+    protection de découplage, [compteur de production MT], [limiteur
+    d'injection].
+
+    Chacun est « à confirmer » (aucune règle sourcée) ; la protection de
+    découplage dit que ses réglages relèvent de l'étude du distributeur ; le
+    limiteur n'est dessiné QUE si la sortie du moteur C&I indique une injection
+    limitée. Aucune valeur électrique n'est inventée."""
+    def avec_mention(detail):
+        # « à confirmer » sur la 1re ligne, le fait relevé sur la 2e.
+        return ("%s\n%s" % (MENTION_A_CONFIRMER, detail) if detail
+                else MENTION_A_CONFIRMER)
+
+    blocs = [
+        Bloc("transformateur_mt", "Transformateur MT/BT",
+             avec_mention(_detail_transformateurs(
+                 etage.transformateurs or (), standard))),
+        Bloc("cellule_mt", "Cellule MT",
+             avec_mention("" if standard else (etage.cellule or "").strip())),
+        Bloc("decouplage_mt", "Protection découplage",
+             # La phrase entière sur deux lignes de la boîte (28 + 27 car.).
+             "%s · réglages fixés\npar l'étude du distributeur"
+             % MENTION_A_CONFIRMER),
+    ]
+    if etage.compteur_production:
+        blocs.append(Bloc("compteur_production_mt", "Compteur production MT",
+                          MENTION_A_CONFIRMER))
+    if etage.injection_limitee:
+        blocs.append(Bloc("limiteur_injection", "Limiteur d'injection",
+                          MENTION_A_CONFIRMER))
     return tuple(blocs)
 
 
@@ -605,6 +679,13 @@ def _lignes_sous_titre(texte):
     texte = (texte or "").strip()
     if not texte:
         return ()
+    if "\n" in texte:
+        # CIQ664 — coupure EXPLICITE (blocs de l'étage MT) : une ligne par
+        # segment, jamais coupée au milieu d'une phrase. Aucun autre bloc n'en
+        # porte : leur rendu ne change pas d'un octet.
+        segments = [seg.strip() for seg in texte.split("\n") if seg.strip()]
+        return tuple(_tronquer(seg, _CARACTERES_SOUS_TITRE)
+                     for seg in segments[:_LIGNES_SOUS_TITRE])
     if len(texte) <= _CARACTERES_SOUS_TITRE:
         return (texte,)
     morceaux = texte.split(" · ")

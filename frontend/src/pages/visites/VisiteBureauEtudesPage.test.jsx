@@ -137,6 +137,74 @@ describe('VisiteBureauEtudesPage — AGR422 (gabarit point_eau)', () => {
   })
 })
 
+/* CIQ609 — revue d'une visite de site professionnel : le mock est l'`exemple_ci`
+   du contrat partagé `visite_terrain.json`. Le tableau déclaré / constaté /
+   écart est SERVI (CIQ606) : l'écran n'en recalcule rien. */
+describe('VisiteBureauEtudesPage — CIQ609 (gabarit ci)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const CI = {
+    ...contrat.exemple_ci,
+    statut: 'terminee',
+    // L'exemple ne porte qu'une catégorie de checklist : on dérive les
+    // autres du contrat `gabarit_ci`.
+    checklist: Object.keys(contrat.gabarit_ci).map((categorie) => ({ categorie, libelle: categorie, slots: [] })),
+  }
+
+  const ouvrir = async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    return user
+  }
+
+  it('titre « Visite technique — site professionnel » et zones de toiture récapitulées', async () => {
+    getVisite.mockResolvedValue({ data: CI })
+    await ouvrir()
+    expect(await screen.findByRole('heading', { name: 'Visite technique — site professionnel' })).toBeInTheDocument()
+    const zone = await screen.findByTestId('recap-ligne-zones_toiture-z1')
+    expect(zone).toHaveTextContent('Atelier nord')
+    expect(zone).toHaveTextContent('Orientation du pan : Sud')
+  })
+
+  it('affiche le tableau déclaré / constaté / écart tel que servi', async () => {
+    getVisite.mockResolvedValue({ data: CI })
+    await ouvrir()
+    const toiture = await screen.findByTestId('releve-ci-type_toiture')
+    expect(toiture).toHaveTextContent('terrasse_beton')
+    expect(toiture).toHaveTextContent('bac_acier')
+    expect(toiture).toHaveTextContent('Écart')
+    expect(screen.getByTestId('releve-ci-niveau_tension')).toHaveTextContent('Concordant')
+    expect(screen.getByTestId('releve-ci-puissance_souscrite_kva')).toHaveTextContent('Non comparable')
+    expect(screen.getByTestId('releve-ci-surface_utile')).toHaveTextContent('650 m²')
+    expect(screen.getByTestId('releve-ci-surface_utile')).toHaveTextContent('720 m²')
+  })
+
+  it('ne recalcule rien : l’écart affiché est celui du serveur, même s’il contredit les valeurs', async () => {
+    const releve = {
+      ...CI.releve_ci,
+      surface_utile: { declare: 100, constate: 100, ecart: true },
+      type_toiture: { declare: 'a', constate: 'b', ecart: false },
+    }
+    getVisite.mockResolvedValue({ data: { ...CI, releve_ci: releve } })
+    await ouvrir()
+    expect(await screen.findByTestId('releve-ci-surface_utile')).toHaveTextContent('Écart')
+    expect(screen.getByTestId('releve-ci-type_toiture')).toHaveTextContent('Concordant')
+  })
+
+  it('une mesure non relevée se dit « non vérifié (motif) »', async () => {
+    getVisite.mockResolvedValue({ data: CI })
+    await ouvrir()
+    await screen.findByTestId('visite-releve-ci')
+    expect(screen.getAllByText(/Non vérifié \(à faire par un électricien\)/i).length).toBeGreaterThan(0)
+  })
+
+  it('une visite toiture ne montre pas le tableau déclaré / constaté', async () => {
+    await ouvrir()
+    await screen.findByTestId('visite-qualification-resume')
+    expect(screen.queryByTestId('visite-releve-ci')).not.toBeInTheDocument()
+  })
+})
+
 /* Renvoi — le corps suit le contrat serveur (VisiteRenvoiSerializer /
    renvoyer_visite) : `photos` = ids des médias, `mesures` = [{categorie, code}].
    Avant : l'écran envoyait les CODES d'emplacement et `champ` → 400 / mesure

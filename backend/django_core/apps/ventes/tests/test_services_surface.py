@@ -119,6 +119,8 @@ SURFACE_PUBLIQUE = (
     # ACAL276 — l'aire d'un pan dessiné, UNE définition (domain/geometrie),
     # lue par le lestage du calepinage via ce service.
     "aire_du_pan",
+    # CIQ642 — action posée sur le dossier 82-21 d'un chantier (lue par sav).
+    "ajouter_action_dossier_8221",
     "ajouter_lignes_boq_electrique",
     "ajouter_lignes_devis_import",
     "ajouter_lignes_facture_import",

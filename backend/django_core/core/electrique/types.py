@@ -28,7 +28,7 @@ from typing import Mapping, Optional, Tuple
 
 __all__ = [
     "fr", "fr_v", "fr_a",
-    "SpecModule", "SpecOnduleur", "GroupePan", "EntreeElectrique",
+    "SpecModule", "SpecOnduleur", "GroupePan", "EntreeElectrique", "TransformateurMt", "EtageMt",
     "Chaine", "Protection", "Cable", "LigneNomenclature", "Ratio",
     "Conformite", "ResultatElectrique",
     "TEMPERATURE_STC_C", "TEMP_FROID_DEFAUT_C", "TEMP_CHAUD_DEFAUT_C",
@@ -301,6 +301,41 @@ class GroupePan:
 
 
 @dataclass(frozen=True)
+class TransformateurMt:
+    """CIQ664 — un transformateur MT/BT RELEVÉ au poste de livraison.
+
+    ``nb`` unités de ``kva`` chacune ; ``rapport`` (« 20 kV / 400 V ») n'est
+    renseigné que s'il a été relevé — jamais déduit d'un niveau de tension.
+    """
+
+    nb: int
+    kva: float
+    rapport: str = ""
+
+
+@dataclass(frozen=True)
+class EtageMt:
+    """CIQ664 — l'ÉTAGE MOYENNE TENSION d'un site livré en MT (facultatif).
+
+    Renseigné UNIQUEMENT depuis un relevé de visite MT VALIDÉ (CIQ660, transmis
+    par le moteur C&I) : le moteur électrique ne l'invente jamais. Il ne porte
+    que des FAITS relevés — aucune valeur électrique n'est supposée ici, et les
+    blocs que le schéma en tire sont dessinés « à confirmer » tant qu'aucune
+    règle sourcée ne les fixe.
+
+    ``injection_limitee`` : posé par l'appelant quand la SORTIE du moteur C&I
+    indique une injection limitée (CIQ2) ; le bloc « limiteur d'injection »
+    n'apparaît que dans ce cas. ``compteur_production`` : un compteur de
+    production MT a été relevé.
+    """
+
+    transformateurs: Tuple[TransformateurMt, ...] = ()
+    cellule: str = ""
+    compteur_production: bool = False
+    injection_limitee: bool = False
+
+
+@dataclass(frozen=True)
 class EntreeElectrique:
     """ENTRÉE COMPLÈTE du moteur — tout ce dont le calcul a besoin, rien de plus.
 
@@ -361,6 +396,10 @@ class EntreeElectrique:
     #: le moteur pose une JUSTIFICATION de vérification (note de calcul) au
     #: lieu de fournir l'organe — cf. ``core.electrique.protections``.
     inclure_prise_terre: bool = False
+    #: CIQ664 — l'étage MOYENNE TENSION d'un site livré en MT, relevé et
+    #: VALIDÉ en visite (CIQ660). ``None`` (défaut) = site BT : le schéma est
+    #: alors octet pour octet celui d'avant.
+    etage_mt: Optional[EtageMt] = None
 
     @property
     def nb_modules(self):

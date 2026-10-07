@@ -786,7 +786,7 @@
       "colonne_lead": "compteur_eau"
     }
   ],
-  "gabarit_ci_regle": "CIQ5 (Groupe CIQ, 03/10/2026 ; D-CIQ-5) — CONTRAT D'ABORD (PACT10), ce MÊME fichier étendu (jamais un second). Valeur de gabarit `ci` : posée à la PLANIFICATION quand le lead est `commercial` ou `industriel`, sinon inchangée (toiture / point_eau) ; le type du lead n'est JAMAIS changé par une visite. Le gabarit `ci` remplace les catégories résidentielles par `gabarit_ci` ; le SUPPLÉMENT MT (`gabarit_ci_supplement_mt`) s'affiche quand la mesure `comptage.niveau_tension_constate` vaut `mt` (`bt` / `inconnu` = socle commun + BT). `_non_releves` = {code_mesure: motif}, motifs FERMÉS : acces_refuse | dangereux | site_ferme | a_faire_par_electricien | non_applicable — une mesure requise non relevée avec son motif ne bloque pas « terminer ». `releve_ci` = {declare, constate, ecart} pour niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile, statut_occupation (déclaré = colonnes du contrat crm `lead_pro.json`, CIQ1 ; `statut_occupation` = colonne Lead existante `ownership`) + `validee_le`. `retour_lead_ci` = table mesure → colonne Lead de `lead_pro.json`, appliquée à la VALIDATION (jamais avant), provenance `{origine: 'mesure_visite', detail, date}`. AUCUN seuil, aucun verdict (règle VT1), aucun chiffre de dimensionnement. `exemple`, `exemple_point_eau` et leurs clés restent identiques à l'octet. Valeurs ILLUSTRATIVES ; `site_commerce` est la catégorie de CIQ651.",
+  "gabarit_ci_regle": "CIQ5 (Groupe CIQ, 03/10/2026 ; D-CIQ-5) — CONTRAT D'ABORD (PACT10), ce MÊME fichier étendu (jamais un second). Valeur de gabarit `ci` : posée à la PLANIFICATION quand le lead est `commercial` ou `industriel`, sinon inchangée (toiture / point_eau) ; le type du lead n'est JAMAIS changé par une visite. Le gabarit `ci` remplace les catégories résidentielles par `gabarit_ci` ; le SUPPLÉMENT MT (`gabarit_ci_supplement_mt`) s'affiche quand la mesure `comptage.niveau_tension_constate` vaut `mt` (`bt` / `inconnu` = socle commun + BT). `_non_releves` = {code_mesure: motif}, motifs FERMÉS : acces_refuse | dangereux | site_ferme | a_faire_par_electricien | non_applicable — une mesure requise non relevée avec son motif ne bloque pas « terminer ». `releve_ci` = {declare, constate, ecart} pour niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile, statut_occupation (déclaré = colonnes du contrat crm `lead_pro.json`, CIQ1 ; `statut_occupation` = colonne Lead existante `ownership`) + `validee_le`. `retour_lead_ci` = table mesure → colonne Lead de `lead_pro.json`, appliquée à la VALIDATION (jamais avant), provenance `{origine: 'mesure_visite', detail, date}`. AUCUN seuil, aucun verdict (règle VT1), aucun chiffre de dimensionnement. `exemple`, `exemple_point_eau` et leurs clés restent identiques à l'octet. Valeurs ILLUSTRATIVES ; `site_commerce` est la catégorie de CIQ651. CIQ651 : la catégorie `site_commerce` (`gabarit_ci_site_commerce`) est servie en tête du gabarit `ci`, REQUISE pour un lead `commercial` (`requis` ci-dessous), FACULTATIVE pour tout autre type (aucun `requis`) ; la pièce `accord_proprietaire` n'est servie que si le lead est locataire (`releve_ci.statut_occupation.declare`). CIQ660 : le cos φ constaté exige `source_cos_phi` (400 sinon).",
   "gabarit_ci": {
     "toiture_ci": {
       "photos": {
@@ -1108,6 +1108,77 @@
           "type": "pièce",
           "requis": false,
           "libelle": "Fichier de profil de charge mesuré (facultatif)"
+        }
+      }
+    }
+  },
+  "gabarit_ci_site_commerce": {
+    "site_commerce": {
+      "photos": {
+        "secours_existant": "facultative",
+        "accord_proprietaire": "facultative (servie seulement quand le lead est locataire)"
+      },
+      "mesures": {
+        "categorie": {
+          "type": "choix",
+          "requis": true,
+          "libelle": "Catégorie du site",
+          "choix": [
+            "hotel",
+            "restaurant",
+            "commerce",
+            "bureau",
+            "sante",
+            "ecole",
+            "hammam",
+            "boulangerie",
+            "froid",
+            "autre"
+          ]
+        },
+        "horaires_constates": {
+          "type": "texte",
+          "requis": true,
+          "libelle": "Horaires et jours d'ouverture"
+        },
+        "equipements_principaux": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Équipements principaux"
+        },
+        "circuits_critiques": {
+          "type": "liste",
+          "requis": false,
+          "libelle": "Circuits critiques",
+          "forme": {
+            "circuit": "choix froid|medical|informatique|cuisine|autre",
+            "precision": "texte"
+          }
+        },
+        "secours_groupe": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Groupe électrogène existant"
+        },
+        "secours_ups": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Onduleur UPS existant"
+        },
+        "secours_inverseur": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Inverseur de source existant"
+        },
+        "acces_pendant_ouverture": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Contraintes d'accès pendant l'ouverture"
+        },
+        "besoin_continuite_service": {
+          "type": "booléen",
+          "requis": true,
+          "libelle": "Besoin de continuité de service"
         }
       }
     }
@@ -1560,7 +1631,18 @@
       "site_commerce": {
         "categorie": "restaurant",
         "horaires_constates": "11 h–23 h, 7/7",
-        "equipements_principaux": "chambres froides ×2, four électrique"
+        "equipements_principaux": "chambres froides ×2, four électrique",
+        "circuits_critiques": [
+          {
+            "circuit": "froid",
+            "precision": "chambres froides"
+          }
+        ],
+        "secours_groupe": false,
+        "secours_ups": true,
+        "secours_inverseur": false,
+        "acces_pendant_ouverture": "accès toit par la cour, service du soir",
+        "besoin_continuite_service": true
       },
       "toiture_ci": {
         "zones_toiture": [

@@ -1,6 +1,7 @@
 // Shared helpers + constants for the Taqinor OS E2E suite.
 // Selectors mirror the REAL components (no data-testids exist in the app, so we
 // lean on visible text, placeholders, stable CSS classes and ARIA roles).
+import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -330,3 +331,242 @@ export function routesParModule(options) {
 // affiché quand une page plante au rendu (`.map is not a function`, « objects
 // are not valid as a React child »…). Sa présence EST le défaut.
 export const TITRE_ECRAN_ERREUR = 'Une erreur est survenue'
+
+// ── Parcours de lead pro / agricole (AGR423, CIQ424, CIQ521) ────────────────
+// Briques PARTAGÉES des specs « aller-retour en direct » : aucune ne simule le
+// réseau, toutes parlent à la vraie pile locale (`seed_demo`).
+export const API_DJANGO = '/api/django'
+
+/** Corps JSON d'une réponse API, ou un échec qui NOMME l'appel et le statut. */
+export async function lireJson(res, quoi) {
+  expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
+  return res.json()
+}
+
+/** Liste d'une réponse DRF paginée ou non. */
+export const listeDe = (corps) => (Array.isArray(corps) ? corps : (corps?.results || []))
+
+let _chiffresSeq = 0
+const chiffres = (n) => { _chiffresSeq += 1; return String(Date.now() + _chiffresSeq).slice(-n) }
+/** Mobile marocain E.164 UNIQUE (la cadence ne démarre pas sur un doublon). */
+export const telephoneMobileUnique = () => `+2126${chiffres(8)}`
+/** Fixe marocain E.164 UNIQUE (05 2x xx xx xx). */
+export const telephoneFixeUnique = () => `+21252${chiffres(7)}`
+
+/** `AAAA-MM-JJ` dans `n` jours. */
+export function isoDansJours(n) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const j = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${j}`
+}
+
+// Secret du récepteur de leads du site (`WEBSITE_LEAD_WEBHOOK_SECRET`, fermé
+// tant qu'il est vide). La pile e2e doit le poser ET exporter le même
+// `E2E_WEBHOOK_SECRET` à Playwright ; sans cela le récepteur répond 401 et les
+// specs qui en dépendent se SAUTENT en le disant (jamais un faux vert).
+export const SECRET_WEBHOOK_E2E = process.env.E2E_WEBHOOK_SECRET || 'e2e-webhook-secret'
+
+/** Poste un payload du site sur le vrai webhook. Renvoie `{ status, corps }`. */
+export async function posterWebhookSite(request, payload) {
+  const res = await request.post(`${API_DJANGO}/crm/webhooks/website-leads/`, {
+    data: { idempotencyKey: globalThis.crypto.randomUUID(), consent: true, ...payload },
+    headers: { 'X-Webhook-Secret': SECRET_WEBHOOK_E2E },
+  })
+  let corps = null
+  try { corps = await res.json() } catch { /* corps non JSON */ }
+  return { status: res.status(), corps }
+}
+
+/** Texte brut d'un PDF (pdfjs-dist, déjà une dépendance du frontend). */
+export async function textePdf(octets) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(octets), useSystemFonts: true, disableFontFace: true,
+  }).promise
+  let texte = ''
+  for (let i = 1; i <= doc.numPages; i += 1) {
+    const page = await doc.getPage(i)
+    const contenu = await page.getTextContent()
+    texte += `${contenu.items.map((it) => it.str).join(' ')}\n`
+  }
+  return texte
+}
+
+// Mois de consommation d'un site commercial (kWh), profil saisonnier plausible.
+export const KWH_COMMERCIAL = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
+
+/** Crée un devis COMMERCIAL par le vrai générateur, depuis un lead : profil
+ *  déclaré (12 mois) → Auto-remplir (aperçu serveur) → « Créer le devis ».
+ *  Le client est résolu côté serveur depuis le lead. Renvoie l'id du devis. */
+export async function creerDevisCommercialDepuisLead(page, leadId) {
+  await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
+  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
+    .toBeVisible({ timeout: 30_000 })
+  await page.getByRole('radio', { name: /Commercial/ }).click()
+  await expect(page.getByTestId('ci-profil')).toBeVisible()
+  for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
+  await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
+  const auto = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
+  await page.getByTestId('btn-auto-remplir').click()
+  await auto
+  const creation = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
+  const cree = await (await creation).json()
+  const id = cree.id ?? cree.devis?.id
+  expect(id, 'identifiant du devis créé').toBeTruthy()
+  return id
+}
+
+// ── Parcours « site professionnel » (CIQ650, CIQ665) ────────────────────────
+// PNG 1×1 valide : une vraie photo de slot (magic-bytes contrôlés par le serveur).
+export const PNG_1PX = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+  'base64')
+
+// Mois de consommation d'un site industriel (kWh) : le profil commercial ×12.
+export const KWH_INDUSTRIEL = KWH_COMMERCIAL.map((v) => v * 12)
+
+/** Lit les mesures d'un exemple du contrat PARTAGÉ `visite_terrain.json` (jamais
+ *  un jeu de valeurs écrit à la main : le contrat est la source). Copie neuve. */
+export function mesuresContratVisite(cleExemple) {
+  const url = new URL(
+    '../../backend/django_core/apps/visites/contract_samples/visite_terrain.json', import.meta.url)
+  const contrat = JSON.parse(readFileSync(fileURLToPath(url), 'utf-8'))
+  expect(contrat[cleExemple]?.mesures, `exemple « ${cleExemple} » du contrat visite_terrain`).toBeTruthy()
+  return JSON.parse(JSON.stringify(contrat[cleExemple].mesures))
+}
+
+/** Exécute du Python dans `manage.py shell` : `E2E_DJANGO_EXEC` s'il est posé, sinon
+ *  le conteneur `django_core` du compose local, sinon le Django de l'hôte (job e2e
+ *  de la CI : `backend/django_core`). Une ligne de code ; échec = erreur nommée. */
+export function executerDansDjango(code) {
+  const surmesure = process.env.E2E_DJANGO_EXEC
+  const tentatives = []
+  if (surmesure) {
+    const [cmd, ...args] = surmesure.split(' ')
+    tentatives.push({ cmd, args: [...args, 'python'], cwd: undefined })
+  } else {
+    tentatives.push({ cmd: 'docker', args: ['compose', 'exec', '-T', 'django_core', 'python'], cwd: undefined })
+    tentatives.push({
+      cmd: process.platform === 'win32' ? 'python' : 'python3', args: [],
+      cwd: fileURLToPath(new URL('../../backend/django_core', import.meta.url)),
+    })
+  }
+  const echecs = []
+  for (const { cmd, args, cwd } of tentatives) {
+    try {
+      return execFileSync(cmd, [...args, 'manage.py', 'shell', '-c', code],
+        { stdio: 'pipe', cwd, timeout: 120_000 }).toString()
+    } catch (err) {
+      echecs.push(`${cmd}: ${String(err.stderr || err.message).slice(0, 300)}`)
+    }
+  }
+  throw new Error(`manage.py shell inaccessible (E2E_DJANGO_EXEC) — ${echecs.join(' | ')}`)
+}
+
+/** Planifie une visite technique depuis la fiche du lead, par la vraie fenêtre.
+ *  Renvoie le texte de l'avertissement « visite sans devis » affiché avant. */
+export async function planifierVisiteDepuisLead(page, leadId, jours = 3) {
+  await page.goto(`/crm/leads/${leadId}`)
+  const tete = page.locator('section.lw-section[data-nav-id="visite"] .lw-section-head')
+  await expect(tete, 'section « visite » de la fiche').toBeVisible({ timeout: 30_000 })
+  if ((await tete.getAttribute('aria-expanded')) === 'false') await tete.click()
+  const avertissement = page.getByTestId('visite-sans-devis')
+  await expect(avertissement).toBeVisible({ timeout: 30_000 })
+  const texte = await avertissement.textContent()
+  await page.getByRole('button', { name: 'Planifier la visite technique' }).click()
+  await page.locator('#pv-date-prevue').fill(isoDansJours(jours))
+  await page.getByRole('button', { name: 'Planifier la visite', exact: true }).click()
+  await expect(page.getByTestId('section-visite-row').first()).toBeVisible({ timeout: 30_000 })
+  return texte || ''
+}
+
+/** Saisit les mesures d'une visite `ci` (comptage d'abord : le niveau constaté
+ *  décide des catégories MT servies), puis une vraie photo dans chaque slot requis.
+ *  Renvoie la visite relue par le serveur (complétude comprise). */
+export async function remplirVisiteCi(request, visiteId, mesures) {
+  const ordre = Object.keys(mesures).sort((a, b) => (b === 'comptage') - (a === 'comptage'))
+  for (const categorie of ordre) {
+    const valeurs = mesures[categorie]
+    if (!valeurs || !Object.keys(valeurs).length) continue
+    await lireJson(await request.patch(`${API_DJANGO}/visites/visites/${visiteId}/mesures/`,
+      { data: { categorie, valeurs } }), `mesures « ${categorie} »`)
+  }
+  const visite = await lireJson(
+    await request.get(`${API_DJANGO}/visites/visites/${visiteId}/`), 'visite')
+  for (const bloc of visite.checklist) {
+    for (const slot of bloc.slots.filter((s) => s.requis)) {
+      for (let i = 0; i < (slot.min_photos || 1); i += 1) {
+        await lireJson(await request.post(`${API_DJANGO}/visites/visites/${visiteId}/photos/`, {
+          multipart: {
+            slot_code: slot.code,
+            fichier: { name: `${slot.code}-${i}.png`, mimeType: 'image/png', buffer: PNG_1PX },
+          },
+        }), `photo « ${slot.code} »`)
+      }
+    }
+  }
+  return lireJson(await request.get(`${API_DJANGO}/visites/visites/${visiteId}/`), 'visite complétée')
+}
+
+/** Crée un devis INDUSTRIEL par le vrai générateur depuis un lead (profil déclaré
+ *  12 mois, tension MT) → Auto-remplir (aperçu serveur) → « Créer le devis ». */
+export async function creerDevisIndustrielDepuisLead(page, leadId, { tension = 'mt' } = {}) {
+  await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
+  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
+    .toBeVisible({ timeout: 30_000 })
+  await page.getByRole('radio', { name: /Industriel/ }).click()
+  await expect(page.getByTestId('ci-profil')).toBeVisible()
+  await expect(page.getByTestId('ci-industriel-mt')).toBeVisible()
+  for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_INDUSTRIEL[i]))
+  await page.locator('#gen-ci-tension').selectOption(tension)
+  await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
+  const auto = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
+  await page.getByTestId('btn-auto-remplir').click()
+  await auto
+  const creation = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
+  const cree = await (await creation).json()
+  const id = cree.id ?? cree.devis?.id
+  expect(id, 'identifiant du devis créé').toBeTruthy()
+  return id
+}
+
+/** Ajoute les trois documents de sécurité (plan de prévention, analyse de risques,
+ *  permis de travail en hauteur) AVEC une révision : aucune API ne les expose (le
+ *  module QHSE est parqué), le gate de CIQ623 les lit en base. */
+export function ajouterDocumentsHse(chantierId) {
+  executerDansDjango(
+    'import datetime; from apps.installations.models import Installation, DocumentProjet, RevisionDocument; '
+    + `i = Installation.objects.get(pk=${Number(chantierId)}); `
+    + '[RevisionDocument.objects.create(company=i.company, indice="A", date_revision=datetime.date.today(), '
+    + 'document=DocumentProjet.objects.create(company=i.company, installation=i, type_doc=t, titre="E2E " + t)) '
+    + 'for t in ("plan_prevention", "analyse_risques", "permis_travail_hauteur")]')
+}
+
+/** Ouvre (ou retrouve) le compte portail du client, lui pose un mot de passe connu et
+ *  renvoie un contexte API CONNECTÉ en client (à `dispose()` par l'appelant). */
+export async function contextePortailClient(playwright, request, baseURL, clientId, motDePasse) {
+  const existants = listeDe(await lireJson(await request.get(`${API_DJANGO}/portail/comptes-portail/`),
+    'comptes portail'))
+  const compte = existants.find((c) => c.client === clientId)
+    ?? await lireJson(await request.post(`${API_DJANGO}/portail/comptes-portail/`,
+      { data: { client: clientId } }), 'compte portail du client')
+  const prov = await lireJson(await request.post(
+    `${API_DJANGO}/portail/comptes-portail/${compte.id}/provisionner-acces/`, { data: {} }), 'accès portail')
+  executerDansDjango(
+    'from django.contrib.auth import get_user_model as g; '
+    + `u = g().objects.get(username=${JSON.stringify(prov.username)}); `
+    + `u.set_password(${JSON.stringify(motDePasse)}); u.save()`)
+  const portail = await playwright.request.newContext({ baseURL })
+  const login = await portail.post(`${API_DJANGO}/token/`,
+    { data: { username: prov.username, password: motDePasse } })
+  expect(login.status(), 'connexion du client portail').toBe(200)
+  return portail
+}

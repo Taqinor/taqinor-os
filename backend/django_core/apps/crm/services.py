@@ -11760,7 +11760,26 @@ def appliquer_releve_ci(lead, releve, user):
     if ecrites:
         lead.save(update_fields=ecrites + ['date_modification'])
         activity.log_changes(avant, lead, user)
+    if releve.get('besoin_continuite_service') is True:
+        _noter_besoin_secours(lead, user)
     return rendu
+
+
+#: CIQ652 — la note de chatter posée quand une visite déclare un besoin de
+#: continuité de service. Aucune taille, aucune autonomie, aucun prix.
+NOTE_BESOIN_SECOURS = (
+    "À faire par le bureau d'études : orienter vers une étude de secours "
+    '(batterie / groupe) — besoin déclaré à la visite')
+
+
+def _noter_besoin_secours(lead, user):
+    """CIQ652 — UNE note interne « orienter vers une étude de secours », jamais
+    un message client ; re-valider ne la double pas. Auteur = le valideur."""
+    if LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body=NOTE_BESOIN_SECOURS).exists():
+        return None
+    return activity.log_note(lead, user, NOTE_BESOIN_SECOURS)
 
 
 # ── AGR522 — DOSSIER DE SUBVENTION FDA : LE RAPPEL DES 3 MOIS ───────────────

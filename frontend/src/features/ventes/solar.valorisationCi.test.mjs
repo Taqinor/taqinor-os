@@ -10,7 +10,7 @@ import * as solar from './solar.js'
 
 const SUPPRIMES = [
   ['INJECTION', '_82_21'], ['netTarif', '8221'], ['injection', '8221'],
-  ['tarifMt', 'Moyen'], ['computeEtude', 'Industrielle'],
+  ['tarifMt', 'Moyen'], ['TARIF_MT', '_ONEE'], ['computeEtude', 'Industrielle'],
 ].map((p) => p.join(''))
 
 test('CIQ228 — aucun symbole de valorisation C&I exporté par solar.js', () => {
