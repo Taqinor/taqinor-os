@@ -1,0 +1,420 @@
+{
+  "endpoint": "GET /api/django/stock/alertes-rappel/?statut=<en_cours|clos>&produit=<id>",
+  "pourquoi": "ASTK165 (M0, PACT10, C-ASTK-045 / C-ASTK-048) — contrat posé SEUL sur main avant les écrans rappels / blocages qualité / échantillonnage / casiers hazmat (ASTK199/ASTK200 affirment leurs clés contre ce fichier ; ASTK224 en est nourri). Fichier multi-routes (`routes.<nom>` : `endpoint`, `pourquoi`, `exemple`, + exemple_vide/erreurs/corps). Clés dérivées ligne à ligne des serializers/vues/services cités. Entrées « NOUVEAU — ASTK199 / ASTK200 » (clé `blocages` d'une alerte, 400 `bin_destination` d'un casier hazmat non déclaré) = non construites. Le texte du 400 hazmat est une PROPOSITION.",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes : `endpoint`/`exemple` de tête = la route `alertes_rappel`. Clés lues dans les serializers/vues cités ; pas encore affirmées par APIClient (à confirmer à la fusion). Les entrées NOUVEAU sont exclues de toute affirmation serveur.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 3,
+        "produit": 5,
+        "produit_nom": "Batterie 5 kWh",
+        "lot": 11,
+        "numero_lot": "LOT-2026-07",
+        "motif": "Défaut cellule constructeur",
+        "date_declenchement": "2026-10-12T09:00:00Z",
+        "statut": "en_cours",
+        "declenchee_par": 1,
+        "date_cloture": null,
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  },
+  "routes": {
+    "alertes_rappel": {
+      "endpoint": "GET /api/django/stock/alertes-rappel/?statut=<en_cours|clos>&produit=<id>",
+      "pourquoi": "NTWMS17 — rappels produit/lot (`AlerteRappelViewSet`, views/wms.py ; AlerteRappelSerializer serializers_wms.py). POST {produit, lot?, motif} → 201 CET objet ; statut/declenchee_par/date_declenchement posés par le serveur ; motif vide → 400 {motif:[...]}. La clé `blocages` (NOUVEAU — ASTK199) est portée par `exemple_nouveau_astk199`, hors affirmation serveur tant que ASTK199 n'est pas construite.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 3,
+            "produit": 5,
+            "produit_nom": "Batterie 5 kWh",
+            "lot": 11,
+            "numero_lot": "LOT-2026-07",
+            "motif": "Défaut cellule constructeur",
+            "date_declenchement": "2026-10-12T09:00:00Z",
+            "statut": "en_cours",
+            "declenchee_par": 1,
+            "date_cloture": null,
+            "created_at": "2026-10-12T09:00:00Z",
+            "updated_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 3,
+        "produit": 5,
+        "produit_nom": "Batterie 5 kWh",
+        "lot": 11,
+        "numero_lot": "LOT-2026-07",
+        "motif": "Défaut cellule constructeur",
+        "date_declenchement": "2026-10-12T09:00:00Z",
+        "statut": "en_cours",
+        "declenchee_par": 1,
+        "date_cloture": null,
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "produit": 5,
+        "lot": 11,
+        "motif": "Défaut cellule constructeur"
+      },
+      "exemple_erreur_400": {
+        "motif": [
+          "Le motif du rappel est obligatoire."
+        ]
+      },
+      "nouveau_astk199": "NOUVEAU — ASTK199 : l'alerte porte `blocages:[{id, quantite, lot, statut}]` (les blocages qualité rattachés au rappel).",
+      "exemple_nouveau_astk199": {
+        "id": 3,
+        "produit": 5,
+        "produit_nom": "Batterie 5 kWh",
+        "lot": 11,
+        "numero_lot": "LOT-2026-07",
+        "motif": "Défaut cellule constructeur",
+        "date_declenchement": "2026-10-12T09:00:00Z",
+        "statut": "en_cours",
+        "declenchee_par": 1,
+        "date_cloture": null,
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z",
+        "blocages": [
+          {
+            "id": 21,
+            "quantite": 4,
+            "lot": 11,
+            "statut": "en_quarantaine"
+          }
+        ]
+      },
+      "cles_nouvelles_astk199": [
+        "blocages"
+      ]
+    },
+    "alertes_rappel_impact": {
+      "endpoint": "GET /api/django/stock/alertes-rappel/<id>/impact/",
+      "pourquoi": "Portée du rappel en un clic (services_wms.impact_rappel). LECTURE SEULE. `produit` = {id, nom, sku} ; `lots[]` = {numero_lot, quantite_restante, fournisseurs[]} ; `casiers[]` = localisation par casier ; `chantiers[]` = {chantier_id, chantier_reference, numero_lot} ; `colis[]` = {sscc, statut, quantite, numero_lot}.",
+      "exemple": {
+        "alerte": 3,
+        "produit": {
+          "id": 5,
+          "nom": "Batterie 5 kWh",
+          "sku": "BAT-5K"
+        },
+        "lots": [
+          {
+            "numero_lot": "LOT-2026-07",
+            "quantite_restante": 12,
+            "fournisseurs": [
+              "Fournisseur Test"
+            ]
+          }
+        ],
+        "stock_restant": 12,
+        "casiers": [
+          {
+            "bin_id": 9,
+            "code": "A-01-02",
+            "zone": "A",
+            "allee": "01",
+            "casier": "02",
+            "ordre": 1,
+            "emplacement_id": 2,
+            "emplacement_nom": "Entrepôt principal",
+            "quantite": 12
+          }
+        ],
+        "chantiers": [
+          {
+            "chantier_id": 14,
+            "chantier_reference": "CH-2026-0014",
+            "numero_lot": "LOT-2026-07"
+          }
+        ],
+        "colis": [
+          {
+            "sscc": "000000000000000012",
+            "statut": "scelle",
+            "quantite": 2,
+            "numero_lot": "LOT-2026-07"
+          }
+        ]
+      }
+    },
+    "alertes_rappel_cloturer": {
+      "endpoint": "POST /api/django/stock/alertes-rappel/<id>/cloturer/",
+      "pourquoi": "Clôt le rappel (idempotent) ; 200 + l'alerte (statut `clos`, `date_cloture` posée).",
+      "exemple": {
+        "id": 3,
+        "produit": 5,
+        "produit_nom": "Batterie 5 kWh",
+        "lot": 11,
+        "numero_lot": "LOT-2026-07",
+        "motif": "Défaut cellule constructeur",
+        "date_declenchement": "2026-10-12T09:00:00Z",
+        "statut": "clos",
+        "declenchee_par": 1,
+        "date_cloture": "2026-10-13T09:00:00Z",
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      }
+    },
+    "blocages_qualite": {
+      "endpoint": "GET /api/django/stock/blocages-qualite/?statut=<en_quarantaine|levee|rebutee>&produit=<id>&bin=<id>",
+      "pourquoi": "NTWMS31 — quarantaine qualité (BlocageQualiteSerializer). POST {produit, quantite, bin?, lot?, reception?, motif?} → 201 CET objet (aucun mouvement de stock) ; statut/bloque_par posés par le serveur ; refus du service → 400 {detail}.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 21,
+            "produit": 5,
+            "produit_nom": "Batterie 5 kWh",
+            "quantite": 4,
+            "bin": 9,
+            "bin_code": "Q-01",
+            "lot": 11,
+            "reception": null,
+            "statut": "en_quarantaine",
+            "motif": "Rappel LOT-2026-07",
+            "bloque_par": 1,
+            "leve_par": null,
+            "date_levee": null,
+            "created_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 21,
+        "produit": 5,
+        "produit_nom": "Batterie 5 kWh",
+        "quantite": 4,
+        "bin": 9,
+        "bin_code": "Q-01",
+        "lot": 11,
+        "reception": null,
+        "statut": "en_quarantaine",
+        "motif": "Rappel LOT-2026-07",
+        "bloque_par": 1,
+        "leve_par": null,
+        "date_levee": null,
+        "created_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "produit": 5,
+        "quantite": 4,
+        "bin": 9,
+        "lot": 11,
+        "motif": "Rappel LOT-2026-07"
+      },
+      "exemple_erreur_400": {
+        "detail": "La quantité doit être positive."
+      }
+    },
+    "blocages_qualite_lever": {
+      "endpoint": "POST /api/django/stock/blocages-qualite/<id>/lever/",
+      "pourquoi": "Lève la quarantaine (idempotent, Responsable/Admin) ; 200 + le blocage (statut `levee`, `leve_par`, `date_levee` posés).",
+      "exemple": {
+        "id": 21,
+        "produit": 5,
+        "produit_nom": "Batterie 5 kWh",
+        "quantite": 4,
+        "bin": 9,
+        "bin_code": "Q-01",
+        "lot": 11,
+        "reception": null,
+        "statut": "levee",
+        "motif": "Rappel LOT-2026-07",
+        "bloque_par": 1,
+        "leve_par": 1,
+        "date_levee": "2026-10-13T09:00:00Z",
+        "created_at": "2026-10-12T09:00:00Z"
+      }
+    },
+    "blocages_qualite_lever_quarantaine": {
+      "endpoint": "POST /api/django/stock/blocages-qualite/lever-quarantaine/",
+      "pourquoi": "Lève TOUS les blocages d'un casier {bin}. 200 ; {bin} absent/non numérique → 400 {detail:'Casier requis.'}.",
+      "exemple": {
+        "bin": 9,
+        "blocages_leves": 2
+      },
+      "exemple_corps": {
+        "bin": 9
+      },
+      "exemple_erreur_400": {
+        "detail": "Casier requis."
+      }
+    },
+    "plans_echantillonnage": {
+      "endpoint": "GET /api/django/stock/plans-echantillonnage/?categorie=<id>&actif=<true|false>",
+      "pourquoi": "NTWMS34 — référentiel des plans d'échantillonnage à réception (PlanEchantillonnageSerializer). Lecture tout rôle, écriture Responsable/Admin ; un plan sans catégorie = plan par défaut (unique). taux > 100 → 400 {taux_echantillon_pct:[...]}.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 2,
+            "categorie": 4,
+            "categorie_nom": "Batteries",
+            "taux_echantillon_pct": "10.00",
+            "actif": true,
+            "note": "",
+            "created_at": "2026-10-12T09:00:00Z",
+            "updated_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 2,
+        "categorie": 4,
+        "categorie_nom": "Batteries",
+        "taux_echantillon_pct": "10.00",
+        "actif": true,
+        "note": "",
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "taux_echantillon_pct": [
+          "Le taux d'échantillonnage ne peut pas dépasser 100 %."
+        ]
+      }
+    },
+    "receptions_echantillonnage": {
+      "endpoint": "GET /api/django/stock/receptions-fournisseur/<id>/echantillonnage/",
+      "pourquoi": "NTWMS34 — le plan s'applique-t-il à cette réception et où en est le contrôle ? LECTURE SEULE ; `controle` est null tant qu'aucun verdict n'est saisi.",
+      "exemple": {
+        "echantillon_requis": true,
+        "unites_attendues": 2,
+        "controle": null
+      },
+      "exemple_avec_controle": {
+        "echantillon_requis": true,
+        "unites_attendues": 2,
+        "controle": {
+          "id": 7,
+          "reception": 15,
+          "resultat": "conforme",
+          "unites_controlees": 2,
+          "unites_attendues": 2,
+          "observation": "",
+          "controle_par": 1,
+          "created_at": "2026-10-12T09:00:00Z"
+        }
+      }
+    },
+    "receptions_controle_qualite": {
+      "endpoint": "POST /api/django/stock/receptions-fournisseur/<id>/controle-qualite/",
+      "pourquoi": "NTWMS34 — saisit le verdict {resultat: conforme|non_conforme, unites_controlees?, observation?} (Responsable/Admin). 200 + le contrôle ; NON CONFORME route vers la quarantaine ; refus → 400 {detail}.",
+      "exemple": {
+        "id": 7,
+        "reception": 15,
+        "resultat": "conforme",
+        "unites_controlees": 2,
+        "unites_attendues": 2,
+        "observation": "",
+        "controle_par": 1,
+        "created_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "resultat": "conforme",
+        "unites_controlees": 2
+      },
+      "exemple_erreur_400": {
+        "detail": "Résultat invalide : attendu « conforme » ou « non_conforme »."
+      }
+    },
+    "casiers_hazmat": {
+      "endpoint": "GET /api/django/stock/casiers-hazmat/?bin=<id>&classe_danger=<BATTERIE_LITHIUM|INFLAMMABLE|CORROSIF>",
+      "pourquoi": "NTWMS38 — casiers autorisés par classe de danger (CompatibiliteHazmatCasierSerializer, views/hazmat.py). Lecture tout rôle, écriture Responsable/Admin, suppression Admin. La classe `AUCUNE` ou inconnue est refusée → 400 {classe_danger:[...]}.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 5,
+            "bin": 9,
+            "bin_code": "A-HZ-01",
+            "classe_danger": "BATTERIE_LITHIUM",
+            "created_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 5,
+        "bin": 9,
+        "bin_code": "A-HZ-01",
+        "classe_danger": "BATTERIE_LITHIUM",
+        "created_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "bin": 9,
+        "classe_danger": "BATTERIE_LITHIUM"
+      },
+      "exemple_erreur_400": {
+        "classe_danger": [
+          "Classe de danger inconnue."
+        ]
+      }
+    },
+    "scanner_mouvement_hazmat_refuse": {
+      "endpoint": "POST /api/django/stock/scanner/mouvement/",
+      "pourquoi": "NOUVEAU — ASTK200 : une ENTRÉE d'un produit dangereux dans un casier non déclaré compatible (casiers-hazmat) est refusée en 400 sur la clé du champ fautif. Texte = PROPOSITION figée par ASTK200 à la construction ; hors affirmation serveur tant que non construite.",
+      "exemple": {
+        "bin_destination": [
+          "Casier non compatible avec la classe de danger de ce produit (BATTERIE_LITHIUM)."
+        ]
+      },
+      "exemple_corps": {
+        "produit": 5,
+        "type_mouvement": "entree",
+        "quantite": 4,
+        "bin_destination": 9
+      },
+      "statut_http": 400,
+      "nouveau_astk200": true
+    }
+  }
+}
