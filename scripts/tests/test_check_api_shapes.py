@@ -1294,6 +1294,57 @@ class EchantillonsWebJumeauxTests(unittest.TestCase):
         self.assertIn("taille_detail.json", noms)
 
 
+class SitesPublicsMultiplesTests(unittest.TestCase):
+    """YBW2 — `apps/yanbow-web` passe les MEMES controles que `apps/web`."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+
+    def test_les_deux_sites_sont_couverts(self):
+        self.assertEqual(shapes.WEB_ROOTS[0], shapes.WEB_ROOT)
+        self.assertEqual(shapes.WEB_ROOTS[1],
+                         shapes.ROOT / "apps" / "yanbow-web")
+
+    def test_jumeau_divergent_sous_yanbow_web_rougit_et_nomme_fichier(self):
+        import json
+        write(self.base / "yanbow-web" / "src" / "contract_samples"
+              / "demande_x.json",
+              json.dumps({"endpoint": "POST /api/x/", "exemple": {"a": 1}}))
+        write(self.base / "apps" / "crm" / "contract_samples"
+              / "demande_x.json",
+              json.dumps({"endpoint": "POST /api/x/", "exemple": {"b": 1}}))
+        constats = shapes.echantillons_web_jumeaux(
+            self.base / "yanbow-web", self.base / "apps")
+        self.assertIn("<echantillon>", [c[4] for c in constats])
+        self.assertTrue(all(c[0] == "demande_x.json" for c in constats),
+                        constats)
+        self.assertTrue(any("demande_x.json" in c[5] for c in constats))
+
+    def test_controles_sautent_une_racine_absente_et_couvrent_les_autres(self):
+        import json
+        write(self.base / "yanbow-web" / "src" / "contract_samples"
+              / "orphelin.json",
+              json.dumps({"endpoint": "GET /api/x/", "exemple": {"a": 1}}))
+        constats = shapes.controles_sites_publics(
+            {}, None, racines=(self.base / "absent", self.base / "yanbow-web"))
+        self.assertEqual([c[4] for c in constats], ["<jumeau>"], constats)
+        self.assertIn("yanbow-web", constats[0][5])
+
+    def test_routes_client_scanne_aussi_yanbow_web(self):
+        fichiers = [f for r in shapes.WEB_ROOTS
+                    for f in shapes.fichiers_clients_web(r)]
+        racine_yb = shapes.ROOT / "apps" / "yanbow-web"
+        if racine_yb.is_dir():
+            self.assertTrue(any(racine_yb in f.parents for f in fichiers))
+
+    def test_l_arbre_courant_est_vert_pour_tous_les_sites(self):
+        self.assertEqual(
+            [c for r in shapes.WEB_ROOTS if r.is_dir()
+             for c in shapes.echantillons_web_jumeaux(r)], [])
+
+
 class PlancherInventaireTests(unittest.TestCase):
     """AUD832 — « OK : 0 endpoint(s) agrege(s) » ne doit plus valoir un vert."""
 
