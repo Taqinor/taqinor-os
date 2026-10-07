@@ -117,7 +117,10 @@ describe('ProductTour (NTDMO15)', () => {
     renderTour(RECENT_USER)
     await screen.findByText('Créer un devis')
     fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
+    // Même classe de flake que le test « clic hors de la bulle » (8d3eed5cc) :
+    // rendu à froid sous charge CI parallèle, le `waitFor` par défaut (1 s)
+    // expire avant l'appel (PR #847, frontend-vitest-shard 4).
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'), { timeout: 5000 })
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
 

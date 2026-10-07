@@ -40,6 +40,8 @@ class VolumeResultatTest(BaseApiCalepinage):
         requete = APIRequestFactory().get(URL)
         force_authenticate(requete, user=self.user)
         vue = CalepinageViewSet()
+        # ``initialize_request`` d'un ViewSet relit l'action dans sa table.
+        vue.action_map = {'get': 'list'}
         vue.action = 'list'
         vue.request = vue.initialize_request(requete)
         vue.request.user = self.user
@@ -72,6 +74,9 @@ class VolumeResultatTest(BaseApiCalepinage):
                      for version in versions)
         self.assertLess(taille, BORNE_OCTETS)
 
-        copie = dupliquer(self.calepinage, user=self.user)
+        # ACAL187 (D-ACAL-12) — la source est un calepinage OUVERT de son
+        # lead : la copie vise un AUTRE lead (sinon 409, une variante).
+        copie = dupliquer(self.calepinage, user=self.user,
+                          lead_id=self.lead_2.pk)
         copie = Calepinage.objects.get(pk=copie.pk)
         self.assertIsNone(copie.resultat)

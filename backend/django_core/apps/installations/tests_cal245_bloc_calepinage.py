@@ -70,13 +70,15 @@ class TestBlocCalepinageSerializer(TestCase):
         self.assertIsNone(data['calepinage'])
 
     def test_chantier_issu_d_un_calepinage_rend_le_bloc(self):
+        # ACAL107 — le kWc / les modules se lisent sur la CONCEPTION du
+        # calepinage (retenir une variante l'y écrit), plus sur la variante.
         calepinage = Calepinage.objects.create(
-            company=self.company, client=self.client_obj, devis=self.devis)
+            company=self.company, client=self.client_obj, devis=self.devis,
+            resultat={'pose': {'kwc': 8.64, 'total_modules': 12}})
         with bascule_autorisee():
             CalepinageVariante.objects.create(
                 company=self.company, calepinage=calepinage, nom='V1',
-                retenue=True,
-                resultat={'pose': {'kwc': 8.64, 'total_modules': 12}})
+                retenue=True)
         chantier = make_installation(self.company, self.client_obj, self.devis)
 
         data = InstallationSerializer(chantier).data

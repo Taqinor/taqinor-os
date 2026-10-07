@@ -74,7 +74,7 @@ def affirmer_non_servies(test, servi, en_attente):
 #: première moitié back de chaque clé la sert, retire son entrée et remet
 #: ``complete`` quand la table est vide.
 EN_ATTENTE_DETAIL = {
-    'lead.supprime': 'ACAL178',
+    # ACAL178 (lead.supprime) et ACAL294 (custom_data) livrées : clés servies.
 }
 
 #: Clés du bloc de simulation posées par ACAL8 (M0) — chemins relatifs à

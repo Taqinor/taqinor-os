@@ -30,7 +30,8 @@ from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 from .acal_livrables_helpers import (
-    calepinage_simule_reel, exiger_bibliotheques_pdf, patch_materiel,
+    LAYOUT_PLANCHE_SIMULABLE, calepinage_simule_reel,
+    exiger_bibliotheques_pdf, patch_materiel,
 )
 
 User = get_user_model()
@@ -39,7 +40,7 @@ BASE = '/api/django/calepinage/calepinages/'
 
 #: Les lectures d'un archivé : 200 (un calepinage de SA société).
 LECTURES = ('', 'layout/', 'resultat/', 'documents/', 'versions/',
-            'variantes/', 'planche.svg')
+            'variantes/', 'planche.svg/')
 
 #: Les écritures : 409 nommé, rien n'est écrit.
 ECRITURES = (
@@ -72,7 +73,9 @@ class LivrablesArchiveTest(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
         lead = Lead.objects.create(company=societe, nom='Toiture 119')
-        pivot = calepinage_simule_reel()
+        # Un contour et des pans STOCKÉS : la planche se compose de la
+        # géométrie enregistrée (jamais d'un tracé reconstitué, sinon 400).
+        pivot = calepinage_simule_reel(LAYOUT_PLANCHE_SIMULABLE)
         self.calepinage = Calepinage.objects.create(
             company=societe, lead_id=lead.pk, titre='QA-ACAL archivé',
             roof_layout=copy.deepcopy(pivot.roof_layout),
@@ -93,7 +96,7 @@ class LivrablesArchiveTest(TestCase):
         import fitz
 
         with patch_materiel():
-            reponse = self.api.get(self._url('rapport-etude.pdf'))
+            reponse = self.api.get(self._url('rapport-etude.pdf/'))
         self.assertEqual(reponse.status_code, 200,
                          getattr(reponse, 'data', None))
         octets = b''.join(reponse.streaming_content) if getattr(
@@ -115,7 +118,7 @@ class LivrablesArchiveTest(TestCase):
                                  getattr(reponse, 'data', None))
         # La planche (pièce produite) porte la mention « archivée ».
         with patch_materiel():
-            planche = self.api.get(self._url('planche.svg'))
+            planche = self.api.get(self._url('planche.svg/'))
         texte = b''.join(planche.streaming_content).decode('utf-8') if \
             getattr(planche, 'streaming', False) else \
             planche.content.decode('utf-8')

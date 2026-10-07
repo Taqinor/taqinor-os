@@ -195,7 +195,11 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
             pk=self.calepinage.pk).roof_layout)
 
     def _sonde_layout(self):
-        return self._post('layout/', {'roof_layout': _document(9)})
+        # ACAL316 — If-Match obligatoire : un jeton VALIDE, pour que le refus
+        # observé soit bien le verrou (et non le jeton manquant, 428).
+        return self.api.post(f'{self.base}layout/',
+                             {'roof_layout': _document(9)}, format='json',
+                             HTTP_IF_MATCH=self._jeton())
 
     def _sonde_section(self):
         return self._post('layout/section/', {

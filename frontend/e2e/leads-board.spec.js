@@ -130,7 +130,12 @@ test('LB33: le board kanban tient dans l’écran et défile en interne (jamais 
   await setLeadsView(page, 'liste')
   const wrap = page.locator('.lv-wrap')
   await expect(wrap).toBeVisible()
-  const thead = page.locator('.lv-table thead')
+  // CAD177 : on mesure la cellule d'en-tête `th` — c'est ELLE qui porte
+  // `position: sticky` (index.css « Liste : thead + colonne nom épinglés »).
+  // La boîte du `<thead>` suit TOUJOURS le contenu, même quand ses `th`
+  // restent épinglés (vérifié au rendu réel : thead −1510 px, th 0 px) —
+  // mesurer le thead rendait cet invariant impossible à tenir.
+  const thead = page.locator('.lv-table thead th').first()
   await expect(thead).toBeVisible()
   // Position du thead AVANT défilement (il est déjà en haut de la table).
   const theadYBefore = (await thead.boundingBox()).y

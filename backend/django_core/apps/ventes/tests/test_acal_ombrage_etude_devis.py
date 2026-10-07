@@ -64,7 +64,19 @@ class OmbrageEtudeDevisTest(BaseApiCalepinage):
             company=self.company, client=self.client_a, lead=self.lead,
             reference='DEV-202610-1441')
         layout = _layout(_zone(1, 16, 90.0), _zone(2, 8, 270.0))
-        layout['solarAccess'] = {'values': [0.9] * 24}
+        # ACAL137 — l'accès solaire vit DANS LA GÉOMÉTRIE DE CHAQUE PAN
+        # (forme du contrat roof_layout_v2 : valeurs par module + méthode
+        # objet), jamais à la racine : l'étape « accès module » s'applique
+        # et la perte d'ombrage de chaque pan est MESURÉE.
+        for zone in layout['zones']:
+            zone['geometry']['solarAccess'] = {
+                'values': [0.9] * zone['geometry']['count'],
+                'method': {'horizon': False, 'rangees': False,
+                           'resolution': 'annuelle',
+                           'description': 'Accès solaire annuel'},
+                'assumptions': {'periode': 'annee'},
+                'computedAt': '2026-10-01T10:00:00Z',
+            }
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Ombrage 144',
             roof_layout=layout)

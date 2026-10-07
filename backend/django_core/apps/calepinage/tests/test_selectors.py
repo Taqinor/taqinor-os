@@ -48,6 +48,11 @@ class BaseLecture(TestCase):
         self.sur_lead = Calepinage.objects.create(
             company=self.company, lead_id=4242, titre='Toiture Lead',
             statut=Calepinage.Statut.VALIDE, appel_offre_id=7)
+        # ACAL114 — « validé » est DÉRIVÉ de l'approbation (approuvée sur
+        # l'empreinte courante), jamais lu dans la colonne ``statut``.
+        Calepinage.objects.filter(pk=self.sur_lead.pk).update(
+            layout_hash='a' * 64,
+            approbation={'etat': 'approuve', 'empreinte_approuvee': 'a' * 64})
         self.etranger = Calepinage.objects.create(
             company=self.autre, client=self.client_b, titre='Toiture Rif')
 

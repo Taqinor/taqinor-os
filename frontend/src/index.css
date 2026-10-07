@@ -9072,6 +9072,62 @@ textarea.form-control {
   }
 }
 
+/* CAD177 (APX8, mesuré au rendu réel rejoué du nocturne 37573380397) — les
+   chips rapides ont gagné « Touche due » et « ≥ 7 tentatives » : leur rangée
+   (~720 px, `flex-wrap: wrap`) ne tenait plus à côté de rien et la ligne de
+   contrôle passait à TROIS rangées en 1440×900 (128 px) — la capacité du
+   board tombait de 7 à 6 cartes, et à 4 en 1280×720. Au bureau, les chips
+   restent sur UNE rangée qui défile horizontalement dans la place restante
+   (les ⋯ / + Nouveau / sélecteur gardent leur rangée) : deux rangées
+   minces au plus, comme promis par LB43/LB53. */
+@media (min-width: 769px) {
+  .lp-controlbar .lp-quick-chips {
+    flex: 1 1 240px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .lp-controlbar .lp-quick-chips::-webkit-scrollbar { display: none; }
+  .lp-controlbar .lp-quick-chips > * { flex: 0 0 auto; }
+}
+
+/* CAD177 (LB33) — `.data-table { overflow: hidden }` (coins arrondis) fait de
+   la TABLE un conteneur de défilement : les `th` sticky (thead + colonne nom)
+   s'y accrochaient au lieu du scrolleur `.lv-wrap` et partaient avec le
+   contenu (thead à −1939 px au défilement, nocturne 37573380397 ; reproduit
+   au rendu réel : hidden → le th suit, clip → il reste épinglé). `clip`
+   rogne pareil SANS créer de conteneur de défilement (repli `visible` pour
+   un moteur qui ignorerait `clip`). */
+.lv-table {
+  overflow: visible;
+  overflow: clip;
+}
+
+/* CAD177 (APX8) — densité COMPACTE de la liste leads : les contrôles en ligne
+   (bouton « Marquer perdu » figé à 32 px, responsable, étoiles, cellules
+   éditables 27-29 px) portaient la rangée à 45 px — 14 lignes visibles en
+   1440×900 contre 16 promises. En compact, le bouton suit le jeton de
+   densité (`--control-h-sm`, 28 px) et le padding vertical de la liste
+   descend à 4 px : 38 px par rangée, 16 lignes. Le confort reste inchangé. */
+[data-density='compact'] .lv-table td {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+[data-density='compact'] .lv-table td .size-8 {
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+}
+
+/* CAD177 (APX8) — téléphone : le bouton « Archivés » (incident 02/10) a
+   ajouté une icône à la ligne [titre|🔍|Filtres|⋯] ; à 390 px elle débordait
+   de 3 px et « ⋯ » partait seul sur une 2e rangée (≈50 px de board perdus,
+   3 cartes au lieu de 4). Gouttières resserrées : la ligne tient à nouveau. */
+@media (max-width: 768px) {
+  .lp-controlbar { column-gap: 0.3rem; }
+  .lp-controlbar .fb-bar { gap: 0.3rem; }
+  .lvp-trigger { padding: 0.25rem 0.2rem; }
+}
+
 /* LB40 — la barre bulk flottante ne couvre plus la scrollbar du board.
    `.lp-bulk-float` (LB25) est fixed bas-CENTRE : pendant une sélection elle
    se posait pile sur le milieu de la scrollbar horizontale de `.kb-board`

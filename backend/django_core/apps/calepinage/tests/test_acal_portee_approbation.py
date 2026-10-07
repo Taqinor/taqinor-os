@@ -149,7 +149,7 @@ class PorteeApprobationTest(BaseApiCalepinage):
             layout_hash=pivot.layout_hash or '',
             version_moteur=pivot.version_moteur or '')
         self._exiger()
-        for route in ('planche.pdf', 'rapport-etude.pdf'):
+        for route in ('planche.pdf/', 'rapport-etude.pdf/'):
             with self.subTest(route=route):
                 with patch_materiel():
                     reponse = self.api.get(f'{self.base}{route}')

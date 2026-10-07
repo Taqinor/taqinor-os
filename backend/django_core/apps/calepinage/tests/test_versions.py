@@ -22,7 +22,9 @@ from django.test import TestCase
 
 from apps.calepinage.models import Calepinage, CalepinageVersion
 from apps.calepinage.services import versions as svc
-from apps.calepinage.services.parametres import enregistrer_parametres
+from apps.calepinage.services.parametres import (
+    ReglageInvalide, enregistrer_parametres,
+)
 from apps.crm.models import Client
 from authentication.models import Company
 
@@ -111,8 +113,13 @@ class PurgeTest(BaseHistorique):
         self.assertEqual(svc.borne_de_purge(self.company), 3)
 
     def test_borne_non_entiere_vaut_off(self):
-        enregistrer_parametres(self.company,
-                               {'presets': {svc.CLE_BORNE_PURGE: 'trois'}})
+        # ACAL287 : une borne non entière est REFUSÉE en nommant le champ
+        # (jamais lue « OFF » en silence) ; rien n'est écrit, la purge
+        # reste éteinte.
+        with self.assertRaises(ReglageInvalide) as refus:
+            enregistrer_parametres(self.company,
+                                   {'presets': {svc.CLE_BORNE_PURGE: 'trois'}})
+        self.assertEqual(refus.exception.champ, svc.CLE_BORNE_PURGE)
         self.assertIsNone(svc.borne_de_purge(self.company))
 
     def test_purge_retire_au_dela_de_la_borne(self):
