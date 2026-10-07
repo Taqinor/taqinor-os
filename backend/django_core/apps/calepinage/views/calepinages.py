@@ -589,7 +589,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_404_NOT_FOUND)
 
         def basculer():
-            retenir_variante(variante)
+            try:
+                retenir_variante(variante, user=request.user)
+            except VarianteRefusee as refus:
+                return Response({refus.champ or 'variante': str(refus)},
+                                status=status.HTTP_400_BAD_REQUEST)
             return Response(CalepinageVarianteSerializer(variante).data)
 
         return self.executer_idempotent(request, basculer)

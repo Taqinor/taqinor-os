@@ -97,7 +97,7 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
             cree_par=user,
         )
         if retenir:
-            retenir_variante(variante)
+            retenir_variante(variante, user=user)
     return variante
 
 
@@ -172,12 +172,23 @@ def supprimer_variante(variante):
     return True
 
 
-def retenir_variante(variante):
-    """Bascule ``variante`` en RETENUE, atomiquement.
+def retenir_variante(variante, *, user=None, appliquer=True):
+    """Bascule ``variante`` en RETENUE, atomiquement — et l'ÉCRIT comme
+    conception courante (ACAL107, D-ACAL-2).
 
     L'ancienne retenue du même calepinage repasse à faux dans la même
     transaction : il n'y a jamais deux retenues, ni zéro, même une
-    milliseconde.
+    milliseconde. Dans CETTE transaction, ``enregistrer_layout`` pose
+    ``variante.roof_layout`` sur le calepinage (empreinte, version
+    « Variante « X » retenue », journal) : « Générer le devis », la
+    resynchronisation, le chantier et l'as-built lisent tous la conception
+    courante. Retenir deux fois la même variante ⇒ inchangé, aucune version,
+    aucun journal.
+
+    Args:
+        user: l'auteur — posé côté serveur (vue : ``request.user``).
+        appliquer: ``False`` pour l'import de projet (l'état importé EST déjà
+            le document : on restaure la retenue sans réécrire la conception).
 
     Returns:
         La variante retenue (rafraîchie).
@@ -195,33 +206,48 @@ def retenir_variante(variante):
 
     verifier_ecriture_autorisee(variante.calepinage, champ='variante')
 
-    # CAL206 — feu vert bureau d'études : no-op si la société ne l'exige
-    # pas, ou si le calepinage n'a ni lead ni devis (la règle ne s'applique
-    # alors pas). C'est ICI, et nulle part ailleurs, que le refus doit
-    # vivre : c'est le SEUL chemin d'écriture de « retenue » (CAL9).
+    calepinage = variante.calepinage
+    # CAL206 — feu vert bureau d'études / approbation : AVANT toute écriture.
+    # C'est ICI, et nulle part ailleurs, que le refus doit vivre : c'est le
+    # SEUL chemin d'écriture de « retenue » (CAL9).
     from .feu_vert import verifier_avant_retenue
 
-    verifier_avant_retenue(variante.calepinage)
+    verifier_avant_retenue(calepinage)
+    document = (variante.roof_layout
+                if isinstance(variante.roof_layout, dict) else None)
 
+    deja_retenue = bool(CalepinageVariante.objects
+                        .filter(pk=variante.pk, retenue=True).exists())
     ancienne = (CalepinageVariante.objects
                 .filter(calepinage_id=variante.calepinage_id, retenue=True)
                 .exclude(pk=variante.pk)
                 .first())
     with transaction.atomic():
-        with bascule_autorisee():
-            (CalepinageVariante.objects
-             .select_for_update()
-             .filter(calepinage_id=variante.calepinage_id, retenue=True)
-             .exclude(pk=variante.pk)
-             .update(retenue=False))
-            variante.retenue = True
-            variante.save(update_fields=['retenue', 'updated_at'])
-    # CAL26 — la bascule se journalise par les NOMS : « A » → « B » se lit,
-    # « 11 » → « 12 » ne se lit pas.
-    from .journal import journaliser_variante_retenue
+        if not deja_retenue:
+            with bascule_autorisee():
+                (CalepinageVariante.objects
+                 .select_for_update()
+                 .filter(calepinage_id=variante.calepinage_id, retenue=True)
+                 .exclude(pk=variante.pk)
+                 .update(retenue=False))
+                variante.retenue = True
+                variante.save(update_fields=['retenue', 'updated_at'])
+        if appliquer and document is not None:
+            from .layout import LayoutRefuse, enregistrer_layout
 
-    journaliser_variante_retenue(variante.calepinage, ancienne=ancienne,
-                                 nouvelle=variante)
+            try:
+                enregistrer_layout(
+                    calepinage, document, user=user,
+                    libelle=f'Variante « {variante.nom} » retenue')
+            except LayoutRefuse as refus:
+                raise VarianteRefusee(
+                    str(refus), champ=refus.champ or 'roof_layout') from refus
+    if not deja_retenue:
+        # CAL26 — la bascule se journalise par les NOMS, AVEC son auteur.
+        from .journal import journaliser_variante_retenue
+
+        journaliser_variante_retenue(calepinage, ancienne=ancienne,
+                                     nouvelle=variante, user=user)
     return variante
 
 

@@ -32,21 +32,27 @@ servies par ``views/asbuilt.py`` (``GET/POST calepinages/<pk>/pose-reelle/``)
 """
 from __future__ import annotations
 
+#: ACAL107 — GARDÉE pour relire les relevés/blocs déjà stockés avec cette
+#: source ; plus jamais produite (la variante retenue EST la conception).
 SOURCE_VARIANTE = 'variante retenue'
 SOURCE_CALEPINAGE = 'document du calepinage'
+#: ACAL107 (D-ACAL-23) — l'instantané figé de la version ACCEPTÉE du devis.
+SOURCE_DEVIS_ACCEPTE = 'devis accepté'
 
 MENTION_SANS_SAISIE = (
     "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas "
     "affiché (il serait supposé, pas mesuré)."
 )
 MENTION_SANS_PREVU = (
-    "Ce pan n'existe pas dans la variante retenue : il n'y a rien à quoi "
+    "Ce pan n'existe pas dans la conception prévue : il n'y a rien à quoi "
     "comparer le posé."
 )
 
 __all__ = [
-    'SOURCE_VARIANTE', 'SOURCE_CALEPINAGE', 'MENTION_SANS_SAISIE',
-    'comparer', 'pans_prevus', 'ecarts_du_calepinage',
+    'SOURCE_VARIANTE', 'SOURCE_CALEPINAGE', 'SOURCE_DEVIS_ACCEPTE',
+    'MENTION_SANS_SAISIE',
+    'comparer', 'conception_du_chantier', 'pans_prevus',
+    'ecarts_du_calepinage',
     # CALX366 — la porte HTTP ``pose-reelle/``.
     'PREFIXE_VERSION_POSE', 'PoseRefusee', 'etat_pose_reelle',
     'enregistrer_pose', 'version_depuis_ecarts',
@@ -113,24 +119,46 @@ def _ligne(pan, modules_prevus, saisie):
     }
 
 
+def conception_du_chantier(calepinage):
+    """ACAL107 (D-ACAL-2, D-ACAL-23) — LA conception que le chantier reçoit.
+
+    Renvoie ``(roof_layout, source)`` :
+
+    * le ``Devis.roof_layout`` FIGÉ de la DERNIÈRE version ACCEPTÉE de la
+      chaîne de révision du devis lié (V1 tant que la V2 n'est pas acceptée,
+      V2 dès son acceptation) — ``source`` = :data:`SOURCE_DEVIS_ACCEPTE` ;
+    * sinon ``Calepinage.roof_layout``, la conception COURANTE (retenir une
+      variante l'y a écrite) — ``source`` = :data:`SOURCE_CALEPINAGE`.
+
+    La variante retenue n'est plus lue en parallèle : elle EST la conception
+    courante. Lecture pure ; la chaîne de révision est lue par
+    ``apps.ventes.selectors`` (frontière inter-apps).
+    """
+    devis_id = getattr(calepinage, 'devis_id', None)
+    company = getattr(calepinage, 'company', None)
+    if devis_id and company is not None:
+        from apps.ventes.selectors import instantane_accepte_en_vigueur
+
+        instantane = instantane_accepte_en_vigueur(devis_id, company)
+        if instantane is not None and isinstance(
+                instantane.get('roof_layout'), dict):
+            return instantane['roof_layout'], SOURCE_DEVIS_ACCEPTE
+    return getattr(calepinage, 'roof_layout', None), SOURCE_CALEPINAGE
+
+
 def pans_prevus(calepinage):
-    """Les pans PRÉVUS : ceux de la variante RETENUE, sinon du document.
+    """Les pans PRÉVUS : ceux de :func:`conception_du_chantier`.
 
     Renvoie ``(pans, source)`` — la source est PUBLIÉE pour qu'un écart lu
-    sur le document du calepinage ne se lise jamais comme un écart avec la
-    variante contractuelle.
+    sur la conception courante ne se lise jamais comme un écart avec
+    l'instantané accepté (contractuel).
     """
     # ACAL259 — LA lecture du module (``mesures_du_document``) : le même
     # compte par pan que la présentation, le journal et les exports.
     from .mesures import mesures_du_document
 
-    variante = (calepinage.variantes.filter(retenue=True).first()
-                if hasattr(calepinage, 'variantes') else None)
-    if variante is not None and variante.roof_layout:
-        return (mesures_du_document(variante.roof_layout)['pans'],
-                SOURCE_VARIANTE)
-    return (mesures_du_document(getattr(calepinage, 'roof_layout', None))
-            ['pans'], SOURCE_CALEPINAGE)
+    document, source = conception_du_chantier(calepinage)
+    return mesures_du_document(document)['pans'], source
 
 
 def ecarts_du_calepinage(calepinage):

@@ -1593,6 +1593,45 @@ def devis_predecesseurs_revision_ids(devis):
     return ordre
 
 
+def instantane_accepte_en_vigueur(devis_id, company):
+    """ACAL107 (D-ACAL-23) — l'instantané FIGÉ de la version ACCEPTÉE en
+    vigueur de la chaîne de révision de ``devis_id``, ou ``None``.
+
+    On remonte d'abord la chaîne jusqu'à sa tête (``superseded_by``), puis on
+    la redescend (``devis_predecesseurs_revision_ids``) du plus récent au plus
+    ancien : la PREMIÈRE version au statut ``accepte`` est celle en vigueur
+    (V1 tant que la V2 n'est pas acceptée, V2 dès son acceptation). Rend
+    ``{'devis_id', 'roof_layout'}`` — ``roof_layout`` est le
+    ``Devis.roof_layout`` figé à l'envoi (D-ACAL-1). Lecture pure, bornée
+    ``company`` ; ``None`` sans aucune version acceptée."""
+    from .models import Devis
+
+    if company is None or not devis_id:
+        return None
+    company_id = getattr(company, 'pk', company)
+    devis = Devis.objects.filter(pk=devis_id, company_id=company_id).first()
+    if devis is None:
+        return None
+    vus = {devis.pk}
+    tete = devis
+    while tete.superseded_by_id and tete.superseded_by_id not in vus:
+        suivant = Devis.objects.filter(
+            pk=tete.superseded_by_id, company_id=company_id).first()
+        if suivant is None:
+            break
+        vus.add(suivant.pk)
+        tete = suivant
+    ordre = [tete.pk] + devis_predecesseurs_revision_ids(tete)
+    statuts = dict(Devis.objects.filter(pk__in=ordre, company_id=company_id)
+                   .values_list('pk', 'statut'))
+    for pk in ordre:
+        if statuts.get(pk) == Devis.Statut.ACCEPTE:
+            roof_layout = (Devis.objects.filter(pk=pk)
+                           .values_list('roof_layout', flat=True).first())
+            return {'devis_id': pk, 'roof_layout': roof_layout}
+    return None
+
+
 # ── AGR206 — économie de pompage DÉCLARÉE, lecture publique ────────────────
 
 def devis_de_la_societe(devis_id, company):

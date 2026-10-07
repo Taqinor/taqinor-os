@@ -456,34 +456,37 @@ def calepinage_retenu_pour_devis(devis_id, company):
     RETENUE (``CalepinageVariante.retenue``) — un calepinage sans option
     choisie ne désigne rien de concret à renvoyer.
 
-    Le kWc et le nombre de modules sont lus, dans l'ordre : le résultat du
-    moteur (``variante.resultat['pose']`` — chaîné/simulé, CAL126+) puis, à
-    défaut, le résumé posé par l'atelier 3D (``variante.roof_layout['result']``
-    — présent dès qu'une pose a été dessinée, avant toute simulation). Aucune
-    valeur n'est recalculée ici : c'est une LECTURE pure, bornée société.
+    ACAL107 (D-ACAL-2, D-ACAL-23) — le kWc et le nombre de modules sont lus
+    sur ``services.asbuilt.conception_du_chantier`` : l'instantané FIGÉ de la
+    version ACCEPTÉE en vigueur du devis, sinon la conception COURANTE du
+    calepinage (``Calepinage.resultat['pose']`` n'est lu que dans ce second
+    cas — il décrit la conception courante, pas un instantané). La variante
+    retenue n'est plus lue en parallèle : retenir l'a écrite comme
+    conception courante. Aucune valeur n'est recalculée ici : LECTURE pure,
+    bornée société.
     """
     from .models import CalepinageVariante
+    from .services.asbuilt import SOURCE_CALEPINAGE, conception_du_chantier
 
     calepinage = calepinage_du_devis(devis_id, company)
     if calepinage is None:
         return None
-    variante = (CalepinageVariante.objects
-                .filter(calepinage=calepinage, retenue=True)
-                .first())
-    if variante is None:
+    if not (CalepinageVariante.objects
+            .filter(calepinage=calepinage, retenue=True).exists()):
         return None
 
     kwc = None
     nb_modules = None
-    resultat = variante.resultat if isinstance(variante.resultat, dict) else None
-    pose = resultat.get('pose') if resultat else None
-    if isinstance(pose, dict):
-        kwc = pose.get('kwc')
-        nb_modules = pose.get('total_modules')
-    if kwc is None and nb_modules is None:
-        roof_layout = (variante.roof_layout
-                       if isinstance(variante.roof_layout, dict) else None)
-        result = roof_layout.get('result') if roof_layout else None
+    document, source = conception_du_chantier(calepinage)
+    if source == SOURCE_CALEPINAGE:
+        resultat = (calepinage.resultat
+                    if isinstance(calepinage.resultat, dict) else None)
+        pose = resultat.get('pose') if resultat else None
+        if isinstance(pose, dict):
+            kwc = pose.get('kwc')
+            nb_modules = pose.get('total_modules')
+    if kwc is None and nb_modules is None and isinstance(document, dict):
+        result = document.get('result')
         if isinstance(result, dict):
             kwc = result.get('kwc')
             nb_modules = result.get('panels')

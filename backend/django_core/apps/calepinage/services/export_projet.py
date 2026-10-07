@@ -1030,7 +1030,9 @@ def _creer_variantes(calepinage, variantes, *, user=None):
         if not ligne['retenue']:
             continue
         try:
-            retenir_variante(variante)
+            # ACAL107 — l'import RESTAURE un état : la conception importée
+            # est déjà le document, la retenue ne la réécrit pas.
+            retenir_variante(variante, user=user, appliquer=False)
         except (VarianteRefusee, ValidationError) as refus:
             detail = getattr(refus, 'detail', None) or str(refus)
             avertissements.append(
