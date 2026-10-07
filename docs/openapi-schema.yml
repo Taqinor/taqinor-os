@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7630, components: 2210}
+counts: {paths: 4836, operations: 7632, components: 2210}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1502,6 +1502,7 @@ operations:
 - patch /api/django/ged/politiques-retention/{id}/ -> django_ged_politiques_retention_partial_update
 - put /api/django/ged/politiques-retention/{id}/ -> django_ged_politiques_retention_update
 - get /api/django/ged/public/{token}/ -> django_ged_public_retrieve
+- post /api/django/ged/public/{token}/ -> django_ged_public_create
 - get /api/django/ged/quotas-stockage/ -> django_ged_quotas_stockage_list
 - post /api/django/ged/quotas-stockage/ -> django_ged_quotas_stockage_create
 - get /api/django/ged/quotas-stockage/etat/ -> django_ged_quotas_stockage_etat_retrieve
@@ -5355,6 +5356,7 @@ operations:
 - patch /api/v1/ged/politiques-retention/{id}/ -> v1_ged_politiques_retention_partial_update
 - put /api/v1/ged/politiques-retention/{id}/ -> v1_ged_politiques_retention_update
 - get /api/v1/ged/public/{token}/ -> v1_ged_public_retrieve
+- post /api/v1/ged/public/{token}/ -> v1_ged_public_create
 - get /api/v1/ged/quotas-stockage/ -> v1_ged_quotas_stockage_list
 - post /api/v1/ged/quotas-stockage/ -> v1_ged_quotas_stockage_create
 - get /api/v1/ged/quotas-stockage/etat/ -> v1_ged_quotas_stockage_etat_retrieve

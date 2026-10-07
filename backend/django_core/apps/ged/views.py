@@ -4362,14 +4362,51 @@ def _ged_noindex(response):
     return response
 
 
-@api_view(['GET'])
+#: ASEC39 — un partage protégé est GELÉ après ce nombre d'échecs de mot de
+#: passe consécutifs (toutes IP confondues), pendant ``PARTAGE_GEL_MINUTES``.
+PARTAGE_ECHECS_MAX = 10
+PARTAGE_GEL_MINUTES = 15
+_PARTAGE_GELE = "Trop d'essais, réessayez plus tard."
+
+
+def _partage_gele(partage):
+    from django.utils import timezone
+    gele = partage.gele_jusqua
+    return gele is not None and gele > timezone.now()
+
+
+def _partage_echec_mdp(partage):
+    """ASEC39 — compte un échec en base (atomique) ; au seuil, gèle le
+    partage et remet le compteur à zéro."""
+    from datetime import timedelta
+
+    from django.db.models import F
+    from django.utils import timezone
+
+    from .models import PartageGed
+    PartageGed.objects.filter(pk=partage.pk).update(
+        echecs_mdp=F('echecs_mdp') + 1)
+    partage.refresh_from_db(fields=['echecs_mdp'])
+    if partage.echecs_mdp >= PARTAGE_ECHECS_MAX:
+        PartageGed.objects.filter(pk=partage.pk).update(
+            echecs_mdp=0,
+            gele_jusqua=timezone.now() + timedelta(
+                minutes=PARTAGE_GEL_MINUTES))
+
+
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicPartageRateThrottle])
 def public_partage(request, token):
     """GED20 — Sert le document d'un partage tokenisé (PUBLIC, sans login).
 
-    `GET /api/django/ged/public/<token>/[?password=…]` (ou en-tête
-    `X-Partage-Password`). Le jeton est l'UNIQUE secret d'accès : aucune
+    `GET /api/django/ged/public/<token>/` avec l'en-tête
+    `X-Partage-Password`, ou `POST` avec `password` dans le corps (ASEC39 :
+    JAMAIS en query string — 400 `mot_de_passe_en_en_tete`, la valeur n'est
+    pas vérifiée, elle finirait dans les journaux). Après
+    ``PARTAGE_ECHECS_MAX`` échecs (toutes IP) le partage est gelé
+    ``PARTAGE_GEL_MINUTES`` minutes, même le bon mot de passe est refusé.
+    Le jeton est l'UNIQUE secret d'accès : aucune
     identité/société n'est lue de la requête. Le partage est résolu DEPUIS le
     jeton via `services.resolve_partage_public` (qui ne référence qu'un seul
     document d'une seule société — pas de fuite cross-locataire).
@@ -4385,8 +4422,16 @@ def public_partage(request, token):
 
     Aucun prix d'achat ni document d'un autre locataire n'est jamais exposé.
     """
-    password = (request.query_params.get('password')
-                or request.META.get('HTTP_X_PARTAGE_PASSWORD')
+    if 'password' in request.query_params:
+        return _ged_noindex(Response(
+            {'code': 'mot_de_passe_en_en_tete',
+             'detail': "Le mot de passe ne passe jamais dans l'adresse : "
+                       "envoyez-le dans l'en-tête X-Partage-Password ou "
+                       "dans le corps d'un POST."},
+            status=status.HTTP_400_BAD_REQUEST))
+    corps = request.data if request.method == 'POST' else {}
+    password = (request.META.get('HTTP_X_PARTAGE_PASSWORD')
+                or (corps.get('password') if hasattr(corps, 'get') else '')
                 or '')
     statut, partage = services.resolve_partage_public(token, password=password)
 
@@ -4398,6 +4443,16 @@ def public_partage(request, token):
         return _ged_noindex(Response(
             {'detail': "Ce lien de partage a expiré ou n'est plus disponible."},
             status=status.HTTP_410_GONE))
+    if partage is not None and partage.has_password:
+        # ASEC39 — gel par partage : refuse même le bon mot de passe.
+        if _partage_gele(partage):
+            return _ged_noindex(Response(
+                {'detail': _PARTAGE_GELE},
+                status=status.HTTP_403_FORBIDDEN))
+        if statut == services.PARTAGE_MDP_REQUIS and password:
+            _partage_echec_mdp(partage)
+        elif statut == services.PARTAGE_OK and partage.echecs_mdp:
+            type(partage).objects.filter(pk=partage.pk).update(echecs_mdp=0)
     if statut == services.PARTAGE_MDP_REQUIS:
         return _ged_noindex(Response(
             {'detail': "Mot de passe requis ou incorrect pour ce document."},

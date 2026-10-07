@@ -2970,8 +2970,10 @@ class PartageGedTests(GedBase):
             r_none = APIClient().get(self._public_url(partage.token))
             self.assertEqual(r_none.status_code, 403)
             # Mauvais mot de passe.
+            # ASEC39 — mot de passe en en-tête (jamais en query string).
             r_bad = APIClient().get(
-                self._public_url(partage.token) + '?password=faux')
+                self._public_url(partage.token),
+                HTTP_X_PARTAGE_PASSWORD='faux')
         self.assertEqual(r_bad.status_code, 403)
         m.assert_not_called()
         # Aucun téléchargement comptabilisé sur un échec d'authentification.
@@ -2984,8 +2986,10 @@ class PartageGedTests(GedBase):
         fake = b'%PDF-ok'
         with mock.patch('apps.ged.views.fetch_attachment',
                         return_value=(fake, None)):
+            # ASEC39 — mot de passe en en-tête (jamais en query string).
             resp = APIClient().get(
-                self._public_url(partage.token) + '?password=mdp-correct')
+                self._public_url(partage.token),
+                HTTP_X_PARTAGE_PASSWORD='mdp-correct')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.content, fake)
 

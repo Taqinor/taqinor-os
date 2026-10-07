@@ -1228,6 +1228,13 @@ class PartageGed(models.Model):
     # `document.watermark_diffusion` est vrai. Défaut faux → flux byte-identique.
     watermark = models.BooleanField(
         default=False, verbose_name="filigraner le partage")
+    # ASEC39 — gel PAR PARTAGE (en base, quelle que soit l'IP) après trop
+    # d'échecs de mot de passe : le throttle par IP ne suffit pas contre un
+    # essai distribué.
+    echecs_mdp = models.PositiveSmallIntegerField(
+        default=0, verbose_name="échecs de mot de passe consécutifs")
+    gele_jusqua = models.DateTimeField(
+        null=True, blank=True, verbose_name="gelé jusqu'à")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_partages_crees')
