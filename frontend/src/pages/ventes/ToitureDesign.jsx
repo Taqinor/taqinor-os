@@ -37,6 +37,9 @@ import crmApi from '../../api/crmApi'
 // `apps/calepinage`), c'est-à-dire sans devis exigé. Voir le bloc de
 // commentaire de `bootCalepinage` plus bas.
 import calepinageApi from '../../api/calepinageApi'
+// Lot 2 critique #27 — lecture du calepinage d'un devis (fiche devis) quand la
+// porte de résolution est refusée (403, droit de VOIR seulement).
+import ventesApi from '../../api/ventesApi'
 // CAL37 — l'UNIQUE emplacement où les tâches suivantes (CAL38 le bouton devis,
 // CAL180 l'export image) posent leurs panneaux : aucune d'elles n'a donc à
 // rouvrir ce fichier. SOLMVP15 a retiré CAL242 (reprise de contour AO) avec
@@ -80,7 +83,9 @@ import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues
 import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 
-function AtelierToiture({ mode = 'lead', calepinageImpose = null, devisSynchronise = null }) {
+function AtelierToiture({
+  mode = 'lead', calepinageImpose = null, devisSynchronise = null, lectureSeuleImposee = false,
+}) {
   const { id: idParam } = useParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -356,7 +361,10 @@ function AtelierToiture({ mode = 'lead', calepinageImpose = null, devisSynchroni
 
   // ACAL84 — en lecture seule, aucun brouillon n'est écrit : il n'y aurait
   // rien à reprendre (aucun enregistrement possible).
-  const lectureSeuleContexte = contexte != null && !contexte.modifiable
+  // Lot 2 critique #27 — `lectureSeuleImposee` : l'utilisateur n'a que le
+  // droit de VOIR (403 sur la porte de résolution) ; aucun brouillon non plus.
+  const lectureSeuleContexte = (contexte != null && !contexte.modifiable)
+    || lectureSeuleImposee
 
   // CALX68 — le planificateur d'écriture du brouillon : démarre une fois le
   // constructeur prêt (`builderReady`) et une empreinte de base connue
@@ -817,8 +825,9 @@ function AtelierToiture({ mode = 'lead', calepinageImpose = null, devisSynchroni
   // « Calepinage sans titre » côté serveur, pas ici).
   const calepinageTitre = (contexte?.calepinage?.titre ?? '').trim()
   const lectureSeule = estCalepinage
-    && contexte != null && !contexte.modifiable
+    && ((contexte != null && !contexte.modifiable) || lectureSeuleImposee)
   const raisonLectureSeule = (contexte?.raison_lecture_seule ?? '').trim()
+    || (lectureSeuleImposee ? RAISON_LECTURE_SEULE_DROIT : '')
   const avertissements = Array.isArray(contexte?.avertissements)
     ? contexte.avertissements : []
   // ACAL192 (D-ACAL-13) — le GPS du lead a été corrigé APRÈS le tracé et l'épingle a été
@@ -1500,6 +1509,11 @@ function messageResolution(err) {
 const noticeDevisRevise = (reference) => (
   `Ce devis a été révisé — conception de la version en vigueur${reference ? ` (${reference})` : ''}`)
 
+/** Lot 2 critique #27 (ACAL37) — un utilisateur qui n'a que le droit de VOIR
+ *  ouvre la conception du devis en LECTURE SEULE, par une porte de lecture. */
+const RAISON_LECTURE_SEULE_DROIT = 'Lecture seule : vous pouvez consulter cette conception, pas la modifier.'
+const AUCUNE_CONCEPTION_LECTURE = 'Aucune conception pour ce devis — un utilisateur habilité doit la créer.'
+
 function ConceptionDuDevis() {
   const { id: devisId } = useParams()
   const navigate = useNavigate()
@@ -1528,7 +1542,26 @@ function ConceptionDuDevis() {
           : { calepinageId: null, erreur: 'Impossible d’ouvrir la conception de ce devis — réessayez.' })
       })
       .catch((err) => {
-        if (!annule) setResolution({ calepinageId: null, erreur: messageResolution(err) })
+        if (annule) return
+        if (err?.response?.status !== 403) {
+          setResolution({ calepinageId: null, erreur: messageResolution(err) })
+          return
+        }
+        // Lot 2 critique #27 — la porte de résolution est une ÉCRITURE
+        // possible (créer / adopter) : sans ce droit, le calepinage existant
+        // est lu sur la fiche devis (`calepinage.id`, lecture), puis ouvert
+        // en LECTURE SEULE. Aucune écriture n'est tentée.
+        Promise.resolve(ventesApi.getDevisById(devisId))
+          .then((res) => {
+            if (annule) return
+            const lu = res?.data?.calepinage?.id ?? null
+            setResolution(lu
+              ? { calepinageId: lu, erreur: null, lectureSeule: true }
+              : { calepinageId: null, erreur: AUCUNE_CONCEPTION_LECTURE })
+          })
+          .catch((errLecture) => {
+            if (!annule) setResolution({ calepinageId: null, erreur: messageResolution(errLecture) })
+          })
       })
     return () => { annule = true }
   }, [devisId, navigate])
@@ -1539,6 +1572,7 @@ function ConceptionDuDevis() {
         mode="calepinage"
         calepinageImpose={resolution.calepinageId}
         devisSynchronise={devisId}
+        lectureSeuleImposee={!!resolution.lectureSeule}
       />
     )
   }
