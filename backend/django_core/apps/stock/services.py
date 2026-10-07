@@ -2288,9 +2288,15 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     une ENTRÉE DE PRODUCTION (découpe, assemblage, démontage) = valeur des
     sorties qui la produisent ÷ quantité produite. Le coût moyen
     (``average_cost_with_source``) le lit comme une couche de coût. ``None``
-    (défaut) = comportement historique strictement inchangé."""
+    (défaut) = comportement historique strictement inchangé.
+
+    ASTK45 — une ``quantite`` non entière (Decimal/float à partie décimale)
+    est REFUSÉE (ValidationError 400 lisible) au lieu d'être tronquée en
+    silence par la colonne entière (classe AUD222)."""
     from django.db import transaction as _transaction
     from .models import MouvementStock, Produit, StockEmplacement
+
+    quantite = exiger_quantite_entiere(quantite, produit)
 
     if (verrouiller_produit and getattr(produit, 'pk', None)
             and _transaction.get_connection().in_atomic_block):
@@ -2332,6 +2338,33 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         quantite_avant=quantite_avant, quantite_apres=quantite_apres)
     _emit_mouvement_stock_enregistre(mouvement, company)
     return mouvement
+
+
+def _format_quantite_fr(valeur):
+    """``Decimal('1.50')`` → ``'1,5'`` (affichage FR, zéros de queue ôtés)."""
+    texte = format(Decimal(str(valeur)).normalize(), 'f')
+    return texte.replace('.', ',')
+
+
+def exiger_quantite_entiere(quantite, produit=None):
+    """ASTK45 — renvoie ``quantite`` en ``int`` si elle est ENTIÈRE (``3``,
+    ``Decimal('3.000')``, ``3.0``), sinon lève une ValidationError DRF (400
+    lisible) « quantité non entière (1,5) pour <produit> — unité de stock
+    entière exigée ». Le stock se compte en unités entières : une quantité
+    décimale (0,5 m de câble × 3) n'est plus tronquée en silence par la
+    colonne entière du mouvement."""
+    from rest_framework.exceptions import ValidationError
+    if quantite is None or isinstance(quantite, bool):
+        return quantite
+    if isinstance(quantite, int):
+        return quantite
+    valeur = Decimal(str(quantite))
+    if valeur != valeur.to_integral_value():
+        nom = getattr(produit, 'nom', None) or 'ce produit'
+        raise ValidationError({'quantite': [
+            f'Quantité non entière ({_format_quantite_fr(valeur)}) pour '
+            f'{nom} — unité de stock entière exigée.']})
+    return int(valeur)
 
 
 def _emit_mouvement_stock_enregistre(mouvement, company):
@@ -4451,19 +4484,26 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             "Le kit n'a pas de produit composite (produit_compose) : "
             "impossible de clôturer l'ordre.")
 
+    # ASTK45 — chaque quantité consommée est validée ENTIÈRE avant toute
+    # écriture : 0,5 m × 3 = 1,5 est refusé (400 lisible), jamais tronqué.
+    a_consommer = []
+    for ligne in composants:
+        comp_produit = ligne.produit
+        if comp_produit is None:
+            continue
+        qte_conso = ((ligne.quantite or 0) * quantite_produite if per_unit
+                     else (ligne.quantite or 0))
+        if qte_conso <= 0:
+            continue
+        a_consommer.append(
+            (comp_produit, exiger_quantite_entiere(qte_conso, comp_produit)))
+
     with transaction.atomic():
         mouvements = []
         # ASTK44 — valeur des composants consommés, portée par l'entrée du
         # composite (coût de l'accesseur unique, lu AVANT la sortie).
         valeur_consommee = Decimal('0')
-        for ligne in composants:
-            comp_produit = ligne.produit
-            if comp_produit is None:
-                continue
-            qte_conso = ((ligne.quantite or 0) * quantite_produite if per_unit
-                         else (ligne.quantite or 0))
-            if qte_conso <= 0:
-                continue
+        for comp_produit, qte_conso in a_consommer:
             p = Produit.objects.select_for_update().get(id=comp_produit.id)
             avant = p.quantite_stock
             apres = avant - qte_conso
