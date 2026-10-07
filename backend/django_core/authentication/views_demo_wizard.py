@@ -80,6 +80,14 @@ class DemoWizardCreateView(APIView):
             return Response(
                 {'detail': 'densite invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # ASEC16 — jamais une société existante non démo (est_demo=False).
+        from authentication.management.commands.seed_demo_company import (
+            refus_societe_non_demo,
+        )
+        refus = refus_societe_non_demo(slug)
+        if refus:
+            return Response({'detail': refus},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         set_progress(slug, 0, 'en_cours')
         try:
