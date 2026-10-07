@@ -237,3 +237,115 @@ class PerimetreDAstk1Tests(TestCase):
 
         self.assertEqual(len(self._historique(envoye)), nb_envoye)
         self.assertEqual(len(self._historique(negocie)), nb_negocie)
+
+
+class ChampsEtendusTests(TestCase):
+    """ASTK142 — l'abonné traite TVA et barème forfaitaire (émis par
+    ASTK89) : brouillons retarifés / TVA suivie, envoyés figés + note."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor ASTK142')
+        self.user = User.objects.create_user(
+            username='astk142_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.panneau = Produit.objects.create(
+            company=self.company, nom='Panneau Jinko 550W', sku='ASTK142-PAN',
+            prix_achat=Decimal('700.00'), prix_vente=Decimal('1000.00'),
+            quantite_stock=100)
+        self.forfait = Produit.objects.create(
+            company=self.company, nom='Installation', sku='ASTK142-INS',
+            prix_achat=Decimal('0'), prix_vente=Decimal('4500.00'),
+            prix_fixe_ht=Decimal('2000.00'),
+            prix_par_panneau_ht=Decimal('300.00'), quantite_stock=0,
+            tva=Decimal('10.00'))
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Benani', prenom='Sara',
+            email='astk142@example.com', telephone='+212600000142')
+        self._n = 0
+
+    def _devis(self, statut, *, prix=Decimal('4500.00'), taux_tva=None,
+               prix_manuel=False):
+        self._n += 1
+        devis = Devis.objects.create(
+            company=self.company, statut=statut, client=self.client_obj,
+            reference=f'DEV-ASTK142-{self._n:04d}', taux_tva=Decimal('20'))
+        LigneDevis.objects.create(
+            devis=devis, produit=self.panneau,
+            designation='Panneau Jinko 550W', quantite=Decimal('10'),
+            prix_unitaire=Decimal('1000.00'), remise=Decimal('0'))
+        ligne = LigneDevis.objects.create(
+            devis=devis, produit=self.forfait,
+            designation='Installation', quantite=Decimal('1'),
+            prix_unitaire=prix, remise=Decimal('0'), taux_tva=taux_tva,
+            prix_manuel=prix_manuel)
+        return devis, ligne
+
+    def _resync(self, champs):
+        return resynchroniser_devis_pour_produit(
+            produit=self.forfait, company=self.company, champs=champs,
+            user=self.user)
+
+    def _notes(self, devis):
+        return [a.body or '' for a in devis.activites.all()]
+
+    def test_forfait_retarife_brouillon(self):
+        # 250 -> 300 : 10 panneaux => 2000 + 10 x 300 = 5000.
+        brouillon, ligne = self._devis(Devis.Statut.BROUILLON,
+                                       prix=Decimal('4500.00'))
+        manuel, ligne_manuelle = self._devis(
+            Devis.Statut.BROUILLON, prix=Decimal('4000.00'),
+            prix_manuel=True)
+
+        self._resync({'prix_par_panneau_ht': ['250.00', '300.00']})
+
+        self.assertEqual(
+            LigneDevis.objects.get(pk=ligne.pk).prix_unitaire,
+            Decimal('5000.00'))
+        # Abstention prix_manuel : intacte et DITE par une note persistée.
+        self.assertEqual(
+            LigneDevis.objects.get(pk=ligne_manuelle.pk).prix_unitaire,
+            Decimal('4000.00'))
+        self.assertTrue(any('Installation' in n
+                            for n in self._notes(manuel)), self._notes(manuel))
+        self.assertTrue(any('Resynchronisé automatiquement' in n
+                            for n in self._notes(brouillon)))
+
+    def test_tva_suit_si_ligne_au_taux_catalogue(self):
+        _d1, au_taux = self._devis(Devis.Statut.BROUILLON,
+                                   taux_tva=Decimal('20.00'))
+        _d2, vide = self._devis(Devis.Statut.BROUILLON, taux_tva=None)
+        _d3, autre = self._devis(Devis.Statut.BROUILLON,
+                                 taux_tva=Decimal('14.00'))
+
+        self._resync({'tva': ['20.00', '10.00']})
+
+        self.assertEqual(LigneDevis.objects.get(pk=au_taux.pk).taux_tva,
+                         Decimal('10.00'))
+        self.assertIsNone(LigneDevis.objects.get(pk=vide.pk).taux_tva)
+        self.assertEqual(LigneDevis.objects.get(pk=autre.pk).taux_tva,
+                         Decimal('14.00'))
+
+    def test_envoye_note_seulement(self):
+        envoye, ligne = self._devis(Devis.Statut.ENVOYE,
+                                    taux_tva=Decimal('20.00'))
+        total_avant = Devis.objects.get(pk=envoye.pk).total_ttc
+
+        self._resync({'prix_par_panneau_ht': ['250.00', '300.00']})
+        self._resync({'tva': ['20.00', '10.00']})
+
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.prix_unitaire, Decimal('4500.00'))
+        self.assertEqual(ligne.taux_tva, Decimal('20.00'))
+        self.assertEqual(Devis.objects.get(pk=envoye.pk).total_ttc,
+                         total_avant)
+        corps = [n for n in self._notes(envoye)
+                 if 'devis envoyé conservé' in n]
+        self.assertEqual(len(corps), 2, corps)
+
+    def test_valeur_perimee_ignoree(self):
+        # Le catalogue vaut 10 : un événement « -> 15 » est périmé.
+        _d, ligne = self._devis(Devis.Statut.BROUILLON,
+                                taux_tva=Decimal('20.00'))
+        self._resync({'tva': ['20.00', '15.00']})
+        self.assertEqual(LigneDevis.objects.get(pk=ligne.pk).taux_tva,
+                         Decimal('20.00'))

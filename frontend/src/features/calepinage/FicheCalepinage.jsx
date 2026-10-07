@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import { urlFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import AssigneePicker from '../../components/AssigneePicker'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 import SelecteurRattachement from './SelecteurRattachement'
 import useUtilisateursAssignables from './useUtilisateursAssignables'
-import { urlImage } from './urlImage'
 import { formatDateTime } from '../../lib/format'
 // CALX344 — les étiquettes libres (records.Tag), lues/posées/retirées par la
 // porte `etiquettes/` (CALX343) : un composant à part, monté sous la fiche.
@@ -781,7 +781,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
 
         <Champ cle="image" label="Aperçu">
           {image.url
-            ? <a href={urlImage(image.url)} className="underline" target="_blank" rel="noreferrer">
+            ? <a href={urlFichierCalepinage(image.url)} className="underline" target="_blank" rel="noreferrer">
               Voir l’aperçu
             </a>
             : '—'}

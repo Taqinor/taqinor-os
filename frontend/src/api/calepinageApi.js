@@ -109,6 +109,12 @@ const calepinageApi = {
     calerPhoto: (id, photoId, coins) =>
       api.patch(`${pivot(id)}photos/${photoId}/calage/`,
         { calage: coins ? { coins } : null }),
+    // ACAL203 — corriger (genre, prise_le, legende) ou retirer une photo de site
+    // (ACAL202 : PATCH → {photo, photos} ; DELETE → {photos}).
+    modifierPhoto: (id, photoId, corps) =>
+      api.patch(`${pivot(id)}photos/${photoId}/`, corps),
+    supprimerPhoto: (id, photoId) =>
+      api.delete(`${pivot(id)}photos/${photoId}/`),
 
     // CAL20 — historique. La restauration REJOUE une version en en créant une
     // NOUVELLE : jamais une réécriture, jamais une suppression d'historique.
@@ -398,3 +404,5 @@ export default calepinageApi
 // ACAL13 — contrat calepinage_photos.json (M0)
 // ACAL15 — contrat gabarits_dossier_reglementaire.json (M0)
 // ACAL21 — contrat calepinage_consommation_proposee.json (M0)
+// ACAL201 — l'URL d'un fichier servi par le proxy Django (chemin relatif + origine d'API).
+export { urlFichierCalepinage } from '../lib/calage/fichierCalepinage'
