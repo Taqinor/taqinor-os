@@ -651,7 +651,9 @@ class ClientViewSet(CompanyScopedModelViewSet):
         except (TypeError, ValueError):
             seuil = 90
         company = request.user.company if request.user.company_id else None
-        entries = comptes_dormants(company, seuil_jours=seuil)
+        # ALEA27 — bornée par la portée du viewset (société + équipe).
+        entries = comptes_dormants(
+            company, seuil_jours=seuil, clients=self.get_queryset())
         results = [{
             'id': e['client'].id,
             'nom': str(e['client']),
@@ -915,6 +917,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             from .signaux import annotations_signaux
             qs = qs.annotate(**annotations_signaux())
         return qs
+
+    def _leads_en_portee(self):
+        """ALEA27 — les leads que CET utilisateur peut voir (société + portée
+        équipe/sous-arbre + entité), SANS les annotations de liste : la base
+        de toute action annexe (bulk, doublons, contrôle de doublons). Une
+        seule source de vérité : ``get_queryset()``."""
+        return Lead.objects.filter(
+            pk__in=self.get_queryset().values('pk'))
 
     @staticmethod
     def _annoter_prochaine_touche(qs):
@@ -1698,7 +1708,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         rapprochement, et la fusion reste manuelle."""
         from .services import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
-        dups = find_duplicate_leads(lead)
+        dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
         return Response([
             {
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
@@ -1730,7 +1740,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         exclude_pk = exclude if (exclude or '').isdigit() else None
         dups = find_duplicates_by_contact(
             request.user.company, phone=phone, email=email,
-            exclude_pk=exclude_pk)
+            exclude_pk=exclude_pk, queryset=self._leads_en_portee())
         return Response([
             {
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
@@ -1797,7 +1807,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
         clusters, _ = find_duplicate_clusters(
-            request.user.company, include_archived=include_archived)
+            request.user.company, include_archived=include_archived,
+            queryset=self._leads_en_portee())
         # Libellés FR des champs comblés à la fusion (aperçu avant confirmation).
         field_labels = activity.TRACKED_FIELDS
         out = []
@@ -2548,7 +2559,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )
 
         # Recherche directe sur Client
-        client_qs = ClientModel.objects.filter(company=company)
+        # ALEA27 (jumeau) — bornée par la portée client de l'utilisateur
+        # (même règle que ``ClientViewSet.get_queryset``) : un client hors
+        # portée n'est jamais rendu.
+        client_qs = scope_client_queryset(
+            ClientModel.objects.filter(company=company), request.user)
         found = []
         pks_seen = set()
         if phone_norm:
@@ -3133,9 +3148,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': "Action réservée à l'administrateur."},
                 status=status.HTTP_403_FORBIDDEN)
         try:
+            # ALEA27 — la sélection est bornée par la portée du viewset : un
+            # id hors portée (lead d'un collègue hors équipe) est ignoré.
             result = apply_bulk_action(
                 company=request.user.company, user=request.user,
-                lead_ids=ids, op=op, params=request.data)
+                lead_ids=ids, op=op, params=request.data,
+                queryset=self._leads_en_portee())
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -4807,6 +4825,10 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # ALEA27 — portée équipe/sous-arbre : seuls les RDV d'un lead dans la
+        # portée (responsable visible) ou créés par un utilisateur visible.
+        # Portée 'all' (admin) → inchangé.
+        qs = scope_queryset(qs, self.request.user, ['lead__owner', 'created_by'])
         lead_id = self.request.query_params.get('lead')
         if lead_id:
             qs = qs.filter(lead_id=lead_id)

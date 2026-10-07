@@ -4449,7 +4449,8 @@ def _completeness(lead):
     return score
 
 
-def find_duplicate_clusters(company, include_archived=False):
+def find_duplicate_clusters(company, include_archived=False, *,
+                            queryset=None):
     """Scanne TOUS les leads d'une société et regroupe les doublons probables
     par téléphone OU email OU nom normalisé OU adresse OU point GPS
     (union-find, CAD93 pour les deux derniers). Renvoie une liste de clusters
@@ -4458,8 +4459,14 @@ def find_duplicate_clusters(company, include_archived=False):
     restent visibles pour comprendre une fusion passée).
 
     SUGGESTION, jamais décision : rien n'est fusionné ici. La fusion reste un
-    geste humain explicite (``merge_leads``, appelé par l'atelier doublons)."""
-    qs = Lead.objects.filter(company=company)
+    geste humain explicite (``merge_leads``, appelé par l'atelier doublons).
+
+    ALEA27 — ``queryset`` (optionnel, BORNÉ) : l'atelier HTTP transmet
+    ``LeadViewSet.get_queryset()`` (société + portée équipe) — un lead hors
+    portée n'entre dans aucun cluster. ``None`` = la société entière, voulu
+    pour les lectures système (KPI/foyers, sans utilisateur)."""
+    base = queryset if queryset is not None else Lead.objects.all()
+    qs = base.filter(company=company)
     if not include_archived:
         qs = qs.filter(is_archived=False)
     leads = list(qs)
@@ -4546,16 +4553,18 @@ def cluster_match_keys(group):
     return out
 
 
-def find_duplicate_leads(lead):
+def find_duplicate_leads(lead, *, queryset=None):
     """Leads probablement en double : même téléphone OU email normalisé, même
-    société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""
+    société, hors le lead lui-même. Inclut les archivés (pour les retrouver).
+    ALEA27 — ``queryset`` borne la recherche (voir
+    ``find_duplicates_by_contact``)."""
     return find_duplicates_by_contact(
         lead.company, phone=lead.telephone, email=lead.email,
-        exclude_pk=lead.pk)
+        exclude_pk=lead.pk, queryset=queryset)
 
 
 def find_duplicates_by_contact(company, *, phone=None, email=None,
-                               exclude_pk=None):
+                               exclude_pk=None, queryset=None):
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
@@ -4564,14 +4573,22 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     QW10 — requête INDEXÉE sur les colonnes normalisées maintenues par
     `Lead.save()` (`phone_normalise`/`email_normalise`, backfillées par la
     migration pour les lignes existantes) — jamais un scan Python complet de
-    la société à chaque appel."""
+    la société à chaque appel.
+
+    ALEA27 — ``queryset`` (optionnel, BORNÉ) : les actions HTTP
+    ``duplicates``/``check-duplicates`` transmettent
+    ``LeadViewSet.get_queryset()`` (société + portée équipe) — un lead hors
+    portée n'est jamais rendu (ni ses PII). ``None`` = la société entière,
+    voulu pour les chemins SYSTÈME (webhooks, imports, WhatsApp entrant,
+    DSR) qui doivent rapprocher sans utilisateur."""
     from django.db.models import Q
 
     phone = normalize_phone(phone)
     email = normalize_email(email)
     if not phone and not email:
         return []
-    qs = Lead.objects.filter(company=company)
+    base = queryset if queryset is not None else Lead.objects.all()
+    qs = base.filter(company=company)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
 
@@ -8158,12 +8175,17 @@ def coerce_id_list(raw):
     return out
 
 
-def apply_bulk_action(*, company, user, lead_ids, op, params):
+def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     """Applique une action en masse à une sélection de leads de la société.
 
     Renvoie un récapitulatif : nombre mis à jour, nombre inchangés, et la liste
     des leads ignorés avec leur raison (en français). Chaque modification écrit
     une entrée Historique marquée « en masse ».
+
+    ALEA27 — ``queryset`` (BORNÉ) : l'action HTTP ``leads/bulk/`` transmet la
+    portée du viewset (société + équipe/sous-arbre) ; un id hors portée est
+    IGNORÉ en silence, exactement comme un id absent (aucune fuite
+    d'existence). ``None`` = la société entière (aucun appelant HTTP).
     """
     from django.db import transaction
 
@@ -8171,8 +8193,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         raise ValueError("Action en masse inconnue.")
 
     lead_ids = coerce_id_list(lead_ids)
+    base = queryset if queryset is not None else Lead.objects.all()
     leads = list(
-        Lead.objects.filter(company=company, id__in=lead_ids).order_by('id'))
+        base.filter(company=company, id__in=lead_ids).order_by('id'))
     updated, unchanged, skipped = 0, 0, []
 
     def skip(lead, reason):
