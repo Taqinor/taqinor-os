@@ -16,7 +16,9 @@ export function messageServeur(err, repli = 'Une erreur est survenue.') {
   if (!data) return repli
   if (typeof data === 'string') return data
   if (data.detail) return aplatir(data.detail).join(' ')
-  const textes = aplatir(data)
+  // Enveloppe de validation : `error.fields` répète déjà les messages de champs.
+  const { error, ...champs } = data
+  const textes = aplatir(Object.keys(champs).length ? champs : error?.fields ?? error)
   return textes.length ? textes.join(' ') : repli
 }
 

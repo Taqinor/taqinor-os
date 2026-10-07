@@ -68,6 +68,8 @@ const CockpitEntrepot = lazy(() => import('../../pages/stock/CockpitEntrepot'))
 const CasiersPage = lazy(() => import('../../pages/stock/wms/CasiersPage'))
 // ASTK216 — poste scanner (résoudre un code, mouvement scanné, retour fournisseur).
 const PosteScannerPage = lazy(() => import('../../pages/stock/wms/PosteScannerPage'))
+// ASTK217 — picking : vagues, prélèvement, comptages tournants, productivité.
+const PickingPage = lazy(() => import('../../pages/stock/wms/PickingPage'))
 
 const config = {
   key: 'stock',
@@ -128,6 +130,7 @@ const config = {
       { to: '/stock/entrepot', label: 'Tableau de bord entrepôt', icon: navIcon(Gauge), roles: ['responsable','admin'] },
       { to: '/stock/entrepot/casiers', label: 'Casiers', icon: navIcon(LayoutGrid), roles: ['responsable','admin'] },
       { to: '/stock/entrepot/scanner', label: 'Poste scanner', icon: navIcon(ScanLine), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/picking', label: 'Picking', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -155,6 +158,7 @@ const config = {
     { path: '/stock/entrepot', component: CockpitEntrepot },
     { path: '/stock/entrepot/casiers', component: CasiersPage },
     { path: '/stock/entrepot/scanner', component: PosteScannerPage },
+    { path: '/stock/entrepot/picking', component: PickingPage },
   ],
 }
 
