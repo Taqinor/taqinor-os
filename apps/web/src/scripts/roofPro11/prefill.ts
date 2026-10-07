@@ -346,6 +346,8 @@ export interface SerializedZone {
    *  valeurs de zone vierge que `newAreaRecord()`. */
   roofType?: 'flat' | 'pitched';
   pitchDeg?: number;
+  /** ACAL252 — provenance de la pente du pan (mode + ses champs) ; additive, round-trip verbatim. */
+  pitchSource?: Record<string, unknown>;
   facingAzimuthDeg?: number;
   facingManual: boolean;
   neededPanels: number;
@@ -936,6 +938,34 @@ export class ErreurDocumentAtelier extends Error {
   }
 }
 
+/** ACAL252 — la pente (°) que décrit une `pitchSource`, ou `null` quand elle ne la détermine pas. */
+function penteDecrite(source: Record<string, unknown>): number | null {
+  const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  if (source.mode === 'degres') return n(source.degres);
+  if (source.mode === 'pourcentage') {
+    const p = n(source.pourcentage);
+    return p === null ? null : (Math.atan(p / 100) * 180) / Math.PI;
+  }
+  if (source.mode === 'cotes') {
+    const portee = n(source.porteeM);
+    const hauteur = n(source.hauteurFaitageM);
+    return portee === null || hauteur === null || portee === 0 ? null : (Math.atan(hauteur / portee) * 180) / Math.PI;
+  }
+  return null;
+}
+
+/**
+ * ACAL252 — `{ pitchSource }` à réémettre pour un pan, ou rien. La provenance est conservée
+ * VERBATIM tant qu'elle décrit la pente émise ; une pente retouchée à la main dans l'atelier
+ * (écart > 1e-6°) n'est plus celle que la source décrit : elle est alors omise, jamais mentie.
+ */
+function pitchSourceEmise(source: Record<string, unknown> | undefined, pitchDeg: number): { pitchSource?: Record<string, unknown> } {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const decrite = penteDecrite(source);
+  if (decrite !== null && Number.isFinite(pitchDeg) && Math.abs(decrite - pitchDeg) > 1e-6) return {};
+  return { pitchSource: JSON.parse(JSON.stringify(source)) as Record<string, unknown> };
+}
+
 export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: SerializeMeta): SerializedLayout {
   // ACAL64 — deux pans de même identifiant : refus nommé, jamais un document émis (le second
   // pan écraserait le premier côté serveur, et le compte publié serait faux).
@@ -968,6 +998,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
       pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
+      // ACAL252 — la provenance de la pente voyage avec elle, tant qu'elle la décrit encore.
+      ...pitchSourceEmise(a.pitchSource, isActive ? ctx.pitchDeg : a.pitchDeg),
       facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
@@ -1290,7 +1322,7 @@ const CLES_RACINE_ATELIER = new Set([
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
-  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'facingAzimuthDeg', 'facingManual',
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual',
   'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges',
 ]);
 
@@ -1493,6 +1525,10 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     // TOUJOURS les trois clés, donc ce repli ne change rien pour un dossier enregistré.
     roofType: z.roofType ?? 'flat',
     pitchDeg: z.pitchDeg ?? 22,
+    // ACAL252 — la provenance de la pente revient telle quelle (copie profonde).
+    ...(z.pitchSource && typeof z.pitchSource === 'object' && !Array.isArray(z.pitchSource)
+      ? { pitchSource: JSON.parse(JSON.stringify(z.pitchSource)) as Record<string, unknown> }
+      : {}),
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
     neededPanels: z.neededPanels,

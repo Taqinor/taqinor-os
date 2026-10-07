@@ -53,6 +53,35 @@ class CreationRefusee(ValueError):
         self.champ = champ
 
 
+class DevisTenuParUnArchive(CreationRefusee):
+    """Refus 409 NOMMÉ : le devis est déjà tenu par un calepinage ARCHIVÉ
+    (contrainte ``calepinage_un_par_devis`` ; l'archivé est caché par
+    ``calepinages_actifs``) — on le restaure, on n'en crée pas un second."""
+
+    def __init__(self, archive):
+        super().__init__(
+            f'Ce devis a déjà un calepinage archivé (#{archive.pk}) : '
+            'restaurez-le depuis la corbeille.', champ='devis')
+        self.calepinage_id = archive.pk
+
+    def corps(self):
+        return {'devis': str(self), 'calepinage_archive': self.calepinage_id}
+
+
+def _refuser_si_un_archive_tient_le_devis(company, devis_id):
+    """Lève :class:`DevisTenuParUnArchive` quand un calepinage ARCHIVÉ de
+    ``company`` est lié à ``devis_id``."""
+    from ..models import Calepinage
+
+    archive = (Calepinage.objects
+               .filter(company=company, devis_id=devis_id,
+                       archive_le__isnull=False)
+               .order_by('-archive_le', '-id')
+               .first())
+    if archive is not None:
+        raise DevisTenuParUnArchive(archive)
+
+
 def _message_deja_ouvert(existant):
     """ACAL182 — le refus « un seul calepinage ouvert par lead » (D-ACAL-12),
     qui NOMME l'existant pour qu'on l'ouvre (contrat
@@ -267,6 +296,9 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
             from apps.ventes.services import layout_hash
 
             empreinte = layout_hash(roof_layout) or ''
+        # ACAL186 (D-ACAL-20) — et MÉMORISÉ pour les pans à venir (clé
+        # « document », hors empreinte imprimée).
+        roof_layout = _document_avec_jeu(roof_layout, jeu)
 
     lead_id = getattr(devis, 'lead_id', None)
     with transaction.atomic(), _verrou_creation(company.pk, lead_id):
@@ -276,6 +308,9 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
         existant = calepinage_du_devis(devis_id, company)
         if existant is not None:
             return existant, ORIGINE_EXISTANT
+        # Lot 2 critique #4 — un ARCHIVÉ qui tient déjà ce devis : refus
+        # nommé (409, « restaurez-le »), jamais un IntegrityError en 500.
+        _refuser_si_un_archive_tient_le_devis(company, devis.pk)
         adopte = _adopter_l_ouvert_du_lead(devis, company, lead_id, user=user)
         if adopte is not None:
             return adopte
@@ -297,6 +332,7 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
             # a gardé le calepinage du clic gagnant ; on le rend tel quel.
             existant = calepinage_du_devis(devis_id, company)
             if existant is None:
+                _refuser_si_un_archive_tient_le_devis(company, devis.pk)
                 raise
             return existant, ORIGINE_EXISTANT
     # CAL26 — la première ligne du chatter, par la primitive `records`.
@@ -381,6 +417,10 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
     from .traduction import mode_pose_declare_du_lead
 
     mode_pose = mode_pose_declare_du_lead(lead)
+    document = {'modePoseDeclare': mode_pose} if mode_pose else None
+    # ACAL186 (D-ACAL-20) — un jeu choisi sur un calepinage VIERGE est
+    # MÉMORISÉ dans le document (``jeuReglages``), jamais validé puis jeté.
+    document = _document_avec_jeu(document, jeu)
     calepinage = Calepinage.objects.create(
         company=company,
         lead_id=lead.pk,
@@ -388,8 +428,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         titre=titre or _titre_depuis(getattr(lead, 'nom', '')),
         cree_par=user,
         responsable=responsable,
-        **({'roof_layout': {'modePoseDeclare': mode_pose}}
-           if mode_pose else {}),
+        **({'roof_layout': document} if document is not None else {}),
     )
     journaliser_creation(calepinage, user=user)  # CAL26
     _noter_jeu(calepinage, jeu, 0, user=user)
@@ -423,12 +462,14 @@ def creer_pour_client(client_id, company, *, user=None, titre='',
             f"Client introuvable (#{client_id}).", champ='client')
     _exiger_responsable(company, responsable)
 
+    document = _document_avec_jeu(None, jeu)  # ACAL186
     calepinage = Calepinage.objects.create(
         company=company,
         client_id=client.pk,
         titre=titre or _titre_depuis(getattr(client, 'nom', '')),
         cree_par=user,
         responsable=responsable,
+        **({'roof_layout': document} if document is not None else {}),
     )
     journaliser_creation(calepinage, user=user)  # CAL26
     _noter_jeu(calepinage, jeu, 0, user=user)
@@ -526,19 +567,60 @@ def _layout_regle(roof_layout, jeu):
     return document, regles
 
 
+#: ACAL186 (D-ACAL-20) — la clé RACINE « document » (hors empreinte
+#: imprimée) où le jeu choisi à la création est mémorisé.
+CLE_JEU_REGLAGES = 'jeuReglages'
+
+
+def _libelle_jeu(jeu):
+    return str(jeu.get('nom') or jeu.get('id') or '').strip()
+
+
+def _instantane_jeu(jeu):
+    """``{presetId, libelle, valeurs}`` — un INSTANTANÉ des valeurs du jeu
+    lu une fois (jamais une référence vivante : modifier le jeu société
+    ensuite ne change pas ce calepinage)."""
+    import copy
+
+    return {
+        'presetId': jeu.get('id'),
+        'libelle': _libelle_jeu(jeu),
+        'valeurs': {cle: copy.deepcopy(valeur) for cle, valeur in jeu.items()
+                    if cle not in ('id', 'nom')},
+    }
+
+
+def _document_avec_jeu(roof_layout, jeu):
+    """ACAL186 — le document avec ``jeuReglages`` posé (copie) ; inchangé
+    (objet identique) quand aucun jeu n'est demandé."""
+    import copy
+
+    if jeu is None:
+        return roof_layout
+    document = (copy.deepcopy(roof_layout) if isinstance(roof_layout, dict)
+                else {})
+    document[CLE_JEU_REGLAGES] = _instantane_jeu(jeu)
+    return document
+
+
 def _noter_jeu(calepinage, jeu, regles, *, user=None):
-    """Le choix du jeu au chatter — rien quand aucun jeu n'est demandé."""
+    """Le choix du jeu au chatter — rien quand aucun jeu n'est demandé.
+
+    ACAL186 — le jeu est MÉMORISÉ dans le document (``jeuReglages``) et
+    appliqué à chaque nouveau pan : la ligne le dit (fin de « aucun pan
+    modifié »)."""
     if jeu is None:
         return
     from .journal import noter
 
-    nom = str(jeu.get('nom') or jeu.get('id') or '').strip()
+    nom = _libelle_jeu(jeu)
     if regles:
         texte = (f"Jeu de réglages « {nom} » appliqué à {regles} pan(s) du "
-                 "document de départ.")
+                 "document de départ et mémorisé : appliqué à chaque "
+                 "nouveau pan.")
     else:
-        texte = (f"Jeu de réglages « {nom} » retenu à la création : aucun pan "
-                 "du document de départ n'en a été modifié.")
+        texte = (f"Jeu de réglages « {nom} » mémorisé : appliqué à chaque "
+                 "nouveau pan.")
     noter(calepinage, texte, user=user)
 
 
@@ -587,9 +669,23 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
         lead_id = getattr(devis, 'lead_id', None) or lead_id
         client_id = getattr(devis, 'client_id', None) or client_id
 
+    # Lot 2 critique #15 — le jeu est appliqué à la conception AVANT la
+    # copie : la version « Conception d'origine » déposée par ``dupliquer``
+    # est le document courant (jamais l'état d'avant réglage).
+    regles = 0
+
+    def regler(document):
+        nonlocal regles
+        if jeu is None:
+            return document
+        document, regles = _layout_regle(document, jeu)
+        # ACAL186 — le jeu est aussi MÉMORISÉ pour les pans à venir.
+        return _document_avec_jeu(document, jeu)
+
     with transaction.atomic():
         copie = creer_depuis_modele(modele, user=user, lead_id=lead_id,
-                                    client_id=client_id, titre=titre)
+                                    client_id=client_id, titre=titre,
+                                    regler_conception=regler)
         if devis is not None:
             # ACAL33 — le SEUL écrivain de ``Calepinage.devis`` ; un refus
             # (course perdue) annule la copie entière.
@@ -599,17 +695,5 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
                 lier_devis(copie, devis.pk, user=user)
             except LiaisonRefusee as refus:
                 raise CreationRefusee(str(refus), champ='devis_id') from None
-    champs = []
-    regles = 0
-    if jeu is not None:
-        document, regles = _layout_regle(copie.roof_layout, jeu)
-        if regles:
-            from apps.ventes.services import layout_hash
-
-            copie.roof_layout = document
-            copie.layout_hash = layout_hash(document) or ''
-            champs += ['roof_layout', 'layout_hash']
-    if champs:
-        copie.save(update_fields=champs + ['updated_at'])
     _noter_jeu(copie, jeu, regles, user=user)
     return copie

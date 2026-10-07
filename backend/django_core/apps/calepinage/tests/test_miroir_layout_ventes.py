@@ -1,6 +1,10 @@
-"""CAL39 — tout enregistrement de layout VENTES alimente le calepinage.
+"""CAL39 → ACAL38 — ``layout_finalise`` RATTACHE le devis à son calepinage,
+sans jamais réécrire un calepinage existant (D-ACAL-1 : plus de miroir).
 
 Ce qui est prouvé ici :
+
+* ACAL38 — un calepinage EXISTANT garde son document (fond calé, surfaces de
+  pose, modules) et sa liste de versions, quel que soit le layout annoncé ;
 
 * le module s'abonne RÉELLEMENT à ``layout_finalise`` dans ``apps.py``
   ``ready()`` (pas seulement dans un fichier jamais chargé) ;
@@ -69,12 +73,24 @@ class MiroirLayoutTest(BaseApiCalepinage):
         self.assertEqual(calepinage.company_id, self.company.pk)
         self.assertEqual(calepinage.cree_par_id, self.user.pk)
 
-    def test_miroir_idempotent_et_suit_les_changements(self):
+    def test_layout_finalise_ne_reecrit_pas_un_calepinage_existant(self):
+        """ACAL38 (D-ACAL-1) — le miroir CAL39 est RETIRÉ : un calepinage
+        déjà lié n'est jamais réécrit par un layout annoncé côté ventes."""
         self.devis.roof_layout = LAYOUT
         self.devis.save(update_fields=['roof_layout'])
         events.layout_finalise.send(sender='test', devis=self.devis,
                                     user=self.user)
         premier = self._calepinage()
+        # Le module enrichit SA conception (clés que ventes ne connaît pas).
+        from apps.calepinage.services.layout import enregistrer_layout
+
+        module = dict(LAYOUT, underlay={'kind': 'photo', 'photoSiteId': 3},
+                      poseSurfaces=[{'id': 's1', 'kind': 'sol'}],
+                      modules=[{'id': 7}])
+        enregistrer_layout(premier, module, user=self.user)
+        premier.refresh_from_db()
+        versions_avant = premier.versions.count()
+
         self.devis.roof_layout = LAYOUT_2
         self.devis.save(update_fields=['roof_layout'])
         events.layout_finalise.send(sender='test', devis=self.devis,
@@ -82,9 +98,8 @@ class MiroirLayoutTest(BaseApiCalepinage):
         self.assertEqual(
             Calepinage.objects.filter(devis=self.devis).count(), 1)
         premier.refresh_from_db()
-        self.assertEqual(premier.roof_layout, LAYOUT_2)
-        # L'historique a suivi : deux enregistrements significatifs.
-        self.assertEqual(premier.versions.count(), 2)
+        self.assertEqual(premier.roof_layout, module)
+        self.assertEqual(premier.versions.count(), versions_avant)
 
     def test_aucun_statut_n_est_ecrit(self):
         statut_devis = self.devis.statut
@@ -111,11 +126,13 @@ class MiroirLayoutTest(BaseApiCalepinage):
 
     def test_un_abonne_en_echec_ne_casse_pas_l_enregistrement(self):
         url = f'/api/django/ventes/devis/{self.devis.pk}/layout/'
-        # ACAL35 — le récepteur passe par adopter_ou_creer_pour_devis.
-        with mock.patch('apps.calepinage.services.creation'
-                        '.adopter_ou_creer_pour_devis',
-                        side_effect=RuntimeError('miroir cassé')):
+        # ACAL96 — la route écrit elle-même le calepinage lié (porte
+        # adopter_ou_creer_pour_devis) : c'est l'ABONNÉ qui casse ici, à
+        # l'émission de layout_finalise.
+        with mock.patch('core.events.layout_finalise.send',
+                        side_effect=RuntimeError('abonné cassé')):
             reponse = self.api.post(url, LAYOUT, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.roof_layout, LAYOUT)
+        self.assertEqual(self._calepinage().roof_layout, LAYOUT)

@@ -102,6 +102,27 @@ class AdoptionDevisTest(BaseApiCalepinage):
         self.assertEqual(self.c1.roof_layout, CONCEPTION_DU_MODULE)
         self.assertEqual(self._du_lead().count(), 1)
 
+    def test_devis_tenu_par_un_archive_409_nomme(self):
+        """Lot 2 critique #4 — le calepinage du devis est ARCHIVÉ (caché par
+        ``calepinages_actifs``) : 409 nommé « restaurez-le » avec son id,
+        jamais un IntegrityError (500), rien de créé."""
+        from django.utils import timezone
+
+        devis = Devis.objects.create(
+            company=self.company, client=self.client_a, lead=self.lead,
+            reference='DEV-202610-3502',
+            roof_layout={'schema_version': 2, 'result': {'panels': 4}})
+        Calepinage.objects.filter(pk=self.c1.pk).update(
+            devis=devis, archive_le=timezone.now())
+        avant = Calepinage.objects.filter(company=self.company).count()
+        reponse = self.api.post(URL_DEPUIS_MODELE, {'devis_id': devis.pk},
+                                format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['calepinage_archive'], self.c1.pk)
+        self.assertIn('restaurez-le', reponse.data['devis'])
+        self.assertEqual(
+            Calepinage.objects.filter(company=self.company).count(), avant)
+
     def test_depuis_lead_rend_le_calepinage_adopte(self):
         self._from_layout()
         reponse = self.api.post(URL_DEPUIS_LEAD, {'lead': self.lead.pk},

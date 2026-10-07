@@ -183,7 +183,7 @@ def profil_mensuel(*, facture_hiver, facture_ete=None, ete_differente=False,
 def _lire_lead(company, lead_id):
     """Le lead, par le SÉLECTEUR du CRM — jamais par ses modèles."""
     from apps.crm.selectors import get_company_lead
-    return get_company_lead(company, lead_id)
+    return get_company_lead(company, lead_id, avec_corbeille=True)
 
 
 def profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):

@@ -35,6 +35,27 @@ from __future__ import annotations
 #: société (CAL45). Absente ⇒ purge DÉSACTIVÉE (rien n'est jamais retiré).
 CLE_BORNE_PURGE = 'versions_conservees'
 
+#: ACAL92 — le libellé de la version FIGÉE déposée à la révision d'un devis
+#: (``receivers.relier_calepinage_au_devis_revise``) : la conception ENVOYÉE
+#: au client, relue pour rendre le PDF du devis remplacé
+#: (``selectors.conception_figee_du_devis``).
+LIBELLE_VERSION_ENVOYEE = 'Version envoyée — {reference}'
+
+#: ACAL45 — l'état d'avant une restauration (``restaurer_version``).
+LIBELLE_AVANT_RESTAURATION = 'Avant restauration de #{version}'
+
+#: ACAL117 — la conception d'origine d'une copie (``variantes.dupliquer``).
+LIBELLE_CONCEPTION_ORIGINE = "Conception d'origine (copie de #{source})"
+
+#: Les versions PIVOTS ne sont JAMAIS purgées (``purger_versions``) : la
+#: preuve de ce qui a été envoyé (ACAL92), le retour arrière d'une
+#: restauration (ACAL45), l'origine d'une copie (ACAL117). Préfixes tirés des
+#: libellés ci-dessus — un seul endroit à tenir.
+PREFIXES_VERSIONS_PIVOTS = tuple(
+    gabarit.split('{', 1)[0] for gabarit in (
+        LIBELLE_VERSION_ENVOYEE, LIBELLE_AVANT_RESTAURATION,
+        LIBELLE_CONCEPTION_ORIGINE))
+
 
 class VersionInvalide(ValueError):
     """Erreur métier sur l'historique, avec un message français.
@@ -155,14 +176,21 @@ def purger_versions(calepinage, *, garder=None):
             f"strictement positif (reçu : {garder!r}).",
             champ=CLE_BORNE_PURGE)
 
+    from django.db.models import Q
+
+    # Les versions PIVOTS (PREFIXES_VERSIONS_PIVOTS) sont hors borne : ni
+    # comptées, ni retirées.
+    pivots = Q()
+    for prefixe in PREFIXES_VERSIONS_PIVOTS:
+        pivots |= Q(libelle__startswith=prefixe)
+    purgeables = (CalepinageVersion.objects
+                  .filter(calepinage=calepinage)
+                  .exclude(pivots))
     survivantes = list(
-        CalepinageVersion.objects
-        .filter(calepinage=calepinage)
+        purgeables
         .order_by('-created_at', '-id')
         .values_list('pk', flat=True)[:garder])
-    a_retirer = (CalepinageVersion.objects
-                 .filter(calepinage=calepinage)
-                 .exclude(pk__in=survivantes))
+    a_retirer = purgeables.exclude(pk__in=survivantes)
     retirees = a_retirer.count()
     if retirees:
         a_retirer.delete()
@@ -171,6 +199,10 @@ def purger_versions(calepinage, *, garder=None):
 
 def restaurer_version(version, *, user=None, libelle=''):
     """CAL20 — REJOUE une version : elle est ré-enregistrée, jamais ressuscitée.
+
+    ACAL45 — toute restauration est RÉVERSIBLE : l'état d'avant est déposé
+    en version « Avant restauration de #N » ; seul le DESSIN est restauré
+    (``resultat`` intact, saisies conservées) ; le rendu 3D est vidé.
 
     L'histoire ne se réécrit pas. Restaurer n'EFFACE rien et ne MODIFIE aucun
     instantané : l'état restauré redevient l'état COURANT du calepinage et il
@@ -202,10 +234,41 @@ def restaurer_version(version, *, user=None, libelle=''):
             "Cette version n'est rattachée à aucun calepinage.",
             champ='version')
 
-    resultat = enregistrer_layout(
-        calepinage, version.roof_layout, user=user,
-        libelle=libelle or f'Restauration de la version #{version.pk}',
-        resultat=version.resultat)
+    from django.db import transaction
+
+    from .layout import empreinte_document
+
+    with transaction.atomic():
+        courante = (empreinte_document(calepinage.roof_layout)
+                    == empreinte_document(version.roof_layout))
+        if courante:
+            # ACAL45 — restaurer la version DÉJÀ courante : rien à faire,
+            # aucun instantané, ``resultat`` et rendu intacts.
+            resultat = enregistrer_layout(calepinage, version.roof_layout,
+                                          user=user)
+        else:
+            # ACAL45 — le verrou refuse AVANT l'instantané (rien n'est écrit).
+            from .verrou import verifier_ecriture_autorisee
+
+            verifier_ecriture_autorisee(calepinage)
+            # (1) l'état COURANT est déposé « Avant restauration » dans la
+            # MÊME transaction, sans geler un résultat (sorties périmées).
+            enregistrer_version(
+                calepinage, user=user,
+                libelle=LIBELLE_AVANT_RESTAURATION.format(version=version.pk),
+                resultat=None, meme_empreinte_admise=True)
+            # (2) SEUL le dessin revient : ``Calepinage.resultat`` (saisies
+            # électriques, raccordement, schéma, dérogations, simulation)
+            # n'est pas touché — la simulation devient périmée par sa
+            # propre empreinte ; (3) le rendu 3D (``roof_image``) est vidé.
+            resultat = enregistrer_layout(
+                calepinage, version.roof_layout, user=user,
+                libelle=(libelle
+                         or f'Restauration de la version #{version.pk}'),
+                roof_image='')
+            # ACAL287 — la restauration dépose une version DE PLUS (et
+            # « Avant restauration ») : la même borne s'applique.
+            purger_versions(calepinage)
     if not resultat['inchange']:
         # CAL26 — l'ÉVÉNEMENT « version restaurée », en plus de son effet
         # (l'enregistrement de conception se journalise de son côté).

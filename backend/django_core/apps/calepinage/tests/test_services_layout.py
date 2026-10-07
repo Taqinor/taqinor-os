@@ -103,11 +103,13 @@ class ChampsOptionnelsTest(BaseLayout):
         relu = Calepinage.objects.get(pk=self.pivot.pk)
         # Le résultat DÉPOSÉ est conservé tel quel…
         self.assertEqual(relu.resultat['kwc'], 6.9)
-        # …et la seule clé que le chemin de layout puisse AJOUTER est le
-        # verdict électrique rejoué (CAL128), qui peut ne pas être rendu
-        # — jamais une autre clé inventée.
+        # …et ACAL325 : le chemin de layout n'y AJOUTE plus le verdict
+        # électrique rejoué (servi à la demande) — la seule clé qu'il puisse
+        # ajouter est le fil des écarts de longueur (CAL170), jamais une
+        # autre clé inventée.
+        self.assertNotIn('verdict_electrique', relu.resultat)
         self.assertLessEqual(set(relu.resultat) - {'kwc'},
-                             {'verdict_electrique'})
+                             {'journal_longueur_chaine'})
         self.assertEqual(relu.version_moteur, 'v1')
         self.assertEqual(relu.roof_image, 'cle/minio.png')
 

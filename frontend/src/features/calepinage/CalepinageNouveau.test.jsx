@@ -27,6 +27,10 @@ const mocks = vi.hoisted(() => ({
   modeles: vi.fn(),
   getParametres: vi.fn(),
   depuisModele: vi.fn(),
+  // ACAL183 — la vraie liste `?lead=`, la relecture du responsable, les agents.
+  list: vi.fn(),
+  update: vi.fn(),
+  getAssignableUsers: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -38,6 +42,8 @@ vi.mock('../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       create: mocks.create,
+      list: (...a) => mocks.list(...a),
+      update: (...a) => mocks.update(...a),
       modeles: (...a) => mocks.modeles(...a),
       depuisModele: (...a) => mocks.depuisModele(...a),
     },
@@ -46,7 +52,11 @@ vi.mock('../../api/calepinageApi', () => ({
 }))
 
 vi.mock('../../api/crmApi', () => ({
-  default: { getLeads: mocks.getLeads, searchClients: mocks.searchClients },
+  default: {
+    getLeads: mocks.getLeads,
+    searchClients: mocks.searchClients,
+    getAssignableUsers: (...a) => mocks.getAssignableUsers(...a),
+  },
 }))
 
 import CalepinageNouveau from './CalepinageNouveau'
@@ -96,6 +106,9 @@ beforeEach(() => {
   })
   mocks.searchClients.mockResolvedValue({ data: [CLIENT_AVEC_ADRESSE, CLIENT_SANS_ADRESSE] })
   mocks.create.mockResolvedValue({ data: { id: 77 } })
+  mocks.list.mockResolvedValue({ data: { count: 0, results: [] } })
+  mocks.update.mockResolvedValue({ data: {} })
+  mocks.getAssignableUsers.mockResolvedValue({ data: [{ id: 7, username: 'sami' }] })
   mocks.modeles.mockResolvedValue({ data: [MODELE] })
   mocks.getParametres.mockResolvedValue({ data: REGLAGES })
   mocks.depuisModele.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
@@ -137,7 +150,7 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Lead')
     expect(screen.getByRole('button', { name: /Corriger le champ « Lead »/ })).toBeInTheDocument()
     // Rien n'est envoyé au serveur.
-    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.depuisModele).not.toHaveBeenCalled()
   })
 
   it('sur l’onglet CLIENT, le champ nommé est « Client », pas « Lead »', async () => {
@@ -201,21 +214,21 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(screen.queryByTestId('cal-nouveau-client-repere')).not.toBeInTheDocument()
   })
 
-  it('créer depuis un LEAD envoie `{lead}` et redirige vers `/calepinage/:id`', async () => {
+  it('créer depuis un LEAD envoie `{lead_id}` par depuisModele et redirige vers `/calepinage/:id`', async () => {
     rendre()
     await choisirDansCombobox('Lead', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1' }))
-    expect(mocks.navigate).toHaveBeenCalledWith('/calepinage/77')
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
+    expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${DETAIL.id}`)
   })
 
-  it('créer depuis un CLIENT envoie `{client}` — jamais les deux à la fois', async () => {
+  it('créer depuis un CLIENT envoie `{client_id}` — jamais les deux à la fois', async () => {
     rendre()
     allerSurOnglet('Client')
     await choisirDansCombobox('Client', 'Client d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ client: '3' }))
-    expect(mocks.create.mock.calls[0][0]).not.toHaveProperty('lead')
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ client_id: '3' }))
+    expect(mocks.depuisModele.mock.calls[0][0]).not.toHaveProperty('lead_id')
   })
 
   it('le nom facultatif ne part QUE s’il est saisi', async () => {
@@ -227,11 +240,11 @@ describe('CalepinageNouveau (CAL36)', () => {
     // sérialiseur) est `titre` : `nom` n'existe pas en écriture, le serveur
     // l'ignorait donc en silence (201 avec `titre: ''`, « Calepinage #N »
     // partout). Même clé que la branche « depuis un modèle ».
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1', titre: 'Hangar 2' }))
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1', titre: 'Hangar 2' }))
   })
 
   it('le REFUS SERVEUR nommant le champ s’affiche SOUS ce champ, tel quel', async () => {
-    mocks.create.mockRejectedValue({
+    mocks.depuisModele.mockRejectedValue({
       response: { data: { lead: ['Indiquez un lead ou un client, jamais les deux.'] } },
     })
     rendre()
@@ -243,7 +256,7 @@ describe('CalepinageNouveau (CAL36)', () => {
   })
 
   it('un refus GLOBAL (`detail`) s’affiche dans le bandeau, sans texte fabriqué', async () => {
-    mocks.create.mockRejectedValue({ response: { data: { detail: 'Module désactivé pour votre société.' } } })
+    mocks.depuisModele.mockRejectedValue({ response: { data: { detail: 'Module désactivé pour votre société.' } } })
     rendre()
     await choisirDansCombobox('Lead', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
@@ -273,13 +286,13 @@ describe('CalepinageNouveau (CAL36)', () => {
      * un refus serveur nommant `preset_id` s'affiche SOUS le champ du jeu.
    ========================================================================== */
 describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
-  it('aucun choix fait : la création d’aujourd’hui, jamais la porte des modèles', async () => {
+  it('aucun choix fait : UNE seule porte (depuisModele), sans modèle ni jeu envoyés', async () => {
     rendre()
     await attendreChoix()
     await choisirDansCombobox('Lead', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1' }))
-    expect(mocks.depuisModele).not.toHaveBeenCalled()
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
+    expect(mocks.create).not.toHaveBeenCalled()
   })
 
   it('un modèle choisi affiche son nombre de modules et son empreinte avant validation', async () => {
@@ -383,6 +396,73 @@ describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
     await attendreChoix()
     await choisirDansCombobox('Lead', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1' }))
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
+  })
+})
+
+
+describe('CalepinageNouveau — une seule porte et « Ouvrir l’existant » (ACAL183)', () => {
+  const LISTE = exempleContrat('calepinage', 'calepinage_liste')
+  const CONFLIT = exempleContrat('calepinage', 'calepinage_creation_conflit')
+
+  it('propose Ouvrir l’existant quand le lead a un calepinage ouvert', async () => {
+    mocks.list.mockResolvedValue({ data: LISTE })
+    const ligne = LISTE.results[0]
+    rendre()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    expect(await screen.findByTestId('cal-nouveau-existant')).toBeInTheDocument()
+    expect(mocks.list).toHaveBeenCalledWith({ lead: '1' })
+    // Créer est REMPLACÉ par l'encart.
+    expect(screen.queryByRole('button', { name: /Créer le calepinage/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Ouvrir l’existant/ }))
+    expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${ligne.id}`)
+  })
+
+  it('crée par depuisModele pour le cas sans modèle', async () => {
+    rendre()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it('le responsable choisi est écrit puis le calepinage s’ouvre', async () => {
+    rendre()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    const zone = screen.getByTestId('cal-nouveau-responsable')
+    fireEvent.click(zone.querySelector('button'))
+    fireEvent.click(await screen.findByText('sami'))
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.update)
+      .toHaveBeenCalledWith(DETAIL.id, { responsable: 7 }))
+    expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${DETAIL.id}`)
+  })
+
+  it('jeu de réglages actif sans modèle, aide affichée, preset_id envoyé', async () => {
+    // ACAL186 (D-ACAL-20) — sans modèle, le champ reste ACTIF et dit ce que
+    // le jeu fera : il est mémorisé et s'applique à chaque pan dessiné.
+    rendre()
+    await attendreChoix()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    const champ = screen.getByLabelText(/Jeu de réglages société/)
+    expect(champ).not.toBeDisabled()
+    expect(screen.getByLabelText(/Partir d’un modèle/)).toHaveValue('')
+    expect(screen.getByTestId('cal-nouveau-preset-aide'))
+      .toHaveTextContent('S’applique à chaque pan que vous dessinerez.')
+    fireEvent.change(champ, { target: { value: 'villa_standard' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({
+      lead_id: '1', preset_id: 'villa_standard',
+    }))
+  })
+
+  it('affiche l’encart sur un 409 calepinage_existant', async () => {
+    mocks.depuisModele.mockRejectedValue({ response: { status: 409, data: CONFLIT } })
+    rendre()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    expect(await screen.findByTestId('cal-nouveau-existant')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-nouveau-ouvrir-existant'))
+    expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${CONFLIT.calepinage_existant}`)
   })
 })

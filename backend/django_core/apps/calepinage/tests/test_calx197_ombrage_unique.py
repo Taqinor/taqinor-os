@@ -7,8 +7,9 @@ le devis porte un calepinage SIMULÉ, l'étude ne calcule plus : elle LIT les
 quatre étapes d'ombrage de la cascade et PUBLIE la provenance retenue sous
 ``origine_ombrage``.
 
-Tous les tests sont des ``SimpleTestCase`` : les sélecteurs de lecture
-cross-app sont remplacés par des doublures, aucune base n'est touchée. Les
+ACAL144 — la lecture cross-app (``TestOmbrageDuCalepinage``) tourne sur un
+calepinage RÉEL simulé, sans doublure des sélecteurs ; les autres classes
+restent des ``SimpleTestCase`` purs. Les
 chemins qui exigent l'ORM (``run_bankable_study`` de bout en bout, qui lit les
 réglages de tarification de la société) restent couverts par les tests ventes
 existants (PV69/PV70/PV72), non rejouables sur un hôte sans base.
@@ -16,9 +17,10 @@ existants (PV69/PV70/PV72), non rejouables sur un hôte sans base.
 import ast
 import pathlib
 import types
-from unittest import mock
 
 from django.test import SimpleTestCase
+
+from .test_api_liste import BaseApiCalepinage
 
 from apps.ventes.etude import (
     ETAPES_OMBRAGE_CASCADE,
@@ -143,77 +145,79 @@ class TestPerteOmbrageCascade(SimpleTestCase):
         self.assertEqual(_perte_ombrage_cascade(cascade), 34.39)
 
 
-class TestOmbrageDuCalepinage(SimpleTestCase):
-    """La lecture cross-app : trois conditions, sinon le chemin d'hier."""
+class TestOmbrageDuCalepinage(BaseApiCalepinage):
+    """ACAL144 — la lecture cross-app passe par ``ombrage_servi`` sur un
+    calepinage RÉEL simulé (aucun ``mock.patch`` des sélecteurs)."""
 
-    def _patch(self, *, retenu, calepinage):
-        return (
-            mock.patch('apps.calepinage.selectors.calepinage_retenu_pour_devis',
-                       return_value=retenu),
-            mock.patch('apps.calepinage.selectors.calepinage_du_devis',
-                       return_value=calepinage),
-        )
+    def setUp(self):
+        super().setUp()
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.liens import lier_devis
+        from apps.calepinage.services.simulation import simuler_calepinage
+        from apps.ventes.models import Devis
 
-    def _lire(self, *, retenu, resultat):
-        calepinage = types.SimpleNamespace(resultat=resultat)
-        p_retenu, p_cal = self._patch(retenu=retenu, calepinage=calepinage)
-        with p_retenu as m_retenu, p_cal as m_cal:
-            valeur = _ombrage_du_calepinage(_devis())
-        return valeur, m_retenu, m_cal
+        from .acal_livrables_helpers import patch_materiel
+        from .test_acal_multi_pans import _ClientParOrientation, _layout, _zone
+        from .test_calx5_simulation import MATERIEL
 
-    def test_calepinage_simule_rend_la_perte_de_la_cascade(self):
-        valeur, m_retenu, _ = self._lire(
-            retenu={'id': 3, 'kwc': 10.0, 'nb_modules': 20,
-                    'planche_url': '/calepinage/3'},
-            resultat=_resultat(_cascade([_etape('horizon', 5.0),
-                                         _etape('ombrage_proche', 10.0)])))
-        self.assertEqual(valeur, 14.5)
-        m_retenu.assert_called_once()
+        self.patch_materiel = patch_materiel
+        self.devis = Devis.objects.create(
+            company=self.company, client=self.client_a, lead=self.lead,
+            reference='DEV-202610-1970')
+        layout = _layout(_zone(1, 16, 90.0), _zone(2, 8, 270.0))
+        layout['solarAccess'] = {'values': [0.9] * 24}
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='CALX197',
+            roof_layout=layout)
+        lier_devis(self.calepinage, self.devis.pk)
+        with patch_materiel():
+            simuler_calepinage(self.calepinage,
+                               client=_ClientParOrientation(),
+                               materiel=MATERIEL, enregistrer=True)
+        self.calepinage.refresh_from_db()
 
-    def test_aucune_variante_retenue_rend_none(self):
-        valeur, _, m_cal = self._lire(retenu=None, resultat=_resultat(
-            _cascade([_etape('horizon', 5.0)])))
-        self.assertIsNone(valeur)
-        # La lecture s'arrête au premier sélecteur : rien n'est ouvert ensuite.
-        m_cal.assert_not_called()
+    def test_calepinage_simule_rend_l_ombrage_servi_par_pan(self):
+        from apps.calepinage.selectors import ombrage_servi
 
-    def test_calepinage_pose_mais_jamais_simule_rend_none(self):
-        valeur, _, _ = self._lire(
-            retenu={'id': 3, 'kwc': None, 'nb_modules': None,
-                    'planche_url': '/calepinage/3'},
-            resultat=_resultat(_cascade([_etape('horizon', 5.0)]),
-                               hash_simulation=''))
-        self.assertIsNone(valeur)
+        with self.patch_materiel():
+            valeur = _ombrage_du_calepinage(self.devis)
+            attendu = ombrage_servi(self.devis.pk, self.company)
+        self.assertEqual(valeur, attendu)
+        self.assertFalse(valeur['perime'])
+        self.assertEqual(sorted(valeur['par_pan']), ['PAN-1', 'PAN-2'])
 
-    def test_cascade_calculee_sur_un_autre_document_rend_none(self):
-        valeur, _, _ = self._lire(
-            retenu={'id': 3, 'kwc': 10.0, 'nb_modules': 20,
-                    'planche_url': '/calepinage/3'},
-            resultat=_resultat(_cascade([_etape('horizon', 5.0)],
-                                        hash_entree='cd' * 32)))
-        self.assertIsNone(valeur)
+    def test_conception_retouchee_sans_resimuler_rend_perime(self):
+        import copy
 
-    def test_resultat_sans_cascade_rend_none(self):
-        valeur, _, _ = self._lire(
-            retenu={'id': 3, 'kwc': 10.0, 'nb_modules': 20,
-                    'planche_url': '/calepinage/3'},
-            resultat={'simulation': {'hash_entree': EMPREINTE}})
-        self.assertIsNone(valeur)
+        from apps.calepinage.models import Calepinage
+
+        layout = copy.deepcopy(self.calepinage.roof_layout)
+        layout['zones'][0]['geometry']['count'] = 3
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            roof_layout=layout)
+        with self.patch_materiel():
+            valeur = _ombrage_du_calepinage(self.devis)
+        self.assertTrue(valeur['perime'])
+
+    def test_devis_sans_calepinage_rend_none(self):
+        from apps.ventes.models import Devis
+
+        seul = Devis.objects.create(company=self.company,
+                                    client=self.client_a,
+                                    reference='DEV-202610-1971')
+        self.assertIsNone(_ombrage_du_calepinage(seul))
 
     def test_devis_sans_societe_ne_lit_rien(self):
-        with mock.patch(
-                'apps.calepinage.selectors.calepinage_retenu_pour_devis') as m:
-            self.assertIsNone(_ombrage_du_calepinage(
-                types.SimpleNamespace(pk=7, company=None)))
-            m.assert_not_called()
+        self.assertIsNone(_ombrage_du_calepinage(
+            types.SimpleNamespace(pk=7, company=None)))
 
     def test_une_lecture_impossible_ne_leve_jamais(self):
-        with mock.patch(
-                'apps.calepinage.selectors.calepinage_retenu_pour_devis',
-                side_effect=RuntimeError('base indisponible')):
-            with self.assertLogs('apps.ventes.etude', level='WARNING') as logs:
-                self.assertIsNone(_ombrage_du_calepinage(_devis()))
-        self.assertIn('CALX197', logs.output[0])
+        # Une société illisible fait lever la vraie requête : l'étude
+        # retombe sur son chemin en le journalisant, jamais un 500.
+        with self.assertLogs('apps.ventes.etude', level='WARNING') as logs:
+            self.assertIsNone(_ombrage_du_calepinage(
+                types.SimpleNamespace(pk=7, company=object())))
+        self.assertIn('ACAL144', logs.output[0])
 
 
 class TestZoneShadingUneSeuleVerite(SimpleTestCase):

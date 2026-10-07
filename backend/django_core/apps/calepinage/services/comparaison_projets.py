@@ -40,8 +40,8 @@ from __future__ import annotations
 from .valeurs import nombre as _nombre
 
 __all__ = [
-    'BORNE_PROJETS', 'COLONNES', 'ComparaisonRefusee', 'MOTIF_INTROUVABLE',
-    'MOTIF_NON_SIMULE', 'MOTIF_PERIME', 'comparer_calepinages',
+    'BORNE_PROJETS', 'COLONNES', 'ComparaisonRefusee', 'MOTIF_ARCHIVE',
+    'MOTIF_INTROUVABLE', 'MOTIF_NON_SIMULE', 'MOTIF_PERIME', 'comparer_calepinages',
 ]
 
 #: La borne du comparatif : cinq calepinages. C'est celle de PV*SOL, citée
@@ -73,6 +73,9 @@ MOTIF_PERIME = (
 MOTIF_INTROUVABLE = (
     'Calepinage introuvable dans cette société : il est ignoré, jamais '
     'comparé.')
+#: ACAL118 — un calepinage ARCHIVÉ (visible) est refusé en le disant.
+MOTIF_ARCHIVE = (
+    'Calepinage archivé : restaurez-le pour le comparer.')
 
 
 class ComparaisonRefusee(ValueError):
@@ -188,11 +191,13 @@ def _ligne_de_comparaison(calepinage):
     """
     from .comparaison import (
         CLES_PRODUCTION, MOTIF_PERIMEE, colonnes_production,
+        simulation_perimee_du_calepinage,
     )
 
     empreinte = getattr(calepinage, 'layout_hash', '') or ''
     simule, production, motif_lu = colonnes_production(
-        getattr(calepinage, 'resultat', None), layout_hash=empreinte or None)
+        getattr(calepinage, 'resultat', None),
+        perimee=simulation_perimee_du_calepinage(calepinage))
     if simule:
         motif = ''
     elif motif_lu == MOTIF_PERIMEE:
@@ -203,7 +208,8 @@ def _ligne_de_comparaison(calepinage):
     ligne = {
         'id': getattr(calepinage, 'pk', None),
         'titre': getattr(calepinage, 'titre', '') or '',
-        'statut': getattr(calepinage, 'statut', '') or '',
+        # ACAL114 — le statut DÉRIVÉ de l'approbation (D-ACAL-19).
+        'statut': _statut_derive(calepinage),
         'layout_hash': empreinte,
         'modules': modules,
         'kwc': kwc,
@@ -239,10 +245,24 @@ def comparer_calepinages(user, ids):
     trouves = {calepinage.pk: calepinage
                for calepinage in calepinages_visibles(
                    user, inclure_archives=True).filter(pk__in=demandes)}
+    from .archivage import est_archive
+
+    def _motif(pk):
+        if pk not in trouves:
+            return MOTIF_INTROUVABLE
+        return MOTIF_ARCHIVE if est_archive(trouves[pk]) else None
+
     return {
         'colonnes': _colonnes(),
         'lignes': [_ligne_de_comparaison(trouves[pk])
-                   for pk in demandes if pk in trouves],
-        'refus': [{'id': pk, 'motif': MOTIF_INTROUVABLE}
-                  for pk in demandes if pk not in trouves],
+                   for pk in demandes if _motif(pk) is None],
+        'refus': [{'id': pk, 'motif': _motif(pk)}
+                  for pk in demandes if _motif(pk) is not None],
     }
+
+
+def _statut_derive(calepinage):
+    """ACAL114 — ``services.approbation.statut_derive`` (lecture seule)."""
+    from .approbation import statut_derive
+
+    return statut_derive(calepinage)

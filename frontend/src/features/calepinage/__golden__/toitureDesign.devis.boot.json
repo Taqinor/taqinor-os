@@ -2,54 +2,64 @@
   "initRoofToolPro8_appels": [
     {
       "rendementPvgis": null,
-      "maptilerKey": "cle-demo",
+      "maptilerKey": "cle-d-essai",
       "reducedMotion": false,
       "hydrate": {
         "devis": {
-          "id": 412,
+          "id": null,
           "geometrie": {
             "roof_layout": {
-              "version": 2,
-              "zones": []
+              "schema_version": 2,
+              "result": {
+                "panels": 12,
+                "kwc": 8.64
+              }
             },
             "roof_point": {
               "lat": 33.5731,
               "lng": -7.5898
             },
-            "roof_outline": []
+            "roof_outline": [
+              [
+                33.5731,
+                -7.5898
+              ],
+              [
+                33.5732,
+                -7.5898
+              ],
+              [
+                33.5732,
+                -7.5897
+              ]
+            ]
           },
           "cible": {
-            "panneaux": 24,
-            "panel_watt": 710,
+            "panneaux": 12,
+            "panel_watt": 720,
             "scenario": "reseau"
           },
-          "fullName": "Youssef Alaoui",
-          "phone": "+212661234567",
-          "city": "Casablanca"
+          "cibleVendue": true,
+          "fullName": "Toiture — bâtiment principal"
         }
       },
-      "referenceContour": null,
+      "referenceContour": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "modulesDisponibles": null,
+      "reglagesAtelier": null,
       "bankable": null,
-      "reglagesAtelier": {
-        "zones_types": {
-          "souche_type": {
-            "libelle": "Souche de cheminée type",
-            "nature": "INTERDITE",
-            "retrait_m": 0.8,
-            "hauteur_m": 1.1,
-            "source": "Consigne de pose interne v3, fiche souche",
-            "type": "cheminee",
-            "forme": "rectangle",
-            "longueur_m": 0.9,
-            "largeur_m": 0.6
-          }
-        },
-        "degagements": {
-          "retrait_rive_m": 0.5,
-          "allee_technique_m": 0.9,
-          "source": "valeur atelier actuelle, non sourcée"
-        }
-      },
       "onApiReady": "[fn]",
       "onHydrationTerminee": "[fn]"
     }

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
 /* ============================================================================
    CALX18 / ACAL136 — L'ÉDITEUR DES POSTES DE PERTES, AVEC LE STATUT DE CHAQUE
    POSTE.
@@ -403,7 +406,7 @@ function LignePoste({
   )
 }
 
-export default function PanneauPertes({ calepinageId: idPropose }) {
+export default function PanneauPertes({ calepinageId: idPropose, lectureSeule = false }) {
   /* Montable en panneau de l'atelier (le rail passe `calepinageId`) ou en
      écran à part entière — même repli que les autres panneaux du module. */
   const { id: idUrl } = useParams()
@@ -557,12 +560,19 @@ export default function PanneauPertes({ calepinageId: idPropose }) {
       <button
         type="button"
         onClick={enregistrer}
-        disabled={enCours}
+        disabled={enCours || lectureSeule}
+        title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
         data-testid="cal-pertes-enregistrer"
         className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
       >
         {enCours ? 'Enregistrement…' : 'Enregistrer les postes de pertes'}
       </button>
+      {/* ACAL44 — lecture seule (devis lié figé) : le motif est DIT. */}
+      {lectureSeule && (
+        <p className="mt-2 text-xs text-brass-300" data-testid="cal-pertes-lecture-seule">
+          Conception figée : révisez le devis (nouvelle version) pour la modifier.
+        </p>
+      )}
 
       {message && (
         <p className="mt-3 text-sm text-lune-soft" role="status" data-testid="cal-pertes-message">

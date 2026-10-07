@@ -150,7 +150,6 @@ export const EXCEPTIONS_SANS_APPELANT = {
   // 'calepinages.sorties' / 'calepinages.telechargerSortie' RETIRÉES (fold M5,
   // 24/09/2026) : Fixation.jsx (CALX360, onglet Fixation de l'atelier) les
   // appelle désormais toutes les deux — exceptions périmées.
-  'calepinages.variantes': "23/09/2026 — la liste des variantes se lit via le comparatif comparer() ; l'endpoint brut n'a plus de consommateur direct",
   'calepinages.joindrePiece': "05/10/2026 — la porte joindre-piece/ existe (ACAL238) ; l'écran Dossiers réglementaires qui l'appelle arrive avec ACAL242 (bloquée en amont) — retirer cette entrée à ACAL242",
   'parametres.suggererPentesIGN': "06/10/2026 — la porte société parametres/suggestion-pente/ (POST) est conservée (ACAL66) ; l'onglet Pente passe désormais par calepinages/<id>/suggestions-pente/ (decisionSuggestionPente), qui persiste la suggestion",
 }
@@ -273,6 +272,19 @@ test('GARDE — toute clé de EXCEPTIONS_SANS_APPELANT existe encore dans calepi
     fantomes, [],
     `exception(s) référençant une clé disparue — retirer de EXCEPTIONS_SANS_APPELANT : ${fantomes.join(', ')}`,
   )
+})
+
+test("ACAL120 — calepinages n'expose pas remove", () => {
+  // DELETE /calepinages/<pk>/ répond 405 (archiver est l'unique geste) : la
+  // clé `remove` du CRUD partagé est une jumelle MORTE d'archiver. Le spread
+  // ne garde que les méthodes servies, et aucun écran ne l'appelle.
+  const codeApi = sansCommentaires(lireSourceCalepinageApi())
+  assert.doesNotMatch(codeApi, /^\s*\.\.\.crud\('calepinages'\),\s*$/m,
+    "le spread brut ...crud('calepinages') exposerait remove")
+  assert.match(codeApi,
+    /\(\(\{ list, get, create, update \}\) => \(\{ list, get, create, update \}\)\)\(crud\('calepinages'\)\)/)
+  assert.equal(estAppelee('calepinages', 'remove', texteAppelantsReel()), false,
+    'un écran appelle encore calepinageApi.calepinages.remove')
 })
 
 test('GARDE — chaque raison de EXCEPTIONS_SANS_APPELANT est datée et non vide', () => {

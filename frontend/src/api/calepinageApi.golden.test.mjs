@@ -37,7 +37,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const GOLDEN_PATH = join(here, 'calepinageApi.golden.json')
 const API_PATH = join(here, 'calepinageApi.js')
 
-// Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`, puis +2 en vague B, +4 en vague C ACAL, +1 ACAL222 remettreDocument, +2 ACAL23 enregistrerLayoutCalepinageConditionnel/enregistrerSectionLayout).
+// Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`, puis +2 en vague B, +4 en vague C ACAL, +1 ACAL222 remettreDocument, +2 ACAL23 enregistrerLayoutCalepinageConditionnel/enregistrerSectionLayout, -1 ACAL185 creerDepuisModele retirée).
 const NOMBRE_CLES_EXTRAITES = 106
 
 /* ── L'axios factice ENREGISTREUR (module autonome, servi en data: URL) ──── */
@@ -159,11 +159,15 @@ test('SPL291 — chaque clé figée appelle le MÊME verbe/URL/corps/config (pla
 
 test('SPL291 — le golden couvre toutes les clés de feuille + le CRUD partagé', () => {
   const cles = Object.keys(golden)
-  for (const m of ['list', 'get', 'create', 'update', 'remove']) {
+  // ACAL120 — les seules méthodes CRUD SERVIES (DELETE/PUT ⇒ 405) : `remove`
+  // n'est plus exposée.
+  for (const m of ['list', 'get', 'create', 'update']) {
     assert.ok(cles.includes(`calepinages.${m}`), `crud('calepinages').${m} absent du golden`)
   }
-  // 90 clés de feuille + 5 méthodes CRUD.
-  assert.equal(cles.length, NOMBRE_CLES_EXTRAITES + 5)
+  assert.ok(!cles.includes('calepinages.remove'), 'calepinages.remove ne doit plus être figée')
+  assert.ok(!('remove' in calepinageApi.calepinages), "calepinages n'expose pas remove (ACAL120)")
+  // Les clés de feuille + 4 méthodes CRUD.
+  assert.equal(cles.length, NOMBRE_CLES_EXTRAITES + 4)
   for (const id of cles) assert.ok(golden[id].length >= 1, `${id} n'a émis aucun appel HTTP`)
 })
 

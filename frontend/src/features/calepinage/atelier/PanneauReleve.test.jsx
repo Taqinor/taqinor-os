@@ -77,11 +77,13 @@ const supprimerReleve = vi.fn()
 const photos = vi.fn()
 const layout = vi.fn()
 const appliquerCoteReleve = vi.fn()
+const enregistrerSectionLayout = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       appliquerCoteReleve: (...a) => appliquerCoteReleve(...a),
+      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
       releve: (...a) => releve(...a),
       enregistrerReleve: (...a) => enregistrerReleve(...a),
       corrigerReleve: (...a) => corrigerReleve(...a),
@@ -364,5 +366,115 @@ describe('ACAL207 — appliquer une cote du relevé à un côté du pan', () => 
 
     expect(await screen.findByTestId('cal-releve-cote-retour'))
       .toHaveTextContent('Le pan « z1 » est croisé')
+  })
+})
+
+/* ============================================================================
+   ACAL206 (D-ACAL-28) — « Appliquer l'azimut au pan » : relevé du contrat
+   `calepinage_releve.json` (azimut + précision), écriture par la primitive de section.
+   ========================================================================== */
+describe('ACAL206 — appliquer l’azimut du relevé à un pan', () => {
+  const PAN_A = { id: 'zA', label: 'Pan A', pitchDeg: 22, facingAzimuthDeg: 90 }
+  const PAN_B = { id: 'zB', label: 'Pan B', pitchDeg: 15, facingAzimuthDeg: 270 }
+
+  beforeEach(() => {
+    const reponse = reponseContrat('calepinage', 'calepinage_releve')
+    releve.mockResolvedValue({ data: { releves: reponse.data.releves,
+      releve_courant_id: reponse.data.releve_courant_id } })
+    photos.mockResolvedValue({ data: { photos: [] } })
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PAN_A, PAN_B] },
+      empreinte_document: 'jeton-1' } })
+    enregistrerSectionLayout.mockResolvedValue({ data: {
+      roof_layout: { zones: [PAN_A, PAN_B] }, empreinte_document: 'jeton-2' } })
+  })
+
+  it('applique l’azimut au pan choisi et seulement à lui', async () => {
+    const courant = reponseContrat('calepinage', 'calepinage_releve').data.releves[0]
+    expect(courant.azimut.precision_deg).not.toBeNull()
+    rendre()
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    expect(screen.getByTestId('cal-releve-azimut-mesure'))
+      .toHaveTextContent(`${courant.azimut.deg}° ± ${courant.azimut.precision_deg}°`)
+    // Jamais d'application automatique.
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zB' } })
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout).toHaveBeenCalledWith(1, {
+      cle: 'zones',
+      zone_id: 'zB',
+      champs: {
+        facingAzimuthDeg: courant.azimut.deg,
+        facingAzimuthSource: 'releve',
+        facingAzimuthPrecisionDeg: courant.azimut.precision_deg,
+      },
+      base_empreinte: 'jeton-1',
+    })
+    expect(await screen.findByTestId('cal-releve-azimut-retour')).toHaveTextContent('Pan B')
+  })
+
+  it('atelier vivant : son jeton fait foi et la section rendue lui revient', async () => {
+    // Lot 2 critique #24 / #31.
+    const documentVivant = { empreinte: 'jeton-vivant', appliquerSection: vi.fn() }
+    render(<MemoryRouter>
+      <PanneauReleve calepinageId={1} documentVivant={documentVivant} />
+    </MemoryRouter>)
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zA' } })
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('jeton-vivant')
+    await waitFor(() => expect(documentVivant.appliquerSection)
+      .toHaveBeenCalledWith('zones', [PAN_A, PAN_B], 'jeton-2'))
+  })
+
+  it('lecture seule : le geste est désactivé et la raison dite', async () => {
+    // Lot 2 critique #24.
+    render(<MemoryRouter><PanneauReleve calepinageId={1} lectureSeule /></MemoryRouter>)
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zA' } })
+    expect(screen.getByTestId('cal-releve-azimut-appliquer')).toBeDisabled()
+    expect(screen.getByTestId('cal-releve-azimut-lecture-seule')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('verrou (409 sans document_modifie) : le motif serveur, jamais « a changé ailleurs »', async () => {
+    // Lot 2 critique #32.
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: {
+      roof_layout: ['Devis accepté : révisez-le'] } } })
+    rendre()
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zA' } })
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+    const retour = await screen.findByTestId('cal-releve-azimut-retour')
+    expect(retour).toHaveTextContent('Devis accepté : révisez-le')
+    expect(retour).not.toHaveTextContent('a changé ailleurs')
+  })
+
+  it('sans précision déclarée, le bouton est absent', async () => {
+    const reponse = reponseContrat('calepinage', 'calepinage_releve')
+    const sansPrecision = { ...reponse.data.releves[0],
+      azimut: { ...reponse.data.releves[0].azimut, precision_deg: null } }
+    releve.mockResolvedValue({ data: { releves: [sansPrecision],
+      releve_courant_id: sansPrecision.id } })
+    rendre()
+    await screen.findByTestId(`cal-releve-historique-${sansPrecision.id}`)
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    expect(screen.queryByTestId('cal-releve-appliquer-azimut')).toBeNull()
+    expect(screen.queryByTestId('cal-releve-azimut-appliquer')).toBeNull()
+  })
+
+  it('un jeton périmé (409) est dit, sans rien écrire de plus', async () => {
+    enregistrerSectionLayout.mockRejectedValue({ response: { status: 409, data: {
+      code: 'document_modifie' } } })
+    rendre()
+    await screen.findByTestId('cal-releve-appliquer-azimut')
+    fireEvent.change(screen.getByTestId('cal-releve-azimut-pan'), { target: { value: 'zA' } })
+    fireEvent.click(screen.getByTestId('cal-releve-azimut-appliquer'))
+    expect(await screen.findByTestId('cal-releve-azimut-retour'))
+      .toHaveTextContent('a changé ailleurs')
   })
 })

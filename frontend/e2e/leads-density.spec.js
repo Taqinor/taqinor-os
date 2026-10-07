@@ -48,7 +48,9 @@
 // datatable-breakpoint.spec.js. Les 6 étapes ne sont JAMAIS écrites en dur :
 // leur nombre vient de `STAGE_LABELS` (miroir de STAGES.py, règle #2).
 import { test, expect } from '@playwright/test'
-import { STAGE_LABELS , boutonNouveauLead } from './helpers'
+import {
+  API_DJANGO, STAGE_LABELS, boutonNouveauLead, telephoneMobileUnique, uniq,
+} from './helpers'
 
 // Tolérance sous-pixel (même valeur que LB33) : un layout borné rapporte 0-2 px
 // d'arrondi ; une vraie régression se compte en dizaines de px.
@@ -340,6 +342,14 @@ for (const appareil of [
     test.use({ viewport: appareil.viewport, hasTouch: true, isMobile: true })
 
     test('la carte tactile reste dense et ses actions sont atteignables sans survol', async ({ page }, info) => {
+      // CAD177 : la rangée tactile ne porte QUE appeler / WhatsApp (ou le
+      // cadenas PII) — un lead SANS téléphone la rend vide, donc invisible
+      // (cas des 20 leads « Board » de LB33, nocturne 37585800165). Le spec
+      // pose donc un lead joignable plutôt que de dépendre de la base partagée.
+      const res = await page.request.post(`${API_DJANGO}/crm/leads/`, {
+        data: { nom: uniq('APX8 Joignable'), ville: 'Casablanca', telephone: telephoneMobileUnique() },
+      })
+      expect(res.ok(), `création du lead joignable (${res.status()})`).toBeTruthy()
       await ouvrirLeads(page, 'kanban')
       const m = await mesurerKanban(page)
       noter(info, `${appareil.nom} — carte au repos (px)`, m.carteMax)
@@ -357,7 +367,9 @@ for (const appareil of [
       // visible dès le rendu, sans qu'aucun hover n'ait été déclenché.
       // Elle peut être remplacée par le cadenas PII selon les permissions du
       // compte — les deux prouvent que la zone est rendue au repos.
-      const quick = page.locator('article.kb-card .kb-quick').first()
+      const quick = page
+        .locator('article.kb-card .kb-quick:has(.kb-quick-tel, .kb-quick-wa, .kb-quick-lock)')
+        .first()
       await expect(quick, 'la rangée d’actions tactiles est rendue au repos').toBeVisible()
       const bouton = quick.locator('.kb-quick-btn').first()
       if (await bouton.count()) {

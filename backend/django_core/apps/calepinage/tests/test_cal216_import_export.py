@@ -8,7 +8,7 @@ Ce qui est prouvé ici :
 * un JSON hors schéma est refusé, en NOMMANT le chemin du champ fautif ;
 * un document non-objet (liste, nombre…) est refusé ;
 * l'import passe par le chemin d'écriture unique : il hérite donc du
-  verrou CAL207 (devis envoyé → 409) sans code dupliqué.
+  verrou CAL207/ACAL42 (devis accepté → 409) sans code dupliqué.
 
 Run :
     python manage.py test apps.calepinage.tests.test_cal216_import_export -v2
@@ -98,7 +98,7 @@ class ImporterLayoutTest(TestCase):
     def test_import_herite_du_verrou_cal207(self):
         devis = Devis.objects.create(
             company=self.company, client=self.client_a,
-            reference='DEV-CAL216-1', statut=Devis.Statut.ENVOYE)
+            reference='DEV-CAL216-1', statut=Devis.Statut.ACCEPTE)
         lie = Calepinage.objects.create(
             company=self.company, client=self.client_a, devis=devis)
         with self.assertRaises(APIException) as ctx:

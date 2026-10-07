@@ -543,6 +543,8 @@ class ApiFunctions(contract.FrontendCalls):
 
 _MOCK = re.compile(r"([A-Za-z_$][\w$]*)\s*\.\s*mock(?:ResolvedValue|ReturnValue)"
                    r"(?:Once)?\s*\(")
+# Racine de la chaine qui precede `fn.mockResolvedValue` (`calepinageApi.x.`).
+_CHAINE_MOCK = re.compile(r"(?<![\w$.])([A-Za-z_$][\w$]*)(?:\s*\.\s*[A-Za-z_$][\w$]*)*\s*\.\s*$")
 _CONST_OBJECT = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{")
 
 
@@ -657,9 +659,19 @@ def mocked_payloads(path: Path):
         shape = js_object_shape(code, masked, match.end() - 1)
         if shape is not None:
             objects[match.group(1)] = shape
+    # Lot 2 ACAL — `client.x.fn.mockResolvedValue(…)` : quand la RACINE de la
+    # chaine est un client importe (et mocke), c'est SON module qui compte, pas
+    # tous les modules mockes du fichier. Sans ce lien, `restaurerCorbeille`
+    # de `calepinageApi` etait compare au contrat homonyme de `crmApi` —
+    # l'appariement par NOM que la garde s'interdit (on lit l'import).
+    clients = _clients_importes(code, path, modules)
     out = []
     for match in _MOCK.finditer(masked):
         name = match.group(1)
+        chaine = _CHAINE_MOCK.search(masked[max(0, match.start() - 200):match.start()])
+        modules_mock = modules
+        if chaine is not None and chaine.group(1) in clients:
+            modules_mock = {clients[chaine.group(1)]}
         start, end = contract._first_argument(masked, match.end() - 1)
         if start is None:
             continue
@@ -677,7 +689,7 @@ def mocked_payloads(path: Path):
             if inner is None:
                 continue
             shape = inner
-        out.append((code.count("\n", 0, match.start()) + 1, modules, name, shape))
+        out.append((code.count("\n", 0, match.start()) + 1, modules_mock, name, shape))
     return out
 
 

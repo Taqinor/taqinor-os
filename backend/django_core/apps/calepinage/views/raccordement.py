@@ -125,6 +125,12 @@ def raccordement(self, request, pk=None):
 
     calepinage = self.get_object()  # borné société par get_queryset
     ecriture = request.method.lower() == 'post'
+    if ecriture:
+        # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute
+        # validation ou écriture.
+        from ..services.verrou import verifier_ecriture_autorisee
+
+        verifier_ecriture_autorisee(calepinage, champ='raccordement')
     corps = request.data if isinstance(request.data, dict) else {}
     saisie = corps if ecriture else saisie_du_calepinage(calepinage)
     try:

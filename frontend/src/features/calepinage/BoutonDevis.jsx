@@ -3,6 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { toastWarning } from '../../lib/toast'
 import { reviserEtOuvrir } from '../ventes/reviserDevis'
+import {
+  LIBELLE_CHAMP, MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE,
+  bloquageElectrique, refusServeur, texteBloquant,
+} from './refusDevis'
 
 /* ============================================================================
    CAL38 — LA SORTIE VERS LE DEVIS d'un calepinage, et elle n'existait nulle
@@ -32,46 +36,17 @@ import { reviserEtOuvrir } from '../ventes/reviserDevis'
    message s'affiche dessous, tel quel. Jamais un « non enregistré » générique.
    ========================================================================== */
 
-/** Les champs que le pont devis peut nommer, en français lisible. */
-const LIBELLE_CHAMP = {
-  roof_layout: 'Conception de toiture',
-  composition: 'Composition',
-  client: 'Rattachement client',
-  calepinage: 'Calepinage',
-  devis: 'Devis',
-  taux_tva: 'Taux de TVA',
-  remise_globale: 'Remise globale',
-  detail: 'Devis',
-}
+/* Lot 2 critique #23 / #29 — le décodeur des refus (libellés de champ,
+   refus électrique 422, refus serveur) est PARTAGÉ avec la route devis
+   (`refusDevis.js`) : une seule lecture des refus du pont devis. */
+export { MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE } from './refusDevis'
 
-/**
- * Le refus SERVEUR, décomposé en `{champ, message}`. Rien n'est reformulé :
- * on choisit seulement QUEL message montrer quand le serveur en donne
- * plusieurs, et on nomme le champ fautif.
- */
-function refusServeur(erreur) {
-  const data = erreur?.response?.data
-  if (typeof data === 'string' && data.trim()) {
-    return { champ: 'detail', message: data.trim() }
-  }
-  if (data && typeof data === 'object') {
-    if (typeof data.detail === 'string' && data.detail.trim()) {
-      return { champ: 'detail', message: data.detail.trim() }
-    }
-    if (Array.isArray(data.errors) && data.errors.length > 0) {
-      return { champ: 'composition', message: String(data.errors[0]) }
-    }
-    const premier = Object.entries(data).find(([, v]) => v)
-    if (premier) {
-      const [champ, brut] = premier
-      const message = Array.isArray(brut) ? brut.join(' ') : String(brut)
-      return { champ, message }
-    }
-  }
-  return {
-    champ: 'detail',
-    message: 'Le serveur n’a pas répondu. Réessayez dans un instant.',
-  }
+/* Le verdict INDÉTERMINÉ d'un succès : les manquantes, sans rien bloquer. */
+function manquantesElectriques(data) {
+  const electrique = data?.electrique
+  if (!electrique || electrique.verdict !== 'indetermine') return []
+  return (Array.isArray(electrique.manquantes) ? electrique.manquantes : [])
+    .filter((m) => typeof m === 'string' && m.trim()).map((m) => m.trim())
 }
 
 /* ACAL95 — CE QUE LA GÉNÉRATION ET LA RESYNCHRO N'ONT PAS PU FAIRE se lit à
@@ -111,7 +86,14 @@ export default function BoutonDevis({
   enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
 }) {
   const navigate = useNavigate()
+  // ACAL171 — le droit SERVI par l'agrégat (`permissions.peut_deroger`,
+  // calepinage_approuver), jamais deviné côté écran.
+  const peutDeroger = !!detail?.permissions?.peut_deroger
   const [enCours, setEnCours] = useState(false)
+  // ACAL171 — le refus électrique : `{geste, detail, bloquants, derogationPossible}`.
+  const [bloquage, setBloquage] = useState(null)
+  const [motif, setMotif] = useState('')
+  const [motifErreur, setMotifErreur] = useState(null)
   const [refus, setRefus] = useState(null)
   const [conflit, setConflit] = useState(null)
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
@@ -150,6 +132,16 @@ export default function BoutonDevis({
     } catch (erreur) {
       const statut = erreur?.response?.status
       const data = erreur?.response?.data
+      const electrique = bloquageElectrique(erreur)
+      if (electrique) {
+        setBloquage((avant) => ({ ...electrique, geste: avant?.geste ?? null }))
+        return null
+      }
+      // ACAL171 — un motif refusé par le serveur se lit SOUS le champ.
+      if (statut === 400 && data?.derogation_electrique) {
+        setMotifErreur(refusServeur(erreur).message)
+        return null
+      }
       if (statut === 409) {
         setConflit({
           detail: refusServeur(erreur).message,
@@ -180,17 +172,24 @@ export default function BoutonDevis({
     return ok
   }
 
-  const generer = async () => {
+  const generer = async (corps = {}) => {
     if (enCours || !(await enregistrerDabord())) return
+    if (!corps.derogation_electrique) setBloquage({ geste: 'generer' })
     const res = await executer(
-      () => calepinageApi.calepinages.genererDevis(calepinageId, {}))
+      () => calepinageApi.calepinages.genererDevis(calepinageId, corps))
     const nouveau = res?.data?.devis
     if (!nouveau) return
+    setBloquage(null)
+    setMotif('')
     // ACAL95 — ce que la composition n'a pas pu faire se lit AVANT de partir :
     // pas de navigation immédiate, un lien « Ouvrir le devis » à la place.
+    // ACAL171 — un verdict INDÉTERMINÉ (manquantes) se lit de même.
     const messages = messagesDuServeur(res.data)
-    if (messages.length > 0) {
-      setRetour({ messages, lignes: null, inchange: false, devisId: nouveau, suite: 'ouvrir' })
+    const manquantes = manquantesElectriques(res.data)
+    if (messages.length > 0 || manquantes.length > 0) {
+      setRetour({
+        messages, manquantes, lignes: null, inchange: false, devisId: nouveau, suite: 'ouvrir',
+      })
       return
     }
     // On rouvre la conception SUR le devis : c'est là que le commercial
@@ -204,25 +203,43 @@ export default function BoutonDevis({
     await onRecharger?.()
   }
 
-  const resynchroniser = async () => {
+  const resynchroniser = async (corps = {}) => {
     if (enCours || !(await enregistrerDabord())) return
+    if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
     const res = await executer(
-      () => calepinageApi.calepinages.syncDevis(calepinageId, {}))
+      () => calepinageApi.calepinages.syncDevis(calepinageId, corps))
     if (!res) return
+    setBloquage(null)
+    setMotif('')
     const data = res?.data ?? {}
     const messages = messagesDuServeur(data)
+    const manquantes = manquantesElectriques(data)
     const lignes = libelleLignesAjoutees(data.lignes_ajoutees)
     // ACAL95 — « Aucun changement » se DIT ; rien n'a bougé, rien à recharger.
     if (data.inchange) {
-      setRetour({ messages, lignes: null, inchange: true, devisId: null, suite: null })
+      setRetour({ messages, manquantes, lignes: null, inchange: true, devisId: null, suite: null })
       return
     }
     // Quelque chose à lire : le rechargement attend « J'ai lu ».
-    if (messages.length > 0 || lignes) {
-      setRetour({ messages, lignes, inchange: false, devisId: null, suite: 'recharger' })
+    if (messages.length > 0 || manquantes.length > 0 || lignes) {
+      setRetour({ messages, manquantes, lignes, inchange: false, devisId: null, suite: 'recharger' })
       return
     }
     await relireEtRecharger()
+  }
+
+  // ACAL171 — « Passer outre et générer » : le MÊME geste, relancé avec
+  // `derogation_electrique: {motif}` ; un motif vide est refusé sous le champ.
+  const passerOutre = async () => {
+    const saisi = motif.trim()
+    if (!saisi) {
+      setMotifErreur(MESSAGE_MOTIF_OBLIGATOIRE)
+      return
+    }
+    setMotifErreur(null)
+    const corps = { derogation_electrique: { motif: saisi } }
+    if (bloquage?.geste === 'sync') await resynchroniser(corps)
+    else await generer(corps)
   }
 
   const confirmerLecture = async () => {
@@ -279,7 +296,7 @@ export default function BoutonDevis({
       {devisLie ? (
         <button
           type="button"
-          onClick={resynchroniser}
+          onClick={() => resynchroniser()}
           disabled={desactive}
           data-testid="cal-resynchroniser-devis"
           className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
@@ -289,7 +306,7 @@ export default function BoutonDevis({
       ) : (
         <button
           type="button"
-          onClick={generer}
+          onClick={() => generer()}
           disabled={desactive}
           data-testid="cal-generer-devis"
           className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
@@ -301,6 +318,15 @@ export default function BoutonDevis({
       {devisLie?.reference && (
         <p className="text-xs text-lune-faint">
           Devis lié : <span className="text-lune-soft">{devisLie.reference}</span>
+        </p>
+      )}
+
+      {/* ACAL109 (D-ACAL-2) — ce que « Générer le devis » chiffre, DIT : la
+          conception courante, dont la variante retenue fait partie. */}
+      {totalVariantes > 0 && variantes.retenue_id && (
+        <p className="text-xs text-lune-faint" data-testid="cal-devis-ce-qui-est-chiffre">
+          Générer le devis chiffre la conception courante : la variante retenue en
+          fait partie (la retenir l’y a écrite).
         </p>
       )}
 
@@ -324,6 +350,56 @@ export default function BoutonDevis({
         </div>
       )}
 
+      {/* ACAL171 — refus ÉLECTRIQUE : les bloquants du serveur, mot pour mot ;
+          la dérogation n'est offerte qu'à un approbateur. */}
+      {bloquage?.bloquants && (
+        <div className="border border-alert-300/40 p-3" data-testid="cal-devis-bloquants">
+          {bloquage.detail && (
+            <p className="text-sm text-alert-300" role="alert">{bloquage.detail}</p>
+          )}
+          <ul className="mt-1 space-y-1 text-sm text-alert-300">
+            {bloquage.bloquants.map((b, i) => (
+              <li key={`${b?.code ?? 'b'}-${i}`} data-testid="cal-devis-bloquant">
+                {texteBloquant(b)}
+                {b?.detail && <span className="block text-xs text-lune-faint">{b.detail}</span>}
+              </li>
+            ))}
+          </ul>
+          {bloquage.derogationPossible && (peutDeroger ? (
+            <div className="mt-3 space-y-2">
+              <label className="block text-xs text-lune-soft" htmlFor="cal-devis-motif">
+                Motif de la dérogation
+              </label>
+              <textarea
+                id="cal-devis-motif"
+                value={motif}
+                onChange={(e) => { setMotif(e.target.value); setMotifErreur(null) }}
+                data-testid="cal-devis-motif"
+                className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
+              />
+              {motifErreur && (
+                <p className="text-xs text-alert-300" role="alert" data-testid="cal-devis-motif-erreur">
+                  {motifErreur}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={passerOutre}
+                disabled={enCours}
+                data-testid="cal-devis-passer-outre"
+                className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-alert-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {bloquage.geste === 'sync' ? 'Passer outre et resynchroniser' : 'Passer outre et générer'}
+              </button>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-devis-derogation-reservee">
+              {MESSAGE_DEROGATION_RESERVEE}
+            </p>
+          ))}
+        </div>
+      )}
+
       {/* ACAL94 — la révision part, mais les retouches non enregistrées sont DITES. */}
       {retouches && (
         <p className="text-xs text-brass-300" role="status" data-testid="cal-devis-retouches">
@@ -339,6 +415,16 @@ export default function BoutonDevis({
           )}
           {retour.lignes && (
             <p className="text-sm text-lune-soft" role="status">{retour.lignes}</p>
+          )}
+          {retour.manquantes?.length > 0 && (
+            <div data-testid="cal-devis-indetermine">
+              <p className="text-sm text-lune-soft" role="status">
+                Verdict électrique indéterminé — à compléter :
+              </p>
+              <ul className="mt-1 space-y-1 text-sm text-brass-300">
+                {retour.manquantes.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            </div>
           )}
           {retour.messages.length > 0 && (
             <ul className="mt-1 space-y-1 text-sm text-brass-300" role="status">

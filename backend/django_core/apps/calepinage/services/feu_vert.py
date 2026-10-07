@@ -40,8 +40,44 @@ from __future__ import annotations
 #: Clé, DANS la section ``presets`` (CAL197), qui active l'exigence.
 CLE_ACTIF = 'feu_vert_bureau_etudes'
 
+#: ACAL116 (D-ACAL-24) — les trois gestes que la porte unique tient.
+GESTE_RETENUE, GESTE_DEVIS, GESTE_EXECUTION = 'retenue', 'devis', 'execution'
+
+#: ACAL116 — les PIÈCES D'EXÉCUTION refusées tant que l'approbation exigée
+#: n'est pas à jour (les livrables d'ÉTUDE, eux, sont produits avec la
+#: mention « Conception non approuvée »). Un code par porte HTTP gardée.
+PIECES_EXECUTION = (
+    'plan_pose',            # plan-pose.pdf
+    'plan_cablage',         # plan-cablage.pdf
+    'plan_cablage_dxf',     # plan-cablage.dxf
+    'export_dxf',           # export.dxf
+    'export_xlsx',          # classeur / nomenclature
+    'export_csv',
+    'pack_technique',       # dossier technique (GED)
+    'dossier_fin_chantier',  # dossier de fin de chantier (GED)
+)
+
+MESSAGES_APPROBATION = {
+    GESTE_DEVIS: ('Approbation à jour exigée avant de générer ou '
+                  'resynchroniser le devis'),
+    GESTE_EXECUTION: ("Approbation à jour exigée avant de produire une "
+                      "pièce d'exécution"),
+}
+MESSAGES_FEU_VERT = {
+    GESTE_RETENUE: ("Cette variante ne peut pas être retenue : la visite "
+                    "technique du lead n'a pas encore reçu le feu vert "
+                    "du bureau d'études."),
+    GESTE_DEVIS: ("Le devis ne peut pas être généré ni resynchronisé : la "
+                  "visite technique du lead n'a pas encore reçu le feu vert "
+                  "du bureau d'études."),
+    GESTE_EXECUTION: ("Cette pièce d'exécution ne peut pas être produite : "
+                      "la visite technique du lead n'a pas encore reçu le "
+                      "feu vert du bureau d'études."),
+}
+
 __all__ = ['CLE_ACTIF', 'option_active', 'lead_id_de_reference',
-           'verifier_avant_retenue']
+           'verifier_avant_publication', 'PIECES_EXECUTION',
+           'GESTE_RETENUE', 'GESTE_DEVIS', 'GESTE_EXECUTION']
 
 
 def option_active(company):
@@ -64,20 +100,29 @@ def lead_id_de_reference(calepinage):
     return getattr(devis, 'lead_id', None) if devis is not None else None
 
 
-def verifier_avant_retenue(calepinage):
-    """Refuse de retenir une variante si l'option est active ET qu'aucun feu
+def verifier_avant_publication(calepinage, *, geste=GESTE_RETENUE,
+                               variante=None):
+    """ACAL116 — LA porte unique (renommage de ``verifier_avant_retenue``) :
+    ``geste`` ∈ ``retenue`` (retenir une variante), ``devis`` (générer /
+    resynchroniser le devis), ``execution`` (pièce d'exécution).
+
+    Refuse si l'option feu vert est active ET qu'aucun feu
     vert n'a été accordé au lead de référence.
 
     No-op quand l'option est désactivée, ou quand le calepinage n'a ni lead
     ni devis (la règle ne s'applique alors pas — et rien ne le cache).
 
-    CALX348 — puis, au MÊME point d'entrée, l'approbation exigée
-    (``_verifier_approbation_avant_retenue``), no-op elle aussi tant que la
-    société ne l'exige pas.
+    Décision fondateur 07/10/2026 (D-ACAL, remplace CALX348 + ACAL114) —
+    avec « approbation exigée », le parcours est RETENIR → APPROUVER →
+    PUBLIER : retenir une variante n'exige PLUS d'approbation (seuls le feu
+    vert et le verdict électrique, ACAL172, la refusent) ; l'UNIQUE point de
+    contrôle de l'approbation est la publication (devis / pièce d'exécution,
+    ACAL116). La variante retenue devenant la conception courante, l'accord
+    existant est périmé (ACAL114/115) et se redonne avant de publier.
 
     Raises:
         rest_framework.exceptions.ValidationError: refus, champ
-            ``feu_vert`` (ou ``approbation``, CALX348) nommé — converti en
+            ``feu_vert`` (ou ``approbation``, ACAL116) nommé — converti en
             400 par l'enveloppe d'erreur globale.
     """
     from rest_framework.exceptions import ValidationError
@@ -88,95 +133,54 @@ def verifier_avant_retenue(calepinage):
     if option_active(company):
         lead_id = lead_id_de_reference(calepinage)
         if lead_id:
-            lead = get_company_lead(company, lead_id)
+            lead = get_company_lead(company, lead_id, avec_corbeille=True)
             if lead is None or not getattr(lead, 'visite_effectuee', False):
                 raise ValidationError({
-                    'feu_vert': [
-                        "Cette variante ne peut pas être retenue : la visite "
-                        "technique du lead n'a pas encore reçu le feu vert "
-                        "du bureau d'études.",
-                    ],
+                    'feu_vert': [MESSAGES_FEU_VERT.get(
+                        geste, MESSAGES_FEU_VERT[GESTE_RETENUE])],
                 })
-    # CALX348 — la SECONDE vérification, au MÊME point d'entrée.
-    _verifier_approbation_avant_retenue(calepinage)
-
-
-# ── CALX348 — l'approbation exigée avant de retenir une variante ────────────
-#
-# Même discipline que le feu vert ci-dessus, et même point d'entrée : le
-# refus vit ICI, appelé par ``verifier_avant_retenue`` — donc par
-# ``services.variantes.retenir_variante``, le SEUL chemin d'écriture de
-# « retenue » (CAL9). L'interrupteur est la clé ``approbation_exigee`` de la
-# section ``presets`` (validée booléenne par ``services/presets.py``), off par
-# défaut : réglage absent ⇒ AUCUNE lecture de la décision, comportement
-# d'aujourd'hui strictement inchangé (D12). Le refus est une
-# ``ValidationError`` DRF, donc un 400 par l'enveloppe d'erreur GLOBALE, sans
-# toucher à ``views/calepinages.py``.
-
-def _roles_approbateurs(company):
-    """Les NOMS des rôles de la société qui portent le droit d'approuver.
-
-    Lus en base (``apps.roles``, fondation) — jamais un nom de rôle ni de
-    personne écrit en dur : c'est la matrice des rôles de la société qui dit
-    qui approuve.
-    """
-    if company is None:
-        return []
-    from apps.roles.models import Role
-
-    from ..permissions import CAL_APPROUVER
-
-    return sorted(
-        role.nom for role in Role.objects.filter(company=company).only(
-            'nom', 'permissions')
-        if CAL_APPROUVER in (role.permissions or []))
-
-
-def _message_approbation_manquante(calepinage, roles):
-    """Le refus FRANÇAIS, qui NOMME qui doit approuver (pur, testable)."""
-    from .approbation import REFUSE
-
-    decision = getattr(calepinage, 'approbation', None)
-    decision = decision if isinstance(decision, dict) else {}
-    if decision.get('etat') == REFUSE:
-        motif = str(decision.get('motif') or '').strip()
-        cause = ("sa conception a été REFUSÉE à la relecture"
-                 + (f" (motif : {motif})" if motif else '')
-                 + " et doit être reprise puis approuvée")
-    else:
-        cause = "sa conception n'a pas encore été approuvée"
-    if roles:
-        qui = ("par un porteur du droit « Approuver un calepinage » — "
-               "rôle(s) : " + ', '.join(roles))
-    else:
-        qui = ("par un porteur du droit « Approuver un calepinage », que "
-               "AUCUN rôle de la société ne porte encore : attribuez-le "
-               "dans la gestion des rôles")
-    return (f"Cette variante ne peut pas être retenue : {cause}, {qui}. "
-            "La société exige cette approbation avant de retenir une "
-            "variante.")
-
-
-def _verifier_approbation_avant_retenue(calepinage):
-    """Refuse de retenir une variante si la société EXIGE l'approbation et
-    que le calepinage n'est pas APPROUVÉ.
-
-    No-op quand l'option est éteinte (la décision n'est alors même pas lue).
-
-    Raises:
-        rest_framework.exceptions.ValidationError: refus, champ
-            ``approbation`` nommé — converti en 400 par l'enveloppe globale.
-    """
-    from rest_framework.exceptions import ValidationError
-
+    # Retenue : AUCUNE approbation exigée (décision fondateur 07/10/2026) ;
+    # seul le verdict électrique de la variante peut la refuser.
+    if geste == GESTE_RETENUE:
+        _verifier_verdict_de_la_variante(calepinage, variante)
+        return
+    # ACAL116 (D-ACAL-24) — devis / pièce d'exécution : une approbation À
+    # JOUR (non refusée, non périmée) quand la société l'exige.
     from .approbation import approbation_exigee, est_approuve
 
-    company = getattr(calepinage, 'company', None) if calepinage else None
-    if not approbation_exigee(company):
+    if approbation_exigee(company) and not est_approuve(calepinage):
+        raise ValidationError({
+            'approbation': [MESSAGES_APPROBATION.get(
+                geste, MESSAGES_APPROBATION[GESTE_EXECUTION])],
+        })
+
+
+def _verifier_verdict_de_la_variante(calepinage, variante):
+    """ACAL172 (D-ACAL-9, D-ACAL-2) — retenir une variante en fait la
+    conception chiffrée : SON verdict électrique (évalué sur son
+    ``roof_layout``) ne peut pas porter un bloquant. L'indéterminé passe.
+
+    Raises:
+        rest_framework.exceptions.ValidationError: champ ``electrique``
+            nommant les bloquants — converti en 400 par l'enveloppe globale.
+    """
+    document = getattr(variante, 'roof_layout', None) if variante else None
+    if calepinage is None or not isinstance(document, dict) or not document:
         return
-    if est_approuve(calepinage):
-        return
-    raise ValidationError({
-        'approbation': [_message_approbation_manquante(
-            calepinage, _roles_approbateurs(company))],
-    })
+    from rest_framework.exceptions import ValidationError
+
+    from .electrique import TemperaturesInvalides, verdict_de_conception
+
+    try:
+        verdict = verdict_de_conception(calepinage, layout=document)
+    except TemperaturesInvalides as refus:
+        # Lot 2 critique #19 — refus NOMMÉ (400), jamais un 500.
+        raise ValidationError({
+            getattr(refus, 'champ', '') or 'temperatures': [
+                "Cette variante ne peut pas être retenue : " + str(refus)]
+        }) from refus
+    if verdict['bloquants']:
+        raise ValidationError({'electrique': [
+            "Cette variante ne peut pas être retenue : verdict électrique "
+            "bloquant — " + ' ; '.join(b['libelle']
+                                       for b in verdict['bloquants'])]})

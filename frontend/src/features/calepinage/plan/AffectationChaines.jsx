@@ -12,6 +12,9 @@ import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
 /* ============================================================================
    CAL234 — AFFECTER LES CHAÎNES À LA MAIN, AVEC LE VERDICT EN DIRECT.
    ----------------------------------------------------------------------------
@@ -162,7 +165,7 @@ function numeroSaisi(texte) {
   return Number.isInteger(n) && n > 0 ? n : undefined
 }
 
-export default function AffectationChaines({ calepinageId }) {
+export default function AffectationChaines({ calepinageId, lectureSeule = false }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -561,7 +564,8 @@ export default function AffectationChaines({ calepinageId }) {
         <Button
           type="button"
           onClick={enregistrer}
-          disabled={!aProposition || bloquants.length > 0}
+          disabled={lectureSeule || !aProposition || bloquants.length > 0}
+          title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
           data-testid="cal234-enregistrer"
         >
           Enregistrer l’affectation manuelle
@@ -570,6 +574,8 @@ export default function AffectationChaines({ calepinageId }) {
           type="button"
           variant="outline"
           onClick={relancerAuto}
+          disabled={lectureSeule}
+          title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
           data-testid="cal234-relancer-auto"
         >
           {armeAuto

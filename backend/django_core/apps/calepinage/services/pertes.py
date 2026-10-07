@@ -253,14 +253,52 @@ def postes_du_calepinage(calepinage):
     return valider_postes(getattr(calepinage, 'pertes', None) or [])
 
 
-def enregistrer_pertes(calepinage, postes):
+def enregistrer_pertes(calepinage, postes, *, user=None):
     """Valide puis PERSISTE les postes de pertes d'un calepinage.
 
     La société n'est jamais touchée ici : le calepinage est déjà borné par le
     queryset de son viewset. Seul le champ ``pertes`` est écrit (``update_fields``),
     pour qu'un enregistrement de pertes ne réécrive jamais une conception.
     """
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    from .verrou import apres_envoi, verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage, champ='pertes')
     normalises = valider_postes(postes)
+    anciens = calepinage.pertes
     calepinage.pertes = normalises
     calepinage.save(update_fields=['pertes', 'updated_at'])
+    if apres_envoi(calepinage):
+        texte = _texte_ecarts_pertes(anciens, normalises)
+        if texte:
+            from .journal import noter
+
+            noter(calepinage, texte, user=user)
     return normalises
+
+
+def _texte_ecarts_pertes(anciens, nouveaux):
+    """ACAL43 — « Postes de pertes modifiés : iam 3 → 12 », ou ``''``."""
+    def _par_poste(liste):
+        return {str(p.get('poste')): p.get('pct')
+                for p in (liste or []) if isinstance(p, dict)}
+
+    avant, apres = _par_poste(anciens), _par_poste(nouveaux)
+    ecarts = []
+    for poste in list(avant) + [p for p in apres if p not in avant]:
+        a, b = avant.get(poste), apres.get(poste)
+        if a != b:
+            ecarts.append('%s %s → %s' % (
+                poste, '—' if a is None else _nombre_lisible(a),
+                '—' if b is None else _nombre_lisible(b)))
+    if not ecarts:
+        return ''
+    return 'Postes de pertes modifiés : ' + ', '.join(ecarts)
+
+
+def _nombre_lisible(valeur):
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return str(valeur)
+    return str(int(nombre)) if nombre == int(nombre) else str(nombre)

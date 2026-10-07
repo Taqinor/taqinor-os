@@ -177,6 +177,15 @@ class Calepinage(TenantModel):
         verbose_name='Système de fixation',
     )
 
+    #: ACAL118 — date d'ARCHIVAGE, portée par le modèle : ``None`` = actif.
+    #: La corbeille (``apps.trash``) reste le JOURNAL du geste, mais sa purge
+    #: de rétention efface l'entrée — l'état archivé ne peut donc pas y vivre
+    #: (un archivé « ressuscitait » à J+31). Seuls écrivains :
+    #: ``services.archivage.archiver`` / ``restaurer`` /
+    #: ``restaurateur_calepinage``. Lecteur unique : ``selectors.
+    #: calepinages_actifs``.
+    archive_le = models.DateTimeField('Archivé le', null=True, blank=True)
+
     class Meta:
         verbose_name = 'Calepinage'
         verbose_name_plural = 'Calepinages'
@@ -205,6 +214,8 @@ class Calepinage(TenantModel):
                          name='cal_cal_co_ao_idx'),
             models.Index(fields=['company', '-created_at'],
                          name='cal_cal_co_cree_idx'),
+            models.Index(fields=['company', 'archive_le'],
+                         name='cal_cal_co_archive_idx'),
         ]
 
     def __str__(self):

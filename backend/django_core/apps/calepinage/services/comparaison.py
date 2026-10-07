@@ -39,7 +39,29 @@ from __future__ import annotations
 from .valeurs import nombre as _nombre
 
 __all__ = ['CLES_PRODUCTION', 'MOTIF_NON_SIMULEE', 'MOTIF_PERIMEE',
-           'NOMBRE_PERTES_DOMINANTES', 'colonnes_production']
+           'NOMBRE_PERTES_DOMINANTES', 'colonnes_production',
+           'verdict_electrique_de_la_variante']
+
+
+def verdict_electrique_de_la_variante(variante):
+    """ACAL172 — ``{verdict, bloquants}`` de LA variante (codes des
+    bloquants), évalué sur SON ``roof_layout`` par la lecture unique
+    ``electrique.verdict_de_conception``. Lecture pure ; une variante sans
+    conception, ou des entrées illisibles, rendent ``indetermine``."""
+    from .electrique import TemperaturesInvalides, verdict_de_conception
+
+    indetermine = {'verdict': 'indetermine', 'bloquants': []}
+    calepinage = getattr(variante, 'calepinage', None)
+    document = getattr(variante, 'roof_layout', None)
+    if calepinage is None or not isinstance(document, dict) or not document:
+        return indetermine
+    try:
+        verdict = verdict_de_conception(calepinage, layout=document)
+    except TemperaturesInvalides:
+        return indetermine
+    return {'verdict': verdict['verdict'],
+            'bloquants': [b['code'] for b in verdict['bloquants']]}
+
 
 #: Les colonnes de production du contrat ``variantes_comparer.json`` —
 #: ``pertes_dominantes`` est traitée à part (c'est une liste, jamais ``None``).
@@ -63,15 +85,51 @@ def _dict(valeur):
     return valeur if isinstance(valeur, dict) else {}
 
 
-def _empreinte_du_resultat(resultat):
-    """L'empreinte du layout AYANT PRODUIT ce résultat, si elle est dite."""
-    for cle in ('layout_hash', 'empreinte_layout'):
-        valeur = resultat.get(cle)
-        if isinstance(valeur, str) and valeur:
-            return valeur
-    production = _dict(resultat.get('production'))
-    valeur = _dict(production.get('base')).get('layout_hash')
-    return valeur if isinstance(valeur, str) and valeur else None
+def _hash_de_simulation(resultat):
+    """L'empreinte de simulation (``resultat['simulation']['hash_entree']``)
+    sous laquelle ce résultat a été calculé, ou ``''`` si aucune n'est dite."""
+    simulation = _dict(_dict(resultat).get('simulation'))
+    valeur = simulation.get('hash_entree')
+    return valeur if isinstance(valeur, str) else ''
+
+
+def simulation_perimee_du_calepinage(calepinage):
+    """ACAL111 — LE verdict de péremption d'un calepinage : celui que sert
+    ``selectors.resultat_servi`` (``simulation_perimee``), jamais un second
+    calcul. Sans simulation déposée (aucun ``hash_entree``) il n'y a rien à
+    périmer : ``False`` — et aucune lecture de la base n'est faite."""
+    if not _hash_de_simulation(getattr(calepinage, 'resultat', None)):
+        return False
+    from ..selectors import resultat_servi
+
+    return bool(resultat_servi(calepinage).get('simulation_perimee'))
+
+
+def simulation_perimee_de_la_variante(variante):
+    """ACAL111 — le résultat déposé sur une variante décrit-il ENCORE son
+    ``roof_layout`` ? Même empreinte de simulation que le calepinage
+    (``simulation.empreinte_simulation``, C-ACAL-073) appliquée au document de
+    la VARIANTE. Résultat sans empreinte ⇒ ``False`` (un doute ne rougit
+    pas) ; entrées illisibles ⇒ ``False`` (le refus appartient à la
+    simulation)."""
+    attendue = _hash_de_simulation(getattr(variante, 'resultat', None))
+    calepinage = getattr(variante, 'calepinage', None)
+    if not attendue or calepinage is None:
+        return False
+    from .electrique import (
+        TemperaturesInvalides, conception_du_calepinage, parametres_societe,
+    )
+    from .simulation import empreinte_simulation
+
+    try:
+        _, materiel, donnees, document = conception_du_calepinage(
+            calepinage, layout=getattr(variante, 'roof_layout', None))
+    except TemperaturesInvalides:
+        return False
+    actuelle = empreinte_simulation(
+        calepinage, document=document, donnees=donnees, materiel=materiel,
+        reglages=parametres_societe(calepinage))
+    return actuelle != attendue
 
 
 def _pertes_dominantes(resultat):
@@ -107,14 +165,14 @@ def _pertes_dominantes(resultat):
     return lignes[:NOMBRE_PERTES_DOMINANTES]
 
 
-def colonnes_production(resultat, *, layout_hash=None):
+def colonnes_production(resultat, *, perimee=False):
     """Les colonnes de production d'UNE variante, à la forme du contrat.
 
     Args:
         resultat: le ``resultat`` DÉPOSÉ sur la variante par le moteur.
-        layout_hash: l'empreinte du layout ACTUEL de la variante. Quand le
-            résultat porte lui aussi son empreinte et qu'elles diffèrent, la
-            production est déclarée PÉRIMÉE (donc non simulée).
+        perimee: le VERDICT de péremption, décidé par l'appelant (verdict
+            servi du calepinage, ou empreinte de simulation de la variante) :
+            vrai ⇒ la production est déclarée PÉRIMÉE (donc non simulée).
 
     Returns:
         ``(simulee, production, motif)`` — ``production`` porte TOUJOURS les
@@ -129,8 +187,7 @@ def colonnes_production(resultat, *, layout_hash=None):
     if not production:
         return False, vide, MOTIF_NON_SIMULEE
 
-    empreinte = _empreinte_du_resultat(resultat)
-    if layout_hash and empreinte and empreinte != layout_hash:
+    if perimee:
         return False, vide, MOTIF_PERIMEE
 
     # Forme imbriquée du module (CAL138/CAL142) ou forme plate du parcours

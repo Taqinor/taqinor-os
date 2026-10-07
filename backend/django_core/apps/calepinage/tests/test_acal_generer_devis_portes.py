@@ -31,6 +31,11 @@ from .test_api_liste import BaseApiCalepinage, url_detail
 CONTRAT = json.loads(
     (Path(__file__).resolve().parent.parent / 'contract_samples'
      / 'calepinage_publication.json').read_text(encoding='utf-8'))
+#: ACAL170 — la réponse de GÉNÉRER porte en plus la clé ``electrique``,
+#: publiée par le contrat jumeau ``calepinage_publication_electrique.json``.
+CONTRAT_ELECTRIQUE = json.loads(
+    (Path(__file__).resolve().parent.parent / 'contract_samples'
+     / 'calepinage_publication_electrique.json').read_text(encoding='utf-8'))
 
 TOIT = {
     'areas': [{
@@ -66,7 +71,9 @@ class GenererDevisPortesTest(BaseApiCalepinage):
     def test_copie_genere_nouveau_devis_sans_500(self):
         premier = self._generer(self.original)
         self.assertEqual(premier.status_code, 201, premier.data)
-        copie = dupliquer(self.original, user=self.user)
+        # ACAL187 — source OUVERTE : la copie vise un autre lead.
+        copie = dupliquer(self.original, user=self.user,
+                          lead_id=self.lead_2.pk)
         self.original.refresh_from_db()
         self.assertEqual(copie.layout_hash, self.original.layout_hash)
 
@@ -161,9 +168,12 @@ class GenererDevisPortesTest(BaseApiCalepinage):
     def test_reponse_porte_avertissements(self):
         reponse = self._generer(self.original)
         self.assertEqual(reponse.status_code, 201, reponse.data)
-        self.assertEqual(sorted(reponse.data), sorted(CONTRAT['exemple']))
+        self.assertEqual(sorted(reponse.data),
+                         sorted(CONTRAT_ELECTRIQUE['exemple']))
+        self.assertTrue(set(CONTRAT['exemple']) <= set(reponse.data))
         self.assertIsInstance(reponse.data['avertissements'], list)
         self.assertIsInstance(reponse.data['marques_manquantes'], list)
         second = self._generer(self.original)
         self.assertEqual(sorted(second.data),
-                         sorted(CONTRAT['exemple_deduplique']))
+                         sorted(set(CONTRAT['exemple_deduplique'])
+                                | {'electrique'}))

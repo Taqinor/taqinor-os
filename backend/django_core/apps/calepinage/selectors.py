@@ -159,7 +159,17 @@ def calepinage_ouvert_du_lead(company, lead_id):
     """
     if company is None or not lead_id:
         return None
-    return liste_calepinages(company, lead_id=lead_id).first()
+    return _ouverts(company, lead_id).first()
+
+
+def _ouverts(company, lead_id):
+    """Les calepinages OUVERTS d'un lead : non archivés ET non MODÈLES — un
+    modèle n'est pas « le » calepinage ouvert de son lead (ACAL187,
+    ``variantes._hors_unicite``)."""
+    from .services.modeles import calepinages_modeles
+
+    return (liste_calepinages(company, lead_id=lead_id)
+            .exclude(pk__in=calepinages_modeles(company).values('pk')))
 
 
 def calepinages_ouverts_du_lead(company, lead_id):
@@ -172,7 +182,7 @@ def calepinages_ouverts_du_lead(company, lead_id):
     """
     if company is None or not lead_id:
         return []
-    return list(liste_calepinages(company, lead_id=lead_id))
+    return list(_ouverts(company, lead_id))
 
 
 #: ACAL196 — « CAL-AAMM-NNNN » : le numéro à la fin est l'identifiant.
@@ -212,8 +222,8 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
 
     CAL208 — ``inclure_archives=False`` (le défaut, y compris pour le
     viewset qui n'appelle PAS cet argument) exclut les calepinages archivés
-    (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
-    import direct de ``ElementSupprime``, frontière inter-apps).
+    — ACAL118 : par le prédicat de ``calepinages_actifs`` (``archive_le``
+    sur le modèle), qui survit à la purge de la corbeille.
 
     ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
     décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
@@ -227,32 +237,51 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     if client_id:
         lignes = lignes.filter(client_id=client_id)
     if statut:
-        lignes = lignes.filter(statut=statut)
+        # ACAL114 — ``statut`` est DÉRIVÉ de l'approbation (annotation).
+        from .services.approbation import annoter_statut_derive
+
+        lignes = annoter_statut_derive(lignes).filter(statut_derive=statut)
     if depuis:
         lignes = lignes.filter(created_at__gte=depuis)
     terme = (q or '').strip()
     if terme:
         lignes = lignes.filter(_condition_recherche(terme, company))
     if not inclure_archives:
-        from apps.trash.selectors import ids_dans_corbeille
-
-        lignes = lignes.exclude(
-            pk__in=list(ids_dans_corbeille('calepinage.calepinage')))
+        lignes = lignes.filter(**_CONDITION_ACTIF)
     return lignes.order_by('-created_at', '-id')
 
 
-def calepinage_detail(pk, company):
+#: ACAL118 — LE prédicat « actif » (non archivé), lu sur le MODÈLE
+#: (``Calepinage.archive_le``), jamais sur la corbeille que la purge vide.
+_CONDITION_ACTIF = {'archive_le__isnull': True}
+
+
+def calepinages_actifs(company):
+    """ACAL118 — LE sélecteur unique des calepinages ACTIFS (non archivés)
+    de ``company`` : liste, ``depuis-lead``, modèles, comparatifs et
+    ``calepinage_du_devis`` le lisent. ``None`` ⇒ queryset vide."""
+    from .models import Calepinage
+
+    if company is None:
+        return Calepinage.objects.none()
+    return Calepinage.objects.filter(company=company, **_CONDITION_ACTIF)
+
+
+def calepinage_detail(pk, company, *, inclure_archives=False):
     """CAL10 — UN calepinage borné société, ou ``None``.
 
     Un calepinage d'une autre société est INTROUVABLE (``None``), jamais
     « interdit » : l'appelant répond 404 et n'apprend rien de son existence.
+    ACAL118 — un ARCHIVÉ n'est rendu que sur demande explicite
+    (``inclure_archives=True`` : archiver / restaurer).
     """
     from .models import Calepinage
 
     if company is None or not pk:
         return None
-    return (Calepinage.objects
-            .filter(pk=pk, company=company)
+    base = (Calepinage.objects.filter(company=company) if inclure_archives
+            else calepinages_actifs(company))
+    return (base.filter(pk=pk)
             .select_related('client', 'devis')
             .first())
 
@@ -328,9 +357,28 @@ def comparer_variantes(calepinage):
 
 
 def _mesures_variante(variante):
-    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées."""
+    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées.
+
+    ACAL112 — sans résultat (variante non simulée), ``total_modules`` et
+    ``kwc`` sont LUS dans la conception de la variante
+    (``mesures_du_document`` → ``pans_du_document``) et
+    ``source_mesures`` vaut ``'conception'``.
+
+    Lot 2 critique #30 — SIMULÉE, les blocs de simulation n'ont aucun
+    ``total_modules``/``kwc`` de tête : ces deux grandeurs restent LUES dans
+    la conception de la variante, les clés de la simulation s'y ajoutent."""
+    from .services.mesures import mesures_du_document
+
+    document = getattr(variante, 'roof_layout', None)
+    conception = {}
+    if isinstance(document, dict):
+        mesures = mesures_du_document(document)
+        conception = {'total_modules': mesures.get('modules'),
+                      'kwc': mesures.get('kwc')}
     resultat = getattr(variante, 'resultat', None)
-    return resultat if isinstance(resultat, dict) else {}
+    if isinstance(resultat, dict) and resultat:
+        return dict(resultat, **conception, source_mesures='simulation')
+    return dict(conception, source_mesures='conception')
 
 
 def _production_comparee(variante):
@@ -339,18 +387,27 @@ def _production_comparee(variante):
     Le service de comparaison lit le résultat déposé par le moteur (forme
     imbriquée du module ou forme plate du parcours devis) et déclare « non
     simulée » toute variante sans production — ou dont la production a été
-    calculée sur une AUTRE empreinte de layout que celle d'aujourd'hui. Rien
+    calculée sur une AUTRE empreinte de simulation que celle d'aujourd'hui
+    (ACAL111 : celle de C-ACAL-073 appliquée au ``roof_layout`` de la
+    variante). Rien
     n'est stocké : le comparatif suit l'empreinte sans invalidation.
     """
-    from .services.comparaison import colonnes_production
+    from .services.comparaison import (
+        colonnes_production, simulation_perimee_de_la_variante,
+    )
 
-    return colonnes_production(_mesures_variante(variante),
-                               layout_hash=getattr(variante, 'layout_hash',
-                                                   '') or None)
+    resultat = getattr(variante, 'resultat', None)
+    return colonnes_production(
+        resultat if isinstance(resultat, dict) else {},
+        perimee=simulation_perimee_de_la_variante(variante))
 
 
 def _ligne_comparaison(variante, reference, nombre_de_lignes,
                        reference_p50=None):
+    from .services.comparaison import (
+        MOTIF_PERIMEE, verdict_electrique_de_la_variante,
+    )
+
     mesures = _mesures_variante(variante)
     simulee, production, _motif = _production_comparee(variante)
     comparable = nombre_de_lignes > 1 and bool(reference)
@@ -390,6 +447,15 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
             reference_p50, comparable),
         'version_moteur': mesures.get('version_moteur') or '',
         'entree_hash': mesures.get('entree_hash') or '',
+        # ACAL7/ACAL112 — colonnes de fraîcheur (contrat
+        # variantes_comparer.json) : ``None`` = jamais simulée.
+        'simulation_perimee': (
+            None if mesures.get('source_mesures') != 'simulation'
+            else _motif == MOTIF_PERIMEE),
+        'source_mesures': ('simulation' if simulee else 'conception'),
+        # ACAL172 — le verdict électrique de LA variante (contrat
+        # calepinage_publication_electrique.json, ligne de comparer/).
+        'verdict_electrique': verdict_electrique_de_la_variante(variante),
     }
 
 
@@ -412,14 +478,121 @@ def calepinage_du_devis(devis_id, company):
     Point d'entrée cross-app : ``ventes`` sait si un devis a une conception
     sans jamais importer ``apps.calepinage.models``.
     """
-    from .models import Calepinage
-
     if company is None or not devis_id:
         return None
-    return (Calepinage.objects
-            .filter(company=company, devis_id=devis_id)
-            .order_by('-created_at', '-id')
-            .first())
+    # ACAL118 — un ARCHIVÉ n'est jamais « le calepinage du devis » (la fiche
+    # devis ne pointe plus vers un 404).
+    # ACAL92 (D-ACAL-3) — à la révision, le calepinage est RE-LIÉ à la V2 :
+    # un devis REMPLACÉ sans calepinage propre retrouve celui de sa
+    # remplaçante (``superseded_by``, lu par ``ventes.selectors``), chaîne
+    # bornée et sans boucle, toujours dans la même société.
+    from apps.ventes.selectors import get_devis_by_pk
+
+    vus = set()
+    courant = devis_id
+    for _rang in range(_PROFONDEUR_REVISIONS):
+        trouve = (calepinages_actifs(company)
+                  .filter(devis_id=courant)
+                  .order_by('-created_at', '-id')
+                  .first())
+        if trouve is not None:
+            return trouve
+        vus.add(str(courant))
+        devis = get_devis_by_pk(courant)
+        suivant = (getattr(devis, 'superseded_by_id', None)
+                   if devis is not None
+                   and getattr(devis, 'company_id', None) == company.pk
+                   else None)
+        if not suivant or str(suivant) in vus:
+            return None
+        courant = suivant
+    return None
+
+
+#: ACAL92 — profondeur maximale de la chaîne de révision suivie (V1 → V2 → …).
+_PROFONDEUR_REVISIONS = 20
+
+
+def conception_figee_du_devis(devis_id, company):
+    """ACAL92 (D-ACAL-3) — la conception FIGÉE d'un devis REMPLACÉ, ou ``None``.
+
+    « La conception lue pour une V1 n'est jamais la conception courante
+    re-liée » : à la révision, le calepinage C est re-lié à la V2 et continue
+    d'évoluer. Le PDF d'un devis envoyé/accepté puis remplacé se rend donc de
+    ce qui a été ENVOYÉ :
+
+    * la version « Version envoyée — <référence> » déposée par
+      ``receivers.relier_calepinage_au_devis_revise`` ;
+    * à défaut, l'instantané ``Devis.roof_layout`` du devis lui-même.
+
+    Rend ``None`` quand le calepinage trouvé est celui DU devis (lien direct :
+    la conception courante est la bonne) ou qu'il n'y en a aucun ; sinon
+    ``{'calepinage', 'roof_layout', 'layout_hash', 'source'}`` —
+    ``roof_layout`` vaut ``None`` quand aucun instantané n'existe (le rendu
+    est alors OMIS, jamais tiré de la conception courante). ``source`` vaut
+    ``'version'`` / ``'devis'`` / ``None``. Lecture PURE, bornée société.
+    """
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None or str(calepinage.devis_id) == str(devis_id):
+        return None
+    return _conception_figee(calepinage, devis_id)
+
+
+def _conception_figee(calepinage, devis_id):
+    from apps.ventes.selectors import get_devis_by_pk
+
+    from .models import CalepinageVersion
+    from .services.versions import LIBELLE_VERSION_ENVOYEE
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is not None and devis.company_id != calepinage.company_id:
+        devis = None
+    figee = {'calepinage': calepinage, 'roof_layout': None,
+             'layout_hash': '', 'source': None}
+    if devis is None:
+        return figee
+    reference = (getattr(devis, 'reference', '') or '').strip() or (
+        f'#{devis.pk}')
+    version = (CalepinageVersion.objects
+               .filter(calepinage=calepinage,
+                       libelle=LIBELLE_VERSION_ENVOYEE.format(
+                           reference=reference))
+               .order_by('-created_at', '-id')
+               .first())
+    if (version is not None and isinstance(version.roof_layout, dict)
+            and version.roof_layout):
+        figee.update(roof_layout=version.roof_layout,
+                     layout_hash=version.layout_hash or '',
+                     source='version')
+        return figee
+    instantane = getattr(devis, 'roof_layout', None)
+    if isinstance(instantane, dict) and instantane:
+        figee.update(roof_layout=instantane,
+                     layout_hash=getattr(devis, 'layout_hash', '') or '',
+                     source='devis')
+    return figee
+
+
+def _calepinage_lisible_pour_devis(devis_id, company):
+    """ACAL92 — le calepinage dont les DONNÉES (simulation servie, entrée
+    électrique) décrivent encore ce devis, ou ``None``.
+
+    Lien direct : le calepinage. Devis REMPLACÉ : le calepinage re-lié
+    seulement tant que sa conception courante est IDENTIQUE (empreinte
+    document) à la conception figée envoyée — sinon ses chiffres sont ceux de
+    la version en vigueur, jamais ceux de ce devis (``None`` : l'appelant
+    reprend son propre chemin).
+    """
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None or str(calepinage.devis_id) == str(devis_id):
+        return calepinage
+    from .services.layout import empreinte_document
+
+    document = _conception_figee(calepinage, devis_id)['roof_layout']
+    if document is None or (empreinte_document(document)
+                            != empreinte_document(calepinage.roof_layout)):
+        return None
+    return calepinage
 
 
 def ombrage_servi(devis_id, company):
@@ -440,7 +613,9 @@ def ombrage_servi(devis_id, company):
     """
     from .services.chaine_pertes import perte_ombrage_de_la_cascade
 
-    calepinage = calepinage_du_devis(devis_id, company)
+    # ACAL92 — un devis REMPLACÉ ne lit jamais l'ombrage d'une conception
+    # re-liée qui a changé depuis son envoi.
+    calepinage = _calepinage_lisible_pour_devis(devis_id, company)
     if calepinage is None:
         return None
     servi = resultat_servi(calepinage)
@@ -469,34 +644,37 @@ def calepinage_retenu_pour_devis(devis_id, company):
     RETENUE (``CalepinageVariante.retenue``) — un calepinage sans option
     choisie ne désigne rien de concret à renvoyer.
 
-    Le kWc et le nombre de modules sont lus, dans l'ordre : le résultat du
-    moteur (``variante.resultat['pose']`` — chaîné/simulé, CAL126+) puis, à
-    défaut, le résumé posé par l'atelier 3D (``variante.roof_layout['result']``
-    — présent dès qu'une pose a été dessinée, avant toute simulation). Aucune
-    valeur n'est recalculée ici : c'est une LECTURE pure, bornée société.
+    ACAL107 (D-ACAL-2, D-ACAL-23) — le kWc et le nombre de modules sont lus
+    sur ``services.asbuilt.conception_du_chantier`` : l'instantané FIGÉ de la
+    version ACCEPTÉE en vigueur du devis, sinon la conception COURANTE du
+    calepinage (``Calepinage.resultat['pose']`` n'est lu que dans ce second
+    cas — il décrit la conception courante, pas un instantané). La variante
+    retenue n'est plus lue en parallèle : retenir l'a écrite comme
+    conception courante. Aucune valeur n'est recalculée ici : LECTURE pure,
+    bornée société.
     """
     from .models import CalepinageVariante
+    from .services.asbuilt import SOURCE_CALEPINAGE, conception_du_chantier
 
     calepinage = calepinage_du_devis(devis_id, company)
     if calepinage is None:
         return None
-    variante = (CalepinageVariante.objects
-                .filter(calepinage=calepinage, retenue=True)
-                .first())
-    if variante is None:
+    if not (CalepinageVariante.objects
+            .filter(calepinage=calepinage, retenue=True).exists()):
         return None
 
     kwc = None
     nb_modules = None
-    resultat = variante.resultat if isinstance(variante.resultat, dict) else None
-    pose = resultat.get('pose') if resultat else None
-    if isinstance(pose, dict):
-        kwc = pose.get('kwc')
-        nb_modules = pose.get('total_modules')
-    if kwc is None and nb_modules is None:
-        roof_layout = (variante.roof_layout
-                       if isinstance(variante.roof_layout, dict) else None)
-        result = roof_layout.get('result') if roof_layout else None
+    document, source = conception_du_chantier(calepinage)
+    if source == SOURCE_CALEPINAGE:
+        resultat = (calepinage.resultat
+                    if isinstance(calepinage.resultat, dict) else None)
+        pose = resultat.get('pose') if resultat else None
+        if isinstance(pose, dict):
+            kwc = pose.get('kwc')
+            nb_modules = pose.get('total_modules')
+    if kwc is None and nb_modules is None and isinstance(document, dict):
+        result = document.get('result')
         if isinstance(result, dict):
             kwc = result.get('kwc')
             nb_modules = result.get('panels')
@@ -528,8 +706,11 @@ def entree_electrique_du_devis(devis_id, company):
       jamais une longueur ni un régime.
 
     Lecture PURE, bornée société, ne lève jamais.
+
+    ACAL92 — un devis REMPLACÉ ne lit ces grandeurs que tant que la
+    conception re-liée est celle qu'il a envoyée (``None`` sinon).
     """
-    calepinage = calepinage_du_devis(devis_id, company)
+    calepinage = _calepinage_lisible_pour_devis(devis_id, company)
     if calepinage is None:
         return None
     from .services.electrique import (
@@ -570,53 +751,9 @@ def entree_electrique_du_devis(devis_id, company):
     }
 
 
-#: CAL185 — les clés de la nomenclature d'une variante retenue. TOUJOURS
-#: toutes présentes : un appelant n'a jamais à deviner si une clé existe.
-CLES_NOMENCLATURE_RETENUE = ('calepinage', 'variante', 'nom', 'layout',
-                             'layout_hash')
-
-
-def nomenclature_variante_retenue(calepinage_id, company):
-    """CAL185 — la conception de la variante RETENUE, prête à être CHIFFRÉE.
-
-    Point d'entrée cross-app : ``apps.ventes`` chiffre la variante choisie
-    sans jamais importer ``apps.calepinage.models``. Ce que rend cette
-    fonction est la CONCEPTION (le document ``roof_layout`` de la variante) et
-    son empreinte — pas une liste de produits : le schéma v2 ne porte aucune
-    référence catalogue (cf. ``services.equipements``), et c'est la
-    composition ventes qui résout les produits. Une deuxième façon de choisir
-    un produit serait une deuxième vérité de chiffrage.
-
-    ``None`` quand le calepinage n'existe pas dans cette société, quand
-    AUCUNE variante n'y est retenue, ou quand la variante retenue ne porte
-    pas de conception — une variante sans dessin n'a rien à chiffrer, et on
-    ne retombe JAMAIS en silence sur la conception du calepinage parent (ce
-    serait chiffrer autre chose que ce que le commercial a retenu).
-    """
-    from .models import Calepinage, CalepinageVariante
-
-    if company is None or not calepinage_id:
-        return None
-    calepinage = (Calepinage.objects
-                  .filter(company=company, pk=calepinage_id)
-                  .first())
-    if calepinage is None:
-        return None
-    variante = (CalepinageVariante.objects
-                .filter(calepinage=calepinage, retenue=True)
-                .first())
-    if variante is None:
-        return None
-    layout = variante.roof_layout
-    if not isinstance(layout, dict) or not layout:
-        return None
-    return {
-        'calepinage': calepinage.pk,
-        'variante': variante.pk,
-        'nom': variante.nom or '',
-        'layout': layout,
-        'layout_hash': variante.layout_hash or '',
-    }
+# ACAL108 — ``nomenclature_variante_retenue`` / ``CLES_NOMENCLATURE_RETENUE``
+# (CAL185, porte jumelle from-layout {calepinage}) sont retirés : un
+# calepinage se chiffre par SON « Générer le devis » (D-ACAL-2).
 
 
 # ACAL326 (D-ACAL-16) — ``calepinage_de_l_affaire`` (pont AO, appelé
@@ -670,7 +807,8 @@ def contexte_geographique(calepinage):
 
     contexte = dict(vide)
 
-    lead = get_company_lead(company, getattr(calepinage, 'lead_id', None))
+    lead = get_company_lead(
+        company, getattr(calepinage, 'lead_id', None), avec_corbeille=True)
     if lead is not None:
         contexte['adresse'] = _texte(getattr(lead, 'adresse', None))
         contexte['ville'] = _texte(getattr(lead, 'ville', None))

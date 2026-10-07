@@ -316,6 +316,23 @@ describe('CALX222 — l’API du constructeur atteint les panneaux d’onglet', 
   }, 30_000)
 })
 
+/* ACAL44 — le rail relaie `lectureSeule` à l'onglet ACTIF : le bouton
+   d'écriture du panneau monté est désactivé. */
+describe('ACAL44 — lecture seule relayée', () => {
+  it('lectureSeule est relayée à l’onglet actif', async () => {
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=postes-pertes`]}>
+        <Routes>
+          <Route path="/calepinage/:id" element={<Rail lectureSeule />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const bouton = await screen.findByTestId('cal-pertes-enregistrer', {},
+      { timeout: DELAI_PANNEAU })
+    expect(bouton).toBeDisabled()
+  }, DELAI_PANNEAU + 5_000)
+})
+
 /** Témoin minimal : il rend la recherche de l'URL du ROUTEUR (MemoryRouter ne
     touche jamais `window.location`), pour l'assertion sur `?onglet=`. */
 function TemoinUrl() {

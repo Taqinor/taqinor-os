@@ -46,7 +46,8 @@ def _lead_apercu(lead):
     nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
                                getattr(lead, 'prenom', '') or ''] if p).strip()
     ville = (getattr(lead, 'ville', '') or '').strip() or None
-    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville}
+    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville,
+            'supprime': bool(getattr(lead, 'is_deleted', False))}
 
 
 def peremption_du_calepinage(devis, calepinage):
@@ -128,7 +129,7 @@ class _CalepinageListSerializer(serializers.ListSerializer):
                 cache = self.child.__dict__.setdefault(
                     '_calx407_cache_leads', {})
                 for lead_id, lead in get_company_leads_by_ids(
-                        company, ids).items():
+                        company, ids, avec_corbeille=True).items():
                     cache[(company.pk, lead_id)] = lead
         return [self.child.to_representation(ligne) for ligne in lignes]
 
@@ -146,8 +147,11 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     lead = serializers.IntegerField(source='lead_id', required=False,
                                     allow_null=True)
-    statut_libelle = serializers.CharField(source='get_statut_display',
-                                           read_only=True)
+    #: ACAL114 (D-ACAL-19) — ``statut`` et son libellé sont DÉRIVÉS de
+    #: l'approbation (brouillon | valide | perime), en LECTURE SEULE : un
+    #: PATCH ``{statut}`` est sans effet. La colonne reste en base.
+    statut = serializers.SerializerMethodField()
+    statut_libelle = serializers.SerializerMethodField()
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
     layout_stale = serializers.SerializerMethodField()
     layout_nb_panneaux = serializers.SerializerMethodField()
@@ -208,6 +212,19 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         except ContraintesSiteInvalides as refus:
             raise serializers.ValidationError(refus.message)
 
+    @extend_schema_field(serializers.CharField())
+    def get_statut(self, obj):
+        from .services.approbation import statut_derive
+
+        return statut_derive(obj)
+
+    @extend_schema_field(serializers.CharField())
+    def get_statut_libelle(self, obj):
+        from .services.approbation import LIBELLES_STATUT, statut_derive
+
+        return LIBELLES_STATUT[statut_derive(obj)]
+
+    # Lot 2 critique #20 — le type booléen (nullable) revient à SA méthode.
     @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_layout_stale(self, calepinage):
         """``True``/``False`` d'après le DEVIS lié — ``None`` sans devis.
@@ -335,7 +352,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                 if company is None:
                     cache[cle] = None
                     return None
-        lead = get_company_lead(company, lead_id)
+        lead = get_company_lead(company, lead_id, avec_corbeille=True)
         cache[cle] = lead
         return lead
 

@@ -44,11 +44,19 @@ def _actions():
 class RoutageDesPortesModeleTest(SimpleTestCase):
     """Les trois portes existent, ou la fonctionnalité est injoignable."""
 
+    # ACAL184 — la création depuis un modèle passe par la porte UNIQUE
+    # ``depuis-modele`` (CALX351) ; ``creer-depuis-modele`` est retirée.
     ATTENDU = {
         'marquer_modele': ('marquer-modele', {'post'}, True),
         'demarquer_modele': ('demarquer-modele', {'post'}, True),
-        'creer_depuis_modele': ('creer-depuis-modele', {'post'}, False),
+        'depuis_modele': ('depuis-modele', {'post'}, False),
     }
+
+    def test_la_porte_creer_depuis_modele_est_retiree(self):
+        _viewset, actions = _actions()
+        self.assertNotIn('creer_depuis_modele', actions)
+        self.assertNotIn('creer-depuis-modele',
+                         [a.url_path for a in actions.values()])
 
     def test_les_trois_actions_sont_enregistrees(self):
         _viewset, actions = _actions()
@@ -89,7 +97,7 @@ class RoutageDesPortesModeleTest(SimpleTestCase):
     def test_creer_depuis_modele_est_une_action_de_LISTE(self):
         """Créer depuis un modèle ne vise pas un calepinage existant."""
         _viewset, actions = _actions()
-        self.assertFalse(actions['creer_depuis_modele'].detail)
+        self.assertFalse(actions['depuis_modele'].detail)
         self.assertTrue(actions['marquer_modele'].detail)
         self.assertTrue(actions['demarquer_modele'].detail)
 

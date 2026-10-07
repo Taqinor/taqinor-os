@@ -16,7 +16,6 @@ from django.test import TestCase, TransactionTestCase
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
     CLE_ENTREE, CLE_FIL_ECARTS, enregistrer_entree, journaliser_ecart_longueur,
-    rejouer_apres_layout,
 )
 from apps.calepinage.services.resultat import CLES_SAISIES, modifier_resultat
 from apps.calepinage.services.sld import CLE_EDITION, enregistrer_edition_sld
@@ -37,11 +36,13 @@ def _simulation(calepinage):
 
 
 def _ecrivains():
-    """``(nom, écrire(calepinage), clé attendue)`` — les six écrivains."""
+    """``(nom, écrire(calepinage), clé attendue)`` — les écrivains de
+    ``resultat`` (ACAL325 : le rejeu du verdict n'en est plus un)."""
     return (
         ('enregistrer_entree',
          lambda c: enregistrer_entree(c, {'dc_m': 25.0}), CLE_ENTREE),
-        ('rejouer_apres_layout', rejouer_apres_layout, 'verdict_electrique'),
+        # ACAL325 — ``rejouer_apres_layout`` n'écrit PLUS ``resultat`` (le
+        # verdict est servi à la demande) : il sort de la liste des écrivains.
         ('journaliser_ecart_longueur',
          lambda c: journaliser_ecart_longueur(c, {
              'hors_tolerance': True, 'longueur': 12,

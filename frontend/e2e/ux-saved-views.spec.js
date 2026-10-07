@@ -88,7 +88,12 @@ test('NTUX36: créer, partager, définir par défaut de rôle, propager en sessi
 
     const nomModifie = uniq('Vue perso modifiée')
     await rowCopie.getByRole('button', { name: 'Renommer' }).click()
-    const input = secondPage.getByDisplayValue(nomCopie)
+    // CAD177 : `getByDisplayValue` est une API Testing Library, pas Playwright
+    // (TypeError au nocturne 37585800165). Le champ de renommage (ViewRow,
+    // `<Input autoFocus value={draftName}>`) est le SEUL input des lignes de
+    // vues en mode renommage ; sa valeur de départ prouve la bonne ligne.
+    const input = secondPage.getByTestId('uxviews-view-row').locator('input').first()
+    await expect(input).toHaveValue(nomCopie)
     await input.fill(nomModifie)
     await input.press('Enter')
     await expect(secondPage.getByTestId('uxviews-view-row').filter({ hasText: nomModifie })).toBeVisible()

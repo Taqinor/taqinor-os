@@ -90,6 +90,12 @@ SAMPLE_LAYOUT = {
 }
 
 
+def _sans_privees(layout):
+    """ACAL96 — le layout sans les clés privées du devis (``_…``)."""
+    return {k: v for k, v in (layout or {}).items()
+            if not str(k).startswith('_')}
+
+
 class TestQ1Layout(TestCase):
     def setUp(self):
         self.company = make_company('q1-co')
@@ -104,14 +110,22 @@ class TestQ1Layout(TestCase):
         self.assertEqual(self.devis.roof_layout['result']['kwc'], 6.6)
         got = self.api.get(url)
         self.assertEqual(got.status_code, 200)
-        self.assertEqual(got.data['roof_layout'], SAMPLE_LAYOUT)
+        # ACAL96 — le devis porte l'instantané RANGÉ de la conception (clés
+        # privées ``_pans_geometry``… en plus) ; le document lui-même vit
+        # dans le calepinage lié, octet pour octet.
+        self.assertEqual(_sans_privees(got.data['roof_layout']),
+                         SAMPLE_LAYOUT)
+        from apps.calepinage.models import Calepinage
+        self.assertEqual(
+            Calepinage.objects.get(devis=self.devis).roof_layout,
+            SAMPLE_LAYOUT)
 
     def test_wrapper_form_accepted(self):
         url = f'/api/django/ventes/devis/{self.devis.id}/layout/'
         resp = self.api.post(url, {'roof_layout': SAMPLE_LAYOUT}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.devis.refresh_from_db()
-        self.assertEqual(self.devis.roof_layout, SAMPLE_LAYOUT)
+        self.assertEqual(_sans_privees(self.devis.roof_layout), SAMPLE_LAYOUT)
 
     def test_status_unchanged(self):
         url = f'/api/django/ventes/devis/{self.devis.id}/layout/'
