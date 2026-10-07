@@ -52,7 +52,10 @@ EDITABLE_TYPES = {'pose', 'mise_en_service', 'intervention', 'activite'}
 # l'utilisateur (``JetonCalendrier``, incrémentée par « régénérer le lien »)
 # est signée avec l'id, et un jeton plus vieux que ``ICS_TOKEN_MAX_AGE_DAYS``
 # (180 jours par défaut, révisable) est refusé. Un jeton émis avant ASEC45
-# (charge = id seul) vaut version 0 : il reste valide jusqu'à son expiration.
+# (charge = id seul) vaut version 0. ASEC45-revue : il est EXEMPTÉ de
+# l'expiration (sinon tout abonnement Google/Outlook vieux de plus de 180 jours
+# mourait en silence au déploiement) mais reste RÉVOCABLE — « régénérer le
+# lien » passe la version à 1 et le rejette.
 _ICS_SALT = 'reporting.calendar.ics.v1'
 _ICS_MAX_AGE_DAYS_DEFAUT = 180
 
@@ -336,7 +339,17 @@ def resolve_ics_token(token):
     try:
         charge = signing.loads(token, salt=_ICS_SALT,
                                max_age=_ics_max_age_seconds())
-    except signing.BadSignature:  # SignatureExpired en hérite
+    except signing.SignatureExpired:
+        # ASEC45-revue — signature VALIDE mais trop vieille : seul un jeton
+        # d'avant ASEC45 (charge = id seul, sans version) est exempté de
+        # l'expiration ; il reste soumis à la révocation (version 0).
+        try:
+            charge = signing.loads(token, salt=_ICS_SALT)
+        except signing.BadSignature:
+            return None
+        if isinstance(charge, list):
+            return None
+    except signing.BadSignature:
         return None
     if isinstance(charge, list) and len(charge) == 2:
         user_id, version = charge
