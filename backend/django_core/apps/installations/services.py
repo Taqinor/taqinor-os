@@ -4337,7 +4337,9 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     commande d'une facture fournisseur venant d'être CRÉÉE.
 
     Solde (`lettre=True`, `facture` posée, `date_lettrage`) les provisions non
-    encore lettrées de ce BCF, à hauteur du montant facturé (HT) — ne touche
+    encore lettrées de ce BCF ENTIÈREMENT couvertes par le cumul facturé (HT)
+    du BCF non encore lettré (ASTK125 — jamais une provision partiellement
+    facturée) — ne touche
     jamais une provision d'un autre bon de commande. IDEMPOTENTE : une
     provision déjà lettrée est ignorée (jamais re-lettrée / re-décrémentée).
     Sans bon de commande sur la facture, no-op.
@@ -4351,13 +4353,27 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     if bc is None:
         return []
 
-    montant_restant = facture.montant_ht or 0
+    # ASTK125 (C-ASTK-032) — lettrage au CUMUL facturé du BCF : une
+    # provision n'est lettrée que si le facturé non encore lettré la COUVRE
+    # entièrement (une facture partielle de 100 sur une provision de 1 000
+    # la laisse OUVERTE ; la facture suivante de 900 la lettre). Ordre FIFO
+    # (date de création) : on s'arrête à la première provision non couverte.
+    from decimal import Decimal
+    from django.db.models import Sum
+    from apps.stock.selectors import montant_facture_bcf
+    deja_lettre = (ReceptionNonFacturee.objects
+                   .filter(company=company, bon_commande=bc, lettre=True)
+                   .aggregate(t=Sum('montant_provision'))['t']
+                   or Decimal('0'))
+    montant_restant = (Decimal(str(montant_facture_bcf(bc) or 0))
+                       - Decimal(str(deja_lettre)))
     lettres = []
     provisions = ReceptionNonFacturee.objects.filter(
         company=company, bon_commande=bc, lettre=False).order_by(
-        'date_creation')
+        'date_creation', 'pk')
     for prov in provisions:
-        if montant_restant <= 0:
+        montant_prov = prov.montant_provision or Decimal('0')
+        if montant_restant < montant_prov or montant_restant <= 0:
             break
         prov.facture = facture
         prov.lettre = True
@@ -4365,7 +4381,7 @@ def lettrer_gr_ir_facture(*, facture, company, user):
         prov.save(update_fields=['facture', 'lettre', 'date_lettrage',
                                  'date_modification'])
         lettres.append(prov)
-        montant_restant -= (prov.montant_provision or 0)
+        montant_restant -= montant_prov
     return lettres
 
 
