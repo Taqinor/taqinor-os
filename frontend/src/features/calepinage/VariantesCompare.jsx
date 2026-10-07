@@ -38,7 +38,20 @@ import {
    a basculé un drapeau local.
    ========================================================================== */
 
-const errMsg = (e, repli) => e?.response?.data?.detail || repli
+/* ACAL109 — le refus SERVEUR, mot pour mot : `{detail}` ou `{<champ>: msg}`
+   (ex. `{retenue: « … est la variante RETENUE … »}`). */
+const errMsg = (e, repli) => {
+  const data = e?.response?.data
+  if (typeof data?.detail === 'string' && data.detail) return data.detail
+  if (data && typeof data === 'object') {
+    const premier = Object.values(data).find((v) => v)
+    if (premier) return Array.isArray(premier) ? premier.join(' ') : String(premier)
+  }
+  return repli
+}
+
+/* ACAL109 (D-ACAL-2) — ce que « Retenir » veut dire, dit à l'écran. */
+const BANDEAU_RETENIR = 'Retenir rend cette variante conception courante : c’est elle que Générer le devis chiffre.'
 
 /** Une grandeur non mesurée s'écrit « — », jamais `0`. */
 const ou = (valeur, rendu) => (valeur === null || valeur === undefined ? '—' : rendu(valeur))
@@ -222,8 +235,12 @@ export default function VariantesCompare() {
   const [enCours, setEnCours] = useState(null)
 
   // CALX37 — création/duplication de variante. `formulaire` porte soit
-  // `{ mode: 'creer' }`, soit `{ mode: 'dupliquer', varianteId }` ; `null` =
-  // pas de formulaire ouvert. Un SEUL formulaire à la fois.
+  // `{ mode: 'creer' }`, soit `{ mode: 'dupliquer', varianteId }`, soit
+  // (ACAL109) `{ mode: 'renommer', varianteId }` ; `null` = pas de formulaire
+  // ouvert. Un SEUL formulaire à la fois.
+  // ACAL109 — la suppression demande une CONFIRMATION en ligne (jamais une
+  // popup système) : `suppression` = l'id de la variante à confirmer.
+  const [suppression, setSuppression] = useState(null)
   const [formulaire, setFormulaire] = useState(null)
   const [nomSaisi, setNomSaisi] = useState('')
   const [erreurNom, setErreurNom] = useState(null)
@@ -259,7 +276,26 @@ export default function VariantesCompare() {
   const ouvrirDuplication = (varianteId) => {
     setFormulaire({ mode: 'dupliquer', varianteId }); setNomSaisi(''); setErreurNom(null)
   }
+  const ouvrirRenommage = (ligne) => {
+    setFormulaire({ mode: 'renommer', varianteId: ligne.id }); setNomSaisi(ligne.nom || ''); setErreurNom(null)
+  }
   const fermerFormulaire = () => { setFormulaire(null); setNomSaisi(''); setErreurNom(null) }
+
+  const supprimer = async (ligne) => {
+    setErreurAction(null)
+    setEnCours(ligne.id)
+    try {
+      await calepinageApi.calepinages.supprimerVariante(id, ligne.id)
+      setSuppression(null)
+      await refetch()
+    } catch (e) {
+      // Le refus du serveur (variante RETENUE) est affiché TEL QUEL.
+      setErreurAction(errMsg(e, 'Impossible de supprimer cette variante.'))
+      setSuppression(null)
+    } finally {
+      setEnCours(null)
+    }
+  }
 
   const confirmerFormulaire = async () => {
     // Un nom vide est REFUSÉ avant tout appel réseau — jamais un POST pour
@@ -277,15 +313,18 @@ export default function VariantesCompare() {
         const reponse = await calepinageApi.calepinages.layout(id)
         const roofLayout = reponse?.data?.roof_layout ?? null
         await calepinageApi.calepinages.creerVariante(id, { nom, roof_layout: roofLayout })
+      } else if (formulaire.mode === 'renommer') {
+        await calepinageApi.calepinages.modifierVariante(id, formulaire.varianteId, { nom })
       } else {
         await calepinageApi.calepinages.dupliquerVariante(id, formulaire.varianteId, nom)
       }
       await refetch()
       fermerFormulaire()
     } catch (e) {
-      setErreurAction(errMsg(e, formulaire.mode === 'creer'
-        ? 'Impossible de créer cette variante.'
-        : 'Impossible de dupliquer cette variante.'))
+      setErreurAction(errMsg(e, {
+        creer: 'Impossible de créer cette variante.',
+        renommer: 'Impossible de renommer cette variante.',
+      }[formulaire.mode] ?? 'Impossible de dupliquer cette variante.'))
     } finally {
       setCreationEnCours(false)
     }
@@ -294,30 +333,30 @@ export default function VariantesCompare() {
   if (loading && !data) return <div className="flex justify-center py-10"><Spinner /></div>
   if (error) return <Card className="p-4 text-sm text-destructive" role="alert">{error}</Card>
 
-  if (!lignes.length) {
-    return (
-      <Card className="p-4 text-sm text-muted-foreground">
-        Aucune variante à comparer pour ce calepinage.
-      </Card>
-    )
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">Comparer les variantes</h1>
         <Button size="sm" variant="outline" onClick={ouvrirCreation}
           data-testid="cal-variante-nouvelle">
-          Nouvelle variante depuis la conception courante
+          {lignes.length
+            ? 'Nouvelle variante depuis la conception courante'
+            : 'Créer une variante depuis la conception courante'}
         </Button>
       </div>
+
+      {/* ACAL109 (D-ACAL-2) — ce que « Retenir » change, et ce que le devis chiffre. */}
+      <p className="text-sm text-muted-foreground" data-testid="cal-variantes-bandeau">
+        {BANDEAU_RETENIR}
+      </p>
 
       {formulaire ? (
         <Card className="space-y-2 p-3" data-testid="cal-variante-formulaire">
           <div className="text-sm font-medium">
-            {formulaire.mode === 'creer'
-              ? 'Nouvelle variante depuis la conception courante'
-              : 'Dupliquer cette variante'}
+            {{
+              creer: 'Nouvelle variante depuis la conception courante',
+              renommer: 'Renommer cette variante',
+            }[formulaire.mode] ?? 'Dupliquer cette variante'}
           </div>
           <Input
             aria-label="Nom de la variante"
@@ -336,7 +375,7 @@ export default function VariantesCompare() {
               data-testid="cal-variante-confirmer">
               {creationEnCours
                 ? 'En cours…'
-                : (formulaire.mode === 'creer' ? 'Créer' : 'Dupliquer')}
+                : ({ creer: 'Créer', renommer: 'Renommer' }[formulaire.mode] ?? 'Dupliquer')}
             </Button>
             <Button size="sm" variant="ghost" onClick={fermerFormulaire} disabled={creationEnCours}>
               Annuler
@@ -354,12 +393,20 @@ export default function VariantesCompare() {
         </Card>
       ) : null}
 
+      {!lignes.length ? (
+        <Card className="p-4 text-sm text-muted-foreground" data-testid="cal-variantes-vide">
+          Aucune variante à comparer pour ce calepinage : créez-en une depuis la
+          conception courante.
+        </Card>
+      ) : null}
+
       {Array.isArray(data?.introuvables) && data.introuvables.length > 0 ? (
         <Card className="p-3 text-sm text-muted-foreground" data-testid="cal-introuvables">
           {`Variantes demandées mais introuvables : ${data.introuvables.join(', ')}`}
         </Card>
       ) : null}
 
+      {lignes.length ? (
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm" data-testid="cal-tableau-variantes">
           <thead>
@@ -439,14 +486,52 @@ export default function VariantesCompare() {
                       Dupliquer
                     </Button>
                   </div>
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => ouvrirRenommage(ligne)}
+                      data-testid={`cal-variante-renommer-${ligne.id}`}
+                    >
+                      Renommer
+                    </Button>
+                  </div>
+                  <div>
+                    {suppression === ligne.id ? (
+                      <span className="inline-flex flex-wrap gap-1">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={enCours != null}
+                          onClick={() => supprimer(ligne)}
+                          data-testid={`cal-variante-supprimer-confirmer-${ligne.id}`}
+                        >
+                          Confirmer la suppression
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setSuppression(null)}>
+                          Annuler
+                        </Button>
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSuppression(ligne.id)}
+                        data-testid={`cal-variante-supprimer-${ligne.id}`}
+                      >
+                        Supprimer
+                      </Button>
+                    )}
+                  </div>
                 </td>
               ))}
             </tr>
           </tbody>
         </table>
       </Card>
+      ) : null}
 
-      <CoteACote lignes={lignes} />
+      {lignes.length ? <CoteACote lignes={lignes} /> : null}
     </div>
   )
 }

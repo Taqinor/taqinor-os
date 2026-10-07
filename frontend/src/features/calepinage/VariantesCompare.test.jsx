@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   comparer: vi.fn(), retenirVariante: vi.fn(),
   // CALX37
   layout: vi.fn(), creerVariante: vi.fn(), dupliquerVariante: vi.fn(),
+  // ACAL109
+  modifierVariante: vi.fn(), supprimerVariante: vi.fn(),
 }))
 
 vi.mock('../../api/calepinageApi', () => ({
@@ -30,6 +32,8 @@ vi.mock('../../api/calepinageApi', () => ({
       comparer: mocks.comparer, retenirVariante: mocks.retenirVariante,
       layout: mocks.layout, creerVariante: mocks.creerVariante,
       dupliquerVariante: mocks.dupliquerVariante,
+      modifierVariante: mocks.modifierVariante,
+      supprimerVariante: mocks.supprimerVariante,
     },
   },
 }))
@@ -299,5 +303,65 @@ describe('VariantesCompare (CALX37) — créer et dupliquer', () => {
     await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', 301))
     await waitFor(() => expect(screen.getByTestId('cal-retenue-301')).toBeInTheDocument())
     expect(screen.queryByTestId(`cal-retenue-${RETENUE.id}`)).not.toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ACAL109 — état vide, renommer, supprimer, et la copie sans `resultat`.
+   ========================================================================== */
+describe('VariantesCompare (ACAL109)', () => {
+  it('état vide : bouton de création depuis la conception', async () => {
+    mocks.comparer.mockResolvedValue({ data: { ...CONTRAT, lignes: [], retenue_id: null } })
+    mocks.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'z' }] } } })
+    mocks.creerVariante.mockResolvedValue({ data: { id: 5, nom: 'QA-ACAL-A' } })
+    rendre()
+
+    const bouton = await screen.findByTestId('cal-variante-nouvelle')
+    expect(bouton).toHaveTextContent('Créer une variante depuis la conception courante')
+    expect(screen.getByTestId('cal-variantes-vide')).toBeInTheDocument()
+    fireEvent.click(bouton)
+    fireEvent.change(screen.getByTestId('cal-variante-nom'), { target: { value: 'QA-ACAL-A' } })
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+    await waitFor(() => expect(mocks.creerVariante).toHaveBeenCalledWith('1', {
+      nom: 'QA-ACAL-A', roof_layout: { zones: [{ id: 'z' }] },
+    }))
+    expect(mocks.layout).toHaveBeenCalledWith('1')
+  })
+
+  it('Renommer appelle PATCH', async () => {
+    mocks.modifierVariante.mockResolvedValue({ data: { id: AUTRE.id, nom: 'Nouveau nom' } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    fireEvent.click(screen.getByTestId(`cal-variante-renommer-${AUTRE.id}`))
+    expect(screen.getByTestId('cal-variante-nom')).toHaveValue(AUTRE.nom)
+    fireEvent.change(screen.getByTestId('cal-variante-nom'), { target: { value: 'Nouveau nom' } })
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+
+    await waitFor(() => expect(mocks.modifierVariante)
+      .toHaveBeenCalledWith('1', AUTRE.id, { nom: 'Nouveau nom' }))
+    await waitFor(() => expect(mocks.comparer).toHaveBeenCalledTimes(2))
+  })
+
+  it('Supprimer la retenue affiche le refus serveur', async () => {
+    const refus = `« ${RETENUE.nom} » est la variante RETENUE : retenez-en une autre avant de la supprimer.`
+    mocks.supprimerVariante.mockRejectedValue({ response: { status: 400, data: { retenue: refus } } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    fireEvent.click(screen.getByTestId(`cal-variante-supprimer-${RETENUE.id}`))
+    expect(mocks.supprimerVariante).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId(`cal-variante-supprimer-confirmer-${RETENUE.id}`))
+
+    await waitFor(() => expect(mocks.supprimerVariante).toHaveBeenCalledWith('1', RETENUE.id))
+    expect(await screen.findByText(refus)).toBeInTheDocument()
+  })
+
+  it('dupliquer n’envoie pas resultat', async () => {
+    const { corpsDeCopieVariante } = await vi.importActual('../../api/calepinageApi')
+    const corps = corpsDeCopieVariante(
+      { nom: 'A', roof_layout: { zones: [] }, resultat: { production: { p50: 1 } } }, '')
+    expect(corps).toEqual({ nom: 'A (copie)', roof_layout: { zones: [] } })
+    expect('resultat' in corps).toBe(false)
   })
 })
