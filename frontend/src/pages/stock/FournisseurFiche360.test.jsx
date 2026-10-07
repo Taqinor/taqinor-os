@@ -515,7 +515,9 @@ describe('WIR268/XPUR14 — onglet Tarif (export/import xlsx)', () => {
 
   it('sans droit d\'écriture (responsable seul), aucun bloc d\'import n\'apparaît', async () => {
     setupBaseMocks()
-    renderPage({ fournisseurId: '7', authState: { role: 'normal', permissions: ['stock_voir'] } })
+    // ASTK15 — l'onglet Tarif (prix d'achat) exige `prix_achat_voir` ; ce
+    // test porte sur l'absence de `stock_modifier` (pas d'import).
+    renderPage({ fournisseurId: '7', authState: { role: 'normal', permissions: ['stock_voir', 'prix_achat_voir'] } })
     const panel = await ouvrirTarif()
     expect(within(panel).queryByText(/Importer un tarif/)).toBeNull()
     expect(within(panel).getByRole('button', { name: /Exporter le tarif/ })).toBeInTheDocument()

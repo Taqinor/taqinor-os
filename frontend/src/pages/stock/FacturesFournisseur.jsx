@@ -5,6 +5,7 @@ import { ReceiptText, Plus, FileText, AlertTriangle, ShieldCheck,
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import {
   Button, StatusPill, DataTable, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -207,7 +208,10 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
 // est un PROP (jamais un hook Redux ici) : les tests existants (wr4ReceptionFacture)
 // montent ce composant sans Provider — le calcul du rôle reste à la charge du
 // parent (`FacturesFournisseur`), qui a bien le store.
-export function FactureDetail({ facture: factureProp, onClose, onSaved, canResoudre = false }) {
+// ASTK15 — `voitPrix` (PROP, même raison que `canResoudre`) : sans
+// `prix_achat_voir`, les montants absents s'affichent « — » et le PDF interne
+// (montants d'achat) n'est pas proposé.
+export function FactureDetail({ facture: factureProp, onClose, onSaved, canResoudre = false, voitPrix = true }) {
   const [facture, setFacture] = useState(factureProp)
   const [montant, setMontant] = useState('')
   const [datePaiement, setDatePaiement] = useState('')
@@ -440,9 +444,11 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
         )}
 
         <DialogFooter className="flex-wrap">
-          <Button type="button" variant="outline" onClick={telechargerPdf}>
-            <FileText /> PDF (interne)
-          </Button>
+          {voitPrix && (
+            <Button type="button" variant="outline" onClick={telechargerPdf}>
+              <FileText /> PDF (interne)
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
@@ -455,6 +461,9 @@ export default function FacturesFournisseur() {
   // (même garde serveur que `resoudre_exception`). Calculé ICI (store
   // toujours présent dans l'app réelle) et transmis en PROP à FactureDetail.
   const canResoudre = useIsAdminOrResponsable()
+  // ASTK15 (D-ASTK-2) — files « comptes à payer » / « en exception » : leur
+  // objet EST un montant d'achat (403 sans `prix_achat_voir`) — non proposées.
+  const voitPrix = useVoitPrixAchat()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -568,6 +577,7 @@ export default function FacturesFournisseur() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
+        {voitPrix && (<>
         <Button variant={aPayerSeul ? 'secondary' : 'outline'} size="sm"
                 onClick={() => { setEnExceptionSeul(false); setAPayerSeul((v) => !v) }}
                 title="N'afficher que les factures non soldées">
@@ -579,6 +589,7 @@ export default function FacturesFournisseur() {
                 title="N'afficher que les factures en exception de rapprochement 3 voies">
           <AlertTriangle className="size-3.5" /> En exception{enExceptionSeul ? ' (actif)' : ''}
         </Button>
+        </>)}
         {(aPayerSeul || enExceptionSeul) && (
           <Button variant="ghost" size="sm" onClick={() => { setAPayerSeul(false); setEnExceptionSeul(false) }}>
             Toutes les factures
@@ -653,7 +664,7 @@ export default function FacturesFournisseur() {
                          onClose={() => setCreating(false)} onSaved={onSaved} />
       )}
       {selected && (
-        <FactureDetail facture={selected} canResoudre={canResoudre}
+        <FactureDetail facture={selected} canResoudre={canResoudre} voitPrix={voitPrix}
                        onClose={() => setSelected(null)} onSaved={onSaved} />
       )}
     </div>
