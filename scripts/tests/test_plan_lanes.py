@@ -477,6 +477,49 @@ class MergeLanesBySharedFilesTests(unittest.TestCase):
         self.assertEqual(owner["A1"], owner["B1"], "colliding lanes split across workers")
 
 
+class DependancesBloqueesEtOrdreTests(unittest.TestCase):
+    """Incident du 07/10/2026 (plan audit calepinage) : ACAL96 partait avant
+    ACAL42 (bloquée), et ACAL102 avant ACAL101 dans la même lane."""
+
+    @staticmethod
+    def _t(tid, lane, deps=(), gate="buildable", files=()):
+        return {
+            "id": tid, "prefix": "ACAL", "lane": lane, "gate": gate,
+            "gate_reasons": [], "deps": set(deps), "section": "",
+            "model": "sonnet", "cost": 2.0, "files": list(files),
+        }
+
+    def test_dependance_bloquee_du_meme_run_refuse_la_tache_et_sa_suite(self):
+        tasks = [
+            self._t("ACAL42", "a", gate="gated"),
+            self._t("ACAL96", "b", deps=["ACAL42"]),
+            self._t("ACAL100", "b", deps=["ACAL96"]),
+            self._t("ACAL98", "c"),
+        ]
+        ok, refusees = pl.apply_external_after_gate(tasks, index={})
+        self.assertEqual({t["id"] for t in refusees}, {"ACAL96", "ACAL100"})
+        self.assertIn("ACAL42", {t["id"] for t in ok})     # reste « gated »
+        self.assertIn("ACAL98", {t["id"] for t in ok})
+        self.assertIn("[BLOCKED]", refusees[0]["after_block_reasons"][0])
+
+    def test_force_wave_laisse_passer(self):
+        tasks = [self._t("ACAL42", "a", gate="gated"),
+                 self._t("ACAL96", "b", deps=["ACAL42"])]
+        ok, refusees = pl.apply_external_after_gate(tasks, {}, force_wave=True)
+        self.assertEqual(refusees, [])
+
+    def test_lane_fusionnee_suit_les_after_pas_l_ordre_du_fichier(self):
+        tasks = [
+            self._t("ACAL102", "x", deps=["ACAL101"], files=["f.py"]),
+            self._t("ACAL96", "y", files=["f.py"]),
+            self._t("ACAL101", "y", deps=["ACAL96"], files=["f.py"]),
+        ]
+        plan = pl.schedule(tasks, max_lanes=8, n_workers=1)
+        ordre = [tid for w in plan["waves"] for tid in w]
+        self.assertLess(ordre.index("ACAL96"), ordre.index("ACAL101"))
+        self.assertLess(ordre.index("ACAL101"), ordre.index("ACAL102"))
+
+
 class PipelinedWavesTests(unittest.TestCase):
     """Lanes chunk into a sequence of ~wave_size, cross-disjoint waves."""
 
