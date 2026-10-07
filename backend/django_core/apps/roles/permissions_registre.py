@@ -626,6 +626,16 @@ ALL_PERMISSIONS = [
     'achats_receptionner',
     'achats_payer',
     'catalogue_prix_modifier',
+    # ── ASEC9 / D-ASEC-1 — « Encaisser (paiements, avoirs, abandon de solde) »
+    # Les gestes d'argent (enregistrement/ventilation de paiements, avoirs,
+    # facturer-complet, abandon de solde / passage en perte) exigent
+    # Administrateur/Directeur OU ce code. Titulaires : Directeur +
+    # Administrateur (héritage du catalogue), Commercial et Commercial
+    # responsable par défaut (décochable). JAMAIS octroyable à Commercial
+    # terrain, Technicien, Technicien responsable ni Admin RH (refus serveur :
+    # ``CODES_NON_OCTROYABLES`` ci-dessous, appliqué par ``RoleSerializer``).
+    # NON élevé. Garde côté vues d'argent : ASEC29 (facturation).
+    'encaisser',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -712,6 +722,10 @@ PERMISSION_MODULE = {
     'achats_receptionner': 'stock',
     'achats_payer': 'stock',
     'catalogue_prix_modifier': 'stock',
+    # ASEC9 — « module facturation » : les factures n'ont pas de manifeste
+    # propre (``apps.facturation`` sans ``module_manifest``) ; leur écran vit
+    # sous le module ``ventes``.
+    'encaisser': 'ventes',
     # NTOBS22 — ``fiabilite_voir``/``fiabilite_administration`` sont
     # VOLONTAIREMENT absents d'ici : les écrans Fiabilité vivent sous
     # ``apps.parametres`` (``module_manifest.installable = False`` — jamais
@@ -962,6 +976,8 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'ux_corbeille_consulter', 'ux_corbeille_restaurer',
     'ux_edition_masse_executer',
     SCOPE_SUBTREE,
+    # ASEC9 / D-ASEC-1 — encaisse par défaut (décochable dans la grille).
+    'encaisser',
 ]
 
 # Commercial : l'accès de la « Commerciale » d'aujourd'hui ; voit son équipe
@@ -1002,6 +1018,9 @@ COMMERCIAL_PERMISSIONS = [
     # Commercial de base — comportement inchangé.
     'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     SCOPE_TEAM,
+    # ASEC9 / D-ASEC-1 — continuité d'``enregistrer_paiement`` « disponible à
+    # la Commerciale » : coché par défaut, décochable dans la grille.
+    'encaisser',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -1356,3 +1375,23 @@ CANONICAL_SYSTEM_ROLES = [
     # idempotent), mais des permissions portail-seules (jamais internes).
     *CANONICAL_PORTAIL_ROLES,
 ]
+
+
+# ── ASEC9 / D-ASEC-1 — codes NON octroyables à certains rôles système ──────
+# Code → noms des rôles SYSTÈME (``est_systeme=True``) auxquels il ne peut
+# JAMAIS être ajouté, même par un administrateur : refus serveur dans
+# ``RoleSerializer.validate`` (400 « code non octroyable à ce rôle »).
+CODES_NON_OCTROYABLES = {
+    'encaisser': frozenset({
+        'Commercial terrain', 'Technicien', 'Technicien responsable',
+        ROLE_ADMIN_RH,
+    }),
+}
+
+
+def codes_non_octroyables(nom_role, permissions):
+    """Codes de ``permissions`` interdits au rôle système ``nom_role``, triés."""
+    return sorted(
+        code for code in set(permissions or [])
+        if nom_role in CODES_NON_OCTROYABLES.get(code, ())
+    )

@@ -3,6 +3,7 @@ from .models import Role
 from .permissions_registre import (
     ALL_PERMISSIONS,
     ELEVATED_PERMISSIONS,
+    codes_non_octroyables,
     est_permission_app,
 )
 
@@ -91,6 +92,18 @@ class RoleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Seul un administrateur peut modifier un rôle système."
                 )
+        # ── ASEC9 / D-ASEC-1 — codes non octroyables à certains rôles système
+        # (ex. ``encaisser`` jamais à Commercial terrain / Technicien /
+        # Technicien responsable / Admin RH), même par un administrateur.
+        if self.instance is not None and self.instance.est_systeme \
+                and 'permissions' in attrs:
+            interdits = codes_non_octroyables(
+                attrs.get('nom', self.instance.nom), attrs['permissions'])
+            if interdits:
+                raise serializers.ValidationError({
+                    'permissions': [
+                        f"Code non octroyable à ce rôle : {interdits}."],
+                })
         return attrs
 
     def validate_entites_visibles(self, value):
