@@ -56,13 +56,13 @@ unites:
     I: 5
     score: 20
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: ATOT
     plan: null
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Produit les oracles que J5, J1b et J3 réutilisent. Tâches routées vers le propriétaire des fichiers touchés (souvent PLAN_AUDIT_FACTURATION / DEVIS / MOTEUR) ou TRANSVERSE."
+    plans_alimentes: [docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 844
+    date: 2026-10-07
+    notes: "Produit les oracles que J5, J1b et J3 réutilisent. Tâches routées vers le propriétaire des fichiers touchés (souvent PLAN_AUDIT_FACTURATION / DEVIS / MOTEUR) ou TRANSVERSE. Audit L3 du 07/10/2026 (dossier docs/audits/2026-10-07-totaux.md) : 22 constats, 30 tâches ATOT ; réfutation en direct de C-ATOT-009 ; double facturation réelle en prod signalée (DEV-202610-0023)."
 
   - id: J5
     rang: 2
