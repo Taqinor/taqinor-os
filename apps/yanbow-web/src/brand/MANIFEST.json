@@ -1,0 +1,202 @@
+{
+  "source": "mémoire de Reda : documents/2026-10-02-yanbow-logo-en/logo-retenu/ (v3, 02/10/2026) — copié À L'OCTET, jamais redessiné",
+  "copie_le": "2026-10-07",
+  "fichiers": {
+    "svg/yanbow-favicon16-colour.svg": {
+      "sha256": "af7b1c8f2047c13cb6ec61da475810a453fec59cae1f6ad36558a009d711c1a5",
+      "octets": 893,
+      "viewBox": "0 0 800 800",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B"
+      ]
+    },
+    "svg/yanbow-favicon16-reversed.svg": {
+      "sha256": "7c8bf3d6f184841c21451b757f20ffc3774c8d63c7bb82a309daac9aeaa256d4",
+      "octets": 940,
+      "viewBox": "0 0 800 800",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B",
+        "#FFFFFF"
+      ]
+    },
+    "svg/yanbow-symbol-colour.svg": {
+      "sha256": "c270251fdd57825ace91f05e74df5bbbbd52e550f5daf3afdb0eb19337b918a0",
+      "octets": 1595,
+      "viewBox": "0 0 761 940",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B"
+      ]
+    },
+    "svg/yanbow-symbol-mono-reversed.svg": {
+      "sha256": "5913566d3a303d307abf26598fa9d686b0e0295572f3a67c8306622cddc03509",
+      "octets": 1644,
+      "viewBox": "0 0 761 940",
+      "couleurs": [
+        "#1B1B1B",
+        "#FFFFFF"
+      ]
+    },
+    "svg/yanbow-symbol-mono.svg": {
+      "sha256": "9427b5a96932a8b954d1abcd3d2d7af0093f347c2a53819a195fecfa24209441",
+      "octets": 1595,
+      "viewBox": "0 0 761 940",
+      "couleurs": [
+        "#1B1B1B"
+      ]
+    },
+    "svg/yanbow-symbol-reversed.svg": {
+      "sha256": "2b9b6635e1aded6f6a294626bf8dfa5a5cd2d9cd6c491e74405f566902b8aecc",
+      "octets": 1644,
+      "viewBox": "0 0 761 940",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B",
+        "#FFFFFF"
+      ]
+    },
+    "svg/yanbow-symbol-small-colour.svg": {
+      "sha256": "4cf424a45f4986728605e8d597c1f3954aa35885ace472edd85ac22b442981fd",
+      "octets": 1593,
+      "viewBox": "0 0 794 940",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B"
+      ]
+    },
+    "svg/yanbow-symbol-small-mono.svg": {
+      "sha256": "a0424029c72c8d68e93a8ed112fcc60765bde652e35759b3efd30a2c785559c8",
+      "octets": 1593,
+      "viewBox": "0 0 794 940",
+      "couleurs": [
+        "#1B1B1B"
+      ]
+    },
+    "svg/yanbow-symbol-small-reversed.svg": {
+      "sha256": "8a85345d3aa9ac89bc7bbc845ec7ba1db85b12370f2cb5412b596fe8a600342f",
+      "octets": 1642,
+      "viewBox": "0 0 794 940",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B",
+        "#FFFFFF"
+      ]
+    },
+    "svg/yanbow-tagline-colour.svg": {
+      "sha256": "df583f0de38a62a9ac99c0e1e4d1f2a97eef3ea2110eec5033dcd3b913dff3f8",
+      "octets": 22949,
+      "viewBox": "0 0 3869 1405",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B"
+      ]
+    },
+    "svg/yanbow-tagline-mono-reversed.svg": {
+      "sha256": "51c5857b892e6b8851c4e601ca6e73ba9eaf9f585199bfc06b880b73fb37c017",
+      "octets": 22998,
+      "viewBox": "0 0 3869 1405",
+      "couleurs": [
+        "#1B1B1B",
+        "#FFFFFF"
+      ]
+    },
+    "svg/yanbow-tagline-mono.svg": {
+      "sha256": "48dbcf9b9e73489b3c326be7e79253460f65d583f9f9cf71b556a8f4c97cb769",
+      "octets": 22949,
+      "viewBox": "0 0 3869 1405",
+      "couleurs": [
+        "#1B1B1B"
+      ]
+    },
+    "svg/yanbow-tagline-reversed.svg": {
+      "sha256": "ce64afecca172616f7aa7ecabf6b755c116d58d2b1e8b9c228bccefa328feb52",
+      "octets": 22998,
+      "viewBox": "0 0 3869 1405",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B",
+        "#FFFFFF"
+      ]
+    },
+    "svg/yanbow-wordmark-colour.svg": {
+      "sha256": "406d80ea43406927da4ec9096a88b36b04eb935fd21622b8913f9ae8c07c6830",
+      "octets": 5935,
+      "viewBox": "0 0 3869 1028",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B"
+      ]
+    },
+    "svg/yanbow-wordmark-mono-reversed.svg": {
+      "sha256": "46491a38c3daaad4bbeb81e8c250e67b1a938f7d14e733a8d0a9ab650b6aa895",
+      "octets": 5984,
+      "viewBox": "0 0 3869 1028",
+      "couleurs": [
+        "#1B1B1B",
+        "#FFFFFF"
+      ]
+    },
+    "svg/yanbow-wordmark-mono.svg": {
+      "sha256": "170e7a62fc8c4aeb17d2f0bde18be5ed3990d3992d36e33fa40f66a742f96fb9",
+      "octets": 5935,
+      "viewBox": "0 0 3869 1028",
+      "couleurs": [
+        "#1B1B1B"
+      ]
+    },
+    "svg/yanbow-wordmark-reversed.svg": {
+      "sha256": "2b856735cdd4ad627589a34f48146816aeb3d52f325f0b5c23aacadf23586a9f",
+      "octets": 5984,
+      "viewBox": "0 0 3869 1028",
+      "couleurs": [
+        "#1B1B1B",
+        "#C8762B",
+        "#FFFFFF"
+      ]
+    },
+    "png/yanbow-favicon-16.png": {
+      "sha256": "41ecfb3a39075e4b846f9430c1044d1c3b4a116978b4278de4159910a66de7d6",
+      "octets": 310,
+      "largeur": 16,
+      "hauteur": 16
+    },
+    "png/yanbow-favicon-32.png": {
+      "sha256": "b89e47befc19d297f74d9e07edcb0f2f2e515919c755b2c4d21f75fa84baea1b",
+      "octets": 497,
+      "largeur": 32,
+      "hauteur": 32
+    },
+    "png/yanbow-favicon-48.png": {
+      "sha256": "1e0d6e6745f34516b2caf575798dfeb16467b43293e4e26e5767aff52de369a1",
+      "octets": 701,
+      "largeur": 48,
+      "hauteur": 48
+    },
+    "png/yanbow-symbol-colour.png": {
+      "sha256": "c8b25e546ff74d4ffa03b9507e10f9b3530de8a4484a38d5165108a4dab2b952",
+      "octets": 19791,
+      "largeur": 830,
+      "hauteur": 1024
+    },
+    "png/yanbow-tagline-colour.png": {
+      "sha256": "e24ccebc94963ece8d0514cc1f903c7b4c21379fbf9ba8ecc6019645e82a9631",
+      "octets": 69120,
+      "largeur": 2000,
+      "hauteur": 726
+    },
+    "png/yanbow-wordmark-colour.png": {
+      "sha256": "e24bf28fac4a201f5be891bf77bc20eb730b9b811e64000f6371e4e4003cfdd7",
+      "octets": 44441,
+      "largeur": 2000,
+      "hauteur": 531
+    },
+    "png/yanbow-wordmark-reversed.png": {
+      "sha256": "2c8ba3f64f86d188094bc0146735d81ce6b01cdd91a159454d5cf394dbd1dc39",
+      "octets": 41209,
+      "largeur": 2000,
+      "hauteur": 531
+    }
+  }
+}
