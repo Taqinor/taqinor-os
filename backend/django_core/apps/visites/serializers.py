@@ -36,6 +36,21 @@ class VisiteTerrainSerializer(serializers.ModelSerializer):
                 "Ce lead n'appartient pas à votre société.")
         return value
 
+    def validate_date_prevue(self, value):
+        """ALEA10 — en ÉDITION, la date prévue ne bouge que sur une visite
+        BROUILLON et jamais vers le passé (validateur partagé avec
+        ``services.planifier_visite``). À la création, les gardes vivent dans
+        ``planifier_visite`` (qui les rapporte avec celle du commercial)."""
+        if self.instance is None:
+            return value
+        from . import services
+
+        message = services.erreur_modification_date_prevue(self.instance,
+                                                           value)
+        if message:
+            raise serializers.ValidationError(message)
+        return value
+
     def validate_commercial(self, value):
         if value is None:
             return value

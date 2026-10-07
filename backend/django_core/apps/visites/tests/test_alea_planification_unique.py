@@ -99,3 +99,82 @@ class PlanificationUniqueTests(VisiteTerrainBase):
         visite = VisiteTerrain.objects.get(pk=resp.data['id'])
         # Sans ``commercial`` dans le corps, le créateur est assigné.
         self.assertEqual(visite.commercial_id, self.bureau.id)
+
+
+class DatePrevueTests(VisiteTerrainBase):
+    """ALEA10 — rejoue la sonde V4 LVIS-4 : PATCH de ``date_prevue`` d'une
+    visite TERMINÉE rendait 200, réémettait ``visite_planifiee`` et annulait
+    « Préparer et envoyer le devis »."""
+
+    def setUp(self):
+        super().setUp()
+        self.aujourdhui = timezone.localdate()
+        self.hier = self.aujourdhui - datetime.timedelta(days=1)
+
+    def _patch_date(self, visite_id, jour):
+        return self.api.patch(f'{URL}{visite_id}/',
+                              {'date_prevue': jour.isoformat()},
+                              format='json')
+
+    def _visite_terminee(self):
+        resp = self.api.post(
+            URL, {'lead': self.lead.id,
+                  'date_prevue': self.aujourdhui.isoformat()},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        visite_id = resp.data['id']
+        self.remplir(visite_id)
+        fin = self.api.post(f'{URL}{visite_id}/terminer/', {}, format='json')
+        self.assertEqual(fin.status_code, 200, fin.data)
+        return visite_id
+
+    def _etat_suivi(self):
+        self.lead.refresh_from_db()
+        etapes = sorted(self.lead.relance_etapes.values_list(
+            'id', 'libelle', 'statut', 'due_date'))
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Visite technique planifiée').count()
+        return etapes, notes, self.lead.visite_prevue_le
+
+    def test_date_visite_terminee_refusee(self):
+        visite_id = self._visite_terminee()
+        demain = self.aujourdhui + datetime.timedelta(days=1)
+        for jour in (self.hier, demain):
+            with self.subTest(jour=jour):
+                resp = self._patch_date(visite_id, jour)
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn('date_prevue', resp.data)
+                self.assertIn('déjà réalisée', resp.data['date_prevue'][0])
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertEqual(visite.date_prevue, self.aujourdhui)
+
+    def test_date_passee_refusee(self):
+        visite_id = self.creer_visite()
+        resp = self._patch_date(visite_id, self.hier)
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('passé', resp.data['date_prevue'][0])
+        self.assertIsNone(VisiteTerrain.objects.get(pk=visite_id).date_prevue)
+
+    def test_preparer_devis_non_annule(self):
+        visite_id = self._visite_terminee()
+        avant = self._etat_suivi()
+        resp = self._patch_date(visite_id,
+                                self.aujourdhui + datetime.timedelta(days=2))
+        self.assertEqual(resp.status_code, 400, resp.data)
+        resp = self._patch_date(visite_id, self.hier)
+        self.assertEqual(resp.status_code, 400, resp.data)
+        # Persistance : file de relances, notes et date du lead identiques.
+        self.assertEqual(self._etat_suivi(), avant)
+
+    def test_brouillon_date_future_recale(self):
+        visite_id = self.creer_visite()
+        jour = self.aujourdhui + datetime.timedelta(days=3)
+        resp = self._patch_date(visite_id, jour)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(VisiteTerrain.objects.get(pk=visite_id).date_prevue,
+                         jour)
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Visite technique planifiée').count()
+        self.assertEqual(notes, 1)

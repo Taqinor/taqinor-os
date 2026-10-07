@@ -378,6 +378,42 @@ def annuler_rendez_vous(lead, user, motif=''):
     return len(visites)
 
 
+MESSAGE_DATE_PASSEE = (
+    'La visite ne peut pas être planifiée dans le passé : choisir '
+    "aujourd'hui ou une date à venir.")
+MESSAGE_DATE_VISITE_REALISEE = (
+    'Visite déjà réalisée : sa date prévue ne se modifie plus (seule une '
+    'visite en brouillon se replanifie).')
+
+
+def erreur_date_passee(date_prevue):
+    """ALEA10 — LE validateur de date prévue, partagé par
+    ``planifier_visite`` et par le sérialiseur (édition) : message FR si la
+    date est dans le PASSÉ (la date du jour reste acceptée — on planifie
+    souvent pour l'après-midi), ``None`` sinon. Horloge serveur, fuseau du
+    projet."""
+    from django.utils import timezone
+
+    if date_prevue is not None and date_prevue < timezone.localdate():
+        return MESSAGE_DATE_PASSEE
+    return None
+
+
+def erreur_modification_date_prevue(visite, date_prevue):
+    """ALEA10 — message FR si ``date_prevue`` ne peut pas REMPLACER la date
+    de ``visite`` : seule une visite BROUILLON se replanifie (une visite
+    commencée, terminée ou renvoyée a eu lieu — rouvrir sa date réémettrait
+    ``visite_planifiee`` et annulerait « Préparer et envoyer le devis »), et
+    jamais vers une date passée. ``None`` si permis (ou date inchangée)."""
+    from .models import VisiteTerrain
+
+    if date_prevue == visite.date_prevue:
+        return None
+    if visite.statut != VisiteTerrain.Statut.BROUILLON:
+        return MESSAGE_DATE_VISITE_REALISEE
+    return erreur_date_passee(date_prevue)
+
+
 def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
                      replanifier=False, date_requise=True,
                      assigne_par_defaut=None):
@@ -427,8 +463,6 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
     ``commercial`` est absent (le créateur, côté API) — jamais un rendez-vous
     déplacé.
     """
-    from django.utils import timezone
-
     from .models import VisiteTerrain
 
     erreurs = {}
@@ -436,10 +470,10 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
         if date_requise:
             erreurs['date_prevue'] = [
                 'Date de visite obligatoire (AAAA-MM-JJ).']
-    elif date_prevue < timezone.localdate():
-        erreurs['date_prevue'] = [
-            'La visite ne peut pas être planifiée dans le passé : choisir '
-            "aujourd'hui ou une date à venir."]
+    else:
+        message = erreur_date_passee(date_prevue)
+        if message:
+            erreurs['date_prevue'] = [message]
     if commercial is not None:
         if (getattr(commercial, 'company_id', None) != lead.company_id
                 or not getattr(commercial, 'is_active', False)):
