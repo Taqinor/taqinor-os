@@ -23,6 +23,8 @@ du devis n'est jamais écrit (règle #4).
 """
 from __future__ import annotations
 
+from rest_framework.exceptions import APIException
+
 #: Clé de registre / ContentType, DANS ``apps.trash`` (``cle_modele``).
 CLE_MODELE = 'calepinage.calepinage'
 
@@ -33,7 +35,8 @@ CLE_MODELE = 'calepinage.calepinage'
 CLE_PIECE_JOINTE = 'records.attachment'
 
 __all__ = ['ArchivageInvalide', 'CLE_MODELE', 'CLE_PIECE_JOINTE',
-           'MESSAGE_ARCHIVE', 'est_archive', 'archiver', 'restaurer',
+           'EcritureArchiveRefusee', 'MESSAGE_ARCHIVE', 'est_archive',
+           'archiver', 'refuser_ecriture_si_archive', 'restaurer',
            'restaurateur_calepinage', 'restaurateur_piece_jointe']
 
 
@@ -59,6 +62,25 @@ def est_archive(calepinage):
     (``archive_le``), jamais sur la corbeille dont la purge efface l'entrée.
     Lecture pure."""
     return getattr(calepinage, 'archive_le', None) is not None
+
+
+class EcritureArchiveRefusee(APIException):
+    """ACAL119 (D-ACAL-25) — 409 ``{detail}`` : une écriture visant un
+    calepinage ARCHIVÉ. ``APIException`` : l'enveloppe globale respecte le
+    statut sans toucher un seul ``except`` de vue."""
+
+    status_code = 409
+    default_code = 'calepinage_archive'
+    default_detail = MESSAGE_ARCHIVE
+
+
+def refuser_ecriture_si_archive(calepinage):
+    """ACAL119 — LA garde d'écriture d'un archivé (une seule) : appelée par
+    le point commun des méthodes non sûres du module
+    (``CalepinageViewSet.get_object``), sauf « Restaurer ». No-op pour un
+    calepinage actif."""
+    if est_archive(calepinage):
+        raise EcritureArchiveRefusee(MESSAGE_ARCHIVE)
 
 
 def _refus_devis_porte(calepinage):

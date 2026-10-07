@@ -71,8 +71,10 @@ class ArchivageActifTest(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         self.assertTrue(est_archive(self.calepinage))
         self.assertNotIn(self.calepinage.pk, self._ids_liste())
+        # ACAL119 (D-ACAL-25) — le détail d'un archivé de SA société reste
+        # LISIBLE (jamais 404) ; seule la liste l'écarte.
         self.assertEqual(
-            self.api.get(f'{URL}{self.calepinage.pk}/').status_code, 404)
+            self.api.get(f'{URL}{self.calepinage.pk}/').status_code, 200)
         self.assertIsNone(
             selectors.calepinage_ouvert_du_lead(self.company, self.lead.pk))
         self.assertNotIn(self.calepinage.pk, list(
