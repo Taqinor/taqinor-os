@@ -205,7 +205,8 @@ def _ligne_de_comparaison(calepinage):
     ligne = {
         'id': getattr(calepinage, 'pk', None),
         'titre': getattr(calepinage, 'titre', '') or '',
-        'statut': getattr(calepinage, 'statut', '') or '',
+        # ACAL114 — le statut DÉRIVÉ de l'approbation (D-ACAL-19).
+        'statut': _statut_derive(calepinage),
         'layout_hash': empreinte,
         'modules': modules,
         'kwc': kwc,
@@ -248,3 +249,10 @@ def comparer_calepinages(user, ids):
         'refus': [{'id': pk, 'motif': MOTIF_INTROUVABLE}
                   for pk in demandes if pk not in trouves],
     }
+
+
+def _statut_derive(calepinage):
+    """ACAL114 — ``services.approbation.statut_derive`` (lecture seule)."""
+    from .approbation import statut_derive
+
+    return statut_derive(calepinage)

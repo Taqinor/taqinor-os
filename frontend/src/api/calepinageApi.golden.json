@@ -296,14 +296,6 @@
       "verbe": "get"
     }
   ],
-  "calepinages.deverrouiller": [
-    {
-      "config": null,
-      "data": {},
-      "url": "/calepinage/calepinages/7/deverrouiller/",
-      "verbe": "post"
-    }
-  ],
   "calepinages.documents": [
     {
       "config": null,
@@ -339,9 +331,6 @@
       "config": null,
       "data": {
         "nom": "Ma copie",
-        "resultat": {
-          "r": 1
-        },
         "roof_layout": {
           "k": 1
         }
@@ -696,6 +685,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.modifierVariante": [
+    {
+      "config": null,
+      "data": {
+        "k": 1
+      },
+      "url": "/calepinage/calepinages/7/variantes/3/",
+      "verbe": "patch"
+    }
+  ],
   "calepinages.modulesDisponibles": [
     {
       "config": null,
@@ -880,6 +879,17 @@
       "verbe": "post"
     }
   ],
+  "calepinages.simulerVariante": [
+    {
+      "config": null,
+      "data": {
+        "forcer": true,
+        "variante_id": 3
+      },
+      "url": "/calepinage/calepinages/7/simuler/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.sldDxf": [
     {
       "config": {
@@ -903,6 +913,14 @@
       "config": null,
       "data": null,
       "url": "/calepinage/calepinages/7/releve/3/",
+      "verbe": "delete"
+    }
+  ],
+  "calepinages.supprimerVariante": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/variantes/3/",
       "verbe": "delete"
     }
   ],
@@ -954,14 +972,6 @@
       "data": 3,
       "url": "/calepinage/calepinages/7/",
       "verbe": "patch"
-    }
-  ],
-  "calepinages.variantes": [
-    {
-      "config": null,
-      "data": null,
-      "url": "/calepinage/calepinages/7/variantes/",
-      "verbe": "get"
     }
   ],
   "calepinages.versions": [

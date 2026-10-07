@@ -174,3 +174,31 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
       .toHaveBeenCalledWith(1, { decision: 'refuse', motif: 'Obstacle non relevé.' }))
   })
 })
+
+/* ============================================================================
+   ACAL115 — l'approbation PÉRIMÉE et le refus « conception vide », servis.
+   ========================================================================== */
+describe('Approbation (ACAL115)', () => {
+  it('approbation périmée : bandeau à redécider', async () => {
+    servir('exemple_perime')
+    rendre()
+    await screen.findByTestId('calx349-panneau')
+    expect(screen.getByTestId('acal115-approbation-perimee'))
+      .toHaveTextContent('Conception modifiée depuis l’approbation')
+    expect(screen.getByTestId('acal115-approbation-perimee'))
+      .toHaveTextContent('à redécider')
+  })
+
+  it('refus conception vide : motif serveur', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    servir('exemple_vide')
+    const refus = echantillon('refus_conception_vide')
+    calepinageApi.calepinages.decisionApprobation.mockRejectedValue({
+      response: { status: 400, data: refus },
+    })
+    rendre()
+    fireEvent.click(await screen.findByTestId('calx349-approuver'))
+    expect(await screen.findByTestId('acal115-refus-conception-vide'))
+      .toHaveTextContent('Rien à approuver : dessinez la toiture')
+  })
+})

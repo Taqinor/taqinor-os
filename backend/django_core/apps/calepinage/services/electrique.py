@@ -1056,6 +1056,11 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         EntreeInvalide: champ inconnu, corps qui n'est pas un objet, ou
             dérogation refusée (code inconnu, bloquant, auteur ou motif vide).
     """
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture,
+    # dérogations comprises.
+    from .verrou import apres_envoi, verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage, champ=CLE_ENTREE)
     if not isinstance(donnees, dict):
         raise EntreeInvalide(
             "L'entrée électrique doit être un objet "
@@ -1091,6 +1096,8 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
             calepinage, entree=entree)
         traces = _traces_de_derogation(conception, saisies, user=user)
 
+    avant_saisie = dict(entree_stockee(calepinage))
+
     def _poser(resultat):
         # ACAL57 — fusion sur l'entrée RELUE sous verrou, jamais sur la
         # copie lue au début de la requête.
@@ -1102,6 +1109,15 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         return entree
 
     posee = modifier_resultat(calepinage, _poser)
+    if apres_envoi(calepinage):
+        # ACAL43 — une saisie d'un devis ENVOYÉ se TRACE (corrigé après envoi).
+        modifies = sorted(cle for cle, valeur in reglages.items()
+                          if avant_saisie.get(cle) != valeur)
+        if modifies:
+            from .journal import noter
+
+            noter(calepinage, 'Saisie électrique modifiée : '
+                  + ', '.join(modifies), user=user)
     if traces:
         # ACAL283 — chaque dérogation se lit aussi au CHATTER (reflet lisible
         # du fil ``journal_derogations``, seul enregistrement structuré) ;

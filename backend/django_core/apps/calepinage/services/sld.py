@@ -441,6 +441,10 @@ def enregistrer_edition_sld(calepinage, corps, *, dessin=None):
         SldRefuse: clef inconnue, texte vide/trop long, mot d'argent, forme
             de position illisible — le refus NOMME toujours le champ.
     """
+    # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage, champ='sld_edition')
     if dessin is None:
         dessin = _dessin_du_calepinage(calepinage)
     from .resultat import modifier_resultat

@@ -150,34 +150,40 @@ describe('ACAL68 — le fond est posé après l’hydratation', () => {
   })
 })
 
-describe('CALX104/CALX403 câblage — `reglagesAtelier` en mode DEVIS, SANS requête annexe', () => {
-  it('les deux sections du contexte agrégé partent TELLES QUELLES au builder', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
+describe('CALX104/CALX403 câblage — `reglagesAtelier` sur la route DEVIS (ACAL37 : le calepinage lié)', () => {
+  // ACAL37 (D-ACAL-1) — la route devis ouvre le CALEPINAGE lié : les réglages société
+  // passent par la MÊME porte que le mode calepinage (`parametres.get`), jamais par le
+  // contexte devis.
+  const servirDevis = () => {
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: CTX.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+  }
 
-    rendreDevis(CTX_DEVIS.devis.id)
+  it('les deux sections des réglages société partent TELLES QUELLES au builder', async () => {
+    servirDevis()
+    calepinageApi.parametres.get.mockResolvedValue({
+      data: { zones_types: CTX_DEVIS.zones_types, degagements: CTX_DEVIS.degagements },
+    })
+
+    rendreDevis(CTX.calepinage.devis_lie.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    // LA garantie du mode DEVIS : un seul appel, aucune porte de complément.
-    expect(ventesApi.getDevisDesignContext).toHaveBeenCalledTimes(1)
-    expect(calepinageApi.parametres.get).not.toHaveBeenCalled()
-
+    expect(ventesApi.getDevisDesignContext).not.toHaveBeenCalled()
     expect(initRoofToolPro8.mock.calls[0][0].reglagesAtelier).toEqual({
       zones_types: CTX_DEVIS.zones_types,
       degagements: CTX_DEVIS.degagements,
     })
   })
 
-  it('un contexte SANS les deux sections ⇒ `null` : aucune cote de repli', async () => {
-    const sansReglages = { ...CTX_DEVIS }
-    delete sansReglages.zones_types
-    delete sansReglages.degagements
-    ventesApi.getDevisDesignContext.mockResolvedValue({ data: sansReglages })
+  it('réglages illisibles ⇒ `null` : aucune cote de repli', async () => {
+    servirDevis()
+    calepinageApi.parametres.get.mockRejectedValue(new Error('403'))
 
-    rendreDevis(CTX_DEVIS.devis.id)
+    rendreDevis(CTX.calepinage.devis_lie.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(initRoofToolPro8.mock.calls[0][0].reglagesAtelier).toBeNull()
-    expect(calepinageApi.parametres.get).not.toHaveBeenCalled()
   })
 })

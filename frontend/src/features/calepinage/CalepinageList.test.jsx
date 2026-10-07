@@ -336,3 +336,19 @@ describe('CALX406 — la colonne « Responsable » de la liste', () => {
       .toHaveTextContent('Responsable : Concepteur d’essai')
   })
 })
+
+/* ============================================================================
+   ACAL115 — le statut DÉRIVÉ (servi) est affiché et alimente le filtre.
+   ========================================================================== */
+describe('CalepinageList (ACAL115)', () => {
+  it('statut dérivé affiché', async () => {
+    mocks.list.mockResolvedValue({
+      data: {
+        count: 1, next: null, previous: null,
+        results: [{ ...AVEC_IMAGE, statut: 'perime', statut_libelle: 'Périmé' }],
+      },
+    })
+    rendre()
+    expect(await screen.findByText('Périmé')).toBeInTheDocument()
+  })
+})

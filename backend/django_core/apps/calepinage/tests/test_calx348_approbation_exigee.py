@@ -2,7 +2,7 @@
 
 Ce qui est prouvé ici :
 
-* ÉQUIVALENCE (D12) : réglage absent ⇒ ``verifier_avant_retenue`` ne lit
+* ÉQUIVALENCE (D12) : réglage absent ⇒ ``verifier_avant_publication`` ne lit
   même pas la décision d'approbation, et retenir une variante marche comme
   aujourd'hui sur un calepinage jamais approuvé ;
 * la clé ``approbation_exigee`` de la section ``presets`` est VALIDÉE
@@ -42,9 +42,9 @@ CONTRAT_PARAMETRES = json.loads(
     .read_text(encoding='utf-8'))
 
 
-def faux_calepinage(approbation=None):
+def faux_calepinage(approbation=None, layout_hash='e' * 64):
     return SimpleNamespace(company=object(), approbation=approbation,
-                           lead_id=None, devis=None)
+                           lead_id=None, devis=None, layout_hash=layout_hash)
 
 
 class NormalisationPresetsTest(SimpleTestCase):
@@ -102,7 +102,7 @@ class EquivalenceSansReglageTest(SimpleTestCase):
                 mock.patch.object(feu_vert, 'option_active',
                                   return_value=False), \
                 mock.patch('apps.crm.selectors.get_company_lead') as lead:
-            self.assertIsNone(feu_vert.verifier_avant_retenue(calepinage))
+            self.assertIsNone(feu_vert.verifier_avant_publication(calepinage))
         est_approuve.assert_not_called()
         lead.assert_not_called()
 
@@ -117,7 +117,7 @@ class RefusApprobationExigeeTest(SimpleTestCase):
                                   return_value=False), \
                 mock.patch.object(feu_vert, '_roles_approbateurs',
                                   return_value=list(roles)):
-            return feu_vert.verifier_avant_retenue(calepinage)
+            return feu_vert.verifier_avant_publication(calepinage)
 
     def test_non_approuve_refuse_sur_le_champ_approbation(self):
         with self.assertRaises(ValidationError) as refus:
@@ -142,8 +142,18 @@ class RefusApprobationExigeeTest(SimpleTestCase):
                       str(refus.exception.detail['approbation'][0]))
 
     def test_approuve_passe(self):
-        calepinage = faux_calepinage({'etat': 'approuve'})
+        # ACAL114 — l'accord porte l'empreinte imprimée d'aujourd'hui.
+        calepinage = faux_calepinage({'etat': 'approuve',
+                                      'empreinte_approuvee': 'e' * 64})
         self.assertIsNone(self._verifier(calepinage))
+
+    def test_approuve_mais_perime_refuse(self):
+        calepinage = faux_calepinage({'etat': 'approuve',
+                                      'empreinte_approuvee': 'a' * 64})
+        with self.assertRaises(ValidationError) as refus:
+            self._verifier(calepinage)
+        self.assertIn('redécider',
+                      str(refus.exception.detail['approbation'][0]))
 
 
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
@@ -169,10 +179,18 @@ def url_retenir(pk, vid):
 class RetenirAvecApprobationEnBase(BaseApiCalepinage):
     def setUp(self):
         super().setUp()
+        # ACAL114 — une conception DESSINÉE (approuvable), la même dans la
+        # variante : l'accord porte sur l'empreinte imprimée de la variante.
+        from apps.ventes.services import layout_hash
+
+        dessin = {'zones': [{'id': 'z1', 'label': 'Pan Sud',
+                             'vertices': [[0, 0], [10, 0], [10, 6]]}]}
         self.calepinage = Calepinage.objects.create(
-            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa')
+            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa',
+            roof_layout=dessin, layout_hash=layout_hash(dessin) or '')
         self.variante = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='V1')
+            company=self.company, calepinage=self.calepinage, nom='V1',
+            roof_layout=dessin)
 
     def test_reglage_absent_retenir_marche_comme_aujourd_hui(self):
         retenir_variante(self.variante)

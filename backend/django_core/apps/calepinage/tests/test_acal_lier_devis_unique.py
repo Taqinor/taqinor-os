@@ -75,6 +75,9 @@ class LierDevisSeulEcrivainTest(BaseApiCalepinage):
                          'aucune copie ne doit être créée')
 
     def test_depuis_modele_devis_libre_passe_par_lier_devis(self):
+        # ACAL117 (D-ACAL-15) — le lead cible d'un modèle porte un repère.
+        self.lead.roof_point = {'lat': 33.5, 'lng': -7.6}
+        self.lead.save(update_fields=['roof_point'])
         modele = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Modèle villa',
             roof_layout=copy.deepcopy(DOCUMENT))

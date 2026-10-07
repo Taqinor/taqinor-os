@@ -128,7 +128,7 @@ def enregistrer_pertes(self, request, pk=None):
     # ACAL135 — le contrat nomme la liste ``postes`` ; ``pertes`` reste lu.
     saisie = corps.get('postes') if 'postes' in corps else corps.get('pertes')
     try:
-        persister_pertes(calepinage, saisie)
+        persister_pertes(calepinage, saisie, user=request.user)
     except PertesInvalides as refus:
         return Response({refus.champ or 'pertes': [str(refus)]},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -198,6 +198,24 @@ def simuler(self, request, pk=None):
     calepinage = self.get_object()  # borné société par get_queryset
     corps = request.data if isinstance(request.data, dict) else {}
     forcer = bool(corps.get('forcer'))
+    # ACAL112 (D-ACAL-17) — ``variante_id`` facultatif : la variante du MÊME
+    # calepinage est simulée SUR SA conception, le résultat est écrit SUR LA
+    # VARIANTE (Calepinage.resultat intact). Absente, étrangère ou d'un autre
+    # calepinage ⇒ 404, même message qu'un id absent (aucun oracle).
+    variante = None
+    if corps.get('variante_id') not in (None, ''):
+        from .. import selectors as cal_selectors
+
+        try:
+            variante_pk = int(corps.get('variante_id'))
+        except (TypeError, ValueError):
+            variante_pk = None
+        variante = (cal_selectors.variantes(calepinage)
+                    .filter(pk=variante_pk).first()
+                    if variante_pk is not None else None)
+        if variante is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
 
     # ACAL126 — LES REFUS NOMMÉS D'ABORD, par les MÊMES fonctions que la
     # simulation (mode météo, pan équipé, épingle, températures saisies) :
@@ -205,14 +223,17 @@ def simuler(self, request, pk=None):
     # L'EMPREINTE : relancer une tâche pour apprendre que rien n'a bougé
     # coûterait un worker et une minute pour rien.
     try:
-        contexte, meta = construire_contexte(calepinage)
+        contexte, meta = construire_contexte(
+            calepinage,
+            layout=(variante.roof_layout if variante is not None else None))
         verifier_simulable(contexte, meta,
                            fichier_depose=fichier_meteo_depose(calepinage))
     except SimulationRefusee as refus:
         return Response({refus.champ or 'simulation': [refus.motif]},
                         status=status.HTTP_400_BAD_REQUEST)
-    entete = (calepinage.resultat or {}).get(CLE_ENTETE_SIMULATION) \
-        if isinstance(calepinage.resultat, dict) else None
+    porteur = variante if variante is not None else calepinage
+    entete = (porteur.resultat or {}).get(CLE_ENTETE_SIMULATION) \
+        if isinstance(porteur.resultat, dict) else None
     entete = entete if isinstance(entete, dict) else {}
     if (not forcer and meta['hash_entree']
             and entete.get('hash_entree') == meta['hash_entree']):
@@ -226,9 +247,16 @@ def simuler(self, request, pk=None):
     job = submit(KIND_CALEPINAGE, tache_de_simulation,
                  company=calepinage.company, user=request.user,
                  calepinage_id=calepinage.pk, nature=NATURE_SIMULATION,
-                 forcer=forcer)
-    return Response(accuse_de_simulation(job),
-                    status=status.HTTP_202_ACCEPTED)
+                 forcer=forcer,
+                 variante_id=(variante.pk if variante is not None else None))
+    accuse = accuse_de_simulation(job)
+    if variante is not None:
+        accuse['variante_id'] = variante.pk
+        accuse['detail'] = (
+            'Simulation de la variante %s lancée : le résultat sera écrit sur '
+            'la variante, le résultat du calepinage reste intact.'
+            % variante.pk)
+    return Response(accuse, status=status.HTTP_202_ACCEPTED)
 
 
 # Rattachement au viewset PIVOT — voir la docstring du module.

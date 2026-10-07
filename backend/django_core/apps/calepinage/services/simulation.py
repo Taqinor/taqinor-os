@@ -998,6 +998,24 @@ def _reponse_pvcalculation(client, plan, site, decision, cascade, kwc):
 # L'ÉCRITURE — fusion de clés, jamais un remplacement
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _ecrire_resultat_variante(variante, blocs):
+    """ACAL112 — fusionne ``blocs`` dans ``variante.resultat`` relu SOUS
+    VERROU de ligne ; seule la colonne ``resultat`` est écrite."""
+    from django.db import transaction
+
+    from ..models import CalepinageVariante
+
+    with transaction.atomic():
+        fraiche = (CalepinageVariante.objects.select_for_update()
+                   .get(pk=variante.pk))
+        resultat = (dict(fraiche.resultat)
+                    if isinstance(fraiche.resultat, dict) else {})
+        resultat.update(blocs)
+        fraiche.resultat = resultat
+        fraiche.save(update_fields=['resultat', 'updated_at'])
+    variante.resultat = resultat
+
+
 def _simulation_enregistree(calepinage):
     """L'en-tête ``simulation`` déjà écrit sur ce calepinage (``{}`` sinon)."""
     stocke = getattr(calepinage, 'resultat', None)
@@ -1152,7 +1170,7 @@ def _horodatage(maintenant=None):
 
 def simuler_calepinage(calepinage, *, forcer=False, client=None,
                        maintenant=None, enregistrer=True, materiel=None,
-                       reglages=None):
+                       reglages=None, variante=None):
     """Simule le calepinage et ÉCRIT le résultat — le seul chemin (D-CALX 4).
 
     Args:
@@ -1168,6 +1186,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
             et tests) — rien n'est alors posé sur le calepinage.
         materiel / reglages: substitutions réservées aux APPELS INTERNES et
             aux tests, décrites par :func:`construire_contexte`.
+        variante: ACAL112 (D-ACAL-17) — une variante du calepinage : le
+            contexte est construit sur ``variante.roof_layout`` avec les
+            pertes et réglages du calepinage, et le résultat est écrit par
+            FUSION SUR LA VARIANTE — ``Calepinage.resultat`` reste intact.
 
     Returns:
         dict — ``{deja_calcule: True, calcule_le, hash_entree, detail}`` quand
@@ -1180,11 +1202,18 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
             champ fautif est nommé, jamais un refus générique.
     """
     depart = time.monotonic()
-    contexte, meta = construire_contexte(calepinage, materiel=materiel,
-                                         reglages=reglages)
+    if variante is not None and not isinstance(
+            getattr(variante, 'roof_layout', None), dict):
+        raise SimulationRefusee(
+            "La variante n'a pas de conception : dessinez-la avant de la "
+            'simuler.', champ='variante')
+    contexte, meta = construire_contexte(
+        calepinage, materiel=materiel, reglages=reglages,
+        layout=(variante.roof_layout if variante is not None else None))
     empreinte = meta['hash_entree']
 
-    entete = _simulation_enregistree(calepinage)
+    entete = _simulation_enregistree(
+        variante if variante is not None else calepinage)
     if not forcer and empreinte and entete.get('hash_entree') == empreinte:
         return {
             'deja_calcule': True,
@@ -1390,7 +1419,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         'calcule_le': calcule_le,
         'duree_s': round(time.monotonic() - depart, 3),
     }
-    if enregistrer:
+    if enregistrer and variante is not None:
+        # ACAL112 — la fusion PROPRE à la variante (jamais celle du
+        # calepinage) : relue sous verrou de ligne, clés fusionnées.
+        _ecrire_resultat_variante(variante, blocs)
+    elif enregistrer:
         # ACAL57 — l'écrivain unique : les blocs de la simulation sont posés
         # PAR FUSION DE CLÉS sur le resultat RELU sous verrou au moment
         # d'écrire. Une saisie faite PENDANT le calcul (``entree_electrique``,

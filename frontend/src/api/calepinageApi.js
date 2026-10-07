@@ -62,10 +62,12 @@ const crud = makeResourceFactory(api, '/calepinage')
 // sans lui, un nom dérivé de la source évite un POST refusé pour nom vide.
 // Fonction PURE (aucun appel réseau) : la garde CAL33 exige que chaque
 // `api.<verbe>(` soit le corps direct d'une fonction fléchée.
-function corpsDeCopieVariante(source, nom) {
+// ACAL109 — la copie n'emporte JAMAIS le `resultat` : une simulation décrit la
+// conception qui l'a produite, pas sa copie (elle se relance).
+export function corpsDeCopieVariante(source, nom) {
   const src = source ?? {}
   const nomFinal = nom || (src.nom ? `${src.nom} (copie)` : 'Copie de variante')
-  return { nom: nomFinal, roof_layout: src.roof_layout, resultat: src.resultat }
+  return { nom: nomFinal, roof_layout: src.roof_layout }
 }
 
 const calepinageApi = {
@@ -114,7 +116,8 @@ const calepinageApi = {
 
     // CAL21 — variantes. `retenir` est une ACTION (elle dé-retient la
     // précédente), jamais un PATCH de ressource — même patron qu'AO.
-    variantes: (id) => api.get(`${pivot(id)}variantes/`),
+    // ACAL109 — la clé `variantes` (GET liste brute, sans appelant) est
+    // retirée : la liste se lit par `comparer()`.
     retenirVariante: (id, varianteId) =>
       api.post(`${pivot(id)}variantes/${varianteId}/retenir/`),
 
@@ -309,6 +312,13 @@ const calepinageApi = {
     // frontière multipart. Le serveur écrit `underlay` par section et rend `{underlay,
     // empreinte_document}` ; 409 `document_modifie` si le jeton est périmé.
     envoyerFondPlan: (id, corps) => api.post(`${pivot(id)}fond-plan/`, corps), // ACAL
+    // ACAL109 — renommer (PATCH `{nom}`) et supprimer une variante ; le refus
+    // serveur (variante RETENUE) est affiché tel quel par l'écran.
+    modifierVariante: (id, varianteId, corps) => api.patch(`${pivot(id)}variantes/${varianteId}/`, corps), // ACAL
+    supprimerVariante: (id, varianteId) => api.delete(`${pivot(id)}variantes/${varianteId}/`), // ACAL
+    // ACAL113 (D-ACAL-17, contrat calepinage_simulation.json › corps_variante) — simuler UNE
+    // variante : le résultat est écrit SUR LA VARIANTE (202 + job, suivi par useSuiviJob).
+    simulerVariante: (id, varianteId) => api.post(`${pivot(id)}simuler/`, { variante_id: varianteId, forcer: true }), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

@@ -6,24 +6,18 @@ abonnant ICI (décorateur ``@receiver`` avec un ``dispatch_uid`` stable) et en
 branchant ce module dans ``apps.py`` ``ready()`` — jamais en important les vues
 ou les modèles de l'autre app (frontière import-linter).
 
-CAL39 — LE MIROIR ÉVÉNEMENTIEL, ET POURQUOI IL EXISTE
-------------------------------------------------------
-L'atelier en mode « devis » écrit dans ``Devis.roof_layout``. Le module
-Calepinage, lui, fait vivre les versions, les variantes, la planche, la note de
-calcul, les chaînes, la production et le badge « à jour » — toutes bâties sur
-``Calepinage.roof_layout``. Sans ce miroir, un calepinage créé depuis la fiche
-lead resterait GELÉ à sa création pendant que le devis, lui, continue d'être
-redessiné : toutes ces fonctions liraient un document périmé, sans que personne
-ne le voie.
+ACAL38 (D-ACAL-1) — PLUS DE MIROIR : ``layout_finalise`` RATTACHE, IL N'ÉCRIT PLUS
+--------------------------------------------------------------------------------
+Le calepinage est l'UNIQUE conception d'un devis : l'atelier ouvert sur un devis
+écrit le CALEPINAGE lié puis resynchronise le devis (ACAL37). L'ancien miroir
+CAL39 (le document du devis recopié dans le calepinage à chaque
+``layout_finalise``) est RETIRÉ : il écrasait les clés propres au module (fond
+calé, surfaces de pose, modules). L'événement ne fait plus qu'ADOPTER ou CRÉER
+le calepinage d'un devis qui n'en a pas encore (D02-T10) ; un calepinage
+existant n'est JAMAIS réécrit.
 
-ZÉRO CHANGEMENT D'ÉCRAN (demande fondateur n°3) : aucune ligne de
-``LeadWorkspace.jsx`` ni de ``ToitureDesign.jsx`` n'est touchée. Les trois
-chemins d'enregistrement de ventes (``from-layout``, ``sync-layout`` et
-l'action ``layout``) émettent le MÊME événement ``layout_finalise``, et c'est
-lui — pas l'écran — qui alimente le calepinage canonique.
-
-BEST-EFFORT, TOUJOURS : un miroir en échec ne doit JAMAIS faire échouer un
-enregistrement de devis déjà réussi. L'erreur est journalisée, pas propagée.
+BEST-EFFORT, TOUJOURS : un rattachement en échec ne doit JAMAIS faire échouer
+un enregistrement de devis déjà réussi. L'erreur est journalisée, pas propagée.
 """
 from __future__ import annotations
 
@@ -32,91 +26,53 @@ import logging
 from django.dispatch import receiver
 
 from core.events import (
-    devis_sent, layout_finalise, lead_created, lead_trace_toit_recu,
+    layout_finalise, lead_created, lead_trace_toit_recu,
 )
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    'miroir_layout_du_devis', 'reverrouiller_au_devis_sent',
+    'rattacher_conception_au_devis',
     'reprise_du_trace_public', 'reprise_du_trace_au_renvoi',
 ]
 
 
-@receiver(layout_finalise, dispatch_uid='calepinage_miroir_layout_finalise')
-def miroir_layout_du_devis(sender, devis, user=None, **kwargs):
-    """Alimente le calepinage canonique du devis avec sa conception.
+@receiver(layout_finalise,
+          dispatch_uid='calepinage_rattacher_conception_au_devis')
+def rattacher_conception_au_devis(sender, devis, user=None, **kwargs):
+    """ACAL38 (D-ACAL-1) — RATTACHE le devis à son calepinage, sans jamais
+    réécrire un calepinage existant.
 
-    * le calepinage est OBTENU, ADOPTÉ ou CRÉÉ (idempotent : le même devis
-      rend toujours le même calepinage) ;
-    * la conception est enregistrée par le chemin d'écriture COMMUN
-      (``services.enregistrer_layout``), donc elle dépose une version quand —
-      et seulement quand — elle a changé, et le chatter est alimenté ;
-    * la SOCIÉTÉ et l'AUTEUR viennent du serveur : la société est celle du
-      devis, l'auteur est l'utilisateur agissant transmis par l'événement.
+    Selon l'origine rendue par ``services.creation.adopter_ou_creer_pour_devis``
+    (idempotent : le même devis rend toujours le même calepinage) :
 
-    ACAL35 (D-ACAL-1) — selon l'origine rendue par
-    ``services.creation.adopter_ou_creer_pour_devis`` :
+    * ``'existant'`` (déjà lié) — RIEN n'est écrit : le calepinage est la
+      conception, le devis n'est qu'un instantané ;
+    * ``'adopte'`` (l'ouvert du lead) — RIEN n'est écrit non plus ;
+    * ``'cree'`` — le calepinage naît avec le document du devis SANS ses clés
+      privées, et sa première version est déposée sur SON propre document.
 
-    * ``'existant'`` (déjà lié) — le document du devis est recopié, comme
-      avant (ce reliquat du miroir est retiré par ACAL38) ;
-    * ``'adopte'`` (l'ouvert du lead) — RIEN n'est écrit : le calepinage est
-      la conception, son document reste octet-identique ;
-    * ``'cree'`` — le calepinage est né avec le document du devis SANS ses
-      clés privées ; rien n'y est recopié de plus (seule sa première version
-      est déposée, sur son PROPRE document).
-
-    Aucun statut n'est écrit (règle #4), ni côté devis ni côté calepinage.
+    La SOCIÉTÉ et l'AUTEUR viennent du serveur. Aucun statut n'est écrit
+    (règle #4), ni côté devis ni côté calepinage.
     """
     layout = getattr(devis, 'roof_layout', None)
     company = getattr(devis, 'company', None)
-    if devis is None or company is None or not isinstance(layout, dict) \
-            or not layout:
+    if (devis is None or company is None or not isinstance(layout, dict)
+            or not layout):
         return
     try:
         from .services.creation import (
-            ORIGINE_CREE, ORIGINE_EXISTANT, adopter_ou_creer_pour_devis,
+            ORIGINE_CREE, adopter_ou_creer_pour_devis,
         )
         from .services.layout import enregistrer_layout
 
         calepinage, origine = adopter_ou_creer_pour_devis(
             devis.pk, company, user=user)
-        if origine == ORIGINE_EXISTANT:
-            enregistrer_layout(calepinage, layout, user=user)
-        elif origine == ORIGINE_CREE:
+        if origine == ORIGINE_CREE:
             enregistrer_layout(calepinage, calepinage.roof_layout, user=user)
-    except Exception:  # noqa: BLE001 — un miroir ne casse jamais la source
+    except Exception:  # noqa: BLE001 — un rattachement ne casse jamais la source
         logger.exception(
-            'CAL39 : miroir de conception en échec pour le devis %s',
-            getattr(devis, 'pk', None))
-
-
-@receiver(devis_sent, dispatch_uid='calepinage_reverrouiller_devis_sent')
-def reverrouiller_au_devis_sent(sender, devis, user=None, **kwargs):
-    """CAL207 — RE-FERME le calepinage lié à chaque nouvel envoi du devis.
-
-    Un déverrouillage explicite (``services.verrou.deverrouiller``) ne
-    survit donc jamais à un cycle brouillon → renvoyé : le geste
-    « Réviser » de ventes remet le devis en brouillon (débloquant déjà
-    ``enregistrer_layout`` via ``est_verrouille``), et le RE-envoi referme
-    le calepinage comme le premier envoi l'avait fait.
-
-    Best-effort, TOUJOURS : ne fait jamais échouer l'envoi du devis déjà
-    réussi.
-    """
-    company = getattr(devis, 'company', None)
-    if devis is None or company is None:
-        return
-    try:
-        from .selectors import calepinage_du_devis
-        from .services.verrou import reverrouiller
-
-        calepinage = calepinage_du_devis(devis.pk, company)
-        if calepinage is not None:
-            reverrouiller(calepinage, user=user)
-    except Exception:  # noqa: BLE001 — un verrou ne casse jamais l'envoi
-        logger.exception(
-            'CAL207 : reverrouillage en échec pour le devis %s',
+            'ACAL38 : rattachement de conception en échec pour le devis %s',
             getattr(devis, 'pk', None))
 
 

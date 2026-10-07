@@ -423,10 +423,6 @@ dupliquer_devis = _creation_clone.dupliquer_devis
 # SPL266 — le pont calepinage → devis vit dans ``domain/creation_calepinage.py``.
 from apps.ventes.domain import creation_calepinage as _creation_calepinage  # noqa: E402
 build_devis_from_layout = _creation_calepinage.build_devis_from_layout
-# CAL185 — chiffrer la VARIANTE RETENUE d'un calepinage, par LE chemin
-# de création de lignes (jamais un second).
-build_devis_depuis_calepinage_retenu = (
-    _creation_calepinage.build_devis_depuis_calepinage_retenu)
 produits_a_renseigner = _creation_calepinage.produits_a_renseigner
 # SPL267 — le devis automatique vit dans ``domain/creation_auto.py``.
 from apps.ventes.domain import creation_auto as _creation_auto  # noqa: E402
@@ -563,7 +559,6 @@ __all__ = [
     'battery_du_document',
     'bcf_share_url',
     'build_devis_auto',
-    'build_devis_depuis_calepinage_retenu',
     'build_devis_from_layout',
     'calculer_date_echeance',
     'capturer_configuration_devis',

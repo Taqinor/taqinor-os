@@ -40,8 +40,44 @@ from __future__ import annotations
 #: Clé, DANS la section ``presets`` (CAL197), qui active l'exigence.
 CLE_ACTIF = 'feu_vert_bureau_etudes'
 
+#: ACAL116 (D-ACAL-24) — les trois gestes que la porte unique tient.
+GESTE_RETENUE, GESTE_DEVIS, GESTE_EXECUTION = 'retenue', 'devis', 'execution'
+
+#: ACAL116 — les PIÈCES D'EXÉCUTION refusées tant que l'approbation exigée
+#: n'est pas à jour (les livrables d'ÉTUDE, eux, sont produits avec la
+#: mention « Conception non approuvée »). Un code par porte HTTP gardée.
+PIECES_EXECUTION = (
+    'plan_pose',            # plan-pose.pdf
+    'plan_cablage',         # plan-cablage.pdf
+    'plan_cablage_dxf',     # plan-cablage.dxf
+    'export_dxf',           # export.dxf
+    'export_xlsx',          # classeur / nomenclature
+    'export_csv',
+    'pack_technique',       # dossier technique (GED)
+    'dossier_fin_chantier',  # dossier de fin de chantier (GED)
+)
+
+MESSAGES_APPROBATION = {
+    GESTE_DEVIS: ('Approbation à jour exigée avant de générer ou '
+                  'resynchroniser le devis'),
+    GESTE_EXECUTION: ("Approbation à jour exigée avant de produire une "
+                      "pièce d'exécution"),
+}
+MESSAGES_FEU_VERT = {
+    GESTE_RETENUE: ("Cette variante ne peut pas être retenue : la visite "
+                    "technique du lead n'a pas encore reçu le feu vert "
+                    "du bureau d'études."),
+    GESTE_DEVIS: ("Le devis ne peut pas être généré ni resynchronisé : la "
+                  "visite technique du lead n'a pas encore reçu le feu vert "
+                  "du bureau d'études."),
+    GESTE_EXECUTION: ("Cette pièce d'exécution ne peut pas être produite : "
+                      "la visite technique du lead n'a pas encore reçu le "
+                      "feu vert du bureau d'études."),
+}
+
 __all__ = ['CLE_ACTIF', 'option_active', 'lead_id_de_reference',
-           'verifier_avant_retenue']
+           'verifier_avant_publication', 'PIECES_EXECUTION',
+           'GESTE_RETENUE', 'GESTE_DEVIS', 'GESTE_EXECUTION']
 
 
 def option_active(company):
@@ -64,8 +100,13 @@ def lead_id_de_reference(calepinage):
     return getattr(devis, 'lead_id', None) if devis is not None else None
 
 
-def verifier_avant_retenue(calepinage):
-    """Refuse de retenir une variante si l'option est active ET qu'aucun feu
+def verifier_avant_publication(calepinage, *, geste=GESTE_RETENUE,
+                               variante=None):
+    """ACAL116 — LA porte unique (renommage de ``verifier_avant_retenue``) :
+    ``geste`` ∈ ``retenue`` (retenir une variante), ``devis`` (générer /
+    resynchroniser le devis), ``execution`` (pièce d'exécution).
+
+    Refuse si l'option feu vert est active ET qu'aucun feu
     vert n'a été accordé au lead de référence.
 
     No-op quand l'option est désactivée, ou quand le calepinage n'a ni lead
@@ -91,14 +132,22 @@ def verifier_avant_retenue(calepinage):
             lead = get_company_lead(company, lead_id, avec_corbeille=True)
             if lead is None or not getattr(lead, 'visite_effectuee', False):
                 raise ValidationError({
-                    'feu_vert': [
-                        "Cette variante ne peut pas être retenue : la visite "
-                        "technique du lead n'a pas encore reçu le feu vert "
-                        "du bureau d'études.",
-                    ],
+                    'feu_vert': [MESSAGES_FEU_VERT.get(
+                        geste, MESSAGES_FEU_VERT[GESTE_RETENUE])],
                 })
     # CALX348 — la SECONDE vérification, au MÊME point d'entrée.
-    _verifier_approbation_avant_retenue(calepinage)
+    if geste == GESTE_RETENUE:
+        _verifier_approbation_avant_retenue(calepinage, variante=variante)
+        return
+    # ACAL116 (D-ACAL-24) — devis / pièce d'exécution : une approbation À
+    # JOUR (non refusée, non périmée) quand la société l'exige.
+    from .approbation import approbation_exigee, est_approuve
+
+    if approbation_exigee(company) and not est_approuve(calepinage):
+        raise ValidationError({
+            'approbation': [MESSAGES_APPROBATION.get(
+                geste, MESSAGES_APPROBATION[GESTE_EXECUTION])],
+        })
 
 
 # ── CALX348 — l'approbation exigée avant de retenir une variante ────────────
@@ -143,6 +192,11 @@ def _message_approbation_manquante(calepinage, roles):
         cause = ("sa conception a été REFUSÉE à la relecture"
                  + (f" (motif : {motif})" if motif else '')
                  + " et doit être reprise puis approuvée")
+    elif decision.get('etat') == 'approuve':
+        # ACAL114 — un accord PÉRIMÉ (empreinte imprimée changée depuis, ou
+        # portant sur une autre conception que la variante retenue).
+        cause = ("son approbation ne couvre plus la conception à retenir "
+                 "(conception modifiée depuis l'accord) : elle est à redécider")
     else:
         cause = "sa conception n'a pas encore été approuvée"
     if roles:
@@ -157,7 +211,7 @@ def _message_approbation_manquante(calepinage, roles):
             "variante.")
 
 
-def _verifier_approbation_avant_retenue(calepinage):
+def _verifier_approbation_avant_retenue(calepinage, *, variante=None):
     """Refuse de retenir une variante si la société EXIGE l'approbation et
     que le calepinage n'est pas APPROUVÉ.
 
@@ -174,7 +228,15 @@ def _verifier_approbation_avant_retenue(calepinage):
     company = getattr(calepinage, 'company', None) if calepinage else None
     if not approbation_exigee(company):
         return
-    if est_approuve(calepinage):
+    # ACAL114 (D-ACAL-2, D-ACAL-11) — l'approbation NON périmée doit porter
+    # sur la conception qui VA devenir courante : l'empreinte imprimée de la
+    # variante retenue.
+    empreinte = None
+    if variante is not None:
+        from apps.ventes.services import layout_hash
+
+        empreinte = layout_hash(getattr(variante, 'roof_layout', None)) or ''
+    if est_approuve(calepinage, empreinte=empreinte):
         return
     raise ValidationError({
         'approbation': [_message_approbation_manquante(

@@ -227,7 +227,10 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     if client_id:
         lignes = lignes.filter(client_id=client_id)
     if statut:
-        lignes = lignes.filter(statut=statut)
+        # ACAL114 — ``statut`` est DÉRIVÉ de l'approbation (annotation).
+        from .services.approbation import annoter_statut_derive
+
+        lignes = annoter_statut_derive(lignes).filter(statut_derive=statut)
     if depuis:
         lignes = lignes.filter(created_at__gte=depuis)
     terme = (q or '').strip()
@@ -328,9 +331,23 @@ def comparer_variantes(calepinage):
 
 
 def _mesures_variante(variante):
-    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées."""
+    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées.
+
+    ACAL112 — sans résultat (variante non simulée), ``total_modules`` et
+    ``kwc`` sont LUS dans la conception de la variante
+    (``mesures_du_document`` → ``pans_du_document``) et
+    ``source_mesures`` vaut ``'conception'``."""
     resultat = getattr(variante, 'resultat', None)
-    return resultat if isinstance(resultat, dict) else {}
+    if isinstance(resultat, dict) and resultat:
+        return dict(resultat, source_mesures='simulation')
+    from .services.mesures import mesures_du_document
+
+    document = getattr(variante, 'roof_layout', None)
+    if not isinstance(document, dict):
+        return {'source_mesures': 'conception'}
+    mesures = mesures_du_document(document)
+    return {'total_modules': mesures.get('modules'),
+            'kwc': mesures.get('kwc'), 'source_mesures': 'conception'}
 
 
 def _production_comparee(variante):
@@ -348,13 +365,16 @@ def _production_comparee(variante):
         colonnes_production, simulation_perimee_de_la_variante,
     )
 
+    resultat = getattr(variante, 'resultat', None)
     return colonnes_production(
-        _mesures_variante(variante),
+        resultat if isinstance(resultat, dict) else {},
         perimee=simulation_perimee_de_la_variante(variante))
 
 
 def _ligne_comparaison(variante, reference, nombre_de_lignes,
                        reference_p50=None):
+    from .services.comparaison import MOTIF_PERIMEE
+
     mesures = _mesures_variante(variante)
     simulee, production, _motif = _production_comparee(variante)
     comparable = nombre_de_lignes > 1 and bool(reference)
@@ -394,6 +414,12 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
             reference_p50, comparable),
         'version_moteur': mesures.get('version_moteur') or '',
         'entree_hash': mesures.get('entree_hash') or '',
+        # ACAL7/ACAL112 — colonnes de fraîcheur (contrat
+        # variantes_comparer.json) : ``None`` = jamais simulée.
+        'simulation_perimee': (
+            None if mesures.get('source_mesures') != 'simulation'
+            else _motif == MOTIF_PERIMEE),
+        'source_mesures': ('simulation' if simulee else 'conception'),
     }
 
 
@@ -473,34 +499,37 @@ def calepinage_retenu_pour_devis(devis_id, company):
     RETENUE (``CalepinageVariante.retenue``) — un calepinage sans option
     choisie ne désigne rien de concret à renvoyer.
 
-    Le kWc et le nombre de modules sont lus, dans l'ordre : le résultat du
-    moteur (``variante.resultat['pose']`` — chaîné/simulé, CAL126+) puis, à
-    défaut, le résumé posé par l'atelier 3D (``variante.roof_layout['result']``
-    — présent dès qu'une pose a été dessinée, avant toute simulation). Aucune
-    valeur n'est recalculée ici : c'est une LECTURE pure, bornée société.
+    ACAL107 (D-ACAL-2, D-ACAL-23) — le kWc et le nombre de modules sont lus
+    sur ``services.asbuilt.conception_du_chantier`` : l'instantané FIGÉ de la
+    version ACCEPTÉE en vigueur du devis, sinon la conception COURANTE du
+    calepinage (``Calepinage.resultat['pose']`` n'est lu que dans ce second
+    cas — il décrit la conception courante, pas un instantané). La variante
+    retenue n'est plus lue en parallèle : retenir l'a écrite comme
+    conception courante. Aucune valeur n'est recalculée ici : LECTURE pure,
+    bornée société.
     """
     from .models import CalepinageVariante
+    from .services.asbuilt import SOURCE_CALEPINAGE, conception_du_chantier
 
     calepinage = calepinage_du_devis(devis_id, company)
     if calepinage is None:
         return None
-    variante = (CalepinageVariante.objects
-                .filter(calepinage=calepinage, retenue=True)
-                .first())
-    if variante is None:
+    if not (CalepinageVariante.objects
+            .filter(calepinage=calepinage, retenue=True).exists()):
         return None
 
     kwc = None
     nb_modules = None
-    resultat = variante.resultat if isinstance(variante.resultat, dict) else None
-    pose = resultat.get('pose') if resultat else None
-    if isinstance(pose, dict):
-        kwc = pose.get('kwc')
-        nb_modules = pose.get('total_modules')
-    if kwc is None and nb_modules is None:
-        roof_layout = (variante.roof_layout
-                       if isinstance(variante.roof_layout, dict) else None)
-        result = roof_layout.get('result') if roof_layout else None
+    document, source = conception_du_chantier(calepinage)
+    if source == SOURCE_CALEPINAGE:
+        resultat = (calepinage.resultat
+                    if isinstance(calepinage.resultat, dict) else None)
+        pose = resultat.get('pose') if resultat else None
+        if isinstance(pose, dict):
+            kwc = pose.get('kwc')
+            nb_modules = pose.get('total_modules')
+    if kwc is None and nb_modules is None and isinstance(document, dict):
+        result = document.get('result')
         if isinstance(result, dict):
             kwc = result.get('kwc')
             nb_modules = result.get('panels')
@@ -574,53 +603,9 @@ def entree_electrique_du_devis(devis_id, company):
     }
 
 
-#: CAL185 — les clés de la nomenclature d'une variante retenue. TOUJOURS
-#: toutes présentes : un appelant n'a jamais à deviner si une clé existe.
-CLES_NOMENCLATURE_RETENUE = ('calepinage', 'variante', 'nom', 'layout',
-                             'layout_hash')
-
-
-def nomenclature_variante_retenue(calepinage_id, company):
-    """CAL185 — la conception de la variante RETENUE, prête à être CHIFFRÉE.
-
-    Point d'entrée cross-app : ``apps.ventes`` chiffre la variante choisie
-    sans jamais importer ``apps.calepinage.models``. Ce que rend cette
-    fonction est la CONCEPTION (le document ``roof_layout`` de la variante) et
-    son empreinte — pas une liste de produits : le schéma v2 ne porte aucune
-    référence catalogue (cf. ``services.equipements``), et c'est la
-    composition ventes qui résout les produits. Une deuxième façon de choisir
-    un produit serait une deuxième vérité de chiffrage.
-
-    ``None`` quand le calepinage n'existe pas dans cette société, quand
-    AUCUNE variante n'y est retenue, ou quand la variante retenue ne porte
-    pas de conception — une variante sans dessin n'a rien à chiffrer, et on
-    ne retombe JAMAIS en silence sur la conception du calepinage parent (ce
-    serait chiffrer autre chose que ce que le commercial a retenu).
-    """
-    from .models import Calepinage, CalepinageVariante
-
-    if company is None or not calepinage_id:
-        return None
-    calepinage = (Calepinage.objects
-                  .filter(company=company, pk=calepinage_id)
-                  .first())
-    if calepinage is None:
-        return None
-    variante = (CalepinageVariante.objects
-                .filter(calepinage=calepinage, retenue=True)
-                .first())
-    if variante is None:
-        return None
-    layout = variante.roof_layout
-    if not isinstance(layout, dict) or not layout:
-        return None
-    return {
-        'calepinage': calepinage.pk,
-        'variante': variante.pk,
-        'nom': variante.nom or '',
-        'layout': layout,
-        'layout_hash': variante.layout_hash or '',
-    }
+# ACAL108 — ``nomenclature_variante_retenue`` / ``CLES_NOMENCLATURE_RETENUE``
+# (CAL185, porte jumelle from-layout {calepinage}) sont retirés : un
+# calepinage se chiffre par SON « Générer le devis » (D-ACAL-2).
 
 
 # ACAL326 (D-ACAL-16) — ``calepinage_de_l_affaire`` (pont AO, appelé

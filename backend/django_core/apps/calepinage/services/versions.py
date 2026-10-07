@@ -172,6 +172,10 @@ def purger_versions(calepinage, *, garder=None):
 def restaurer_version(version, *, user=None, libelle=''):
     """CAL20 — REJOUE une version : elle est ré-enregistrée, jamais ressuscitée.
 
+    ACAL45 — toute restauration est RÉVERSIBLE : l'état d'avant est déposé
+    en version « Avant restauration de #N » ; seul le DESSIN est restauré
+    (``resultat`` intact, saisies conservées) ; le rendu 3D est vidé.
+
     L'histoire ne se réécrit pas. Restaurer n'EFFACE rien et ne MODIFIE aucun
     instantané : l'état restauré redevient l'état COURANT du calepinage et il
     est déposé comme une version DE PLUS, en tête de l'historique. On peut donc
@@ -202,10 +206,38 @@ def restaurer_version(version, *, user=None, libelle=''):
             "Cette version n'est rattachée à aucun calepinage.",
             champ='version')
 
-    resultat = enregistrer_layout(
-        calepinage, version.roof_layout, user=user,
-        libelle=libelle or f'Restauration de la version #{version.pk}',
-        resultat=version.resultat)
+    from django.db import transaction
+
+    from .layout import empreinte_document
+
+    with transaction.atomic():
+        courante = (empreinte_document(calepinage.roof_layout)
+                    == empreinte_document(version.roof_layout))
+        if courante:
+            # ACAL45 — restaurer la version DÉJÀ courante : rien à faire,
+            # aucun instantané, ``resultat`` et rendu intacts.
+            resultat = enregistrer_layout(calepinage, version.roof_layout,
+                                          user=user)
+        else:
+            # ACAL45 — le verrou refuse AVANT l'instantané (rien n'est écrit).
+            from .verrou import verifier_ecriture_autorisee
+
+            verifier_ecriture_autorisee(calepinage)
+            # (1) l'état COURANT est déposé « Avant restauration » dans la
+            # MÊME transaction, sans geler un résultat (sorties périmées).
+            enregistrer_version(
+                calepinage, user=user,
+                libelle=f'Avant restauration de #{version.pk}',
+                resultat=None, meme_empreinte_admise=True)
+            # (2) SEUL le dessin revient : ``Calepinage.resultat`` (saisies
+            # électriques, raccordement, schéma, dérogations, simulation)
+            # n'est pas touché — la simulation devient périmée par sa
+            # propre empreinte ; (3) le rendu 3D (``roof_image``) est vidé.
+            resultat = enregistrer_layout(
+                calepinage, version.roof_layout, user=user,
+                libelle=(libelle
+                         or f'Restauration de la version #{version.pk}'),
+                roof_image='')
     if not resultat['inchange']:
         # CAL26 — l'ÉVÉNEMENT « version restaurée », en plus de son effet
         # (l'enregistrement de conception se journalise de son côté).

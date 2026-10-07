@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -11,11 +10,9 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    1. le panneau affiche la CIBLE servie par le serveur, et « non renseignée »
       quand elle vaut `null` — jamais une puissance inventée ;
    2. une conception en LECTURE SEULE ne propose aucune écriture ;
-   3. CALX27 — le bandeau de lecture seule porte enfin une SORTIE
-      (« Déverrouiller », action `deverrouiller/` de CAL207 qui n'avait aucun
-      consommateur) : elle n'apparaît qu'en lecture seule ET avec
-      `calepinage_gerer`, elle nomme sa conséquence avant d'agir, et après elle
-      les gestes d'écriture reviennent sans rechargement complet.
+   3. ACAL42 — le bandeau de lecture seule affiche le motif du SERVEUR
+      (`raison_lecture_seule`) ; « Déverrouiller » n'existe plus, le seul geste
+      est « Réviser (v2) » de `BoutonDevis`.
 
    SOLMVP15 — les deux essais du bouton « Reprendre le contour de l'affaire »
    (CAL242, sens CAL240) sont partis avec lui : son endpoint n'existe plus,
@@ -36,8 +33,6 @@ vi.mock('../../api/calepinageApi', () => ({
       get: vi.fn(),
       genererDevis: vi.fn(),
       syncDevis: vi.fn(),
-      // CALX27 — l'action de levée du verrou (CAL207, `views/verrou.py`).
-      deverrouiller: vi.fn(),
     },
     // CAL70 — PanneauAllees (monté ici, emplacement CAL37) lit les réglages
     // société et interroge le moteur ; sans double par défaut, la promesse
@@ -100,78 +95,29 @@ describe('AtelierPanneaux (CAL37)', () => {
 })
 
 /* ============================================================================
-   CALX27 — LE DÉVERROUILLAGE, ET SES DEUX GARDES.
+   ACAL42 — LE BANDEAU FIGÉ : MOTIF SERVEUR, « RÉVISER (V2) », AUCUN DÉVERROUILLER.
    ========================================================================== */
-describe('CALX27 — deverrouiller une conception figee', () => {
-  it('le bandeau et son bouton n’existent QUE en lecture seule', async () => {
+describe('ACAL42 — bandeau de lecture seule', () => {
+  it('bandeau figé : motif serveur et Réviser (v2), aucun Déverrouiller', async () => {
     mocks.hasPermission.mockReturnValue(true)
-    rendre()
+    const contexte = {
+      ...CTX, modifiable: false,
+      raison_lecture_seule: 'Devis accepté : révisez-le',
+      revision_possible: true,
+    }
+    rendre({ contexte, lectureSeule: true })
 
+    expect(screen.getByTestId('cal-bandeau-lecture-seule-raison'))
+      .toHaveTextContent('Devis accepté : révisez-le')
+    expect(screen.queryByTestId('cal-deverrouiller')).toBeNull()
+    expect(screen.queryByText(/Déverrouiller/)).toBeNull()
+    expect(await screen.findByTestId('cal-devis-reviser-lecture-seule'))
+      .toHaveTextContent('Réviser (v2)')
+  })
+
+  it('conception ouverte : aucun bandeau', async () => {
+    rendre()
     await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
     expect(screen.queryByTestId('cal-bandeau-lecture-seule')).toBeNull()
-    expect(screen.queryByTestId('cal-deverrouiller')).toBeNull()
-  })
-
-  it('sans `calepinage_gerer`, le bandeau reste mais n’offre AUCUNE sortie', async () => {
-    mocks.hasPermission.mockReturnValue(false)
-    rendre({ lectureSeule: true })
-
-    expect(screen.getByTestId('cal-bandeau-lecture-seule')).toBeTruthy()
-    expect(screen.queryByTestId('cal-deverrouiller')).toBeNull()
-    expect(mocks.hasPermission).toHaveBeenCalledWith('calepinage_gerer')
-  })
-
-  it('la confirmation NOMME la conséquence, et rien n’est appelé avant elle', async () => {
-    mocks.hasPermission.mockReturnValue(true)
-    rendre({ lectureSeule: true })
-
-    await userEvent.click(screen.getByTestId('cal-deverrouiller'))
-
-    expect(screen.getByTestId('cal-deverrouiller-confirmation'))
-      .toHaveTextContent('le devis lié')
-    expect(screen.getByTestId('cal-deverrouiller-confirmation'))
-      .toHaveTextContent('rejouer')
-    expect(calepinageApi.calepinages.deverrouiller).not.toHaveBeenCalled()
-
-    // Annuler ne déverrouille rien : l'atelier reste figé.
-    await userEvent.click(screen.getByTestId('cal-deverrouiller-annuler'))
-    expect(screen.queryByTestId('cal-deverrouiller-confirmation')).toBeNull()
-    expect(calepinageApi.calepinages.deverrouiller).not.toHaveBeenCalled()
-  })
-
-  it('après déverrouillage, les gestes d’écriture reviennent SANS rechargement', async () => {
-    mocks.hasPermission.mockReturnValue(true)
-    calepinageApi.calepinages.deverrouiller.mockResolvedValue({
-      data: { calepinage: CTX.calepinage.id, verrouille: false, deverrouille: true },
-    })
-    rendre({ lectureSeule: true })
-
-    await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
-    expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
-
-    await userEvent.click(screen.getByTestId('cal-deverrouiller'))
-    await userEvent.click(screen.getByTestId('cal-deverrouiller-confirmer'))
-
-    expect(calepinageApi.calepinages.deverrouiller)
-      .toHaveBeenCalledWith(CTX.calepinage.id)
-    // Le bandeau s'efface et la sortie devis REVIENT : aucun rechargement de page.
-    await waitFor(() => expect(screen.queryByTestId('cal-bandeau-lecture-seule')).toBeNull())
-    expect(await screen.findByTestId('cal-bouton-devis')).toBeTruthy()
-  })
-
-  it('un refus serveur est rendu MOT POUR MOT, et l’atelier reste figé', async () => {
-    mocks.hasPermission.mockReturnValue(true)
-    calepinageApi.calepinages.deverrouiller.mockRejectedValue({
-      response: { status: 403, data: { detail: 'Droit insuffisant sur ce calepinage.' } },
-    })
-    rendre({ lectureSeule: true })
-
-    await userEvent.click(screen.getByTestId('cal-deverrouiller'))
-    await userEvent.click(screen.getByTestId('cal-deverrouiller-confirmer'))
-
-    expect(await screen.findByTestId('cal-deverrouiller-refus'))
-      .toHaveTextContent('Droit insuffisant sur ce calepinage.')
-    expect(screen.getByTestId('cal-bandeau-lecture-seule')).toBeTruthy()
-    expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
   })
 })

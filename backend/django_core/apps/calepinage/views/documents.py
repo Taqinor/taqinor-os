@@ -30,6 +30,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from .calepinages import CalepinageViewSet
+from .sorties import porte_execution  # ACAL116
 
 
 # ── CALX297 — le rapport d'étude (PDF) ──────────────────────────────────────
@@ -275,6 +276,7 @@ def plan_cablage_pdf(self, request, pk=None):
     from .sorties import MIME_PDF, reponse_de_fichier
 
     calepinage = self.get_object()  # borné société par get_queryset
+    porte_execution(calepinage, 'plan_cablage')  # ACAL116
     try:
         octets = rendre_plan_cablage_pdf(calepinage,
                                          company=calepinage.company)
@@ -303,6 +305,7 @@ def plan_cablage_dxf(self, request, pk=None):
     from .sorties import MIME_DXF, reponse_de_fichier
 
     calepinage = self.get_object()  # borné société par get_queryset
+    porte_execution(calepinage, 'plan_cablage_dxf')  # ACAL116
     try:
         octets = exporter_plan_cablage_dxf(calepinage)
     except (PlancheRefusee, RapportRefuse) as refus:
@@ -636,6 +639,7 @@ def dossier_fin_chantier(self, request, pk=None):
     )
 
     calepinage = self.get_object()  # borné société par get_queryset
+    porte_execution(calepinage, 'dossier_fin_chantier')  # ACAL116
     try:
         resultat = construire_dossier_fin_chantier(
             calepinage, company=calepinage.company, created_by=request.user)

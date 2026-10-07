@@ -304,6 +304,15 @@ export default function BoutonDevis({
         </p>
       )}
 
+      {/* ACAL109 (D-ACAL-2) — ce que « Générer le devis » chiffre, DIT : la
+          conception courante, dont la variante retenue fait partie. */}
+      {totalVariantes > 0 && variantes.retenue_id && (
+        <p className="text-xs text-lune-faint" data-testid="cal-devis-ce-qui-est-chiffre">
+          Générer le devis chiffre la conception courante : la variante retenue en
+          fait partie (la retenir l’y a écrite).
+        </p>
+      )}
+
       {/* La raison de la désactivation, TOUJOURS dite : un bouton grisé sans
           explication est une impasse silencieuse. */}
       {varianteManquante && (
