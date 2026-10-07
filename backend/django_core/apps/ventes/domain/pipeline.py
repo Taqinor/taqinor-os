@@ -246,6 +246,14 @@ class IntentionDevis:
     #: + matériel = UN geste) — le pipeline s'abstient, sans quoi le chatter
     #: portait deux entrées pour une seule correction.
     tracer_correction: bool = True
+    #: ERR-E2E-AUTODEVIS-LENT (07/10/2026) — ``callable(devis)`` appelé en
+    #: mode ``composer`` APRÈS l'écriture (étapes 5-6, hors transaction) et
+    #: AVANT l'étape 7. Le devis automatique y fusionne les clés d'étude de
+    #: l'appelant (factures réelles, conso) : sans ce point, les quatre études
+    #: tournaient une PREMIÈRE fois sans elles, puis une SECONDE avec — la
+    #: première, jetée, coûtait ~35 % de la requête. ``None`` (LE DÉFAUT) ⇒
+    #: pipeline strictement inchangé.
+    completer_etude: object = None
 
 
 def _scenario_de(intention):
@@ -970,6 +978,11 @@ def appliquer(devis, intention):
         # QJR550 — UN instantané de configuration pour le geste, sous la
         # transaction (point de sauvegarde) ; aucune étape de journal.
         _instantane(verrou, intention)
+
+    # ERR-E2E-AUTODEVIS-LENT — les clés d'étude de l'appelant entrent AVANT
+    # l'étape 7 : les études se calculent une fois, sur les entrées finales.
+    if intention.completer_etude is not None:
+        intention.completer_etude(verrou)
 
     # QJR227 — ``force_etudes`` EST TRANSMIS ICI AUSSI. Il ne l'était que par
     # la branche ``MODE_RAFRAICHIR`` : un appelant qui demandait des études

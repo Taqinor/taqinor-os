@@ -99,6 +99,26 @@ test('initVitals() flush aussi sur pagehide (fermeture directe iOS Safari)', () 
   assert.ok(calls.some(([m, v]) => m === 'LCP' && v === 900))
 })
 
+test('initVitals() n envoie RIEN hors session (endpoint authentifie : sinon 401 console)', () => {
+  const calls = []
+  const deps = makeFakeEnv({ onReport: (...args) => calls.push(args), responseStart: 650 })
+  initVitals({ ...deps, isAuthenticated: () => false })
+  deps._emitters.lcp([{ startTime: 900 }])
+  deps._hide()
+  assert.equal(calls.length, 0)
+})
+
+test('initVitals() garde le TTFB pris avant la session et l envoie au flush connecte', () => {
+  const calls = []
+  let connecte = false
+  const deps = makeFakeEnv({ onReport: (...args) => calls.push(args), responseStart: 650 })
+  initVitals({ ...deps, isAuthenticated: () => connecte })
+  assert.equal(calls.length, 0)
+  connecte = true
+  deps._hide()
+  assert.ok(calls.some(([m, v]) => m === 'TTFB' && v === 650))
+})
+
 // ── Environnement PerformanceObserver factice ────────────────────────────
 function makeFakeEnv({ onReport, responseStart = 0 } = {}) {
   const listeners = { visibilitychange: [], pagehide: [] }

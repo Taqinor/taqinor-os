@@ -84,6 +84,9 @@ const LIBELLES_NEUTRALISES = [
   'envoyer', 'envoi ', 'send',
   'whatsapp',
   'e-mail', 'email', 'courriel',
+  // CAD177 : « Déconnexion » tuait la session du contexte, la reconnexion API
+  // tapait le throttle login (429, 5/min/IP) et le module entier tombait.
+  'déconnect', 'deconnect', 'logout', 'log out', 'sign out',
 ]
 
 // ── Injecté dans la page (jamais exécuté côté Node) ─────────────────────────
@@ -158,6 +161,25 @@ async function armerGremlins(page) {
  * VEUT observer tout le budget de temps, pas s'arrêter au premier défaut).
  */
 async function lacherGremlins(page, { dureeMs, graine }) {
+  // CAD177 : garde-fou DUR côté Node. Sans lui, une page gelée ou une requête
+  // synchrone interminable laissait `page.evaluate` pendre jusqu'à l'expiration
+  // du test entier (« Test timeout of 300000ms exceeded » sans dire où). Ici le
+  // blocage ÉCHOUE VITE, nommé, et le singe passe à l'écran suivant.
+  const delaiDurMs = dureeMs + 20_000
+  let minuteur
+  const garde = new Promise((_, rejeter) => {
+    minuteur = setTimeout(() => rejeter(new Error(
+      `gremlins sans retour après ${delaiDurMs} ms (page gelée ? requête bloquante ?)`
+    )), delaiDurMs)
+  })
+  try {
+    await Promise.race([evaluerGremlins(page, { dureeMs, graine }), garde])
+  } finally {
+    clearTimeout(minuteur)
+  }
+}
+
+async function evaluerGremlins(page, { dureeMs, graine }) {
   await page.evaluate(
     async ({ dureeMs, graine, delai }) => {
       const nb = Math.max(20, Math.round(dureeMs / delai))
@@ -190,7 +212,9 @@ for (const [module, chemins] of PAR_MODULE) {
     `@monkey marcheur aléatoire — ${module} (${chemins.length} écran(s))`,
     { tag: '@monkey' },
     async ({ page }) => {
-      test.setTimeout(Math.max(120_000, chemins.length * (DUREE_PAR_ECRAN_MS + 8_000)))
+      // CAD177 : 8 s de marge par écran ne suffisaient pas (goto + coquille +
+      // reprise de session sur un serveur à 3 workers) → budget global élargi.
+      test.setTimeout(Math.max(120_000, chemins.length * (DUREE_PAR_ECRAN_MS + 25_000)))
 
       const casses = []
       let routeActuelle = null
@@ -209,7 +233,14 @@ for (const [module, chemins] of PAR_MODULE) {
         )
       })
       page.on('console', (msg) => {
-        if (msg.type() === 'error') consigner(`console.error : ${msg.text()}`)
+        if (msg.type() !== 'error') return
+        // CAD177 : Chromium journalise en console.error TOUT 4xx (« Failed to
+        // load resource… status of 403 »). Un singe qui clique au hasard
+        // provoque légitimement 401/403/409/400 (droits, état, saisie
+        // invalide) : ce n'est pas un défaut. Les vrais oracles restent les
+        // exceptions JS, les console.error applicatifs et toute réponse >= 500.
+        if (/Failed to load resource: the server responded with a status of 4\d\d/.test(msg.text())) return
+        consigner(`console.error : ${msg.text()}`)
       })
       page.on('response', (res) => {
         if (res.status() >= 500) {
@@ -247,7 +278,16 @@ for (const [module, chemins] of PAR_MODULE) {
           continue // rien à secouer sur un écran qui n'a jamais rendu
         }
 
-        await lacherGremlins(page, { dureeMs: DUREE_PAR_ECRAN_MS, graine: graineActuelle })
+        try {
+          await lacherGremlins(page, { dureeMs: DUREE_PAR_ECRAN_MS, graine: graineActuelle })
+        } catch (err) {
+          // Un gremlin qui clique un lien NAVIGUE : le contexte d'exécution
+          // disparaît, ce n'est pas un défaut. Tout autre échec (dont le
+          // garde-fou de gel) est un constat nommé.
+          if (!/Execution context was destroyed|navigation/i.test(err.message)) {
+            consigner(`gremlins interrompus : ${err.message}`)
+          }
+        }
       }
 
       expect(

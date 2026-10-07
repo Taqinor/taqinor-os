@@ -4907,7 +4907,13 @@ textarea.form-control {
    se résout réellement. */
 .kb-board {
   display: flex;
-  align-items: stretch;
+  /* CAD177 (LB33/LB41, vérifié au rendu réel) : `stretch` calait la colonne sur
+     la hauteur du BOARD (single-line flex, cross-size définie) tandis que son
+     contenu débordait → l'en-tête sticky, borné par sa colonne, partait avec
+     elle (−2684 px au scroll). `flex-start` : la colonne épouse son contenu
+     (sticky tient sur tout le défilement) ; la règle min-height: 100% de `.kb-col`
+     garde les zones de dépôt pleine hauteur quand les colonnes sont courtes. */
+  align-items: flex-start;
   gap: 0.75rem;
   flex: 1 1 auto;
   min-height: 0;
@@ -8673,6 +8679,27 @@ textarea.form-control {
     min-width: 44px;
     min-height: 44px;
   }
+  /* CAD177 (APX8) — le plancher global `button { min-height: 44px }` du bloc
+     tactile écrasait la boîte 24 px du menu ••• ET gonflait le pied de carte
+     (sélecteur de responsable) à 44 px : la carte tactile passait de ~105 à
+     154 px (3 rangées de 44 px au lieu d'une seule). La BOÎTE rétrécit, la
+     ZONE de frappe non (même idiome overlay ::before que ci-dessus ; le
+     responsable : 44 × 28 px, sans empiéter sur la rangée d'actions rapides). */
+  .kb-card-menu-btn,
+  input[type='checkbox'].kb-card-check { min-height: 0; }
+  .kb-card--lead .kb-card-assignee .ap-trigger {
+    min-height: 0;
+    position: relative;
+  }
+  .kb-card--lead .kb-card-assignee .ap-trigger::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 28px;
+    transform: translate(-50%, -50%);
+  }
 }
 /* Cadenas PII : à la place des actions d'appel quand `lead.pii_masked`. */
 .kb-quick-lock {
@@ -10405,6 +10432,15 @@ textarea.form-control {
   line-height: 1.5;
 }
 
+/* CAD177 (APX8) — le « ? » d'un lead SANS score (`.lv-muted`, ScoreBadge)
+   héritait du corps de texte (16 px × 1,5 = 24 px) et portait la rangée de
+   signaux à 24 px : +9 px par carte, la capacité 1440×900 tombait de 7 à 6.
+   Même gabarit que le micro-badge scoré juste au-dessus. */
+.kb-card--lead .kb-card-score-micro .lv-muted {
+  font-size: 0.6rem;
+  line-height: 1.5;
+}
+
 /* MRY16 — badge de la prochaine touche de cadence (heure Casablanca), rouge
    si en retard. Meme gabarit que le micro-badge de score juste au-dessus. */
 .kb-card-touche-micro {
@@ -10800,6 +10836,21 @@ textarea.form-control {
   gap: 8px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+/* CAD177 (APX8) — « UNE ligne par lead » valait pour la seule cellule Lead :
+   une ville longue ou 2-3 tags (chips en `flex-wrap`) rouvraient des lignes à
+   62 px contre 45 px (écart mesuré au rendu réel, gate APX8 : 10,5 px > 4).
+   Au bureau, toutes les cellules restent sur UNE rangée ; les tags se
+   rognent dans leur colonne. Le repli mobile (cartes empilées) garde ses
+   retours à la ligne. */
+@media (min-width: 769px) {
+  .lv-table td { white-space: nowrap; }
+  .lv-tags {
+    flex-wrap: nowrap;
+    max-width: 16rem;
+    overflow: hidden;
+  }
 }
 
 /* Le repli MOBILE (cartes empilees, `.lv-lead-cell { align-items: flex-end }`

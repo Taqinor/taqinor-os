@@ -16,7 +16,13 @@ import { ensureArabicFontLoaded } from './arabicFont'
 //   identifiants stables (ex. `nav.stock`) — chaque locale fournit sa valeur.
 // - AR déclenche la mise en page RTL (`dir=rtl` sur <html>).
 
-export function I18nProvider({ children }) {
+// CAD177 : `chargerSurcharges={false}` (main.jsx) coupe le fetch AU MONTAGE —
+// à ce moment la session n'est pas encore résolue et une page publique (/ui,
+// /login) recevait un 401 (+ refresh 401) en console. `ServerLocaleSync`
+// (Redux-aware) charge alors les surcharges dès que l'utilisateur est connecté
+// et les pose via `setOverrides`. Défaut `true` : comportement N94 inchangé
+// pour tout montage de l'I18nProvider seul (tests).
+export function I18nProvider({ children, chargerSurcharges = true }) {
   const [locale, setLocaleState] = useState(readInitialLocale)
   // N94 — surcharges de traduction de la société : { locale: { key: value } }.
   // Vide par défaut → t() se comporte EXACTEMENT comme le catalogue statique
@@ -41,12 +47,13 @@ export function I18nProvider({ children }) {
   // aucune donnée) est AVALÉ : `overrides` reste vide et l'interface retombe
   // sur les catalogues statiques — donc jamais de régression.
   useEffect(() => {
+    if (!chargerSurcharges) return undefined
     let alive = true
     fetchTranslationOverrides()
       .then((data) => { if (alive && data) setOverridesState(data) })
       .catch(() => { /* repli silencieux sur le catalogue statique */ })
     return () => { alive = false }
-  }, [])
+  }, [chargerSurcharges])
 
   // Permet de rafraîchir les surcharges après une édition (effet immédiat sans
   // rechargement) ; remplace l'état par un objet vide ⇒ retour au statique.
