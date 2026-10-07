@@ -892,6 +892,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.supprimerPoseReelle": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/pose-reelle/3/",
+      "verbe": "delete"
+    }
+  ],
   "calepinages.supprimerReleve": [
     {
       "config": null,

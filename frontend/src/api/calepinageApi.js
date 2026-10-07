@@ -321,6 +321,10 @@ const calepinageApi = {
     // ACAL113 (D-ACAL-17, contrat calepinage_simulation.json › corps_variante) — simuler UNE
     // variante : le résultat est écrit SUR LA VARIANTE (202 + job, suivi par useSuiviJob).
     simulerVariante: (id, varianteId) => api.post(`${pivot(id)}simuler/`, { variante_id: varianteId, forcer: true }), // ACAL
+    // ACAL268 — retirer le relevé de pose d'un pan (ligne ORPHELINE comprise) :
+    // DELETE pose-reelle/<zone_id>/ → 204 ; 404 {detail} sans relevé
+    // (contrat calepinage_asbuilt_ecarts.json › delete_pose_reelle).
+    supprimerPoseReelle: (id, zoneId) => api.delete(`${pivot(id)}pose-reelle/${zoneId}/`), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
