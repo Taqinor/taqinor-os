@@ -417,14 +417,9 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         lead_id = getattr(instance, 'lead_id', None)
         lead = self._lead_de_la_societe(company_id, lead_id)
         data['lead'] = _lead_apercu(lead)
-        if data.get('responsable') is None and lead is not None:
-            proprietaire = getattr(lead, 'owner', None)
-            if proprietaire is not None:
-                nom = (getattr(proprietaire, 'get_full_name', lambda: '')()
-                       or '').strip()
-                data['responsable'] = proprietaire.pk
-                data['responsable_nom'] = (
-                    nom or getattr(proprietaire, 'username', ''))
+        # ACAL297 — le responsable publié EST la colonne (posée à la création
+        # par ``creation.responsable_par_defaut``, rattrapée par la migration
+        # 0030) : plus de repli sur le propriétaire du lead à la lecture.
         return data
 
     #: ACAL179 — clés ignorées (jamais lues, jamais refusées) d'un PATCH :

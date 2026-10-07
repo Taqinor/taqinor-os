@@ -428,6 +428,13 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
                         if isinstance(copies['pertes'], list) else [])
 
     with transaction.atomic():
+        from .creation import responsable_par_defaut
+
+        if 'responsable' not in copies and 'responsable_id' not in copies:
+            # ACAL297 — la copie (et la création depuis un modèle) STOCKE le
+            # propriétaire du lead de SA cible.
+            copies['responsable'] = responsable_par_defaut(
+                calepinage.company, lead_cible)
         copie = Calepinage.objects.create(
             company=calepinage.company,
             lead_id=lead_cible,

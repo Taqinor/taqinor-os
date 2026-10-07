@@ -144,6 +144,20 @@ def ouvrir_ou_creer_pour_lead(lead_id, company, *, user=None, titre='',
     return calepinage, True
 
 
+def responsable_par_defaut(company, lead_id):
+    """ACAL297 — le responsable STOCKÉ d'un calepinage neuf : le propriétaire
+    du lead (``crm.selectors.get_company_lead(...).owner``), borné société,
+    sinon ``None`` (pas de lead, lead sans propriétaire). UNE fonction pour
+    TOUTES les portes de création : le responsable publié est la colonne,
+    jamais un repli recalculé à la lecture."""
+    if company is None or not lead_id:
+        return None
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(company, lead_id)
+    return getattr(lead, 'owner', None) if lead is not None else None
+
+
 def _exiger_societe(company):
     if company is None:
         raise CreationRefusee(
@@ -294,6 +308,8 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
                     layout_hash=empreinte,
                     roof_image=getattr(devis, 'roof_image', None) or '',
                     cree_par=user,
+                    # ACAL297 — le propriétaire du lead, STOCKÉ.
+                    responsable=responsable_par_defaut(company, lead_id),
                 )
         except IntegrityError:
             # ACAL33 — course perdue : la contrainte ``calepinage_un_par_devis``
@@ -376,6 +392,10 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         raise CreationRefusee(
             f"Lead introuvable (#{lead_id}).", champ='lead')
     _exiger_responsable(company, responsable)
+    if responsable is None:
+        # ACAL297 — un responsable EXPLICITE reste prioritaire ; à défaut,
+        # le propriétaire du lead est STOCKÉ (plus de repli à la lecture).
+        responsable = responsable_par_defaut(company, lead.pk)
 
     # CIQ112 — toit DÉCLARÉ sur le lead (contrat CIQ1) → mode de pose du
     # document : chaque pan dessiné ensuite le reçoit (lu par
