@@ -143,10 +143,14 @@ def calepinages_modeles(company):
 
 
 def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
-                        titre=''):
+                        titre='', regler_conception=None):
     """Crée un NOUVEAU calepinage depuis ``modele`` — jamais un troisième
     chemin de copie (appelle ``services.variantes.dupliquer``, CAL14), puis
     détache tout ce qui est commercial.
+
+    ``regler_conception`` (facultatif) : appliqué à la conception préparée
+    AVANT la copie (jeu de réglages de ``creation.demarrer_depuis_modele``) —
+    la version « Conception d'origine » est donc le document courant.
 
     Raises:
         ModeleInvalide: modèle absent/non marqué, ou aucun nouveau
@@ -225,7 +229,10 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
     # la copie naît sur ce lead/client (jamais sur le rattachement du
     # modèle), et un lead qui a déjà un calepinage OUVERT est refusé
     # (``DuplicationEnConflit``, 409). ``dupliquer`` journalise la création.
+    conception = preparer(modele.roof_layout)
+    if regler_conception is not None:
+        conception = regler_conception(conception)
     return dupliquer(modele, user=user, titre=titre,
-                     roof_layout=preparer(modele.roof_layout),
+                     roof_layout=conception,
                      preparer_document=preparer,
                      lead_id=lead_id or None, client_id=client_id or None)

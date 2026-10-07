@@ -669,9 +669,23 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
         lead_id = getattr(devis, 'lead_id', None) or lead_id
         client_id = getattr(devis, 'client_id', None) or client_id
 
+    # Lot 2 critique #15 — le jeu est appliqué à la conception AVANT la
+    # copie : la version « Conception d'origine » déposée par ``dupliquer``
+    # est le document courant (jamais l'état d'avant réglage).
+    regles = 0
+
+    def regler(document):
+        nonlocal regles
+        if jeu is None:
+            return document
+        document, regles = _layout_regle(document, jeu)
+        # ACAL186 — le jeu est aussi MÉMORISÉ pour les pans à venir.
+        return _document_avec_jeu(document, jeu)
+
     with transaction.atomic():
         copie = creer_depuis_modele(modele, user=user, lead_id=lead_id,
-                                    client_id=client_id, titre=titre)
+                                    client_id=client_id, titre=titre,
+                                    regler_conception=regler)
         if devis is not None:
             # ACAL33 — le SEUL écrivain de ``Calepinage.devis`` ; un refus
             # (course perdue) annule la copie entière.
@@ -681,19 +695,5 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
                 lier_devis(copie, devis.pk, user=user)
             except LiaisonRefusee as refus:
                 raise CreationRefusee(str(refus), champ='devis_id') from None
-    champs = []
-    regles = 0
-    if jeu is not None:
-        document, regles = _layout_regle(copie.roof_layout, jeu)
-        if regles:
-            from apps.ventes.services import layout_hash
-
-            copie.layout_hash = layout_hash(document) or ''
-            champs += ['layout_hash']
-        # ACAL186 — le jeu est aussi MÉMORISÉ pour les pans à venir.
-        copie.roof_layout = _document_avec_jeu(document, jeu)
-        champs += ['roof_layout']
-    if champs:
-        copie.save(update_fields=champs + ['updated_at'])
     _noter_jeu(copie, jeu, regles, user=user)
     return copie
