@@ -21,11 +21,10 @@ from apps.calepinage.services.comparaison import (
 )
 
 EMPREINTE = 'a' * 64
-AUTRE_EMPREINTE = 'b' * 64
 
 #: La forme IMBRIQUÉE que produit le module (CAL138 + CAL142).
 RESULTAT_MODULE = {
-    'layout_hash': EMPREINTE,
+    'simulation': {'hash_entree': EMPREINTE},
     'production': {
         'total': {'kwc': 8.64, 'p50_kwh': 13000.0, 'p75_kwh': 12400.0,
                   'p90_kwh': 11900.0, 'performance_ratio': 0.8,
@@ -58,7 +57,7 @@ class FormeImbriqueeTest(unittest.TestCase):
 
     def test_les_colonnes_du_contrat_sont_remplies(self):
         simulee, production, motif = colonnes_production(
-            RESULTAT_MODULE, layout_hash=EMPREINTE)
+            RESULTAT_MODULE)
         self.assertTrue(simulee)
         self.assertEqual(motif, '')
         self.assertEqual(production['p50_kwh'], 13000.0)
@@ -67,8 +66,7 @@ class FormeImbriqueeTest(unittest.TestCase):
         self.assertEqual(production['self_consumption_rate'], 0.62)
 
     def test_les_pertes_dominantes_sont_les_plus_lourdes_avec_leur_source(self):
-        _, production, _ = colonnes_production(RESULTAT_MODULE,
-                                               layout_hash=EMPREINTE)
+        _, production, _ = colonnes_production(RESULTAT_MODULE)
         dominantes = production['pertes_dominantes']
         self.assertEqual([poste['poste'] for poste in dominantes],
                          ['thermique', 'salissure', 'onduleur'])
@@ -77,8 +75,7 @@ class FormeImbriqueeTest(unittest.TestCase):
     def test_un_poste_non_source_reste_non_source(self):
         resultat = dict(RESULTAT_MODULE, pertes=[
             {'poste': 'mismatch', 'pct': 9.0, 'source': None}])
-        _, production, _ = colonnes_production(resultat,
-                                               layout_hash=EMPREINTE)
+        _, production, _ = colonnes_production(resultat)
         self.assertIsNone(production['pertes_dominantes'][0]['source'])
 
 
@@ -116,24 +113,15 @@ class NonSimuleeTest(unittest.TestCase):
 
     def test_une_conception_modifiee_perime_la_production(self):
         simulee, production, motif = colonnes_production(
-            RESULTAT_MODULE, layout_hash=AUTRE_EMPREINTE)
+            RESULTAT_MODULE, perimee=True)
         self.assertFalse(simulee)
         self.assertEqual(motif, MOTIF_PERIMEE)
         self.assertIsNone(production['p50_kwh'])
 
-    def test_un_resultat_sans_empreinte_n_est_pas_declare_perime(self):
-        """Un doute ne rougit jamais : sans empreinte, on ne peut rien dire."""
-        sans_empreinte = {cle: valeur
-                          for cle, valeur in RESULTAT_MODULE.items()
-                          if cle != 'layout_hash'}
-        simulee, _, _ = colonnes_production(sans_empreinte,
-                                            layout_hash=AUTRE_EMPREINTE)
-        self.assertTrue(simulee)
-
     def test_rien_n_est_ecrit_dans_le_resultat_lu(self):
         """Le comparatif CALCULE à la lecture : il ne touche pas sa source."""
         avant = repr(RESULTAT_MODULE)
-        colonnes_production(RESULTAT_MODULE, layout_hash=EMPREINTE)
+        colonnes_production(RESULTAT_MODULE)
         self.assertEqual(repr(RESULTAT_MODULE), avant)
 
 
