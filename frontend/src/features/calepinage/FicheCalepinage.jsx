@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import { urlFichierCalepinage } from '../../api/fichierCalepinage'
+import { urlFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import crmApi from '../../api/crmApi'
 import AssigneePicker from '../../components/AssigneePicker'
 import SelecteurRattachement from './SelecteurRattachement'

@@ -37,37 +37,30 @@ vi.mock('../../api/calepinageApi', () => ({
 
 const tileLayer = vi.fn(() => ({ addTo: () => {} }))
 const carte = vi.fn()
-vi.mock('leaflet', () => {
-  function fakeMarker(pos) {
-    const latlng = Array.isArray(pos) ? { lat: pos[0], lng: pos[1] } : pos
-    const marker = {
-      addTo: () => { (globalThis.__marqueursCalage203 ||= []).push(marker); return marker },
-      on: (evt, fn) => { (marker.gestionnaires ||= {})[evt] = fn; return marker },
-      getLatLng: () => latlng,
-      setLatLng: () => {},
-    }
-    return marker
-  }
-  function fakeMap(options) {
-    carte(options)
-    const map = {
-      addTo: () => map,
-      on: () => map,
-      remove: () => {},
-      latLngToContainerPoint: () => ({ x: 0, y: 0 }),
-    }
-    return map
-  }
-  return {
-    default: {
-      map: vi.fn((_el, options) => fakeMap(options)),
-      tileLayer: (...a) => tileLayer(...a),
-      polygon: vi.fn(() => ({ addTo: () => {} })),
-      marker: vi.fn((pos) => fakeMarker(pos)),
-      divIcon: vi.fn(() => ({})),
+vi.mock('leaflet', () => ({
+  default: {
+    map: (_el, options) => {
+      carte(options)
+      return Object.fromEntries(
+        ['addTo', 'on'].map((nom) => [nom, function chainable() { return this }])
+          .concat([['remove', () => {}], ['latLngToContainerPoint', () => ({ x: 0, y: 0 })]]),
+      )
     },
-  }
-})
+    tileLayer: (...a) => tileLayer(...a),
+    polygon: () => ({ addTo: () => {} }),
+    marker: (pos) => {
+      const [lat, lng] = Array.isArray(pos) ? pos : [pos.lat, pos.lng]
+      const poignee = {
+        gestionnaires: {},
+        getLatLng: () => ({ lat, lng }),
+        on(evt, fn) { poignee.gestionnaires[evt] = fn; return poignee },
+        addTo() { (globalThis.__marqueursCalage203 ||= []).push(poignee); return poignee },
+      }
+      return poignee
+    },
+    divIcon: () => ({}),
+  },
+}))
 vi.mock('leaflet/dist/leaflet.css', () => ({}))
 
 const { default: PhotoSiteCalage } = await import('./PhotoSiteCalage')

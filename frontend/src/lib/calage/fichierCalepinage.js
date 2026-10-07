@@ -3,7 +3,7 @@
 // session httpOnly : aucun jeton à injecter). Une image chargée par <img> ou
 // `new Image()` ne passe pas par axios : l'URL doit donc porter elle-même
 // l'origine d'API (VITE_API_URL ; vide = même origine, chemin laissé tel quel).
-import { originFrom } from './origin'
+import { originFrom } from '../../api/origin'
 
 export function urlFichierCalepinage(url, viteUrl = import.meta.env.VITE_API_URL) {
   if (typeof url !== 'string' || !url) return url

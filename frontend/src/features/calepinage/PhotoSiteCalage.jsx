@@ -8,7 +8,7 @@ import { useParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import calepinageApi from '../../api/calepinageApi'
-import { urlFichierCalepinage, crossOriginFichierCalepinage } from '../../api/fichierCalepinage'
+import { urlFichierCalepinage, crossOriginFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
 import useDocumentCalepinage, { ecrireSection } from './useDocumentCalepinage'
 import {

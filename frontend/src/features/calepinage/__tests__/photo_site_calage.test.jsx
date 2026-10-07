@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
+import L from 'leaflet'
 import { MemoryRouter } from 'react-router-dom'
 
 /* ============================================================================
@@ -44,9 +45,8 @@ vi.mock('leaflet', () => {
   function fakeMarker(pos) {
     let latlng = Array.isArray(pos) ? { lat: pos[0], lng: pos[1] } : pos
     const marker = {
-      addTo: () => { (globalThis.__marqueursCalage ||= []).push(marker); return marker },
-      // ACAL203 — retient les gestionnaires pour pouvoir simuler un déplacement.
-      on: (evt, fn) => { (marker.gestionnaires ||= {})[evt] = fn; return marker },
+      addTo: () => marker,
+      on: () => marker,
       getLatLng: () => latlng,
       setLatLng: (p) => { latlng = Array.isArray(p) ? { lat: p[0], lng: p[1] } : p },
     }
@@ -169,10 +169,20 @@ describe('CAL53 — l’écran affiche, cale et persiste', () => {
     photos.mockResolvedValue({ data: { photos: [PHOTO_NON_CALEE] } })
     get.mockResolvedValue({ data: { contexte_geographique: null } })
     calerPhoto.mockResolvedValue({ data: {} })
+    // ACAL203 — une photo non calée ne s'enregistre qu'après un geste réel : on retient
+    // le gestionnaire de fin de glisser de chaque poignée posée.
+    const gestionnaires = []
+    const base = L.marker.getMockImplementation()
+    L.marker.mockImplementation((pos) => {
+      const poignee = base(pos)
+      const surEvenement = poignee.on
+      poignee.on = (evt, fn) => { gestionnaires.push([evt, fn]); return surEvenement(evt, fn) }
+      return poignee
+    })
     rendre()
     await screen.findByTestId('cal-photo-calage-carte')
-    // ACAL203 — une photo non calée ne s'enregistre qu'après un geste réel.
-    act(() => { globalThis.__marqueursCalage.at(-1).gestionnaires.dragend() })
+    L.marker.mockImplementation(base)
+    act(() => { gestionnaires.find(([evt]) => evt === 'dragend')[1]() })
 
     fireEvent.click(screen.getByTestId('cal-photo-calage-enregistrer'))
     await waitFor(() => expect(calerPhoto).toHaveBeenCalledTimes(1))

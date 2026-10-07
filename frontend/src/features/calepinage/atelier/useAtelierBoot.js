@@ -3,7 +3,7 @@ import api from '../../../api/axios'
 import ventesApi from '../../../api/ventesApi'
 import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
-import { urlFichierCalepinage } from '../../../api/fichierCalepinage'
+import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
