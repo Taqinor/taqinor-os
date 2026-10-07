@@ -118,7 +118,6 @@ ROUTES_HORS_VERROU = {
     ('POST', 'marquer-modele'): 'bibliothèque : étiquette « modèle »',
     ('POST', 'demarquer-modele'): 'bibliothèque : étiquette « modèle »',
     ('POST', 'dupliquer'): 'crée une COPIE, la source n\'est pas écrite',
-    ('POST', 'creer-depuis-modele'): 'création depuis un modèle',
     ('POST', 'depuis-modele'): 'création depuis un modèle',
     ('POST', 'depuis-lead'): 'création / ouverture depuis un lead',
     ('POST', 'import-projet'): 'création par import de projet',
