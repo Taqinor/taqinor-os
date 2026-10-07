@@ -3,7 +3,12 @@ du compte tant que le mot de passe n'est pas prouvé.
 
 Mauvais mot de passe pour un compte verrouillé, un compte SSO obligatoire, un
 compte normal et un nom inconnu → même 401, même corps. Avec le BON mot de
-passe : verrou → 403 ``compte_verrouille``, SSO → 403 ``sso_required``.
+passe : SSO → 403 ``sso_required``.
+
+ASEC14-revue (décision fondateur « même réponse que faux ») : un compte
+VERROUILLÉ ne fait plus vérifier son mot de passe — même le BON mot de passe
+reçoit EXACTEMENT le 401 d'un mauvais mot de passe, et la tentative est
+comptée.
 """
 from datetime import timedelta
 
@@ -62,11 +67,19 @@ class EnumerationLoginTests(TestCase):
             self.assertEqual(set(c), set(corps[0]))
             self.assertNotIn('sso_required', c)
 
-    def test_bon_mdp_verrou_403(self):
+    def test_bon_mdp_verrou_meme_401_que_faux(self):
+        faux = self._login('asec14_normal', 'faux-mot-de-passe')
         r = self._login('asec14_verrou', _BON)
-        self.assertEqual(r.status_code, 403, r.data)
-        self.assertEqual(r.data.get('code'), 'compte_verrouille')
+        self.assertEqual(r.status_code, 401, r.data)
+        self.assertEqual(dict(r.data), dict(faux.data))
+        self.assertNotIn('compte_verrouille', str(r.data))
         self.assertNotIn('access_token', r.cookies)
+
+    def test_verrouille_tentative_comptee(self):
+        avant = User.objects.get(pk=self.verrou.pk).failed_login_count or 0
+        self._login('asec14_verrou', _BON)
+        self.assertEqual(
+            User.objects.get(pk=self.verrou.pk).failed_login_count, avant + 1)
 
     def test_bon_mdp_sso_403(self):
         r = self._login('asec14_sso', _BON)

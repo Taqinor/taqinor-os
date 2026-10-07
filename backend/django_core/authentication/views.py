@@ -230,10 +230,12 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
     @staticmethod
     def _refus_apres_mot_de_passe(user, ip=None):
-        """ASEC14 — 403 ``compte_verrouille`` (FG22) ou ``sso_required``
-        (NTSEC4 : IdP actif avec ``enforce_sso`` ; super-admin et break-glass
-        exemptés par le sélecteur) — appelé UNIQUEMENT après un mot de passe
-        correct. None sinon."""
+        """ASEC14 — 403 ``sso_required`` (NTSEC4 : IdP actif avec
+        ``enforce_sso`` ; super-admin et break-glass exemptés par le
+        sélecteur) — appelé UNIQUEMENT après un mot de passe correct. None
+        sinon. ``compte_verrouille`` ne subsiste ici que pour une course
+        (verrou posé pendant la requête) : un compte déjà verrouillé reçoit le
+        401 générique AVANT toute vérification (ASEC14-revue)."""
         from .password_policy import is_locked
         if user is None:
             return None
@@ -265,10 +267,10 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         # FG22 — compte résolu par username (insensible à la casse) pour le
         # compteur d'échecs. ASEC14 — le VERROU et le SSO OBLIGATOIRE ne sont
         # plus annoncés AVANT le mot de passe (ils révélaient l'existence et
-        # l'état du compte) : sans le bon mot de passe, inconnu / faux /
-        # verrouillé / SSO donnent le même 401 ; avec le bon mot de passe,
-        # ``_refus_apres_mot_de_passe`` répond 403 ``compte_verrouille`` ou
-        # ``sso_required`` (inchangés en forme).
+        # l'état du compte) : sans le bon mot de passe, inconnu / faux / SSO
+        # donnent le même 401 ; avec le bon mot de passe,
+        # ``_refus_apres_mot_de_passe`` répond 403 ``sso_required``. Un compte
+        # VERROUILLÉ reçoit le même 401, bon mot de passe ou non (ASEC14-revue).
         raw_uname0 = (request.data.get('username') or '').strip()
         locked_user = CustomUser.objects.filter(
             username__iexact=raw_uname0).first() if raw_uname0 else None
@@ -282,6 +284,16 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         # sans divulguer l'état 2FA d'un compte avant que le mot de passe soit
         # validé.
         from rest_framework.exceptions import AuthenticationFailed
+        # ASEC14-revue (décision fondateur « même réponse que faux ») : compte
+        # verrouillé (société, ou couple compte+IP) → le mot de passe n'est
+        # PAS vérifié ; on rend EXACTEMENT le 401 d'un mauvais mot de passe
+        # et la tentative est comptée.
+        from .password_policy import is_locked
+        if locked_user is not None and is_locked(locked_user, ip):
+            register_failed_login(locked_user, ip)
+            raise AuthenticationFailed(
+                self.get_serializer().error_messages['no_active_account'],
+                'no_active_account')
         try:
             response = super().post(request, *args, **kwargs)
         except AuthenticationFailed:

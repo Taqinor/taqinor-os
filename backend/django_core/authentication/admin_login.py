@@ -47,6 +47,14 @@ class AdminLoginForm(AdminAuthenticationForm):
     def clean(self):
         compte = _compte(self.cleaned_data.get('username'))
         ip = self._ip()
+        # ASEC14-revue (« même réponse que faux ») : compte verrouillé (société
+        # ou couple compte+IP, ASEC4) → mot de passe NON vérifié, même erreur
+        # qu'un mauvais mot de passe, tentative comptée.
+        if compte is not None and is_locked(compte, ip):
+            register_failed_login(compte, ip)
+            raise ValidationError(
+                self.error_messages['invalid_login'], code='invalid_login',
+                params={'username': self.username_field.verbose_name})
         try:
             cleaned = super().clean()
         except ValidationError:

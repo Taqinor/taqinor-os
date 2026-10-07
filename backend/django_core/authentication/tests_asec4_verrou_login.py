@@ -73,9 +73,12 @@ class VerrouLoginTests(TestCase):
                 401)
         u = self._relu(self.u3)
         self.assertIsNotNone(u.locked_until)
-        # Verrouillé : même le bon mot de passe est refusé.
+        # Verrouillé : même le bon mot de passe est refusé — ASEC14-revue :
+        # EXACTEMENT le 401 d'un mauvais mot de passe.
+        faux = self._post(username='asec4_inconnu', password='faux')
         r = self._post(username='asec4_u3', password=_BON)
-        self.assertNotEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(r.data, faux.data)
 
     def test_otp_faux_compte(self):
         self.u3.totp_secret = pyotp.random_base32()
@@ -97,9 +100,12 @@ class VerrouLoginTests(TestCase):
     def test_plancher_ip_attaquante_verrouillee_titulaire_autre_ip_ok(self):
         for _ in range(10):
             self._post(ip='203.0.113.9', username='asec4_u0', password='faux')
-        # L'IP attaquante est verrouillée, même avec le bon mot de passe.
+        # L'IP attaquante est verrouillée, même avec le bon mot de passe —
+        # même 401 qu'un mauvais mot de passe (ASEC14-revue).
+        faux = self._post(ip='203.0.113.9', username='asec4_x', password='y')
         r = self._post(ip='203.0.113.9', username='asec4_u0', password=_BON)
-        self.assertNotEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(r.data, faux.data)
         # Le titulaire, depuis une autre IP, se connecte normalement.
         r2 = self._post(ip='198.51.100.7', username='asec4_u0', password=_BON)
         self.assertEqual(r2.status_code, 200, r2.data)
