@@ -18,7 +18,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import EcranRecent, FavoriUtilisateur, SavedView, UxParametres
 from .permissions import PeutDefinirVueDefautRole, PeutPartagerVueEquipe
 from .serializers import (
-    FavoriUtilisateurSerializer, SavedViewSerializer, UxParametresSerializer,
+    TYPES_FAVORISABLES, FavoriUtilisateurSerializer, SavedViewSerializer,
+    UxParametresSerializer, cible_du_favori,
 )
 
 logger = logging.getLogger(__name__)
@@ -524,7 +525,9 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         writer = csv.writer(response)
         writer.writerow(['type', 'champ_identifiant', 'identifiant', 'libelle'])
         for favori in favoris:
-            cible = favori.cible
+            # AANA15 — jamais le libellé/identifiant d'une cible d'une autre
+            # société (ligne héritée d'avant la garde).
+            cible = cible_du_favori(favori)
             champ, valeur = _identifiant_metier(cible)
             writer.writerow([
                 favori.cle_modele, champ or '', valeur or '',
@@ -566,7 +569,8 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
             champ = str(row.get('champ_identifiant') or '').strip()
             valeur = str(row.get('identifiant') or '').strip()
             content_type = None
-            if type_cible and '.' in type_cible:
+            # AANA15 — même liste blanche que la création directe.
+            if type_cible.lower() in TYPES_FAVORISABLES:
                 app_label, _, modele_nom = type_cible.partition('.')
                 content_type = ContentType.objects.filter(
                     app_label=app_label, model=modele_nom).first()
