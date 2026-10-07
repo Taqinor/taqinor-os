@@ -47,30 +47,14 @@ _FICHIERS_A_VERIFIER = (
 )
 
 
-def _fichiers_a_verifier():
-    """SPL1 — services.py, models.py ET tout module crm qui définit un nom
-    du golden du découpage : la garde suit le code déplacé."""
-    from apps.crm.tests_services_split_golden import (
-        modules_definissant_la_fixture,
-    )
-    fichiers = list(_FICHIERS_A_VERIFIER)
-    for chemin in modules_definissant_la_fixture():
-        if chemin not in fichiers:
-            fichiers.append(chemin)
-    return fichiers
-
-
 class CatalogueUniqueSourceTests(SimpleTestCase):
     """LE Done : `grep _PARRAINAGE_TEMPLATE_DEFAULTS` = 0, et aucun texte
     darija en arabizi ne subsiste."""
 
     def setUp(self):
-        # SPL1 — services.py et les modules du découpage qui en reçoivent
-        # des symboles (la garde suit le code déplacé, sans s'affaiblir).
-        self.source_services = '\n'.join(
-            chemin.read_text(encoding='utf-8')
-            for chemin in _fichiers_a_verifier()
-            if chemin.name != 'models.py')
+        self.source_services = (
+            pathlib.Path(__file__).resolve().parent / 'services.py'
+        ).read_text(encoding='utf-8')
 
     def test_le_second_catalogue_nexiste_plus(self):
         motif = '_PARRAINAGE' + '_TEMPLATE_DEFAULTS'
@@ -81,7 +65,7 @@ class CatalogueUniqueSourceTests(SimpleTestCase):
         self.assertNotIn(motif, self.source_services)
 
     def test_aucun_texte_darija_en_arabizi_ne_subsiste(self):
-        for fichier in _fichiers_a_verifier():
+        for fichier in _FICHIERS_A_VERIFIER:
             with self.subTest(fichier=fichier.name):
                 texte = fichier.read_text(encoding='utf-8').lower()
                 for marqueur in _MARQUEURS_ARABIZI:

@@ -15,9 +15,9 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from core.events import (
-    ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
-    devis_accepted, devis_refused, devis_sent, facture_emise, layout_finalise,
-    lead_created, lead_stage_changed, ticket_resolu, visite_planifiee,
+    appointment_effectue, devis_accepted, devis_refused, devis_sent,
+    facture_emise, layout_finalise, lead_created, lead_stage_changed,
+    salle_vente_signal_interet, ticket_resolu, visite_planifiee,
     visite_terminee, visite_validee,
 )
 
@@ -93,9 +93,9 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
                                                 ancien_statut, **kwargs):
     """NTCRM22 — À l'acceptation d'un devis lié à un ``DealEnregistre``
     APPROUVE, calcule la commission due (taux × montant HT accepté), la pose
-    sur ``montant_commission_du`` et passe le deal à À_PAYER. Émet
-    ``deal_commission_due`` (core.events) pour un futur consommateur compta —
-    jamais d'écriture comptable automatique ici (frontière compta respectée).
+    sur ``montant_commission_du`` et passe le deal à À_PAYER. N'émet plus
+    aucun événement (ALEA3, D-ALEA-3) — jamais d'écriture comptable
+    automatique ici (frontière compta respectée).
 
     QJR22 — Décision fondateur D3 (29/08/2026) : la commission est un
     pourcentage du total NET de l'OPTION ACCEPTÉE, jamais du total BRUT ni,
@@ -119,7 +119,6 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
             .filter(lead_id=devis.lead_id, statut=DealEnregistre.Statut.APPROUVE)
             .select_related('apporteur')
             .first())
-    recalcul_revision = False
     if deal is None:
         # QJR560 / D-QJR5-11 — V2 d'un devis signé acceptée : la commission
         # encore À_PAYER (calculée sur la V1) est RECALCULÉE sur l'option
@@ -134,7 +133,6 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
                 .first())
         if deal is None:
             return
-        recalcul_revision = True
     taux = deal.apporteur.taux_commission_pct
     if not taux:
         return
@@ -147,15 +145,11 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     deal.montant_commission_du = montant
     deal.statut = DealEnregistre.Statut.A_PAYER
     deal.save(update_fields=['montant_commission_du', 'statut'])
-    if recalcul_revision:
-        # QJR560 — un recalcul sur révision n'est PAS une nouvelle commission
-        # due : aucun second ``deal_commission_due`` (le consommateur compta
-        # compterait deux commissions pour une seule vente).
-        return
-
-    deal_commission_due.send(
-        sender='crm.receivers', company=devis.company, deal_id=deal.pk,
-        apporteur_id=deal.apporteur_id, montant=montant)
+    # ALEA3 (D-ALEA-3) — plus aucune émission de ``deal_commission_due`` : le
+    # signal n'avait AUCUN abonné (le module compta est parqué). Le comptable
+    # lit les commissions dues par ``deals-enregistres/a-payer/`` (inchangé).
+    # QJR560 : un recalcul sur révision (V2 d’un devis signé) reste une mise
+    # à jour du montant, jamais une seconde commission.
 
 
 @receiver(devis_sent, dispatch_uid="crm_plan_apres_devis_on_devis_sent")
@@ -788,61 +782,6 @@ def _chatter_on_ticket_resolu(sender, ticket, company, user, ancien_statut,
             getattr(ticket, 'pk', '?'), exc_info=True)
 
 
-# ── AOF13 — Appels d'offres : le funnel CRM suit le dossier ─────────────────
-#
-# ``crm`` n'importe JAMAIS ``apps.ao`` : le signal porte l'instance, et le lead
-# n'est connu de l'AO que par ``lead_id`` (entier OPAQUE, jamais une FK — c'est
-# ce qui tient le contrat import-linter ``ao-models-decoupled``).
-
-def _lead_de_l_appel_offre(appel_offre, company):
-    """Résout le lead lié à un AO, ou ``None``. Jamais d'exception."""
-    lead_id = getattr(appel_offre, 'lead_id', None)
-    if not lead_id:
-        return None
-    from .models import Lead
-    return Lead.objects.filter(pk=lead_id, company=company).first()
-
-
-@receiver(ao_depose, dispatch_uid="crm_advance_stage_on_ao_depose")
-def _avancer_stage_on_ao_depose(sender, appel_offre, company, user,
-                                ancien_statut, **kwargs):
-    """Au DÉPÔT d'un dossier d'appel d'offres, avance le lead → QUOTE_SENT.
-
-    Une offre remise à un acheteur EST, au sens du funnel, un devis envoyé.
-    ``avancer_stage_lead_vers`` ne recule jamais et est idempotent : un lead
-    déjà ≥ QUOTE_SENT ne bouge pas. Best-effort — le dépôt, lui, est déjà acté.
-    """
-    lead = _lead_de_l_appel_offre(appel_offre, company)
-    if lead is None or lead.perdu:
-        return
-    try:
-        avancer_stage_lead_vers(lead, user, stages.QUOTE_SENT)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            "AOF13 : avance de funnel échouée sur ao_depose pour l'AO #%s",
-            getattr(appel_offre, 'pk', '?'), exc_info=True)
-
-
-@receiver(ao_gagne, dispatch_uid="crm_advance_stage_on_ao_gagne")
-def _avancer_stage_on_ao_gagne(sender, appel_offre, company, user,
-                               ancien_statut, **kwargs):
-    """À l'ATTRIBUTION d'un appel d'offres, avance le lead → SIGNED.
-
-    Même garde-fou que ci-dessus (jamais en arrière, jamais sur un lead perdu,
-    best-effort). Règle #2 : les clés d'étape viennent de ``STAGES.py``, jamais
-    d'un littéral.
-    """
-    lead = _lead_de_l_appel_offre(appel_offre, company)
-    if lead is None or lead.perdu:
-        return
-    try:
-        avancer_stage_lead_vers(lead, user, stages.SIGNED)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            "AOF13 : avance de funnel échouée sur ao_gagne pour l'AO #%s",
-            getattr(appel_offre, 'pk', '?'), exc_info=True)
-
-
 # ── PUB30 — appointment_effectue : transition GÉNUINE Appointment → EFFECTUE ──
 # Intra-CRM (comme le récepteur QJ7 sur LeadActivity ci-dessus), pas un
 # abonnement M6 — CE module ÉMET ici l'événement dont ``adsengine`` (jamais
@@ -944,7 +883,8 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
     try:
         lead = Lead.objects.filter(pk=lead_id).first()
         if lead is not None:
-            ecrire_retour_lead_visite(lead, recap)
+            ecrire_retour_lead_visite(
+                lead, recap, visite_id=getattr(visite, "pk", None))
         journaliser_visite(visite, user, 'validee')
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
@@ -1133,3 +1073,56 @@ def _tracer_facture_emise_sur_le_lead(sender, instance, company, **kwargs):
         logger.warning(
             'CAD61: trace de facture non écrite (facture #%s)',
             getattr(instance, 'pk', '?'), exc_info=True)
+
+
+# ── ALEA3 (D-ALEA-3) — salle de vente : l'intérêt signalé NOTIFIE le responsable
+#
+# ``salle_vente_signal_interet`` était un seam sans abonné : la note au
+# chatter existait, mais personne n'était prévenu. Le responsable du lead
+# (``owner``) reçoit UNE notification par jour LOCAL et par salle. Personne
+# n'est notifié quand le lead n'a pas de responsable (jamais au hasard).
+
+
+def _debut_jour_local():
+    """Minuit du jour LOCAL (Africa/Casablanca), en datetime aware."""
+    from core.dates import maintenant_local
+
+    return maintenant_local().replace(
+        hour=0, minute=0, second=0, microsecond=0)
+
+
+@receiver(salle_vente_signal_interet,
+          dispatch_uid='crm_notifier_interet_salle_vente')
+def _notifier_responsable_interet_salle(sender, lead, salle, company,
+                                        **kwargs):
+    """Notifie le responsable du lead qu'une salle de vente montre un intérêt
+    fort. Idempotent par (destinataire, salle, jour local). Best-effort."""
+    try:
+        destinataire = getattr(lead, 'owner', None)
+        if destinataire is None or not destinataire.is_active:
+            return
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify
+        from apps.notifications.types_evenements import EventType
+
+        titre = (f'Intérêt signalé — salle de vente « {salle.titre} » '
+                 f'(#{salle.pk})')[:255]
+        if Notification.objects.filter(
+                recipient=destinataire, event_type=EventType.DEVIS_OPENED,
+                title=titre, created_at__gte=_debut_jour_local()).exists():
+            return
+        nom = ' '.join(p for p in (getattr(lead, 'prenom', '') or '',
+                                   getattr(lead, 'nom', '') or '') if p)
+        notify(
+            user=destinataire,
+            event_type=EventType.DEVIS_OPENED,
+            title=titre,
+            body=(f'{nom or "Le client"} a consulté la salle de vente '
+                  'plusieurs fois : bon moment pour le rappeler.'),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'ALEA3 : notification « intérêt signalé » échouée (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)

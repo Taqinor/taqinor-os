@@ -19,6 +19,7 @@ import {
   creerFactureFromBC,
 } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import ventesApi from '../../api/ventesApi'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
@@ -429,7 +430,9 @@ function BCForm({ bc = null, onClose, onSaved }) {
   })
 
   useEffect(() => {
-    crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
+    // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
+    fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
   }, [])
 
   const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))

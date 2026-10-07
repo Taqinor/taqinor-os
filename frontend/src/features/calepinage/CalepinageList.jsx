@@ -100,7 +100,7 @@ function paramsServeur({ q, statut, depuis, lead, client, page, ordering, etique
 
 /** Recherche bornée société côté serveur — jamais un filtrage local. */
 const chercherLeads = async (q) => {
-  const res = await crmApi.getLeads({ q, page_size: 20 })
+  const res = await crmApi.getLeads({ search: q, page_size: 20 })
   return unwrapList(res).map((l) => ({
     value: String(l.id),
     label: l.nom || l.nom_complet || l.raison_sociale || `Lead ${l.id}`,

@@ -50,6 +50,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 from authentication.models import Company
 from core.idempotency import dedupe_event
 
+from . import stages
 from .models import Lead, LeadActivity, WebsiteLeadPayload
 
 logger = logging.getLogger(__name__)
@@ -2452,6 +2453,26 @@ def _map_and_link_lead(raw, data, company):
             logger.warning(
                 'website_lead_webhook: détection de doublon échouée '
                 '(lead #%s) : %s', lead.pk, _exc)
+        # ALEA2 (D-ALEA-2, décision fondateur du 07/10/2026 — amende la règle
+        # du 18/08 sur ce seul point) : un doublon NON archivé resté au Froid
+        # ou Perdu est RÉVEILLÉ par cette nouvelle demande — sortie du
+        # Froid/Perdu par `appliquer_stage_lead`, reprise de cadence CAD107,
+        # note au chatter. Un doublon ouvert non froid ne bouge pas (la note
+        # « Doublon possible » ci-dessus reste le seul signal, comme avant).
+        # Idempotent : un lead réactivé n'est plus froid/perdu, un rejeu ne
+        # le touche plus. Best-effort : jamais un webhook en échec pour ça.
+        from .services import reactivate_lead_on_new_touch
+        for doublon in dupes:
+            if doublon.is_archived or doublon.archived_at is not None:
+                continue
+            if not (doublon.perdu or doublon.stage == stages.COLD):
+                continue
+            try:
+                reactivate_lead_on_new_touch(doublon, source='site web')
+            except Exception as _exc:  # noqa: BLE001 — best-effort
+                logger.warning(
+                    'website_lead_webhook: réactivation du doublon #%s '
+                    'échouée : %s', doublon.pk, _exc)
 
     # ── T-TRACE (25/08/2026) — traçage anti-fraude de la demande ───────────
     # Placé APRÈS `notify_new_lead` À DESSEIN : la notification d'arrivée doit

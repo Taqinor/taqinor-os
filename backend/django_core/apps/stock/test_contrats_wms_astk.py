@@ -941,7 +941,11 @@ class ContratFournisseurJetonsTests(WmsBase):
                     'fournisseur_revoquer_acces')
         base = f'{self.BASE}fournisseurs/{self.fournisseur.id}/'
 
-        rep = self.api.post(f'{base}revoquer-acces/')
+        # ASTK179 — revoquer-acces coupe aussi les jetons publics : le 404
+        # « aucun accès » ne vaut que pour un fournisseur SANS compte NI jeton
+        # (self.fournisseur porte un jeton actif depuis setUp → 200).
+        rep = self.api.post(
+            f'{self.BASE}fournisseurs/{self.autre.id}/revoquer-acces/')
         self.assertEqual(rep.status_code, 404)
         self.assertEqual(rep.json(), rev['exemple_erreur_404'])
 

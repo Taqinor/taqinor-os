@@ -133,7 +133,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   useEffect(() => {
-    crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
+    // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
+    fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
     fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
       .then(setProduits).catch(() => {})
     ventesApi.getBonsCommande().then(r => setBonsCommande(r.data.results ?? r.data)).catch(() => {})

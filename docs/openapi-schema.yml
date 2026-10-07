@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7630, components: 2210}
+counts: {paths: 4836, operations: 7622, components: 2210}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -78,8 +78,6 @@ operations:
 - get /api/django/achats/paiements-fournisseur/ras-tva/export/ -> django_achats_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_destroy
 - get /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_retrieve
-- patch /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_partial_update
-- put /api/django/achats/paiements-fournisseur/{id}/ -> django_achats_paiements_fournisseur_update
 - get /api/django/achats/prix-fournisseurs/ -> django_achats_prix_fournisseurs_list
 - post /api/django/achats/prix-fournisseurs/ -> django_achats_prix_fournisseurs_create
 - get /api/django/achats/prix-fournisseurs/effectif/ -> django_achats_prix_fournisseurs_effectif_retrieve
@@ -3238,8 +3236,6 @@ operations:
 - get /api/django/stock/paiements-fournisseur/ras-tva/export/ -> django_stock_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_destroy
 - get /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_retrieve
-- patch /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_partial_update
-- put /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_update
 - get /api/django/stock/parametres-negoce/ -> django_stock_parametres_negoce_retrieve
 - patch /api/django/stock/parametres-negoce/ -> django_stock_parametres_negoce_partial_update
 - get /api/django/stock/plans-chargement/ -> django_stock_plans_chargement_list
@@ -3931,8 +3927,6 @@ operations:
 - get /api/v1/achats/paiements-fournisseur/ras-tva/export/ -> v1_achats_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_destroy
 - get /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_retrieve
-- patch /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_partial_update
-- put /api/v1/achats/paiements-fournisseur/{id}/ -> v1_achats_paiements_fournisseur_update
 - get /api/v1/achats/prix-fournisseurs/ -> v1_achats_prix_fournisseurs_list
 - post /api/v1/achats/prix-fournisseurs/ -> v1_achats_prix_fournisseurs_create
 - get /api/v1/achats/prix-fournisseurs/effectif/ -> v1_achats_prix_fournisseurs_effectif_retrieve
@@ -7060,8 +7054,6 @@ operations:
 - get /api/v1/stock/paiements-fournisseur/ras-tva/export/ -> v1_stock_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_destroy
 - get /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_retrieve
-- patch /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_partial_update
-- put /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_update
 - get /api/v1/stock/parametres-negoce/ -> v1_stock_parametres_negoce_retrieve
 - patch /api/v1/stock/parametres-negoce/ -> v1_stock_parametres_negoce_partial_update
 - get /api/v1/stock/plans-chargement/ -> v1_stock_plans_chargement_list
@@ -8402,6 +8394,7 @@ components:
 - MaterielConsigneStatutEnum
 - MatriceApprobation
 - MatriceApprobationRequest
+- Me
 - MesBcfPortail
 - MesBcfPortailConfirmation
 - MesBcfPortailLigne
@@ -9132,7 +9125,6 @@ components:
 - PatchedOrdreDemontageRequest
 - PatchedOutillageRequest
 - PatchedPaiementFacturePortailRequest
-- PatchedPaiementFournisseurRequest
 - PatchedParametrageRelanceClientRequest
 - PatchedParametresGammesRequest
 - PatchedParrainageRequest

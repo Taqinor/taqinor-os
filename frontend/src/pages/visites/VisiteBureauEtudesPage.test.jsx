@@ -2,9 +2,10 @@
 // la liste, jamais une invention de paramètre), et le renvoi exige un motif
 // (garde UI, en plus de la garde serveur).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { Toaster } from 'sonner'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 
 const { getVisites, getVisite, renvoyerVisite } = vi.hoisted(() => ({
   getVisites: vi.fn(),
@@ -18,6 +19,30 @@ vi.mock('../../api/visitesApi', () => ({
     getVisite: (...a) => getVisite(...a),
     validerVisite: vi.fn(),
     renvoyerVisite: (...a) => renvoyerVisite(...a),
+  },
+}))
+
+// ACAL209 — serveur factice IDEMPOTENT de la porte `depuis-lead` (même
+// sémantique que `views/depuis_lead.py` : un lead → toujours le MÊME
+// calepinage ouvert). Le client `calepinageApi` RÉEL tourne au-dessus.
+const { apiPost, calepinagesParLead } = vi.hoisted(() => {
+  const calepinagesParLead = new Map()
+  let suivant = 500
+  const apiPost = vi.fn((url, corps) => {
+    if (url === '/calepinage/calepinages/depuis-lead/') {
+      if (!calepinagesParLead.has(corps.lead)) calepinagesParLead.set(corps.lead, suivant++)
+      return Promise.resolve({ data: { calepinage: calepinagesParLead.get(corps.lead) } })
+    }
+    return Promise.reject(new Error(`URL inattendue ${url}`))
+  })
+  return { apiPost, calepinagesParLead }
+})
+
+vi.mock('../../api/axios', () => ({
+  default: {
+    get: vi.fn(() => Promise.reject(new Error('GET inattendu'))),
+    post: (...a) => apiPost(...a),
+    patch: vi.fn(), put: vi.fn(), delete: vi.fn(),
   },
 }))
 
@@ -230,5 +255,65 @@ describe('VisiteBureauEtudesPage — renvoi au contrat serveur', () => {
       mesures: [{ categorie: 'toiture', code: 'longueur_m' }],
       motif: 'Photo floue',
     })
+  })
+})
+
+/* ACAL209 — après « Valider la visite », le bureau d'études ouvre le MODULE
+   Calepinage du lead (porte idempotente `depuis-lead`) sur l'onglet « Reprise
+   de la visite » ; plus aucune mesure ne part en query params vers l'ancien
+   atelier lead `/devis-design/…`. */
+describe('VisiteBureauEtudesPage — ACAL209', () => {
+  function Sonde() {
+    const loc = useLocation()
+    return <div data-testid="sonde-calepinage">{`${loc.pathname}${loc.search}`}</div>
+  }
+  const VALIDEE = {
+    id: 1, lead: 10, statut: 'validee', gabarit: 'toiture',
+    checklist: [{ categorie: 'toiture', libelle: 'Toiture', slots: [{ code: 's1', libelle: 'Vue', requis: true, etat: 'ok', photos: [] }] }],
+    mesures: { toiture: { longueur_m: 12, largeur_m: 8, pente_deg: 15, orientation: 'sud' } },
+    client_panel: { lead_nom: 'Lead A' },
+  }
+  const monter = () => render(
+    <><Toaster /><MemoryRouter initialEntries={['/visites/bureau-etudes']}>
+      <Routes>
+        <Route path="/visites/bureau-etudes" element={<VisiteBureauEtudesPage />} />
+        <Route path="/calepinage/:id" element={<Sonde />} />
+        <Route path="/devis-design/:id" element={<div data-testid="ancien-atelier-lead" />} />
+      </Routes>
+    </MemoryRouter></>,
+  )
+
+  beforeEach(() => { calepinagesParLead.clear() })
+
+  it('ouvre le module Calepinage sur l’onglet reprise de visite', async () => {
+    getVisite.mockResolvedValue({ data: VALIDEE })
+    const user = userEvent.setup()
+    monter()
+    await user.click(await screen.findByText('Lead A'))
+    await user.click(await screen.findByRole('button', { name: /atelier 3d/i }))
+    const sonde = await screen.findByTestId('sonde-calepinage')
+    const premiere = sonde.textContent
+    expect(premiere).toMatch(/^\/calepinage\/\d+\?onglet=reprise-visite$/)
+    // Aucune mesure en query params, aucun passage par l'ancien atelier lead.
+    expect(premiere).not.toMatch(/pente|orientation|longueur|largeur/)
+    expect(screen.queryByTestId('ancien-atelier-lead')).toBeNull()
+
+    // Idempotent : un second clic (nouvelle ouverture) rouvre le MÊME calepinage.
+    cleanup()
+    monter()
+    await user.click(await screen.findByText('Lead A'))
+    await user.click(await screen.findByRole('button', { name: /atelier 3d/i }))
+    expect((await screen.findByTestId('sonde-calepinage')).textContent).toBe(premiere)
+  })
+
+  it('un refus du serveur s’affiche, rien n’est ouvert', async () => {
+    getVisite.mockResolvedValue({ data: VALIDEE })
+    apiPost.mockImplementationOnce(() => Promise.reject({ response: { data: { lead: ['Lead introuvable.'] } } }))
+    const user = userEvent.setup()
+    monter()
+    await user.click(await screen.findByText('Lead A'))
+    await user.click(await screen.findByRole('button', { name: /atelier 3d/i }))
+    expect(await screen.findByText(/Module Calepinage : Lead introuvable\./)).toBeInTheDocument()
+    expect(screen.queryByTestId('sonde-calepinage')).toBeNull()
   })
 })

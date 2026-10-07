@@ -97,3 +97,9 @@ rougit pas tant que la route n'existe pas.
 | `acceptation_entreprise.json` (+ copie jumelle `apps/web/src/contract_samples/`) | POST proposal/<token>/accept/ (+ portail, ERP) : bloc `entreprise` {raison_sociale, signataire_qualite, ice}, `signature_entreprise`, remontée de l'ICE au Client (CIQ9) |
 | `proposal_data.json` (étendu, + copie jumelle `apps/web/src/contract_samples/`) | fragments `exemple_commercial` / `exemple_industriel` : `synthese_ci`, `mode_kpis` C&I v2, clés résidentielles vidées en C&I, `signature_entreprise` (`notes_ciq4`, CIQ4) |
 | `suivi_public.json` | GET ventes/suivi/<token>/ (QX34) : 5 jalons `accepte/acompte/materiel/installation/facture` {key,label,done,date ISO ou null — jamais un statut}, `mis_a_jour_le` (date du dernier jalon fait ou null), `generated_at` (technique, jamais affiché), refus 403 `otp_required` / 404 (ADOC112) |
+
+## Groupe ATOT — M0 contrats posés SEULS (07/10/2026)
+
+| Fichier | Endpoint / ce qu'il apparie |
+| --- | --- |
+| `devis_solde.json` | GET ventes/devis/<id>/ (et la liste, même sérialiseur) : bloc `solde` {total_ttc, facture, paye, avoirs, restant, tranches_total, tranches_facturees — tout en texte} + NOUVELLE clé `porte_facturation` (`libre`/`tranche`/`aucune`), la porte de facturation dite par le serveur (ATOT18 ; producteur ATOT2, consommateur ATOT31) |

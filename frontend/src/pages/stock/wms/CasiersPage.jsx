@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '../../../ui'
 import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import entrepotCasiersApi from '../../../features/stock/api/entrepotCasiersApi'
+import { formatDateTime } from '../../../lib/format'
 import {
   messageServeur, messageServeurBlob, ouvrirBlob,
 } from '../../../features/stock/api/erreurs'
@@ -188,7 +189,7 @@ export default function CasiersPage() {
               <ul className="space-y-1 text-sm">
                 {historique.lignes.map((l) => (
                   <li key={l.id}>
-                    {new Date(l.date).toLocaleString('fr-FR')} — {l.action}
+                    {formatDateTime(l.date)} — {l.action}
                     {l.champ ? ` (${l.champ} : ${l.ancienne_valeur} → ${l.nouvelle_valeur})` : ''}
                     {' · '}<strong>{l.auteur}</strong>
                   </li>

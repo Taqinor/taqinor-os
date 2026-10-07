@@ -268,7 +268,7 @@ class UserSerializer(serializers.ModelSerializer):
         source='role.nom', read_only=True
     )
     # Palier de menu faisant autorité, dérivé du NOUVEAU rôle (jamais du legacy).
-    menu_tier = serializers.ReadOnlyField()
+    menu_tier = serializers.CharField(read_only=True, allow_null=True)
     permissions = serializers.SerializerMethodField()
     # ODX6 — clés des modules explicitement DÉSACTIVÉS pour la société de
     # l'utilisateur (lecture seule), servies au bootstrap pour que la nav
@@ -361,11 +361,13 @@ class UserSerializer(serializers.ModelSerializer):
             'is_superuser', 'is_protected',
         )
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_permissions(self, obj):
         if obj.role:
             return obj.role.permissions or []
         return []
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_modules_desactives(self, obj):
         """ODX6 — clés des modules désactivés pour la société de l'utilisateur.
 
@@ -380,6 +382,7 @@ class UserSerializer(serializers.ModelSerializer):
         except Exception:
             return []
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_societes_operables(self, obj):
         """Sociétés que ce compte peut opérer (home + M2M), dédupliquées."""
         try:
@@ -390,6 +393,7 @@ class UserSerializer(serializers.ModelSerializer):
         except Exception:
             return []
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_active_company_id(self, obj):
         """Société ACTIVE de la requête courante — c'est ``obj.company`` qui a
         déjà été bornée par ``ActiveCompanyMiddleware``/``CookieJWTAuthentication``
@@ -469,6 +473,7 @@ class UserSerializer(serializers.ModelSerializer):
                 seen = seen.supervisor
         return value
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_avatar_url(self, obj):
         from .avatars import presign_avatar
         return presign_avatar(obj.avatar_key)
@@ -502,6 +507,28 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+
+class MeSerializer(UserSerializer):
+    """ALEA31 — profil de l'utilisateur COURANT (``/auth/me/`` uniquement).
+
+    Ajoute UNE clé en lecture seule : ``mobile_home_route_suggeree``, la route
+    d'accueil mobile que ``selectors.default_mobile_home_route`` suggère pour
+    le rôle de ce compte (fonction pure, rien n'est persisté). Le frontend la
+    lit au premier atterrissage mobile au lieu de garder sa propre table. Elle
+    ne figure PAS dans ``UserSerializer`` : la liste d'équipe (UserViewSet)
+    n'expose rien de plus qu'avant."""
+    mobile_home_route_suggeree = serializers.SerializerMethodField()
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + ('mobile_home_route_suggeree',)
+        read_only_fields = (
+            UserSerializer.Meta.read_only_fields + ('mobile_home_route_suggeree',))
+
+    @extend_schema_field(serializers.CharField())
+    def get_mobile_home_route_suggeree(self, obj):
+        from authentication.selectors import default_mobile_home_route
+        return default_mobile_home_route(obj)
 
 
 class UserSessionSerializer(serializers.ModelSerializer):

@@ -41,7 +41,7 @@ export default function SelecteurRattachement({
 
   const chercher = useMemo(() => rechercheExterne || (async (q) => {
     const res = surLead
-      ? await crmApi.getLeads({ q, page_size: 20 })
+      ? await crmApi.getLeads({ search: q, page_size: 20 })
       : await crmApi.searchClients(q)
     const trouvees = unwrapList(res)
     lignes.current = trouvees
