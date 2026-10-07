@@ -248,11 +248,17 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if message:
             return _erreur('gps_lng', message)
 
-        VisiteMedia.objects.create(
+        nouvelle = VisiteMedia.objects.create(
             company=request.user.company, visite=visite, attachment=attachment,
             slot_code=slot_code,
             commentaire=(request.data.get('commentaire') or '').strip(),
             gps_lat=gps_lat, gps_lng=gps_lng)
+        # ALEA12 — la nouvelle photo REMPLACE une photo « à refaire » du même
+        # slot : le terrain reprend la photo, il n'a pas à supprimer l'autre
+        # à la main avant de pouvoir « Terminer » (chemin UI réel, et la file
+        # hors-ligne ``PHOTO_VISITE`` arrive aussi ici).
+        services.remplacer_photo_a_refaire(visite, slot_code,
+                                           nouvelle=nouvelle)
         _marquer_en_cours(visite)
         return self._agregat(visite)
 
@@ -270,7 +276,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if media is None:
             return _erreur('media_id', 'Cette photo n’existe pas sur cette '
                                        'visite.', status.HTTP_404_NOT_FOUND)
-        media.delete()
+        services.supprimer_media(media)
         return self._agregat(visite)
 
     # ── Mesures par catégorie ────────────────────────────────────────────────

@@ -525,6 +525,32 @@ def journaliser_visite(visite, user, moment, detail=''):
     return crm_services.journaliser_visite(visite, user, moment, detail=detail)
 
 
+def supprimer_media(media):
+    """Retire UNE photo de visite (``VisiteMedia``).
+
+    Point unique de suppression d'un média : la route ``supprimer_photo`` et
+    le remplacement d'une photo « à refaire » (ALEA12) y passent tous deux.
+    """
+    media.delete()
+
+
+def remplacer_photo_a_refaire(visite, slot_code, *, nouvelle):
+    """ALEA12 — une NOUVELLE photo déposée dans un slot qui porte une photo
+    « à refaire » la REMPLACE : la plus ancienne photo à refaire du slot est
+    retirée (``supprimer_media``), donc elle n'est plus comptée, le slot
+    quitte l'état ``a_refaire`` et « Terminer » passe sans suppression
+    manuelle. Une photo saine du slot n'est jamais touchée. Rend la photo
+    remplacée (déjà retirée) ou ``None``."""
+    ancienne = (visite.medias
+                .filter(slot_code=slot_code, a_refaire=True)
+                .exclude(pk=nouvelle.pk)
+                .order_by('id').first())
+    if ancienne is None:
+        return None
+    supprimer_media(ancienne)
+    return ancienne
+
+
 # ── ALEA6 — LA TABLE DES TRANSITIONS DE STATUT (appliquée par le SERVEUR) ────
 #
 # Avant ALEA6, seul le bouton de l'écran bureau d'études empêchait de valider
