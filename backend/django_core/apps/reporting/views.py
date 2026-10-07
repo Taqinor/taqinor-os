@@ -151,7 +151,9 @@ def dashboard(request):
     # ── Taux conversion Devis → Facture ───────────────────────────────────────
     devis_qs = Devis.objects.filter(**co)
     nb_devis_total = devis_qs.count()
-    nb_devis_acceptes = devis_qs.filter(statut=Devis.Statut.ACCEPTE).count()
+    # AANA19 — signés = acceptés ACTIFS (helper unique du reporting).
+    from apps.reporting.pipeline import _devis_signes
+    nb_devis_acceptes = _devis_signes(co).count()
     nb_factures_emises = factures_qs.exclude(
         statut__in=[Facture.Statut.BROUILLON, Facture.Statut.ANNULEE]
     ).count()

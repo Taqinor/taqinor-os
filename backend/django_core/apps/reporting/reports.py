@@ -142,7 +142,9 @@ def sales_report(request):
 
     # ── Devis par statut (expiration à la volée) — un bucket « Expiré »
     #    apparaît pour les devis en attente dont la validité est dépassée. ──
-    devis_qs = Devis.objects.filter(**co)
+    # AANA19 — seules les versions ACTIVES (une révision remplacée n'est pas
+    # un second devis ; même règle que pipeline.devis_par_statut).
+    devis_qs = Devis.objects.filter(**co, is_active=True)
     if start:
         devis_qs = devis_qs.filter(date_creation__date__gte=start)
     if end:

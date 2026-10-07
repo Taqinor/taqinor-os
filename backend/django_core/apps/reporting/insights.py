@@ -454,12 +454,12 @@ def analytics(request):
     co = _co(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
-    from apps.ventes.models import Devis
     from apps.installations.models import Installation
 
     # ── lead → signature : devis acceptés portant un lead ──
-    devis_acceptes = (Devis.objects
-                      .filter(**co, statut=Devis.Statut.ACCEPTE)
+    # AANA19 — devis signés = acceptés ACTIFS (helper unique du reporting).
+    from apps.reporting.pipeline import _devis_signes
+    devis_acceptes = (_devis_signes(co)
                       .exclude(lead__isnull=True)
                       .select_related('lead'))
     lead_to_sign_days = []
@@ -565,7 +565,7 @@ def commissions(request):
     from django.db.models import Prefetch
 
     from apps.parametres.models import CompanyProfile
-    from apps.ventes.models import Devis, LigneDevis, PlanCommission
+    from apps.ventes.models import LigneDevis, PlanCommission
     from apps.ventes.selectors import resoudre_plan_commission
     from apps.installations.models import Installation
 
@@ -587,7 +587,9 @@ def commissions(request):
         })
     valeur = Decimal(valeur) if valeur is not None else None
 
-    signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
+    # AANA19 — une révision acceptée n'est pas une seconde vente.
+    from apps.reporting.pipeline import _devis_signes
+    signed = (_devis_signes(co)
               .select_related('lead', 'lead__owner', 'created_by')
               .prefetch_related(
                   Prefetch('lignes', queryset=LigneDevis.objects
@@ -700,13 +702,13 @@ def sales_leaderboard(request):
     co = _co(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
-    from apps.ventes.models import Devis
     from apps.crm.models import Lead
     from apps.installations.models import Installation
     from decimal import Decimal
 
-    # Devis signés (statut=accepte) bornés à la société.
-    signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
+    # Devis signés (acceptés ACTIFS — AANA19) bornés à la société.
+    from apps.reporting.pipeline import _devis_signes
+    signed = (_devis_signes(co)
               .select_related('lead', 'lead__owner', 'created_by'))
     start = _qdate(request.query_params.get('from'))
     end = _qdate(request.query_params.get('to'))

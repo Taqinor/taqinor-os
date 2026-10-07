@@ -83,7 +83,6 @@ def commercial_dashboard(request):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     from apps.crm.models import Lead, LeadActivity
-    from apps.ventes.models import Devis
     from apps.installations.models import Installation
 
     start = _qdate(request.query_params.get('from'))
@@ -168,8 +167,9 @@ def commercial_dashboard(request):
         })
 
     # ── Vélocité de vente : délai moyen lead→devis accepté ───────────────────
-    signed_devis = (Devis.objects
-                    .filter(**co, statut=Devis.Statut.ACCEPTE)
+    # AANA19 — devis signés = acceptés ACTIFS (helper unique du reporting).
+    from apps.reporting.pipeline import _devis_signes
+    signed_devis = (_devis_signes(co)
                     .exclude(lead__isnull=True)
                     .select_related('lead'))
     if start:

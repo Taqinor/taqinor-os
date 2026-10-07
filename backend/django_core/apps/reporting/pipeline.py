@@ -126,6 +126,22 @@ def _lead_has_devis_actif(lead):
     return False
 
 
+def _devis_signes(co):
+    """AANA19 / D-AANA-5 — LE queryset unique des devis « signés » du pilotage.
+
+    « Signé » = ``statut=accepte`` ET ``is_active=True`` : réviser un devis
+    accepté (``ventes.domain.cycle_vie.reviser_devis``) laisse la V1 acceptée
+    mais INACTIVE ; la compter en plus de la V2 doublait commissions,
+    classement, vélocité et tableau de bord. Même règle que
+    ``_lead_has_devis_actif`` ci-dessus. Tous les sites du reporting passent
+    par ici (commissions, classement, vélocité, analytics, tableau de bord) —
+    ne jamais réécrire ce filtre en local.
+    """
+    from apps.ventes.models import Devis
+    return Devis.objects.filter(
+        **co, statut=Devis.Statut.ACCEPTE, is_active=True)
+
+
 def _lead_forecast_value(lead):
     """XSAL7 — Valeur pipeline pondérable d'un lead pour le forecast :
     ``_lead_value`` (son devis) s'il a un devis actif, SINON
@@ -180,9 +196,11 @@ def pipeline(request):
         })
 
     # ── Devis par statut (expiration à la volée) ─────────────────────────
+    # AANA19 — seules les versions ACTIVES : une révision remplacée n'est pas
+    # un second devis (ni une seconde vente si elle était acceptée).
     statut_labels = dict(Devis.Statut.choices)
     buckets = {}
-    for d in Devis.objects.filter(**co).prefetch_related('lignes'):
+    for d in Devis.objects.filter(**co, is_active=True).prefetch_related('lignes'):
         statut = 'expire' if is_expired(d) else d.statut
         b = buckets.setdefault(statut, {'count': 0, 'valeur': Decimal('0')})
         b['count'] += 1
