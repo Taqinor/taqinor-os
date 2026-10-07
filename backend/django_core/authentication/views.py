@@ -228,42 +228,50 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginRateThrottle]
 
+    @staticmethod
+    def _refus_apres_mot_de_passe(user):
+        """ASEC14 — 403 ``compte_verrouille`` (FG22) ou ``sso_required``
+        (NTSEC4 : IdP actif avec ``enforce_sso`` ; super-admin et break-glass
+        exemptés par le sélecteur) — appelé UNIQUEMENT après un mot de passe
+        correct. None sinon."""
+        from .password_policy import is_locked
+        if user is None:
+            return None
+        if is_locked(user):
+            return Response(
+                {'detail': 'Compte temporairement verrouillé après trop de '
+                           'tentatives. Réessayez plus tard.',
+                 'code': 'compte_verrouille'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            from apps.identity.selectors import local_password_login_blocked
+            if local_password_login_blocked(user):
+                return Response(
+                    {'detail': 'Connexion via SSO obligatoire pour cette '
+                               'société.', 'sso_required': True,
+                     'code': 'sso_required'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        except Exception:
+            pass
+        return None
+
     def post(self, request, *args, **kwargs):
         from rest_framework.exceptions import ValidationError
         from .password_policy import (
-            is_locked, register_failed_login, reset_failed_login,
+            register_failed_login, reset_failed_login,
         )
-        # FG22 — verrouillage de compte (par société, opt-in). Résout le compte
-        # par username (insensible à la casse) pour vérifier l'état de verrou
-        # AVANT de tenter l'authentification. Inerte si la société n'a pas armé
-        # ``lockout_max_attempts`` (aucun compte n'a alors de ``locked_until``).
+        # FG22 — compte résolu par username (insensible à la casse) pour le
+        # compteur d'échecs. ASEC14 — le VERROU et le SSO OBLIGATOIRE ne sont
+        # plus annoncés AVANT le mot de passe (ils révélaient l'existence et
+        # l'état du compte) : sans le bon mot de passe, inconnu / faux /
+        # verrouillé / SSO donnent le même 401 ; avec le bon mot de passe,
+        # ``_refus_apres_mot_de_passe`` répond 403 ``compte_verrouille`` ou
+        # ``sso_required`` (inchangés en forme).
         raw_uname0 = (request.data.get('username') or '').strip()
         locked_user = CustomUser.objects.filter(
             username__iexact=raw_uname0).first() if raw_uname0 else None
-        if locked_user is not None and is_locked(locked_user):
-            return Response(
-                {'detail': 'Compte temporairement verrouillé après trop de '
-                           'tentatives. Réessayez plus tard.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        # NTSEC4 — enforce-SSO : si la société de ce compte a un IdP actif avec
-        # ``enforce_sso``, le login par mot de passe local est interdit (le
-        # membre doit passer par le SSO). Fail-open (aucun IdP → inchangé) ;
-        # super-admin et comptes break-glass (NTSEC22) restent exemptés. On
-        # bloque AVANT toute tentative de mot de passe (pas de fuite d'état).
-        if locked_user is not None:
-            try:
-                from apps.identity.selectors import (
-                    local_password_login_blocked,
-                )
-                if local_password_login_blocked(locked_user):
-                    return Response(
-                        {'detail': 'Connexion via SSO obligatoire pour cette '
-                                   'société.', 'sso_required': True},
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
-            except Exception:
-                pass
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
@@ -283,6 +291,11 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         except ValidationError as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get('otp_required'):
+                # ASEC14 — ``otp_required`` = mot de passe PROUVÉ : le verrou
+                # et le SSO obligatoire peuvent être annoncés maintenant.
+                refus = self._refus_apres_mot_de_passe(locked_user)
+                if refus is not None:
+                    return refus
                 # ASEC4 — un code OTP FAUX (présenté après un bon mot de passe)
                 # est un échec compté ; l'absence de code (premier aller du
                 # formulaire 2FA) ne l'est pas.
@@ -308,6 +321,16 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         if response.status_code == 200:
             access = response.data.pop('access', None)
             refresh = response.data.pop('refresh', None)
+            # ASEC14 — mot de passe (et OTP) prouvés : verrou / SSO obligatoire
+            # annoncés ici ; les jetons émis ne sont jamais remis (refresh
+            # blacklisté best-effort).
+            refus = self._refus_apres_mot_de_passe(locked_user)
+            if refus is not None:
+                try:
+                    RefreshToken(refresh).blacklist()
+                except Exception:
+                    pass
+                return refus
             _set_auth_cookies(response, access, refresh)
             # ERR92 — sur un login RÉUSSI, résoudre l'objet utilisateur depuis
             # le username (insensible à la casse), source d'autorité.
