@@ -1,0 +1,70 @@
+# ADOC38 - passif GELE de scripts/check_liste_page1.py : fonctions de
+# frontend/src/features/** qui lisent `.results` d'un appel de liste sans
+# fetchAllPages ni lecture de `next` (releve du 2026-10-07 sur le depot reel).
+# Cle de CONTENU `fichier::fonction` (jamais un numero de ligne). Un site liste
+# ici est CONSTATE, pas approuve : le corriger (utils/fetchAllPages) puis retirer
+# sa ligne. REGLE ABSOLUE : cette liste ne peut que DECROITRE ; une cle morte
+# (la fonction n'est plus signalee) fait echouer la garde.
+frontend/src/features/adminops/ConfigPackagesPage.jsx::load
+frontend/src/features/adminops/SandboxPage.jsx::load
+frontend/src/features/adsengine/ActionsLogScreen.jsx::ActionsLogScreen
+frontend/src/features/adsengine/AdsCockpitScreen.jsx::AdsCockpitScreen
+frontend/src/features/adsengine/AlertCenter.jsx::AlertCenter
+frontend/src/features/adsengine/BacklogScreen.jsx::BacklogScreen
+frontend/src/features/adsengine/BrandKitScreen.jsx::BrandKitScreen
+frontend/src/features/adsengine/CampaignsScreen.jsx::toggleBreakdown
+frontend/src/features/adsengine/CommentsInboxScreen.jsx::CommentsInboxScreen
+frontend/src/features/adsengine/ConnectionScreen.jsx::ConnectionScreen
+frontend/src/features/adsengine/ConsentScreen.jsx::ConsentScreen
+frontend/src/features/adsengine/CreativeLibraryScreen.jsx::CreativeLibraryScreen
+frontend/src/features/adsengine/DashboardScreen.jsx::openDrill
+frontend/src/features/adsengine/ExperimentsScreen.jsx::ExperimentsScreen
+frontend/src/features/adsengine/FactTableScreen.jsx::FactTableScreen
+frontend/src/features/adsengine/FlightPlanScreen.jsx::FlightPlanScreen
+frontend/src/features/adsengine/ManualActionComposer.jsx::ManualActionComposer
+frontend/src/features/adsengine/RulesScreen.jsx::RulesScreen
+frontend/src/features/adsengine/SimulationScreen.jsx::SimulationScreen
+frontend/src/features/adsengine/TreeScreen.jsx::openTest
+frontend/src/features/adsengine/VeilleAnnonceurs.jsx::VeilleAnnonceurs
+frontend/src/features/adsengine/VeilleDecouverte.jsx::VeilleDecouverte
+frontend/src/features/adsengine/VeilleScreen.jsx::SaisieManuelle
+frontend/src/features/audit/ObjectHistoryButton.jsx::charger
+frontend/src/features/crm/ConcurrentsPerte.jsx::ConcurrentsPerte
+frontend/src/features/crm/ConcurrentsPerte.jsx::chargerConcurrents
+frontend/src/features/crm/companyLookup.js::searchCompanies
+frontend/src/features/crm/relances/RelanceEtapeRow.jsx::chargerMotifs
+frontend/src/features/crm/useCanaux.js::useCanaux
+frontend/src/features/crm/workspace/ContextRail.jsx::openWa
+frontend/src/features/crm/workspace/LeadWorkspace.jsx::relay
+frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab
+frontend/src/features/crm/workspace/VisiteTab.jsx::VisiteTab
+frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise
+frontend/src/features/crm/workspace/sections/SectionPipeline.jsx::onFriseChanged
+frontend/src/features/entites/EntitesPage.jsx::load
+frontend/src/features/ged/GedNavigator.jsx::submit
+frontend/src/features/ged/advanced/ApprobationPage.jsx::EnvoiMasseDialog
+frontend/src/features/installations/InterventionFieldExecution.jsx::ClientInfoPanel
+frontend/src/features/notifications/AnnoncesPage.jsx::AnnoncesPage
+frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien
+frontend/src/features/offlinesync/mobile/CockpitHome.jsx::CockpitHome
+frontend/src/features/offlinesync/mobile/CommercialHome.jsx::CommercialHome
+frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome
+frontend/src/features/offlinesync/mobile/EquipeTerrainHome.jsx::EquipeTerrainHome
+frontend/src/features/parametres/CustomObjectRecordsPage.jsx::CustomObjectRecordsPage
+frontend/src/features/parametres/MessagesAccueilPage.jsx::recharger
+frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx::ObjetsPersonnalisesPage
+frontend/src/features/parametres/Playbooks.jsx::Playbooks
+frontend/src/features/portail/client/PortailClientChantiers.jsx::charger
+frontend/src/features/portail/client/PortailClientChantiers.jsx::voirSuivi
+frontend/src/features/portail/client/PortailClientConsommation.jsx::PortailClientConsommation
+frontend/src/features/portail/client/PortailClientContrats.jsx::PortailClientContrats
+frontend/src/features/portail/client/PortailClientDevis.jsx::charger
+frontend/src/features/portail/client/PortailClientDocuments.jsx::charger
+frontend/src/features/portail/client/PortailClientEquipe.jsx::charger
+frontend/src/features/portail/client/PortailClientFactures.jsx::charger
+frontend/src/features/portail/client/PortailClientLivraisons.jsx::charger
+frontend/src/features/portail/client/PortailClientSav.jsx::charger
+frontend/src/features/portail/client/PortailClientSav.jsx::voirFil
+frontend/src/features/portail/fournisseur/PortailFournisseurBcf.jsx::charger
+frontend/src/features/portail/partenaire/PortailPartenaireLeads.jsx::charger
+frontend/src/features/uxviews/useServerSavedViews.js::useServerSavedViews

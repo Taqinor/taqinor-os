@@ -1,0 +1,77 @@
+# Base de reference de check_calepinage_actions_consommees.py pour STOCK et
+# ACHATS — DETTE NOMMEE, RIEN D'AUTRE (ASTK232 ; ressources ET @action).
+#
+# Chaque ligne est une ressource routee ou une `@action` de apps/stock/views/
+# ou apps/achats/views.py qu'AUCUN appel de frontend/src ne consomme et qui ne
+# porte pas de marqueur `# headless: <raison>`. Le passif est amorce APRES les
+# ecrans du groupe (il ne doit contenir que la dette nommee par ASTK233).
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - brancher (ou supprimer, ou marquer `# headless:`) puis `python
+#     scripts/check_calepinage_actions_consommees.py --write-baseline` retire
+#     la ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne ; ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur.
+#
+# Format : `<fichier>:<ligne>  <url_path>  # <raison datee>`
+# (`ressource/<segment>` pour une ressource, le url_path pour une @action).
+backend/django_core/apps/stock/views/bon_commande_fournisseur.py:747  lignes-import  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/budget_departement.py:134  ressource/engagements-budget  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/catch_weight.py:56  pesees  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/catch_weight.py:73  lignes/(?P<ligne_id>[0-9]+)/pesee  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/catch_weight.py:111  rapprocher-pesees  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/conformite_fournisseur.py:111  ressource/tolerances-rapprochement-categorie  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/facture_fournisseur.py:308  depuis-ubl  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/facture_fournisseur.py:344  releve-deductions-tva  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fiche_technique.py:47  importer-datasheet  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fournisseur.py:319  revoquer-acces  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fournisseur.py:354  portail-tokens  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fournisseur.py:375  portail-tokens/(?P<token_id>[^/.]+)/revoquer  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fournisseur.py:422  export-conformite  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fournisseur.py:480  documents-expirants  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fournisseur_scm.py:57  ressource/incidents-qualite-fournisseur  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/fournisseur_scm.py:149  delai-mesure  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/hazmat.py:38  ressource/casiers-hazmat  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/negoce.py:82  ressource/consignations  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/negoce.py:163  declarer-consommation  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/negoce.py:318  ressource/accords-rfa-fournisseur  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/negoce.py:412  atp  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/produit.py:559  valorisation-a-date  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/produit.py:577  decoupes  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/produit.py:691  classe-abc  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/produit.py:713  plan-picking  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/produit.py:857  etiquettes-prix  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/produit.py:1175  tracabilite  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/qualite_reception.py:64  ressource/plans-echantillonnage  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/qualite_reception.py:120  echantillonnage  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/reappro_casier.py:46  ressource/seuils-reappro-casier  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/reappro_casier.py:70  ressource/taches-reappro-interne  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/reception_fournisseur.py:225  suggestions-rangement  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/reception_fournisseur.py:245  proposer-cross-dock  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/reception_fournisseur.py:283  affecter-cross-dock  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/retour_fournisseur.py:111  valider-scanne  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/transfert.py:136  receptionner  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:61  ressource/vagues-picking  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:122  configurer-liberation  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:161  ressource/unites-logistiques  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:250  controler-scan  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:325  export-asn  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:354  import-asn  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:361  sceller  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:374  etiquette-pdf  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:399  ressource/quais  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:439  ressource/rendez-vous-transporteur  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:502  ressource/expeditions  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:527  cmr-pdf  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:573  generer-etiquette  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:623  ressource/alertes-rappel  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:690  ressource/plans-comptage-tournant  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:721  ressource/blocages-qualite  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:800  lever-quarantaine  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:814  ressource/plans-chargement  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:878  verifier-capacite  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:911  ressource/mouvements-rebut  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:962  ressource/retours-client  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:1017  receptionner  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:1030  inspecter  # sans consommateur au 07/10/2026 (ASTK232)
+backend/django_core/apps/stock/views/wms.py:1046  ressource/portails-tiers  # sans consommateur au 07/10/2026 (ASTK232)
