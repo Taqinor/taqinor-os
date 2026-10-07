@@ -80,10 +80,10 @@ const PANEL_THICK_M = 0.033;
  *  dans le builder (`frontStrut + montée/2 + 0,07` au-dessus de la dalle). */
 const FLAT_STAND_M = 0.1;
 const DEG2RAD = Math.PI / 180;
-/** Mètres par degré de latitude — DOIT valoir VIEWER_DEG2M (lib/proposition.ts,
- *  111 320, non exporté) : c'est l'inverse exact du `toENU` de buildViewerModel,
- *  condition de l'alignement pixel de la photo sur le contour tracé. */
-const DEG2M = 111_320;
+// Mètres par degré de latitude — source unique lib/geo.ts (la même que VIEWER_DEG2M de
+// lib/proposition.ts) : inverse exact du `toENU` de buildViewerModel, condition de
+// l'alignement pixel de la photo sur le contour tracé.
+import { DEG2M_GEO as DEG2M } from '../../lib/geo';
 
 export interface ViewerInitOptions {
   /** prefers-reduced-motion : pas d'amortissement, pas d'auto-rotation. */

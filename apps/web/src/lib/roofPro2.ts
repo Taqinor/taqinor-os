@@ -202,7 +202,7 @@ export const FRONT_STRUT_M = 0.1; // hauteur du montant avant (bas) du châssis
 export const SOLAR_DECLINATION_DEG = 23.44; // déclinaison au solstice
 export const SHADOW_MARGIN_M = 0.05; // petite marge en plus de l'ombre calculée
 
-const WGS84_RADIUS = 6378137;
+import { WGS84_RADIUS } from './geo';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000;

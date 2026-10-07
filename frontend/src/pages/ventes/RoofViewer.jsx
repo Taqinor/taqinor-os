@@ -53,8 +53,8 @@ const ROOF_TYPE_LABEL = { flat: 'Toit plat', pitched: 'Toit en pente / tuiles' }
 
 // Convertit les mètres d'un obstacle (largeur/longueur) en degrés approximatifs
 // pour le dessiner à l'échelle de la projection (approximation locale suffisante
-// pour un aperçu — jamais un calcul métier). ~111 320 m par degré de latitude.
-const M_PER_DEG_LAT = 111320
+// pour un aperçu — jamais un calcul métier). (lib/geo.ts) m par degré de latitude.
+import { DEG2M_GEO as M_PER_DEG_LAT } from '@rooflib/geo'
 
 /**
  * Extrait la géométrie affichable : liste des zones avec sommets [lng,lat],
