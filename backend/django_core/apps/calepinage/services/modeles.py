@@ -132,8 +132,11 @@ def calepinages_modeles(company):
     ct = ContentType.objects.get_for_model(Calepinage)
     ids = TaggedItem.objects.filter(
         tag=tag, content_type=ct).values_list('object_id', flat=True)
-    return (Calepinage.objects
-            .filter(company=company, pk__in=list(ids))
+    # ACAL118 — un modèle ARCHIVÉ sort de la bibliothèque.
+    from ..selectors import calepinages_actifs
+
+    return (calepinages_actifs(company)
+            .filter(pk__in=list(ids))
             .order_by('-created_at', '-id'))
 
 
@@ -152,6 +155,13 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
 
     if modele is None or not getattr(modele, 'pk', None):
         raise ModeleInvalide('Modèle introuvable.', champ='modele')
+    from .archivage import est_archive
+
+    if est_archive(modele):
+        # ACAL118 — un modèle archivé ne sert plus de départ.
+        raise ModeleInvalide(
+            'Ce modèle est archivé : restaurez-le avant de vous en servir.',
+            champ='modele')
     if not est_modele(modele):
         raise ModeleInvalide(
             "Ce calepinage n'est pas marqué comme modèle réutilisable.",

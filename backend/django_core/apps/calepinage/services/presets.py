@@ -140,11 +140,28 @@ def normaliser_section_presets(valeur):
     la société que l'approbation est exigée alors que la lecture stricte
     (``approbation.approbation_exigee``, ``is True``) la tient pour éteinte.
 
+    ACAL287 — ``versions_conservees`` (borne de purge des versions,
+    ``services.versions``) : un entier STRICTEMENT positif, ou ``null``
+    (purge éteinte). Toute autre valeur (0, -1, « 2 », 2.5, un booléen) est
+    REFUSÉE en nommant ``presets.versions_conservees`` — jamais lue « OFF »
+    en silence alors que la société croit avoir borné l'historique.
+
     Raises:
-        ReglageInvalide: ``approbation_exigee`` n'est pas un booléen.
+        ReglageInvalide: ``approbation_exigee`` n'est pas un booléen, ou
+            ``versions_conservees`` n'est ni un entier > 0 ni ``null``.
     """
     from .parametres import ReglageInvalide
+    from .versions import CLE_BORNE_PURGE
 
+    if isinstance(valeur, dict) and CLE_BORNE_PURGE in valeur:
+        borne = valeur[CLE_BORNE_PURGE]
+        if borne is not None and (isinstance(borne, bool)
+                                  or not isinstance(borne, int)
+                                  or borne <= 0):
+            raise ReglageInvalide(
+                'Le nombre de versions conservées est un entier strictement '
+                f'positif, ou vide pour tout garder (reçu : {borne!r}).',
+                champ=CLE_BORNE_PURGE, section=SECTION)
     if not isinstance(valeur, dict) or CLE_APPROBATION_EXIGEE not in valeur:
         return valeur
     exigee = valeur[CLE_APPROBATION_EXIGEE]

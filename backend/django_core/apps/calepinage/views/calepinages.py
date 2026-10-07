@@ -40,8 +40,10 @@ from drf_spectacular.utils import (
 from rest_framework import filters, status
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
 from apps.records.views import ChatterViewSetMixin
@@ -167,6 +169,14 @@ def _param_chemin(nom, description):
                             description=description)
 
 
+#: ACAL120 — DELETE / PUT sur ``calepinages/<pk>/`` : 405, archiver est
+#: l'unique geste (le renommage passe par PATCH).
+MESSAGE_DELETE_REFUSE = ('Un calepinage ne se supprime pas : archivez le '
+                         'calepinage (réversible).')
+MESSAGE_PUT_REFUSE = ('Remplacement complet refusé : modifiez par PATCH, ou '
+                      'archivez le calepinage.')
+
+
 class _OrdreStatutDerive(filters.OrderingFilter):
     """ACAL114 — ``?ordering=statut`` ordonne le statut DÉRIVÉ de
     l'approbation (annotation ``statut_derive``), jamais la colonne figée."""
@@ -260,8 +270,12 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         # ACAL295 — LE prédicat d'accès (``selectors.calepinages_visibles``) :
         # société + filtres de liste + vue restreinte au responsable, le même
         # pour la liste, le détail et chaque action ``detail=True``.
+        # ACAL119 (D-ACAL-25) — seule la LISTE écarte les archivés ; toute
+        # action sur un calepinage de sa société le retrouve (lectures 200
+        # avec mention « archivé », écritures 409 nommées — jamais 404).
         lignes = selectors.calepinages_visibles(
             self.request.user, base=super().get_queryset(),
+            inclure_archives=getattr(self, 'action', None) != 'list',
             lead_id=_entier(params.get('lead'), 'lead'),
             client_id=_entier(params.get('client'), 'client'),
             statut=_statut(params.get('statut')),
@@ -287,6 +301,23 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
             return filtrer_par_etiquette(lignes, valeurs)
         except EtiquetteRefusee as refus:
             raise DrfValidationError({refus.champ: str(refus)})
+
+    #: ACAL119 — la SEULE écriture admise sur un calepinage archivé.
+    ACTIONS_ADMISES_SUR_ARCHIVE = frozenset({'restaurer_corbeille'})
+
+    def get_object(self):
+        """ACAL119 — le point commun de TOUTES les routes ``detail=True`` du
+        module (vue racine + rattachements) : une méthode non sûre sur un
+        calepinage archivé ⇒ 409 nommé (``refuser_ecriture_si_archive``),
+        sauf « Restaurer » ; une lecture est servie telle quelle."""
+        calepinage = super().get_object()
+        if (self.request.method not in SAFE_METHODS
+                and getattr(self, 'action', None)
+                not in self.ACTIONS_ADMISES_SUR_ARCHIVE):
+            from ..services.archivage import refuser_ecriture_si_archive
+
+            refuser_ecriture_si_archive(calepinage)
+        return calepinage
 
     @extend_schema(responses={201: CalepinageSerializer,
                               409: inline_serializer(
@@ -354,10 +385,20 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         contrat (``calepinage_creation_conflit.json``), rien n'est écrit."""
         from ..services.liens import RattachementRefuse
 
+        if not kwargs.get('partial'):
+            # ACAL120 — PUT (remplacement complet) n'est pas servi : on
+            # modifie par PATCH (R3).
+            raise MethodNotAllowed(request.method, detail=MESSAGE_PUT_REFUSE)
         try:
             return super().update(request, *args, **kwargs)
         except RattachementRefuse as refus:
             return Response(refus.corps, status=refus.statut)
+
+    def destroy(self, request, *args, **kwargs):
+        """ACAL120 — un calepinage ne se SUPPRIME jamais : 405, rien n'est
+        détruit (versions, variantes, photos intactes) ; archiver est
+        l'unique geste (``POST archiver/``, réversible)."""
+        raise MethodNotAllowed(request.method, detail=MESSAGE_DELETE_REFUSE)
 
     def perform_update(self, serializer):
         """ACAL180 — lead, client et responsable passent par
@@ -391,7 +432,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         queryset = super().filter_queryset(queryset)
         if getattr(self, 'action', None) == 'list':
-            queryset = queryset.prefetch_related('devis__lignes')
+            # ACAL122 — la liste ne charge JAMAIS ``resultat`` (série horaire
+            # de 8 760 points par ligne) : le sérialiseur ne l'expose pas.
+            # ``roof_layout`` reste chargé (layout_stale / nb_panneaux).
+            queryset = (queryset.prefetch_related('devis__lignes')
+                        .defer('resultat'))
         return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
@@ -1462,13 +1507,17 @@ def _compteur_variantes(calepinage):
 
 def _permissions(calepinage, request):
     """Ce que L'APPELANT a le droit de faire — jamais un drapeau décoratif."""
+    from ..services.archivage import raison_refus_archivage
+
     user = getattr(request, 'user', None) if request is not None else None
     peut_gerer = bool(user) and PeutGererCalepinage().has_permission(
         request, None)
     return {
         'peut_modifier': peut_gerer,
-        'peut_supprimer': peut_gerer and not getattr(calepinage, 'devis_id',
-                                                     None),
+        # ACAL120 — « supprimer » = ARCHIVER (DELETE est 405) : le MÊME
+        # prédicat que ``services.archivage.archiver``.
+        'peut_supprimer': peut_gerer and not raison_refus_archivage(
+            calepinage),
         'peut_retenir_variante': peut_gerer and bool(
             getattr(calepinage, 'variantes', None)
             and calepinage.variantes.exists()),

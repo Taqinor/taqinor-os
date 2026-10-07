@@ -77,7 +77,9 @@ const calepinageApi = {
      par le serveur fait ouvrir le mauvais objet — on n'en invente donc aucun
      autre ici. */
   calepinages: {
-    ...crud('calepinages'),
+    // ACAL120 — les SEULES méthodes CRUD servies : un calepinage ne se
+    // supprime pas (DELETE/PUT ⇒ 405) — archiver est l'unique geste.
+    ...(({ list, get, create, update }) => ({ list, get, create, update }))(crud('calepinages')),
 
     // CAL199/CAL246 — les calepinages marqués MODÈLE de la société (drapeau
     // `records.Tag`, jamais un champ propre). Lecture pure.

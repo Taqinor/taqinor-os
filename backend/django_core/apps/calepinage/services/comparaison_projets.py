@@ -40,8 +40,8 @@ from __future__ import annotations
 from .valeurs import nombre as _nombre
 
 __all__ = [
-    'BORNE_PROJETS', 'COLONNES', 'ComparaisonRefusee', 'MOTIF_INTROUVABLE',
-    'MOTIF_NON_SIMULE', 'MOTIF_PERIME', 'comparer_calepinages',
+    'BORNE_PROJETS', 'COLONNES', 'ComparaisonRefusee', 'MOTIF_ARCHIVE',
+    'MOTIF_INTROUVABLE', 'MOTIF_NON_SIMULE', 'MOTIF_PERIME', 'comparer_calepinages',
 ]
 
 #: La borne du comparatif : cinq calepinages. C'est celle de PV*SOL, citée
@@ -73,6 +73,9 @@ MOTIF_PERIME = (
 MOTIF_INTROUVABLE = (
     'Calepinage introuvable dans cette société : il est ignoré, jamais '
     'comparé.')
+#: ACAL118 — un calepinage ARCHIVÉ (visible) est refusé en le disant.
+MOTIF_ARCHIVE = (
+    'Calepinage archivé : restaurez-le pour le comparer.')
 
 
 class ComparaisonRefusee(ValueError):
@@ -242,12 +245,19 @@ def comparer_calepinages(user, ids):
     trouves = {calepinage.pk: calepinage
                for calepinage in calepinages_visibles(
                    user, inclure_archives=True).filter(pk__in=demandes)}
+    from .archivage import est_archive
+
+    def _motif(pk):
+        if pk not in trouves:
+            return MOTIF_INTROUVABLE
+        return MOTIF_ARCHIVE if est_archive(trouves[pk]) else None
+
     return {
         'colonnes': _colonnes(),
         'lignes': [_ligne_de_comparaison(trouves[pk])
-                   for pk in demandes if pk in trouves],
-        'refus': [{'id': pk, 'motif': MOTIF_INTROUVABLE}
-                  for pk in demandes if pk not in trouves],
+                   for pk in demandes if _motif(pk) is None],
+        'refus': [{'id': pk, 'motif': _motif(pk)}
+                  for pk in demandes if _motif(pk) is not None],
     }
 
 

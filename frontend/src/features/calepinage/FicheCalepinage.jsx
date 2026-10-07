@@ -218,7 +218,9 @@ export default function FicheCalepinage({ detail, onRelire }) {
   const gestes = [
     permissions.peut_modifier ? 'modifier' : null,
     permissions.peut_retenir_variante ? 'retenir une variante' : null,
-    permissions.peut_supprimer ? 'supprimer' : null,
+    // ACAL120 — « supprimer » n'existe pas (DELETE ⇒ 405) : le geste est
+    // ARCHIVER, même prédicat que le serveur.
+    permissions.peut_supprimer ? 'archiver' : null,
   ].filter(Boolean)
 
   // `peut_modifier` EST `calepinage_gerer` côté serveur

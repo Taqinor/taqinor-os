@@ -1016,6 +1016,19 @@ def _ecrire_resultat_variante(variante, blocs):
     variante.resultat = resultat
 
 
+def _poser_version_moteur(calepinage, version):
+    """ACAL121 — l'UNIQUE écrivain de ``Calepinage.version_moteur`` : la
+    version publiée dans ``resultat['simulation']['version_moteur']``.
+    Hors base (pas de ``pk``) ou double de test non-modèle : l'attribut seul
+    est posé, rien n'est enregistré."""
+    from django.db import models
+
+    calepinage.version_moteur = version or ''
+    if getattr(calepinage, 'pk', None) and isinstance(calepinage,
+                                                      models.Model):
+        calepinage.save(update_fields=['version_moteur', 'updated_at'])
+
+
 def _simulation_enregistree(calepinage):
     """L'en-tête ``simulation`` déjà écrit sur ce calepinage (``{}`` sinon)."""
     stocke = getattr(calepinage, 'resultat', None)
@@ -1429,9 +1442,19 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         # d'écrire. Une saisie faite PENDANT le calcul (``entree_electrique``,
         # ``sld_edition``…) n'est donc jamais effacée par l'instantané lu au
         # début. Seule la colonne ``resultat`` est écrite — AUCUN statut.
+        # ACAL121 — ``Calepinage.version_moteur`` est écrit dans la MÊME
+        # transaction, depuis la version PUBLIÉE dans ``resultat.simulation``
+        # (une seule source) : le pied de planche, les documents et le
+        # webhook lisent enfin la version du calcul.
+        from django.db import transaction
+
         from .resultat import modifier_resultat
 
-        modifier_resultat(calepinage, lambda resultat: resultat.update(blocs))
+        with transaction.atomic():
+            modifier_resultat(calepinage,
+                              lambda resultat: resultat.update(blocs))
+            _poser_version_moteur(
+                calepinage, blocs[CLE_SIMULATION]['version_moteur'])
         _annoncer_simulation(calepinage)
     return {
         'deja_calcule': False,

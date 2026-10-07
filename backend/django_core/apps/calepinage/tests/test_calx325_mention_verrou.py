@@ -99,15 +99,13 @@ class EtatLuParLesServicesTest(SimpleTestCase):
                                   tzinfo=datetime.timezone.utc)
         archivage = datetime.datetime(2026, 9, 20, 9, 0,
                                       tzinfo=datetime.timezone.utc)
-        calepinage = SimpleNamespace(pk=7,
+        # ACAL118 — la date d'archivage est celle du MODÈLE (archive_le).
+        calepinage = SimpleNamespace(pk=7, archive_le=archivage,
                                      devis=SimpleNamespace(date_envoi=envoi))
         with mock.patch('apps.calepinage.services.verrou.est_verrouille',
                         return_value=True), \
                 mock.patch('apps.calepinage.services.archivage.est_archive',
-                           return_value=True), \
-                mock.patch('apps.trash.selectors.entree_active',
-                           return_value=SimpleNamespace(
-                               supprime_le=archivage)):
+                           return_value=True):
             etat = etat_de_conception(calepinage)
         self.assertTrue(etat['verrouille'])
         self.assertTrue(etat['archive'])
@@ -199,9 +197,16 @@ class EtatEnBaseTest(TestCase):
         self.assertFalse(etat_de_conception(self.calepinage)['verrouille'])
 
     def test_l_archivage_ajoute_la_mention_archivee(self):
-        from apps.calepinage.services.archivage import archiver
+        # ACAL118 — un calepinage lié à un devis ACCEPTÉ ne s'archive plus
+        # (refus nommé) ; un archivé hérité (porté par la migration 0022)
+        # garde ses deux mentions.
+        from django.utils import timezone
 
-        archiver(self.calepinage)
+        from apps.calepinage.models import Calepinage
+
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            archive_le=timezone.now())
+        self.calepinage.refresh_from_db()
         etat = etat_de_conception(self.calepinage)
         self.assertTrue(etat['archive'])
         self.assertTrue(etat['archive_le'])

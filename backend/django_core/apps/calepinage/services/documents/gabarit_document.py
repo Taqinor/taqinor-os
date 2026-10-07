@@ -490,8 +490,8 @@ def etat_de_conception(calepinage):
     * verrouillé : ``services.verrou.est_verrouille`` — ACAL42 : le verdict
       ventes du geste CALEPINAGE (accepté, refusé, expiré ou remplacé ; un
       envoyé se corrige) ; la date est celle de l'ENVOI du devis lié ;
-    * archivé : ``services.archivage.est_archive`` (entrée ACTIVE de la
-      corbeille plateforme) ; la date est celle de l'archivage.
+    * archivé : ``services.archivage.est_archive`` (ACAL118 :
+      ``Calepinage.archive_le``) ; la date est celle de l'archivage.
 
     Un calepinage non enregistré est courant, sans lecture en base.
     """
@@ -508,11 +508,9 @@ def etat_de_conception(calepinage):
         etat['verrouille_le'] = _date_lisible(getattr(
             getattr(calepinage, 'devis', None), 'date_envoi', None))
     if est_archive(calepinage):
-        from apps.trash.selectors import entree_active
-
-        entree = entree_active(calepinage)
+        # ACAL118 — la date est celle du MODÈLE (survit à la purge).
         etat['archive'] = True
-        etat['archive_le'] = _date_lisible(getattr(entree, 'supprime_le',
+        etat['archive_le'] = _date_lisible(getattr(calepinage, 'archive_le',
                                                    None))
     return etat
 

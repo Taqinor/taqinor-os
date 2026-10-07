@@ -75,7 +75,15 @@ def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
     """Refuse (409, clé ``roof_layout``) toute écriture de conception quand le
     calepinage est verrouillé (ACAL43 : ``champ`` nomme l'écriture refusée),
     avec le MOTIF de ventes mot pour mot (ex.
-    « Devis accepté : révisez-le ») — no-op sinon."""
+    « Devis accepté : révisez-le ») — no-op sinon.
+
+    ACAL118 — un calepinage ARCHIVÉ refuse TOUTE écriture (409, clé
+    ``calepinage`` : « Calepinage archivé : restaurez-le … ») ; restaurer
+    est le seul geste qui le rouvre."""
+    from .archivage import MESSAGE_ARCHIVE, est_archive
+
+    if est_archive(calepinage):
+        raise VerrouilleRefuse(MESSAGE_ARCHIVE, champ='calepinage')
     verdict = _verdict_verrou(calepinage)
     if verdict is not None and not verdict.get('modifiable', True):
         raise VerrouilleRefuse(

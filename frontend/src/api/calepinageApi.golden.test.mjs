@@ -159,11 +159,15 @@ test('SPL291 — chaque clé figée appelle le MÊME verbe/URL/corps/config (pla
 
 test('SPL291 — le golden couvre toutes les clés de feuille + le CRUD partagé', () => {
   const cles = Object.keys(golden)
-  for (const m of ['list', 'get', 'create', 'update', 'remove']) {
+  // ACAL120 — les seules méthodes CRUD SERVIES (DELETE/PUT ⇒ 405) : `remove`
+  // n'est plus exposée.
+  for (const m of ['list', 'get', 'create', 'update']) {
     assert.ok(cles.includes(`calepinages.${m}`), `crud('calepinages').${m} absent du golden`)
   }
-  // 90 clés de feuille + 5 méthodes CRUD.
-  assert.equal(cles.length, NOMBRE_CLES_EXTRAITES + 5)
+  assert.ok(!cles.includes('calepinages.remove'), 'calepinages.remove ne doit plus être figée')
+  assert.ok(!('remove' in calepinageApi.calepinages), "calepinages n'expose pas remove (ACAL120)")
+  // Les clés de feuille + 4 méthodes CRUD.
+  assert.equal(cles.length, NOMBRE_CLES_EXTRAITES + 4)
   for (const id of cles) assert.ok(golden[id].length >= 1, `${id} n'a émis aucun appel HTTP`)
 })
 
