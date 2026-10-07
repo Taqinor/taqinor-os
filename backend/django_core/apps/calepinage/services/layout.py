@@ -496,6 +496,13 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             # (calculé sur l'ANCIENNE conception) : ``resultat=None``.
             version = enregistrer_version(calepinage, user=user,
                                           libelle=libelle, resultat=None)
+            if version is not None:
+                # ACAL287 — la borne SAISIE par la société
+                # (``presets.versions_conservees``) s'applique ICI, dans la
+                # même transaction ; absente ⇒ rien n'est retiré (OFF).
+                from .versions import purger_versions
+
+                purger_versions(calepinage)
 
     if not inchange:
         # CAL26 — un enregistrement SIGNIFICATIF se journalise ; un renvoi à

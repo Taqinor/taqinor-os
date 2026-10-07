@@ -238,6 +238,9 @@ def restaurer_version(version, *, user=None, libelle=''):
                 libelle=(libelle
                          or f'Restauration de la version #{version.pk}'),
                 roof_image='')
+            # ACAL287 — la restauration dépose une version DE PLUS (et
+            # « Avant restauration ») : la même borne s'applique.
+            purger_versions(calepinage)
     if not resultat['inchange']:
         # CAL26 — l'ÉVÉNEMENT « version restaurée », en plus de son effet
         # (l'enregistrement de conception se journalise de son côté).
