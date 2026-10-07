@@ -4385,6 +4385,25 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     return lettres
 
 
+def delettrer_gr_ir_facture(facture):
+    """ASTK126 (C-ASTK-018) — inverse UNIQUE de `lettrer_gr_ir_facture` :
+    rouvre (``lettre=False``, ``date_lettrage=None``, ``facture=None``) les
+    provisions GR/IR lettrées par CETTE facture, dans SA société seulement.
+    Appelant prévu : la suppression autorisée d'une facture fournisseur
+    (``stock`` perform_destroy, ASTK86), via ce service. No-op pour une
+    facture sans provision. Renvoie le nombre de provisions rouvertes."""
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if facture is None or getattr(facture, 'pk', None) is None:
+        return 0
+    company_id = getattr(facture, 'company_id', None)
+    if company_id is None:
+        return 0
+    return ReceptionNonFacturee.objects.filter(
+        company_id=company_id, facture_id=facture.pk, lettre=True,
+    ).update(lettre=False, date_lettrage=None, facture=None)
+
+
 # ── YSTCK7 — peuplement auto du registre entrepôt (SerieEntrepot) à la
 # réception BCF. Consommateur du même événement `reception_fournisseur_
 # confirmee` (abonné dans receivers.py) : DC37/FG61 capturent

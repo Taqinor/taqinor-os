@@ -2,7 +2,9 @@
 
   * ASTK125 (RESA-8) — une facture fournisseur ne lettre une provision que si
     le cumul facturé du BCF la couvre entièrement : avant, une facture HT de
-    100 lettrait une provision de 1 000.
+    100 lettrait une provision de 1 000 ;
+  * ASTK126 (RESA-10) — `delettrer_gr_ir_facture` rouvre les seules
+    provisions lettrées par la facture, dans sa société.
 
 Services réels (aucun mock) ; le lettrage est appelé comme le fait l'abonné
 de ``facture_fournisseur_creee``.
@@ -19,7 +21,9 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.installations.models_gr_ir import ReceptionNonFacturee
-from apps.installations.services import lettrer_gr_ir_facture
+from apps.installations.services import (
+    delettrer_gr_ir_facture, lettrer_gr_ir_facture,
+)
 from apps.stock.models import (
     BonCommandeFournisseur, FactureFournisseur, Fournisseur,
 )
@@ -98,3 +102,42 @@ class LettragePartielTests(GrIrBase):
         self.lettrer(self.facture('500'))
         p2.refresh_from_db()
         self.assertTrue(p2.lettre)
+
+
+class DelettrageTests(GrIrBase):
+    SLUG = 'co-astk126'
+
+    def test_delettrer_rouvre_seulement_ses_provisions(self):
+        f1 = self.facture('500')
+        prov = self.provision('500')
+        self.lettrer(f1)
+        prov.refresh_from_db()
+        self.assertTrue(prov.lettre)
+        # Provision d'une autre facture (même société).
+        bc2 = self.bcf(self.company, self.fournisseur)
+        f2 = self.facture('200', bc=bc2)
+        autre = self.provision('200', bc=bc2)
+        self.lettrer(f2)
+        # Provision d'une autre société, (mal) reliée à la même facture.
+        co_b, _ = Company.objects.get_or_create(
+            slug='co-astk126-b', defaults={'nom': 'Co ASTK126 B'})
+        fourn_b = Fournisseur.objects.create(company=co_b, nom='Fourn B')
+        prov_b = ReceptionNonFacturee.objects.create(
+            company=co_b, bon_commande=self.bcf(co_b, fourn_b),
+            montant_provision=Decimal('500'), lettre=True, facture=f1)
+
+        self.assertEqual(delettrer_gr_ir_facture(f1), 1)
+
+        prov.refresh_from_db()
+        self.assertEqual((prov.lettre, prov.date_lettrage, prov.facture_id),
+                         (False, None, None))
+        autre.refresh_from_db()
+        self.assertTrue(autre.lettre)
+        self.assertEqual(autre.facture_id, f2.id)
+        prov_b.refresh_from_db()
+        self.assertTrue(prov_b.lettre)
+        self.assertEqual(prov_b.facture_id, f1.id)
+
+    def test_facture_sans_provision_no_op(self):
+        self.assertEqual(delettrer_gr_ir_facture(self.facture('50')), 0)
+        self.assertEqual(delettrer_gr_ir_facture(None), 0)
