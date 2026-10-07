@@ -409,6 +409,8 @@ CLES_RETIREES_CI_V1 = {
 
 #: ACAL101 — les deux valeurs de ``etude_params['production_source']``.
 PRODUCTION_CALEPINAGE = 'calepinage'
+#: Aucun écrivain ne pose « saisie » aujourd'hui (``production_annuelle`` est
+#: DÉRIVÉE, propriétaire CALEPINAGE) : valeur réservée, lue comme « absente ».
 PRODUCTION_SAISIE = 'saisie'
 
 

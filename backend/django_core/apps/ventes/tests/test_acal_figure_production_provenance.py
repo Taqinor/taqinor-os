@@ -7,7 +7,7 @@ et UNE fonction rend la production recalée du devis
   'calepinage'`` et une production ARRONDIE (8843,66 → 8844, plus 8843) ;
 * la figure du calepinage (base 720 W) est recalée sur la puissance des
   LIGNES (8 × 715 W = 5,72 kWc) — quelle que soit sa décimale ;
-* une étude SAISIE (``production_source = 'saisie'``) n'est jamais recalée ;
+* une étude sans marque (antérieure à ACAL101) n'est jamais recalée ;
 * le sélecteur cross-app ``production_attendue_pour_devis`` (monitoring) lit
   la figure recalée.
 
@@ -116,14 +116,15 @@ class ProductionProvenanceTest(TestCase):
         self.assertEqual(production_attendue_pour_devis(devis.pk),
                          Decimal(str(int(round(8843.1 * 5.72 / 5.76)))))
 
-    def test_etude_saisie_non_recalee(self):
-        devis = self._devis_manuel({'production_annuelle': 8844,
-                                    'production_source': 'saisie'})
+    def test_etude_sans_marque_non_recalee(self):
+        # Lot 2 critique #9 — aucun chemin n'écrit « saisie » : la production
+        # est une clé DÉRIVÉE de propriétaire CALEPINAGE, refusée à l'écran
+        # (et aux surcharges, ``overrides.CHAMPS_DERIVES``). Le seul cas
+        # non recalé réel est un devis SANS marque (antérieur à ACAL101).
+        from apps.ventes.domain.etude_schema import ECRAN, fusionner
+        with self.assertRaises(ValueError):
+            fusionner({}, proprietaire=ECRAN, production_annuelle=8844)
+        devis = self._devis_manuel({'production_annuelle': 8844})
         self.assertEqual(figure_production_du_devis(devis), 8844)
         self.assertEqual(production_attendue_pour_devis(devis.pk),
                          Decimal('8844'))
-        # Sans marque (devis d'avant ACAL101) : jamais recalée non plus.
-        Devis.objects.filter(pk=devis.pk).update(
-            etude_params={'production_annuelle': 8844})
-        devis.refresh_from_db()
-        self.assertEqual(figure_production_du_devis(devis), 8844)
