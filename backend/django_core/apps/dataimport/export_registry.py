@@ -31,6 +31,11 @@ SENSITIVE_FIELDS = {
     ('stock', 'produit'): {'prix_achat'},
     ('installations', 'intervention'): {
         'lien_client_token', 'lien_rapport_token'},
+    # AANA14 — jetons publics et marge : un fichier exporté sort du système.
+    ('crm', 'lead'): {'token'},
+    ('ventes', 'devis'): {'marge_snapshot'},
+    ('sav', 'equipement'): {'equipement_token', 'public_token'},
+    ('sav', 'ticket'): {'share_token'},
 }
 
 
