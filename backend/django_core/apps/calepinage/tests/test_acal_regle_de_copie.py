@@ -58,6 +58,7 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.source = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='QA-ACAL-MODELE',
             roof_layout=_document(), layout_hash='c' * 64,
+            version_moteur='2.1.0',
             pertes=copy.deepcopy(POSTES),
             resultat={'simulation': {'hash_entree': 'site-origine'},
                       'raccordement_saisie': {'type': 'mono'}},
@@ -74,6 +75,8 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertEqual(copie.pertes, POSTES)
         self.assertIsNone(copie.resultat)
         self.assertEqual(copie.roof_image, '')
+        # Lot 2 critique #14 — pas de version de moteur sans résultat.
+        self.assertEqual(copie.version_moteur, '')
 
     def test_dupliquer_ne_copie_pas_la_retenue(self):
         copie = dupliquer(self.source, user=self.user, lead_id=self.lead_2.pk)

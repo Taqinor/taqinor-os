@@ -294,8 +294,9 @@ def retenir_variante(variante, *, user=None, appliquer=True):
 #: et ses postes de pertes. JAMAIS : ``resultat`` (production d'un autre toit
 #: + saisies de site), ``roof_image``, ``approbation``, ``devis``,
 #: ``appel_offre_id`` ; les variantes copiées naissent NON retenues et SANS
-#: résultat.
-CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'version_moteur', 'pertes')
+#: résultat. Ni ``version_moteur`` (lot 2 critique #14) : elle qualifie un
+#: RÉSULTAT, et la copie n'en a aucun — vide jusqu'au premier calcul.
+CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'pertes')
 
 
 #: ACAL187 (D-ACAL-12) — Dupliquer un calepinage OUVERT sans cible : la
@@ -440,7 +441,6 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
         copies['roof_layout'] = roof_layout
         copies['layout_hash'] = layout_hash(roof_layout) or ''
     copies['layout_hash'] = copies['layout_hash'] or ''
-    copies['version_moteur'] = copies['version_moteur'] or ''
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
 
