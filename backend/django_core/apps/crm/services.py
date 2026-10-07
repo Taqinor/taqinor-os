@@ -11672,7 +11672,47 @@ def journaliser_visite(visite, user, moment, detail=''):
 # ``visites`` ne fait plus aucun écrit sur ``crm.Lead``.
 
 
-def ecrire_retour_lead_visite(lead, recap):
+#: ALEA28 — balises du bloc de récap PAR VISITE dans ``Lead.visite_notes``.
+_RECAP_DEBUT = '[Récap visite n°{}]'
+_RECAP_FIN = '[/Récap visite n°{}]'
+_RE_BLOC_RECAP = _re.compile(
+    r'\[Récap visite n°(\d+)\]\n.*?\n\[/Récap visite n°\1\]', _re.S)
+
+
+def _bloc_recap_visite(visite_id, recap):
+    return (f'{_RECAP_DEBUT.format(visite_id)}\n{recap}\n'
+            f'{_RECAP_FIN.format(visite_id)}')
+
+
+def _notes_avec_recap(existantes, recap, visite_id):
+    """ALEA28 — ``existantes`` où le récap de ``visite_id`` est REMPLACÉ.
+
+    * la visite a déjà son bloc → son contenu est remplacé (R1 → R2), le
+      reste du texte (saisie manuelle, blocs des autres visites) est intact ;
+    * pas encore de bloc, mais le même récap présent HORS bloc (écrit avant
+      ALEA28) → cette occurrence est balisée en place, jamais dupliquée ;
+    * le même récap déjà porté par le bloc d'une AUTRE visite → rien
+      (même phrase, aucune information de plus) ;
+    * sinon le bloc est ajouté à la fin.
+    """
+    bloc = _bloc_recap_visite(visite_id, recap)
+    for trouve in _RE_BLOC_RECAP.finditer(existantes):
+        if trouve.group(1) == str(visite_id):
+            return (existantes[:trouve.start()] + bloc
+                    + existantes[trouve.end():])
+    blocs = [(m.start(), m.end()) for m in _RE_BLOC_RECAP.finditer(existantes)]
+    debut = existantes.find(recap)
+    while debut != -1:
+        if not any(a <= debut < b for a, b in blocs):
+            return (existantes[:debut] + bloc
+                    + existantes[debut + len(recap):])
+        debut = existantes.find(recap, debut + 1)
+    if recap in existantes:
+        return existantes
+    return f'{existantes}\n{bloc}'.strip() if existantes else bloc
+
+
+def ecrire_retour_lead_visite(lead, recap, visite_id=None):
     """VT12 — le feu vert REDESCEND sur la fiche lead.
 
     Le lead est la fiche que tout le monde ouvre : après le feu vert, il porte
@@ -11681,10 +11721,15 @@ def ecrire_retour_lead_visite(lead, recap):
     c'est ``visites.selectors.recap_visite_terrain`` qui compose la phrase,
     unique source de vérité, et elle arrive ici toute faite).
 
-    Deux prudences : le récap est APPENDU (une note déjà écrite à la main n'est
-    jamais écrasée) et il n'est écrit qu'une fois (une re-validation ne le
-    duplique pas). Rien de tout ceci ne double le chatter : la note
-    ``journaliser_visite(..., 'validee')`` reste l'unique trace d'historique.
+    ALEA28 — le récap vit dans un bloc balisé PAR VISITE
+    (``[Récap visite n°<id>]`` … ``[/Récap visite n°<id>]``) : une
+    revalidation après renvoi REMPLACE le récap de cette visite (un seul récap
+    courant), une autre visite du même lead a son propre bloc, et le texte
+    écrit à la main autour n'est JAMAIS écrasé. Revalider sans changement
+    laisse ``visite_notes`` octet-identique. Sans ``visite_id`` (appel
+    historique), le récap est seulement ajouté s'il est absent. Rien de tout
+    ceci ne double le chatter : la note ``journaliser_visite(..., 'validee')``
+    reste l'unique trace d'historique.
     """
     if lead is None:
         return None
@@ -11693,10 +11738,17 @@ def ecrire_retour_lead_visite(lead, recap):
     if not lead.visite_effectuee:
         lead.visite_effectuee = True
         champs.append('visite_effectuee')
-    if recap and recap not in existantes:
-        lead.visite_notes = (f'{existantes}\n{recap}'.strip()
-                             if existantes else recap)
-        champs.append('visite_notes')
+    if recap:
+        if visite_id is not None:
+            nouvelles = _notes_avec_recap(existantes, recap, visite_id)
+        elif recap not in existantes:
+            nouvelles = (f'{existantes}\n{recap}'.strip()
+                         if existantes else recap)
+        else:
+            nouvelles = existantes
+        if nouvelles != existantes:
+            lead.visite_notes = nouvelles
+            champs.append('visite_notes')
     if champs:
         lead.save(update_fields=champs)
     return lead

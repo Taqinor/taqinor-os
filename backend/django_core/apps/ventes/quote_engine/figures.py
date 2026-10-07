@@ -410,6 +410,151 @@ def compare_surfaces(surfaces: dict[str, dict[str, list[Mesure]]]
     return ecarts
 
 
+# ── Arithmétique INTRA-surface (ATOT29) ──────────────────────────────────────
+#
+# La parité ci-dessus confronte un chiffre à LUI-MÊME d'une surface à l'autre :
+# deux surfaces qui impriment la même chaîne fausse passent. Ce contrôle-ci
+# relit UNE surface et vérifie que sa chaîne de totaux s'additionne :
+#   Sous-total HT − Remise − Arrondi = Total HT ;
+#   Total HT + Σ TVA par taux (à défaut : la TVA totale) = Total TTC.
+# Jumeau côté facturation : ``oracles_argent.verifier_chaine_document``
+# (ATOT13) — même règle sur les documents de facturation, propriétaire
+# distinct (renvoi croisé, aucun code partagé).
+
+#: Les étages soustraits du Sous-total HT, dans l'ordre de la chaîne.
+ETAGES_HT = ("remise", "arrondi")
+
+
+def _lecture(figures: dict, cle: str, option: str | None):
+    """La mesure la plus PRÉCISE de ``cle@option`` sur la surface, ou None."""
+    lisibles = [m for m in (figures or {}).get(identite(cle, option)) or []
+                if m.valeur is not None]
+    if not lisibles:
+        return None
+    return min(lisibles, key=lambda m: m.resolution)
+
+
+def _tva_par_taux(figures: dict, option: str | None) -> list:
+    """Les mesures ``tva_taux:<taux>@option`` (la plus précise par taux)."""
+    suffixe = f"@{option}" if option not in (None, "") else ""
+    mesures = []
+    for ident, lues in (figures or {}).items():
+        if cle_de(ident) != "tva_taux" or ":" not in ident:
+            continue
+        reste = ident.split(":", 1)[1]
+        option_ident = ("@" + reste.split("@", 1)[1]) if "@" in reste else ""
+        if option_ident != suffixe:
+            continue
+        lisibles = [m for m in lues if m.valeur is not None]
+        if lisibles:
+            mesures.append(min(lisibles, key=lambda m: m.resolution))
+    return mesures
+
+
+def _valeur(cle: str, m: Mesure) -> Decimal:
+    regle = FIGURE_KEYS.get(cle)
+    return abs(m.valeur) if regle is not None and regle.absolu else m.valeur
+
+
+def _tolerance_chaine(mesures) -> Decimal:
+    """Tolérance de RÉSOLUTION : chaque terme affiché est arrondi à son pas
+    (± pas/2) ; jamais sous le centime (argent au centime, ``_ARGENT``)."""
+    return max(_ARGENT, sum((m.resolution / 2 for m in mesures), Decimal(0)))
+
+
+def verifier_chaine(figures: dict, option: str | None = None) -> list[str]:
+    """Les anomalies d'arithmétique de la chaîne de totaux de ``option`` sur
+    UNE surface (``extract_figures`` / ``figures_depuis_*``). Liste vide = la
+    chaîne s'additionne (ou n'est pas imprimée sur cette surface).
+
+    Un étage absent vaut 0 — c'est ce que font les surfaces (un montant nul
+    n'est pas imprimé). Quand la chaîne ne s'additionne pas, l'anomalie NOMME
+    les étages absents : une surface qui omet un étage non nul (« Arrondi
+    commercial » oublié) est désignée par le nom de cet étage.
+    """
+    anomalies: list[str] = []
+    nom_option = option or "document"
+
+    # (1) Sous-total HT − Remise − Arrondi = Total HT.
+    brut = _lecture(figures, "sous_total_ht", option)
+    net = _lecture(figures, "total_ht", option)
+    if brut is not None and net is not None:
+        presents, absents = [brut, net], []
+        attendu = brut.valeur
+        for etage in ETAGES_HT:
+            m = _lecture(figures, etage, option)
+            if m is None:
+                absents.append(etage)
+                continue
+            presents.append(m)
+            attendu -= _valeur(etage, m)
+        ecart = abs(attendu - net.valeur)
+        tol = _tolerance_chaine(presents)
+        if ecart > tol:
+            anomalies.append(
+                f"chaîne HT ({nom_option}) : sous_total_ht {brut.texte!r} − "
+                + " − ".join(ETAGES_HT) + f" ≠ total_ht {net.texte!r} "
+                f"(écart {ecart}, tolérance {tol}) — étage(s) absent(s) de "
+                f"la surface : {', '.join(absents) if absents else 'aucun'}")
+
+    # (2) Total HT + Σ TVA par taux (à défaut la TVA totale) = Total TTC.
+    # Une surface qui n'imprime pas de ligne « Total HT » (gabarit legacy :
+    # Sous-total HT puis TVA par taux) part du Sous-total diminué des étages
+    # imprimés — la même chaîne, lue telle que le client la lit.
+    ttc = _lecture(figures, "total_ttc", option)
+    if net is None and brut is not None:
+        base = brut.valeur
+        termes_ht = [brut]
+        for etage in ETAGES_HT:
+            m = _lecture(figures, etage, option)
+            if m is not None:
+                termes_ht.append(m)
+                base -= _valeur(etage, m)
+        net = Mesure(base, max(m.resolution for m in termes_ht),
+                     f"sous_total_ht − étages = {base}")
+    if net is not None and ttc is not None:
+        par_taux = _tva_par_taux(figures, option)
+        tva = _lecture(figures, "tva", option)
+        if par_taux:
+            termes, cle_tva = par_taux, "tva_taux"
+        elif tva is not None:
+            termes, cle_tva = [tva], "tva"
+        else:
+            termes, cle_tva = [], None
+        if cle_tva is not None:
+            somme = sum((m.valeur for m in termes), Decimal(0))
+            ecart = abs(net.valeur + somme - ttc.valeur)
+            tol = _tolerance_chaine([net, ttc, *termes])
+            if ecart > tol:
+                anomalies.append(
+                    f"chaîne TTC ({nom_option}) : total_ht {net.texte!r} + "
+                    f"Σ {cle_tva} ({somme}) ≠ total_ttc {ttc.texte!r} "
+                    f"(écart {ecart}, tolérance {tol})")
+        # La TVA totale imprimée est la somme de ses taux imprimés.
+        if par_taux and tva is not None:
+            somme = sum((m.valeur for m in par_taux), Decimal(0))
+            ecart = abs(somme - tva.valeur)
+            tol = _tolerance_chaine([tva, *par_taux])
+            if ecart > tol:
+                anomalies.append(
+                    f"TVA ({nom_option}) : Σ tva_taux ({somme}) ≠ tva "
+                    f"{tva.texte!r} (écart {ecart}, tolérance {tol}) — "
+                    "un taux manque sur la surface")
+    return anomalies
+
+
+def options_de_chaine(figures: dict) -> list[str | None]:
+    """Les options (``None`` = document entier) pour lesquelles la surface
+    imprime au moins un étage de la chaîne de totaux."""
+    etages = {"sous_total_ht", "remise", "arrondi", "total_ht", "tva",
+              "tva_taux", "total_ttc"}
+    vues: set = set()
+    for ident in figures or {}:
+        if cle_de(ident) in etages:
+            vues.add(ident.split("@", 1)[1] if "@" in ident else None)
+    return sorted(vues, key=lambda o: (o is not None, o or ""))
+
+
 def identites_comparees(surfaces: dict[str, dict]) -> set[str]:
     """Identités lues au moins DEUX fois (donc réellement confrontées)."""
     compte: dict[str, int] = {}
