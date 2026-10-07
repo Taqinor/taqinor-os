@@ -26,7 +26,6 @@ from typing import Any, TYPE_CHECKING
 
 import sqlglot
 import sqlglot.errors
-import sqlparse
 from sqlglot import exp
 
 try:
@@ -325,12 +324,6 @@ dans une requete ou une reponse.
 
 class SQLSecurityError(Exception):
     """Levee quand une requete ne peut PAS etre prouvee sure (echec ferme)."""
-
-
-def _strip_sql_comments(sql: str) -> str:
-    """Retire les commentaires SQL pour empecher de masquer un mot interdit
-    derriere `--` ou `/* */`. sqlparse fournit un formatter dedie."""
-    return sqlparse.format(sql or "", strip_comments=True).strip()
 
 
 # Noeuds qui ne doivent apparaitre NULLE PART dans une requete de lecture.
@@ -635,25 +628,23 @@ def _extract_base_tables(sql: str) -> set[str]:
     }
 
 
-# ── AUD401 — confidentialite INTRA-societe (secrets de comptes) ──────────────
-# La reecriture AANA2 garantit l'isolation ENTRE societes,
-# mais ne borne AUCUNE colonne DANS une societe : `authentication_customuser`
-# etant allowlistee, un `SELECT username, password FROM authentication_customuser`
-# passait TOUS les gardes en une seule instruction et rendait les hashes PBKDF2
-# de tous les comptes de la societe (admins inclus) a n'importe quel employe a
-# role minimal — l'endpoint /query n'exige aucune permission dediee. Le refus du
-# LLM ne compte pas comme garantie (le fichier le dit lui-meme) : voici le garde
-# DUR qui manquait.
+# ── AUD401 + L17 + AANA4 — confidentialite INTRA-societe des PROJECTIONS ─────
+# La reecriture AANA2 garantit l'isolation ENTRE societes, mais ne borne AUCUNE
+# colonne DANS une societe. Deux familles de colonnes ne doivent jamais sortir
+# par le canal du chatbot :
+#   - les SECRETS de compte (hash PBKDF2, graine TOTP, drapeaux d'elevation) :
+#     garde INCONDITIONNEL — aucune permission metier ne le leve (AUD401) ;
+#   - le PRIX D'ACHAT / la MARGE (CLAUDE.md : `Produit.prix_achat` est un
+#     indicateur GENERATEUR, jamais client-facing) : leve uniquement pour un
+#     porteur de `prix_achat_voir` (L17).
+# AANA4 (C-AANA-003) — une colonne sort aussi SANS ETRE NOMMEE, par une
+# projection LIGNE ENTIERE : `*`, `alias.*`, `(alias).*`, `row_to_json(alias)`,
+# `alias::text`, `array_agg(alias)`... (sonde du 05/10 : `row_to_json(u)`
+# contenait la cle `password`). UNE seule verification, sur l'ARBRE sqlglot
+# (plus de regex sur le texte) : `_references_forbidden_column`.
 #
-# Volontairement INCONDITIONNEL — contrairement a _FORBIDDEN_COLUMNS (prix
-# d'achat), qui se leve pour un porteur de `prix_achat_voir` : aucune permission
-# metier ne justifie de lire un hash de mot de passe ou une graine TOTP par le
-# canal du chatbot.
-#
-# Verifie a l'ecriture de ce garde : `parametres_companyprofile` ne porte AUCUN
-# secret SMTP/API dans ce depot (aucun champ chiffre, uniquement de la
-# configuration de politique) — elle reste donc lisible, contrairement a ce que
-# l'audit envisageait par precaution.
+# Verifie a l'ecriture d'AUD401 : `parametres_companyprofile` ne porte AUCUN
+# secret SMTP/API dans ce depot — elle reste donc lisible.
 _SECRET_COLUMNS = (
     "password",            # hash PBKDF2 (AbstractBaseUser)
     "last_login",
@@ -663,88 +654,21 @@ _SECRET_COLUMNS = (
     "totp_recovery_codes",
 )
 
-# Frontiere de mot STRICTE : `password_min_length`, `must_change_password` et
-# `password_changed_at` ne matchent pas (le `_` est un caractere de mot), donc
-# la configuration de politique reste interrogeable.
-_SECRET_RE = re.compile(
-    r"\b(" + "|".join(re.escape(c) for c in _SECRET_COLUMNS) + r")\b",
-    re.IGNORECASE,
-)
-
-# Tables dont une projection etoilee exposerait ces colonnes sans jamais les
-# nommer — un filtre purement lexical serait sinon contourne par `SELECT *`.
+# Tables dont une projection LIGNE ENTIERE exposerait un secret de compte.
 _SECRET_TABLES = ("authentication_customuser",)
 
-
-def _has_star_projection(text: str) -> bool:
-    """True si la requete projette une etoile qui RENDRAIT des colonnes.
-
-    `COUNT(*)` est tolere (l'etoile y est immediatement precedee d'une
-    parenthese : l'agregat ne restitue aucune colonne), pour qu'un « combien
-    d'utilisateurs ? » reste possible. Toute autre etoile — `SELECT *`,
-    `SELECT DISTINCT *`, `SELECT u.*`, `, t.*` — echoue FERME."""
-    for match in re.finditer(r"\*", text or ""):
-        if text[:match.start()].rstrip().endswith("("):
-            continue
-        return True
-    return False
-
-
-def _references_secret_column(sql: str) -> bool:
-    """True si la requete peut restituer un secret de compte (AUD401).
-
-    Deux motifs : la colonne est NOMMEE, ou une table sensible est projetee en
-    etoile (qui la rendrait sans jamais la nommer — un filtre purement lexical
-    serait sinon contourne par un simple `SELECT *`)."""
-    text = _strip_sql_comments(sql or "")
-    if _SECRET_RE.search(text):
-        return True
-    lowered = text.lower()
-    if any(table in lowered for table in _SECRET_TABLES):
-        return _has_star_projection(text)
-    return False
-
-
-def _validate_and_secure(sql: str, company_id: int) -> str:
-    """Point d'entree unique de securisation d'une requete generee :
-      ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
-      AANA3 : refuse toute fonction hors liste blanche ;
-      AUD401 : refuse toute lecture d'un secret de compte (hash de mot de passe,
-             graine 2FA, drapeaux d'elevation), nommee ou etoilee ;
-      AANA2 : REECRIT l'arbre pour que chaque table lue soit la sous-requete
-             filtree sur la societe du jeton (sqlglot) ; renvoie le SQL
-             regenere — c'est LUI, et lui seul, qui est execute.
-    Leve SQLSecurityError en cas d'echec — l'appelant renvoie un refus francais
-    a l'agent sans jamais executer la requete."""
-    _enforce_single_select(sql)
-    if _references_secret_column(sql):
-        raise SQLSecurityError(
-            "Colonne confidentielle de compte (mot de passe / 2FA / privileges) "
-            "— lecture refusee."
-        )
-    return _inject_company_filter(sql, company_id)
-
-
-# ── Securite : colonnes confidentielles (prix d'achat / marge) ────────────────
-# CLAUDE.md : `Produit.prix_achat` est un indicateur GENERATEUR, jamais
-# client-facing. Le chatbot stock ne doit JAMAIS restituer le prix d'achat ni la
-# marge. Le prompt _MARGIN_RESTRICTION le DECONSEILLE au LLM, mais ce n'est pas
-# une garantie ; ce garde DUR bloque toute requete qui touche ces colonnes quand
-# l'appelant n'a pas la permission `prix_achat_voir`. La valeur n'atteint donc
-# jamais l'agent ni la reponse, quoi que fasse le LLM.
 _FORBIDDEN_COLUMNS = (
     "prix_achat",
     "prix_achat_unitaire",
     "prix_achat_ht",
     "prix_revendeur",
     "marge",
+    "marge_snapshot",      # ventes.Devis — marge HT figee (manager-only)
 )
 
-# Mot-cle isole (frontiere de mot) pour eviter les faux positifs.
-_FORBIDDEN_RE = re.compile(
-    r"\b(" + "|".join(re.escape(c) for c in _FORBIDDEN_COLUMNS) + r")\b",
-    re.IGNORECASE,
-)
+# Tables autorisees portant un prix d'achat ou une marge (verifie sur les
+# modeles Django : stock.Produit.prix_achat, ventes.Devis.marge_snapshot).
+_PRICE_TABLES = ("stock_produit", "ventes_devis")
 
 # Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
 # le LLM la verbalise alors proprement, sans jamais voir la donnee.
@@ -763,10 +687,108 @@ _UNSAFE_QUERY_REPLY = (
 )
 
 
-def _references_forbidden_column(sql: str) -> bool:
-    """True si la requete reference une colonne confidentielle (prix d'achat /
-    marge). Test purement lexical sur le SQL genere — defense en profondeur."""
-    return bool(_FORBIDDEN_RE.search(sql or ""))
+def _select_sources(select: exp.Select) -> list:
+    """Sources DIRECTES (FROM + JOIN) d'un SELECT."""
+    sources = []
+    from_ = select.args.get("from_") or select.args.get("from")
+    if from_ is not None:
+        sources.append(from_.this)
+    for join in select.args.get("joins") or []:
+        sources.append(join.this)
+    return sources
+
+
+def _references_forbidden_column(sql: str, allow_price: bool = False) -> bool:
+    """True si la requete peut RESTITUER une colonne confidentielle — secret de
+    compte (toujours) ou prix d'achat / marge (sauf `allow_price`) — qu'elle
+    soit NOMMEE ou emportee par une projection LIGNE ENTIERE d'une table qui la
+    porte. Verification sur l'arbre sqlglot ; SQL illisible -> True (fail-closed).
+
+    Frontiere STRICTE par identifiant : `password_min_length` ou
+    `must_change_password` ne sont PAS des secrets (politique interrogeable)."""
+    try:
+        tree = _parse_single_query(sql)
+    except SQLSecurityError:
+        return True
+    colonnes = set(_SECRET_COLUMNS)
+    tables = set(_SECRET_TABLES)
+    if not allow_price:
+        colonnes |= set(_FORBIDDEN_COLUMNS)
+        tables |= set(_PRICE_TABLES)
+
+    # 1. Colonne NOMMEE (identifiant, quel que soit le contexte ou la casse).
+    for ident in tree.find_all(exp.Identifier):
+        if ident.name.lower() in colonnes:
+            return True
+
+    # 2. Projection LIGNE ENTIERE d'une table sensible : noms de « ligne » =
+    # nom de la table et son alias.
+    lignes: set[str] = set()
+    for table in tree.find_all(exp.Table):
+        if table.name.lower() in tables:
+            lignes.add(table.name.lower())
+            if table.alias:
+                lignes.add(table.alias.lower())
+    if not lignes:
+        return False
+
+    # 2a. Reference a la ligne comme VALEUR : row_to_json(u), u::text,
+    # array_agg(u), (u).*, `SELECT stock_produit FROM stock_produit`...
+    for col in tree.find_all(exp.Column):
+        if col.name.lower() in lignes:
+            return True
+
+    # 2b. Etoiles : `alias.*` d'une table sensible, ou `*` nu dans un SELECT
+    # dont une source DIRECTE est une table sensible. `COUNT(*)` ne restitue
+    # aucune colonne : tolere (« combien d'utilisateurs ? »).
+    for star in tree.find_all(exp.Star):
+        parent = star.parent
+        if isinstance(parent, exp.Count):
+            continue
+        if isinstance(parent, exp.Column):
+            if (parent.table or "").lower() in lignes:
+                return True
+            continue
+        select = star.find_ancestor(exp.Select)
+        if select is None:
+            return True
+        for source in _select_sources(select):
+            if (isinstance(source, exp.Table)
+                    and source.name.lower() in tables):
+                return True
+    return False
+
+
+def _references_secret_column(sql: str) -> bool:
+    """Secrets de compte SEULS (garde inconditionnel AUD401) : meme
+    verification que `_references_forbidden_column`, prix d'achat autorise."""
+    return _references_forbidden_column(sql, allow_price=True)
+
+
+def _validate_and_secure(sql: str, company_id: int,
+                         allow_price: bool = False) -> str:
+    """Point d'entree unique de securisation d'une requete generee :
+      ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
+      AANA3 : refuse toute fonction hors liste blanche ;
+      AUD401/L17/AANA4 : refuse toute projection d'un secret de compte
+             (toujours) ou d'un prix d'achat / marge (sans `allow_price`),
+             nommee OU emportee par une projection ligne entiere ;
+      AANA2 : REECRIT l'arbre pour que chaque table lue soit la sous-requete
+             filtree sur la societe du jeton (sqlglot) ; renvoie le SQL
+             regenere — c'est LUI, et lui seul, qui est execute.
+    Leve SQLSecurityError en cas d'echec — l'appelant renvoie un refus francais
+    a l'agent sans jamais executer la requete."""
+    _enforce_single_select(sql)
+    if _references_secret_column(sql):
+        raise SQLSecurityError(
+            "Colonne confidentielle de compte (mot de passe / 2FA / privileges) "
+            "— lecture refusee."
+        )
+    if not allow_price and _references_forbidden_column(sql):
+        raise SQLSecurityError(
+            "Colonne confidentielle (prix d'achat / marge) — lecture refusee."
+        )
+    return _inject_company_filter(sql, company_id)
 
 
 # ── NTPLT4 — GUC tenant sur la connexion du SQL-agent (defense en profondeur) ─
@@ -838,8 +860,11 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
 
     class _SecureQueryTool(QuerySQLDataBaseTool):
         def _run(self, query: str, run_manager=None) -> str:
-            # Garde confidentialite : refus AVANT toute execution SQL.
-            if not _allow_price and _references_forbidden_column(query):
+            # Garde confidentialite : refus AVANT toute execution SQL. Reponse
+            # « prix d'achat » seulement quand c'est bien LUI qui bloque (un
+            # secret de compte ou un SQL illisible -> refus generique plus bas).
+            if (not _allow_price and _references_forbidden_column(query)
+                    and not _references_secret_column(query)):
                 logger.warning(
                     "SECURITE: requete bloquee (prix_achat/marge non autorise). "
                     "SQL: %s", (query or "")[:200],
@@ -849,7 +874,8 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
             # seule + isolation tenant prouvee). Fail-closed : tout ce qui n'est
             # pas prouve sur est refuse sans jamais etre execute.
             try:
-                secured = _validate_and_secure(query, _cid)
+                secured = _validate_and_secure(
+                    query, _cid, allow_price=_allow_price)
             except SQLSecurityError as exc:
                 logger.warning(
                     "SECURITE: requete refusee (%s). SQL: %s",

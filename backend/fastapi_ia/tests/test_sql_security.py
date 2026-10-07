@@ -322,6 +322,73 @@ class FunctionWhitelistTests(unittest.TestCase):
                     svc._validate_and_secure(sql, self.CID)
 
 
+@unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
+class WholeRowProjectionTests(unittest.TestCase):
+    """AANA4 — C-AANA-003 : une projection LIGNE ENTIERE (`row_to_json(u)`,
+    `to_json[b]`, `alias.*`, `*`, `alias::text`) d'une table a secret ou a prix
+    d'achat restituait le hash du mot de passe, la graine TOTP ou prix_achat
+    sans jamais NOMMER la colonne (sonde du 05/10 : `row_to_json(u)` contenait
+    la cle `password`)."""
+
+    CID = 7
+
+    def test_projection_ligne_entiere_table_sensible_rejetee(self):
+        for sql in (
+            "SELECT row_to_json(u) FROM authentication_customuser u "
+            "WHERE u.company_id = 7",
+            "SELECT to_json(u) FROM authentication_customuser u",
+            "SELECT to_jsonb(u) FROM authentication_customuser u",
+            "SELECT u::text FROM authentication_customuser u",
+            "SELECT CAST(u AS TEXT) FROM authentication_customuser u",
+            "SELECT array_agg(u) FROM authentication_customuser u",
+            "SELECT (u).* FROM authentication_customuser u",
+            "SELECT authentication_customuser FROM authentication_customuser",
+            "SELECT p.* FROM stock_produit p WHERE p.company_id = 7",
+            "SELECT * FROM stock_produit",
+            "SELECT row_to_json(p) FROM stock_produit p",
+            "SELECT p::text FROM stock_produit p",
+            "SELECT * FROM ventes_devis",
+            "SELECT marge_snapshot FROM ventes_devis",
+            "SELECT x.nom FROM (SELECT * FROM stock_produit) x",
+            "WITH x AS (SELECT * FROM authentication_customuser) "
+            "SELECT x.username FROM x",
+        ):
+            with self.subTest(sql=sql):
+                with self.assertRaises(svc.SQLSecurityError):
+                    svc._validate_and_secure(sql, self.CID)
+        self.assertTrue(svc._references_forbidden_column(
+            "SELECT p.* FROM stock_produit p"))
+
+    def test_secret_toujours_refuse_meme_avec_prix_autorise(self):
+        with self.assertRaises(svc.SQLSecurityError):
+            svc._validate_and_secure(
+                "SELECT row_to_json(u) FROM authentication_customuser u",
+                self.CID, allow_price=True)
+
+    def test_prix_autorise_ouvre_la_ligne_produit(self):
+        # Porteur de `prix_achat_voir` : la ligne produit n'a plus de secret.
+        out = svc._validate_and_secure(
+            "SELECT p.* FROM stock_produit p", self.CID, allow_price=True)
+        _assert_every_table_scoped(self, out, self.CID)
+
+    def test_projections_non_sensibles_acceptees(self):
+        for sql in (
+            "SELECT * FROM crm_client",
+            "SELECT c.* FROM crm_client c",
+            "SELECT array_agg(c) FROM crm_client c",
+            "SELECT COUNT(*) FROM authentication_customuser",
+            "SELECT username, email FROM authentication_customuser",
+            "SELECT nom, prix_vente FROM stock_produit",
+            "SELECT array_agg(x) FROM (SELECT nom, prix_vente "
+            "FROM stock_produit) x",
+            "SELECT c.* FROM crm_client c JOIN ventes_devis d "
+            "ON d.client_id = c.id",
+        ):
+            with self.subTest(sql=sql):
+                out = svc._validate_and_secure(sql, self.CID)
+                _assert_every_table_scoped(self, out, self.CID)
+
+
 # Sonde C-AANA-001 (dossier docs/audits/2026-10-05-analyse.md §5) : predicat
 # societe present dans le TEXTE mais neutralise dans la LOGIQUE.
 SONDE_PREDICAT_NEUTRALISE = (
