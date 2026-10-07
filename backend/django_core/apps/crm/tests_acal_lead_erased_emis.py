@@ -55,3 +55,31 @@ class LeadErasedEmisTest(TestCase):
         self.assertEqual(recu['phone_key'], cle_telephone)
         lead.refresh_from_db()
         self.assertEqual(lead.phone_normalise, '')
+
+    def test_sans_transaction_englobante_le_lead_est_ecrit_avant_l_emission(
+            self):
+        """Lot 3 critique #1 — en autocommit (balayage de rétention, effacer
+        hors ``atomic``), ``on_commit`` exécute IMMÉDIATEMENT : l'abonné
+        (scrub calepinage, suppression irréversible des photos) doit trouver
+        le lead DÉJÀ anonymisé en base, jamais l'inverse."""
+        from unittest import mock
+
+        from apps.crm.dsr_provider import LEAD_NOM_ANONYMISE
+
+        lead = Lead.objects.create(company=self.company, nom='Dupont',
+                                   telephone='0612345678')
+        vus_en_base = []
+
+        def recepteur_lit_la_base(sender, crm_lead_id=None, **kwargs):
+            relu = Lead.objects.get(pk=crm_lead_id)
+            vus_en_base.append((relu.nom, relu.telephone))
+
+        lead_erased.connect(recepteur_lit_la_base,
+                            dispatch_uid='acal301_ordre')
+        self.addCleanup(lead_erased.disconnect, dispatch_uid='acal301_ordre')
+        # Autocommit simulé : le rappel part à l'instant de l'enregistrement.
+        with mock.patch('django.db.transaction.on_commit',
+                        side_effect=lambda rappel, *a, **k: rappel()):
+            anonymiser_lead(self.company, lead, motif='essai ordre')
+
+        self.assertEqual(vus_en_base, [(LEAD_NOM_ANONYMISE, None)])
