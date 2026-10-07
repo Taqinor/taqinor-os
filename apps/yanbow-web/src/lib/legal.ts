@@ -181,6 +181,20 @@ export function lignesCommunes(l: Legal = LEGAL): LigneLegale[] {
 }
 
 /**
+ * Page Mentions légales publiable (YBW28) : bloc éditeur complet + éléments
+ * LCEN (e-mail, directeur de la publication, hébergeur sourcé). Sinon la route
+ * n'existe pas (retirée du build, 404 au Worker — porte YBW12).
+ */
+export function mentionsLegalesCompletes(l: Legal = LEGAL): boolean {
+  return editeurComplet(l) && plein(l.commun.email) && plein(l.commun.directeurPublication) && hebergeurComplet(l);
+}
+
+/** Routes juridiques déclarées complètes (lues par le build → Worker, YBW12). */
+export function routesJuridiquesCompletes(l: Legal = LEGAL): string[] {
+  return mentionsLegalesCompletes(l) ? ['/mentions-legales', '/en/legal'] : [];
+}
+
+/**
  * Nom du responsable du traitement à afficher : le nom exact de l'entité
  * désignée SI son bloc est complet ; sinon la marque seule (jamais une forme
  * juridique pour une entité qui n'existe pas) ; `null` si non désigné.
