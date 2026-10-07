@@ -887,6 +887,57 @@ def _raison_doublon_produit(f):
             else 'doublon (nom existe)')
 
 
+# AANA12 — bornes d'un ``DecimalField(max_digits=10, decimal_places=2)``.
+PRIX_MAX = 10 ** 8
+
+
+def _nombre_saisi(valeur):
+    """Cellule → ``Decimal`` (virgule décimale, espaces de milliers tolérés),
+    ``None`` si illisible ou non fini (``abc``, ``NaN``, ``Infinity``)."""
+    from decimal import Decimal, InvalidOperation
+    brut = (str(valeur).replace('\xa0', '').replace(' ', '')
+            .replace(',', '.'))
+    try:
+        nombre = Decimal(brut)
+    except (InvalidOperation, ValueError):
+        return None
+    return nombre if nombre.is_finite() else None
+
+
+def _valider_ligne_produit(f):
+    """AANA12 — valide une ligne d'import produit SANS rien coercer en silence.
+
+    Renvoie ``(champs, stock_ouverture, erreur)`` : ``erreur`` est le motif
+    affiché dans ``skipped`` (``None`` si la ligne est valide). Prix : décimal
+    ≥ 0 et < ``PRIX_MAX`` ; quantité : entier ≥ 0 (``2.7`` est refusé, jamais
+    tronqué en 2). Partagé par le commit et l'aperçu."""
+    champs = dict(f)
+    for cle in ('prix_vente', 'prix_achat'):
+        if cle not in champs:
+            continue
+        saisi = champs[cle]
+        nombre = _nombre_saisi(saisi)
+        if nombre is None:
+            return champs, 0, f'{cle} invalide : « {saisi} »'
+        if nombre < 0:
+            return champs, 0, f'{cle} négatif refusé : « {saisi} »'
+        if nombre >= PRIX_MAX:
+            return champs, 0, f'{cle} hors bornes : « {saisi} »'
+        champs[cle] = nombre
+    ouverture = 0
+    if 'quantite_stock' in champs:
+        saisi = champs.pop('quantite_stock')
+        nombre = _nombre_saisi(saisi)
+        if nombre is None:
+            return champs, 0, f'quantité invalide : « {saisi} »'
+        if nombre != nombre.to_integral_value():
+            return champs, 0, f'quantité non entière : « {saisi} »'
+        if nombre < 0:
+            return champs, 0, 'stock négatif refusé'
+        ouverture = int(nombre)
+    return champs, ouverture, None
+
+
 def _raison_doublon_client(f):
     """AUD824 — même convention que ``_raison_doublon_produit`` : le motif
     affiché nomme la clé qui a RÉELLEMENT matché. Depuis le repli téléphone,
@@ -952,6 +1003,10 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
             existing = _doublon_produit(company, f)
             if existing is not None:
                 action, raison = 'ignoree', _raison_doublon_produit(f)
+            elif _valider_ligne_produit(f)[2]:
+                # AANA12 — la ligne que le commit refusera n'est pas annoncée
+                # comme une création.
+                action = 'ignoree'
         else:
             continue
 
@@ -1133,7 +1188,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 created += 1
 
         elif target == 'products':
-            from decimal import Decimal, InvalidOperation
+            from decimal import Decimal
             from apps.stock.models import MouvementStock, Produit
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
@@ -1148,28 +1203,16 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     skipped.append(
                         {'ligne': i, 'raison': _raison_doublon_produit(f)})
                     continue
-                for k in ('prix_vente', 'prix_achat'):
-                    if k in f:
-                        raw = (str(f[k]).replace('\xa0', '').replace(' ', '')
-                               .replace(',', '.'))
-                        try:
-                            f[k] = Decimal(raw)
-                        except (InvalidOperation, ValueError):
-                            f.pop(k)
-                # ERR52 — Le stock d'ouverture ne peut jamais être négatif et
-                # passe par le registre des mouvements (audit) comme partout
-                # ailleurs : on crée le produit à 0 puis on enregistre un
-                # MouvementStock ENTREE pour la quantité importée.
-                opening = 0
-                if 'quantite_stock' in f:
-                    try:
-                        opening = int(float(f.pop('quantite_stock')))
-                    except (ValueError, TypeError):
-                        opening = 0
-                    if opening < 0:
-                        skipped.append(
-                            {'ligne': i, 'raison': 'stock négatif refusé'})
-                        continue
+                # AANA12 — chaque valeur est VALIDÉE (jamais coercée en
+                # silence) : une erreur nomme la ligne dans ``skipped``.
+                # ERR52 — le stock d'ouverture (jamais négatif) passe par le
+                # registre des mouvements (audit) comme partout ailleurs : on
+                # crée le produit à 0 puis on enregistre un MouvementStock
+                # ENTREE pour la quantité importée.
+                f, opening, erreur = _valider_ligne_produit(f)
+                if erreur:
+                    skipped.append({'ligne': i, 'raison': erreur})
+                    continue
                 f.setdefault('prix_vente', Decimal('0'))
                 produit = Produit.objects.create(
                     company=company, quantite_stock=0, **f)
