@@ -73,6 +73,7 @@ ROUTES_SOUS_VERROU = {
     ('PATCH', RELEVE): '_sonde_modifier_releve',
     ('DELETE', RELEVE): '_sonde_supprimer_releve',
     ('POST', RELEVE + '/appliquer-cote'): PAR_ENREGISTRER_LAYOUT,
+    ('POST', 'fixation'): '_sonde_fixation',
 }
 
 #: Routes HORS VERROU, chacune avec son MOTIF (jamais vide).
@@ -127,8 +128,6 @@ ROUTES_HORS_VERROU = {
     ('POST', 'consommation/proposer'): 'proposition de consommation '
                                        '(lecture calculée)',
     ('POST', 'pompage'): 'proposition de pompage (lecture calculée)',
-    ('POST', 'fixation'): 'choix du système de fixation (ACAL81) — non '
-                          'couvert par le verrou (ACAL43) : à trancher',
 }
 
 
@@ -257,6 +256,11 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
 
     def _sonde_supprimer_releve(self):
         return self.api.delete(f'{self.base}releve/{self.releve.pk}/')
+
+    def _sonde_fixation(self):
+        # Lot 2 critique #10 — même un retrait (null, aucun catalogue requis)
+        # est refusé : le verrou passe AVANT toute écriture.
+        return self._post('fixation/', {'systeme_id': None})
 
     # ── la garde ────────────────────────────────────────────────────────────
     def test_chaque_route_d_ecriture_est_classee(self):
