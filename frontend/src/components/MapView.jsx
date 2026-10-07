@@ -113,6 +113,14 @@ export default function MapView({
     })
     mapRef.current = map
     return () => {
+      // CAD177 — un zoom ANIMÉ (molette, double-clic, fitBounds) arme un
+      // `setTimeout` de 250 ms (Leaflet 1.9 `_animateZoom`) que `remove()`
+      // n'annule pas : s'il tombe après, `_move` lit `_mapPane` détruit
+      // (« reading '_leaflet_pos' », marcheur aléatoire crm sur /carte). On
+      // arrête le panoramique en cours et on CLÔT le zoom tant que les panneaux
+      // existent ; le timer retombe alors sur `if (!_animatingZoom) return`.
+      map.stop()
+      if (map._animatingZoom) map._onZoomTransitionEnd()
       map.remove()
       mapRef.current = null
       layerRef.current = null
