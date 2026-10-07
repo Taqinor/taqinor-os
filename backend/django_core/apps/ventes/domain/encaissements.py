@@ -416,10 +416,12 @@ def affecter_encaissement_groupe(
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
         else:
-            # FIFO : échéance la plus ancienne d'abord (None en dernier).
+            # FIFO : échéance la plus ancienne d'abord (None en dernier) ; à
+            # échéance égale, la facture la plus ancienne (pk) — sans ce
+            # départage, l'ordre suivait celui, non garanti, de la base.
             ordonnees = sorted(
                 locked,
-                key=lambda f: (f.date_echeance is None, f.date_echeance))
+                key=lambda f: (f.date_echeance is None, f.date_echeance, f.pk))
             restant = montant
             for facture in ordonnees:
                 if restant <= 0:

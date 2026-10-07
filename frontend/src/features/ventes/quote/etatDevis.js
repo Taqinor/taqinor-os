@@ -18,7 +18,6 @@
 // la porte pas, l'écran garde sa valeur » — jamais une valeur inventée.
 // Fonctions PURES : aucun React, aucun réseau (node --test).
 import {
-  COMMERCIAL_CATEGORY_QUESTIONS,
   consoAnnuelleDepuisFactures, consoDescendDesFactures,
 } from '../solar.js'
 import { SCENARIO_SANS, SCENARIO_AVEC } from './sizingReducer.js'
@@ -217,12 +216,9 @@ export function devisVersEtat(d) {
   if (e.categorie_commerciale) {
     etat.categorieCommerciale = String(e.categorie_commerciale)
     const reponses = {}
-    for (const q of COMMERCIAL_CATEGORY_QUESTIONS[etat.categorieCommerciale] || []) {
-      if (e[q.key] !== undefined && e[q.key] !== null) reponses[q.key] = e[q.key]
-    }
-    // CIQ131 — les réponses ENVOYÉES au moteur (entrée v2
-    // `rythme.reponses_categorie`), heures données comprises (cuisson,
-    // service, garde, dates de fermeture), se relisent telles quelles.
+    // CIQ131 / CIQ129 — les réponses se relisent de l'entrée v2 du moteur
+    // (`rythme.reponses_categorie`), heures données comprises (cuisson,
+    // service, garde, dates de fermeture) ; plus jamais à plat (`e[q.key]`).
     const v2 = e.rythme?.reponses_categorie
     if (v2 && typeof v2 === 'object') {
       for (const [cle, valeur] of Object.entries(v2)) {
@@ -340,7 +336,6 @@ export function etatVersEcritures(etat, vif = {}) {
     choix: choixDeEtat(etat, { recommended: vif.recommended }),
     entrees: vif.entrees ?? entreesDeEtat(etat),
     categorie: etat.categorieCommerciale,
-    reponses: etat.commercialAnswers || {},
     pompageEntrees: etat.mode === 'agricole' ? entreesPompageEcran(etat) : undefined,
     ciEntrees: (etat.mode === 'industriel' || etat.mode === 'commercial') && etat.profilCi
       ? entreesCiV2(etat.profilCi, etat.ctxCi || {

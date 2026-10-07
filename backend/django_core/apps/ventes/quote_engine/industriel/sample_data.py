@@ -62,7 +62,7 @@ def build() -> dict:
         "payment_terms": {"acompte": 50, "materiel": 40, "solde": 10},
         "etude": {
             "kwc": 250.0, "production_annuelle": 400000, "conso_annuelle": 520000,
-            "taux_autoconso": 88.0, "taux_couverture": 67.7, "prix_kwc": 7000,
+            "prix_kwc": 7000,
         },
         # CIQ301 — plus de ``eco_s_ann``/``roi_s``/``cashflow_*`` fabriqués
         # (C3-VA-01) : le renderer C&I ne les reprend plus. Voir

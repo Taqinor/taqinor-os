@@ -40,7 +40,7 @@ from .public.payload_conditions import (
 )
 from .public.payload_economie import (
     _bankable_headline, _economies_mensuelles_publiques, _mode_kpis,
-    _monthly_consumption, _monthly_production, _sans_internes_bancables,
+    _mode_kpis_ci, _monthly_consumption, _monthly_production, _sans_internes_bancables,
 )
 from .public.payload_horaire import (
     _dimensionnement_options_publique, _estimation_conso_publique,
@@ -915,25 +915,6 @@ CLES_ECONOMIES_RESIDENTIELLES_CI = CLES_ECONOMIES_RESIDENTIELLES + (
 #: CIQ300 — marchés dont la proposition ne republie AUCUNE économie
 #: résidentielle / BT / JS (l'argent C&I viendra de ``synthese_ci``, CIQ306).
 MODES_CI = ('commercial', 'industriel')
-
-
-def _mode_kpis_ci(synthese):
-    """CIQ306 — ``mode_kpis`` C&I v2 : PROJECTION de ``synthese_ci``
-    (contrat ``proposal_data.json`` › ``notes_ciq4.mode_kpis_ci_v2``) —
-    énergie + ``argent.indicateurs.retour_ans`` + ``argent.revente``. Aucune
-    clé d'étude JS lue, aucun calcul ; l'argent omis (ou sa case décochée)
-    ⇒ économies, payback et revente à ``None``. CIQ307 : par
-    ``chiffres_cles`` — la MÊME projection que lisent les gabarits PDF."""
-    from .quote_engine.ci.synthese import chiffres_cles
-    c = chiffres_cles(synthese)
-    return {
-        'taux_autoconso': c['taux_autoconso_pct'],
-        'taux_couverture': c['taux_couverture_pct'],
-        'economies_annuelles': c['economie_annuelle_mad'],
-        'payback': c['payback_ans'],
-        'injection_kwh_an': c['revente_kwh_an'],
-        'injection_dh_an': c['revente_mad_an'],
-    }
 
 
 def _mode_public(data):
