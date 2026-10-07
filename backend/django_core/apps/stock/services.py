@@ -536,7 +536,7 @@ def _jour(valeur):
     return valeur
 
 
-def average_cost_with_source(produit):
+def average_cost_with_source(produit, a_la_date=None):
     """Coût moyen d'achat pondéré + sa SOURCE.
 
     Renvoie (cout, source) où source vaut 'achats' (dérivé des réceptions de
@@ -554,21 +554,35 @@ def average_cost_with_source(produit):
     inventaire initial) et seules les réceptions POSTÉRIEURES à sa
     validation entrent dans la moyenne pondérée — les réceptions
     antérieures sont supplantées par la revalorisation (comportement
-    historique inchangé quand aucune revalorisation n'existe)."""
+    historique inchangé quand aucune revalorisation n'existe).
+
+    ASTK40 — ``a_la_date`` (date, optionnelle) BORNE le calcul à cette date
+    (incluse) : seules les revalorisations VALIDÉES au plus tard ce jour-là et
+    les lignes de BCF ENTRÉES EN STOCK au plus tard ce jour-là comptent. C'est
+    la même formule que l'écran Valorisation (``a_la_date=None``), de sorte
+    que la valorisation à date du jour = l'écran, au centime."""
     from .models import LigneBonCommandeFournisseur, RevalorisationStock
+    jour = _jour(a_la_date) if a_la_date is not None else None
     # ASTK1 — seuls les documents de la SOCIÉTÉ du produit comptent : une
     # revalorisation ou une ligne BCF d'une autre société pointant (à tort)
     # ce produit ne déplace jamais son coût.
-    revalo = (RevalorisationStock.objects
-              .filter(produit=produit, company_id=produit.company_id,
-                      statut=RevalorisationStock.Statut.VALIDEE)
-              .order_by('-date_validation', '-id').first())
+    revalos = RevalorisationStock.objects.filter(
+        produit=produit, company_id=produit.company_id,
+        statut=RevalorisationStock.Statut.VALIDEE)
+    if jour is not None:
+        revalos = revalos.filter(date_validation__date__lte=jour)
+    revalo = revalos.order_by('-date_validation', '-id').first()
     lignes_qs = LigneBonCommandeFournisseur.objects.filter(
         produit=produit, bon_commande__company_id=produit.company_id,
         quantite_recue__gt=0)
+    if jour is not None or (
+            revalo is not None and revalo.date_validation is not None):
+        lignes_qs = _annoter_date_entree_stock(lignes_qs)
+    if jour is not None:
+        lignes_qs = lignes_qs.filter(date_entree_stock__lte=jour)
     if revalo is not None and revalo.date_validation is not None:
         # AUD210 — postériorité mesurée sur l'ENTRÉE EN STOCK réelle.
-        lignes_qs = _annoter_date_entree_stock(lignes_qs).filter(
+        lignes_qs = lignes_qs.filter(
             date_entree_stock__gt=_jour(revalo.date_validation))
     lignes = lignes_qs.values_list(
         'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
@@ -623,7 +637,7 @@ def stock_valuation_method(company):
     return method if method in (VALUATION_WAVG, VALUATION_FIFO) else VALUATION_WAVG
 
 
-def fifo_cost_with_source(produit):
+def fifo_cost_with_source(produit, a_la_date=None, quantite=None):
     """Coût FIFO unitaire d'un produit + sa SOURCE (FG67).
 
     FIFO : le stock restant est valorisé aux coûts d'achat débarqués des
@@ -632,17 +646,24 @@ def fifo_cost_with_source(produit):
     `quantite_stock` dernières unités reçues. Repli sur le prix d'achat
     catalogue ('catalogue') si aucune réception. INTERNE — jamais client-facing.
 
-    Renvoie (cout_unitaire_moyen_des_couches_restantes, source)."""
+    Renvoie (cout_unitaire_moyen_des_couches_restantes, source).
+
+    ASTK40 — ``a_la_date`` borne les couches aux entrées en stock au plus tard
+    ce jour-là ; ``quantite`` (quantité détenue à cette date) remplace alors
+    ``produit.quantite_stock``."""
     from .models import LigneBonCommandeFournisseur
     # Couches d'entrée, de la plus récente à la plus ancienne (FIFO -> il reste
     # les dernières entrées). On valorise au coût débarqué unitaire.
     # AUD210 — couches ordonnées par ENTRÉE EN STOCK réelle (date de réception),
     # pas par date de saisie du bon de commande.
-    lignes = (_annoter_date_entree_stock(
+    lignes = _annoter_date_entree_stock(
         LigneBonCommandeFournisseur.objects
         .filter(produit=produit, quantite_recue__gt=0))
-        .order_by('-date_entree_stock', '-id'))
-    restant = produit.quantite_stock or 0
+    if a_la_date is not None:
+        lignes = lignes.filter(date_entree_stock__lte=_jour(a_la_date))
+    lignes = lignes.order_by('-date_entree_stock', '-id')
+    restant = (quantite if quantite is not None
+               else produit.quantite_stock) or 0
     if restant <= 0:
         return (produit.prix_achat or Decimal('0')), 'catalogue'
     pris_q, pris_v = 0, Decimal('0')
@@ -659,16 +680,23 @@ def fifo_cost_with_source(produit):
     return cout, 'achats'
 
 
-def valuation_cost_with_source(produit, method=None):
+def valuation_cost_with_source(produit, method=None, a_la_date=None,
+                               quantite=None):
     """Coût unitaire de valorisation d'un produit selon la méthode société
     (FG67). 'wavg' -> coût moyen pondéré débarqué ; 'fifo' -> couches FIFO
     restantes. Si `method` n'est pas fourni, on lit le réglage société.
-    Renvoie (cout, source). INTERNE."""
+    Renvoie (cout, source). INTERNE.
+
+    ASTK40 — ACCESSEUR UNIQUE du coût de valorisation, à l'instant présent
+    (écran Valorisation) comme à une date passée (``a_la_date`` : inventaire
+    annuel figé, valorisation à date) ; ``quantite`` = quantité détenue à
+    cette date (FIFO seulement)."""
     if method is None:
         method = stock_valuation_method(produit.company)
     if method == VALUATION_FIFO:
-        return fifo_cost_with_source(produit)
-    return average_cost_with_source(produit)
+        return fifo_cost_with_source(
+            produit, a_la_date=a_la_date, quantite=quantite)
+    return average_cost_with_source(produit, a_la_date=a_la_date)
 
 
 # ── DC28 — UN seul résolveur du coût d'achat courant ─────────────────────────
@@ -834,30 +862,18 @@ def _quantite_produit_a_date(produit, date):
     return mvt.quantite_apres if mvt is not None else 0
 
 
-def _cout_moyen_produit_a_date(produit, date):
-    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les lignes de
-    BCF RÉELLEMENT ENTRÉES EN STOCK au plus tard à `date` (AUD210 : date de
-    réception, pas date de création du bon de commande ; cf.
-    `average_cost_with_source`, borné dans le temps). Repli catalogue si
-    aucun achat reçu avant cette date."""
-    from .models import LigneBonCommandeFournisseur
-    lignes = (_annoter_date_entree_stock(
-        LigneBonCommandeFournisseur.objects
-        .filter(produit=produit, quantite_recue__gt=0))
-        .filter(date_entree_stock__lte=_jour(date))
-        .values_list('quantite_recue', 'prix_achat_unitaire',
-                     'quantite', 'frais_annexes'))
-    total_q, total_v = 0, Decimal('0')
-    for q_recue, pu, q_ligne, frais in lignes:
-        pu = pu or Decimal('0')
-        frais = frais or Decimal('0')
-        if q_ligne and frais:
-            pu = pu + (frais / Decimal(str(q_ligne)))
-        total_q += q_recue
-        total_v += q_recue * pu
-    if total_q:
-        return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
-    return (produit.prix_achat or Decimal('0')), 'catalogue'
+def _cout_moyen_produit_a_date(produit, date, method=None, quantite=None):
+    """Coût de valorisation du produit À `date` (incluse).
+
+    ASTK40 — n'est plus une formule parallèle : c'est un appel à l'accesseur
+    unique ``valuation_cost_with_source`` borné à la date. Avant, cette
+    fonction ignorait les revalorisations validées (XSTK14) : un produit reçu
+    10 @ 1 000 puis revalorisé à 600 valait 6 000 à l'écran mais 10 000 dans
+    l'inventaire annuel figé. Désormais : revalorisations validées ≤ date
+    incluses, réceptions entrées en stock ≤ date (AUD210 : date de réception,
+    pas date de création du BCF), repli catalogue si rien avant cette date."""
+    return valuation_cost_with_source(
+        produit, method=method, a_la_date=date, quantite=quantite)
 
 
 def quantite_de_tiers(company, produit=None):
@@ -901,14 +917,18 @@ def valorisation_a_date(company, date):
     from .models import Produit
     produits = Produit.objects.filter(company=company)
     de_tiers = quantite_de_tiers(company)
+    # ASTK40 — même méthode société que l'écran Valorisation (résolue une
+    # fois), même accesseur de coût, borné à la date.
+    method = stock_valuation_method(company)
     lignes = []
     total = Decimal('0')
     for p in produits:
-        quantite = _quantite_produit_a_date(p, date)
-        quantite = max(quantite - de_tiers.get(p.id, 0), 0)
+        quantite_detenue = _quantite_produit_a_date(p, date)
+        quantite = max(quantite_detenue - de_tiers.get(p.id, 0), 0)
         if quantite == 0:
             continue
-        cout, source = _cout_moyen_produit_a_date(p, date)
+        cout, source = _cout_moyen_produit_a_date(
+            p, date, method=method, quantite=quantite_detenue)
         valeur = (cout * quantite).quantize(Decimal('0.01'))
         total += valeur
         lignes.append({
