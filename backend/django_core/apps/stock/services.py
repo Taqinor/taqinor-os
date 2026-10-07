@@ -472,23 +472,36 @@ def affecter_livraison_directe_chantier(
     un mécanisme parallèle. Best-effort : une erreur ne casse jamais la
     réception elle-même (le stock reste alors en dépôt principal, visible et
     corrigeable manuellement)."""
+    from django.db import transaction
     if quantite <= 0:
         return
     try:
         chantier = bc.chantier_livraison
-        record_stock_movement(
-            company=company, produit=produit,
-            type_mouvement=mouvement_type_sortie(),
-            quantite=quantite,
-            quantite_avant=produit.quantite_stock,
-            quantite_apres=produit.quantite_stock - quantite,
-            reference=reference,
-            note=(f'Livraison directe chantier {chantier.reference} '
-                  f'(BCF {bc.reference})'
-                  if chantier is not None else
-                  f'Livraison directe chantier (BCF {bc.reference})'),
-            created_by=user,
-        )
+        with transaction.atomic():
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=quantite,
+                quantite_avant=produit.quantite_stock,
+                quantite_apres=produit.quantite_stock - quantite,
+                reference=reference,
+                note=(f'Livraison directe chantier {chantier.reference} '
+                      f'(BCF {bc.reference})'
+                      if chantier is not None else
+                      f'Livraison directe chantier (BCF {bc.reference})'),
+                created_by=user,
+            )
+            # ASTK98 (C-ASTK-028) — « une vente = une sortie » : le matériel
+            # sorti ici pour le chantier SOLDE sa réservation N14, sinon
+            # « Installé » le sortait une seconde fois. Service UNIQUE du
+            # propriétaire chantiers (ASTK120), dans la transaction de la
+            # sortie ; idempotent par (référence, produit).
+            if chantier is not None:
+                from apps.installations.services import (
+                    solder_reservations_vente,
+                )
+                solder_reservations_vente(
+                    chantier, {produit.id: quantite}, reference, user=user)
         produit.refresh_from_db()
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.info(
