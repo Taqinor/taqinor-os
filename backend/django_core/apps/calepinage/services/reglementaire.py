@@ -303,11 +303,16 @@ def infos_du_calepinage(calepinage, *, resultat=None):
     ACAL259 — modules et kWc sont ceux de ``mesures.mesures_du_document`` (LA
     lecture du module), sur le résultat SERVI (``selectors.resultat_servi``,
     bloc ``pose`` : la fiche du stock) quand ``resultat`` n'est pas fourni.
+
+    ACAL241 — client et adresse sont résolus par les fonctions EXISTANTES du
+    module (``client_du_calepinage`` : client, sinon lead ; adresse du SITE
+    par ``selectors.contexte_geographique`` : lead d'abord) — un calepinage
+    né d'un lead n'a plus client et adresse vides.
     """
+    from .documents.gabarit_document import client_du_calepinage
     from .mesures import mesures_du_document
 
     company = getattr(calepinage, 'company', None)
-    client = getattr(calepinage, 'client', None)
     layout = getattr(calepinage, 'roof_layout', None)
     if resultat is None and isinstance(layout, dict) and layout:
         from .. import selectors
@@ -319,8 +324,8 @@ def infos_du_calepinage(calepinage, *, resultat=None):
                  default=None)
     return {
         'societe_nom': _valeur_reelle(getattr(company, 'nom', None)),
-        'client_nom': _valeur_reelle(getattr(client, 'nom', None)),
-        'adresse': _valeur_reelle(getattr(client, 'adresse', None)),
+        'client_nom': _valeur_reelle(client_du_calepinage(calepinage)),
+        'adresse': _adresse_du_site(calepinage),
         'puissance_kwc': mesures['kwc'],
         'nombre_modules': (mesures['modules'] or None),
         'orientation_deg': (domine or {}).get('azimut_deg'),
@@ -337,6 +342,21 @@ def _perime(dossier, empreinte_courante):
     if empreinte_courante is None:
         return None
     return dossier.genere_empreinte != empreinte_courante
+
+
+def _adresse_du_site(calepinage):
+    """L'adresse du SITE (« 12 rue X, Rabat »), ou ``None`` — lue par
+    ``selectors.contexte_geographique`` (lead d'abord, sinon client)."""
+    from ..selectors import contexte_geographique
+
+    if getattr(calepinage, 'company', None) is None:
+        return None
+    contexte = contexte_geographique(calepinage)
+    adresse = _valeur_reelle(contexte.get('adresse'))
+    ville = _valeur_reelle(contexte.get('ville'))
+    if adresse and ville and ville.lower() not in adresse.lower():
+        return '%s, %s' % (adresse, ville)
+    return adresse or ville
 
 
 def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None):
