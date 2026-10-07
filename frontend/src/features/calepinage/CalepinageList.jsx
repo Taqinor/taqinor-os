@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
-import { originFrom } from '../../api/origin'
+import { urlImage } from './urlImage'
 // CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur que la
 // fiche devis et l'en-tête de l'atelier (CAL189), jamais recalculé ici.
 import BadgePerime from './BadgePerime'
@@ -54,10 +54,8 @@ export const STATUTS_CALEPINAGE = [
   ['perime', 'Périmé'],
 ]
 
-/* ACAL197 — `image.url` est RELATIVE (`/api/django/…`) : préfixée par l'origine
-   de l'API (vide = même origine que la page). Une URL absolue reste telle quelle. */
-const ORIGINE_API = originFrom(import.meta.env.VITE_API_URL)
-const urlImage = (url) => (url && url.startsWith('/') ? `${ORIGINE_API}${url}` : url)
+/* ACAL197 — `image.url` RELATIVE préfixée par l'origine de l'API : le helper
+   partagé avec la fiche (`urlImage.js`). */
 
 /* ACAL197 — le rattachement affiché : la liste publie `client_apercu`
    `{id, nom, ville}` (`client` n'y est qu'un identifiant), le détail un
