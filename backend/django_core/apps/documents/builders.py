@@ -476,6 +476,17 @@ def _contenu_ci_empreinte(chantier):
         '|'.join(morceaux).encode('utf-8')).hexdigest()
 
 
+def _arret_coupure_fragment(chantier):
+    """CIQ632 — phrase « arrêt sur coupure du réseau » d'un site pro
+    raccordé sans batterie ; '' ailleurs."""
+    from apps.installations.services import phrase_arret_coupure
+    phrase = phrase_arret_coupure(chantier)
+    if not phrase:
+        return ''
+    return '<p class="arret-coupure"><strong>{}.</strong></p>'.format(
+        escape(phrase))
+
+
 def _signataire_ci_fragment(chantier):
     """CIQ631 — fonction et société du signataire, co-signataire
     facultatif ; '' quand tout est vide (PV résidentiel identique)."""
@@ -912,6 +923,10 @@ def generate_dossier_remise(chantier):
     if pack is not None:
         ctx['pack_remise'] = pack
     html = get_template('document_dossier_remise.html').render(ctx)
+    # CIQ632 — site pro raccordé sans batterie : phrase FIXE, sans chiffre
+    # (fragment vide ailleurs : dossier résidentiel octet-identique).
+    html = _inject_before(html, '<div class="footer">',
+                          _arret_coupure_fragment(chantier))
     html = _inject_before(
         html, '<div class="footer">', _equipements_poses_fragment(chantier))
     # AGR611 — le MÊME fragment que le PV de réception (jumeaux du geste).

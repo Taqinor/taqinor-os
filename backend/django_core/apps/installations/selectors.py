@@ -3106,6 +3106,41 @@ def recette_pompage_portail(company, client_id, chantier_id):
     return vue_portail_recette_pompage(recette)
 
 
+def recette_ci_portail(company, client_id, chantier_id):
+    """CIQ635 — la recette C&I d'UN chantier du client, réduite au
+    sous-objet ``vue_portail`` du contrat ``recette_ci.json`` (lecture
+    seule) : {date, resultat, pr, pr_libelle, reserves_ouvertes, dates de
+    réception}. ``None`` si le chantier n'est pas celui du client (triplet
+    société/client/id exigé) ou s'il n'a pas de fiche. Jamais l'instrument,
+    le technicien, un prix ni ``prix_achat``."""
+    chantier = chantier_du_client_portail_obj(company, client_id, chantier_id)
+    if chantier is None:
+        return None
+    from .models import CommissioningRecord
+    record = CommissioningRecord.objects.filter(
+        installation=chantier).first()
+    if record is None:
+        return None
+    from .services import (
+        LIBELLE_PR, pr_mesure_recette, reception_contrat, reserves_ouvertes,
+    )
+    reception = reception_contrat(chantier)
+    return {
+        'date': (record.date_essai.isoformat()
+                 if record.date_essai else None),
+        'resultat': record.resultat,
+        'pr': pr_mesure_recette(record),
+        'pr_libelle': LIBELLE_PR,
+        'reserves_ouvertes': [
+            {'description': r.description or '',
+             'date_echeance': (r.date_echeance.isoformat()
+                               if r.date_echeance else None)}
+            for r in reserves_ouvertes(chantier)],
+        'date_reception_provisoire': reception['date_reception_provisoire'],
+        'date_reception_definitive': reception['date_reception_definitive'],
+    }
+
+
 def photos_chantier_client_portail(company, client_id, chantier_id, *, phase=None):
     """NTPRT14 — Photos (``records.Attachment``) d'UN chantier du client, au
     format PLAT attendu par la galerie portail avant/pendant/après. Réutilise

@@ -37,7 +37,7 @@ class TemplateCITest(TestCase):
             type_installation=type_installation, niveau_tension=niveau)
 
     def test_industriel_bt_ou_sans_niveau_recoit_le_template_ci(self):
-        for niveau in ('bt', None, 'mt'):
+        for niveau in ('bt', None):  # MT : template dédié (CIQ662).
             chantier = self._chantier('industriel', niveau)
             template = template_for_installation(chantier)
             self.assertEqual(template.nom, CI_TEMPLATE_NOM)

@@ -136,3 +136,49 @@ def dossier_8221_resume(company, devis_id):
     resume = resume_dossier_8221(dossier)
     resume['regime'] = dossier.regime_8221
     return resume
+
+
+def injection_limitee_devis(company, devis_id):
+    """CIQ663 — la sortie du moteur C&I (contrat CIQ2,
+    ``etude_params['etude_ci']['taille']``) indique-t-elle une injection
+    LIMITÉE (taille plafonnée par l'injection : ``raison_arret`` =
+    ``plafond_injection``) ? Lecture seule, scopée société ; ``False`` sans
+    devis ni étude (jamais une valeur devinée)."""
+    if not devis_id or company is None:
+        return False
+    from .models import Devis
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .only('etude_params').first())
+    if devis is None:
+        return False
+    etude = (devis.etude_params or {}).get('etude_ci') or {}
+    taille = etude.get('taille') if isinstance(etude, dict) else None
+    return (isinstance(taille, dict)
+            and taille.get('raison_arret') == 'plafond_injection')
+
+
+def regime_contrat_dossier(dossier):
+    """CIQ638 — bloc ``regime`` du contrat ``dossier_8221.json`` du régime
+    STOCKÉ d'un dossier : libellé sans seuil, base légale (article), guichet
+    « à confirmer ». La puissance retenue n'est donnée que si le devis la
+    porte (jamais devinée)."""
+    from core.reglementaire.regime_8221 import forme_regime
+    devis = getattr(dossier, 'devis', None)
+    puissance = ((getattr(devis, 'etude_params', None) or {})
+                 .get('puissance_kwc'))
+    return forme_regime(dossier.regime_8221, puissance)
+
+
+def pieces_contrat_dossier(dossier):
+    """CIQ638 — bloc ``pieces`` du contrat : les pièces du décret du régime
+    du dossier (``regulatory_docs.required_documents``), chacune avec son
+    ``etape`` et sa ``source`` ; ``statut`` = celui de la pièce de checklist
+    de même code (``None`` si elle n'a pas été ouverte). Une pièce « à
+    confirmer » le reste dans sa source, jamais présentée comme certaine."""
+    from .regulatory_docs import required_documents
+    statuts = {item.code: item.statut for item in dossier.checklist_items.all()}
+    return [{
+        'code': piece['code'], 'label': piece['label'],
+        'etape': piece['etape'], 'obligatoire': piece['obligatoire'],
+        'source': piece['source'], 'statut': statuts.get(piece['code']),
+    } for piece in required_documents(dossier.regime_8221)]

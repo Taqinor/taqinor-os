@@ -164,8 +164,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/installations/models_demande_achat.py::DemandeAchatLigne.produit` | backend/django_core/apps/installations/models_demande_achat.py:196 | stock.Produit | SET_NULL |
 | `backend/django_core/apps/installations/models_demande_transfert.py::DemandeTransfert.company` | backend/django_core/apps/installations/models_demande_transfert.py:32 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_demande_transfert.py::DemandeTransfert.produit` | backend/django_core/apps/installations/models_demande_transfert.py:37 | stock.Produit | CASCADE |
-| `backend/django_core/apps/installations/models_document.py::DocumentProjet.company` | backend/django_core/apps/installations/models_document.py:45 | authentication.Company | CASCADE |
-| `backend/django_core/apps/installations/models_document.py::RevisionDocument.company` | backend/django_core/apps/installations/models_document.py:81 | authentication.Company | CASCADE |
+| `backend/django_core/apps/installations/models_document.py::DocumentProjet.company` | backend/django_core/apps/installations/models_document.py:63 | authentication.Company | CASCADE |
+| `backend/django_core/apps/installations/models_document.py::RevisionDocument.company` | backend/django_core/apps/installations/models_document.py:99 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_dossier_import.py::DossierImport.company` | backend/django_core/apps/installations/models_dossier_import.py:41 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_equipe.py::Equipe.company` | backend/django_core/apps/installations/models_equipe.py:54 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_evaluation_soustraitant.py::EvaluationSousTraitant.company` | backend/django_core/apps/installations/models_evaluation_soustraitant.py:28 | authentication.Company | CASCADE |

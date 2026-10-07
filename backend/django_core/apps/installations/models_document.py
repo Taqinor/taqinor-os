@@ -41,6 +41,24 @@ class DocumentProjet(models.Model):
         ANALYSE_RISQUES = 'analyse_risques', 'Analyse de risques'
         PERMIS_TRAVAIL_HAUTEUR = (
             'permis_travail_hauteur', 'Permis de travail en hauteur')
+        # CIQ632 — pièces du pack de remise d'un site pro. Certificat
+        # d'organisme agréé et attestation d'assurance : décret 2.25.100
+        # art. 15 (accord et autorisation) ; les autres restent facultatives
+        # (les rendre obligatoires = décision fondateur ou assureur).
+        PLAN_CHAINES = 'plan_chaines', 'Plan des chaînes'
+        REGLAGES_PROTECTIONS = (
+            'reglages_protections', 'Réglages de protection')
+        MANUEL_OM = 'manuel_om', "Manuel d'exploitation et maintenance"
+        ATTESTATION_FORMATION = (
+            'attestation_formation', 'Attestation de formation')
+        PV_MISE_SOUS_TENSION = (
+            'pv_mise_sous_tension', 'PV de mise sous tension')
+        NOTE_STRUCTURE = 'note_structure', 'Note de structure'
+        CERTIFICAT_ORGANISME_AGREE = (
+            'certificat_organisme_agree',
+            "Certificat d'un organisme agréé")
+        ATTESTATION_ASSURANCE = (
+            'attestation_assurance', "Attestation d'assurance")
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,

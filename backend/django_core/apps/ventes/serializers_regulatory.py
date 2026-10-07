@@ -36,6 +36,10 @@ class RegulatoryDossierSerializer(serializers.ModelSerializer):
     # CIQ617 — bloc ``resume`` du contrat ``dossier_8221.json`` : l'état
     # UNIQUE du dossier, reflété en miroir sur le chantier.
     resume = serializers.SerializerMethodField()
+    # CIQ638 — blocs ``regime`` (base légale, guichet) et ``pieces`` (par
+    # étape, avec leur source) du contrat ``dossier_8221.json``.
+    regime = serializers.SerializerMethodField()
+    pieces = serializers.SerializerMethodField()
 
     class Meta:
         model = RegulatoryDossier
@@ -48,17 +52,29 @@ class RegulatoryDossierSerializer(serializers.ModelSerializer):
             'etude_reglages_imposes', 'capacite_etat', 'capacite_date',
             'convention_signee_le', 'demande_exploitation_le',
             'accord_exploitation_le',
-            'checklist_items', 'resume', 'created_at', 'updated_at',
+            'checklist_items', 'resume', 'regime', 'pieces',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'regime_label', 'statut_label', 'checklist_items',
-            'resume', 'created_at', 'updated_at',
+            'resume', 'regime', 'pieces', 'created_at', 'updated_at',
         ]
 
     @extend_schema_field(serializers.DictField())
     def get_resume(self, obj):
         from .selectors import resume_dossier_8221
         return resume_dossier_8221(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_regime(self, obj):
+        from .selectors_reglementaire import regime_contrat_dossier
+        return regime_contrat_dossier(obj)
+
+    @extend_schema_field(serializers.ListField(
+        child=serializers.DictField()))
+    def get_pieces(self, obj):
+        from .selectors_reglementaire import pieces_contrat_dossier
+        return pieces_contrat_dossier(obj)
 
 
 class DossierExchangeSerializer(serializers.ModelSerializer):

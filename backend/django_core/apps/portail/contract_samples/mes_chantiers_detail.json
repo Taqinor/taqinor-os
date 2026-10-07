@@ -32,7 +32,22 @@
       "ecart_debit_pct": -5.2,
       "commentaire_ecart": "",
       "resultat": "conforme"
+    },
+    "recette_ci": {
+      "date": "2026-10-12",
+      "resultat": "reserves",
+      "pr": 0.81,
+      "pr_libelle": "à titre d'information",
+      "reserves_ouvertes": [
+        {
+          "description": "Étiquette de repérage manquante sur le coffret AC",
+          "date_echeance": "2026-10-26"
+        }
+      ],
+      "date_reception_provisoire": "2026-10-13",
+      "date_reception_definitive": null
     }
   },
-  "recette_pompage_regles": "AGR612 — additif : `recette_pompage` = le sous-objet `vue_portail` du contrat installations `recette_pompage.json` (sélecteur `installations.selectors.recette_pompage_portail`), `null` quand le chantier n'a pas de fiche de recette pompage. Jamais l'instrument, le technicien, un prix ni `prix_achat`."
+  "recette_pompage_regles": "AGR612 — additif : `recette_pompage` = le sous-objet `vue_portail` du contrat installations `recette_pompage.json` (sélecteur `installations.selectors.recette_pompage_portail`), `null` quand le chantier n'a pas de fiche de recette pompage. Jamais l'instrument, le technicien, un prix ni `prix_achat`.",
+  "recette_ci_regles": "CIQ635 — additif : `recette_ci` = le sous-objet `vue_portail` du contrat installations `recette_ci.json` (sélecteur `installations.selectors.recette_ci_portail`), `null` quand le chantier n'a pas de fiche de recette. Le PR est « à titre d'information », jamais un verdict. Jamais l'instrument, le technicien, un prix ni `prix_achat`."
 }
