@@ -613,6 +613,17 @@ jobs:
           # par un autre job — consommé dans CE job, à l'étape suivante.
           echo "::add-mask::$ACCESS"
           echo "access=$ACCESS" >> "$GITHUB_OUTPUT"
+      - name: Générer le schéma OpenAPI (hors worker gunicorn)
+        # CAD177 — `GET /api/schema/` met ~5 min à construire les ~10 Mo du
+        # schéma (mesuré en local : 289 s). Le worker gunicorn sync est tué à
+        # 120 s (`--timeout 120`) : Schemathesis lisait alors un « HTTP 500
+        # Internal Server Error » (« Schema Loading Error ») et le job tombait
+        # avant d'envoyer UNE requête. On produit donc le MÊME schéma
+        # (drf-spectacular) en ligne de commande, sans limite de worker, et
+        # Schemathesis le lit en fichier ; les requêtes de fuzzing visent
+        # toujours le serveur gunicorn via `--url`.
+        working-directory: backend/django_core
+        run: python manage.py spectacular --file ../../openapi-schema.yml
       - name: schemathesis run (fuzzing + stateful contre api/schema/)
         working-directory: backend/django_core
         env:
@@ -629,7 +640,7 @@ jobs:
             --exclude-path-regex '(adsengine/|/contact/|statuspage/public/(abonner|confirmer|desabonner)/|automation/approvals/[0-9]+/approve/)' \
             --report junit,json \
             --report-dir ../../schemathesis-report \
-            http://127.0.0.1:8000/api/schema/ \
+            ../../openapi-schema.yml \
             2>&1 | tee ../../schemathesis-output.log
       - name: Upload le rapport Schemathesis
         if: ${{ !cancelled() }}
