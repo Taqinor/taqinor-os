@@ -64,7 +64,13 @@ logger = logging.getLogger("apps.ventes.services")
 LIBELLES_CHAMPS_PRODUIT = {
     'nom': 'désignation',
     'prix_vente': 'prix',
+    'tva': 'TVA',
+    'prix_fixe_ht': 'forfait fixe',
+    'prix_par_panneau_ht': 'forfait par panneau',
 }
+
+#: ASTK142 — les champs de barème forfaitaire de l'événement.
+CHAMPS_FORFAIT = ('prix_fixe_ht', 'prix_par_panneau_ht')
 
 
 def _valeurs_champ(champs, nom_champ):
@@ -122,6 +128,40 @@ def _ecarter_valeurs_perimees(produit, nouveau_prix, nouveau_nom):
     return nouveau_prix, nouveau_nom
 
 
+def _etendus_courants(produit, champs):
+    """ASTK142 — ``(tva, forfait)`` encore COURANTS (fraîcheur d'ASTK140).
+
+    ``tva`` = ``(ancienne, nouvelle)`` Decimals ou ``None`` ; ``forfait`` =
+    ``{champ: (ancien, nouveau)}`` des champs de barème dont l'« après » vaut
+    encore la valeur en base. Un « après » périmé est ignoré (journalisé).
+    """
+    paires = {nom: _valeurs_champ(champs, nom)
+              for nom in ('tva',) + CHAMPS_FORFAIT}
+    if not any(n is not None for _a, n in paires.values()):
+        return None, {}
+    courant = (type(produit)._default_manager
+               .filter(pk=getattr(produit, 'pk', None))
+               .values('tva', *CHAMPS_FORFAIT).first())
+    if courant is None:
+        return None, {}
+    reference = getattr(produit, 'sku', None) or getattr(produit, 'pk', '?')
+    gardes = {}
+    for nom, (ancien, nouveau) in paires.items():
+        if nouveau is None:
+            continue
+        nouveau_dec = _decimal_ou_none(nouveau)
+        if nouveau_dec is None or (
+                _decimal_ou_none(courant.get(nom)) != nouveau_dec):
+            logger.info(
+                'PVSYNC: événement périmé ignoré pour %s du produit %s '
+                '(payload %s, catalogue courant %s).',
+                nom, reference, nouveau, courant.get(nom))
+            continue
+        gardes[nom] = (_decimal_ou_none(ancien), nouveau_dec)
+    return gardes.get('tva'), {n: gardes[n] for n in CHAMPS_FORFAIT
+                               if n in gardes}
+
+
 def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
     """PVSYNC — propage un changement de RÉFÉRENCE aux devis qui l'utilisent.
 
@@ -161,14 +201,20 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
     # qui ne vaut plus la valeur courante n'est pas appliqué (journalisé).
     nouveau_prix, nouveau_nom = _ecarter_valeurs_perimees(
         produit, nouveau_prix, nouveau_nom)
-    if not nouveau_nom and nouveau_prix is None:
+    # ASTK142 — TVA et barème forfaitaire (mêmes bornes, même fraîcheur).
+    tva_paire, forfait = _etendus_courants(produit, champs)
+    if (not nouveau_nom and nouveau_prix is None and tva_paire is None
+            and not forfait):
         return resultat
 
     # Seuls les champs encore COURANTS (ASTK140) sont annoncés au chatter.
     encore_courants = {'prix_vente': nouveau_prix is not None,
-                       'nom': bool(nouveau_nom)}
+                       'nom': bool(nouveau_nom),
+                       'tva': tva_paire is not None,
+                       'prix_fixe_ht': 'prix_fixe_ht' in forfait,
+                       'prix_par_panneau_ht': 'prix_par_panneau_ht' in forfait}
     modifications = [LIBELLES_CHAMPS_PRODUIT[champ]
-                     for champ in ('prix_vente', 'nom')
+                     for champ in ('prix_vente', 'nom', 'tva') + CHAMPS_FORFAIT
                      if champ in (champs or {}) and encore_courants[champ]]
 
     with transaction.atomic():
@@ -187,12 +233,35 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
         # qu'une note « devis envoyé conservé » par champ qui l'aurait fait
         # bouger. {devis_id: (devis, {'prix': bool, 'nom': bool})}.
         envoyes_conserves = {}
+        forfaits_brouillons = {}
         for ligne in lignes:
             envoye = ligne.devis.statut == Devis.Statut.ENVOYE
             champs_ecrits = []
             conservee = False
             prix_conserve = False
-            suivrait = {'prix': False, 'nom': False}
+            suivrait = {'prix': False, 'nom': False, 'tva': False,
+                        'forfait': False}
+
+            # ── ASTK142 — TVA : seule une ligne AU TAUX de l'ancienne TVA
+            # catalogue suit ; vide (taux du devis) ou différent = intouché.
+            if tva_paire is not None:
+                ancienne_tva, nouvelle_tva = tva_paire
+                if (ancienne_tva is not None and ancienne_tva != nouvelle_tva
+                        and _decimal_ou_none(ligne.taux_tva) == ancienne_tva):
+                    if envoye:
+                        suivrait['tva'] = True
+                    else:
+                        ligne.taux_tva = nouvelle_tva
+                        champs_ecrits.append('taux_tva')
+            # ── ASTK142 — barème forfaitaire : retarifé par DEVIS plus bas.
+            if forfait:
+                from .lignes import porte_bareme_par_panneau
+                if porte_bareme_par_panneau(ligne.produit):
+                    if envoye:
+                        suivrait['forfait'] = True
+                    else:
+                        forfaits_brouillons.setdefault(
+                            ligne.devis_id, ligne.devis)
 
             # ── Désignation : elle ne suit que si elle n'a jamais été retouchée
             if nouveau_nom and ancien_nom:
@@ -226,12 +295,13 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
             if envoye:
                 if conservee:
                     resultat['lignes_conservees'] += 1
-                if suivrait['prix'] or suivrait['nom']:
+                if any(suivrait.values()):
                     _devis, drapeaux = envoyes_conserves.setdefault(
                         ligne.devis_id,
-                        (ligne.devis, {'prix': False, 'nom': False}))
-                    drapeaux['prix'] = drapeaux['prix'] or suivrait['prix']
-                    drapeaux['nom'] = drapeaux['nom'] or suivrait['nom']
+                        (ligne.devis, {'prix': False, 'nom': False,
+                                       'tva': False, 'forfait': False}))
+                    for cle, vrai in suivrait.items():
+                        drapeaux[cle] = drapeaux[cle] or vrai
                 continue
 
             if champs_ecrits:
@@ -246,6 +316,23 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
                 log_devis_prix_negocie_conserve(
                     ligne.devis, ligne=ligne, ancien=ancien_prix,
                     nouveau=nouveau_prix, user=user)
+
+        # ── ASTK142 — retarifage au barème des BROUILLONS (fonction unique
+        # ``lignes.retarifer_forfaits_par_panneau`` ; abstentions DITES).
+        if forfaits_brouillons:
+            from .lignes import retarifer_forfaits_par_panneau
+            from ..activity import log_devis_forfait_abstention
+            for devis in forfaits_brouillons.values():
+                avant = dict(devis.lignes.values_list('id', 'prix_unitaire'))
+                messages = retarifer_forfaits_par_panneau(devis)
+                apres = dict(devis.lignes.values_list('id', 'prix_unitaire'))
+                bouges = [i for i in avant if avant[i] != apres.get(i)]
+                if bouges:
+                    resultat['lignes_modifiees'] += len(bouges)
+                    touches.setdefault(devis.id, devis)
+                for message in messages:
+                    log_devis_forfait_abstention(
+                        devis, produit=produit, message=message, user=user)
 
         # ── D-ASTK-1 (fondateur 06/10/2026, remplace la décision 18/08) ──
         #
@@ -262,6 +349,8 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
                 prix=((ancien_prix, nouveau_prix) if drapeaux['prix']
                       else None),
                 nom=(ancien_nom, nouveau_nom) if drapeaux['nom'] else None,
+                tva=tva_paire if drapeaux['tva'] else None,
+                forfait=forfait if drapeaux['forfait'] else None,
                 user=user)
 
         from apps.ventes.domain.historique_config import instantane_de_geste
