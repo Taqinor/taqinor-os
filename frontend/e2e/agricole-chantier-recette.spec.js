@@ -24,7 +24,7 @@
 // fichier n'y est pas encore (décision de budget CI, voir i18n-quote-journey).
 import { execFileSync } from 'node:child_process'
 import { test, expect } from '@playwright/test'
-import { ouvrirJalonsChantier } from './helpers.js'
+import { connecterPortail, ouvrirJalonsChantier } from './helpers.js'
 
 const API = '/api/django'
 const MOT_DE_PASSE_PORTAIL = 'Portail-E2E-2026!'
@@ -174,16 +174,19 @@ test('AGR624 — seuil saisi en Paramètres, recette saisie à l’écran, comme
   await page.getByRole('button', { name: /fiche de recette/ }).first().click()
   await page.locator('#recette-pompage-hmt_mesuree_m').fill('45')
   await page.locator('#recette-pompage-debit_mesure_m3h').fill(String(etat.mesure))
+  // AGR609 (d) : l'écart est jugé sur l'état APRÈS l'écriture — une mesure hors
+  // seuil SANS commentaire est refusée dès cet enregistrement (400 FR), et le
+  // message affiché sous le champ porte l'écart chiffré.
   await page.getByRole('button', { name: 'Enregistrer la fiche' }).click()
-  // L'écart est affiché ; hors seuil, le commentaire devient obligatoire.
-  await expect(page.getByTestId('cmp-ecart')).toContainText('%', { timeout: 20_000 })
-  await expect(page.getByTestId('commentaire-requis')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Enregistrer la fiche' }).click()
-  await expect(page.getByTestId('erreur-commentaire_ecart')).toBeVisible({ timeout: 20_000 })
+  const erreur = page.getByTestId('erreur-commentaire_ecart')
+  await expect(erreur).toBeVisible({ timeout: 20_000 })
+  await expect(erreur).toContainText('%')
   await page.locator('#recette-pompage-commentaire_ecart').fill('Vanne de refoulement partiellement fermée à l’essai.')
   await page.getByRole('button', { name: 'Enregistrer la fiche' }).click()
-  await expect(page.getByTestId('erreur-commentaire_ecart')).toHaveCount(0, { timeout: 20_000 })
+  await expect(erreur).toHaveCount(0, { timeout: 20_000 })
+  // Enregistrée : l'écart servi est affiché, hors seuil ⇒ commentaire obligatoire.
+  await expect(page.getByTestId('cmp-ecart')).toContainText('%', { timeout: 20_000 })
+  await expect(page.getByTestId('commentaire-requis')).toBeVisible()
 
   const relue = await json(await request.get(
     `${API}/installations/chantiers/${etat.chantierId}/recette-pompage/`), 'recette relue')
@@ -229,11 +232,9 @@ test('AGR624 — portail client : recette visible, relevé m³ saisi ; la fiche 
   } catch (err) {
     throw new Error(`mot de passe du compte portail non posé (E2E_DJANGO_EXEC) : ${err.message}`)
   }
-  const portail = await playwright.request.newContext({ baseURL })
+  // AUD139 : le mot de passe temporaire doit être changé avant toute route portail.
+  const portail = await connecterPortail(playwright, baseURL, prov.username, MOT_DE_PASSE_PORTAIL)
   try {
-    const login = await portail.post(`${API}/token/`, {
-      data: { username: prov.username, password: MOT_DE_PASSE_PORTAIL } })
-    expect(login.status(), 'connexion du client portail').toBe(200)
 
     const detail = await json(await portail.get(`${API}/portail/mes-chantiers/${etat.chantierId}/`),
       'chantier côté client')

@@ -10,13 +10,14 @@
 // aucune clé v1 (taux_autoconso, payback, part_diurne_pct…) écrite.
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
-import { choisirMarche, declarerProfilCi } from './helpers'
+import { choisirMarche, declarerProfilCi, telephoneMobileUnique, uniq } from './helpers'
 
 const API = '/api/django'
 const KWH = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
 const CLES_V1 = ['taux_autoconso', 'taux_couverture', 'payback', 'part_diurne_pct',
   'etude_kwc_base', 'injection_kwh_an', 'injection_dh_an']
 const devisIds = []
+const leadIds = []
 
 async function json(res, quoi) {
   expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
@@ -39,6 +40,8 @@ test.describe.configure({ mode: 'serial' })
 test.afterAll(async ({ request }) => {
   await Promise.all(devisIds.map((id) =>
     request.delete(`${API}/ventes/devis/${id}/`).catch(() => null)))
+  await Promise.all(leadIds.map((id) =>
+    request.delete(`${API}/crm/leads/${id}/`).catch(() => null)))
 })
 
 test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvrir = mêmes lignes et même taille', async ({ page, request }) => {
@@ -111,11 +114,18 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
 // brouillon avec les lignes de SON moteur C&I, aucune clé v1 écrite.
 test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon aux lignes du moteur', async ({ page, request }) => {
   test.setTimeout(180_000)
-  const lead = await premierLead(request)
-  // Une taille explicite sur le lead garantit une composition chiffrable.
-  await json(await request.patch(`${API}/crm/leads/${lead.id}/`, {
-    data: { type_installation: 'commercial', taille_souhaitee_kwc: '20' },
+  // Lead PROPRE au test (jamais muter un lead seedé partagé). Le moteur C&I
+  // dimensionne sur la CONSOMMATION (D-CIQ, refus_devis_auto_ci) : une facture
+  // en MAD sans tarif BT déclaré ne se convertit pas (« conversion_mad_impossible »)
+  // — le lead porte donc un kWh mensuel déclaré, et une taille explicite pour
+  // une composition chiffrable. Pas de facture d'hiver : rien à contredire.
+  const lead = await json(await request.post(`${API}/crm/leads/`, {
+    data: {
+      nom: uniq('Commerce CIQ127'), ville: 'Casablanca', telephone: telephoneMobileUnique(),
+      type_installation: 'commercial', conso_mensuelle_kwh: '12000', taille_souhaitee_kwc: '20',
+    },
   }), 'lead commercial')
+  leadIds.push(lead.id)
   await page.goto(`/crm/leads/${lead.id}`)
   const appel = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/auto\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 })

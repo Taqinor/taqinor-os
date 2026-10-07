@@ -89,11 +89,11 @@ async function verifierAllerRetour(page, request, id) {
   for (const cle of ['mode_pompe', 'besoin', 'hmt_entrees']) {
     expect(etude[cle], `etude_params.${cle}`).toBeTruthy()
   }
-  // `taille` est une entrée v2 ÉCRITE même quand le vendeur n'a rien choisi :
-  // null = défaut « recommandee » (contrat etude_pompage_preview.json,
-  // corps_regles.taille), sinon l'une des trois tailles du contrat.
-  expect(etude, 'etude_params.taille écrite').toHaveProperty('taille')
-  expect([null, 'recommandee', 'inferieure', 'superieure'], 'etude_params.taille')
+  // `taille` : le navigateur envoie null quand le vendeur n'a rien choisi, et
+  // le serveur ne garde pas une entrée nulle — absente/null = défaut
+  // « recommandee » (contrat etude_pompage_preview.json, corps_regles.taille),
+  // sinon l'une des trois tailles du contrat.
+  expect([undefined, null, 'recommandee', 'inferieure', 'superieure'], 'etude_params.taille')
     .toContain(etude.taille)
   // …et toute dérivée présente vient du rafraîchisseur serveur (AGR123),
   // jamais de l'écran : le serveur REFUSE ces clés en 400 côté navigateur.

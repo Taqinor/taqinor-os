@@ -629,9 +629,26 @@ export async function contextePortailClient(playwright, request, baseURL, client
     'from django.contrib.auth import get_user_model as g; '
     + `u = g().objects.get(username=${JSON.stringify(prov.username)}); `
     + `u.set_password(${JSON.stringify(motDePasse)}); u.save()`)
-  const portail = await playwright.request.newContext({ baseURL })
-  const login = await portail.post(`${API_DJANGO}/token/`,
-    { data: { username: prov.username, password: motDePasse } })
+  return connecterPortail(playwright, baseURL, prov.username, motDePasse)
+}
+
+/** Connecte un compte portail par le login JWT standard. Un compte provisionné
+ *  porte `must_change_password` (N96) et AUD139 refuse toute route portail
+ *  (403 `mot_de_passe_a_changer`) tant que le mot de passe temporaire n'est
+ *  pas remplacé : comme le vrai client à sa 1re session, on le change par
+ *  `/auth/change-password/` puis on se reconnecte avec le nouveau. */
+export async function connecterPortail(playwright, baseURL, username, motDePasse) {
+  const premier = await playwright.request.newContext({ baseURL })
+  const login = await premier.post(`${API_DJANGO}/token/`, { data: { username, password: motDePasse } })
   expect(login.status(), 'connexion du client portail').toBe(200)
+  const nouveau = `${motDePasse}-${Date.now().toString(36)}`
+  const change = await premier.post(`${API_DJANGO}/auth/change-password/`,
+    { data: { current_password: motDePasse, new_password: nouveau } })
+  expect(change.ok(), `changement du mot de passe portail → HTTP ${change.status()} ${await change.text()}`)
+    .toBeTruthy()
+  await premier.dispose()
+  const portail = await playwright.request.newContext({ baseURL })
+  const relogin = await portail.post(`${API_DJANGO}/token/`, { data: { username, password: nouveau } })
+  expect(relogin.status(), 'reconnexion du client portail').toBe(200)
   return portail
 }

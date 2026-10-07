@@ -136,6 +136,9 @@ test('AGR222 — butane déclaré : carte, enregistrement, réouverture identiqu
   expect(apres).toEqual(avant)
 
   // Énergie « aucune » : aucun retour — le coût du m³ seul, ou son motif.
+  // L'enregistrement quitte le formulaire (écran « Devis enregistré ») : on le rouvre.
+  await page.goto(`/ventes/devis/nouveau?edit=${id}`)
+  await expect(page.locator('#gen-farm-fuel')).toHaveValue('butane', { timeout: 45_000 })
   await page.locator('#gen-farm-fuel').selectOption('aucune')
   await expect(page.getByTestId('retour-ans')).toContainText('non calculé', { timeout: 45_000 })
 })

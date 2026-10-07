@@ -84,10 +84,17 @@ test('AGR318 — créer, rouvrir, ré-enregistrer : etude_params identique', asy
     && r.status() < 300, { timeout: 60_000 })
   await page.locator('#gen-form').getByRole('button', { name: 'Enregistrer les modifications' }).click()
   await sauvegarde
+  // L'estampille de provenance du lead est REPOSÉE à chaque enregistrement
+  // sans dérive (DC11/QJR106, ventes.domain.pipeline.estampiller_provenance) :
+  // seule son heure `captured_at` change ; tout le reste doit être identique.
+  const sansHeureDeCapture = (etude) => ({
+    ...etude, provenance: etude?.provenance && { ...etude.provenance, captured_at: undefined },
+  })
   await expect.poll(async () => {
     const relu = await json(await request.get(`${API}/ventes/devis/${devisId}/`), 'devis relu')
-    return relu.etude_params
-  }, { timeout: 30_000, message: 'etude_params identique après réouverture' }).toEqual(etudeAvant)
+    return sansHeureDeCapture(relu.etude_params)
+  }, { timeout: 30_000, message: 'etude_params identique après réouverture' })
+    .toEqual(sansHeureDeCapture(etudeAvant))
 })
 
 test('AGR318 — /proposal : 3 pages au format complet, 1 page en une-page', async ({ request }) => {
