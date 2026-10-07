@@ -27,6 +27,10 @@ class SerieEntrepot(models.Model):
         EN_STOCK = 'en_stock', 'En stock'
         RESERVE = 'reserve', 'Réservé'
         SORTI = 'sorti', 'Sorti'
+        # ASTK57 — réception fournisseur ANNULÉE après confirmation : l'unité
+        # repart chez le fournisseur (contre-passation), elle n'est plus en
+        # stock.
+        RETOURNE = 'retourne', 'Retourné (réception annulée)'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,

@@ -15,15 +15,17 @@ duplique donc jamais le chantier. La création est company-scopée
 from django.dispatch import receiver
 
 from core.events import (
-    bon_commande_cree, devis_accepted, reception_fournisseur_confirmee,
-    facture_fournisseur_creee,
+    bon_commande_cree, devis_accepted, reception_fournisseur_annulee,
+    reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
 
 from .models import Installation
 from .services import (
-    create_installation_from_devis, provisionner_gr_ir_reception,
-    lettrer_gr_ir_facture, peupler_series_entrepot_reception,
-    reserver_stock_recu_pour_chantier,
+    create_installation_from_devis, extourner_gr_ir_reception,
+    provisionner_gr_ir_reception, lettrer_gr_ir_facture,
+    peupler_series_entrepot_reception,
+    replafonner_reservation_recue_pour_chantier,
+    reserver_stock_recu_pour_chantier, retourner_series_entrepot_reception,
 )
 
 
@@ -103,6 +105,44 @@ def _reserver_stock_chantier_on_reception(sender, reception, company, user,
     chantier (idempotent, plafonné au manque recalculé, no-op sans lien)."""
     try:
         reserver_stock_recu_pour_chantier(reception=reception)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(reception_fournisseur_annulee,
+          dispatch_uid="installations_extourner_gr_ir_on_reception_annulee")
+def _extourner_gr_ir_on_reception_annulee(sender, reception, company,
+                                          user=None, **kwargs):
+    """ASTK57 — jumeau d'annulation de YPROC3 : extourne la provision GR/IR
+    ouverte de la réception annulée (idempotent)."""
+    try:
+        extourner_gr_ir_reception(reception=reception, company=company)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(reception_fournisseur_annulee,
+          dispatch_uid="installations_retourner_series_on_reception_annulee")
+def _retourner_series_on_reception_annulee(sender, reception, company,
+                                           user=None, **kwargs):
+    """ASTK57 — jumeau d'annulation de YSTCK7 : les séries « en stock » de
+    la réception annulée passent « retourné » (idempotent)."""
+    try:
+        retourner_series_entrepot_reception(
+            reception=reception, company=company)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(reception_fournisseur_annulee,
+          dispatch_uid="installations_replafonner_resa_on_reception_annulee")
+def _replafonner_reservation_on_reception_annulee(sender, reception, company,
+                                                  user=None, **kwargs):
+    """ASTK57 — jumeau d'annulation de YPROC10 : la réservation du chantier
+    d'origine ne dépasse plus le reçu net (idempotent)."""
+    try:
+        replafonner_reservation_recue_pour_chantier(
+            reception=reception, company=company)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
 

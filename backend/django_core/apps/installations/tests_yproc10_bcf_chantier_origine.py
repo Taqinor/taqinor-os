@@ -5,7 +5,8 @@ Couvre :
   * `draft_bcf_for_shortfall` pose `chantier_origine` sur le BCF généré ;
   * confirmer la réception d'un BCF portant `chantier_origine` crée/complète
     la `StockReservation` du chantier pour les quantités reçues, plafonnée au
-    manque recalculé (jamais de sur-réservation) ;
+    manque recalculé (jamais de sur-réservation) — et ne la réduit jamais
+    (ASTK121 : max(existante, reçu plafonné)) ;
   * re-confirmer (ou une seconde réception partielle) n'ajoute jamais plus
     que le manque restant (idempotence) ;
   * un BCF SANS chantier_origine se comporte exactement comme avant (aucune
@@ -91,6 +92,14 @@ class Yproc10Base(TestCase):
             devis, self.user, self.company)
         return inst
 
+    def _sans_reservation_n14(self, inst):
+        """ASTK121 — isole le chemin YPROC10 : la réception ne fait que
+        COMPLÉTER une réservation existante (jamais la réduire). Pour
+        observer seule la réservation née de la réception, on retire la
+        réservation N14 du besoin total posée à la création du chantier."""
+        StockReservation.objects.filter(
+            installation=inst, produit=self.panneau).delete()
+
     def _confirmer_reception(self, bc, qte):
         rec = ReceptionFournisseur.objects.create(
             company=self.company, reference=f'REC-YPROC10-{bc.id}',
@@ -118,6 +127,7 @@ class TestReservationAutomatiqueALaReception(Yproc10Base):
             inst, self.fournisseur, self.user, self.company)
         bon.statut = BonCommandeFournisseur.Statut.ENVOYE
         bon.save(update_fields=['statut'])
+        self._sans_reservation_n14(inst)
 
         self._confirmer_reception(bon, 10)
 
@@ -133,6 +143,7 @@ class TestReservationAutomatiqueALaReception(Yproc10Base):
             inst, self.fournisseur, self.user, self.company)
         bon.statut = BonCommandeFournisseur.Statut.ENVOYE
         bon.save(update_fields=['statut'])
+        self._sans_reservation_n14(inst)
 
         # Réception de 20 (plus que le manque de 15) : plafonnée à 15.
         self._confirmer_reception(bon, 20)
@@ -147,6 +158,7 @@ class TestReservationAutomatiqueALaReception(Yproc10Base):
             inst, self.fournisseur, self.user, self.company)
         bon.statut = BonCommandeFournisseur.Statut.ENVOYE
         bon.save(update_fields=['statut'])
+        self._sans_reservation_n14(inst)
 
         rec = self._confirmer_reception(bon, 10)
         # Appeler à nouveau le service directement (simule un ré-abonné/
@@ -173,12 +185,14 @@ class TestReservationAutomatiqueALaReception(Yproc10Base):
         self._confirmer_reception(bon, 10)
         self.panneau.refresh_from_db()
         apres = available_quantity(self.panneau)
-        # YPROC10 replafonne la réservation du chantier à la quantité REÇUE
-        # cumulée (10, jamais plus que le manque figé au brouillon = 15) —
-        # elle n'est donc plus jamais gonflée au besoin total (20). Stock
-        # total +10 (15) − réservé 10 = 5 : le disponible est bien VISIBLE
-        # (il bouge avec la réception) et jamais sur-réservé.
-        self.assertEqual(apres, 5)
+        # ASTK121 — la réception ne fait que COMPLÉTER la réservation
+        # (max(existante 20, reçu plafonné 10)) : elle n'est JAMAIS réduite
+        # au seul reçu. Stock total +10 (15) − réservé 20 = -5 : le
+        # disponible bouge avec la réception et reflète le manque restant (5).
+        resa = StockReservation.objects.get(
+            installation=inst, produit=self.panneau)
+        self.assertEqual(resa.quantite, 20)
+        self.assertEqual(apres, -5)
         self.assertGreater(apres, avant)
 
 
