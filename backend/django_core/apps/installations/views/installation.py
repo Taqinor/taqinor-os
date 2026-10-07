@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -837,6 +839,21 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             inst, request.user,
             f"Signature client enregistrée sur le bon de livraison "
             f"({nom or 'anonyme'}).")
+        # ADOC71 — PV et BL figés en GED À L'INSTANT de la signature (le
+        # document remis = l'état signé, même si personne ne le télécharge).
+        # Une panne GED/MinIO n'empêche jamais la signature : avertissement
+        # journalisé + note au chatter ; le premier GET fige alors (ADOC70).
+        try:
+            from apps.documents.builders import figer_documents_signes
+            figer_documents_signes(inst)
+        except Exception as exc:  # noqa: BLE001 — la signature prime
+            logging.getLogger(__name__).warning(
+                "ADOC71 — gel GED du PV/BL du chantier %s impossible : %s",
+                inst.pk, exc)
+            activity.log_note(
+                inst, request.user,
+                "Gel GED du PV et du bon de livraison différé (stockage "
+                "indisponible) : il se fera au premier téléchargement.")
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
