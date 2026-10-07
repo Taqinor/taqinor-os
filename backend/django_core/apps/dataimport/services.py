@@ -283,16 +283,46 @@ def parse_rows(file_bytes, filename):
     return iter_rows(file_bytes, filename)
 
 
+def champs_autorises(target):
+    """AANA9 — les SEULS champs qu'un import peut écrire pour ``target`` : les
+    valeurs de ``FIELD_MAPS[target]``. Un mapping (sauvegardé ou proposé par
+    l'IA) qui vise autre chose (``company_id``, ``owner_id``, ``is_deleted``…)
+    passerait sinon tel quel en ``**kwargs`` au ``Model.objects.create`` — une
+    écriture de champ technique, voire un lead né dans une AUTRE société."""
+    return frozenset((FIELD_MAPS.get(target) or {}).values())
+
+
+def valider_mapping(target, mapping):
+    """AANA9 — refuse (``ValueError`` → 400) un mapping colonne→champ dont un
+    champ n'appartient pas à ``champs_autorises(target)``."""
+    autorises = champs_autorises(target)
+    refuses = sorted({str(champ) for champ in mapping.values()
+                      if not isinstance(champ, str) or champ not in autorises})
+    if refuses:
+        raise ValueError(
+            'Champ(s) cible(s) non importable(s) pour « %s » : %s. Champs '
+            'possibles : %s.' % (target, ', '.join(refuses),
+                                 ', '.join(sorted(autorises)) or 'aucun'))
+
+
 def _map_headers(headers, target, saved_mapping=None):
     """``saved_mapping`` (XPLT2, ``ImportMapping.mapping``) est un dict
     colonne→champ appliqué EN PRIORITÉ (mêmes clés que le mapping automatique) ;
-    toute colonne non couverte retombe sur le mapping par en-tête habituel."""
+    toute colonne non couverte retombe sur le mapping par en-tête habituel.
+
+    AANA9 — un champ du mapping sauvegardé hors ``champs_autorises(target)``
+    (mapping enregistré avant la validation de ``save_mapping``) est IGNORÉ :
+    la colonne retombe sur le mapping automatique, jamais sur un champ
+    technique comme ``company_id``."""
     fmap = FIELD_MAPS[target]
+    autorises = champs_autorises(target)
     mapped, unmapped = {}, []
     for h in headers:
         field = None
         if saved_mapping:
             field = saved_mapping.get(h) or saved_mapping.get(_norm(h))
+            if field not in autorises:
+                field = None
         if not field:
             field = fmap.get(_norm(h))
         if field:
@@ -356,7 +386,8 @@ def proposer_mapping_ia(target, en_tetes_non_mappes):
 
     if not is_capability_configured('llm'):
         return {}
-    champs_connus = sorted(set(FIELD_MAPS[target].values()))
+    # AANA9 — même liste blanche que ``save_mapping``/``_map_headers``.
+    champs_connus = sorted(champs_autorises(target))
     if not champs_connus:
         return {}
     prompt = ('En-têtes à mapper : %s\nChamps cibles possibles : %s'
@@ -435,8 +466,11 @@ def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
 
 def save_mapping(company, target, nom, mapping):
     """XPLT2 — sauvegarde (ou remplace) un mapping colonne→champ nommé pour
-    une cible, réutilisable au prochain dry-run."""
+    une cible, réutilisable au prochain dry-run.
+
+    AANA9 — lève ``ValueError`` si un champ cible n'est pas importable."""
     from .models import ImportMapping
+    valider_mapping(target, mapping)
     obj, _created = ImportMapping.objects.update_or_create(
         company=company, entity=target, nom=nom, defaults={'mapping': mapping})
     return obj
