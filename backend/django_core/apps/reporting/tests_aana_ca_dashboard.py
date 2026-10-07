@@ -18,6 +18,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.reporting.kpi_alertes import _resolve_representative_user
+from apps.stock.models import Produit
 from apps.ventes.models import Facture, LigneFacture, Paiement
 from authentication.models import Company
 
@@ -38,13 +39,17 @@ class TestCaDashboard(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
         self.client_obj = Client.objects.create(
             company=self.company, nom='Cli R2')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Kit', sku='AANA20-P',
+            prix_vente=Decimal('1000'), quantite_stock=0)
 
     def _facture(self, reference, statut, remise_globale=Decimal('0')):
         facture = Facture.objects.create(
             company=self.company, reference=reference, client=self.client_obj,
             statut=statut, remise_globale=remise_globale)
         LigneFacture.objects.create(
-            facture=facture, designation='Kit', quantite=Decimal('1'),
+            facture=facture, produit=self.produit, designation='Kit',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('1000'))
         return facture
 
