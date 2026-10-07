@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 
 def _quantite_en_casier(company, bin_id, produit_id):
     """Quantité indicative du produit dans ce casier (FG319
-    ``BinAffectation``) — lue, jamais écrite depuis ``stock``."""
+    ``BinAffectation``). Lue ici ; tenue à jour à chaque mouvement portant
+    un casier par ``record_stock_movement`` → service installations
+    ``appliquer_mouvement_casier`` (ASTK195) — aucun second écrivain."""
     from apps.installations.models import BinAffectation
     aff = BinAffectation.objects.filter(
         company=company, bin_id=bin_id, produit_id=produit_id).first()

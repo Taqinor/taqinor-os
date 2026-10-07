@@ -2419,11 +2419,31 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
             defaults={'company': company, 'quantite': 0})
         se.quantite = max(se.quantite - quantite, 0)
         se.save(update_fields=['quantite'])
+    _appliquer_casiers_mouvement(company, produit, quantite, mouvement)
     _notify_seuil_atteint_si_franchi(
         company=company, produit=produit,
         quantite_avant=quantite_avant, quantite_apres=quantite_apres)
     _emit_mouvement_stock_enregistre(mouvement, company)
     return mouvement
+
+
+def _appliquer_casiers_mouvement(company, produit, quantite, mouvement):
+    """ASTK195 (C-ASTK-046, WMS-7) — un mouvement portant ``bin_source`` /
+    ``bin_destination`` fait suivre la quantité PAR CASIER
+    (``installations.BinAffectation``) via LE seul écrivain du propriétaire
+    chantiers, ``installations.services.appliquer_mouvement_casier``
+    (ASTK194 ; source plafonnée à 0, destination créée au besoin) — import
+    fonction-local, frontière cross-app. Sans casier : no-op (comportement
+    historique). Toutes les écritures scannées (scanner, déplacement d'unité,
+    retour client, retour fournisseur scanné) passent ici."""
+    src = getattr(mouvement, 'bin_source_id', None)
+    dst = getattr(mouvement, 'bin_destination_id', None)
+    if not (src or dst) or not getattr(produit, 'pk', None):
+        return
+    from apps.installations.services import appliquer_mouvement_casier
+    appliquer_mouvement_casier(
+        company, produit.pk, quantite,
+        bin_source_id=src or None, bin_destination_id=dst or None)
 
 
 def _format_quantite_fr(valeur):
