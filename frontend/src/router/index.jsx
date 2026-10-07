@@ -62,6 +62,8 @@ const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 // XSAL17 — page publique de réservation de visite (placeholder {lien_rdv}).
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
+// ASTK219 — kiosque de quai public (check-in chauffeur par code, sans login).
+const KiosqueQuaiPage = lazy(() => import('../pages/stock/KiosqueQuaiPage'))
 // NTCRM18 — page publique de la salle de vente digitale (sans login).
 const PublicSalleVentePage = lazy(() => import('../pages/crm/salle-vente/PublicSalleVentePage'))
 // XGED1/XGED2 — cérémonie de signature électronique publique (sans login).
@@ -386,6 +388,8 @@ const router = createBrowserRouter([
   { path: '/ui', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><UIShowcase /></Suspense></RouteErrorBoundary> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
   { path: '/rdv/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense></RouteErrorBoundary> },
+  // ASTK219 — kiosque de quai public (sans login, sans layout ERP).
+  { path: '/quai/checkin', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><KiosqueQuaiPage /></Suspense></RouteErrorBoundary> },
   // NTCRM18 — salle de vente digitale publique (sans login, sans layout ERP).
   { path: '/salle-vente/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSalleVentePage /></Suspense></RouteErrorBoundary> },
   // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
