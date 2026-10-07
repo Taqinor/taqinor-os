@@ -98,9 +98,12 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
     def regles(self, request, pk=None):
         """Ajoute une règle de prix/palier à cette liste (XSAL2)."""
         liste = self.get_object()
+        # ASEC22 — le ``request`` en contexte BORNE ``produit`` à la société
+        # (SameCompanyFKSerializerMixin) : sans lui, aucune société de
+        # référence et l'id d'une autre société passait (V5 : 201).
         serializer = RegleListePrixSerializer(data={
             **request.data, 'liste': liste.id,
-        })
+        }, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save(liste=liste)
         return Response(serializer.data, status=201)
