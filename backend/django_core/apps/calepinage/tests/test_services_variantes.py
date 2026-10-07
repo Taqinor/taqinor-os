@@ -132,51 +132,59 @@ class DupliquerTest(BaseVariantes):
         self.pivot.save()
         self.a = creer_variante(self.pivot, nom='Option A')
         self.b = creer_variante(self.pivot, nom='Option B', retenir=True)
+        # ACAL187 (D-ACAL-12) — la source est OUVERTE sur ``lead_a`` : la
+        # copie vise un AUTRE lead (du même client).
+        self.lead_b = Lead.objects.create(company=self.company,
+                                          nom='Toiture Maârif',
+                                          client=self.client_a)
+
+    def _dupliquer(self, **kwargs):
+        return dupliquer(self.pivot, lead_id=self.lead_b.pk, **kwargs)
 
     def test_la_copie_ne_porte_ni_devis_ni_affaire(self):
-        copie = dupliquer(self.pivot)
+        copie = self._dupliquer()
         self.assertIsNone(copie.devis_id)
         self.assertIsNone(copie.appel_offre_id)
 
     def test_la_copie_reste_dans_la_societe(self):
-        copie = dupliquer(self.pivot)
+        copie = self._dupliquer()
         self.assertEqual(copie.company_id, self.company.pk)
 
-    def test_la_copie_garde_le_rattachement(self):
-        copie = dupliquer(self.pivot)
+    def test_la_copie_prend_la_cible_et_le_client_du_lead(self):
+        copie = self._dupliquer()
         self.assertEqual(copie.client_id, self.client_a.pk)
-        self.assertEqual(copie.lead_id, self.lead_a.pk)
+        self.assertEqual(copie.lead_id, self.lead_b.pk)
 
     def test_la_copie_reprend_le_layout(self):
-        copie = dupliquer(self.pivot)
+        copie = self._dupliquer()
         self.assertEqual(copie.roof_layout, LAYOUT)
         self.assertEqual(copie.layout_hash, self.pivot.layout_hash)
 
     def test_la_copie_repart_en_brouillon(self):
         self.pivot.statut = Calepinage.Statut.VALIDE
         self.pivot.save()
-        copie = dupliquer(self.pivot)
+        copie = self._dupliquer()
         self.assertEqual(copie.statut, Calepinage.Statut.BROUILLON)
 
-    def test_les_variantes_sont_recopiees_avec_leur_retenue(self):
-        copie = dupliquer(self.pivot)
+    def test_les_variantes_sont_recopiees_sans_retenue(self):
+        # ACAL117 — une copie ne réquisitionne aucune option retenue : les
+        # variantes suivent, NON retenues et sans résultat.
+        copie = self._dupliquer()
         noms = list(copie.variantes.order_by('id')
                     .values_list('nom', flat=True))
         self.assertEqual(noms, ['Option A', 'Option B'])
-        retenues = list(copie.variantes.filter(retenue=True)
-                        .values_list('nom', flat=True))
-        self.assertEqual(retenues, ['Option B'])
+        self.assertFalse(copie.variantes.filter(retenue=True).exists())
 
     def test_l_original_garde_ses_variantes(self):
-        dupliquer(self.pivot)
+        self._dupliquer()
         self.assertEqual(self.pivot.variantes.count(), 2)
 
     def test_titre_derive_de_l_original(self):
-        copie = dupliquer(self.pivot)
+        copie = self._dupliquer()
         self.assertEqual(copie.titre, 'Toiture Atlas (copie)')
 
     def test_titre_explicite_respecte(self):
-        copie = dupliquer(self.pivot, titre='Scénario batterie')
+        copie = self._dupliquer(titre='Scénario batterie')
         self.assertEqual(copie.titre, 'Scénario batterie')
 
     def test_calepinage_non_enregistre_refuse(self):

@@ -13,7 +13,8 @@ Ce qui est prouvé ici :
 * la mention part dans le pied COURANT du rapport d'étude (répété sur chaque
   page) et aucune pièce n'est refusée pour autant ;
 * ``@tag('pdf')`` : la mention figure sur CHAQUE page du PDF (texte extrait) ;
-* en base (CI) : un devis lié envoyé verrouille, l'archivage archive.
+* en base (CI) : un devis lié ACCEPTÉ verrouille (ACAL42 : un envoyé se
+  corrige, plus de mention), l'archivage archive.
 
 Run :
     python manage.py test apps.calepinage.tests.test_calx325_mention_verrou -v2
@@ -98,15 +99,13 @@ class EtatLuParLesServicesTest(SimpleTestCase):
                                   tzinfo=datetime.timezone.utc)
         archivage = datetime.datetime(2026, 9, 20, 9, 0,
                                       tzinfo=datetime.timezone.utc)
-        calepinage = SimpleNamespace(pk=7,
+        # ACAL118 — la date d'archivage est celle du MODÈLE (archive_le).
+        calepinage = SimpleNamespace(pk=7, archive_le=archivage,
                                      devis=SimpleNamespace(date_envoi=envoi))
         with mock.patch('apps.calepinage.services.verrou.est_verrouille',
                         return_value=True), \
                 mock.patch('apps.calepinage.services.archivage.est_archive',
-                           return_value=True), \
-                mock.patch('apps.trash.selectors.entree_active',
-                           return_value=SimpleNamespace(
-                               supprime_le=archivage)):
+                           return_value=True):
             etat = etat_de_conception(calepinage)
         self.assertTrue(etat['verrouille'])
         self.assertTrue(etat['archive'])
@@ -176,23 +175,38 @@ class EtatEnBaseTest(TestCase):
         client = Client.objects.create(company=self.company, nom='Client')
         self.devis = Devis.objects.create(
             company=self.company, client=client, reference='DEV-CALX325-1',
-            statut='envoye',
+            statut='accepte',
             date_envoi=datetime.datetime(2026, 9, 12, 9, 0,
                                          tzinfo=datetime.timezone.utc))
         self.calepinage = Calepinage.objects.create(
             company=self.company, client=client, devis=self.devis,
             titre='Toiture')
 
-    def test_un_devis_lie_envoye_verrouille_avec_la_date_d_envoi(self):
+    def test_un_devis_lie_accepte_verrouille_avec_la_date_d_envoi(self):
+        # ACAL42 — le verrou est le verdict ventes du geste CALEPINAGE :
+        # accepté ⇒ figé (mention) ; envoyé ⇒ se corrige (aucune mention).
         etat = etat_de_conception(self.calepinage)
         self.assertTrue(etat['verrouille'])
         self.assertTrue(etat['verrouille_le'].endswith('/09/2026'))
         self.assertFalse(etat['archive'])
 
-    def test_l_archivage_ajoute_la_mention_archivee(self):
-        from apps.calepinage.services.archivage import archiver
+    def test_un_devis_lie_envoye_ne_porte_plus_la_mention(self):
+        self.devis.statut = 'envoye'
+        self.devis.save(update_fields=['statut'])
+        self.calepinage.refresh_from_db()
+        self.assertFalse(etat_de_conception(self.calepinage)['verrouille'])
 
-        archiver(self.calepinage)
+    def test_l_archivage_ajoute_la_mention_archivee(self):
+        # ACAL118 — un calepinage lié à un devis ACCEPTÉ ne s'archive plus
+        # (refus nommé) ; un archivé hérité (porté par la migration 0022)
+        # garde ses deux mentions.
+        from django.utils import timezone
+
+        from apps.calepinage.models import Calepinage
+
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            archive_le=timezone.now())
+        self.calepinage.refresh_from_db()
         etat = etat_de_conception(self.calepinage)
         self.assertTrue(etat['archive'])
         self.assertTrue(etat['archive_le'])

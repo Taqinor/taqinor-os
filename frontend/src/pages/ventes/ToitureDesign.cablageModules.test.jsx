@@ -27,7 +27,6 @@ import {
   initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBootMinimal, stubberEmpreinteOsm,
 } from '../../test/toitureDesignHarness'
 import calepinageApi from '../../api/calepinageApi'
-import ventesApi from '../../api/ventesApi'
 
 stubberEmpreinteOsm()
 
@@ -87,24 +86,23 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalled())
   })
 
-  it('le mode DEVIS ne fait AUCUNE requête de catalogue (porte propre au calepinage)', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue({
-      data: {
-        devis: { id: 9, reference: 'DV-9' },
-        client: {},
-        geometrie: { roof_layout: null, roof_outline: null, roof_point: null },
-        cible: null,
-        carte: { available: true, maptilerKey: 'k', mapboxToken: '' },
-        modifiable: true,
-        motif_lecture_seule: null,
-      },
-    })
+  // ACAL37 (D-ACAL-1, D-ACAL-10) — RÉÉCRIT : la route devis ouvre le calepinage lié et
+  // charge le catalogue de modules comme le mode calepinage (plus de mode devis à part).
+  it('la route DEVIS charge le catalogue du calepinage lié', async () => {
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: CTX.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_modules_disponibles'))
 
     rendreDevis(9, '/devis/:id/toiture')
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    expect(calepinageApi.calepinages.modulesDisponibles).not.toHaveBeenCalled()
-    expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toBeUndefined()
+    expect(calepinageApi.calepinages.depuisModele).toHaveBeenCalledWith({ devis_id: 9 })
+    expect(calepinageApi.calepinages.modulesDisponibles)
+      .toHaveBeenCalledWith(String(CTX.calepinage.id))
+    expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toEqual(MODULES)
   })
 })
 
@@ -121,13 +119,9 @@ describe('ACAL80 — point de rendement nul dans l’ERP', () => {
     cleanup()
     initRoofToolPro8.mockClear()
     delete window.__taqinorRoofBooted
-    ventesApi.getDevisDesignContext.mockResolvedValue({
-      data: {
-        devis: { id: 9, reference: 'DV-9' }, client: {},
-        geometrie: { roof_layout: null, roof_outline: null, roof_point: null }, cible: null,
-        carte: { available: true, maptilerKey: 'k', mapboxToken: '' }, modifiable: true, motif_lecture_seule: null,
-      },
-    })
+    // ACAL37 — la route devis ouvre le calepinage lié : même constructeur.
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: CTX.calepinage.id } })
     rendreDevis(9)
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(initRoofToolPro8.mock.calls[0][0].rendementPvgis).toBeNull()

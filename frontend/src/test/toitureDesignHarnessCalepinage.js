@@ -6,6 +6,12 @@
    planter tout l'écran au lieu de montrer l'assertion. Se charge par
    `import '../../test/toitureDesignHarnessCalepinage'` avant l'écran. */
 import { vi } from 'vitest'
+import { exempleContrat } from './fixtures/contractSamples'
+
+/* Le contexte de conception COMMITTÉ et son devis lié, partagés par les
+   tests de la route devis (ACAL37). */
+export const CTX_CALEPINAGE_DEVIS = exempleContrat('calepinage', 'calepinage_design_context')
+export const DEVIS_ID_CALEPINAGE = CTX_CALEPINAGE_DEVIS.calepinage.devis_lie.id
 
 vi.mock('../api/calepinageApi', async (importOriginal) => {
   const actual = await importOriginal()

@@ -32,6 +32,41 @@ def _emettre_layout_finalise(devis, user):
     emettre_layout_finalise(devis, user)
 
 
+def _jeton_if_match(request):
+    """ACAL96 — l'empreinte « document » de l'en-tête ``If-Match`` (ETag
+    tolérée), ``None`` si absent : le jeton n'est comparé que s'il est
+    FOURNI (C-ACAL-044)."""
+    brut = request.headers.get('If-Match')
+    if brut is None or not brut.strip():
+        return None
+    brut = brut.strip()
+    if brut.startswith('W/'):
+        brut = brut[2:]
+    return brut.strip().strip('"').strip()
+
+
+def _ecrire_conception(devis, payload, request):
+    """ACAL96 — calepinage lié écrit puis devis resynchronisé ; les refus
+    deviennent les réponses existantes (409 ``{detail, revision_possible}``,
+    refus du calepinage tels quels)."""
+    from ..domain.resynchronisation import (
+        ConceptionRefusee, ecrire_conception_du_devis)
+    from ..services import SyncLayoutError
+
+    try:
+        resultat = ecrire_conception_du_devis(
+            devis, payload, request.user,
+            base_empreinte=_jeton_if_match(request))
+    except SyncLayoutError as exc:
+        return Response(
+            {'detail': exc.detail,
+             'revision_possible': exc.revision_possible},
+            status=status.HTTP_409_CONFLICT)
+    except ConceptionRefusee as refus:
+        return Response(refus.corps, status=refus.statut)
+    return Response(resultat)
+
+
 class DevisCalepinageActionsMixin:
     """SPL140 — actions calepinage / conception de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -70,27 +105,18 @@ class DevisCalepinageActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST)
 
         layout = request.data.get('layout')
-        # CAL185 — DEUXIÈME ENTRÉE, MÊME CHEMIN. Le commercial compare ses
-        # options DANS le calepinage, en retient une… et rien ne partait de
-        # cette variante retenue. `{"calepinage": <id>}` (sans `layout`) fait
-        # lire sa conception par `apps.calepinage.selectors` — jamais ses
-        # modèles — et la fait chiffrer par CE service, qui délègue lui-même à
-        # `build_devis_from_layout` : aucun second chemin de création de
-        # lignes. Un corps qui porte un `layout` explicite est inchangé.
-        calepinage_id = request.data.get('calepinage')
-        nomenclature = None
-        if (not isinstance(layout, dict) or not layout) and calepinage_id:
-            from apps.calepinage.selectors import nomenclature_variante_retenue
-            nomenclature = nomenclature_variante_retenue(
-                calepinage_id, company)
-            if nomenclature is None:
-                return Response(
-                    {'detail': "Aucune variante retenue à chiffrer sur ce "
-                               "calepinage : comparez vos options, retenez-en "
-                               "une, puis relancez.",
-                     'champ': 'calepinage'},
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-            layout = nomenclature['layout']
+        # ACAL108 (D-ACAL-2) — la porte jumelle CAL185 `{calepinage}` est
+        # RETIRÉE : un calepinage se chiffre par SON « Générer le devis »
+        # (retenir une variante l'écrit comme conception courante). Refus
+        # nommé, rien n'est écrit ; un `layout` explicite est inchangé.
+        if ((not isinstance(layout, dict) or not layout)
+                and request.data.get('calepinage')):
+            return Response(
+                {'detail': "Un calepinage se chiffre par « Générer le devis » "
+                           "du calepinage : la variante retenue en est la "
+                           "conception courante",
+                 'champ': 'calepinage'},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         if not isinstance(layout, dict) or not layout:
             return Response(
                 {'detail': 'Layout manquant ou invalide.'},
@@ -200,24 +226,14 @@ class DevisCalepinageActionsMixin:
             taux_tva=taux_tva, remise_globale=remise,
             structure_produit_id=structure_produit_id,
             structure_type=(str(structure_type) if structure_type else None))
-        # CAL185 — le rapport « à renseigner » n'existe que sur l'entrée
-        # calepinage ; l'entrée historique est byte-identique.
-        rapport = None
         # ACAL88 — le canal de la construction (U3) : ce que la composition a
         # refusé de faire remonte dans la réponse (contrat devis_from_layout).
         journal = {}
         try:
-            if nomenclature is not None:
-                from ..services import build_devis_depuis_calepinage_retenu
-                devis, rapport = build_devis_depuis_calepinage_retenu(
-                    calepinage_id=calepinage_id, user=request.user,
-                    company=company, lead=lead_obj, client=client_obj,
-                    **_composition)
-            else:
-                devis = build_devis_from_layout(
-                    layout=layout, user=request.user, company=company,
-                    lead=lead_obj, client=client_obj, journal=journal,
-                    **_composition)
+            devis = build_devis_from_layout(
+                layout=layout, user=request.user, company=company,
+                lead=lead_obj, client=client_obj, journal=journal,
+                **_composition)
         except AutoDevisError as refus:
             # ACAL32 — un refus de composition (site isolé non servable…) est
             # un 422 NOMMÉ, jamais un 500 ; rien n'a été écrit.
@@ -243,17 +259,10 @@ class DevisCalepinageActionsMixin:
             'proposal_path': chemin_proposition(devis, link.token),
             # ACAL88 / ACAL4 — la branche ToitureDesign.jsx qui les lit
             # devient vivante.
-            'avertissements': list(
-                (rapport or journal).get('avertissements') or ()),
+            'avertissements': list(journal.get('avertissements') or ()),
             'marques_manquantes': list(
-                (rapport or journal).get('marques_manquantes') or ()),
+                journal.get('marques_manquantes') or ()),
         }
-        # CAL185 — clés AJOUTÉES seulement sur l'entrée calepinage : la
-        # réponse de l'entrée historique ne bouge pas d'un octet.
-        if rapport is not None:
-            corps['calepinage'] = rapport['calepinage']
-            corps['variante'] = rapport['variante']
-            corps['a_renseigner'] = rapport['a_renseigner']
         return Response(corps, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='design-context',
@@ -304,8 +313,6 @@ class DevisCalepinageActionsMixin:
         « Réviser ») ; refusé/expiré, 409 avec ``revision_possible: false``.
         Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
-        from ..services import resynchroniser_conception, SyncLayoutError
-
         devis = self.get_object()  # borné société par get_queryset
         payload = request.data
         if isinstance(payload, dict):
@@ -316,16 +323,11 @@ class DevisCalepinageActionsMixin:
         if not isinstance(payload, dict) or not payload:
             return Response({'detail': 'Layout manquant ou invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        try:
-            # ACAL34 — L'ENVELOPPE unique (resynchro + quatre études +
-            # annonce PV79), la même que « Resynchroniser le devis » du module.
-            resultat = resynchroniser_conception(devis, payload, request.user)
-        except SyncLayoutError as exc:
-            return Response(
-                {'detail': exc.detail,
-                 'revision_possible': exc.revision_possible},
-                status=status.HTTP_409_CONFLICT)
-        return Response(resultat)
+        # ACAL96 (D-ACAL-1) — le layout est écrit dans le CALEPINAGE lié
+        # (adopté/créé au besoin), puis l'enveloppe ACAL34 resynchronise le
+        # devis depuis CE calepinage : plus d'écriture de Devis.roof_layout
+        # depuis le corps.
+        return _ecrire_conception(devis, payload, request)
 
     @action(detail=True, methods=['get', 'post'],
             url_path='conception-electrique',
@@ -524,25 +526,17 @@ class DevisCalepinageActionsMixin:
         renderPlan) tel que le produit l'outil roofPro11. La société n'est
         jamais lue du corps : le devis est déjà borné à la société de
         l'utilisateur par ``get_queryset`` (un devis d'une autre société →
-        404). Seuls ``roof_layout`` et ``layout_hash`` sont touchés ; aucun
-        statut ne bouge (préservation des statuts, règle #4).
+        404). Aucun statut ne bouge (préservation des statuts, règle #4).
 
-        CAL39 — CE CHEMIN ÉTAIT MUET. Il n'émettait AUCUN événement et ne
-        posait même pas ``layout_hash``, alors que ``from-layout`` et
-        ``sync-layout`` font les deux. Conséquences : la dédup au clic suivant
-        ne pouvait pas le reconnaître, et tout abonné au bus (le miroir de
-        calepinage, la note au chatter du lead) ignorait cet enregistrement —
-        un calepinage créé depuis la fiche lead restait gelé pendant que le
-        devis, lui, était redessiné ici. Il émet désormais le MÊME événement
-        que les deux autres, et pose la MÊME empreinte. AUCUNE ligne d'écran
-        ne change : le geste, la route et la réponse sont identiques."""
-        from ..services import layout_hash, poser_layout_hash
-
+        ACAL96 (D-ACAL-1) — le POST écrit le CALEPINAGE lié (adopté/créé au
+        besoin) puis resynchronise le devis par l'enveloppe unique, exactement
+        comme ``sync-layout`` : ``Devis.roof_layout`` est l'instantané RANGÉ
+        (``_pans_geometry``) de la conception, plus jamais le corps brut.
+        La réponse reste ``{roof_layout}``."""
         devis = self.get_object()
         if request.method == 'GET':
             return Response({'roof_layout': devis.roof_layout})
-        # QJR516 — POST gardé (geste ETUDE : le layout brut, pas la
-        # resynchronisation des lignes, qui reste CALEPINAGE).
+        # QJR516 — POST gardé (geste ETUDE).
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
         # POST — le corps entier est le layout (on accepte aussi un wrapper
@@ -550,21 +544,17 @@ class DevisCalepinageActionsMixin:
         payload = request.data
         if isinstance(payload, dict) and set(payload.keys()) == {'roof_layout'}:
             payload = payload['roof_layout']
-        # ACAL41 (C-ACAL-090) — sur un ENVOYÉ, ce geste est une correction
-        # de la CONCEPTION imprimée : encadré comme sync-layout (début de geste
-        # AVANT la première écriture, fin de geste après) ; renvoyer le même
-        # document ne laisse aucune trace. Hors envoyé : no-op.
-        from ..domain.modifiabilite import (
-            debut_de_geste_devis, fin_de_geste_devis)
-        avant_geste = debut_de_geste_devis(devis, request.user)
-        devis.roof_layout = payload
-        devis.save(update_fields=['roof_layout'])
-        # La MÊME empreinte que les deux autres chemins (écriture ciblée, aucun
-        # statut touché) — puis la MÊME annonce.
-        poser_layout_hash(devis, layout_hash(payload))
-        fin_de_geste_devis(devis, request.user, avant=avant_geste,
-                           objet='calepinage')
-        _emettre_layout_finalise(devis, request.user)
+        if not isinstance(payload, dict):
+            return Response({'detail': 'Layout manquant ou invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # ACAL96 (D-ACAL-1) — l'écriture brute ``devis.roof_layout = payload``
+        # est SUPPRIMÉE : même chemin que sync-layout (calepinage lié écrit,
+        # puis resynchro — empreinte, trace « corrigé après envoi » et annonce
+        # PV79 posées par l'enveloppe). Réponse inchangée.
+        reponse = _ecrire_conception(devis, payload, request)
+        if reponse.status_code != status.HTTP_200_OK:
+            return reponse
+        devis.refresh_from_db(fields=['roof_layout'])
         return Response({'roof_layout': devis.roof_layout})
 
     @action(

@@ -11,7 +11,7 @@ import { MemoryRouter } from 'react-router-dom'
      2. une vignette SANS image rend le repli, jamais une balise cassée.
 
    Les lignes viennent de l'échantillon de contrat committé
-   (`apps/calepinage/contract_samples/calepinage_detail.json`, PACT10) et non
+   (`apps/calepinage/contract_samples/calepinage_liste.json`, PACT10) et non
    d'un PAYLOAD écrit à la main : un mock maison est une DEUXIÈME source de
    vérité, et c'est elle qui a fait passer l'écran AO Tableau de bord en
    production le 03/08/2026 avec zéro clé sur six concordante.
@@ -37,14 +37,18 @@ vi.mock('../../api/crmApi', () => ({
   default: { getLeads: mocks.getLeads, searchClients: mocks.searchClients },
 }))
 
-import CalepinageList from './CalepinageList'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import CalepinageList, { STATUTS_CALEPINAGE } from './CalepinageList'
+import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // L'exemple du contrat = un calepinage AVEC aperçu ; `exemple_vide` = un
 // calepinage neuf dont `image.url` vaut `null` (et non `0`, ni clé absente).
-const AVEC_IMAGE = exempleContrat('calepinage', 'calepinage_detail')
-const SANS_IMAGE = exempleContrat('calepinage', 'calepinage_detail', 'exemple_vide')
+// ACAL197 — la forme de la LISTE (`calepinage_liste.json`, D06-T01), jamais
+// celle du détail : `client_apercu`, `responsable` + `responsable_nom`.
+const LIGNE = (variante) => exempleContrat('calepinage', 'calepinage_liste', variante).results[0]
+const AVEC_IMAGE = LIGNE('exemple')
+const SANS_IMAGE = LIGNE('exemple_sans_image')
+const CLIENT_SEUL = LIGNE('exemple_client_seul')
 
 const rendre = () => render(
   <MemoryRouter><ThemeProvider><CalepinageList /></ThemeProvider></MemoryRouter>,
@@ -92,6 +96,38 @@ describe('CalepinageList (CAL35)', () => {
     for (const img of document.querySelectorAll('img')) {
       expect(img.getAttribute('src')).toBeTruthy()
     }
+  })
+
+  it('rend la vignette, la référence et le client d’un calepinage client seul', async () => {
+    mocks.list.mockResolvedValue({
+      data: { count: 1, next: null, previous: null, results: [CLIENT_SEUL] },
+    })
+    rendre()
+    const vignette = await screen.findByTestId(`cal-vignette-${CLIENT_SEUL.id}`)
+    expect(vignette).toHaveTextContent(CLIENT_SEUL.reference)
+    expect(vignette).toHaveTextContent(CLIENT_SEUL.client_apercu.nom)
+    expect(vignette).not.toHaveTextContent('Sans rattachement')
+    expect(vignette).toHaveTextContent('Modifié le')
+    expect(screen.getByTestId('cal-vignette-image'))
+      .toHaveAttribute('src', CLIENT_SEUL.image.url)
+  })
+
+  it('propose les trois statuts même si la page n’en contient qu’un', async () => {
+    mocks.list.mockResolvedValue({
+      data: { count: 1, next: null, previous: null, results: [CLIENT_SEUL] },
+    })
+    rendre()
+    await screen.findByTestId(`cal-vignette-${CLIENT_SEUL.id}`)
+    fireEvent.click(screen.getByRole('combobox', { name: 'Statut' }))
+    await screen.findByRole('listbox')
+    for (const { libelle } of documentContrat('calepinage', 'calepinage_liste').statuts_publies) {
+      expect(screen.getByRole('option', { name: libelle })).toBeInTheDocument()
+    }
+  })
+
+  it('STATUTS_CALEPINAGE égale statuts_publies du contrat', () => {
+    const publies = documentContrat('calepinage', 'calepinage_liste').statuts_publies
+    expect(STATUTS_CALEPINAGE).toEqual(publies.map((x) => [x.valeur, x.libelle]))
   })
 
   it('la vignette mène à l’atelier du calepinage', async () => {
@@ -154,12 +190,10 @@ describe('CalepinageList (CAL35)', () => {
     await waitFor(() => expect(derniersParams()).toEqual({ client: '9' }))
   })
 
-  it('les options de STATUT sont celles des lignes reçues — aucune liste recopiée', async () => {
+  it('le libellé de statut d’une ligne est celui du SERVEUR', async () => {
     rendre()
     await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
-    // Le libellé affiché est TOUJOURS celui du serveur (`statut_libelle`).
-    expect(screen.getByText(AVEC_IMAGE.statut_libelle)).toBeInTheDocument()
-    expect(screen.getByText(SANS_IMAGE.statut_libelle)).toBeInTheDocument()
+    expect(screen.getAllByText(AVEC_IMAGE.statut_libelle).length).toBeGreaterThan(0)
   })
 
   it('état vide : il EXPLIQUE le geste de création', async () => {
@@ -255,15 +289,19 @@ describe('CalepinageList (CAL35)', () => {
 })
 
 /* CALX406 — la colonne « Responsable », lue sur le contrat committé
-   `calepinage_detail.json` (`responsable: {id, nom_complet}` ou `null`). */
+   `calepinage_liste.json` (`responsable` = identifiant, `responsable_nom`). */
 describe('CALX406 — la colonne « Responsable » de la liste', () => {
+  const SANS_RESPONSABLE = { ...SANS_IMAGE, id: 90, responsable: null, responsable_nom: null }
+
   it('chaque vignette dit son responsable, ou qu’il n’y en a pas — jamais un nom deviné', async () => {
+    mocks.list.mockResolvedValue({
+      data: { count: 2, next: null, previous: null, results: [AVEC_IMAGE, SANS_RESPONSABLE] },
+    })
     rendre()
     await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
     expect(screen.getByTestId(`cal-responsable-${AVEC_IMAGE.id}`))
-      .toHaveTextContent(`Responsable : ${AVEC_IMAGE.responsable.nom_complet}`)
-    expect(SANS_IMAGE.responsable).toBeNull()
-    expect(screen.getByTestId(`cal-responsable-${SANS_IMAGE.id}`))
+      .toHaveTextContent(`Responsable : ${AVEC_IMAGE.responsable_nom}`)
+    expect(screen.getByTestId(`cal-responsable-${SANS_RESPONSABLE.id}`))
       .toHaveTextContent('Sans responsable')
   })
 
@@ -271,19 +309,18 @@ describe('CALX406 — la colonne « Responsable » de la liste', () => {
     rendre()
     await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
     fireEvent.click(screen.getByRole('combobox', { name: 'Responsable' }))
-    // Les options sont celles des lignes reçues — la personne du contrat.
-    fireEvent.click(await screen.findByRole('option', { name: AVEC_IMAGE.responsable.nom_complet }))
+    fireEvent.click(await screen.findByRole('option', { name: AVEC_IMAGE.responsable_nom }))
     await waitFor(() => expect(derniersParams())
-      .toEqual({ responsable: String(AVEC_IMAGE.responsable.id) }))
+      .toEqual({ responsable: String(AVEC_IMAGE.responsable) }))
   })
 
   it('« Tous les responsables » retire le filtre de la requête', async () => {
     rendre()
     await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
     fireEvent.click(screen.getByRole('combobox', { name: 'Responsable' }))
-    fireEvent.click(await screen.findByRole('option', { name: AVEC_IMAGE.responsable.nom_complet }))
+    fireEvent.click(await screen.findByRole('option', { name: AVEC_IMAGE.responsable_nom }))
     await waitFor(() => expect(derniersParams())
-      .toEqual({ responsable: String(AVEC_IMAGE.responsable.id) }))
+      .toEqual({ responsable: String(AVEC_IMAGE.responsable) }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Responsable' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Tous les responsables' }))
     await waitFor(() => expect(derniersParams()).toEqual({}))
@@ -297,5 +334,21 @@ describe('CALX406 — la colonne « Responsable » de la liste', () => {
     rendre()
     expect(await screen.findByTestId('cal-responsable-42'))
       .toHaveTextContent('Responsable : Concepteur d’essai')
+  })
+})
+
+/* ============================================================================
+   ACAL115 — le statut DÉRIVÉ (servi) est affiché et alimente le filtre.
+   ========================================================================== */
+describe('CalepinageList (ACAL115)', () => {
+  it('statut dérivé affiché', async () => {
+    mocks.list.mockResolvedValue({
+      data: {
+        count: 1, next: null, previous: null,
+        results: [{ ...AVEC_IMAGE, statut: 'perime', statut_libelle: 'Périmé' }],
+      },
+    })
+    rendre()
+    expect(await screen.findByText('Périmé')).toBeInTheDocument()
   })
 })

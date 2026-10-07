@@ -5,6 +5,17 @@ import { Badge, Button, Card, EmptyState, Spinner } from '../../../ui'
 import { History } from 'lucide-react'
 import { formatDateTime } from '../../../lib/format'
 
+/* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
+const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
+
+/* ACAL106 — la confirmation dit ce que la restauration remplace et ce qu'elle
+   conserve, mot pour mot la règle serveur (`services/versions.py::
+   restaurer_version`, ACAL45) : seul le DESSIN revient, le rendu 3D est vidé,
+   les saisies restent, et l'état actuel est déposé « Avant restauration ». */
+const TEXTE_CONFIRMATION_RESTAURATION = 'Remplace le dessin et vide le rendu 3D ; '
+  + 'saisies électriques, pertes et simulation conservées (la simulation devient périmée) ; '
+  + 'l’état actuel est gardé comme version « Avant restauration ».'
+
 /* ============================================================================
    CALX36 — L'HISTORIQUE DES VERSIONS ET LA RESTAURATION.
    ----------------------------------------------------------------------------
@@ -49,7 +60,7 @@ function messageRefusServeur(err, repli) {
    `onRecharger`, « Enregistrer le calepinage » republiait la copie d'avant et
    annulait la restauration en silence (porte CYC-05). `onRecharger` est
    relayé par le Rail depuis l'écran de conception (l'unique rechargement). */
-export default function PanneauVersions({ calepinageId: idPropose, onRecharger = null } = {}) {
+export default function PanneauVersions({ calepinageId: idPropose, onRecharger = null, lectureSeule = false } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
@@ -138,7 +149,15 @@ export default function PanneauVersions({ calepinageId: idPropose, onRecharger =
 
                     {!courante && (
                       enConfirmation ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* ACAL106 — ce que la restauration REMPLACE et ce
+                              qu'elle CONSERVE (sémantique serveur ACAL45). */}
+                          <p
+                            className="w-full text-xs text-lune-soft"
+                            data-testid={`cal-versions-confirmation-${version.id}`}
+                          >
+                            {TEXTE_CONFIRMATION_RESTAURATION}
+                          </p>
                           <span className="text-xs text-lune-soft">Confirmer la restauration ?</span>
                           <Button
                             size="sm"
@@ -163,6 +182,8 @@ export default function PanneauVersions({ calepinageId: idPropose, onRecharger =
                           size="sm"
                           variant="outline"
                           onClick={() => demanderRestauration(version.id)}
+                          disabled={lectureSeule}
+                          title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
                           data-testid={`cal-versions-restaurer-${version.id}`}
                         >
                           Restaurer

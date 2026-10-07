@@ -157,6 +157,10 @@ class DepuisModeleEnBase(BaseApiCalepinage):
             company=self.company, lead_id=self.lead.pk, titre='Modèle villa',
             roof_layout=copy.deepcopy(DOCUMENT))
         marquer_modele(self.modele)
+        # ACAL117 (D-ACAL-15) — le lead cible d'un modèle porte un repère
+        # toit : la conception y est translatée (épingle = ce repère).
+        self.lead_2.roof_point = {'lat': 33.59, 'lng': -7.62}
+        self.lead_2.save(update_fields=['roof_point'])
 
     def _notes(self, calepinage):
         return Activity.objects.filter(
@@ -213,6 +217,12 @@ class DepuisModeleEnBase(BaseApiCalepinage):
         self.assertEqual(copie.roof_layout['zones'][0]['pitchDeg'], 22)
         self.modele.refresh_from_db()
         self.assertEqual(self.modele.roof_layout, DOCUMENT)
+        # Lot 2 critique #15 — la version « Conception d'origine » EST le
+        # document courant (jeu appliqué), pas l'état d'avant réglage.
+        origine = copie.versions.order_by('created_at', 'id').first()
+        self.assertTrue(origine.libelle.startswith("Conception d'origine"))
+        self.assertEqual(origine.roof_layout, copie.roof_layout)
+        self.assertEqual(origine.roof_layout['zones'][0]['pitchDeg'], 22)
 
     def test_sans_jeu_identique_a_la_copie_d_aujourd_hui(self):
         reponse = self.api.post(URL_DEPUIS_MODELE, {
@@ -220,8 +230,13 @@ class DepuisModeleEnBase(BaseApiCalepinage):
             format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
         copie = Calepinage.objects.get(pk=reponse.data['id'])
-        self.assertEqual(copie.roof_layout, self.modele.roof_layout)
-        self.assertEqual(copie.layout_hash, self.modele.layout_hash)
+        # ACAL117 — même conception, épinglée sur le repère du lead cible
+        # (le modèle n'avait pas d'épingle : aucun vecteur, rien ne bouge).
+        sans_pin = {cle: valeur for cle, valeur in copie.roof_layout.items()
+                    if cle != 'pin'}
+        self.assertEqual(sans_pin, self.modele.roof_layout)
+        self.assertEqual(copie.roof_layout['pin'],
+                         {'lat': 33.59, 'lng': -7.62})
 
     def test_modele_d_une_autre_societe_introuvable(self):
         reponse = self.api_autre.post(URL_DEPUIS_MODELE, {

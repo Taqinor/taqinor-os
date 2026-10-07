@@ -36,7 +36,6 @@ import {
   brancherBoot, simulerApiLead,
 } from '../../test/toitureDesignHarness'
 import api from '../../api/axios'
-import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
 
 const DOSSIER = resolve(dirname(fileURLToPath(import.meta.url)),
@@ -92,10 +91,13 @@ describe('ToitureDesign — GOLDEN des trois modes (SPL194)', () => {
   })
 
   it('mode devis : DOM + journal du builder', async () => {
-    const CTX = exempleContrat('ventes', 'devis_design_context')
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    const dom = await bootEtDom(ecranDevis(CTX.devis.id))
+    // ACAL37 (D-ACAL-1) — la route devis ouvre le CALEPINAGE lié (instantané régénéré).
+    const CTX = exempleContrat('calepinage', 'calepinage_design_context')
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: CTX.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    const dom = await bootEtDom(ecranDevis(CTX.calepinage.devis_lie.id))
     figer('toitureDesign.devis.html', dom)
     figer('toitureDesign.devis.boot.json', jsonStable(journalDuBoot()))
   })

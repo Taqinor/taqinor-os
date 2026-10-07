@@ -94,6 +94,43 @@ def _document_sans_volatiles(roof_layout):
     return document
 
 
+def layout_decrit_une_geometrie(layout):
+    """Ce ``roof_layout`` décrit-il une géométrie RÉELLEMENT exploitable ?
+
+    ACAL114 — déplacé de ``views/calepinages.py`` (un service n'importe
+    jamais une vue, R3) : l'approbation le lit aussi (« rien à approuver »).
+
+
+    Pas « contient-il une clé ``zones`` », mais « un pan y porte-t-il au moins
+    trois sommets ». La nuance est TOUT le correctif du 20/09/2026 : le
+    sérialiseur de l'atelier (``apps/web/src/scripts/roofPro11/prefill.ts``,
+    ``serializeLayout``) émet TOUJOURS une zone — il projette ``ctx.areas``,
+    qui contient la zone par défaut même quand personne n'a encore tracé quoi
+    que ce soit. Un premier « Enregistrer le calepinage » fait avant tout
+    dessin écrit donc ``{outline: [], zones: [{vertices: []}]}`` : un layout
+    qui ne dit RIEN de la géométrie, mais que l'ancien test (« ``zones``
+    présent ? ») lisait comme un calepinage déjà dessiné. Le tracé du client
+    était alors jeté (``outline: []``), l'atelier ne trouvait ni pan ni
+    contour, retombait sur l'épingle seule et affichait « tracez le contour du
+    toit pour lancer le calcul » — aucun pan, aucune recommandation, aucune
+    requête de rendement.
+    """
+    if not isinstance(layout, dict):
+        return False
+    contour = layout.get('outline')
+    if isinstance(contour, list) and len(contour) >= 3:
+        return True
+    for cle in ('zones', 'areas'):
+        zones = layout.get(cle)
+        if not isinstance(zones, list):
+            continue
+        for zone in zones:
+            sommets = zone.get('vertices') if isinstance(zone, dict) else None
+            if isinstance(sommets, list) and len(sommets) >= 3:
+                return True
+    return False
+
+
 def empreinte_document(roof_layout):
     """ACAL39 — l'empreinte « document » (D-ACAL-4) : SHA-256 hex du JSON trié.
 
@@ -258,8 +295,12 @@ class DocumentModifie(ValueError):
 #: ACAL22 — les SEULES clés racine qu'une écriture par section remplace.
 CLES_SECTION_RACINE = ('horizonProfile', 'poseSurfaces', 'underlay')
 #: ACAL22 — la section ``zones`` : les SEULS champs d'UNE zone qu'elle écrit.
+#: ACAL206 — l'azimut posé depuis un relevé/une visite porte sa PROVENANCE
+#: (``facingAzimuthSource``) et sa PRÉCISION (``facingAzimuthPrecisionDeg``) :
+#: les deux s'écrivent avec lui, par la même primitive.
 CHAMPS_SECTION_ZONE = ('pitchDeg', 'pitchSource', 'facingAzimuthDeg',
-                       'facingManual')
+                       'facingManual', 'facingAzimuthSource',
+                       'facingAzimuthPrecisionDeg')
 
 
 def _relire_sous_verrou(calepinage, base_empreinte):
@@ -451,8 +492,17 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
 
         version = None
         if not inchange:
+            # ACAL45 — une version de GÉOMÉTRIE ne gèle plus le résultat
+            # (calculé sur l'ANCIENNE conception) : ``resultat=None``.
             version = enregistrer_version(calepinage, user=user,
-                                          libelle=libelle)
+                                          libelle=libelle, resultat=None)
+            if version is not None:
+                # ACAL287 — la borne SAISIE par la société
+                # (``presets.versions_conservees``) s'applique ICI, dans la
+                # même transaction ; absente ⇒ rien n'est retiré (OFF).
+                from .versions import purger_versions
+
+                purger_versions(calepinage)
 
     if not inchange:
         # CAL26 — un enregistrement SIGNIFICATIF se journalise ; un renvoi à

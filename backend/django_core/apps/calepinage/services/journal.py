@@ -32,7 +32,9 @@ __all__ = [
     'journaliser_rattachement',
     'journaliser_layout',
     'journaliser_variante_retenue', 'journaliser_restauration',
-    'journaliser_verrou', 'journaliser_document_produit', 'noter',
+    'journaliser_variante_creee', 'journaliser_variante_modifiee',
+    'journaliser_variante_supprimee',
+    'journaliser_document_produit', 'noter',
     'journaliser_pose_reelle', 'journaliser_version_pose',
 ]
 
@@ -119,6 +121,31 @@ def journaliser_variante_retenue(calepinage, *, ancienne=None, nouvelle=None,
                    new_value=getattr(nouvelle, 'nom', '') or '')
 
 
+def journaliser_variante_creee(calepinage, *, variante, user=None):
+    """ACAL110 — « Variante « X » créée », avec son auteur."""
+    return _ecrire(calepinage, 'CREATION', user=user, field='variante_creee',
+                   field_label='Variante',
+                   new_value=f"Variante « {getattr(variante, 'nom', '')} » "
+                             "créée")
+
+
+def journaliser_variante_modifiee(calepinage, *, variante, changements,
+                                  user=None):
+    """ACAL110 — « Variante « X » modifiée (nom | conception) »."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='variante_modifiee', field_label='Variante',
+                   new_value=f"Variante « {getattr(variante, 'nom', '')} » "
+                             f"modifiée ({' | '.join(changements)})")
+
+
+def journaliser_variante_supprimee(calepinage, *, nom, user=None):
+    """ACAL110 — « Variante « X » supprimée », avec son auteur."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='variante_supprimee', field_label='Variante',
+                   old_value=nom or '',
+                   new_value=f'Variante « {nom} » supprimée')
+
+
 def journaliser_restauration(calepinage, *, version=None, user=None):
     """Restauration d'une version — l'événement, pas seulement son effet.
 
@@ -156,47 +183,6 @@ def _ecarts_de_restauration(calepinage, version):
         logger.exception('CALX345 : écarts de restauration non calculés '
                          '(calepinage %s)', getattr(calepinage, 'pk', None))
         return ''
-
-
-#: CAL207 — champ + valeurs du VERROU dans le chatter (source unique lue par
-#: ``services.verrou`` — jamais un second champ, jamais un littéral ailleurs).
-CHAMP_VERROU = 'verrou'
-VERROU_OUVERT = 'ouvert'
-VERROU_FERME = 'ferme'
-
-
-def journaliser_verrou(calepinage, *, ouvert, user=None):
-    """Bascule du verrou (devis envoyé) — l'entrée que ``services.verrou``
-    relit pour savoir si un déverrouillage explicite a eu lieu."""
-    nouvelle = VERROU_OUVERT if ouvert else VERROU_FERME
-    ancienne = VERROU_FERME if ouvert else VERROU_OUVERT
-    return _ecrire(calepinage, 'MODIFICATION', user=user, field=CHAMP_VERROU,
-                   field_label='Verrou', old_value=ancienne,
-                   new_value=nouvelle)
-
-
-def dernier_etat_verrou(calepinage):
-    """La dernière valeur du champ ``verrou`` déposée au chatter, ou ``None``
-    si aucune bascule n'a encore eu lieu."""
-    if calepinage is None or not getattr(calepinage, 'pk', None):
-        return None
-    try:
-        from django.contrib.contenttypes.models import ContentType
-
-        from apps.records.models import Activity
-
-        ct = ContentType.objects.get_for_model(type(calepinage))
-        entree = (Activity.objects
-                  .filter(content_type=ct, object_id=calepinage.pk,
-                          field=CHAMP_VERROU)
-                  .order_by('-created_at', '-id')
-                  .first())
-        return entree.new_value if entree is not None else None
-    except Exception:  # noqa: BLE001 — une lecture de journal ne casse rien
-        logger.exception(
-            'CAL207 : lecture du dernier état de verrou en échec '
-            '(calepinage %s)', getattr(calepinage, 'pk', None))
-        return None
 
 
 #: CALX324 — champ du fil pour la production d'un document (lot 6). SOURCE

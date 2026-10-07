@@ -306,3 +306,113 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/78/design'))
   })
 })
+
+/* ACAL171 (D-ACAL-9) — le refus 422 ÉLECTRIQUE et la dérogation. Les corps
+   viennent du contrat COMMITTÉ `calepinage_publication_electrique.json`. */
+describe('BoutonDevis — verdict électrique (ACAL171)', () => {
+  const REFUS = exempleContrat('calepinage', 'calepinage_publication_electrique',
+    'exemple_refus_422')
+  const DEROGUE = exempleContrat('calepinage', 'calepinage_publication_electrique',
+    'exemple_derogue')
+  const MANQUANTES = exempleContrat('calepinage', 'calepinage_publication_electrique',
+    'exemple_avec_manquantes')
+  const CORPS = exempleContrat('calepinage', 'calepinage_publication_electrique',
+    'corps_derogation')
+
+  // Le droit `calepinage_approuver` est SERVI par l'agrégat de détail
+  // (`permissions.peut_deroger`, contrat calepinage_detail.json).
+  const avecDroit = (peutDeroger) => ({
+    ...DETAIL_VIDE,
+    permissions: { ...DETAIL_VIDE.permissions, peut_deroger: peutDeroger },
+  })
+
+  async function refuser(peutDeroger = true) {
+    calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({
+      response: { status: 422, data: REFUS },
+    })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: avecDroit(peutDeroger) })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    return screen.findByTestId('cal-devis-bloquants')
+  }
+
+  it('422 électrique liste les bloquants et propose la dérogation', async () => {
+    const bloc = await refuser()
+    const lignes = screen.getAllByTestId('cal-devis-bloquant')
+    expect(lignes).toHaveLength(REFUS.electrique.bloquants.length)
+    REFUS.electrique.bloquants.forEach((b, i) => {
+      expect(lignes[i]).toHaveTextContent(b.libelle)
+      expect(lignes[i]).toHaveTextContent(b.detail)
+    })
+    expect(bloc).toHaveTextContent(REFUS.detail)
+    expect(screen.getByTestId('cal-devis-motif')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-devis-passer-outre'))
+      .toHaveTextContent('Passer outre et générer')
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('dérogation sans motif refusée sous le champ', async () => {
+    await refuser()
+    await userEvent.click(screen.getByTestId('cal-devis-passer-outre'))
+    expect(await screen.findByTestId('cal-devis-motif-erreur'))
+      .toHaveTextContent('Saisissez le motif de la dérogation.')
+    expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1)
+  })
+
+  it('renvoi avec derogation_electrique', async () => {
+    await refuser()
+    calepinageApi.calepinages.genererDevis.mockResolvedValueOnce({ data: DEROGUE })
+    const motif = CORPS.derogation_electrique.motif
+    await userEvent.type(screen.getByTestId('cal-devis-motif'), motif)
+    await userEvent.click(screen.getByTestId('cal-devis-passer-outre'))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS))
+    await waitFor(() => expect(navigateMock)
+      .toHaveBeenCalledWith(`/ventes/devis/${DEROGUE.devis}/design`))
+    expect(screen.queryByTestId('cal-devis-bloquants')).toBeNull()
+  })
+
+  it('indéterminé affiché sans blocage', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValueOnce({ data: MANQUANTES })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const bloc = await screen.findByTestId('cal-devis-indetermine')
+    for (const m of MANQUANTES.electrique.manquantes) expect(bloc).toHaveTextContent(m)
+    // Le devis EST créé : on peut l'ouvrir, rien n'est bloqué.
+    expect(screen.getByTestId('cal-devis-ouvrir'))
+      .toHaveAttribute('href', `/ventes/devis/${MANQUANTES.devis}/design`)
+    expect(screen.queryByTestId('cal-devis-bloquants')).toBeNull()
+  })
+
+  it('sans calepinage_approuver, pas de bouton Passer outre', async () => {
+    await refuser(false)
+    expect(screen.queryByTestId('cal-devis-passer-outre')).toBeNull()
+    expect(screen.queryByTestId('cal-devis-motif')).toBeNull()
+    expect(screen.getByTestId('cal-devis-derogation-reservee'))
+      .toHaveTextContent('Dérogation réservée aux approbateurs')
+  })
+
+  it('403 serveur sur la dérogation : le message du serveur, mot pour mot', async () => {
+    await refuser()
+    const MESSAGE = 'Dérogation réservée aux approbateurs (calepinage_approuver)'
+    calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({
+      response: { status: 403, data: { derogation_electrique: MESSAGE } },
+    })
+    await userEvent.type(screen.getByTestId('cal-devis-motif'), 'client informé')
+    await userEvent.click(screen.getByTestId('cal-devis-passer-outre'))
+    expect(await screen.findByTestId('cal-devis-refus')).toHaveTextContent(MESSAGE)
+  })
+})
+
+describe('Lot 2 critique #32 — champs des portes ACAL116 nommés', () => {
+  it('refus 400 {approbation} : le bandeau dit « Approbation »', async () => {
+    const MESSAGE = 'Approbation à jour exigée avant de générer ou resynchroniser le devis'
+    calepinageApi.calepinages.genererDevis.mockRejectedValue({
+      response: { status: 400, data: { approbation: [MESSAGE] } },
+    })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const bloc = await screen.findByTestId('cal-devis-refus')
+    expect(bloc.querySelector('.tech-label')).toHaveTextContent(/^Approbation$/)
+    expect(bloc).toHaveTextContent(MESSAGE)
+  })
+})

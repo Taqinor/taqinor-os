@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import AssigneePicker from '../../components/AssigneePicker'
+import SelecteurRattachement from './SelecteurRattachement'
+import useUtilisateursAssignables from './useUtilisateursAssignables'
+import { urlImage } from './urlImage'
 import { formatDateTime } from '../../lib/format'
 // CALX344 — les étiquettes libres (records.Tag), lues/posées/retirées par la
 // porte `etiquettes/` (CALX343) : un composant à part, monté sous la fiche.
@@ -134,7 +138,7 @@ function refusChamp(erreur, champ) {
   return "Le serveur n’a rendu aucun motif : rien n’a été enregistré."
 }
 
-export default function FicheCalepinage({ detail }) {
+export default function FicheCalepinage({ detail, onRelire }) {
   // CALX26 — la confirmation en DEUX TEMPS : un premier clic explique ce que
   // l'archivage fait, le second l'exécute. Jamais un archivage au clic seul.
   const [confirmation, setConfirmation] = useState(false)
@@ -161,7 +165,16 @@ export default function FicheCalepinage({ detail }) {
   const [confirmationCopie, setConfirmationCopie] = useState(false)
   const [avecVariantes, setAvecVariantes] = useState(true)
   const [refusCopie, setRefusCopie] = useState(null)
+  // ACAL188 (D-ACAL-12) — la CIBLE de la copie (lead ou client) ; le refus
+  // « créez une variante » (409) s'affiche SOUS le champ lead.
+  const [cibleCopie, setCibleCopie] = useState({ lead: null, client: null })
+  const [refusCibleCopie, setRefusCibleCopie] = useState(null)
+  // ACAL181 — le rattachement (lead, client, responsable) éditable : l'erreur
+  // du serveur s'affiche SOUS le champ fautif, et le détail est RELU (aucun
+  // état local seul : l'écran affiche ce que le serveur sert).
+  const [refusRattachement, setRefusRattachement] = useState(null)
   const identifiant = detail?.id ?? null
+  const peutModifier = detail?.permissions?.peut_modifier === true
   const naviguer = useNavigate()
 
   useEffect(() => {
@@ -181,6 +194,9 @@ export default function FicheCalepinage({ detail }) {
     return () => { annule = true }
   }, [identifiant])
 
+  const responsables = useUtilisateursAssignables(
+    Boolean(identifiant && peutModifier), identifiant)
+
   if (!detail) return null
 
   const versions = detail.versions ?? {}
@@ -195,7 +211,9 @@ export default function FicheCalepinage({ detail }) {
   const gestes = [
     permissions.peut_modifier ? 'modifier' : null,
     permissions.peut_retenir_variante ? 'retenir une variante' : null,
-    permissions.peut_supprimer ? 'supprimer' : null,
+    // ACAL120 — « supprimer » n'existe pas (DELETE ⇒ 405) : le geste est
+    // ARCHIVER, même prédicat que le serveur.
+    permissions.peut_supprimer ? 'archiver' : null,
   ].filter(Boolean)
 
   // `peut_modifier` EST `calepinage_gerer` côté serveur
@@ -203,6 +221,45 @@ export default function FicheCalepinage({ detail }) {
   // actions exigent (`PeutGererCalepinage`). Sans elle, aucun geste d'écriture
   // n'est proposé : une permission refusée ne s'annonce pas en bouton grisé.
   const peutGerer = permissions.peut_modifier === true
+
+  const rattacher = async (champ, valeur) => {
+    setEnCours(true)
+    setRefusRattachement(null)
+    try {
+      await calepinageApi.calepinages.update(detail.id, { [champ]: valeur })
+      onRelire?.()
+    } catch (erreur) {
+      const corps = erreur?.response?.data
+      setRefusRattachement({
+        champ,
+        message: refusChamp(erreur, champ),
+        existant: corps && typeof corps === 'object'
+          ? (corps.calepinage_existant ?? null) : null,
+      })
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  const erreurRattachement = (champ) => (
+    refusRattachement && refusRattachement.champ === champ ? (
+      <span className="mt-1 block text-xs text-alert-300" role="alert"
+        data-testid={`cal-fiche-${champ}-erreur`}>
+        {refusRattachement.message}
+        {refusRattachement.existant ? (
+          <>
+            {' '}
+            <Link to={`/calepinage/${refusRattachement.existant}`}
+              className="underline" data-testid="cal-fiche-lead-ouvrir-existant">
+              Ouvrir l’existant
+            </Link>
+          </>
+        ) : null}
+      </span>
+    ) : null
+  )
+
+  const rattachementEditable = peutGerer && !archive
 
   const lancerArchivage = async () => {
     if (!confirmation) {
@@ -281,18 +338,34 @@ export default function FicheCalepinage({ detail }) {
     }
   }
 
+  // ACAL188 — un calepinage OUVERT d'un lead (ni modèle, ni archivé) ne se
+  // duplique que vers un AUTRE lead ou client : la même toiture se décline
+  // en variante (D-ACAL-12, refus serveur 409 sinon).
+  const cibleExigee = Boolean(detail?.lead) && !archive && estModele !== true
+
   const lancerDuplication = async () => {
-    setEnCours(true)
     setRefusCopie(null)
+    setRefusCibleCopie(null)
+    if (cibleExigee && !cibleCopie.lead && !cibleCopie.client) {
+      setRefusCibleCopie('Choisissez le lead ou le client de la copie.')
+      return
+    }
+    setEnCours(true)
     try {
-      const res = await calepinageApi.calepinages.dupliquer(
-        detail.id, { avec_variantes: avecVariantes })
+      const corps = { avec_variantes: avecVariantes }
+      if (cibleCopie.lead) corps.lead = Number(cibleCopie.lead)
+      if (cibleCopie.client) corps.client = Number(cibleCopie.client)
+      const res = await calepinageApi.calepinages.dupliquer(detail.id, corps)
       const copie = res?.data?.calepinage ?? null
       setConfirmationCopie(false)
       // « Le bouton ouvre la copie » : l'atelier du NOUVEAU calepinage.
       if (copie) naviguer(`/calepinage/${copie}`)
     } catch (erreur) {
-      setRefusCopie(refusChamp(erreur, 'calepinage'))
+      if (erreur?.response?.status === 409 || erreur?.response?.data?.lead) {
+        setRefusCibleCopie(refusChamp(erreur, 'lead'))
+      } else {
+        setRefusCopie(refusChamp(erreur, 'calepinage'))
+      }
     } finally {
       setEnCours(false)
     }
@@ -358,7 +431,12 @@ export default function FicheCalepinage({ detail }) {
           {!archive && (
             <button type="button" className={styleBouton} disabled={enCours}
               data-testid="cal-fiche-dupliquer"
-              onClick={() => { setRefusCopie(null); setConfirmationCopie(true) }}>
+              onClick={() => {
+                setRefusCopie(null)
+                setRefusCibleCopie(null)
+                setCibleCopie({ lead: null, client: null })
+                setConfirmationCopie(true)
+              }}>
               Dupliquer
             </button>
           )}
@@ -370,20 +448,54 @@ export default function FicheCalepinage({ detail }) {
                 Ce que la copie NE reprend PAS
               </p>
               <ul className="mt-1 list-disc pl-5 text-sm text-lune-soft">
-                <li>l’historique des versions ;</li>
+                <li>l’historique des versions (une version d’origine est déposée) ;</li>
                 <li>
                   {avecVariantes
-                    ? 'les variantes SUIVENT la copie (case cochée ci-dessous) ;'
+                    ? 'les variantes SUIVENT la copie (case cochée ci-dessous), mais aucune n’est retenue et aucune n’emporte sa simulation ;'
                     : 'les variantes ;'}
                 </li>
+                <li>la simulation et les saisies de site (à relancer sur la copie) ;</li>
+                <li>le rendu 3D et l’approbation ;</li>
                 <li>le lien vers le devis ;</li>
                 <li>le fil d’activité ;</li>
                 <li>les pièces produites (exports, documents).</li>
               </ul>
-              <p className="mt-1 text-xs text-lune-faint">
-                La copie reste dans votre société et garde le même lead ou
-                client que l’original.
+              {/* ACAL117 — la règle de copie unique (services/variantes.CHAMPS_COPIES). */}
+              <p className="mt-1 text-xs text-lune-faint" data-testid="cal-fiche-dupliquer-copie">
+                La copie reprend la conception et les postes de pertes ; elle
+                démarre avec sa propre version d’origine.
               </p>
+              <p className="mt-1 text-xs text-lune-faint">
+                La copie reste dans votre société.
+                {cibleExigee
+                  ? ' Ce lead a déjà ce calepinage ouvert : choisissez le lead ou le client de la copie (pour une autre option du même toit, créez une variante).'
+                  : ' Sans cible choisie, elle garde le même lead ou client que l’original.'}
+              </p>
+              <div className="mt-2 text-sm text-lune-soft" data-testid="cal-fiche-dupliquer-lead">
+                <span className="block text-xs">Lead de la copie</span>
+                <SelecteurRattachement genre="lead" id="cal-fiche-dupliquer-lead"
+                  valeur={cibleCopie.lead} disabled={enCours}
+                  invalid={Boolean(refusCibleCopie)}
+                  onChange={(id) => {
+                    setCibleCopie((c) => ({ ...c, lead: id }))
+                    setRefusCibleCopie(null)
+                  }} />
+                {refusCibleCopie && (
+                  <p className="mt-1 text-xs text-alert-300" role="alert"
+                    data-testid="cal-fiche-dupliquer-erreur-lead">
+                    {refusCibleCopie}
+                  </p>
+                )}
+              </div>
+              <div className="mt-2 text-sm text-lune-soft" data-testid="cal-fiche-dupliquer-client">
+                <span className="block text-xs">Client de la copie</span>
+                <SelecteurRattachement genre="client" id="cal-fiche-dupliquer-client"
+                  valeur={cibleCopie.client} disabled={enCours}
+                  onChange={(id) => {
+                    setCibleCopie((c) => ({ ...c, client: id }))
+                    setRefusCibleCopie(null)
+                  }} />
+              </div>
               <label className="mt-2 flex items-center gap-2 text-sm text-lune-soft">
                 <input type="checkbox" checked={avecVariantes}
                   disabled={enCours}
@@ -517,7 +629,20 @@ export default function FicheCalepinage({ detail }) {
         <Champ cle="statut" label="Code de statut">
           <code className="text-xs text-lune-soft">{texte(detail.statut)}</code>
         </Champ>
-        <Champ cle="responsable" label="Responsable">{personne(detail.responsable)}</Champ>
+        <Champ cle="responsable" label="Responsable">
+          {rattachementEditable ? (
+            <span className="inline-flex items-center gap-2">
+              <AssigneePicker
+                users={responsables}
+                value={detail.responsable?.id ?? ''}
+                disabled={enCours}
+                onChange={(id) => rattacher('responsable', id ?? null)}
+              />
+              <span>{personne(detail.responsable)}</span>
+            </span>
+          ) : personne(detail.responsable)}
+          {erreurRattachement('responsable')}
+        </Champ>
 
         <Champ cle="cree_par" label="Créé par">{personne(detail.cree_par)}</Champ>
         <Champ cle="cree_le" label="Créé le">{moment(detail.cree_le)}</Champ>
@@ -525,13 +650,44 @@ export default function FicheCalepinage({ detail }) {
 
         {/* Rattachement — le lead ET le client peuvent coexister, ou manquer. */}
         <Champ cle="lead" label="Lead">
-          {detail.lead
+          {detail.lead?.supprime ? (
+            <span data-testid="cal-fiche-lead-corbeille">
+              Lead à la corbeille - restaurez-le
+              {detail.lead.nom ? ` (${detail.lead.nom})` : ''}
+            </span>
+          ) : detail.lead
             ? <Link to={`/crm/leads/${detail.lead.id}`} className="underline">
               {texte(detail.lead.nom)}
             </Link>
             : '—'}
+          {rattachementEditable && (
+            <SelecteurRattachement
+              genre="lead"
+              id="cal-fiche-lead-selecteur"
+              valeur={detail.lead?.id ?? null}
+              libelle={detail.lead?.nom ?? ''}
+              disabled={enCours}
+              invalid={refusRattachement?.champ === 'lead'}
+              onChange={(id) => id && rattacher('lead', id)}
+            />
+          )}
+          {erreurRattachement('lead')}
         </Champ>
-        <Champ cle="client" label="Client">{texte(detail.client?.nom)}</Champ>
+        <Champ cle="client" label="Client">
+          {texte(detail.client?.nom)}
+          {rattachementEditable && (
+            <SelecteurRattachement
+              genre="client"
+              id="cal-fiche-client-selecteur"
+              valeur={detail.client?.id ?? null}
+              libelle={detail.client?.nom ?? ''}
+              disabled={enCours}
+              invalid={refusRattachement?.champ === 'client'}
+              onChange={(id) => id && rattacher('client', id)}
+            />
+          )}
+          {erreurRattachement('client')}
+        </Champ>
         <Champ cle="devis" label="Devis">
           {detail.devis
             ? <Link to={`/ventes/devis/${detail.devis.id}/design`} className="underline">
@@ -598,7 +754,7 @@ export default function FicheCalepinage({ detail }) {
 
         <Champ cle="image" label="Aperçu">
           {image.url
-            ? <a href={image.url} className="underline" target="_blank" rel="noreferrer">
+            ? <a href={urlImage(image.url)} className="underline" target="_blank" rel="noreferrer">
               Voir l’aperçu
             </a>
             : '—'}

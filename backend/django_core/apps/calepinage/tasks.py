@@ -170,7 +170,8 @@ def _publier_echec(job, calepinage, champ, motif):
 
 @shared_task(name='calepinage.simuler')
 def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
-                       nature=NATURE_SIMULATION, forcer=False):
+                       nature=NATURE_SIMULATION, forcer=False,
+                       variante_id=None):
     """CALX5 — la SIMULATION hors requête, sur le kind existant (D-CALX 12).
 
     Deux issues, jamais une troisième silencieuse : ``done`` avec le résumé du
@@ -199,10 +200,19 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
                           'abandonnée.')
         return {'statut': 'failed', 'motif': 'calepinage introuvable'}
 
+    # ACAL112 — la variante est relue ICI, bornée au calepinage du job.
+    variante = None
+    if variante_id:
+        variante = calepinage.variantes.filter(pk=variante_id).first()
+        if variante is None:
+            job.marquer_echec('Variante introuvable : la simulation est '
+                              'abandonnée.')
+            return {'statut': 'failed', 'motif': 'variante introuvable'}
+
     job.marquer_progression(5)
     try:
-        rendu = service_simulation.simuler_calepinage(calepinage,
-                                                      forcer=bool(forcer))
+        rendu = service_simulation.simuler_calepinage(
+            calepinage, forcer=bool(forcer), variante=variante)
     except SimulationRefusee as refus:
         # ACAL126 — l'échec est STRUCTURÉ comme un succès : la charge du
         # cache porte ``elements[0] = {statut, champ, motif}`` que
@@ -218,6 +228,7 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
 
     resume = {
         'calepinage': calepinage.pk,
+        'variante': variante.pk if variante is not None else None,
         'nature': nature,
         'deja_calcule': rendu['deja_calcule'],
         'hash_entree': rendu.get('hash_entree'),

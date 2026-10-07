@@ -257,3 +257,17 @@ describe('ACAL136 — statuts, forçage signé, aller-retour sans perte', () => 
     expect(enregistrerPertes).not.toHaveBeenCalled()
   })
 })
+
+describe('ACAL44 — lecture seule (devis lié figé)', () => {
+  it('lecture seule : Enregistrer désactivé', async () => {
+    pertes.mockResolvedValue({ data: REPONSE_VIDE })
+    render(<MemoryRouter><PanneauPertes calepinageId={1} lectureSeule /></MemoryRouter>)
+
+    const bouton = await screen.findByTestId('cal-pertes-enregistrer')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('cal-pertes-lecture-seule'))
+      .toHaveTextContent('Conception figée')
+    fireEvent.click(bouton)
+    expect(enregistrerPertes).not.toHaveBeenCalled()
+  })
+})

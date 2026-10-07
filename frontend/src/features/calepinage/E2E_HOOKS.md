@@ -33,11 +33,6 @@ retiré plus un hook ajouté.
 | `cal-atelier-panneaux` | atelier panneaux. |
 | `cal-bandeau-lecture-seule` | bandeau lecture seule. |
 | `cal-cible-panneaux` | cible panneaux. |
-| `cal-deverrouiller` | déverrouiller. |
-| `cal-deverrouiller-annuler` | déverrouiller annuler. |
-| `cal-deverrouiller-confirmation` | déverrouiller confirmation. |
-| `cal-deverrouiller-confirmer` | déverrouiller confirmer. |
-| `cal-deverrouiller-refus` | déverrouiller refus serveur. |
 | `cal-lien-photos-calage` | lien photos calage. |
 | `cal-lien-variantes` | lien variantes. |
 
@@ -361,7 +356,15 @@ retiré plus un hook ajouté.
 | `cal-pente-lidar-suggerer` | pente LiDAR suggérer. |
 | `cal-pente-lidar-suggestion` | pente LiDAR suggestion. |
 | `cal-pente-message` | pente message. |
+| `cal-pente-lecture-seule` | pente : raison de la lecture seule (écritures désactivées). |
 | `cal-pente-mode` | pente mode. |
+| `cal-pente-visite-orientation-utiliser` | pente : utiliser l’orientation de la visite (ACAL208). |
+| `cal-pente-visite-orientation-mesure` | pente : orientation de la visite (ACAL208). |
+| `cal-pente-visite-orientation` | pente : proposition de l’orientation de la visite (ACAL208). |
+| `cal-pente-visite-utiliser` | pente : utiliser la mesure de la visite (ACAL208). |
+| `cal-pente-visite-mesure` | pente : mesure de la visite (ACAL208). |
+| `cal-pente-visite` | pente : proposition de la pente de la visite (ACAL208). |
+| `cal-pente-pan` | pente : choix du pan (ACAL252). |
 | `cal-pente-source` | pente provenance. |
 | `cal-pente-valeur` | pente valeur. |
 
@@ -462,6 +465,13 @@ retiré plus un hook ajouté.
 | `cal-releve-cote-mesure` | relevé cote : choix de la cote mesurée (ACAL207). |
 | `cal-releve-cote-appliquer` | relevé cote : appliquer au pan (ACAL207). |
 | `cal-releve-cote-retour` | relevé cote : retour du serveur / refus nommé (ACAL207). |
+| `cal-releve-azimut-retour` | relevé azimut : retour du serveur / refus nommé (ACAL206). |
+| `cal-releve-azimut-lecture-seule` | relevé azimut : raison de la lecture seule. |
+| `cal-releve-cote-lecture-seule` | relevé cote : raison de la lecture seule. |
+| `cal-releve-azimut-appliquer` | relevé azimut : appliquer au pan (ACAL206). |
+| `cal-releve-azimut-pan` | relevé azimut : choix du pan (ACAL206). |
+| `cal-releve-azimut-mesure` | relevé azimut : valeur et précision relevées (ACAL206). |
+| `cal-releve-appliquer-azimut` | relevé ouvrir « Appliquer l’azimut au pan » (ACAL206). |
 | `cal-releve-chaine--ajouter-cote` | relevé chaîne ajouter côte à côte. |
 | `cal-releve-chaine--cote` | relevé chaîne côte à côte. |
 | `cal-releve-chaine--cote--retirer` | relevé chaîne côte à côte retirer. |
@@ -573,7 +583,13 @@ retiré plus un hook ajouté.
 | `cal-reprise-photos` | reprise de visite — liste des photos retenues. |
 | `cal-reprise-photos-vide` | reprise de visite — aucune photo retenue. |
 | `cal-reprise-raison` | reprise de visite — raison du bouton désactivé. |
+| `cal-reprise-lecture-seule` | reprise de visite — raison de la lecture seule. |
 | `cal-reprise-refus-bandeau` | reprise de visite — bandeau qui nomme le champ refusé. |
+| `cal-reprise-a-jour` | reprise de visite — « Reprise à jour » (ACAL211). |
+| `cal-reprise-ecart` | reprise de visite — tableau d’écart relevé / visite, une ligne par mesure (ACAL211). |
+| `cal-reprise-ecart--releve` | reprise de visite — valeur reprise d’une mesure en écart (ACAL211). |
+| `cal-reprise-ecart--visite` | reprise de visite — valeur actuelle de la visite d’une mesure en écart (ACAL211). |
+| `cal-reprise-maj` | reprise de visite — bouton « Mettre à jour depuis la visite » (ACAL211). |
 | `cal-reprise-vide` | reprise de visite — état vide, motif du serveur tel quel. |
 | `cal-reprise-visite` | reprise de visite — panneau de l'onglet. |
 | `cal-reprise-visite-entete` | reprise de visite — numéro et validation de la visite. |
@@ -745,5 +761,36 @@ retiré plus un hook ajouté.
 | `cal-projet-confirmer` | confirmer l'import. |
 | `cal-projet-annuler` | annuler l'import. |
 | `cal-projet-resultat` | résultat de l'import. |
-
-
+| `cal-pertes-lecture-seule` | pertes : motif de la lecture seule (devis lié figé, ACAL44). |
+| `cal-versions-confirmation` | versions : confirmation de restauration (suffixe = id de version). |
+| `cal-bandeau-lecture-seule-raison` | atelier : raison de la conception figée. |
+| `cal-atelier-statut` | atelier : statut dérivé de l'approbation (ACAL115). |
+| `cal-biblio-modele-ouvrir-existant` | bibliothèque : ouvrir le calepinage existant (409 au départ d'un modèle, ACAL185). |
+| `cal-biblio-marquer-choix` | bibliothèque : sélecteur du calepinage à marquer comme modèle. |
+| `cal-devis-ce-qui-est-chiffre` | devis : ce que le devis chiffre (conception courante, variante retenue incluse). |
+| `cal-devis-bloquants` | devis : bloc des bloquants électriques nommés. |
+| `cal-devis-bloquant` | devis : un bloquant électrique. |
+| `cal-devis-motif` | devis : motif de dérogation saisi. |
+| `cal-devis-motif-erreur` | devis : erreur sous le motif de dérogation. |
+| `cal-devis-passer-outre` | devis : passer outre les bloquants (approbateur). |
+| `cal-devis-derogation-reservee` | devis : dérogation réservée à un approbateur. |
+| `cal-devis-indetermine` | devis : saisies manquantes (verdict indéterminé). |
+| `cal-nouveau-preset-aide` | nouveau : aide du jeu de réglages mémorisé (ACAL186). |
+| `cal-nouveau-responsable` | nouveau : choix du responsable (facultatif). |
+| `cal-nouveau-existant` | nouveau : encart « ce lead a déjà un calepinage ». |
+| `cal-nouveau-ouvrir-existant` | nouveau : ouvrir le calepinage existant du lead. |
+| `cal-fiche--erreur` | fiche : erreur serveur sous le champ de rattachement (milieu = champ). |
+| `cal-fiche-lead-ouvrir-existant` | fiche : ouvrir le calepinage existant du lead visé (409). |
+| `cal-fiche-dupliquer-copie` | fiche : règle de copie de la duplication (ACAL117). |
+| `cal-fiche-dupliquer-lead` | fiche : cible lead de la duplication (ACAL188). |
+| `cal-fiche-dupliquer-erreur-lead` | fiche : refus sous le lead cible de la duplication. |
+| `cal-fiche-dupliquer-client` | fiche : cible client de la duplication. |
+| `cal-fiche-lead-corbeille` | fiche : lead rattaché placé en corbeille. |
+| `cal-badge-perimee` | variantes : badge « simulation périmée » (suffixe = id). |
+| `cal-badge-dessin` | variantes : badge « mesures du dessin, non simulée » (suffixe = id). |
+| `cal-variante-simuler` | variantes : simuler la variante (suffixe = id). |
+| `cal-variantes-bandeau` | variantes : ce que « Retenir » change (ACAL109). |
+| `cal-variantes-vide` | variantes : aucune variante. |
+| `cal-variante-renommer` | variantes : renommer (suffixe = id). |
+| `cal-variante-supprimer-confirmer` | variantes : confirmer la suppression (suffixe = id). |
+| `cal-variante-supprimer` | variantes : supprimer (suffixe = id). |

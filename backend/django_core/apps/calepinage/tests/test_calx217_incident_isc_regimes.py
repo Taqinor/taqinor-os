@@ -172,13 +172,14 @@ class TroisRegimesTroisBloquantsTest(SimpleTestCase):
                 self.assertIn('Isc', str(refus), nom)
                 self.assertTrue(refus.bloquants, nom)
 
-    def test_la_garde_refuse_aussi_quand_les_fiches_manquent(self):
-        # Sans matériel résolu (aucune société en test pur), la garde refuse
-        # TOUJOURS — mais avec l'autre motif, et c'est ce qu'elle doit dire.
-        with self.assertRaises(PublicationBloquee) as capture:
-            garde_publication(_Calepinage())
+    def test_la_garde_dit_indetermine_quand_les_fiches_manquent(self):
+        # ACAL170 (D-ACAL-9) — sans matériel résolu (aucune société en test
+        # pur), le verdict est INDÉTERMINÉ : il ne bloque pas, il le DIT.
+        garde = garde_publication(_Calepinage())
 
-        self.assertIn('fiches techniques', str(capture.exception))
+        self.assertEqual(garde['verdict'], 'indetermine')
+        self.assertEqual(garde['bloquants'], [])
+        self.assertTrue(garde['manquantes'])
 
 
 class ZeroSchemaProduitTest(SimpleTestCase):

@@ -79,7 +79,7 @@ DEPLACEMENTS = {
 }
 
 #: Nombre total de symboles épinglés (somme des sept régions).
-NB_SYMBOLES = 63
+NB_SYMBOLES = 62  # ACAL : build_devis_depuis_calepinage_retenu retiré (CAL185 remplacé)
 
 
 @functools.lru_cache(maxsize=None)

@@ -8,8 +8,8 @@ Ce qui est prouvé ici :
   mais reste lisible directement (``calepinage_detail``) ;
 * ``restaurer`` le fait réapparaître à l'identique (même ``pk``, mêmes
   données) ;
-* un calepinage lié à un devis ENVOYÉ s'archive sans toucher au devis
-  (règle #4) ;
+* ACAL118 — un calepinage lié à un devis ENVOYÉ ne s'archive pas (refus
+  nommé) et le devis reste intact (règle #4) ;
 * restaurer un calepinage non archivé refuse, en nommant le champ.
 
 Run :
@@ -59,8 +59,13 @@ class ArchiverTest(TestCase):
         self.assertNotIn(self.calepinage.pk, ids)
 
     def test_reste_lisible_par_calepinage_detail(self):
+        # ACAL118 — un archivé n'est rendu que sur demande EXPLICITE
+        # (archiver / restaurer) ; par défaut, le détail l'ignore.
         archiver(self.calepinage)
-        trouve = selectors.calepinage_detail(self.calepinage.pk, self.company)
+        self.assertIsNone(
+            selectors.calepinage_detail(self.calepinage.pk, self.company))
+        trouve = selectors.calepinage_detail(
+            self.calepinage.pk, self.company, inclure_archives=True)
         self.assertIsNotNone(trouve)
 
     def test_restaurer_reapparait_a_l_identique(self):
@@ -79,15 +84,23 @@ class ArchiverTest(TestCase):
         self.assertEqual(ctx.exception.champ, 'calepinage')
 
     def test_archiver_calepinage_lie_a_devis_envoye_ne_touche_pas_le_devis(self):
+        # ACAL118 — RÉÉCRIT : archiver un calepinage qui PORTE un devis envoyé
+        # était accepté (la fiche devis pointait ensuite vers un 404). C'est
+        # désormais un refus nommé (champ ``devis``) ; le devis est intact.
         devis = Devis.objects.create(
             company=self.company, client=self.client_a,
             reference='DEV-CAL208-1', statut=Devis.Statut.ENVOYE)
         calepinage = Calepinage.objects.create(
             company=self.company, client=self.client_a, devis=devis)
-        archiver(calepinage)
+        with self.assertRaises(ArchivageInvalide) as ctx:
+            archiver(calepinage)
+        self.assertEqual(ctx.exception.champ, 'devis')
+        self.assertIn('DEV-CAL208-1', str(ctx.exception))
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
-        self.assertTrue(est_archive(calepinage))
+        calepinage.refresh_from_db()
+        self.assertFalse(est_archive(calepinage))
+        self.assertEqual(calepinage.devis_id, devis.pk)
 
     def test_isolation_multi_societe(self):
         autre = Company.objects.create(nom='Autre Co', slug='autre-co-208')

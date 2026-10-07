@@ -105,11 +105,6 @@ ALLOWED_UNCONSUMED = {
     # sortant) ; ``douane`` n'importe jamais cette app. Aucun abonné requis
     # aujourd'hui — réservé ici plutôt qu'orphelin, comme les seams ci-dessus.
     "dossier_export_cloture",
-    # ACAL91 — ``devis_revise`` : seam émis par
-    # ``apps/ventes/domain/revision.reviser_devis`` après le commit de la V+1.
-    # Son abonné prévu (le calepinage re-lie sa conception à la V+1, D-ACAL-3)
-    # est la tâche ACAL92 : à RETIRER d'ici dans le même commit que cet abonné.
-    "devis_revise",
     # ASTK55 — ``reception_fournisseur_annulee`` : déclaré avant son émetteur
     # (ASTK56, stock) et son abonné (ASTK57, installations : extourne GR/IR,
     # séries, YPROC10). À RETIRER d'ici dans le même commit que l'abonné.

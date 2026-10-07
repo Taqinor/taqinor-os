@@ -1,18 +1,20 @@
-"""CALX348 — exiger l'approbation avant de retenir une variante (réglage).
+"""CALX348 — exiger l'approbation (réglage société). DÉCISION FONDATEUR
+07/10/2026 : retenir -> approuver -> publier ; la retenue n'exige plus
+l'approbation, la porte est la publication (générer / resynchroniser, pièces
+d'exécution, ACAL116).
 
 Ce qui est prouvé ici :
 
-* ÉQUIVALENCE (D12) : réglage absent ⇒ ``verifier_avant_retenue`` ne lit
+* ÉQUIVALENCE (D12) : réglage absent ⇒ ``verifier_avant_publication`` ne lit
   même pas la décision d'approbation, et retenir une variante marche comme
   aujourd'hui sur un calepinage jamais approuvé ;
 * la clé ``approbation_exigee`` de la section ``presets`` est VALIDÉE
   booléenne à l'écriture (``services/presets.py``), refus nommant le champ ;
   toutes les autres clés de la section traversent inchangées ;
-* réglage actif et calepinage non approuvé ⇒ ``ValidationError`` sur le
-  champ ``approbation``, donc 400 par l'enveloppe d'erreur globale — sans
-  toucher à ``views/calepinages.py`` ; le message NOMME qui doit approuver
-  (les rôles de la société qui portent le droit, lus en base) ;
-* réglage actif et calepinage approuvé ⇒ la variante est retenue ;
+* réglage actif et calepinage non approuvé => la RETENUE passe ; la
+  PUBLICATION (devis / exécution) est refusée par une ``ValidationError`` sur
+  le champ ``approbation`` (400 par l'enveloppe globale) ; approuvé et à jour
+  => la publication passe ;
 * la vérification vit au MÊME point d'entrée que le feu vert (CAL206).
 
 Les classes ``…EnBase`` exigent l'ORM : la CI est leur gate.
@@ -42,9 +44,9 @@ CONTRAT_PARAMETRES = json.loads(
     .read_text(encoding='utf-8'))
 
 
-def faux_calepinage(approbation=None):
+def faux_calepinage(approbation=None, layout_hash='e' * 64):
     return SimpleNamespace(company=object(), approbation=approbation,
-                           lead_id=None, devis=None)
+                           lead_id=None, devis=None, layout_hash=layout_hash)
 
 
 class NormalisationPresetsTest(SimpleTestCase):
@@ -102,48 +104,55 @@ class EquivalenceSansReglageTest(SimpleTestCase):
                 mock.patch.object(feu_vert, 'option_active',
                                   return_value=False), \
                 mock.patch('apps.crm.selectors.get_company_lead') as lead:
-            self.assertIsNone(feu_vert.verifier_avant_retenue(calepinage))
+            self.assertIsNone(feu_vert.verifier_avant_publication(calepinage))
         est_approuve.assert_not_called()
         lead.assert_not_called()
 
 
 class RefusApprobationExigeeTest(SimpleTestCase):
-    """Réglage actif : non approuvé ⇒ refus nommant le champ et qui décide."""
+    """Réglage actif : la retenue passe ; la publication exige l'accord."""
 
-    def _verifier(self, calepinage, *, roles=('Directeur',)):
+    def _verifier(self, calepinage, geste=feu_vert.GESTE_DEVIS):
         with mock.patch('apps.calepinage.services.approbation.'
                         'approbation_exigee', return_value=True), \
                 mock.patch.object(feu_vert, 'option_active',
-                                  return_value=False), \
-                mock.patch.object(feu_vert, '_roles_approbateurs',
-                                  return_value=list(roles)):
-            return feu_vert.verifier_avant_retenue(calepinage)
+                                  return_value=False):
+            return feu_vert.verifier_avant_publication(calepinage,
+                                                       geste=geste)
 
-    def test_non_approuve_refuse_sur_le_champ_approbation(self):
-        with self.assertRaises(ValidationError) as refus:
-            self._verifier(faux_calepinage())
-        message = refus.exception.detail['approbation'][0]
-        self.assertIn("pas encore été approuvée", message)
-        self.assertIn('Directeur', message)
+    def test_retenue_sans_approbation_passe(self):
+        # Décision fondateur 07/10/2026 : la retenue n'exige plus d'accord.
+        self.assertIsNone(
+            self._verifier(faux_calepinage(), geste=feu_vert.GESTE_RETENUE))
 
-    def test_refus_de_relecture_cite_son_motif(self):
+    def test_non_approuve_refuse_la_publication_sur_le_champ_approbation(
+            self):
+        for geste in (feu_vert.GESTE_DEVIS, feu_vert.GESTE_EXECUTION):
+            with self.subTest(geste=geste):
+                with self.assertRaises(ValidationError) as refus:
+                    self._verifier(faux_calepinage(), geste=geste)
+                self.assertIn('Approbation à jour exigée',
+                              refus.exception.detail['approbation'][0])
+
+    def test_refuse_en_relecture_refuse_la_publication(self):
         calepinage = faux_calepinage(
             {'etat': 'refuse', 'motif': 'Retrait de rive'})
         with self.assertRaises(ValidationError) as refus:
             self._verifier(calepinage)
-        message = str(refus.exception.detail['approbation'][0])
-        self.assertIn('REFUSÉE', message)
-        self.assertIn('Retrait de rive', message)
-
-    def test_aucun_role_porteur_le_dit(self):
-        with self.assertRaises(ValidationError) as refus:
-            self._verifier(faux_calepinage(), roles=())
-        self.assertIn('AUCUN rôle',
-                      str(refus.exception.detail['approbation'][0]))
+        self.assertIn('approbation', refus.exception.detail)
 
     def test_approuve_passe(self):
-        calepinage = faux_calepinage({'etat': 'approuve'})
+        # ACAL114 — l'accord porte l'empreinte imprimée d'aujourd'hui.
+        calepinage = faux_calepinage({'etat': 'approuve',
+                                      'empreinte_approuvee': 'e' * 64})
         self.assertIsNone(self._verifier(calepinage))
+
+    def test_approuve_mais_perime_refuse(self):
+        calepinage = faux_calepinage({'etat': 'approuve',
+                                      'empreinte_approuvee': 'a' * 64})
+        with self.assertRaises(ValidationError) as refus:
+            self._verifier(calepinage)
+        self.assertIn('approbation', refus.exception.detail)
 
 
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
@@ -169,10 +178,18 @@ def url_retenir(pk, vid):
 class RetenirAvecApprobationEnBase(BaseApiCalepinage):
     def setUp(self):
         super().setUp()
+        # ACAL114 — une conception DESSINÉE (approuvable), la même dans la
+        # variante : l'accord porte sur l'empreinte imprimée de la variante.
+        from apps.ventes.services import layout_hash
+
+        dessin = {'zones': [{'id': 'z1', 'label': 'Pan Sud',
+                             'vertices': [[0, 0], [10, 0], [10, 6]]}]}
         self.calepinage = Calepinage.objects.create(
-            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa')
+            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa',
+            roof_layout=dessin, layout_hash=layout_hash(dessin) or '')
         self.variante = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='V1')
+            company=self.company, calepinage=self.calepinage, nom='V1',
+            roof_layout=dessin)
 
     def test_reglage_absent_retenir_marche_comme_aujourd_hui(self):
         retenir_variante(self.variante)
@@ -185,32 +202,39 @@ class RetenirAvecApprobationEnBase(BaseApiCalepinage):
         self.variante.refresh_from_db()
         self.assertTrue(self.variante.retenue)
 
-    def test_reglage_actif_non_approuve_refuse(self):
+    def test_reglage_actif_non_approuve_retenir_passe_puis_publication_refusee(
+            self):
         _exiger(self.company)
-        with self.assertRaises(ValidationError) as refus:
-            retenir_variante(self.variante)
-        self.assertIn('approbation', refus.exception.detail)
-        self.assertIn('Directeur',
-                      str(refus.exception.detail['approbation'][0]))
+        retenir_variante(self.variante)
         self.variante.refresh_from_db()
-        self.assertFalse(self.variante.retenue)
+        self.assertTrue(self.variante.retenue)
+        self.calepinage.refresh_from_db()
+        for geste in (feu_vert.GESTE_DEVIS, feu_vert.GESTE_EXECUTION):
+            with self.subTest(geste=geste):
+                with self.assertRaises(ValidationError) as refus:
+                    feu_vert.verifier_avant_publication(
+                        self.calepinage, geste=geste)
+                self.assertIn('approbation', refus.exception.detail)
 
-    def test_reglage_actif_http_400_par_l_enveloppe_globale(self):
+    def test_reglage_actif_http_retenir_200_puis_publication_400(self):
         _exiger(self.company)
         reponse = self.api.post(
             url_retenir(self.calepinage.pk, self.variante.pk), {},
             format='json')
-        self.assertEqual(reponse.status_code, 400)
-        self.assertIn('approbation', json.dumps(reponse.data,
-                                                ensure_ascii=False))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.calepinage.refresh_from_db()
+        with self.assertRaises(ValidationError) as refus:
+            feu_vert.verifier_avant_publication(
+                self.calepinage, geste=feu_vert.GESTE_DEVIS)
+        self.assertIn('approbation', refus.exception.detail)
 
-    def test_reglage_actif_approuve_retenir_marche(self):
+    def test_reglage_actif_approuve_puis_publication_passe(self):
         _exiger(self.company)
-        decider(self.calepinage, decision='approuve', user=self.user)
-        self.variante.refresh_from_db()
         retenir_variante(self.variante)
-        self.variante.refresh_from_db()
-        self.assertTrue(self.variante.retenue)
+        decider(self.calepinage, decision='approuve', user=self.user)
+        self.calepinage.refresh_from_db()
+        self.assertIsNone(feu_vert.verifier_avant_publication(
+            self.calepinage, geste=feu_vert.GESTE_DEVIS))
 
     def test_valeur_non_booleenne_refusee_a_l_ecriture(self):
         with self.assertRaises(ReglageInvalide) as refus:

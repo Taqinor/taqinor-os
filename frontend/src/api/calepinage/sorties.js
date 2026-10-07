@@ -3,13 +3,8 @@ import api from '../axios'
 import { pivot } from './_base'
 
 export const sorties = {
-    /* CALX27 — la levée du VERROU (CAL207, `views/verrou.py`). L'action
-       existait, testée, et n'avait aucun consommateur : l'atelier affichait un
-       bandeau « lecture seule » sans aucune sortie. Elle ne touche AUCUN
-       statut de devis (règle #4) ; le serveur la trace au journal et rend
-       `{calepinage, verrouille, deverrouille}`. Gardée par `calepinage_gerer`
-       côté serveur — l'écran cache l'affordance avec le MÊME code. */
-    deverrouiller: (id) => api.post(`${pivot(id)}deverrouiller/`, {}),
+    // ACAL42 — `deverrouiller` retiré : le verrou est le verdict ventes,
+    // le seul geste est « Réviser (v2) ».
 
     // CALX19 — l'INVENTAIRE des sorties d'un calepinage (planche, plans, note
     // de calcul, DXF, tableurs, pack technique), contrat
@@ -109,14 +104,11 @@ export const sorties = {
     restaurerCorbeille: (id) => api.post(`${pivot(id)}restaurer-corbeille/`),
 
     // CALX42 — le drapeau « modèle réutilisable » (`records.Tag`, CAL199 —
-    // jamais un champ propre) et la création d'un calepinage NEUF depuis un
-    // modèle. `creerDepuisModele` est une action de LISTE : elle ne vise
-    // aucun calepinage existant, elle en fabrique un — `{modele, lead,
-    // client, titre}`, le rattachement du modèle n'étant JAMAIS recopié.
+    // jamais un champ propre). ACAL185 — créer DEPUIS un modèle passe par la
+    // porte unique `depuisModele` (`projet.js`) : `creerDepuisModele` est
+    // retirée avec sa route (ACAL184).
     marquerModele: (id) => api.post(`${pivot(id)}marquer-modele/`),
     demarquerModele: (id) => api.post(`${pivot(id)}demarquer-modele/`),
-    creerDepuisModele: (corps) =>
-      api.post('/calepinage/calepinages/creer-depuis-modele/', corps),
 
     // CALX35 — la porte HTTP du service de copie qui existe depuis CAL14
     // (`services/variantes.py::dupliquer`), forme de réponse figée par

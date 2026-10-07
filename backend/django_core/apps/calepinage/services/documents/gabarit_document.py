@@ -420,7 +420,8 @@ def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
             company, getattr(calepinage, 'client_id', None)))
         if not client:
             lead = get_company_lead(company,
-                                    getattr(calepinage, 'lead_id', None))
+                                    getattr(calepinage, 'lead_id', None),
+                                    avec_corbeille=True)
             if lead is not None:
                 client = ' '.join(filter(None, (
                     _texte(getattr(lead, 'prenom', '')),
@@ -452,14 +453,23 @@ def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
 
 #: Les deux mentions, avec leur date (ou l'aveu qu'elle n'est pas enregistrée).
 MENTION_VERROUILLE = ('Conception verrouillée depuis le {date} (devis lié '
-                      'envoyé) : pièce produite en lecture seule.')
+                      'figé — accepté, refusé, expiré ou remplacé) : pièce '
+                      'produite en lecture seule.')
 MENTION_ARCHIVE = ('Conception archivée le {date} : pièce d\'archive, '
                    'consultable, qui ne décrit pas une conception en cours.')
 DATE_NON_ENREGISTREE = 'date non enregistrée'
+#: ACAL116 (D-ACAL-24) — les livrables d'ÉTUDE disent l'approbation qui manque.
+MENTION_NON_APPROUVEE = 'Conception non approuvée'
+MENTION_APPROBATION_PERIMEE = 'Approbation périmée depuis le {date}'
+
+#: ACAL116 — l'approbation d'une conception dont la société ne l'exige pas
+#: (ou non enregistrée) : aucune mention.
+APPROBATION_NEUTRE = {'etat': None, 'exigee': False, 'perimee': False,
+                      'perimee_le': ''}
 
 #: L'état d'une conception COURANTE : aucune mention.
 ETAT_COURANT = {'verrouille': False, 'verrouille_le': '', 'archive': False,
-                'archive_le': ''}
+                'archive_le': '', 'approbation': APPROBATION_NEUTRE}
 
 
 def _date_lisible(moment):
@@ -477,16 +487,19 @@ def _date_lisible(moment):
 def etat_de_conception(calepinage):
     """``{verrouille, verrouille_le, archive, archive_le}`` — LU, jamais recopié.
 
-    * verrouillé : ``services.verrou.est_verrouille`` (devis lié envoyé, sans
-      déverrouillage tracé) ; la date est celle de l'ENVOI du devis lié ;
-    * archivé : ``services.archivage.est_archive`` (entrée ACTIVE de la
-      corbeille plateforme) ; la date est celle de l'archivage.
+    * verrouillé : ``services.verrou.est_verrouille`` — ACAL42 : le verdict
+      ventes du geste CALEPINAGE (accepté, refusé, expiré ou remplacé ; un
+      envoyé se corrige) ; la date est celle de l'ENVOI du devis lié ;
+    * archivé : ``services.archivage.est_archive`` (ACAL118 :
+      ``Calepinage.archive_le``) ; la date est celle de l'archivage.
 
     Un calepinage non enregistré est courant, sans lecture en base.
     """
     etat = dict(ETAT_COURANT)
+    etat['approbation'] = dict(APPROBATION_NEUTRE)
     if calepinage is None or not getattr(calepinage, 'pk', None):
         return etat
+    etat['approbation'] = _approbation_lue(calepinage)
     from ..archivage import est_archive
     from ..verrou import est_verrouille
 
@@ -495,13 +508,34 @@ def etat_de_conception(calepinage):
         etat['verrouille_le'] = _date_lisible(getattr(
             getattr(calepinage, 'devis', None), 'date_envoi', None))
     if est_archive(calepinage):
-        from apps.trash.selectors import entree_active
-
-        entree = entree_active(calepinage)
+        # ACAL118 — la date est celle du MODÈLE (survit à la purge).
         etat['archive'] = True
-        etat['archive_le'] = _date_lisible(getattr(entree, 'supprime_le',
+        etat['archive_le'] = _date_lisible(getattr(calepinage, 'archive_le',
                                                    None))
     return etat
+
+
+def _approbation_lue(calepinage):
+    """ACAL116 — ``{etat, exigee, perimee, perimee_le}`` LU (jamais
+    recopié) : la décision de ``services.approbation`` et le réglage société ;
+    ``perimee_le`` = la date de la dernière version de la conception."""
+    from ..approbation import (
+        APPROUVE, approbation_exigee, approbation_perimee,
+    )
+
+    decision = getattr(calepinage, 'approbation', None)
+    decision = decision if isinstance(decision, dict) else {}
+    exigee = approbation_exigee(getattr(calepinage, 'company', None))
+    perimee = approbation_perimee(calepinage)
+    perimee_le = ''
+    if exigee and perimee:
+        from ..versions import derniere_version
+
+        version = derniere_version(calepinage)
+        perimee_le = _date_lisible(getattr(version, 'created_at', None))
+    return {'etat': decision.get('etat') if decision.get('etat') in (
+                APPROUVE, 'refuse') else None,
+            'exigee': exigee, 'perimee': perimee, 'perimee_le': perimee_le}
 
 
 def mentions_d_etat(etat):
@@ -518,4 +552,13 @@ def mentions_d_etat(etat):
     if etat.get('archive'):
         mentions.append(MENTION_ARCHIVE.format(
             date=_texte(etat.get('archive_le')) or DATE_NON_ENREGISTREE))
+    # ACAL116 — seulement quand la société EXIGE l'approbation.
+    approbation = etat.get('approbation')
+    if isinstance(approbation, Mapping) and approbation.get('exigee'):
+        if approbation.get('perimee'):
+            mentions.append(MENTION_APPROBATION_PERIMEE.format(
+                date=_texte(approbation.get('perimee_le'))
+                or DATE_NON_ENREGISTREE))
+        elif approbation.get('etat') != 'approuve':
+            mentions.append(MENTION_NON_APPROUVEE)
     return mentions
