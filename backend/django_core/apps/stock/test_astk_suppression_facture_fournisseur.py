@@ -127,3 +127,43 @@ class SuppressionFactureFournisseurTests(TestCase):
         resp = self.api.delete(
             f'/api/django/stock/factures-fournisseur/{f.id}/')
         self.assertEqual(resp.status_code, 204)
+
+
+class DelettrageSuppressionTests(TestCase):
+    """ASTK86 — la suppression autorisée d'une facture fournisseur rouvre
+    les provisions GR/IR qu'elle avait lettrées (service chantiers ASTK126,
+    ReceptionNonFacturee réelle — aucun mock). Réutilise le setUp ASTK85
+    (sans hériter de ses tests, qui ne tournent donc qu'une fois)."""
+
+    setUp = SuppressionFactureFournisseurTests.setUp
+    _facture = SuppressionFactureFournisseurTests._facture
+
+    def test_suppression_rouvre_la_provision(self):
+        from apps.installations.models_gr_ir import ReceptionNonFacturee
+        from apps.installations.services import lettrer_gr_ir_facture
+        provision = ReceptionNonFacturee.objects.create(
+            company=self.company, bon_commande=self.bcf,
+            montant_provision=Decimal('500'))
+        f = self._facture('FF-ASTK86-1', bcf=self.bcf)
+        lettrer_gr_ir_facture(facture=f, company=self.company,
+                              user=self.user)
+        provision.refresh_from_db()
+        self.assertTrue(provision.lettre)
+        self.assertEqual(provision.facture_id, f.pk)
+
+        resp = self.api.delete(
+            f'/api/django/stock/factures-fournisseur/{f.id}/')
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', None))
+        # Persistance : la provision relue est OUVERTE.
+        provision.refresh_from_db()
+        self.assertFalse(provision.lettre)
+        self.assertIsNone(provision.date_lettrage)
+        self.assertIsNone(provision.facture_id)
+
+        # Une facture de remplacement liée au BCF la lettre à nouveau.
+        f2 = self._facture('FF-ASTK86-2', bcf=self.bcf)
+        lettrer_gr_ir_facture(facture=f2, company=self.company,
+                              user=self.user)
+        provision.refresh_from_db()
+        self.assertTrue(provision.lettre)
+        self.assertEqual(provision.facture_id, f2.pk)

@@ -196,7 +196,14 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                     'MAD) : suppression refusée.'
                 ),
             })
-        instance.delete()
+        # ASTK86 — dé-lettrer AVANT delete() les provisions GR/IR que cette
+        # facture avait lettrées (le FK SET_NULL laissait lettre=True,
+        # facture=None : dette latente fermée à tort). Service UNIQUE du
+        # propriétaire chantiers (ASTK126), dans la même transaction.
+        from apps.installations.services import delettrer_gr_ir_facture
+        with transaction.atomic():
+            delettrer_gr_ir_facture(instance)
+            instance.delete()
 
     def create(self, request, *args, **kwargs):
         # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
