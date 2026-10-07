@@ -10,12 +10,12 @@ Couvre :
     ``tests_ylead8_whatsapp_dedupe.py::test_lost_lead_is_reactivated_not_duplicated``,
     référencé ici pour traçabilité.
 
-NOTE (règle fondateur 18/08/2026) : le webhook du SITE ne réactive plus rien,
-parce qu'il ne retrouve plus de lead à réactiver — une soumission du site crée
-toujours sa propre fiche. La réactivation reste vivante sur les touches
-entrantes qui, elles, portent une identité de conversation (WhatsApp). La
-classe ``WebhookNeReactivePlusTests`` ci-dessous verrouille ce nouveau
-contrat : le lead perdu ressort INTACT, et le rapprochement est visible.
+NOTE (règle fondateur 18/08/2026, AMENDÉE par D-ALEA-2 le 07/10/2026) : une
+soumission du site crée toujours sa propre fiche ; depuis ALEA2, un doublon
+non archivé au Froid/Perdu est en plus RÉVEILLÉ (sortie du Froid/Perdu,
+reprise CAD107) — sans réécrire son attribution d'origine. La classe
+``WebhookNeReactivePlusTests`` ci-dessous verrouille ce contrat ; le détail
+(froid, perdu, ouvert, rejeu) vit dans ``tests_alea_reactivation_point_entree``.
 """
 import json
 
@@ -82,7 +82,8 @@ class ReactivateLeadOnNewTouchUnitTests(TestCase):
 @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
 class WebhookNeReactivePlusTests(TestCase):
     """Règle fondateur 18/08/2026 — une nouvelle soumission du SITE sur un
-    numéro déjà perdu crée sa propre fiche ; l'ancienne reste telle quelle."""
+    numéro déjà perdu crée sa propre fiche ; D-ALEA-2 (07/10/2026) — et
+    l'ancienne fiche perdue est réveillée, attribution d'origine intacte."""
 
     def setUp(self):
         self.company = Company.objects.create(
@@ -121,7 +122,7 @@ class WebhookNeReactivePlusTests(TestCase):
         lost.refresh_from_db()
         return lost
 
-    def test_nouvelle_soumission_cree_une_fiche_et_laisse_le_lead_perdu_intact(self):
+    def test_nouvelle_soumission_cree_une_fiche_et_reveille_le_lead_perdu(self):
         lost = self._lost_lead()
 
         resp = self._post(self._payload(
@@ -131,15 +132,16 @@ class WebhookNeReactivePlusTests(TestCase):
             Lead.objects.filter(company=self.company).count(), 2)
 
         lost.refresh_from_db()
-        # Le lead perdu n'est ni réactivé, ni réécrit : plus aucun chemin du
-        # webhook ne le touche.
-        self.assertTrue(lost.perdu)
-        self.assertEqual(lost.stage, stages.COLD)
+        # D-ALEA-2 — le lead perdu est réveillé (hors Perdu, hors Froid)…
+        self.assertFalse(lost.perdu)
+        self.assertNotEqual(lost.stage, stages.COLD)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lost, body__contains='Nouvelle demande reçue (site web)'
+        ).exists())
+        # …sans réécrire son attribution d'origine (first-touch).
         self.assertEqual(lost.motif_perte, 'Trop cher')
         self.assertEqual(lost.utm_source, 'facebook')
         self.assertEqual(lost.utm_campaign, 'campagne_origine')
-        self.assertFalse(
-            LeadActivity.objects.filter(lead=lost).exists())
 
         # …mais le commercial voit le rapprochement sur la NOUVELLE fiche.
         nouveau = Lead.objects.get(pk=resp.json()['lead_id'])

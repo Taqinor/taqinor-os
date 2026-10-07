@@ -2,8 +2,10 @@
 
 Endpoint: GET /api/django/crm/leads/<id>/roof-footprint/
 
-Access: company-scoped (resolves lead by company; 404 for another company's lead).
-Auth: standard IsAuthenticated (inherits from the rest of the CRM views).
+Access: the LeadViewSet scope (company + team/subtree + entity); a lead out
+of scope gets the same 404 as a missing id.
+Auth (ALEA38): internal account (IsAnyRole — portal → 403) carrying
+`crm_voir` (HasPermissionOrLegacy — Commercial terrain → 403).
 Response:
   200 {"polygon": [{lat, lng}, ...], "source": "osm", "batiment": {...}}
   200 {"polygon": [], "source": "osm", "batiment": {...},
@@ -21,7 +23,8 @@ French, why. Frozen by
 
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+
+from authentication.permissions import HasPermissionOrLegacy, IsAnyRole
 
 from .roof_detect import (
     MOTIF_OSM_INJOIGNABLE, batiment_non_renseigne, fetch_building_footprint,
@@ -37,21 +40,38 @@ _MSG_NO_PIN = (
 )
 
 
+def _leads_visibles(request):
+    """ALEA38 — LA portée du ``LeadViewSet`` (société + équipe/sous-arbre +
+    entité), relue sur le viewset lui-même : une seule source de vérité,
+    jamais une copie du filtre qui dériverait."""
+    from .views import LeadViewSet  # noqa: PLC0415 — évite un cycle d'import
+
+    vue = LeadViewSet()
+    vue.request = request
+    vue.action = 'retrieve'
+    vue.format_kwarg = None
+    vue.args = ()
+    vue.kwargs = {}
+    return vue.get_queryset()
+
+
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
 def lead_roof_footprint(request, lead_id):
     """Return the OSM building-footprint polygon for a pinned lead.
 
-    Company-scoped: only leads owned by request.user.company are accessible.
+    ALEA38 — gardée comme la fiche lead : compte INTERNE (``IsAnyRole`` — un
+    compte portail reçoit 403) portant ``crm_voir`` (un Commercial terrain,
+    sans ce droit, reçoit 403), et lead dans la PORTÉE du ``LeadViewSet``
+    (hors portée → 404, identique à un id absent). Aucun rôle portant
+    ``calepinage_*`` n'est privé de ``crm_voir`` dans le registre canonique :
+    l'atelier calepinage garde l'accès. Aucun appel Overpass n'est tenté
+    avant que ces gardes passent.
     Best-effort: if Overpass is unreachable the polygon is empty and the client
     falls back to manual drawing.
     """
-    # Function-local import to keep cross-app boundary clean.
-    from .models import Lead  # noqa: PLC0415
-
-    try:
-        lead = Lead.objects.get(pk=lead_id, company=request.user.company)
-    except Lead.DoesNotExist:
+    lead = _leads_visibles(request).filter(pk=lead_id).first()
+    if lead is None:
         return JsonResponse(
             {"detail": "Lead introuvable."},
             status=404,
