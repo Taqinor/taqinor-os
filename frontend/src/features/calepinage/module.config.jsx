@@ -4,7 +4,7 @@
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
 import {
-  BadgeCheck, Columns3, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
+  BadgeCheck, Columns3, FileStack, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -197,6 +197,13 @@ const config = {
         to: '/calepinage/reglages',
         label: 'Réglages simulation',
         icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
+        // ACAL242 — les gabarits des dossiers réglementaires de la société.
+        to: '/calepinage/reglages/gabarits',
+        label: 'Gabarits des dossiers',
+        icon: <FileStack size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
       {

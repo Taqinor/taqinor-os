@@ -59,7 +59,7 @@ describe('DossiersReglementaires (ACAL309) - packs France', () => {
       expect(screen.getByTestId(`acal309-pack-${pack.genre}`)).toHaveTextContent(pack.libelle)
       if (!pack.gabarit_depose) {
         expect(screen.getByTestId(`acal309-message-${pack.genre}`)).toHaveTextContent(pack.message)
-        expect(screen.getByTestId(`acal309-depot-${pack.genre}`)).toHaveAttribute('href', '/calepinage/reglages')
+        expect(screen.getByTestId(`acal309-depot-${pack.genre}`)).toHaveAttribute('href', '/calepinage/reglages/gabarits')
       }
     }
     expect(screen.getByTestId('acal309-avancement-enedis')).toHaveTextContent('pièces fournies')

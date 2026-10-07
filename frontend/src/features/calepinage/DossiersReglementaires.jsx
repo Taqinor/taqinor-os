@@ -502,7 +502,7 @@ function PackFrance({ pack }) {
             {pack.message}
           </p>
           <a
-            href="/calepinage/reglages"
+            href="/calepinage/reglages/gabarits"
             className="text-xs underline"
             data-testid={`acal309-depot-${pack.genre}`}
           >
