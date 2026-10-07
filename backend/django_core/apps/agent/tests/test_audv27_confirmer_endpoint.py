@@ -9,7 +9,7 @@ de `AgentActionLog.is_undoable` (reflète désormais un handler RÉELLEMENT
 enregistré).
 """
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -17,10 +17,21 @@ from authentication.models import Company
 from apps.agent import services
 from apps.agent.models import AgentActionLog
 from apps.crm.models import Client
+from apps.roles.models import Role
 
 User = get_user_model()
 
 URL = '/api/django/agent/logs/confirmer/'
+# AANA18 — l'endpoint exige desormais une preuve HMAC emise par le relais
+# FastAPI (secret partage) et une action presente dans le catalogue de
+# l'utilisateur : ces tests du cablage AUDV27 envoient donc une preuve valide.
+SECRET = 'secret-de-test-audv27'
+
+
+def _preuve(user, action_key, inputs=None, object_id=None):
+    return services.calculer_preuve_confirmation(
+        secret=SECRET, action_key=action_key, company_id=user.company_id,
+        user_id=user.pk, inputs=inputs or {}, object_id=object_id)
 
 
 def _api(user):
@@ -29,28 +40,32 @@ def _api(user):
     return api
 
 
+@override_settings(AGENT_HMAC_SECRET=SECRET)
 class AgentActionConfirmerViewTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='AUDV27 Co')
         cls.user = User.objects.create_user(
             username='audv27_user', password='x', role_legacy='normal',
-            company=cls.company)
+            company=cls.company, role=Role.objects.create(
+                company=cls.company, nom='AUDV27 Commercial',
+                permissions=['crm_creer']))
 
     def test_journalise_apres_confirmation_self_service(self):
         """N'importe quel utilisateur authentifié — pas seulement admin —
         peut journaliser SA propre action confirmée."""
         resp = _api(self.user).post(URL, {
-            'action_key': 'devis.envoyer',
+            'action_key': 'crm.client.create',
             'risk_level': 'outward',
-            'inputs': {'devis_id': 7},
-            'proposal_hash': 'abc123',
+            'inputs': {'nom': 'Sans cible'},
+            'preuve': _preuve(self.user, 'crm.client.create',
+                              {'nom': 'Sans cible'}),
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         log = AgentActionLog.objects.get(pk=resp.data['id'])
         self.assertEqual(log.company_id, self.company.id)
         self.assertEqual(log.user_id, self.user.id)
-        self.assertEqual(log.action_key, 'devis.envoyer')
+        self.assertEqual(log.action_key, 'crm.client.create')
         self.assertEqual(log.risk_level, 'outward')
         self.assertIsNotNone(log.executed_at)
 
@@ -62,6 +77,8 @@ class AgentActionConfirmerViewTests(TestCase):
             'risk_level': 'outward',
             'inputs': {'nom': 'Client Confirmé'},
             'object_id': client_obj.id,
+            'preuve': _preuve(self.user, 'crm.client.create',
+                              {'nom': 'Client Confirmé'}, client_obj.id),
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         log = AgentActionLog.objects.get(pk=resp.data['id'])
@@ -76,6 +93,8 @@ class AgentActionConfirmerViewTests(TestCase):
             'action_key': 'crm.client.create',
             'risk_level': 'outward',
             'object_id': client_autre.id,
+            'preuve': _preuve(self.user, 'crm.client.create',
+                              None, client_autre.id),
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         log = AgentActionLog.objects.get(pk=resp.data['id'])
