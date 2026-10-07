@@ -576,6 +576,11 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                     app_label=app_label, model=modele_nom).first()
             modele = content_type.model_class() if content_type else None
             cible = None
+            # AANA16 — `champ_identifiant` limité aux identifiants métier
+            # connus : jamais une clé ORM libre (`prix_achat__gte` servait
+            # d'oracle par dichotomie sur le prix d'achat).
+            if champ not in _CHAMPS_IDENTIFIANT_CANDIDATS:
+                champ = ''
             if modele is not None and champ and valeur:
                 manager = getattr(modele, 'all_objects', modele._default_manager)
                 try:
