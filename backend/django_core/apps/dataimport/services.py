@@ -517,18 +517,24 @@ def _get_or_create_ref(company, external_system, external_id, obj):
     from .models import ExternalRef
     from django.contrib.contenttypes.models import ContentType
     ct = ContentType.objects.get_for_model(obj)
+    # AANA10 — la référence est typée : (société, système, TYPE, id externe).
     ExternalRef.objects.get_or_create(
         company=company, external_system=external_system,
-        external_id=external_id,
-        defaults={'content_type': ct, 'object_id': obj.pk})
+        content_type=ct, external_id=str(external_id),
+        defaults={'object_id': obj.pk})
 
 
 def _find_by_external_id(company, external_system, external_id, model):
+    """AANA10 — ne rapproche QUE les références du type ``model`` : une
+    référence ``A1`` posée sur un lead ne désigne jamais le client de même pk."""
+    from django.contrib.contenttypes.models import ContentType
+
     from .models import ExternalRef
     if not external_id:
         return None
     ref = ExternalRef.objects.filter(
         company=company, external_system=external_system,
+        content_type=ContentType.objects.get_for_model(model),
         external_id=str(external_id)).first()
     if ref is None:
         return None
