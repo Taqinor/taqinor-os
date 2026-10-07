@@ -315,18 +315,38 @@ def audit_log(request):
 
 
 # ── N78 — coût de revient par chantier (ADMIN ; marge INTERNE) ───────────────
-def _devis_cost_estimate(devis):
-    """Coût estimé d'un devis = Σ prix_achat × quantité de ses lignes.
+def _marge_devis(devis):
+    """AANA23 — LA marge interne d'un devis (fonction UNIQUE : commissions
+    MARGE_INTERNE, job-costing, rentabilité). INTERNE — ``prix_achat`` n'est
+    lu que côté serveur, jamais rendu dans un export/PDF client.
 
-    Le prix d'achat est lu sur le produit lié à chaque ligne. INTERNE.
+    Seules les lignes COMPTÉES dans les totaux (``compte_dans_totaux`` : ligne
+    produit non optionnelle) entrent. Par ligne :
+      - CA HT = ``ligne.total_ht`` (remise de LIGNE déduite) × (1 − remise
+        GLOBALE du devis) ;
+      - coût = ``prix_achat`` × quantité (0 si le prix d'achat est inconnu).
+    Renvoie ``{'ca_ht', 'cout', 'marge'}`` ; ``marge`` ne somme que les lignes
+    dont le prix d'achat est CONNU (une ligne sans coût connu ne fabrique pas
+    de marge). Utilise ``devis.lignes`` (prefetch conseillé, avec ``produit``).
     """
-    total = Decimal('0')
+    remise_globale = Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
+    facteur = Decimal('1') - remise_globale / Decimal('100')
+    ca_ht = Decimal('0')
+    cout = Decimal('0')
+    marge = Decimal('0')
     for ligne in devis.lignes.all():
+        if not ligne.compte_dans_totaux:
+            continue
+        ca_ligne = Decimal(str(ligne.total_ht)) * facteur
+        ca_ht += ca_ligne
         produit = ligne.produit
-        prix_achat = getattr(produit, 'prix_achat', None) or Decimal('0')
-        qte = ligne.quantite or Decimal('0')
-        total += Decimal(prix_achat) * Decimal(qte)
-    return total
+        prix_achat = getattr(produit, 'prix_achat', None) if produit else None
+        if prix_achat is None:
+            continue
+        cout_ligne = Decimal(prix_achat) * Decimal(ligne.quantite or 0)
+        cout += cout_ligne
+        marge += ca_ligne - cout_ligne
+    return {'ca_ht': ca_ht, 'cout': cout, 'marge': marge}
 
 
 @api_view(['GET'])
@@ -372,7 +392,8 @@ def job_costing(request):
     for ch in chantiers:
         invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
                     if ch.devis_id else Decimal('0'))
-        cost = _devis_cost_estimate(ch.devis) if ch.devis_id else Decimal('0')
+        cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
+                else Decimal('0'))
         margin = invoiced - cost
         margin_pct = (float(margin / invoiced * 100)
                       if invoiced else 0.0)
@@ -518,26 +539,6 @@ def analytics(request):
     })
 
 
-def _marge_interne_devis(devis, ligne_produit_choice):
-    """XSAL6 — Marge interne (CA − coût d'achat) des lignes PRODUIT d'un devis
-    signé, pour la base `PlanCommission.Base.MARGE_INTERNE` (ADMIN-ONLY :
-    l'unique appelant, `commissions`, est déjà gated `IsAdminRole` — `prix_achat`
-    n'est lu ici que côté serveur, jamais rendu dans un export/PDF client).
-    Utilise `devis.lignes` déjà PREFETCHÉES (`select_related('produit')`) —
-    aucune requête supplémentaire par ligne."""
-    total = Decimal('0')
-    for ligne in devis.lignes.all():
-        if ligne.type_ligne != ligne_produit_choice:
-            continue
-        produit = ligne.produit
-        if produit is None or produit.prix_achat is None:
-            continue
-        quantite = ligne.quantite or Decimal('0')
-        prix_unitaire = ligne.prix_unitaire or Decimal('0')
-        total += (Decimal(prix_unitaire) - Decimal(produit.prix_achat)) * Decimal(quantite)
-    return total
-
-
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def commissions(request):
@@ -640,7 +641,9 @@ def commissions(request):
                 slot['base'] += kwc
                 slot['commission'] += kwc * (plan.montant_par_kwc or Decimal('0'))
             elif plan.base == PlanCommission.Base.MARGE_INTERNE:
-                marge = _marge_interne_devis(d, LigneDevis.TypeLigne.PRODUIT)
+                # AANA23 — remises de ligne ET globale déduites, lignes
+                # comptées dans les totaux seulement (fonction unique).
+                marge = _marge_devis(d)['marge']
                 slot['base'] += marge
                 slot['commission'] += marge * (plan.taux_pct or Decimal('0')) / Decimal('100')
             continue
@@ -1019,7 +1022,8 @@ def profitability(request):
 
         invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
                     if ch.devis_id else Decimal('0'))
-        cost = _devis_cost_estimate(ch.devis) if ch.devis_id else Decimal('0')
+        cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
+                else Decimal('0'))
         buckets[key]['count'] += 1
         buckets[key]['revenue'] += invoiced
         buckets[key]['cost'] += cost
