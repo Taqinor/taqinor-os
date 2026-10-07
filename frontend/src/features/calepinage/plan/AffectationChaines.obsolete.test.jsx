@@ -13,15 +13,11 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
 
+// Les portes lues/écrites par l'onglet + la relecture de l'entrée (ACAL266).
+const PORTES_AFFECTATION = vi.hoisted(() => ['resultat', 'evaluerElectrique',
+  'enregistrerEntreeElectrique', 'entreeElectrique'])
 vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      resultat: vi.fn(),
-      evaluerElectrique: vi.fn(),
-      enregistrerEntreeElectrique: vi.fn(),
-      entreeElectrique: vi.fn(),
-    },
-  },
+  default: { calepinages: Object.fromEntries(PORTES_AFFECTATION.map((nom) => [nom, vi.fn()])) },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'

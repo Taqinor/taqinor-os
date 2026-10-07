@@ -12,15 +12,11 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
 
+// La porte pose-reelle/ (lecture, saisie, version) + le DELETE d'ACAL268.
+const PORTES_POSE = vi.hoisted(() => ['poseReelle', 'enregistrerPoseReelle',
+  'creerVersionPoseReelle', 'supprimerPoseReelle'])
 vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      poseReelle: vi.fn(),
-      enregistrerPoseReelle: vi.fn(),
-      creerVersionPoseReelle: vi.fn(),
-      supprimerPoseReelle: vi.fn(),
-    },
-  },
+  default: { calepinages: Object.fromEntries(PORTES_POSE.map((nom) => [nom, vi.fn()])) },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
