@@ -196,6 +196,14 @@ test('AGR624 — seuil saisi en Paramètres, recette saisie à l’écran, comme
 })
 
 test('AGR624 — PV de réception PDF : mesures et mention art. 3', async ({ request }) => {
+  // ADOC72 (documents/views.py `_refus_etat`) : les documents de chantier ne
+  // s'émettent qu'à partir du statut « installé » (409 sinon). Le chantier
+  // pompage hors réseau passe par « en cours » puis « installé » (aucune garde
+  // C&I raccordé — CIQ621 — ne s'y applique).
+  for (const statut of ['en_cours', 'installe']) {
+    await json(await request.patch(`${API}/installations/chantiers/${etat.chantierId}/`,
+      { data: { statut } }), `chantier « ${statut} »`)
+  }
   const pdf = await request.get(`${API}/documents/chantiers/${etat.chantierId}/pv-reception/`)
   expect(pdf.status(), 'PV de réception').toBe(200)
   const texte = await textePdf(await pdf.body())

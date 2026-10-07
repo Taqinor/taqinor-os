@@ -119,10 +119,14 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
   // en MAD sans tarif BT déclaré ne se convertit pas (« conversion_mad_impossible »)
   // — le lead porte donc un kWh mensuel déclaré, et une taille explicite pour
   // une composition chiffrable. Pas de facture d'hiver : rien à contredire.
+  // Le moteur n'invente aucun horaire : sans plage ni équipe déclarée il refuse
+  // (« profil déclaré exigé », D-CIQ autoconso heure par heure sur profil
+  // DÉCLARÉ) — le lead porte donc ses jours et heures d'ouverture.
   const lead = await json(await request.post(`${API}/crm/leads/`, {
     data: {
       nom: uniq('Commerce CIQ127'), ville: 'Casablanca', telephone: telephoneMobileUnique(),
       type_installation: 'commercial', conso_mensuelle_kwh: '12000', taille_souhaitee_kwc: '20',
+      jours_ouverture: [1, 2, 3, 4, 5, 6], heure_debut: 8, heure_fin: 18,
     },
   }), 'lead commercial')
   leadIds.push(lead.id)

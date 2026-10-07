@@ -122,8 +122,19 @@ test('AGR318 — lien public : synthèse agricole, aucun chiffre résidentiel', 
   const kpis = data.mode_kpis || {}
   expect('bassin_m3' in kpis, 'mode_kpis.bassin_m3').toBeFalsy()
   expect('fda_eligible' in kpis, 'mode_kpis.fda_eligible').toBeFalsy()
-  // Aucun « 30 % » isolé (le taux de subvention n'est jamais promis seul).
-  expect(JSON.stringify(data)).not.toMatch(/(^|[^\d.,])30\s?%/)
+  // Aucun « 30 % » isolé : le taux de subvention n'est jamais promis seul.
+  // D-AGR (docs/claude-memory/agricole-decisions-fondateur.md) : l'aide FDA est
+  // servie comme une RÈGLE sans montant — son texte porte le taux AVEC ses
+  // plafonds (« … 30 % …, plafonnée à 3 000 DH par hectare … »). L'autre
+  // « 30 % » légitime est l'acompte de l'échéancier (« Acompte à la commande : 30% »).
+  const texte = JSON.stringify(data)
+  for (const m of texte.matchAll(/(^|[^\d.,])30\s?%/g)) {
+    const avant = texte.slice(Math.max(0, m.index - 40), m.index + 1)
+    const suite = texte.slice(m.index, m.index + 160)
+    expect(/3[\s\u00a0\u202f,.]?000/.test(suite) || /Acompte/i.test(avant),
+      `« 30 % » sans plafond ni acompte : ${avant}${suite}`).toBeTruthy()
+  }
+  expect(texte, 'aucun montant d’aide FDA chiffré').not.toMatch(/"montant_aide[^"]*":\s*\d/)
 
   test.info().annotations.push({ type: 'jeton', description: jeton })
 })
