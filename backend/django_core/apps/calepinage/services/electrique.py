@@ -2617,9 +2617,12 @@ def verdict_publiable(calepinage):
 def rejouer_apres_layout(calepinage, *, user=None):
     """Rejoue le verdict après un enregistrement de conception (CAL128).
 
-    Le verdict est DÉPOSÉ dans ``resultat['verdict_electrique']`` pour que la
-    fiche l'affiche sans recalculer, et le statut ``brouillon`` est CONSERVÉ
-    quand un bloquant subsiste — un calepinage ne se publie jamais tout seul.
+    ACAL325 — le verdict est CALCULÉ et RENDU à l'appelant, jamais déposé
+    dans ``resultat`` : l'instantané ``resultat['verdict_electrique']`` n'était
+    lu par personne et se recopiait périmé dans chaque version. Le verdict est
+    servi À LA DEMANDE par ``evaluation_electrique`` (``GET resultat/``, garde
+    de publication). La réconciliation de longueur (CAL170) reste journalisée.
+    Aucun statut n'est écrit — un calepinage ne se publie jamais tout seul.
     Ne lève jamais : un verdict en échec ne doit pas faire perdre une
     conception déjà enregistrée.
     """
@@ -2632,18 +2635,9 @@ def rejouer_apres_layout(calepinage, *, user=None):
             'CAL128 : verdict électrique en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
         return None
-    from .resultat import modifier_resultat
-
-    def _poser(resultat):
-        resultat['verdict_electrique'] = evaluation
-
-    # ACAL57 — l'écrivain unique, relecture sous verrou. AUCUN statut n'est
-    # écrit ici — c'est l'invariant du module (le chemin de layout n'écrit
-    # jamais de statut). Le blocage vit dans ``garde_publication``, que le
-    # geste de publication appelle : un brouillon qui reste brouillon, jamais
-    # une rétrogradation surprise déclenchée par un simple enregistrement de
-    # dessin.
-    modifier_resultat(calepinage, _poser)
+    # ACAL325 — AUCUNE écriture de ``resultat`` ici (une seule écriture par
+    # enregistrement de plan, celle de la conception). Le blocage vit dans
+    # ``garde_publication``, que le geste de publication appelle.
 
     # CAL170 — un écart moteur↔fiche au-delà de la tolérance est JOURNALISÉ
     # (jamais un remplacement silencieux), et son historique est conservé.
