@@ -835,7 +835,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # accepter (son catalogue est ``company`` OU global) : une société qui veut
     # épingler une structure globale sur ses leads la duplique dans son propre
     # catalogue. C'est le prix de la garde d'isolation, et il est connu.
-    scoped_relations = ('deleted_by', 'structure_produit')
+    # ALEA16 — ``entite`` (FK sortante INSCRIPTIBLE vers ``entites.Entite``)
+    # acceptait l'id d'une entité d'une AUTRE société (sonde V3 LFICHE-2 /
+    # V4 LCOUT-5 : 200, stocké). Bornée ici comme ``structure_produit`` : un
+    # id étranger reçoit la même réponse qu'un id absent.
+    scoped_relations = ('deleted_by', 'structure_produit', 'entite')
 
     # STKCAT9 — LA MÊME GARDE, DÉCLARÉE : ``same_company_fields`` est le patron
     # que la garde CI ``scripts/check_fk_scoping.py`` sait reconnaître sur une
@@ -843,7 +847,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # ci-dessus : le champ refuse déjà l'id d'une autre société à la
     # résolution, et si ce re-scope venait à sauter, ``to_internal_value``
     # refuserait encore — avec un message français explicite.
-    same_company_fields = ('structure_produit',)
+    same_company_fields = ('structure_produit', 'entite')
 
     # Relevé fondateur 08/09/2026 — les puissances d'équipement acceptent une
     # saisie en watts (ramenée en kW) au lieu de bloquer l'autosauvegarde.
@@ -1472,6 +1476,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # selon le chemin d'écriture (fiche, webhook, visite).
             'tension_source', 'puissance_souscrite_source', 'surface_source',
             'cos_phi_source',
+            # ALEA16 — miroir serveur ARC56 : ``tiers`` est posé par le pont
+            # lead → répertoire unifié (resolve_client_for_lead + miroir
+            # ARC18), jamais par le corps. Inscriptible, il acceptait le Tiers
+            # d'une AUTRE société ; il reste RENDU en lecture.
+            'tiers',
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
