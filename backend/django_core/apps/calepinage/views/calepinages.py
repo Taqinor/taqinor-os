@@ -904,6 +904,8 @@ def contexte_conception(calepinage, request=None):
             'titre': _texte(getattr(calepinage, 'titre', '')) or '',
             'statut': calepinage.statut,
             'lead': getattr(calepinage, 'lead_id', None),
+            # ACAL178 — le lead rattaché est-il à la corbeille ?
+            'lead_supprime': _lead_supprime(calepinage, company),
             'client': getattr(calepinage, 'client_id', None),
             'devis': getattr(calepinage, 'devis_id', None),
             # L'ADRESSE DU CLIENT, à la MÊME place et sous les MÊMES noms que
@@ -1130,7 +1132,7 @@ def _cible_du_lead(calepinage):
     company = getattr(calepinage, 'company', None)
     if company is None or not getattr(calepinage, 'lead_id', None):
         return None
-    lead = get_company_lead(company, calepinage.lead_id)
+    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
     if lead is None:
         return None
     modifie = getattr(lead, 'date_modification', None)
@@ -1362,7 +1364,14 @@ def _notifier_la_note(calepinage, auteur, texte):
 def _lead_objet(calepinage, company):
     from apps.crm.selectors import get_company_lead
 
-    return get_company_lead(company, getattr(calepinage, 'lead_id', None))
+    return get_company_lead(
+        company, getattr(calepinage, 'lead_id', None), avec_corbeille=True)
+
+
+def _lead_supprime(calepinage, company):
+    """ACAL178 — ``True`` quand le lead rattaché est dans la corbeille."""
+    lead = _lead_objet(calepinage, company)
+    return bool(lead is not None and getattr(lead, 'is_deleted', False))
 
 
 def _lead(calepinage, company):
@@ -1373,7 +1382,8 @@ def _lead(calepinage, company):
     nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
                                getattr(lead, 'prenom', '') or ''] if p).strip()
     return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}',
-            'ville': _texte(getattr(lead, 'ville', ''))}
+            'ville': _texte(getattr(lead, 'ville', '')),
+            'supprime': bool(getattr(lead, 'is_deleted', False))}
 
 
 def _client(calepinage):

@@ -450,17 +450,23 @@ def credit_hold_check(client, *, retard_jours_seuil=0):
     }
 
 
-def get_company_lead(company, lead_id):
+def get_company_lead(company, lead_id, avec_corbeille=False):
     """B1 — Lead borné à la société, ou None. Point d'entrée cross-app pour que
     ventes résolve un lead par id sans importer ``apps.crm.models`` (un id d'une
-    autre société renvoie None → l'appelant répond 404). Lecture seule."""
+    autre société renvoie None → l'appelant répond 404). Lecture seule.
+
+    ACAL178 — ``avec_corbeille=True`` lit aussi les leads de la corbeille
+    (``Lead.all_objects``) : une LECTURE d'un calepinage dont le lead a été
+    supprimé retrouve son nom, sa ville, son pin ; les ÉCRITURES gardent le
+    défaut (vivants seulement, un lead supprimé reste « introuvable »)."""
     if not lead_id:
         return None
     from .models import Lead
-    return Lead.objects.filter(pk=lead_id, company=company).first()
+    gestionnaire = Lead.all_objects if avec_corbeille else Lead.objects
+    return gestionnaire.filter(pk=lead_id, company=company).first()
 
 
-def get_company_leads_by_ids(company, ids):
+def get_company_leads_by_ids(company, ids, avec_corbeille=False):
     """CALX407 — le batch de ``get_company_lead`` : plusieurs leads bornés
     société en UNE requête (``select_related('owner')`` inclus — l'appelant
     cross-app en a besoin pour un repli « responsable », jamais un import
@@ -471,7 +477,8 @@ def get_company_leads_by_ids(company, ids):
     if not ids:
         return {}
     from .models import Lead
-    leads = Lead.objects.filter(
+    gestionnaire = Lead.all_objects if avec_corbeille else Lead.objects
+    leads = gestionnaire.filter(
         company=company, pk__in=list(ids)).select_related('owner')
     return {lead.pk: lead for lead in leads}
 

@@ -46,7 +46,8 @@ def _lead_apercu(lead):
     nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
                                getattr(lead, 'prenom', '') or ''] if p).strip()
     ville = (getattr(lead, 'ville', '') or '').strip() or None
-    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville}
+    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville,
+            'supprime': bool(getattr(lead, 'is_deleted', False))}
 
 
 def peremption_du_calepinage(devis, calepinage):
@@ -128,7 +129,7 @@ class _CalepinageListSerializer(serializers.ListSerializer):
                 cache = self.child.__dict__.setdefault(
                     '_calx407_cache_leads', {})
                 for lead_id, lead in get_company_leads_by_ids(
-                        company, ids).items():
+                        company, ids, avec_corbeille=True).items():
                     cache[(company.pk, lead_id)] = lead
         return [self.child.to_representation(ligne) for ligne in lignes]
 
@@ -335,7 +336,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                 if company is None:
                     cache[cle] = None
                     return None
-        lead = get_company_lead(company, lead_id)
+        lead = get_company_lead(company, lead_id, avec_corbeille=True)
         cache[cle] = lead
         return lead
 

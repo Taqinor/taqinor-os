@@ -670,7 +670,8 @@ def contexte_geographique(calepinage):
 
     contexte = dict(vide)
 
-    lead = get_company_lead(company, getattr(calepinage, 'lead_id', None))
+    lead = get_company_lead(
+        company, getattr(calepinage, 'lead_id', None), avec_corbeille=True)
     if lead is not None:
         contexte['adresse'] = _texte(getattr(lead, 'adresse', None))
         contexte['ville'] = _texte(getattr(lead, 'ville', None))

@@ -77,7 +77,8 @@ def _lecture_visite(calepinage):
     if not lead_id:
         return {'visite_id': None, 'validee_le': None, 'mesures': None,
                 'photos': None, 'motif_absence': MOTIF_SANS_LEAD}
-    lead = get_company_lead(getattr(calepinage, 'company', None), lead_id)
+    lead = get_company_lead(getattr(calepinage, 'company', None), lead_id,
+                            avec_corbeille=True)
     return releve_pour_calepinage(lead)
 
 
