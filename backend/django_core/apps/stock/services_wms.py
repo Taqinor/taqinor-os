@@ -426,6 +426,13 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
 
     bin_source = _casier(bin_source_id)
     bin_destination = _casier(bin_destination_id)
+    if (type_mouvement == 'transfert' and bin_source is None
+            and bin_destination is None):
+        # ASTK196 — un transfert sans aucun casier ne déplace rien de
+        # traçable : refus nommant le champ (400).
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({'bin_source': [
+            'Un transfert scanné exige un casier source ou destination.']})
 
     with transaction.atomic():
         verrouille = Produit.objects.select_for_update().get(id=produit.id)
@@ -439,13 +446,59 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             apres = avant - quantite
         else:  # transfert : déplacement physique, total inchangé
             apres = avant
-        return record_stock_movement(
+        mouvement = record_stock_movement(
             company=company, produit=verrouille,
             type_mouvement=getattr(
                 MouvementStock.TypeMouvement, type_mouvement.upper()),
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note=note, created_by=user,
-            bin_source=bin_source, bin_destination=bin_destination)
+            bin_source=bin_source, bin_destination=bin_destination,
+            # ASTK196 — une SORTIE depuis le casier d'un emplacement non
+            # principal (camionnette) décrémente CET emplacement.
+            emplacement_source=(
+                _emplacement_du_casier(bin_source)
+                if type_mouvement == 'sortie' else None))
+        _ventiler_mouvement_scanne(
+            company, user, verrouille, type_mouvement, quantite,
+            bin_source, bin_destination, reference)
+        return mouvement
+
+
+def _emplacement_du_casier(casier):
+    """ASTK196 — résolution UNIQUE casier → ``EmplacementStock`` (partagée
+    par le poste scanner et ``deplacer_unite_logistique``). None = pas de
+    casier ou casier sans emplacement (dépôt principal implicite)."""
+    if casier is None:
+        return None
+    return getattr(casier, 'emplacement', None)
+
+
+def _ventiler_mouvement_scanne(company, user, produit, type_mouvement,
+                               quantite, bin_source, bin_destination,
+                               reference):
+    """ASTK196 (C-ASTK-046, WMS-8) — répercute un mouvement scanné sur la
+    ventilation par emplacement : ENTRÉE dans un casier d'emplacement non
+    principal → crédit de cet emplacement ; TRANSFERT entre casiers de deux
+    emplacements différents → ``transfer_stock`` (approbation NTWMS21 et
+    contrôles de quantité respectés — jamais un second chemin). La SORTIE
+    est imputée par ``record_stock_movement(emplacement_source=…)``."""
+    from .services import credit_emplacement_destination, transfer_stock
+
+    if type_mouvement == 'entree':
+        credit_emplacement_destination(
+            company, produit, _emplacement_du_casier(bin_destination),
+            quantite)
+    elif type_mouvement == 'transfert':
+        emp_src = _emplacement_du_casier(bin_source)
+        emp_dst = _emplacement_du_casier(bin_destination)
+        if (emp_src is not None and emp_dst is not None
+                and emp_src.id != emp_dst.id):
+            transfer_stock(
+                company=company, user=user, produit_id=produit.id,
+                source_id=emp_src.id, destination_id=emp_dst.id,
+                quantite=quantite,
+                note=f'Transfert scanné {reference} '
+                     f'({bin_source.code} → {bin_destination.code})')
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1870,8 +1923,9 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
     aucune quantité d'emplacement ne bouge, ce qui est correct.
 
     L'affectation produit↔casier de FG319 (``installations.BinAffectation``)
-    appartient à ``installations`` : elle n'est PAS écrite d'ici (frontière
-    inter-apps), le mouvement en porte la trace complète.
+    appartient à ``installations`` : elle n'est pas écrite DIRECTEMENT d'ici ;
+    ``record_stock_movement`` la tient à jour par le service installations
+    (ASTK195).
     """
     from django.db import transaction
 
@@ -1916,9 +1970,12 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
                     bin_destination=bin_destination))
                 MouvementStock.objects.filter(
                     id=mouvements[-1].id).update(unite_logistique=u)
-                if (bin_source is not None
-                        and bin_source.emplacement_id
-                        != bin_destination.emplacement_id):
+                # ASTK196 — même résolution casier → emplacement que le
+                # poste scanner (`_emplacement_du_casier`, survivant unique).
+                emp_src = _emplacement_du_casier(bin_source)
+                emp_dst = _emplacement_du_casier(bin_destination)
+                if (emp_src is not None and emp_dst is not None
+                        and emp_src.id != emp_dst.id):
                     _ventiler_changement_emplacement(
                         u, produit, ligne.quantite, bin_source,
                         bin_destination, user)
