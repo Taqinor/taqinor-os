@@ -95,9 +95,11 @@ class LayoutParMarcheTest(SimpleTestCase):
     def test_residentiel_inchange(self):
         self.assertEqual(
             es.cles_etude_du_layout('residentiel', self.RESULTAT),
-            {'production_annuelle': 180000, 'economies_annuelles': 240005})
+            {'production_annuelle': 180000, 'economies_annuelles': 240005,
+             'production_source': 'calepinage'})  # ACAL101 — provenance
         self.assertEqual(es.cles_etude_du_layout('agricole', {'annualKwh': 5}),
-                         {'production_annuelle': 5})
+                         {'production_annuelle': 5,
+                          'production_source': 'calepinage'})
 
     def _ecrire(self, mode):
         from apps.ventes.domain import pipeline

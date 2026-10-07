@@ -107,12 +107,14 @@ def production_attendue_pour_devis(devis_id):
     """
     from decimal import Decimal, InvalidOperation
 
+    from .domain.scenario import figure_production_du_devis
     from .models import Devis
-    devis = Devis.objects.filter(pk=devis_id).only('etude_params').first()
+    devis = Devis.objects.filter(pk=devis_id).first()
     if devis is None:
         return None
-    params = devis.etude_params or {}
-    raw = params.get('production_annuelle')
+    # ACAL101 — la figure RECALÉE sur les lignes quand elle vient du
+    # calepinage (``production_source``), sinon la valeur stockée.
+    raw = figure_production_du_devis(devis)
     if raw is None:
         return None
     try:

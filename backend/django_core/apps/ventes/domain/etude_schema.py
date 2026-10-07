@@ -192,6 +192,15 @@ SCHEMA = {
                           'QJR63 lui donne UN propriétaire : le registre, '
                           'sinon la dérivation depuis les LIGNES.'),
     'production_annuelle': _cle((int, float), CALEPINAGE, DERIVEE),
+    # ACAL101 (C-ACAL-113) — LA PROVENANCE de ``production_annuelle`` /
+    # ``economies_annuelles`` : ``'calepinage'`` quand
+    # :func:`cles_etude_du_layout` les a recopiées du layout (base 720 W du
+    # calepinage, à RECALER sur les lignes —
+    # ``domain.scenario.figure_production_du_devis``), ``'saisie'`` pour une
+    # étude saisie (jamais recalée). Absente : jamais recalée.
+    'production_source': _cle((str,), CALEPINAGE, DERIVEE,
+                              'ACAL101 — « calepinage » | « saisie » ; lue '
+                              'par `scenario.figure_production_du_devis`.'),
     'economies_annuelles': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_sans': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_avec': _cle((int, float), CALEPINAGE, DERIVEE),
@@ -411,6 +420,11 @@ SCHEMA = {
 }
 
 
+#: ACAL101 — les deux valeurs de ``etude_params['production_source']``.
+PRODUCTION_CALEPINAGE = 'calepinage'
+PRODUCTION_SAISIE = 'saisie'
+
+
 #: CIQ117 — les marchés dont l'étude vient du moteur SERVEUR C&I : le layout
 #: n'y apporte que la géométrie et le kWc, jamais production ni économies.
 MARCHES_CI = ('commercial', 'industriel')
@@ -430,7 +444,10 @@ def cles_etude_du_layout(mode_installation, resultat):
     resultat = resultat or {}
     cles = {}
     if resultat.get('annualKwh') is not None:
-        cles['production_annuelle'] = int(resultat['annualKwh'])
+        # ACAL101 — ARRONDIE (jamais tronquée : 8843,66 → 8844) et MARQUÉE :
+        # la provenance remplace l'égalité numérique devinée au rendu.
+        cles['production_annuelle'] = int(round(float(resultat['annualKwh'])))
+        cles['production_source'] = PRODUCTION_CALEPINAGE
     if resultat.get('savings') is not None:
         cles['economies_annuelles'] = int(resultat['savings'])
     return cles
