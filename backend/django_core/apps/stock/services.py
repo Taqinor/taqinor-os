@@ -6903,6 +6903,30 @@ def confirmer_bcf_portail_fournisseur(
     return bc
 
 
+MSG_CONFIRMATION_BCF_REFUSEE = (
+    'Seul un bon de commande envoyé et non reçu peut être confirmé.')
+
+
+class ConfirmationBcfRefusee(ValueError):
+    """ASTK180 — confirmation fournisseur d'un BCF non `envoye` ou déjà
+    (partiellement) reçu → 409. Sous-classe de ValueError : un appelant qui
+    n'attrape que ValueError refuse toujours (jamais d'écriture, jamais de
+    500) en attendant de distinguer le 409."""
+
+
+def bcf_confirmable_par_fournisseur(bc):
+    """ASTK180 — vrai seulement pour un BCF `envoye` sans aucune quantité
+    reçue ni réception confirmée."""
+    from .models import BonCommandeFournisseur, ReceptionFournisseur
+    if bc.statut != BonCommandeFournisseur.Statut.ENVOYE:
+        return False
+    if bc.lignes.filter(quantite_recue__gt=0).exists():
+        return False
+    return not ReceptionFournisseur.objects.filter(
+        bon_commande=bc,
+        statut=ReceptionFournisseur.Statut.CONFIRME).exists()
+
+
 def _appliquer_confirmation_bcf_fournisseur(
         company, fournisseur_id, bcf_id, *, date_confirmee,
         numero_confirmation=''):
@@ -6921,6 +6945,12 @@ def _appliquer_confirmation_bcf_fournisseur(
     if bc is None:
         raise ValueError(
             "Ce bon de commande n'appartient pas à ce fournisseur.")
+    # ASTK180 (C-ASTK-041) — garde de statut dans le CŒUR (les deux portes) :
+    # seul un BCF `envoye` sans aucune réception se confirme ; la date
+    # confirmée est FIGÉE dès la première réception (sinon le fournisseur
+    # évalué réécrivait son propre score OTD a posteriori).
+    if not bcf_confirmable_par_fournisseur(bc):
+        raise ConfirmationBcfRefusee(MSG_CONFIRMATION_BCF_REFUSEE)
     bc.date_confirmee_fournisseur = date_confirmee
     bc.numero_confirmation_fournisseur = numero_confirmation or ''
     bc.save(update_fields=[

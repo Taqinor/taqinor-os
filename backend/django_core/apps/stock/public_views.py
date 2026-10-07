@@ -80,6 +80,7 @@ def portail_fournisseur_confirmer_bcf_view(request, token, bcf_id):
     d'accès croisé)."""
     from .services import (
         resoudre_token_portail_fournisseur, confirmer_bcf_portail_fournisseur,
+        ConfirmationBcfRefusee,
     )
     token_obj = resoudre_token_portail_fournisseur(token)
     if token_obj is None:
@@ -96,6 +97,10 @@ def portail_fournisseur_confirmer_bcf_view(request, token, bcf_id):
             token_obj, bcf_id, date_confirmee=date_confirmee,
             numero_confirmation=request.data.get(
                 'numero_confirmation_fournisseur', ''))
+    except ConfirmationBcfRefusee as exc:
+        # ASTK180 — BCF non `envoye` ou déjà reçu : 409, rien d'écrit.
+        return _noindex(Response({'detail': str(exc)},
+                                 status=status.HTTP_409_CONFLICT))
     except ValueError:
         return _not_found()
 
