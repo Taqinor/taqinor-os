@@ -73,6 +73,27 @@ def rattacher_zone_id(apps, schema_editor):
                       % ', '.join('« %s »' % p.pan for p in non_appariees)))
 
 
+def dedoublonner_pan(apps, schema_editor):
+    """Inverse (lot 3 critique #3) — AVANT de rétablir l'unicité par
+    libellé : deux relevés d'un même calepinage peuvent désormais porter le
+    même ``pan`` (deux pans de même libellé). Les suivants reçoivent un
+    suffixe « (2) », « (3) »… pour que le retour arrière ne lève jamais
+    ``IntegrityError``."""
+    PoseReelle = apps.get_model('calepinage', 'PoseReelle')
+    vus = {}
+    for pose in PoseReelle.objects.order_by('calepinage_id', 'pk').iterator(
+            chunk_size=TAILLE_LOT):
+        pris = vus.setdefault(pose.calepinage_id, set())
+        libelle, rang = pose.pan, 1
+        while libelle in pris:
+            rang += 1
+            suffixe = ' (%d)' % rang
+            libelle = pose.pan[:120 - len(suffixe)] + suffixe
+        pris.add(libelle)
+        if libelle != pose.pan:
+            PoseReelle.objects.filter(pk=pose.pk).update(pan=libelle)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -93,6 +114,9 @@ class Migration(migrations.Migration):
             model_name='posereelle',
             name='uniq_pose_reelle_par_pan',
         ),
+        # Sans effet à l'aller ; au retour, s'exécute AVANT le rétablissement
+        # de ``uniq_pose_reelle_par_pan`` (opérations inversées).
+        migrations.RunPython(migrations.RunPython.noop, dedoublonner_pan),
         migrations.AddConstraint(
             model_name='posereelle',
             constraint=models.UniqueConstraint(
