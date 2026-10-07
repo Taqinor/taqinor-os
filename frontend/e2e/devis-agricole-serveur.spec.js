@@ -46,7 +46,7 @@ async function ouvrirGenerateurAgricole(page, client) {
     .toBeVisible({ timeout: 45_000 })
   await page.locator('#gen-client').click()
   await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
-  await page.getByRole('option').first().click()
+  await page.locator('[role="option"]').first().click()
   await page.getByRole('radio', { name: /Agricole/ }).click()
   await expect(page.getByTestId('bloc-cas-pompe')).toBeVisible()
 }

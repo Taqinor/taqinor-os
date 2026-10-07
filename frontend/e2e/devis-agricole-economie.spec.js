@@ -57,7 +57,7 @@ async function creerDevisAgricole(page, client) {
     .toBeVisible({ timeout: 45_000 })
   await page.locator('#gen-client').click()
   await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
-  await page.getByRole('option').first().click()
+  await page.locator('[role="option"]').first().click()
   await page.getByRole('radio', { name: /Agricole/ }).click()
   await page.getByRole('radio', { name: 'Pompe neuve' }).click()
   await page.getByRole('radio', { name: 'Volume déclaré' }).click()
