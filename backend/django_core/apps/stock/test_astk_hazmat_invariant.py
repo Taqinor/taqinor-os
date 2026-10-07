@@ -74,7 +74,11 @@ class HazmatTests(TestCase):
         nb = MouvementStock.objects.count()
         rep = self._entree(self.batterie, self.nu)
         self.assertEqual(rep.status_code, 400, rep.data)
-        self.assertEqual(rep.data, {'bin_destination': [MSG]})
+        # Corps DRF natif + enveloppe YAPIC3 additive sous « error ».
+        self.assertEqual(rep.data['error']['code'], 'validation_error')
+        self.assertEqual(
+            {k: v for k, v in rep.data.items() if k != 'error'},
+            {'bin_destination': [MSG]})
         # Persistance : aucun mouvement créé, stock inchangé.
         self.assertEqual(MouvementStock.objects.count(), nb)
         self.batterie.refresh_from_db()

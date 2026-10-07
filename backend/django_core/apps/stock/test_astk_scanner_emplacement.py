@@ -83,8 +83,12 @@ class ScannerEmplacementTests(TestCase):
         nb = MouvementStock.objects.count()
         rep = self._post({'type_mouvement': 'transfert', 'quantite': 2})
         self.assertEqual(rep.status_code, 400, rep.data)
-        self.assertEqual(rep.data, {'bin_source': [
-            'Un transfert scanné exige un casier source ou destination.']})
+        # Corps DRF natif + enveloppe YAPIC3 additive sous « error ».
+        self.assertEqual(rep.data['error']['code'], 'validation_error')
+        self.assertEqual(
+            {k: v for k, v in rep.data.items() if k != 'error'},
+            {'bin_source': [
+                'Un transfert scanné exige un casier source ou destination.']})
         self.assertEqual(MouvementStock.objects.count(), nb)
 
     def test_transfert_inter_emplacement_par_transfer_stock(self):
