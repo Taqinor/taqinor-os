@@ -34,6 +34,13 @@ class VisiteTerrainSerializer(serializers.ModelSerializer):
         if company is not None and value.company_id != company.id:
             raise serializers.ValidationError(
                 "Ce lead n'appartient pas à votre société.")
+        # ALEA11 — le dossier d'une visite est FIGÉ après sa création : ses
+        # photos sont des pièces jointes du lead d'origine et ses événements
+        # ont déjà atteint ce lead ; la déplacer laisserait les deux derrière.
+        if self.instance is not None and value.pk != self.instance.lead_id:
+            raise serializers.ValidationError(
+                "Le dossier d'une visite ne se change pas : créez une "
+                'nouvelle visite.')
         return value
 
     def validate_date_prevue(self, value):
