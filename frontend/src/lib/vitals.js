@@ -92,7 +92,17 @@ export function initVitals(deps = {}) {
   _initialised = true
 
   const doc = deps.document || win.document
-  const send = deps.report || report
+  const envoi = deps.report || report
+  // CAD177 : l'endpoint est authentifié (company-scopé). Sur une page publique
+  // (/ui, /login) chaque beacon répondait 401 → console.error « Failed to load
+  // resource » à chaque visite. Hors session, on N'ENVOIE RIEN ; le TTFB (pris
+  // dès l'init, avant que la session soit résolue) est gardé et part au flush.
+  const connecte = deps.isAuthenticated || (() => true)
+  const enAttente = []
+  const send = (metric, value, r, id) => {
+    if (connecte()) envoi(metric, value, r, id)
+    else if (metric === 'TTFB') enAttente.push([metric, value, r, id])
+  }
   const route = () => win.location?.pathname || ''
   const navId = randomId()
 
@@ -152,6 +162,10 @@ export function initVitals(deps = {}) {
   const flush = () => {
     if (flushed) return
     flushed = true
+    if (connecte()) {
+      while (enAttente.length) envoi(...enAttente.shift())
+    }
+    if (!connecte()) return
     if (lastLcp != null) send('LCP', lastLcp, route(), navId)
     send('CLS', clsValue, route(), navId)
     if (worstInp != null) send('INP', worstInp, route(), navId)
