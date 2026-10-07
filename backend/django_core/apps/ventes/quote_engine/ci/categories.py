@@ -434,10 +434,14 @@ def categorie_ci(data, synthese=None):
     if cle not in CATEGORIES:
         cle = "autre"
     meta = CATEGORIES[cle]
+    # CIQ129 — les réponses DÉCLARÉES se lisent dans l'entrée v2 du moteur
+    # C&I (``rythme.reponses_categorie``, contrat ``etude_ci_preview.json``),
+    # jamais à plat dans l'étude (clés retirées du schéma).
+    reponses = _dict(_dict(etude.get("rythme")).get("reponses_categorie"))
     if cle == "ecole":
-        titre, lignes = _ecole(etude, data, synthese)
+        titre, lignes = _ecole(reponses, data, synthese)
     elif cle in BLOCS:
-        titre, lignes = BLOCS[cle](etude)
+        titre, lignes = BLOCS[cle](reponses)
     else:
         titre, lignes = _t("Votre établissement", "Your establishment",
                            "مؤسستكم"), []

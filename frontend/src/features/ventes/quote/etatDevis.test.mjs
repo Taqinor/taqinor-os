@@ -101,9 +101,7 @@ const FIXTURES = {
   'commercial hôtel': base(3, 'commercial', {
     scenario: 'Sans batterie',
     categorie_commerciale: 'hotel',
-    chambres: 40,
-    occupation_pct: 70,
-    piscine: true,
+    // CIQ129 — les réponses vivent dans `rythme.reponses_categorie` seulement.
     ...entreesCi('commercial', {
       tension: 'bt',
       consommation: { kwh_mensuels: [7000, 7100, 7200, 7300, 7400, 7500, 7600, 7700, 7800, 7900, 8000, 8100],

@@ -30,6 +30,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import re
 import secrets
 import time
@@ -183,6 +184,40 @@ def _django_call(
         return {"ok": True, "status": resp.status_code, "data": data}
 
     return _normalize_error(resp, data)
+
+
+# ── AANA8 — permissions de l'appelant (source DB, via /auth/me/) ─────────────
+# Django n'emet PLUS le claim JWT `permissions` (authentication/serializers.py :
+# cookie trop gros, 502 nginx du 2026-07-16) ; le lire donnait toujours [] et
+# un role porteur de `prix_achat_voir` n'obtenait jamais le prix d'achat
+# (C-AANA-033). La seule source est `UserSerializer.permissions` (role en base)
+# exposee par `GET /api/django/auth/me/` — la meme que lit le frontend.
+_ME_PATH = "/api/django/auth/me/"
+
+
+def fetch_caller_permissions(ctx: Optional["ActionContext"]) -> list[str]:
+    """Permissions du role de l'appelant, lues par `/auth/me/` (JWT relaye).
+
+    FAIL-CLOSED : Django injoignable, jeton absent ou reponse inattendue =>
+    [] (aucune permission accordee sans preuve). Ne leve jamais."""
+    if not DJANGO_INTERNAL_URL or ctx is None or not ctx.token:
+        return []
+    res = _django_call(ctx, _ME_PATH, method="GET")
+    if not res.get("ok"):
+        logger.warning("Permissions de l'appelant indisponibles (/auth/me/): %s",
+                       res.get("error"))
+        return []
+    data = res.get("data")
+    perms = data.get("permissions") if isinstance(data, dict) else None
+    if not isinstance(perms, list):
+        return []
+    return [p for p in perms if isinstance(p, str)]
+
+
+def resolve_caller_permissions(ctx: "ActionContext") -> "ActionContext":
+    """Remplit `ctx.permissions` depuis `/auth/me/` (jamais depuis le jeton)."""
+    ctx.permissions = fetch_caller_permissions(ctx)
+    return ctx
 
 
 def _normalize_error(resp, data) -> dict[str, Any]:
@@ -583,6 +618,60 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     return {"ok": True, "action_key": action_key, "data": res.get("data")}
 
 
+# ── AANA18 — preuve de confirmation (contrat partage avec Django) ─────────────
+# Meme format canonique que `apps/agent/services.message_preuve_confirmation`
+# (verifie des deux cotes contre `contract_samples/logs_confirmer.json`).
+# Secret partage `AGENT_HMAC_SECRET` (Django + FastAPI) ; absent => preuve vide,
+# que Django refuse (fail-closed).
+PREUVE_VERSION = 1
+
+
+def _agent_hmac_secret() -> str:
+    return os.environ.get("AGENT_HMAC_SECRET", "") or ""
+
+
+def message_preuve_confirmation(*, action_key: str, company_id: int,
+                                user_id: int, inputs: Optional[dict],
+                                object_id: Any) -> str:
+    return json.dumps(
+        {
+            "v": PREUVE_VERSION,
+            "action_key": action_key,
+            "company_id": int(company_id),
+            "user_id": int(user_id),
+            "inputs": inputs or {},
+            "object_id": "" if object_id in (None, "") else str(object_id),
+        },
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    )
+
+
+def calculer_preuve_confirmation(*, secret: Optional[str] = None,
+                                 **champs) -> str:
+    """HMAC-SHA256 hex du message canonique ; '' sans secret (fail-closed)."""
+    secret = _agent_hmac_secret() if secret is None else secret
+    if not secret:
+        return ""
+    return hmac.new(
+        secret.encode("utf-8"),
+        message_preuve_confirmation(**champs).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _caller_user_id(ctx: ActionContext) -> int:
+    """Identifiant de l'appelant, lu dans SON jeton (deja verifie par
+    `verify_token` sur la route) — le meme jeton que Django authentifie a la
+    reception, donc le meme utilisateur. 0 si illisible (preuve alors refusee
+    par Django)."""
+    try:
+        import jwt
+        claims = jwt.decode(ctx.token, options={"verify_signature": False})
+        return int(claims.get("user_id") or 0)
+    except Exception:
+        return 0
+
+
 def _log_confirmed_action(
     ctx: ActionContext, action_key: str, action: dict[str, Any],
     inputs: dict[str, Any], token: str, resulted_data: Any,
@@ -599,12 +688,20 @@ def _log_confirmed_action(
     renvoie `{ok: False, ...}` plutot que de lever — un log warning suffit,
     jamais une exception propagee (l'action a deja reussi cote metier)."""
     object_id = resulted_data.get("id") if isinstance(resulted_data, dict) else None
+    # AANA18 — preuve HMAC que CETTE confirmation a ete emise par l'agent pour
+    # CET utilisateur et CETTE societe, apres l'execution reelle. Django la
+    # recalcule et refuse tout journal sans preuve valide (403). Elle sert
+    # aussi d'empreinte (`proposal_hash`) : jamais le jeton brut.
+    preuve = calculer_preuve_confirmation(
+        action_key=action_key, company_id=ctx.company_id,
+        user_id=_caller_user_id(ctx), inputs=inputs, object_id=object_id)
     payload = {
         "action_key": action_key,
         "risk_level": action.get("risk"),
         "inputs": inputs,
-        "proposal_hash": (token or "")[:64],
+        "proposal_hash": preuve,
         "object_id": object_id,
+        "preuve": preuve,
     }
     log_res = _django_call(
         ctx, "/api/django/agent/logs/confirmer/", method="POST", payload=payload)

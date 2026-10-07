@@ -75,25 +75,26 @@ class TestModeKpisPure(SimpleTestCase):
         self.assertNotIn('agronomy', inspect.getsource(payload_economie._mode_kpis))
 
     def test_industriel_kpis(self):
+        """CIQ129 — plus aucune clé d'étude écran v1 lue : sans étude du
+        moteur C&I, toutes les valeurs sont nulles (jamais l'étude JS)."""
         data = {'mode_installation': 'industriel',
                 'etude': {'taux_autoconso': 88, 'taux_couverture': 67.7,
                           'economies_annuelles': 420000, 'payback': 3.1}}
         k = _mode_kpis(data)
-        self.assertEqual(k['taux_autoconso'], 88)
-        # CIQ300 — économies et payback ne sont plus lus dans l'étude JS
-        # persistée : nuls tant que CIQ306 ne les projette pas de synthese_ci.
-        self.assertIsNone(k['economies_annuelles'])
-        self.assertIsNone(k['payback'])
-        self.assertIsNone(k['injection_dh_an'])     # pas d'injection → None
+        self.assertEqual(set(k.values()), {None})
 
     def test_commercial_kpis_with_injection(self):
+        """CIQ129 — l'injection est la revente CALCULÉE du moteur C&I
+        (``economie_ci.revente``), projetée par ``synthese_ci``."""
+        from apps.ventes.quote_engine.industriel import sample_data
+        eco = sample_data.economie_ci()
         data = {'mode_installation': 'commercial',
-                'etude': {'taux_autoconso': 78, 'taux_couverture': 59,
-                          'economies_annuelles': 165000, 'payback': 3.4,
-                          'injection_kwh_an': 45000, 'injection_dh_an': 30000}}
+                'etude': {'injection_kwh_an': 1, 'injection_dh_an': 1},
+                'economie_ci': eco}
         k = _mode_kpis(data)
-        self.assertEqual(k['injection_dh_an'], 30000)
-        self.assertEqual(k['injection_kwh_an'], 45000)
+        self.assertEqual(k['injection_dh_an'],
+                         eco['revente']['valeur_mad_an'])
+        self.assertEqual(k['injection_kwh_an'], eco['revente']['kwh_an'])
 
     def test_residentiel_returns_none(self):
         self.assertIsNone(_mode_kpis({'mode_installation': 'residentiel', 'etude': {}}))

@@ -422,6 +422,11 @@ def _corpus():
         # ``economie_ci.json``) : TRI et cumul à 25 ans marqués.
         'industriel_argent': i_render.build_html(i_renderer._augment(
             dict(i_sample.build(), economie_ci=i_sample.economie_ci()))),
+        # CIQ129 — les taux C&I viennent du seul moteur (``etude_ci`` servi
+        # par ``synthese_ci``) : plus aucune clé d'étude écran ne les marque.
+        'industriel_etude_ci': i_render.build_html(i_renderer._augment(
+            dict(i_sample.build(), mode_installation='industriel',
+                 etude={**i_sample.build()['etude'], **ETUDE_CI_MT}))),
         'commercial_full': c_render.build_html(
             c_renderer._augment(c_sample.build())),
     }

@@ -1,0 +1,36 @@
+{
+  "endpoint": "GET /api/django/reporting/dashboard/",
+  "pourquoi": "AANA1 (C-AANA-022, PACT10) — contrat PARTAGE du tableau de bord /reporting. `conversion.taux_acceptation_pct` = nb_acceptes / nb_devis x 100, arrondi a 1 decimale, null si nb_devis = 0 ; servi par le serveur (AANA28) et LU tel quel par Reporting.jsx (AANA29) — le front ne recalcule plus de taux (l'ancienne formule nb_factures / nb_devis depassait 100 %). Les cles existantes sont inchangees. Montants : `kpis.ca_paye` / `kpis.ca_attente` / `ca_mensuel[].ca` en HT (Facture.total_ht), `creances[].montant_total` en TTC restant du (Facture.montant_du) — D-AANA-6.",
+  "exemple": {
+    "kpis": {
+      "ca_paye": 125000.0,
+      "ca_attente": 48000.0,
+      "nb_clients": 42,
+      "valeur_stock": 310000.0
+    },
+    "ca_mensuel": [
+      {"mois": "Sep 2026", "ca": 52000.0},
+      {"mois": "Oct 2026", "ca": 73000.0}
+    ],
+    "top_produits": [
+      {"nom": "Panneau 550 Wc", "qte": 120.0}
+    ],
+    "statuts_factures": [
+      {"name": "Payée", "value": 12, "color": "#22c55e"},
+      {"name": "Émise", "value": 3, "color": "#3b82f6"}
+    ],
+    "conversion": {
+      "nb_devis": 10,
+      "nb_acceptes": 3,
+      "nb_factures": 15,
+      "taux_acceptation_pct": 30.0
+    },
+    "stock_alerte": [
+      {"nom": "Onduleur 5 kW", "quantite_stock": 1, "seuil_alerte": 3}
+    ],
+    "creances": [
+      {"client": "Client Casa", "nb_factures": 2, "montant_total": 57600.0, "jours_retard_max": 12}
+    ],
+    "comparison": null
+  }
+}

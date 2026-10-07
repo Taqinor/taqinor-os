@@ -7,7 +7,7 @@ Architecture :
     -> SQLDatabase filtre
     -> LangChain SQL Agent (provider configurable via SQL_AGENT_PROVIDER)
     -> Securite : _SecureQueryTool intercepte chaque SQL avant execution
-       et injecte company_id si absent
+       et REECRIT chaque table en sous-requete filtree company_id (AANA2)
     -> Reponse NL en francais
 
 Changer de LLM : modifier SQL_AGENT_PROVIDER dans .env
@@ -24,9 +24,9 @@ import re
 import threading
 from typing import Any, TYPE_CHECKING
 
-import sqlparse
-from sqlparse.sql import Function, Identifier, IdentifierList, Parenthesis
-from sqlparse.tokens import CTE, DDL, DML, Keyword, Punctuation
+import sqlglot
+import sqlglot.errors
+from sqlglot import exp
 
 try:
     # langchain < 1.0
@@ -46,7 +46,6 @@ from app.core.config import (
     GROQ_API_KEY,
     OPENAI_API_KEY,
     REDIS_CHAT_URL,
-    SQL_AGENT_DATABASE_URL,
     SQL_AGENT_MODEL,
     SQL_AGENT_PROVIDER,
 )
@@ -308,411 +307,343 @@ autorise a divulguer ces informations. N'inclus JAMAIS la colonne prix_achat \
 dans une requete ou une reponse.
 """
 
-# ── Securite : validation single-SELECT + isolation tenant (parser) ───────────
-# ERR1/ERR2 — Le prompt LLM ne suffit pas. On valide CHAQUE requete au niveau du
-# CODE avant execution, avec un parser (sqlparse), et on ECHOUE FERME (rejet) sur
-# tout ce qu'on ne peut pas prouver sur. La requete doit etre EXACTEMENT une (1)
-# instruction SELECT en lecture seule (aucun INSERT/UPDATE/DELETE/DROP/ALTER/
-# CREATE/GRANT/TRUNCATE/COPY/CALL/... ni instructions multiples ni CTE-avec-DML),
-# et chaque table de base referencee doit etre dans l'allowlist scoped-tenant.
+# ── Securite : lecture seule + liste blanche de fonctions (arbre sqlglot) ─────
+# ERR1 — Le prompt LLM ne suffit pas. Chaque requete est PARSEE (sqlglot) et on
+# ECHOUE FERME (rejet) sur tout ce qu'on ne peut pas prouver sur : EXACTEMENT une
+# (1) requete de lecture (SELECT / UNION...), aucun noeud d'ecriture, de DDL,
+# d'administration, de verrou ou de `SELECT ... INTO` nulle part (CTE et
+# sous-requetes comprises).
+# AANA3 (C-AANA-002) — et AUCUNE fonction hors d'une LISTE BLANCHE (agregats,
+# dates, chaines, arrondis, fenetres). L'ancienne liste NOIRE de mots-cles
+# textuels laissait passer `query_to_xml('select ... from crm_client')` (lecture
+# de toutes les societes depuis une chaine), `pg_read_file`, `lo_export`,
+# `set_config('app.current_company', ...)`, `pg_sleep`, `dblink`... Une liste
+# blanche refuse par defaut tout ce qui n'a pas ete juge sur.
 
 
 class SQLSecurityError(Exception):
     """Levee quand une requete ne peut PAS etre prouvee sure (echec ferme)."""
 
 
-# Mots-cles d'ecriture / DDL / administration interdits n'importe ou dans la
-# requete (le parser categorise deja DML/DDL, mais on double avec une liste de
-# tokens explicites pour les mots non categorises par sqlparse selon la version).
-_FORBIDDEN_KEYWORDS = frozenset({
-    "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE",
-    "GRANT", "REVOKE", "MERGE", "REPLACE", "UPSERT", "CALL", "DO", "EXECUTE",
-    "COPY", "VACUUM", "ANALYZE", "REINDEX", "CLUSTER", "REFRESH", "COMMENT",
-    "SET", "RESET", "LOCK", "PREPARE", "DEALLOCATE", "DECLARE", "FETCH",
-    "MOVE", "LISTEN", "NOTIFY", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT",
-    "INTO",  # SELECT ... INTO cree une table → interdit
+# Noeuds qui ne doivent apparaitre NULLE PART dans une requete de lecture.
+_NOEUDS_INTERDITS = tuple(
+    cls for cls in (
+        getattr(exp, name, None) for name in (
+            "DML", "DDL", "Into", "Lock", "Command", "Set", "SetItem",
+            "Transaction", "Commit", "Rollback", "Copy", "Grant", "Revoke",
+            "Use", "Pragma", "Describe", "Show", "Analyze", "Kill",
+            "Summarize", "LoadData", "Refresh", "Cache", "Uncache",
+        )
+    ) if isinstance(cls, type)
+)
+
+# Fonctions reconnues (typees) par sqlglot et jugees sures : agregats,
+# fenetres, dates, chaines, arrondis, conditionnelles. Toute AUTRE classe de
+# fonction est refusee (fail-closed), y compris celles qu'une future version de
+# sqlglot ajouterait.
+_FONCTIONS_TYPEES_AUTORISEES = tuple(
+    cls for cls in (
+        getattr(exp, name, None) for name in (
+            # agregats
+            "Count", "Sum", "Avg", "Min", "Max", "ArrayAgg", "GroupConcat",
+            "LogicalAnd", "LogicalOr", "Stddev", "StddevPop", "StddevSamp",
+            "Variance", "VariancePop", "PercentileCont", "PercentileDisc",
+            "Mode",
+            # fenetres
+            "RowNumber", "Rank", "DenseRank", "Ntile", "Lag", "Lead",
+            "FirstValue", "LastValue",
+            # conditionnelles / types
+            "Case", "If", "Coalesce", "Nullif", "Greatest", "Least", "Cast",
+            "Exists",
+            # nombres
+            "Abs", "Round", "Floor", "Ceil", "Trunc", "Pow", "Sqrt", "Sign",
+            "ToNumber",
+            # dates
+            "CurrentDate", "CurrentTime", "CurrentTimestamp", "Localtimestamp",
+            "Date", "DateTrunc", "TimestampTrunc", "Extract", "TimeToStr",
+            "StrToDate", "StrToTime",
+            # chaines
+            "Upper", "Lower", "Initcap", "Length", "Concat", "ConcatWs",
+            "Substring", "Trim", "Replace", "Left", "Right", "Pad",
+            "StrPosition", "SplitPart", "Reverse",
+        )
+    ) if isinstance(cls, type)
+)
+
+# Fonctions Postgres que sqlglot laisse « anonymes » (non typees) et jugees
+# sures. Nom NON qualifie uniquement (un appel `schema.f()` est refuse).
+_FONCTIONS_ANONYMES_AUTORISEES = frozenset({
+    "age", "date_part", "make_date", "make_timestamp", "justify_days",
+    "justify_hours", "justify_interval", "char_length", "character_length",
+    "btrim", "ltrim", "rtrim", "substr", "strpos", "mod", "ceiling", "trunc",
+    "to_char", "to_date", "to_timestamp",
 })
 
 
-def _strip_sql_comments(sql: str) -> str:
-    """Retire les commentaires SQL pour empecher de masquer un mot interdit
-    derriere `--` ou `/* */`. sqlparse fournit un formatter dedie."""
-    return sqlparse.format(sql or "", strip_comments=True).strip()
+_OPERATEURS = (exp.Binary, exp.Connector, exp.Unary)
 
 
-def _enforce_single_select(sql: str) -> None:
-    """ERR1 — Rejette tout ce qui n'est pas EXACTEMENT une instruction SELECT en
-    lecture seule. Leve SQLSecurityError sinon (echec ferme).
+def _assert_lecture_seule(tree: exp.Expression) -> None:
+    """ERR1 — aucun noeud d'ecriture / DDL / admin / verrou / INTO, ou qu'il
+    soit dans l'arbre."""
+    for node in tree.walk():
+        if isinstance(node, _NOEUDS_INTERDITS):
+            raise SQLSecurityError(
+                f"Instruction interdite ({type(node).__name__}) : seules les "
+                "lectures (SELECT) sont autorisees."
+            )
 
-    Defenses :
-      - une seule instruction (rejet des `;` separant plusieurs requetes) ;
-      - le premier token significatif doit etre SELECT (ou WITH ... SELECT) ;
-      - aucun mot-cle d'ecriture/DDL/admin nulle part (y compris dans les CTE,
-        sous-requetes, UNION) ;
-      - aucune DML/DDL categorisee par le parser.
-    """
-    cleaned = _strip_sql_comments(sql)
-    if not cleaned:
-        raise SQLSecurityError("Requete vide.")
 
-    # Plusieurs instructions ? sqlparse les separe ; on n'en autorise qu'une.
-    statements = [s for s in sqlparse.parse(cleaned) if str(s).strip()]
+def _assert_fonctions_autorisees(tree: exp.Expression) -> None:
+    """AANA3 — toute fonction appelee doit etre dans la liste blanche."""
+    for func in tree.find_all(exp.Func):
+        if isinstance(func, _OPERATEURS):
+            # sqlglot range certains OPERATEURS (AND, OR, ~, ->, ^...) parmi
+            # les « fonctions » : operateurs integres, pas des appels.
+            continue
+        if isinstance(func.parent, exp.Dot) and func.arg_key == "expression":
+            raise SQLSecurityError(
+                "Appel de fonction qualifie par un schema interdit."
+            )
+        if isinstance(func, exp.Anonymous):
+            nom = func.name.lower()
+            if nom in _FONCTIONS_ANONYMES_AUTORISEES:
+                continue
+            raise SQLSecurityError(f"Fonction non autorisee : {nom}.")
+        if not isinstance(func, _FONCTIONS_TYPEES_AUTORISEES):
+            raise SQLSecurityError(
+                f"Fonction non autorisee : {type(func).__name__}."
+            )
+
+
+def _enforce_single_select(sql: str) -> exp.Query:
+    """ERR1 — Rejette tout ce qui n'est pas EXACTEMENT une requete de lecture
+    (SELECT / WITH ... SELECT / UNION ...) sans aucun noeud d'ecriture.
+    Leve SQLSecurityError sinon (echec ferme) ; renvoie l'arbre valide."""
+    tree = _parse_single_query(sql)
+    _assert_lecture_seule(tree)
+    return tree
+
+
+# ── AANA2 — Isolation societe par REECRITURE D'ARBRE (sqlglot) ──────────────
+# D-AANA-4 : l'etancheite n'est JAMAIS « prouvee » par une regex sur le texte
+# SQL. L'ancien garde cherchait un motif `company_id = <id>` dans la requete :
+# `WHERE NOT (company_id = 7)`, `(company_id = 7) IS NOT NULL`,
+# `company_id = 7 - 1`, une projection `company_id = 7 AS mine` ou meme un
+# litteral `'company_id = 7'` le satisfaisaient — et la requete lisait toutes
+# les societes (sonde du 05/10, C-AANA-001).
+#
+# Desormais la requete est PARSEE (sqlglot, dialecte postgres) et CHAQUE table
+# autorisee lue, ou qu'elle soit (FROM, JOIN, sous-requete, CTE, UNION,
+# EXISTS...), est REMPLACEE dans l'arbre par la sous-requete filtree
+#     (SELECT * FROM <t> WHERE company_id = <id du jeton>) AS <alias>
+# (`id = <id>` pour la table societe elle-meme). Le predicat ecrit par le LLM
+# n'a donc plus aucune importance : la requete ne VOIT que les lignes de la
+# societe de l'appelant. C'est le SQL REGENERE depuis l'arbre — jamais le texte
+# d'origine — qui est execute ; ce qui a ete verifie est donc ce qui tourne.
+#
+# Fail-closed : SQL illisible, plusieurs instructions, table hors allowlist,
+# table qualifiee par un schema etranger, fonction en position de table,
+# WITH RECURSIVE, CTE homonyme d'une table autorisee -> SQLSecurityError.
+
+_SQL_DIALECT = "postgres"
+
+# Arguments d'un noeud Table que la reecriture sait conserver. Tout autre
+# argument (TABLESAMPLE, pivots, hints, time-travel...) -> rejet.
+_TABLE_ARGS_REECRITS = frozenset({"this", "db", "catalog", "alias", "only"})
+
+
+def _parse_single_query(sql: str) -> exp.Query:
+    """Parse `sql` en UN arbre de requete (SELECT / UNION / ...). Echec ferme."""
+    try:
+        statements = [
+            s for s in sqlglot.parse(sql or "", read=_SQL_DIALECT)
+            if s is not None
+        ]
+    except sqlglot.errors.SqlglotError as exc:
+        raise SQLSecurityError("Requete SQL illisible : refusee.") from exc
     if len(statements) != 1:
         raise SQLSecurityError(
             "Une seule instruction SELECT est autorisee (lecture seule)."
         )
+    root = statements[0]
+    if not isinstance(root, exp.Query):
+        raise SQLSecurityError("Seules les requetes SELECT sont autorisees.")
+    return root
 
-    stmt = statements[0]
 
-    # Type global de l'instruction : doit etre SELECT (sqlparse.get_type()).
-    stmt_type = stmt.get_type()
-    if stmt_type != "SELECT":
+def _scoped_source(name: str, company_id: int, alias) -> exp.Subquery:
+    """`(SELECT * FROM <name> WHERE company_id = <id>) AS <alias>`.
+
+    La table societe (`authentication_company`) est filtree par son `id`. Sans
+    alias explicite, la sous-requete reprend le NOM de la table pour que les
+    references qualifiees (`crm_client.nom`) restent valides."""
+    colonne = "id" if name == _TENANT_TABLE else "company_id"
+    inner = (
+        exp.select(exp.Star())
+        .from_(exp.Table(this=exp.to_identifier(name)))
+        .where(exp.EQ(
+            this=exp.column(colonne),
+            expression=exp.Literal.number(int(company_id)),
+        ))
+    )
+    if alias is None:
+        alias = exp.TableAlias(this=exp.to_identifier(name))
+    return exp.Subquery(this=inner, alias=alias)
+
+
+def _rewrite_table(table: exp.Table, visibles: frozenset, company_id: int):
+    """Remplace une table autorisee par sa sous-requete filtree ; laisse une
+    reference de CTE visible intacte ; rejette tout le reste."""
+    extra = {
+        k for k, v in table.args.items()
+        if v not in (None, False, []) and k not in _TABLE_ARGS_REECRITS
+    }
+    if extra:
         raise SQLSecurityError(
-            f"Seules les requetes SELECT sont autorisees (recu: {stmt_type})."
+            "Clause de table non supportee : " + ", ".join(sorted(extra))
         )
-
-    # Premier token DML doit etre SELECT ; un eventuel WITH (CTE) doit aboutir a
-    # un SELECT et ne contenir aucune DML.
-    saw_select = False
-    for token in stmt.flatten():
-        ttype = token.ttype
-        value = token.value.upper()
-        if ttype in (DML,):
-            if value != "SELECT":
-                raise SQLSecurityError(
-                    f"Instruction de modification interdite: {value}."
-                )
-            saw_select = True
-        elif ttype in (DDL,):
-            raise SQLSecurityError(f"Instruction DDL interdite: {value}.")
-        elif ttype in Keyword and value in _FORBIDDEN_KEYWORDS:
-            raise SQLSecurityError(f"Mot-cle interdit: {value}.")
-        # Un `;` interne (hors fin) signale une seconde instruction masquee.
-        elif ttype in (Punctuation,) and token.value == ";":
-            # Tolere uniquement un `;` final unique (deja retire via rstrip plus
-            # haut dans le flux d'appel) — ici on refuse tout `;` restant.
-            raise SQLSecurityError("Instructions multiples interdites.")
-
-    if not saw_select:
-        raise SQLSecurityError("Aucune instruction SELECT detectee.")
-
-
-def _extract_base_tables(sql: str) -> set[str]:
-    """Extrait l'ensemble des noms de tables de base referencees (FROM/JOIN, y
-    compris dans les sous-requetes, CTE et UNION). Approche parser : on parcourt
-    l'arbre sqlparse et on collecte tout identifiant qui suit FROM/JOIN.
-
-    Fail-closed : on enleve les alias et schemas ; les noms inconnus declenchent
-    un rejet en amont (voir `_assert_tenant_safe`)."""
-    cleaned = _strip_sql_comments(sql)
-    tables: set[str] = set()
-
-    def _name_of(identifier) -> str | None:
-        # Identifier.get_real_name() ignore l'alias ; on retire un eventuel
-        # prefixe de schema (public.stock_produit → stock_produit).
-        real = None
-        try:
-            real = identifier.get_real_name()
-        except Exception:
-            real = None
-        if not real:
-            real = str(identifier).strip().strip('"').split()[0]
-        real = real.split(".")[-1]
-        return real.strip().strip('"').lower() or None
-
-    def _walk(token_list, expecting_table: bool = False):
-        for tok in token_list.tokens:
-            if tok.is_whitespace:
-                continue
-            # Mots-cles FROM / JOIN → le(s) prochain(s) identifiant(s) sont des tables.
-            if tok.ttype in Keyword and tok.value.upper() in (
-                "FROM", "JOIN", "INNER JOIN", "LEFT JOIN", "RIGHT JOIN",
-                "FULL JOIN", "CROSS JOIN", "LEFT OUTER JOIN",
-                "RIGHT OUTER JOIN", "FULL OUTER JOIN",
-            ) or (tok.ttype in Keyword and "JOIN" in tok.value.upper()):
-                expecting_table = True
-                continue
-            # Apres FROM/JOIN : un identifiant simple, une liste, ou une
-            # sous-requete entre parentheses.
-            if expecting_table:
-                if isinstance(tok, IdentifierList):
-                    for ident in tok.get_identifiers():
-                        if isinstance(ident, Parenthesis):
-                            _walk(ident)
-                        elif isinstance(ident, (Identifier, Function)):
-                            # Une sous-requete aliasee est une Parenthesis dans l'Identifier.
-                            paren = next(
-                                (t for t in ident.tokens
-                                 if isinstance(t, Parenthesis)), None)
-                            if paren is not None:
-                                _walk(paren)
-                            else:
-                                n = _name_of(ident)
-                                if n:
-                                    tables.add(n)
-                        else:
-                            n = _name_of(ident)
-                            if n:
-                                tables.add(n)
-                    expecting_table = False
-                    continue
-                if isinstance(tok, Parenthesis):
-                    _walk(tok)
-                    expecting_table = False
-                    continue
-                if isinstance(tok, (Identifier, Function)):
-                    paren = next(
-                        (t for t in tok.tokens
-                         if isinstance(t, Parenthesis)), None)
-                    if paren is not None:
-                        _walk(paren)
-                    else:
-                        n = _name_of(tok)
-                        if n:
-                            tables.add(n)
-                    expecting_table = False
-                    continue
-                # Token suivant inattendu apres FROM → on arrete d'attendre.
-                expecting_table = False
-            # Recurse dans tout conteneur (parentheses, sous-requetes, CTE).
-            if tok.is_group:
-                _walk(tok)
-
-    for stmt in sqlparse.parse(cleaned):
-        _walk(stmt)
-
-    # On retire les noms de CTE (alias internes definis par WITH) : ils ne sont
-    # pas des tables de base et ne portent pas company_id.
-    cte_names = _extract_cte_names(cleaned)
-    return {t for t in tables if t and t not in cte_names}
-
-
-def _extract_cte_names(sql: str) -> set[str]:
-    """Noms des CTE definis par WITH name AS (...) — a ne pas confondre avec des
-    tables de base."""
-    names: set[str] = set()
-    for stmt in sqlparse.parse(sql):
-        in_cte = False
-        for tok in stmt.tokens:
-            if tok.ttype is CTE or (tok.ttype in Keyword
-                                    and tok.value.upper() == "WITH"):
-                in_cte = True
-                continue
-            if not in_cte:
-                continue
-            if isinstance(tok, IdentifierList):
-                for ident in tok.get_identifiers():
-                    if isinstance(ident, Identifier):
-                        nm = ident.get_real_name()
-                        if nm:
-                            names.add(nm.lower())
-            elif isinstance(tok, Identifier):
-                nm = tok.get_real_name()
-                if nm:
-                    names.add(nm.lower())
-            if tok.ttype in DML:  # le SELECT principal commence → fin des CTE
-                break
-    return names
-
-
-# ── Securite : injection company_id ──────────────────────────────────────────
-
-
-def _inject_company_filter(sql: str, company_id: int) -> str:
-    """
-    Garantit que toute requete sur une table sensible filtre par company_id.
-    Injecte le filtre si le LLM l'a oublie.
-    """
-    if not company_id:
-        return sql
-
-    sql = sql.strip().rstrip(";")
-
-    # Filtre deja present → rien a faire
-    if re.search(
-        rf"\bcompany_id\s*=\s*{company_id}\b", sql, re.IGNORECASE
-    ):
-        return sql
-
-    # La requete utilise-t-elle une table sensible ?
-    uses_sensitive = any(
-        re.search(rf"\b{re.escape(t)}\b", sql, re.IGNORECASE)
-        for t in _TABLES_WITH_COMPANY_ID
-    )
-    if not uses_sensitive:
-        return sql
-
-    logger.warning(
-        "SECURITE: company_id absent du SQL genere — injection forcee "
-        "(company_id=%s). SQL original: %s",
-        company_id,
-        sql[:200],
-    )
-
-    # Injection dans la requete principale (niveau 0, hors sous-requetes)
-    # Cherche GROUP BY / ORDER BY / HAVING / LIMIT avant WHERE
-    for kw in (r"GROUP\s+BY", r"ORDER\s+BY", r"HAVING", r"LIMIT",
-               r"UNION", r"EXCEPT", r"INTERSECT"):
-        m = re.search(rf"\b{kw}\b", sql, re.IGNORECASE)
-        if m:
-            before = sql[: m.start()]
-            after = sql[m.start():]
-            where_m = re.search(r"\bWHERE\b", before, re.IGNORECASE)
-            if where_m:
-                pos = where_m.end()
-                return (
-                    before[:pos]
-                    + f" company_id = {company_id} AND "
-                    + before[pos:]
-                    + after
-                )
-            return before + f" WHERE company_id = {company_id} " + after
-
-    # WHERE existant sans GROUP BY/ORDER BY
-    where_m = re.search(r"\bWHERE\b", sql, re.IGNORECASE)
-    if where_m:
-        pos = where_m.end()
-        return (
-            sql[:pos]
-            + f" company_id = {company_id} AND "
-            + sql[pos:]
-        )
-
-    # Aucun WHERE — ajout en fin de requete
-    return sql + f" WHERE company_id = {company_id}"
-
-
-# ── ERR2 — Isolation tenant prouvee (fail-closed) ─────────────────────────────
-# Strategie : on N'ESSAIE PAS de reecrire toutes les jointures (trop risque).
-# On REJETTE toute requete qu'on ne peut pas PROUVER correctement scopee :
-#   1. toute table de base hors de l'allowlist tenant -> rejet (pas de table non
-#      scopee comme authentication_company en lecture libre, ni table inconnue) ;
-#   2. la table tenant authentication_company doit etre contrainte par
-#      `id = <company_id>` ;
-#   3. CHAQUE table company_id referencee doit etre contrainte par un predicat
-#      `company_id = <company_id>` litteral. Pour le cas mono-table courant,
-#      `_inject_company_filter` l'ajoute ; des qu'il y a PLUSIEURS tables
-#      company_id (JOIN/UNION/sous-requete multi-tenant), on exige que CHAQUE
-#      occurrence soit explicitement filtree — sinon rejet. Robuste contre
-#      `OR 1=1` (le predicat reste un AND obligatoire ; voir _has_company_predicate).
-
-
-def _count_company_predicates(sql: str, company_id: int) -> int:
-    """Nombre d'occurrences d'un predicat `company_id = <company_id>` (eventuel
-    prefixe d'alias/table). On compte les occurrences pour exiger un predicat
-    par table company_id presente."""
-    pattern = rf"(?:\w+\.)?\bcompany_id\b\s*=\s*{company_id}\b"
-    return len(re.findall(pattern, sql, re.IGNORECASE))
-
-
-def _has_tenant_id_predicate(sql: str, company_id: int) -> bool:
-    """La table tenant est-elle contrainte par `id = <company_id>` (ou
-    `authentication_company.id = N`) ?"""
-    pattern = (
-        rf"(?:authentication_company\.|\b\w+\.)?\bid\b\s*=\s*{company_id}\b"
-    )
-    return bool(re.search(pattern, sql, re.IGNORECASE))
-
-
-def _references_other_tenant(sql: str, company_id: int) -> bool:
-    """True si un predicat `company_id = N` cible une AUTRE societe que celle de
-    l'appelant (defense contre une jointure/UNION vers un autre tenant avec un
-    `company_id = 8` code en dur)."""
-    for m in re.finditer(
-        r"(?:\w+\.)?\bcompany_id\b\s*=\s*(\d+)", sql, re.IGNORECASE
-    ):
-        if int(m.group(1)) != company_id:
-            return True
-    return False
-
-
-def _has_or_operator(sql: str) -> bool:
-    """True si un operateur logique OR apparait n'importe ou dans la requete.
-
-    Le OR est le principal vecteur de contournement du scoping (`... company_id=7
-    OR 1=1`, `OR true`, `OR company_id=8`). Comme on ne peut pas PROUVER qu'un OR
-    ne neutralise pas le filtre tenant, on echoue ferme et on le refuse. Les
-    questions metier utilisent `IN (...)` (vu dans les exemples du prompt) plutot
-    que des OR, donc l'impact fonctionnel est minimal."""
-    for stmt in sqlparse.parse(sql):
-        for tok in stmt.flatten():
-            if tok.ttype in Keyword and tok.value.upper() == "OR":
-                return True
-    return False
-
-
-def _assert_tenant_safe(sql: str, company_id: int) -> None:
-    """Leve SQLSecurityError si la requete n'est pas PROUVABLEMENT scopee au
-    tenant `company_id`. Fail-closed."""
-    if not company_id:
-        # Sans company_id on ne peut RIEN prouver -> refus total (ERR44 garantit
-        # deja un company_id non nul cote endpoint, ceci est une 2e barriere).
-        raise SQLSecurityError("Contexte societe absent : requete refusee.")
-
-    tables = _extract_base_tables(sql)
-    if not tables:
-        # Aucune table identifiee = on ne peut pas prouver le scoping -> refus.
-        raise SQLSecurityError(
-            "Impossible d'identifier les tables : requete refusee."
-        )
-
-    # 1. Toute table hors allowlist tenant -> rejet.
-    unknown = tables - _TENANT_SCOPED_TABLES
-    if unknown:
+    if not isinstance(table.this, exp.Identifier):
+        # Fonction en position de table (generate_series, unnest, ...).
+        raise SQLSecurityError("Source de donnees non autorisee.")
+    if table.args.get("catalog") is not None:
+        raise SQLSecurityError("Reference de base externe interdite.")
+    name = table.name.lower()
+    schema = table.text("db").lower()
+    if not schema and name in visibles:
+        return table  # reference a une CTE de la requete (deja reecrite)
+    if schema not in ("", "public") or name not in _TENANT_SCOPED_TABLES:
         raise SQLSecurityError(
             "Table non autorisee ou non scopee par societe : "
-            + ", ".join(sorted(unknown))
+            + (f"{schema}." if schema else "") + name
+        )
+    return _scoped_source(name, company_id, table.args.get("alias"))
+
+
+def _rewrite_node(node, visibles: frozenset, company_id: int, found: list):
+    """Parcours recursif respectant la PORTEE des CTE (Postgres) : une CTE n'est
+    visible que dans la requete qui la porte, et dans le corps des CTE
+    SUIVANTES de la meme liste — jamais avant (sinon `WITH a AS (SELECT * FROM
+    pg_user), pg_user AS (...)` ferait passer la vraie table pour une CTE)."""
+    if isinstance(node, exp.Table):
+        found.append(node.name.lower())
+        return _rewrite_table(node, visibles, company_id)
+    inner_visibles = visibles
+    for value in node.args.values():
+        if isinstance(value, exp.With):
+            if value.args.get("recursive"):
+                raise SQLSecurityError("WITH RECURSIVE interdit.")
+            noms = set(visibles)
+            for cte in value.expressions:
+                nom = (cte.alias or "").lower()
+                if not nom or nom in _TENANT_SCOPED_TABLES:
+                    raise SQLSecurityError(
+                        "Nom de CTE invalide ou homonyme d'une table."
+                    )
+                cte.set("this", _rewrite_node(
+                    cte.this, frozenset(noms), company_id, found))
+                noms.add(nom)
+            inner_visibles = frozenset(noms)
+    for key, value in list(node.args.items()):
+        if isinstance(value, exp.With):
+            continue
+        if isinstance(value, exp.Expression):
+            node.set(key, _rewrite_node(
+                value, inner_visibles, company_id, found))
+        elif isinstance(value, list):
+            node.set(key, [
+                _rewrite_node(v, inner_visibles, company_id, found)
+                if isinstance(v, exp.Expression) else v
+                for v in value
+            ])
+    return node
+
+
+def _assert_no_foreign_company_literal(tree: exp.Expression,
+                                       company_id: int) -> None:
+    """Un predicat `company_id = <autre id>` (ou `IN (..autre..)`) trahit une
+    tentative de lecture d'une autre societe : on le refuse explicitement
+    plutot que de renvoyer silencieusement zero ligne. Verification sur
+    l'ARBRE (colonne + litteral), pas sur le texte."""
+    def _foreign(lit) -> bool:
+        return (
+            isinstance(lit, exp.Literal) and not lit.is_string
+            and lit.this.isdigit() and int(lit.this) != int(company_id)
         )
 
-    # 2. Aucun predicat ne doit viser une autre societe (JOIN/UNION cross-tenant).
-    if _references_other_tenant(sql, company_id):
-        raise SQLSecurityError(
-            "Reference a une autre societe detectee : requete refusee."
-        )
-
-    # 3. Aucun OR (vecteur de contournement du scoping) — echec ferme.
-    if _has_or_operator(sql):
-        raise SQLSecurityError(
-            "Operateur OR interdit (risque de contournement du filtrage)."
-        )
-
-    # 4. Table tenant -> doit etre contrainte par id = company_id.
-    if _TENANT_TABLE in tables and not _has_tenant_id_predicate(sql, company_id):
-        raise SQLSecurityError(
-            "La table societe doit etre filtree par son identifiant."
-        )
-
-    # 5. Chaque table company_id doit etre filtree. Cas mono-table : un predicat
-    # suffit (injecte si besoin). Multi-table : exiger un predicat par table.
-    company_tables = tables & _TABLES_WITH_COMPANY_ID
-    if company_tables:
-        n_predicates = _count_company_predicates(sql, company_id)
-        if n_predicates < len(company_tables):
+    for cmp in tree.find_all(exp.EQ, exp.In):
+        if isinstance(cmp, exp.EQ):
+            pairs = [(cmp.this, cmp.expression), (cmp.expression, cmp.this)]
+            for col, lit in pairs:
+                if (isinstance(col, exp.Column)
+                        and col.name.lower() == "company_id" and _foreign(lit)):
+                    raise SQLSecurityError(
+                        "Reference a une autre societe detectee : requete "
+                        "refusee."
+                    )
+        elif (isinstance(cmp.this, exp.Column)
+              and cmp.this.name.lower() == "company_id"
+              and any(_foreign(v) for v in cmp.expressions)):
             raise SQLSecurityError(
-                "Chaque table doit etre filtree par company_id "
-                f"(attendu {len(company_tables)}, trouve {n_predicates})."
+                "Reference a une autre societe detectee : requete refusee."
             )
 
 
-# ── AUD401 — confidentialite INTRA-societe (secrets de comptes) ──────────────
-# _assert_tenant_safe est reellement fail-closed sur l'isolation ENTRE societes,
-# mais ne borne AUCUNE colonne DANS une societe : `authentication_customuser`
-# etant allowlistee, un `SELECT username, password FROM authentication_customuser`
-# passait TOUS les gardes en une seule instruction et rendait les hashes PBKDF2
-# de tous les comptes de la societe (admins inclus) a n'importe quel employe a
-# role minimal — l'endpoint /query n'exige aucune permission dediee. Le refus du
-# LLM ne compte pas comme garantie (le fichier le dit lui-meme) : voici le garde
-# DUR qui manquait.
+def _inject_company_filter(sql: str, company_id: int) -> str:
+    """AANA2 — Reecrit `sql` pour que TOUTE table lue soit la sous-requete
+    `(SELECT * FROM <t> WHERE company_id = <company_id>)`. Renvoie le SQL
+    REGENERE depuis l'arbre (sans commentaires). Leve SQLSecurityError sur
+    tout ce qui ne peut pas etre reecrit sur. Aucun raccourci « le filtre est
+    deja la » : le texte ecrit par le LLM ne prouve rien (C-AANA-001)."""
+    if not company_id:
+        # Sans company_id on ne peut RIEN garantir -> refus total (ERR44
+        # garantit deja un company_id non nul cote endpoint ; 2e barriere).
+        raise SQLSecurityError("Contexte societe absent : requete refusee.")
+    tree = _enforce_single_select(sql)
+    _assert_fonctions_autorisees(tree)
+    _assert_no_foreign_company_literal(tree, company_id)
+    found: list[str] = []
+    tree = _rewrite_node(tree, frozenset(), int(company_id), found)
+    if not found:
+        # Aucune table : rien a scoper, rien a lire -> refus (fail-closed).
+        raise SQLSecurityError(
+            "Impossible d'identifier les tables : requete refusee."
+        )
+    return tree.sql(dialect=_SQL_DIALECT, comments=False)
+
+
+def _extract_base_tables(sql: str) -> set[str]:
+    """Noms des tables de BASE lues par `sql` (hors CTE), via l'arbre sqlglot.
+    Utilise par le banc d'evaluation (tests/eval/runner.py). Ensemble vide si
+    la requete est illisible."""
+    try:
+        tree = _parse_single_query(sql)
+    except SQLSecurityError:
+        return set()
+    ctes = {(c.alias or "").lower() for c in tree.find_all(exp.CTE)}
+    return {
+        t.name.lower() for t in tree.find_all(exp.Table)
+        if t.name and t.name.lower() not in ctes
+    }
+
+
+# ── AUD401 + L17 + AANA4 — confidentialite INTRA-societe des PROJECTIONS ─────
+# La reecriture AANA2 garantit l'isolation ENTRE societes, mais ne borne AUCUNE
+# colonne DANS une societe. Deux familles de colonnes ne doivent jamais sortir
+# par le canal du chatbot :
+#   - les SECRETS de compte (hash PBKDF2, graine TOTP, drapeaux d'elevation) :
+#     garde INCONDITIONNEL — aucune permission metier ne le leve (AUD401) ;
+#   - le PRIX D'ACHAT / la MARGE (CLAUDE.md : `Produit.prix_achat` est un
+#     indicateur GENERATEUR, jamais client-facing) : leve uniquement pour un
+#     porteur de `prix_achat_voir` (L17).
+# AANA4 (C-AANA-003) — une colonne sort aussi SANS ETRE NOMMEE, par une
+# projection LIGNE ENTIERE : `*`, `alias.*`, `(alias).*`, `row_to_json(alias)`,
+# `alias::text`, `array_agg(alias)`... (sonde du 05/10 : `row_to_json(u)`
+# contenait la cle `password`). UNE seule verification, sur l'ARBRE sqlglot
+# (plus de regex sur le texte) : `_references_forbidden_column`.
 #
-# Volontairement INCONDITIONNEL — contrairement a _FORBIDDEN_COLUMNS (prix
-# d'achat), qui se leve pour un porteur de `prix_achat_voir` : aucune permission
-# metier ne justifie de lire un hash de mot de passe ou une graine TOTP par le
-# canal du chatbot.
-#
-# Verifie a l'ecriture de ce garde : `parametres_companyprofile` ne porte AUCUN
-# secret SMTP/API dans ce depot (aucun champ chiffre, uniquement de la
-# configuration de politique) — elle reste donc lisible, contrairement a ce que
-# l'audit envisageait par precaution.
+# Verifie a l'ecriture d'AUD401 : `parametres_companyprofile` ne porte AUCUN
+# secret SMTP/API dans ce depot — elle reste donc lisible.
 _SECRET_COLUMNS = (
     "password",            # hash PBKDF2 (AbstractBaseUser)
     "last_login",
@@ -722,88 +653,21 @@ _SECRET_COLUMNS = (
     "totp_recovery_codes",
 )
 
-# Frontiere de mot STRICTE : `password_min_length`, `must_change_password` et
-# `password_changed_at` ne matchent pas (le `_` est un caractere de mot), donc
-# la configuration de politique reste interrogeable.
-_SECRET_RE = re.compile(
-    r"\b(" + "|".join(re.escape(c) for c in _SECRET_COLUMNS) + r")\b",
-    re.IGNORECASE,
-)
-
-# Tables dont une projection etoilee exposerait ces colonnes sans jamais les
-# nommer — un filtre purement lexical serait sinon contourne par `SELECT *`.
+# Tables dont une projection LIGNE ENTIERE exposerait un secret de compte.
 _SECRET_TABLES = ("authentication_customuser",)
 
-
-def _has_star_projection(text: str) -> bool:
-    """True si la requete projette une etoile qui RENDRAIT des colonnes.
-
-    `COUNT(*)` est tolere (l'etoile y est immediatement precedee d'une
-    parenthese : l'agregat ne restitue aucune colonne), pour qu'un « combien
-    d'utilisateurs ? » reste possible. Toute autre etoile — `SELECT *`,
-    `SELECT DISTINCT *`, `SELECT u.*`, `, t.*` — echoue FERME."""
-    for match in re.finditer(r"\*", text or ""):
-        if text[:match.start()].rstrip().endswith("("):
-            continue
-        return True
-    return False
-
-
-def _references_secret_column(sql: str) -> bool:
-    """True si la requete peut restituer un secret de compte (AUD401).
-
-    Deux motifs : la colonne est NOMMEE, ou une table sensible est projetee en
-    etoile (qui la rendrait sans jamais la nommer — un filtre purement lexical
-    serait sinon contourne par un simple `SELECT *`)."""
-    text = _strip_sql_comments(sql or "")
-    if _SECRET_RE.search(text):
-        return True
-    lowered = text.lower()
-    if any(table in lowered for table in _SECRET_TABLES):
-        return _has_star_projection(text)
-    return False
-
-
-def _validate_and_secure(sql: str, company_id: int) -> str:
-    """Point d'entree unique de securisation d'une requete generee :
-      ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
-      AUD401 : refuse toute lecture d'un secret de compte (hash de mot de passe,
-             graine 2FA, drapeaux d'elevation), nommee ou etoilee ;
-      ERR2 : injecte le filtre company_id (cas mono-table) puis PROUVE que la
-             requete finale est correctement scopee, sinon rejet (fail-closed).
-    Leve SQLSecurityError en cas d'echec — l'appelant renvoie un refus francais
-    a l'agent sans jamais executer la requete."""
-    _enforce_single_select(sql)
-    if _references_secret_column(sql):
-        raise SQLSecurityError(
-            "Colonne confidentielle de compte (mot de passe / 2FA / privileges) "
-            "— lecture refusee."
-        )
-    secured = _inject_company_filter(sql, company_id)
-    _assert_tenant_safe(secured, company_id)
-    return secured
-
-
-# ── Securite : colonnes confidentielles (prix d'achat / marge) ────────────────
-# CLAUDE.md : `Produit.prix_achat` est un indicateur GENERATEUR, jamais
-# client-facing. Le chatbot stock ne doit JAMAIS restituer le prix d'achat ni la
-# marge. Le prompt _MARGIN_RESTRICTION le DECONSEILLE au LLM, mais ce n'est pas
-# une garantie ; ce garde DUR bloque toute requete qui touche ces colonnes quand
-# l'appelant n'a pas la permission `prix_achat_voir`. La valeur n'atteint donc
-# jamais l'agent ni la reponse, quoi que fasse le LLM.
 _FORBIDDEN_COLUMNS = (
     "prix_achat",
     "prix_achat_unitaire",
     "prix_achat_ht",
     "prix_revendeur",
     "marge",
+    "marge_snapshot",      # ventes.Devis — marge HT figee (manager-only)
 )
 
-# Mot-cle isole (frontiere de mot) pour eviter les faux positifs.
-_FORBIDDEN_RE = re.compile(
-    r"\b(" + "|".join(re.escape(c) for c in _FORBIDDEN_COLUMNS) + r")\b",
-    re.IGNORECASE,
-)
+# Tables autorisees portant un prix d'achat ou une marge (verifie sur les
+# modeles Django : stock.Produit.prix_achat, ventes.Devis.marge_snapshot).
+_PRICE_TABLES = ("stock_produit", "ventes_devis")
 
 # Reponse renvoyee a l'agent quand il tente d'acceder a une colonne interdite —
 # le LLM la verbalise alors proprement, sans jamais voir la donnee.
@@ -822,10 +686,108 @@ _UNSAFE_QUERY_REPLY = (
 )
 
 
-def _references_forbidden_column(sql: str) -> bool:
-    """True si la requete reference une colonne confidentielle (prix d'achat /
-    marge). Test purement lexical sur le SQL genere — defense en profondeur."""
-    return bool(_FORBIDDEN_RE.search(sql or ""))
+def _select_sources(select: exp.Select) -> list:
+    """Sources DIRECTES (FROM + JOIN) d'un SELECT."""
+    sources = []
+    from_ = select.args.get("from_") or select.args.get("from")
+    if from_ is not None:
+        sources.append(from_.this)
+    for join in select.args.get("joins") or []:
+        sources.append(join.this)
+    return sources
+
+
+def _references_forbidden_column(sql: str, allow_price: bool = False) -> bool:
+    """True si la requete peut RESTITUER une colonne confidentielle — secret de
+    compte (toujours) ou prix d'achat / marge (sauf `allow_price`) — qu'elle
+    soit NOMMEE ou emportee par une projection LIGNE ENTIERE d'une table qui la
+    porte. Verification sur l'arbre sqlglot ; SQL illisible -> True (fail-closed).
+
+    Frontiere STRICTE par identifiant : `password_min_length` ou
+    `must_change_password` ne sont PAS des secrets (politique interrogeable)."""
+    try:
+        tree = _parse_single_query(sql)
+    except SQLSecurityError:
+        return True
+    colonnes = set(_SECRET_COLUMNS)
+    tables = set(_SECRET_TABLES)
+    if not allow_price:
+        colonnes |= set(_FORBIDDEN_COLUMNS)
+        tables |= set(_PRICE_TABLES)
+
+    # 1. Colonne NOMMEE (identifiant, quel que soit le contexte ou la casse).
+    for ident in tree.find_all(exp.Identifier):
+        if ident.name.lower() in colonnes:
+            return True
+
+    # 2. Projection LIGNE ENTIERE d'une table sensible : noms de « ligne » =
+    # nom de la table et son alias.
+    lignes: set[str] = set()
+    for table in tree.find_all(exp.Table):
+        if table.name.lower() in tables:
+            lignes.add(table.name.lower())
+            if table.alias:
+                lignes.add(table.alias.lower())
+    if not lignes:
+        return False
+
+    # 2a. Reference a la ligne comme VALEUR : row_to_json(u), u::text,
+    # array_agg(u), (u).*, `SELECT stock_produit FROM stock_produit`...
+    for col in tree.find_all(exp.Column):
+        if col.name.lower() in lignes:
+            return True
+
+    # 2b. Etoiles : `alias.*` d'une table sensible, ou `*` nu dans un SELECT
+    # dont une source DIRECTE est une table sensible. `COUNT(*)` ne restitue
+    # aucune colonne : tolere (« combien d'utilisateurs ? »).
+    for star in tree.find_all(exp.Star):
+        parent = star.parent
+        if isinstance(parent, exp.Count):
+            continue
+        if isinstance(parent, exp.Column):
+            if (parent.table or "").lower() in lignes:
+                return True
+            continue
+        select = star.find_ancestor(exp.Select)
+        if select is None:
+            return True
+        for source in _select_sources(select):
+            if (isinstance(source, exp.Table)
+                    and source.name.lower() in tables):
+                return True
+    return False
+
+
+def _references_secret_column(sql: str) -> bool:
+    """Secrets de compte SEULS (garde inconditionnel AUD401) : meme
+    verification que `_references_forbidden_column`, prix d'achat autorise."""
+    return _references_forbidden_column(sql, allow_price=True)
+
+
+def _validate_and_secure(sql: str, company_id: int,
+                         allow_price: bool = False) -> str:
+    """Point d'entree unique de securisation d'une requete generee :
+      ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
+      AANA3 : refuse toute fonction hors liste blanche ;
+      AUD401/L17/AANA4 : refuse toute projection d'un secret de compte
+             (toujours) ou d'un prix d'achat / marge (sans `allow_price`),
+             nommee OU emportee par une projection ligne entiere ;
+      AANA2 : REECRIT l'arbre pour que chaque table lue soit la sous-requete
+             filtree sur la societe du jeton (sqlglot) ; renvoie le SQL
+             regenere — c'est LUI, et lui seul, qui est execute.
+    Leve SQLSecurityError en cas d'echec — l'appelant renvoie un refus francais
+    a l'agent sans jamais executer la requete."""
+    _enforce_single_select(sql)
+    if _references_secret_column(sql):
+        raise SQLSecurityError(
+            "Colonne confidentielle de compte (mot de passe / 2FA / privileges) "
+            "— lecture refusee."
+        )
+    if not allow_price and _references_forbidden_column(sql):
+        raise SQLSecurityError(
+            "Colonne confidentielle (prix d'achat / marge) — lecture refusee."
+        )
+    return _inject_company_filter(sql, company_id)
 
 
 # ── NTPLT4 — GUC tenant sur la connexion du SQL-agent (defense en profondeur) ─
@@ -897,8 +859,11 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
 
     class _SecureQueryTool(QuerySQLDataBaseTool):
         def _run(self, query: str, run_manager=None) -> str:
-            # Garde confidentialite : refus AVANT toute execution SQL.
-            if not _allow_price and _references_forbidden_column(query):
+            # Garde confidentialite : refus AVANT toute execution SQL. Reponse
+            # « prix d'achat » seulement quand c'est bien LUI qui bloque (un
+            # secret de compte ou un SQL illisible -> refus generique plus bas).
+            if (not _allow_price and _references_forbidden_column(query)
+                    and not _references_secret_column(query)):
                 logger.warning(
                     "SECURITE: requete bloquee (prix_achat/marge non autorise). "
                     "SQL: %s", (query or "")[:200],
@@ -908,7 +873,8 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
             # seule + isolation tenant prouvee). Fail-closed : tout ce qui n'est
             # pas prouve sur est refuse sans jamais etre execute.
             try:
-                secured = _validate_and_secure(query, _cid)
+                secured = _validate_and_secure(
+                    query, _cid, allow_price=_allow_price)
             except SQLSecurityError as exc:
                 logger.warning(
                     "SECURITE: requete refusee (%s). SQL: %s",
@@ -1151,8 +1117,10 @@ class SQLAgentService:
         # SQL_AGENT_DB_USER n'est pas defini (non-cassant).
         # ERR43 — sample_rows_in_table_info=0 : aucune ligne reelle n'est injectee
         # dans le contexte du LLM (sinon fuite incidente inter-tenant).
-        db = SQLDatabase.from_uri(
-            SQL_AGENT_DATABASE_URL,
+        # AANA5 — moteur cree par app.core.database (statement_timeout 15 s).
+        from app.core import database as _database
+        db = SQLDatabase(
+            _database.create_sql_agent_engine(),
             include_tables=relevant_tables,
             sample_rows_in_table_info=0,
         )

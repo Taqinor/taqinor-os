@@ -229,7 +229,9 @@ def paiement_post_save(sender, instance, created, **kwargs):
         'event': EVENT_PAIEMENT_RECORDED,
         'id': instance.pk,
         'facture_id': instance.facture_id,
-        'montant': instance.montant,
+        # AANA32 — un nombre JSON (comme `facture.*`), jamais un `Decimal`
+        # brut : non sérialisable, il faisait perdre l'évènement du flux.
+        'montant': _montant(instance.montant),
         'mode': instance.mode,
     })
 

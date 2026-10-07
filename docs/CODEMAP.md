@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 6eb2258a154b80323b20d3c2b36de176c064136b908ba994f8e7ecdd1e4432c2
-Plan fingerprint: 0a57950b5f62fd6e7f85f3b3854c3333f1610cef970d9673a2d9d69a0edef3f9
+Structure fingerprint: ef2c6d6645483002ef67a2cb4731b70afe55b12ec37ae855b5f036dc1ec65484
+Plan fingerprint: 87d1926c9aff5b1596bd2bef4b981414c859ab8841facfc958f32ff00987b714
 
 
 
@@ -572,7 +572,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1149)**
+**Done (1150)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -971,6 +971,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ126` — Générateur C&I : Auto-remplir, enregistrer et rouvrir passent par le serveur ; le…
 - `CIQ127` — Devis automatique C&I depuis la fiche lead : un seul appel serveur ; la branche C&I de…
 - `CIQ128` — Supprimer le moteur C&I JS de `solar.js` (aucun second moteur)
+- `CIQ129` — Retirer du schéma les clés ÉCRAN C&I v1 et les réponses de catégorie plates (D-CIQ-21 …
 - `CIQ130` — Commercial : les réponses de catégorie deviennent des éléments d'HORAIRE déclarés…
 - `CIQ131` — Générateur commercial : catégorie, réponses et heures transmises au moteur ; archétype…
 - `CIQ132` — Industriel MT : la courbe de charge se construit depuis les registres de la facture…
@@ -1724,7 +1725,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (123)**
+**Open — to build (122)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1781,7 +1782,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM7` — Lecture SQL de production : les ~10 comptages qui manquent aux deux rondes
 - `CADM8` — Relever quatre valeurs d'environnement en production
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
-- `CIQ129` — Retirer du schéma les clés ÉCRAN C&I v1 et les réponses de catégorie plates (D-CIQ-21 …
 - `CIQ220` — [GATED: critères écrits de l'opérateur SR500 — manuel] Indicateur INTERNE de…
 - `CIQ221` — [GATED: phrase et accord écrits de l'opérateur SR500 — manuel] Phrase client SR500 dans…
 - `CIQ334` — Clôture de la vague commerciale : aller-retour EN DIRECT d'un devis commercial…

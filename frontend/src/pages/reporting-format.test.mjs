@@ -48,3 +48,34 @@ test('Reporting.jsx & Dashboard.jsx : alignement des chiffres avec tabular-nums'
   assert.ok(reporting.includes('tabular-nums'))
   assert.ok(dashboard.includes('tabular-nums'))
 })
+
+// AANA29 (C-AANA-022) — le taux affiché sous « Tunnel de conversion » est le
+// taux SERVI par le backend (contrat PACT10 AANA1 :
+// backend/django_core/apps/reporting/contract_samples/dashboard.json), jamais
+// la formule écran nb_factures ÷ nb_devis qui donnait 150 % sur
+// {nb_devis: 10, nb_acceptes: 3, nb_factures: 15}.
+test('taux_acceptation_servi', async () => {
+  const contrat = JSON.parse(readFileSync(join(
+    here, '..', '..', '..', 'backend', 'django_core', 'apps', 'reporting',
+    'contract_samples', 'dashboard.json'), 'utf8'))
+  const conversion = contrat.exemple.conversion
+  assert.ok('taux_acceptation_pct' in conversion,
+    'le contrat AANA1 doit porter conversion.taux_acceptation_pct')
+
+  // L'écran lit la clé servie, sous le libellé attendu…
+  assert.ok(reporting.includes('formatPercent(conversion.taux_acceptation_pct)'),
+    'Reporting.jsx doit afficher conversion.taux_acceptation_pct tel quel')
+  assert.ok(reporting.includes('Devis acceptés / créés'))
+  // …et ne recalcule plus aucun taux à partir des compteurs.
+  assert.ok(!/nb_factures\s*\/\s*conversion\.nb_devis/.test(reporting),
+    'la formule nb_factures ÷ nb_devis (> 100 %) doit avoir disparu')
+  assert.ok(!/nb_acceptes\s*\/\s*conversion\.nb_devis/.test(reporting),
+    "le taux ne doit pas être recalculé à l'écran")
+
+  // Rendu de la valeur servie : « 30 % », jamais « 150 % ».
+  const { formatPercent } = await import('../lib/format.js')
+  const servi = { nb_devis: 10, nb_acceptes: 3, nb_factures: 15, taux_acceptation_pct: 30 }
+  const affiche = formatPercent(servi.taux_acceptation_pct)
+  assert.match(affiche, /^30\s%$/)
+  assert.ok(!formatPercent(servi.taux_acceptation_pct).includes('150'))
+})

@@ -11,9 +11,17 @@ from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework import authentication, exceptions, permissions
 from rest_framework.throttling import SimpleRateThrottle
 
+from . import portees
 from .models import ApiKey, hash_key
 
 AUTH_KEYWORD = 'Api-Key'
+
+#: AANA37 — les scopes d'ÉCRITURE, LUS sur le registre des portées (toute
+#: constante ``SCOPE_WRITE_*`` de ``portees.py``) : un scope d'écriture ajouté
+#: demain y entre sans qu'aucune liste ne soit recopiée ici.
+SCOPES_ECRITURE = frozenset(
+    valeur for nom, valeur in vars(portees).items()
+    if nom.startswith('SCOPE_WRITE_') and isinstance(valeur, str))
 
 # NTAPI38 — attribut posé sur la ``HttpRequest`` SOUS-JACENTE par chacun des
 # trois authenticators, et relu par `middleware.PublicApiCallLogMiddleware`.
@@ -188,6 +196,16 @@ class QueryTokenAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed('Jeton désactivé.')
         if api_key.est_expiree:
             raise exceptions.AuthenticationFailed('Jeton expiré.')
+        # AANA37 — un jeton qui voyage dans une URL ne porte JAMAIS un droit
+        # d'écriture : une clé qui en a un (même avec la lecture demandée) est
+        # refusée ici (403), avant toute vue. Le client émet une clé de
+        # lecture seule pour son tableur.
+        ecritures = sorted(set(api_key.scopes or ()) & SCOPES_ECRITURE)
+        if ecritures:
+            raise exceptions.PermissionDenied(
+                "Ce jeton porte un droit d'écriture (%s) : il ne peut pas "
+                "circuler dans une URL. Utilisez une clé en lecture seule."
+                % ', '.join(ecritures))
         ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
         memoriser_cle(request, api_key)
         return (ApiKeyUser(api_key), api_key)

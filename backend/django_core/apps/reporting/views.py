@@ -88,16 +88,17 @@ def dashboard(request):
     # ── KPIs ──────────────────────────────────────────────────────────────────
     factures_qs = Facture.objects.filter(**co)
 
-    ca_paye = factures_qs.filter(
-        statut=Facture.Statut.PAYEE
-    ).aggregate(total=Sum('lignes__prix_unitaire'))['total'] or Decimal('0')
+    # AANA20 / D-AANA-6 — CA en HT lu sur ``Facture.total_ht`` (remise
+    # globale honorée), jamais une somme de lignes. Le reliquat d'une facture
+    # « payée » n'est PAS encaissé : il reste en attente.
+    factures_payees = factures_qs.filter(statut=Facture.Statut.PAYEE)
+    ca_paye = _ca_encaisse_ht(factures_payees)
 
-    # CA payé calculé proprement via les lignes
-    ca_paye = _ca_factures(factures_qs.filter(statut=Facture.Statut.PAYEE))
-
-    # Factures en attente (émises + en retard)
-    ca_attente = _ca_factures(
-        factures_qs.filter(statut__in=[Facture.Statut.EMISE, Facture.Statut.EN_RETARD])
+    # Factures en attente (émises + en retard) + reliquats des « payées ».
+    ca_attente = _ca_attente_ht(
+        factures_qs.filter(
+            statut__in=[Facture.Statut.EMISE, Facture.Statut.EN_RETARD]),
+        factures_payees,
     )
 
     nb_clients = Client.objects.filter(**co).count()
@@ -110,9 +111,9 @@ def dashboard(request):
 
     # ── CA mensuel (12 derniers mois) ─────────────────────────────────────────
     debut = date.today().replace(day=1) - timedelta(days=365)
-    # Calcule le CA HT par mois via les lignes
+    # CA HT encaissé par mois (Facture.total_ht — AANA20)
     ca_mensuel = _ca_mensuel(
-        factures_qs.filter(statut=Facture.Statut.PAYEE, date_emission__gte=debut)
+        factures_payees.filter(date_emission__gte=debut)
     )
 
     # ── Top 5 produits vendus ─────────────────────────────────────────────────
@@ -151,10 +152,19 @@ def dashboard(request):
     # ── Taux conversion Devis → Facture ───────────────────────────────────────
     devis_qs = Devis.objects.filter(**co)
     nb_devis_total = devis_qs.count()
-    nb_devis_acceptes = devis_qs.filter(statut=Devis.Statut.ACCEPTE).count()
+    # AANA19 — signés = acceptés ACTIFS (helper unique du reporting).
+    from apps.reporting.pipeline import _devis_signes
+    nb_devis_acceptes = _devis_signes(co).count()
     nb_factures_emises = factures_qs.exclude(
         statut__in=[Facture.Statut.BROUILLON, Facture.Statut.ANNULEE]
     ).count()
+    # AANA28 (contrat AANA1, dashboard.json) — taux d'acceptation SERVI :
+    # devis acceptés ÷ devis créés, 1 décimale, None sans devis. L'écran le
+    # lit tel quel (fini la formule nb_factures ÷ nb_devis, qui dépassait
+    # 100 %).
+    taux_acceptation_pct = (
+        round(nb_devis_acceptes / nb_devis_total * 100, 1)
+        if nb_devis_total else None)
 
     # ── Stock critique (produits sous seuil, seuil > 0) ───────────────────────
     from django.db.models import F
@@ -168,6 +178,9 @@ def dashboard(request):
     )
 
     # ── Créances clients ──────────────────────────────────────────────────────
+    # AANA20 / D-AANA-6 — la créance est ``Facture.montant_du`` (TTC restant
+    # dû : paiements, retenues, avoirs et abandons déduits, notes de débit
+    # ajoutées), jamais une somme HT de lignes.
     today = date.today()
     factures_impayees = (
         factures_qs
@@ -177,6 +190,9 @@ def dashboard(request):
     )
     creances = {}
     for f in factures_impayees:
+        montant = f.montant_du
+        if montant <= 0:
+            continue
         cid = f.client_id
         if cid not in creances:
             creances[cid] = {
@@ -185,10 +201,6 @@ def dashboard(request):
                 'montant_total': Decimal('0'),
                 'jours_retard_max': 0,
             }
-        montant = sum(
-            ligne.quantite * ligne.prix_unitaire * (1 - ligne.remise / 100)
-            for ligne in f.lignes.all()
-        )
         creances[cid]['nb_factures'] += 1
         creances[cid]['montant_total'] += montant
         if f.date_echeance:
@@ -210,16 +222,16 @@ def dashboard(request):
         from apps.crm.exports import build_xlsx_response
         headers = ['Section', 'Libellé', 'Valeur', 'Détail']
         rows = [
-            ['KPI', 'CA encaissé (DH)', float(ca_paye), 'Factures payées'],
-            ['KPI', 'En attente de paiement (DH)', float(ca_attente),
-             'Émises + en retard'],
+            ['KPI', 'CA encaissé HT (DH)', float(ca_paye), 'Factures payées'],
+            ['KPI', 'En attente de paiement HT (DH)', float(ca_attente),
+             'Émises + en retard (+ reliquats)'],
             ['KPI', 'Clients actifs', nb_clients, 'Total base clients'],
             ['KPI', 'Valeur du stock (DH)', float(valeur_stock_dh),
              'Prix vente × quantité'],
         ]
         for c in creances_list:
             rows.append([
-                'Créance', c['client'], c['montant_total'],
+                'Créance TTC restant dû', c['client'], c['montant_total'],
                 f"{c['nb_factures']} facture(s) · retard max "
                 f"{c['jours_retard_max']} j",
             ])
@@ -239,7 +251,7 @@ def dashboard(request):
         prev_fqs = factures_qs.filter(
             date_emission__gte=p_start,
             date_emission__lte=p_end)
-        prev_ca = _ca_factures(prev_fqs.filter(statut=Facture.Statut.PAYEE))
+        prev_ca = _ca_encaisse_ht(prev_fqs.filter(statut=Facture.Statut.PAYEE))
         prev_leads = 0
         try:
             from apps.crm.models import Lead
@@ -256,7 +268,7 @@ def dashboard(request):
             curr_fqs_f = curr_fqs_f.filter(date_emission__gte=curr_from)
         if curr_to:
             curr_fqs_f = curr_fqs_f.filter(date_emission__lte=curr_to)
-        curr_ca = _ca_factures(curr_fqs_f.filter(statut=Facture.Statut.PAYEE))
+        curr_ca = _ca_encaisse_ht(curr_fqs_f.filter(statut=Facture.Statut.PAYEE))
         curr_leads = Lead.objects.filter(**co)
         if curr_from:
             curr_leads = curr_leads.filter(date_creation__date__gte=curr_from)
@@ -295,6 +307,7 @@ def dashboard(request):
             'nb_devis': nb_devis_total,
             'nb_acceptes': nb_devis_acceptes,
             'nb_factures': nb_factures_emises,
+            'taux_acceptation_pct': taux_acceptation_pct,
         },
         'stock_alerte': stock_alerte_list,
         'creances': creances_list,
@@ -302,27 +315,61 @@ def dashboard(request):
     })
 
 
-def _ca_factures(qs):
-    """Calcule le CA HT total d'un queryset de Facture."""
-    total = Decimal('0')
-    for f in qs.prefetch_related('lignes'):
-        for ligne in f.lignes.all():
-            total += ligne.quantite * ligne.prix_unitaire * (1 - ligne.remise / 100)
+def _ht_encaisse(facture):
+    """AANA20 — HT réellement encaissé d'une facture « payée ».
+
+    ``Facture.total_ht`` (remise globale honorée), moins la part HT de son
+    reliquat ``montant_du`` (TTC) : un reliquat n'est jamais compté encaissé.
+    """
+    total_ht = Decimal(facture.total_ht or 0)
+    reste = Decimal(facture.montant_du or 0)
+    if reste <= 0 or total_ht <= 0:
+        return total_ht
+    total_ttc = Decimal(facture.total_ttc or 0)
+    if total_ttc <= 0:
+        return total_ht
+    encaisse = total_ht - (reste * total_ht / total_ttc)
+    return encaisse if encaisse > 0 else Decimal('0')
+
+
+def _reliquat_ht(facture):
+    """AANA20 — part HT du reliquat d'une facture « payée » (0 si soldée)."""
+    return Decimal(facture.total_ht or 0) - _ht_encaisse(facture)
+
+
+def _ca_encaisse_ht(factures_payees):
+    """AANA20 / D-AANA-6 — CA encaissé HT d'un queryset de factures payées."""
+    return sum((_ht_encaisse(f)
+                for f in factures_payees.prefetch_related('lignes')),
+               Decimal('0'))
+
+
+def _ca_attente_ht(factures_ouvertes, factures_payees):
+    """AANA20 / D-AANA-6 — CA HT en attente : ``total_ht`` des factures
+    émises/en retard + la part HT des reliquats des factures « payées »."""
+    total = sum((Decimal(f.total_ht or 0)
+                 for f in factures_ouvertes.prefetch_related('lignes')),
+                Decimal('0'))
+    total += sum((_reliquat_ht(f)
+                  for f in factures_payees.prefetch_related('lignes')),
+                 Decimal('0'))
     return total
 
 
 def _ca_mensuel(factures_qs):
     """
-    Retourne le CA HT par mois pour les 12 derniers mois.
+    Retourne le CA HT ENCAISSÉ par mois pour les 12 derniers mois.
     Format : [{'mois': 'Jan 2025', 'ca': 12345.67}, ...]
+
+    AANA20 — lu sur ``Facture.total_ht`` (via ``_ht_encaisse``), jamais une
+    somme de lignes.
     """
     from collections import defaultdict
 
     par_mois = defaultdict(Decimal)
     for f in factures_qs.prefetch_related('lignes'):
         cle = f.date_emission.strftime('%Y-%m')
-        for ligne in f.lignes.all():
-            par_mois[cle] += ligne.quantite * ligne.prix_unitaire * (1 - ligne.remise / 100)
+        par_mois[cle] += _ht_encaisse(f)
 
     mois_labels = {
         '01': 'Jan', '02': 'Fév', '03': 'Mar', '04': 'Avr',

@@ -20,8 +20,13 @@ alimenté par les apps qui en ont besoin, jamais l'inverse).
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import os
 from typing import Any, Callable, Dict, Optional
 
+from django.conf import settings
 from django.utils import timezone
 
 from .models import AgentActionLog
@@ -48,6 +53,65 @@ def has_undo_handler(action_key: str) -> bool:
 class ActionNotUndoableError(Exception):
     """Levée quand l'annulation est refusée (irréversible / déjà annulée /
     aucun handler enregistré)."""
+
+
+# ── AANA18 — preuve qu'une confirmation a REELLEMENT ete emise par l'agent ────
+# C-AANA-008 : ``POST /agent/logs/confirmer/`` acceptait n'importe quel corps
+# d'un utilisateur authentifie. Un compte SANS ``crm_creer`` forgeait un journal
+# ``crm.client.create`` pointant sur un client PREEXISTANT ; l'annulation par un
+# admin SUPPRIMAIT ensuite ce client (sonde du 05/10 : 201 puis suppression).
+# Desormais le relais FastAPI signe, APRES l'execution reelle, une preuve HMAC
+# avec un secret partage (``AGENT_HMAC_SECRET``, jamais expose au navigateur) ;
+# Django la recalcule pour l'utilisateur et la societe de LA REQUETE. Sans
+# secret configure : toute confirmation est refusee (fail-closed). Format
+# canonique (identique des deux cotes, verifie par le contrat
+# ``contract_samples/logs_confirmer.json``) : JSON trie, compact, UTF-8 de
+# {v, action_key, company_id, user_id, inputs, object_id} ; HMAC-SHA256 hex.
+PREUVE_VERSION = 1
+
+
+def agent_hmac_secret() -> str:
+    """Secret partage Django <-> FastAPI ('' si non configure)."""
+    return (getattr(settings, 'AGENT_HMAC_SECRET', '')
+            or os.environ.get('AGENT_HMAC_SECRET', '') or '')
+
+
+def message_preuve_confirmation(*, action_key: str, company_id: int,
+                                user_id: int, inputs: Optional[Dict[str, Any]],
+                                object_id: Any) -> str:
+    """Message canonique signe (meme octets que cote FastAPI)."""
+    return json.dumps(
+        {
+            'v': PREUVE_VERSION,
+            'action_key': action_key,
+            'company_id': int(company_id),
+            'user_id': int(user_id),
+            'inputs': inputs or {},
+            'object_id': '' if object_id in (None, '') else str(object_id),
+        },
+        sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+    )
+
+
+def calculer_preuve_confirmation(*, secret: str, **champs) -> str:
+    return hmac.new(
+        secret.encode('utf-8'),
+        message_preuve_confirmation(**champs).encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def preuve_confirmation_valide(preuve: Any, **champs) -> bool:
+    """True si ``preuve`` est la signature de ces champs par le secret partage.
+    Fail-closed : secret absent, preuve absente ou mal formee -> False."""
+    secret = agent_hmac_secret()
+    if not secret or not isinstance(preuve, str) or not preuve:
+        return False
+    try:
+        attendue = calculer_preuve_confirmation(secret=secret, **champs)
+    except (TypeError, ValueError):
+        return False
+    return hmac.compare_digest(preuve, attendue)
 
 
 def log_confirmed_action(
