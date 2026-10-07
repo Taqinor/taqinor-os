@@ -68,27 +68,18 @@ class DevisCalepinageActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST)
 
         layout = request.data.get('layout')
-        # CAL185 — DEUXIÈME ENTRÉE, MÊME CHEMIN. Le commercial compare ses
-        # options DANS le calepinage, en retient une… et rien ne partait de
-        # cette variante retenue. `{"calepinage": <id>}` (sans `layout`) fait
-        # lire sa conception par `apps.calepinage.selectors` — jamais ses
-        # modèles — et la fait chiffrer par CE service, qui délègue lui-même à
-        # `build_devis_from_layout` : aucun second chemin de création de
-        # lignes. Un corps qui porte un `layout` explicite est inchangé.
-        calepinage_id = request.data.get('calepinage')
-        nomenclature = None
-        if (not isinstance(layout, dict) or not layout) and calepinage_id:
-            from apps.calepinage.selectors import nomenclature_variante_retenue
-            nomenclature = nomenclature_variante_retenue(
-                calepinage_id, company)
-            if nomenclature is None:
-                return Response(
-                    {'detail': "Aucune variante retenue à chiffrer sur ce "
-                               "calepinage : comparez vos options, retenez-en "
-                               "une, puis relancez.",
-                     'champ': 'calepinage'},
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-            layout = nomenclature['layout']
+        # ACAL108 (D-ACAL-2) — la porte jumelle CAL185 `{calepinage}` est
+        # RETIRÉE : un calepinage se chiffre par SON « Générer le devis »
+        # (retenir une variante l'écrit comme conception courante). Refus
+        # nommé, rien n'est écrit ; un `layout` explicite est inchangé.
+        if ((not isinstance(layout, dict) or not layout)
+                and request.data.get('calepinage')):
+            return Response(
+                {'detail': "Un calepinage se chiffre par « Générer le devis » "
+                           "du calepinage : la variante retenue en est la "
+                           "conception courante",
+                 'champ': 'calepinage'},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         if not isinstance(layout, dict) or not layout:
             return Response(
                 {'detail': 'Layout manquant ou invalide.'},
@@ -198,24 +189,14 @@ class DevisCalepinageActionsMixin:
             taux_tva=taux_tva, remise_globale=remise,
             structure_produit_id=structure_produit_id,
             structure_type=(str(structure_type) if structure_type else None))
-        # CAL185 — le rapport « à renseigner » n'existe que sur l'entrée
-        # calepinage ; l'entrée historique est byte-identique.
-        rapport = None
         # ACAL88 — le canal de la construction (U3) : ce que la composition a
         # refusé de faire remonte dans la réponse (contrat devis_from_layout).
         journal = {}
         try:
-            if nomenclature is not None:
-                from ..services import build_devis_depuis_calepinage_retenu
-                devis, rapport = build_devis_depuis_calepinage_retenu(
-                    calepinage_id=calepinage_id, user=request.user,
-                    company=company, lead=lead_obj, client=client_obj,
-                    **_composition)
-            else:
-                devis = build_devis_from_layout(
-                    layout=layout, user=request.user, company=company,
-                    lead=lead_obj, client=client_obj, journal=journal,
-                    **_composition)
+            devis = build_devis_from_layout(
+                layout=layout, user=request.user, company=company,
+                lead=lead_obj, client=client_obj, journal=journal,
+                **_composition)
         except AutoDevisError as refus:
             # ACAL32 — un refus de composition (site isolé non servable…) est
             # un 422 NOMMÉ, jamais un 500 ; rien n'a été écrit.
@@ -241,17 +222,10 @@ class DevisCalepinageActionsMixin:
             'proposal_path': chemin_proposition(devis, link.token),
             # ACAL88 / ACAL4 — la branche ToitureDesign.jsx qui les lit
             # devient vivante.
-            'avertissements': list(
-                (rapport or journal).get('avertissements') or ()),
+            'avertissements': list(journal.get('avertissements') or ()),
             'marques_manquantes': list(
-                (rapport or journal).get('marques_manquantes') or ()),
+                journal.get('marques_manquantes') or ()),
         }
-        # CAL185 — clés AJOUTÉES seulement sur l'entrée calepinage : la
-        # réponse de l'entrée historique ne bouge pas d'un octet.
-        if rapport is not None:
-            corps['calepinage'] = rapport['calepinage']
-            corps['variante'] = rapport['variante']
-            corps['a_renseigner'] = rapport['a_renseigner']
         return Response(corps, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='design-context',
