@@ -40,6 +40,8 @@ class VolumeResultatTest(BaseApiCalepinage):
         requete = APIRequestFactory().get(URL)
         force_authenticate(requete, user=self.user)
         vue = CalepinageViewSet()
+        # ``initialize_request`` d'un ViewSet relit l'action dans sa table.
+        vue.action_map = {'get': 'list'}
         vue.action = 'list'
         vue.request = vue.initialize_request(requete)
         vue.request.user = self.user

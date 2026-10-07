@@ -21,6 +21,7 @@ from apps.calepinage.models import (
 )
 from apps.calepinage.receivers import LIBELLE_VERSION_ENVOYEE
 from apps.calepinage.services.creation import adopter_ou_creer_pour_devis
+from apps.calepinage.services.variantes import bascule_autorisee
 from apps.ventes.domain.revision import reviser_devis
 from apps.ventes.models import Devis
 from core.events import layout_finalise
@@ -52,9 +53,12 @@ class ReviserRelieTest(BaseApiCalepinage):
             devis=self.v1, titre='QA-ACAL révision',
             roof_layout=copy.deepcopy(DOCUMENT), layout_hash='d' * 64,
             pertes=copy.deepcopy(PERTES), resultat=copy.deepcopy(RESULTAT))
-        self.variante = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.c, nom='Retenue',
-            roof_layout=copy.deepcopy(DOCUMENT), retenue=True)
+        # ``retenue`` ne s'écrit pas directement : la bascule documentée
+        # du service de variantes (même fixture que CAL245).
+        with bascule_autorisee():
+            self.variante = CalepinageVariante.objects.create(
+                company=self.company, calepinage=self.c, nom='Retenue',
+                roof_layout=copy.deepcopy(DOCUMENT), retenue=True)
 
     def _reviser(self):
         with self.captureOnCommitCallbacks(execute=True):
