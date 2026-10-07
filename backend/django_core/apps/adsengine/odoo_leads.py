@@ -321,7 +321,7 @@ def _resolve_attributions(company, since=None, client=None):
 
     odoo_error = None
     try:
-        leads = odoo_all_leads(client=client)
+        leads = odoo_all_leads(client=client, company=company)  # ASEC40
     except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
         leads = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]
@@ -376,7 +376,7 @@ def _resolve_attributions(company, since=None, client=None):
         results.append({
             'lead': lead, 'tier': tier, 'ad_id': ad_id,
             'campaign_id': campaign_id, 'camp_ads': camp_ads})
-    return odoo_is_configured(), odoo_error, results
+    return odoo_is_configured(company), odoo_error, results
 
 
 # Mappe le palier résolu vers le compteur du bilan et le seau par annonce.

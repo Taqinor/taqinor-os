@@ -455,9 +455,16 @@ def whatsapp_inbound_webhook(request):
     tenté. Aucun crash au démarrage : la clé est lue à l'appel, jamais à
     l'import.
 
-    Tenant résolu CÔTÉ SERVEUR (``SAV_WHATSAPP_COMPANY_ID``, sinon la
-    première société) — RIEN ne vient du corps, exactement comme le récepteur
-    de leads du site (``crm.webhooks``).
+    ASEC36 — FERMÉ : la signature Meta ``X-Hub-Signature-256`` (HMAC-SHA256
+    du corps brut avec ``SAV_WHATSAPP_APP_SECRET``) est EXIGÉE. Secret absent
+    → 503 explicite et journalisé (fail-closed) ; signature absente ou
+    fausse → 401, rien n'est lu ni écrit. Le tenant est résolu CÔTÉ SERVEUR
+    par le NUMÉRO DESTINATAIRE (``value.metadata.phone_number_id``) déclaré
+    dans ``SAV_WHATSAPP_NUMEROS`` — jamais « la première société », jamais le
+    corps ; un numéro non rattaché reçoit la réponse neutre, sans écriture.
+    Toute requête signée acceptée reçoit la MÊME réponse (200 « Reçu. »),
+    que l'expéditeur soit un client connu ou non : aucun oracle « numéro
+    client ».
 
     Le message est rattaché au ticket WhatsApp OUVERT du client (matché par
     NUMÉRO via ``crm.selectors.find_client_by_phone``), sinon un ticket est
@@ -468,16 +475,38 @@ def whatsapp_inbound_webhook(request):
     Ce canal ne remplace PAS le WhatsApp manuel (liens wa.me) utilisé pour
     les devis/factures : il est réservé au SAV.
     """
-    import os
+    import logging
 
-    from django.conf import settings
+    from apps.crm.webhooks import _check_meta_lead_ads_signature
 
     from .services import (
-        extraire_message_whatsapp, traiter_message_whatsapp, whatsapp_api_key,
+        extraire_destinataire_whatsapp, extraire_message_whatsapp,
+        societe_pour_numero_whatsapp, traiter_message_whatsapp,
+        whatsapp_api_key, whatsapp_app_secret,
     )
+
+    logger = logging.getLogger(__name__)
 
     if not whatsapp_api_key():
         return _not_found()
+
+    secret = whatsapp_app_secret()
+    if not secret:
+        logger.error(
+            'sav.whatsapp_inbound_webhook : SAV_WHATSAPP_APP_SECRET non '
+            'configuré — requête REFUSÉE (fail-closed, ASEC36).')
+        return _noindex(Response(
+            {'detail': 'Canal WhatsApp SAV non configuré '
+                       '(SAV_WHATSAPP_APP_SECRET absent).'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE))
+    # Corps brut lu AVANT ``request.data`` : la signature porte sur lui.
+    if not _check_meta_lead_ads_signature(request, secret):
+        logger.warning(
+            'sav.whatsapp_inbound_webhook : signature absente ou invalide.')
+        return _noindex(Response({'detail': 'Signature invalide.'},
+                                 status=status.HTTP_401_UNAUTHORIZED))
+
+    recu = _noindex(Response({'detail': 'Reçu.'}, status=status.HTTP_200_OK))
 
     message_id, telephone, texte = extraire_message_whatsapp(request.data)
     if not telephone:
@@ -485,34 +514,21 @@ def whatsapp_inbound_webhook(request):
             {'detail': 'Aucun message exploitable dans la charge utile.'},
             status=status.HTTP_400_BAD_REQUEST))
 
-    from authentication.models import Company
-
-    company_id = (getattr(settings, 'SAV_WHATSAPP_COMPANY_ID', None)
-                  or os.environ.get('SAV_WHATSAPP_COMPANY_ID') or '')
-    company = None
-    try:
-        company = Company.objects.filter(pk=int(str(company_id).strip())).first()
-    except (TypeError, ValueError):
-        company = None
+    company = societe_pour_numero_whatsapp(
+        extraire_destinataire_whatsapp(request.data))
     if company is None:
-        company = Company.objects.order_by('id').first()
-    if company is None:
-        return _not_found()
+        logger.warning(
+            'sav.whatsapp_inbound_webhook : numéro destinataire non rattaché '
+            'à une société (SAV_WHATSAPP_NUMEROS) — message ignoré.')
+        return recu
 
     if message_id:
         from core.idempotency import dedupe_event
         if not dedupe_event(company=company, source='sav_whatsapp_inbound',
                             event_id=message_id):
-            return _noindex(Response({'detail': 'Déjà traité.'},
-                                     status=status.HTTP_200_OK))
+            return recu
 
-    ticket, cree = traiter_message_whatsapp(
+    # Numéro expéditeur inconnu : aucun ticket orphelin, même réponse.
+    traiter_message_whatsapp(
         company, message_id=message_id, telephone=telephone, texte=texte)
-    if ticket is None:
-        # Numéro inconnu : accusé de réception (Meta ne doit pas rejouer),
-        # aucun ticket orphelin créé.
-        return _noindex(Response({'detail': 'Message ignoré.'},
-                                 status=status.HTTP_200_OK))
-    return _noindex(Response(
-        {'reference': ticket.reference, 'cree': cree},
-        status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
+    return recu

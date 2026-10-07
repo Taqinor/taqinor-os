@@ -106,8 +106,19 @@ class TestAdminScreenAccess(RoleTierBase):
             username='r2', password='x', role=self.resp_role,
             company=self.company)
         api = self._client_for(u)
-        # Paramètres : lecture + écriture.
+        # Paramètres : lecture. ASEC31 (D-ASEC-4) — l'ÉCRITURE des réglages
+        # société exige en plus `parametres_modifier`, que le rôle système
+        # légacy « Responsable » ne porte pas : 403 tant qu'un Administrateur
+        # ne le lui coche pas.
         self.assertEqual(api.get('/api/django/parametres/').status_code, 200)
+        self.assertEqual(
+            api.patch('/api/django/parametres/update/', {'nom': 'X'},
+                      format='json').status_code, 403)
+        self.resp_role.permissions = list(self.resp_role.permissions) + [
+            'parametres_modifier']
+        self.resp_role.save()
+        u.refresh_from_db()
+        api = self._client_for(u)
         self.assertEqual(
             api.patch('/api/django/parametres/update/', {'nom': 'X'},
                       format='json').status_code, 200)

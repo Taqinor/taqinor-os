@@ -239,7 +239,8 @@ def odoo_signatures_by_ad(company, since=None, client=None):
     Ne lève JAMAIS (dégradation propre comme ``odoo_cost_per_signature``)."""
     odoo_error = None
     try:
-        deals = odoo_signed_deals(since=since, client=client)
+        deals = odoo_signed_deals(
+            since=since, client=client, company=company)  # ASEC40
     except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
         deals = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]
@@ -284,7 +285,7 @@ def odoo_signatures_by_ad(company, since=None, client=None):
             'cost_per_signature': (str(cost) if cost is not None else None),
         })
     result = {
-        'configured': odoo_is_configured(),
+        'configured': odoo_is_configured(company),
         'ads': ads,
         'attributed': attributed,
         'unattributed': unattributed,
@@ -323,7 +324,8 @@ def odoo_cost_per_signature(company, since=None, client=None):
     # l'exception remonter en 500. La dépense Meta (locale) reste toujours servie.
     odoo_error = None
     try:
-        deals = odoo_signed_deals(since=since, client=client)
+        deals = odoo_signed_deals(
+            since=since, client=client, company=company)  # ASEC40
     except Exception as exc:  # noqa: BLE001 — dégradation propre voulue (jamais un 500)
         deals = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]
@@ -332,7 +334,7 @@ def odoo_cost_per_signature(company, since=None, client=None):
     cost = (spend / signatures) if signatures else None
     per_campaign = _attribute_per_campaign(company, deals, since)
     result = {
-        'configured': odoo_is_configured(),
+        'configured': odoo_is_configured(company),
         'total_spend': str(spend),
         'signatures': signatures,
         'cost_per_signature': (str(cost) if cost is not None else None),

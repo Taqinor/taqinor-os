@@ -102,7 +102,10 @@ def active_delegation_for(delegant, *, at=None):
     """Délégation ACTIVE (plage courante) où ``delegant`` est le délégant,
     ou ``None`` — hors plage, retour automatique au délégant (rien à faire)."""
     at = at or timezone.now()
+    # ASEC30 — bornée à la société du délégant : une délégation d'une autre
+    # société ne s'applique jamais.
     return ApprovalDelegation.objects.filter(
+        company_id=getattr(delegant, 'company_id', None),
         delegant=delegant, date_debut__lte=at, date_fin__gte=at,
     ).first()
 
@@ -115,6 +118,7 @@ def visible_demandeur_ids_for(user, *, at=None):
     ids = {user.pk}
     ids.update(
         ApprovalDelegation.objects.filter(
+            company_id=getattr(user, 'company_id', None),
             suppleant=user, date_debut__lte=at, date_fin__gte=at,
         ).values_list('delegant_id', flat=True)
     )

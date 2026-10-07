@@ -7,28 +7,66 @@ suivi. Tout est borné à la société de l'utilisateur. La replanification
 (« glisser pour reprogrammer ») n'agit que sur les dates réellement éditables
 — jamais sur une visite de maintenance, qui est calculée.
 """
+import hashlib
 from datetime import date, datetime, timedelta, timezone
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import signing
 from django.http import HttpResponse
 from rest_framework.decorators import (
-    api_view, authentication_classes, permission_classes,
+    api_view, authentication_classes, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.throttling import IdentIpPartageeMixin
 
 # Types éditables (une date stockée) → replanifiables par glisser-déposer.
 EDITABLE_TYPES = {'pose', 'mise_en_service', 'intervention', 'activite'}
 
-# FG6 — jeton ICS stable par utilisateur. On signe l'id utilisateur avec la
-# SECRET_KEY (django.core.signing) sous un sel dédié : pas d'expiration (l'URL
-# d'abonnement reste valable pour Google/Outlook), non devinable, et révocable
-# globalement par rotation de la SECRET_KEY. Aucun nouveau modèle, aucune
-# migration, aucune dépendance.
+# FG6 — jeton ICS par utilisateur. On signe l'id utilisateur avec la
+# SECRET_KEY (django.core.signing, horodaté) sous un sel dédié : non
+# devinable. ASEC45 — révocable et expirant : la VERSION de jeton de
+# l'utilisateur (``JetonCalendrier``, incrémentée par « régénérer le lien »)
+# est signée avec l'id, et un jeton plus vieux que ``ICS_TOKEN_MAX_AGE_DAYS``
+# (180 jours par défaut, révisable) est refusé. Un jeton émis avant ASEC45
+# (charge = id seul) vaut version 0 : il reste valide jusqu'à son expiration.
 _ICS_SALT = 'reporting.calendar.ics.v1'
+_ICS_MAX_AGE_DAYS_DEFAUT = 180
+
+
+def _ics_max_age_seconds():
+    jours = getattr(settings, 'ICS_TOKEN_MAX_AGE_DAYS',
+                    _ICS_MAX_AGE_DAYS_DEFAUT)
+    try:
+        jours = int(jours)
+    except (TypeError, ValueError):
+        jours = _ICS_MAX_AGE_DAYS_DEFAUT
+    return max(jours, 1) * 86400
+
+
+class CalendrierIcsThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
+    """ASEC45 — débit des deux vues de flux iCal : par IP (primitive
+    partagée) et par jeton / utilisateur, pour qu'un agenda qui se
+    synchronise ne consomme pas le budget d'un autre."""
+    scope = 'reporting_calendar_ics'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        jeton = request.query_params.get('token') or ''
+        user = getattr(request, 'user', None)
+        if not jeton and getattr(user, 'is_authenticated', False):
+            jeton = f'user-{user.pk}'
+        empreinte = hashlib.sha256(jeton.encode('utf-8')).hexdigest()[:16]
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{self.get_ident(request)}:{empreinte}'}
 
 
 def _co_filter(user):
@@ -244,18 +282,48 @@ def calendar_reschedule(request):
 
 # ── FG6 — flux ICS / iCal par utilisateur ────────────────────────────────────
 
+def _version_jeton(user):
+    from .models import JetonCalendrier
+    return (JetonCalendrier.objects.filter(user=user)
+            .values_list('version', flat=True).first() or 0)
+
+
+def regenerer_ics_token(user):
+    """ASEC45 — « régénérer le lien » : incrémente la version de jeton de
+    l'utilisateur (tous ses liens antérieurs deviennent invalides) et renvoie
+    le nouveau jeton."""
+    from django.db.models import F
+
+    from .models import JetonCalendrier
+
+    jeton, _ = JetonCalendrier.objects.get_or_create(
+        user=user, defaults={'company_id': user.company_id})
+    JetonCalendrier.objects.filter(pk=jeton.pk).update(
+        version=F('version') + 1)
+    return make_ics_token(user)
+
+
 def make_ics_token(user):
-    """Jeton signé stable pour l'utilisateur (sans expiration)."""
-    return signing.dumps(user.pk, salt=_ICS_SALT)
+    """Jeton signé (horodaté) portant l'id ET la version de jeton courante
+    de l'utilisateur."""
+    return signing.dumps([user.pk, _version_jeton(user)], salt=_ICS_SALT)
 
 
 def resolve_ics_token(token):
-    """Retourne l'utilisateur du jeton signé, ou None si invalide."""
+    """Retourne l'utilisateur du jeton signé, ou None si invalide, expiré
+    (``max_age``) ou révoqué (version périmée)."""
     if not token:
         return None
     try:
-        user_id = signing.loads(token, salt=_ICS_SALT)
-    except signing.BadSignature:
+        charge = signing.loads(token, salt=_ICS_SALT,
+                               max_age=_ics_max_age_seconds())
+    except signing.BadSignature:  # SignatureExpired en hérite
+        return None
+    if isinstance(charge, list) and len(charge) == 2:
+        user_id, version = charge
+    else:  # jeton émis avant ASEC45 : id seul = version 0
+        user_id, version = charge, 0
+    if not isinstance(user_id, int) or not isinstance(version, int):
         return None
     User = get_user_model()
     try:
@@ -263,6 +331,8 @@ def resolve_ics_token(token):
     except User.DoesNotExist:
         return None
     if not user.is_active:
+        return None
+    if version != _version_jeton(user):
         return None
     return user
 
@@ -413,6 +483,7 @@ def build_ics(user, events, *, calname=None):
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
+@throttle_classes([CalendrierIcsThrottle])
 def calendar_ics(request):
     """Flux iCal du calendrier de l'utilisateur — ``?token=<jeton signé>``.
 
@@ -422,7 +493,10 @@ def calendar_ics(request):
     """
     user = resolve_ics_token(request.query_params.get('token'))
     if user is None:
-        return HttpResponse('Jeton invalide.', status=401,
+        # ASEC45 — réponse NEUTRE unique (absent, faux, expiré, révoqué ou
+        # compte désactivé) : rien ne distingue un lien révoqué d'un lien
+        # qui n'a jamais existé.
+        return HttpResponse('Lien introuvable.', status=404,
                             content_type='text/plain; charset=utf-8')
     events = _user_calendar_events(user)
     body = build_ics(user, events)
@@ -431,14 +505,20 @@ def calendar_ics(request):
     return resp
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAnyRole])
+@throttle_classes([CalendrierIcsThrottle])
 def calendar_ics_subscription(request):
     """URL d'abonnement ICS de l'utilisateur courant (authentifié par session).
 
     Réponse : ``{token, url}`` — l'URL absolue ``…/calendar.ics?token=…`` à
     coller dans Google Agenda / Outlook (« S'abonner au calendrier »).
+    ASEC45 — ``POST`` = « régénérer le lien » : tous les liens émis
+    auparavant cessent de fonctionner, le nouveau est renvoyé.
     """
-    token = make_ics_token(request.user)
+    if request.method == 'POST':
+        token = regenerer_ics_token(request.user)
+    else:
+        token = make_ics_token(request.user)
     path = '/api/django/reporting/calendar.ics?token=' + token
     return Response({'token': token, 'url': request.build_absolute_uri(path)})

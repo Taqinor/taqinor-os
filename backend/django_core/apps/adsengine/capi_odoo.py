@@ -266,7 +266,8 @@ def emit_signed_deals(company, *, since=None, client=None, now=None,
         result['reason'] = 'not_configured'
         return result
     try:
-        deals = odoo_signed_deals(since=since, client=client)
+        # ASEC40 — lecture Odoo bornée à la société propriétaire.
+        deals = odoo_signed_deals(since=since, client=client, company=company)
     except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
         logger.warning('ADSDEEP27: lecture Odoo échouée : %s', exc)
         result['reason'] = 'odoo_error'

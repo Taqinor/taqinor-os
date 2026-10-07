@@ -86,10 +86,13 @@ class QuotaEmpreinteTests(TestCase):
                 format='multipart')
         self.assertEqual(resp.status_code, 403, resp.content)
         self.assertEqual(Document.objects.count(), avant)
-        # POST /versions/ (file_key déjà stocké) : même garde.
-        resp = auth(self.resp).post(f'{BASE}versions/', {
-            'document': self.existant.pk, 'file_key': 'attachments/k.pdf',
-            'size': 1}, format='json')
+        # POST /versions/ (fichier téléversé, ASEC37) : même garde.
+        fichier = SimpleUploadedFile('k.pdf', PDF,
+                                     content_type='application/pdf')
+        resp = auth(self.resp).post(
+            f'{BASE}versions/',
+            {'document': self.existant.pk, 'file': fichier},
+            format='multipart')
         self.assertEqual(resp.status_code, 403, resp.content)
         self.assertEqual(self.existant.versions.count(), 1)
 
