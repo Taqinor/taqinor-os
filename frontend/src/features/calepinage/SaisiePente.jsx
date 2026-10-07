@@ -121,6 +121,86 @@ function Champ({ cle, label, valeur, onChange }) {
   )
 }
 
+/* ACAL252 — la pente est celle d'UN PAN (`zones[i].pitchDeg` + `pitchSource`), jamais une
+   clé racine du document. `pitchSource` dit d'où elle vient (schéma `pitchSource`) : le mode
+   et SES champs ; `provenance: 'visite'` s'y ajoute quand la valeur vient de la visite. */
+export function zonesDuDocument(document) {
+  return (Array.isArray(document?.zones) ? document.zones : [])
+    .filter((z) => z && z.id !== undefined && z.id !== null)
+}
+
+/** Le pan proposé par défaut : le pan ACTIF de l'atelier, sinon le premier. */
+export function panParDefaut(document) {
+  const zones = zonesDuDocument(document)
+  const actif = zones.find((z) => String(z.id) === String(document?.activeAreaId))
+  return String((actif ?? zones[0])?.id ?? '')
+}
+
+const texte = (v) => (v === null || v === undefined ? '' : String(v))
+
+/** La saisie (mode + champs) qui reproduit ce que le pan a enregistré. */
+export function saisieDuPan(zone) {
+  const vide = { degres: '', pourcentage: '', porteeM: '', hauteurFaitageM: '' }
+  const source = zone?.pitchSource
+  const deg = zone?.pitchDeg
+  if (source && typeof source === 'object') {
+    const mode = source.mode === 'pourcentage' || source.mode === 'cotes' ? source.mode : 'degres'
+    return {
+      mode,
+      saisie: {
+        degres: texte(source.degres ?? (mode === 'degres' ? deg : null)),
+        pourcentage: texte(source.pourcentage),
+        porteeM: texte(source.porteeM),
+        hauteurFaitageM: texte(source.hauteurFaitageM),
+      },
+    }
+  }
+  if (typeof deg === 'number' && Number.isFinite(deg)) {
+    return { mode: 'degres', saisie: { ...vide, degres: String(deg) } }
+  }
+  return { mode: 'degres', saisie: vide }
+}
+
+/** `pitchSource` à écrire : le mode retenu et ses SEULS champs (valeurs exactes). */
+export function sourceDePente(retenue, saisie, deVisite = false) {
+  const n = (v) => nombre(v)
+  let source
+  if (retenue.source === 'pourcentage') {
+    source = { mode: 'pourcentage', pourcentage: n(saisie.pourcentage) }
+  } else if (retenue.source === 'cotes') {
+    source = {
+      mode: 'cotes', porteeM: n(saisie.porteeM), hauteurFaitageM: n(saisie.hauteurFaitageM),
+    }
+  } else {
+    source = { mode: 'degres', degres: retenue.degres }
+  }
+  return deVisite && source.mode === 'degres' ? { ...source, provenance: 'visite' } : source
+}
+
+/* ACAL208 — l'orientation d'une visite est un CHOIX de la rose des vents ; son azimut
+   boussole est le centre du secteur, sa précision la demi-largeur du secteur (22,5°).
+   Proposition affichée, jamais appliquée d'office (D7). */
+const ROSE = {
+  nord: ['nord', 0], nord_est: ['nord-est', 45], est: ['est', 90], sud_est: ['sud-est', 135],
+  sud: ['sud', 180], sud_ouest: ['sud-ouest', 225], ouest: ['ouest', 270],
+  nord_ouest: ['nord-ouest', 315],
+}
+const PRECISION_SECTEUR_DEG = 22.5
+
+/** Les mesures de la visite reprise utiles à l'onglet : pente et orientation (ou `null`). */
+export function mesuresDeVisite(etat) {
+  const mesures = Array.isArray(etat?.mesures) ? etat.mesures : []
+  const trouver = (code) => mesures.find((m) => m?.code === code)?.valeur
+  const pente = nombre(trouver('pente_deg'))
+  const choix = ROSE[trouver('orientation')]
+  return {
+    penteDeg: pente,
+    orientation: choix
+      ? { libelle: choix[0], azimutDeg: choix[1], precisionDeg: PRECISION_SECTEUR_DEG }
+      : null,
+  }
+}
+
 const MODES = [
   ['degres', 'En degrés'],
   ['pourcentage', 'En pourcentage'],
@@ -156,13 +236,18 @@ export default function SaisiePente({
     degres: '', pourcentage: '', porteeM: '', hauteurFaitageM: '',
   })
   // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
-  // un document vide. L'écriture de la PENTE du pan reste l'écriture complète
-  // (C-ACAL-022, hors de cette tâche) : on ne l'émet QUE depuis un document lu
-  // avec succès. La DÉCISION sur une suggestion IGN passe, elle, par le serveur
-  // (`suggestions-pente/`, ACAL65/ACAL66) — jamais par une écriture locale.
+  // un document vide. ACAL252 — la pente est celle du PAN choisi : elle s'écrit par la
+  // primitive d'écriture par section (`layout/section/`, C-ACAL-044), jamais par le
+  // remplacement du document. La DÉCISION sur une suggestion IGN passe, elle, par le
+  // serveur (`suggestions-pente/`, ACAL65/ACAL66).
   const doc = useDocumentCalepinage(calepinageId, { actif: persister })
   const layout = doc.document
   const [message, setMessage] = useState(null)
+  const [zoneChoisie, setZoneChoisie] = useState('')
+  // ACAL208 — la visite reprise (lecture seule) et ce que l'utilisateur en a retenu.
+  const [visite, setVisite] = useState(null)
+  const [deVisite, setDeVisite] = useState(false)
+  const [orientationRetenue, setOrientationRetenue] = useState(false)
 
   /* CALX29 — Suggestion de pente LiDAR IGN, FRANCE SEULEMENT.
      `disponible` vient d'une LECTURE LOCALE (`GET .../suggestion-pente/`,
@@ -172,17 +257,32 @@ export default function SaisiePente({
   const [chargementSuggestions, setChargementSuggestions] = useState(false)
   const [messageSuggestions, setMessageSuggestions] = useState(null)
 
-  // RELECTURE : la pente déjà enregistrée dans le document de conception (une
-  // fois par lecture serveur).
+  // RELECTURE : la pente DU PAN choisi, relue dans le document (une fois par lecture
+  // serveur et par pan).
+  const zones = zonesDuDocument(layout)
+  const zoneId = zones.some((z) => String(z.id) === zoneChoisie)
+    ? zoneChoisie : panParDefaut(layout)
+  const zone = zones.find((z) => String(z.id) === zoneId) ?? null
   const [lectureHydratee, setLectureHydratee] = useState(null)
-  if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
-    setLectureHydratee(doc.generation)
-    const lu = doc.document
-    if (lu?.penteDeg !== null && lu?.penteDeg !== undefined) {
-      setMode(lu.penteSource ?? 'degres')
-      setSaisie((s) => ({ ...s, degres: String(lu.penteDeg) }))
-    }
+  const cleHydratation = `${doc.generation}|${zoneId}`
+  if (persister && doc.etat === 'ok' && lectureHydratee !== cleHydratation) {
+    setLectureHydratee(cleHydratation)
+    const relu = saisieDuPan(zone)
+    setMode(relu.mode)
+    setSaisie(relu.saisie)
+    setDeVisite(false)
+    setOrientationRetenue(false)
   }
+
+  // ACAL208 — les mesures de la visite validée, proposées (jamais appliquées d'office).
+  useEffect(() => {
+    if (!persister || !calepinageId) return undefined
+    let annule = false
+    Promise.resolve(calepinageApi.calepinages.releveVisite?.(calepinageId))
+      .then((res) => { if (!annule) setVisite(mesuresDeVisite(res?.data)) })
+      .catch(() => { if (!annule) setVisite(null) })
+    return () => { annule = true }
+  }, [calepinageId, persister])
 
   // CALX29 — la lecture locale qui décide si le bouton existe. Société hors
   // France ⇒ `disponible: false` ⇒ pas de bouton, pas d'appel de suggestion.
@@ -270,19 +370,36 @@ export default function SaisiePente({
   const majChamp = (cle, brut) => {
     const suivante = { ...saisie, [cle]: brut }
     setSaisie(suivante)
+    setDeVisite(false)
     if (onChange) onChange(penteRetenue(mode, suivante))
   }
 
   const changerMode = (suivant) => {
     setMode(suivant)
+    setDeVisite(false)
     if (onChange) onChange(penteRetenue(suivant, saisie))
   }
 
   const retenue = penteRetenue(mode, saisie)
 
-  const enregistrer = () => {
+  // ACAL208 — « Utiliser » : la mesure de la visite REMPLIT la saisie du pan choisi ; rien
+  // n'est enregistré avant « Enregistrer la pente ».
+  const utiliserPenteVisite = () => {
+    if (visite?.penteDeg === null || visite?.penteDeg === undefined) return
+    setMode('degres')
+    const suivante = { ...saisie, degres: String(visite.penteDeg) }
+    setSaisie(suivante)
+    setDeVisite(true)
+    if (onChange) onChange(penteRetenue('degres', suivante))
+  }
+
+  const enregistrer = async () => {
     if (doc.etat !== 'ok') {
       setMessage('Conception illisible : rien n’est enregistré.')
+      return
+    }
+    if (!zone) {
+      setMessage('Aucun pan dans la conception : dessinez un pan avant d’enregistrer sa pente.')
       return
     }
     if (!retenue) {
@@ -290,31 +407,39 @@ export default function SaisiePente({
         + 'et surtout pas un 0° qui se lirait « toiture plate ».')
       return
     }
-    const document = {
-      ...(layout ?? {}),
+    const champs = {
       // La valeur EXACTE, jamais l'arrondi d'affichage.
-      penteDeg: retenue.degres,
-      penteSource: retenue.source,
+      pitchDeg: retenue.degres,
+      pitchSource: sourceDePente(retenue, saisie, deVisite),
     }
-    // ACAL316 — If-Match obligatoire : le jeton de l'atelier vivant s'il existe, sinon celui de la
-    // lecture. L'atelier n'est pas touché (il ne connaît pas la pente racine) : s'il enregistre
-    // ensuite avec son jeton d'avant, il reçoit un 409 plutôt que d'effacer cette pente.
+    if (orientationRetenue && visite?.orientation) {
+      champs.facingAzimuthDeg = visite.orientation.azimutDeg
+      champs.facingAzimuthSource = 'visite'
+      champs.facingAzimuthPrecisionDeg = visite.orientation.precisionDeg
+    }
+    // ACAL316 — le jeton de l'atelier vivant s'il existe, sinon celui de la lecture : un
+    // document changé ailleurs répond 409 plutôt que d'être écrasé.
     const base = documentVivant?.empreinte || doc.empreinte
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document, base))
-      .then((res) => {
-        const apres = res?.data?.empreinte_document ?? null
-        doc.appliquerSection('penteDeg', document.penteDeg, null)
-        doc.appliquerSection('penteSource', document.penteSource, apres)
-        setMessage('Pente enregistrée dans la conception.')
+    try {
+      const res = await calepinageApi.calepinages.enregistrerSectionLayout(calepinageId, {
+        cle: 'zones', zone_id: zone.id, champs, base_empreinte: base,
       })
-      .catch((e) => {
-        if (e?.response?.status === 409 || e?.response?.status === 428) {
-          setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
-          doc.recharger()
-        } else {
-          setMessage('La pente n’a pas pu être enregistrée.')
-        }
-      })
+      const apres = res?.data?.empreinte_document ?? null
+      const rendues = res?.data?.roof_layout?.zones
+      const mises = Array.isArray(rendues) ? rendues : zones.map((z) => (
+        String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
+      doc.appliquerSection('zones', mises, apres)
+      documentVivant?.appliquerSection?.('zones', mises, apres)
+      setOrientationRetenue(false)
+      setMessage(`Pente enregistrée sur le pan « ${zone.label || zone.id} ».`)
+    } catch (e) {
+      if (e?.response?.status === 409 || e?.response?.status === 428) {
+        setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
+        doc.recharger()
+      } else {
+        setMessage('La pente n’a pas pu être enregistrée.')
+      }
+    }
   }
 
   return (
@@ -322,6 +447,47 @@ export default function SaisiePente({
       <RetourAtelier calepinageId={calepinageId} />
       <div className="cine-card mt-6 p-6" data-testid="cal-pente">
       <p className="tech-label rule-brass text-brass-300">Pente de la toiture</p>
+
+      {persister && zones.length > 0 && (
+        <label className="mt-3 block text-sm text-lune-soft">
+          Pan
+          <select value={zoneId} data-testid="cal-pente-pan"
+            onChange={(e) => setZoneChoisie(e.target.value)}
+            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            {zones.map((z) => (
+              <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {/* ACAL208 — les mesures de la VISITE, proposées : « Utiliser » remplit la saisie du
+          pan choisi, jamais d'application d'office (D7). */}
+      {persister && visite?.penteDeg !== null && visite?.penteDeg !== undefined && (
+        <div className="mt-3 flex flex-wrap items-center gap-3" data-testid="cal-pente-visite">
+          <span className="text-sm text-lune-soft" data-testid="cal-pente-visite-mesure">
+            {`Mesure de la visite : ${visite.penteDeg}°`}
+          </span>
+          <button type="button" onClick={utiliserPenteVisite}
+            data-testid="cal-pente-visite-utiliser"
+            className="rounded border border-brass-400/60 px-3 py-1 text-xs text-brass-200">
+            Utiliser
+          </button>
+        </div>
+      )}
+      {persister && visite?.orientation && (
+        <div className="mt-2 flex flex-wrap items-center gap-3" data-testid="cal-pente-visite-orientation">
+          <span className="text-sm text-lune-soft" data-testid="cal-pente-visite-orientation-mesure">
+            {`Orientation de la visite : ${visite.orientation.libelle}, ${visite.orientation.azimutDeg}° boussole, précision ${String(visite.orientation.precisionDeg).replace('.', ',')}°`}
+          </span>
+          <button type="button" onClick={() => setOrientationRetenue(true)}
+            disabled={orientationRetenue}
+            data-testid="cal-pente-visite-orientation-utiliser"
+            className="rounded border border-brass-400/60 px-3 py-1 text-xs text-brass-200 disabled:opacity-50">
+            {orientationRetenue ? 'Orientation retenue (à enregistrer)' : 'Utiliser l’orientation'}
+          </button>
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-2" role="radiogroup"
         aria-label="Mode de saisie de la pente">

@@ -18,7 +18,7 @@
    6. un refus 400 s'affiche SOUS le bouton et le bandeau NOMME le champ. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
@@ -151,5 +151,29 @@ describe('RepriseVisite (CALX365) — reprendre', () => {
     const bandeau = screen.getByTestId('cal-reprise-refus-bandeau')
     expect(bandeau).toHaveTextContent('visite_id')
     expect(bandeau.textContent).not.toMatch(/non enregistré/i)
+  })
+})
+
+/* ACAL208 — RepriseVisite expose le retour vers l'atelier depuis son lien profond. */
+describe('RepriseVisite (ACAL208) — le retour vers l’atelier', () => {
+  it('expose RetourAtelier sur la route profonde /calepinage/:id/reprise-visite', async () => {
+    servir('exemple_avant_reprise')
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1/reprise-visite']}>
+        <Routes>
+          <Route path="/calepinage/:id/:panneau" element={<RepriseVisite />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('cal-reprise-mesures')
+    expect(screen.getByTestId('cal-retour-atelier-lien'))
+      .toHaveAttribute('href', '/calepinage/1?onglet=reprise-visite')
+  })
+
+  it('dans l’atelier (hors lien profond) il ne rend rien', async () => {
+    servir('exemple_avant_reprise')
+    rendre()
+    await screen.findByTestId('cal-reprise-mesures')
+    expect(screen.queryByTestId('cal-retour-atelier')).toBeNull()
   })
 })

@@ -362,6 +362,13 @@ retiré plus un hook ajouté.
 | `cal-pente-lidar-suggestion` | pente LiDAR suggestion. |
 | `cal-pente-message` | pente message. |
 | `cal-pente-mode` | pente mode. |
+| `cal-pente-visite-orientation-utiliser` | pente : utiliser l’orientation de la visite (ACAL208). |
+| `cal-pente-visite-orientation-mesure` | pente : orientation de la visite (ACAL208). |
+| `cal-pente-visite-orientation` | pente : proposition de l’orientation de la visite (ACAL208). |
+| `cal-pente-visite-utiliser` | pente : utiliser la mesure de la visite (ACAL208). |
+| `cal-pente-visite-mesure` | pente : mesure de la visite (ACAL208). |
+| `cal-pente-visite` | pente : proposition de la pente de la visite (ACAL208). |
+| `cal-pente-pan` | pente : choix du pan (ACAL252). |
 | `cal-pente-source` | pente provenance. |
 | `cal-pente-valeur` | pente valeur. |
 
@@ -462,6 +469,11 @@ retiré plus un hook ajouté.
 | `cal-releve-cote-mesure` | relevé cote : choix de la cote mesurée (ACAL207). |
 | `cal-releve-cote-appliquer` | relevé cote : appliquer au pan (ACAL207). |
 | `cal-releve-cote-retour` | relevé cote : retour du serveur / refus nommé (ACAL207). |
+| `cal-releve-azimut-retour` | relevé azimut : retour du serveur / refus nommé (ACAL206). |
+| `cal-releve-azimut-appliquer` | relevé azimut : appliquer au pan (ACAL206). |
+| `cal-releve-azimut-pan` | relevé azimut : choix du pan (ACAL206). |
+| `cal-releve-azimut-mesure` | relevé azimut : valeur et précision relevées (ACAL206). |
+| `cal-releve-appliquer-azimut` | relevé ouvrir « Appliquer l’azimut au pan » (ACAL206). |
 | `cal-releve-chaine--ajouter-cote` | relevé chaîne ajouter côte à côte. |
 | `cal-releve-chaine--cote` | relevé chaîne côte à côte. |
 | `cal-releve-chaine--cote--retirer` | relevé chaîne côte à côte retirer. |

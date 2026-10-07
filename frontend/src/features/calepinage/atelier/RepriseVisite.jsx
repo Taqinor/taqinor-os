@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { formatDateTime } from '../../../lib/format'
+import RetourAtelier from './RetourAtelier'
 
 /* ============================================================================
    CALX365 — LA REPRISE DE LA VISITE TECHNIQUE, EN ONGLET DE L'ATELIER.
@@ -115,6 +116,9 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
   const aVisite = Boolean(etat) && etat.visite_id !== null && etat.visite_id !== undefined
 
   return (
+    <>
+    {/* ACAL208 — le fil d'Ariane de retour : ne rend rien dans l'atelier, le lien profond oui. */}
+    <RetourAtelier calepinageId={calepinageId} />
     <div className="cine-card mt-6 p-6" data-testid="cal-reprise-visite">
       <p className="tech-label rule-brass text-brass-300">Reprise de la visite technique</p>
 
@@ -221,5 +225,6 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
         </p>
       ))}
     </div>
+    </>
   )
 }
