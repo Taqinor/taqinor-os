@@ -14,11 +14,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_mouvement_stock_service as guard  # noqa: E402
 
 
-def _findings(src):
+def _findings(src, serializer_names=()):
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / 'module.py'
         path.write_text(src, encoding='utf-8')
-        return guard.check_file(path)
+        # serializer_names fige : jamais de balayage du depot dans ces tests.
+        return guard.check_file(path, serializer_names=serializer_names)
 
 
 CREATE_DIRECT = '''
@@ -59,6 +60,70 @@ def sortir(produit):
 '''
 
 
+SERIALIZER_SAVE = '''
+class MouvementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MouvementStock
+        fields = '__all__'
+
+
+def creer(data):
+    ser = MouvementSerializer(data=data)
+    ser.is_valid(raise_exception=True)
+    ser.save()
+'''
+
+VUE_SERIALIZER_SAVE = '''
+class MouvementViewSet(viewsets.ModelViewSet):
+    serializer_class = MouvementSerializer
+
+    def create(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+'''
+
+SERIALIZER_SANS_SAVE = '''
+class MouvementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MouvementStock
+        fields = '__all__'
+
+
+def lire(data):
+    ser = MouvementSerializer(data=data)
+    return ser.is_valid()
+
+
+def autre(data):
+    ser = ProduitSerializer(data=data)
+    ser.save()
+'''
+
+ECRITURE_STOCK = '''
+def corriger(produit):
+    produit.quantite_stock = 5
+    produit.save(update_fields=['quantite_stock'])
+'''
+
+ECRITURE_STOCK_UPDATE = '''
+def corriger(qs):
+    qs.update(quantite_stock=0)
+    produit.quantite_stock += 1
+'''
+
+ECRITURE_DANS_SERVICE = '''
+def record_stock_movement(produit, quantite_apres):
+    produit.quantite_stock = quantite_apres
+    produit.save(update_fields=['quantite_stock'])
+'''
+
+LECTURE_STOCK = '''
+def lire(produit):
+    return produit.quantite_stock + 1
+'''
+
+
 class DetectionTests(unittest.TestCase):
     def test_create_direct_est_signale(self):
         self.assertEqual(len(_findings(CREATE_DIRECT)), 1)
@@ -77,6 +142,23 @@ class DetectionTests(unittest.TestCase):
 
     def test_acces_qualifie_est_signale(self):
         self.assertEqual(len(_findings(IMPORT_QUALIFIE)), 1)
+
+    def test_serializer_save_detecte(self):
+        self.assertEqual(len(_findings(SERIALIZER_SAVE)), 1)
+        self.assertEqual(len(_findings(VUE_SERIALIZER_SAVE, ['MouvementSerializer'])), 1)
+
+    def test_serializer_sans_save_ou_autre_modele_accepte(self):
+        self.assertEqual(_findings(SERIALIZER_SANS_SAVE), [])
+
+    def test_ecriture_directe_quantite_stock(self):
+        # affectation + update_fields : 2 sites
+        self.assertEqual(len(_findings(ECRITURE_STOCK)), 2)
+        # .update(quantite_stock=) + augmented assignment : 2 sites
+        self.assertEqual(len(_findings(ECRITURE_STOCK_UPDATE)), 2)
+
+    def test_ecriture_dans_le_service_et_lecture_acceptees(self):
+        self.assertEqual(_findings(ECRITURE_DANS_SERVICE), [])
+        self.assertEqual(_findings(LECTURE_STOCK), [])
 
 
 class PerimetreTests(unittest.TestCase):
