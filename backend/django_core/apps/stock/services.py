@@ -246,11 +246,49 @@ def get_or_create_emplacement_soustraitant(company, sous_traitant_nom):
     return emplacement
 
 
+LIBELLE_EN_TRANSIT = 'En transit'
+
+
+def quantite_en_transit(company, produit=None):
+    """ASTK206 (C-ASTK-052, MVT-18) — quantité partie d'un emplacement
+    (transfert EXPÉDIÉ) et pas encore reçue. Helper UNIQUE des trois
+    dérivations du dépôt principal (``stock_breakdown``,
+    ``stock_breakdown_map``, ``transfer_stock``) : la marchandise en transit
+    n'est plus comptée au principal. ``produit`` → un entier ; ``None`` →
+    ``{produit_id: quantite}``."""
+    from .models import TransfertStock
+
+    if company is None:
+        return 0 if produit is not None else {}
+    qs = TransfertStock.objects.filter(
+        company=company, statut=TransfertStock.Statut.EXPEDIE)
+    if produit is not None:
+        return sum(qs.filter(produit=produit)
+                   .values_list('quantite', flat=True))
+    carte = {}
+    for produit_id, quantite in qs.values_list('produit_id', 'quantite'):
+        carte[produit_id] = carte.get(produit_id, 0) + (quantite or 0)
+    return carte
+
+
+def _ligne_transit(quantite):
+    """ASTK206 — ligne additive « En transit » de la ventilation."""
+    return {
+        'emplacement_id': None,
+        'emplacement_nom': LIBELLE_EN_TRANSIT,
+        'is_principal': False,
+        'is_transit': True,
+        'quantite': quantite,
+    }
+
+
 def stock_breakdown(produit):
     """Ventilation du stock d'un produit par emplacement (non archivés).
 
     Renvoie [{emplacement_id, emplacement_nom, is_principal, quantite}] — le
-    principal détient total − somme(non principaux)."""
+    principal détient total − somme(non principaux) − en transit (ASTK206) ;
+    une ligne ``is_transit`` « En transit » s'ajoute quand un transfert
+    expédié n'est pas encore reçu."""
     from .models import EmplacementStock
     company = produit.company
     ensure_emplacements(company)
@@ -258,8 +296,9 @@ def stock_breakdown(produit):
         company=company, archived=False))
     records = {se.emplacement_id: se.quantite
                for se in produit.stocks_emplacement.all()}
+    transit = quantite_en_transit(company, produit)
     autres = sum(records.get(e.id, 0)
-                 for e in emplacements if not e.is_principal)
+                 for e in emplacements if not e.is_principal) + transit
     out = []
     for e in emplacements:
         # ERR94 — le principal détient le reste (total − non principaux), mais
@@ -273,6 +312,8 @@ def stock_breakdown(produit):
             'is_principal': e.is_principal,
             'quantite': qte,
         })
+    if transit > 0:
+        out.append(_ligne_transit(transit))
     return out
 
 
@@ -294,10 +335,14 @@ def stock_breakdown_map(company):
     for se in StockEmplacement.objects.filter(
             produit__company=company, emplacement__archived=False):
         records.setdefault(se.produit_id, {})[se.emplacement_id] = se.quantite
+    # ASTK206 — la marchandise en transit sort du principal dérivé.
+    transits = quantite_en_transit(company)
     out = {}
     for p in Produit.objects.filter(company=company).only('id', 'quantite_stock'):
         rec = records.get(p.id, {})
-        autres = sum(rec.get(e.id, 0) for e in emplacements if not e.is_principal)
+        transit = transits.get(p.id, 0)
+        autres = sum(rec.get(e.id, 0) for e in emplacements
+                     if not e.is_principal) + transit
         out[p.id] = [{
             'emplacement_id': e.id,
             'emplacement_nom': e.nom,
@@ -306,6 +351,8 @@ def stock_breakdown_map(company):
             'quantite': max(p.quantite_stock - autres, 0) if e.is_principal
             else rec.get(e.id, 0),
         } for e in emplacements]
+        if transit > 0:
+            out[p.id].append(_ligne_transit(transit))
     return out
 
 
@@ -359,9 +406,11 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
 
         records = {se.emplacement_id: se for se in
                    produit.stocks_emplacement.select_for_update()}
+        # ASTK206 — la marchandise en transit n'est plus au principal.
         non_principal_sum = sum(
             se.quantite for eid, se in records.items()
-            if eid in emps and not emps[eid].is_principal)
+            if eid in emps and not emps[eid].is_principal
+        ) + quantite_en_transit(company, produit)
 
         def current_qty(emp):
             if emp.is_principal:
