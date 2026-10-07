@@ -35,6 +35,14 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
             company=self.company, lead_id=self.lead.pk, titre='ACAL114')
         # ACAL303 — la conception est d'un AUTRE compte que le relecteur.
         enregistrer_layout(self.calepinage, _dessin(10), user=self.user_sans)
+        # ACAL303 — les gestes de CONCEPTION (modifier le dessin, retenir une
+        # variante) sont ceux d'un concepteur habilité, jamais du relecteur
+        # ``self.user`` : sinon sa propre réapprobation est refusée.
+        from django.contrib.auth import get_user_model
+        self.concepteur = get_user_model().objects.create_user(
+            username='cal_api_concepteur', password='x',
+            company=self.company, role=self.role)
+        self.api_concepteur = self._client(self.concepteur)
         self.base = url_detail(self.calepinage.pk)
 
     def _approuver(self):
@@ -51,8 +59,9 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
     def _modifier_le_dessin(self, largeur=12):
         cal = Calepinage.objects.get(pk=self.calepinage.pk)
         jeton = empreinte_document(cal.roof_layout) or ''
-        reponse = self.api.post(f'{self.base}layout/', _dessin(largeur),
-                                format='json', HTTP_IF_MATCH=f'"{jeton}"')
+        reponse = self.api_concepteur.post(
+            f'{self.base}layout/', _dessin(largeur),
+            format='json', HTTP_IF_MATCH=f'"{jeton}"')
         self.assertEqual(reponse.status_code, 200, reponse.data)
 
     def _variante(self, dessin, nom='V'):
@@ -61,7 +70,7 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
             roof_layout=copy.deepcopy(dessin))
 
     def _retenir(self, variante):
-        return self.api.post(
+        return self.api_concepteur.post(
             f'{self.base}variantes/{variante.pk}/retenir/', {},
             format='json')
 

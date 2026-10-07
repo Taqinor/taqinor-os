@@ -126,6 +126,50 @@ class PoseReelleZoneIdTest(BaseApiCalepinage):
         self.assertEqual(self.api_autre.delete(
             f'{url_detail(calepinage.pk)}pose-reelle/z1/').status_code, 404)
 
+    def test_orphelins_herites_a_point_ou_barre_retirables(self):
+        """Lot 3 critique #4 — les ``zone_id`` hérités de la migration 0028
+        (libellés « Toit N/E », « Pan 1.2 », ``pan:<libellé>``) se retirent :
+        l'identifiant voyage ENCODÉ (``encodeURIComponent`` côté écran) et la
+        route accepte points et barres."""
+        from urllib.parse import quote
+
+        calepinage = self._calepinage(_zone('z1', 'Pan A', 6))
+        for zone_id in ('Toit N/E', 'Pan 1.2', 'pan:Pan 1.2'):
+            PoseReelle.objects.create(
+                company=self.company, calepinage=calepinage, pan=zone_id,
+                zone_id=zone_id, modules_poses=3, releve_le=RELEVE)
+        for zone_id in ('Toit N/E', 'Pan 1.2', 'pan:Pan 1.2'):
+            with self.subTest(zone_id=zone_id):
+                url = (f'{url_detail(calepinage.pk)}pose-reelle/'
+                       f'{quote(zone_id, safe="")}/')
+                reponse = self.api.delete(url)
+                self.assertEqual(reponse.status_code, 204,
+                                 getattr(reponse, 'data', reponse))
+                self.assertFalse(PoseReelle.objects.filter(
+                    calepinage=calepinage, zone_id=zone_id).exists())
+
+    def test_retour_0028_dedoublonne_les_libelles(self):
+        """Lot 3 critique #3 — deux relevés de même libellé (deux pans
+        « Pan A ») : le retour arrière les rend uniques AVANT de rétablir
+        ``uniq_pose_reelle_par_pan`` (jamais d'IntegrityError)."""
+        calepinage = self._calepinage(_zone('z1', 'Pan A', 6),
+                                      _zone('z2', 'Pan A', 4))
+        autre = self._calepinage(_zone('z1', 'Pan A', 6))
+        for cal, zone_id in ((calepinage, 'z1'), (calepinage, 'z2'),
+                             (autre, 'z1')):
+            PoseReelle.objects.create(
+                company=self.company, calepinage=cal, pan='Pan A',
+                zone_id=zone_id, modules_poses=3, releve_le=RELEVE)
+
+        MIGRATION.dedoublonner_pan(registre, None)
+
+        self.assertEqual(sorted(PoseReelle.objects.filter(
+            calepinage=calepinage).values_list('pan', flat=True)),
+            ['Pan A', 'Pan A (2)'])
+        # Un autre calepinage garde son libellé (unicité PAR calepinage).
+        self.assertEqual(list(PoseReelle.objects.filter(
+            calepinage=autre).values_list('pan', flat=True)), ['Pan A'])
+
     def test_migration_rattache_par_libelle_sans_deviner(self):
         calepinage = self._calepinage(_zone('zA', 'Toit Sud', 12),
                                       _zone('zB', 'Garage', 4),

@@ -149,6 +149,27 @@ class CleDePanStableTest(SimpleTestCase):
                              for m in manques), manques)
 
 
+class MigrationIdempotenteTest(SimpleTestCase):
+    """Lot 3 critique #7 — un pan dont le libellé EST l'id (ancienne clé ==
+    nouvelle) : deux passes de la migration rendent la même entrée."""
+
+    def test_libelle_egal_id_deux_passes_identiques(self):
+        layout = {'zones': [{'id': 'a', 'label': 'a', 'geometry': {
+            'panels': [{'n': 10}, {'n': 11}, {'n': 12}]}}]}
+        entree = {'affectation_manuelle': [
+            {'module': 'a#2', 'chaine': 1}, {'module': 'a#11', 'chaine': 1}]}
+
+        premiere, non_app = MIGRATION.migrer_entree(entree, layout)
+        apres = premiere or entree
+        seconde, non_app_2 = MIGRATION.migrer_entree(apres, layout)
+
+        self.assertIsNone(seconde)
+        self.assertEqual(non_app, [])
+        self.assertEqual(non_app_2, [])
+        self.assertEqual([ligne['module'] for ligne in
+                          apres['affectation_manuelle']], ['a#2', 'a#11'])
+
+
 class MigrationClesDePanTest(BaseApiCalepinage):
 
     def test_migration_affectation(self):

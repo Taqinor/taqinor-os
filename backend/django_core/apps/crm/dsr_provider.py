@@ -163,7 +163,6 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     (adsengine, calepinage) s'y abonnent — le CRM n'en importe aucune.
     """
     phone_key = getattr(le, 'phone_normalise', '') or ''
-    _emettre_lead_erased(company, le.pk, phone_key)
     le.nom = LEAD_NOM_ANONYMISE
     le.prenom = None
     le.email = None
@@ -193,6 +192,11 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.
     _anonymiser_traces_visiteur(company, le)
+    # Lot 3 critique #1 — émis APRÈS l'écriture du lead : sans transaction
+    # englobante (autocommit), ``on_commit`` exécute tout de suite — un
+    # abonné (scrub calepinage, suppression IRRÉVERSIBLE des photos) ne doit
+    # jamais passer avant que le lead lui-même soit anonymisé.
+    _emettre_lead_erased(company, le.pk, phone_key)
     return 1
 
 

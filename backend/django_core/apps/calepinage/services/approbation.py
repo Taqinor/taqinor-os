@@ -337,11 +337,13 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     verifier_ecriture_autorisee(calepinage, champ='approbation')
     motif = _valider(decision, motif,
                      getattr(calepinage, 'roof_layout', None))
+    auto_approbation = False
     if decision == APPROUVE:
         # ACAL303 (D-ACAL-11) — SÉPARATION DES TÂCHES : qui a conçu ou porte
         # la conception ne l'approuve pas (un REFUS reste admis). RIEN n'est
-        # écrit.
-        _refuser_auto_approbation(calepinage, user)
+        # écrit. Décision fondateur 07/10/2026 : sauf s'il est le SEUL
+        # approbateur actif de la société (journalisé).
+        auto_approbation = _refuser_auto_approbation(calepinage, user)
     # ACAL172 (D-ACAL-9) — un ACCORD lit le verdict électrique : bloquant ⇒
     # refus nommé, rien n'est écrit ; indéterminé ⇒ accord AVEC avertissement.
     avertissement = (_verdict_electrique_avant_accord(calepinage)
@@ -361,6 +363,8 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     from .journal import noter
 
     texte = f"Conception {DECISIONS[decision]} (approbation)"
+    if auto_approbation:
+        texte += f" — {MENTION_SEUL_APPROBATEUR}"
     if motif:
         texte += f" — motif : {motif}"
     if avertissement:
@@ -368,6 +372,10 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     noter(calepinage, texte, user=user)
     return etat_approbation(calepinage)
 
+
+#: Décision fondateur 07/10/2026 — la trace d'une auto-approbation admise
+#: parce que l'auteur est le SEUL approbateur actif de la société.
+MENTION_SEUL_APPROBATEUR = 'auto-approuvé (seul approbateur)'
 
 #: ACAL303 — le refus d'une auto-approbation (champ ``decision``).
 MESSAGE_AUTO_APPROBATION = (
@@ -392,11 +400,39 @@ def _concepteurs(calepinage):
     return ids
 
 
+def _autre_approbateur_actif(calepinage, user):
+    """Vrai si la société du calepinage compte un AUTRE compte interne
+    ACTIF qui porte ``calepinage_approuver`` (même règle que la garde HTTP
+    ``PeutApprouverCalepinage``)."""
+    from django.contrib.auth import get_user_model
+
+    from core.permissions import _user_has_or_legacy
+
+    from ..permissions import CAL_APPROUVER
+
+    autres = (get_user_model().objects
+              .filter(company_id=calepinage.company_id, is_active=True)
+              .exclude(pk=getattr(user, 'pk', None))
+              .select_related('role'))
+    return any(getattr(autre, 'portee', 'interne') == 'interne'
+               and _user_has_or_legacy(autre, CAL_APPROUVER)
+               for autre in autres)
+
+
 def _refuser_auto_approbation(calepinage, user):
     """ACAL303 — ``ApprobationRefusee`` (``decision``) quand ``user`` a conçu
-    ou porte la conception."""
-    if getattr(user, 'pk', None) in _concepteurs(calepinage):
+    ou porte la conception.
+
+    Décision fondateur 07/10/2026 : l'auto-approbation reste interdite SAUF
+    quand ``user`` est le SEUL approbateur actif de la société — elle passe
+    alors et rend ``True`` (à journaliser « auto-approuvé (seul
+    approbateur) »). Rend ``False`` pour une approbation ordinaire.
+    """
+    if getattr(user, 'pk', None) not in _concepteurs(calepinage):
+        return False
+    if _autre_approbateur_actif(calepinage, user):
         raise ApprobationRefusee(MESSAGE_AUTO_APPROBATION, champ='decision')
+    return True
 
 
 def _verdict_electrique_avant_accord(calepinage):

@@ -15,7 +15,7 @@ from apps.calepinage.models import Calepinage
 from apps.customfields.models import CustomFieldDef
 from apps.customfields.serializers import CustomFieldDefSerializer
 
-from .test_api_liste import BaseApiCalepinage, url_detail
+from .test_api_liste import URL, BaseApiCalepinage, url_detail
 
 
 class CustomDataCalepinageTest(BaseApiCalepinage):
@@ -72,3 +72,14 @@ class CustomDataCalepinageTest(BaseApiCalepinage):
         # par la donnée saisie), jamais un FieldError.
         self.assertFalse(serializer.is_valid())
         self.assertIn('code', serializer.errors)
+
+    def test_creation_post_pose_custom_data(self):
+        """Lot 3 critique #8 — validé au POST, ``custom_data`` est POSÉ sur
+        le calepinage créé (jamais validé puis jeté)."""
+        reponse = self.api.post(URL, {
+            'lead': self.lead_2.pk,
+            'custom_data': {'parcelle': 'T-5678'}}, format='json')
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        cree = Calepinage.objects.get(pk=reponse.data['id'])
+        self.assertEqual(cree.custom_data, {'parcelle': 'T-5678'})
