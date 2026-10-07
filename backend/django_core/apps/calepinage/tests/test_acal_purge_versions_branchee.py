@@ -78,7 +78,14 @@ class PurgeVersionsBrancheeTest(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         restaurer_version(plus_ancienne, user=self.user)
         versions = self._versions()
-        self.assertEqual(len(versions), 2)
+        # La borne (2) s'applique aux versions ORDINAIRES ; la version pivot
+        # « Avant restauration » (ACAL45) est hors borne (lot 2 critique #3).
+        pivots = [v for v in versions
+                  if v.libelle.startswith('Avant restauration')]
+        ordinaires = [v for v in versions if v not in pivots]
+        self.assertEqual(len(pivots), 1)
+        self.assertEqual(len(ordinaires), 2)
+        self.assertEqual(len(versions), 3)
         self.calepinage.refresh_from_db()
         self.assertEqual(
             self.calepinage.roof_layout['zones'][0]['geometry']['count'], 4)
