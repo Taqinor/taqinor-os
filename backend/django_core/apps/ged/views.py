@@ -668,7 +668,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # ADOC23 — empreinte SHA-256 et taille RÉELLES des octets déposés.
         contenu = file.read()
         file.seek(0)
-        meta, err = store_attachment(file)
+        # ASEC37 — clé produite par le serveur sous le préfixe de la société.
+        meta, err = store_attachment(file, company=company)
         if err:
             return Response({'file': err},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -754,7 +755,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         a_deposer = []
         erreurs = []
         for f in files:
-            meta, err = store_attachment(f)
+            # ASEC37 — clé serveur sous le préfixe de la société.
+            meta, err = store_attachment(f, company=company)
             if err:
                 erreurs.append({'filename': getattr(f, 'name', ''),
                                 'detail': err})
@@ -977,6 +979,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                            '(idempotence par objet SAV source).'},
                 status=status.HTTP_400_BAD_REQUEST)
         file_key = (request.data.get('file_key') or '').strip()
+        # ASEC37 — une clé d'un autre locataire (préfixe étranger ou clé plate
+        # jamais enregistrée chez nous) est refusée : on ne classe jamais le
+        # fichier d'une autre société.
+        if not services.cle_stockage_autorisee(request.user.company, file_key):
+            return Response(
+                {'file_key': 'Fichier inconnu pour votre société.'},
+                status=status.HTTP_400_BAD_REQUEST)
         document, created = services.classer_document_apres_vente(
             company=request.user.company,
             file_key=file_key,
@@ -1101,7 +1110,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         file_bytes = None
         mime = ''
         if version and version.file_key:
-            file_bytes, _err = fetch_attachment(version.file_key)
+            file_bytes, _err = _lire_version(version)
             mime = version.mime or ''
         meta, en_validation = services.ocr_extraction_avec_validation(
             document, file_bytes=file_bytes, mime=mime, type_piece=type_piece)
@@ -1996,6 +2005,20 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'lignes': lignes})
 
 
+def _lire_version(version):
+    """ASEC37 — octets d'une version, sauf si sa clé de stockage désigne une
+    AUTRE société que celle de la version : alors ``(None, message)`` — aucun
+    octet d'autrui n'est jamais servi (aperçu, pages, OCR, partage public,
+    signature). Les clés plates historiques restent lisibles."""
+    if services.cle_d_une_autre_societe(version.company_id, version.file_key):
+        import logging
+        logging.getLogger(__name__).warning(
+            'ASEC37 : version %s — clé de stockage hors société refusée.',
+            version.pk)
+        return None, 'Fichier indisponible.'
+    return fetch_attachment(version.file_key)
+
+
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
     côté serveur via `services.add_version` ; `checksum` permet la dédup.
@@ -2006,6 +2029,8 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = DocumentVersion.objects.select_related(
         'document', 'uploaded_by').all()
     serializer_class = DocumentVersionSerializer
+    # ASEC37 — la version arrive comme FICHIER (multipart `file`).
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['version', 'created_at']
 
@@ -2048,7 +2073,22 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
                 request.user).filter(pk=document.pk).exists():
             from rest_framework.exceptions import NotFound
             raise NotFound('Document inconnu.')
-        checksum = serializer.validated_data.get('checksum', '')
+        # ASEC37 — seul un fichier TÉLÉVERSÉ dans la requête fait une version :
+        # une `file_key`/`checksum` du corps est ignorée (lecture seule), la
+        # clé est produite par le serveur sous le préfixe de la société et
+        # l'empreinte calculée sur les octets reçus.
+        fichier = request.FILES.get('file')
+        if fichier is None:
+            return Response(
+                {'file': "Téléversez le fichier de la version (champ "
+                         "« file ») : une clé de stockage n'est jamais "
+                         "acceptée."},
+                status=status.HTTP_400_BAD_REQUEST)
+        contenu = fichier.read()
+        fichier.seek(0)
+        self._fichier_version = (fichier, len(contenu))
+        checksum = services.compute_checksum(contenu)
+        self._checksum_version = checksum
         if checksum:
             existing = services.find_duplicate(
                 request.user.company, checksum, document=document)
@@ -2110,17 +2150,28 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             services.assert_aucune_signature_en_attente(document)
         except services.SignatureEnCoursError as exc:
             raise _conflit(str(exc))
-        v = serializer.validated_data
+        # ASEC37 — stockage serveur (préfixe société) APRÈS toutes les gardes.
+        from rest_framework.exceptions import ValidationError
+        company = self.request.user.company
+        fichier, taille = self._fichier_version
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=taille)
+        except QuotaDepasseError as exc:  # ADOC23
+            raise PermissionDenied(str(exc))
+        meta, err = store_attachment(fichier, company=company)
+        if err:
+            raise ValidationError({'file': err})
         # GED16/ADOC17 — le check-out d'autrui est gardé par add_version(user=).
         try:
             instance = services.add_version(
                 document,
-                file_key=v['file_key'],
-                company=self.request.user.company,
-                filename=v.get('filename', ''),
-                size=v.get('size', 0),
-                mime=v.get('mime', ''),
-                checksum=v.get('checksum', ''),
+                file_key=meta['file_key'],
+                company=company,
+                filename=meta['filename'],
+                size=taille,
+                mime=meta['mime'],
+                checksum=self._checksum_version,
                 uploaded_by=self.request.user,
                 user=self.request.user,
             )
@@ -2136,7 +2187,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         que l'écran Caviarder propose les pages 1..N (jamais une saisie
         libre). Version bornée aux documents visibles (get_queryset)."""
         version = self.get_object()
-        data, err = fetch_attachment(version.file_key)
+        data, err = _lire_version(version)  # ASEC37
         if err:
             return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
         try:
@@ -2173,7 +2224,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         d'aperçu inline, téléchargement direct sécurisé).
         """
         version = self.get_object()  # borné à la société par get_queryset (TenantMixin)
-        data, err = fetch_attachment(version.file_key)
+        data, err = _lire_version(version)  # ASEC37
         if err:
             return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
 
@@ -4342,7 +4393,7 @@ def public_partage(request, token):
             {'detail': "Ce lien de partage a expiré ou n'est plus disponible."},
             status=status.HTTP_410_GONE))
 
-    data, err = fetch_attachment(version.file_key)
+    data, err = _lire_version(version)  # ASEC37
     if err:
         return _ged_noindex(Response(
             {'detail': "Document indisponible pour le moment."},
@@ -4902,7 +4953,7 @@ def _servir_document_a_signer(request, demande):
         return _ged_noindex(Response(
             {'detail': _SIGNATURE_DOC_INTROUVABLE},
             status=status.HTTP_404_NOT_FOUND))
-    data, err = fetch_attachment(version.file_key)
+    data, err = _lire_version(version)  # ASEC37
     if err or data is None:
         return _ged_noindex(Response(
             {'detail': _SIGNATURE_DOC_INTROUVABLE},
