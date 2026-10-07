@@ -3,9 +3,10 @@
 
 Ce que ces tests verrouillent, et pourquoi chaque borne compte :
 
-1. **Un devis VIVANT suit le catalogue.** Corriger un prix ou renommer une
+1. **Un BROUILLON suit le catalogue.** Corriger un prix ou renommer une
    référence laissait jusqu'ici les brouillons parler de l'ancien monde ; ils
    suivent désormais, sans que personne n'ait à rouvrir quoi que ce soit.
+   Un devis ENVOYÉ reste figé (D-ASTK-1, 06/10/2026) et reçoit une note.
 2. **Un devis CONTRACTUEL ne bouge JAMAIS.** Accepté, refusé ou expiré : le
    client a vu (ou signé) ces montants. Aucune correction de catalogue n'a le
    droit de les réécrire — et le statut n'est jamais touché nulle part.
@@ -153,34 +154,35 @@ class BrouillonEtEnvoyeSuiventTests(PvSyncBase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
 
-    def test_envoye_est_recale_aussi(self):
+    def test_envoye_reste_fige_et_recoit_une_note(self):
+        """D-ASTK-1 (06/10/2026, remplace la décision du 18/08) : un devis
+        ENVOYÉ n'est plus recalé ; une note « envoyé conservé » le dit."""
         devis = self._devis(Devis.Statut.ENVOYE)
 
         self._resync()
 
-        self.assertEqual(self._ligne(devis).prix_unitaire, NOUVEAU_PRIX)
-        self.assertEqual(self._notes(devis).count(), 1)
+        self.assertEqual(self._ligne(devis).prix_unitaire, ANCIEN_PRIX)
+        self.assertEqual(self._notes(devis).count(), 0)
+        self.assertEqual(DevisActivity.objects.filter(
+            devis=devis, field='catalogue_envoye_conserve').count(), 1)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
 
 class TransparenceApresEnvoiTests(PvSyncBase):
-    """Le périmètre reste brouillon + envoyé, mais un devis DÉJÀ ENVOYÉ qui
-    bouge le DIT : le client tient un PDF figé pendant que sa page est
-    re-rendue en direct. Sans marqueur, il pouvait signer un montant différent
-    de sa pièce jointe sans jamais l'avoir su."""
+    """D-ASTK-1 (06/10/2026) : un devis DÉJÀ ENVOYÉ ne bouge plus — sa page
+    /proposition reste égale au PDF que le client tient. Aucun marqueur
+    ``resync_apres_envoi`` n'est donc posé par PVSYNC (la clé publique reste
+    nulle) ; l'écart est dit au chatter interne."""
 
-    def test_un_devis_envoye_modifie_porte_l_horodatage(self):
+    def test_un_devis_envoye_ne_porte_plus_de_marqueur(self):
         devis = self._devis(Devis.Statut.ENVOYE)
 
         self._resync()
 
         devis.refresh_from_db()
-        marqueur = (devis.etude_params or {}).get('resync_apres_envoi')
-        self.assertIsNotNone(marqueur)
-        self.assertIn('date', marqueur)
-        # Une date ISO lisible, pas un booléen muet.
-        self.assertRegex(marqueur['date'], r'^\d{4}-\d{2}-\d{2}T')
+        self.assertIsNone(
+            (devis.etude_params or {}).get('resync_apres_envoi'))
         # Et le statut n'a pas bougé (règle #4).
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
@@ -202,8 +204,9 @@ class TransparenceApresEnvoiTests(PvSyncBase):
         devis.refresh_from_db()
         self.assertIsNone((devis.etude_params or {}).get('resync_apres_envoi'))
 
-    def test_le_marqueur_est_ECRASE_a_chaque_resynchro(self):
-        """C'est un « depuis quand », pas un journal qui gonfle."""
+    def test_un_marqueur_existant_n_est_pas_reecrit(self):
+        """Un marqueur posé AVANT D-ASTK-1 reste tel quel : PVSYNC n'écrit
+        plus rien sur un devis envoyé."""
         devis = self._devis(Devis.Statut.ENVOYE)
         devis.etude_params = {'resync_apres_envoi': {'date': '2020-01-01T00:00:00'}}
         devis.save(update_fields=['etude_params'])
@@ -212,11 +215,11 @@ class TransparenceApresEnvoiTests(PvSyncBase):
 
         devis.refresh_from_db()
         marqueur = devis.etude_params['resync_apres_envoi']
-        self.assertNotEqual(marqueur['date'], '2020-01-01T00:00:00')
-        self.assertEqual(len(devis.etude_params['resync_apres_envoi']), 1)
+        self.assertEqual(marqueur['date'], '2020-01-01T00:00:00')
 
     def test_le_payload_public_expose_la_cle_resync_apres_envoi(self):
-        """Le nom de la clé est un CONTRAT : la page proposition la lit."""
+        """Le nom de la clé est un CONTRAT : la page proposition la lit. Elle
+        reste présente et NULLE après une correction catalogue (D-ASTK-1)."""
         from apps.ventes.models import ShareLink
 
         devis = self._devis(Devis.Statut.ENVOYE)
@@ -227,8 +230,8 @@ class TransparenceApresEnvoiTests(PvSyncBase):
             f'/api/django/ventes/proposal/{lien.token}/')
 
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertIsNotNone(reponse.data.get('resync_apres_envoi'))
-        self.assertIn('date', reponse.data['resync_apres_envoi'])
+        self.assertIn('resync_apres_envoi', reponse.data)
+        self.assertIsNone(reponse.data['resync_apres_envoi'])
 
     def test_le_payload_public_reste_nul_sans_resynchro(self):
         from apps.ventes.models import ShareLink
@@ -276,8 +279,12 @@ class LignesNegocieesPreserveesTests(PvSyncBase):
         self.assertEqual(resultat['lignes_modifiees'], 0)
         self.assertEqual(resultat['lignes_conservees'], 1)
         self.assertTrue(resultat['avertissements'])
-        # Rien n'a bougé ⇒ le chatter reste muet.
+        # Rien n'a bougé ⇒ aucune note de resynchronisation…
         self.assertEqual(self._notes(devis).count(), 0)
+        # … mais ASTK141 : le prix négocié conservé est DIT, note persistée.
+        note = DevisActivity.objects.get(
+            devis=devis, field='prix_negocie_conserve')
+        self.assertIn('850,00 conservé', note.body)
 
     def test_une_remise_de_ligne_vaut_prix_negocie(self):
         devis = self._devis(Devis.Statut.BROUILLON, remise=Decimal('10'))

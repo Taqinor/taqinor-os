@@ -36,11 +36,12 @@ logger = logging.getLogger("apps.ventes.services")
 # abonne dans son ``apps.py`` ``ready()`` et délègue à une tâche Celery. Les
 # BORNES sont le sujet, et elles sont toutes dures :
 #
-#   1. **Seuls les statuts BROUILLON et ENVOYÉ bougent.** Un devis accepté,
-#      refusé ou expiré est un document CONTRACTUEL : le client a signé (ou vu)
-#      des montants, et aucune correction de catalogue n'a le droit de les
-#      réécrire. Le statut est LU, JAMAIS écrit (règle #4) — les écritures se
-#      limitent à ``LigneDevis`` et à une note de chatter.
+#   1. **Seul le statut BROUILLON bouge (D-ASTK-1, 06/10/2026).** Un devis
+#      ENVOYÉ reste figé au montant du PDF que le client tient : il reçoit
+#      seulement une note de chatter « devis envoyé conservé ; réviser pour
+#      l'appliquer ». Un devis accepté, refusé ou expiré est un document
+#      CONTRACTUEL : jamais lu ici. Le statut est LU, JAMAIS écrit (règle #4)
+#      — les écritures se limitent à ``LigneDevis`` et à des notes de chatter.
 #   2. **Une ligne NÉGOCIÉE n'est jamais recalée.** Le prix ne suit le
 #      catalogue que si la ligne portait EXACTEMENT l'ANCIEN prix catalogue et
 #      aucune remise de ligne ; la désignation ne suit que si elle valait
@@ -51,8 +52,10 @@ logger = logging.getLogger("apps.ventes.services")
 #      il ne peut donc pas ré-émettre ``produit_modifie`` (garde structurelle,
 #      pas une convention — et un test la vérifie).
 #   4. **Silencieux quand il n'y a rien à dire.** Zéro ligne modifiée ⇒ aucune
-#      note, aucune écriture. Rejouer le même événement est donc un no-op
-#      complet (la tâche est at-least-once : elle DOIT être idempotente).
+#      note de resynchronisation. Les notes « envoyé conservé » et « prix
+#      négocié conservé » (ASTK141) sont dédoublonnées : rejouer le même
+#      événement est donc un no-op complet (la tâche est at-least-once : elle
+#      DOIT être idempotente).
 #   5. **Une société à la fois.** La requête est cantonnée à la société de
 #      l'événement — le devis d'un autre tenant n'est jamais lu, encore moins
 #      réécrit.
@@ -122,8 +125,9 @@ def _ecarter_valeurs_perimees(produit, nouveau_prix, nouveau_nom):
 def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
     """PVSYNC — propage un changement de RÉFÉRENCE aux devis qui l'utilisent.
 
-    Ne touche QUE les devis ``brouillon`` et ``envoye`` de ``company`` portant
-    une ligne rattachée à ``produit`` (voir les cinq bornes du bloc ci-dessus).
+    Ne RÉÉCRIT que les devis ``brouillon`` de ``company`` portant une ligne
+    rattachée à ``produit`` ; un devis ``envoye`` reste figé et reçoit une
+    note (D-ASTK-1 — voir les cinq bornes du bloc ci-dessus).
 
     Renvoie toujours le même dict :
     ``{devis_touches, lignes_modifiees, lignes_conservees, avertissements}`` —
@@ -134,7 +138,9 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
 
     from apps.ventes.models import Devis, LigneDevis
 
-    from ..activity import log_devis_resynchronisation
+    from ..activity import (
+        log_devis_catalogue_envoye_conserve, log_devis_prix_negocie_conserve,
+        log_devis_resynchronisation)
     from .lignes import prix_negocie
 
     ancien_nom, nouveau_nom = _valeurs_champ(champs, 'nom')
@@ -177,20 +183,25 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
             .order_by('devis_id', 'id'))
 
         touches = {}
-        # QJR518 — l'état vu par le client de chaque devis ENVOYÉ est capturé
-        # AVANT sa première ligne réécrite (no-op pour un brouillon).
-        from apps.ventes.domain.modifiabilite import (
-            debut_de_geste_devis, fin_de_geste_devis)
-        avants = {}
+        # ASTK141 (D-ASTK-1) — un devis ENVOYÉ reste FIGÉ : il ne reçoit
+        # qu'une note « devis envoyé conservé » par champ qui l'aurait fait
+        # bouger. {devis_id: (devis, {'prix': bool, 'nom': bool})}.
+        envoyes_conserves = {}
         for ligne in lignes:
+            envoye = ligne.devis.statut == Devis.Statut.ENVOYE
             champs_ecrits = []
             conservee = False
+            prix_conserve = False
+            suivrait = {'prix': False, 'nom': False}
 
             # ── Désignation : elle ne suit que si elle n'a jamais été retouchée
             if nouveau_nom and ancien_nom:
                 if (ligne.designation or '') == ancien_nom:
-                    ligne.designation = nouveau_nom
-                    champs_ecrits.append('designation')
+                    if envoye:
+                        suivrait['nom'] = True
+                    else:
+                        ligne.designation = nouveau_nom
+                        champs_ecrits.append('designation')
                 elif (ligne.designation or '') != nouveau_nom:
                     conservee = True
 
@@ -201,39 +212,58 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
             # toujours comme conservée).
             if nouveau_prix is not None and ancien_prix is not None:
                 if not prix_negocie(ligne, prix_reference=ancien_prix):
-                    ligne.prix_unitaire = nouveau_prix
-                    champs_ecrits.append('prix_unitaire')
+                    if envoye:
+                        suivrait['prix'] = True
+                    else:
+                        ligne.prix_unitaire = nouveau_prix
+                        champs_ecrits.append('prix_unitaire')
                 elif (getattr(ligne, 'prix_manuel', False)
                       or _decimal_ou_none(ligne.prix_unitaire)
                       != nouveau_prix):
                     conservee = True
+                    prix_conserve = True
+
+            if envoye:
+                if conservee:
+                    resultat['lignes_conservees'] += 1
+                if suivrait['prix'] or suivrait['nom']:
+                    _devis, drapeaux = envoyes_conserves.setdefault(
+                        ligne.devis_id,
+                        (ligne.devis, {'prix': False, 'nom': False}))
+                    drapeaux['prix'] = drapeaux['prix'] or suivrait['prix']
+                    drapeaux['nom'] = drapeaux['nom'] or suivrait['nom']
+                continue
 
             if champs_ecrits:
-                if ligne.devis_id not in avants:
-                    avants[ligne.devis_id] = debut_de_geste_devis(
-                        ligne.devis, user)
                 ligne.save(update_fields=champs_ecrits)
                 resultat['lignes_modifiees'] += 1
                 touches.setdefault(ligne.devis_id, ligne.devis)
             if conservee:
                 resultat['lignes_conservees'] += 1
+            if prix_conserve:
+                # ASTK141 — le prix négocié conservé est DIT, et persisté au
+                # chatter du brouillon (une note par ligne, rejeu idempotent).
+                log_devis_prix_negocie_conserve(
+                    ligne.devis, ligne=ligne, ancien=ancien_prix,
+                    nouveau=nouveau_prix, user=user)
 
-        # ── TRANSPARENCE D'UNE RESYNCHRO POST-ENVOI (fondateur 2026-08-18) ──
+        # ── D-ASTK-1 (fondateur 06/10/2026, remplace la décision 18/08) ──
         #
-        # Le périmètre reste brouillon + envoyé (décision fondateur, borne 1) :
-        # un devis envoyé DOIT suivre le catalogue, sinon le commercial rappelle
-        # un client avec un prix que la société ne pratique plus. Mais le client,
-        # lui, tient un PDF FIGÉ au montant du jour de l'envoi pendant que sa
-        # page /proposition est re-rendue en direct : sans marqueur, il pouvait
-        # signer un montant différent de sa pièce jointe sans jamais l'avoir su.
-        # On pose donc l'horodatage de la DERNIÈRE resynchro post-envoi (écrasé
-        # à chaque passage — c'est un « depuis quand », pas un journal) et la
-        # charge utile publique l'expose sous ``resync_apres_envoi``.
-        # ``update_fields`` EXCLUT ``statut`` : rien ne peut partir d'ici (#4).
-        # QJR518 — le marqueur, le chatter « corrigé après envoi » et le
-        # reflet lead passent par LE point unique de trace
-        # (``consigner_correction_apres_envoi``, via ``fin_de_geste_devis``) :
-        # plus d'écriture directe du marqueur ici.
+        # Seuls les BROUILLONS suivent le catalogue. Un devis ENVOYÉ est le
+        # PDF que le client tient : sa page /proposition et son /proposal
+        # doivent rester au montant envoyé. Aucune ligne réécrite, aucun
+        # marqueur ``resync_apres_envoi`` posé (il reste null pour ces cas) ;
+        # le commercial lit une note au chatter et RÉVISE s'il veut appliquer
+        # le nouveau prix. ``consigner_correction_apres_envoi`` /
+        # ``fin_de_geste_devis`` ne sont donc plus appelés d'ici.
+        for devis, drapeaux in envoyes_conserves.values():
+            log_devis_catalogue_envoye_conserve(
+                devis, produit=produit,
+                prix=((ancien_prix, nouveau_prix) if drapeaux['prix']
+                      else None),
+                nom=(ancien_nom, nouveau_nom) if drapeaux['nom'] else None,
+                user=user)
+
         from apps.ventes.domain.historique_config import instantane_de_geste
         from apps.ventes.domain.verrou_devis import toucher
         for devis in touches.values():
@@ -243,11 +273,14 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
             toucher(devis)
             # QJR550 — UN instantané par devis resynchronisé.
             instantane_de_geste(devis, user=user)
-            fin_de_geste_devis(devis, user, avant=avants.get(devis.pk),
-                               objet='catalogue')
             log_devis_resynchronisation(
                 devis, produit=produit, modifications=modifications, user=user)
         resultat['devis_touches'] = len(touches)
+
+    if envoyes_conserves:
+        resultat['avertissements'].append(
+            "%d devis envoyé(s) conservé(s) au prix du jour de l'envoi : "
+            "réviser pour appliquer le catalogue." % len(envoyes_conserves))
 
     if resultat['lignes_conservees']:
         resultat['avertissements'].append(
