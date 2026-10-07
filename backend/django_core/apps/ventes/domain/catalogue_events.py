@@ -86,6 +86,39 @@ def _decimal_ou_none(valeur):
         return None
 
 
+def _ecarter_valeurs_perimees(produit, nouveau_prix, nouveau_nom):
+    """ASTK140 — ``(prix, nom)`` du payload encore COURANTS, ``None`` sinon.
+
+    Relit le produit EN BASE (jamais l'instance reçue, qui peut dater de
+    l'émission) et compare chaque « après » à la valeur courante : un écart
+    prouve qu'une écriture plus récente a suivi — l'événement est périmé pour
+    ce champ, son propre événement (plus récent) fera foi.
+    """
+    if nouveau_prix is None and not nouveau_nom:
+        return nouveau_prix, nouveau_nom
+    courant = (type(produit)._default_manager
+               .filter(pk=getattr(produit, 'pk', None))
+               .values('prix_vente', 'nom').first())
+    if courant is None:
+        return None, None
+    reference = getattr(produit, 'sku', None) or getattr(produit, 'pk', '?')
+    if nouveau_prix is not None:
+        prix_courant = _decimal_ou_none(courant.get('prix_vente'))
+        if prix_courant != nouveau_prix:
+            logger.info(
+                'PVSYNC: événement périmé ignoré pour le prix du produit %s '
+                '(payload %s, catalogue courant %s).',
+                reference, nouveau_prix, prix_courant)
+            nouveau_prix = None
+    if nouveau_nom and (courant.get('nom') or '') != nouveau_nom:
+        logger.info(
+            'PVSYNC: événement périmé ignoré pour la désignation du produit '
+            '%s (payload %r, catalogue courant %r).',
+            reference, nouveau_nom, courant.get('nom'))
+        nouveau_nom = None
+    return nouveau_prix, nouveau_nom
+
+
 def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
     """PVSYNC — propage un changement de RÉFÉRENCE aux devis qui l'utilisent.
 
@@ -113,12 +146,24 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
                 'lignes_conservees': 0, 'avertissements': []}
     if company is None or produit is None:
         return resultat
+
+    # ── ASTK140 — FRAÎCHEUR : un événement PÉRIMÉ est ignoré. Deux
+    # corrections rapprochées (1 000 → 10 000 puis 10 000 → 1 000) peuvent
+    # être traitées dans le DÉSORDRE par la file : sans garde, l'événement le
+    # plus ancien, joué en dernier, ré-imposait 10 000 alors que le catalogue
+    # vaut 1 000. Le produit est donc RELU en base : un « après » du payload
+    # qui ne vaut plus la valeur courante n'est pas appliqué (journalisé).
+    nouveau_prix, nouveau_nom = _ecarter_valeurs_perimees(
+        produit, nouveau_prix, nouveau_nom)
     if not nouveau_nom and nouveau_prix is None:
         return resultat
 
+    # Seuls les champs encore COURANTS (ASTK140) sont annoncés au chatter.
+    encore_courants = {'prix_vente': nouveau_prix is not None,
+                       'nom': bool(nouveau_nom)}
     modifications = [LIBELLES_CHAMPS_PRODUIT[champ]
                      for champ in ('prix_vente', 'nom')
-                     if champ in (champs or {})]
+                     if champ in (champs or {}) and encore_courants[champ]]
 
     with transaction.atomic():
         lignes = list(

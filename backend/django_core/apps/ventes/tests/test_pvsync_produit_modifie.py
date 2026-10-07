@@ -117,10 +117,19 @@ class PvSyncBase(TestCase):
             devis=devis, field='produit_resynchronise')
 
     def _resync(self, champs=None, produit=None, company=None):
+        champs = champs if champs is not None else _champs()
+        produit = produit or self.produit
+        # ASTK140 — l'événement part APRÈS l'écriture du produit : le
+        # catalogue en base porte déjà l'« après » du payload (sinon la garde
+        # de fraîcheur l'ignore à bon droit comme périmé).
+        maj = {champ: valeurs[1] for champ, valeurs in champs.items()
+               if champ in ('prix_vente', 'nom')}
+        if maj:
+            Produit.objects.filter(pk=produit.pk).update(**maj)
         return services.resynchroniser_devis_pour_produit(
-            produit=produit or self.produit,
+            produit=produit,
             company=company or self.company,
-            champs=champs if champs is not None else _champs(),
+            champs=champs,
             user=self.user)
 
 
@@ -340,7 +349,9 @@ class AucuneBoucleTests(PvSyncBase):
 
         self.assertEqual(emissions, [])
         self.produit.refresh_from_db()
-        self.assertEqual(self.produit.prix_vente, ANCIEN_PRIX,
+        # Le catalogue garde la valeur écrite par le stock (l'« après ») :
+        # la resynchronisation ne l'a pas réécrit.
+        self.assertEqual(self.produit.prix_vente, NOUVEAU_PRIX,
                          'la resynchronisation a réécrit le produit source')
 
     def test_rejouer_le_meme_evenement_ne_change_plus_rien(self):
