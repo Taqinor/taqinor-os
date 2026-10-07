@@ -5669,8 +5669,14 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
         from apps.portail import services as portail_services
 
         partenaire = self.get_object()
-        user, cree = portail_services.provisionner_compte_partenaire(
-            request.user.company, partenaire.id)
+        try:
+            # ADOC124 — jumeau d'ADOC123 (vue client) : sans e-mail, le mot
+            # de passe temporaire ne part nulle part ⇒ refus NOMMÉ, aucun
+            # compte créé, aucun e-mail.
+            user, cree = portail_services.provisionner_compte_partenaire(
+                request.user.company, partenaire.id, exiger_email=True)
+        except portail_services.ProvisionnementSansEmail as exc:
+            return Response({'detail': str(exc)}, status=400)
         if user is None:
             return Response(
                 {'detail': 'Partenaire inconnu pour cette société.'},

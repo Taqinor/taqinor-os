@@ -90,6 +90,20 @@ importe ``apps.audit``.
     ``stock`` n'importe ni ``qhse`` ni ``installations`` : chaque abonné se
     câble dans son propre ``apps.py`` ``ready()``.
 
+``reception_fournisseur_annulee``
+    ASTK55 (C-ASTK-011) — jumeau d'ANNULATION de
+    ``reception_fournisseur_confirmee`` : émis après commit à la fin de
+    ``stock.services.annuler_reception_confirmee`` (ASTK56). Arguments :
+
+    * ``reception`` — l'instance ``stock.ReceptionFournisseur`` annulée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui annule (peut être ``None``) ;
+    * ``lignes`` — liste de dicts ``{ligne, produit, quantite_annulee}``.
+
+    Abonné attendu : ``installations`` (ASTK57) — extourne la provision GR/IR,
+    repasse les ``SerieEntrepot`` en « retourné » et re-plafonne la
+    réservation YPROC10 du chantier. ``stock`` n'importe pas ``installations``.
+
 ``employe_sorti``
     Émis à la fin de ``rh.services.sortir_employe`` (YHIRE2) — orchestration
     de sortie : checklist ``ElementSortie`` générée, compte utilisateur
@@ -628,6 +642,11 @@ payment_captured = django.dispatch.Signal()
 # Arguments : reception (stock.ReceptionFournisseur), company, user.
 # cf. docstring du module ci-dessus pour la carte des deux abonnés attendus.
 reception_fournisseur_confirmee = django.dispatch.Signal()
+
+# ASTK55 — émis à l'ANNULATION d'une réception fournisseur confirmée (ASTK56).
+# Arguments : reception, company, user, lignes ({ligne, produit,
+# quantite_annulee}). Abonné attendu : installations (ASTK57).
+reception_fournisseur_annulee = django.dispatch.Signal()
 
 # (Le signal ``facture_fournisseur_creee`` est défini plus bas, section
 # YLEDG2 — contrat unifié ``instance, company, user`` pour ses DEUX abonnés :
