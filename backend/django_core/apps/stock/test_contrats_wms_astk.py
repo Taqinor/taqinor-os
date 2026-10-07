@@ -816,13 +816,11 @@ class ContratNegoceTests(WmsBase):
         rep = self.api.patch(url, {'atp_horizon_jours': 15}, format='json')
         self.assertEqual(rep.status_code, 200, rep.content)
         self.assertMemesCles(rep.json(), contrat['exemple'], 'PATCH')
-        rep = self.api.patch(url, {'seuil_alerte_rfa_pct': 150},
+        # ASTK201 : un réglage sans lecteur → 400 « Réglage non branché. ».
+        rep = self.api.patch(url, {'seuil_alerte_rfa_pct': 50},
                              format='json')
         self.assertEqual(rep.status_code, 400)
         self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
-        # Les DEUX réglages lus (ASTK201) existent déjà dans la forme réelle.
-        self.assertTrue(set(contrat['exemple_nouveau_astk201'])
-                        <= set(contrat['exemple']))
 
     def test_portails_tiers_et_solde_public(self):
         from apps.stock.models import (

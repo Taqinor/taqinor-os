@@ -326,8 +326,6 @@
     detail:texte, domaine:inconnu, results:inconnu
 - frontend/src/api/parametresApi.js :: saveTranslationOverrides -> /api/django/parametres/traductions/bulk
     detail:texte, overrides:inconnu
-- frontend/src/api/portailApi.js :: confirmer -> /api/django/portail/mes-bons-commande/<>/confirmer
-    date_confirmee:texte, date_confirmee_fournisseur:inconnu, detail:texte, id:inconnu, numero_confirmation_fournisseur:texte, reference:inconnu
 - frontend/src/api/portailApi.js :: consommation -> /api/django/portail/client/ma-consommation
     alertes_ouvertes:nombre, points:inconnu, provider_configure:inconnu, window_days:inconnu
 - frontend/src/api/portailApi.js :: demander -> /api/django/portail/mes-contrats-maintenance/<>/demander
@@ -366,8 +364,6 @@
     detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
 - frontend/src/api/recordsApi.js :: getMyActivities -> /api/django/records/activities/mine
     a_venir:liste, aujourdhui:liste, en_retard:liste
-- frontend/src/api/recordsApi.js :: markActivityDone -> /api/django/records/activities/<>/done
-    activity:inconnu, chained:inconnu, next:inconnu, suggestion:inconnu
 - frontend/src/api/recordsApi.js :: snoozeApprobation -> /api/django/records/activities/snooze-approbation
     detail:texte, ok:booleen, snoozed_until:texte
 - frontend/src/api/recordsApi.js :: unfollow -> /api/django/records/followers/<>
@@ -417,7 +413,7 @@
 - frontend/src/api/savApi.js :: actionsGroupeesTickets -> /api/django/sav/tickets/actions-groupees
     echecs:inconnu, ids:texte, nb_echecs:nombre, nb_traites:nombre, operation:texte, priorite:texte, statut:texte, technicien:texte, traites:inconnu
 - frontend/src/api/savApi.js :: creerDevisTicket -> /api/django/sav/tickets/<>/creer-devis
-    detail:texte, devis_id:inconnu, devis_reference:inconnu
+    detail:texte, devis_id:inconnu, devis_reference:inconnu, lignes:inconnu
 - frontend/src/api/savApi.js :: creerLeadDepuisTicket -> /api/django/sav/tickets/<>/creer-lead
     created:inconnu, lead_id:inconnu
 - frontend/src/api/savApi.js :: creerProblemeDepuisRegroupement -> /api/django/sav/problemes/creer-depuis-regroupement
@@ -582,8 +578,6 @@
     detail:texte, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
     detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
-- frontend/src/api/visitesApi.js :: createVisite -> /api/django/visites/visites
-    _non_releves:inconnu, arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, gabarit:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:inconnu, qualification:inconnu, raison_lecture_seule:inconnu, releve_ci:inconnu, statut:inconnu
 - frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee
     date:texte, en_retard_count:nombre, visites:liste
 - frontend/src/api/visitesApi.js :: getVisite -> /api/django/visites/visites/<>
