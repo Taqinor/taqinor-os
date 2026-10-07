@@ -34,13 +34,12 @@ from rest_framework.response import Response
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import CalepinageSerializer
 from ..services.modeles import ModeleInvalide, calepinages_modeles
-from ..services.modeles import creer_depuis_modele as service_creer
 from ..services.modeles import demarquer_modele as service_demarquer
 from ..services.modeles import marquer_modele as service_marquer
+from ..services.variantes import DuplicationEnConflit, VarianteRefusee
 from .calepinages import CalepinageViewSet
 
-__all__ = ['modeles', 'marquer_modele', 'demarquer_modele',
-           'creer_depuis_modele', 'depuis_modele']
+__all__ = ['modeles', 'marquer_modele', 'demarquer_modele', 'depuis_modele']
 
 
 @action(detail=False, methods=['get'], url_path='modeles',
@@ -57,7 +56,7 @@ def modeles(self, request):
 
 # ── CALX42 — LES TROIS PORTES D'ÉCRITURE DE LA BIBLIOTHÈQUE ────────────────
 # ``services/modeles.py`` porte ``marquer_modele`` (:76), ``demarquer_modele``
-# (:97) et ``creer_depuis_modele`` (:140), écrits et testés depuis CAL199 ;
+# (:97) et ``creer_depuis_modele`` (:140, servi par ``depuis-modele``) ;
 # seule la LECTURE ``modeles`` était servie, et l'écran de bibliothèque se
 # déclarait en lecture seule « faute de porte ». Les trois portes sont posées
 # ICI, dans le module qui sert déjà la lecture — pas un module de plus, donc
@@ -102,36 +101,6 @@ def demarquer_modele(self, request, pk=None):
     return Response({'calepinage': calepinage.pk, 'modele': False})
 
 
-@action(detail=False, methods=['post'], url_path='creer-depuis-modele',
-        permission_classes=[PeutGererCalepinage])
-def creer_depuis_modele(self, request):
-    """CALX42 — un calepinage NEUF, parti d'un modèle, sur un NOUVEAU
-    rattachement.
-
-    La société vient de ``request.user`` ; le modèle est résolu DANS cette
-    société (introuvable ailleurs, jamais « interdit »). Le rattachement du
-    modèle n'est jamais recopié : sans lead ni client fourni, le service
-    refuse en nommant le champ.
-    """
-    corps = _corps(request)
-    company = getattr(request.user, 'company', None)
-    modele = _modele_de_la_societe(company, corps.get('modele'))
-    if modele is None:
-        return Response({'modele': 'Modèle introuvable.'},
-                        status=status.HTTP_404_NOT_FOUND)
-    try:
-        copie = service_creer(
-            modele, user=request.user,
-            lead_id=_identifiant(corps.get('lead')),
-            client_id=_identifiant(corps.get('client')),
-            titre=str(corps.get('titre') or ''))
-    except ModeleInvalide as refus:
-        return Response({refus.champ or 'detail': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
-    return Response(CalepinageSerializer(copie).data,
-                    status=status.HTTP_201_CREATED)
-
-
 def _modele_de_la_societe(company, brut):
     """ACAL295 — le modèle est résolu dans la BIBLIOTHÈQUE de la société
     (calepinages MARQUÉS modèle, partagés par tous) : un calepinage non
@@ -144,8 +113,8 @@ def _modele_de_la_societe(company, brut):
 
 
 # ── CALX351 — DÉMARRER DEPUIS UN MODÈLE ET/OU UN JEU DE RÉGLAGES ───────────
-# ``creer-depuis-modele`` (CALX42) reste servie à l'identique pour la
-# bibliothèque. ``depuis-modele`` est la porte de l'ÉCRAN DE CRÉATION : elle
+# ACAL184 — ``creer-depuis-modele`` (CALX42) est RETIRÉE : ``depuis-modele``
+# est la porte UNIQUE (bibliothèque ET écran de création) ; elle
 # accepte en plus un DEVIS comme rattachement et un JEU DE RÉGLAGES société
 # (``preset_id``) appliqué aux pans du document de départ ; sans modèle, elle
 # crée par la porte ordinaire du rattachement (``services/creation.py`` —
@@ -224,7 +193,11 @@ def depuis_modele(self, request):
             calepinage = creer_pour_client(client_id, company,
                                            user=request.user, titre=titre,
                                            preset_id=preset_id)
-    except (CreationRefusee, ModeleInvalide) as refus:
+    except DuplicationEnConflit as conflit:
+        # ACAL184 (D-ACAL-12) — le lead cible a déjà un calepinage OUVERT :
+        # 409 du contrat calepinage_creation_conflit.json.
+        return Response(conflit.corps, status=status.HTTP_409_CONFLICT)
+    except (CreationRefusee, ModeleInvalide, VarianteRefusee) as refus:
         return _refus_nomme(refus)
     return Response(detail_calepinage(calepinage, request),
                     status=(status.HTTP_201_CREATED if cree
@@ -238,5 +211,4 @@ def depuis_modele(self, request):
 CalepinageViewSet.modeles = modeles
 CalepinageViewSet.marquer_modele = marquer_modele
 CalepinageViewSet.demarquer_modele = demarquer_modele
-CalepinageViewSet.creer_depuis_modele = creer_depuis_modele
 CalepinageViewSet.depuis_modele = depuis_modele  # CALX351

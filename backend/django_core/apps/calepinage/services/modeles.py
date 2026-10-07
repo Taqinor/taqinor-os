@@ -20,9 +20,9 @@ CRÉER DEPUIS UN MODÈLE
 -------------------------
 ``creer_depuis_modele`` appelle ``dupliquer`` (CAL14) puis DÉTACHE tout ce
 qui est commercial : ``dupliquer`` ne recopie déjà ni le devis ni l'image ni
-l'historique du modèle — seuls ``lead_id``/``client_id`` sont recopiés par
-défaut (duplication ORDINAIRE), donc ce service les ÉCRASE avec un NOUVEAU
-rattachement fourni par l'appelant. Un calepinage exige au moins un lead ou
+l'historique du modèle — et ce service lui passe EXPLICITEMENT le NOUVEAU
+rattachement fourni par l'appelant (ACAL184 : le client est celui du lead ;
+un lead qui a déjà un calepinage ouvert est refusé, D-ACAL-12). Un calepinage exige au moins un lead ou
 un client (contrainte base) : partir d'un modèle SANS fournir ce nouveau
 rattachement est donc refusé, en nommant le champ — jamais une réutilisation
 silencieuse du lead/client du modèle.
@@ -147,7 +147,6 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         ModeleInvalide: modèle absent/non marqué, ou aucun nouveau
             rattachement (lead/client) fourni.
     """
-    from .journal import journaliser_creation
     from .variantes import dupliquer
 
     if modele is None or not getattr(modele, 'pk', None):
@@ -176,6 +175,14 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         if lead is None:
             raise ModeleInvalide('Lead introuvable dans cette société.',
                                  champ='client')
+        # ACAL184 — le client de la copie est CELUI du lead : un couple
+        # lead/client qui se contredit est refusé en nommant ``client``.
+        client_du_lead = getattr(lead, 'client_id', None)
+        if client_id and client_du_lead and int(client_id) != client_du_lead:
+            raise ModeleInvalide(
+                "Ce client n'est pas celui du lead choisi : laissez le "
+                'client vide, il est repris du lead.', champ='client')
+        client_id = client_du_lead or client_id
         # ACAL117 (D-ACAL-15) — le modèle emporte ses réglages et son
         # implantation RELATIVE : la conception est translatée sur le repère
         # toit du lead cible ; sans repère, refus nommé, rien n'est créé.
@@ -191,11 +198,9 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
             # La consommation est celle d'un AUTRE client : jamais recopiée.
             document.pop('consumption', None)
 
-    copie = dupliquer(modele, user=user, titre=titre, roof_layout=document)
-    copie.lead_id = lead_id or None
-    copie.client_id = client_id or None
-    copie.full_clean(exclude=['company'])
-    copie.save(update_fields=['lead_id', 'client'])
-
-    journaliser_creation(copie, user=user)
-    return copie
+    # ACAL187/ACAL184 — la CIBLE est passée explicitement à ``dupliquer`` :
+    # la copie naît sur ce lead/client (jamais sur le rattachement du
+    # modèle), et un lead qui a déjà un calepinage OUVERT est refusé
+    # (``DuplicationEnConflit``, 409). ``dupliquer`` journalise la création.
+    return dupliquer(modele, user=user, titre=titre, roof_layout=document,
+                     lead_id=lead_id or None, client_id=client_id or None)
