@@ -24,6 +24,7 @@
 // fichier n'y est pas encore (décision de budget CI, voir i18n-quote-journey).
 import { execFileSync } from 'node:child_process'
 import { test, expect } from '@playwright/test'
+import { ouvrirJalonsChantier } from './helpers.js'
 
 const API = '/api/django'
 const MOT_DE_PASSE_PORTAIL = 'Portail-E2E-2026!'
@@ -168,7 +169,8 @@ test('AGR624 — seuil saisi en Paramètres, recette saisie à l’écran, comme
   expect(promis, 'le devis doit porter un débit promis (pompe à courbe chiffrée)').toBeGreaterThan(0)
   etat.mesure = Math.round((promis / 2) * 10) / 10
 
-  await page.goto(`/chantiers?id=${etat.chantierId}`)
+  // APX25 : la fiche de recette vit dans l'onglet « Jalons & gates ».
+  await ouvrirJalonsChantier(page, etat.chantierId)
   await page.getByRole('button', { name: /fiche de recette/ }).first().click()
   await page.locator('#recette-pompage-hmt_mesuree_m').fill('45')
   await page.locator('#recette-pompage-debit_mesure_m3h').fill(String(etat.mesure))

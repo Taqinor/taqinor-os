@@ -890,6 +890,93 @@ export default function ChantierGateTimeline({ installationId, installation, onA
     return <p className="text-sm text-muted-foreground">{error}</p>
   }
 
+  // CAD177 — la recette (CH3 / AGR613) et le pack de remise (CH4) sont des
+  // documents du chantier, pas des étapes du parcours : ils restent
+  // accessibles même quand la société n'a pas amorcé son cycle (AUD313 — la
+  // lecture n'amorce plus rien). Sans cela, aucune fiche de recette ne
+  // pouvait être saisie à l'écran tant que le Directeur n'avait pas amorcé.
+  const recetteEtPack = (
+    <>
+      {/* ── CH3 — recette de mise en service (IEC 62446-1), gate mis en avant ── */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-recette">
+        <ClipboardCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+        <span className="text-sm font-semibold">{libelleRecette}</span>
+        {recetteRecord ? (
+          <Badge tone={(recetteRecord.passe
+            ?? ['conforme', 'reserves'].includes(recetteRecord.resultat))
+            ? 'success' : 'outline'}>
+            {recetteRecord.resultat_display
+              ?? RESULTAT_LIBELLES[recetteRecord.resultat]
+              ?? recetteRecord.resultat}
+          </Badge>
+        ) : (
+          <Badge tone="neutral">Aucune fiche</Badge>
+        )}
+        {/* WIR202 — le bouton OUVRE le formulaire ; il ne crée plus une fiche
+            vide que rien ne pouvait remplir. Une fiche existante se rouvre
+            avec les mêmes essais pour correction. */}
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto"
+          onClick={() => setRecetteOuverte(true)}
+        >
+          {recetteRecord ? 'Modifier la fiche de recette' : 'Ouvrir la fiche de recette'}
+        </Button>
+      </div>
+
+      {recetteOuverte && agricole && (
+        <RecettePompageDialog
+          installationId={installationId}
+          record={recetteRecord}
+          onClose={() => setRecetteOuverte(false)}
+          onSaved={(enveloppe) => {
+            setRecette(enveloppe)
+            load()
+            onAdvanced?.()
+          }}
+        />
+      )}
+      {recetteOuverte && !agricole && (
+        <RecetteDialog
+          installationId={installationId}
+          installation={installation}
+          record={recetteRecord}
+          comparaison={recette?.comparaison}
+          reserves={recette?.reserves}
+          onClose={() => setRecetteOuverte(false)}
+          onSaved={(record) => {
+            setRecette(record)
+            // Le gate « Mise en service » dépend de cette fiche : on relit les
+            // étapes pour que le déblocage soit visible immédiatement.
+            load()
+            onAdvanced?.()
+          }}
+        />
+      )}
+
+      {/* ── CH4 — pack de remise client, gate mis en avant ── */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-pack-remise">
+        <PackageCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+        <span className="text-sm font-semibold">Pack de remise client</span>
+        {pack?.complet ? (
+          <Badge tone="success">Complet</Badge>
+        ) : (
+          <Badge tone="outline">
+            {pack?.pieces
+              ? `${pack.pieces.filter((p) => p.present).length}/${pack.pieces.length} pièce(s)`
+              : 'À préparer'}
+          </Badge>
+        )}
+        {!pack?.persiste && (
+          <Button size="sm" variant="outline" className="ml-auto" loading={packBusy} onClick={genererPack}>
+            Générer le pack de remise
+          </Button>
+        )}
+      </div>
+    </>
+  )
+
   // Dégradation propre : société sans étapes configurées (comportement
   // historique) — aucun parcours à afficher, le statut reste le seul pilote.
   if (stages.length === 0) {
@@ -902,6 +989,7 @@ export default function ChantierGateTimeline({ installationId, installation, onA
         {/* APX26 — même sans parcours configuré, les jalons datés restent
             visibles : la fusion ne supprime aucun contenu. */}
         <JalonsBand installation={installation} />
+        {recetteEtPack}
       </div>
     )
   }
@@ -991,83 +1079,7 @@ export default function ChantierGateTimeline({ installationId, installation, onA
           dans CE stepper : une seule timeline dans la fiche. */}
       <JalonsBand installation={installation} />
 
-      {/* ── CH3 — recette de mise en service (IEC 62446-1), gate mis en avant ── */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-recette">
-        <ClipboardCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-        <span className="text-sm font-semibold">{libelleRecette}</span>
-        {recetteRecord ? (
-          <Badge tone={(recetteRecord.passe
-            ?? ['conforme', 'reserves'].includes(recetteRecord.resultat))
-            ? 'success' : 'outline'}>
-            {recetteRecord.resultat_display
-              ?? RESULTAT_LIBELLES[recetteRecord.resultat]
-              ?? recetteRecord.resultat}
-          </Badge>
-        ) : (
-          <Badge tone="neutral">Aucune fiche</Badge>
-        )}
-        {/* WIR202 — le bouton OUVRE le formulaire ; il ne crée plus une fiche
-            vide que rien ne pouvait remplir. Une fiche existante se rouvre
-            avec les mêmes essais pour correction. */}
-        <Button
-          size="sm"
-          variant="outline"
-          className="ml-auto"
-          onClick={() => setRecetteOuverte(true)}
-        >
-          {recetteRecord ? 'Modifier la fiche de recette' : 'Ouvrir la fiche de recette'}
-        </Button>
-      </div>
-
-      {recetteOuverte && agricole && (
-        <RecettePompageDialog
-          installationId={installationId}
-          record={recetteRecord}
-          onClose={() => setRecetteOuverte(false)}
-          onSaved={(enveloppe) => {
-            setRecette(enveloppe)
-            load()
-            onAdvanced?.()
-          }}
-        />
-      )}
-      {recetteOuverte && !agricole && (
-        <RecetteDialog
-          installationId={installationId}
-          installation={installation}
-          record={recetteRecord}
-          comparaison={recette?.comparaison}
-          reserves={recette?.reserves}
-          onClose={() => setRecetteOuverte(false)}
-          onSaved={(record) => {
-            setRecette(record)
-            // Le gate « Mise en service » dépend de cette fiche : on relit les
-            // étapes pour que le déblocage soit visible immédiatement.
-            load()
-            onAdvanced?.()
-          }}
-        />
-      )}
-
-      {/* ── CH4 — pack de remise client, gate mis en avant ── */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-pack-remise">
-        <PackageCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-        <span className="text-sm font-semibold">Pack de remise client</span>
-        {pack?.complet ? (
-          <Badge tone="success">Complet</Badge>
-        ) : (
-          <Badge tone="outline">
-            {pack?.pieces
-              ? `${pack.pieces.filter((p) => p.present).length}/${pack.pieces.length} pièce(s)`
-              : 'À préparer'}
-          </Badge>
-        )}
-        {!pack?.persiste && (
-          <Button size="sm" variant="outline" className="ml-auto" loading={packBusy} onClick={genererPack}>
-            Générer le pack de remise
-          </Button>
-        )}
-      </div>
+      {recetteEtPack}
     </div>
   )
 }

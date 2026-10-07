@@ -381,6 +381,27 @@ export async function posterWebhookSite(request, payload) {
   return { status: res.status(), corps }
 }
 
+/** Nombre de pages d'un PDF lu par pdfjs. Le moteur sert du PDF 1.7 à flux
+ *  d'objets compressés (`/Type /Page` n'apparaît plus en clair) : compter les
+ *  objets à la regex rendait 0 (nocturne 37585800165, CIQ665). */
+export async function nombrePagesPdf(octets) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(octets), useSystemFonts: true, disableFontFace: true,
+  }).promise
+  return doc.numPages
+}
+
+/** Ouvre la fiche chantier sur l'onglet « Jalons & gates » : depuis APX25 la
+ *  fiche est en 6 onglets et le parcours, la fiche de recette (CH3/AGR613) et
+ *  le pack de remise ne vivent que dans cet onglet (l'« Aperçu » s'ouvre par
+ *  défaut). */
+export async function ouvrirJalonsChantier(page, chantierId) {
+  await page.goto(`/chantiers?id=${chantierId}`)
+  await page.getByRole('tab', { name: /Jalons/ }).click({ timeout: 30_000 })
+  await expect(page.getByTestId('ch6-recette')).toBeVisible({ timeout: 30_000 })
+}
+
 /** Texte brut d'un PDF (pdfjs-dist, déjà une dépendance du frontend). */
 export async function textePdf(octets) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
