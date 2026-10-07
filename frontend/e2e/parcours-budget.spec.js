@@ -100,7 +100,7 @@ const ficheLead = (page) =>
  * bouton « Créer le lead ») et ajoute le téléphone, que ce helper partagé ne
  * sait pas encore poser. Rien de tout cela n'entre dans un budget.
  */
-async function creerLeadJoignable(page, { nom, facture, telephone = '0612345678' }) {
+async function creerLeadJoignable(page, { nom, facture, telephone = '0612345678', ville = 'Casablanca' }) {
   await boutonNouveauLead(page).click()
   const modal = ficheLead(page)
   await expect(modal.getByRole('heading', { name: 'Nouveau lead' })).toBeVisible()
@@ -108,6 +108,11 @@ async function creerLeadJoignable(page, { nom, facture, telephone = '0612345678'
   const tel = modal.locator('#lf-telephone')
   if (await tel.count()) await tel.fill(telephone)
   if (facture != null) await modal.getByPlaceholder('ex: 650').fill(String(facture))
+  // CAD177 : même règle que `helpers.createLead` (29/08/2026) — un lead sans
+  // ville ni GPS est REFUSÉ par le devis automatique (422 « chantier non
+  // localisé », apps/ventes/domain/taille.py) : sans elle EZ17 n'avait jamais
+  // de PDF à rendre (run nocturne 37573380397).
+  if (ville) await modal.locator('#lf-ville').fill(ville)
   await modal.getByRole('button', { name: 'Créer le lead' }).click()
   await expect(ficheLead(page)).toHaveCount(0)
   return nom
