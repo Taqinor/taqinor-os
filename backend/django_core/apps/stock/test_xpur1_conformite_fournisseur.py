@@ -69,9 +69,29 @@ class Xpur1Base(TestCase):
             company=self.company, nom='Panneau', sku='PV-XPUR1',
             prix_vente=Decimal('1000'), prix_achat=Decimal('600'))
 
+    def _pieces_requises_valides(self, sauf=()):
+        # ASTK188 — « en règle » = les 4 TYPES requis présents ET valides.
+        for type_doc in ('arf', 'cnss', 'rc', 'assurance'):
+            if type_doc in sauf:
+                continue
+            DocumentConformiteFournisseur.objects.create(
+                company=self.company, fournisseur=self.fournisseur,
+                type_document=type_doc,
+                date_expiration=timezone.now().date() + timedelta(days=90),
+                obligatoire=True)
+
 
 class TestConformiteSelector(Xpur1Base):
-    def test_fournisseur_sans_document_est_ok(self):
+    def test_fournisseur_sans_document_non_conforme(self):
+        # ASTK188 — changé : sans aucune pièce, les 4 types requis manquent
+        # (XPUR1 le disait « en règle »).
+        problemes = fournisseur_conformite_manquante(self.fournisseur)
+        self.assertEqual({p['type_document'] for p in problemes},
+                         {'arf', 'cnss', 'rc', 'assurance'})
+        self.assertIsNotNone(bcf_warning_conformite(self.fournisseur))
+
+    def test_fournisseur_en_regle(self):
+        self._pieces_requises_valides()
         self.assertEqual(fournisseur_conformite_manquante(self.fournisseur), [])
         self.assertIsNone(bcf_warning_conformite(self.fournisseur))
 
@@ -81,15 +101,20 @@ class TestConformiteSelector(Xpur1Base):
             type_document=DocumentConformiteFournisseur.Type.ARF,
             date_expiration=timezone.now().date() - timedelta(days=5),
             obligatoire=True)
+        self._pieces_requises_valides(sauf=('arf',))
         problemes = fournisseur_conformite_manquante(self.fournisseur)
         self.assertEqual(len(problemes), 1)
         self.assertEqual(problemes[0]['type_document'], 'arf')
+        self.assertEqual(problemes[0]['motif'], 'expiré')
         self.assertIsNotNone(bcf_warning_conformite(self.fournisseur))
 
-    def test_document_non_obligatoire_ignore(self):
+    def test_document_autre_type_ignore(self):
+        # ASTK188 — une pièce « autre » ne couvre aucun type requis et ne
+        # crée aucun problème de plus.
+        self._pieces_requises_valides()
         DocumentConformiteFournisseur.objects.create(
             company=self.company, fournisseur=self.fournisseur,
-            type_document=DocumentConformiteFournisseur.Type.CNSS,
+            type_document=DocumentConformiteFournisseur.Type.AUTRE,
             date_expiration=timezone.now().date() - timedelta(days=5),
             obligatoire=False)
         self.assertEqual(fournisseur_conformite_manquante(self.fournisseur), [])
@@ -100,7 +125,9 @@ class TestConformiteSelector(Xpur1Base):
             type_document=DocumentConformiteFournisseur.Type.ARF,
             date_expiration=timezone.now().date() + timedelta(days=90),
             obligatoire=True)
-        self.assertEqual(fournisseur_conformite_manquante(self.fournisseur), [])
+        types = {p['type_document'] for p in
+                 fournisseur_conformite_manquante(self.fournisseur)}
+        self.assertNotIn('arf', types)
 
 
 class TestBcfWarningEndpoint(Xpur1Base):
@@ -121,6 +148,7 @@ class TestBcfWarningEndpoint(Xpur1Base):
         self.assertIn('conformite_warning', resp.data)
 
     def test_bcf_creation_no_warning_when_compliant(self):
+        self._pieces_requises_valides()
         resp = self.api.post('/api/django/stock/bons-commande-fournisseur/', {
             'fournisseur': self.fournisseur.id,
             'lignes': [{
@@ -171,11 +199,7 @@ class TestPaiementGate(Xpur1Base):
     def test_gate_on_allows_payment_when_compliant(self):
         AchatsParametres.objects.create(
             company=self.company, bloquer_paiement_conformite_expiree=True)
-        DocumentConformiteFournisseur.objects.create(
-            company=self.company, fournisseur=self.fournisseur,
-            type_document=DocumentConformiteFournisseur.Type.ARF,
-            date_expiration=timezone.now().date() + timedelta(days=90),
-            obligatoire=True)
+        self._pieces_requises_valides()
         resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
             'facture': self.facture.id, 'montant': '1200',
         }, format='json')

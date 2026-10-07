@@ -4736,20 +4736,51 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
 
 
 # ── XPUR1 — conformité fournisseur : warning BCF + gate paiement ───────────
+def types_conformite_requis():
+    """ASTK188 — TYPES de pièces de conformité REQUIS de tout fournisseur
+    (constante, sans migration) : ARF, CNSS, RC, assurance."""
+    from .models import DocumentConformiteFournisseur
+    T = DocumentConformiteFournisseur.Type
+    return (T.ARF, T.CNSS, T.RC, T.ASSURANCE)
+
+
 def fournisseur_conformite_manquante(fournisseur):
-    """XPUR1 — liste les documents de conformité OBLIGATOIRES manquants ou
-    expirés d'un fournisseur (liste de dicts ``{type_document, motif}``).
-    Vide = fournisseur en règle (ou sans document requis renseigné). Ne lève
-    jamais d'exception : appelé au fil de l'eau (warning + gate paiement)."""
+    """XPUR1/ASTK188 — pièces de conformité REQUISES manquantes, expirées ou
+    à compléter d'un fournisseur (liste de dicts ``{type_document,
+    type_document_display, motif}``, un par TYPE requis non couvert).
+
+    ASTK188 (C-ASTK-043) : la définition part de la liste des TYPES requis
+    (``types_conformite_requis``) comparée aux pièces présentes ET valides —
+    un fournisseur sans aucune pièce n'est plus « en règle ». Une pièce sans
+    date d'expiration est « à compléter » (motif ``sans date``), jamais
+    valide. Vide = fournisseur en règle. Lu par bcf_warning_conformite,
+    check_paiement_conformite_gate et la vue-360 (une seule définition). Ne
+    lève jamais d'exception : appelé au fil de l'eau."""
+    from django.utils import timezone
+    from .models import DocumentConformiteFournisseur
+
+    aujourd_hui = timezone.now().date()
+    par_type = {}
+    for doc in fournisseur.documents_conformite.all():
+        par_type.setdefault(doc.type_document, []).append(doc)
+    libelles = dict(DocumentConformiteFournisseur.Type.choices)
     problemes = []
-    docs = list(fournisseur.documents_conformite.filter(obligatoire=True))
-    for doc in docs:
-        if not doc.est_valide():
-            problemes.append({
-                'type_document': doc.type_document,
-                'type_document_display': doc.get_type_document_display(),
-                'motif': 'expiré' if doc.date_expiration else 'sans date',
-            })
+    for type_requis in types_conformite_requis():
+        docs = par_type.get(type_requis, [])
+        if any(d.date_expiration is not None
+               and d.date_expiration >= aujourd_hui for d in docs):
+            continue
+        if not docs:
+            motif = 'manquante'
+        elif any(d.date_expiration is None for d in docs):
+            motif = 'sans date'
+        else:
+            motif = 'expiré'
+        problemes.append({
+            'type_document': str(type_requis),
+            'type_document_display': libelles[type_requis],
+            'motif': motif,
+        })
     return problemes
 
 

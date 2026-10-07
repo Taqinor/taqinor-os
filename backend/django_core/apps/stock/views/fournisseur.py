@@ -624,7 +624,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'accords_prix_actifs': len(accords_prix),
             'accords_prix': accords_prix,
             'conformite_ok': not problemes,
-            'conformite_documents_manquants': len(problemes),
+            # ASTK188 — la LISTE des types requis non couverts (ARF, CNSS,
+            # RC, assurance), plus un simple compte.
+            'conformite_documents_manquants': [
+                p['type_document'] for p in problemes],
         }
         if not voit_montants:
             donnees.pop('solde_total_du', None)

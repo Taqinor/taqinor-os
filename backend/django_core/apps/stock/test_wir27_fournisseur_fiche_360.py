@@ -187,11 +187,14 @@ class TestVue360RetoursAvoirs(Wir27Base):
 
 
 class TestVue360Conformite(Wir27Base):
-    def test_conformite_ok_sans_document_obligatoire(self):
+    def test_conformite_ko_sans_aucune_piece(self):
+        # ASTK188 — changé : sans pièce, les 4 types requis sont listés
+        # (WIR27 renvoyait conformite_ok=True, 0 manquant).
         resp = self.api.get(self._url())
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertTrue(resp.data['conformite_ok'])
-        self.assertEqual(resp.data['conformite_documents_manquants'], 0)
+        self.assertFalse(resp.data['conformite_ok'])
+        self.assertEqual(set(resp.data['conformite_documents_manquants']),
+                         {'arf', 'cnss', 'rc', 'assurance'})
 
     def test_conformite_signale_un_document_obligatoire_expire(self):
         DocumentConformiteFournisseur.objects.create(
@@ -202,7 +205,7 @@ class TestVue360Conformite(Wir27Base):
         resp = self.api.get(self._url())
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertFalse(resp.data['conformite_ok'])
-        self.assertEqual(resp.data['conformite_documents_manquants'], 1)
+        self.assertIn('arf', resp.data['conformite_documents_manquants'])
 
 
 class TestVue360AccordsPrix(Wir27Base):
