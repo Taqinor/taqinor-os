@@ -452,7 +452,8 @@ def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
 
 #: Les deux mentions, avec leur date (ou l'aveu qu'elle n'est pas enregistrée).
 MENTION_VERROUILLE = ('Conception verrouillée depuis le {date} (devis lié '
-                      'envoyé) : pièce produite en lecture seule.')
+                      'figé — accepté, refusé, expiré ou remplacé) : pièce '
+                      'produite en lecture seule.')
 MENTION_ARCHIVE = ('Conception archivée le {date} : pièce d\'archive, '
                    'consultable, qui ne décrit pas une conception en cours.')
 DATE_NON_ENREGISTREE = 'date non enregistrée'
@@ -477,8 +478,9 @@ def _date_lisible(moment):
 def etat_de_conception(calepinage):
     """``{verrouille, verrouille_le, archive, archive_le}`` — LU, jamais recopié.
 
-    * verrouillé : ``services.verrou.est_verrouille`` (devis lié envoyé, sans
-      déverrouillage tracé) ; la date est celle de l'ENVOI du devis lié ;
+    * verrouillé : ``services.verrou.est_verrouille`` — ACAL42 : le verdict
+      ventes du geste CALEPINAGE (accepté, refusé, expiré ou remplacé ; un
+      envoyé se corrige) ; la date est celle de l'ENVOI du devis lié ;
     * archivé : ``services.archivage.est_archive`` (entrée ACTIVE de la
       corbeille plateforme) ; la date est celle de l'archivage.
 

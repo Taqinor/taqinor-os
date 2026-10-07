@@ -296,14 +296,6 @@
       "verbe": "get"
     }
   ],
-  "calepinages.deverrouiller": [
-    {
-      "config": null,
-      "data": {},
-      "url": "/calepinage/calepinages/7/deverrouiller/",
-      "verbe": "post"
-    }
-  ],
   "calepinages.documents": [
     {
       "config": null,

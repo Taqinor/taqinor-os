@@ -13,7 +13,8 @@ Ce qui est prouvé ici :
 * la mention part dans le pied COURANT du rapport d'étude (répété sur chaque
   page) et aucune pièce n'est refusée pour autant ;
 * ``@tag('pdf')`` : la mention figure sur CHAQUE page du PDF (texte extrait) ;
-* en base (CI) : un devis lié envoyé verrouille, l'archivage archive.
+* en base (CI) : un devis lié ACCEPTÉ verrouille (ACAL42 : un envoyé se
+  corrige, plus de mention), l'archivage archive.
 
 Run :
     python manage.py test apps.calepinage.tests.test_calx325_mention_verrou -v2
@@ -176,18 +177,26 @@ class EtatEnBaseTest(TestCase):
         client = Client.objects.create(company=self.company, nom='Client')
         self.devis = Devis.objects.create(
             company=self.company, client=client, reference='DEV-CALX325-1',
-            statut='envoye',
+            statut='accepte',
             date_envoi=datetime.datetime(2026, 9, 12, 9, 0,
                                          tzinfo=datetime.timezone.utc))
         self.calepinage = Calepinage.objects.create(
             company=self.company, client=client, devis=self.devis,
             titre='Toiture')
 
-    def test_un_devis_lie_envoye_verrouille_avec_la_date_d_envoi(self):
+    def test_un_devis_lie_accepte_verrouille_avec_la_date_d_envoi(self):
+        # ACAL42 — le verrou est le verdict ventes du geste CALEPINAGE :
+        # accepté ⇒ figé (mention) ; envoyé ⇒ se corrige (aucune mention).
         etat = etat_de_conception(self.calepinage)
         self.assertTrue(etat['verrouille'])
         self.assertTrue(etat['verrouille_le'].endswith('/09/2026'))
         self.assertFalse(etat['archive'])
+
+    def test_un_devis_lie_envoye_ne_porte_plus_la_mention(self):
+        self.devis.statut = 'envoye'
+        self.devis.save(update_fields=['statut'])
+        self.calepinage.refresh_from_db()
+        self.assertFalse(etat_de_conception(self.calepinage)['verrouille'])
 
     def test_l_archivage_ajoute_la_mention_archivee(self):
         from apps.calepinage.services.archivage import archiver

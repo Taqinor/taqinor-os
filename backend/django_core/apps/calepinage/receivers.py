@@ -32,13 +32,13 @@ import logging
 from django.dispatch import receiver
 
 from core.events import (
-    devis_sent, layout_finalise, lead_created, lead_trace_toit_recu,
+    layout_finalise, lead_created, lead_trace_toit_recu,
 )
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    'miroir_layout_du_devis', 'reverrouiller_au_devis_sent',
+    'miroir_layout_du_devis',
     'reprise_du_trace_public', 'reprise_du_trace_au_renvoi',
 ]
 
@@ -88,35 +88,6 @@ def miroir_layout_du_devis(sender, devis, user=None, **kwargs):
     except Exception:  # noqa: BLE001 — un miroir ne casse jamais la source
         logger.exception(
             'CAL39 : miroir de conception en échec pour le devis %s',
-            getattr(devis, 'pk', None))
-
-
-@receiver(devis_sent, dispatch_uid='calepinage_reverrouiller_devis_sent')
-def reverrouiller_au_devis_sent(sender, devis, user=None, **kwargs):
-    """CAL207 — RE-FERME le calepinage lié à chaque nouvel envoi du devis.
-
-    Un déverrouillage explicite (``services.verrou.deverrouiller``) ne
-    survit donc jamais à un cycle brouillon → renvoyé : le geste
-    « Réviser » de ventes remet le devis en brouillon (débloquant déjà
-    ``enregistrer_layout`` via ``est_verrouille``), et le RE-envoi referme
-    le calepinage comme le premier envoi l'avait fait.
-
-    Best-effort, TOUJOURS : ne fait jamais échouer l'envoi du devis déjà
-    réussi.
-    """
-    company = getattr(devis, 'company', None)
-    if devis is None or company is None:
-        return
-    try:
-        from .selectors import calepinage_du_devis
-        from .services.verrou import reverrouiller
-
-        calepinage = calepinage_du_devis(devis.pk, company)
-        if calepinage is not None:
-            reverrouiller(calepinage, user=user)
-    except Exception:  # noqa: BLE001 — un verrou ne casse jamais l'envoi
-        logger.exception(
-            'CAL207 : reverrouillage en échec pour le devis %s',
             getattr(devis, 'pk', None))
 
 

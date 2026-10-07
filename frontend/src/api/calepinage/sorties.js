@@ -3,13 +3,8 @@ import api from '../axios'
 import { pivot } from './_base'
 
 export const sorties = {
-    /* CALX27 — la levée du VERROU (CAL207, `views/verrou.py`). L'action
-       existait, testée, et n'avait aucun consommateur : l'atelier affichait un
-       bandeau « lecture seule » sans aucune sortie. Elle ne touche AUCUN
-       statut de devis (règle #4) ; le serveur la trace au journal et rend
-       `{calepinage, verrouille, deverrouille}`. Gardée par `calepinage_gerer`
-       côté serveur — l'écran cache l'affordance avec le MÊME code. */
-    deverrouiller: (id) => api.post(`${pivot(id)}deverrouiller/`, {}),
+    // ACAL42 — `deverrouiller` retiré : le verrou est le verdict ventes,
+    // le seul geste est « Réviser (v2) ».
 
     // CALX19 — l'INVENTAIRE des sorties d'un calepinage (planche, plans, note
     // de calcul, DXF, tableurs, pack technique), contrat

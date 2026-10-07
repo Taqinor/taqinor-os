@@ -2,11 +2,11 @@
 
 Ce qui est prouvé ici :
 
-* sans devis lié, ou devis encore ``brouillon``, écrire une conception
-  marche ;
-* devis ``envoyé`` : écrire une conception refuse, 409, champ nommé ;
-* ``deverrouiller`` lève le verrou — tracé au journal AVEC l'auteur — et
-  l'écriture marche à nouveau ;
+* sans devis lié, ou devis ``brouillon`` ou ``envoyé`` (ACAL42, D-QJR5-5 :
+  un envoyé se corrige), écrire une conception marche ;
+* devis ``accepté`` : écrire une conception refuse, 409, champ nommé, motif
+  de ventes mot pour mot ;
+* plus AUCUN déverrouillage (ACAL42 : le seul geste est « Réviser ») ;
 * la restauration de version (CAL20) hérite du MÊME refus (même chemin
   d'écriture, CAL203) ;
 * le statut du devis n'est JAMAIS touché par ces gestes (règle #4).
@@ -20,9 +20,8 @@ from rest_framework.exceptions import APIException
 
 from apps.calepinage.models import Calepinage, CalepinageVersion
 from apps.calepinage.services.layout import enregistrer_layout
-from apps.calepinage.services.verrou import (
-    VerrouilleRefuse, deverrouiller, est_verrouille,
-)
+from apps.calepinage.services import verrou as module_verrou
+from apps.calepinage.services.verrou import VerrouilleRefuse, est_verrouille
 from apps.calepinage.services.versions import restaurer_version
 from apps.crm.models import Client
 from apps.roles.models import Role
@@ -61,28 +60,34 @@ class VerrouTest(TestCase):
         self.assertFalse(est_verrouille(self.calepinage))
         enregistrer_layout(self.calepinage, {'panels': 3}, user=self.user)
 
-    def test_devis_envoye_ecrire_refuse_409(self):
+    def test_devis_envoye_ecrire_marche(self):
         self.devis.statut = Devis.Statut.ENVOYE
+        self.devis.save(update_fields=['statut'])
+        self.assertFalse(est_verrouille(self.calepinage))
+        enregistrer_layout(self.calepinage, {'panels': 3}, user=self.user)
+
+    def test_devis_accepte_ecrire_refuse_409(self):
+        self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])
         self.assertTrue(est_verrouille(self.calepinage))
         with self.assertRaises(APIException) as ctx:
             enregistrer_layout(self.calepinage, {'panels': 3}, user=self.user)
         self.assertEqual(ctx.exception.status_code, 409)
         self.assertIn('roof_layout', ctx.exception.detail)
+        self.assertIn('Devis accepté : révisez-le',
+                      str(ctx.exception.detail['roof_layout'][0]))
 
-    def test_deverrouiller_puis_ecriture_marche(self):
-        self.devis.statut = Devis.Statut.ENVOYE
-        self.devis.save(update_fields=['statut'])
-        deverrouiller(self.calepinage, user=self.user)
-        self.assertFalse(est_verrouille(self.calepinage))
-        enregistrer_layout(self.calepinage, {'panels': 3}, user=self.user)
+    def test_aucune_porte_de_deverrouillage(self):
+        self.assertFalse(hasattr(module_verrou, 'deverrouiller'))
+        self.assertFalse(hasattr(module_verrou, 'reverrouiller'))
 
     def test_devis_statut_jamais_touche(self):
-        self.devis.statut = Devis.Statut.ENVOYE
+        self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])
-        deverrouiller(self.calepinage, user=self.user)
+        with self.assertRaises(VerrouilleRefuse):
+            enregistrer_layout(self.calepinage, {'panels': 3}, user=self.user)
         self.devis.refresh_from_db()
-        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
 
     def test_restauration_de_version_herite_du_refus(self):
         enregistrer_layout(self.calepinage, {'panels': 3}, user=self.user)
@@ -90,10 +95,7 @@ class VerrouTest(TestCase):
             calepinage=self.calepinage).order_by('-created_at').first()
         self.assertIsNotNone(version)
 
-        self.devis.statut = Devis.Statut.ENVOYE
+        self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])
         with self.assertRaises(VerrouilleRefuse):
             restaurer_version(version, user=self.user)
-
-    def test_deverrouiller_calepinage_non_verrouille_est_un_no_op(self):
-        self.assertFalse(deverrouiller(self.calepinage, user=self.user))

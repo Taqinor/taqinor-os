@@ -57,8 +57,6 @@ from . import horizon as _horizon_action  # noqa: F401
 from . import export_csv as _export_csv_action  # noqa: F401
 # CAL246 — même patron : rattache l'action ``modeles`` (bibliothèque).
 from . import bibliotheque as _bibliotheque_action  # noqa: F401
-# CAL207 — même patron : rattache l'action ``deverrouiller``.
-from . import verrou as _verrou_action  # noqa: F401
 # CAL208 — même patron : rattache ``archiver``/``restaurer-corbeille``.
 from . import archivage as _archivage_action  # noqa: F401
 # CAL216 — même patron : rattache ``export-layout``/``import-layout``.
@@ -152,7 +150,6 @@ MODULES_RATTACHES = (
     'horizon',
     'export_csv',
     'bibliotheque',
-    'verrou',
     'archivage',
     'io_layout',
     'pompage',

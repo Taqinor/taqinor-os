@@ -956,14 +956,18 @@ def devis_ouverts_ratio_client(company, client_id, *, limit=200):
     return {'total': total, 'ouverts': ouverts}
 
 
-def devis_modifiabilite(devis):
+def devis_modifiabilite(devis, geste='ENTETE'):
     """QJR516 (contrat QJR500) — le verdict de modifiabilité d'un devis pour
     un AUTRE app (la ligne devis de la fiche lead, ``crm/serializers``) :
     ``{modifiable, raison_non_modifiable, revision_possible, is_active}``.
     Même prédicat que ``DevisSerializer`` (``domain/modifiabilite``), jamais
-    une règle recopiée côté crm."""
+    une règle recopiée côté crm.
+
+    ACAL42 — ``geste`` (clé de ``domain.modifiabilite.GESTES``, ``ENTETE``
+    par défaut, comportement inchangé) : le calepinage passe ``CALEPINAGE``
+    pour que son verrou soit EXACTEMENT ce verdict."""
     from .domain.modifiabilite import verdict
-    resultat = dict(verdict(devis))
+    resultat = dict(verdict(devis, geste))
     resultat['is_active'] = bool(devis.is_active)
     return resultat
 
