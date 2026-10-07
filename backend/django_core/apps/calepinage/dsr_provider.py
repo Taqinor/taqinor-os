@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['PROVIDER_NAME', 'REPERE_LOCAL', 'anonymiser_calepinage',
            'calepinages_du_sujet', 'export_calepinage', 'erase_calepinage',
-           'register']
+           'on_lead_erased', 'register']
 
 
 def _epingle(document):
@@ -204,9 +204,35 @@ def erase_calepinage(company, subject_identifier):
     return {'anonymises': total}
 
 
+def on_lead_erased(sender, **kwargs):
+    """ACAL301 — un lead CRM est effacé (DSR ou RÉTENTION) : chaque
+    calepinage de ce lead reçoit LE scrub (:func:`anonymiser_calepinage`).
+    Best-effort journalisé, jamais propagé : l'effacement CRM ne casse
+    jamais à cause d'un abonné."""
+    from .models import Calepinage
+
+    company = kwargs.get('company')
+    lead_id = kwargs.get('crm_lead_id')
+    if company is None or not lead_id:
+        return
+    for calepinage in (Calepinage.objects
+                       .filter(company=company, lead_id=lead_id)
+                       .order_by('pk')):
+        try:
+            anonymiser_calepinage(calepinage)
+        except Exception:  # noqa: BLE001 — journalisé, jamais propagé
+            logger.exception('ACAL301 : calepinage %s non anonymisé '
+                             '(lead %s effacé)', calepinage.pk, lead_id)
+
+
 def register():
     """Enregistre le fournisseur DSR du calepinage (idempotent). ``ready()``."""
     from core import dsr
 
     dsr.register_dsr_provider(PROVIDER_NAME, export=export_calepinage,
                               erase=erase_calepinage, erase_order=0)
+
+    # ACAL301 — l'abonnement à l'effacement d'un lead (rétention comprise).
+    from core.events import lead_erased
+
+    lead_erased.connect(on_lead_erased, dispatch_uid='calepinage_lead_erased')
