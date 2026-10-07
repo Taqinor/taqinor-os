@@ -20,11 +20,13 @@ class Migration(migrations.Migration):
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
                 ('version', models.PositiveIntegerField(default=0)),
-                ('date_modification', models.DateTimeField(auto_now=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     blank=True, null=True,
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name='jetons_calendrier',
+                    verbose_name='Société',
                     to='authentication.company')),
                 ('user', models.OneToOneField(
                     on_delete=django.db.models.deletion.CASCADE,
