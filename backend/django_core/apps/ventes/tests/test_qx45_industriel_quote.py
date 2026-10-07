@@ -99,10 +99,10 @@ class TestIndustrielContent(SimpleTestCase):
 
 class TestIndustrielInjectionWhenPresent(SimpleTestCase):
     def test_injection_line_rendered_with_mention(self):
+        # CIQ129 — l'injection est la revente CALCULÉE du moteur C&I
+        # (``economie_ci.revente``), plus une clé d'étude écran v1.
         base = sample_data.build()
-        base["etude"] = dict(base["etude"])
-        base["etude"]["injection_dh_an"] = 30000
-        base["etude"]["injection_kwh_an"] = 45000
+        base["economie_ci"] = sample_data.economie_ci()
         html = render.build_html(renderer._augment(base))
         self.assertIn("surplus injecté", html)
         self.assertIn("82-21", html)

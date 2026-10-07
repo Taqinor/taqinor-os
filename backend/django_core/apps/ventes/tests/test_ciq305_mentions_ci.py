@@ -119,10 +119,10 @@ class TestTableMentions(SimpleTestCase):
 class TestGabaritsLisentLaTable(SimpleTestCase):
 
     def _avec_injection(self, sample):
+        # CIQ129 — l'injection est celle du moteur C&I (``economie_ci.
+        # revente`` calculée, contrat partagé), plus une clé d'étude écran.
         base = copy.deepcopy(sample.build())
-        base["etude"] = dict(base.get("etude") or {})
-        base["etude"]["injection_dh_an"] = 30000
-        base["etude"]["injection_kwh_an"] = 45000
+        base["economie_ci"] = ind_sample.economie_ci()
         return base
 
     def test_rendu_reel_des_deux_gabarits(self):

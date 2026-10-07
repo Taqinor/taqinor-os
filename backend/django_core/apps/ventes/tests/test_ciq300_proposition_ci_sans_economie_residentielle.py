@@ -118,7 +118,8 @@ class Ciq300FonctionPureTests(SimpleTestCase):
                     'economies_annuelles': 98000, 'payback': 3.6}})
                 self.assertIsNone(k['payback'])
                 self.assertIsNone(k['economies_annuelles'])
-                self.assertEqual(k['taux_autoconso'], 74)
+                # CIQ129 — les taux non plus : projection de synthese_ci.
+                self.assertIsNone(k['taux_autoconso'])
                 contrat = json.loads(_CONTRAT.read_text(encoding='utf-8'))
                 self.assertEqual(
                     set(k), set(contrat['exemple_commercial']['mode_kpis']))
