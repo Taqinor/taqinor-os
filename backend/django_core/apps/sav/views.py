@@ -2151,6 +2151,36 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(principal, context={'request': request}).data)
 
+    @staticmethod
+    def _produits_lignes_hors_societe(company, lignes):
+        """ASEC35 — résout dans la société du ticket chaque ``produit_id``
+        reçu par ``creer-devis`` AVANT le domaine ventes (via le sélecteur
+        stock borné société). Renvoie ``{index: {'produit_id': [msg]}}`` —
+        un produit d'une autre société et un id inexistant reçoivent la MÊME
+        réponse (aucun oracle d'existence) ; ``{}`` si tout est valide."""
+        from apps.stock.selectors import valid_produit_ids
+
+        message = "Produit introuvable pour votre société."
+        if not isinstance(lignes, list):
+            return {'non_field_errors': ['Liste de lignes attendue.']}
+        erreurs, a_verifier = {}, {}
+        for i, ligne in enumerate(lignes):
+            if not isinstance(ligne, dict):
+                erreurs[i] = {'non_field_errors': ['Ligne invalide.']}
+                continue
+            brut = ligne.get('produit_id')
+            if brut in (None, ''):
+                continue
+            try:
+                a_verifier[i] = int(brut)
+            except (TypeError, ValueError):
+                erreurs[i] = {'produit_id': [message]}
+        valides = valid_produit_ids(company, set(a_verifier.values()))
+        for i, pid in a_verifier.items():
+            if pid not in valides:
+                erreurs[i] = {'produit_id': [message]}
+        return erreurs
+
     @action(detail=True, methods=['post'], url_path='creer-devis',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def creer_devis(self, request, pk=None):
@@ -2188,6 +2218,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     'quantite': piece.quantite,
                     'prix_unitaire': produit.prix_vente,
                 })
+        else:
+            erreurs = self._produits_lignes_hors_societe(ticket.company, lignes)
+            if erreurs:
+                return Response({'lignes': erreurs},
+                                status=status.HTTP_400_BAD_REQUEST)
 
         try:
             devis = create_devis_pour_ticket(
