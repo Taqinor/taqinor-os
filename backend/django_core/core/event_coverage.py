@@ -110,10 +110,6 @@ ALLOWED_UNCONSUMED = {
     # Son abonné prévu (le calepinage re-lie sa conception à la V+1, D-ACAL-3)
     # est la tâche ACAL92 : à RETIRER d'ici dans le même commit que cet abonné.
     "devis_revise",
-    # ASTK55 — ``reception_fournisseur_annulee`` : déclaré avant son émetteur
-    # (ASTK56, stock) et son abonné (ASTK57, installations : extourne GR/IR,
-    # séries, YPROC10). À RETIRER d'ici dans le même commit que l'abonné.
-    "reception_fournisseur_annulee",
     # SOLMVP23 — SEAMS DES MODULES SORTIS DU MVP SOLAIRE (Phase 2,
     # docs/parked-modules.md). Ces sept signaux restent DECLARES sur le bus (ils
     # sont au catalogue d'integration NTPLT12 et la migration de semis les
