@@ -578,6 +578,12 @@ class RegisterCompanyView(generics.GenericAPIView):
     serializer_class = RegisterSerializer  # requis par DRF GenericAPIView
 
     def post(self, request):
+        # ASEC13 / D-ASEC-2 — inscription libre PARQUÉE par défaut : éteinte,
+        # l'endpoint répond 404 et ne crée rien (même drapeau que la demande
+        # d'inscription N101, ``apps/adminops/views_signup.py``).
+        if not getattr(settings, 'TENANT_SIGNUP_ENABLED', False):
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
         company_nom = request.data.get('company_nom', '').strip()
         username = request.data.get('username', '').strip()
         password = request.data.get('password', '')
@@ -590,6 +596,16 @@ class RegisterCompanyView(generics.GenericAPIView):
             errors['username'] = ["Ce champ est requis."]
         if not password:
             errors['password'] = ["Ce champ est requis."]
+        # ASEC13 — e-mail obligatoire et valide (propriétaire joignable).
+        if not email:
+            errors['email'] = ["Ce champ est requis."]
+        else:
+            from django.core.exceptions import ValidationError as DjValidationError
+            from django.core.validators import validate_email
+            try:
+                validate_email(email)
+            except DjValidationError:
+                errors['email'] = ["Adresse e-mail invalide."]
         if errors:
             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -623,30 +639,36 @@ class RegisterCompanyView(generics.GenericAPIView):
             slug = f"{slug_base}-{i}"
             i += 1
 
-        company = Company.objects.create(nom=company_nom, slug=slug)
-
+        # ASEC13 — création ATOMIQUE du noyau (société, profil, rôles,
+        # propriétaire) : une erreur après la société ne laisse rien derrière.
+        # Le gabarit et les hooks (best-effort, isolés) suivent hors du bloc.
+        from django.db import transaction
         from apps.parametres.models import CompanyProfile
-        CompanyProfile.objects.get_or_create(
-            company=company,
-            defaults={'nom': company_nom},
-        )
+        with transaction.atomic():
+            company = Company.objects.create(nom=company_nom, slug=slug)
+            CompanyProfile.objects.get_or_create(
+                company=company,
+                defaults={'nom': company_nom},
+            )
 
-        roles = _create_system_roles(company)
-        # Le propriétaire fondateur de la nouvelle société est Directeur (accès
-        # total + Journal d'activité), pour qu'il y ait au moins un Directeur.
-        admin_role = roles['Directeur']
+            roles = _create_system_roles(company)
+            # Le propriétaire fondateur de la nouvelle société est Directeur
+            # (accès total + Journal d'activité), pour qu'il y ait au moins un
+            # Directeur.
+            admin_role = roles['Directeur']
 
-        user = CustomUser.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-            role_legacy=CustomUser.ROLE_ADMIN,
-            role=admin_role,
-            company=company,
-        )
-        # XPLT19 — la société d'attache est aussi la première société autorisée
-        # (membre). Un compte mono-société démarre donc avec {sa société}.
-        user.societes_autorisees.add(company)
+            user = CustomUser.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                role_legacy=CustomUser.ROLE_ADMIN,
+                role=admin_role,
+                company=company,
+            )
+            # XPLT19 — la société d'attache est aussi la première société
+            # autorisée (membre). Un compte mono-société démarre donc avec
+            # {sa société}.
+            user.societes_autorisees.add(company)
 
         # SOL10 — gabarit de tenant « Solaire » : compose l'existant (modules
         # rares éteints SOL8, plan de licence Solaire SOL9, rôles types,

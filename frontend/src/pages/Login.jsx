@@ -61,6 +61,8 @@ const BRAND_TOKENS = `
 // répond (logo, nom d'affichage ou couleur primaire), l'écran est exactement
 // celui d'avant, sans une occurrence de « Taqinor ».
 const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'Taqinor'
+// ASEC13 / D-ASEC-2 — inscription libre parquée par défaut (lien masqué).
+const TENANT_SIGNUP_ENABLED = import.meta.env.VITE_TENANT_SIGNUP_ENABLED === '1'
 
 /** marqueDeTenant — ce domaine porte-t-il la marque d'une société cliente ? */
 function marqueDeTenant(marque) {
@@ -428,13 +430,18 @@ export default function Login() {
 
         {/* PACT116 — porte d'entrée de l'inscription : `POST
             /auth/register-company/` existait depuis toujours, sans aucun lien
-            pour l'atteindre. */}
-        <p style={{ textAlign: 'center', marginTop: 22, fontSize: 13, color: '#6b7280' }}>
-          Pas encore de société ?{' '}
-          <Link to="/register" style={{ color: 'var(--login-azur)', textDecoration: 'none', fontWeight: 600 }}>
-            Créer votre société
-          </Link>
-        </p>
+            pour l'atteindre.
+            ASEC13 / D-ASEC-2 — l'inscription est PARQUÉE par défaut
+            (`TENANT_SIGNUP_ENABLED` côté serveur → 404) : le lien n'apparaît
+            que si `VITE_TENANT_SIGNUP_ENABLED=1` au build. */}
+        {TENANT_SIGNUP_ENABLED && (
+          <p style={{ textAlign: 'center', marginTop: 22, fontSize: 13, color: '#6b7280' }}>
+            Pas encore de société ?{' '}
+            <Link to="/register" style={{ color: 'var(--login-azur)', textDecoration: 'none', fontWeight: 600 }}>
+              Créer votre société
+            </Link>
+          </p>
+        )}
 
         {/* Retour accueil */}
         <p style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: '#9ca3af' }}>
