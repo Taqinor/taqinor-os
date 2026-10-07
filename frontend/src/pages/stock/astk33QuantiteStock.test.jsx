@@ -16,44 +16,35 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    Composants réels ; seule l'API est simulée (frontière réseau).
    ========================================================================== */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })), post: vi.fn() },
+// Frontière réseau : axios (appels annexes du formulaire) + les deux écritures
+// produit observées. Le reste de stockApi répond « vide ».
+const { creer, modifier } = vi.hoisted(() => ({
+  creer: vi.fn((data) => Promise.resolve({ data: { id: 42, ...data } })),
+  modifier: vi.fn((id, data) => Promise.resolve({ data: { id, ...data } })),
 }))
-
-const { createProduitApi, updateProduitApi } = vi.hoisted(() => ({
-  createProduitApi: vi.fn((data) => Promise.resolve({ data: { id: 42, ...data } })),
-  updateProduitApi: vi.fn((id, data) => Promise.resolve({ data: { id, ...data } })),
-}))
-
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduitPrixFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerTcoFournisseurs: () => Promise.resolve({ data: { fournisseurs: [] } }),
-    uploadProduitImage: () => Promise.resolve({ data: {} }),
-    getFichesTechniques: () => Promise.resolve({ data: [] }),
-    createProduit: (...args) => createProduitApi(...args),
-    updateProduit: (...args) => updateProduitApi(...args),
-  },
-}))
+vi.mock('../../api/axios', () => ({ default: { get: vi.fn(async () => ({ data: [] })), post: vi.fn() } }))
+vi.mock('../../api/stockApi', () => {
+  const vide = async () => ({ data: [] })
+  return {
+    default: new Proxy({ createProduit: creer, updateProduit: modifier }, {
+      get: (cible, cle) => (cle in cible ? cible[cle] : vide),
+    }),
+  }
+})
 
 import ProduitForm from './ProduitForm.jsx'
 import { CatalogueTable } from './CatalogueTable.jsx'
+import { installerCalesJsdom } from '../../test/fixtures/calesJsdom'
 
-const store = configureStore({
-  reducer: {
-    auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
-    stock: (s = { categories: [], fournisseurs: [], produits: [] }) => s,
-  },
-})
-
-function wrapper({ children }) {
-  return (
-    <Provider store={store}>
-      <MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter>
-    </Provider>
-  )
-}
+const createProduitApi = creer
+const updateProduitApi = modifier
+const magasin = configureStore({ reducer: {
+  auth: () => ({ role: 'admin', role_nom: 'Directeur', permissions: [] }),
+  stock: () => ({ categories: [], fournisseurs: [], produits: [] }),
+} })
+const enveloppe = ({ children }) => (
+  <Provider store={magasin}><MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter></Provider>
+)
 
 const PRODUIT = {
   id: 9, nom: 'Onduleur 5 kW', sku: 'OND-5', marque: '', description: '',
@@ -63,18 +54,12 @@ const PRODUIT = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
+  installerCalesJsdom()
 })
 
 describe('ASTK33 — fiche produit : le stock ne part jamais dans le PATCH', () => {
   it('édition : le payload ne contient pas quantite_stock', async () => {
-    render(<ProduitForm produit={PRODUIT} onClose={() => {}} onSaved={() => {}} />, { wrapper })
+    render(<ProduitForm produit={PRODUIT} onClose={() => {}} onSaved={() => {}} />, { wrapper: enveloppe })
     await screen.findByText(/Éditer/)
     fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
     await waitFor(() => expect(updateProduitApi).toHaveBeenCalled())
@@ -84,7 +69,7 @@ describe('ASTK33 — fiche produit : le stock ne part jamais dans le PATCH', () 
   })
 
   it('création : le stock initial est toujours envoyé', async () => {
-    render(<ProduitForm produit={null} onClose={() => {}} onSaved={() => {}} />, { wrapper })
+    render(<ProduitForm produit={null} onClose={() => {}} onSaved={() => {}} />, { wrapper: enveloppe })
     await screen.findByText('Nouveau produit')
     fireEvent.change(screen.getByPlaceholderText('Nom du produit'), { target: { value: 'Câble 6 mm²' } })
     fireEvent.change(document.getElementById('pf-vente'), { target: { value: '12' } })
