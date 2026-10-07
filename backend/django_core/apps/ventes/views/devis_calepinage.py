@@ -32,6 +32,41 @@ def _emettre_layout_finalise(devis, user):
     emettre_layout_finalise(devis, user)
 
 
+def _jeton_if_match(request):
+    """ACAL96 — l'empreinte « document » de l'en-tête ``If-Match`` (ETag
+    tolérée), ``None`` si absent : le jeton n'est comparé que s'il est
+    FOURNI (C-ACAL-044)."""
+    brut = request.headers.get('If-Match')
+    if brut is None or not brut.strip():
+        return None
+    brut = brut.strip()
+    if brut.startswith('W/'):
+        brut = brut[2:]
+    return brut.strip().strip('"').strip()
+
+
+def _ecrire_conception(devis, payload, request):
+    """ACAL96 — calepinage lié écrit puis devis resynchronisé ; les refus
+    deviennent les réponses existantes (409 ``{detail, revision_possible}``,
+    refus du calepinage tels quels)."""
+    from ..domain.resynchronisation import (
+        ConceptionRefusee, ecrire_conception_du_devis)
+    from ..services import SyncLayoutError
+
+    try:
+        resultat = ecrire_conception_du_devis(
+            devis, payload, request.user,
+            base_empreinte=_jeton_if_match(request))
+    except SyncLayoutError as exc:
+        return Response(
+            {'detail': exc.detail,
+             'revision_possible': exc.revision_possible},
+            status=status.HTTP_409_CONFLICT)
+    except ConceptionRefusee as refus:
+        return Response(refus.corps, status=refus.statut)
+    return Response(resultat)
+
+
 class DevisCalepinageActionsMixin:
     """SPL140 — actions calepinage / conception de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -278,8 +313,6 @@ class DevisCalepinageActionsMixin:
         « Réviser ») ; refusé/expiré, 409 avec ``revision_possible: false``.
         Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
-        from ..services import resynchroniser_conception, SyncLayoutError
-
         devis = self.get_object()  # borné société par get_queryset
         payload = request.data
         if isinstance(payload, dict):
@@ -290,16 +323,11 @@ class DevisCalepinageActionsMixin:
         if not isinstance(payload, dict) or not payload:
             return Response({'detail': 'Layout manquant ou invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        try:
-            # ACAL34 — L'ENVELOPPE unique (resynchro + quatre études +
-            # annonce PV79), la même que « Resynchroniser le devis » du module.
-            resultat = resynchroniser_conception(devis, payload, request.user)
-        except SyncLayoutError as exc:
-            return Response(
-                {'detail': exc.detail,
-                 'revision_possible': exc.revision_possible},
-                status=status.HTTP_409_CONFLICT)
-        return Response(resultat)
+        # ACAL96 (D-ACAL-1) — le layout est écrit dans le CALEPINAGE lié
+        # (adopté/créé au besoin), puis l'enveloppe ACAL34 resynchronise le
+        # devis depuis CE calepinage : plus d'écriture de Devis.roof_layout
+        # depuis le corps.
+        return _ecrire_conception(devis, payload, request)
 
     @action(detail=True, methods=['get', 'post'],
             url_path='conception-electrique',
@@ -498,25 +526,17 @@ class DevisCalepinageActionsMixin:
         renderPlan) tel que le produit l'outil roofPro11. La société n'est
         jamais lue du corps : le devis est déjà borné à la société de
         l'utilisateur par ``get_queryset`` (un devis d'une autre société →
-        404). Seuls ``roof_layout`` et ``layout_hash`` sont touchés ; aucun
-        statut ne bouge (préservation des statuts, règle #4).
+        404). Aucun statut ne bouge (préservation des statuts, règle #4).
 
-        CAL39 — CE CHEMIN ÉTAIT MUET. Il n'émettait AUCUN événement et ne
-        posait même pas ``layout_hash``, alors que ``from-layout`` et
-        ``sync-layout`` font les deux. Conséquences : la dédup au clic suivant
-        ne pouvait pas le reconnaître, et tout abonné au bus (le miroir de
-        calepinage, la note au chatter du lead) ignorait cet enregistrement —
-        un calepinage créé depuis la fiche lead restait gelé pendant que le
-        devis, lui, était redessiné ici. Il émet désormais le MÊME événement
-        que les deux autres, et pose la MÊME empreinte. AUCUNE ligne d'écran
-        ne change : le geste, la route et la réponse sont identiques."""
-        from ..services import layout_hash, poser_layout_hash
-
+        ACAL96 (D-ACAL-1) — le POST écrit le CALEPINAGE lié (adopté/créé au
+        besoin) puis resynchronise le devis par l'enveloppe unique, exactement
+        comme ``sync-layout`` : ``Devis.roof_layout`` est l'instantané RANGÉ
+        (``_pans_geometry``) de la conception, plus jamais le corps brut.
+        La réponse reste ``{roof_layout}``."""
         devis = self.get_object()
         if request.method == 'GET':
             return Response({'roof_layout': devis.roof_layout})
-        # QJR516 — POST gardé (geste ETUDE : le layout brut, pas la
-        # resynchronisation des lignes, qui reste CALEPINAGE).
+        # QJR516 — POST gardé (geste ETUDE).
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
         # POST — le corps entier est le layout (on accepte aussi un wrapper
@@ -524,21 +544,17 @@ class DevisCalepinageActionsMixin:
         payload = request.data
         if isinstance(payload, dict) and set(payload.keys()) == {'roof_layout'}:
             payload = payload['roof_layout']
-        # ACAL41 (C-ACAL-090) — sur un ENVOYÉ, ce geste est une correction
-        # de la CONCEPTION imprimée : encadré comme sync-layout (début de geste
-        # AVANT la première écriture, fin de geste après) ; renvoyer le même
-        # document ne laisse aucune trace. Hors envoyé : no-op.
-        from ..domain.modifiabilite import (
-            debut_de_geste_devis, fin_de_geste_devis)
-        avant_geste = debut_de_geste_devis(devis, request.user)
-        devis.roof_layout = payload
-        devis.save(update_fields=['roof_layout'])
-        # La MÊME empreinte que les deux autres chemins (écriture ciblée, aucun
-        # statut touché) — puis la MÊME annonce.
-        poser_layout_hash(devis, layout_hash(payload))
-        fin_de_geste_devis(devis, request.user, avant=avant_geste,
-                           objet='calepinage')
-        _emettre_layout_finalise(devis, request.user)
+        if not isinstance(payload, dict):
+            return Response({'detail': 'Layout manquant ou invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # ACAL96 (D-ACAL-1) — l'écriture brute ``devis.roof_layout = payload``
+        # est SUPPRIMÉE : même chemin que sync-layout (calepinage lié écrit,
+        # puis resynchro — empreinte, trace « corrigé après envoi » et annonce
+        # PV79 posées par l'enveloppe). Réponse inchangée.
+        reponse = _ecrire_conception(devis, payload, request)
+        if reponse.status_code != status.HTTP_200_OK:
+            return reponse
+        devis.refresh_from_db(fields=['roof_layout'])
         return Response({'roof_layout': devis.roof_layout})
 
     @action(

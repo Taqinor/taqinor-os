@@ -57,6 +57,24 @@ class SyncLayoutError(Exception):
         self.revision_possible = revision_possible
 
 
+def _refus_resynchro(devis):
+    """QJR516 — le refus de statut d'une resynchro (geste ``CALEPINAGE``), ou
+    ``None`` si le devis se resynchronise. ACAL96 — partagé par
+    :func:`reconcilier` (sous verrou) et :func:`ecrire_conception_du_devis`
+    (AVANT d'écrire le calepinage) : un refus n'écrit rien nulle part."""
+    from apps.ventes.domain.modifiabilite import CALEPINAGE, verdict
+    v = verdict(devis, CALEPINAGE)
+    if v['modifiable']:
+        return None
+    if not devis.is_active:
+        detail = v['raison_non_modifiable'] + '.'
+    else:
+        detail = (
+            'Devis « %s » : son calepinage est figé, ce document est '
+            'clos.' % devis.get_statut_display())
+    return SyncLayoutError(detail, revision_possible=v['revision_possible'])
+
+
 def _resynchroniser_instance_appelante(devis, verrou):
     """QJR20 (29/08/2026) — recale l'instance de l'APPELANT sur ce qui vient
     d'être écrit sous verrou.
@@ -344,17 +362,9 @@ def reconcilier(devis, intention):
         # (``fin_de_geste_devis``). Textes des refus restants CONSERVÉS ;
         # ``revision_possible`` vient du prédicat (un accepté/refusé/expiré
         # est révisable, D-QJR5-2 ; un devis remplacé ne l'est pas).
-        from apps.ventes.domain.modifiabilite import CALEPINAGE, verdict
-        v = verdict(verrou, CALEPINAGE)
-        if not v['modifiable']:
-            if not verrou.is_active:
-                detail = v['raison_non_modifiable'] + '.'
-            else:
-                detail = (
-                    'Devis « %s » : son calepinage est figé, ce document est '
-                    'clos.' % verrou.get_statut_display())
-            raise SyncLayoutError(
-                detail, revision_possible=v['revision_possible'])
+        refus = _refus_resynchro(verrou)
+        if refus is not None:
+            raise refus
 
         lignes = _lignes_produit(verrou)
         lignes_panneau = [li for li in lignes
@@ -401,7 +411,15 @@ def reconcilier(devis, intention):
                 'de panneaux la plus grosse, tous groupes confondus.')
 
         # ── Court-circuit : même géométrie → ZÉRO écriture ──
-        if nouveau_hash and verrou.layout_hash == nouveau_hash:
+        # ACAL96 — accepté seulement si le layout STOCKÉ porte déjà
+        # ``_pans_geometry`` quand le toit a des pans : un document stocké
+        # brut (ancien chemin ``POST layout``) est rangé une fois, sinon la
+        # 3D publique et l'annexe « paramètres du site » restent vides.
+        stocke = verrou.roof_layout if isinstance(verrou.roof_layout,
+                                                  dict) else {}
+        range_ok = (not (toiture and toiture.get('pans'))
+                    or bool(stocke.get('_pans_geometry')))
+        if nouveau_hash and verrou.layout_hash == nouveau_hash and range_ok:
             return {
                 'inchange': True,
                 'panneaux': total_panneaux,
@@ -1081,9 +1099,10 @@ def reconcilier(devis, intention):
         # mutation du dict de l'appelant. L'empreinte, elle, est calculée sur
         # le layout D'ORIGINE (clés géométriques seules) : cet enrichissement
         # ne peut donc pas casser le court-circuit au prochain envoi.
-        layout_stocke = dict(layout)
-        if toiture and toiture.get('pans'):
-            layout_stocke['_pans_geometry'] = toiture['pans']
+        # ACAL96 — UN SEUL rangement : celui de la création
+        # (``creation_calepinage._calepinage_range``), plus de copie inline.
+        from apps.ventes.domain.creation_calepinage import _calepinage_range
+        layout_stocke, _etude = _calepinage_range(layout, toiture, None)
 
         verrou.roof_layout = layout_stocke
         verrou.layout_hash = nouveau_hash or verrou.layout_hash
@@ -1343,6 +1362,68 @@ def resynchroniser_conception(devis, layout, user=None, *, emettre=True,
     from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
     rafraichir_etudes_du_devis(devis)
     return resultat
+
+
+class ConceptionRefusee(Exception):
+    """ACAL96 — refus du CALEPINAGE lié (jeton périmé, document invalide,
+    verrou, devis introuvable) : ``statut`` HTTP et ``corps`` tels que le
+    module les rend, propagés mot pour mot par la vue."""
+
+    def __init__(self, statut, corps):
+        super().__init__(str(corps))
+        self.statut = statut
+        self.corps = corps
+
+
+def _sans_cles_privees(layout):
+    """Le document de conception sans les clés PRIVÉES du devis (racine
+    préfixée ``_`` : ``_pans_geometry``…) — même règle que l'adoption
+    (``apps.calepinage.services.creation``) : jamais recopiées dans la
+    conception ; l'empreinte imprimée ne les lit pas."""
+    return {cle: valeur for cle, valeur in (layout or {}).items()
+            if not str(cle).startswith('_')}
+
+
+def ecrire_conception_du_devis(devis, layout, user=None, *,
+                               base_empreinte=None):
+    """ACAL96 (D-ACAL-1, C-ACAL-102) — ``sync-layout`` et ``POST layout`` du
+    devis écrivent LE CALEPINAGE lié, puis resynchronisent le devis.
+
+    1. refus de statut (prédicat ventes ``CALEPINAGE``) AVANT toute écriture
+       → :class:`SyncLayoutError` (409 existant) ;
+    2. le calepinage du devis : lié, sinon adopté/créé par la porte unique
+       ``apps.calepinage.services.adopter_ou_creer_pour_devis`` ;
+    3. ``enregistrer_layout`` — SEUL écrivain du document (version seulement
+       si changé ; jeton ``If-Match`` comparé s'il est fourni) ;
+    4. :func:`resynchroniser_conception` sur ``calepinage.roof_layout`` —
+       seule à écrire ``Devis.roof_layout`` (rangé par ``_calepinage_range``,
+       avec ``_pans_geometry``). Plus aucune écriture de ``Devis.roof_layout``
+       depuis un corps arbitraire.
+
+    Rend le dict de la resynchro, INCHANGÉ. Aucun statut écrit (règle #4).
+
+    Raises:
+        SyncLayoutError: devis figé (accepté, refusé, expiré, remplacé).
+        ConceptionRefusee: refus du calepinage (statut + corps du module).
+    """
+    refus = _refus_resynchro(devis)
+    if refus is not None:
+        raise refus
+    from apps.calepinage import services as calepinage_services
+
+    try:
+        calepinage, _origine = calepinage_services.adopter_ou_creer_pour_devis(
+            devis.pk, devis.company, user=user)
+        calepinage_services.enregistrer_layout(
+            calepinage, _sans_cles_privees(layout), user=user,
+            base_empreinte=base_empreinte)
+    except calepinage_services.DocumentModifie as conflit:
+        raise ConceptionRefusee(409, conflit.corps()) from None
+    except (calepinage_services.LayoutRefuse,
+            calepinage_services.CreationRefusee) as erreur:
+        champ = getattr(erreur, 'champ', '') or 'roof_layout'
+        raise ConceptionRefusee(400, {champ: str(erreur)}) from None
+    return resynchroniser_conception(devis, calepinage.roof_layout, user)
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
