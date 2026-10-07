@@ -6805,43 +6805,33 @@ def resoudre_token_portail_fournisseur(token):
     return token_obj
 
 
+CLES_BCF_PORTAIL_JETON = (
+    'id', 'reference', 'statut', 'statut_display', 'date_commande',
+    'date_livraison_prevue', 'date_confirmee_fournisseur', 'lignes',
+)
+
+
 def portail_fournisseur_documents(token_obj):
     """XPUR22 — documents du fournisseur porteur de ce jeton : SES BCF en
     cours (référence, lignes, statut, date prévue), SES réceptions et SES
     factures avec statut de paiement. Isolation stricte : jamais les
     documents d'un autre fournisseur, jamais de marge (prix d'achat exposé —
     légitime, c'est ce que CE fournisseur nous vend). LECTURE SEULE."""
-    from .models import BonCommandeFournisseur, ReceptionFournisseur
+    from .models import ReceptionFournisseur
+    from .selectors import bcf_portail_fournisseur
 
     fournisseur = token_obj.fournisseur
     company = token_obj.company
 
-    bcf_qs = (BonCommandeFournisseur.objects
-              .filter(company=company, fournisseur=fournisseur)
-              .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
-              .prefetch_related('lignes__produit')
-              .order_by('-date_creation'))
-    bcf_data = []
-    for bc in bcf_qs:
-        bcf_data.append({
-            'id': bc.id,
-            'reference': bc.reference,
-            'statut': bc.statut,
-            'statut_display': bc.get_statut_display(),
-            'date_commande': bc.date_commande,
-            'date_livraison_prevue': bc.date_livraison_prevue,
-            'date_confirmee_fournisseur': bc.date_confirmee_fournisseur,
-            'lignes': [
-                {
-                    'produit_nom': (
-                        ligne.produit.nom if ligne.produit_id
-                        else ligne.designation),
-                    'quantite': ligne.quantite,
-                    'quantite_recue': ligne.quantite_recue,
-                }
-                for ligne in bc.lignes.all()
-            ],
-        })
+    # ASTK193 (C-ASTK-044) — la porte à jeton sert la MÊME liste de BCF que
+    # la porte compte (survivant unique : selectors.bcf_portail_fournisseur,
+    # brouillon ET annulé exclus) ; le filtre local (annulé seul) laissait
+    # voir au fournisseur une commande que l'acheteur n'avait pas décidée.
+    # Projection sur les clés du contrat fournisseur_portail_jetons.json.
+    bcf_data = [
+        {cle: ligne[cle] for cle in CLES_BCF_PORTAIL_JETON}
+        for ligne in bcf_portail_fournisseur(company, fournisseur.id)
+    ]
 
     receptions = (ReceptionFournisseur.objects
                   .filter(company=company,
