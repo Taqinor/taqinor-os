@@ -1,0 +1,13 @@
+[
+  {
+    "action": "A: revoquer-lien-public",
+    "method": "POST",
+    "url": "/api/django/ventes/devis/176/revoquer-lien-public/",
+    "payload": null,
+    "status": 200,
+    "body": {
+      "revoques": 1,
+      "revoque_le": "2026-10-07T15:55:59.007469Z"
+    }
+  }
+]

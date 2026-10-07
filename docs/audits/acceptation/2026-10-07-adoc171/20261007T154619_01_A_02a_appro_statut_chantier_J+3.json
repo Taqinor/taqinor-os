@@ -1,0 +1,97 @@
+{
+  "step": "A_02a_appro_statut_chantier_J+3",
+  "url": "/api/django/ventes/suivi/<jeton-masqué>/",
+  "clock_now": "2026-10-10T15:46:19.991849+00:00",
+  "request_1": {
+    "status": 200,
+    "json": {
+      "reference": "DEV-202610-0001",
+      "generated_at": "2026-10-10T15:46:19.991849+00:00",
+      "mis_a_jour_le": "2026-10-07",
+      "milestones": [
+        {
+          "key": "accepte",
+          "label": "Proposition acceptée",
+          "done": true,
+          "date": "2026-10-07"
+        },
+        {
+          "key": "acompte",
+          "label": "Acompte reçu",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "materiel",
+          "label": "Matériel commandé",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "installation",
+          "label": "Installation",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "facture",
+          "label": "Facturé",
+          "done": false,
+          "date": null
+        }
+      ]
+    }
+  },
+  "request_2": {
+    "status": 200,
+    "json": {
+      "reference": "DEV-202610-0001",
+      "generated_at": "2026-10-10T15:46:19.991849+00:00",
+      "mis_a_jour_le": "2026-10-07",
+      "milestones": [
+        {
+          "key": "accepte",
+          "label": "Proposition acceptée",
+          "done": true,
+          "date": "2026-10-07"
+        },
+        {
+          "key": "acompte",
+          "label": "Acompte reçu",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "materiel",
+          "label": "Matériel commandé",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "installation",
+          "label": "Installation",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "facture",
+          "label": "Facturé",
+          "done": false,
+          "date": null
+        }
+      ]
+    }
+  },
+  "sharelink": {
+    "expires_at": "2026-11-06T15:43:39.920723+00:00",
+    "suivi_prolonge_le": "2026-10-07T15:43:40.155278+00:00",
+    "revoque_le": null
+  },
+  "portail_meme_chantier": {
+    "chantier_id": 55,
+    "chantier_reference": "CHT-202610-0001",
+    "statut": "materiel_commande",
+    "annule": false,
+    "jalons_portail": []
+  }
+}
