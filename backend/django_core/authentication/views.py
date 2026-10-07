@@ -21,7 +21,13 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
     UserSessionSerializer,
 )
-from .throttles import LoginRateThrottle, RegisterRateThrottle
+from rest_framework.settings import api_settings
+from .throttles import (
+    ChangementMotDePasseThrottle,
+    Desactivation2FAThrottle,
+    LoginRateThrottle,
+    RegisterRateThrottle,
+)
 from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
 
 # ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
@@ -287,10 +293,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 if isinstance(msg, (list, tuple)):
                     msg = msg[0] if msg else None
                 msg = str(msg) if msg else 'Double authentification requise.'
-                return Response(
-                    {'otp_required': True, 'detail': msg},
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
+                corps = {'otp_required': True, 'detail': msg}
+                code_err = detail.get('code')
+                if isinstance(code_err, (list, tuple)):
+                    code_err = code_err[0] if code_err else None
+                if code_err:
+                    corps['code'] = str(code_err)  # ASEC5 — otp_deja_utilise
+                return Response(corps, status=status.HTTP_401_UNAUTHORIZED)
             # FG22 — échec d'identifiants : compte le tentative ratée et
             # verrouille au seuil société. No-op si le verrouillage est off.
             if locked_user is not None:
@@ -1596,7 +1605,6 @@ class TwoFactorEnableView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        import pyotp
         user = request.user
         if user.totp_enabled:
             return Response(
@@ -1610,7 +1618,9 @@ class TwoFactorEnableView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         code = str(request.data.get('code', '')).strip().replace(' ', '')
-        if not pyotp.TOTP(user.totp_secret).verify(code, valid_window=1):
+        # ASEC5 — même vérification que la connexion : le pas est consommé
+        # (le code d'activation ne resservira pas à se connecter).
+        if not code or not user.verify_totp(code):
             return Response(
                 {'detail': 'Code invalide. Vérifiez le code à 6 chiffres de '
                            'votre application d\'authentification.'},
@@ -1639,6 +1649,9 @@ class TwoFactorDisableView(APIView):
     """POST — désactive le 2FA. Exige un code TOTP/secours valide OU le mot de
     passe du compte. Efface le secret et les codes de secours."""
     permission_classes = [permissions.IsAuthenticated]
+    # ASEC5 — 5 désactivations/heure par UTILISATEUR (en plus du défaut).
+    throttle_classes = list(api_settings.DEFAULT_THROTTLE_CLASSES) + [
+        Desactivation2FAThrottle]
 
     def post(self, request):
         user = request.user
@@ -1759,6 +1772,9 @@ class ChangePasswordView(APIView):
     ``must_change_password``. Sert aussi bien au changement volontaire qu'au
     flux de rotation forcée déclenché par un administrateur."""
     permission_classes = [permissions.IsAuthenticated]
+    # ASEC5 — 5 changements/heure par UTILISATEUR (en plus du défaut).
+    throttle_classes = list(api_settings.DEFAULT_THROTTLE_CLASSES) + [
+        ChangementMotDePasseThrottle]
 
     def post(self, request):
         from django.utils import timezone

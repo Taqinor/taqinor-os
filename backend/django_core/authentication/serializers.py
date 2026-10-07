@@ -63,6 +63,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                     code='otp_required',
                 )
             if not user.verify_totp(otp):
+                if getattr(user, '_totp_rejeu', False):
+                    # ASEC5 — code déjà consommé (anti-rejeu).
+                    raise serializers.ValidationError(
+                        {'otp_required': True, 'code': 'otp_deja_utilise',
+                         'detail': 'Ce code a déjà été utilisé. Attendez le '
+                                   'code suivant.'},
+                        code='otp_deja_utilise',
+                    )
                 raise serializers.ValidationError(
                     {'otp_required': True,
                      'detail': 'Code de double authentification invalide.'},
