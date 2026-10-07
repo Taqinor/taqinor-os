@@ -263,7 +263,19 @@ class SaisiesConcurrentesTest(TransactionTestCase):
         copie_a = DossierReglementaire.objects.get(pk=dossier.pk)
         copie_b = DossierReglementaire.objects.get(pk=dossier.pk)
 
-        enregistrer_champs(copie_a, {'puissance': '12,5'})
+        # Test-du-test (lot 3 critique #2) : la fusion séquentielle seule
+        # passerait sans verrou ; la ligne DOIT être relue sous verrou
+        # (``SELECT … FOR UPDATE``) — retirer ``select_for_update`` rougit.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as requetes:
+            enregistrer_champs(copie_a, {'puissance': '12,5'})
+        verrouillees = [q['sql'] for q in requetes.captured_queries
+                        if 'FOR UPDATE' in q['sql'].upper()
+                        and 'calepinage_dossierreglementaire' in q['sql']]
+        self.assertTrue(verrouillees, [q['sql'] for q in
+                                       requetes.captured_queries])
         enregistrer_champs(copie_b, {'commune': 'Rabat'})
 
         dossier.refresh_from_db()
