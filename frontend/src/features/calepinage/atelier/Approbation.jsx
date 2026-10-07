@@ -47,7 +47,8 @@ function formaterDate(iso) {
     les suggestions automatiques en attente, chacune sous son chemin de
     document (`buildings[0].hauteurM`) — contrat `refus_suggestions_en_attente`. */
 function suggestionsEnAttente(erreurs) {
-  return Object.keys(erreurs).filter((champ) => !['decision', 'motif', 'detail'].includes(champ))
+  return Object.keys(erreurs)
+    .filter((champ) => !['decision', 'motif', 'detail', 'roof_layout'].includes(champ))
 }
 
 export default function Approbation({ calepinageId: idPropose = null, lectureSeule = false }) {
@@ -135,6 +136,17 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
             Motif : {etat.motif}
           </p>
         )}
+        {/* ACAL115 (D-ACAL-11) — un accord PÉRIMÉ (l'empreinte imprimée a
+            changé depuis) se DIT : il est à redécider. */}
+        {etat.etat === 'approuve' && etat.perimee && (
+          <p
+            role="status"
+            className="mt-2 rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+            data-testid="acal115-approbation-perimee"
+          >
+            {`Conception modifiée depuis l’approbation${etat.decide_le ? ` du ${formaterDate(etat.decide_le)}` : ''} : à redécider`}
+          </p>
+        )}
       </Card>
 
       {champsFautifs.length > 0 && (
@@ -144,6 +156,13 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
           className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
         >
           {`Décision refusée — à corriger : ${champsFautifs.join(', ')}`}
+        </p>
+      )}
+
+      {/* ACAL115 — le refus « conception vide » : le motif SERVEUR, tel quel. */}
+      {erreurs.roof_layout && (
+        <p role="alert" data-testid="acal115-refus-conception-vide" className="text-sm text-red-300">
+          {Array.isArray(erreurs.roof_layout) ? erreurs.roof_layout.join(' ') : erreurs.roof_layout}
         </p>
       )}
 

@@ -179,7 +179,11 @@ export default function AtelierPanneaux({
           <dt className="tech-label mt-0.5 text-lune-faint">Source de la cible</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-white">{valeur(calepinage?.statut)}</dd>
+          {/* ACAL115 — le statut DÉRIVÉ de l'approbation, par son libellé
+              servi (agrégat), à défaut le code du contexte. */}
+          <dd className="fig text-lg text-white" data-testid="cal-atelier-statut">
+            {valeur(detail?.statut_libelle ?? calepinage?.statut)}
+          </dd>
           <dt className="tech-label mt-0.5 text-lune-faint">Statut</dt>
         </div>
       </dl>
