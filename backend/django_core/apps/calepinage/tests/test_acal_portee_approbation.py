@@ -11,6 +11,8 @@ Run :
 """
 import copy
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.approbation import decider
 from apps.calepinage.services.feu_vert import PIECES_EXECUTION
@@ -133,3 +135,30 @@ class PorteeApprobationTest(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         self.assertEqual(mentions_d_etat(etat_de_conception(self.calepinage)),
                          [])
+
+
+class PorteEtSchemaTest(SimpleTestCase):
+    """Lot 2 critique #20 — la porte d'exécution lève une VRAIE exception
+    pour une pièce inconnue (jamais un ``assert``), et chaque méthode du
+    sérialiseur porte SON type de schéma."""
+
+    def test_piece_inconnue_leve(self):
+        from apps.calepinage.views.sorties import porte_execution
+
+        with self.assertRaises(ValueError):
+            porte_execution(object(), 'piece_inconnue')
+
+    def test_types_de_schema_a_leur_methode(self):
+        from rest_framework import serializers
+
+        from apps.calepinage.serializers import CalepinageSerializer
+
+        def champ(methode):
+            return getattr(CalepinageSerializer, methode) \
+                ._spectacular_annotation['field']
+
+        self.assertIsInstance(champ('get_layout_stale'),
+                              serializers.BooleanField)
+        self.assertIsInstance(champ('get_statut'), serializers.CharField)
+        self.assertIsInstance(champ('get_statut_libelle'),
+                              serializers.CharField)
