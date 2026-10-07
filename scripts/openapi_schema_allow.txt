@@ -806,12 +806,6 @@ Warning|LeadViewSet|could not derive type of path parameter "activite_id" becaus
 Warning|ListeDiffusionViewSet > ListeDiffusionSerializer|unable to resolve type hint for function "get_nb_abonnes". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|MainCouranteViewSet > MainCouranteSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|MarqueViewSet > MarqueSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
-Warning|MeView > UserSerializer|unable to resolve type hint for function "get_active_company_id". Consider using a type hint or @extend_schema_field. De
-Warning|MeView > UserSerializer|unable to resolve type hint for function "get_avatar_url". Consider using a type hint or @extend_schema_field. Defaultin
-Warning|MeView > UserSerializer|unable to resolve type hint for function "get_modules_desactives". Consider using a type hint or @extend_schema_field. D
-Warning|MeView > UserSerializer|unable to resolve type hint for function "get_permissions". Consider using a type hint or @extend_schema_field. Defaulti
-Warning|MeView > UserSerializer|unable to resolve type hint for function "get_societes_operables". Consider using a type hint or @extend_schema_field. D
-Warning|MeView > UserSerializer|unable to resolve type hint for function "menu_tier". Consider using a type hint or @extend_schema_field. Defaulting to
 Warning|MesDevisPortailViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|MesFacturesPortailViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_is_pinned". Consider using a type hint or @extend_schema_field. Defaulting
@@ -995,12 +989,6 @@ Warning|TrajetTelematiqueViewSet > TrajetTelematiqueSerializer|unable to resolve
 Warning|TrashViewSet > DeletionRecordSerializer|unable to resolve type hint for function "get_model_label". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|TypeInterventionViewSet > TypeInterventionSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
 Warning|UserChatStatusViewSet > UserChatStatusSerializer|unable to resolve type hint for function "get_is_dnd". Consider using a type hint or @extend_schema_field. Defaulting to
-Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_active_company_id". Consider using a type hint or @extend_schema_field. De
-Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_avatar_url". Consider using a type hint or @extend_schema_field. Defaultin
-Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_modules_desactives". Consider using a type hint or @extend_schema_field. D
-Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_permissions". Consider using a type hint or @extend_schema_field. Defaulti
-Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_societes_operables". Consider using a type hint or @extend_schema_field. D
-Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "menu_tier". Consider using a type hint or @extend_schema_field. Defaulting to
 Warning|UserViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|VehiculeViewSet > VehiculeSerializer|unable to resolve type hint for function "get_checklist_mise_en_service_ok". Consider using a type hint or @extend_schem
 Warning|VehiculeViewSet > VehiculeSerializer|unable to resolve type hint for function "get_emplacement_stock_label". Consider using a type hint or @extend_schema_fie

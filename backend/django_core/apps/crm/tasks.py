@@ -162,6 +162,41 @@ def bilan_hebdo_relances_task():
     return {'bilans': bilan_hebdo_relances()}
 
 
+#: ALEA1 — plafond de dormants examinés par société et par passage (la touche
+#: reste UNE par an et par dormant ; ce plafond borne seulement le coût d'un
+#: passage, le reste est pris aux passages suivants de la saison).
+REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE = 200
+
+
+@shared_task(name='crm.poser_reveils_saisonniers')
+def poser_reveils_saisonniers_task(
+        limite=REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE):
+    """ALEA1 (D-ALEA-1, option a) — Enveloppe Celery Beat du réveil
+    saisonnier CAD74 (`reveil_b`).
+
+    Planifiée dans ``erp_agentique/celery.py`` (``beat_schedule``) : un
+    passage quotidien borné juin → septembre. Balaye les sociétés ACTIVES
+    seulement (``authentication.selectors.active_companies``) et délègue à
+    ``apps.crm.services.poser_reveils_saisonniers`` — idempotent : UNE touche
+    par dormant et par an, hors saison rien n'est posé. N'envoie aucun
+    message : la touche suit la cadence normale (envoi manuel)."""
+    import logging
+
+    from authentication.selectors import active_companies
+
+    from apps.crm.services import poser_reveils_saisonniers
+
+    logger = logging.getLogger(__name__)
+    posees = 0
+    for company in active_companies():
+        try:
+            posees += len(poser_reveils_saisonniers(company, limite=limite))
+        except Exception:  # noqa: BLE001 — une société n'arrête pas les autres
+            logger.warning('ALEA1 : réveil saisonnier en échec (société #%s)',
+                           company.pk, exc_info=True)
+    return {'posees': posees}
+
+
 # ── VT9 / VTA3 — ALIAS DE TÂCHE, FENÊTRE DE DÉPLOIEMENT ──────────────────────
 #
 # L'assemblage des photos du toit a déménagé dans ``apps.visites.tasks`` sous

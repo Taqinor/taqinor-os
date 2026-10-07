@@ -133,7 +133,8 @@ describe('CalepinageNouveau (CAL36)', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Lead' }))
     await waitFor(() => expect(mocks.getLeads).toHaveBeenCalled())
     // Aucun filtrage local : l'écran n'a jamais de liste complète en main.
-    expect(mocks.getLeads.mock.calls[0][0]).toHaveProperty('q')
+    // ALEA39 — /crm/leads/ lit search (SearchFilter DRF), jamais q.
+    expect(mocks.getLeads.mock.calls[0][0]).toHaveProperty('search')
   })
 
   it('la recherche de CLIENTS part au SERVEUR', async () => {

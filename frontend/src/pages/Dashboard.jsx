@@ -31,7 +31,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 // d'un redémarrage automatique vers un accueil mobile par rôle.
 import api from '../api/axios'
 import { useIsMobile } from '../ui/ResponsiveDialog'
-import { defaultMobileHomeRoute } from '../features/offlinesync/mobile/mobileHome'
+import { mobileHomeAction, routeSuggereeServeur } from '../features/offlinesync/mobile/mobileHome'
+import { toast } from '../ui/confirm'
 import {
   Package, Users, FileCheck, FileText, AlertTriangle,
   TrendingUp, Activity, ReceiptText, Clock, Wrench, CalendarClock, Phone,
@@ -152,26 +153,9 @@ export function cockpitProfile({ roleNom, roleTier } = {}) {
   return 'directeur'
 }
 
-// NTMOB6 — sélecteur de démarrage par rôle : décide QUOI FAIRE sur ce rendu,
-// fonction PURE (même patron que `cockpitProfile`) pour rester testable sans
-// monter le composant. Ne fait ni navigation ni appel réseau — le composant
-// exécute juste le verdict :
-//   * `{ type: 'navigate', to }` — route déjà mémorisée côté serveur, on y
-//     renvoie directement (connexions mobiles suivantes) ;
-//   * `{ type: 'decide', suggested }` — premier atterrissage mobile (valeur
-//     encore NULL/undefined) : le composant persiste `suggested` et navigue
-//     s'il n'est pas vide ;
-//   * `null` — desktop, profil pas encore chargé, ou opt-out explicite
-//     (`mobileHomeRoute === ''`) : comportement inchangé.
-// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (cf. cockpitProfile)
-export function mobileHomeAction({
-  isMobile, hasFullProfile, mobileHomeRoute, roleNom, roleTier,
-}) {
-  if (!isMobile || !hasFullProfile) return null
-  if (mobileHomeRoute) return { type: 'navigate', to: mobileHomeRoute }
-  if (mobileHomeRoute === '') return null
-  return { type: 'decide', suggested: defaultMobileHomeRoute(roleNom, roleTier) }
-}
+// NTMOB6 / ALEA31 — la décision d'accueil mobile (mobileHomeAction) vit
+// dans features/offlinesync/mobile/mobileHome.js (fonction pure, testée sous
+// node --test) ; la route suggérée vient du SERVEUR (/auth/me/).
 
 // YYYY-MM-DD du jour (local), pour comparer aux dates ISO des enregistrements.
 function isoToday(now = new Date()) {
@@ -500,14 +484,20 @@ export function Component() {
     && Object.prototype.hasOwnProperty.call(user, 'mobile_home_route')
   const mobileHomeRoute = user?.mobile_home_route
   const mobileHome = mobileHomeAction({
-    isMobile, hasFullProfile, mobileHomeRoute, roleNom, roleTier,
+    isMobile, hasFullProfile, mobileHomeRoute,
+    // ALEA31 — la route suggérée est celle du SERVEUR (seule table).
+    suggestedRoute: routeSuggereeServeur(user),
   })
   useEffect(() => {
     if (mobileHome?.type !== 'decide') return
     // On mémorise côté serveur pour les prochaines connexions ET on navigue
     // immédiatement (sans attendre l'aller-retour réseau) — sinon le tout
     // premier login resterait sur ce Dashboard une frame de trop.
-    api.post('/auth/mobile-home-route/', { route: mobileHome.suggested }).catch(() => {})
+    // ALEA31 — jamais un refus muet : il s'affiche (le prochain atterrissage
+    // retentera, la valeur restant « non décidée » côté serveur).
+    api.post('/auth/mobile-home-route/', { route: mobileHome.suggested }).catch((err) => {
+      toast.error(`Accueil mobile non mémorisé : ${err?.response?.data?.detail || 'refus du serveur.'}`)
+    })
     if (mobileHome.suggested) navigate(mobileHome.suggested, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileHome?.type, mobileHome?.suggested])

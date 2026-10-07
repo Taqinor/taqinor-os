@@ -300,6 +300,13 @@ app.conf.beat_schedule = {
         'task': 'crm.bilan_hebdo_relances',
         'schedule': crontab(hour=7, minute=0, day_of_week=1),
     },
+    # ALEA1 (D-ALEA-1) — réveil saisonnier CAD74 (`reveil_b`) : un passage
+    # quotidien borné juin → septembre ; UNE touche par dormant et par an
+    # (idempotent), sociétés actives seulement, aucun message envoyé.
+    'crm-poser-reveils-saisonniers': {
+        'task': 'crm.poser_reveils_saisonniers',
+        'schedule': crontab(hour=9, minute=0, month_of_year='6-9'),
+    },
     # QW4 — SLA rappel plus serré que le SLA générique premier-contact :
     # tourne plus souvent (toutes les 30 min) pour rattraper une escalade
     # rapidement sur un SLA rappel typiquement court (2 à quelques heures).

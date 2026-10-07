@@ -513,9 +513,10 @@ lead_erased = django.dispatch.Signal()
 # NTGRC9 — Émis à la CRÉATION d'un lead CRM, quelle que soit la porte d'entrée
 # (saisie, webhook site, import). Arguments : lead (crm.Lead), company.
 # Émetteur dans ce repo : crm (apps/crm/receivers.py, post_save created=True).
-# Abonné dans ce repo : grc (alerte DPO quand la personne a retiré son
-# consentement) — ainsi `grc` n'importe jamais `apps.crm.models`, et `crm`
-# n'a aucune connaissance de `grc`.
+# Abonné vivant (ALEA3 — docstring corrigée) : calepinage
+# (apps/calepinage/receivers.py, reprise du tracé public CAL110) — `crm`
+# n'importe jamais `apps.calepinage`. L'abonné historique `grc` (alerte DPO,
+# NTGRC9) vit dans un module PARQUÉ (backend/parked/grc) : il ne reçoit rien.
 lead_created = django.dispatch.Signal()
 
 # ACAL189 (C-ACAL-006, D06-T17) — Émis quand le tracé de toit d'un lead public
@@ -876,12 +877,11 @@ document_statut_change = django.dispatch.Signal()
 # Arguments : company, cycle_id, totaux (dict, ex. {'total_depenses': ...}).
 budget_cycle_clos = django.dispatch.Signal()
 
-# NTCRM22 — Émis quand ``crm`` calcule automatiquement la commission due d'un
-# ``DealEnregistre`` APPROUVE, à l'acceptation du devis lié (le récepteur vit
-# dans ``apps.crm.receivers``). Pose le crochet pour qu'un futur module
-# compta/paie crée une facture fournisseur/note de frais SANS que crm importe
-# ce module — aucun abonné requis dans ce lot. Arguments : company, deal_id,
-# apporteur_id, montant (Decimal).
+# NTCRM22 — commission due d'un ``DealEnregistre``. ALEA3 (D-ALEA-3) : n'est
+# PLUS émis (aucun abonné ; la commission due se lit par
+# ``deals-enregistres/a-payer/``). Déclaration conservée (golden SPL283),
+# réservée dans ``core.event_coverage`` pour le retour du module compta.
+# Arguments historiques : company, deal_id, apporteur_id, montant (Decimal).
 deal_commission_due = django.dispatch.Signal()
 
 
@@ -932,20 +932,19 @@ record_soft_deleted = django.dispatch.Signal()
 # tard » (un signal sans abonné réel fait rougir ``core.event_coverage``).
 # Émis EXCLUSIVEMENT par le service de changement de statut du module appel
 # d'offres — jamais depuis un modèle, jamais depuis une vue. Ce module est en
-# Phase 2 (docs/parked-modules.md) ; l'abonné ``crm`` (avance d'étape du lead
-# lié) est GARDÉ, donc les deux signaux restent déclarés ici.
+# Phase 2 (docs/parked-modules.md). ALEA3 (D-ALEA-3) : l'abonné ``crm``
+# (avance d'étape du lead lié) a été RETIRÉ — il ne pouvait plus rien recevoir
+# du module parqué. Les deux signaux restent déclarés (golden SPL283) et sont
+# réservés dans ``core.event_coverage`` jusqu'au retour du module.
 #
 # ``ao_depose``
 #     Le dossier est DÉPOSÉ (transition ``pret_a_deposer`` → ``depose``).
-#     Abonné dans ce repo : ``crm`` (``apps/crm/receivers.py``) avance l'étape
-#     du lead lié vers QUOTE_SENT — une offre remise EST un devis envoyé au
-#     sens du funnel. Arguments : ``appel_offre``, ``company``, ``user`` (peut
-#     être None), ``ancien_statut``.
+#     Aucun abonné vivant. Arguments : ``appel_offre``, ``company``, ``user``
+#     (peut être None), ``ancien_statut``.
 ao_depose = django.dispatch.Signal()
 # ``ao_gagne``
-#     L'AO est ATTRIBUÉ (transition ``depose`` → ``gagne``). Abonné dans ce
-#     repo : ``crm`` (``apps/crm/receivers.py``) avance l'étape du lead lié
-#     vers SIGNED. Mêmes arguments que ``ao_depose``.
+#     L'AO est ATTRIBUÉ (transition ``depose`` → ``gagne``). Aucun abonné
+#     vivant. Mêmes arguments que ``ao_depose``.
 ao_gagne = django.dispatch.Signal()
 
 # ODY25 — une app est INSTALLÉE ou DÉSINSTALLÉE pour une société (bascule réelle
@@ -1089,11 +1088,10 @@ def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
 #     (JAMAIS un changement de stage automatique). Émis par
 #     ``apps.crm.services.detecter_signal_interet_salle_vente`` (appelé en
 #     best-effort depuis ``apps.crm.public_views.public_salle_vente`` à chaque
-#     nouvelle vue). AUCUN abonné dans ce repo : la note de chatter
-#     (``LeadActivity``) est écrite EN LIGNE par ce même service, pas par un
-#     récepteur — le signal est exposé sur le bus pour toute app future qui
-#     voudrait réagir (ex. notification commerciale) sans coupler
-#     ``apps.crm`` à elle (réservé dans ``core.event_coverage``).
+#     nouvelle vue), au plus UNE fois par jour local et par salle. La note de
+#     chatter (``LeadActivity``) est écrite EN LIGNE par ce même service.
+#     Abonné dans ce repo (ALEA3) : ``crm`` (``apps/crm/receivers.py``)
+#     notifie le responsable du lead (``apps.notifications``).
 #     Arguments : ``lead``, ``salle``, ``company``.
 salle_vente_signal_interet = django.dispatch.Signal()
 
@@ -1107,8 +1105,7 @@ salle_vente_signal_interet = django.dispatch.Signal()
 #     no-op). Distinct du score de QUALITÉ ``crm.Lead.score`` (QJ6, jamais
 #     modifié par ce signal). AUCUN abonné dans ce repo aujourd'hui — seam
 #     posé pour un futur récepteur ``apps.crm.receivers`` (aucun import direct
-#     crm↔marketing, réservé dans ``core.event_coverage``, même patron que
-#     ``deal_commission_due``/``salle_vente_signal_interet`` ci-dessus).
+#     crm↔marketing, réservé dans ``core.event_coverage``).
 #     Arguments : ``lead_id`` (opaque), ``company``, ``ancienne_valeur``,
 #     ``nouvelle_valeur``.
 lead_maturite_changee = django.dispatch.Signal()

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* PV20 — MODE DEVIS de l'écran de conception 3D.
@@ -30,6 +31,7 @@ import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 import calepinageApi from '../../api/calepinageApi'
 import { toastInfo } from '../../lib/toast'
+import ToitureDesign from './ToitureDesign'
 
 /* ACAL37 (D-ACAL-1) — `/ventes/devis/:id/design` ouvre le CALEPINAGE lié :
    `POST calepinages/depuis-modele/ {devis_id}` puis le design-context DU
@@ -1183,5 +1185,26 @@ describe('CALX129 — plein écran de la scène 3D', () => {
 
     await userEvent.click(screen.getByTestId('rp9-plein-ecran-toggle'))
     expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('0')
+  })
+})
+
+/* ACAL209 — le mode lead ne lit plus les mesures de visite passées en query
+   params (pente/orientation/longueur/largeur) : elles n'avaient aucun effet
+   persistant. Le bureau d'études ouvre le module Calepinage (onglet
+   « Reprise de la visite »), qui lit le relevé du serveur. */
+describe('ToitureDesign — mode lead sans mesures en query params (ACAL209)', () => {
+  it('le mode lead ignore les query params de mesures', async () => {
+    simulerApiLead(api)
+    render(
+      <MemoryRouter initialEntries={['/devis-design/88?visite=1&pente=15&orientation=sud&longueur=12&largeur=8']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('pv-mesures-visite-terrain')).toBeNull()
+    expect(screen.queryByText(/Mesures de la visite terrain/)).toBeNull()
+    expect(screen.queryByText(/pente 15°/)).toBeNull()
   })
 })

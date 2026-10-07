@@ -274,11 +274,17 @@ def detecter_signal_interet_salle_vente(salle):
                    .count())
         if nb_vues < SEUIL_VUES_SIGNAL_INTERET:
             return None
-        aujourd_hui = aujourd_hui_local()
+        # ALEA3 — idempotence PAR JOUR LOCAL ET PAR SALLE : borne explicite
+        # « minuit à Casablanca » (jamais le ``__date`` du fuseau actif, qui
+        # dépend de la requête) et la salle nommée en fin de note.
+        from core.dates import maintenant_local
+        debut_jour = maintenant_local().replace(
+            hour=0, minute=0, second=0, microsecond=0)
         deja_note = LeadActivity.objects.filter(
             lead=lead, kind=LeadActivity.Kind.NOTE,
             body__startswith='signal d\'intérêt fort',
-            created_at__date=aujourd_hui,
+            body__endswith=f'(salle de vente « {salle.titre} »)',
+            created_at__gte=debut_jour,
         ).exists()
         if deja_note:
             return None
@@ -439,23 +445,22 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     if not etait_perdu and not etait_cold:
         return False
 
-    update_fields = []
     if etait_perdu:
         lead.perdu = False
-        update_fields.append('perdu')
+        lead.save(update_fields=['perdu'])
 
     cible = _STAGE_CONTACTED if lead.first_contacted_at else stages.NEW
+    ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.
     if _rang_funnel(lead.stage) < _rang_funnel(cible):
-        ancien_stage = lead.stage
-        lead.stage = cible
-        update_fields.append('stage')
-    else:
-        ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.
+        etape_avant = lead.stage
+        # ALEA2 — sortie du Froid/Perdu par le point de passage CANONIQUE
+        # (CRX20) : écrit l'étape et émet `lead_stage_changed`.
+        if appliquer_stage_lead(lead, cible):
+            ancien_stage = etape_avant
 
-    if update_fields:
-        lead.save(update_fields=update_fields)
-
-    body = f'auto — réactivation : nouvelle demande {source}'
+    # ALEA2 — libellé lisible au chatter : « Nouvelle demande reçue (site
+    # web) » / « (WhatsApp) ».
+    body = f'auto — réactivation : Nouvelle demande reçue ({source})'
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE, body=body)
@@ -468,7 +473,6 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
             new_value=stages.STAGE_LABELS[cible],
             body=f'auto — réactivation ({source})',
         )
-        _emit_stage_changed(lead, ancien_stage, cible, None)
     # CAD107 — une réouverture pose une CADENCE DE REPRISE, quel que soit le
     # chemin. Best-effort : une nouvelle touche entrante ne doit jamais
     # échouer sur une cadence.
@@ -4445,7 +4449,8 @@ def _completeness(lead):
     return score
 
 
-def find_duplicate_clusters(company, include_archived=False):
+def find_duplicate_clusters(company, include_archived=False, *,
+                            queryset=None):
     """Scanne TOUS les leads d'une société et regroupe les doublons probables
     par téléphone OU email OU nom normalisé OU adresse OU point GPS
     (union-find, CAD93 pour les deux derniers). Renvoie une liste de clusters
@@ -4454,8 +4459,14 @@ def find_duplicate_clusters(company, include_archived=False):
     restent visibles pour comprendre une fusion passée).
 
     SUGGESTION, jamais décision : rien n'est fusionné ici. La fusion reste un
-    geste humain explicite (``merge_leads``, appelé par l'atelier doublons)."""
-    qs = Lead.objects.filter(company=company)
+    geste humain explicite (``merge_leads``, appelé par l'atelier doublons).
+
+    ALEA27 — ``queryset`` (optionnel, BORNÉ) : l'atelier HTTP transmet
+    ``LeadViewSet.get_queryset()`` (société + portée équipe) — un lead hors
+    portée n'entre dans aucun cluster. ``None`` = la société entière, voulu
+    pour les lectures système (KPI/foyers, sans utilisateur)."""
+    base = queryset if queryset is not None else Lead.objects.all()
+    qs = base.filter(company=company)
     if not include_archived:
         qs = qs.filter(is_archived=False)
     leads = list(qs)
@@ -4542,16 +4553,18 @@ def cluster_match_keys(group):
     return out
 
 
-def find_duplicate_leads(lead):
+def find_duplicate_leads(lead, *, queryset=None):
     """Leads probablement en double : même téléphone OU email normalisé, même
-    société, hors le lead lui-même. Inclut les archivés (pour les retrouver)."""
+    société, hors le lead lui-même. Inclut les archivés (pour les retrouver).
+    ALEA27 — ``queryset`` borne la recherche (voir
+    ``find_duplicates_by_contact``)."""
     return find_duplicates_by_contact(
         lead.company, phone=lead.telephone, email=lead.email,
-        exclude_pk=lead.pk)
+        exclude_pk=lead.pk, queryset=queryset)
 
 
 def find_duplicates_by_contact(company, *, phone=None, email=None,
-                               exclude_pk=None):
+                               exclude_pk=None, queryset=None):
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
@@ -4560,14 +4573,22 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     QW10 — requête INDEXÉE sur les colonnes normalisées maintenues par
     `Lead.save()` (`phone_normalise`/`email_normalise`, backfillées par la
     migration pour les lignes existantes) — jamais un scan Python complet de
-    la société à chaque appel."""
+    la société à chaque appel.
+
+    ALEA27 — ``queryset`` (optionnel, BORNÉ) : les actions HTTP
+    ``duplicates``/``check-duplicates`` transmettent
+    ``LeadViewSet.get_queryset()`` (société + portée équipe) — un lead hors
+    portée n'est jamais rendu (ni ses PII). ``None`` = la société entière,
+    voulu pour les chemins SYSTÈME (webhooks, imports, WhatsApp entrant,
+    DSR) qui doivent rapprocher sans utilisateur."""
     from django.db.models import Q
 
     phone = normalize_phone(phone)
     email = normalize_email(email)
     if not phone and not email:
         return []
-    qs = Lead.objects.filter(company=company)
+    base = queryset if queryset is not None else Lead.objects.all()
+    qs = base.filter(company=company)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
 
@@ -5799,7 +5820,10 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     """
     candidates = find_duplicates_by_contact(company, phone=telephone)
     non_archives = [c for c in candidates if c.archived_at is None]
-    ouverts = [lead_ for lead_ in non_archives if not lead_.perdu]
+    # ALEA2 — un lead au Froid (non perdu) n'est PAS « ouvert » : il est
+    # réactivable, comme le perdu (alignement sur le webhook du site).
+    ouverts = [lead_ for lead_ in non_archives
+               if not lead_.perdu and lead_.stage != stages.COLD]
     if ouverts:
         lead = sorted(ouverts, key=lambda d: d.date_creation, reverse=True)[0]
         body = 'Nouveau message WhatsApp reçu'
@@ -5812,7 +5836,8 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
 
     # YLEAD11 — aucun lead ouvert : un lead perdu/COLD non archivé est
     # réactivé plutôt que dupliqué.
-    reactivables = [lead_ for lead_ in non_archives if lead_.perdu]
+    reactivables = [lead_ for lead_ in non_archives
+                    if lead_.perdu or lead_.stage == stages.COLD]
     if reactivables:
         lead = sorted(
             reactivables, key=lambda d: d.date_creation, reverse=True)[0]
@@ -8150,12 +8175,17 @@ def coerce_id_list(raw):
     return out
 
 
-def apply_bulk_action(*, company, user, lead_ids, op, params):
+def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     """Applique une action en masse à une sélection de leads de la société.
 
     Renvoie un récapitulatif : nombre mis à jour, nombre inchangés, et la liste
     des leads ignorés avec leur raison (en français). Chaque modification écrit
     une entrée Historique marquée « en masse ».
+
+    ALEA27 — ``queryset`` (BORNÉ) : l'action HTTP ``leads/bulk/`` transmet la
+    portée du viewset (société + équipe/sous-arbre) ; un id hors portée est
+    IGNORÉ en silence, exactement comme un id absent (aucune fuite
+    d'existence). ``None`` = la société entière (aucun appelant HTTP).
     """
     from django.db import transaction
 
@@ -8163,8 +8193,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         raise ValueError("Action en masse inconnue.")
 
     lead_ids = coerce_id_list(lead_ids)
+    base = queryset if queryset is not None else Lead.objects.all()
     leads = list(
-        Lead.objects.filter(company=company, id__in=lead_ids).order_by('id'))
+        base.filter(company=company, id__in=lead_ids).order_by('id'))
     updated, unchanged, skipped = 0, 0, []
 
     def skip(lead, reason):
@@ -11641,7 +11672,47 @@ def journaliser_visite(visite, user, moment, detail=''):
 # ``visites`` ne fait plus aucun écrit sur ``crm.Lead``.
 
 
-def ecrire_retour_lead_visite(lead, recap):
+#: ALEA28 — balises du bloc de récap PAR VISITE dans ``Lead.visite_notes``.
+_RECAP_DEBUT = '[Récap visite n°{}]'
+_RECAP_FIN = '[/Récap visite n°{}]'
+_RE_BLOC_RECAP = _re.compile(
+    r'\[Récap visite n°(\d+)\]\n.*?\n\[/Récap visite n°\1\]', _re.S)
+
+
+def _bloc_recap_visite(visite_id, recap):
+    return (f'{_RECAP_DEBUT.format(visite_id)}\n{recap}\n'
+            f'{_RECAP_FIN.format(visite_id)}')
+
+
+def _notes_avec_recap(existantes, recap, visite_id):
+    """ALEA28 — ``existantes`` où le récap de ``visite_id`` est REMPLACÉ.
+
+    * la visite a déjà son bloc → son contenu est remplacé (R1 → R2), le
+      reste du texte (saisie manuelle, blocs des autres visites) est intact ;
+    * pas encore de bloc, mais le même récap présent HORS bloc (écrit avant
+      ALEA28) → cette occurrence est balisée en place, jamais dupliquée ;
+    * le même récap déjà porté par le bloc d'une AUTRE visite → rien
+      (même phrase, aucune information de plus) ;
+    * sinon le bloc est ajouté à la fin.
+    """
+    bloc = _bloc_recap_visite(visite_id, recap)
+    for trouve in _RE_BLOC_RECAP.finditer(existantes):
+        if trouve.group(1) == str(visite_id):
+            return (existantes[:trouve.start()] + bloc
+                    + existantes[trouve.end():])
+    blocs = [(m.start(), m.end()) for m in _RE_BLOC_RECAP.finditer(existantes)]
+    debut = existantes.find(recap)
+    while debut != -1:
+        if not any(a <= debut < b for a, b in blocs):
+            return (existantes[:debut] + bloc
+                    + existantes[debut + len(recap):])
+        debut = existantes.find(recap, debut + 1)
+    if recap in existantes:
+        return existantes
+    return f'{existantes}\n{bloc}'.strip() if existantes else bloc
+
+
+def ecrire_retour_lead_visite(lead, recap, visite_id=None):
     """VT12 — le feu vert REDESCEND sur la fiche lead.
 
     Le lead est la fiche que tout le monde ouvre : après le feu vert, il porte
@@ -11650,10 +11721,15 @@ def ecrire_retour_lead_visite(lead, recap):
     c'est ``visites.selectors.recap_visite_terrain`` qui compose la phrase,
     unique source de vérité, et elle arrive ici toute faite).
 
-    Deux prudences : le récap est APPENDU (une note déjà écrite à la main n'est
-    jamais écrasée) et il n'est écrit qu'une fois (une re-validation ne le
-    duplique pas). Rien de tout ceci ne double le chatter : la note
-    ``journaliser_visite(..., 'validee')`` reste l'unique trace d'historique.
+    ALEA28 — le récap vit dans un bloc balisé PAR VISITE
+    (``[Récap visite n°<id>]`` … ``[/Récap visite n°<id>]``) : une
+    revalidation après renvoi REMPLACE le récap de cette visite (un seul récap
+    courant), une autre visite du même lead a son propre bloc, et le texte
+    écrit à la main autour n'est JAMAIS écrasé. Revalider sans changement
+    laisse ``visite_notes`` octet-identique. Sans ``visite_id`` (appel
+    historique), le récap est seulement ajouté s'il est absent. Rien de tout
+    ceci ne double le chatter : la note ``journaliser_visite(..., 'validee')``
+    reste l'unique trace d'historique.
     """
     if lead is None:
         return None
@@ -11662,10 +11738,17 @@ def ecrire_retour_lead_visite(lead, recap):
     if not lead.visite_effectuee:
         lead.visite_effectuee = True
         champs.append('visite_effectuee')
-    if recap and recap not in existantes:
-        lead.visite_notes = (f'{existantes}\n{recap}'.strip()
-                             if existantes else recap)
-        champs.append('visite_notes')
+    if recap:
+        if visite_id is not None:
+            nouvelles = _notes_avec_recap(existantes, recap, visite_id)
+        elif recap not in existantes:
+            nouvelles = (f'{existantes}\n{recap}'.strip()
+                         if existantes else recap)
+        else:
+            nouvelles = existantes
+        if nouvelles != existantes:
+            lead.visite_notes = nouvelles
+            champs.append('visite_notes')
     if champs:
         lead.save(update_fields=champs)
     return lead

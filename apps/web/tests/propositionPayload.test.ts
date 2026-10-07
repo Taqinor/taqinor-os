@@ -83,8 +83,8 @@ describe('QJW11 — le lecteur lit l’échantillon du contrat, champ par champ'
     expect(p.quote!.avecOk).toBe(true);
     expect(p.quote!.displayTotal).toBe(114000);
     expect(p.quote!.scenario).toBe('Les deux (Sans + Avec)');
-    expect(p.quote!.totauxSans).toEqual({ htBrut: null, remise: null, htNet: 65000, tva: 13000, ttc: 78000 });
-    expect(p.quote!.totauxAvec).toEqual({ htBrut: null, remise: null, htNet: 95000, tva: 19000, ttc: 114000 });
+    expect(p.quote!.totauxSans).toEqual({ htBrut: 66500, remise: 1450, htNet: 65000, tva: 13000, ttc: 78000 });
+    expect(p.quote!.totauxAvec).toEqual({ htBrut: 95075, remise: 0, htNet: 95000, tva: 19000, ttc: 114000 });
   });
 
   it('les totaux d’options au niveau racine', () => {
@@ -169,6 +169,12 @@ const CLES_LUES: ReadonlyArray<readonly [string, (p: Proposal) => unknown]> = [
   ['quote.totaux_avec.ht_net', (x) => x.quote?.totauxAvec?.htNet],
   ['quote.totaux_avec.tva', (x) => x.quote?.totauxAvec?.tva],
   ['quote.totaux_avec.ttc', (x) => x.quote?.totauxAvec?.ttc],
+  // ATOT26 — le contrat déclare désormais la chaîne entière ; `lireTotaux`
+  // lisait déjà `ht_brut`/`remise` (null tant que l'échantillon les taisait).
+  ['quote.totaux_sans.ht_brut', (x) => x.quote?.totauxSans?.htBrut],
+  ['quote.totaux_sans.remise', (x) => x.quote?.totauxSans?.remise],
+  ['quote.totaux_avec.ht_brut', (x) => x.quote?.totauxAvec?.htBrut],
+  ['quote.totaux_avec.remise', (x) => x.quote?.totauxAvec?.remise],
   ['option_totals.sans_batterie', (x) => x.optionTotals?.sansBatterie],
   ['option_totals.avec_batterie', (x) => x.optionTotals?.avecBatterie],
   ['option_totals.sans_batterie.ht_net', (x) => x.optionTotals?.sansBatterie?.htNet],
@@ -427,6 +433,11 @@ const NON_LU: Readonly<Record<string, string>> = {
   // `notes.portee_de_quote` le dit : la forme interne de `quote` est
   // documentée par `devis_composition.json`/`devis_totaux.json`. Le lecteur
   // typé n'en prend que l'entête et la chaîne argent.
+  // ATOT26 (contrat seul) — deux étages déclarés avant leur lecteur (ATOT34).
+  'quote.totaux_sans.arrondi': 'ATOT26 — étage « Arrondi » de la chaîne (baisse de HT au palier de 100 MAD) : déclaré par le contrat avant que la page ne l’imprime ; ATOT34 (WEB_PLAN) le lira et le rangera dans CLES_LUES.',
+  'quote.totaux_avec.arrondi': 'ATOT26 — même étage « Arrondi » pour l’option avec batterie ; lu par ATOT34 (WEB_PLAN), pas encore par le lecteur typé.',
+  'quote.totaux_sans.tva_par_taux[]': 'ATOT26 — ventilation de la TVA par taux {taux, montant, ht_net} : déclarée par le contrat ; ATOT34 (WEB_PLAN) l’imprimera ligne par ligne.',
+  'quote.totaux_avec.tva_par_taux[]': 'ATOT26 — même ventilation de la TVA pour l’option avec batterie ; lue par ATOT34 (WEB_PLAN), pas encore par le lecteur typé.',
   'quote.sans_items[]': 'Lignes du devis en niveau `standard` (kit agrégé) : rendues par le frontmatter depuis le dict interne du moteur, jamais par le lecteur typé.',
 
   // ── Multi-villa — un mode que le lecteur typé ne couvre pas ──────────────
@@ -584,6 +595,7 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'notes.argent': 'Note de contrat : aucune clé ne porte `prix_achat` ni de marge, règle #4 (documentation).',
   'notes.futur_test_de_forme': 'Note de contrat : le test de forme QJR7 viendra plus tard (documentation).',
   'notes.forme_serveur_qjr228': 'Note de contrat : pourquoi cette carte déclare `forme_serveur` (documentation).',
+  'notes.chaine_totaux_atot26': 'Note de contrat ATOT26 : les sept étages de `quote.totaux_sans/avec` et la règle « la page imprime la chaîne entière » (documentation).',
   'notes.cle_detail': 'Note de contrat : pourquoi `detail` figure dans l’exemple à `null` (documentation).',
   // PREVIEW-V3 (16/09/2026)
   'notes.preview_v3_conditions_avant_signature': 'Note de contrat : pourquoi la page connaît désormais l’acompte, l’échéance, les conditions et les moyens de règlement AVANT la signature (documentation).',
