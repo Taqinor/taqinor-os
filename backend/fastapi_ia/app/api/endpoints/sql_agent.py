@@ -3,6 +3,9 @@ from pydantic import BaseModel, Field
 
 from app.core import database as _database
 from app.core.security import get_raw_token, verify_token
+# AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
+# partage avec l'OCR ; le nom local est garde pour les appelants.
+from app.core.security import require_company_id as _require_company_id
 from app.services.action_tools import ActionContext
 from app.services.sql_agent_service import sql_agent_service
 
@@ -25,25 +28,6 @@ def _check_sql_agent_rate_limit(user_id) -> None:
             "minute. Reessayez dans un instant."
         ),
     )
-
-
-def _require_company_id(token_payload: dict) -> int:
-    """ERR44 — Extrait un company_id PRESENT et NON NUL du JWT, sinon refuse.
-
-    Le scoping par societe est la frontiere de securite de l'agent SQL : un jeton
-    sans claim `company_id` (ou avec company_id=0) desactiverait tout le filtrage
-    tenant et lirait toutes les societes. On refuse comme le fait l'OCR (403)."""
-    company_id = token_payload.get("company_id")
-    try:
-        company_id = int(company_id) if company_id is not None else 0
-    except (TypeError, ValueError):
-        company_id = 0
-    if not company_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Aucune entreprise associée à votre compte.",
-        )
-    return company_id
 
 
 class SQLQuery(BaseModel):

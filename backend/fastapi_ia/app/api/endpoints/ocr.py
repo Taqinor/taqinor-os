@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import verify_token
+# AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
+# partage avec l'agent SQL ; le nom local est garde pour les appelants.
+from app.core.security import require_company_id as _require_company_id
 from app.models.ocr import OcrDocument
 from app.services.ocr_service import ocr_service
 
@@ -245,21 +248,6 @@ async def process_document(
         type_document=result.get("type_document", "autre"),
         donnees_structurees=result.get("donnees_structurees", {}),
     )
-
-
-def _require_company_id(token_payload: dict) -> int:
-    """Extract company_id from the JWT or refuse the request.
-
-    Tenant scoping is the security boundary — a token without a company_id
-    must never read or write OCR documents.
-    """
-    company_id = token_payload.get("company_id")
-    if not company_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Aucune entreprise associée à votre compte.",
-        )
-    return int(company_id)
 
 
 @router.post("/save_document", response_model=SaveDocumentResponse)

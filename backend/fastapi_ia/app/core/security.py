@@ -106,6 +106,39 @@ def verify_token(
     return payload
 
 
+def _positive_int(value) -> int:
+    try:
+        number = int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
+
+
+def require_company_id(token_payload: dict) -> int:
+    """Societe sur laquelle borner la requete — LE helper partage par l'agent
+    SQL et l'OCR (AANA7).
+
+    AANA7 (C-AANA-015) — la societe ACTIVE d'abord : Django emet le claim
+    `active_company_id` apres une bascule de societe (XPLT19,
+    authentication/active_company.py) et borne chaque requete Django a cette
+    societe ; FastAPI doit lire la meme. Sans claim (ou claim invalide) : la
+    societe d'attache `company_id`.
+
+    ERR44 — un jeton sans societe valide (absente, 0, non numerique) est
+    REFUSE (403) : le scoping par societe est la frontiere de securite, un
+    company_id nul desactiverait tout le filtrage tenant."""
+    company_id = (
+        _positive_int(token_payload.get("active_company_id"))
+        or _positive_int(token_payload.get("company_id"))
+    )
+    if not company_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Aucune entreprise associée à votre compte.",
+        )
+    return company_id
+
+
 def get_raw_token(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
