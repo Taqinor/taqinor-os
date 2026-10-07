@@ -677,6 +677,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.modifierPhoto": [
+    {
+      "config": null,
+      "data": {
+        "k": 1
+      },
+      "url": "/calepinage/calepinages/7/photos/3/",
+      "verbe": "patch"
+    }
+  ],
   "calepinages.modifierVariante": [
     {
       "config": null,
@@ -890,6 +900,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/sorties/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.supprimerPhoto": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/photos/3/",
+      "verbe": "delete"
     }
   ],
   "calepinages.supprimerPoseReelle": [
