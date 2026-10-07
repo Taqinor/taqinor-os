@@ -47,9 +47,16 @@ function saisieDe(ligne) {
 
 const VIDE = { modules: '', position: '', date: '', dateModifiee: false, brouillon: false }
 
+/* ACAL268 — une ligne est indexée par l'identifiant STABLE de son pan
+   (`zone_id`, contrat `calepinage_asbuilt_ecarts.json`) : deux pans de même
+   libellé sont deux lignes indépendantes, et un pan renommé garde sa saisie.
+   Le libellé n'est qu'un affichage. */
+const cleDe = (ligne) => String(ligne?.zone_id ?? ligne?.pan ?? '')
+const libelleDe = (ligne) => ligne?.libelle || ligne?.pan || cleDe(ligne)
+
 function saisiesDe(lignes) {
   const saisies = {}
-  for (const ligne of lignes || []) saisies[ligne.pan] = saisieDe(ligne)
+  for (const ligne of lignes || []) saisies[cleDe(ligne)] = saisieDe(ligne)
   return saisies
 }
 
@@ -73,7 +80,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
     if (pan === undefined) {
       setSaisies(saisiesDe(donnees.lignes))
     } else if (pan !== null) {
-      const ligne = (donnees.lignes || []).find((l) => l.pan === pan)
+      const ligne = (donnees.lignes || []).find((l) => cleDe(l) === pan)
       if (ligne) setSaisies((s) => ({ ...s, [pan]: saisieDe(ligne) }))
     }
     return donnees
@@ -103,12 +110,15 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
     return corps && typeof corps === 'object' && !Array.isArray(corps) ? corps : { detail: repli }
   }
 
-  const enregistrer = (pan) => {
+  const enregistrer = (ligne) => {
+    const pan = cleDe(ligne)
+    const libelle = libelleDe(ligne)
     const saisie = saisies[pan] || VIDE
     setEnCours(pan)
     setRefus(null)
     setMessage(null)
     const corps = {
+      // ACAL268 — le pan est désigné par son identifiant STABLE.
       pan,
       modules_poses: saisie.modules,
       ecarts_position: saisie.position,
@@ -119,9 +129,26 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
     Promise.resolve(calepinageApi.calepinages.enregistrerPoseReelle(calepinageId, corps))
       .then((res) => {
         appliquer(res, pan)
-        setMessage(`Pose du pan ${pan} enregistrée.`)
+        setMessage(`Pose du pan ${libelle} enregistrée.`)
       })
-      .catch((err) => setRefus({ pan, champs: corpsRefus(err, 'La saisie a été refusée par le serveur.') }))
+      .catch((err) => setRefus({ pan, libelle, champs: corpsRefus(err, 'La saisie a été refusée par le serveur.') }))
+      .finally(() => setEnCours(null))
+  }
+
+  /* ACAL268 — retirer le relevé d'un pan ORPHELIN (supprimé du document) :
+     DELETE pose-reelle/<zone_id>/, puis relecture. Le refus (404) est rendu
+     sur la ligne. */
+  const retirer = (ligne) => {
+    const pan = cleDe(ligne)
+    setEnCours(pan)
+    setRefus(null)
+    setMessage(null)
+    Promise.resolve(calepinageApi.calepinages.supprimerPoseReelle(calepinageId, pan))
+      .then(() => {
+        setMessage(`Relevé du pan ${libelleDe(ligne)} retiré.`)
+        return charger()
+      })
+      .catch((err) => setRefus({ pan, libelle: libelleDe(ligne), champs: corpsRefus(err, 'Le retrait a été refusé par le serveur.') }))
       .finally(() => setEnCours(null))
   }
 
@@ -160,7 +187,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
           className="mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
         >
           {refus.pan
-            ? `Saisie refusée — pan ${refus.pan} : ${champsRefus.join(', ')}`
+            ? `Saisie refusée — pan ${refus.libelle || refus.pan} : ${champsRefus.join(', ')}`
             : `Version refusée — ${champsRefus.join(', ')}`}
         </p>
       )}
@@ -211,21 +238,28 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
             </thead>
             <tbody>
               {lignes.map((ligne) => {
-                const saisie = saisies[ligne.pan] || VIDE
-                const erreurDate = erreurDe(ligne.pan, 'releve_le')
-                const erreurPan = erreurDe(ligne.pan, 'pan')
-                const erreurModules = erreurDe(ligne.pan, 'modules_poses')
+                const cle = cleDe(ligne)
+                const libelle = libelleDe(ligne)
+                const saisie = saisies[cle] || VIDE
+                const erreurDate = erreurDe(cle, 'releve_le')
+                const erreurPan = erreurDe(cle, 'pan')
+                const erreurModules = erreurDe(cle, 'modules_poses')
                 return (
-                  <tr key={ligne.pan} data-testid={`cal-pose-ligne-${ligne.pan}`} className="align-top">
+                  <tr key={cle} data-testid={`cal-pose-ligne-${cle}`} className="align-top">
                     <td className="py-2 text-white">
-                      {ligne.pan}
+                      {libelle}
+                      {ligne.orphelin && (
+                        <p className="mt-1 text-xs text-brass-300" data-testid={`cal-pose-orphelin-${cle}`}>
+                          Pan supprimé du document — hors totaux
+                        </p>
+                      )}
                       {erreurPan && (
-                        <p role="alert" data-testid={`cal-pose-erreur-pan-${ligne.pan}`} className="mt-1 text-xs text-red-300">
+                        <p role="alert" data-testid={`cal-pose-erreur-pan-${cle}`} className="mt-1 text-xs text-red-300">
                           {erreurPan}
                         </p>
                       )}
                     </td>
-                    <td className="py-2" data-testid={`cal-pose-prevu-${ligne.pan}`}>
+                    <td className="py-2" data-testid={`cal-pose-prevu-${cle}`}>
                       {ligne.modules_prevus ?? ''}
                     </td>
                     <td className="py-2">
@@ -233,22 +267,22 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         type="number"
                         step="any"
                         min="0"
-                        aria-label={`Modules posés — ${ligne.pan}`}
-                        data-testid={`cal-pose-modules-${ligne.pan}`}
+                        aria-label={`Modules posés — ${libelle}`}
+                        data-testid={`cal-pose-modules-${cle}`}
                         value={saisie.modules}
-                        onChange={(e) => majSaisie(ligne.pan, 'modules', e.target.value)}
+                        onChange={(e) => majSaisie(cle, 'modules', e.target.value)}
                         className="w-20 rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
                       />
                       {erreurModules && (
-                        <p role="alert" data-testid={`cal-pose-erreur-modules-${ligne.pan}`} className="mt-1 text-xs text-red-300">
+                        <p role="alert" data-testid={`cal-pose-erreur-modules-${cle}`} className="mt-1 text-xs text-red-300">
                           {erreurModules}
                         </p>
                       )}
                     </td>
                     <td className="py-2">
-                      <span data-testid={`cal-pose-ecart-${ligne.pan}`}>{ecartLisible(ligne.ecart)}</span>
+                      <span data-testid={`cal-pose-ecart-${cle}`}>{ecartLisible(ligne.ecart)}</span>
                       {ligne.mention && (
-                        <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-mention-${ligne.pan}`}>
+                        <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-mention-${cle}`}>
                           {ligne.mention}
                         </p>
                       )}
@@ -256,47 +290,66 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                     <td className="py-2">
                       <input
                         type="date"
-                        aria-label={`Relevé le — ${ligne.pan}`}
-                        data-testid={`cal-pose-date-${ligne.pan}`}
+                        aria-label={`Relevé le — ${libelle}`}
+                        data-testid={`cal-pose-date-${cle}`}
                         value={saisie.date}
-                        onChange={(e) => majSaisie(ligne.pan, 'date', e.target.value)}
+                        onChange={(e) => majSaisie(cle, 'date', e.target.value)}
                         className="rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
                       />
                       {ligne.releve_par?.nom_complet && (
-                        <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-auteur-${ligne.pan}`}>
+                        <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-auteur-${cle}`}>
                           {`par ${ligne.releve_par.nom_complet}`}
                         </p>
                       )}
                       {erreurDate && (
-                        <p role="alert" data-testid={`cal-pose-erreur-releve_le-${ligne.pan}`} className="mt-1 text-xs text-red-300">
+                        <p role="alert" data-testid={`cal-pose-erreur-releve_le-${cle}`} className="mt-1 text-xs text-red-300">
                           {erreurDate}
                         </p>
                       )}
                       {saisie.brouillon && (
-                        <p className="mt-1 text-xs text-brass-300" data-testid={`cal-pose-brouillon-${ligne.pan}`}>
+                        <p className="mt-1 text-xs text-brass-300" data-testid={`cal-pose-brouillon-${cle}`}>
                           Brouillon non enregistré
                         </p>
                       )}
                     </td>
                     <td className="py-2">
                       <textarea
-                        aria-label={`Écarts de position — ${ligne.pan}`}
-                        data-testid={`cal-pose-position-${ligne.pan}`}
+                        aria-label={`Écarts de position — ${libelle}`}
+                        data-testid={`cal-pose-position-${cle}`}
                         value={saisie.position}
-                        onChange={(e) => majSaisie(ligne.pan, 'position', e.target.value)}
+                        onChange={(e) => majSaisie(cle, 'position', e.target.value)}
                         className="w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
                       />
                     </td>
                     <td className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => enregistrer(ligne.pan)}
-                        disabled={enCours !== null}
-                        data-testid={`cal-pose-enregistrer-${ligne.pan}`}
-                        className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-brass-200 disabled:opacity-50"
-                      >
-                        {enCours === ligne.pan ? 'Envoi…' : 'Enregistrer'}
-                      </button>
+                      {ligne.orphelin
+                        ? (
+                          <button
+                            type="button"
+                            onClick={() => retirer(ligne)}
+                            disabled={enCours !== null}
+                            data-testid={`cal-pose-retirer-${cle}`}
+                            className="rounded bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-200 disabled:opacity-50"
+                          >
+                            {enCours === cle ? 'Retrait…' : 'Retirer'}
+                          </button>
+                        )
+                        : (
+                          <button
+                            type="button"
+                            onClick={() => enregistrer(ligne)}
+                            disabled={enCours !== null}
+                            data-testid={`cal-pose-enregistrer-${cle}`}
+                            className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-brass-200 disabled:opacity-50"
+                          >
+                            {enCours === cle ? 'Envoi…' : 'Enregistrer'}
+                          </button>
+                        )}
+                      {erreurDe(cle, 'detail') && (
+                        <p role="alert" data-testid={`cal-pose-erreur-detail-${cle}`} className="mt-1 text-xs text-red-300">
+                          {String(erreurDe(cle, 'detail'))}
+                        </p>
+                      )}
                     </td>
                   </tr>
                 )

@@ -337,6 +337,11 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     verifier_ecriture_autorisee(calepinage, champ='approbation')
     motif = _valider(decision, motif,
                      getattr(calepinage, 'roof_layout', None))
+    if decision == APPROUVE:
+        # ACAL303 (D-ACAL-11) — SÉPARATION DES TÂCHES : qui a conçu ou porte
+        # la conception ne l'approuve pas (un REFUS reste admis). RIEN n'est
+        # écrit.
+        _refuser_auto_approbation(calepinage, user)
     # ACAL172 (D-ACAL-9) — un ACCORD lit le verdict électrique : bloquant ⇒
     # refus nommé, rien n'est écrit ; indéterminé ⇒ accord AVEC avertissement.
     avertissement = (_verdict_electrique_avant_accord(calepinage)
@@ -362,6 +367,36 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
         texte += f" — {avertissement}"
     noter(calepinage, texte, user=user)
     return etat_approbation(calepinage)
+
+
+#: ACAL303 — le refus d'une auto-approbation (champ ``decision``).
+MESSAGE_AUTO_APPROBATION = (
+    "Vous avez conçu ou portez cette conception : l'approbation revient à "
+    "un autre relecteur.")
+
+
+def _concepteurs(calepinage):
+    """Les comptes qui ONT CONÇU ou PORTENT la conception : l'auteur du
+    calepinage, son responsable, l'auteur de sa DERNIÈRE version."""
+    from ..models import CalepinageVersion
+
+    ids = {getattr(calepinage, 'cree_par_id', None),
+           getattr(calepinage, 'responsable_id', None)}
+    if getattr(calepinage, 'pk', None):
+        derniere = (CalepinageVersion.objects
+                    .filter(calepinage_id=calepinage.pk)
+                    .order_by('-created_at', '-id')
+                    .values_list('cree_par_id', flat=True).first())
+        ids.add(derniere)
+    ids.discard(None)
+    return ids
+
+
+def _refuser_auto_approbation(calepinage, user):
+    """ACAL303 — ``ApprobationRefusee`` (``decision``) quand ``user`` a conçu
+    ou porte la conception."""
+    if getattr(user, 'pk', None) in _concepteurs(calepinage):
+        raise ApprobationRefusee(MESSAGE_AUTO_APPROBATION, champ='decision')
 
 
 def _verdict_electrique_avant_accord(calepinage):

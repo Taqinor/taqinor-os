@@ -58,7 +58,7 @@ __all__ = [
     'DOSSIER_FIN_CHANTIER', 'DOSSIER_CHANTIER_GED',
     'MENTION_RECETTE_GARANTIES', 'construire_dossier_fin_chantier',
     # ACAL236 — LE dépôt fusionné, partagé avec le dossier réglementaire.
-    'deposer_et_fusionner', 'empreinte_des_dossiers',
+    'deposer_et_fusionner',
 ]
 
 #: Où le pack se range dans la GED. Un cabinet et un dossier racine dédiés :
@@ -237,7 +237,7 @@ MOTIF_PAGES_INCONNUES = ("« %s » : pages inconnues (PDF illisible ou PyMuPDF "
 TAILLE_EMPREINTE_DOSSIER = 16
 
 
-def empreinte_des_dossiers(calepinage):
+def _empreinte_des_dossiers(calepinage):
     """ACAL236 — l'empreinte (16 hex) des ENTRÉES d'un dossier fusionné.
 
     ``empreinte_livrable.empreinte_des_entrees`` (ACAL221) : conception,
@@ -396,7 +396,7 @@ def construire_pack(calepinage, *, company=None, created_by=None,
         nom='Dossier technique — %s' % calepinage, folder_nom=DOSSIER,
         company=company, created_by=created_by,
         empreinte=(empreinte if empreinte is not None
-                   else empreinte_des_dossiers(calepinage)))
+                   else _empreinte_des_dossiers(calepinage)))
     return {
         'document': depot['document'],
         'pieces': [(code, libelle, pages) for code, libelle, _o, pages
@@ -517,7 +517,7 @@ def construire_dossier_fin_chantier(calepinage, *, company=None,
         folder_nom=DOSSIER_CHANTIER_GED, company=company,
         created_by=created_by,
         empreinte=(empreinte if empreinte is not None
-                   else empreinte_des_dossiers(calepinage)))
+                   else _empreinte_des_dossiers(calepinage)))
     return {
         'document': depot['document'],
         'pieces': [(code, libelle, pages) for code, libelle, _o, pages

@@ -21,16 +21,18 @@ de devis ne bouge.
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..services.asbuilt import (
-    PoseRefusee, enregistrer_pose, etat_pose_reelle, version_depuis_ecarts,
+    PoseRefusee, enregistrer_pose, etat_pose_reelle, supprimer_pose,
+    version_depuis_ecarts,
 )
 
-__all__ = ['pose_reelle']
+__all__ = ['pose_reelle', 'supprimer_pose_reelle']
 
 
 def _demande_de_version(corps):
@@ -64,8 +66,27 @@ def pose_reelle(self, request, pk=None):
     return Response(etat_pose_reelle(calepinage), status=code)
 
 
+@extend_schema(responses={204: None})
+@action(detail=True, methods=['delete'],
+        url_path=r'pose-reelle/(?P<zone_id>[^/.]+)',
+        permission_classes=[PeutLireOuEcrireCalepinage])
+def supprimer_pose_reelle(self, request, pk=None, zone_id=None):
+    """ACAL267 — retirer le relevé d'un pan (ligne orpheline comprise).
+
+    204 ; 404 ``{detail}`` quand aucun relevé n'est saisi pour ce pan.
+    """
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        supprimer_pose(calepinage, zone_id, user=request.user)
+    except PoseRefusee as refus:
+        return Response({'detail': str(refus)},
+                        status=status.HTTP_404_NOT_FOUND)
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).
 CalepinageViewSet.pose_reelle = pose_reelle
+CalepinageViewSet.supprimer_pose_reelle = supprimer_pose_reelle  # ACAL267

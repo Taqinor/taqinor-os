@@ -95,6 +95,8 @@ ROUTES_HORS_VERROU = {
     ('POST', 'evaluer-electrique'): 'évaluation électrique à la demande '
                                     '(lecture calculée)',
     ('POST', 'pose-reelle'): 'pose réelle : preuve du chantier (ACAL43)',
+    ('DELETE', r'pose-reelle/(?P<zone_id>[^/.]+)'):
+        'pose réelle : retrait du relevé d\'un pan (orphelin, ACAL267)',
     ('POST', 'photos'): 'photos de site',
     ('PATCH', PHOTO): 'photos de site',
     ('DELETE', PHOTO): 'photos de site',

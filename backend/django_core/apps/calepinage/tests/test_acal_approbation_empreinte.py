@@ -33,7 +33,8 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
                                {'presets': {'approbation_exigee': True}})
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='ACAL114')
-        enregistrer_layout(self.calepinage, _dessin(10), user=self.user)
+        # ACAL303 — la conception est d'un AUTRE compte que le relecteur.
+        enregistrer_layout(self.calepinage, _dessin(10), user=self.user_sans)
         self.base = url_detail(self.calepinage.pk)
 
     def _approuver(self):

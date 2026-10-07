@@ -33,6 +33,12 @@ vi.mock('../../api/crmApi', () => ({
   default: { getAssignableUsers: vi.fn(), getLeads: vi.fn(), searchClients: vi.fn() },
 }))
 
+// ACAL294 — les définitions de champs personnalisés (registre `customfields`)
+// que `CustomFieldsInput` lit pour le module « calepinage ».
+vi.mock('../../api/customFieldsApi', () => ({
+  default: { getDefs: vi.fn() },
+}))
+
 /* ============================================================================
    CAL17 (moitié écran) — L'ÉCRAN LIT TOUT L'AGRÉGAT, ou il rougit.
    ----------------------------------------------------------------------------
@@ -62,6 +68,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
+import customFieldsApi from '../../api/customFieldsApi'
 import FicheCalepinage from './FicheCalepinage'
 
 const DOC = documentContrat('calepinage', 'calepinage_detail')
@@ -85,6 +92,7 @@ beforeEach(() => {
   crmApi.getAssignableUsers.mockResolvedValue({ data: [
     { id: 1, username: 'essai' }, { id: 7, username: 'sami' },
   ] })
+  customFieldsApi.getDefs.mockResolvedValue({ data: [] })
 })
 afterEach(() => { cleanup() })
 
@@ -701,5 +709,45 @@ describe('FicheCalepinage — rattachement éditable (ACAL181)', () => {
     expect(within(champ).getByTestId('cal-fiche-lead-corbeille'))
       .toHaveTextContent('Lead à la corbeille - restaurez-le')
     expect(champ.querySelector('a[href^="/crm/leads"]')).toBeNull()
+  })
+})
+
+describe('FicheCalepinage — champs personnalisés (ACAL294)', () => {
+  it('la fiche affiche et enregistre les champs personnalisés', async () => {
+    customFieldsApi.getDefs.mockResolvedValue({ data: [
+      { id: 3, code: 'parcelle', libelle: 'N° de parcelle cadastrale',
+        type: 'text', actif: true, obligatoire: false },
+    ] })
+    calepinageApi.calepinages.update.mockResolvedValue({ data: {} })
+    rendre(DETAIL)
+
+    // La valeur SERVIE reste affichée telle quelle.
+    expect(screen.getByTestId('cal-fiche-custom_data')).toHaveTextContent('toiture_accessible')
+    const saisie = await screen.findByTestId('cal-fiche-custom-data-saisie')
+    expect(customFieldsApi.getDefs).toHaveBeenCalledWith('calepinage')
+    const champ = within(saisie).getByRole('textbox')
+    await userEvent.type(champ, 'T-1234')
+    await userEvent.click(screen.getByTestId('cal-fiche-custom-data-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.update).toHaveBeenCalledWith(
+      DETAIL.id, { custom_data: { ...DETAIL.custom_data, parcelle: 'T-1234' } },
+    ))
+  })
+
+  it('un refus par code est rendu sous le bloc, en NOMMANT le champ', async () => {
+    customFieldsApi.getDefs.mockResolvedValue({ data: [
+      { id: 3, code: 'parcelle', libelle: 'N° de parcelle cadastrale',
+        type: 'text', actif: true, obligatoire: false },
+    ] })
+    calepinageApi.calepinages.update.mockRejectedValue({ response: { status: 400,
+      data: { custom_data: { parcelle: ['Format invalide.'] } } } })
+    rendre(DETAIL)
+
+    const saisie = await screen.findByTestId('cal-fiche-custom-data-saisie')
+    await userEvent.type(within(saisie).getByRole('textbox'), 'x')
+    await userEvent.click(screen.getByTestId('cal-fiche-custom-data-enregistrer'))
+
+    expect(await screen.findByTestId('cal-fiche-custom_data-erreur'))
+      .toHaveTextContent('parcelle : Format invalide.')
   })
 })

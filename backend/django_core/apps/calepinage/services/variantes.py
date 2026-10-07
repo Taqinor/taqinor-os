@@ -444,7 +444,7 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
 
-    from .creation import _verrou_creation
+    from .creation import _verrou_creation, responsable_par_defaut
 
     with transaction.atomic(), _verrou_creation(calepinage.company_id,
                                                 lead_cible):
@@ -453,6 +453,11 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
         # liens.py), dans la transaction de la création : deux copies
         # simultanées vers le même lead n'en créent jamais deux.
         _refuser_second_ouvert(calepinage, lead_cible, user=user)
+        if 'responsable' not in copies and 'responsable_id' not in copies:
+            # ACAL297 — la copie (et la création depuis un modèle) STOCKE le
+            # propriétaire du lead de SA cible.
+            copies['responsable'] = responsable_par_defaut(
+                calepinage.company, lead_cible)
         copie = Calepinage.objects.create(
             company=calepinage.company,
             lead_id=lead_cible,

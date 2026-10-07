@@ -45,10 +45,10 @@ def _panneaux(nombre, x0, ecart=1.2):
 
 
 LAYOUT = {'version': 2, 'zones': [
-    {'label': 'PAN-A', 'geometry': {
+    {'id': 'PAN-A', 'label': 'PAN-A', 'geometry': {
         'count': 6, 'azimuthDeg': 180.0, 'tiltDeg': 15.0,
         'panels': _panneaux(6, 0.0)}},
-    {'label': 'PAN-B', 'geometry': {
+    {'id': 'PAN-B', 'label': 'PAN-B', 'geometry': {
         'count': 6, 'azimuthDeg': 90.0, 'tiltDeg': 15.0,
         'panels': _panneaux(6, 10.0)}},
 ]}

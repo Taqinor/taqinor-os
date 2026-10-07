@@ -83,16 +83,25 @@ def construire_document(calepinage, *, ecarts=None, photos=None,
     """L'agrégat prêt à mettre en page — chaque lecture est REMPLAÇABLE par
     l'appelant (essai pur : fournir ``ecarts``/``photos``/``svg_planche``
     évite toute base)."""
+    # ACAL248 — UNE conception pour le tableau ET la planche en regard (celle
+    # que le chantier a reçue : ``conception_du_chantier``) : la planche ne
+    # dessine plus un toit que le tableau ne compte pas.
+    conception = None
+    if ecarts is None or svg_planche is None:
+        from ..asbuilt import conception_du_chantier
+
+        conception = conception_du_chantier(calepinage)
     if ecarts is None:
         from ..asbuilt import ecarts_du_calepinage
 
-        ecarts = ecarts_du_calepinage(calepinage)
+        ecarts = ecarts_du_calepinage(calepinage, conception=conception)
     if photos is None:
         photos = photos_du_calepinage(calepinage)
     if svg_planche is None:
         from ..planche import planche_svg_ou_vide
 
-        svg_planche = planche_svg_ou_vide(calepinage)
+        svg_planche = planche_svg_ou_vide(calepinage,
+                                          roof_layout=conception[0])
 
     from .gabarit_document import (
         etat_de_conception, identite_du_calepinage, styles_de_societe,
@@ -139,9 +148,33 @@ def _cellule_nombre(valeur):
     return escape(str(valeur)) if valeur is not None else '—'
 
 
+def _cellule_prevu(pan):
+    """ACAL248 — le prévu AU RELEVÉ (date) quand il a été figé ; sinon le
+    prévu de la conception courante, tel quel."""
+    prevu = _cellule_nombre(pan.get('prevu'))
+    releve = pan.get('releve_le')
+    if pan.get('prevu_fige') and pan.get('prevu') is not None and releve:
+        return '%s (au relevé du %s)' % (prevu, escape(str(releve)))
+    return prevu
+
+
+def _mention(pan):
+    """La mention de la ligne, + « conception modifiée depuis le relevé »
+    (et le prévu d'aujourd'hui) quand le toit a changé après le relevé."""
+    from ..asbuilt import MENTION_CONCEPTION_MODIFIEE
+
+    morceaux = [pan.get('mention') or '']
+    if pan.get('conception_modifiee'):
+        morceaux.append('%s (prévu actuel : %s)' % (
+            MENTION_CONCEPTION_MODIFIEE,
+            _cellule_nombre(pan.get('prevu_actuel'))))
+    return escape(' — '.join(m for m in morceaux if m))
+
+
 def _table_ecarts(ecarts):
     entete = (
-        '<tr><th>Pan</th><th class="num">Prévu</th><th class="num">Posé</th>'
+        '<tr><th>Pan</th><th class="num">Prévu au relevé (date)</th>'
+        '<th class="num">Posé</th>'
         '<th class="num">Écart</th><th>Relevé le</th>'
         '<th>Écarts de position</th><th>Mention</th></tr>')
     lignes = []
@@ -151,12 +184,12 @@ def _table_ecarts(ecarts):
             '<tr><td>%s</td><td class="num">%s</td><td class="num">%s</td>'
             '<td class="num">%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
             % (escape(str(pan.get('pan') or '')),
-               _cellule_nombre(pan.get('prevu')),
+               _cellule_prevu(pan),
                _cellule_nombre(pan.get('pose')),
                _cellule_nombre(pan.get('ecart')),
                escape(str(releve)) if releve else '—',
                escape(pan.get('ecarts_position') or ''),
-               escape(pan.get('mention') or '')))
+               _mention(pan)))
     return '<table class="asbuilt-pans">%s%s</table>' % (
         entete, ''.join(lignes))
 

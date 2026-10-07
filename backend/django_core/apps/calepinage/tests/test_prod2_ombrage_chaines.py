@@ -37,12 +37,15 @@ def layout(valeurs, *, label='PAN-SUD'):
     }]}
 
 
-def affectation(repartition, *, pan='PAN-SUD'):
-    """``{chaine: [rangs]}`` → la table de CAL125, dans son ordre."""
+def affectation(repartition, *, pan='PAN-SUD', cle='z1'):
+    """``{chaine: [rangs]}`` → la table de CAL125, dans son ordre.
+
+    ACAL265 — le module est repéré par la clé STABLE du pan (``zone.id``),
+    le libellé n'est que l'affichage de la ligne."""
     lignes = []
     for chaine, rangs in repartition.items():
         for rang in rangs:
-            lignes.append({'module': f'{pan}#{rang}', 'pan': pan,
+            lignes.append({'module': f'{cle}#{rang}', 'pan': pan,
                            'chaine': chaine, 'onduleur': 1, 'mppt': 1})
     return lignes
 
@@ -69,7 +72,7 @@ class SignalementTest(unittest.TestCase):
         self.assertEqual(len(resultat['signalements']), 1)
         signal = resultat['signalements'][0]
         self.assertEqual(signal['chaine'], 2)
-        self.assertEqual(signal['module'], 'PAN-SUD#4')
+        self.assertEqual(signal['module'], 'z1#4')
         self.assertEqual(signal['acces'], 0.55)
         # L'écart est CHIFFRÉ, relatif au module le mieux exposé du toit.
         self.assertAlmostEqual(signal['ecart'], 0.45, places=4)
@@ -81,7 +84,7 @@ class SignalementTest(unittest.TestCase):
             affectation({1: [1, 2], 2: [3, 4]}))
         chaine1, chaine2 = resultat['chaines']
         self.assertEqual([m['module'] for m in chaine1['modules']],
-                         ['PAN-SUD#1', 'PAN-SUD#2'])
+                         ['z1#1', 'z1#2'])
         self.assertEqual(chaine1['acces_min'], 0.9)
         self.assertEqual(chaine2['acces_min'], 0.6)
         self.assertAlmostEqual(chaine2['ecart_interne'], 0.2, places=4)
@@ -112,12 +115,12 @@ class SignalementTest(unittest.TestCase):
 
     def test_un_module_non_cable_n_ombre_aucune_chaine(self):
         lignes = affectation({1: [1, 2]})
-        lignes.append({'module': 'PAN-SUD#3', 'pan': 'PAN-SUD',
+        lignes.append({'module': 'z1#3', 'pan': 'PAN-SUD',
                        'chaine': None, 'onduleur': None, 'mppt': None})
         resultat = ombrage_des_chaines(layout([1.0, 0.9, 0.1]), lignes)
         modules = [m['module'] for c in resultat['chaines']
                    for m in c['modules']]
-        self.assertNotIn('PAN-SUD#3', modules)
+        self.assertNotIn('z1#3', modules)
         self.assertEqual(resultat['signalements'][0]['acces'], 0.9)
 
 
@@ -140,7 +143,7 @@ class SilenceExpliciteTest(unittest.TestCase):
         resultat = ombrage_des_chaines(
             layout([1.0, None, 0.8, 0.7]),
             affectation({1: [1, 2], 2: [3, 4]}))
-        self.assertEqual(resultat['modules_sans_acces'], ['PAN-SUD#2'])
+        self.assertEqual(resultat['modules_sans_acces'], ['z1#2'])
         self.assertTrue(resultat['avertissements'])
         chaine1 = resultat['chaines'][0]
         # Le module sans accès est PUBLIÉ (il ne disparaît pas) mais il
@@ -160,7 +163,7 @@ class SilenceExpliciteTest(unittest.TestCase):
         resultat = ombrage_des_chaines(
             layout([1.0, 0.9]), affectation({1: [1, 2], 2: [3, 4]}))
         self.assertEqual(resultat['modules_sans_acces'],
-                         ['PAN-SUD#3', 'PAN-SUD#4'])
+                         ['z1#3', 'z1#4'])
 
 
 if __name__ == '__main__':  # pragma: no cover

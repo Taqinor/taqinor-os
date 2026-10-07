@@ -51,12 +51,17 @@ class ListeRattachementTest(BaseApiCalepinage):
         self.assertEqual(ligne['lead'], detail.data['lead'])
 
     def test_la_liste_retombe_sur_le_responsable_du_lead_sans_saisie(self):
-        """Aucun ``responsable`` SAISI sur le calepinage : la liste ne dit
-        plus « Sans responsable » quand le lead, lui, en a un — le MÊME
-        repli que le détail (CALX406)."""
-        calepinage = Calepinage.objects.create(
-            company=self.company, lead_id=self.lead.pk, titre='Toiture Anfa')
-        self.assertIsNone(calepinage.responsable_id)
+        """Aucun ``responsable`` SAISI : la liste ne dit plus « Sans
+        responsable » quand le lead, lui, en a un. ACAL297 — ce n'est plus un
+        repli de LECTURE : la porte de création STOCKE le propriétaire du
+        lead, et la liste comme le détail publient la colonne."""
+        from apps.calepinage.services.creation import (
+            ouvrir_ou_creer_pour_lead,
+        )
+
+        calepinage, _cree = ouvrir_ou_creer_pour_lead(
+            self.lead.pk, self.company, user=self.user, titre='Toiture Anfa')
+        self.assertEqual(calepinage.responsable_id, self.porteur.pk)
 
         liste = self.api.get(URL)
         ligne = next(ligne for ligne in self._lignes(liste)
