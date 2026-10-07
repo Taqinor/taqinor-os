@@ -267,6 +267,9 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
             from apps.ventes.services import layout_hash
 
             empreinte = layout_hash(roof_layout) or ''
+        # ACAL186 (D-ACAL-20) — et MÉMORISÉ pour les pans à venir (clé
+        # « document », hors empreinte imprimée).
+        roof_layout = _document_avec_jeu(roof_layout, jeu)
 
     lead_id = getattr(devis, 'lead_id', None)
     with transaction.atomic(), _verrou_creation(company.pk, lead_id):
@@ -381,6 +384,10 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
     from .traduction import mode_pose_declare_du_lead
 
     mode_pose = mode_pose_declare_du_lead(lead)
+    document = {'modePoseDeclare': mode_pose} if mode_pose else None
+    # ACAL186 (D-ACAL-20) — un jeu choisi sur un calepinage VIERGE est
+    # MÉMORISÉ dans le document (``jeuReglages``), jamais validé puis jeté.
+    document = _document_avec_jeu(document, jeu)
     calepinage = Calepinage.objects.create(
         company=company,
         lead_id=lead.pk,
@@ -388,8 +395,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         titre=titre or _titre_depuis(getattr(lead, 'nom', '')),
         cree_par=user,
         responsable=responsable,
-        **({'roof_layout': {'modePoseDeclare': mode_pose}}
-           if mode_pose else {}),
+        **({'roof_layout': document} if document is not None else {}),
     )
     journaliser_creation(calepinage, user=user)  # CAL26
     _noter_jeu(calepinage, jeu, 0, user=user)
@@ -423,12 +429,14 @@ def creer_pour_client(client_id, company, *, user=None, titre='',
             f"Client introuvable (#{client_id}).", champ='client')
     _exiger_responsable(company, responsable)
 
+    document = _document_avec_jeu(None, jeu)  # ACAL186
     calepinage = Calepinage.objects.create(
         company=company,
         client_id=client.pk,
         titre=titre or _titre_depuis(getattr(client, 'nom', '')),
         cree_par=user,
         responsable=responsable,
+        **({'roof_layout': document} if document is not None else {}),
     )
     journaliser_creation(calepinage, user=user)  # CAL26
     _noter_jeu(calepinage, jeu, 0, user=user)
@@ -526,19 +534,60 @@ def _layout_regle(roof_layout, jeu):
     return document, regles
 
 
+#: ACAL186 (D-ACAL-20) — la clé RACINE « document » (hors empreinte
+#: imprimée) où le jeu choisi à la création est mémorisé.
+CLE_JEU_REGLAGES = 'jeuReglages'
+
+
+def _libelle_jeu(jeu):
+    return str(jeu.get('nom') or jeu.get('id') or '').strip()
+
+
+def _instantane_jeu(jeu):
+    """``{presetId, libelle, valeurs}`` — un INSTANTANÉ des valeurs du jeu
+    lu une fois (jamais une référence vivante : modifier le jeu société
+    ensuite ne change pas ce calepinage)."""
+    import copy
+
+    return {
+        'presetId': jeu.get('id'),
+        'libelle': _libelle_jeu(jeu),
+        'valeurs': {cle: copy.deepcopy(valeur) for cle, valeur in jeu.items()
+                    if cle not in ('id', 'nom')},
+    }
+
+
+def _document_avec_jeu(roof_layout, jeu):
+    """ACAL186 — le document avec ``jeuReglages`` posé (copie) ; inchangé
+    (objet identique) quand aucun jeu n'est demandé."""
+    import copy
+
+    if jeu is None:
+        return roof_layout
+    document = (copy.deepcopy(roof_layout) if isinstance(roof_layout, dict)
+                else {})
+    document[CLE_JEU_REGLAGES] = _instantane_jeu(jeu)
+    return document
+
+
 def _noter_jeu(calepinage, jeu, regles, *, user=None):
-    """Le choix du jeu au chatter — rien quand aucun jeu n'est demandé."""
+    """Le choix du jeu au chatter — rien quand aucun jeu n'est demandé.
+
+    ACAL186 — le jeu est MÉMORISÉ dans le document (``jeuReglages``) et
+    appliqué à chaque nouveau pan : la ligne le dit (fin de « aucun pan
+    modifié »)."""
     if jeu is None:
         return
     from .journal import noter
 
-    nom = str(jeu.get('nom') or jeu.get('id') or '').strip()
+    nom = _libelle_jeu(jeu)
     if regles:
         texte = (f"Jeu de réglages « {nom} » appliqué à {regles} pan(s) du "
-                 "document de départ.")
+                 "document de départ et mémorisé : appliqué à chaque "
+                 "nouveau pan.")
     else:
-        texte = (f"Jeu de réglages « {nom} » retenu à la création : aucun pan "
-                 "du document de départ n'en a été modifié.")
+        texte = (f"Jeu de réglages « {nom} » mémorisé : appliqué à chaque "
+                 "nouveau pan.")
     noter(calepinage, texte, user=user)
 
 
@@ -606,9 +655,11 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
         if regles:
             from apps.ventes.services import layout_hash
 
-            copie.roof_layout = document
             copie.layout_hash = layout_hash(document) or ''
-            champs += ['roof_layout', 'layout_hash']
+            champs += ['layout_hash']
+        # ACAL186 — le jeu est aussi MÉMORISÉ pour les pans à venir.
+        copie.roof_layout = _document_avec_jeu(document, jeu)
+        champs += ['roof_layout']
     if champs:
         copie.save(update_fields=champs + ['updated_at'])
     _noter_jeu(copie, jeu, regles, user=user)

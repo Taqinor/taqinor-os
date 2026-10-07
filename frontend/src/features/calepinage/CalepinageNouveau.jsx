@@ -499,6 +499,12 @@ export default function CalepinageNouveau() {
               <option key={jeu.id} value={jeu.id}>{jeu.nom}</option>
             ))}
           </select>
+          {/* ACAL186 (D-ACAL-20) — avec ou sans modèle, le jeu choisi est
+              MÉMORISÉ dans le calepinage (`jeuReglages`) : il ne se perd pas
+              sur un calepinage vierge. */}
+          <p className="text-xs text-muted-foreground" data-testid="cal-nouveau-preset-aide">
+            S’applique à chaque pan que vous dessinerez.
+          </p>
           {jeux !== null && jeux.length === 0 ? (
             <p className="text-xs text-muted-foreground" data-testid="cal-nouveau-jeux-vide">
               Aucun jeu de réglages n’est enregistré pour la société.
