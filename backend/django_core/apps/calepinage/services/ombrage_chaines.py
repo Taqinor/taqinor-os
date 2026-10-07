@@ -82,13 +82,29 @@ def acces_par_module(layout):
     return par_pan
 
 
-def _rang(repere_module):
-    """« PAN-SUD#7 » → 7, ou ``None`` si le repère ne porte pas de rang."""
-    texte = str(repere_module or '')
-    if '#' not in texte:
-        return None
-    suffixe = texte.rsplit('#', 1)[1]
-    return int(suffixe) if suffixe.isdigit() else None
+def _acces_par_cle_de_module(layout):
+    """ACAL265 — ``{'<clé du pan>#<n>': accès}`` : LA clé de
+    ``chaines.affectation`` (``zone.id`` + numéro stable du panneau, sinon
+    son rang), jamais le libellé du pan."""
+    from .production import cle_de_module, cle_de_pan, numeros_des_modules
+
+    zones = ((layout or {}).get('zones')
+             if isinstance(layout, dict) else None) or []
+    par_module = {}
+    for rang_zone, zone in enumerate(zones, start=1):
+        if not isinstance(zone, dict):
+            continue
+        geometrie = zone.get('geometry')
+        acces = (geometrie.get('solarAccess')
+                 if isinstance(geometrie, dict) else None)
+        valeurs = (acces.get('values') if isinstance(acces, dict) else None)
+        if not isinstance(valeurs, list):
+            continue
+        cle = cle_de_pan(zone, rang_zone)
+        numeros = numeros_des_modules(geometrie)
+        for rang, valeur in enumerate(valeurs, start=1):
+            par_module[cle_de_module(cle, rang, numeros)] = _nombre(valeur)
+    return par_module
 
 
 def ombrage_des_chaines(layout, affectation, *, ecart_signale=None):
@@ -122,6 +138,7 @@ def ombrage_des_chaines(layout, affectation, *, ecart_signale=None):
             'avertissements': [],
         }
 
+    par_module = _acces_par_cle_de_module(layout)
     chaines = {}
     sans_acces = []
     avertissements = []
@@ -132,11 +149,9 @@ def ombrage_des_chaines(layout, affectation, *, ecart_signale=None):
             # n'appartient à aucune chaîne, donc il n'en ombre aucune.
             continue
         pan = str(ligne.get('pan') or '')
-        rang = _rang(ligne.get('module'))
-        valeurs = par_pan.get(pan)
-        acces = None
-        if valeurs is not None and rang is not None and 1 <= rang <= len(valeurs):
-            acces = valeurs[rang - 1]
+        # ACAL265 — l'accès du module se lit par SA clé (``zone.id#n``) :
+        # un pan renommé ou un module retiré ne décale plus la lecture.
+        acces = par_module.get(str(ligne.get('module') or ''))
         if acces is None:
             sans_acces.append(str(ligne.get('module') or ''))
         cle = (pan, chaine)

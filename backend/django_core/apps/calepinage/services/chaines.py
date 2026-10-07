@@ -128,6 +128,24 @@ class PanPose:
     #: (``geometry.azimuthDeg`` / ``tiltDeg``) : celle de la face E.
     azimut_tables_deg: Optional[float] = None
     inclinaison_tables_deg: Optional[float] = None
+    #: ACAL265 — la clé STABLE du pan (``production.cle_de_pan`` : ``zone.id``,
+    #: ``PAN-<rang>`` sans id) et les numéros STABLES de ses modules
+    #: (``panels[].n``, vide pour un document jamais numéroté). Le libellé
+    #: (``label``) n'est plus qu'un affichage. Ajoutés EN FIN.
+    cle: Optional[str] = None
+    numeros: Tuple[int, ...] = ()
+
+    @property
+    def cle_stable(self):
+        """La clé stable, le libellé seulement pour un pan construit à la
+        main sans clé (tests, appelants internes)."""
+        return self.cle or self.label
+
+    def cle_module(self, rang):
+        """``'<clé du pan>#<n>'`` du ``rang``-ième module (1…N)."""
+        from .production import cle_de_module
+
+        return cle_de_module(self.cle_stable, rang, self.numeros)
 
 
 @dataclass(frozen=True)
@@ -238,6 +256,8 @@ def pans_poses(layout):
     """
     from apps.ventes.services import pans_du_document
 
+    from .production import cles_des_modules, cles_des_pans
+
     if not isinstance(layout, dict):
         return ()
     zones = (layout.get('zones') or layout.get('areas')
@@ -247,19 +267,24 @@ def pans_poses(layout):
         if isinstance(zone, dict):
             zones_par_cle[str(zone.get('id') or 'zone-%d' % (index + 1))] = (
                 zone)
+    numeros_par_pan = cles_des_modules(layout)
     pans = []
-    for pan in pans_du_document(layout):
+    # ACAL265 — la clé STABLE de chaque pan, alignée sur la primitive.
+    for pan, cle in zip(pans_du_document(layout), cles_des_pans(layout)):
         modules = int(pan.get('modules') or 0)
         if modules <= 0:
             continue
         est_ouest, faces, tables = _faces_du_pan(pan, zones_par_cle, modules)
+        numeros = numeros_par_pan.get(cle, ())
         pans.append(PanPose(
             label=str(pan.get('libelle')), modules=modules,
             azimut_deg=_nombre(pan.get('azimut_deg')),
             inclinaison_deg=_nombre(pan.get('inclinaison_deg')),
             source_orientation=_source_orientation(pan, zones_par_cle),
             module=_module_du_pan(pan), est_ouest=est_ouest, faces=faces,
-            azimut_tables_deg=tables[0], inclinaison_tables_deg=tables[1]))
+            azimut_tables_deg=tables[0], inclinaison_tables_deg=tables[1],
+            cle=cle,
+            numeros=numeros if len(numeros) == modules else ()))
     return tuple(pans)
 
 
@@ -956,7 +981,7 @@ def affectation(conception, *, imposee=None):
                     if rang_module is None:
                         break
                     par_rang[rang_module] = {
-                        'module': '%s#%d' % (pan.label, rang_module),
+                        'module': pan.cle_module(rang_module),
                         'pan': pan.label,
                         'chaine': _numero_chaine(chaine),
                         'onduleur': numero_onduleur,
@@ -965,7 +990,7 @@ def affectation(conception, *, imposee=None):
                     }
         for rang_module in range(1, pan.modules + 1):
             lignes.append(par_rang.get(rang_module) or {
-                'module': '%s#%d' % (pan.label, rang_module),
+                'module': pan.cle_module(rang_module),
                 'pan': pan.label,
                 'chaine': None, 'onduleur': None, 'mppt': None,
                 'source': SOURCE_AUTO,
@@ -1106,6 +1131,8 @@ def bloc_pose(conception):
                     if puissance else None),
             'azimut_deg': pan.azimut_deg,
             'inclinaison_deg': pan.inclinaison_deg,
+            # ACAL265 — la clé STABLE du pan (``zone.id``), à part du libellé.
+            'cle': pan.cle_stable,
             'module_id': getattr(pan.module, 'module_id', None),
         })
     total = sum(pan.modules for pan in conception.pans)
@@ -1188,12 +1215,50 @@ def bloc_electrique(conception, *, verdicts=(), imposee=None):
         getattr(conception.entree, 'module', None))
     if coeffs:
         avertissements.append(coeffs)
+    table = list(affectation(conception, imposee=imposee))
+    obsoletes = _affectation_obsolete(conception, imposee, table=table)
+    for ligne in obsoletes:
+        avertissements.append(
+            "Affectation manuelle obsolète : module « %s » — %s. Elle est "
+            "GARDÉE (jamais effacée en silence) : retirez-la dans l'onglet "
+            "Affectation." % (ligne['module'], ligne['motif']))
     return ({
         'chainage': _chainage(conception),
         'onduleurs': onduleurs,
-        'affectation': list(affectation(conception, imposee=imposee)),
+        'affectation': table,
         'verdicts': list(verdicts),
+        # ACAL265 — les lignes manuelles dont le module n'existe plus.
+        'affectation_obsolete': obsoletes,
     }, tuple(avertissements))
+
+
+#: ACAL265 — les motifs d'une affectation manuelle devenue orpheline.
+MOTIF_MODULE_INTROUVABLE = 'module introuvable'
+MOTIF_PAN_INCONNU = 'pan inconnu'
+
+
+def _affectation_obsolete(conception, imposee, *, table=None):
+    """ACAL265 — ``[{module, motif}]`` : les lignes MANUELLES dont le module
+    n'est plus posé (pan réduit : ``module introuvable`` ; pan supprimé :
+    ``pan inconnu``). Publiées, jamais effacées en silence."""
+    imposee = tuple(imposee or ())
+    if not imposee:
+        return []
+    connus = {ligne['module'] for ligne in (
+        table if table is not None else affectation(conception))}
+    pans = {pan.cle_stable for pan in conception.pans}
+    obsoletes = []
+    for ligne in imposee:
+        module = ligne['module']
+        if module in connus:
+            continue
+        pan = module.rsplit('#', 1)[0] if '#' in module else module
+        obsoletes.append({
+            'module': module,
+            'motif': (MOTIF_MODULE_INTROUVABLE if pan in pans
+                      else MOTIF_PAN_INCONNU),
+        })
+    return obsoletes
 
 
 # ── CAL234 (moitié backend) — L'AFFECTATION IMPOSÉE, ET SON VERDICT ────────
@@ -1326,9 +1391,13 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None):
         module = ligne['module']
         pan = pan_par_module.get(module)
         if pan is None:
+            # ACAL265 — une ligne ORPHELINE (pan renommé n'en crée plus ; pan
+            # réduit ou supprimé) est publiée « obsolète » et bloque la
+            # publication tant qu'elle n'est pas retirée par un geste nommé.
             refus.append(
                 "Module inconnu du document : « %s » n'est pas posé sur cette "
-                "conception." % module)
+                "conception — affectation obsolète, retirez-la dans l'onglet "
+                "Affectation." % module)
             continue
         numero = ligne['chaine']
         if numero is None:

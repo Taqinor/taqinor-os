@@ -190,12 +190,20 @@ def production_module_par_module(contexte, *, chaine=None):
     plans_sans_module = []
     groupes = []
     premiere_copie = None
+    from .production import cle_de_module, numeros_des_modules
+
     for plan in plans:
         repere = _repere(plan)
         acces = _acces_du_plan(plan, repere, acces_par_pan)
         if not acces:
             plans_sans_module.append(repere)
             continue
+        # ACAL265 — LA clé de module de ``chaines.affectation`` (clé STABLE
+        # du pan + numéro du panneau) : la chaîne se rattache par elle.
+        cle_pan = str(plan.get('cle_pan') or repere)
+        numeros = numeros_des_modules(plan.get('geometry'))
+        if len(numeros) != len(acces):
+            numeros = ()
         serie_pan = meteo(plan)
         part = etapes.mettre_a_l_echelle(serie_pan, 1.0 / len(acces))
         memoire = {}
@@ -215,7 +223,7 @@ def production_module_par_module(contexte, *, chaine=None):
                 groupes.append(groupe)
             groupe['modules'] += 1
             par_module.append({
-                'module': '%s#%d' % (repere, rang),
+                'module': cle_de_module(cle_pan, rang, numeros),
                 'pan': repere,
                 'chaine': None,
                 'acces_solaire_pct': (None if valeur is None

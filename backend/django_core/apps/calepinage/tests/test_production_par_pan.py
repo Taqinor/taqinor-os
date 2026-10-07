@@ -27,6 +27,8 @@ class LecturePansTest(unittest.TestCase):
                          'tiltDeg': 15.0},
         }]})
         self.assertEqual(pans, [{
+            # ACAL265 — la clé STABLE du pan, à part de son libellé.
+            'cle': 'z1',
             'pan': 'Pan Sud', 'modules': 12, 'kwc': 8.64,
             'azimut_deg': 180.0, 'inclinaison_deg': 15.0}])
 

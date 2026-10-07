@@ -88,7 +88,5 @@ EN_ATTENTE_SIMULATION = {
 #: des blocs de simulation ci-dessus.
 EN_ATTENTE_RESULTAT = {
     **EN_ATTENTE_SIMULATION,
-    'pose.pans[].cle': 'ACAL265',
     'pose.pans[].module_id': 'ACAL264',
-    'electrique.affectation_obsolete': 'ACAL265',
 }

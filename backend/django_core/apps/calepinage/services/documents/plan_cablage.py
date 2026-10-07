@@ -37,9 +37,11 @@ Ce que fait ce module, et ce qu'il ne fait pas
 
 Le joint entre le document et l'électrique
 ==========================================
-L'affectation repère ses modules « <pan>#<rang> » (``services/chaines.py``
-``affectation``) : le pan est ``label``, sinon ``id``, sinon ``PAN-<rang de
-zone>`` ; le rang compte à partir de 1 dans l'ordre de ``geometry.panels``. Ce
+L'affectation repère ses modules « <pan>#<n> » (``services/chaines.py``
+``affectation``) : ACAL265 — le pan est sa clé STABLE (``zone.id``, sinon
+``PAN-<rang de zone>``, ``production.cle_de_pan``) et ``n`` le numéro stable
+du panneau (``panels[].n``), à défaut son rang (1… dans l'ordre de
+``geometry.panels``). Ce
 module reconstruit EXACTEMENT ces repères pour les modules dessinés
 (``modules_du_plan``), y compris quand un panneau illisible n'a pas été
 dessiné (le rang des suivants ne glisse pas).
@@ -104,11 +106,6 @@ def rgb_de(couleur):
 
 # ── Le joint document ↔ électrique ─────────────────────────────────────────
 
-def _cle_de_pan(zone, rang):
-    """Le repère de pan de ``services/chaines.pans_poses`` — même règle."""
-    return str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
-
-
 def _rangs_dessines(zone):
     """Les rangs (1…n, ordre de ``panels``) des modules que la planche DESSINE.
 
@@ -144,11 +141,17 @@ def modules_du_plan(roof_layout, geometrie):
     zones = [(rang, zone) for rang, zone in enumerate(
         brutes if isinstance(brutes, (list, tuple)) else [], start=1)
         if isinstance(zone, dict)]
+    from ..production import cle_de_module, cle_de_pan, numeros_des_modules
+
     modules = []
     for (rang_zone, zone), pan in zip(zones, geometrie.get('pans') or ()):
-        cle = _cle_de_pan(zone, rang_zone)
+        # ACAL265 — LA clé de ``chaines.affectation`` : ``zone.id`` et le
+        # numéro STABLE du panneau (``panels[].n``), jamais le libellé.
+        cle = cle_de_pan(zone, rang_zone)
+        numeros = numeros_des_modules(zone.get('geometry'))
         for rang, centre in zip(_rangs_dessines(zone), pan['modules']):
-            modules.append({'module': '%s#%d' % (cle, rang), 'pan': cle,
+            modules.append({'module': cle_de_module(cle, rang, numeros),
+                            'pan': cle,
                             'centre': centre,
                             # ACAL263 — les cotes du module de CE pan.
                             'module_m': pan.get('module_m')})
