@@ -5,6 +5,7 @@ import { lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
+  LayoutGrid,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -63,6 +64,8 @@ const ConditionnementsProduit = lazy(() => import('../../pages/stock/Conditionne
 // NTWMS29 — cockpit entrepôt (remplissage par zone, vagues en retard,
 // comptages dus, expéditions du jour, lots proches de péremption).
 const CockpitEntrepot = lazy(() => import('../../pages/stock/CockpitEntrepot'))
+// ASTK215 — casiers : seuils, tâches de réappro, étiquettes, reslotting.
+const CasiersPage = lazy(() => import('../../pages/stock/wms/CasiersPage'))
 
 const config = {
   key: 'stock',
@@ -121,6 +124,7 @@ const config = {
       // glyphe d'APP du module Magasin — le réutiliser ici brouillerait la
       // lecture du portail (contrat APX1/ODY34).
       { to: '/stock/entrepot', label: 'Tableau de bord entrepôt', icon: navIcon(Gauge), roles: ['responsable','admin'] },
+      { to: '/stock/entrepot/casiers', label: 'Casiers', icon: navIcon(LayoutGrid), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -146,6 +150,7 @@ const config = {
     // NTWMS29 — route ET entrée de nav déclarées ENSEMBLE (motif PACT150 :
     // un écran livré sans l'une des deux est un écran mort).
     { path: '/stock/entrepot', component: CockpitEntrepot },
+    { path: '/stock/entrepot/casiers', component: CasiersPage },
   ],
 }
 
