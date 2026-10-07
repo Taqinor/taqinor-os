@@ -677,6 +677,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.modifierPhoto": [
+    {
+      "config": null,
+      "data": {
+        "k": 1
+      },
+      "url": "/calepinage/calepinages/7/photos/3/",
+      "verbe": "patch"
+    }
+  ],
   "calepinages.modifierVariante": [
     {
       "config": null,
@@ -892,6 +902,22 @@
       "verbe": "get"
     }
   ],
+  "calepinages.supprimerPhoto": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/photos/3/",
+      "verbe": "delete"
+    }
+  ],
+  "calepinages.supprimerPoseReelle": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/pose-reelle/3/",
+      "verbe": "delete"
+    }
+  ],
   "calepinages.supprimerReleve": [
     {
       "config": null,
@@ -986,6 +1012,38 @@
       "data": null,
       "url": "/calepinage/parametres/",
       "verbe": "get"
+    }
+  ],
+  "gabarits.creer": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/gabarits-dossiers/",
+      "verbe": "post"
+    }
+  ],
+  "gabarits.liste": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/gabarits-dossiers/",
+      "verbe": "get"
+    }
+  ],
+  "gabarits.modifier": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/gabarits-dossiers/7/",
+      "verbe": "patch"
+    }
+  ],
+  "gabarits.supprimer": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/gabarits-dossiers/7/",
+      "verbe": "delete"
     }
   ],
   "moteur.calculer": [

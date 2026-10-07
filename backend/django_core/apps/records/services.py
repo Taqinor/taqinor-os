@@ -57,6 +57,25 @@ def log_activity(target, kind, *, user=None, field='', field_label='',
     )
 
 
+def anonymiser_corps_activite(target, *, field, kind, valeur=''):
+    """ACAL300 — efface le texte PERSONNEL des entrées de chatter ``kind`` /
+    ``field`` d'une cible (loi 09-08) : ``new_value`` / ``old_value`` / corps
+    deviennent ``valeur``. La LIGNE reste (l'histoire du geste), la personne
+    n'y est plus nommée. Idempotent ; rend le nombre de lignes changées.
+    ``records`` reste une app de FONDATION : la cible n'est connue que par
+    son ``ContentType``."""
+    from django.contrib.contenttypes.models import ContentType
+
+    if target is None or getattr(target, 'pk', None) is None:
+        return 0
+    lignes = (Activity.objects
+              .filter(content_type=ContentType.objects.get_for_model(
+                  target.__class__), object_id=target.pk, kind=kind,
+                  field=field)
+              .exclude(new_value=valeur, old_value='', body=''))
+    return lignes.update(new_value=valeur, old_value='', body='')
+
+
 def log_note(target, user, body, *, company=None):
     """ARC8 — raccourci : note manuelle de chatter (``kind=note``)."""
     return log_activity(

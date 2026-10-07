@@ -73,6 +73,8 @@ __all__ = [
     'avancement_du_dossier', 'packs_france',
     # CALX41 — enregistrer les champs à compléter d'un dossier.
     'ChampsDossierInvalides', 'enregistrer_champs',
+    # ACAL240 — la mention imprimée d'un champ sans valeur.
+    'MENTION_A_COMPLETER',
 ]
 
 
@@ -88,8 +90,15 @@ def _valeur_reelle(valeur):
     return valeur
 
 
-def _champ_publie(champ, code, valeur, message):
-    """La forme PUBLIÉE d'un champ de gabarit — la même dans les deux listes."""
+def _champ_publie(champ, code, valeur, message, *, valeur_calepinage=None,
+                  ecart_saisie=False):
+    """La forme PUBLIÉE d'un champ de gabarit — la même dans les deux listes.
+
+    ACAL240 — chaque champ porte aussi ``valeur_calepinage`` (ce que le
+    calepinage dit, ou ``None``) et ``ecart_saisie`` (vrai quand une SAISIE
+    existe et diffère de la valeur du calepinage) : l'écran peut alors
+    proposer « Utiliser la valeur du calepinage » sans rien écrire de lui-même.
+    """
     return {
         'code': code,
         'libelle': str(champ.get('libelle') or code),
@@ -97,7 +106,21 @@ def _champ_publie(champ, code, valeur, message):
         'valeur': valeur,
         'obligatoire': bool(champ.get('obligatoire')),
         'message': message,
+        'valeur_calepinage': valeur_calepinage,
+        'ecart_saisie': bool(ecart_saisie),
     }
+
+
+def _meme_valeur(saisie, reference):
+    """Une saisie ÉGALE à la valeur du calepinage (nombres comparés en
+    nombres : « 12,5 » saisi vaut 12.5 calculé)."""
+    if saisie is None or reference is None:
+        return saisie is reference
+    nombre_saisi = _nombre_saisi(saisie)
+    nombre_ref = _nombre_saisi(reference)
+    if nombre_saisi is not None and nombre_ref is not None:
+        return float(nombre_saisi) == float(nombre_ref)
+    return str(saisie).strip() == str(reference).strip()
 
 
 def _champs_du_gabarit(champs, saisis, infos):
@@ -120,15 +143,19 @@ def _champs_du_gabarit(champs, saisis, infos):
         code = str(champ.get('code') or '').strip()
         if not code:
             continue
-        saisie = _valeur_reelle((saisis or {}).get(code))
-        if saisie is not None:
-            deja_saisis.append(_champ_publie(champ, code, saisie, ''))
-            continue
         cle = champ.get('cle_calepinage')
         valeur = _valeur_reelle((infos or {}).get(cle)) if cle else None
+        saisie = _valeur_reelle((saisis or {}).get(code))
+        if saisie is not None:
+            deja_saisis.append(_champ_publie(
+                champ, code, saisie, '', valeur_calepinage=valeur,
+                ecart_saisie=(valeur is not None
+                              and not _meme_valeur(saisie, valeur))))
+            continue
         a_completer.append(_champ_publie(
             champ, code, valeur,
-            '' if valeur is not None else MESSAGE_CHAMP_SANS_SOURCE))
+            '' if valeur is not None else MESSAGE_CHAMP_SANS_SOURCE,
+            valeur_calepinage=valeur))
     return (a_completer, deja_saisis)
 
 
@@ -222,6 +249,11 @@ def composer_dossier(entree, infos):
         'peut_generer': peut_generer,
         'motif_non_generable': motif,
         'genere_le': entree.get('genere_le'),
+        # ACAL240 — le document GED produit (id OPAQUE) et la péremption :
+        # ``None`` tant que le dossier n'a pas été généré avec son empreinte.
+        'document': entree.get('document'),
+        'genere_sur_conception_perimee': entree.get(
+            'genere_sur_conception_perimee'),
     }
 
 
@@ -271,11 +303,16 @@ def infos_du_calepinage(calepinage, *, resultat=None):
     ACAL259 — modules et kWc sont ceux de ``mesures.mesures_du_document`` (LA
     lecture du module), sur le résultat SERVI (``selectors.resultat_servi``,
     bloc ``pose`` : la fiche du stock) quand ``resultat`` n'est pas fourni.
+
+    ACAL241 — client et adresse sont résolus par les fonctions EXISTANTES du
+    module (``client_du_calepinage`` : client, sinon lead ; adresse du SITE
+    par ``selectors.contexte_geographique`` : lead d'abord) — un calepinage
+    né d'un lead n'a plus client et adresse vides.
     """
+    from .documents.gabarit_document import client_du_calepinage
     from .mesures import mesures_du_document
 
     company = getattr(calepinage, 'company', None)
-    client = getattr(calepinage, 'client', None)
     layout = getattr(calepinage, 'roof_layout', None)
     if resultat is None and isinstance(layout, dict) and layout:
         from .. import selectors
@@ -287,8 +324,8 @@ def infos_du_calepinage(calepinage, *, resultat=None):
                  default=None)
     return {
         'societe_nom': _valeur_reelle(getattr(company, 'nom', None)),
-        'client_nom': _valeur_reelle(getattr(client, 'nom', None)),
-        'adresse': _valeur_reelle(getattr(client, 'adresse', None)),
+        'client_nom': _valeur_reelle(client_du_calepinage(calepinage)),
+        'adresse': _adresse_du_site(calepinage),
         'puissance_kwc': mesures['kwc'],
         'nombre_modules': (mesures['modules'] or None),
         'orientation_deg': (domine or {}).get('azimut_deg'),
@@ -296,7 +333,33 @@ def infos_du_calepinage(calepinage, *, resultat=None):
     }
 
 
-def _entree_depuis_orm(gabarit, dossier):
+def _perime(dossier, empreinte_courante):
+    """``True``/``False`` : les entrées ont-elles changé depuis la
+    génération ? ``None`` quand on ne le SAIT pas (jamais généré, ou généré
+    avant que l'empreinte ne soit stockée) — jamais un « à jour » deviné."""
+    if dossier is None or not dossier.genere_empreinte:
+        return None
+    if empreinte_courante is None:
+        return None
+    return dossier.genere_empreinte != empreinte_courante
+
+
+def _adresse_du_site(calepinage):
+    """L'adresse du SITE (« 12 rue X, Rabat »), ou ``None`` — lue par
+    ``selectors.contexte_geographique`` (lead d'abord, sinon client)."""
+    from ..selectors import contexte_geographique
+
+    if getattr(calepinage, 'company', None) is None:
+        return None
+    contexte = contexte_geographique(calepinage)
+    adresse = _valeur_reelle(contexte.get('adresse'))
+    ville = _valeur_reelle(contexte.get('ville'))
+    if adresse and ville and ville.lower() not in adresse.lower():
+        return '%s, %s' % (adresse, ville)
+    return adresse or ville
+
+
+def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None):
     depose_par = gabarit.depose_par
     fichier = gabarit.fichier
     return {
@@ -321,6 +384,8 @@ def _entree_depuis_orm(gabarit, dossier):
         'pieces_jointes': (dossier.pieces_jointes if dossier is not None
                            else {}),
         'genere_le': (dossier.genere_le if dossier is not None else None),
+        'document': (dossier.document_id if dossier is not None else None),
+        'genere_sur_conception_perimee': _perime(dossier, empreinte_courante),
     }
 
 
@@ -352,7 +417,15 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
     dossiers = {d.gabarit_id: d for d in DossierReglementaire.objects
                 .filter(company=company, calepinage=calepinage)}
     infos = infos_du_calepinage(calepinage)
-    entrees = [_entree_depuis_orm(gabarit, dossiers.get(gabarit.pk))
+    # ACAL240 — l'empreinte COURANTE des entrées, calculée UNE fois et
+    # seulement si un dossier a été généré avec la sienne.
+    empreinte_courante = None
+    if any(d.genere_empreinte for d in dossiers.values()):
+        from .empreinte_livrable import empreinte_des_entrees
+
+        empreinte_courante = empreinte_des_entrees(calepinage, 'fr')
+    entrees = [_entree_depuis_orm(gabarit, dossiers.get(gabarit.pk),
+                                  empreinte_courante)
                for gabarit in gabarits]
     return composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
                              entrees=entrees, infos=infos)
@@ -479,16 +552,27 @@ def enregistrer_champs(dossier, saisie):
         ChampsDossierInvalides: code hors gabarit, valeur non simple, nombre
             attendu — le champ fautif est NOMMÉ.
     """
+    from django.db import transaction
+
+    from ..models import DossierReglementaire
+
     valide = _valider_champs_saisis(
         getattr(dossier.gabarit, 'champs', None), saisie)
-    courant = dict(dossier.champs_saisis or {})
-    for code, valeur in valide.items():
-        if valeur is None:
-            courant.pop(code, None)
-        else:
-            courant[code] = valeur
+    # ACAL240 — la fusion se fait SOUS VERROU, sur la ligne RELUE : deux
+    # utilisateurs qui saisissent des champs différents ne perdent rien (la
+    # copie en mémoire de l'appelant peut être périmée).
+    with transaction.atomic():
+        verrouille = (DossierReglementaire.objects.select_for_update()
+                      .get(pk=dossier.pk, company_id=dossier.company_id))
+        courant = dict(verrouille.champs_saisis or {})
+        for code, valeur in valide.items():
+            if valeur is None:
+                courant.pop(code, None)
+            else:
+                courant[code] = valeur
+        verrouille.champs_saisis = courant
+        verrouille.save(update_fields=['champs_saisis'])
     dossier.champs_saisis = courant
-    dossier.save(update_fields=['champs_saisis'])
     return dossier
 
 
@@ -577,20 +661,153 @@ def _rendre_pieces_produites(rendus):
     return pieces, signalements
 
 
+# ── ACAL240 — LES PIÈCES DU DOSSIER LUI-MÊME ───────────────────────────────
+#
+# Le PDF déposé contenait la planche, la note et le schéma — mais NI le
+# gabarit déposé par la société, NI les champs saisis, NI les pièces jointes :
+# le « dossier » remis n'était pas le dossier. Il est désormais, DANS L'ORDRE :
+# pages du gabarit → page des champs → pièces jointes PDF → pièces produites.
+
+#: Ce qu'affiche la page des champs quand ni la saisie ni le calepinage ne
+#: donnent de valeur — jamais un défaut inventé.
+MENTION_A_COMPLETER = 'à compléter'
+
+
+def _octets_attachment(company, attachment_id):
+    """Les octets d'une ``records.Attachment`` DE LA SOCIÉTÉ, ou ``None``."""
+    from apps.records.models import Attachment
+    from apps.records.storage import fetch_attachment
+
+    if not attachment_id or company is None:
+        return None
+    piece = Attachment.objects.filter(pk=attachment_id,
+                                      company=company).first()
+    if piece is None:
+        return None
+    octets, erreur = fetch_attachment(piece.file_key)
+    return None if erreur else octets
+
+
+def _est_octets_pdf(octets):
+    return bool(octets) and bytes(octets).startswith(b'%PDF-')
+
+
+def _texte_valeur(valeur):
+    """Une valeur IMPRIMÉE à la française (« 12,5 »), jamais réinventée."""
+    if isinstance(valeur, bool):
+        return 'oui' if valeur else 'non'
+    if isinstance(valeur, float):
+        texte = ('%.6f' % valeur).rstrip('0').rstrip('.')
+        return texte.replace('.', ',')
+    return str(valeur)
+
+
+def _lignes_des_champs(gabarit, champs_saisis, infos):
+    """``[(libellé, valeur imprimée, source)]`` — la saisie EN PRIORITÉ,
+    sinon la valeur du calepinage, sinon « à compléter ». PUR."""
+    lignes = []
+    for champ in getattr(gabarit, 'champs', None) or []:
+        if not isinstance(champ, dict):
+            continue
+        code = str(champ.get('code') or '').strip()
+        if not code:
+            continue
+        libelle = str(champ.get('libelle') or code)
+        saisie = _valeur_reelle((champs_saisis or {}).get(code))
+        cle = champ.get('cle_calepinage')
+        calcul = _valeur_reelle((infos or {}).get(cle)) if cle else None
+        if saisie is not None:
+            lignes.append((libelle, _texte_valeur(saisie), 'saisie'))
+        elif calcul is not None:
+            lignes.append((libelle, _texte_valeur(calcul), 'calepinage'))
+        else:
+            lignes.append((libelle, MENTION_A_COMPLETER, 'a_completer'))
+    return lignes
+
+
+def _page_des_champs(gabarit, calepinage, lignes):
+    """La page des champs, rendue par ``core.pdf.render_pdf``."""
+    from django.utils.html import escape
+
+    from core.pdf import render_pdf
+
+    rangs = ''.join(
+        '<tr><th>%s</th><td>%s</td></tr>' % (escape(libelle), escape(valeur))
+        for libelle, valeur, _source in lignes)
+    html = (
+        '<!doctype html><html><head><meta charset="utf-8"><style>'
+        'body{font-family:sans-serif;font-size:11pt;margin:2cm}'
+        'table{border-collapse:collapse;width:100%%}'
+        'th,td{border:1px solid #999;padding:4pt 6pt;text-align:left}'
+        'th{width:45%%;background:#f2f2f2}</style></head><body>'
+        '<h1>%s</h1><p>%s</p><table>%s</table></body></html>'
+        % (escape(getattr(gabarit, 'intitule', '') or ''),
+           escape(str(calepinage)), rangs))
+    return render_pdf(html=html)
+
+
+def _pieces_du_dossier(dossier, *, company, infos=None):
+    """``[(code, libellé, octets)]`` : gabarit, page des champs, pièces
+    jointes PDF — dans cet ordre.
+
+    Raises:
+        DossierRefuse: fichier du gabarit illisible ou NON PDF (``gabarit``).
+    """
+    gabarit = dossier.gabarit
+    octets_gabarit = _octets_attachment(
+        company, getattr(gabarit, 'fichier_id', None))
+    if octets_gabarit is None:
+        raise DossierRefuse(
+            "Le fichier du gabarit « %s » est illisible dans le stockage : "
+            "redéposez-le dans les réglages du module." % gabarit.intitule,
+            piece='gabarit')
+    if not _est_octets_pdf(octets_gabarit):
+        raise DossierRefuse(
+            "Le gabarit « %s » n'est pas un PDF : seul un PDF se fusionne "
+            "dans le dossier. Redéposez-le en PDF." % gabarit.intitule,
+            piece='gabarit')
+    if infos is None:
+        infos = infos_du_calepinage(dossier.calepinage)
+    pieces = [('gabarit', 'Gabarit — %s' % gabarit.intitule, octets_gabarit)]
+    lignes = _lignes_des_champs(gabarit, dossier.champs_saisis, infos)
+    if lignes:
+        pieces.append(('champs', 'Champs du dossier', _page_des_champs(
+            gabarit, dossier.calepinage, lignes)))
+    jointes = dossier.pieces_jointes or {}
+    for attendue in gabarit.pieces_attendues or []:
+        if not isinstance(attendue, dict):
+            continue
+        code = str(attendue.get('code') or '').strip()
+        jointe = jointes.get(code)
+        if not isinstance(jointe, dict):
+            continue
+        octets = _octets_attachment(company, jointe.get('attachment_id'))
+        if _est_octets_pdf(octets):
+            pieces.append(('jointe:%s' % code,
+                           str(attendue.get('intitule') or code), octets))
+    return pieces
+
+
 def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
-                            empreinte=None):
+                            empreinte=None, pieces_dossier=None):
     """Produit et FUSIONNE le dossier réglementaire d'un calepinage.
 
     Le gabarit de la société FAIT FOI : sans son fichier, rien n'est produit
-    et le message dit quoi déposer. Les pièces PRODUITES par le module
-    (planche, note de calcul, schéma unifilaire) sont déposées en GED puis
-    fusionnées avec le gabarit déposé — jamais avec un formulaire fabriqué.
+    et le message dit quoi déposer. ACAL240 — le PDF déposé en GED contient,
+    DANS L'ORDRE : les pages du gabarit déposé, une page des champs (saisie,
+    sinon valeur du calepinage, sinon « à compléter »), les pièces jointes
+    PDF, puis les pièces PRODUITES par le module (planche, note de calcul,
+    schéma unifilaire) — jamais un formulaire fabriqué. ``pieces_dossier``
+    (``[(code, libellé, octets)]``) remplace les trois premières familles
+    (seam de test) ; ``None`` les lit sur le dossier (``_pieces_du_dossier``).
 
     Returns:
-        ``{'document', 'pieces', 'signalements', 'dossier'}``.
+        ``{'document', 'pieces', 'signalements', 'dossier', 'empreinte'}`` —
+        ``empreinte`` = l'empreinte COMPLÈTE des entrées à la génération
+        (stockée dans ``DossierReglementaire.genere_empreinte``).
 
     Raises:
-        DossierRefuse: gabarit non déposé, société absente, pièce
+        DossierRefuse: gabarit non déposé ou non PDF, société absente, pièce
             obligatoire non rendue.
     """
     calepinage = dossier.calepinage
@@ -612,15 +829,22 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
     # technique et le dossier de fin de chantier : fusion locale contrôlée
     # (pages), ancre stable ``<dossier>:dossier_reglementaire``, version neuve
     # seulement quand l'EMPREINTE DES ENTRÉES change (gabarit compris).
-    from .pack_technique import deposer_et_fusionner, empreinte_des_dossiers
+    from .pack_technique import deposer_et_fusionner
 
+    if pieces_dossier is None:
+        pieces_dossier = _pieces_du_dossier(dossier, company=company)
     rendus = rendus if rendus is not None else _rendus_du_module(calepinage,
                                                                  company)
     pieces, signalements = _rendre_pieces_produites(rendus)
+    pieces = list(pieces_dossier) + list(pieces)
     if not pieces:
         raise DossierRefuse(
             "Dossier réglementaire refusé : aucune pièce à fusionner.",
             piece='pieces')
+    if empreinte is None:
+        from .empreinte_livrable import empreinte_des_entrees
+
+        empreinte = empreinte_des_entrees(calepinage, 'fr')
 
     depot = deposer_et_fusionner(
         calepinage, pieces=[(code, libelle, octets, None)
@@ -629,14 +853,13 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
         nom='%s — %s' % (gabarit.intitule, calepinage),
         cabinet_nom=CABINET_GED, folder_nom=DOSSIER_GED, company=company,
         created_by=created_by, ancre=getattr(dossier, 'pk', ''),
-        refus=DossierRefuse,
-        empreinte=(empreinte if empreinte is not None
-                   else empreinte_des_dossiers(calepinage)))
+        refus=DossierRefuse, empreinte=empreinte)
     return {
         'document': depot['document'],
         'pieces': [(code, libelle) for code, libelle, _o in pieces],
         'signalements': signalements,
         'dossier': dossier.pk,
+        'empreinte': empreinte,
     }
 
 

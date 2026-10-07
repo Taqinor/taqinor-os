@@ -681,3 +681,49 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
       .toHaveTextContent(ctx.cible.refus)
   })
 })
+
+describe('ToitureDesign — le fond photo charge le fichier par son URL servie (ACAL201)', () => {
+  const PHOTOS = exempleContrat('calepinage', 'calepinage_photos').photos
+
+  afterEach(() => { vi.unstubAllEnvs() })
+
+  it('le fond photo utilise l’URL relative servie', async () => {
+    const poserFond = vi.fn(() => ({ ok: true }))
+    const photo = PHOTOS[0]
+    reinitialiserBootMinimal({
+      fondDuDocument: vi.fn(() => ({ kind: 'photo', photoSiteId: photo.id })),
+      motifFondRefuse: vi.fn(() => null),
+      poserFond,
+    })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.photos.mockResolvedValue({ data: { photos: PHOTOS } })
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(poserFond).toHaveBeenCalled())
+    // VITE_API_URL vide : le chemin relatif du proxy, tel quel (même origine).
+    expect(photo.url.startsWith('/api/django/calepinage/')).toBe(true)
+    expect(poserFond.mock.calls[0][1].url).toBe(photo.url)
+  })
+
+  it('une origine d’API posée préfixe le chemin relatif', async () => {
+    vi.stubEnv('VITE_API_URL', 'https://api.exemple.test')
+    const poserFond = vi.fn(() => ({ ok: true }))
+    const photo = PHOTOS[0]
+    reinitialiserBootMinimal({
+      fondDuDocument: vi.fn(() => ({ kind: 'photo', photoSiteId: photo.id })),
+      motifFondRefuse: vi.fn(() => null),
+      poserFond,
+    })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.photos.mockResolvedValue({ data: { photos: PHOTOS } })
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(poserFond).toHaveBeenCalled())
+    expect(poserFond.mock.calls[0][1].url)
+      .toBe(`https://api.exemple.test${photo.url}`)
+  })
+})

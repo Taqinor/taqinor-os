@@ -194,12 +194,37 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
   const [verdictEnVol, setVerdictEnVol] = useState(false)
   const [armeAuto, setArmeAuto] = useState(false)
   const [enregistre, setEnregistre] = useState(null)
+  /* ACAL266 — les affectations OBSOLÈTES (module retiré ou pan supprimé,
+     `electrique.affectation_obsolete`) ne sont JAMAIS élaguées en silence :
+     leurs lignes ENREGISTRÉES (relues sur `entree-electrique/`) repartent à
+     chaque enregistrement, tant que l'utilisateur ne les a pas retirées par
+     le geste nommé « Retirer l'affectation obsolète <module> ». */
+  const [stockees, setStockees] = useState(() => new Map())
+  const [retirees, setRetirees] = useState(() => new Set())
 
   const glisse = useRef(false)
 
   const lignesServeur = useMemo(
     () => resultat?.electrique?.affectation || [], [resultat],
   )
+  const obsoletes = useMemo(
+    () => resultat?.electrique?.affectation_obsolete || [], [resultat],
+  )
+  useEffect(() => {
+    if (!obsoletes.length) return undefined
+    let monte = true
+    calepinageApi.calepinages.entreeElectrique(id)
+      .then((r) => {
+        if (!monte) return
+        const parModule = new Map()
+        for (const ligne of r?.data?.entree?.affectation_manuelle || []) {
+          if (ligne?.module) parModule.set(ligne.module, ligne)
+        }
+        setStockees(parModule)
+      })
+      .catch(() => { /* lecture best-effort : la ligne reste affichée */ })
+    return () => { monte = false }
+  }, [id, obsoletes])
   const lignes = useMemo(
     () => tableAffichee(lignesServeur, editions), [lignesServeur, editions],
   )
@@ -227,6 +252,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     setEditions(new Map())
     setSelection(new Set())
     setVerdict(null)
+    setRetirees(new Set())
   }, [])
 
   /* ── LE VERDICT EN DIRECT, ANTI-REBOND ───────────────────────────────────
@@ -237,9 +263,23 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
      Sans cette union, enregistrer une chaîne effacerait les précédentes. */
   const lignesProposees = useMemo(() => {
     const par_module = manuellesDuServeur(lignesServeur)
+    // ACAL266 — les obsolètes ENREGISTRÉES repartent telles quelles, sauf
+    // celles retirées par le geste nommé.
+    for (const { module } of obsoletes) {
+      if (retirees.has(module)) continue
+      const stockee = stockees.get(module)
+      if (stockee) {
+        par_module.set(module, {
+          module,
+          chaine: stockee.chaine ?? null,
+          mppt: stockee.mppt ?? null,
+          onduleur: stockee.onduleur ?? null,
+        })
+      }
+    }
     editions.forEach((ligne, module) => par_module.set(module, ligne))
     return Array.from(par_module.values())
-  }, [lignesServeur, editions])
+  }, [lignesServeur, editions, obsoletes, stockees, retirees])
 
   useEffect(() => {
     // Aucune édition en cours ⇒ rien à verdicter (et rien à effacer : le
@@ -377,7 +417,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
 
   const bloquants = verdict?.bloquants || []
   const alertes = verdict?.alertes || []
-  const aProposition = editions.size > 0
+  const aProposition = editions.size > 0 || retirees.size > 0
   // CALX53 — les avertissements publiés AVEC le résultat (coefficients de
   // température non sourcés, exemplaire d'onduleur non nommé…).
   const avertissements = resultat?.avertissements || []
@@ -394,6 +434,38 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
           n’est enregistré tant que vous ne validez pas.
         </p>
       </header>
+
+      {/* ACAL266 — les affectations OBSOLÈTES, avec leur motif : gardées
+          jusqu'au geste nommé, jamais élaguées en silence au POST. */}
+      {obsoletes.length
+        ? (
+          <section className="flex flex-col gap-1" data-testid="acal266-obsoletes">
+            <p className="text-sm font-medium">Affectations obsolètes</p>
+            {obsoletes.map(({ module, motif }) => (
+              <div
+                key={module}
+                className="flex flex-wrap items-center gap-2 text-xs"
+                data-testid={`acal266-obsolete-${module}`}
+              >
+                <span>{`${module} — ${motif}`}</span>
+                {retirees.has(module)
+                  ? <span className="text-muted-foreground">retirée (à enregistrer)</span>
+                  : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={lectureSeule}
+                      onClick={() => setRetirees((avant) => new Set(avant).add(module))}
+                      data-testid={`acal266-retirer-${module}`}
+                    >
+                      {`Retirer l’affectation obsolète ${module}`}
+                    </Button>
+                  )}
+              </div>
+            ))}
+          </section>
+        )
+        : null}
 
       {/* CALX53 — AVANT la grille et les bornes : ce que le serveur avertit
           sur les données qui ont servi à les calculer. RECOPIÉ mot pour mot. */}

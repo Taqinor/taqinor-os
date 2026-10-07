@@ -212,6 +212,9 @@ def _plans_du_contexte(pose, document):
         plan = {
             'cle': repere,
             'pan': repere,
+            # ACAL265 — la clé STABLE du pan (``bloc_pose``), qui nomme ses
+            # modules dans la table d'affectation.
+            'cle_pan': str(ligne.get('cle') or repere),
             'modules': int(ligne.get('modules') or 0),
             'kwc': _nombre(ligne.get('kwc')),
             'inclinaison_deg': _nombre(ligne.get('inclinaison_deg')),

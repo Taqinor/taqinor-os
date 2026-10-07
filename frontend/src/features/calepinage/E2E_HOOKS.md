@@ -168,6 +168,9 @@ retiré plus un hook ajouté.
 | `cal-fiche-nom-enregistrer` | fiche nom enregistrer. |
 | `cal-fiche-nom-erreur` | fiche nom message d'erreur. |
 | `cal-fiche-restaurer` | fiche restaurer. |
+| `cal-fiche-custom-data-saisie` | fiche — saisie des champs personnalisés du calepinage (ACAL294). |
+| `cal-fiche-custom-data-enregistrer` | fiche — bouton d'enregistrement des champs personnalisés (ACAL294). |
+| `cal-fiche-custom_data-erreur` | fiche — refus `custom_data` du serveur, sous la saisie (ACAL294). |
 
 ## HorizonPanel (`HorizonPanel.jsx`)
 
@@ -281,6 +284,17 @@ retiré plus un hook ajouté.
 | `cal-photo-depot-fichier` | photo dépôt fichier. |
 | `cal-photo-depot-genre` | photo dépôt genre. |
 | `cal-photo-depot-legende` | photo dépôt légende. |
+| `cal-photo-modifier` | photo de site — ouvre l'édition de la photo (ACAL203). |
+| `cal-photo-supprimer` | photo de site — demande de suppression de la photo (ACAL203). |
+| `cal-photo-supprimer-confirmer` | photo de site — confirme la suppression (ACAL203). |
+| `cal-photo-supprimer-annuler` | photo de site — annule la suppression (ACAL203). |
+| `cal-photo-calage-non-cale` | photo calage — mention « photo non calée » (ACAL203). |
+| `cal-photo-calage-erreur` | photo calage — refus du serveur (ACAL203). |
+| `cal-photo-edition` | photo de site — formulaire d'édition (ACAL203). |
+| `cal-photo-edition-genre` | photo de site — édition : genre. |
+| `cal-photo-edition-date` | photo de site — édition : date de prise de vue. |
+| `cal-photo-edition-legende` | photo de site — édition : légende. |
+| `cal-photo-edition-enregistrer` | photo de site — édition : enregistrer. |
 
 ## PlanImporteCalage (`PlanImporteCalage.jsx`)
 
@@ -557,6 +571,8 @@ retiré plus un hook ajouté.
 | `cal-pose-source` | pose réelle — source du prévu et totaux. |
 | `cal-pose-version` | pose réelle — dernière version née des écarts. |
 | `cal-pose-vide` | pose réelle — aucun pan prévu. |
+| `cal-pose-orphelin` | pose réelle — mention d'une ligne ORPHELINE (pan disparu, hors totaux), suffixée par la clé du pan (ACAL268). |
+| `cal-pose-retirer` | pose réelle — bouton « Retirer » du relevé d'un pan (orphelin compris), suffixé par la clé du pan (ACAL268). |
 
 ## Rail (`atelier/Rail.jsx`)
 

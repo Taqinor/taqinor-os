@@ -62,15 +62,6 @@
         901
       ]
     },
-    "gabarits_dossier": {
-      "raccordement_bt": {
-        "libelle": "Dossier de raccordement BT",
-        "pieces": [
-          "plan_masse",
-          "schema_unifilaire"
-        ]
-      }
-    },
     "norme_electrique": {
       "norme": "nf_c_15_100",
       "reference": "NF C 15-100 / UTE C 15-712-1 / IEC 62548",
@@ -531,7 +522,6 @@
     "gabarits_disposition": {},
     "presets": {},
     "favoris_materiel": {},
-    "gabarits_dossier": {},
     "norme_electrique": {},
     "lestage": {},
     "simulation": {},

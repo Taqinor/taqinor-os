@@ -121,8 +121,11 @@ class DossierReglementaireVersionneTest(_Base):
     def _construire(self, marque, empreinte):
         rendus = {'planche': lambda: _pdf(1, marque),
                   'note_calcul': lambda: _pdf(1, marque)}
+        # ACAL240 — les pièces du dossier (gabarit, champs, jointes) sont
+        # prouvées par test_acal_dossier_reglementaire_generation.
         return construire_pack_dossier(
-            self._dossier(), rendus=rendus, empreinte=empreinte)
+            self._dossier(), rendus=rendus, empreinte=empreinte,
+            pieces_dossier=())
 
     def test_dossier_reglementaire_versionne(self):
         premier = self._construire(1, 'a' * 16)

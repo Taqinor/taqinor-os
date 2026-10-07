@@ -375,7 +375,9 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         # Les autres champs écrivables du formulaire (statut, devis…) gardent
         # leur effet d'aujourd'hui, posés sur le calepinage créé.
-        restants = [champ for champ in ('statut', 'devis')
+        # Lot 3 critique #8 — ``custom_data`` (ACAL294) validé au POST est
+        # aussi POSÉ, jamais validé puis jeté.
+        restants = [champ for champ in ('statut', 'devis', 'custom_data')
                     if champ in donnees]
         for champ in restants:
             setattr(calepinage, champ, donnees[champ])
@@ -1325,6 +1327,8 @@ def detail_calepinage(calepinage, request=None):
         # CIQ136 — contraintes de site du PROJET ({} = aucune).
         'contraintes_site': getattr(calepinage, 'contraintes_site', None)
         or {},
+        # ACAL294 — les champs personnalisés de la société (objet | null).
+        'custom_data': getattr(calepinage, 'custom_data', None),
         'permissions': _permissions(calepinage, request),
     }
 
@@ -1371,21 +1375,14 @@ def _personne(user):
 
 
 def _responsable(calepinage, company):
-    """Le responsable du CALEPINAGE, sinon celui du LEAD, sinon ``None``.
+    """Le responsable du CALEPINAGE — LA colonne, ou ``None``.
 
-    CALX406 — le calepinage porte désormais SON responsable (le champ
-    ``Calepinage.responsable``, saisi) : il prime. À défaut — tout calepinage
-    existant, et tout calepinage qu'on n'a confié à personne — on rend, comme
-    avant, le responsable du lead rattaché : la personne qui répond réellement
-    du dossier. Jamais un compte deviné, jamais un prénom codé en dur (règle
-    fondateur) : ``None`` quand ni l'un ni l'autre n'existe.
+    ACAL297 — la colonne est posée à la création (propriétaire du lead,
+    ``creation.responsable_par_defaut``) et rattrapée pour l'existant par la
+    migration 0030 : le détail, la liste, le filtre ``?responsable=`` et la
+    vue restreinte lisent la MÊME valeur, jamais un repli recalculé.
     """
-    propre = getattr(calepinage, 'responsable', None)
-    if propre is not None:
-        return _personne(propre)
-    lead = _lead_objet(calepinage, company)
-    return _personne(getattr(lead, 'owner', None)) if lead is not None \
-        else None
+    return _personne(getattr(calepinage, 'responsable', None))
 
 
 # ACAL295 — la clé ``CLE_VUE_RESTREINTE``, le réglage

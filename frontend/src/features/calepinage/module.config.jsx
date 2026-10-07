@@ -4,7 +4,7 @@
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
 import {
-  BadgeCheck, Columns3, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
+  BadgeCheck, Columns3, FileStack, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -143,6 +143,8 @@ const DossiersReglementaires = lazy(() => import('./DossiersReglementaires'))
    un item de nav permanent et non un deep-link : il n'y a aucun calepinage à
    désigner. */
 const ReglagesSimulation = lazy(() => import('./reglages/ReglagesSimulation'))
+// ACAL242 — le dépôt des gabarits de dossiers réglementaires (lien depuis les réglages).
+const ReglagesGabarits = lazy(() => import('./reglages/ReglagesGabarits'))
 /* CAL234 — l'AFFECTATION MANUELLE des chaînes : on glisse sur les modules,
    le serveur verdicte la proposition (`evaluer-electrique/`, qui ne persiste
    rien) et la validation part sur `entree-electrique/`. Contextuelle à UN
@@ -198,6 +200,13 @@ const config = {
         roles: ROLES,
       },
       {
+        // ACAL242 — les gabarits des dossiers réglementaires de la société.
+        to: '/calepinage/reglages/gabarits',
+        label: 'Gabarits des dossiers',
+        icon: <FileStack size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
         // CALX342 — la comparaison de 1 à 5 calepinages ; sans sélection,
         // l'écran renvoie choisir dans la liste (mode « Comparer »).
         to: '/calepinage/comparaison',
@@ -212,6 +221,7 @@ const config = {
     ['/calepinage/nouveau', 'Calepinage — Nouveau calepinage'],
     ['/calepinage/bibliotheque', 'Calepinage — Bibliothèque'],
     ['/calepinage/sources', 'Calepinage — Sources des paramètres'],
+    ['/calepinage/reglages/gabarits', 'Calepinage — Gabarits des dossiers'],
     ['/calepinage/reglages', 'Calepinage — Réglages simulation'],
     ['/calepinage/comparaison', 'Calepinage — Comparaison'],
     ['/calepinage/', 'Calepinage — Atelier'],
@@ -228,6 +238,8 @@ const config = {
     { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
     // CALX69 — AVANT `/calepinage/:id` : « reglages » n'est pas un identifiant.
     { path: '/calepinage/reglages', component: ReglagesSimulation, roles: ROLES },
+    // ACAL242 — AVANT `/calepinage/:id` : « reglages » n'est pas un identifiant.
+    { path: '/calepinage/reglages/gabarits', component: ReglagesGabarits, roles: ROLES },
     // CALX342 — AVANT `/calepinage/:id` : « comparaison » n'est pas un identifiant.
     { path: '/calepinage/comparaison', component: ComparaisonProjets, roles: ROLES },
     /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est

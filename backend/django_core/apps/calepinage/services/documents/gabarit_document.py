@@ -402,14 +402,14 @@ def page_de_garde_html(identite, site, provenance, styles, *, libelles=None):
             % (bloc_logo, escape(titre), ''.join(lignes)))
 
 
-def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
-    """L'identité d'une pièce : projet, client et date de production — LUS.
+def client_du_calepinage(calepinage):
+    """ACAL241 — LE nom du client d'un calepinage, ou ``''``.
 
-    Le client est lu par les sélecteurs du CRM (``client_label``, sinon le
-    lead d'origine), bornés à la société du calepinage — jamais un import de
-    ``apps.crm.models``. ``moment`` est fourni par l'appelant pour un rendu
-    reproductible ; à défaut, c'est l'heure LOCALE du serveur (aware), jamais
-    un constructeur naïf.
+    Lu par les sélecteurs du CRM (``client_label``, sinon le lead d'origine),
+    bornés à la société du calepinage — jamais un import de
+    ``apps.crm.models``. UNE seule résolution, partagée par la page de garde
+    (:func:`identite_du_calepinage`) et le préremplissage réglementaire
+    (``services/reglementaire.infos_du_calepinage``).
     """
     company = getattr(calepinage, 'company', None)
     client = ''
@@ -428,13 +428,28 @@ def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
                     _texte(getattr(lead, 'nom', '')))))
     except Exception:  # noqa: BLE001 — une garde sans client reste une garde
         client = ''
+    return client
+
+
+def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
+    """L'identité d'une pièce : projet, client et date de production — LUS.
+
+    Le client est lu par les sélecteurs du CRM (``client_label``, sinon le
+    lead d'origine), bornés à la société du calepinage — jamais un import de
+    ``apps.crm.models``. ``moment`` est fourni par l'appelant pour un rendu
+    reproductible ; à défaut, c'est l'heure LOCALE du serveur (aware), jamais
+    un constructeur naïf.
+    """
+    client = client_du_calepinage(calepinage)
     if moment is None:
         from django.utils import timezone
 
         moment = timezone.localtime(timezone.now())
     return {
         'titre_document': _texte(titre_document),
-        'projet': _texte(getattr(calepinage, 'titre', '')),
+        # ACAL300 — « Calepinage #N » à défaut de titre saisi : jamais vide,
+        # jamais le nom d'une personne.
+        'projet': _texte(str(calepinage)),
         'client': client,
         'produit_le': moment.strftime('%d/%m/%Y'),
     }

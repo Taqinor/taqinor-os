@@ -109,6 +109,12 @@ const calepinageApi = {
     calerPhoto: (id, photoId, coins) =>
       api.patch(`${pivot(id)}photos/${photoId}/calage/`,
         { calage: coins ? { coins } : null }),
+    // ACAL203 — corriger (genre, prise_le, legende) ou retirer une photo de site
+    // (ACAL202 : PATCH → {photo, photos} ; DELETE → {photos}).
+    modifierPhoto: (id, photoId, corps) =>
+      api.patch(`${pivot(id)}photos/${photoId}/`, corps),
+    supprimerPhoto: (id, photoId) =>
+      api.delete(`${pivot(id)}photos/${photoId}/`),
 
     // CAL20 — historique. La restauration REJOUE une version en en créant une
     // NOUVELLE : jamais une réécriture, jamais une suppression d'historique.
@@ -321,6 +327,10 @@ const calepinageApi = {
     // ACAL113 (D-ACAL-17, contrat calepinage_simulation.json › corps_variante) — simuler UNE
     // variante : le résultat est écrit SUR LA VARIANTE (202 + job, suivi par useSuiviJob).
     simulerVariante: (id, varianteId) => api.post(`${pivot(id)}simuler/`, { variante_id: varianteId, forcer: true }), // ACAL
+    // ACAL268 — retirer le relevé de pose d'un pan (ligne ORPHELINE comprise) :
+    // DELETE pose-reelle/<zone_id>/ → 204 ; 404 {detail} sans relevé
+    // (contrat calepinage_asbuilt_ecarts.json › delete_pose_reelle).
+    supprimerPoseReelle: (id, zoneId) => api.delete(`${pivot(id)}pose-reelle/${encodeURIComponent(zoneId)}/`), // ACAL — libellés hérités (« Toit N/E », « Pan 1.2 ») encodés
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
@@ -371,6 +381,18 @@ const calepinageApi = {
     enregistrerProfilsTypes: (profils) =>
       api.put('/calepinage/parametres/profils-types/', { profils }),
   },
+
+  // ACAL — ACAL242 : les GABARITS des dossiers réglementaires de la société
+  // (contrat `gabarits_dossier_reglementaire.json`, porte ACAL238). `creer` part
+  // en multipart (`FormData` : champs + `pieces_attendues`/`champs` en JSON +
+  // `fichier` PDF) ; un 400 nomme le champ fautif, un 409 refuse de supprimer
+  // un gabarit utilisé.
+  gabarits: {
+    liste: () => api.get('/calepinage/gabarits-dossiers/'),
+    creer: (corps) => api.post('/calepinage/gabarits-dossiers/', corps),
+    modifier: (gabaritId, corps) => api.patch(`/calepinage/gabarits-dossiers/${gabaritId}/`, corps),
+    supprimer: (gabaritId) => api.delete(`/calepinage/gabarits-dossiers/${gabaritId}/`),
+  },
 }
 
 export default calepinageApi
@@ -382,3 +404,5 @@ export default calepinageApi
 // ACAL13 — contrat calepinage_photos.json (M0)
 // ACAL15 — contrat gabarits_dossier_reglementaire.json (M0)
 // ACAL21 — contrat calepinage_consommation_proposee.json (M0)
+// ACAL201 — l'URL d'un fichier servi par le proxy Django (chemin relatif + origine d'API).
+export { urlFichierCalepinage } from '../lib/calage/fichierCalepinage'

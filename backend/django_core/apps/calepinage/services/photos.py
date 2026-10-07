@@ -256,7 +256,32 @@ def supprimer_photo_site(photo):
     with transaction.atomic():
         photo.delete()
         if propre and not piece.photos_site_calepinage.exists():
+            cle = piece.file_key
             piece.delete()
+            # ACAL300 — l'OBJET stocké part aussi (effacement loi 09-08),
+            # une fois la suppression en base VALIDÉE (jamais un fichier
+            # perdu sous une ligne restaurée par un rollback).
+            transaction.on_commit(lambda: _supprimer_objet(cle))
+
+
+def _supprimer_objet(cle):
+    """Supprime l'objet stocké d'une pièce PROPRE au calepinage — dans LE
+    bon magasin (``roofs/…`` : ventes ; ``attachments/…`` : records).
+    Best-effort journalisé : un magasin muet ne fait pas échouer le geste."""
+    try:
+        if str(cle or '').startswith(PREFIXE_TELEVERSEMENTS):
+            from apps.records.storage import delete_attachment
+
+            delete_attachment(cle)
+        elif cle:
+            from apps.ventes import services as ventes_services
+
+            ventes_services.supprimer_fichier_toiture(cle)
+    except Exception:  # noqa: BLE001 — journalisé, jamais propagé
+        import logging
+
+        logging.getLogger(__name__).exception(
+            'ACAL300 : objet stocké non supprimé (%s)', cle)
 
 
 #: Les pièces jointes générales (``records.store_attachment``) vivent dans le

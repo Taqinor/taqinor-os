@@ -185,6 +185,13 @@ class Calepinage(TenantModel):
     #: ``restaurateur_calepinage``. Lecteur unique : ``selectors.
     #: calepinages_actifs``.
     archive_le = models.DateTimeField('Archivé le', null=True, blank=True)
+    #: ACAL294 (D-ACAL-20) — les CHAMPS PERSONNALISÉS de la société (patron
+    #: ``crm.Lead``) : ``platform.py`` déclare le module cible du registre
+    #: ``customfields`` — la colonne manquait (FieldError au contrôle d'un
+    #: renommage de code). Donnée de GESTION, hors verrou de conception,
+    #: jamais imprimée dans un livrable client. ``None`` = rien de saisi.
+    custom_data = models.JSONField('Champs personnalisés', null=True,
+                                   blank=True)
 
     class Meta:
         verbose_name = 'Calepinage'
@@ -854,7 +861,6 @@ class ParametresCalepinage(TenantModel):
         'gabarits_disposition',  # CAL82 — gabarits de disposition
         'presets',             # CAL197 — presets de conception
         'favoris_materiel',    # CAL200 — matériel épinglé
-        'gabarits_dossier',    # CAL190 — gabarits de dossier réglementaire
         'norme_electrique',    # CAL130 — norme applicable + coefficients
         'lestage',             # CAL163 — paramètres de lestage SAISIS
         'simulation',          # CALX145 — réglages de simulation SAISIS
@@ -870,8 +876,9 @@ class ParametresCalepinage(TenantModel):
     presets = models.JSONField('Presets', default=dict, blank=True)
     favoris_materiel = models.JSONField('Favoris matériel', default=dict,
                                         blank=True)
-    gabarits_dossier = models.JSONField('Gabarits de dossier', default=dict,
-                                        blank=True)
+    # ACAL320 (C-ACAL-065) — la section JSON ``gabarits_dossier`` est RETIRÉE :
+    # jumelle dormante du modèle ``GabaritDossierReglementaire`` (le SEUL
+    # mécanisme réel, lu par ``services/reglementaire.py``).
 
     class Meta:
         verbose_name = 'Réglages de calepinage'
@@ -1249,6 +1256,12 @@ class DossierReglementaire(TenantModel):
     #: Identifiant OPAQUE du document GED produit (jamais une FK ``ged``).
     document_id = models.PositiveIntegerField('Document (identifiant)',
                                               null=True, blank=True)
+    #: ACAL239 — l'empreinte des ENTRÉES (``empreinte_des_entrees``) au moment
+    #: de la génération : vide tant que le dossier n'a jamais été généré. Elle
+    #: dit si le dossier a été produit sur une conception devenue périmée.
+    genere_empreinte = models.CharField(
+        'Empreinte des entrées à la génération', max_length=64, blank=True,
+        default='')
 
     class Meta:
         verbose_name = 'Dossier réglementaire'
@@ -1316,9 +1329,14 @@ class PoseReelle(TenantModel):
         related_name='poses_reelles',
         verbose_name='Calepinage',
     )
-    #: Le LIBELLÉ du pan, tel que le document le nomme (``label`` ou ``id``) —
-    #: jamais un index de tableau, qui changerait au premier pan redessiné.
+    #: Le LIBELLÉ du pan au moment de la saisie (``label`` ou ``id``) — figé
+    #: pour l'AFFICHAGE d'une ligne dont le pan a disparu (ACAL267).
     pan = models.CharField('Pan', max_length=120)
+    #: ACAL267 — l'identifiant STABLE du pan (``production.cle_de_pan`` :
+    #: ``zone.id``, ``PAN-<rang>`` sans id) : renommer le pan ne détache plus
+    #: le relevé ; c'est LA clé d'unicité (un relevé par pan).
+    zone_id = models.CharField('Identifiant du pan', max_length=120,
+                               blank=True, default='')
     modules_poses = models.PositiveIntegerField('Modules réellement posés')
     ecarts_position = models.TextField("Écarts de position (texte libre)",
                                        blank=True, default='')
@@ -1330,6 +1348,15 @@ class PoseReelle(TenantModel):
         related_name='calepinage_poses_reelles',
         verbose_name='Relevé par',
     )
+    #: ACAL247 — le PRÉVU de la conception FIGÉ au moment du relevé : retoucher
+    #: le toit après coup ne réécrit plus l'écart passé. ``None`` = relevé
+    #: ancien, prévu encore calculé en vivant (jamais rejoué après coup : un
+    #: prévu reconstitué serait un chiffre inventé).
+    modules_prevus = models.PositiveIntegerField(
+        'Modules prévus au relevé', null=True, blank=True)
+    #: D'où vient ce prévu figé (ex. « conception ») — vide si non figé.
+    prevu_source = models.CharField('Source du prévu figé', max_length=20,
+                                    blank=True, default='')
 
     class Meta:
         verbose_name = 'Pose réelle (as-built)'
@@ -1337,10 +1364,12 @@ class PoseReelle(TenantModel):
         ordering = ['pan', 'id']
         constraints = [
             # Un seul relevé par pan : deux comptes posés pour un même pan,
-            # c'est un écart qui dépend de la ligne qu'on regarde.
+            # c'est un écart qui dépend de la ligne qu'on regarde. ACAL267 —
+            # le pan est son identifiant STABLE, plus son libellé (deux pans
+            # de même libellé sont deux relevés indépendants).
             models.UniqueConstraint(
-                fields=['calepinage', 'pan'],
-                name='uniq_pose_reelle_par_pan'),
+                fields=['calepinage', 'zone_id'],
+                name='uniq_pose_reelle_par_zone'),
         ]
         indexes = [
             models.Index(fields=['company', 'calepinage'],

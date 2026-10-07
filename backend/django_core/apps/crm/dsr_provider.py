@@ -155,7 +155,14 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     comportement, pour que la RÉTENTION (balayage par âge) et le DSR (demande
     d'une personne) partagent exactement le même scrub : deux chemins qui
     divergeraient, c'est un des deux qui oublierait un champ.
+
+    ACAL301 — le point UNIQUE d'émission de ``core.events.lead_erased``
+    (DSR ET rétention passent ici) : payload catalogué ``{company,
+    crm_lead_id, phone_key}``, ``phone_key`` lu AVANT le scrub, émis APRÈS
+    validation de la transaction. Les apps qui référencent le lead
+    (adsengine, calepinage) s'y abonnent — le CRM n'en importe aucune.
     """
+    phone_key = getattr(le, 'phone_normalise', '') or ''
     le.nom = LEAD_NOM_ANONYMISE
     le.prenom = None
     le.email = None
@@ -185,7 +192,26 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.
     _anonymiser_traces_visiteur(company, le)
+    # Lot 3 critique #1 — émis APRÈS l'écriture du lead : sans transaction
+    # englobante (autocommit), ``on_commit`` exécute tout de suite — un
+    # abonné (scrub calepinage, suppression IRRÉVERSIBLE des photos) ne doit
+    # jamais passer avant que le lead lui-même soit anonymisé.
+    _emettre_lead_erased(company, le.pk, phone_key)
     return 1
+
+
+def _emettre_lead_erased(company, lead_id, phone_key):
+    """ACAL301 — ``lead_erased`` APRÈS validation (``on_commit``) : un
+    effacement annulé ne propage rien ; les abonnés sont best-effort."""
+    from django.db import transaction
+
+    from core.events import lead_erased
+
+    def emettre():
+        lead_erased.send(sender=None, company=company,
+                         crm_lead_id=lead_id, phone_key=phone_key)
+
+    transaction.on_commit(emettre)
 
 
 def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None):

@@ -632,19 +632,25 @@ def _traces_de_derogation(conception, saisies, *, user=None):
     return traces
 
 
-def _panneaux_du_pan(document, libelle):
-    """Les centres de modules du pan NOMMÉ, ou ``()`` — lecture du document."""
+def _zone_du_pan(document, cle):
+    """ACAL265 — la zone dont la clé STABLE (``production.cle_de_pan`` :
+    ``zone.id``) vaut ``cle``, ou ``None``."""
+    from .production import cle_de_pan
+
     zones = (document or {}).get('zones')
     for rang, zone in enumerate(zones if isinstance(zones, (list, tuple))
                                 else (), start=1):
-        if not isinstance(zone, dict):
-            continue
-        nom = str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
-        if nom != libelle:
-            continue
-        geometrie = zone.get('geometry')
-        if isinstance(geometrie, dict):
-            return geometrie.get('panels') or ()
+        if isinstance(zone, dict) and cle_de_pan(zone, rang) == cle:
+            return zone
+    return None
+
+
+def _panneaux_du_pan(document, cle):
+    """Les centres de modules du pan de clé ``cle``, ou ``()``."""
+    zone = _zone_du_pan(document, cle)
+    geometrie = (zone or {}).get('geometry')
+    if isinstance(geometrie, dict):
+        return geometrie.get('panels') or ()
     return ()
 
 
@@ -672,6 +678,17 @@ def _valider_cheminement(calepinage, cheminement, layout=None):
     document = layout if layout is not None else getattr(
         calepinage, 'roof_layout', None)
     for libelle, saisie in pans.items():
+        # ACAL265 — ``cheminement.pans`` est indexé par la clé STABLE du pan
+        # (``zone.id``) : une clé que le document ne porte pas (libellé d'un
+        # ancien enregistrement, pan supprimé) est refusée en la NOMMANT.
+        if document and _zone_du_pan(document, str(libelle)) is None:
+            from .production import cles_des_pans
+
+            raise EntreeInvalide(
+                "Pan « %s » inconnu du document : le cheminement se saisit "
+                "par la clé du pan (%s)." % (
+                    libelle, ', '.join(cles_des_pans(document)) or 'aucun pan'),
+                champ='cheminement.pans.%s' % libelle)
         if not isinstance(saisie, dict) or not saisie.get('motif_parcours'):
             continue
         try:
@@ -2278,7 +2295,14 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         imposee, bloquants = (), bloquants + [str(refus)]
     bloquants.extend(verdict_affectation(
         conception, imposee,
-        specs_onduleur=materiel_resolu.get('onduleur')))
+        specs_onduleur=materiel_resolu.get('onduleur'),
+        obsoletes_bloquantes=False))
+    # ACAL266 — une affectation OBSOLÈTE ne bloque pas la saisie d'une autre
+    # chaîne : elle est signalée en alerte (la publication, elle, la refuse
+    # — ``_motifs_de_l_affectation``).
+    obsoletes = [ligne for ligne in verdict_affectation(
+        conception, imposee, specs_onduleur=materiel_resolu.get('onduleur'))
+        if ligne.startswith('Module inconnu du document')]
     # CALX206 — un regroupement polystring met des chaînes en PARALLÈLE :
     # son Isc cumulé se verdicte au même titre que celui du chaînage
     # automatique, sans quoi le regroupement contournerait la garde.
@@ -2290,6 +2314,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))
     alertes = list(alertes_nommees(conception))
+    alertes.extend(obsoletes)
     alertes.extend(poly['alertes'])
     # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
     # jamais un bloquant : rien ne prouve le défaut, la fiche se tait.
