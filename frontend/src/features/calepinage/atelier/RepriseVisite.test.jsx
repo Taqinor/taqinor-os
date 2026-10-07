@@ -177,3 +177,42 @@ describe('RepriseVisite (ACAL208) — le retour vers l’atelier', () => {
     expect(screen.queryByTestId('cal-retour-atelier')).toBeNull()
   })
 })
+
+/* ACAL211 — relevé repris, visite modifiée depuis : l'écart et « Mettre à jour depuis la visite ».
+   Réponses lues sur l'échantillon committé (`exemple_a_corriger`, `exemple` pour a_jour: true). */
+describe('RepriseVisite (ACAL211) — écart relevé / visite', () => {
+  it('affiche l’écart et met à jour sur clic', async () => {
+    servir('exemple_a_corriger')
+    calepinageApi.calepinages.reprendreVisite
+      .mockResolvedValue(reponseContrat('calepinage', NOM, 'exemple'))
+    rendre()
+    const ecart = echantillon('exemple_a_corriger').ecart[0]
+    expect(echantillon('exemple_a_corriger').a_jour).toBe(false)
+
+    const tableau = await screen.findByTestId('cal-reprise-ecart')
+    expect(tableau).toBeInTheDocument()
+    expect(screen.getByTestId(`cal-reprise-ecart-${ecart.code}-releve`))
+      .toHaveTextContent(`${ecart.releve} °`)
+    expect(screen.getByTestId(`cal-reprise-ecart-${ecart.code}-visite`))
+      .toHaveTextContent(`${ecart.visite} °`)
+    // Plus de « déjà reprise » trompeur : le bouton « Reprendre » n'est pas proposé.
+    expect(screen.queryByTestId('cal-reprise-bouton')).toBeNull()
+    expect(screen.queryByTestId('cal-reprise-raison')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('cal-reprise-maj'))
+    await vi.waitFor(() => expect(calepinageApi.calepinages.reprendreVisite)
+      .toHaveBeenCalledWith(1, { remplacer: true }))
+    // Rechargé : plus d'écart, « Reprise à jour », plus de bouton de mise à jour.
+    expect(await screen.findByTestId('cal-reprise-a-jour')).toHaveTextContent('Reprise à jour')
+    expect(screen.queryByTestId('cal-reprise-ecart')).toBeNull()
+    expect(screen.queryByTestId('cal-reprise-maj')).toBeNull()
+  })
+
+  it('a_jour: true => « Reprise à jour » sans bouton de mise à jour', async () => {
+    servir('exemple')
+    rendre()
+    expect(await screen.findByTestId('cal-reprise-a-jour')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-reprise-maj')).toBeNull()
+    expect(screen.queryByTestId('cal-reprise-ecart')).toBeNull()
+  })
+})

@@ -586,6 +586,11 @@ retiré plus un hook ajouté.
 | `cal-reprise-photos-vide` | reprise de visite — aucune photo retenue. |
 | `cal-reprise-raison` | reprise de visite — raison du bouton désactivé. |
 | `cal-reprise-refus-bandeau` | reprise de visite — bandeau qui nomme le champ refusé. |
+| `cal-reprise-a-jour` | reprise de visite — « Reprise à jour » (ACAL211). |
+| `cal-reprise-ecart` | reprise de visite — tableau d’écart relevé / visite, une ligne par mesure (ACAL211). |
+| `cal-reprise-ecart--releve` | reprise de visite — valeur reprise d’une mesure en écart (ACAL211). |
+| `cal-reprise-ecart--visite` | reprise de visite — valeur actuelle de la visite d’une mesure en écart (ACAL211). |
+| `cal-reprise-maj` | reprise de visite — bouton « Mettre à jour depuis la visite » (ACAL211). |
 | `cal-reprise-vide` | reprise de visite — état vide, motif du serveur tel quel. |
 | `cal-reprise-visite` | reprise de visite — panneau de l'onglet. |
 | `cal-reprise-visite-entete` | reprise de visite — numéro et validation de la visite. |
