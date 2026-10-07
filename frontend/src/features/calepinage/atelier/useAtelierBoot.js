@@ -3,6 +3,7 @@ import api from '../../../api/axios'
 import ventesApi from '../../../api/ventesApi'
 import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
+import { urlFichierCalepinage } from '../../../api/fichierCalepinage'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
@@ -109,7 +110,7 @@ export function useAtelierBoot(ctx) {
           const res = await calepinageApi.calepinages.photos(calepinageId)
           const photo = (res?.data?.photos ?? [])
             .find((p) => String(p?.id) === String(fond.photoSiteId))
-          if (photo?.url) ressource = { url: photo.url, calagePhoto: photo.calage }
+          if (photo?.url) ressource = { url: urlFichierCalepinage(photo.url), calagePhoto: photo.calage }
         } catch {
           /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
         }
@@ -119,7 +120,7 @@ export function useAtelierBoot(ctx) {
           const res = await calepinageApi.calepinages.planImporte(calepinageId)
           const plan = res?.data
           if (plan?.url) {
-            ressource = { url: plan.url, tailleImage: tailleImagePlan(plan) }
+            ressource = { url: urlFichierCalepinage(plan.url), tailleImage: tailleImagePlan(plan) }
           }
         } catch {
           /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
