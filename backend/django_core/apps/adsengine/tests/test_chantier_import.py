@@ -92,3 +92,52 @@ class ChantierImportTests(TestCase):
             res = self._import()
         self.assertFalse(res['imported'])
         self.assertEqual(res['blocked_reason'], 'consentement_manquant')
+
+
+class ImportChantierPhotoViewIdsTests(TestCase):
+    """CAD177 — un identifiant non entier n'est plus un 500 (filtre ORM sur
+    ``client_id='g'``, relevé par le marcheur aléatoire) mais un 400 FR."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.roles.models import Role
+
+        self.company = Company.objects.create(nom='Ids Co', slug='ids-co')
+        role = Role.objects.create(
+            company=self.company, nom='ads-manage',
+            permissions=['adsengine_manage'])
+        user = get_user_model().objects.create_user(
+            username='ads-ids', password='x', company=self.company,
+            role_legacy='normal', role=role)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+
+    def _post(self, corps):
+        return self.api.post(
+            '/api/django/adsengine/creatifs/import-chantier/', corps,
+            format='json')
+
+    def test_client_id_non_entier_400(self):
+        resp = self._post(
+            {'chantier_id': 7, 'attachment_id': 99, 'client_id': 'g'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()['field'], 'client_id')
+        self.assertEqual(CreativeAsset.objects.count(), 0)
+
+    def test_chantier_id_non_entier_400(self):
+        resp = self._post({'chantier_id': 'abc', 'attachment_id': 99})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()['field'], 'chantier_id')
+
+    def test_sans_consentement_reste_un_refus_explique(self):
+        with mock.patch('apps.installations.selectors.chantier_photo',
+                        return_value=_FakeAttachment('x')):
+            resp = self._post({'chantier_id': '7', 'attachment_id': '99',
+                               'client_id': '42'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(
+            resp.json()['blocked_reason'], 'consentement_manquant')

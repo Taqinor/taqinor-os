@@ -689,9 +689,25 @@ class ImportChantierPhotoView(APIView):
         if err is not None:
             return err
         body = request.data or {}
-        chantier_id = body.get('chantier_id')
-        attachment_id = body.get('attachment_id')
-        client_id = body.get('client_id')
+        # CAD177 — un identifiant non entier (« g » saisi par le marcheur
+        # aléatoire) remontait en 500 depuis le filtre ORM : refus 400 FR.
+        ids = {}
+        for cle in ('chantier_id', 'attachment_id', 'client_id'):
+            brut = body.get(cle)
+            if brut in (None, ''):
+                ids[cle] = None
+                continue
+            try:
+                ids[cle] = int(str(brut).strip())
+            except (TypeError, ValueError):
+                ids[cle] = -1
+            if ids[cle] <= 0:
+                return Response(
+                    {'detail': f'{cle} invalide : identifiant entier attendu.',
+                     'field': cle}, status=400)
+        chantier_id = ids['chantier_id']
+        attachment_id = ids['attachment_id']
+        client_id = ids['client_id']
         if not (chantier_id and attachment_id):
             return Response(
                 {'detail': 'chantier_id et attachment_id requis.'}, status=400)
