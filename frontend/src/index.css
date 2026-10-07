@@ -4911,7 +4911,7 @@ textarea.form-control {
      la hauteur du BOARD (single-line flex, cross-size définie) tandis que son
      contenu débordait → l'en-tête sticky, borné par sa colonne, partait avec
      elle (−2684 px au scroll). `flex-start` : la colonne épouse son contenu
-     (sticky tient sur tout le défilement) ; `.kb-col{min-height:100%}`
+     (sticky tient sur tout le défilement) ; la règle min-height: 100% de `.kb-col`
      garde les zones de dépôt pleine hauteur quand les colonnes sont courtes. */
   align-items: flex-start;
   gap: 0.75rem;
@@ -8671,6 +8671,14 @@ textarea.form-control {
     height: 44px;
     transform: translate(-50%, -50%);
   }
+  .kb-quick-tel,
+  .kb-quick-wa,
+  .kb-flash.kb-quick-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
   /* CAD177 (APX8) — le plancher global `button { min-height: 44px }` du bloc
      tactile écrasait la boîte 24 px du menu ••• ET gonflait le pied de carte
      (sélecteur de responsable) à 44 px : la carte tactile passait de ~105 à
@@ -8691,14 +8699,6 @@ textarea.form-control {
     width: 44px;
     height: 28px;
     transform: translate(-50%, -50%);
-  }
-  .kb-quick-tel,
-  .kb-quick-wa,
-  .kb-flash.kb-quick-btn {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
   }
 }
 /* Cadenas PII : à la place des actions d'appel quand `lead.pii_masked`. */
