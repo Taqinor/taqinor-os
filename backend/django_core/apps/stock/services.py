@@ -6914,6 +6914,48 @@ class ConfirmationBcfRefusee(ValueError):
     500) en attendant de distinguer le 409."""
 
 
+class ConfirmationBcfInvalide(ValueError):
+    """ASTK181 — valeur de confirmation illisible : 400 nommant le champ
+    (``erreurs`` = {champ: [message]}), jamais un 500. Sous-classe de
+    ValueError pour la même raison que ``ConfirmationBcfRefusee``."""
+
+    def __init__(self, erreurs):
+        super().__init__(str(erreurs))
+        self.erreurs = erreurs
+
+
+NUMERO_CONFIRMATION_MAX = 100
+
+
+def _valider_confirmation_bcf(date_confirmee, numero_confirmation):
+    """ASTK181 — parse/borne UNIQUES des valeurs de confirmation (les deux
+    portes) : date AAAA-MM-JJ (ou objet date), numéro ≤ 100 caractères.
+    Renvoie (date, numero) ou lève ``ConfirmationBcfInvalide``."""
+    import datetime as _dt
+    from django.utils.dateparse import parse_date
+
+    erreurs = {}
+    if isinstance(date_confirmee, _dt.datetime):
+        date_ok = date_confirmee.date()
+    elif isinstance(date_confirmee, _dt.date):
+        date_ok = date_confirmee
+    else:
+        try:
+            date_ok = parse_date(str(date_confirmee or '').strip())
+        except ValueError:
+            date_ok = None
+        if date_ok is None:
+            erreurs['date_confirmee_fournisseur'] = [
+                'Date invalide (AAAA-MM-JJ).']
+    numero = '' if numero_confirmation is None else str(numero_confirmation)
+    if len(numero) > NUMERO_CONFIRMATION_MAX:
+        erreurs['numero_confirmation_fournisseur'] = [
+            f'{NUMERO_CONFIRMATION_MAX} caractères maximum.']
+    if erreurs:
+        raise ConfirmationBcfInvalide(erreurs)
+    return date_ok, numero
+
+
 def bcf_confirmable_par_fournisseur(bc):
     """ASTK180 — vrai seulement pour un BCF `envoye` sans aucune quantité
     reçue ni réception confirmée."""
@@ -6949,10 +6991,14 @@ def _appliquer_confirmation_bcf_fournisseur(
     # seul un BCF `envoye` sans aucune réception se confirme ; la date
     # confirmée est FIGÉE dès la première réception (sinon le fournisseur
     # évalué réécrivait son propre score OTD a posteriori).
+    # ASTK181 — valeurs parsées/bornées ICI (400 nommant le champ), jamais
+    # passées brutes à bc.save (DateField illisible / CharField(100) → 500).
+    date_confirmee, numero_confirmation = _valider_confirmation_bcf(
+        date_confirmee, numero_confirmation)
     if not bcf_confirmable_par_fournisseur(bc):
         raise ConfirmationBcfRefusee(MSG_CONFIRMATION_BCF_REFUSEE)
     bc.date_confirmee_fournisseur = date_confirmee
-    bc.numero_confirmation_fournisseur = numero_confirmation or ''
+    bc.numero_confirmation_fournisseur = numero_confirmation
     bc.save(update_fields=[
         'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
     return bc

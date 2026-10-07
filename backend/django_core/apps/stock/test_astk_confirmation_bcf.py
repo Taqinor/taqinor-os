@@ -119,3 +119,55 @@ class ConfirmationTests(ConfirmationBase):
                 date_confirmee=datetime.date(2026, 10, 10))
         bc.refresh_from_db()
         self.assertIsNone(bc.date_confirmee_fournisseur)
+
+
+class ValidationTests(ConfirmationBase):
+    """ASTK181 (sonde FOUR-6 : 500 / 500 / 500) — parse de date, borne de
+    100 caractères et corps non objet : 400 nommant le champ, BCF inchangé."""
+
+    def setUp(self):
+        super().setUp()
+        self.bc = self._bcf(BonCommandeFournisseur.Statut.ENVOYE)
+
+    def _assert_inchange(self):
+        self.bc.refresh_from_db()
+        self.assertIsNone(self.bc.date_confirmee_fournisseur)
+        self.assertEqual(self.bc.numero_confirmation_fournisseur, '')
+
+    def test_date_illisible_400(self):
+        rep = self._confirmer(
+            self.bc, {'date_confirmee_fournisseur': 'pas-une-date'})
+        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertEqual(rep.data, {
+            'date_confirmee_fournisseur': ['Date invalide (AAAA-MM-JJ).']})
+        self._assert_inchange()
+
+    def test_date_impossible_400(self):
+        rep = self._confirmer(
+            self.bc, {'date_confirmee_fournisseur': '2026-02-31'})
+        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertIn('date_confirmee_fournisseur', rep.data)
+        self._assert_inchange()
+
+    def test_numero_trop_long_400(self):
+        rep = self._confirmer(self.bc, {
+            'date_confirmee_fournisseur': '2026-10-10',
+            'numero_confirmation_fournisseur': 'x' * 101})
+        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertEqual(rep.data, {
+            'numero_confirmation_fournisseur': ['100 caractères maximum.']})
+        self._assert_inchange()
+
+    def test_corps_liste_400(self):
+        rep = self._confirmer(self.bc, [1])
+        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertEqual(rep.data, {'detail': 'Corps JSON attendu.'})
+        self._assert_inchange()
+
+    def test_saisie_valide_200(self):
+        rep = self._confirmer(self.bc, {
+            'date_confirmee_fournisseur': '2026-10-10',
+            'numero_confirmation_fournisseur': 'x' * 100})
+        self.assertEqual(rep.status_code, 200, rep.data)
+        self.bc.refresh_from_db()
+        self.assertEqual(self.bc.numero_confirmation_fournisseur, 'x' * 100)
