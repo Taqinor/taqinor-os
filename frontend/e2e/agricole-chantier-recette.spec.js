@@ -22,9 +22,8 @@
 // Le prix de la pompe et le seuil société sont RESTAURÉS en afterAll (base
 // partagée, workers: 1). Le job `e2e-shard` de la CI énumère ses specs : ce
 // fichier n'y est pas encore (décision de budget CI, voir i18n-quote-journey).
-import { execFileSync } from 'node:child_process'
 import { test, expect } from '@playwright/test'
-import { connecterPortail, ouvrirJalonsChantier } from './helpers.js'
+import { connecterPortail, executerDansDjango, ouvrirJalonsChantier } from './helpers.js'
 
 const API = '/api/django'
 const MOT_DE_PASSE_PORTAIL = 'Portail-E2E-2026!'
@@ -53,13 +52,13 @@ async function textePdf(octets) {
   return texte
 }
 
-/** Pose le mot de passe du compte portail dans le conteneur Django local. */
+/** Pose le mot de passe du compte portail. Passe par `executerDansDjango`
+ *  (helpers.js) : le job e2e-full n'a PAS de docker (gunicorn sur l'hôte) —
+ *  l'ancien `docker compose exec` en dur rendait « spawnSync docker ENOENT ». */
 function poserMotDePassePortail(username) {
-  const [cmd, ...args] = (process.env.E2E_DJANGO_EXEC || 'docker compose exec -T django_core').split(' ')
-  const code = 'from django.contrib.auth import get_user_model as g; '
+  executerDansDjango('from django.contrib.auth import get_user_model as g; '
     + `u = g().objects.get(username=${JSON.stringify(username)}); `
-    + `u.set_password(${JSON.stringify(MOT_DE_PASSE_PORTAIL)}); u.save()`
-  execFileSync(cmd, [...args, 'python', 'manage.py', 'shell', '-c', code], { stdio: 'pipe' })
+    + `u.set_password(${JSON.stringify(MOT_DE_PASSE_PORTAIL)}); u.save()`)
 }
 
 test.describe.configure({ mode: 'serial' })
