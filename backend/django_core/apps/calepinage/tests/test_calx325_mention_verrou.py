@@ -99,15 +99,13 @@ class EtatLuParLesServicesTest(SimpleTestCase):
                                   tzinfo=datetime.timezone.utc)
         archivage = datetime.datetime(2026, 9, 20, 9, 0,
                                       tzinfo=datetime.timezone.utc)
-        calepinage = SimpleNamespace(pk=7,
+        # ACAL118 — la date d'archivage est celle du MODÈLE (archive_le).
+        calepinage = SimpleNamespace(pk=7, archive_le=archivage,
                                      devis=SimpleNamespace(date_envoi=envoi))
         with mock.patch('apps.calepinage.services.verrou.est_verrouille',
                         return_value=True), \
                 mock.patch('apps.calepinage.services.archivage.est_archive',
-                           return_value=True), \
-                mock.patch('apps.trash.selectors.entree_active',
-                           return_value=SimpleNamespace(
-                               supprime_le=archivage)):
+                           return_value=True):
             etat = etat_de_conception(calepinage)
         self.assertTrue(etat['verrouille'])
         self.assertTrue(etat['archive'])

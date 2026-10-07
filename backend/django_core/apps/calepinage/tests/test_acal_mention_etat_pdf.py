@@ -58,18 +58,17 @@ def calepinage():
         pk=7, company_id=1, company=None, client_id=None, lead_id=None,
         titre='Villa essai', roof_layout=layout, layout_hash='a' * 64,
         version_moteur='calepinage-1.0.0', resultat=None, devis_id=None,
-        devis=SimpleNamespace(date_envoi=ENVOI))
+        devis=SimpleNamespace(date_envoi=ENVOI), archive_le=ARCHIVAGE)
 
 
 def etat_lu(verrouille, archive):
-    """Les trois lectures de ``etat_de_conception``, bornees aux seams."""
+    """Les deux lectures de ``etat_de_conception``, bornees aux seams (la
+    date d'archivage est ``archive_le`` du pivot, ACAL118)."""
     return (
         mock.patch('apps.calepinage.services.verrou.est_verrouille',
                    return_value=verrouille),
         mock.patch('apps.calepinage.services.archivage.est_archive',
                    return_value=archive),
-        mock.patch('apps.trash.selectors.entree_active',
-                   return_value=SimpleNamespace(supprime_le=ARCHIVAGE)),
     )
 
 
@@ -105,8 +104,8 @@ def sept_rendus_texte(cal):
 
 
 def _lus(verrouille, archive):
-    verrou, archivage, corbeille = etat_lu(verrouille, archive)
-    with verrou, archivage, corbeille:
+    verrou, archivage = etat_lu(verrouille, archive)
+    with verrou, archivage:
         return sept_rendus_texte(calepinage())
 
 

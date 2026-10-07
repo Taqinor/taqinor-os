@@ -510,7 +510,8 @@ def etat_de_conception(calepinage):
     if est_archive(calepinage):
         # ACAL118 — la date est celle du MODÈLE (survit à la purge).
         etat['archive'] = True
-        etat['archive_le'] = _date_lisible(calepinage.archive_le)
+        etat['archive_le'] = _date_lisible(getattr(calepinage, 'archive_le',
+                                                   None))
     return etat
 
 
