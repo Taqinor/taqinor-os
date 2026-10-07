@@ -109,7 +109,10 @@ class PackMarocTest(unittest.TestCase):
     def _construire(self, rendus=None):
         return construire_pack_dossier(
             _dossier(), rendus=rendus if rendus is not None else self.rendus,
-            empreinte=EMPREINTE)
+            # ACAL240 — gabarit / champs / jointes : prouvés en base par
+            # test_acal_dossier_reglementaire_generation ; ici les pièces
+            # PRODUITES seules.
+            empreinte=EMPREINTE, pieces_dossier=())
 
     def test_pack_produit_et_fusionne(self):
         resultat = self._construire()

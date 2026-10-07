@@ -11,7 +11,7 @@ Ce qui est prouvé ici, SANS BASE (``SimpleTestCase``) :
 """
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.permissions import PeutGererCalepinage
 from apps.calepinage.services.reglementaire import (
@@ -128,41 +128,63 @@ class ValidationTest(SimpleTestCase):
                          {'nom_deposant': None})
 
 
-class EnregistrementTest(SimpleTestCase):
-    """La saisie est FUSIONNÉE, jamais écrasée en silence."""
+def _dossier_reel(champs_saisis=None):
+    """ACAL240 — un VRAI ``DossierReglementaire`` : la saisie s'écrit sous
+    verrou sur la ligne relue, elle se prouve donc en base."""
+    from apps.calepinage.models import (
+        Calepinage, DossierReglementaire, GabaritDossierReglementaire,
+    )
+    from authentication.models import Company
+
+    societe = Company.objects.create(nom='CALX41', slug='calx41')
+    calepinage = Calepinage.objects.create(company=societe, titre='CALX41')
+    gabarit = GabaritDossierReglementaire.objects.create(
+        company=societe, pays='ma', code='dp', intitule='DP',
+        champs=[dict(champ) for champ in CHAMPS_GABARIT])
+    return DossierReglementaire.objects.create(
+        company=societe, calepinage=calepinage, gabarit=gabarit,
+        champs_saisis=dict(champs_saisis or {}))
+
+
+class EnregistrementTest(TestCase):
+    """La saisie est FUSIONNÉE, jamais écrasée en silence — relue en base."""
+
+    def _relu(self, dossier):
+        dossier.refresh_from_db()
+        return dossier.champs_saisis
 
     def test_la_saisie_est_ecrite_sur_le_dossier(self):
-        dossier = _Dossier()
+        dossier = _dossier_reel()
 
         enregistrer_champs(dossier, {'reference_dossier': 'DP-2026-01'})
 
         self.assertEqual(dossier.champs_saisis,
                          {'reference_dossier': 'DP-2026-01'})
-        self.assertEqual(dossier.sauve, [('champs_saisis',)])
+        self.assertEqual(self._relu(dossier),
+                         {'reference_dossier': 'DP-2026-01'})
 
     def test_un_champ_absent_de_l_envoi_garde_sa_valeur(self):
-        dossier = _Dossier({'nom_deposant': 'Société d essai'})
+        dossier = _dossier_reel({'nom_deposant': 'Société d essai'})
 
         enregistrer_champs(dossier, {'reference_dossier': 'DP-2026-01'})
 
-        self.assertEqual(dossier.champs_saisis['nom_deposant'],
+        self.assertEqual(self._relu(dossier)['nom_deposant'],
                          'Société d essai')
 
     def test_une_valeur_vide_efface_la_saisie(self):
-        dossier = _Dossier({'nom_deposant': 'Société d essai'})
+        dossier = _dossier_reel({'nom_deposant': 'Société d essai'})
 
         enregistrer_champs(dossier, {'nom_deposant': ''})
 
-        self.assertNotIn('nom_deposant', dossier.champs_saisis)
+        self.assertNotIn('nom_deposant', self._relu(dossier))
 
     def test_rien_n_est_ecrit_quand_la_saisie_est_refusee(self):
-        dossier = _Dossier({'nom_deposant': 'Société d essai'})
+        dossier = _dossier_reel({'nom_deposant': 'Société d essai'})
 
         with self.assertRaises(ChampsDossierInvalides):
             enregistrer_champs(dossier, {'numero_cerfa': '14 000'})
 
-        self.assertEqual(dossier.sauve, [])
-        self.assertEqual(dossier.champs_saisis,
+        self.assertEqual(self._relu(dossier),
                          {'nom_deposant': 'Société d essai'})
 
 
@@ -253,8 +275,15 @@ class VueTest(SimpleTestCase):
         self.assertEqual(list(reponse.data), ['numero_cerfa'])
         self.assertIn('numero_cerfa', reponse.data['numero_cerfa'][0])
 
+
+class VueEnregistrementTest(TestCase):
+    """ACAL240 — la saisie acceptée s'écrit en base (sous verrou)."""
+
+    def _compose(self):
+        return composer_dossier(_entree(), {})
+
     def test_la_saisie_acceptee_rend_l_agregat_recompose(self):
-        dossier = _Dossier()
+        dossier = _dossier_reel()
         agregat_apres = _agregat([composer_dossier(
             _entree({'reference_dossier': 'DP-2026-01'}), {})])
         with mock.patch(MODULE + '.dossiers_du_calepinage',
@@ -268,5 +297,8 @@ class VueTest(SimpleTestCase):
 
         self.assertEqual(reponse.status_code, 200)
         self.assertEqual(reponse.data, agregat_apres)
+        self.assertEqual(dossier.champs_saisis,
+                         {'reference_dossier': 'DP-2026-01'})
+        dossier.refresh_from_db()
         self.assertEqual(dossier.champs_saisis,
                          {'reference_dossier': 'DP-2026-01'})

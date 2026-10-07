@@ -98,7 +98,9 @@
             "type": "texte",
             "valeur": "Saisie d'essai",
             "obligatoire": false,
-            "message": ""
+            "message": "",
+            "valeur_calepinage": null,
+            "ecart_saisie": false
           }
         ],
         "peut_generer": false,

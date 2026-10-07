@@ -39,6 +39,7 @@ class _Dossier:
         self.pk = pk
         self.document_id = None
         self.genere_le = None
+        self.genere_empreinte = ''
         self.sauve = []
 
     def save(self, update_fields=None):
@@ -192,13 +193,17 @@ class GenerationTest(SimpleTestCase):
 
     def test_la_generation_est_datee_et_le_document_retenu(self):
         dossier = _Dossier(pk=7)
-        pack = {'document': mock.Mock(pk=42), 'pieces': [], 'signalements': []}
+        pack = {'document': mock.Mock(pk=42), 'pieces': [], 'signalements': [],
+                'empreinte': 'f' * 64}
 
         reponse, _fabrique = self._generer(dossier, pack)
 
         self.assertEqual(dossier.document_id, 42)
         self.assertIsNotNone(dossier.genere_le)
-        self.assertEqual(dossier.sauve, [('document_id', 'genere_le')])
+        # ACAL240 — l'empreinte des entrées à la génération est stockée.
+        self.assertEqual(dossier.genere_empreinte, 'f' * 64)
+        self.assertEqual(dossier.sauve,
+                         [('document_id', 'genere_le', 'genere_empreinte')])
         self.assertEqual(reponse.data['genere_le'], dossier.genere_le)
 
     def test_le_gabarit_seul_suffit_a_designer_le_dossier(self):
