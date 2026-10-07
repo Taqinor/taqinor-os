@@ -46,6 +46,8 @@ import logging
 import os
 # QJR146 (i) — comparaison d'OTP à temps constant (``compare_digest``).
 import secrets
+# ASEC23 — échéance de la preuve de lecture (patchable en test).
+import time
 
 logger = logging.getLogger("apps.ventes.services")
 
@@ -350,8 +352,8 @@ def validate_esign_otp(link, otp_code):
 # Réutilise EXACTEMENT la même mécanique (code à 6 chiffres, cache Django TTL
 # 10 min, compteur anti-brute-force) sous un espace de clés SÉPARÉ — jamais
 # de collision avec l'OTP de signature d'un même lien, et la « vérification »
-# de lecture pose en plus un DRAPEAU vérifié (TTL 1 h) que ``proposal_data``
-# relit à chaque GET, puisque la lecture n'est pas un formulaire ponctuel
+# de lecture émet en plus une PREUVE par navigateur (ASEC23, TTL 1 h) que
+# chaque lecture relit, puisque la lecture n'est pas un formulaire ponctuel
 # (POST) comme l'acceptation — c'est une page consultée plusieurs fois.
 OTP_LECTURE_VERIFIED_TTL = 3600  # 1 heure
 
@@ -364,8 +366,19 @@ def _otp_lecture_attempts_key(link_token):
     return f'otp_lecture_attempts:{link_token}'
 
 
-def _otp_lecture_verified_key(link_token):
-    return f'otp_lecture_verified:{link_token}'
+#: ASEC23 (D-ASEC-3, contrat ASEC1 ``proposition_otp_preuve.json``) — en-tête
+#: de requête par lequel le SSR et chaque proxy ``apps/web`` relaient la
+#: preuve du navigateur vérifié (lue dans son cookie ``tq_prop_preuve``).
+EN_TETE_PREUVE_LECTURE = 'HTTP_X_PROPOSITION_PREUVE'
+
+
+def _empreinte_preuve_lecture(preuve):
+    import hashlib
+    return hashlib.sha256(preuve.encode('utf-8')).hexdigest()
+
+
+def _otp_lecture_preuve_key(link_token, empreinte):
+    return f'otp_lecture_preuve:{link_token}:{empreinte}'
 
 
 def request_otp_lecture(link):
@@ -409,7 +422,8 @@ def request_otp_lecture(link):
 def validate_otp_lecture(link, otp_code):
     """L-NIV — valide l'OTP de lecture soumis contre le cache.
 
-    Succès → pose le drapeau ``otp_lecture_verified`` (TTL 1 h) et retourne
+    Succès → consomme le code (l'appelant émet alors la preuve du navigateur,
+    ``emettre_preuve_lecture`` — ASEC23) et retourne
     None ; échec → message d'erreur FR, même discipline anti-brute-force que
     ``validate_esign_otp`` (QX10, ``OTP_MAX_ATTEMPTS`` tentatives)."""
     if not otp_code:
@@ -447,24 +461,78 @@ def validate_otp_lecture(link, otp_code):
                     'redemandez un code.')
         return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
 
-    # Code valide : consommé (one-time use), compteur remis à zéro, la
-    # LECTURE reste déverrouillée pendant OTP_LECTURE_VERIFIED_TTL (la page
-    # est consultée plusieurs fois, contrairement à l'acceptation ponctuelle).
+    # Code valide : consommé (one-time use), compteur remis à zéro. ASEC23 —
+    # AUCUN drapeau global au jeton n'est plus posé : c'est l'appelant qui
+    # émet la PREUVE du navigateur qui vient de vérifier
+    # (``emettre_preuve_lecture``), seule clé de la lecture pendant
+    # OTP_LECTURE_VERIFIED_TTL.
     cache.delete(cache_key)
     cache.delete(attempts_key)
-    cache.set(_otp_lecture_verified_key(link.token), True,
-              timeout=OTP_LECTURE_VERIFIED_TTL)
     return None
 
 
-def otp_lecture_verified(link):
-    """True si la lecture de ``link`` a déjà été déverrouillée par un OTP
-    valide dans la dernière heure. Toujours True si ``link.otp_lecture`` est
-    False (rien à déverrouiller — comportement d'aujourd'hui)."""
+def emettre_preuve_lecture(link):
+    """ASEC23 — émet la preuve OPAQUE du navigateur qui vient de vérifier.
+
+    Contrat ASEC1 : ≥ 32 octets de ``secrets``, base64 url-safe sans
+    remplissage. Le serveur n'en garde que l'EMPREINTE (SHA-256), rattachée au
+    jeton du lien, avec son échéance, TTL ``OTP_LECTURE_VERIFIED_TTL`` ; une
+    nouvelle vérification émet une nouvelle preuve sans invalider les
+    précédentes (plusieurs navigateurs du même client). Retourne la preuve en
+    clair — elle n'est rendue qu'une fois, au navigateur vérifié."""
+    from django.core.cache import cache
+    preuve = secrets.token_urlsafe(32)
+    empreinte = _empreinte_preuve_lecture(preuve)
+    cache.set(_otp_lecture_preuve_key(link.token, empreinte),
+              {'empreinte': empreinte,
+               'expire': time.time() + OTP_LECTURE_VERIFIED_TTL},
+              timeout=OTP_LECTURE_VERIFIED_TTL)
+    return preuve
+
+
+def preuve_lecture_valide_pour_lien(link, preuve):
+    """ASEC23 — True si ``preuve`` déverrouille la lecture de ``link``.
+
+    Toujours True si ``link.otp_lecture`` est False (rien à déverrouiller —
+    comportement d'aujourd'hui). Sinon la preuve doit avoir été émise POUR CE
+    jeton (la clé de cache porte le jeton : une preuve d'un autre lien ne vaut
+    rien ici), ne pas être échue, et son empreinte est comparée en TEMPS
+    CONSTANT à celle stockée."""
     if not getattr(link, 'otp_lecture', False):
         return True
+    if not isinstance(preuve, str):
+        return False
+    preuve = preuve.strip()
+    if not preuve or len(preuve) > 256:
+        return False
     from django.core.cache import cache
-    return bool(cache.get(_otp_lecture_verified_key(link.token)))
+    empreinte = _empreinte_preuve_lecture(preuve)
+    stockee = cache.get(_otp_lecture_preuve_key(link.token, empreinte))
+    if not isinstance(stockee, dict):
+        return False
+    if not secrets.compare_digest(
+            str(stockee.get('empreinte') or '').encode('utf-8'),
+            empreinte.encode('utf-8')):
+        return False
+    try:
+        return time.time() < float(stockee.get('expire'))
+    except (TypeError, ValueError):
+        return False
+
+
+def preuve_lecture_valide(request, link):
+    """ASEC23 — LA garde de lecture/action de la proposition publique.
+
+    Les consommateurs (lecture SSR, PDF, document, suivi, taille, affiche,
+    accept, activer-option, contact, engagement) passent TOUS par cette
+    fonction : la preuve du navigateur arrive par l'en-tête
+    ``X-Proposition-Preuve`` (relayé par ``apps/web``), jamais par le corps ni
+    l'URL. Lien sans ``otp_lecture`` → True (inchangé)."""
+    if not getattr(link, 'otp_lecture', False):
+        return True
+    meta = getattr(request, 'META', None) or {}
+    return preuve_lecture_valide_pour_lien(
+        link, meta.get(EN_TETE_PREUVE_LECTURE, ''))
 
 
 def _send_otp_whatsapp(phone, code, devis_ref):

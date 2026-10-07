@@ -64,6 +64,14 @@ def proposal_contact_request(request, token):
     # du lead + notification du responsable ET de son supérieur).
     if link.via_interne:
         return _refus_apercu_interne()
+    # ASEC23 — demander un rappel au nom du client est une ACTION de la page :
+    # sur un lien ``otp_lecture``, seul le navigateur vérifié (preuve en
+    # en-tête) la déclenche — garde posée AVANT tout effet de bord (verrou
+    # d'idempotence, chatter, notifications).
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
     canal = (str(
         request.data.get('channel') or request.data.get('canal') or ''
@@ -206,11 +214,13 @@ def proposal_request_otp_lecture(request, token):
 def proposal_verify_otp_lecture(request, token):
     """L-NIV (24/08/2026) — Vérifie l'OTP de LECTURE soumis.
 
-    Succès → la LECTURE de ce lien reste déverrouillée pendant
-    ``OTP_LECTURE_VERIFIED_TTL`` (1 h) : ``proposal_data``/``proposal_pdf``
-    relisent ce drapeau à chaque appel plutôt que d'exiger un code par GET
-    (contrairement à l'acceptation, la lecture est consultée plusieurs
-    fois)."""
+    Succès → ASEC23 (contrat ASEC1 ``proposition_otp_preuve.json``) : la
+    réponse porte une PREUVE opaque propre au navigateur qui vient de
+    vérifier (``preuve``, ``expire_dans`` = ``OTP_LECTURE_VERIFIED_TTL``).
+    ``apps/web`` la range dans son cookie httpOnly et la relaie en en-tête
+    ``X-Proposition-Preuve`` ; chaque lecture/action la relit
+    (``preuve_lecture_valide``). Plus aucun drapeau global au jeton : un
+    second navigateur sans preuve reste sur l'écran OTP."""
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
@@ -221,7 +231,8 @@ def proposal_verify_otp_lecture(request, token):
         return _refus_apercu_interne()
     if not link.otp_lecture:
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
-    from ..services import validate_otp_lecture
+    from ..services import (
+        OTP_LECTURE_VERIFIED_TTL, emettre_preuve_lecture, validate_otp_lecture)
     # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
     otp_code, refus = _texte_du_corps(request, 'otp_code')
     if refus is not None:
@@ -230,7 +241,12 @@ def proposal_verify_otp_lecture(request, token):
     if err:
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
-    return _noindex(Response({'detail': 'Code vérifié.'}))
+    return _noindex(Response({
+        'detail': 'Code vérifié.',
+        'verifie': True,
+        'preuve': emettre_preuve_lecture(link),
+        'expire_dans': OTP_LECTURE_VERIFIED_TTL,
+    }))
 
 
 @api_view(['POST'])
@@ -277,8 +293,8 @@ def proposal_accept(request, token):
     #    Posée AVANT toute lecture du corps et tout effet de bord, et sur le
     #    MÊME contrat que les lectures (403 ``otp_required``) pour que l'écran
     #    client sache redemander le code au lieu d'afficher une erreur nue.
-    from ..services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis
@@ -425,8 +441,8 @@ def proposal_activate_option(request, token):
     # sans OTP de lecture : la garde répond True — aucun lien d'aujourd'hui ne
     # change. Même contrat de refus que les lectures (403 ``otp_required``)
     # pour que l'écran client sache redemander le code.
-    from ..services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    from ..services import preuve_lecture_valide
+    if not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     try:

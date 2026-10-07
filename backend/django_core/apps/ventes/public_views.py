@@ -175,8 +175,8 @@ def public_document(request, token):
     # une tentative non vérifiée ne compte pas comme une consultation.
     # L-INTPREV — le jeton interne dispense de l'OTP (c'est le commercial),
     # exactement comme sur les trois autres lectures.
-    from .services import otp_lecture_verified
-    if not via_interne and not otp_lecture_verified(link):
+    from .services import preuve_lecture_valide
+    if not via_interne and not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
@@ -982,13 +982,14 @@ def proposal_data(request, token):
 
     # L-NIV (24/08/2026) — otp_lecture : quand posé sur CE lien, la lecture
     # exige un OTP vérifié (même mécanique que la signature QJ11/QX10, sous
-    # un espace de clés séparé — apps.ventes.services.otp_lecture_verified).
+    # un espace de clés séparé — ASEC23 : apps.ventes.services.
+    # preuve_lecture_valide, la preuve PAR NAVIGATEUR relayée en en-tête).
     # Gate posé AVANT tout effet de bord (stamp de vue) : une tentative non
     # vérifiée ne compte pas comme une consultation.
     # L-INTPREV (25/08/2026) — le jeton interne dispense de l'OTP de lecture
     # (c'est le commercial, jamais le client) : le gate n'a plus de sens.
-    from .services import otp_lecture_verified
-    if not link.via_interne and not otp_lecture_verified(link):
+    from .services import preuve_lecture_valide
+    if not link.via_interne and not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
@@ -1747,8 +1748,8 @@ def proposal_taille_detail(request, token, cle):
     if link is None:
         return _not_found()
 
-    from .services import otp_lecture_verified
-    if not link.via_interne and not otp_lecture_verified(link):
+    from .services import preuve_lecture_valide
+    if not link.via_interne and not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
@@ -1844,8 +1845,8 @@ def proposal_roof_image(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
-    from .services import lire_image_toiture, otp_lecture_verified
-    if not link.via_interne and not otp_lecture_verified(link):
+    from .services import lire_image_toiture, preuve_lecture_valide
+    if not link.via_interne and not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     octets, mime = lire_image_toiture(
@@ -1877,8 +1878,8 @@ def proposal_pdf(request, token):
     # L-NIV (24/08/2026) — même gate otp_lecture que proposal_data (voir son
     # commentaire) : le flux PDF public est aussi une LECTURE.
     # L-INTPREV (25/08/2026) — jeton interne → jamais d'OTP exigé.
-    from .services import otp_lecture_verified
-    if not link.via_interne and not otp_lecture_verified(link):
+    from .services import preuve_lecture_valide
+    if not link.via_interne and not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
@@ -1958,8 +1959,8 @@ def suivi_public(request, token):
     # jeton ShareLink sans jamais consulter la garde OTP que les trois autres
     # lectures exigent. DR2 tranche : la garde couvre LES 4 LECTURES. Même
     # fonction partagée, même ordre (garde d'abord) — aucun second helper.
-    from .services import otp_lecture_verified
-    if not via_interne and not otp_lecture_verified(link):
+    from .services import preuve_lecture_valide
+    if not via_interne and not preuve_lecture_valide(request, link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 

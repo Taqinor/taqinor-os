@@ -176,6 +176,7 @@ SURFACE_PUBLIQUE = (
     "diff_configurations_devis",
     "dupliquer_devis",
     "emettre_facture",
+    "emettre_preuve_lecture",
     "enregistrer_avance",
     "enregistrer_paiement",
     "enregistrer_paiement_avec_retenue",
@@ -225,7 +226,6 @@ SURFACE_PUBLIQUE = (
     "ordre_lignes_societe",
     # ACAL58 — orientation POSÉE d'abord (ventes/domain/geometrie.py).
     "orientation_du_pan",
-    "otp_lecture_verified",
     # CIQ618 — ouverture automatique du dossier 82-21 (domain/dossier_8221.py).
     "ouvrir_dossier_8221",
     "pans_du_document",
@@ -242,6 +242,8 @@ SURFACE_PUBLIQUE = (
     "poser_layout_hash",
     "poser_puissance_kwc",
     "poser_validite_devis",
+    "preuve_lecture_valide",
+    "preuve_lecture_valide_pour_lien",
     "prix_applicable",
     "prix_forfait_ht",
     "produits_a_renseigner",

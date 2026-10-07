@@ -31,7 +31,7 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client
 from apps.ventes.models import Devis, ShareLink
-from apps.ventes.services import validate_otp_lecture
+from apps.ventes.services import emettre_preuve_lecture, validate_otp_lecture
 from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
 from authentication.models import Company
 
@@ -65,9 +65,13 @@ class _BaseSignature(TestCase):
             otp_lecture=otp_lecture)
 
     def _verifier_le_lien(self, link):
-        """Le client a fourni son code : la lecture est déverrouillée."""
+        """Le client a fourni son code : la lecture est déverrouillée POUR
+        CE navigateur (ASEC23 — la preuve rendue à la vérification est
+        relayée en en-tête, comme le fait ``apps/web``)."""
         cache.set(_otp_lecture_cache_key(link.token), '424242', 600)
         self.assertIsNone(validate_otp_lecture(link, '424242'))
+        self.api.credentials(
+            HTTP_X_PROPOSITION_PREUVE=emettre_preuve_lecture(link))
 
     def _assert_pas_signe(self, devis, reponse):
         devis.refresh_from_db()

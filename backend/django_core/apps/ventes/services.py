@@ -172,7 +172,9 @@ validate_esign_otp = _cycle_vie.validate_esign_otp
 OTP_LECTURE_VERIFIED_TTL = _cycle_vie.OTP_LECTURE_VERIFIED_TTL
 request_otp_lecture = _cycle_vie.request_otp_lecture
 validate_otp_lecture = _cycle_vie.validate_otp_lecture
-otp_lecture_verified = _cycle_vie.otp_lecture_verified
+emettre_preuve_lecture = _cycle_vie.emettre_preuve_lecture
+preuve_lecture_valide = _cycle_vie.preuve_lecture_valide
+preuve_lecture_valide_pour_lien = _cycle_vie.preuve_lecture_valide_pour_lien
 # QJR144 — le VÉRIFICATEUR du sceau d'un devis signé (le hash existait, rien ne
 # savait le recomparer). Nom PUBLIC : il est déclaré dans `__all__` et dans le
 # pin `tests/test_services_surface.py`, mis à jour dans le même commit.
@@ -593,6 +595,7 @@ __all__ = [
     'debiter_mandat_pour_facture',
     'diff_configurations_devis',
     'dupliquer_devis',
+    'emettre_preuve_lecture',
     'enregistrer_avance',
     'enregistrer_paiement',
     'enregistrer_paiement_avec_retenue',
@@ -629,7 +632,6 @@ __all__ = [
     'ordonner_par_role',
     'ordre_lignes_societe',
     'orientation_du_pan',
-    'otp_lecture_verified',
     'pans_du_document',
     'phase_client_pour_dimensionnement',
     'plafond_panneaux',
@@ -638,6 +640,8 @@ __all__ = [
     'planifier_resynchronisation_produit',
     'poser_layout_hash',
     'poser_puissance_kwc',
+    'preuve_lecture_valide',
+    'preuve_lecture_valide_pour_lien',
     'produits_a_renseigner',
     'prix_applicable',
     'prix_forfait_ht',

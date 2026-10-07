@@ -3,7 +3,8 @@ publique (distinct de l'OTP de SIGNATURE QJ11/QX10, gouverné par un toggle
 société ; ici c'est un booléen PAR LIEN posé par le commercial).
 
 Covered:
-  (a) services.request_otp_lecture / validate_otp_lecture / otp_lecture_verified
+  (a) services.request_otp_lecture / validate_otp_lecture / preuve de lecture
+      (ASEC23 : preuve PAR NAVIGATEUR, plus de drapeau global au jeton)
       — même mécanique que QJ11 (cache 6 chiffres, anti-brute-force), sous un
       espace de clés séparé, pas de dépendance à ESIGN_OTP_ENABLED.
   (b) proposal_data / proposal_pdf — off (default) → servi comme aujourd'hui ;
@@ -28,7 +29,8 @@ from apps.ventes.models import Devis, ShareLink
 from apps.ventes.services import (
     request_otp_lecture,
     validate_otp_lecture,
-    otp_lecture_verified,
+    emettre_preuve_lecture,
+    preuve_lecture_valide_pour_lien,
 )
 from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
 
@@ -87,12 +89,12 @@ class TestOtpLectureServices(TestCase):
         'verified' (nothing to unlock)."""
         devis = make_devis(self.company, self.client_obj, 'DEV-OTPL-1')
         link = make_link(devis, otp_lecture=False)
-        self.assertTrue(otp_lecture_verified(link))
+        self.assertTrue(preuve_lecture_valide_pour_lien(link, ''))
 
     def test_otp_lecture_verified_false_until_validated(self):
         devis = make_devis(self.company, self.client_obj, 'DEV-OTPL-2')
         link = make_link(devis, otp_lecture=True)
-        self.assertFalse(otp_lecture_verified(link))
+        self.assertFalse(preuve_lecture_valide_pour_lien(link, ''))
 
     def test_request_stores_code_in_separate_cache_namespace(self):
         devis = make_devis(self.company, self.client_obj, 'DEV-OTPL-3')
@@ -108,7 +110,11 @@ class TestOtpLectureServices(TestCase):
         cache.set(_otp_lecture_cache_key(link.token), '424242', 600)
         err = validate_otp_lecture(link, '424242')
         self.assertIsNone(err)
-        self.assertTrue(otp_lecture_verified(link))
+        # ASEC23 — le code valide ne déverrouille RIEN globalement : seule la
+        # preuve émise pour le navigateur vérifié ouvre la lecture.
+        self.assertFalse(preuve_lecture_valide_pour_lien(link, ''))
+        preuve = emettre_preuve_lecture(link)
+        self.assertTrue(preuve_lecture_valide_pour_lien(link, preuve))
 
     def test_validate_wrong_code_keeps_it_locked(self):
         devis = make_devis(self.company, self.client_obj, 'DEV-OTPL-5')
@@ -116,7 +122,7 @@ class TestOtpLectureServices(TestCase):
         cache.set(_otp_lecture_cache_key(link.token), '111111', 600)
         err = validate_otp_lecture(link, '000000')
         self.assertIsNotNone(err)
-        self.assertFalse(otp_lecture_verified(link))
+        self.assertFalse(preuve_lecture_valide_pour_lien(link, ''))
 
     def test_validate_missing_code_returns_error(self):
         devis = make_devis(self.company, self.client_obj, 'DEV-OTPL-6')
@@ -151,8 +157,11 @@ class TestProposalDataOtpLectureGate(TestCase):
         devis = make_devis(self.company, self.client_obj, 'DEV-OTPL-D3')
         link = make_link(devis, otp_lecture=True)
         cache.set(_otp_lecture_cache_key(link.token), '555555', 600)
-        validate_otp_lecture(link, '555555')
-        resp = DjangoClient().get(f'/api/django/public/proposal/{link.token}/data/')
+        self.assertIsNone(validate_otp_lecture(link, '555555'))
+        preuve = emettre_preuve_lecture(link)
+        resp = DjangoClient().get(
+            f'/api/django/public/proposal/{link.token}/data/',
+            HTTP_X_PROPOSITION_PREUVE=preuve)
         self.assertEqual(resp.status_code, 200)
 
     def test_invalid_token_still_404s_before_otp_gate(self):
@@ -210,8 +219,11 @@ class TestOtpLecturePublicEndpoints(TestCase):
             f'/api/django/public/proposal/{link.token}/otp-lecture/verifier/',
             {'otp_code': code}, content_type='application/json')
         self.assertEqual(resp.status_code, 200)
+        # ASEC23 — la preuve du navigateur vérifié, relayée en en-tête.
+        preuve = resp.json()['preuve']
         data_resp = self.api.get(
-            f'/api/django/public/proposal/{link.token}/data/')
+            f'/api/django/public/proposal/{link.token}/data/',
+            HTTP_X_PROPOSITION_PREUVE=preuve)
         self.assertEqual(data_resp.status_code, 200)
 
     def test_invalid_token_returns_404(self):

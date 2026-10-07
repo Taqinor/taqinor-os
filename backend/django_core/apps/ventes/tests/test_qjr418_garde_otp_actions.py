@@ -60,8 +60,11 @@ class _BaseActivationOption(TestCase):
                        args=[self.link.token])
 
     def _deverrouiller(self):
-        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
-        cache.set(_otp_lecture_verified_key(self.link.token), True, 3600)
+        # ASEC23 — la preuve du navigateur vérifié, relayée en en-tête (plus
+        # de drapeau global au jeton).
+        from apps.ventes.services import emettre_preuve_lecture
+        self.anon.credentials(
+            HTTP_X_PROPOSITION_PREUVE=emettre_preuve_lecture(self.link))
 
 
 class ActivationOptionGardeTests(_BaseActivationOption):
@@ -123,13 +126,19 @@ class InventaireDesActionsPubliquesTests(TestCase):
     """
 
     #: Actions publiques (``@api_view(['POST'])``) qui DOIVENT consulter
-    #: ``otp_lecture_verified``.
+    #: ``preuve_lecture_valide`` (ASEC23 : preuve PAR NAVIGATEUR).
     GARDEES = {
         'proposal_accept':
             'QJR132 — la signature électronique engage le client : elle est '
             'au moins aussi gardée que la lecture.',
         'proposal_activate_option':
             'QJR418/DR2 — activer une option CHANGE le périmètre facturé.',
+        'proposal_contact_request':
+            'ASEC23/D-ASEC-3 — demander un rappel AU NOM du client (chatter du '
+            'lead + notifications) depuis la page : seul le navigateur vérifié.',
+        'proposal_engagement':
+            'ASEC23/D-ASEC-3 — le beacon écrit ShareLink.engagement et des '
+            'notes chatter : un tiers sans preuve ne mesure rien.',
     }
 
     #: Actions publiques délibérément NON gardées, chacune avec sa raison.
@@ -140,14 +149,6 @@ class InventaireDesActionsPubliquesTests(TestCase):
             'DEMANDE le code de lecture : même raison circulaire.',
         'proposal_verify_otp_lecture':
             'VÉRIFIE le code : c\'est le point d\'entrée de la garde.',
-        'proposal_contact_request':
-            'Le client demande à être RAPPELÉ : aucune donnée du devis n\'est '
-            'lue ni modifiée, et un client qui a perdu son code doit pouvoir '
-            'joindre son commercial.',
-        'proposal_engagement':
-            'Beacon d\'engagement par section (XSAL16) : aucune donnée '
-            'personnelle, aucune mutation du devis, une section inconnue est '
-            'simplement ignorée.',
         'proposal_virement_declare':
             'Déclaration de virement : ne change ni statut ni montant '
             '(pose une note chatter, règle #4) et le client qui vient de '
@@ -188,10 +189,10 @@ class InventaireDesActionsPubliquesTests(TestCase):
 
         for nom in self.GARDEES:
             with self.subTest(action=nom, attendu='gardée'):
-                self.assertIn('otp_lecture_verified', actions[nom])
+                self.assertIn('preuve_lecture_valide', actions[nom])
         for nom in self.NON_GARDEES:
             with self.subTest(action=nom, attendu='non gardée'):
-                self.assertNotIn('otp_lecture_verified', actions[nom])
+                self.assertNotIn('preuve_lecture_valide', actions[nom])
 
     def test_chaque_action_non_gardee_porte_une_raison(self):
         for nom, raison in self.NON_GARDEES.items():
