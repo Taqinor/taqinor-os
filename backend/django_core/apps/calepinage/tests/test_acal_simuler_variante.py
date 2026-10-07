@@ -132,10 +132,33 @@ class SimulerVarianteTest(BaseApiCalepinage):
         # Lot 2 critique #30 — SIMULÉE, la variante garde ses modules / kWc
         # (lus dans sa conception, les blocs de simulation n'en portent pas).
         self.assertEqual(lignes['A']['total_modules'], 14)
-        self.assertIsNotNone(lignes['A']['kwc'])
+        # Le document de A ne déclare AUCUNE fiche module : son kWc n'est
+        # pas supposé (mesures_du_document, jamais panelWatt) — la ligne
+        # rend exactement la lecture de la conception.
+        from apps.calepinage.services.mesures import mesures_du_document
+        self.a.refresh_from_db()
+        self.assertEqual(lignes['A']['kwc'],
+                         mesures_du_document(self.a.roof_layout)['kwc'])
         self.assertFalse(lignes['B']['simulee'])
         self.assertEqual(lignes['B']['source_mesures'], 'conception')
         self.assertEqual(lignes['B']['total_modules'], 10)
+
+    def test_variante_simulee_garde_le_kwc_de_sa_fiche(self):
+        """Lot 2 critique #30 — une variante SIMULÉE dont la conception
+        déclare sa fiche garde modules ET kWc (les blocs de simulation n'en
+        portent pas)."""
+        from apps.calepinage.selectors import _mesures_variante
+
+        layout = _layout(_zone(1, 14, 180.0))
+        layout['modules'] = [{'id': 'm710', 'pmaxWc': 710}]
+        layout['zones'][0]['geometry']['moduleId'] = 'm710'
+        variante = CalepinageVariante(
+            calepinage=self.calepinage, nom='F', roof_layout=layout,
+            resultat={'simulation': {'p50_kwh': 1000}})
+        mesures = _mesures_variante(variante)
+        self.assertEqual(mesures['source_mesures'], 'simulation')
+        self.assertEqual(mesures['total_modules'], 14)
+        self.assertEqual(mesures['kwc'], 9.94)
 
     def test_modifier_variante_invalide(self):
         self._simuler_service(self.a)
