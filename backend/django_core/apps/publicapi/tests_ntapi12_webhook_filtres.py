@@ -92,7 +92,9 @@ class Ntapi12LivraisonFiltreeTests(TestCase):
             filtres=filtres or {})
 
     def _dispatch(self, payload, event=EVENT_FACTURE_PAID):
-        with patch('apps.publicapi.tasks.deliver_webhook.delay') as envoi:
+        # AANA31 — la mise en file a lieu AU COMMIT : exécutée ici.
+        with patch('apps.publicapi.tasks.deliver_webhook.delay') as envoi, \
+                self.captureOnCommitCallbacks(execute=True):
             delivery.dispatch_event(self.co.id, event, payload)
         return envoi
 

@@ -773,6 +773,43 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         layout, panneaux, kwc, company=company)
     layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
 
+    # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
+    # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
+    # l'étude déjà écrite par la construction.
+    # ERR-E2E-AUTODEVIS-LENT (07/10/2026) — la fusion est confiée au pipeline
+    # (``completer_etude``), qui l'exécute APRÈS l'écriture des lignes et de
+    # l'étude (le scénario est donc déjà arrêté, comme avant) et AVANT ses
+    # quatre études. Elle tournait après le pipeline : les études étaient
+    # calculées une première fois SANS ces clés, jetées, puis recalculées —
+    # ~35 % de la requête (mesure sur l'image prod : 4,4 s → 2,8 s), assez pour
+    # faire dépasser 15 s au POST /devis/auto/ en CI (figures-parite.spec).
+    # Le refus du schéma reste rendu APRÈS le pipeline (même 422, même
+    # brouillon laissé qu'avant).
+    refus_extra = []
+
+    def _completer_etude(devis):
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans ``domain.etude_schema``.
+        # QJR64 / D12 — LE SCÉNARIO PASSE PAR LE REGISTRE, plus par un cas
+        # particulier codé en dur. Le scénario qui fait foi est
+        # ``scenario_effectif`` (surcharge déclarée, sinon celui que la
+        # construction vient d'arrêter) : un corps de requête ne peut plus
+        # l'écraser, et une déclaration humaine survit à tout recalcul aval.
+        from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
+        _scenario_arrete = scenario_effectif(
+            devis, (devis.etude_params or {}).get('scenario'))
+        _extra = {cle: valeur for cle, valeur in etude_extra.items()
+                  if not (_scenario_arrete and cle == 'scenario')}
+        if _scenario_arrete and _scenario_arrete != (
+                devis.etude_params or {}).get('scenario'):
+            _extra['scenario'] = _scenario_arrete
+        if _extra:
+            try:
+                ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)
+            except ValueError as exc:
+                # ``etude_extra`` vient du CORPS DE REQUÊTE : un refus du
+                # schéma doit sortir en 422 NOMMÉ, jamais en 500.
+                refus_extra.append(str(exc))
+
     resultat = appliquer(None, IntentionDevis(
         origine=origine or ORIGINE_AUTO,
         company=company,
@@ -803,6 +840,9 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         # le devis écrit ne seraient plus le même kit.
         structure_produit_id=structure_produit_id,
         structure_type=structure_type,
+        completer_etude=(_completer_etude
+                         if isinstance(etude_extra, dict) and etude_extra
+                         else None),
     ))
     devis = resultat['devis']
     # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire
@@ -818,31 +858,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # faire atterrir ailleurs). Le second appel que ce corps faisait ici est
     # SUPPRIMÉ : il reposait la même valeur sur la même instance.
 
-    # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
-    # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
-    # l'étude déjà écrite par la construction.
-    if isinstance(etude_extra, dict) and etude_extra:
-        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans ``domain.etude_schema``.
-        # QJR64 / D12 — LE SCÉNARIO PASSE PAR LE REGISTRE, plus par un cas
-        # particulier codé en dur. Le scénario qui fait foi est
-        # ``scenario_effectif`` (surcharge déclarée, sinon celui que la
-        # construction vient d'arrêter) : un corps de requête ne peut plus
-        # l'écraser, et une déclaration humaine survit à tout recalcul aval.
-        from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
-        _scenario_arrete = scenario_effectif(
-            devis, (devis.etude_params or {}).get('scenario'))
-        _extra = {cle: valeur for cle, valeur in etude_extra.items()
-                  if not (_scenario_arrete and cle == 'scenario')}
-        if _scenario_arrete and _scenario_arrete != (
-                devis.etude_params or {}).get('scenario'):
-            _extra['scenario'] = _scenario_arrete
-        if _extra:
-            try:
-                ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)
-            except ValueError as exc:
-                # ``etude_extra`` vient du CORPS DE REQUÊTE : un refus du
-                # schéma doit sortir en 422 NOMMÉ, jamais en 500.
-                raise AutoDevisError(str(exc), field='etude_params')
+    # U3/PACT10 — les clés d'étude de l'appelant sont déjà fusionnées (par
+    # ``_completer_etude``, dans le pipeline, avant ses études) ; un refus du
+    # schéma sort ici, après le pipeline, en 422 NOMMÉ comme avant.
+    if refus_extra:
+        raise AutoDevisError(refus_extra[0], field='etude_params')
 
     # L-1V (incident test16, 27/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE,
     # comme sur les chemins d'écriture du générateur (``atomic``,

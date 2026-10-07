@@ -73,7 +73,7 @@ class Ntwms20Base(TestCase):
         self.public = APIClient()
 
     def _url(self, token=None):
-        return (f'/api/django/stock/public/tiers/'
+        return (f'/api/django/public/stock/tiers/'
                 f'{token or self.jeton.token}/solde/')
 
 

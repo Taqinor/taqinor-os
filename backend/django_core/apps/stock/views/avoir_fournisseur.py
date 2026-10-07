@@ -56,6 +56,37 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
             )
         create_with_reference(AvoirFournisseur, 'AVF', company, _save)
 
+    def update(self, request, *args, **kwargs):
+        """ASTK24 — seul un avoir BROUILLON se modifie : validé ou imputé,
+        ses montants et son fournisseur sont figés (les imputations portent
+        déjà sur ces montants)."""
+        avoir = self.get_object()
+        if avoir.statut != AvoirFournisseur.Statut.BROUILLON:
+            return Response(
+                {'detail': 'Avoir validé : non modifiable.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        """ASTK85 — un avoir portant au moins une imputation sur une
+        facture n'est jamais supprimable (la CASCADE effaçait l'imputation et
+        relevait le solde dû de la facture en silence). Même patron que la
+        garde paiements de ``FactureFournisseurViewSet.perform_destroy``."""
+        from rest_framework.exceptions import ValidationError
+        imputations = list(
+            instance.imputations.select_related('facture'))
+        if imputations:
+            refs = ', '.join(sorted({
+                i.facture.reference for i in imputations}))
+            raise ValidationError({
+                'detail': (
+                    f'Cet avoir fournisseur est imputé sur {refs} '
+                    f'(montant imputé : {instance.montant_impute} MAD) : '
+                    'suppression refusée.'
+                ),
+            })
+        instance.delete()
+
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         avoir = self.get_object()

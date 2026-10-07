@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import { useI18n, LOCALES } from './context'
 import { patchLangueInterface } from './langueInterfaceApi'
+import { fetchTranslationOverrides } from './overridesApi'
 
 // NTI18N3 — synchronise la locale d'interface avec `CustomUser.langue_interface`
 // (serveur), SANS coupler `I18nProvider` (cadre i18n 0-dépendance, N93) à Redux
@@ -20,7 +21,7 @@ import { patchLangueInterface } from './langueInterfaceApi'
 export default function ServerLocaleSync() {
   const isAuthenticated = useSelector((s) => s.auth?.isAuthenticated)
   const serverLocale = useSelector((s) => s.auth?.user?.langue_interface)
-  const { locale, setLocale } = useI18n()
+  const { locale, setLocale, setOverrides } = useI18n()
   // Dernière valeur SERVEUR connue — distingue « on vient de la recevoir »
   // (ne pas la renvoyer aussitôt) de « l'utilisateur vient de changer
   // localement » (à persister).
@@ -32,6 +33,19 @@ export default function ServerLocaleSync() {
   // (déjà mise à jour ci-dessus) et enverrait un PATCH parasite avec
   // l'ancienne locale avant même que l'adoption ne soit visible.
   const ignorerProchainePersistance = useRef(false)
+
+  // CAD177 : surcharges de traduction de la société, chargées UNE fois la
+  // session établie (jamais au montage : un visiteur public ne doit pas
+  // déclencher de 401). Échec silencieux → catalogue statique.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined
+    let alive = true
+    fetchTranslationOverrides()
+      .then((data) => { if (alive && data) setOverrides(data) })
+      .catch(() => { /* repli silencieux sur le catalogue statique */ })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (!serverLocale || !LOCALES.includes(serverLocale)) return

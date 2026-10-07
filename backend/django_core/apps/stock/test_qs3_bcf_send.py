@@ -53,7 +53,7 @@ class BcfSendBase(TestCase):
     def setUp(self):
         self.company = _company('qs3-co')
         self.user = _user(self.company, 'qs3-user',
-                          permissions=['stock_modifier', 'stock_voir'])
+                          permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Solar Wholesale',
             telephone='0612345678', email='fournisseur@exemple.ma')

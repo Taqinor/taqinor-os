@@ -176,7 +176,7 @@ const ETIQUETTE_LARGEUR_M = 1.9;
 const ALTITUDE_DESSIN_PAR_DEFAUT_M = 0;
 
 const DEG2RAD = Math.PI / 180;
-const RAYON_TERRE_M = 6378137;
+import { WGS84_RADIUS as RAYON_TERRE_M } from '../../lib/geo';
 const DEG2M = DEG2RAD * RAYON_TERRE_M;
 
 // ──────────────────────────────────────────────────────── lecture du document

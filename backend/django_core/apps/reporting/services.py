@@ -16,7 +16,62 @@ from django.utils import timezone
 DEFAULT_WEB_VITALS_RETENTION_DAYS = 30
 
 
-def build_leaderboard(signed_devis, kwc_by_devis, leads_by_owner):
+def q_lead_gagne():
+    """AANA21 / D-AANA-1 — filtre ORM d'un lead GAGNÉ : étape SIGNED (clé lue
+    dans ``apps.crm.stages``, jamais un littéral) ET non perdu."""
+    from django.db.models import Q
+
+    from apps.crm import stages
+    return Q(stage=stages.SIGNED, perdu=False)
+
+
+def est_lead_gagne(lead):
+    """AANA21 / D-AANA-1 — un lead ``perdu=True`` n'est JAMAIS gagné, même à
+    l'étape SIGNED (règle de ``crm/kpis.py``)."""
+    from apps.crm import stages
+    return lead.stage == stages.SIGNED and not getattr(lead, 'perdu', False)
+
+
+def _leads_gagnes(leads):
+    """AANA21 — LE calcul unique des leads gagnés du reporting.
+
+    Accepte un QuerySet de ``Lead`` (renvoie un QuerySet filtré) ou un
+    itérable de leads déjà chargés (renvoie une liste). Funnel, rapports
+    planifiés, cohortes, gain/perte par source et classement passent par ici
+    (ou par ``q_lead_gagne`` / ``est_lead_gagne``) — jamais un recalcul local.
+    """
+    from django.db.models import QuerySet
+    if isinstance(leads, QuerySet):
+        return leads.filter(q_lead_gagne())
+    return [le for le in leads if est_lead_gagne(le)]
+
+
+def taux_gain(leads):
+    """AANA21 / D-AANA-1 — LE taux de gain du reporting : leads gagnés (SIGNED
+    non perdus) ÷ leads NON perdus, en %, 1 décimale ; ``None`` sans lead non
+    perdu. ``leads`` = itérable de leads déjà chargés."""
+    leads = list(leads)
+    actifs = [le for le in leads if not getattr(le, 'perdu', False)]
+    if not actifs:
+        return None
+    return round(len(_leads_gagnes(actifs)) / len(actifs) * 100, 1)
+
+
+def leads_de_la_fenetre(co, start=None, end=None):
+    """AANA22 — LA fenêtre de leads du classement : leads non archivés de la
+    société, bornes ``date_creation__date`` INCLUSIVES (un lead créé le jour
+    ``end`` à 15 h est dedans). Unique construction, partagée par le tableau
+    commercial et l'export classement."""
+    from apps.crm.models import Lead
+    qs = Lead.objects.filter(**co, is_archived=False)
+    if start:
+        qs = qs.filter(date_creation__date__gte=start)
+    if end:
+        qs = qs.filter(date_creation__date__lte=end)
+    return list(qs.only('id', 'owner_id', 'stage', 'perdu'))
+
+
+def build_leaderboard(signed_devis, kwc_by_devis, co, start=None, end=None):
     """WIR82 — calcul UNIQUE du classement commercial.
 
     Source partagée consommée à la fois par
@@ -28,8 +83,11 @@ def build_leaderboard(signed_devis, kwc_by_devis, leads_by_owner):
       - ``signed_devis`` : itérable de Devis signés (statut ACCEPTE), avec
         ``lead``/``lead__owner``/``created_by`` select_related.
       - ``kwc_by_devis`` : dict {devis_id: Decimal(kWc installé)}.
-      - ``leads_by_owner`` : dict {owner_id (0 si aucun): nb de leads} pour le
-        taux de victoire individuel.
+      - ``co`` / ``start`` / ``end`` : portée société et fenêtre (dates).
+        AANA22 — la fenêtre de leads est construite ICI
+        (``leads_de_la_fenetre``), jamais par l'appelant : les deux écrans ne
+        peuvent plus diverger. AANA21 : le taux de victoire individuel est LE
+        taux de gain partagé (``taux_gain`` : gagnés ÷ non perdus).
 
     Retourne la liste de lignes triée par CA HT décroissant (mêmes clés et
     formats qu'avant l'extraction : chaînes pour les décimaux).
@@ -55,13 +113,15 @@ def build_leaderboard(signed_devis, kwc_by_devis, leads_by_owner):
         slot['nb_devis'] += 1
         slot['kwc'] += kwc_by_devis.get(d.id, Decimal('0'))
 
+    # AANA21 — leads groupés par propriétaire, propriétaire absent = clé 0
+    # (même clé que les devis ci-dessus).
+    leads_by_owner = {}
+    for le in leads_de_la_fenetre(co, start, end):
+        leads_by_owner.setdefault(le.owner_id or 0, []).append(le)
+
     rows = []
     for uid, slot in agg.items():
-        total_leads = leads_by_owner.get(uid, 0)
-        win_rate = (
-            round(slot['nb_devis'] / total_leads * 100, 1)
-            if total_leads else None
-        )
+        win_rate = taux_gain(leads_by_owner.get(uid, []))
         avg_deal = (
             round(float(slot['ca_ht']) / slot['nb_devis'], 2)
             if slot['nb_devis'] else 0

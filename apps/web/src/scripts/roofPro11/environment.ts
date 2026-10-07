@@ -11,7 +11,7 @@ import { type LngLat } from '../../lib/roof';
 import { type ShadeObstructionENU } from '../../lib/shadingEngine';
 
 const DEG2RAD = Math.PI / 180;
-const WGS84_RADIUS = 6378137;
+import { WGS84_RADIUS } from '../../lib/geo';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 
 export type EnvironmentKind = 'arbre' | 'batiment';

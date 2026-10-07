@@ -429,7 +429,9 @@ class LivraisonEnBaseTests(TestCase):
                                   side_effect=faux_post) as post, \
                 mock.patch.object(delivery.httpx, 'get',
                                   side_effect=AssertionError('GET interdit'),
-                                  create=True) as get:
+                                  create=True) as get, \
+                self.captureOnCommitCallbacks(execute=True):
+            # AANA31 — la mise en file a lieu AU COMMIT : exécutée ici.
             simulation._annoncer_simulation(self.cal)
 
         post.assert_called_once()
@@ -458,6 +460,7 @@ class LivraisonEnBaseTests(TestCase):
 
         self.webhook.events = [EVENT_CALEPINAGE_VALIDE]
         self.webhook.save(update_fields=['events'])
-        with mock.patch.object(tasks.deliver_webhook, 'delay') as envoi:
+        with mock.patch.object(tasks.deliver_webhook, 'delay') as envoi, \
+                self.captureOnCommitCallbacks(execute=True):
             simulation._annoncer_simulation(self.cal)
         envoi.assert_not_called()

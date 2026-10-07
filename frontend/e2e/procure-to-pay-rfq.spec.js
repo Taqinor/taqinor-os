@@ -9,7 +9,11 @@
 import { test, expect } from '@playwright/test'
 import { uniq } from './helpers'
 
-test('NTP2P43: RFQ multi-fournisseurs → attribution → BCF verrouillé', async ({ page }) => {
+// CAD177 : l'écran interne « Consultation fournisseurs » (/chantiers/consultations)
+// N'EXISTE PAS dans frontend/src (aucune route ni page RFQ, seul le backend
+// YPROC6 `views/rfq.py` est livré). Spec en `fixme` tant que NTP2P43 n'a pas
+// son écran : le fondateur décide si on le construit — on ne l'invente pas ici.
+test.fixme('NTP2P43: RFQ multi-fournisseurs → attribution → BCF verrouillé', async ({ page }) => {
   const objet = uniq('E2E RFQ')
 
   await page.goto('/chantiers/consultations')

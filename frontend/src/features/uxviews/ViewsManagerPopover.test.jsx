@@ -10,6 +10,7 @@ const renameViewMock = vi.fn()
 const deleteViewMock = vi.fn(() => Promise.resolve())
 const setDefaultForMyRoleMock = vi.fn(() => Promise.resolve())
 const reorderMineMock = vi.fn()
+const refreshMock = vi.fn()
 let hookState
 
 vi.mock('./useServerSavedViews', () => ({
@@ -36,7 +37,7 @@ beforeEach(() => {
     mine: MINE, team: TEAM, activeView: null, loading: false,
     applyView: applyViewMock, duplicateView: duplicateViewMock, renameView: renameViewMock,
     deleteView: deleteViewMock, setDefaultForMyRole: setDefaultForMyRoleMock,
-    reorderMine: reorderMineMock,
+    reorderMine: reorderMineMock, refresh: refreshMock,
   }
 })
 afterEach(() => cleanup())
@@ -56,6 +57,14 @@ describe('ViewsManagerPopover (NTUX2)', () => {
     fireEvent.click(await screen.findByText('Perso'))
     expect(applyViewMock).toHaveBeenCalledWith(MINE[0])
     expect(onApply).toHaveBeenCalledWith({ filtres: { a: 1 } })
+  })
+
+  it('relit la liste à chaque ouverture (vue créée par une autre instance du hook)', async () => {
+    render(<ViewsManagerPopover ecran="crm.leads" onApply={() => {}} />)
+    expect(refreshMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('uxviews-open-btn'))
+    await screen.findByText('Perso')
+    expect(refreshMock).toHaveBeenCalledTimes(1)
   })
 
   it('« Dupliquer » appelle duplicateView avec la vue', async () => {

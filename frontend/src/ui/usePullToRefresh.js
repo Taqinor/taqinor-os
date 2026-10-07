@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   dampenPull, shouldArmPull, shouldTriggerRefresh,
   DEFAULT_MAX_PULL, DEFAULT_THRESHOLD,
@@ -25,14 +25,22 @@ import {
  * @param {() => (void|Promise)} onRefresh appelé au relâchement au-delà du seuil.
  * @param {{ threshold?: number, maxPull?: number, disabled?: boolean }} [opts]
  * @returns {{
- *   containerProps: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel },
+ *   containerProps: { ref, onTouchStart, onTouchEnd, onTouchCancel },
  *   pullDistance: number,
  *   refreshing: boolean,
  * }}
  *
  * `containerProps` se posent sur l'élément scrollable lui-même (celui qui a
- * `overflow: auto/scroll`) ; `scrollTop` y est lu directement via `currentTarget`
- * pour ne dépendre d'aucune ref supplémentaire côté appelant.
+ * `overflow: auto/scroll`) ; `scrollTop` y est lu directement via `currentTarget`.
+ *
+ * CAD177 — le `touchmove` n'est PAS un prop React : React enregistre
+ * `touchstart`/`touchmove`/`wheel` en écouteurs PASSIFS à la racine, donc le
+ * `preventDefault()` du tirage y était sans effet (le scroll natif n'était pas
+ * retenu) et Chrome journalisait « Unable to preventDefault inside passive
+ * event listener invocation » à chaque mouvement (marcheur aléatoire, QAH7).
+ * Il est posé en écouteur NATIF `{ passive: false }` via la `ref` fournie
+ * dans `containerProps` — l'appelant ne doit donc pas poser sa propre `ref`
+ * sur ce même élément.
  */
 export function usePullToRefresh(onRefresh, opts = {}) {
   const { threshold = DEFAULT_THRESHOLD, maxPull = DEFAULT_MAX_PULL, disabled = false } = opts
@@ -77,6 +85,21 @@ export function usePullToRefresh(onRefresh, opts = {}) {
     setPullDistance(dampenPull(deltaY, maxPull))
   }, [disabled, refreshing, maxPull, reset])
 
+  // CAD177 — écouteur natif NON passif (voir l'en-tête) : la dernière version
+  // du gestionnaire est lue via une ref, l'écouteur n'est posé qu'une fois par
+  // élément.
+  const [noeud, setNoeud] = useState(null)
+  const moveRef = useRef(onTouchMove)
+  useLayoutEffect(() => {
+    moveRef.current = onTouchMove
+  }, [onTouchMove])
+  useEffect(() => {
+    if (!noeud) return undefined
+    const surMouvement = (e) => moveRef.current(e)
+    noeud.addEventListener('touchmove', surMouvement, { passive: false })
+    return () => noeud.removeEventListener('touchmove', surMouvement)
+  }, [noeud])
+
   const onTouchEnd = useCallback(() => {
     if (disabled || refreshing) return
     const armedGesture = armed.current
@@ -92,8 +115,8 @@ export function usePullToRefresh(onRefresh, opts = {}) {
 
   return {
     containerProps: {
+      ref: setNoeud,
       onTouchStart,
-      onTouchMove,
       onTouchEnd,
       onTouchCancel: reset,
     },

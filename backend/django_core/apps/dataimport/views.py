@@ -221,7 +221,12 @@ def save_mapping(request):
         return Response(
             {'detail': 'Mapping invalide (dict colonne→champ attendu).'},
             status=400)
-    obj = services.save_mapping(request.user.company, target, nom, mapping)
+    # AANA9 — un champ hors ``FIELD_MAPS[target]`` (company_id, owner_id…)
+    # est refusé en 400 lisible, jamais enregistré.
+    try:
+        obj = services.save_mapping(request.user.company, target, nom, mapping)
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
     return Response({
         'id': obj.pk, 'target': obj.entity, 'nom': obj.nom, 'mapping': obj.mapping,
     })

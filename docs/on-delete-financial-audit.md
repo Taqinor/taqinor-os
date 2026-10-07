@@ -4,17 +4,18 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 
 | Clé (chemin::Modèle.champ) | Fichier:ligne | Cible | Politique |
 |---|---|---|---|
-| `backend/django_core/apps/achats/models.py::PrixFournisseur.company` | backend/django_core/apps/achats/models.py:43 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::PrixFournisseur.produit` | backend/django_core/apps/achats/models.py:46 | stock.Produit | PROTECT |
-| `backend/django_core/apps/achats/models.py::BonCommandeFournisseur.company` | backend/django_core/apps/achats/models.py:115 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneBonCommandeFournisseur.produit` | backend/django_core/apps/achats/models.py:282 | stock.Produit | SET_NULL |
-| `backend/django_core/apps/achats/models.py::ReceptionFournisseur.company` | backend/django_core/apps/achats/models.py:378 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneReceptionFournisseur.produit` | backend/django_core/apps/achats/models.py:426 | stock.Produit | SET_NULL |
-| `backend/django_core/apps/achats/models.py::FactureFournisseur.company` | backend/django_core/apps/achats/models.py:482 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneFactureFournisseur.produit` | backend/django_core/apps/achats/models.py:611 | stock.Produit | SET_NULL |
-| `backend/django_core/apps/achats/models.py::PaiementFournisseur.company` | backend/django_core/apps/achats/models.py:665 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::RetourFournisseur.company` | backend/django_core/apps/achats/models.py:737 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneRetourFournisseur.produit` | backend/django_core/apps/achats/models.py:770 | stock.Produit | PROTECT |
+| `backend/django_core/apps/achats/models.py::PrixFournisseur.company` | backend/django_core/apps/achats/models.py:45 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::PrixFournisseur.produit` | backend/django_core/apps/achats/models.py:48 | stock.Produit | PROTECT |
+| `backend/django_core/apps/achats/models.py::BonCommandeFournisseur.company` | backend/django_core/apps/achats/models.py:117 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::LigneBonCommandeFournisseur.produit` | backend/django_core/apps/achats/models.py:284 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/achats/models.py::ReceptionFournisseur.company` | backend/django_core/apps/achats/models.py:380 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::LigneReceptionFournisseur.produit` | backend/django_core/apps/achats/models.py:428 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/achats/models.py::FactureFournisseur.company` | backend/django_core/apps/achats/models.py:493 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::ImputationAcompteFournisseur.company` | backend/django_core/apps/achats/models.py:630 | authentication.Company | PROTECT |
+| `backend/django_core/apps/achats/models.py::LigneFactureFournisseur.produit` | backend/django_core/apps/achats/models.py:659 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/achats/models.py::PaiementFournisseur.company` | backend/django_core/apps/achats/models.py:713 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::RetourFournisseur.company` | backend/django_core/apps/achats/models.py:785 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::LigneRetourFournisseur.produit` | backend/django_core/apps/achats/models.py:818 | stock.Produit | PROTECT |
 | `backend/django_core/apps/adminops/models.py::SandboxEnvironment.sandbox_company` | backend/django_core/apps/adminops/models.py:54 | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py::DemandeInscription.company_creee` | backend/django_core/apps/adminops/models.py:274 | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py::AdminOpsSettings.company` | backend/django_core/apps/adminops/models.py:421 | authentication.Company | CASCADE |
@@ -71,8 +72,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/customfields/models.py::CustomObjectDef.company` | backend/django_core/apps/customfields/models.py:180 | authentication.Company | CASCADE |
 | `backend/django_core/apps/customfields/models.py::CustomRecord.company` | backend/django_core/apps/customfields/models.py:223 | authentication.Company | CASCADE |
 | `backend/django_core/apps/dataimport/models.py::ExternalRef.company` | backend/django_core/apps/dataimport/models.py:19 | authentication.Company | CASCADE |
-| `backend/django_core/apps/dataimport/models.py::ImportMapping.company` | backend/django_core/apps/dataimport/models.py:49 | authentication.Company | CASCADE |
-| `backend/django_core/apps/dataimport/models.py::ImportJob.company` | backend/django_core/apps/dataimport/models.py:79 | authentication.Company | CASCADE |
+| `backend/django_core/apps/dataimport/models.py::ImportMapping.company` | backend/django_core/apps/dataimport/models.py:54 | authentication.Company | CASCADE |
+| `backend/django_core/apps/dataimport/models.py::ImportJob.company` | backend/django_core/apps/dataimport/models.py:84 | authentication.Company | CASCADE |
 | `backend/django_core/apps/facturation/models.py::Facture.company` | backend/django_core/apps/facturation/models.py:45 | authentication.Company | CASCADE |
 | `backend/django_core/apps/facturation/models.py::Facture.bon_commande` | backend/django_core/apps/facturation/models.py:53 | ventes.BonCommande | SET_NULL |
 | `backend/django_core/apps/facturation/models.py::Facture.devis` | backend/django_core/apps/facturation/models.py:64 | ventes.Devis | SET_NULL |
@@ -316,14 +317,14 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/portail/models.py::DocumentClientPortail.company` | backend/django_core/apps/portail/models.py:333 | authentication.Company | CASCADE |
 | `backend/django_core/apps/portail/models.py::JalonChantierPortail.company` | backend/django_core/apps/portail/models.py:417 | authentication.Company | CASCADE |
 | `backend/django_core/apps/portail/models.py::DemandeTicketPortail.company` | backend/django_core/apps/portail/models.py:488 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::ApiKey.company` | backend/django_core/apps/publicapi/models.py:75 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::Webhook.company` | backend/django_core/apps/publicapi/models.py:185 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::WebhookDelivery.company` | backend/django_core/apps/publicapi/models.py:250 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::WebhookDeliveryAttempt.company` | backend/django_core/apps/publicapi/models.py:313 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::IdempotencyRecord.company` | backend/django_core/apps/publicapi/models.py:356 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::ServiceAccount.company` | backend/django_core/apps/publicapi/models.py:406 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::SandboxTenant.company` | backend/django_core/apps/publicapi/models.py:510 | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py::SandboxTenant.sandbox_company` | backend/django_core/apps/publicapi/models.py:516 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::ApiKey.company` | backend/django_core/apps/publicapi/models.py:76 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::Webhook.company` | backend/django_core/apps/publicapi/models.py:186 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::WebhookDelivery.company` | backend/django_core/apps/publicapi/models.py:251 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::WebhookDeliveryAttempt.company` | backend/django_core/apps/publicapi/models.py:314 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::IdempotencyRecord.company` | backend/django_core/apps/publicapi/models.py:357 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::ServiceAccount.company` | backend/django_core/apps/publicapi/models.py:407 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::SandboxTenant.company` | backend/django_core/apps/publicapi/models.py:511 | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py::SandboxTenant.sandbox_company` | backend/django_core/apps/publicapi/models.py:517 | authentication.Company | CASCADE |
 | `backend/django_core/apps/records/models.py::ActivityType.company` | backend/django_core/apps/records/models.py:89 | authentication.Company | CASCADE |
 | `backend/django_core/apps/records/models.py::Activity.company` | backend/django_core/apps/records/models.py:138 | authentication.Company | CASCADE |
 | `backend/django_core/apps/records/models.py::Tag.company` | backend/django_core/apps/records/models.py:241 | authentication.Company | CASCADE |

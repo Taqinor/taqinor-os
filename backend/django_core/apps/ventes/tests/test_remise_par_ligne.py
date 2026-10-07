@@ -391,6 +391,21 @@ class TestRenduPdfRemiseParLigne(TestCase):
             G._render_pdf_weasyprint = orig
         return cap['html'], HTML(string=cap['html']).render()
 
+    def _pages_servies(self, devis, pdf_options=None):
+        """Nombre de pages du PDF que le dispatch RÉEL
+        (``generate_premium_devis_pdf``, upload mocké) produit."""
+        from unittest.mock import patch
+
+        import fitz
+
+        from apps.ventes.quote_engine import builder
+
+        with patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket'), \
+                patch('apps.ventes.utils.pdf._upload_pdf') as up:
+            builder.generate_premium_devis_pdf(
+                devis.id, pdf_options=pdf_options, persist=False)
+        return len(fitz.open(stream=up.call_args[0][0], filetype='pdf'))
+
     def test_le_detail_trois_pages_montre_le_prix_barre_et_le_prix_remise(self):
         devis = self._devis('5', 'DEV-REM-P3', etude_params=DEUX_OPTIONS)
         html, doc = self._render(devis)
@@ -455,13 +470,17 @@ class TestRenduPdfRemiseParLigne(TestCase):
             devis.mode_installation = 'industriel'
             devis.save(update_fields=['mode_installation'])
             with self.subTest(pct=pct):
-                _, doc = self._render(devis)
-                # D-QJR5-12 / QJR620 : l'industriel premium porte 4 pages.
-                self.assertEqual(len(doc.pages), 4)
-                _, doc_etude = self._render(devis, {'include_etude': True})
-                self.assertEqual(len(doc_etude.pages), 4)
-                _, doc_1p = self._render(devis, {'pdf_mode': 'onepage'})
-                self.assertEqual(len(doc_1p.pages), 1)
+                # D-QJR5-12 / QJR620 / CIQ340 : l'industriel premium porte 4
+                # pages, « avec étude » compris (étude intégrée). Rendu par le
+                # dispatch RÉEL : depuis CIQ340 le builder ne force plus
+                # l'étude, donc ``generate_premium_pdf`` appelé en direct (le
+                # legacy, simple interrupteur de secours) n'est PAS le
+                # document industriel servi au client.
+                self.assertEqual(self._pages_servies(devis), 4)
+                self.assertEqual(
+                    self._pages_servies(devis, {'include_etude': True}), 4)
+                self.assertEqual(
+                    self._pages_servies(devis, {'pdf_mode': 'onepage'}), 1)
 
     def test_le_prix_achat_ne_fuite_jamais_avec_une_remise(self):
         """Règle #4 — ``Produit.prix_achat`` reste GÉNÉRATEUR-ONLY, y compris

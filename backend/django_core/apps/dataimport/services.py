@@ -134,25 +134,6 @@ FIELD_MAPS = {
 # jusqu'à leur coquille définitive, qui les retire pour de bon.
 
 
-# SOL2(b) — cible d'import → clé de module PROPRIÉTAIRE, pour les seules cibles
-# dont le mapping d'en-têtes vit ici (``FIELD_MAPS``) alors que l'ÉCRITURE est
-# déléguée à une app PARQUÉE (registre ``core/parked.py``). Les cibles
-# déclarées uniquement par le registre plateforme n'ont pas besoin d'entrée :
-# une app coquillée n'expose plus de ``platform.py``.
-# SOLMVP20 — actuellement VIDE : la seule cible qui portait une entrée
-# (``eleves_education``) a perdu son mapping ``FIELD_MAPS`` (app education
-# PARQUÉE, Groupe SOLMVP) et n'a donc plus besoin de ce suivi.
-CIBLES_MODULE_PROPRIETAIRE = {}
-
-
-def cibles_parquees():
-    """Cibles d'import indisponibles parce que leur app est parquée."""
-    from core.parked import est_parquee
-    return frozenset(
-        cible for cible, module in CIBLES_MODULE_PROPRIETAIRE.items()
-        if est_parquee(module))
-
-
 # ARC32 — l'ensemble des cibles importables lit désormais le REGISTRE plateforme
 # (``core.platform.import_specs``) : chaque app propriétaire déclare ses cibles
 # dans son ``apps/<x>/platform.py`` (surface ``import_specs``), exactement comme
@@ -182,13 +163,7 @@ class _LazyTargets:
             cibles |= set(platform.import_specs(company=None))
         except Exception:  # pragma: no cover - registre indisponible ⇒ FIELD_MAPS seul
             pass
-        # SOL2(b) — une cible portée par une app PARQUÉE par l'édition courante
-        # disparaît du set : `FIELD_MAPS` la déclare littéralement ici (donc le
-        # registre plateforme ne suffit PAS à la faire disparaître), et sans ce
-        # retrait `_commit_raw` tenterait d'importer une app non chargée. Le
-        # refus est alors le refus HISTORIQUE « cible inconnue » (400 clair),
-        # jamais un ImportError.
-        return cibles - cibles_parquees()
+        return cibles
 
     def __contains__(self, item):
         return item in self._resolve()
@@ -283,16 +258,46 @@ def parse_rows(file_bytes, filename):
     return iter_rows(file_bytes, filename)
 
 
+def champs_autorises(target):
+    """AANA9 — les SEULS champs qu'un import peut écrire pour ``target`` : les
+    valeurs de ``FIELD_MAPS[target]``. Un mapping (sauvegardé ou proposé par
+    l'IA) qui vise autre chose (``company_id``, ``owner_id``, ``is_deleted``…)
+    passerait sinon tel quel en ``**kwargs`` au ``Model.objects.create`` — une
+    écriture de champ technique, voire un lead né dans une AUTRE société."""
+    return frozenset((FIELD_MAPS.get(target) or {}).values())
+
+
+def valider_mapping(target, mapping):
+    """AANA9 — refuse (``ValueError`` → 400) un mapping colonne→champ dont un
+    champ n'appartient pas à ``champs_autorises(target)``."""
+    autorises = champs_autorises(target)
+    refuses = sorted({str(champ) for champ in mapping.values()
+                      if not isinstance(champ, str) or champ not in autorises})
+    if refuses:
+        raise ValueError(
+            'Champ(s) cible(s) non importable(s) pour « %s » : %s. Champs '
+            'possibles : %s.' % (target, ', '.join(refuses),
+                                 ', '.join(sorted(autorises)) or 'aucun'))
+
+
 def _map_headers(headers, target, saved_mapping=None):
     """``saved_mapping`` (XPLT2, ``ImportMapping.mapping``) est un dict
     colonne→champ appliqué EN PRIORITÉ (mêmes clés que le mapping automatique) ;
-    toute colonne non couverte retombe sur le mapping par en-tête habituel."""
+    toute colonne non couverte retombe sur le mapping par en-tête habituel.
+
+    AANA9 — un champ du mapping sauvegardé hors ``champs_autorises(target)``
+    (mapping enregistré avant la validation de ``save_mapping``) est IGNORÉ :
+    la colonne retombe sur le mapping automatique, jamais sur un champ
+    technique comme ``company_id``."""
     fmap = FIELD_MAPS[target]
+    autorises = champs_autorises(target)
     mapped, unmapped = {}, []
     for h in headers:
         field = None
         if saved_mapping:
             field = saved_mapping.get(h) or saved_mapping.get(_norm(h))
+            if field not in autorises:
+                field = None
         if not field:
             field = fmap.get(_norm(h))
         if field:
@@ -356,7 +361,8 @@ def proposer_mapping_ia(target, en_tetes_non_mappes):
 
     if not is_capability_configured('llm'):
         return {}
-    champs_connus = sorted(set(FIELD_MAPS[target].values()))
+    # AANA9 — même liste blanche que ``save_mapping``/``_map_headers``.
+    champs_connus = sorted(champs_autorises(target))
     if not champs_connus:
         return {}
     prompt = ('En-têtes à mapper : %s\nChamps cibles possibles : %s'
@@ -435,8 +441,11 @@ def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
 
 def save_mapping(company, target, nom, mapping):
     """XPLT2 — sauvegarde (ou remplace) un mapping colonne→champ nommé pour
-    une cible, réutilisable au prochain dry-run."""
+    une cible, réutilisable au prochain dry-run.
+
+    AANA9 — lève ``ValueError`` si un champ cible n'est pas importable."""
     from .models import ImportMapping
+    valider_mapping(target, mapping)
     obj, _created = ImportMapping.objects.update_or_create(
         company=company, entity=target, nom=nom, defaults={'mapping': mapping})
     return obj
@@ -483,22 +492,45 @@ def _get_or_create_ref(company, external_system, external_id, obj):
     from .models import ExternalRef
     from django.contrib.contenttypes.models import ContentType
     ct = ContentType.objects.get_for_model(obj)
+    # AANA10 — la référence est typée : (société, système, TYPE, id externe).
     ExternalRef.objects.get_or_create(
         company=company, external_system=external_system,
-        external_id=external_id,
-        defaults={'content_type': ct, 'object_id': obj.pk})
+        content_type=ct, external_id=str(external_id),
+        defaults={'object_id': obj.pk})
 
 
 def _find_by_external_id(company, external_system, external_id, model):
+    """AANA10 — ne rapproche QUE les références du type ``model`` : une
+    référence ``A1`` posée sur un lead ne désigne jamais le client de même pk."""
+    from django.contrib.contenttypes.models import ContentType
+
     from .models import ExternalRef
     if not external_id:
         return None
     ref = ExternalRef.objects.filter(
         company=company, external_system=external_system,
+        content_type=ContentType.objects.get_for_model(model),
         external_id=str(external_id)).first()
     if ref is None:
         return None
     return model.objects.filter(company=company, pk=ref.object_id).first()
+
+
+RAISON_DOUBLON_REF = 'doublon'
+
+
+def _document_deja_importe(company, external_system, external_id, app_label,
+                           model_name):
+    """AANA11 — vrai si ``external_id`` est DÉJÀ rattaché à un document vivant
+    (devis/facture) de cette société. Le modèle est résolu par le registre
+    d'apps (aucun import de ``models`` d'une autre app) ; la recherche est la
+    MÊME que le rapprochement leads/clients (``_find_by_external_id``)."""
+    if not external_id:
+        return False
+    from django.apps import apps as django_apps
+    model = django_apps.get_model(app_label, model_name)
+    return _find_by_external_id(
+        company, external_system, external_id, model) is not None
 
 
 def _txt(valeur):
@@ -751,59 +783,58 @@ def _check_mode(target, mode):
 # ment. Les deux passent donc par ces mêmes fonctions (aucune duplication de la
 # logique de rapprochement).
 
+def _lead_par_contact(company, f):
+    """AANA13 (D-AANA-3) — LE rapprochement contact des leads, partagé par le
+    mode ``creer`` (doublon → ligne ignorée) et ``maj``/``upsert`` : e-mail OU
+    téléphone NORMALISÉ (``crm.services.find_duplicates_by_contact``).
+    Remplace l'ancien ``_doublon_lead`` (e-mail exact d'abord, et téléphone
+    STRICTEMENT identique seulement sans e-mail) : ``b@x.ma,+212 612345678``
+    passait à côté d'un lead ``a@x.ma,0612345678``."""
+    from apps.crm.services import find_duplicates_by_contact
+    dupes = find_duplicates_by_contact(
+        company, phone=f.get('telephone'), email=f.get('email'))
+    return dupes[0] if dupes else None
+
+
+def _client_par_contact(company, f):
+    """AANA13 (D-AANA-3) — le MÊME rapprochement pour les clients : e-mail
+    (insensible à la casse) OU téléphone normalisé (clé QW10), via les
+    sélecteurs ``crm.selectors`` (jamais ``crm.models``). Renvoie
+    ``(client, cle)`` où ``cle`` nomme ce qui a RÉELLEMENT matché
+    (``'email'``/``'telephone'``), ``(None, None)`` sinon.
+
+    AUD824 — conserve le repli téléphone (un carnet terrain SANS colonne
+    e-mail rejoué deux fois ne crée plus de second client) et l'étend : une
+    ligne AVEC un e-mail nouveau mais le téléphone d'un client existant est
+    aussi un doublon."""
+    from apps.crm.selectors import find_client_by_email, find_client_by_phone
+    if f.get('email'):
+        client = find_client_by_email(str(f['email']), company=company)
+        if client is not None:
+            return client, 'email'
+    if f.get('telephone'):
+        client = find_client_by_phone(company, f['telephone'])
+        if client is not None:
+            return client, 'telephone'
+    return None, None
+
+
 def _match_lead(company, f, ext_id, external_system):
     """Lead rapproché en mode maj/upsert : identifiant externe d'abord, sinon
     contact normalisé (email/téléphone)."""
     from apps.crm.models import Lead
-    from apps.crm.services import find_duplicates_by_contact
     existing = _find_by_external_id(company, external_system, ext_id, Lead)
     if existing is None:
-        dupes = find_duplicates_by_contact(
-            company, phone=f.get('telephone'), email=f.get('email'))
-        existing = dupes[0] if dupes else None
+        existing = _lead_par_contact(company, f)
     return existing
 
 
 def _match_client(company, f, ext_id, external_system):
     from apps.crm.models import Client
     existing = _find_by_external_id(company, external_system, ext_id, Client)
-    if existing is None and f.get('email'):
-        existing = Client.objects.filter(
-            company=company, email__iexact=f['email']).first()
+    if existing is None:
+        existing = _client_par_contact(company, f)[0]
     return existing
-
-
-def _doublon_lead(company, f):
-    """Fiche existante qui fait IGNORER la ligne en mode ``creer``."""
-    from apps.crm.models import Lead
-    if f.get('email'):
-        return Lead.objects.filter(
-            company=company, email__iexact=f['email']).first()
-    if f.get('telephone'):
-        return Lead.objects.filter(
-            company=company, telephone=f['telephone']).first()
-    return None
-
-
-def _doublon_client(company, f):
-    """Fiche existante qui fait IGNORER la ligne en mode ``creer``.
-
-    AUD824 — MÊME patron que ``_doublon_lead`` ci-dessus : email d'abord, repli
-    sur le téléphone. Sans ce repli, un carnet d'adresses terrain (nom +
-    téléphone + adresse, SANS colonne email) rejoué deux fois créait un
-    deuxième ``Client`` identique à chaque passage — ``crm.Client`` ne porte
-    aucune ``UniqueConstraint`` sur (company, email) ni (company, telephone),
-    donc rien n'arrêtait la ligne, ni en Python ni en base. L'aperçu, qui
-    rejoue CETTE fonction, mentait de la même façon.
-    """
-    from apps.crm.models import Client
-    if f.get('email'):
-        return Client.objects.filter(
-            company=company, email__iexact=f['email']).first()
-    if f.get('telephone'):
-        return Client.objects.filter(
-            company=company, telephone=f['telephone']).first()
-    return None
 
 
 def _doublon_produit(company, f):
@@ -830,11 +861,62 @@ def _raison_doublon_produit(f):
             else 'doublon (nom existe)')
 
 
-def _raison_doublon_client(f):
+# AANA12 — bornes d'un ``DecimalField(max_digits=10, decimal_places=2)``.
+PRIX_MAX = 10 ** 8
+
+
+def _nombre_saisi(valeur):
+    """Cellule → ``Decimal`` (virgule décimale, espaces de milliers tolérés),
+    ``None`` si illisible ou non fini (``abc``, ``NaN``, ``Infinity``)."""
+    from decimal import Decimal, InvalidOperation
+    brut = (str(valeur).replace('\xa0', '').replace(' ', '')
+            .replace(',', '.'))
+    try:
+        nombre = Decimal(brut)
+    except (InvalidOperation, ValueError):
+        return None
+    return nombre if nombre.is_finite() else None
+
+
+def _valider_ligne_produit(f):
+    """AANA12 — valide une ligne d'import produit SANS rien coercer en silence.
+
+    Renvoie ``(champs, stock_ouverture, erreur)`` : ``erreur`` est le motif
+    affiché dans ``skipped`` (``None`` si la ligne est valide). Prix : décimal
+    ≥ 0 et < ``PRIX_MAX`` ; quantité : entier ≥ 0 (``2.7`` est refusé, jamais
+    tronqué en 2). Partagé par le commit et l'aperçu."""
+    champs = dict(f)
+    for cle in ('prix_vente', 'prix_achat'):
+        if cle not in champs:
+            continue
+        saisi = champs[cle]
+        nombre = _nombre_saisi(saisi)
+        if nombre is None:
+            return champs, 0, f'{cle} invalide : « {saisi} »'
+        if nombre < 0:
+            return champs, 0, f'{cle} négatif refusé : « {saisi} »'
+        if nombre >= PRIX_MAX:
+            return champs, 0, f'{cle} hors bornes : « {saisi} »'
+        champs[cle] = nombre
+    ouverture = 0
+    if 'quantite_stock' in champs:
+        saisi = champs.pop('quantite_stock')
+        nombre = _nombre_saisi(saisi)
+        if nombre is None:
+            return champs, 0, f'quantité invalide : « {saisi} »'
+        if nombre != nombre.to_integral_value():
+            return champs, 0, f'quantité non entière : « {saisi} »'
+        if nombre < 0:
+            return champs, 0, 'stock négatif refusé'
+        ouverture = int(nombre)
+    return champs, ouverture, None
+
+
+def _raison_doublon_client(cle):
     """AUD824 — même convention que ``_raison_doublon_produit`` : le motif
-    affiché nomme la clé qui a RÉELLEMENT matché. Depuis le repli téléphone,
-    « doublon (email existe) » aurait menti sur toutes les lignes sans email."""
-    return ('doublon (email existe)' if f.get('email')
+    affiché nomme la clé qui a RÉELLEMENT matché (``cle`` renvoyée par
+    ``_client_par_contact``)."""
+    return ('doublon (email existe)' if cle == 'email'
             else 'doublon (téléphone existe)')
 
 
@@ -878,7 +960,7 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
                     action = 'ignoree'
                     raison = 'aucune correspondance (maj seule)'
             else:
-                existing = _doublon_lead(company, f)
+                existing = _lead_par_contact(company, f)
                 if existing is not None:
                     action, raison = 'ignoree', 'doublon (existe déjà)'
         elif target == 'clients':
@@ -888,13 +970,17 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
                     action = 'ignoree'
                     raison = 'aucune correspondance (maj seule)'
             else:
-                existing = _doublon_client(company, f)
+                existing, cle = _client_par_contact(company, f)
                 if existing is not None:
-                    action, raison = 'ignoree', _raison_doublon_client(f)
+                    action, raison = 'ignoree', _raison_doublon_client(cle)
         elif target == 'products':
             existing = _doublon_produit(company, f)
             if existing is not None:
                 action, raison = 'ignoree', _raison_doublon_produit(f)
+            elif _valider_ligne_produit(f)[2]:
+                # AANA12 — la ligne que le commit refusera n'est pas annoncée
+                # comme une création.
+                action = 'ignoree'
         else:
             continue
 
@@ -1022,7 +1108,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
                 # Création (mode=creer, ou mode=upsert sans correspondance).
                 if mode == 'creer':
-                    if _doublon_lead(company, f) is not None:
+                    if _lead_par_contact(company, f) is not None:
                         skipped.append({'ligne': i, 'raison': 'doublon (existe déjà)'})
                         continue
                 tags = (f.pop('tags', '') or '')
@@ -1066,17 +1152,19 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                         {'ligne': i, 'raison': 'aucune correspondance (maj seule)'})
                     continue
 
-                if mode == 'creer' and _doublon_client(company, f) is not None:
-                    skipped.append(
-                        {'ligne': i, 'raison': _raison_doublon_client(f)})
-                    continue
+                if mode == 'creer':
+                    doublon, cle = _client_par_contact(company, f)
+                    if doublon is not None:
+                        skipped.append(
+                            {'ligne': i, 'raison': _raison_doublon_client(cle)})
+                        continue
                 client = Client.objects.create(company=company, **f)
                 if ext_id:
                     _get_or_create_ref(company, external_system, ext_id, client)
                 created += 1
 
         elif target == 'products':
-            from decimal import Decimal, InvalidOperation
+            from decimal import Decimal
             from apps.stock.models import MouvementStock, Produit
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
@@ -1091,28 +1179,16 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     skipped.append(
                         {'ligne': i, 'raison': _raison_doublon_produit(f)})
                     continue
-                for k in ('prix_vente', 'prix_achat'):
-                    if k in f:
-                        raw = (str(f[k]).replace('\xa0', '').replace(' ', '')
-                               .replace(',', '.'))
-                        try:
-                            f[k] = Decimal(raw)
-                        except (InvalidOperation, ValueError):
-                            f.pop(k)
-                # ERR52 — Le stock d'ouverture ne peut jamais être négatif et
-                # passe par le registre des mouvements (audit) comme partout
-                # ailleurs : on crée le produit à 0 puis on enregistre un
-                # MouvementStock ENTREE pour la quantité importée.
-                opening = 0
-                if 'quantite_stock' in f:
-                    try:
-                        opening = int(float(f.pop('quantite_stock')))
-                    except (ValueError, TypeError):
-                        opening = 0
-                    if opening < 0:
-                        skipped.append(
-                            {'ligne': i, 'raison': 'stock négatif refusé'})
-                        continue
+                # AANA12 — chaque valeur est VALIDÉE (jamais coercée en
+                # silence) : une erreur nomme la ligne dans ``skipped``.
+                # ERR52 — le stock d'ouverture (jamais négatif) passe par le
+                # registre des mouvements (audit) comme partout ailleurs : on
+                # crée le produit à 0 puis on enregistre un MouvementStock
+                # ENTREE pour la quantité importée.
+                f, opening, erreur = _valider_ligne_produit(f)
+                if erreur:
+                    skipped.append({'ligne': i, 'raison': erreur})
+                    continue
                 f.setdefault('prix_vente', Decimal('0'))
                 produit = Produit.objects.create(
                     company=company, quantite_stock=0, **f)
@@ -1217,6 +1293,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
                 ext_id = f.pop('external_id', None)
+                # AANA11 — rejeu idempotent : AVANT toute création (donc avant
+                # de consommer un numéro DEV-…).
+                if _document_deja_importe(
+                        company, external_system, ext_id, 'ventes', 'Devis'):
+                    skipped.append({'ligne': i, 'raison': RAISON_DOUBLON_REF})
+                    continue
                 statut, message, devis = creer_devis_import(
                     company, f, external_system=external_system, user=user)
                 if statut == 'cree':
@@ -1236,6 +1318,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
                 ext_id = f.pop('external_id', None)
+                # AANA11 — même garde que les devis (aucun numéro FAC consommé).
+                if _document_deja_importe(
+                        company, external_system, ext_id,
+                        'facturation', 'Facture'):
+                    skipped.append({'ligne': i, 'raison': RAISON_DOUBLON_REF})
+                    continue
                 statut, message, facture = creer_facture_import(
                     company, f, external_system=external_system, user=user)
                 if statut == 'cree':

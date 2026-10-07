@@ -51,7 +51,7 @@ import { initMonitoring, suivreSocieteDuStore } from './lib/monitoring'
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
 // pour les écrans existants (couleurs en dur, aucun `dark:` utilisé).
 initTheme()
-initVitals()
+initVitals({ isAuthenticated: () => Boolean(store.getState().auth?.isAuthenticated) })
 installGlobalErrors()
 initMonitoring().catch(() => {})
 suivreSocieteDuStore(store)
@@ -68,7 +68,7 @@ if (import.meta.env.DEV) {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
-      <I18nProvider>
+      <I18nProvider chargerSurcharges={false}>
         <RtlDirectionProvider>
           <ServerLocaleSync />
           <ThemeProvider>

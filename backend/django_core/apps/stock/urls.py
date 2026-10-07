@@ -1,6 +1,5 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .public_views import quai_checkin_view, portail_tiers_solde_view
 from .views import (
     ProduitViewSet, CategorieViewSet, FournisseurViewSet,
     MouvementStockViewSet, MarqueViewSet, BonCommandeFournisseurViewSet,
@@ -117,12 +116,9 @@ router.register(r'accords-rfa-fournisseur', AccordRFAFournisseurViewSet)
 router.register(r'profils-saisonniers', ProfilSaisonnierViewSet)
 
 urlpatterns = [
-    # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
-    path('public/quai-checkin/', quai_checkin_view,
-         name='stock-quai-checkin'),
-    # NTWMS20 - portail 3PL : solde du SEUL depositaire porteur du jeton.
-    path('public/tiers/<str:token>/solde/', portail_tiers_solde_view,
-         name='stock-portail-tiers-solde'),
+    # ASTK233 - les routes publiques quai-checkin et tiers/<token>/solde ne
+    # vivent plus ici : survivant unique = public_urls.py
+    # (/api/django/public/stock/...).
     # NTWMS18 - productivite entrepot par operateur (responsable/admin).
     # L'endpoint vit dans `stock` (et non dans `reporting`) : cette lane ne
     # possede que l'app stock -- la donnee et sa garde restent au meme endroit.
@@ -151,6 +147,7 @@ urlpatterns = [
     path('tache-retour/', tache_retour_view, name='stock-tache-retour'),
     # NTDST18 - catalogue B2B temps reel resolu pour un client (jamais de
     # prix d'achat) : donnee du futur portail client, pas d'ecran public ici.
+    # headless: donnee du futur portail client B2B, aucun ecran ERP en face
     path('catalogue-b2b/', catalogue_b2b_view, name='stock-catalogue-b2b'),
     # NTDST30 - parametres negoce de la societe (singleton, GET/PATCH).
     path('parametres-negoce/', parametres_negoce_view,

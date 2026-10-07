@@ -101,6 +101,11 @@
   --destructive-foreground: #ffffff;
   --success: #2f7a3f;
   --success-foreground: #ffffff;
+  /* CAD177 (LB34, axe sur la pastille « Signé ») — même défaut que
+     --warning-text : #2f7a3f en texte sur son propre fond `success/12`
+     (#e6efe8) ≈ 4,50:1, sous AA dès le moindre arrondi. Assombri, même
+     teinte : ≈ 5,5:1 sur la pastille, ≈ 6,5:1 sur blanc. */
+  --success-text: #256b34;
   --warning: #c8870f;
   --warning-foreground: #1a1505;
   /* VX194(a) — même défaut que --primary-text ci-dessus : #c8870f en texte
@@ -439,6 +444,8 @@
   /* VX194(a) — même raison que --primary-text ci-dessus (clair sur navy,
      déjà ≥ AA). */
   --warning-text: var(--warning);
+  /* CAD177 — vert clair sur navy, déjà ≥ AA : le texte reste --success. */
+  --success-text: var(--success);
   --info: #7fa0ef;
   --info-foreground: #0a1238;
 
@@ -518,6 +525,9 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  /* CAD177 — utilitaire text-success-text : vert ASSOMBRI pour le texte
+     (pastilles, badges), jamais un remplissage. */
+  --color-success-text: var(--success-text);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-text: var(--warning-text);
@@ -616,6 +626,7 @@
   --destructive-foreground: #ffffff;
   --success: #14532d;
   --success-foreground: #ffffff;
+  --success-text: #14532d;
   --warning: #7a5600;
   --warning-foreground: #ffffff;
   --warning-text: #6b4b00;

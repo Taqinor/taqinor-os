@@ -46,6 +46,7 @@ from .recouvrement import (
 )
 from .public_views import (
     proposal_data, proposal_pdf,
+    proposal_roof_image,  # ACAL314
     suivi_public,  # QX34
 )
 from .public.signature_views import (  # SPL253
@@ -156,6 +157,10 @@ urlpatterns = [
     # proposal/) pour ne pas être avalé par la route /devis/.
     # headless: PDF ouvert par le client dans son navigateur, jamais par axios
     path('proposal/<str:token>/pdf/', proposal_pdf, name='proposal-pdf'),
+    # ACAL314 — l'affiche de toiture servie MÊME ORIGINE (jamais minio:9000).
+    # headless: <img> de la page de proposition publique (apps/web)
+    path('proposal/<str:token>/roof-image/', proposal_roof_image,
+         name='proposal-roof-image'),
     # QW5 — le site poste sur CE mount (ventes/), pas sur public/ où ces vues
     # QJ27 vivent déjà (apps/ventes/public_urls.py) — sans cet alias, 404.
     # Même vue, jamais de logique dupliquée.

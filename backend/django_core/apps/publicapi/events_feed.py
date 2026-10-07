@@ -25,8 +25,10 @@ incomplet et documenté qu'une escalade de privilège silencieuse.
 """
 from __future__ import annotations
 
+import json
 import logging
 
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
@@ -93,6 +95,17 @@ def prochaine_sequence(company_id):
     return (plus_haut or 0) + 1
 
 
+def payload_json_sur(payload):
+    """Copie du ``payload`` ne portant que des types JSON.
+
+    Decimal devient une chaine (« 1200.00 »), une date devient ISO, comme
+    l'encodeur de DRF. Sans cela, un payload portant ``Paiement.montant``
+    (Decimal) faisait echouer l'INSERT du ``JSONField`` (« Object of type
+    Decimal is not JSON serializable », vu en e2e) : l'evenement
+    ``paiement.recorded`` etait perdu du flux."""
+    return json.loads(json.dumps(payload, cls=DjangoJSONEncoder))
+
+
 def enregistrer(company_id, event, payload, *, event_id=''):
     """Ajoute un évènement au flux de la société. Renvoie l'instance ou ``None``.
 
@@ -110,6 +123,7 @@ def enregistrer(company_id, event, payload, *, event_id=''):
     # (NTAPI32) promet de rendre TELLE QUE reçue par l'appelant métier.
     charge = dict(payload) if isinstance(payload, dict) else {}
     charge.pop('event_id', None)
+    charge = payload_json_sur(charge)
     derniere_erreur = None
     for _ in range(MAX_TENTATIVES_SEQUENCE):
         sequence = prochaine_sequence(company_id)

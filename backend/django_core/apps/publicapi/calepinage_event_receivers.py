@@ -209,7 +209,10 @@ def charge_utile_simulation(calepinage):
         'kwc': _nombre(resultat.get('kwc')),
         'modules': _entier(resultat.get('total_modules')),
         'p50_kwh': _nombre(total.get('p50_kwh')),
-        'performance_ratio': _nombre(total.get('performance_ratio')),
+        # ACAL51 / D-ACAL-7 — même lecture que la ressource publique : une
+        # simulation INCOMPLÈTE (``complete`` faux) ne publie pas de PR.
+        'performance_ratio': (None if total.get('complete') is False
+                              else _nombre(total.get('performance_ratio'))),
     }
 
 

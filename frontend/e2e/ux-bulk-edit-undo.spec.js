@@ -29,7 +29,9 @@
 // (le compte Planifié doit tomber à N-3), annuler (il doit revenir à N).
 import { test, expect } from '@playwright/test'
 
-const ECRAN_TICKETS = '/sav/tickets'
+// CAD177 : la liste des tickets (TicketsPage) est servie sur '/sav' (features/sav/
+// module.config.jsx) ; '/sav/tickets' n'a jamais été une route.
+const ECRAN_TICKETS = '/sav'
 
 function statutChip(page, libelle) {
   // Chip = <button><span class="dot"/>{label}<span class="count">{n}</span></button>

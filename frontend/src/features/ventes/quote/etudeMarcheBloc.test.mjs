@@ -17,7 +17,7 @@ import path from 'node:path'
 // propriétaire ECRAN, :94-260). Toute clé hors de cette liste est refusée en
 // 400 par la fusion etude-params / la création atomique.
 const ECRAN = new Set([
-  'scenario', 'recommended_option', 'part_diurne_pct', 'gamme', 'mode_installation',
+  'scenario', 'recommended_option', 'gamme', 'mode_installation',
   'tension_raccordement', 'distributeur', 'categorie_commerciale', 'origine',
   'nombre_proprietes', 'factures_mensuelles_reelles', 'conso_kwh_mensuelles',
   'conso_annuelle', 'toiture', 'attribution',
@@ -25,13 +25,18 @@ const ECRAN = new Set([
   'mode_pompe', 'plaque', 'besoin', 'source', 'hmt_entrees', 'type_pompe', 'alim',
   'localisation', 'distance_champ_m', 'options_cochees', 'taille',
   'saisies_economie_pompage', 'attestation_usage_agricole',
-  'taux_autoconso', 'taux_couverture', 'payback', 'injection_kwh_an', 'injection_dh_an',
-  'repartition_mt', 'etude_kwc_base',
+  // CIQ129 — les clés écran C&I v1 et les réponses de catégorie à plat ont
+  // quitté le schéma (refusées en 400) : elles ne figurent plus ici.
+  'repartition_mt',
+])
+
+// CIQ129 — les réponses de catégorie retirées du schéma à plat.
+const REPONSES_A_PLAT = [
   'chambres', 'occupation_pct', 'piscine', 'chambres_froides', 'horaires', 'cuisson',
   'surface_vente_m2', 'effectif', 'clim', 'lits', 'garde_nuit', 'internat',
   'fermeture_estivale', 'surface_m2', 'chauffe', 'four', 'cuisson_nocturne',
   'temperature_consigne', 'volume_m3', 'saisonnalite_recolte',
-])
+]
 
 const horsSchema = (obj) => Object.keys(obj).filter(k => obj[k] !== undefined && !ECRAN.has(k))
 
@@ -60,19 +65,20 @@ test('CIQ126 — industriel : seules les ENTRÉES v2 partent, aucune clé écran
   for (const k of CLES_V1_RETIREES) assert.ok(!(k in bloc), `${k} ne doit plus sortir`)
 })
 
-test('commercial : catégorie + réponses typées, entrées v2, aucune clé v1', () => {
+test('commercial : catégorie + entrées v2, réponses seulement dans rythme (CIQ129)', () => {
+  const rythme = { categorie_commerciale: 'hotel',
+    reponses_categorie: { chambres: '40', piscine: true } }
   const bloc = projeterEtudeMarche('commercial', {
-    choix: CHOIX, entrees, ciEntrees: { ...ENTREES_CI, mode: 'commercial' },
+    choix: CHOIX, entrees, ciEntrees: { ...ENTREES_CI, mode: 'commercial', rythme },
     categorie: 'hotel', reponses: { chambres: '40', piscine: 1, occupation_pct: '' },
   })
   assert.deepEqual(horsSchema(Object.fromEntries(Object.entries(bloc)
     .filter(([k]) => !(k in ENTREES_CI)))), [])
   for (const k of CLES_V1_RETIREES) assert.ok(!(k in bloc), `${k} ne doit plus sortir`)
+  for (const k of REPONSES_A_PLAT) assert.ok(!(k in bloc), `${k} ne part plus à plat`)
   assert.equal(bloc.mode, 'commercial')
   assert.equal(bloc.categorie_commerciale, 'hotel')
-  assert.equal(bloc.chambres, 40)
-  assert.equal(bloc.piscine, true)
-  assert.ok(!('occupation_pct' in bloc))
+  assert.deepEqual(bloc.rythme, rythme)
 })
 
 const DERIVEES_POMPAGE = [

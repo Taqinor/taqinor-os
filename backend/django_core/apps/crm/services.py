@@ -4654,6 +4654,64 @@ def reprendre_relances_apres_fusion(absorbed, survivor, user):
     return len(ouvertes)
 
 
+def _transferer_calepinages_apres_fusion(absorbed, survivor, user):
+    """ACAL177 — fait suivre les calepinages de l'absorbé au survivant.
+
+    Appel DIRECT du service ``apps.calepinage.services.liens.transferer_lead``
+    (même patron que ``update_installation_lead`` : transactionnel, pas
+    d'événement), import FONCTION-LOCAL (frontière inter-apps : jamais un
+    modèle de calepinage). Sous-bloc ``atomic`` (savepoint) : un échec annule
+    le seul transfert, la fusion continue, et le chatter du survivant le dit.
+    """
+    from django.db import transaction
+
+    try:
+        from apps.calepinage.services.liens import transferer_lead
+
+        with transaction.atomic():
+            transferer_lead(survivor.company, de_lead_id=absorbed.pk,
+                            vers_lead_id=survivor.pk, user=user)
+    except Exception:  # noqa: BLE001 — la fusion ne casse jamais ici
+        logger.exception(
+            'ACAL177 : calepinages du lead #%s non transférés vers #%s',
+            absorbed.pk, survivor.pk)
+        LeadActivity.objects.create(
+            company=survivor.company, lead=survivor, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Fusion : les calepinages du lead #{absorbed.pk} n\'ont '
+                  'pas pu être rattachés à cette fiche — rattachez-les depuis '
+                  'le module Calepinage.'))
+
+
+def raison_refus_suppression(lead):
+    """ACAL177 — LA garde de corbeille d'un lead, écrite UNE fois.
+
+    Sert les DEUX chemins de suppression (``LeadViewSet.destroy`` et
+    l'opération en masse ``delete``). Rend ``None`` si le lead peut partir en
+    corbeille, sinon un dict ``{detail, [calepinages]}`` (corps du 409) :
+
+    * des devis liés : on n'orpheline jamais de pièces financières ;
+    * un calepinage OUVERT (non archivé) : refus qui le NOMME. Un calepinage
+      archivé ne bloque pas.
+    """
+    if lead.devis.exists():
+        return {'detail': "Ce lead a des devis liés. Supprimer le lead "
+                          "détacherait ces pièces — archivez-le plutôt."}
+    from apps.calepinage.selectors import calepinages_ouverts_du_lead
+
+    ouverts = calepinages_ouverts_du_lead(lead.company, lead.pk)
+    if ouverts:
+        premier = ouverts[0]
+        titre = (getattr(premier, 'titre', '') or '').strip() or 'sans titre'
+        return {
+            'detail': (f'Ce lead porte le calepinage « {titre} » '
+                       f'(#{premier.pk}) : archivez-le d\'abord ou ouvrez-le '
+                       'depuis le module Calepinage'),
+            'calepinages': [c.pk for c in ouverts],
+        }
+    return None
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -4683,6 +4741,10 @@ def merge_leads(survivor, others, user):
                 update_installation_lead(absorbed, survivor)
             except Exception:
                 pass
+            # 2 bis) ACAL177 — les CALEPINAGES suivent le dossier (D06-T04).
+            # Savepoint : un transfert qui échoue ne casse jamais la fusion,
+            # mais il est tracé (journal + note au chatter du survivant).
+            _transferer_calepinages_apres_fusion(absorbed, survivor, user)
             # 3) Activités + pièces jointes génériques → survivant.
             try:
                 from apps.records.models import Activity, Attachment
@@ -8363,8 +8425,10 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 updated += 1
 
             elif op == 'delete':
-                if lead.devis.exists():
-                    skip(lead, "devis liés — archivez-le plutôt")
+                # ACAL177 — la MÊME garde que la suppression unitaire.
+                refus = raison_refus_suppression(lead)
+                if refus is not None:
+                    skip(lead, refus['detail'])
                     continue
                 # VX96 — soft-delete réversible (corbeille 30 min), cohérent avec
                 # la suppression unitaire : plus de destruction définitive ici.
@@ -11719,8 +11783,28 @@ RETOUR_LEAD_CI = (
     ('type_toiture', 'type_toiture', None),
     ('surface_utile', 'surface_toiture_m2', 'surface_source'),
 )
+#: CIQ5 (lignes ``factures_mt.cos_phi_constate`` et ``reactif_secours.
+#: groupe_kva`` de ``retour_lead_ci``) — relevés HORS comparaison
+#: déclaré/constaté : le sélecteur les sert en ``{constate}`` (le cos φ
+#: seulement si sa source est connue). Même forme que ``RETOUR_LEAD_CI``.
+RETOUR_LEAD_CI_SUPPLEMENT = (
+    ('cos_phi', 'cos_phi', 'cos_phi_source'),
+    ('groupe_kva', 'groupe_kva', None),
+)
 #: La provenance posée par une mesure de visite (forme AGR2/CIQ1).
 ORIGINE_MESURE_VISITE = 'mesure_visite'
+
+
+def _valeur_valide(colonne, valeur):
+    """Les validateurs de la colonne Lead (ex. cos φ dans ]0 ; 1]) : une
+    mesure hors bornes n'est jamais recopiée."""
+    from django.core.exceptions import ValidationError
+
+    try:
+        Lead._meta.get_field(colonne).run_validators(valeur)
+    except ValidationError:
+        return False
+    return True
 
 
 def appliquer_releve_ci(lead, releve, user):
@@ -11740,7 +11824,7 @@ def appliquer_releve_ci(lead, releve, user):
         'date': releve.get('validee_le'),
     }
     ecrites, rendu = [], {}
-    for cle, colonne, source in RETOUR_LEAD_CI:
+    for cle, colonne, source in RETOUR_LEAD_CI + RETOUR_LEAD_CI_SUPPLEMENT:
         bloc = releve.get(cle)
         if not isinstance(bloc, dict) or bloc.get('non_releve'):
             continue
@@ -11748,7 +11832,7 @@ def appliquer_releve_ci(lead, releve, user):
         if brute is None or (isinstance(brute, str) and not brute.strip()):
             continue
         valeur = _valeur_colonne_lead(colonne, brute)
-        if valeur is None:
+        if valeur is None or not _valeur_valide(colonne, valeur):
             continue
         if getattr(lead, colonne) != valeur:
             setattr(lead, colonne, valeur)

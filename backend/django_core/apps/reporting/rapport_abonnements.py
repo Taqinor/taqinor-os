@@ -175,14 +175,23 @@ def destinataires_emails(abonnement):
 
 # ── Rendu : rejoue la RapportDefinition puis sérialise ──────────────────────
 
-def executer_definition(rapport_def):
-    """Rejoue la définition (NTEXT10) et renvoie ``(lignes, pivot|None)``."""
+def executer_definition(rapport_def, lecteur=None):
+    """Rejoue la définition (NTEXT10) et renvoie ``(lignes, pivot|None)``.
+
+    AANA25 — ``lecteur`` : l'utilisateur qui EXPORTE (sa portée et ses
+    permissions s'appliquent) ; absent (envoi planifié, sans acteur) : le
+    propriétaire. Dans les deux cas la spec est purgée des champs sous
+    permission du dataset : un fichier de rapport ne porte JAMAIS de prix
+    d'achat, même rejoué par un admin."""
     from core import data_explorer
     from core.pivot import PivotSpec, build_pivot
 
+    from .rapport_builder import spec_sans_champs_gated
+
     lignes = data_explorer.run_query(
-        rapport_def.dataset, rapport_def.company, rapport_def.owner,
-        rapport_def.spec or {})
+        rapport_def.dataset, rapport_def.company,
+        lecteur if lecteur is not None else rapport_def.owner,
+        spec_sans_champs_gated(rapport_def.dataset, rapport_def.spec))
     pivot_spec = rapport_def.pivot_spec or {}
     if not pivot_spec:
         return lignes, None
@@ -230,7 +239,8 @@ def rendre_abonnement(abonnement):
     # verrou principal est en amont (``core.data_explorer`` gated_fields, qui
     # écarte déjà ``cout`` pour ``rapport_def.owner`` sans permission) ; ceci
     # est la défense en profondeur du RENDU, alignée sur l'export manuel.
-    entetes, lignes = _sans_colonnes_interdites(entetes, lignes)
+    entetes, lignes = _sans_colonnes_interdites(
+        entetes, lignes, rapport_def.dataset)
 
     base = rapport_def.titre or rapport_def.dataset or 'rapport'
     sur = ''.join(c for c in base if c.isalnum() or c in ('-', '_')) or 'rapport'

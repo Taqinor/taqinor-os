@@ -107,7 +107,9 @@ class CalepinageValideWebhookTests(TestCase):
             secret=Webhook.generate_secret(),
             events=[EVENT_CALEPINAGE_VALIDE], enabled=True)
         from . import tasks
-        with mock.patch.object(tasks.deliver_webhook, 'delay') as envoi:
+        # AANA31 — la mise en file a lieu AU COMMIT : exécutée ici.
+        with mock.patch.object(tasks.deliver_webhook, 'delay') as envoi, \
+                self.captureOnCommitCallbacks(execute=True):
             self.retenir(self.variante)
         envoi.assert_called_once()
         args, _kwargs = envoi.call_args
@@ -121,7 +123,9 @@ class CalepinageValideWebhookTests(TestCase):
             secret=Webhook.generate_secret(),
             events=['lead.created'], enabled=True)
         from . import tasks
-        with mock.patch.object(tasks.deliver_webhook, 'delay') as envoi:
+        # AANA31 — la mise en file a lieu AU COMMIT : exécutée ici.
+        with mock.patch.object(tasks.deliver_webhook, 'delay') as envoi, \
+                self.captureOnCommitCallbacks(execute=True):
             self.retenir(self.variante)
         envoi.assert_not_called()
 
