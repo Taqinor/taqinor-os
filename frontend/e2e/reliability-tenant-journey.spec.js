@@ -1,49 +1,32 @@
 // NTOBS29 — parcours e2e « admin tenant consulte sa fiabilité de bout en
-// bout » : Paramètres → Fiabilité → onglets Sauvegardes / Limites & usage /
-// SLA → téléchargement du PDF SLA complet (NTOBS3).
+// bout » : Paramètres → Sauvegardes (NTOBS5) → Limites & usage (NTOBS8) →
+// SLA (NTOBS16).
 //
-// NOTE POUR LE PROCHAIN LOT (frontend) : ce spec est écrit contre le
-// CONTRAT décrit par le plan (onglets Sauvegardes/Limites & usage/SLA sous
-// Paramètres → Fiabilité, badge SLA du mois courant NTOBS16, bouton « Voir
-// le rapport complet ») — l'écran lui-même (NTOBS19/32) n'existe pas encore
-// dans cette base (hors périmètre de cette lane, `frontend/src` appartient à
-// une autre lane) : les sélecteurs par rôle/texte ci-dessous sont donc
-// tolérants (regex insensibles à la casse, mêmes libellés que le plan) mais
-// N'ONT PAS pu être vérifiés contre un rendu réel. À ajuster dès que
-// l'écran atterrit si un libellé diverge.
-import { statSync } from 'node:fs'
+// CAD177 : le spec d'origine visait un lien « Fiabilité » + des onglets
+// (Sauvegardes / Limites & usage / SLA) qui n'ont JAMAIS existé : NTOBS5/8/16
+// ont livré TROIS pages indépendantes de Paramètres
+// (/parametres/sauvegardes, /parametres/limites-usage, /parametres/sla), chacune
+// avec son lien de navigation (features/parametres/module.config.jsx). Le
+// spec suit désormais ces écrans réels. L'étape « téléchargement du PDF SLA »
+// est retirée : SlaReportPage documente que l'export PDF
+// (GET /core/sla/<periode>/export-pdf/) n'y est « non branché » — rien à
+// télécharger tant que ce bouton n'existe pas.
 import { expect, test } from '@playwright/test'
 
 test('NTOBS29: admin tenant consulte sa fiabilité de bout en bout', async ({ page }) => {
-  await page.goto('/parametres')
+  // Sauvegardes — dernier test de restauration (NTOBS5).
+  await page.goto('/parametres/sauvegardes')
+  await expect(page.getByRole('heading', { name: 'Sauvegardes' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('Dernier test de restauration')).toBeVisible({ timeout: 20_000 })
 
-  // Onglet/section « Fiabilité » — même patron de navigation que les autres
-  // sections de Paramètres (ex. E14 pour le profil société). Le lien peut
-  // être un <a> ou un bouton d'onglet selon l'implémentation finale de
-  // l'écran (NTOBS19/32, hors périmètre de cette lane).
-  const ouvrirFiabilite = page.getByRole('link', { name: /fiabilité/i })
-    .or(page.getByRole('button', { name: /fiabilité/i }))
-  await ouvrirFiabilite.first().click()
-  await expect(page.getByRole('heading', { name: /fiabilité/i })).toBeVisible({ timeout: 20_000 })
+  // Limites & usage — écran lecture seule (NTOBS8).
+  await page.goto('/parametres/limites-usage')
+  await expect(page.getByRole('heading', { name: 'Limites & usage' })).toBeVisible({ timeout: 20_000 })
 
-  // Onglet Sauvegardes — voit la dernière sauvegarde + statut du drill (NTOBS5).
-  await page.getByRole('tab', { name: /sauvegardes/i }).click()
-  await expect(page.getByText(/dernière sauvegarde|drill de restauration/i)).toBeVisible({ timeout: 20_000 })
-
-  // Onglet Limites & usage — au moins une barre de progression (NTOBS8).
-  await page.getByRole('tab', { name: /limites.*usage/i }).click()
-  await expect(page.getByRole('progressbar').first()).toBeVisible({ timeout: 20_000 })
-
-  // Onglet SLA — badge du mois courant (NTOBS16) puis rapport complet (NTOBS3).
-  await page.getByRole('tab', { name: /^sla$/i }).click()
-  await expect(page.getByText(/disponibilité|uptime/i).first()).toBeVisible({ timeout: 20_000 })
-
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    page.getByRole('button', { name: /voir le rapport complet/i }).click(),
-  ])
-  expect(download.suggestedFilename()).toMatch(/\.pdf$/i)
-  const path = await download.path()
-  expect(path).not.toBeNull()
-  expect(statSync(path).size).toBeGreaterThan(0)
+  // SLA — rapport mensuel (NTOBS16) : un rapport ou l'état vide explicite.
+  await page.goto('/parametres/sla')
+  await expect(page.getByRole('heading', { name: 'Rapport SLA' })).toBeVisible({ timeout: 20_000 })
+  await expect(
+    page.getByText(/% disponible|Aucun rapport SLA généré/).first()
+  ).toBeVisible({ timeout: 20_000 })
 })
