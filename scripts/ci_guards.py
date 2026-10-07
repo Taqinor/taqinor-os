@@ -395,6 +395,13 @@ GARDES = {
         ('Check for naive datetime / DateField timestamps (YDATA10/11)',
          'python scripts/check_naive_datetime.py',
          '.'),
+        # ADOC79 — une seule primitive de lecture d'IP (core.throttling.ip_de_requete).
+        ('Check lecture d IP hors primitive (ip_de_requete, ADOC79)',
+         'python scripts/check_ip_primitive.py',
+         '.'),
+        ('Test the IP-primitive checker itself (ADOC79)',
+         'python -m unittest scripts.tests.test_check_ip_primitive -v',
+         '.'),
         ('Check Celery task signatures (YDATA14, advisory)',
          'python scripts/check_celery_tasks.py',
          '.'),
