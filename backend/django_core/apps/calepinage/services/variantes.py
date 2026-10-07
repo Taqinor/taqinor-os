@@ -305,6 +305,13 @@ MESSAGE_SOURCE_OUVERTE = ("Ce lead n'a qu'un calepinage ouvert : créez une "
                           "la copie")
 
 
+#: ACAL184 — UNE règle (modèle et Dupliquer) : le client de la copie est
+#: celui du lead ; un couple lead/client qui se contredit est refusé.
+MESSAGE_CLIENT_PAS_CELUI_DU_LEAD = (
+    "Ce client n'est pas celui du lead choisi : laissez le client vide, il "
+    "est repris du lead.")
+
+
 class DuplicationEnConflit(VarianteRefusee):
     """ACAL187 — refus 409 : ``corps`` est la réponse publiée telle quelle."""
 
@@ -343,7 +350,12 @@ def _cible_de_copie(calepinage, lead_id, client_id):
         if lead is None:
             raise VarianteRefusee(f"Lead introuvable (#{lead_id}).",
                                   champ='lead')
-        client_id = getattr(lead, 'client_id', None) or client_id
+        client_du_lead = getattr(lead, 'client_id', None)
+        if client_id and client_du_lead and str(client_id) != str(
+                client_du_lead):
+            raise VarianteRefusee(MESSAGE_CLIENT_PAS_CELUI_DU_LEAD,
+                                  champ='client')
+        client_id = client_du_lead or client_id
         lead_id = lead.pk
     if client_id:
         from apps.crm.selectors import get_company_client

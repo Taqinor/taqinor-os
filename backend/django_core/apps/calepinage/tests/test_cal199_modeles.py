@@ -115,6 +115,16 @@ class CreerDepuisModeleTest(TestCase):
         self.modele.refresh_from_db()
         self.assertIn('consumption', self.modele.roof_layout)
 
+    def test_lead_introuvable_nomme_le_champ_lead(self):
+        # Lot 2 critique #13 — « Lead introuvable » pointe le champ LEAD.
+        marquer_modele(self.modele)
+        autre = Company.objects.create(nom='Ailleurs 199',
+                                       slug='ailleurs-199')
+        etranger = Lead.objects.create(company=autre, nom='Étranger')
+        with self.assertRaises(ModeleInvalide) as ctx:
+            creer_depuis_modele(self.modele, lead_id=etranger.pk)
+        self.assertEqual(ctx.exception.champ, 'lead')
+
     def test_nouveau_lead_remplace_celui_du_modele(self):
         marquer_modele(self.modele)
         copie = creer_depuis_modele(self.modele, lead_id=self.lead_client.pk)

@@ -197,6 +197,13 @@ def restaurer(calepinage, *, user=None):
 
     element = entree_active(calepinage)
     if element is not None:
+        # Lot 2 critique #13 — le désarchivage (et le re-rattachement du
+        # devis) est journalisé au nom de QUI RESTAURE : fait ici avec
+        # ``user`` ; le restaurateur appelé ensuite par ``apps.trash`` n'a
+        # plus rien à faire (idempotent) et ferme l'entrée.
+        donnees = element.donnees_snapshot if isinstance(
+            element.donnees_snapshot, dict) else {}
+        _desarchiver(calepinage, devis_id=donnees.get('devis_id'), user=user)
         restaurer_element(element, user=user)
     else:
         _desarchiver(calepinage, devis_id=None, user=user)
@@ -269,8 +276,12 @@ def restaurateur_calepinage(element):
         return None
     donnees = element.donnees_snapshot if isinstance(
         element.donnees_snapshot, dict) else {}
+    # Lot 2 critique #13 — la signature imposée par ``apps.trash`` ne porte
+    # pas QUI restaure : aucun auteur plutôt que celui qui avait SUPPRIMÉ
+    # (``supprime_par``). La porte calepinage (``restaurer``) désarchive
+    # elle-même avec l'auteur réel avant d'appeler la corbeille.
     return _desarchiver(calepinage, devis_id=donnees.get('devis_id'),
-                        user=getattr(element, 'supprime_par', None))
+                        user=None)
 
 
 def restaurateur_piece_jointe(element):

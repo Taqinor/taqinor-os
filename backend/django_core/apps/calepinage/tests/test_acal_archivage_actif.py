@@ -143,6 +143,38 @@ class ArchivageActifTest(BaseApiCalepinage):
                 devis.refresh_from_db()
                 self.assertEqual(devis.statut, statut)
 
+    def test_restauration_journalisee_au_nom_de_qui_restaure(self):
+        """Lot 2 critique #13 — le re-rattachement du devis au désarchivage
+        est écrit au nom de QUI RESTAURE, jamais de qui avait supprimé."""
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+
+        from apps.calepinage.services import liens
+        from apps.calepinage.services.archivage import restaurer
+
+        restaurateur = get_user_model().objects.create_user(
+            username='cal_restaure', password='x', company=self.company,
+            role=self.role)
+        devis = self._devis(Devis.Statut.BROUILLON, 'DEV-ACAL118-R')
+        calepinage = Calepinage.objects.create(
+            company=self.company, client=self.client_a, devis=devis,
+            titre='Restauré par un autre')
+        archiver(calepinage, user=self.user)
+        calepinage.refresh_from_db()
+        auteurs = []
+        lier = liens.lier_devis
+
+        def espion(*args, **kwargs):
+            auteurs.append(kwargs.get('user'))
+            return lier(*args, **kwargs)
+
+        with mock.patch.object(liens, 'lier_devis', espion):
+            restaurer(calepinage, user=restaurateur)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.devis_id, devis.pk)
+        self.assertEqual(auteurs, [restaurateur])
+
     def test_archiver_brouillon_detache(self):
         devis = self._devis(Devis.Statut.BROUILLON, 'DEV-ACAL118-B')
         calepinage = Calepinage.objects.create(

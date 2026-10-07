@@ -67,6 +67,25 @@ class DupliquerCible(BaseApiCalepinage):
         self.assertEqual(journal, [('verrou', self.company.pk, cible.pk),
                                    ('unicite',), ('libere',)])
 
+    def test_couple_lead_client_incoherent_refuse_comme_le_modele(self):
+        """Lot 2 critique #13 — UNE règle (depuis-modele / Dupliquer) : un
+        client explicite qui n'est pas celui du lead → 400 ``client``."""
+        from apps.calepinage.services.variantes import (
+            MESSAGE_CLIENT_PAS_CELUI_DU_LEAD)
+        from apps.crm.models import Client
+
+        a = Client.objects.create(company=self.company, nom='Client A')
+        b = Client.objects.create(company=self.company, nom='Client B')
+        cible = Lead.objects.create(company=self.company, nom='Avec client',
+                                    client=a)
+        avant = Calepinage.objects.count()
+        reponse = self._dupliquer(self.source, {'lead': cible.pk,
+                                                'client': b.pk})
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.data,
+                         {'client': MESSAGE_CLIENT_PAS_CELUI_DU_LEAD})
+        self.assertEqual(Calepinage.objects.count(), avant)
+
     def test_dupliquer_sans_cible_sur_source_ouverte_409(self):
         avant = Calepinage.objects.count()
         reponse = self._dupliquer(self.source)

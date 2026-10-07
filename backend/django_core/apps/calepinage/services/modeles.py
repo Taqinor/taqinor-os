@@ -185,14 +185,16 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         lead = get_company_lead(modele.company, lead_id)
         if lead is None:
             raise ModeleInvalide('Lead introuvable dans cette société.',
-                                 champ='client')
+                                 champ='lead')
         # ACAL184 — le client de la copie est CELUI du lead : un couple
-        # lead/client qui se contredit est refusé en nommant ``client``.
+        # lead/client qui se contredit est refusé en nommant ``client`` (UNE
+        # règle, partagée avec Dupliquer).
+        from .variantes import MESSAGE_CLIENT_PAS_CELUI_DU_LEAD
+
         client_du_lead = getattr(lead, 'client_id', None)
         if client_id and client_du_lead and int(client_id) != client_du_lead:
-            raise ModeleInvalide(
-                "Ce client n'est pas celui du lead choisi : laissez le "
-                'client vide, il est repris du lead.', champ='client')
+            raise ModeleInvalide(MESSAGE_CLIENT_PAS_CELUI_DU_LEAD,
+                                 champ='client')
         client_id = client_du_lead or client_id
         # ACAL117 (D-ACAL-15) — le modèle emporte ses réglages et son
         # implantation RELATIVE : la conception est translatée sur le repère
