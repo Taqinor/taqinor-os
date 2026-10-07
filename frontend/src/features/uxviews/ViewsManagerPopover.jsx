@@ -9,7 +9,7 @@
 // `personalViewOrder.js`) — `@dnd-kit/core` SEUL, même patron que
 // `pages/home/HomeMenu.jsx` (ODY13) ; `@dnd-kit/sortable` n'est PAS installé
 // et reste interdit (NE PAS FAIRE VX).
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext, KeyboardSensor, PointerSensor, TouchSensor,
   closestCenter, useDraggable, useDroppable, useSensor, useSensors,
@@ -145,6 +145,21 @@ export default function ViewsManagerPopover({ ecran, onApply }) {
     setOpen(ouvert)
     if (ouvert) refresh?.()
   }
+
+  // CAD177 (NTUX36) — « l'appelant est responsable de câbler l'effet initial
+  // via activeView » : AUCUN des 4 écrans (Devis/Factures/Tickets/Stock) ne
+  // l'avait fait, si bien que la vue par défaut du rôle (NTUX2) ne
+  // s'appliquait jamais au chargement. On l'applique donc ICI, UNE fois, au
+  // premier chargement terminé de la liste (préférence perso si elle existe
+  // encore, sinon défaut du rôle — sémantique `activeView` du hook). Jamais
+  // ré-appliquée ensuite : définir un défaut en cours de session ne doit pas
+  // écraser les filtres que l'utilisateur est en train de manipuler.
+  const initialeFaite = useRef(false)
+  useEffect(() => {
+    if (loading || initialeFaite.current) return
+    initialeFaite.current = true
+    if (activeView) onApply?.(activeView.configuration || {})
+  }, [loading, activeView, onApply])
 
   const apply = (view) => {
     applyView(view)
