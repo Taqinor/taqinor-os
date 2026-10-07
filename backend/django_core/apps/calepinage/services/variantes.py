@@ -158,6 +158,12 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...,
             variante.layout_hash = layout_hash(roof_layout) or ''
             champs.extend(['roof_layout', 'layout_hash'])
             changements.append('conception')
+            # ACAL112 — une conception changée périme sa simulation : le
+            # résultat de la variante est remis à ``None`` (sauf s'il est
+            # fourni dans le MÊME appel).
+            if resultat is ... and variante.resultat is not None:
+                variante.resultat = None
+                champs.append('resultat')
     if resultat is not ... and resultat != variante.resultat:
         variante.resultat = resultat
         champs.append('resultat')

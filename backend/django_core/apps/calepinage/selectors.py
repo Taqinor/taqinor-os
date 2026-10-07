@@ -315,9 +315,23 @@ def comparer_variantes(calepinage):
 
 
 def _mesures_variante(variante):
-    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées."""
+    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées.
+
+    ACAL112 — sans résultat (variante non simulée), ``total_modules`` et
+    ``kwc`` sont LUS dans la conception de la variante
+    (``mesures_du_document`` → ``pans_du_document``) et
+    ``source_mesures`` vaut ``'conception'``."""
     resultat = getattr(variante, 'resultat', None)
-    return resultat if isinstance(resultat, dict) else {}
+    if isinstance(resultat, dict) and resultat:
+        return dict(resultat, source_mesures='simulation')
+    from .services.mesures import mesures_du_document
+
+    document = getattr(variante, 'roof_layout', None)
+    if not isinstance(document, dict):
+        return {'source_mesures': 'conception'}
+    mesures = mesures_du_document(document)
+    return {'total_modules': mesures.get('modules'),
+            'kwc': mesures.get('kwc'), 'source_mesures': 'conception'}
 
 
 def _production_comparee(variante):
@@ -335,13 +349,16 @@ def _production_comparee(variante):
         colonnes_production, simulation_perimee_de_la_variante,
     )
 
+    resultat = getattr(variante, 'resultat', None)
     return colonnes_production(
-        _mesures_variante(variante),
+        resultat if isinstance(resultat, dict) else {},
         perimee=simulation_perimee_de_la_variante(variante))
 
 
 def _ligne_comparaison(variante, reference, nombre_de_lignes,
                        reference_p50=None):
+    from .services.comparaison import MOTIF_PERIMEE
+
     mesures = _mesures_variante(variante)
     simulee, production, _motif = _production_comparee(variante)
     comparable = nombre_de_lignes > 1 and bool(reference)
@@ -381,6 +398,12 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
             reference_p50, comparable),
         'version_moteur': mesures.get('version_moteur') or '',
         'entree_hash': mesures.get('entree_hash') or '',
+        # ACAL7/ACAL112 — colonnes de fraîcheur (contrat
+        # variantes_comparer.json) : ``None`` = jamais simulée.
+        'simulation_perimee': (
+            None if mesures.get('source_mesures') != 'simulation'
+            else _motif == MOTIF_PERIMEE),
+        'source_mesures': ('simulation' if simulee else 'conception'),
     }
 
 
