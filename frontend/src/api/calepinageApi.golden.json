@@ -793,14 +793,6 @@
       "verbe": "post"
     }
   ],
-  "calepinages.remove": [
-    {
-      "config": null,
-      "data": null,
-      "url": "/calepinage/calepinages/7/",
-      "verbe": "delete"
-    }
-  ],
   "calepinages.reprendreVisite": [
     {
       "config": null,

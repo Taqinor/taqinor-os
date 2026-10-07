@@ -166,9 +166,10 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
     // CIQ136 — aucune contrainte de site par défaut : « — », jamais FM.
     expect(screen.getByTestId('cal-fiche-contraintes_site')).toHaveTextContent('—')
     expect(screen.queryByRole('link', { name: 'Voir l’aperçu' })).toBeNull()
-    // Les permissions de l'exemple vide : modifier + supprimer, PAS retenir.
+    // Les permissions de l'exemple vide : modifier + archiver (ACAL120 : le
+    // geste « supprimer » est l'archivage), PAS retenir.
     expect(screen.getByTestId('cal-fiche-permissions'))
-      .toHaveTextContent('modifier, supprimer')
+      .toHaveTextContent('modifier, archiver')
   })
 
   it('agrégat pas encore lu : rien — jamais une fiche de tirets', () => {

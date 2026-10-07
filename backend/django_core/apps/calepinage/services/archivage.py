@@ -36,7 +36,8 @@ CLE_PIECE_JOINTE = 'records.attachment'
 
 __all__ = ['ArchivageInvalide', 'CLE_MODELE', 'CLE_PIECE_JOINTE',
            'EcritureArchiveRefusee', 'MESSAGE_ARCHIVE', 'est_archive',
-           'archiver', 'refuser_ecriture_si_archive', 'restaurer',
+           'archiver', 'raison_refus_archivage',
+           'refuser_ecriture_si_archive', 'restaurer',
            'restaurateur_calepinage', 'restaurateur_piece_jointe']
 
 
@@ -81,6 +82,14 @@ def refuser_ecriture_si_archive(calepinage):
     calepinage actif."""
     if est_archive(calepinage):
         raise EcritureArchiveRefusee(MESSAGE_ARCHIVE)
+
+
+def raison_refus_archivage(calepinage):
+    """ACAL120 — le motif pour lequel ``archiver`` refuserait (``''`` s'il
+    accepte) : LE prédicat de ``permissions.peut_supprimer`` du détail
+    (« supprimer » = archiver ; DELETE est 405)."""
+    refus = _refus_devis_porte(calepinage)
+    return str(refus) if refus is not None else ''
 
 
 def _refus_devis_porte(calepinage):

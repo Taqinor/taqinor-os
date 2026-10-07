@@ -274,6 +274,19 @@ test('GARDE — toute clé de EXCEPTIONS_SANS_APPELANT existe encore dans calepi
   )
 })
 
+test("ACAL120 — calepinages n'expose pas remove", () => {
+  // DELETE /calepinages/<pk>/ répond 405 (archiver est l'unique geste) : la
+  // clé `remove` du CRUD partagé est une jumelle MORTE d'archiver. Le spread
+  // ne garde que les méthodes servies, et aucun écran ne l'appelle.
+  const codeApi = sansCommentaires(lireSourceCalepinageApi())
+  assert.doesNotMatch(codeApi, /^\s*\.\.\.crud\('calepinages'\),\s*$/m,
+    "le spread brut ...crud('calepinages') exposerait remove")
+  assert.match(codeApi,
+    /\(\(\{ list, get, create, update \}\) => \(\{ list, get, create, update \}\)\)\(crud\('calepinages'\)\)/)
+  assert.equal(estAppelee('calepinages', 'remove', texteAppelantsReel()), false,
+    'un écran appelle encore calepinageApi.calepinages.remove')
+})
+
 test('GARDE — chaque raison de EXCEPTIONS_SANS_APPELANT est datée et non vide', () => {
   for (const [id, raison] of Object.entries(EXCEPTIONS_SANS_APPELANT)) {
     assert.ok(raison && raison.length > 10, `${id} : raison vide ou trop courte`)

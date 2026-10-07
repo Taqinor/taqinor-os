@@ -40,6 +40,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, status
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS
@@ -166,6 +167,14 @@ def _param_chemin(nom, description):
     return OpenApiParameter(name=nom, type=OpenApiTypes.INT,
                             location=OpenApiParameter.PATH,
                             description=description)
+
+
+#: ACAL120 — DELETE / PUT sur ``calepinages/<pk>/`` : 405, archiver est
+#: l'unique geste (le renommage passe par PATCH).
+MESSAGE_DELETE_REFUSE = ('Un calepinage ne se supprime pas : archivez le '
+                         'calepinage (réversible).')
+MESSAGE_PUT_REFUSE = ('Remplacement complet refusé : modifiez par PATCH, ou '
+                      'archivez le calepinage.')
 
 
 class _OrdreStatutDerive(filters.OrderingFilter):
@@ -376,10 +385,20 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         contrat (``calepinage_creation_conflit.json``), rien n'est écrit."""
         from ..services.liens import RattachementRefuse
 
+        if not kwargs.get('partial'):
+            # ACAL120 — PUT (remplacement complet) n'est pas servi : on
+            # modifie par PATCH (R3).
+            raise MethodNotAllowed(request.method, detail=MESSAGE_PUT_REFUSE)
         try:
             return super().update(request, *args, **kwargs)
         except RattachementRefuse as refus:
             return Response(refus.corps, status=refus.statut)
+
+    def destroy(self, request, *args, **kwargs):
+        """ACAL120 — un calepinage ne se SUPPRIME jamais : 405, rien n'est
+        détruit (versions, variantes, photos intactes) ; archiver est
+        l'unique geste (``POST archiver/``, réversible)."""
+        raise MethodNotAllowed(request.method, detail=MESSAGE_DELETE_REFUSE)
 
     def perform_update(self, serializer):
         """ACAL180 — lead, client et responsable passent par
@@ -1484,13 +1503,17 @@ def _compteur_variantes(calepinage):
 
 def _permissions(calepinage, request):
     """Ce que L'APPELANT a le droit de faire — jamais un drapeau décoratif."""
+    from ..services.archivage import raison_refus_archivage
+
     user = getattr(request, 'user', None) if request is not None else None
     peut_gerer = bool(user) and PeutGererCalepinage().has_permission(
         request, None)
     return {
         'peut_modifier': peut_gerer,
-        'peut_supprimer': peut_gerer and not getattr(calepinage, 'devis_id',
-                                                     None),
+        # ACAL120 — « supprimer » = ARCHIVER (DELETE est 405) : le MÊME
+        # prédicat que ``services.archivage.archiver``.
+        'peut_supprimer': peut_gerer and not raison_refus_archivage(
+            calepinage),
         'peut_retenir_variante': peut_gerer and bool(
             getattr(calepinage, 'variantes', None)
             and calepinage.variantes.exists()),
