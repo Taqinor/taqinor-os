@@ -92,6 +92,8 @@ async def query_database(
     user_id = int(token_payload.get("user_id", 0))
     # ERR44 — exige un company_id present et non nul (403 sinon).
     company_id = _require_company_id(token_payload)
+    # AANA6 — production sans role Postgres dedie : agent desactive (503).
+    _database.require_sql_agent_enabled()
     # AANA5 — plafond de debit (429) ; Redis injoignable => 503 (fail-closed).
     _check_sql_agent_rate_limit(user_id)
 

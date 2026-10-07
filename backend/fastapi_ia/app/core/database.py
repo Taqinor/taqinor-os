@@ -6,7 +6,7 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from app.core.config import DATABASE_URL, SQL_AGENT_DATABASE_URL
+from app.core.config import DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +32,34 @@ def sql_agent_engine_args() -> dict:
     }
 
 
+class SqlAgentDisabledError(RuntimeError):
+    """AANA6 — agent SQL desactive (production sans role dedie)."""
+
+
+def sql_agent_disabled_reason() -> str:
+    """Raison (nommant la variable) pour laquelle l'agent est desactive, ou
+    "" s'il est utilisable. Lue A L'APPEL dans app.core.config."""
+    from app.core import config
+    return config.SQL_AGENT_DISABLED_REASON
+
+
+def require_sql_agent_enabled() -> None:
+    """503 explicite si l'agent SQL est desactive (AANA6)."""
+    reason = sql_agent_disabled_reason()
+    if reason:
+        raise HTTPException(status_code=503, detail=reason)
+
+
 def create_sql_agent_engine():
     """Moteur de l'agent NL->SQL (role dedie lecture seule SQL_AGENT_DB_USER)
-    avec le statement_timeout. SEUL point de creation de ce moteur."""
-    return create_engine(SQL_AGENT_DATABASE_URL, **sql_agent_engine_args())
+    avec le statement_timeout. SEUL point de creation de ce moteur. Jamais de
+    repli sur la connexion proprietaire en production (AANA6)."""
+    from app.core import config
+    if config.SQL_AGENT_DISABLED_REASON or not config.SQL_AGENT_DATABASE_URL:
+        raise SqlAgentDisabledError(
+            config.SQL_AGENT_DISABLED_REASON
+            or "Agent SQL desactive : SQL_AGENT_DB_USER non defini.")
+    return create_engine(config.SQL_AGENT_DATABASE_URL, **sql_agent_engine_args())
 
 
 # ── AANA5 — limiteur de debit partage (Redis, fenetre glissante) ─────────────
