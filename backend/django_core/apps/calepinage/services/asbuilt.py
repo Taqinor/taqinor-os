@@ -47,10 +47,17 @@ MENTION_SANS_PREVU = (
     "Ce pan n'existe pas dans la conception prévue : il n'y a rien à quoi "
     "comparer le posé."
 )
+#: ACAL248 — le prévu FIGÉ au relevé diffère de la conception d'aujourd'hui.
+MENTION_CONCEPTION_MODIFIEE = 'conception modifiée depuis le relevé'
+
+#: ACAL248 — ``PoseReelle.prevu_source`` (20 caractères) : d'où vient le prévu
+#: figé à la saisie du relevé.
+PREVU_SOURCE_COURT = {SOURCE_DEVIS_ACCEPTE: 'devis_accepte'}
+PREVU_SOURCE_DEFAUT = 'calepinage'
 
 __all__ = [
     'SOURCE_VARIANTE', 'SOURCE_CALEPINAGE', 'SOURCE_DEVIS_ACCEPTE',
-    'MENTION_SANS_SAISIE',
+    'MENTION_SANS_SAISIE', 'MENTION_CONCEPTION_MODIFIEE',
     'comparer', 'conception_du_chantier', 'pans_prevus',
     'ecarts_du_calepinage',
     # CALX366 — la porte HTTP ``pose-reelle/``.
@@ -60,11 +67,19 @@ __all__ = [
 
 
 def comparer(prevus, saisies):
-    """``[{pan, prevu, pose, ecart, ecarts_position, releve_le, mention}]``.
+    """``[{pan, prevu, pose, ecart, ecarts_position, releve_le, mention,
+    prevu_fige, prevu_actuel, conception_modifiee}]``.
 
     Args:
-        prevus: ``[{pan, modules}]`` — les pans de la variante retenue.
-        saisies: ``[{pan, modules_poses, ecarts_position, releve_le}]``.
+        prevus: ``[{pan, modules}]`` — les pans de la conception COURANTE.
+        saisies: ``[{pan, modules_poses, ecarts_position, releve_le,
+            modules_prevus?}]`` — ``modules_prevus`` = le prévu FIGÉ au
+            relevé (ACAL248), ``None`` pour un relevé ancien (prévu vivant).
+
+    ACAL248 — l'écart d'un pan relevé se lit contre le prévu DU JOUR DU
+    RELEVÉ : retoucher le toit après coup ne réécrit plus l'écart passé ;
+    ``prevu_actuel`` et ``conception_modifiee`` disent que la conception a
+    changé depuis.
 
     Un pan prévu SANS saisie sort avec ``pose = None`` et ``ecart = None`` ;
     un pan SAISI qui n'existe pas au prévu sort avec ``prevu = None`` — les
@@ -96,7 +111,12 @@ def _entier(valeur):
 
 
 def _ligne(pan, modules_prevus, saisie):
-    prevu = _entier(modules_prevus)
+    actuel = _entier(modules_prevus)
+    fige = _entier((saisie or {}).get('modules_prevus'))
+    prevu_fige = fige is not None
+    # Un pan qui n'existe plus au prévu garde « hors prévu » : son prévu figé
+    # ne fabrique pas un écart contre une conception où il n'est plus.
+    prevu = fige if (prevu_fige and actuel is not None) else actuel
     pose = _entier((saisie or {}).get('modules_poses'))
     if pose is None:
         mention = MENTION_SANS_SAISIE
@@ -116,6 +136,10 @@ def _ligne(pan, modules_prevus, saisie):
         'releve_le': (saisie or {}).get('releve_le'),
         'releve_par': (saisie or {}).get('releve_par'),
         'mention': mention,
+        'prevu_fige': prevu_fige,
+        'prevu_actuel': actuel,
+        'conception_modifiee': bool(prevu_fige and actuel is not None
+                                    and actuel != fige),
     }
 
 
@@ -146,22 +170,26 @@ def conception_du_chantier(calepinage):
     return getattr(calepinage, 'roof_layout', None), SOURCE_CALEPINAGE
 
 
-def pans_prevus(calepinage):
+def pans_prevus(calepinage, *, conception=None):
     """Les pans PRÉVUS : ceux de :func:`conception_du_chantier`.
 
     Renvoie ``(pans, source)`` — la source est PUBLIÉE pour qu'un écart lu
     sur la conception courante ne se lise jamais comme un écart avec
-    l'instantané accepté (contractuel).
+    l'instantané accepté (contractuel). ``conception`` (``(document,
+    source)``, ACAL248) évite de relire la conception quand l'appelant la
+    tient déjà — le document as-built rend ainsi tableau ET planche depuis
+    la MÊME conception.
     """
     # ACAL259 — LA lecture du module (``mesures_du_document``) : le même
     # compte par pan que la présentation, le journal et les exports.
     from .mesures import mesures_du_document
 
-    document, source = conception_du_chantier(calepinage)
+    document, source = (conception if conception is not None
+                        else conception_du_chantier(calepinage))
     return mesures_du_document(document)['pans'], source
 
 
-def ecarts_du_calepinage(calepinage):
+def ecarts_du_calepinage(calepinage, *, conception=None):
     """L'as-built COMPLET d'un calepinage : prévu, posé, écart, totaux.
 
     Lecture PURE, bornée société par l'appelant. ``ecart_total`` n'existe que
@@ -170,11 +198,13 @@ def ecarts_du_calepinage(calepinage):
     """
     from ..models import PoseReelle
 
-    prevus, source = pans_prevus(calepinage)
+    prevus, source = pans_prevus(calepinage, conception=conception)
     saisies = [
         {'pan': pose.pan, 'modules_poses': pose.modules_poses,
          'ecarts_position': pose.ecarts_position, 'releve_le': pose.releve_le,
-         'releve_par': _auteur_publie(pose.releve_par)}
+         'releve_par': _auteur_publie(pose.releve_par),
+         # ACAL248 — le prévu FIGÉ au relevé (``None`` : relevé ancien).
+         'modules_prevus': pose.modules_prevus}
         for pose in PoseReelle.objects.filter(calepinage=calepinage)
         .select_related('releve_par')
     ]
@@ -258,6 +288,10 @@ def _ligne_du_contrat(ligne):
                       if hasattr(ligne.get('releve_le'), 'isoformat')
                       else ligne.get('releve_le')),
         'releve_par': ligne.get('releve_par'),
+        # ACAL248 — le prévu figé au relevé, et la conception d'aujourd'hui.
+        'prevu_fige': bool(ligne.get('prevu_fige')),
+        'prevu_actuel': ligne.get('prevu_actuel'),
+        'conception_modifiee': bool(ligne.get('conception_modifiee')),
     }
 
 
@@ -373,10 +407,12 @@ def enregistrer_pose(calepinage, donnees, *, user=None):
     from ..models import PoseReelle
     from .journal import journaliser_pose_reelle
 
-    prevus, _source = pans_prevus(calepinage)
+    prevus, source = pans_prevus(calepinage)
     deja = set(PoseReelle.objects.filter(calepinage=calepinage)
                .values_list('pan', flat=True))
     saisie = _valider_saisie(donnees, [pan['pan'] for pan in prevus], deja)
+    prevu_du_pan = next((pan['modules'] for pan in prevus
+                         if pan['pan'] == saisie['pan']), None)
     auteur = user if getattr(user, 'pk', None) else None
     with transaction.atomic():
         pose = (PoseReelle.objects.select_for_update()
@@ -385,6 +421,13 @@ def enregistrer_pose(calepinage, donnees, *, user=None):
         if pose is None:
             pose = PoseReelle(company=calepinage.company,
                               calepinage=calepinage, pan=saisie['pan'])
+        if ancien is None or ancien != saisie['modules_poses']:
+            # ACAL248 — le prévu est FIGÉ à la saisie (et re-figé quand le
+            # nombre posé change) : retoucher le toit après coup ne réécrit
+            # plus l'écart de ce relevé.
+            pose.modules_prevus = _entier(prevu_du_pan)
+            pose.prevu_source = PREVU_SOURCE_COURT.get(source,
+                                                       PREVU_SOURCE_DEFAUT)
         pose.modules_poses = saisie['modules_poses']
         pose.ecarts_position = saisie['ecarts_position']
         if saisie['releve_le'] is not None:

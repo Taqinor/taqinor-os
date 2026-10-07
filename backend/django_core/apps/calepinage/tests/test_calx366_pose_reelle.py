@@ -45,9 +45,9 @@ CONTRAT = json.loads(
 #: ACAL16 (contrat as-built v2) a posé ces champs de ligne, et une ligne
 #: ORPHELINE (pan supprimé, hors totaux), avant leur producteur : ACAL267
 #: les sert et retire ce tableau (``SERVI`` redevient ``CONTRAT``).
-#: ``releve_le`` / ``releve_par`` sont servis depuis ACAL245.
-EN_ATTENTE_ACAL267 = ('zone_id', 'libelle', 'orphelin', 'prevu_fige',
-                      'prevu_actuel', 'conception_modifiee')
+#: ``releve_le`` / ``releve_par`` sont servis depuis ACAL245 ; ``prevu_fige``,
+#: ``prevu_actuel`` et ``conception_modifiee`` depuis ACAL248.
+EN_ATTENTE_ACAL267 = ('zone_id', 'libelle', 'orphelin')
 
 
 def _sans_v2(etat):
@@ -66,13 +66,17 @@ SERVI = {etat: _sans_v2(CONTRAT[etat])
 PANS = ['PAN-A', 'PAN-B', 'PAN-C']
 PREVUS = [{'pan': 'PAN-A', 'modules': 8}, {'pan': 'PAN-B', 'modules': 4},
           {'pan': 'PAN-C', 'modules': 2}]
+#: ACAL248 — l'``exemple`` du contrat : PAN-B a été RETOUCHÉ à 5 modules
+#: après son relevé (prévu figé 4) — ``conception_modifiee`` sur cette ligne.
+PREVUS_RETOUCHES = [dict(pan, modules=5) if pan['pan'] == 'PAN-B' else pan
+                    for pan in PREVUS]
 SAISIES = [
     {'pan': 'PAN-A', 'modules_poses': 8, 'ecarts_position': '',
-     'releve_le': '2026-09-22',
+     'releve_le': '2026-09-22', 'modules_prevus': 8,
      'releve_par': CONTRAT['exemple']['lignes'][0]['releve_par']},
     {'pan': 'PAN-B', 'modules_poses': 3,
      'ecarts_position': CONTRAT['corps_saisie']['ecarts_position'],
-     'releve_le': '2026-09-22',
+     'releve_le': '2026-09-22', 'modules_prevus': 4,
      'releve_par': CONTRAT['exemple']['lignes'][1]['releve_par']},
 ]
 
@@ -86,8 +90,9 @@ class ContratCommitteTest(SimpleTestCase):
     """Les trois états et les deux refus du contrat CALX337, à l'identique."""
 
     def test_exemple(self):
-        self.assertEqual(service._forme_contrat(ecarts(), None),
-                         SERVI['exemple'])
+        self.assertEqual(
+            service._forme_contrat(ecarts(prevus=PREVUS_RETOUCHES), None),
+            SERVI['exemple'])
 
     def test_exemple_version_creee(self):
         self.assertEqual(service._forme_contrat(ecarts(), 31),

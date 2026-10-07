@@ -1282,14 +1282,21 @@ def nom_de_fichier(calepinage, extension, *, quoi=None):
     return '%s%s.%s' % (base, '-' + assaini[:60] if assaini else '', extension)
 
 
-def rendre_planche_svg(calepinage, *, moment=None, **options):
+def rendre_planche_svg(calepinage, *, moment=None, roof_layout=None,
+                       **options):
     """SVG de la planche d'un ``Calepinage``. Lève ``PlancheRefusee`` si besoin.
 
     CAL173 — le pied de planche porte TOUJOURS l'empreinte du layout et la
     version du moteur telles qu'elles sont STOCKÉES : deux rendus de la même
     conception portent la même, une conception modifiée en change.
+
+    ACAL248 — ``roof_layout`` dessine une AUTRE conception que le document
+    courant (l'instantané accepté que le chantier a reçu) : l'as-built rend
+    ainsi sa planche depuis la conception de son tableau.
     """
-    geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    geometrie = geometrie_de_planche(
+        roof_layout if roof_layout is not None
+        else getattr(calepinage, 'roof_layout', None))
     return svg_de_planche(
         geometrie,
         titre=options.pop('titre', None) or str(calepinage),
@@ -1299,15 +1306,16 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
         or pied_du_calepinage(calepinage, moment=moment))
 
 
-def planche_svg_ou_vide(calepinage):
+def planche_svg_ou_vide(calepinage, *, roof_layout=None):
     """ACAL215 — le SVG de la planche « en regard », ``''`` sans conception.
 
     UN survivant pour les deux documents qui l'embarquent (présentation
     compacte, as-built) : ``PlancheRefusee`` est avalée, jamais une planche
-    fabriquée ; le document reste imprimable sans elle.
+    fabriquée ; le document reste imprimable sans elle. ``roof_layout``
+    (ACAL248) : la conception à dessiner, si ce n'est pas le document courant.
     """
     try:
-        return rendre_planche_svg(calepinage)
+        return rendre_planche_svg(calepinage, roof_layout=roof_layout)
     except PlancheRefusee:
         return ''
 
