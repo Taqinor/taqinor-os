@@ -477,7 +477,7 @@ def whatsapp_inbound_webhook(request):
     """
     import logging
 
-    from apps.crm.webhooks import _check_meta_lead_ads_signature
+    from core.webhook_signature import signature_hub_sha256_valide
 
     from .services import (
         extraire_destinataire_whatsapp, extraire_message_whatsapp,
@@ -500,7 +500,7 @@ def whatsapp_inbound_webhook(request):
                        '(SAV_WHATSAPP_APP_SECRET absent).'},
             status=status.HTTP_503_SERVICE_UNAVAILABLE))
     # Corps brut lu AVANT ``request.data`` : la signature porte sur lui.
-    if not _check_meta_lead_ads_signature(request, secret):
+    if not signature_hub_sha256_valide(request, secret):
         logger.warning(
             'sav.whatsapp_inbound_webhook : signature absente ou invalide.')
         return _noindex(Response({'detail': 'Signature invalide.'},

@@ -2781,16 +2781,13 @@ def _check_meta_lead_ads_signature(request, secret):
     """PUB26 — Vrai si ``X-Hub-Signature-256`` est présente ET valide
     (HMAC-SHA256 du corps brut avec ``secret``). Miroir EXACT de
     ``apps.adsengine.whatsapp_webhook._check_signature`` (même en-tête, même
-    algorithme) — absente ou mal formée → False (rejet)."""
-    sig_header = request.META.get('HTTP_X_HUB_SIGNATURE_256', '')
-    if not sig_header or not sig_header.startswith('sha256='):
-        return False
-    expected = 'sha256=' + hmac.new(
-        secret.encode(), request.body, hashlib.sha256).hexdigest()
-    # QJR413 (a) — comparaison en BYTES (voir ``_secret_ok``) : un
-    # ``X-Hub-Signature-256`` non-ASCII rendait un 500 public.
-    return hmac.compare_digest(str(sig_header).encode('utf-8'),
-                               expected.encode('utf-8'))
+    algorithme) — absente ou mal formée → False (rejet).
+
+    ASEC36-revue — délègue à la primitive de fondation
+    ``core.webhook_signature`` (partagée avec le webhook WhatsApp SAV) ;
+    comportement identique."""
+    from core.webhook_signature import signature_hub_sha256_valide
+    return signature_hub_sha256_valide(request, secret)
 
 
 #: CRX4 (résidu post-QJR414, D-CRX2) — forme admise d'un ``leadgen_id`` Meta :
