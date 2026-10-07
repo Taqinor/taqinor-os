@@ -362,6 +362,13 @@ retiré plus un hook ajouté.
 | `cal-pente-lidar-suggestion` | pente LiDAR suggestion. |
 | `cal-pente-message` | pente message. |
 | `cal-pente-mode` | pente mode. |
+| `cal-pente-visite-orientation-utiliser` | pente : utiliser l’orientation de la visite (ACAL208). |
+| `cal-pente-visite-orientation-mesure` | pente : orientation de la visite (ACAL208). |
+| `cal-pente-visite-orientation` | pente : proposition de l’orientation de la visite (ACAL208). |
+| `cal-pente-visite-utiliser` | pente : utiliser la mesure de la visite (ACAL208). |
+| `cal-pente-visite-mesure` | pente : mesure de la visite (ACAL208). |
+| `cal-pente-visite` | pente : proposition de la pente de la visite (ACAL208). |
+| `cal-pente-pan` | pente : choix du pan (ACAL252). |
 | `cal-pente-source` | pente provenance. |
 | `cal-pente-valeur` | pente valeur. |
 
@@ -462,6 +469,11 @@ retiré plus un hook ajouté.
 | `cal-releve-cote-mesure` | relevé cote : choix de la cote mesurée (ACAL207). |
 | `cal-releve-cote-appliquer` | relevé cote : appliquer au pan (ACAL207). |
 | `cal-releve-cote-retour` | relevé cote : retour du serveur / refus nommé (ACAL207). |
+| `cal-releve-azimut-retour` | relevé azimut : retour du serveur / refus nommé (ACAL206). |
+| `cal-releve-azimut-appliquer` | relevé azimut : appliquer au pan (ACAL206). |
+| `cal-releve-azimut-pan` | relevé azimut : choix du pan (ACAL206). |
+| `cal-releve-azimut-mesure` | relevé azimut : valeur et précision relevées (ACAL206). |
+| `cal-releve-appliquer-azimut` | relevé ouvrir « Appliquer l’azimut au pan » (ACAL206). |
 | `cal-releve-chaine--ajouter-cote` | relevé chaîne ajouter côte à côte. |
 | `cal-releve-chaine--cote` | relevé chaîne côte à côte. |
 | `cal-releve-chaine--cote--retirer` | relevé chaîne côte à côte retirer. |
@@ -574,6 +586,11 @@ retiré plus un hook ajouté.
 | `cal-reprise-photos-vide` | reprise de visite — aucune photo retenue. |
 | `cal-reprise-raison` | reprise de visite — raison du bouton désactivé. |
 | `cal-reprise-refus-bandeau` | reprise de visite — bandeau qui nomme le champ refusé. |
+| `cal-reprise-a-jour` | reprise de visite — « Reprise à jour » (ACAL211). |
+| `cal-reprise-ecart` | reprise de visite — tableau d’écart relevé / visite, une ligne par mesure (ACAL211). |
+| `cal-reprise-ecart--releve` | reprise de visite — valeur reprise d’une mesure en écart (ACAL211). |
+| `cal-reprise-ecart--visite` | reprise de visite — valeur actuelle de la visite d’une mesure en écart (ACAL211). |
+| `cal-reprise-maj` | reprise de visite — bouton « Mettre à jour depuis la visite » (ACAL211). |
 | `cal-reprise-vide` | reprise de visite — état vide, motif du serveur tel quel. |
 | `cal-reprise-visite` | reprise de visite — panneau de l'onglet. |
 | `cal-reprise-visite-entete` | reprise de visite — numéro et validation de la visite. |

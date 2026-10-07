@@ -422,6 +422,98 @@ function AppliquerCoteAuPan({ calepinageId, releve }) {
   )
 }
 
+/* ACAL206 (D-ACAL-28) — « Appliquer l'azimut au pan ». L'azimut boussole du relevé n'est
+   JAMAIS appliqué d'office : le dessinateur choisit le pan, puis clique. L'écriture passe par
+   la primitive d'écriture par section (`layout/section/`, jeton `base_empreinte`) : seuls
+   `facingAzimuthDeg`, `facingAzimuthSource = 'releve'` et `facingAzimuthPrecisionDeg` de CE
+   pan sont posés — les autres pans et les autres clés ne sont pas touchés. Sans précision
+   déclarée, le geste n'existe pas (une valeur nue se lirait comme une mesure exacte). */
+function AppliquerAzimutAuPan({ calepinageId, releve }) {
+  const [conception, setConception] = useState(null)
+  const [empreinte, setEmpreinte] = useState(null)
+  const [zoneId, setZoneId] = useState('')
+  const [enCours, setEnCours] = useState(false)
+  const [retour, setRetour] = useState(null)
+
+  useEffect(() => {
+    if (!calepinageId) return undefined
+    let vivant = true
+    Promise.resolve(calepinageApi.calepinages.layout?.(calepinageId))
+      .then((res) => {
+        if (!vivant) return
+        setConception(res?.data?.roof_layout ?? null)
+        setEmpreinte(res?.data?.empreinte_document ?? null)
+      })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [calepinageId])
+
+  const azimut = releve?.azimut
+  const precision = azimut?.precision_deg
+  const zones = (Array.isArray(conception?.zones) ? conception.zones : [])
+    .filter((z) => z && z.id !== undefined && z.id !== null)
+  if (!azimut || azimut.deg == null || precision == null || zones.length === 0) return null
+  const zone = zones.find((z) => String(z.id) === zoneId) ?? null
+
+  const appliquer = () => {
+    if (!zone) return
+    setEnCours(true)
+    setRetour(null)
+    Promise.resolve(calepinageApi.calepinages.enregistrerSectionLayout(calepinageId, {
+      cle: 'zones',
+      zone_id: zone.id,
+      champs: {
+        facingAzimuthDeg: Number(azimut.deg),
+        facingAzimuthSource: 'releve',
+        facingAzimuthPrecisionDeg: Number(precision),
+      },
+      base_empreinte: empreinte,
+    }))
+      .then((res) => {
+        if (res?.data?.roof_layout) setConception(res.data.roof_layout)
+        setEmpreinte(res?.data?.empreinte_document ?? empreinte)
+        setRetour({ ok: true, texte: `Azimut ${azimut.deg}° (± ${precision}°) appliqué au pan « ${
+          zone.label || zone.id} ».` })
+      })
+      .catch((err) => setRetour({
+        ok: false,
+        texte: err?.response?.status === 409
+          ? 'Le calepinage a changé ailleurs : rechargez avant d’appliquer l’azimut.'
+          : premierMessage(err?.response?.data),
+      }))
+      .finally(() => setEnCours(false))
+  }
+
+  return (
+    <div className="mt-5 border-t border-white/10 pt-4" data-testid="cal-releve-appliquer-azimut">
+      <p className="tech-label text-lune-faint">Appliquer l’azimut au pan</p>
+      <p className="mt-1 text-sm text-lune-soft" data-testid="cal-releve-azimut-mesure">
+        {`Azimut relevé : ${azimut.deg}° ± ${precision}°`}
+      </p>
+      <label className="mt-2 block text-sm text-lune-soft">
+        Pan
+        <select value={zoneId} data-testid="cal-releve-azimut-pan"
+          onChange={(e) => setZoneId(e.target.value)}
+          className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+          <option value="">— choisir —</option>
+          {zones.map((z) => <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>)}
+        </select>
+      </label>
+      <button type="button" onClick={appliquer} disabled={enCours || !zone}
+        data-testid="cal-releve-azimut-appliquer"
+        className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-brass-200 disabled:opacity-50">
+        Appliquer l’azimut au pan
+      </button>
+      {retour && (
+        <p role={retour.ok ? 'status' : 'alert'} data-testid="cal-releve-azimut-retour"
+          className={`mt-2 text-sm ${retour.ok ? 'text-lune-soft' : 'text-red-300'}`}>
+          {retour.texte}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function PanneauReleve({ calepinageId: idPropose }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
@@ -713,6 +805,8 @@ export default function PanneauReleve({ calepinageId: idPropose }) {
 
       {/* ACAL207 — geste EXPLICITE : recaler un côté d'un pan sur une cote mesurée. */}
       <AppliquerCoteAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null} />
+      {/* ACAL206 — geste EXPLICITE : poser l'azimut relevé (avec sa précision) sur un pan. */}
+      <AppliquerAzimutAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null} />
 
     </div>
   )

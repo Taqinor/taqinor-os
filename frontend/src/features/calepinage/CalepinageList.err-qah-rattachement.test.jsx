@@ -37,30 +37,19 @@ vi.mock('../../api/crmApi', () => ({
 }))
 
 import CalepinageList from './CalepinageList'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 const rendre = () => render(
   <MemoryRouter><ThemeProvider><CalepinageList /></ThemeProvider></MemoryRouter>,
 )
 
-/** La forme RÉELLE que rend désormais la liste (CALX407) : `lead` imbriqué,
- * `responsable` en repli sur le propriétaire du lead (identifiant + nom
- * séparé — jamais un objet, contrairement au détail). */
-const LIGNE_AVEC_RATTACHEMENT = {
-  id: 77,
-  reference: 'CAL-2609-0077',
-  nom: 'MON-ETUDE',
-  statut: 'en_cours',
-  statut_libelle: 'En cours',
-  lead: { id: 77, nom: 'Toiture Anfa', ville: 'Casablanca' },
-  client: null,
-  responsable: 3,
-  responsable_nom: 'demo_admin',
-  image: { url: null },
-  layout_stale: null,
-  layout_nb_panneaux: null,
-  modifie_le: '2026-09-28T10:00:00Z',
-}
+/** ACAL197 — la forme RÉELLE que rend la liste, lue sur l'échantillon de
+ * contrat committé (`calepinage_liste.json`, D06-T01) : plus de fixture
+ * tapée à la main. Un lead seul (sans client) : l'étude a POURTANT un
+ * rattachement, le nom du lead. */
+const EXEMPLE = exempleContrat('calepinage', 'calepinage_liste').results[0]
+const LIGNE_AVEC_RATTACHEMENT = { ...EXEMPLE, client: null, client_apercu: null }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -77,7 +66,7 @@ describe('ERR-QAH-CALEPINAGE-LISTE-SANS-RATTACHEMENT', () => {
     rendre()
     const vignette = await screen.findByTestId(
       `cal-vignette-${LIGNE_AVEC_RATTACHEMENT.id}`)
-    expect(vignette).toHaveTextContent('Toiture Anfa')
+    expect(vignette).toHaveTextContent(LIGNE_AVEC_RATTACHEMENT.lead.nom)
     expect(vignette).not.toHaveTextContent('Sans rattachement')
   })
 
@@ -87,7 +76,7 @@ describe('ERR-QAH-CALEPINAGE-LISTE-SANS-RATTACHEMENT', () => {
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
     const responsable = await screen.findByTestId(
       `cal-responsable-${LIGNE_AVEC_RATTACHEMENT.id}`)
-    expect(responsable).toHaveTextContent('demo_admin')
+    expect(responsable).toHaveTextContent(LIGNE_AVEC_RATTACHEMENT.responsable_nom)
     expect(responsable).not.toHaveTextContent('Sans responsable')
   })
 
@@ -96,6 +85,6 @@ describe('ERR-QAH-CALEPINAGE-LISTE-SANS-RATTACHEMENT', () => {
     rendre()
     const vignette = await screen.findByTestId(
       `cal-vignette-${LIGNE_AVEC_RATTACHEMENT.id}`)
-    expect(vignette).toHaveTextContent('MON-ETUDE')
+    expect(vignette).toHaveTextContent(LIGNE_AVEC_RATTACHEMENT.nom)
   })
 })

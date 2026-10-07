@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { formatDateTime } from '../../../lib/format'
+import RetourAtelier from './RetourAtelier'
 
 /* ============================================================================
    CALX365 — LA REPRISE DE LA VISITE TECHNIQUE, EN ONGLET DE L'ATELIER.
@@ -62,6 +63,49 @@ function raisonDesactivation(etat) {
   return null
 }
 
+/* ACAL211 — un relevé DÉJÀ repris dont la visite a changé depuis (`a_jour: false`) : le
+   tableau d'écarts nomme, pour chaque mesure qui diverge, la valeur reprise ET la valeur
+   actuelle de la visite — plus jamais un « déjà repris » qui laisse croire que tout est à jour. */
+function aEcart(etat) {
+  return Boolean(etat) && etat.deja_repris === true && etat.a_jour === false
+}
+
+function TableauEcarts({ etat }) {
+  const ecarts = Array.isArray(etat?.ecart) ? etat.ecart : []
+  const mesures = Array.isArray(etat?.mesures) ? etat.mesures : []
+  const mesureDe = (code) => mesures.find((m) => m.code === code) ?? { code }
+  return (
+    <div className="mt-4" data-testid="cal-reprise-ecart">
+      <p className="tech-label text-lune-faint">Écart entre le relevé repris et la visite</p>
+      <table className="mt-1 w-full text-left text-sm text-white">
+        <thead>
+          <tr className="text-lune-soft">
+            <th scope="col">Mesure</th>
+            <th scope="col">Reprise</th>
+            <th scope="col">Visite actuelle</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ecarts.map((ligne) => {
+            const mesure = mesureDe(ligne.code)
+            return (
+              <tr key={ligne.code} data-testid={`cal-reprise-ecart-${ligne.code}`}>
+                <td>{mesure.libelle || ligne.code}</td>
+                <td data-testid={`cal-reprise-ecart-${ligne.code}-releve`}>
+                  {valeurLisible({ valeur: ligne.releve, unite: mesure.unite })}
+                </td>
+                <td data-testid={`cal-reprise-ecart-${ligne.code}-visite`}>
+                  {valeurLisible({ valeur: ligne.visite, unite: mesure.unite })}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function BandeauReprise({ releve }) {
   if (!releve) return null
   const auteur = releve.releve_par ? ` par ${releve.releve_par}` : ''
@@ -95,11 +139,14 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
 
   useEffect(() => { charger() }, [charger])
 
-  const reprendre = () => {
+  const reprendre = (remplacer = false) => {
     if (!calepinageId) return
     setEnCours(true)
     setErreurs({})
-    Promise.resolve(calepinageApi.calepinages.reprendreVisite(calepinageId))
+    // ACAL211 — « Mettre à jour » envoie `{remplacer: true}` ; la première reprise n'a pas de corps.
+    Promise.resolve(remplacer
+      ? calepinageApi.calepinages.reprendreVisite(calepinageId, { remplacer: true })
+      : calepinageApi.calepinages.reprendreVisite(calepinageId))
       .then((res) => setEtat(res?.data && typeof res.data === 'object' ? res.data : {}))
       .catch((err) => {
         const corps = err?.response?.data
@@ -115,6 +162,9 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
   const aVisite = Boolean(etat) && etat.visite_id !== null && etat.visite_id !== undefined
 
   return (
+    <>
+    {/* ACAL208 — le fil d'Ariane de retour : ne rend rien dans l'atelier, le lien profond oui. */}
+    <RetourAtelier calepinageId={calepinageId} />
     <div className="cine-card mt-6 p-6" data-testid="cal-reprise-visite">
       <p className="tech-label rule-brass text-brass-300">Reprise de la visite technique</p>
 
@@ -193,16 +243,38 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
             </ul>
           )}
 
-          <button
-            type="button"
-            onClick={reprendre}
-            disabled={Boolean(raison) || enCours}
-            data-testid="cal-reprise-bouton"
-            className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
-          >
-            {enCours ? 'Reprise en cours…' : 'Reprendre dans ce calepinage'}
-          </button>
-          {raison && (
+          {/* ACAL211 — relevé repris mais visite modifiée depuis : l'écart et la mise à jour. */}
+          {aEcart(etat) && (
+            <>
+              <TableauEcarts etat={etat} />
+              <button
+                type="button"
+                onClick={() => reprendre(true)}
+                disabled={enCours}
+                data-testid="cal-reprise-maj"
+                className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
+              >
+                {enCours ? 'Mise à jour…' : 'Mettre à jour depuis la visite'}
+              </button>
+            </>
+          )}
+          {etat.deja_repris === true && etat.a_jour === true && (
+            <p className="mt-4 text-sm text-emerald-200" data-testid="cal-reprise-a-jour">
+              Reprise à jour
+            </p>
+          )}
+          {!aEcart(etat) && (
+            <button
+              type="button"
+              onClick={() => reprendre(false)}
+              disabled={Boolean(raison) || enCours}
+              data-testid="cal-reprise-bouton"
+              className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
+            >
+              {enCours ? 'Reprise en cours…' : 'Reprendre dans ce calepinage'}
+            </button>
+          )}
+          {raison && !aEcart(etat) && (
             <p className="mt-2 text-xs text-lune-faint" data-testid="cal-reprise-raison">
               {raison}
             </p>
@@ -221,5 +293,6 @@ export default function RepriseVisite({ calepinageId: idPropose } = {}) {
         </p>
       ))}
     </div>
+    </>
   )
 }

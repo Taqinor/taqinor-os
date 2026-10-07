@@ -27,6 +27,7 @@ from __future__ import annotations
 import io
 import json
 import pathlib
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -100,11 +101,22 @@ def _faux_de_l_exemple():
         3, titre="Calepinage d'essai C — toiture est-ouest", layout_hash=E,
         roof_layout={'result': {'panels': 16, 'kwc': 11.52}},
         resultat={
-            # La simulation a été calculée sur UNE AUTRE empreinte.
-            'layout_hash': A,
+            # La simulation a été calculée sur UNE AUTRE empreinte (clé
+            # réellement écrite par le moteur : ``simulation.hash_entree``).
+            # ACAL111 : le verdict de péremption est celui de
+            # ``selectors.resultat_servi`` ; ce faux, sans base, le reçoit de
+            # ``_verdict_servi`` ci-dessous — la vraie chaîne (moteur réel +
+            # base) est tenue par ``test_acal_comparatif_fraicheur``.
+            'simulation': {'hash_entree': A},
             'production': {'total': {'kwc': 99.0, 'p50_kwh': 50000.0}},
         })
     return simule, jamais_simule, perime
+
+
+def _verdict_servi(calepinage):
+    """Le verdict de ``resultat_servi`` pour les faux de l'exemple : seul le
+    calepinage « périmé » (pk 3) est servi périmé."""
+    return {'simulation_perimee': getattr(calepinage, 'pk', None) == 3}
 
 
 class RoutageTest(SimpleTestCase):
@@ -195,7 +207,9 @@ class LigneDeComparaisonTest(SimpleTestCase):
 
     def test_perime_rend_null_et_son_motif_et_ignore_le_kwc_perime(self):
         _simule, _jamais, perime = _faux_de_l_exemple()
-        ligne = _ligne_de_comparaison(perime)
+        with mock.patch('apps.calepinage.selectors.resultat_servi',
+                        side_effect=_verdict_servi):
+            ligne = _ligne_de_comparaison(perime)
         self.assertFalse(ligne['simule'])
         self.assertEqual(ligne['motif'], MOTIF_PERIME)
         for cle in CLES_PRODUCTION:
@@ -233,8 +247,10 @@ class ContratCommitteTest(SimpleTestCase):
 
     def test_les_trois_lignes_de_l_exemple_sont_recalculees(self):
         attendues = _contrat()['exemple']['lignes']
-        obtenues = [_ligne_de_comparaison(faux)
-                    for faux in _faux_de_l_exemple()]
+        with mock.patch('apps.calepinage.selectors.resultat_servi',
+                        side_effect=_verdict_servi):
+            obtenues = [_ligne_de_comparaison(faux)
+                        for faux in _faux_de_l_exemple()]
         self.assertEqual(obtenues, attendues)
 
     def test_chaque_ligne_porte_les_cles_de_production(self):

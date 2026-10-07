@@ -258,8 +258,12 @@ class DocumentModifie(ValueError):
 #: ACAL22 — les SEULES clés racine qu'une écriture par section remplace.
 CLES_SECTION_RACINE = ('horizonProfile', 'poseSurfaces', 'underlay')
 #: ACAL22 — la section ``zones`` : les SEULS champs d'UNE zone qu'elle écrit.
+#: ACAL206 — l'azimut posé depuis un relevé/une visite porte sa PROVENANCE
+#: (``facingAzimuthSource``) et sa PRÉCISION (``facingAzimuthPrecisionDeg``) :
+#: les deux s'écrivent avec lui, par la même primitive.
 CHAMPS_SECTION_ZONE = ('pitchDeg', 'pitchSource', 'facingAzimuthDeg',
-                       'facingManual')
+                       'facingManual', 'facingAzimuthSource',
+                       'facingAzimuthPrecisionDeg')
 
 
 def _relire_sous_verrou(calepinage, base_empreinte):
