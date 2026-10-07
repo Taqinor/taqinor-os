@@ -149,6 +149,15 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
   await dialog.getByRole('button', { name: /Confirmer l['’]acceptation/ }).click()
   await expect(dialog).toHaveCount(0)
 
+  // VX155 — la carte de victoire remplace le dialogue ; la liste n'est
+  // rechargée (onConfirmed → refetch) qu'À SA FERMETURE. Sans ce clic la
+  // ligne restait « Contacté » alors que l'acceptation avait réussi (POST
+  // .../accepter/ 200, run nocturne 37573380397).
+  const victoire = page.getByTestId('deal-signed-celebration')
+  await expect(victoire).toBeVisible()
+  await victoire.getByRole('button', { name: 'Continuer' }).click()
+  await expect(victoire).toHaveCount(0)
+
   await expect(page.locator('tr.lv-row', { hasText: name })).toContainText('Signé')
 })
 
