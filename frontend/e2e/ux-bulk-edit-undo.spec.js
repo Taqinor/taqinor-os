@@ -102,7 +102,9 @@ test('NTUX37: édition en masse du statut de 3 tickets, puis annulation dans la 
 
   // ── 4) Aperçu AVANT/APRÈS (BulkEditDialog, NTUX5) puis confirme ─────────
   await expect(page.getByRole('heading', { name: /Modifier Statut — 3 lignes/ })).toBeVisible()
-  await expect(page.getAllByTestId('bed-preview-row')).toHaveCount(3)
+  // CAD177 : `getAllByTestId` n'existe pas en Playwright (TypeError, nocturne
+  // 37585800165) — `getByTestId` rend déjà TOUTES les correspondances.
+  await expect(page.getByTestId('bed-preview-row')).toHaveCount(3)
   await page.getByRole('button', { name: 'Confirmer' }).click()
 
   // Les 3 lignes éditées ne sont plus "Planifié" : le compte du chip tombe à
