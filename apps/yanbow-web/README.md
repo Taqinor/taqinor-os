@@ -19,6 +19,16 @@ avec `frontend/` (ERP).
 Le `package-lock.json` se régénère avec `npx -y npm@10.9.8 install --package-lock-only`
 (npm 11 sous Windows élague des entrées Linux — garder les `@emnapi/*`).
 
+## Règles de test
+
+- `npm test` suppose un build à jour (`npm run build` d'abord) : les gardes
+  lisent les pages construites via `tests/builtHtml.ts`.
+- **Aucun test ne lit le source par regex quand le rendu existe** : on teste le
+  HTML rendu (`tests/builtHtml.ts`, ou l'API Container pour un composant) et
+  les réponses du Worker, jamais le texte d'un fichier `.astro`.
+- Le réseau est interdit : `tests/setup.ts` remplace `fetch` par une fonction
+  qui lève ; un test qui en a besoin le simule explicitement.
+
 ## Variables
 
 Toutes listées dans `.dev.vars.example` (copier en `.dev.vars` en local).
