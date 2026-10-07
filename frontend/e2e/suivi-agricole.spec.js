@@ -198,7 +198,10 @@ test.describe('AGR545 — suivi d’un lead agricole, en direct', () => {
     const date = isoDansJours(7)
     const rep = await json(await request.post(
       `${API}/crm/relance-etapes/${premiere.id}/fait/`,
-      { data: { reponse: 'attente_accord', rappel_le: date } }), 'attente d’accord')
+      // CIQ508 : la raison d'attente est OBLIGATOIRE (serveur : 400 sinon) ;
+      // « DPA / banque » = attente du financement.
+      { data: { reponse: 'attente_accord', rappel_le: date, raison_attente: 'financement' } }),
+      'attente d’accord')
     expect(rep.statut).toBe('a_faire')
     const lead = await json(await request.get(`${API}/crm/leads/${leadB.id}/`), 'lead B')
     expect(String(lead.tags || '')).toContain(TAG_ATTENTE_ACCORD)
