@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import reducer, { loadChatHistory } from './iaSlice'
+import reducer, { loadChatHistory } from '../features/ia/store/iaSlice'
 
 describe('iaSlice - loadChatHistory.fulfilled', () => {
   const etat = () => reducer(undefined, { type: '@@init' })
