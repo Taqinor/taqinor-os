@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '../../../ui'
-import { PageHeader } from '../../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../../features/stock/inventaireAccent'
+import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import portailsTiersApi from '../../../features/stock/api/portailsTiersApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 
@@ -51,18 +50,11 @@ export default function PortailsTiersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
-        title="Dépôts tiers (3PL)"
+      <EnteteStock
+                title="Dépôts tiers (3PL)"
         subtitle="Liens publics donnant à un dépositaire la lecture de son seul solde."
       />
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
+      <BandeauxStock erreur={erreur} />
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
         <form onSubmit={generer} noValidate className="flex flex-wrap items-end gap-2">

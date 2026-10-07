@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '../../../ui'
-import { PageHeader } from '../../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../../features/stock/inventaireAccent'
+import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import pickingApi from '../../../features/stock/api/pickingApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 
@@ -241,20 +240,13 @@ export default function PickingPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
-        title="Picking"
+      <EnteteStock
+                title="Picking"
         subtitle="Vagues de prélèvement, comptages tournants, productivité et pertes."
       />
       <Onglets onglet={onglet} onChange={setOnglet} />
 
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
+      <BandeauxStock erreur={erreur} />
 
       {onglet === 'vagues' && (
         <>

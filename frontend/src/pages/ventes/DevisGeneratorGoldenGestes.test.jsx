@@ -23,57 +23,22 @@ import userEvent from '@testing-library/user-event'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import {
-  DATE_FIGEE, CATALOGUE, LEAD, PANNEAU, ONDULEUR, CABLE, monter, normalise, stabiliser,
+  CATALOGUE, LEAD, PANNEAU, ONDULEUR, CABLE, monter, normalise, stabiliser,
+  preparerEnvironnement, chargerNeuf,
   devisAgricolePompeCourbe, devisMultiVillas, devisAdminRegistre,
   devisResidentielEtudeHoraire, devisIndustrielMt,
 } from './DevisGeneratorGoldenHarnais'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: null })),
-    searchClients: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    checkDuplicates: vi.fn(() => Promise.resolve({ data: { matches: [] } })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(() => Promise.resolve({ data: { source: 'standard' } })),
-    getHistoriqueConfigurationDevis: vi.fn(() => Promise.resolve({ data: { snapshots: [] } })),
-    patchDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    replaceLignesDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    createDevisAtomic: vi.fn(() => Promise.resolve({ data: { id: 999 } })),
-    patchEtudeParams: vi.fn(() => Promise.resolve({ data: {} })),
-    poserOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    regenererOverride: vi.fn(() => Promise.resolve({ data: {} })),
-    composerDevis: vi.fn(() => Promise.resolve({ data: { lignes: [] } })),
-    contacterSuperieur: vi.fn(() => Promise.resolve({ data: {} })),
-    etudeCiPreview: vi.fn(() => Promise.resolve({ data: null })),
-    economieCiPreview: vi.fn(() => Promise.resolve({ data: null })),
-    postEtudeHorairePreview: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
-vi.mock('../../api/axios', () => ({
-  default: {
-    get: vi.fn(() => Promise.resolve({ data: [] })),
-    post: vi.fn(() => Promise.resolve({ data: null })),
-    patch: vi.fn(() => Promise.resolve({ data: null })),
-    put: vi.fn(() => Promise.resolve({ data: null })),
-    delete: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
+vi.mock('../../api/crmApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('crmApi', {
+  searchClients: { results: [] }, checkDuplicates: { matches: [] },
+})))
+vi.mock('../../api/stockApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('stockApi')))
+vi.mock('../../api/parametresApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('parametresApi')))
+vi.mock('../../api/ventesApi', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('ventesApi', {
+  getPrixApplicable: { source: 'standard' }, getHistoriqueConfigurationDevis: { snapshots: [] },
+  composerDevis: { lignes: [] }, contacterSuperieur: {},
+})))
+vi.mock('../../api/axios', () => import('./DevisGeneratorGoldenMocks').then((m) => m.mockApi('axios')))
 
 const DOSSIER = './generator/__golden__'
 // Écran lourd + attente de stabilité après chaque pas : marge large pour un
@@ -139,25 +104,6 @@ function journal() {
   }
 }
 
-async function chargerNeuf(catalogue = CATALOGUE) {
-  vi.resetAllMocks()
-  vi.resetModules()
-  const [crm, stock, parametres, ventes, axios, gen] = await Promise.all([
-    import('../../api/crmApi'),
-    import('../../api/stockApi'),
-    import('../../api/parametresApi'),
-    import('../../api/ventesApi'),
-    import('../../api/axios'),
-    import('./DevisGenerator'),
-  ])
-  const apis = {
-    crmApi: crm.default, stockApi: stock.default, parametresApi: parametres.default,
-    ventesApi: ventes.default, api: axios.default,
-  }
-  apis.stockApi.getProduits.mockResolvedValue({ data: catalogue })
-  return { ...apis, DevisGenerator: gen.default }
-}
-
 const ECRITURES = [
   'replaceLignesDevis', 'createDevisAtomic', 'patchEtudeParams', 'poserOverrides',
   'regenererOverride', 'composerDevis', 'getPrixApplicable', 'contacterSuperieur',
@@ -181,26 +127,7 @@ async function boutonSoumettre() {
   return document.querySelector('form button[type="submit"]')
 }
 
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(DATE_FIGEE)
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  try { window.sessionStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-  // Hors <ConfirmProvider>, useConfirm retombe sur window.confirm (jsdom ne
-  // l'implémente pas) : stub accepté par défaut, ses appels sont figés.
-  window.confirm = vi.fn(() => true)
-})
+beforeEach(() => preparerEnvironnement({ confirmeAccepte: true }))
 
 afterEach(() => {
   vi.useRealTimers()

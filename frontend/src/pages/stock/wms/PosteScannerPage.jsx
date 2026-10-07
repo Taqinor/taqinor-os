@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Button, Input } from '../../../ui'
-import { PageHeader } from '../../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../../features/stock/inventaireAccent'
+import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import scannerApi from '../../../features/stock/api/scannerApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 
@@ -120,11 +119,8 @@ export default function PosteScannerPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
-        title="Poste scanner"
+      <EnteteStock
+                title="Poste scanner"
         subtitle="Scannez un produit puis un casier, ou préparez un retour fournisseur."
       />
 
@@ -137,16 +133,7 @@ export default function PosteScannerPage() {
         </Button>
       </div>
 
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
-      {info && (
-        <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-          {info}
-        </div>
-      )}
+      <BandeauxStock erreur={erreur} info={info} />
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
         <div className="flex flex-wrap items-end gap-2">

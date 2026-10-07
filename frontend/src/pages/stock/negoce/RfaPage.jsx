@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Input } from '../../../ui'
-import { PageHeader } from '../../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../../features/stock/inventaireAccent'
+import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import rfaApi from '../../../features/stock/api/rfaApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 
@@ -91,18 +90,11 @@ export default function RfaPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
-        title="Remises arrière (RFA)"
+      <EnteteStock
+                title="Remises arrière (RFA)"
         subtitle="Accords fournisseur, progression et génération de l'avoir."
       />
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
+      <BandeauxStock erreur={erreur} />
 
       <Carte titre="Nouvel accord">
         <form onSubmit={creer} noValidate className="flex flex-wrap items-end gap-2">

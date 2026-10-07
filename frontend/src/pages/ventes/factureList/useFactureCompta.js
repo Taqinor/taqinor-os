@@ -170,18 +170,20 @@ export default function useFactureCompta() {
   }
 
 
+  // Deux groupes d'état (journal / export) ; ComptaDialogs les relit tels quels.
+  const journal = {
+    journalOpen, setJournalOpen, journalMode, setJournalMode,
+    journalMois, setJournalMois, journalAnnee, setJournalAnnee,
+    journalTrimestre, setJournalTrimestre, journalBusy,
+  }
+  const exportComptable = {
+    exportComptableOpen, setExportComptableOpen, exportStart, setExportStart,
+    exportEnd, setExportEnd, exportComptableBusy,
+  }
   return {
     auditBusy,
-    journalOpen, setJournalOpen,
-    journalMode, setJournalMode,
-    journalMois, setJournalMois,
-    journalAnnee, setJournalAnnee,
-    journalTrimestre, setJournalTrimestre,
-    journalBusy,
-    exportComptableOpen, setExportComptableOpen,
-    exportStart, setExportStart,
-    exportEnd, setExportEnd,
-    exportComptableBusy,
+    ...journal,
+    ...exportComptable,
     xlsxBusy, setXlsxBusy,
     handleExportComptable,
     handleJournalComptable,

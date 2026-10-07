@@ -2,6 +2,8 @@
    Règle d'écran : le message du serveur est affiché MOT POUR MOT (jamais
    réécrit, jamais de JSON brut). Module pur, partagé par les wrappers API. */
 
+import { downloadBlob } from '../../../utils/downloadBlob'
+
 function aplatir(valeur) {
   if (valeur == null) return []
   if (typeof valeur === 'string') return [valeur]
@@ -45,14 +47,7 @@ export async function messageServeurBlob(err, repli = 'Une erreur est survenue.'
 
 /** Télécharge un contenu texte (ex. un ASN JSON) comme fichier local. */
 export function telechargerTexte(nom, contenu, type = 'application/json') {
-  const url = URL.createObjectURL(new Blob([contenu], { type }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nom
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 60000)
+  downloadBlob(new Blob([contenu], { type }), nom)
 }
 
 /** Ouvre un Blob reçu (PDF…) dans un nouvel onglet. */

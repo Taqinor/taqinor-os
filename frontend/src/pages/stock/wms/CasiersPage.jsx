@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '../../../ui'
-import { PageHeader } from '../../../ui/PageHeader'
-import { INVENTAIRE_ACCENT } from '../../../features/stock/inventaireAccent'
+import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import entrepotCasiersApi from '../../../features/stock/api/entrepotCasiersApi'
 import {
   messageServeur, messageServeurBlob, ouvrirBlob,
@@ -144,24 +143,12 @@ export default function CasiersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        style={{ '--module-accent': INVENTAIRE_ACCENT }}
-        className="app-accent-rail mb-0"
-        headingAs="h1"
-        title="Casiers de l'entrepôt"
+      <EnteteStock
+                title="Casiers de l'entrepôt"
         subtitle="Seuils de réappro, tâches de réappro, étiquettes et suggestions de reslotting."
       />
 
-      {erreur && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {erreur}
-        </div>
-      )}
-      {info && (
-        <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-          {info}
-        </div>
-      )}
+      <BandeauxStock erreur={erreur} info={info} />
 
       <Section id="casiers-sous-seuil" titre="Casiers à réapprovisionner">
         <div className="mb-3">
