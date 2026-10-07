@@ -472,6 +472,69 @@ def journaliser_visite(visite, user, moment, detail=''):
     return crm_services.journaliser_visite(visite, user, moment, detail=detail)
 
 
+# ── ALEA6 — LA TABLE DES TRANSITIONS DE STATUT (appliquée par le SERVEUR) ────
+#
+# Avant ALEA6, seul le bouton de l'écran bureau d'études empêchait de valider
+# un brouillon vide : un POST direct sur ``valider`` posait le feu vert sur 20
+# éléments manquants. UNE table dit, pour chaque geste de transition, depuis
+# quels statuts il est permis ; toute autre paire est refusée en NOMMANT
+# ``statut``. ``terminer`` garde sa propre porte (complétude + idempotence).
+
+#: Statuts de DÉPART autorisés, par action de transition.
+TRANSITIONS = {
+    'valider': frozenset({'terminee'}),
+    'renvoyer': frozenset({'validee', 'terminee'}),
+}
+
+#: Le message (FR) qui explique un refus de statut, par action.
+MESSAGES_TRANSITION = {
+    'valider': 'La visite doit être terminée avant validation.',
+    'renvoyer': ('Seule une visite terminée ou validée peut être renvoyée '
+                 'au commercial.'),
+}
+
+
+def _corps_refus_statut(message):
+    """Le corps 400 qui NOMME ``statut`` — liste DRF + forme maison."""
+    return {'statut': [message], 'erreurs': {'statut': message}}
+
+
+def refus_transition(visite, action):
+    """ALEA6 — ``None`` si ``action`` est permise sur ``visite``, sinon le
+    CORPS de la réponse 400 :
+
+    * statut de départ hors ``TRANSITIONS`` → ``{'statut': [message]}``
+      (doublé de la forme maison ``{'erreurs': {'statut': message}}``) ;
+    * ``valider`` d'une visite terminée mais redevenue incomplète (photo
+      retirée après « terminer ») → ``{'manquants': [...]}``, la liste exacte
+      de ``visite_terrain_manquants`` — le feu vert ne se donne jamais sur un
+      dossier incomplet.
+
+    Une action absente de la table n'est pas une transition gérée ici
+    (``None``) : la table ne s'applique qu'aux gestes qu'elle déclare.
+    """
+    permis = TRANSITIONS.get(action)
+    if permis is None:
+        return None
+    if visite.statut not in permis:
+        message = MESSAGES_TRANSITION[action]
+        if action == 'valider' and visite.statut == 'validee':
+            message = 'Cette visite est déjà validée.'
+        return _corps_refus_statut(message)
+    if action == 'valider':
+        from . import selectors
+
+        manquants = selectors.visite_terrain_manquants(visite)
+        if manquants:
+            return {
+                'manquants': manquants,
+                'message': (
+                    'La visite ne peut pas être validée : '
+                    f'{len(manquants)} élément(s) manquent encore.'),
+            }
+    return None
+
+
 def valider_visite(visite, user):
     """Feu vert calepinage : la visite passe VALIDÉE et devient lecture seule.
 

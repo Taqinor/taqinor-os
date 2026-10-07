@@ -399,8 +399,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def valider(self, request, pk=None):
         """Feu vert calepinage — réservé au code ``visites_valider``."""
         visite = self.get_object()
-        if visite.statut == VisiteTerrain.Statut.VALIDEE:
-            return _erreur('statut', 'Cette visite est déjà validée.')
+        # ALEA6 — la table des transitions (services.TRANSITIONS) : seule une
+        # visite TERMINÉE et COMPLÈTE reçoit le feu vert.
+        refus = services.refus_transition(visite, 'valider')
+        if refus is not None:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         services.valider_visite(visite, request.user)
         return self._agregat(visite)
 
@@ -412,6 +415,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if not serializer.is_valid():
             return Response({'erreurs': serializer.errors},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ALEA6 — un brouillon (ou une visite déjà « à refaire ») ne se
+        # renvoie pas : seule une visite terminée ou validée a été revue.
+        refus = services.refus_transition(visite, 'renvoyer')
+        if refus is not None:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         donnees = serializer.validated_data
         message = services.renvoyer_visite(
             visite, request.user,
