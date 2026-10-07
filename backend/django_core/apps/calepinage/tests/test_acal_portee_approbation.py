@@ -54,8 +54,10 @@ class PorteeApprobationTest(BaseApiCalepinage):
         seed_catalogue(self.company)
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='ACAL116')
+        # ACAL303 — la conception est d'un AUTRE compte que le relecteur
+        # (``self.user`` approuve : séparation des tâches).
         enregistrer_layout(self.calepinage, copy.deepcopy(TOIT),
-                           user=self.user)
+                           user=self.user_sans)
         self.base = url_detail(self.calepinage.pk)
 
     def _exiger(self, valeur=True):
