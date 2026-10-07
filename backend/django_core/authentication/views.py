@@ -860,6 +860,47 @@ class UserViewSet(viewsets.ModelViewSet):
         except Exception:
             return str(role_id)
 
+    def _refus_rang(self, target):
+        """ASEC2 — 403 ``rang_cible`` si l'acteur ne peut pas gérer ``target``
+        (palier supérieur, protégé, dernier propriétaire). None sinon."""
+        from .role_tiers import peut_gerer
+        ok, code = peut_gerer(self.request.user, target)
+        if ok:
+            return None
+        return Response(
+            {'detail': "Vous ne pouvez pas gérer ce compte : son rang est "
+                       "supérieur au vôtre ou il est protégé.",
+             'code': code},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def _refus_role_plus_large(self, role_id):
+        """ASEC2 — 403 ``role_plus_large`` si un acteur non administrateur
+        attribue un rôle portant des codes qu'il n'a pas lui-même."""
+        actor = self.request.user
+        if role_id in (None, '', 'null') or getattr(actor, 'is_admin_role', False):
+            return None
+        from apps.roles.models import Role
+        from .role_tiers import CODE_ROLE_PLUS_LARGE, codes_plus_larges
+        role = Role.objects.filter(pk=role_id).first()
+        if role is None:
+            return None  # validate_role répond 400 sur un id inconnu.
+        acteur_perms = actor.role.permissions if actor.role_id else []
+        if codes_plus_larges(acteur_perms, role.permissions):
+            return Response(
+                {'detail': "Ce rôle est plus large que le vôtre : vous ne "
+                           "pouvez pas l'attribuer.",
+                 'code': CODE_ROLE_PLUS_LARGE},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        refus = self._refus_role_plus_large(request.data.get('role'))
+        if refus is not None:
+            return refus
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         instance = serializer.save(company=self.request.user.company)
         self._audit_user(
@@ -908,6 +949,9 @@ class UserViewSet(viewsets.ModelViewSet):
         sur tous ses leads (responsable)."""
         from .avatars import store_avatar
         target = self.get_object()
+        refus = self._refus_rang(target)
+        if refus is not None:
+            return refus
         file = request.FILES.get('file')
         if not file:
             return Response({'detail': 'Aucun fichier fourni.'},
@@ -990,6 +1034,11 @@ class UserViewSet(viewsets.ModelViewSet):
                                'garder un administrateur.'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+        refus = self._refus_rang(target)
+        if refus is None and 'role' in data:
+            refus = self._refus_role_plus_large(data.get('role'))
+        if refus is not None:
+            return refus
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -1016,6 +1065,9 @@ class UserViewSet(viewsets.ModelViewSet):
                            'le système doit toujours garder un administrateur.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        refus = self._refus_rang(target)
+        if refus is not None:
+            return refus
         return super().destroy(request, *args, **kwargs)
 
 
