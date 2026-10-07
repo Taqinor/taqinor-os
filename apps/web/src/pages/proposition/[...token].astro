@@ -2083,7 +2083,8 @@ const assumptions = ok ? proposalAssumptions(data!) : [];
 // porte vraiment une ligne onduleur (un pompage n'en a pas). Les points
 // génériques de maintenance/SAV restent, eux, toujours vrais.
 const monitoring = monitoringPoints(equipPresence);
-const faq = objectionFaq();
+// CIW304 — FAQ d'entreprise en C&I (questions du directeur, sans chiffre ni promesse).
+const faq = objectionFaq(installMode, ci);
 
 // ── WJ86 — « Nos chantiers » (photos réelles) et « Le mot du fondateur »
 // n'ont AUCUNE source de données réelle aujourd'hui (WG5/WG6, toujours GATED
@@ -7502,7 +7503,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       <section id="faq" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</h2>
         <div class="mt-5 space-y-3">
-          {faq.slice(0, 3).map((item) => (
+          {faq.slice(0, isAutoconso ? faq.length : 3).map((item) => (
             <details class="cine-card rounded-xl p-5">
               <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-en={item.questionEn} data-ar={item.questionAr}>{item.question}</summary>
               <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-en={item.answerEn} data-ar={item.answerAr}>{item.answer}</p>

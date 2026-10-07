@@ -4006,8 +4006,87 @@ export interface FaqItem {
   answerEn: string;
 }
 
-/** WJ32 — 5 objections fréquentes avant signature, réponses factuelles courtes. */
-export function objectionFaq(): FaqItem[] {
+/**
+ * CIW304 — FAQ d'un devis C&I (commercial / industriel) : des questions d'ENTREPRISE, sans chiffre
+ * ni promesse (aucune aide, aucun montant — Q22 ; jamais la loi citée — D-CIQ-6/18), et plus de
+ * « si je déménage ». Table FR/EN/AR. Les deux questions qui dépendent d'un fait SERVI (entretien :
+ * l'option O&M nommée du devis ; suivi de production : le délai) n'en portent qu'avec `ci` ; le
+ * financement n'a de ligne que si une offre est servie (aucun contrat ne la sert encore : omis).
+ */
+function objectionFaqCi(ci: SyntheseCi | null): FaqItem[] {
+  const om = ci?.services?.omLibelle ?? null;
+  const delai = ci?.services?.suiviDelaiHeures ?? null;
+  const items: FaqItem[] = [
+    {
+      id: 'tva',
+      question: 'Comment la TVA est-elle traitée sur ce devis ?',
+      questionAr: 'كيف تُعالَج الضريبة على القيمة المضافة في هذا العرض؟',
+      questionEn: 'How is VAT handled on this quote?',
+      answer: 'Selon votre régime fiscal ; le devis indique la base retenue — à confirmer avec votre comptable.',
+      answerAr: 'حسب نظامكم الضريبي؛ يبيّن العرض الأساس المعتمد — يُؤكَّد مع محاسبكم.',
+      answerEn: 'It depends on your tax regime; the quote states the basis used — to be confirmed with your accountant.',
+    },
+    {
+      id: 'travaux',
+      question: 'Les travaux vont-ils perturber mon activité ?',
+      questionAr: 'هل ستعطّل الأشغال نشاطي؟',
+      questionEn: 'Will the works disrupt my business?',
+      answer: 'Le raccordement est planifié avec vous, pour limiter l’impact sur votre exploitation.',
+      answerAr: 'يُخطَّط الربط معكم، للحدّ من أثره على نشاطكم.',
+      answerEn: 'The connection is scheduled with you, to limit the impact on your operations.',
+    },
+    {
+      id: 'coupure-reseau',
+      question: 'Que se passe-t-il en cas de coupure du réseau ?',
+      questionAr: 'ماذا يحدث عند انقطاع الشبكة الكهربائية؟',
+      questionEn: 'What happens during a grid outage?',
+      answer: 'Une installation sans batterie s’arrête par sécurité (norme anti-îlotage) ; une installation avec batterie peut continuer à alimenter les circuits prioritaires.',
+      answerAr: 'التركيب بدون بطارية يتوقف لأسباب أمنية؛ أما مع البطارية فيمكن أن يستمر تزويد الدارات ذات الأولوية.',
+      answerEn: 'A battery-less installation shuts down for safety (anti-islanding standard); an installation with a battery can keep powering priority circuits.',
+    },
+    {
+      id: 'raccordement',
+      question: 'Qui s’occupe du raccordement et des autorisations du site ?',
+      questionAr: 'من يتكفّل بالربط وبتراخيص الموقع؟',
+      questionEn: 'Who handles the grid connection and the site authorisations?',
+      answer: 'TAQINOR prépare le dossier de raccordement et d’autorisations du site quand il est requis.',
+      answerAr: 'تُعدّ تاقينور ملف الربط وتراخيص الموقع عندما يكون ذلك مطلوباً.',
+      answerEn: 'TAQINOR prepares the grid-connection and site-authorisation file when one is required.',
+    },
+    {
+      id: 'entretien',
+      question: 'Quel entretien prévoir ?',
+      questionAr: 'ما الصيانة التي ينبغي توقّعها؟',
+      questionEn: 'What maintenance should I plan for?',
+      answer: om
+        ? `L’entretien est proposé comme option de votre devis : ${om}.`
+        : 'L’entretien est proposé comme option de votre devis (contrat O&M).',
+      answerAr: 'تُقترح الصيانة كخيار ضمن عرضكم (عقد الصيانة والتشغيل O&M).',
+      answerEn: 'Maintenance is offered as an option in your quote (O&M contract).',
+    },
+  ];
+  if (delai !== null) {
+    const h = formatNumber(delai, 0);
+    items.push({
+      id: 'suivi-production',
+      question: 'Comment la production est-elle suivie ?',
+      questionAr: 'كيف يتم تتبّع الإنتاج؟',
+      questionEn: 'How is production monitored?',
+      answer: `Le suivi de production est assuré ; délai d’intervention indiqué à votre devis : ${h} h.`,
+      answerAr: `تتبّع الإنتاج مضمون؛ مدة التدخل المذكورة في عرضكم: ${h} س.`,
+      answerEn: `Production monitoring is provided; intervention time stated in your quote: ${h} h.`,
+    });
+  }
+  return items;
+}
+
+/**
+ * WJ32 — 5 objections fréquentes avant signature, réponses factuelles courtes.
+ * CIW304 — `mode` commercial / industriel (+ `ci` = `syntheseCi(p)` pour les faits servis) →
+ * la FAQ d'entreprise ci-dessus ; tout autre mode (ou aucun) → la FAQ résidentielle, inchangée.
+ */
+export function objectionFaq(mode?: string | null, ci: SyntheseCi | null = null): FaqItem[] {
+  if (mode === 'commercial' || mode === 'industriel') return objectionFaqCi(ci);
   return [
     {
       id: 'panne-reseau',
@@ -6070,6 +6149,8 @@ export interface SyntheseCi {
   optionServie: string | null;
   /** CIW303 — la batterie d'un C&I est une OPTION : valeur chiffrée par le moteur, ou son motif. */
   optionBatterie: SyntheseCiOptionBatterie | null;
+  /** CIW304 — services servis : l'option O&M nommée du devis et le délai de suivi (heures), si servis. */
+  services: { omLibelle: string | null; suiviDelaiHeures: number | null } | null;
   hypotheses: SyntheseCiHypothese[];
   omissions: Array<{ bloc: string; motif: string }>;
 }
@@ -6195,6 +6276,14 @@ export function syntheseCi(
             ? lireTextesCi(brut.option_batterie.valeur_chiffree.textes)
             : null,
           motif: texteServi(brut.option_batterie.motif),
+        }
+      : null,
+    services: estRecord(brut.services)
+      ? {
+          omLibelle: estRecord(brut.services.om_option) ? texteServi(brut.services.om_option.libelle) : null,
+          suiviDelaiHeures: estRecord(brut.services.suivi_production)
+            ? nombreServi(brut.services.suivi_production.delai_intervention)
+            : null,
         }
       : null,
     hypotheses,
