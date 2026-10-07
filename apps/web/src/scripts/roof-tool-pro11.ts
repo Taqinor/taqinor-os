@@ -129,6 +129,7 @@ import { $, fmt, fmtMad, esc } from './roofPro11/dom';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
+import { lireJeuReglages, appliquerJeuAuPan, mentionJeuReglages, type JeuReglages, type ValeursJeuPan } from './roofPro11/jeuReglages'; // ACAL308
 import {
   createZones,
   exclusionObstructionRings,
@@ -1862,6 +1863,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       updateAreaReadout();
     }
     if (h.documentRelu) {
+      appliquerJeuAuPanVierge(); // ACAL308
       // ACAL31 — couches relues par `appliquerHydratationAuCtx` : on resynchronise leurs écrans.
       // CAL93 — l'horizon passe par l'API de `shadingUi` (matrice/facteur/note cohérents).
       shadingUi.setHorizonProfile((ctx.horizonProfile ?? null) as unknown as import('../lib/horizonEngine').HorizonProfile | null);
@@ -2597,11 +2599,64 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     snapshotActiveAreaGeometry();
     snapshotActiveAreaResult();
     const fresh = newAreaRecord();
+    // ACAL308 (D-ACAL-20) — le jeu de réglages mémorisé du document se pose sur le pan NEUF,
+    // avant son pavage ; les pans existants ne sont jamais touchés.
+    const jeu = lireJeuReglages(ctx.documentRelu);
+    const posees = appliquerJeuAuPan(fresh, jeu);
     areas.push(fresh);
     activeAreaId = fresh.id;
     clearEditorState();
+    poserValeursJeuVives(posees);
     renderAreasPanel();
     setStatus(`${fresh.label} — tracez le contour de cette nouvelle zone (double-cliquez pour fermer).`);
+    afficherMentionJeu(jeu);
+  }
+
+  /** ACAL308 — aligne les variables vives d'édition (et leurs contrôles) sur les valeurs que
+   *  le jeu vient de poser sur le pan ACTIF ; rien à poser = aucune écriture. */
+  function poserValeursJeuVives(posees: ValeursJeuPan) {
+    if (!Object.keys(posees).length) return;
+    if (posees.roofType !== undefined) roofType = posees.roofType;
+    if (posees.pitchDeg !== undefined) pitchDeg = posees.pitchDeg;
+    if (posees.facingAzimuthDeg !== undefined) facingAzimuthDeg = posees.facingAzimuthDeg;
+    if (posees.facingManual !== undefined) facingManual = posees.facingManual;
+    if (posees.neededAuto !== undefined) neededAuto = posees.neededAuto;
+    syncRoofTypeChips();
+    syncFacingChips();
+    syncFacingSlider();
+    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat';
+    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched';
+  }
+
+  /** ACAL308 — la mention « Jeu de réglages <libellé> appliqué aux nouveaux pans » sous la
+   *  ligne d'état de l'en-tête de l'atelier (créée à la demande ; retirée sans jeu). */
+  function afficherMentionJeu(jeu: JeuReglages | null) {
+    const id = 'rp9-jeu-reglages';
+    let el = document.getElementById(id);
+    const texte = mentionJeuReglages(jeu);
+    if (!texte) {
+      el?.remove();
+      return;
+    }
+    if (!el) {
+      if (!statusEl?.parentElement) return;
+      el = document.createElement('p');
+      el.id = id;
+      el.setAttribute('data-testid', 'atelier-jeu-reglages');
+      statusEl.parentElement.insertBefore(el, statusEl.nextSibling);
+    }
+    el.textContent = texte;
+  }
+
+  /** ACAL308 — à la lecture du document : la mention, et le jeu posé sur le pan actif tant
+   *  qu'il est VIERGE (le premier pan d'un calepinage vierge est un pan à dessiner comme les
+   *  suivants). Un pan déjà tracé n'est jamais modifié. */
+  function appliquerJeuAuPanVierge() {
+    const jeu = lireJeuReglages(ctx.documentRelu);
+    afficherMentionJeu(jeu);
+    const actif = activeArea();
+    if (!jeu || !actif || closed || vertices.length > 0 || actif.vertices.length > 0 || actif.result) return;
+    poserValeursJeuVives(appliquerJeuAuPan(actif, jeu));
   }
 
   /** « Voir » une zone : fige la zone active d'abord, puis charge la zone choisie. */

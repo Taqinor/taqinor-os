@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4834, operations: 7628, components: 2210}
+counts: {paths: 4836, operations: 7630, components: 2210}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -612,6 +612,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/pompage/ -> django_calepinage_calepinages_pompage_create
 - get /api/django/calepinage/calepinages/{id}/pose-reelle/ -> django_calepinage_calepinages_pose_reelle_retrieve
 - post /api/django/calepinage/calepinages/{id}/pose-reelle/ -> django_calepinage_calepinages_pose_reelle_create
+- delete /api/django/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> django_calepinage_calepinages_pose_reelle_destroy
 - get /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> django_calepinage_calepinages_presentation_compacte.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_retrieve
 - post /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_create
@@ -4464,6 +4465,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/pompage/ -> v1_calepinage_calepinages_pompage_create
 - get /api/v1/calepinage/calepinages/{id}/pose-reelle/ -> v1_calepinage_calepinages_pose_reelle_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pose-reelle/ -> v1_calepinage_calepinages_pose_reelle_create
+- delete /api/v1/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> v1_calepinage_calepinages_pose_reelle_destroy
 - get /api/v1/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> v1_calepinage_calepinages_presentation_compacte.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_retrieve
 - post /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_create

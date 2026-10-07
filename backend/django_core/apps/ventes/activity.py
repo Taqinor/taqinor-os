@@ -76,7 +76,8 @@ def _note_unique(devis, *, field, field_label, new_value, body, user):
 
 
 def log_devis_catalogue_envoye_conserve(devis, *, produit, prix=None,
-                                        nom=None, user=None):
+                                        nom=None, tva=None, forfait=None,
+                                        user=None):
     """ASTK141 (D-ASTK-1) — un devis ENVOYÉ n'est PAS recalé sur une
     correction catalogue : la note persistée DIT l'écart et invite à réviser.
 
@@ -104,7 +105,37 @@ def log_devis_catalogue_envoye_conserve(devis, *, produit, prix=None,
             body=(f'Désignation catalogue passée de « {avant} » à « {apres} » '
                   "— devis envoyé conservé ; réviser pour l'appliquer."),
             user=user))
+    if tva is not None:
+        avant, apres = tva
+        notes.append(_note_unique(
+            devis, field='catalogue_envoye_conserve',
+            field_label='Catalogue modifié — devis envoyé conservé',
+            new_value=f'{pid}:tva:{avant}->{apres}',
+            body=(f'TVA catalogue passée de {avant} % à {apres} % — devis '
+                  "envoyé conservé ; réviser pour l'appliquer."),
+            user=user))
+    if forfait:
+        detail = ' ; '.join(
+            f'{nom_champ} {_montant_fr(a)} → {_montant_fr(n)}'
+            for nom_champ, (a, n) in sorted(forfait.items()))
+        notes.append(_note_unique(
+            devis, field='catalogue_envoye_conserve',
+            field_label='Catalogue modifié — devis envoyé conservé',
+            new_value=f'{pid}:forfait:{detail}',
+            body=(f'Barème forfaitaire catalogue modifié ({detail}) — devis '
+                  "envoyé conservé ; réviser pour l'appliquer."),
+            user=user))
     return [n for n in notes if n is not None]
+
+
+def log_devis_forfait_abstention(devis, *, produit, message, user=None):
+    """ASTK142 — une ligne de forfait d'un brouillon n'a PAS été retarifée
+    (prix manuel, deux options divergentes) : la note persistée le dit."""
+    return _note_unique(
+        devis, field='forfait_abstention',
+        field_label='Forfait non retarifé',
+        new_value=f'{getattr(produit, "pk", "?")}:{message}',
+        body=message, user=user)
 
 
 def log_devis_prix_negocie_conserve(devis, *, ligne, ancien, nouveau,

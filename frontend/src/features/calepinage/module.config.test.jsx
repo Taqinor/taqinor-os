@@ -86,6 +86,16 @@ describe('calepinage — module.config (CAL34)', () => {
     expect(iNouveau).toBeLessThan(iDetail)
   })
 
+  it('ACAL242 — `/calepinage/reglages/gabarits` est déclarée AVANT `/calepinage/:id`', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const chemins = config.routes.map((r) => r.path)
+    const iGabarits = chemins.indexOf('/calepinage/reglages/gabarits')
+    expect(iGabarits, 'route des gabarits absente').toBeGreaterThanOrEqual(0)
+    expect(iGabarits).toBeLessThan(chemins.indexOf('/calepinage/:id'))
+    const route = config.routes[iGabarits]
+    expect(route.roles.length).toBeGreaterThan(0)
+  })
+
   it('les trois routes du module vivent toutes sous le préfixe `/calepinage`', async () => {
     const { default: config } = await import('./module.config.jsx')
     for (const route of config.routes) {

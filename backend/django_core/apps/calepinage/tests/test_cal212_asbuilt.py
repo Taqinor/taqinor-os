@@ -18,7 +18,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import PoseReelle
 from apps.calepinage.services.asbuilt import (
-    MENTION_SANS_PREVU,
+    MENTION_ORPHELIN,
     MENTION_SANS_SAISIE,
     comparer,
 )
@@ -80,7 +80,10 @@ class AbsenceDeSaisieTest(unittest.TestCase):
         self.assertIsNone(auvent['prevu'])
         self.assertEqual(auvent['pose'], 4)
         self.assertIsNone(auvent['ecart'])
-        self.assertEqual(auvent['mention'], MENTION_SANS_PREVU)
+        # ACAL267 — un relevé sans pan prévu est ORPHELIN : visible, nommé,
+        # hors totaux (et retirable), jamais effacé.
+        self.assertTrue(auvent['orphelin'])
+        self.assertEqual(auvent['mention'], MENTION_ORPHELIN)
 
     def test_aucun_pan_prevu_aucune_ligne_inventee(self):
         self.assertEqual(comparer([], []), [])
@@ -109,5 +112,6 @@ class PoseReelleModeleTest(SimpleTestCase):
         self.assertIn('futur', capture.exception.message_dict['releve_le'][0])
 
     def test_un_seul_releve_par_pan(self):
+        # ACAL267 — un relevé par pan, le pan étant son identifiant STABLE.
         noms = {c.name for c in PoseReelle._meta.constraints}
-        self.assertIn('uniq_pose_reelle_par_pan', noms)
+        self.assertIn('uniq_pose_reelle_par_zone', noms)

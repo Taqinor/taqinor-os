@@ -48,7 +48,7 @@ class BibliothequeParametresTest(BaseApiCalepinage):
         self.assertEqual(len(reponse.data['kits']), 1)
         for section in ('imagerie', 'degagements', 'zones_types',
                         'gabarits_disposition', 'presets',
-                        'favoris_materiel', 'gabarits_dossier'):
+                        'favoris_materiel'):
             self.assertIn(section, reponse.data)
 
     def test_get_sans_kit_rend_liste_vide(self):

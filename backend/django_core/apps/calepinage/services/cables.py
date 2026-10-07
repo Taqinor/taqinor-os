@@ -271,6 +271,8 @@ def longueur_dc(layout, cheminement):
     alors le motif retenu. Sans saisie, la course est celle d'aujourd'hui, et
     le détail DIT que le trajet le long des modules n'a pas été parcouru.
     """
+    from .production import cle_de_pan
+
     cheminement = cheminement or {}
     manques = []
     zones = (layout or {}).get('zones')
@@ -282,11 +284,14 @@ def longueur_dc(layout, cheminement):
     for rang, zone in enumerate(zones, start=1):
         if not isinstance(zone, dict):
             continue
-        libelle = str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
+        # ACAL265 — la saisie est indexée par la clé STABLE du pan
+        # (``zone.id``) ; le libellé n'est que l'affichage des messages.
+        cle = cle_de_pan(zone, rang)
+        libelle = str(zone.get('label') or cle)
         geometrie = zone.get('geometry')
         if not isinstance(geometrie, dict) or not geometrie.get('panels'):
             continue
-        saisie_du_pan = points.get(libelle) or {}
+        saisie_du_pan = points.get(cle) or {}
         try:
             course, detail = _course_du_pan(
                 zone, saisie_du_pan.get('point_collecte'),

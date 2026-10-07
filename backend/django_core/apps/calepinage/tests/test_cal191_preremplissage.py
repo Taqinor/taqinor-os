@@ -202,10 +202,6 @@ class GabaritManquantTest(unittest.TestCase):
 #: ``test_cal223_contrats.CLES_POSEES_AVANT_LEUR_PRODUCTEUR``).
 EN_ATTENTE = {
     'packs_france': 'ACAL238',
-    'dossiers[].document': 'ACAL240',
-    'dossiers[].genere_sur_conception_perimee': 'ACAL240',
-    'dossiers[].champs_a_completer[].valeur_calepinage': 'ACAL240',
-    'dossiers[].champs_a_completer[].ecart_saisie': 'ACAL240',
 }
 
 
@@ -243,6 +239,22 @@ class ContratCAL247Test(unittest.TestCase):
         self.assertEqual(
             sorted(set(attendu['pieces'][0]['source'])
                    - set(servi['pieces'][0]['source'])), [])
+
+    def test_champ_saisi_porte_la_valeur_du_calepinage_et_l_ecart(self):
+        # ACAL240 — une saisie qui diffère de ce que dit le calepinage le
+        # signale ; une saisie égale (« 12,5 » contre 12.5) ne le fait pas.
+        infos = dict(INFOS_LACUNAIRES, puissance_kwc=12.5)
+        for saisie, ecart in (('12,5', False), (14, True)):
+            agregat = composer_dossiers(
+                calepinage_id=1, pays='ma',
+                entrees=[_entree(champs_saisis={'puissance': saisie})],
+                infos=infos)
+            champ = next(c for c in agregat['dossiers'][0]['champs_saisis']
+                         if c['code'] == 'puissance')
+            self.assertEqual(champ['valeur_calepinage'], 12.5)
+            self.assertIs(champ['ecart_saisie'], ecart, saisie)
+            self.assertEqual(sorted(champ), sorted(
+                CONTRAT['exemple']['dossiers'][0]['champs_saisis'][0]))
 
     def test_pays_servi_en_majuscules_comme_le_contrat(self):
         agregat = composer_dossiers(calepinage_id=1, pays='ma', entrees=[],

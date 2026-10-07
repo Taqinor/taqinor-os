@@ -24,6 +24,7 @@ vi.mock('../../api/calepinageApi', () => ({
       dossiersReglementaires: vi.fn(),
       genererDossier: vi.fn(),
       enregistrerChampsDossier: vi.fn(),
+      joindrePiece: vi.fn(),
     },
   },
 }))
@@ -58,7 +59,7 @@ describe('DossiersReglementaires (ACAL309) - packs France', () => {
       expect(screen.getByTestId(`acal309-pack-${pack.genre}`)).toHaveTextContent(pack.libelle)
       if (!pack.gabarit_depose) {
         expect(screen.getByTestId(`acal309-message-${pack.genre}`)).toHaveTextContent(pack.message)
-        expect(screen.getByTestId(`acal309-depot-${pack.genre}`)).toHaveAttribute('href', '/calepinage/reglages')
+        expect(screen.getByTestId(`acal309-depot-${pack.genre}`)).toHaveAttribute('href', '/calepinage/reglages/gabarits')
       }
     }
     expect(screen.getByTestId('acal309-avancement-enedis')).toHaveTextContent('pièces fournies')
@@ -336,5 +337,89 @@ describe('DossiersReglementaires — champs du dossier (CALX41)', () => {
     expect(await screen.findByTestId('calx41-erreur-reference_dossier'))
       .toHaveTextContent(motif)
     expect(screen.queryByTestId(`calx41-enregistre-${premier.id}`)).toBeNull()
+  })
+})
+
+/* ACAL242 — joindre une pièce, ouvrir le document GED, utiliser la valeur du
+   calepinage, bandeau « conception périmée » — rendu réel sur l'échantillon
+   COMMITTÉ `dossiers_reglementaires.json`, seules les variations d'état
+   (pièce fournie, écart, périmé) sont posées sur une COPIE de l'échantillon. */
+describe('DossiersReglementaires — ACAL242', () => {
+  const copie = () => structuredClone(reponseContrat('calepinage', 'dossiers_reglementaires', 'exemple'))
+
+  it('joindre une piece la passe a fournie', async () => {
+    const avant = copie()
+    const apres = copie()
+    const premier = avant.data.dossiers[0]
+    const piece = premier.pieces.find((p) => p.etat !== 'fournie')
+    apres.data.dossiers[0].pieces = apres.data.dossiers[0].pieces.map((p) => (
+      p.code === piece.code ? { ...p, etat: 'fournie', message: '' } : p))
+    calepinageApi.calepinages.dossiersReglementaires
+      .mockResolvedValueOnce(avant).mockResolvedValueOnce(apres)
+    calepinageApi.calepinages.joindrePiece.mockResolvedValue({
+      data: { piece: piece.code, etat: 'fournie', attachment: 9, depose_le: '2026-10-07T10:00:00Z' },
+    })
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+
+    const fichier = new File(['%PDF-1.4'], 'piece.pdf', { type: 'application/pdf' })
+    await userEvent.upload(screen.getByTestId(`acal242-fichier-${piece.code}`), fichier)
+    await userEvent.click(screen.getByTestId(`acal242-joindre-${piece.code}`))
+
+    await waitFor(() => expect(calepinageApi.calepinages.joindrePiece).toHaveBeenCalled())
+    const [id, corps] = calepinageApi.calepinages.joindrePiece.mock.calls[0]
+    expect(id).toBe(1)
+    expect(corps.get('dossier')).toBe(String(premier.id))
+    expect(corps.get('piece')).toBe(piece.code)
+    expect(corps.get('fichier')).toBeInstanceOf(File)
+    // La relecture sert la pièce « fournie » : le bouton Joindre disparaît.
+    await waitFor(() => expect(screen.queryByTestId(`acal242-joindre-${piece.code}`)).toBeNull())
+  })
+
+  it('lien vers le document GED', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    const [genere, jamais] = echantillon('exemple').dossiers
+    expect(screen.getByTestId(`acal242-document-${genere.id}`))
+      .toHaveAttribute('href', `/ged?document=${genere.document}`)
+    expect(screen.queryByTestId(`acal242-document-${jamais.id}`)).toBeNull()
+  })
+
+  it('utiliser la valeur du calepinage', async () => {
+    const reponse = copie()
+    const champ = reponse.data.dossiers[0].champs_saisis[0]
+    champ.valeur_calepinage = 'Valeur du calepinage d essai'
+    champ.ecart_saisie = true
+    calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue(reponse)
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+
+    expect(screen.getByTestId(`acal242-ecart-${champ.code}`))
+      .toHaveTextContent('Valeur du calepinage d essai')
+    // Rien n'est écrit tant que l'utilisateur ne la choisit pas.
+    expect(screen.getByTestId(`cal196-champ-${champ.code}`)).toHaveValue(champ.valeur)
+    await userEvent.click(screen.getByTestId(`acal242-utiliser-${champ.code}`))
+    expect(screen.getByTestId(`cal196-champ-${champ.code}`))
+      .toHaveValue('Valeur du calepinage d essai')
+    expect(calepinageApi.calepinages.enregistrerChampsDossier).not.toHaveBeenCalled()
+  })
+
+  it('bandeau conception perimee', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    // L'échantillon sert « à jour » : aucun bandeau.
+    expect(screen.queryByTestId(`acal242-perime-${premier.id}`)).toBeNull()
+
+    cleanup()
+    const perime = copie()
+    perime.data.dossiers[0].genere_sur_conception_perimee = true
+    calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue(perime)
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    expect(screen.getByTestId(`acal242-perime-${premier.id}`))
+      .toHaveTextContent('Généré sur une conception périmée')
   })
 })

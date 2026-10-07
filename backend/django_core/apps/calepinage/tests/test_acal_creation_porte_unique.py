@@ -116,7 +116,10 @@ class PorteUniqueTest(BaseApiCalepinage):
                 calepinage = Calepinage.objects.get(pk=geste(lead))
                 self.assertEqual(calepinage.lead_id, lead.pk)
                 self.assertEqual(calepinage.client_id, self.client_lead.pk)
-                self.assertEqual(calepinage.titre, f'Calepinage {lead.nom}')
+                # ACAL300 — jamais le nom d'une personne par défaut : le titre
+                # reste vide, le nom affiché retombe sur « Calepinage #N ».
+                self.assertEqual(calepinage.titre, '')
+                self.assertEqual(str(calepinage), f'Calepinage #{calepinage.pk}')
                 self.assertEqual(_creations(calepinage), 1)
 
     def test_second_appel_renvoie_l_existant_409_ou_cree_false(self):

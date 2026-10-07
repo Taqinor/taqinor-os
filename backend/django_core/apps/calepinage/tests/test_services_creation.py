@@ -130,9 +130,12 @@ class PorteLeadTest(BaseCreation):
             creer_pour_lead(None, self.company)
         self.assertEqual(capture.exception.champ, 'lead')
 
-    def test_titre_derive_du_lead(self):
+    def test_titre_jamais_derive_du_lead(self):
+        # ACAL300 (D-ACAL-14) — sans titre saisi, le titre ne recopie plus le
+        # nom du lead (donnée personnelle, loi 09-08) : il reste vide.
         calepinage = creer_pour_lead(self.lead_a.pk, self.company)
-        self.assertIn('Toiture Anfa', calepinage.titre)
+        self.assertEqual(calepinage.titre, '')
+        self.assertNotIn('Toiture Anfa', calepinage.titre)
 
 
 class PorteClientTest(BaseCreation):

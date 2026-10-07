@@ -59,9 +59,10 @@ class NomPersisteTest(BaseApiCalepinage):
                 reponse = self.api.post(url, corps, format='json')
                 self.assertEqual(reponse.status_code, 201, reponse.data)
                 pk = reponse.data.get('id') or reponse.data.get('calepinage')
-                attendu = f'Calepinage {lead.nom}'
-                self.assertEqual(Calepinage.objects.get(pk=pk).titre,
-                                 attendu)
+                # ACAL300 — le repli ne recopie plus le nom d'une personne :
+                # titre vide, nom affiché « Calepinage #N » partout.
+                attendu = f'Calepinage #{pk}'
+                self.assertEqual(Calepinage.objects.get(pk=pk).titre, '')
                 self.assertEqual(self.api.get(url_detail(pk)).data['nom'],
                                  attendu)
                 ligne = next(ligne for ligne in

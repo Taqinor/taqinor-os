@@ -544,22 +544,26 @@ def masse_du_layout(layout, *, poids_module_kg=None,
                         "n'est pas comptée."),
         })
 
+    from .production import cle_de_pan, cles_des_pans
+
     zones = ((layout or {}).get('zones')
              if isinstance(layout, dict) else None) or []
     surfaces = {}
     for rang, zone in enumerate(zones, start=1):
         if not isinstance(zone, dict):
             continue
-        cle = str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
-        surfaces[cle] = aire_du_pan(zone)
+        # ACAL265 — la clé STABLE (``zone.id``) : deux pans de même libellé
+        # ne s'écrasent plus.
+        surfaces[cle_de_pan(zone, rang)] = aire_du_pan(zone)
 
     pans, total_modules, masse_totale = [], 0, None
     # ACAL259 — LA lecture du module (mesures_du_document) : le même compte
     # par pan que la présentation, le journal et les exports.
-    for pan in mesures_du_document(layout)['pans']:
+    for pan, cle in zip(mesures_du_document(layout)['pans'],
+                        cles_des_pans(layout)):
         modules = int(pan.get('modules') or 0)
         total_modules += modules
-        surface = surfaces.get(pan['pan'])
+        surface = surfaces.get(cle)
         masse_modules = (poids * modules) if poids is not None else None
         masse_structure = ((structure * modules)
                            if structure is not None else None)

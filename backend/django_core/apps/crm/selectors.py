@@ -5960,6 +5960,33 @@ def lead_ids_par_identifiant(company, identifiant):
     return sorted(ids)
 
 
+def lead_ids_anonymises(company):
+    """ACAL300 — ids des leads DÉJÀ anonymisés (DSR ou rétention) de la
+    société : le scrub de ``crm.dsr_provider.anonymiser_lead`` pose
+    ``LEAD_NOM_ANONYMISE`` et vide email / téléphone. Lecture bornée société,
+    sans PII ; pour le rattrapage des calepinages (``manage.py
+    anonymiser_calepinages_effaces``)."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
+    from .models import Lead
+
+    if company is None:
+        return []
+    return sorted(Lead.objects.filter(
+        company=company, nom=LEAD_NOM_ANONYMISE, email__isnull=True,
+        telephone__isnull=True).values_list('id', flat=True))
+
+
+def client_ids_anonymises(company):
+    """ACAL300 — ids des clients anonymisés (``is_anonymized``) de la
+    société, bornés société, sans PII."""
+    from .models import Client
+
+    if company is None:
+        return []
+    return sorted(Client.objects.filter(
+        company=company, is_anonymized=True).values_list('id', flat=True))
+
+
 def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
     """STKCAT25 — les leads RÉCENTS qui dépendent de ce produit.
 
