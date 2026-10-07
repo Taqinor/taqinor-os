@@ -88,9 +88,17 @@ class ReveilSaisonnierBeatTests(TestCase):
         company, owner = self._societe('alea1-an')
         lead = self._dormant(company, owner)
 
-        gel = _geler(self, JUIN_2026)
-        premier = poser_reveils_saisonniers_task()
-        second = poser_reveils_saisonniers_task()
+        from testkit.time import frozen
+
+        # Gel 2026 arrêté À LA MAIN (pas via addCleanup : un second stop()
+        # en nettoyage dépile une pile freezegun vide → IndexError).
+        gel = frozen(JUIN_2026)
+        gel.start()
+        try:
+            premier = poser_reveils_saisonniers_task()
+            second = poser_reveils_saisonniers_task()
+        finally:
+            gel.stop()
 
         self.assertGreaterEqual(premier['posees'], 1)
         self.assertEqual(second['posees'], 0)
@@ -100,7 +108,6 @@ class ReveilSaisonnierBeatTests(TestCase):
 
         # La touche 2026 est traitée ; l'année suivante, une nouvelle.
         touches.update(statut=RelanceEtape.Statut.FAIT)
-        gel.stop()
         _geler(self, JUIN_2027)
         poser_reveils_saisonniers_task()
         poser_reveils_saisonniers_task()

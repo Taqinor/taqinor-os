@@ -108,7 +108,11 @@ def motif_de_refus(lead, *, maintenant=None):
     # « pour les dormants qui retombent HORS de cette fenêtre » : celui dont
     # le réveil J60 est déjà tombé en pleine saison a eu son message au bon
     # moment — lui en poser un second serait la vague trimestrielle écartée.
+    # ALEA1 — la touche saisonnière elle-même (posée en juin d'une année
+    # passée) n'est PAS « le réveil J30/J60 » : la compter ici bloquait à vie
+    # la touche de l'année suivante (D-ALEA-1 : une par an et par dormant).
     dernier = (touches.filter(cadence='reveil')
+               .exclude(template_cle=REVEIL_SAISON_CLE)
                .order_by('-due_date', '-ordre').first())
     if dernier is not None and dans_la_fenetre_saison(dernier.due_date):
         return ('Le réveil de ce dormant est déjà tombé pendant la saison : '
