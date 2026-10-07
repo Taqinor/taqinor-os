@@ -20,7 +20,7 @@ from .portees import (
     SCOPE_WRITE_ACTIVITIES, SCOPE_WRITE_DEVIS, SCOPE_WRITE_LEADS,
     SCOPE_WRITE_TICKETS,
 )
-from .idempotency import get_idempotency_key, replay_or_none, remember
+from .idempotency import executer_idempotent, get_idempotency_key
 from .public_response import PublicApiResponseMixin
 from .public_serializers import PublicLeadSerializer
 
@@ -60,25 +60,16 @@ class PublicWriteAPIView(PublicApiResponseMixin, APIView):
         """Enveloppe commune : rejoue une réponse mémorisée si l'en-tête
         `Idempotency-Key` correspond à un appel identique déjà traité ;
         sinon exécute `perform()` (qui doit renvoyer un ``Response``) et
-        mémorise le résultat pour un futur rejeu."""
-        api_key = request.auth
-        idem_key = get_idempotency_key(request)
-        replay = replay_or_none(
-            api_key=api_key, endpoint=self.endpoint_name,
-            idem_key=idem_key, body=body_for_fingerprint)
-        if replay is not None:
-            resp_status, resp_body = replay
-            return Response(resp_body, status=resp_status)
+        mémorise le résultat pour un futur rejeu.
 
-        response = perform()
-
-        remember(
-            company=self.get_company(), api_key=api_key,
-            endpoint=self.endpoint_name, idem_key=idem_key,
-            body=body_for_fingerprint,
-            response_status=response.status_code, response_body=response.data,
-        )
-        return response
+        AANA34 — clé trop longue ⇒ 400 avant toute écriture ; la clé est
+        réservée AVANT l'action (``idempotency.executer_idempotent``), donc
+        deux requêtes concurrentes ne créent jamais deux objets."""
+        return executer_idempotent(
+            company=self.get_company(), api_key=request.auth,
+            endpoint=self.endpoint_name,
+            idem_key=get_idempotency_key(request),
+            body=body_for_fingerprint, perform=perform)
 
 
 class PublicLeadCreateView(PublicWriteAPIView):

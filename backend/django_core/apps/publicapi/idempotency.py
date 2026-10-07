@@ -9,12 +9,23 @@ couvrira les POST internes JWT — celui-ci ne couvre que l'API publique par cl�
 import hashlib
 import json
 
+from django.db import IntegrityError, transaction
 from rest_framework import status
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.response import Response
 
 from .models import IdempotencyRecord
 
 IDEMPOTENCY_HEADER = 'HTTP_IDEMPOTENCY_KEY'
+
+#: AANA34 — longueur maximale d'une `Idempotency-Key` : celle de la colonne
+#: qui la mémorise (lue sur le modèle, jamais recopiée).
+LONGUEUR_MAX_CLE = IdempotencyRecord._meta.get_field(
+    'idempotency_key').max_length
+
+#: AANA34 — statut d'une clé RÉSERVÉE dont l'action n'est pas encore jouée
+#: (n'est jamais visible hors de la transaction qui l'a posée).
+STATUT_RESERVE = 0
 
 
 class IdempotencyConflict(APIException):
@@ -38,35 +49,50 @@ def get_idempotency_key(request):
     return raw.strip() if raw else None
 
 
-def replay_or_none(*, api_key, endpoint, idem_key, body):
-    """Renvoie (status, response_body) mémorisés si CE triplet a déjà été vu
-    avec un corps identique. Lève 409 si le corps diverge. Renvoie None si la
-    clé d'idempotence est neuve (l'appelant doit alors écrire normalement puis
-    appeler `remember`)."""
+def valider_cle(idem_key):
+    """AANA34 — 400 AVANT toute écriture pour une clé trop longue (elle
+    faisait écrire l'objet PUIS échouer la mémorisation en 500)."""
+    if idem_key and len(idem_key) > LONGUEUR_MAX_CLE:
+        raise ValidationError({'Idempotency-Key': (
+            f"« Idempotency-Key » trop longue : {LONGUEUR_MAX_CLE} "
+            "caractères au maximum.")})
+
+
+def executer_idempotent(*, company, api_key, endpoint, idem_key, body,
+                        perform):
+    """Joue ``perform()`` (qui renvoie un ``Response``) au plus UNE fois par
+    triplet (clé API, endpoint, `Idempotency-Key`).
+
+    AANA34 — la clé est RÉSERVÉE (insertion sous contrainte d'unicité, dans
+    la même transaction que l'action) AVANT l'action : une seconde requête
+    concurrente portant la même clé attend la fin de la première, puis
+    rejoue sa réponse mémorisée — jamais un second objet. Une action qui
+    échoue (exception) annule la réservation avec elle. Un rejeu au corps
+    différent ⇒ 409. Sans en-tête : ``perform()`` tel quel.
+    """
+    valider_cle(idem_key)
     if not idem_key:
-        return None
+        return perform()
     fingerprint = _fingerprint(body)
-    try:
-        record = IdempotencyRecord.objects.get(
-            api_key=api_key, endpoint=endpoint, idempotency_key=idem_key)
-    except IdempotencyRecord.DoesNotExist:
-        return None
-    if record.request_fingerprint != fingerprint:
-        raise IdempotencyConflict()
-    return record.response_status, record.response_body
-
-
-def remember(*, company, api_key, endpoint, idem_key, body, response_status,
-             response_body):
-    """Mémorise la réponse pour ce triplet (no-op si pas d'en-tête fourni)."""
-    if not idem_key:
-        return
-    IdempotencyRecord.objects.get_or_create(
-        api_key=api_key, endpoint=endpoint, idempotency_key=idem_key,
-        defaults={
-            'company': company,
-            'request_fingerprint': _fingerprint(body),
-            'response_status': response_status,
-            'response_body': response_body,
-        },
-    )
+    with transaction.atomic():
+        try:
+            with transaction.atomic():
+                record = IdempotencyRecord.objects.create(
+                    company=company, api_key=api_key, endpoint=endpoint,
+                    idempotency_key=idem_key,
+                    request_fingerprint=fingerprint,
+                    response_status=STATUT_RESERVE, response_body={})
+        except IntegrityError:
+            record = None
+        if record is None:
+            existant = IdempotencyRecord.objects.select_for_update().get(
+                api_key=api_key, endpoint=endpoint, idempotency_key=idem_key)
+            if existant.request_fingerprint != fingerprint:
+                raise IdempotencyConflict()
+            return Response(existant.response_body,
+                            status=existant.response_status)
+        response = perform()
+        record.response_status = response.status_code
+        record.response_body = response.data
+        record.save(update_fields=['response_status', 'response_body'])
+        return response
