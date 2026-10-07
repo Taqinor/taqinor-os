@@ -92,25 +92,18 @@ class ContratRoundTripEcran(SimpleTestCase):
     #: (`tension_raccordement` est déclaré parmi les entrées générales).
     INDUSTRIEL_COMMERCIAL = ('tension_raccordement', 'repartition_mt',
                              'categorie_commerciale')
-    #: Les réponses par catégorie commerciale
-    #: (`solar.js: COMMERCIAL_CATEGORY_QUESTIONS`), relues à plat `e[q.key]`.
-    REPONSES_COMMERCIALES = (
-        'chambres', 'occupation_pct', 'piscine', 'chambres_froides',
-        'horaires', 'cuisson', 'surface_vente_m2', 'effectif', 'clim', 'lits',
-        'garde_nuit', 'internat', 'fermeture_estivale', 'surface_m2',
-        'chauffe', 'four', 'cuisson_nocturne', 'temperature_consigne',
-        'volume_m3', 'saisonnalite_recolte')
+    #: CIQ129 — les réponses par catégorie commerciale ne sont plus relues à
+    #: plat : elles vivent dans `rythme.reponses_categorie` (entrée v2), voir
+    #: ``test_ciq129_cles_v1``.
 
     def test_toutes_les_cles_du_round_trip_sont_declarees(self):
-        for cle in (self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL
-                    + self.REPONSES_COMMERCIALES):
+        for cle in self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL:
             with self.subTest(cle=cle):
                 self.assertIn(cle, S.SCHEMA)
 
     def test_ce_sont_des_ENTREES_de_l_ecran_jamais_des_derivees(self):
         """Aucune n'est calculée par le moteur : le commercial les TAPE."""
-        for cle in (self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL
-                    + self.REPONSES_COMMERCIALES):
+        for cle in self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL:
             with self.subTest(cle=cle):
                 self.assertEqual(S.SCHEMA[cle]['nature'], S.ENTREE)
                 self.assertEqual(S.SCHEMA[cle]['proprietaire'], S.ECRAN)
@@ -118,13 +111,13 @@ class ContratRoundTripEcran(SimpleTestCase):
     def test_l_ecran_peut_donc_toutes_les_ecrire(self):
         self.assertEqual(
             S.cles_refusees_pour(
-                S.ECRAN, self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL
-                + self.REPONSES_COMMERCIALES), [])
+                S.ECRAN, self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL), [])
 
     def test_un_bloc_de_marche_complet_passe_le_validateur(self):
         self.assertEqual(S.valider({
-            'categorie_commerciale': 'hotel', 'chambres': 40,
-            'occupation_pct': 62.5, 'piscine': True,
+            'categorie_commerciale': 'hotel',
+            'rythme': {'reponses_categorie': {
+                'chambres': 40, 'occupation_pct': 62.5, 'piscine': True}},
             'tension_raccordement': 'mt',
             'repartition_mt': {'pointe': 10, 'pleines': 50, 'creuses': 40},
         }), [])
@@ -141,8 +134,7 @@ class ContratRoundTripEcran(SimpleTestCase):
 
     def test_un_booleen_deguise_en_nombre_reste_refuse(self):
         """La déclaration de type est utile, pas décorative."""
-        self.assertEqual(len(S.valider({'chambres': True})), 1)
-        self.assertEqual(len(S.valider({'piscine': 3})), 1)
+        self.assertEqual(len(S.valider({'nombre_proprietes': True})), 1)
         self.assertEqual(len(S.valider({'repartition_mt': [10, 50, 40]})), 1)
 
 
@@ -290,22 +282,17 @@ class FusionTests(SimpleTestCase):
 
 
 class PartDiurneTests(SimpleTestCase):
-    """QJR528 — la part diurne d'un devis INDUSTRIEL (curseur de l'écran) est
-    une ENTRÉE persistée : sans elle, la réouverture remettait le défaut du
-    marché et un ré-enregistrement réécrivait en silence taux / payback
-    imprimés au PDF (contrat ``etude_ecran_industriel.json``, QJR510)."""
+    """QJR528 → CIQ129 — la part diurne de l'ancienne étude écran a quitté le
+    schéma : le profil horaire se déclare dans `rythme` (moteur C&I)."""
 
-    def test_la_cle_est_declaree_entree_de_l_ecran(self):
-        self.assertIn('part_diurne_pct', S.SCHEMA)
-        self.assertEqual(S.SCHEMA['part_diurne_pct']['nature'], S.ENTREE)
-        self.assertEqual(S.SCHEMA['part_diurne_pct']['proprietaire'], S.ECRAN)
+    def test_la_cle_n_est_plus_declaree(self):
+        self.assertNotIn('part_diurne_pct', S.SCHEMA)
 
-    def test_la_fusion_accepte_part_diurne_pct(self):
-        bloc = S.ecrire(_DevisEnMemoire({'scenario': 'Sans batterie'}),
-                        proprietaire=S.ECRAN, part_diurne_pct=80)
-        self.assertEqual(bloc['part_diurne_pct'], 80)
-        self.assertEqual(bloc['scenario'], 'Sans batterie')
-        self.assertEqual(S.valider({'part_diurne_pct': 72.5}), [])
+    def test_la_fusion_refuse_part_diurne_pct_en_la_nommant(self):
+        with self.assertRaises(ValueError) as ctx:
+            S.ecrire(_DevisEnMemoire({'scenario': 'Sans batterie'}),
+                     proprietaire=S.ECRAN, part_diurne_pct=80)
+        self.assertIn('part_diurne_pct', str(ctx.exception))
 
 
 class EcritureChirurgicaleTests(TestCase):
@@ -380,15 +367,15 @@ class FusionnerPureTests(SimpleTestCase):
         self.assertEqual(depart, {'gamme': 'premium'})
         self.assertEqual(set(resultat), {'gamme', 'scenario'})
 
-    def test_qjr578_etude_kwc_base_reservee_a_l_ecran(self):
-        """QJR578 — l'écran déclare le kWc pour lequel il a calculé l'étude
-        I/C ; aucune autre étape ne peut l'écrire."""
-        resultat = S.fusionner({}, proprietaire=S.ECRAN, etude_kwc_base=80.0)
-        self.assertEqual(resultat, {'etude_kwc_base': 80.0})
-        for autre in (S.AUTO_DEVIS, S.CALEPINAGE):
-            with self.subTest(proprietaire=autre):
+    def test_qjr578_etude_kwc_base_retiree(self):
+        """QJR578 → CIQ129 — ``etude_kwc_base`` a quitté le schéma : le
+        moteur C&I recalcule ``etude_ci`` à chaque changement de lignes ;
+        plus personne ne peut l'écrire."""
+        for proprietaire in (S.ECRAN, S.AUTO_DEVIS, S.CALEPINAGE):
+            with self.subTest(proprietaire=proprietaire):
                 with self.assertRaises(ValueError):
-                    S.fusionner({}, proprietaire=autre, etude_kwc_base=80.0)
+                    S.fusionner({}, proprietaire=proprietaire,
+                                etude_kwc_base=80.0)
 
     def test_fusionner_applique_les_memes_refus(self):
         with self.assertRaises(ValueError):

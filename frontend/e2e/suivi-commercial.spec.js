@@ -131,7 +131,12 @@ test.describe('CIQ521 — suivi d’un lead commercial, en direct', () => {
   })
 
   test('4. « En attente d’un accord » : refusée sans raison, acceptée avec « Direction / comité » à J+10', async ({ request }) => {
-    const date = isoDansJours(10)
+    // J+10 ramené à un jour OUVRÉ : les horaires de la société (crm/horaires.py,
+    // CAD43) ferment le samedi et repoussent le dimanche — un J+10 tombant un
+    // week-end serait légitimement reporté au lundi (nocturne CAD177 : 17 → 19).
+    let decalage = 10
+    while ([0, 6].includes(new Date(`${isoDansJours(decalage)}T12:00:00`).getDay())) decalage += 1
+    const date = isoDansJours(decalage)
     const url = `${API}/crm/relance-etapes/${premiere.id}/fait/`
     const refus = await request.post(url, {
       data: { reponse: 'attente_accord', rappel_le: date, rappel_heure: '11:00' },

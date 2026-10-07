@@ -1299,7 +1299,8 @@ def emettre_layout_finalise(devis, user):
             'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
 
 
-def resynchroniser_conception(devis, layout, user=None, *, emettre=True):
+def resynchroniser_conception(devis, layout, user=None, *, emettre=True,
+                              roof_image=None):
     """ACAL34 (C-ACAL-109) — L'ENVELOPPE UNIQUE d'une resynchronisation de
     conception : ``sync-layout`` (ventes) ET « Resynchroniser le devis »
     (module calepinage) l'appellent, plus aucune suite recopiée.
@@ -1313,12 +1314,27 @@ def resynchroniser_conception(devis, layout, user=None, *, emettre=True):
        DANS ce geste explicite, jamais hors geste ;
     3. si ``emettre`` : l'annonce ``layout_finalise`` (PV79).
 
+    ACAL98 (C-ACAL-107) — ``roof_image`` (la clé de l'affiche du calepinage,
+    passée par la resynchro du MODULE) : quand quelque chose a changé, ses
+    octets sont COPIÉS sous la clé du devis
+    (``stockage_toiture.poser_affiche_depuis``) ; ``None`` (défaut, la route
+    ``sync-layout``) ne touche pas l'affiche. Best-effort : un magasin
+    injoignable n'annule pas la resynchro déjà validée.
+
     Rend le dict de :func:`sync_devis_from_layout`, INCHANGÉ ; ``SyncLayoutError``
     remonte telle quelle. Aucun statut écrit (règle #4).
     """
     resultat = sync_devis_from_layout(devis, layout, user)
     if isinstance(resultat, dict) and resultat.get('inchange'):
         return resultat
+    if roof_image:
+        from apps.ventes.domain.stockage_toiture import poser_affiche_depuis
+        try:
+            poser_affiche_depuis(devis, roof_image)
+        except Exception:  # noqa: BLE001 — cf. docstring : jamais bloquant
+            logger.warning(
+                'ACAL98 : affiche du calepinage non copiée sur le devis %s',
+                getattr(devis, 'pk', None), exc_info=True)
     if emettre:
         emettre_layout_finalise(devis, user)
     # QJR20 — ``sync_devis_from_layout`` a recalé l'instance passée sur la

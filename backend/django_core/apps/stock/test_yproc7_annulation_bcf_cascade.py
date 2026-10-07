@@ -52,7 +52,7 @@ class Yproc7Base(TestCase):
         self.company = _company('yproc7-co')
         self.user = _user(
             self.company, 'yproc7-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur YPROC7')

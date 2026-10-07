@@ -6,6 +6,7 @@ from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from core.viewsets import CompanyScopedModelViewSet
+from .document_fige import DocumentFigeMixin
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -44,7 +45,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class RetourFournisseurViewSet(CompanyScopedModelViewSet):
+class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     """N19 — retours fournisseur (articles défectueux / erronés). Numérotation
     sans trou (préfixe RF). La validation DÉCRÉMENTE le stock via MouvementStock
     (SORTIE). Usage INTERNE."""
@@ -52,6 +53,11 @@ class RetourFournisseurViewSet(CompanyScopedModelViewSet):
         'fournisseur', 'bon_commande', 'created_by',
     ).prefetch_related('lignes__produit').all()
     serializer_class = RetourFournisseurSerializer
+    # ASTK25 — validé (stock sorti, BCF rouvert) ou annulé : figé.
+    messages_document_fige = {
+        RetourFournisseur.Statut.VALIDE: 'Retour validé : non modifiable.',
+        RetourFournisseur.Statut.ANNULE: 'Retour annulé : non modifiable.',
+    }
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'fournisseur__nom', 'motif']
     ordering_fields = ['date_creation', 'statut', 'reference']

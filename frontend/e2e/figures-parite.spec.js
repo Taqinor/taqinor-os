@@ -75,8 +75,12 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
 
   // L'identifiant du devis créé, lu sur la RÉPONSE de création (jamais deviné
   // dans une liste partagée par les autres specs).
+  // Délai ALIGNÉ sur `generateAutoDevis` (45 s jusqu'au canvas du PDF) : la
+  // création auto (dimensionnement + rendu) dépasse parfois les 15 s par
+  // défaut de `actionTimeout` sur un runner chargé (E4 mesuré 17 à 44 s).
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
-    && CREATION_DEVIS.test(new URL(r.url()).pathname) && r.status() < 300)
+    && CREATION_DEVIS.test(new URL(r.url()).pathname) && r.status() < 300,
+  { timeout: 45_000 })
   await generateAutoDevis(page)
   const devisId = (await (await creation).json()).id
   expect(devisId, 'identifiant du devis créé').toBeTruthy()

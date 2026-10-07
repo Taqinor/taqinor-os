@@ -15,6 +15,7 @@
 // rouvert montre les chiffres de `etude_params`.
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
+import { choisirMarche } from './helpers'
 
 const API = '/api/django'
 const DERIVEES_CLIENT_INTERDITES = ['pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h',
@@ -46,8 +47,8 @@ async function ouvrirGenerateurAgricole(page, client) {
     .toBeVisible({ timeout: 45_000 })
   await page.locator('#gen-client').click()
   await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
-  await page.getByRole('option').first().click()
-  await page.getByRole('radio', { name: /Agricole/ }).click()
+  await page.locator('[role="option"]').first().click()
+  await choisirMarche(page, /Agricole/)
   await expect(page.getByTestId('bloc-cas-pompe')).toBeVisible()
 }
 

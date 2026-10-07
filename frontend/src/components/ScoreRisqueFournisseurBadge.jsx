@@ -3,7 +3,7 @@ import { cn } from '../lib/cn'
 /* NTP2P8 — badge coloré du score de risque fournisseur (0-100, 100 = risque
    nul). Le badge n'ASSÈNE jamais un score : il porte le détail des facteurs
    pénalisants en infobulle et en liste dépliée, pour qu'un acheteur sache
-   POURQUOI un fournisseur est mal noté (documents expirés, retards, litiges…).
+   POURQUOI un fournisseur est mal noté (documents expirés, retards, incidents qualité…).
 
    Aucune donnée client-facing ici : ce sont des indicateurs achats INTERNES.
 

@@ -67,7 +67,7 @@
 // (`stock.spec.js`) : le contrat est écrit, visible dans le rapport comme
 // TODO, et n'immobilise pas la matrice.
 import { test, expect } from '@playwright/test'
-import { gotoLeads, uniq } from './helpers'
+import { gotoLeads, uniq, boutonNouveauLead } from './helpers'
 
 // Viewport DÉCLARÉ : un budget de clics se mesure à une taille connue (une
 // largeur différente peut replier une barre d'actions dans un menu, donc
@@ -101,7 +101,7 @@ const ficheLead = (page) =>
  * sait pas encore poser. Rien de tout cela n'entre dans un budget.
  */
 async function creerLeadJoignable(page, { nom, facture, telephone = '0612345678' }) {
-  await page.getByRole('button', { name: '+ Nouveau lead' }).click()
+  await boutonNouveauLead(page).click()
   const modal = ficheLead(page)
   await expect(modal.getByRole('heading', { name: 'Nouveau lead' })).toBeVisible()
   await modal.locator('#lf-nom').fill(nom)
@@ -261,7 +261,7 @@ test('EZ17 — appel noté + relance posée : ≤4 interactions (chemin rapide)'
   // La vue LISTE porte l'icône ☎ par ligne (`?view=` prime sur la session et
   // sur la vue par défaut du compte — voir leads-density.spec.js).
   await page.goto('/crm/leads?view=liste')
-  await expect(page.getByRole('button', { name: '+ Nouveau lead' })).toBeVisible()
+  await expect(boutonNouveauLead(page)).toBeVisible()
   const ligne = page.locator('tr.lv-row', { hasText: nom }).first()
   await expect(ligne).toBeVisible()
 

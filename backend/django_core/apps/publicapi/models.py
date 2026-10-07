@@ -14,6 +14,7 @@ import hmac
 import secrets
 
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 
 from core.crypto_fields import EncryptedCharField
@@ -695,7 +696,10 @@ class ApiEvent(TenantModel):
     # Code d'évènement (`constants.ALL_EVENTS`) — même vocabulaire que les
     # webhooks, jamais un second jeu de noms.
     type = models.CharField(max_length=50)
-    payload = models.JSONField(default=dict, blank=True)
+    # AANA32 — encodeur Django : un `Decimal`/date d'une charge métier est
+    # sérialisé au lieu de faire perdre l'évènement (TypeError).
+    payload = models.JSONField(default=dict, blank=True,
+                               encoder=DjangoJSONEncoder)
     # Identité STABLE de l'évènement source (uuid4), partagée avec la livraison
     # webhook correspondante : un consommateur qui utilise LES DEUX canaux
     # (webhook + rattrapage par le flux) déduplique dessus.

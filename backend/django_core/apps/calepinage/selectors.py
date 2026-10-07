@@ -162,6 +162,19 @@ def calepinage_ouvert_du_lead(company, lead_id):
     return liste_calepinages(company, lead_id=lead_id).first()
 
 
+def calepinages_ouverts_du_lead(company, lead_id):
+    """ACAL177 — TOUS les calepinages OUVERTS (non archivés) d'un lead.
+
+    Lu par ``crm.services.raison_refus_suppression`` : la corbeille d'un lead
+    porteur d'un calepinage ouvert est refusée en le nommant. Même prédicat
+    « ouvert » que ``calepinage_ouvert_du_lead`` (``appliquer_filtres_liste``,
+    ``inclure_archives=False``), borné à ``company``. Liste vide sans lead.
+    """
+    if company is None or not lead_id:
+        return []
+    return list(liste_calepinages(company, lead_id=lead_id))
+
+
 #: ACAL196 — « CAL-AAMM-NNNN » : le numéro à la fin est l'identifiant.
 _REFERENCE_AFFICHEE = re.compile(r'^CAL-(?:\d{4}-)?(\d{1,18})$',
                                  re.IGNORECASE)
@@ -765,6 +778,19 @@ def photos_site(calepinage):
               .select_related('attachment', 'ajoutee_par')
               .order_by('-prise_le', '-id'))
     return [photo_en_ligne(photo) for photo in lignes]
+
+
+def url_apercu_calepinage(calepinage):
+    """ACAL314 — le chemin RELATIF (proxy Django même origine, ACAL200) de
+    l'aperçu de toiture d'un calepinage, ou ``None`` sans aperçu. Jamais une
+    URL pré-signée portant l'hôte interne ``minio:9000``. Lecture pure."""
+    from .services.presentation import url_fichier_roof_image
+
+    if calepinage is None or getattr(calepinage, 'pk', None) is None:
+        return None
+    if not (getattr(calepinage, 'roof_image', None) or '').strip():
+        return None
+    return url_fichier_roof_image(calepinage.pk)
 
 
 def releves_terrain(calepinage):

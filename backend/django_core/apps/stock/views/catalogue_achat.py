@@ -51,6 +51,17 @@ class CatalogueAchatSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_fields(self):
+        # ASTK12 (D-ASTK-2 — tranche la question NTP2P3 « exposer au
+        # demandeur » : non) — `prix_achat_dernier` retiré sans
+        # `prix_achat_voir` ; le sélecteur reste utilisable sans prix.
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_buy_prices', True):
+            fields.pop('prix_achat_dernier', None)
+        return fields
+
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_prix_achat_dernier(self, obj):
         """Dernier prix d'achat connu : tarif fournisseur le plus récent,

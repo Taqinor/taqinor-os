@@ -134,8 +134,17 @@ export default function ViewsManagerPopover({ ecran, onApply }) {
   const {
     mine, team, activeView, loading,
     applyView, duplicateView, renameView, deleteView, setDefaultForMyRole,
-    reorderMine,
+    reorderMine, refresh,
   } = useServerSavedViews(ecran)
+
+  // CAD177 : ce popover porte SA PROPRE instance du hook, chargée au montage ;
+  // une vue créée ailleurs (le « ⭐ Enregistrer cette vue » de l'écran, autre
+  // instance) n'y apparaissait qu'après rechargement de la page (e2e NTUX36).
+  // On relit donc la liste à CHAQUE ouverture.
+  const ouvrirOuFermer = (ouvert) => {
+    setOpen(ouvert)
+    if (ouvert) refresh?.()
+  }
 
   const apply = (view) => {
     applyView(view)
@@ -174,7 +183,7 @@ export default function ViewsManagerPopover({ ecran, onApply }) {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={ouvrirOuFermer}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" data-testid="uxviews-open-btn">
           <LayoutList />

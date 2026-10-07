@@ -4,17 +4,18 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 
 | Fichier:ligne | Modèle.champ | max_digits | decimal_places |
 |---|---|---|---|
-| `backend/django_core/apps/achats/models.py:53` | PrixFournisseur.prix_achat | 10 | 2 |
-| `backend/django_core/apps/achats/models.py:301` | LigneBonCommandeFournisseur.prix_achat_unitaire | 10 | 2 |
-| `backend/django_core/apps/achats/models.py:310` | LigneBonCommandeFournisseur.prix_achat_unitaire_devise | 12 | 2 |
-| `backend/django_core/apps/achats/models.py:511` | FactureFournisseur.montant_ttc_devise | 14 | 2 |
-| `backend/django_core/apps/achats/models.py:515` | FactureFournisseur.montant_ht | 14 | 2 |
-| `backend/django_core/apps/achats/models.py:517` | FactureFournisseur.montant_tva | 14 | 2 |
-| `backend/django_core/apps/achats/models.py:519` | FactureFournisseur.montant_ttc | 14 | 2 |
-| `backend/django_core/apps/achats/models.py:617` | LigneFactureFournisseur.prix_unitaire_ht | 12 | 2 |
-| `backend/django_core/apps/achats/models.py:624` | LigneFactureFournisseur.taux_tva | 5 | 2 |
-| `backend/django_core/apps/achats/models.py:675` | PaiementFournisseur.montant | 14 | 2 |
-| `backend/django_core/apps/achats/models.py:685` | PaiementFournisseur.montant_ras_tva | 14 | 2 |
+| `backend/django_core/apps/achats/models.py:55` | PrixFournisseur.prix_achat | 10 | 2 |
+| `backend/django_core/apps/achats/models.py:303` | LigneBonCommandeFournisseur.prix_achat_unitaire | 10 | 2 |
+| `backend/django_core/apps/achats/models.py:312` | LigneBonCommandeFournisseur.prix_achat_unitaire_devise | 12 | 2 |
+| `backend/django_core/apps/achats/models.py:522` | FactureFournisseur.montant_ttc_devise | 14 | 2 |
+| `backend/django_core/apps/achats/models.py:526` | FactureFournisseur.montant_ht | 14 | 2 |
+| `backend/django_core/apps/achats/models.py:528` | FactureFournisseur.montant_tva | 14 | 2 |
+| `backend/django_core/apps/achats/models.py:530` | FactureFournisseur.montant_ttc | 14 | 2 |
+| `backend/django_core/apps/achats/models.py:641` | ImputationAcompteFournisseur.montant | 14 | 2 |
+| `backend/django_core/apps/achats/models.py:665` | LigneFactureFournisseur.prix_unitaire_ht | 12 | 2 |
+| `backend/django_core/apps/achats/models.py:672` | LigneFactureFournisseur.taux_tva | 5 | 2 |
+| `backend/django_core/apps/achats/models.py:723` | PaiementFournisseur.montant | 14 | 2 |
+| `backend/django_core/apps/achats/models.py:733` | PaiementFournisseur.montant_ras_tva | 14 | 2 |
 | `backend/django_core/apps/adminops/models.py:321` | FactureLicence.montant_ht | 12 | 2 |
 | `backend/django_core/apps/adminops/models.py:323` | FactureLicence.tva | 12 | 2 |
 | `backend/django_core/apps/adminops/models.py:325` | FactureLicence.montant_ttc | 12 | 2 |

@@ -13,6 +13,7 @@
 // Non exécuté localement : il tourne dans le job e2e de la CI (capture jointe).
 // Nettoyage best-effort en afterAll (base partagée, workers: 1).
 import { test, expect } from '@playwright/test'
+import { choisirMarche } from './helpers'
 
 const API = '/api/django'
 const AUJOURDHUI = new Date().toISOString().slice(0, 10)
@@ -57,8 +58,8 @@ async function creerDevisAgricole(page, client) {
     .toBeVisible({ timeout: 45_000 })
   await page.locator('#gen-client').click()
   await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
-  await page.getByRole('option').first().click()
-  await page.getByRole('radio', { name: /Agricole/ }).click()
+  await page.locator('[role="option"]').first().click()
+  await choisirMarche(page, /Agricole/)
   await page.getByRole('radio', { name: 'Pompe neuve' }).click()
   await page.getByRole('radio', { name: 'Volume déclaré' }).click()
   await page.locator('#gen-besoin-volume').fill('60')

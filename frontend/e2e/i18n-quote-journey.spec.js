@@ -122,7 +122,19 @@ test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', 
   // CAD177 — DEUX boutons « Créer le devis » existent en desktop depuis le
   // rail récapitulatif VX16 (be7caa72, `form="gen-form"`, lg+) : on vise
   // celui du formulaire lui-même, présent à toutes les largeurs.
+  // CAD177 — la composition par défaut porte des panneaux/onduleurs à 0 : sans
+  // lead il n'y a AUCUN auto-dimensionnement, et la garde QX20 (« un devis
+  // solaire doit contenir ≥ 1 panneau ET ≥ 1 onduleur ») bloque l'envoi AVANT
+  // tout appel serveur (aucun POST, donc jamais d'écran de succès — rouge du
+  // nocturne 37446060068). Ce parcours teste la LANGUE du document, pas le
+  // dimensionnement : on prend l'échappatoire documentée de la garde.
+  await page.getByRole('switch', { name: /Composition libre/ }).check()
+  const creation = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname), { timeout: 30_000 })
   await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
+  const reponseCreation = await creation
+  expect(reponseCreation.status(), `création du devis : ${await reponseCreation.text()}`)
+    .toBeLessThan(300)
   // Écran de succès du générateur — texte stable, jamais un libellé de bouton
   // (les actions proposées y évoluent).
   await expect(page.getByText('Devis enregistré')).toBeVisible({ timeout: 45_000 })

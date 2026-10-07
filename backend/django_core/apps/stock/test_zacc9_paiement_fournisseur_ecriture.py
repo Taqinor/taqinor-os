@@ -61,7 +61,7 @@ class Zacc9Base(TestCase):
         self.company = _company('zacc9-co')
         self.user = _user(
             self.company, 'zacc9-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur ZACC9')
@@ -108,7 +108,7 @@ class TestMultiTenant(Zacc9Base):
     def test_facture_autre_societe_404(self):
         autre = _company('zacc9-autre')
         autre_user = _user(autre, 'zacc9-autre-user',
-                           permissions=['stock_modifier', 'stock_voir'])
+                           permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         autre_api = _api(autre_user)
         resp = autre_api.post(self._paiements_url(), {
             'montant': '10', 'mode': 'virement'}, format='json')
@@ -189,7 +189,7 @@ class TestAUD208DeuxPaiementsConcurrentsNeDepassentPlusLeSolde(
         self.company = _company('zacc9-aud208-co')
         self.user = _user(
             self.company, 'zacc9-aud208-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur ZACC9 AUD208')
         self.facture = FactureFournisseur.objects.create(

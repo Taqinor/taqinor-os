@@ -73,7 +73,7 @@ const norm360 = (a: number) => ((a % 360) + 360) % 360;
  *  C'est la convention de projection que `packConfig`/`layoutProRows2` utilisent déjà pour
  *  passer d'un contour lng/lat à leur repère ENU — aucune donnée nouvelle. */
 const DEG2RAD_PROJ = Math.PI / 180;
-const WGS84_RADIUS_M = 6378137;
+import { WGS84_RADIUS as WGS84_RADIUS_M } from './geo';
 const DEG2M_PROJ = DEG2RAD_PROJ * WGS84_RADIUS_M;
 
 /**

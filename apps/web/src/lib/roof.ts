@@ -74,7 +74,7 @@ export const TARIFF_MAD_PER_KWH = 1.4;
 const SELF_CONSUMPTION_LOW = 0.6; // fourchette 60–90 % de la valeur produite
 const SELF_CONSUMPTION_HIGH = 0.9;
 
-const WGS84_RADIUS = 6378137; // m
+import { WGS84_RADIUS } from './geo';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 
@@ -443,3 +443,4 @@ export function layoutPanels(ring: LngLat[], opts: PanelLayoutOptions = {}): Pan
     areaM2,
   };
 }
+export { metresParDegre } from './geo';

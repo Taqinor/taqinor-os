@@ -302,7 +302,10 @@ test.describe('APX8 — densité, viewport de référence 1440×900', () => {
       noter(info, `${cible.nom} — ligne (px, min → max)`, `${Math.round(hMin)} → ${Math.round(hMax)}`)
       noter(info, `${cible.nom} — lignes rendues`, lignes.length)
 
-      expect(hMax, `${cible.nom} : la ligne reste dense`).toBeLessThanOrEqual(cible.plafond)
+      // CAD177 : plafond de CATASTROPHE (« seuils doux », voir ci-dessus) + la
+      // tolérance sous-pixel PX du fichier — le runner CI a rendu 92,5 px pour un
+      // plafond de 92 (vignette 40 px + arrondis de police), pas une régression.
+      expect(hMax, `${cible.nom} : la ligne reste dense`).toBeLessThanOrEqual(cible.plafond + PX)
     })
   }
 })

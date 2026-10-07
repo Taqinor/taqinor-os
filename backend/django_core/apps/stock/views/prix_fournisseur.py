@@ -74,6 +74,12 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
             # champ `prix_achat` ailleurs. `HasPermissionOrLegacy` conserve le
             # comportement historique des comptes hérités sans rôle fin.
             return [HasPermissionOrLegacy('prix_achat_voir')()]
+        if self.action == 'import_xlsx':
+            # ASTK12 (D-ASTK-2) — l'aperçu de l'import EXPOSE les prix
+            # actuels (conflits[].ecrasements) et l'écriture les remplace :
+            # `prix_achat_voir` requis EN PLUS de `stock_modifier`.
+            return [HasPermissionOrLegacy('stock_modifier')(),
+                    HasPermissionOrLegacy('prix_achat_voir')()]
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def get_queryset(self):

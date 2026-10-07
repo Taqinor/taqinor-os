@@ -1,0 +1,328 @@
+{
+  "endpoint": "GET /api/django/stock/casiers-a-reapprovisionner/",
+  "pourquoi": "ASTK160 (M0, PACT10, C-ASTK-045) — contrat posé SEUL sur main avant les écrans casiers / emplacements / poste scanner (ASTK213 action `executer`, ASTK215-ASTK216 écrans, lisant `exempleContrat('stock', 'wms_casiers')`). Neuf surfaces stock servies sans aucun écran. Un fichier multi-routes : chaque route de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`). Clés dérivées LIGNE À LIGNE des serializers/vues (aucune clé retapée) et affirmées par apps/stock/test_contrats_wms_astk.py. Aucun montant d'achat dans ces réponses. Binaire : étiquettes PDF décrites par `content_type`.",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `casiers_a_reapprovisionner`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
+  "exemple": {
+    "casiers": [
+      {
+        "seuil_id": 4,
+        "bin": 21,
+        "bin_code": "P-01-01",
+        "zone": "P",
+        "produit": 88,
+        "produit_nom": "Connecteur MC4",
+        "quantite_presente": 3,
+        "seuil": 10,
+        "quantite_cible": 40,
+        "quantite_a_transferer": 37,
+        "bin_source": 22,
+        "bin_source_code": "S-01-01"
+      }
+    ],
+    "taches_creees": 0
+  },
+  "exemple_vide": {
+    "casiers": [],
+    "taches_creees": 0
+  },
+  "routes": {
+    "seuils_reappro_casier": {
+      "endpoint": "GET /api/django/stock/seuils-reappro-casier/?bin=<id>",
+      "pourquoi": "NTWMS40 — liste paginée des seuils de réappro par casier de picking (`SeuilReapproCasierViewSet`, views/reappro_casier.py:43 ; lecture IsAnyRole, écriture responsable/admin ; filtre manuel `?bin=`). Poser un seuil DÉCLARE le casier comme casier de prélèvement. `quantite_cible` null = « seuil × 2 ». Le même objet est le corps de réponse du POST (201), du PUT/PATCH (200) ; corps POST/PUT = {bin, produit, seuil, quantite_cible?, actif?} (société toujours serveur).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 4,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "produit": 88,
+            "seuil": 10,
+            "quantite_cible": 40,
+            "actif": true,
+            "created_at": "2026-10-06T09:12:44.512000Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 4,
+        "bin": 21,
+        "bin_code": "P-01-01",
+        "produit": 88,
+        "seuil": 10,
+        "quantite_cible": 40,
+        "actif": true,
+        "created_at": "2026-10-06T09:12:44.512000Z"
+      },
+      "corps_post": {
+        "bin": 21,
+        "produit": 88,
+        "seuil": 10,
+        "quantite_cible": 40,
+        "actif": true
+      }
+    },
+    "taches_reappro_interne": {
+      "endpoint": "GET /api/django/stock/taches-reappro-interne/?statut=<a_faire|faite|annulee>",
+      "pourquoi": "NTWMS40 — ordres de réappro interne (magasin → casier picking), `TacheReapproInterneViewSet` (views/reappro_casier.py:67). Ce sont des ORDRES DE TRAVAIL : aucun stock n'est bougé par la lecture. Liste paginée, plus récent d'abord ; `note` est en lecture seule ; `statut` ∈ a_faire / faite / annulee (TacheReapproInterne.Statut). Lecture IsAnyRole, écriture responsable/admin.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 9,
+            "produit": 88,
+            "bin_cible": 21,
+            "bin_cible_code": "P-01-01",
+            "bin_source": 22,
+            "bin_source_code": "S-01-01",
+            "quantite": 37,
+            "statut": "a_faire",
+            "note": "",
+            "created_at": "2026-10-06T09:14:02.201000Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 9,
+        "produit": 88,
+        "bin_cible": 21,
+        "bin_cible_code": "P-01-01",
+        "bin_source": 22,
+        "bin_source_code": "S-01-01",
+        "quantite": 37,
+        "statut": "a_faire",
+        "note": "",
+        "created_at": "2026-10-06T09:14:02.201000Z"
+      }
+    },
+    "taches_reappro_interne_executer": {
+      "endpoint": "POST /api/django/stock/taches-reappro-interne/<id>/executer/",
+      "nouveau": "NOUVEAU — ASTK213",
+      "pourquoi": "NOUVEAU — ASTK213 (action NON construite aujourd'hui : exclue du test de forme du contrat). Exécute l'ordre de réappro : un mouvement de transfert tracé bin_source → bin_cible via `record_stock_movement` (jamais un second chemin d'écriture), la tâche passe terminée. NOTE d'alignement pour ASTK213 : la valeur de statut existante est `faite` (TacheReapproInterne.Statut.FAITE) ; la valeur `terminee` ci-dessous est celle posée par le texte de la tâche ASTK160 — ASTK213 tranche l'une des deux et corrige ce fichier dans le même commit.",
+      "exemple": {
+        "id": 9,
+        "statut": "terminee",
+        "mouvement_id": 1203,
+        "bin_source": 22,
+        "bin_cible": 21,
+        "quantite": 37
+      }
+    },
+    "casiers_a_reapprovisionner": {
+      "endpoint": "GET /api/django/stock/casiers-a-reapprovisionner/",
+      "pourquoi": "NTWMS40 — `casiers_a_reapprovisionner_view` (views/reappro_casier.py:101, responsable/admin). GET liste les casiers picking SOUS leur seuil (jamais un casier sans seuil) avec le casier source le plus proche ; POST génère les tâches de réappro (idempotent : jamais deux tâches ouvertes sur le même casier) et renvoie la MÊME forme avec `taches_creees` = nombre de tâches créées (0 pour GET).",
+      "exemple": {
+        "casiers": [
+          {
+            "seuil_id": 4,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "zone": "P",
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "quantite_presente": 3,
+            "seuil": 10,
+            "quantite_cible": 40,
+            "quantite_a_transferer": 37,
+            "bin_source": 22,
+            "bin_source_code": "S-01-01"
+          }
+        ],
+        "taches_creees": 0
+      },
+      "exemple_vide": {
+        "casiers": [],
+        "taches_creees": 0
+      },
+      "exemple_post": {
+        "casiers": [
+          {
+            "seuil_id": 4,
+            "bin": 21,
+            "bin_code": "P-01-01",
+            "zone": "P",
+            "produit": 88,
+            "produit_nom": "Connecteur MC4",
+            "quantite_presente": 3,
+            "seuil": 10,
+            "quantite_cible": 40,
+            "quantite_a_transferer": 37,
+            "bin_source": 22,
+            "bin_source_code": "S-01-01"
+          }
+        ],
+        "taches_creees": 1
+      }
+    },
+    "casier_historique": {
+      "endpoint": "GET /api/django/stock/casiers/<bin_id>/historique/",
+      "pourquoi": "NTWMS39 — journal d'un casier (`historique_casier_view`, views/entrepot.py:149, IsAnyRole) : 200 dernières lignes, plus récente d'abord. `action` ∈ creation / modification / archivage / reactivation. Un casier d'une autre société (ou sans ligne) renvoie `bin_code` vide et `lignes` vide — jamais son historique. `auteur` = username ('' si inconnu).",
+      "exemple": {
+        "bin": 21,
+        "bin_code": "P-01-01",
+        "lignes": [
+          {
+            "id": 31,
+            "action": "modification",
+            "champ": "zone",
+            "ancienne_valeur": "S",
+            "nouvelle_valeur": "P",
+            "auteur": "magasinier1",
+            "date": "2026-10-06T09:12:44.512000+00:00"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "bin": 21,
+        "bin_code": "",
+        "lignes": []
+      }
+    },
+    "casiers_etiquettes_pdf": {
+      "endpoint": "GET /api/django/stock/casiers/etiquettes-pdf/?emplacement=<id>&symbology=qr|code128&sortie=html",
+      "pourquoi": "NTWMS32 — planche A4 d'étiquettes de casier (`casiers_etiquettes_pdf_view`, views/wms.py:1090, IsAnyRole). RÉPONSE BINAIRE : `application/pdf` (Content-Disposition inline, filename etiquettes-casiers-<emplacement>.pdf) — ou `text/html; charset=utf-8` avec `?sortie=html`. Aucun corps JSON en succès, donc aucun `exemple` de clés.",
+      "content_type": "application/pdf",
+      "exemple": {},
+      "exemple_erreur_400": {
+        "detail": "Précisez l'emplacement dont vous voulez les étiquettes de casier."
+      },
+      "exemple_erreur_404": {
+        "detail": "Aucun casier à imprimer pour cet emplacement."
+      }
+    },
+    "reslotting_suggestions": {
+      "endpoint": "GET /api/django/stock/reslotting-suggestions/?debut=YYYY-MM-DD&fin=YYYY-MM-DD",
+      "pourquoi": "NTWMS30 — produits de classe A rangés au-delà de la médiane de l'ordre de parcours, avec le casier plus proche suggéré (`reslotting_suggestions_view`, views/wms.py:1151, IsAnyRole). LECTURE SEULE : aucune action automatique (le déplacement passe par le transfert existant). Fenêtre par défaut = 12 derniers mois ; dates illisibles ignorées (jamais une erreur). Liste du plus fort `gain_ordre` au plus faible, 50 au plus.",
+      "exemple": {
+        "suggestions": [
+          {
+            "produit_id": 88,
+            "produit_nom": "Onduleur star",
+            "classe_abc": "A",
+            "bin_actuel_id": 31,
+            "bin_actuel_code": "Z-09-01",
+            "ordre_actuel": 900,
+            "bin_suggere_id": 21,
+            "bin_suggere_code": "A-01-02",
+            "ordre_suggere": 20,
+            "gain_ordre": 880,
+            "quantite": 20
+          }
+        ]
+      },
+      "exemple_vide": {
+        "suggestions": []
+      }
+    },
+    "scanner_resoudre": {
+      "endpoint": "GET /api/django/stock/scanner/resoudre/?code=<code scanné>",
+      "pourquoi": "NTWMS5 — résolution universelle d'un code scanné (`scanner_resoudre_view`, views/scanner.py:46, IsAnyRole). Ordre : casier → produit (GTIN puis SKU) → emplacement → lot. `detail` a une forme VARIABLE selon `type` (exemples ci-dessous, un par type). 400 {detail:'Code illisible.'} si `code` vide ; 404 {detail:'Code inconnu dans cette société.'} si inconnu ou hors société. `detail.date_peremption` d'un lot = date ISO ou null.",
+      "exemple": {
+        "type": "casier",
+        "id": 21,
+        "label": "P-01-01",
+        "detail": {
+          "zone": "P",
+          "allee": "01",
+          "casier": "01",
+          "ordre": 100,
+          "emplacement_id": 3
+        }
+      },
+      "exemple_produit": {
+        "type": "produit",
+        "id": 88,
+        "label": "Micro-onduleur",
+        "detail": {
+          "sku": "MIC-001",
+          "quantite_stock": 25,
+          "strategie_picking": "aucune"
+        }
+      },
+      "exemple_emplacement": {
+        "type": "emplacement",
+        "id": 3,
+        "label": "Dépôt principal",
+        "detail": {
+          "is_principal": true
+        }
+      },
+      "exemple_lot": {
+        "type": "lot",
+        "id": 12,
+        "label": "LOT-2026-07",
+        "detail": {
+          "produit_id": 88,
+          "quantite_restante": 25,
+          "date_peremption": "2027-06-30"
+        }
+      },
+      "exemple_erreur_400": {
+        "detail": "Code illisible."
+      },
+      "exemple_erreur_404": {
+        "detail": "Code inconnu dans cette société."
+      }
+    },
+    "scanner_mouvement": {
+      "endpoint": "POST /api/django/stock/scanner/mouvement/",
+      "pourquoi": "NTWMS5 — pose un mouvement de stock SCANNÉ, casiers source/destination tracés (`scanner_mouvement_view`, views/scanner.py:82, permission stock_modifier ; passe par `record_stock_movement`). Corps : {produit, type_mouvement ∈ entree/sortie/transfert, quantite, bin_source?, bin_destination?, reference? (défaut SCAN), note?}. Un transfert ne change pas le total (quantite_avant = quantite_apres). 201 sur succès ; 400 {detail} sinon — messages réels : « Type de mouvement non scannable. », « Quantité invalide. », « La quantité doit être positive. », « Produit introuvable dans cette société. », « Casier introuvable dans cette société. », « Stock insuffisant (<n> disponible). ».",
+      "exemple": {
+        "id": 1203,
+        "produit": 88,
+        "type_mouvement": "transfert",
+        "quantite": 37,
+        "quantite_avant": 240,
+        "quantite_apres": 240,
+        "bin_source": 22,
+        "bin_destination": 21
+      },
+      "exemple_corps": {
+        "produit": 88,
+        "type_mouvement": "transfert",
+        "quantite": 37,
+        "bin_source": 22,
+        "bin_destination": 21
+      },
+      "exemple_erreur_400": {
+        "detail": "La quantité doit être positive."
+      }
+    },
+    "scanner_retour_fournisseur": {
+      "endpoint": "GET /api/django/stock/scanner/retour-fournisseur/?code=<GTIN|SKU>&quantite=<n>",
+      "pourquoi": "NTWMS41 — pré-remplit une ligne de retour fournisseur depuis un scan (`scanner_retour_fournisseur_view`, views/scanner.py:135, IsAnyRole ; `services_retour_scanne.preparer_ligne_retour_scannee`). LECTURE SEULE : rien n'est écrit avant la validation du retour. `bin_source` = casier actuel le plus rempli du produit (null/'' si aucun), `bin_destination` = casier de départs fournisseur (null/'' si non configuré). 400 {detail} : « Code inconnu dans cette société. », « Ce code désigne un <type> : scannez le produit à retourner. », « Quantité invalide. », « La quantité doit être positive. ».",
+      "exemple": {
+        "produit": 88,
+        "produit_nom": "Micro-onduleur",
+        "sku": "MIC-001",
+        "quantite": 1,
+        "bin_source": 22,
+        "bin_source_code": "S-01-01",
+        "bin_destination": 40,
+        "bin_destination_code": "RET-FOUR",
+        "fournisseur": 5,
+        "fournisseur_nom": "Import Solar SARL"
+      },
+      "exemple_erreur_400": {
+        "detail": "Code inconnu dans cette société."
+      }
+    }
+  }
+}
