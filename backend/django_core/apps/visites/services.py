@@ -530,8 +530,27 @@ def supprimer_media(media):
 
     Point unique de suppression d'un média : la route ``supprimer_photo`` et
     le remplacement d'une photo « à refaire » (ALEA12) y passent tous deux.
+
+    ALEA13 — le média EST le fichier : sa pièce jointe (``records.Attachment``
+    rattachée au LEAD) est supprimée avec lui, et l'objet de stockage est
+    effacé par le service de ``records`` (``storage.delete_attachment``) une
+    fois la transaction validée — plus de photo fantôme dans le panneau
+    pièces jointes du lead. DÉCISION (ALEA13) : une photo REMPLACÉE (ALEA12)
+    ne garde PAS sa pièce jointe — elle a été rejetée par le bureau d'études,
+    la laisser sur le lead serait exactement le fantôme corrigé ici ; la trace
+    du renvoi (motif) reste au chatter du lead.
     """
+    from django.db import transaction
+
+    from apps.records.storage import delete_attachment
+
+    attachment = media.attachment
+    cle = getattr(attachment, 'file_key', '') or ''
     media.delete()
+    if attachment is not None:
+        attachment.delete()
+    if cle:
+        transaction.on_commit(lambda: delete_attachment(cle))
 
 
 def remplacer_photo_a_refaire(visite, slot_code, *, nouvelle):
