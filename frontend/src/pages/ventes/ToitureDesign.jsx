@@ -1495,8 +1495,14 @@ function messageResolution(err) {
   return 'Impossible d’ouvrir la conception de ce devis — réessayez.'
 }
 
+/** Lot 2 critique #22 (ACAL92) — la notice d'un devis RÉVISÉ : la route d'une
+ *  version remplacée ouvre la conception de la version EN VIGUEUR. */
+const noticeDevisRevise = (reference) => (
+  `Ce devis a été révisé — conception de la version en vigueur${reference ? ` (${reference})` : ''}`)
+
 function ConceptionDuDevis() {
   const { id: devisId } = useParams()
+  const navigate = useNavigate()
   const [resolution, setResolution] = useState(() => (devisId
     ? { calepinageId: null, erreur: null }
     : { calepinageId: null, erreur: 'Aucun devis indiqué.' }))
@@ -1508,6 +1514,15 @@ function ConceptionDuDevis() {
       .then((res) => {
         if (annule) return
         const calepinageId = res?.data?.id ?? null
+        // Lot 2 critique #22 (ACAL92) — le calepinage résolu est lié à une
+        // AUTRE version (ce devis a été révisé, la conception suit la V2) :
+        // jamais l'atelier éditable sous l'URL de la version remplacée.
+        const lie = res?.data?.devis
+        if (calepinageId && lie?.id != null && String(lie.id) !== String(devisId)) {
+          toastInfo(noticeDevisRevise(lie.reference))
+          navigate(`/ventes/devis/${lie.id}/design`, { replace: true })
+          return
+        }
         setResolution(calepinageId
           ? { calepinageId, erreur: null }
           : { calepinageId: null, erreur: 'Impossible d’ouvrir la conception de ce devis — réessayez.' })
@@ -1516,7 +1531,7 @@ function ConceptionDuDevis() {
         if (!annule) setResolution({ calepinageId: null, erreur: messageResolution(err) })
       })
     return () => { annule = true }
-  }, [devisId])
+  }, [devisId, navigate])
 
   if (resolution.calepinageId) {
     return (
