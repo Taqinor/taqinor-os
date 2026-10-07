@@ -24,8 +24,13 @@ from apps.ventes.services import layout_hash
 
 User = get_user_model()
 
+# ACAL170 / lot 2 critique #28 — sync-layout passe par la porte de
+# publication du module : la clé ``electrique`` (verdict, manquantes,
+# dérogation) s'ajoute, comme ``sync_devis.exemple`` du contrat
+# calepinage_publication_electrique.json.
 CLES_REPONSE = {'inchange', 'panneaux', 'kwc', 'scenario', 'batterie',
-                'lignes_modifiees', 'lignes_ajoutees', 'avertissements'}
+                'lignes_modifiees', 'lignes_ajoutees', 'avertissements',
+                'electrique'}
 
 
 def make_company(slug):
