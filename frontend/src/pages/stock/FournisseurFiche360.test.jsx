@@ -47,6 +47,9 @@ vi.mock('../../api/stockApi', () => ({
   },
 }))
 
+// ASTK178 — frontière réseau des VRAIS wrappers stockApi (importActual).
+vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+
 import stockApi from '../../api/stockApi'
 import FournisseurFiche360 from './FournisseurFiche360.jsx'
 
@@ -135,6 +138,38 @@ describe('XPUR25 — panneau résumé (agrégat vue-360, BLOCKED côté serveur)
     expect((await screen.findAllByText('3')).length).toBeGreaterThan(0)
     expect(screen.getByText('87')).toBeInTheDocument()
     expect(screen.getByText('1 234,50 MAD')).toBeInTheDocument()
+  })
+})
+
+describe('ASTK178 — onglets BCF / retours filtrés côté serveur', () => {
+  it('onglet Bons de commande non vide sur la vraie route', async () => {
+    // Les VRAIS wrappers stockApi (seul le module axios `api` est simulé) :
+    // l'id de route est la chaîne '7', le serveur renvoie `fournisseur: 7`.
+    const vrai = (await vi.importActual('../../api/stockApi')).default
+    const api = (await import('../../api/axios')).default
+    stockApi.getBonsCommandeFournisseurDe.mockImplementation(vrai.getBonsCommandeFournisseurDe)
+    stockApi.getRetoursFournisseurDe.mockImplementation(vrai.getRetoursFournisseurDe)
+    api.get.mockImplementation((url) => Promise.resolve({
+      data: url === '/stock/bons-commande-fournisseur/'
+        ? [{ id: 31, reference: 'BCF-2026-10-0031', fournisseur: 7, statut: 'envoye' }]
+        : [{ id: 4, reference: 'RF-2026-10-0004', fournisseur: 7, statut: 'valide' }],
+    }))
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+
+    renderPage({ fournisseurId: '7' })
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Bons de commande/ }))
+    const panel = await screen.findByTestId('f360-tab-bcf')
+    expect(await within(panel).findByText('BCF-2026-10-0031')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/stock/bons-commande-fournisseur/',
+      { params: { fournisseur: '7' } })
+    await userEvent.click(screen.getByRole('tab', { name: /Retours/ }))
+    expect(await screen.findByText('RF-2026-10-0004')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/stock/retours-fournisseur/',
+      { params: { fournisseur: '7' } })
   })
 })
 

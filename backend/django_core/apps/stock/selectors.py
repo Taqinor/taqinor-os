@@ -2658,6 +2658,19 @@ def _somme_lignes_achat():
         output_field=DecimalField(max_digits=18, decimal_places=2))
 
 
+def filtrer_par_fournisseur(qs, valeur):
+    """ASTK178 (C-ASTK-039) — filtre `?fournisseur=<id>` partagé par les
+    listes de BCF et de retours (même règle que les factures fournisseur).
+    Le queryset est déjà borné à la société : un id étranger ou inexistant
+    rend une liste vide ; une valeur non numérique aussi (jamais un 500).
+    Sans valeur : le queryset inchangé."""
+    if valeur in (None, ''):
+        return qs
+    if not str(valeur).isdigit():
+        return qs.none()
+    return qs.filter(fournisseur_id=int(valeur))
+
+
 def achats_effectifs_fournisseur(company, fournisseur_id, debut=None,
                                  fin=None):
     """ASTK189 (C-ASTK-043, FOUR-17) — montant acheté (HT interne) à UN

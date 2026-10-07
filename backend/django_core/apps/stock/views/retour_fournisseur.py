@@ -63,6 +63,12 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     ordering_fields = ['date_creation', 'statut', 'reference']
     ordering = ['-date_creation']
 
+    def get_queryset(self):
+        """ASTK178 — liste filtrable par `?fournisseur=<id>` (fiche 360)."""
+        from ..selectors import filtrer_par_fournisseur
+        fournisseur = self.request.query_params.get('fournisseur')
+        return filtrer_par_fournisseur(super().get_queryset(), fournisseur)
+
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]

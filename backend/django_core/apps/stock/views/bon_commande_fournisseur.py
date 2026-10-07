@@ -64,6 +64,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['date_creation', 'date_commande', 'statut', 'reference']
     ordering = ['-date_creation']
 
+    def get_queryset(self):
+        # ASTK178 — `?fournisseur=<id>` filtré côté serveur (fiche 360).
+        from ..selectors import filtrer_par_fournisseur
+        return filtrer_par_fournisseur(
+            super().get_queryset(),
+            self.request.query_params.get('fournisseur'))
+
     def get_permissions(self):
         # QS1 — le PDF (interne) est une LECTURE : il rend exactement les
         # données que `retrieve` expose déjà à tout rôle authentifié. Le
