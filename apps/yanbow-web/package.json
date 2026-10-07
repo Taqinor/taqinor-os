@@ -1,0 +1,35 @@
+{
+  "name": "yanbow-web",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "check": "astro check && tsc -p tsconfig.check.json",
+    "build": "astro build",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lighthouse": "node scripts/lighthouse-gate.mjs"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.3",
+    "@tailwindcss/vite": "^4.3.0",
+    "astro": "^7.3.5",
+    "tailwindcss": "^4.3.0",
+    "wrangler": "^4.147.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
+    "chrome-launcher": "^1.2.1",
+    "jsdom": "^29.1.1",
+    "lighthouse": "^13.4.0",
+    "sharp": "^0.35.5",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.8"
+  }
+}

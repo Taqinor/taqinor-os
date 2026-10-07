@@ -1,0 +1,16 @@
+# dépendances et sorties de build
+node_modules/
+dist/
+.astro/
+.wrangler/
+worker-configuration.d.ts
+
+# secrets locaux — jamais poussés
+.dev.vars
+.env
+.env.production
+
+# artefacts de tests navigateur / Lighthouse
+test-results/
+playwright-report/
+lh-*.json

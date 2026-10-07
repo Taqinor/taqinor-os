@@ -29,6 +29,20 @@ updates:
         patterns:
           - "*"
 
+  # YBW1 — site public YanBow (apps/yanbow-web), memes reglages groupes hebdo.
+  - package-ecosystem: "npm"
+    directory: "/apps/yanbow-web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "chore"
+    groups:
+      npm-yanbow-web-weekly:
+        patterns:
+          - "*"
+
   - package-ecosystem: "pip"
     directory: "/backend/fastapi_ia"
     schedule:
