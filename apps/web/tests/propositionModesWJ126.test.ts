@@ -17,7 +17,6 @@ import {
   agricoleKpis,
   autoconsoKpis,
   hasInjection,
-  commercialArchetype,
   MONTHS_SHORT,
   type ProposalResponse,
 } from '../src/lib/proposition';
@@ -232,30 +231,8 @@ describe('CIW300 — le mini-cashflow linéaire 10 ans est supprimé', () => {
 
 // ── COMMERCIAL : archétype par catégorie ──────────────────────────────────────
 
-describe('WJ126 — commercialArchetype', () => {
-  it('résout une catégorie connue (hôtel)', () => {
-    const a = commercialArchetype('hotel');
-    expect(a.key).toBe('hotel');
-    expect(a.labelFr).toContain('Hôtel');
-    expect(a.labelEn.length).toBeGreaterThan(0);
-    expect(a.labelAr.length).toBeGreaterThan(0);
-    expect(a.accrocheFr.length).toBeGreaterThan(0);
-  });
-
-  it('repli honnête sur "autre" pour une catégorie inconnue / nulle', () => {
-    expect(commercialArchetype('mystere').key).toBe('autre');
-    expect(commercialArchetype(null).key).toBe('autre');
-    expect(commercialArchetype(undefined).key).toBe('autre');
-    expect(commercialArchetype('').key).toBe('autre');
-  });
-
-  it('couvre les catégories du backend (froid/restaurant/ecole/bureau)', () => {
-    expect(commercialArchetype('froid').key).toBe('froid');
-    expect(commercialArchetype('restaurant').key).toBe('restaurant');
-    expect(commercialArchetype('ecole').key).toBe('ecole');
-    expect(commercialArchetype('bureau').key).toBe('bureau');
-  });
-});
+// CIW306 — `commercialArchetype` (copie TS de categories.py) est supprimé : voir
+// propositionCategorieCIW306.test.ts (le bloc catégorie est lu dans `synthese_ci.categorie`).
 
 // ── Intégration : zéro champ résiduel d'un autre mode ─────────────────────────
 

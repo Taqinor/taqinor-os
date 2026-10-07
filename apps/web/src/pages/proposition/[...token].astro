@@ -72,7 +72,7 @@ import {
   type SyntheseAgricoleArgent,
   type SyntheseAgricole,
   type Lbl3,
-  commercialArchetype,
+  categorieCi,
   MONTHS_SHORT,
   formatMAD,
   formatNumber,
@@ -656,8 +656,8 @@ const nonInclusLbl: Lbl3 = (() => {
     ar: `${AGR_ARGENT_LBL.nonInclus.ar}: ${j('ar')}.`,
   };
 })();
-// Archétype de bloc commercial (miroir backend) — seulement en mode commercial.
-const comArchetype = ok && isCommercial ? commercialArchetype(data?.categorie_commerciale) : null;
+// CIW306 — bloc catégorie d'un devis commercial : LU dans `synthese_ci.categorie` (plus de miroir TS).
+const ciCategorie = ok && isCommercial ? categorieCi(ci) : null;
 
 // Bloc énergie/économies (résidentiel/industriel). Pompage n'a pas ces champs.
 const puissance = q?.puissance_kwc ?? null;
@@ -3626,19 +3626,23 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
-          WJ126 · BLOC CATÉGORIE COMMERCIALE — archétype par secteur (hôtel,
-          restaurant/froid, école, bureau…), miroir QUALITATIF du backend
-          (categories.py). Commercial uniquement ; `autre` en repli honnête.
+          WJ126/CIW306 · BLOC CATÉGORIE COMMERCIALE — rendu de `synthese_ci.categorie` TEL QUE
+          SERVI (titre, accroche, lignes FR/EN/AR ; CIQ330). Aucune copie de `categories.py`
+          dans la page ; sans catégorie servie, le bloc est omis.
           ════════════════════════════════════════════════════════════════════ */}
-      {isCommercial && comArchetype && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat">
+      {ciCategorie && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat" data-ci-categorie={ciCategorie.cle}>
           <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre secteur" data-en="Your sector" data-ar="قطاعكم">Votre secteur</h2>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <p class="text-2xl" aria-hidden="true">{comArchetype.icon}</p>
-            <p class="fig mt-2 text-xl text-lune" data-i18n
-              data-fr={comArchetype.labelFr} data-en={comArchetype.labelEn} data-ar={comArchetype.labelAr}>{comArchetype.labelFr}</p>
-            <p class="mt-2 text-sm text-lune-soft" data-i18n
-              data-fr={comArchetype.accrocheFr} data-en={comArchetype.accrocheEn} data-ar={comArchetype.accrocheAr}>{comArchetype.accrocheFr}</p>
+            {ciCategorie.titre ? <p class="fig text-xl text-lune">{ciCategorie.titre}</p> : ciCategorie.libelle ? <p class="fig text-xl text-lune">{ciCategorie.libelle}</p> : null}
+            {ciCategorie.accroche ? <p class="mt-2 text-sm text-lune-soft">{ciCategorie.accroche}</p> : null}
+            {ciCategorie.lignes.length > 0 ? (
+              <ul class="mt-3 list-disc space-y-1 ps-5 text-sm text-lune-soft">
+                {ciCategorie.lignes.map((l) => (
+                  <li data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         </section>
       )}

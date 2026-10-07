@@ -152,7 +152,7 @@ export interface ProposalResponse {
    * WJ126/QX49 — catégorie commerciale (`hotel|restaurant|commerce|bureau|
    * sante|ecole|hammam|boulangerie|froid|autre`, cf. quote_engine/commercial/
    * categories.py). Présente uniquement en mode commercial ; `null` sinon. Sert
-   * à choisir l'archétype de bloc commercial (`commercialArchetype`).
+   * à titrer le bloc catégorie (le contenu du bloc est `synthese_ci.categorie`, CIW306).
    */
   categorie_commerciale?: string | null;
   /**
@@ -5255,107 +5255,9 @@ export function confirmationOption(designation: string, totalTtcLabel: string | 
   };
 }
 
-/** WJ126 — Archétype de bloc commercial (contenu QUALITATIF, aucun chiffre). */
-export interface CommercialArchetype {
-  key: string;
-  icon: string;
-  labelFr: string;
-  labelEn: string;
-  labelAr: string;
-  accrocheFr: string;
-  accrocheEn: string;
-  accrocheAr: string;
-}
-
-/**
- * WJ126 — Table d'archétypes commerciaux, MIROIR de
- * `quote_engine/commercial/categories.py METADATA` (les accroches FR sont
- * reprises telles quelles ; EN/AR sont des traductions). Contenu 100 %
- * QUALITATIF — aucun nombre (les chiffres réels viennent des KPI backend, pas
- * d'ici). Catégorie absente/inconnue → `autre` (bloc générique honnête).
- */
-const COMMERCIAL_ARCHETYPES: Record<string, CommercialArchetype> = {
-  hotel: {
-    key: 'hotel', icon: '🏨',
-    labelFr: 'Hôtel / Riad', labelEn: 'Hotel / Riad', labelAr: 'فندق / رياض',
-    accrocheFr: 'Chaque nuitée mieux margée : le solaire allège la climatisation, la piscine et la blanchisserie.',
-    accrocheEn: 'Better margin per night: solar eases air-conditioning, the pool and the laundry.',
-    accrocheAr: 'هامش أفضل لكل ليلة: تخفّف الطاقة الشمسية التكييف والمسبح والمغسلة.',
-  },
-  restaurant: {
-    key: 'restaurant', icon: '🍽️',
-    labelFr: 'Restaurant / Café', labelEn: 'Restaurant / Café', labelAr: 'مطعم / مقهى',
-    accrocheFr: 'Sécurisez la chaîne du froid et maîtrisez le poste énergie de votre cuisine.',
-    accrocheEn: 'Secure the cold chain and control your kitchen’s energy costs.',
-    accrocheAr: 'أمّنوا سلسلة التبريد وتحكّموا في تكلفة طاقة مطبخكم.',
-  },
-  commerce: {
-    key: 'commerce', icon: '🛒',
-    labelFr: 'Commerce / Supermarché', labelEn: 'Retail / Supermarket', labelAr: 'متجر / سوبر ماركت',
-    accrocheFr: 'Froid alimentaire, éclairage et climatisation : votre base diurne couverte par le solaire.',
-    accrocheEn: 'Food refrigeration, lighting and cooling: your daytime base covered by solar.',
-    accrocheAr: 'تبريد الأغذية والإنارة والتكييف: قاعدتكم النهارية تغطّيها الطاقة الشمسية.',
-  },
-  bureau: {
-    key: 'bureau', icon: '🏢',
-    labelFr: 'Bureau / Siège', labelEn: 'Office / HQ', labelAr: 'مكتب / مقر',
-    accrocheFr: 'Vos heures de bureau coïncident avec le soleil : autoconsommation élevée, peu d’export.',
-    accrocheEn: 'Your office hours match the sun: high self-consumption, little export.',
-    accrocheAr: 'ساعات عملكم تتزامن مع الشمس: استهلاك ذاتي مرتفع وتصدير قليل.',
-  },
-  sante: {
-    key: 'sante', icon: '🏥',
-    labelFr: 'Santé (clinique / cabinet)', labelEn: 'Healthcare (clinic / practice)', labelAr: 'صحة (عيادة)',
-    accrocheFr: 'Continuité de service et maîtrise du coût énergie, en journée comme en garde.',
-    accrocheEn: 'Service continuity and energy-cost control, by day and on call.',
-    accrocheAr: 'استمرارية الخدمة وضبط تكلفة الطاقة، نهاراً وأثناء المداومة.',
-  },
-  ecole: {
-    key: 'ecole', icon: '🎓',
-    labelFr: 'École privée', labelEn: 'Private school', labelAr: 'مدرسة خاصة',
-    accrocheFr: 'Consommation en période scolaire, production toute l’année : un budget énergie prévisible.',
-    accrocheEn: 'Consumption during term, production all year: a predictable energy budget.',
-    accrocheAr: 'استهلاك خلال الموسم الدراسي وإنتاج طوال السنة: ميزانية طاقة متوقّعة.',
-  },
-  hammam: {
-    key: 'hammam', icon: '🧖',
-    labelFr: 'Hammam / Spa / Gym', labelEn: 'Hammam / Spa / Gym', labelAr: 'حمام / سبا / نادٍ رياضي',
-    accrocheFr: 'Chauffe de l’eau et confort thermique : le solaire allège votre poste énergie.',
-    accrocheEn: 'Water heating and thermal comfort: solar eases your energy costs.',
-    accrocheAr: 'تسخين الماء والراحة الحرارية: تخفّف الطاقة الشمسية تكلفة طاقتكم.',
-  },
-  boulangerie: {
-    key: 'boulangerie', icon: '🥖',
-    labelFr: 'Boulangerie', labelEn: 'Bakery', labelAr: 'مخبزة',
-    accrocheFr: 'Le solaire couvre le froid, l’éclairage et la clim de jour — en toute transparence sur la cuisson.',
-    accrocheEn: 'Solar covers refrigeration, lighting and daytime cooling — transparent about baking.',
-    accrocheAr: 'تغطّي الطاقة الشمسية التبريد والإنارة والتكييف نهاراً — بشفافية بشأن الخَبز.',
-  },
-  froid: {
-    key: 'froid', icon: '❄️',
-    labelFr: 'Entrepôt froid', labelEn: 'Cold storage', labelAr: 'مستودع تبريد',
-    accrocheFr: 'Sécurisez votre chaîne du froid et abaissez le coût de la base 24 h.',
-    accrocheEn: 'Secure your cold chain and cut the cost of the 24 h base load.',
-    accrocheAr: 'أمّنوا سلسلة التبريد واخفضوا تكلفة الحمل الأساسي على مدار 24 ساعة.',
-  },
-  autre: {
-    key: 'autre', icon: '🏪',
-    labelFr: 'Commerce', labelEn: 'Business', labelAr: 'نشاط تجاري',
-    accrocheFr: 'Le solaire couvre la consommation diurne de votre établissement en autoconsommation.',
-    accrocheEn: 'Solar covers your premises’ daytime consumption in self-consumption.',
-    accrocheAr: 'تغطّي الطاقة الشمسية الاستهلاك النهاري لمنشأتكم عبر الاستهلاك الذاتي.',
-  },
-};
-
-/**
- * WJ126 — Résout l'archétype commercial d'une `categorie_commerciale` (miroir
- * du backend). Catégorie absente/inconnue → `autre` (jamais un crash, jamais un
- * bloc fabriqué) — renvoie TOUJOURS un archétype exploitable.
- */
-export function commercialArchetype(category: string | null | undefined): CommercialArchetype {
-  const key = String(category ?? '').trim().toLowerCase();
-  return COMMERCIAL_ARCHETYPES[key] ?? COMMERCIAL_ARCHETYPES.autre;
-}
+// CIW306 — la copie TS de `categories.py` (COMMERCIAL_ARCHETYPES / commercialArchetype, « MIROIR »
+// recopié à la main des blocs du PDF) est SUPPRIMÉE : le bloc catégorie d'un devis commercial est
+// `synthese_ci.categorie` (CIQ330), rendu tel que servi (voir `categorieCi`).
 
 /** WJ126 — Mois FR/EN/AR courts (0 = janvier) pour l'axe du mini-graphe eau. */
 export const MONTHS_SHORT: Record<PropLang, string[]> = {
@@ -6206,10 +6108,21 @@ export interface SyntheseCi {
   optionBatterie: SyntheseCiOptionBatterie | null;
   /** CIW304 — services servis : l'option O&M nommée du devis et le délai de suivi (heures), si servis. */
   services: { omLibelle: string | null; suiviDelaiHeures: number | null } | null;
+  /** CIW306 — le bloc catégorie d'un devis commercial, tel que servi (`synthese_ci.categorie`). */
+  categorie: SyntheseCiCategorie | null;
   /** CIW305 — la raison sociale du client entreprise si le devis la porte (pré-remplit le formulaire). */
   entrepriseClient: { raisonSociale: string | null } | null;
   hypotheses: SyntheseCiHypothese[];
   omissions: Array<{ bloc: string; motif: string }>;
+}
+
+export interface SyntheseCiCategorie {
+  cle: string;
+  libelle: string | null;
+  accroche: string | null;
+  /** Titre du bloc (`bloc.titre`, servi) et ses lignes trilingues (`bloc.lignes[].textes`). */
+  titre: string | null;
+  lignes: TextesCi[];
 }
 
 export interface SyntheseCiOptionBatterie {
@@ -6224,6 +6137,27 @@ function lireTextesCi(v: unknown): TextesCi | null {
   const fr = texteServi(v.fr);
   if (fr === null) return null;
   return { fr, en: texteServi(v.en) ?? fr, ar: texteServi(v.ar) ?? fr };
+}
+
+function lireCategorieCi(v: unknown): SyntheseCiCategorie | null {
+  if (!estRecord(v)) return null;
+  const cle = texteServi(v.cle);
+  if (!cle) return null;
+  const bloc = estRecord(v.bloc) ? v.bloc : null;
+  const lignes: TextesCi[] = [];
+  if (bloc && Array.isArray(bloc.lignes)) {
+    for (const l of bloc.lignes) {
+      const t = estRecord(l) ? lireTextesCi(l.textes) : null;
+      if (t) lignes.push(t);
+    }
+  }
+  return {
+    cle,
+    libelle: texteServi(v.libelle),
+    accroche: texteServi(v.accroche),
+    titre: bloc ? texteServi(bloc.titre) : null,
+    lignes,
+  };
 }
 
 function lireArgentCi(v: unknown): SyntheseCiArgent | null {
@@ -6343,6 +6277,7 @@ export function syntheseCi(
             : null,
         }
       : null,
+    categorie: lireCategorieCi(brut.categorie),
     entrepriseClient: estRecord(brut.entreprise_client)
       ? { raisonSociale: texteServi(brut.entreprise_client.raison_sociale) }
       : null,
@@ -6450,4 +6385,17 @@ export function offrePrincipaleCi(ci: SyntheseCi | null): OptionKey {
 /** CIW305 — un devis C&I exige l'identité de l'entreprise à la signature (commercial / industriel). */
 export function signatureEntrepriseRequise(mode: string | null | undefined): boolean {
   return mode === 'commercial' || mode === 'industriel';
+}
+
+/**
+ * CIW306 — le bloc catégorie d'un devis COMMERCIAL, tel que servi (`synthese_ci.categorie`, CIQ330) :
+ * titre, accroche et lignes FR/EN/AR. `null` hors commercial, sans catégorie servie, ou si rien
+ * n'est lisible (libellé, accroche, titre et lignes tous absents) : le bloc est alors omis.
+ */
+export function categorieCi(ci: SyntheseCi | null): SyntheseCiCategorie | null {
+  if (!ci || ci.segment === 'industriel') return null;
+  const c = ci.categorie;
+  if (!c) return null;
+  if (!c.libelle && !c.accroche && !c.titre && c.lignes.length === 0) return null;
+  return c;
 }
