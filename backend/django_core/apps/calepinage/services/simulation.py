@@ -1446,11 +1446,19 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         # transaction, depuis la version PUBLIÉE dans ``resultat.simulation``
         # (une seule source) : le pied de planche, les documents et le
         # webhook lisent enfin la version du calcul.
-        from django.db import transaction
+        import contextlib
+
+        from django.db import models, transaction
 
         from .resultat import modifier_resultat
 
-        with transaction.atomic():
+        # Hors base (double de test non-modèle, sans ``pk``) : aucune
+        # transaction à ouvrir — ``modifier_resultat`` et
+        # ``_poser_version_moteur`` n'écrivent alors que l'attribut.
+        en_base = (isinstance(calepinage, models.Model)
+                   and getattr(calepinage, 'pk', None))
+        with (transaction.atomic() if en_base
+              else contextlib.nullcontext()):
             modifier_resultat(calepinage,
                               lambda resultat: resultat.update(blocs))
             _poser_version_moteur(
