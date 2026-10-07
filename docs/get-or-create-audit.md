@@ -47,9 +47,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/tasks.py:2327` | update_or_create | InsightMonthlyRollup.objects | company_id, content_type_id, month, object_id, year |
 | `backend/django_core/apps/adsengine/veille_decouverte.py:219` | get_or_create | VeilleAnnonceur.objects | company_id, page_id |
 | `backend/django_core/apps/adsengine/veille_decouverte.py:224` | get_or_create | VeillePubVue.objects | ad_archive_id, company_id, requete |
-| `backend/django_core/apps/adsengine/views.py:2395` | get_or_create | MetaConnection.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2608` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2615` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2411` | get_or_create | MetaConnection.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2624` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2631` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:221` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/automation/templates.py:252` | get_or_create | AutomationRule.objects | company, nom |
 | `backend/django_core/apps/automation/views.py:514` | get_or_create | IncomingWebhookTrigger.objects | rule |
