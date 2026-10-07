@@ -21,6 +21,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel  # SCA4 — socle multi-tenant
+
 
 # XPUR3 — devises d'achat courantes (imports panneaux/onduleurs). MAD reste le
 # défaut partout : un document sans devise saisie garde le comportement
@@ -613,30 +615,35 @@ class FactureFournisseur(models.Model):
         return max(solde, Decimal('0'))
 
 
-class ImputationAcompteFournisseur(models.Model):
+class ImputationAcompteFournisseur(TenantModel):
     """ASTK106 — trace UNE imputation d'un ``stock.AcompteFournisseur`` sur
     UNE ``FactureFournisseur`` du même BCF, pour un MONTANT plafonné au solde
     de la facture (même patron que ``ImputationAvoirFournisseur``). Un
     acompte peut se répartir sur plusieurs factures ; son reliquat reste
     ouvert. ``AcompteFournisseur.montant_consomme`` = Σ de ses imputations
-    (cache tenu par ``services.imputer_acomptes_bcf``). Additif, INTERNE."""
+    (cache tenu par ``services.imputer_acomptes_bcf``). Additif, INTERNE.
+
+    SCA4 — hérite de ``TenantModel`` (``created_at``/``updated_at``) ;
+    ``company`` redéclarée (motif ARC1) : nullable comme l'acompte d'origine
+    (recopie des imputations héritées) et JAMAIS en cascade — une imputation
+    est une trace financière."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.PROTECT,  # on_delete: PROTECT — trace financière (règlement d'une facture par acompte) : la suppression d'une société qui en porte est refusée, jamais une purge silencieuse
         null=True, blank=True,
-        related_name='imputations_acompte_fournisseur')
+        related_name='imputations_acompte_fournisseur',
+        verbose_name='Société')
     acompte = models.ForeignKey(
-        'stock.AcompteFournisseur', on_delete=models.CASCADE,
+        'stock.AcompteFournisseur', on_delete=models.PROTECT,  # on_delete: PROTECT — un acompte imputé a réglé une facture : le supprimer effacerait ce règlement (montant_consomme) ; refusé (409)
         related_name='imputations')
     facture = models.ForeignKey(
-        FactureFournisseur, on_delete=models.CASCADE,
+        FactureFournisseur, on_delete=models.PROTECT,  # on_delete: PROTECT — même garde que la vue (ASTK85) : une facture portant un acompte imputé n'est jamais supprimée
         related_name='imputations_acompte')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
-    date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Imputation d'acompte fournisseur"
         verbose_name_plural = "Imputations d'acompte fournisseur"
-        ordering = ['date_creation', 'id']
+        ordering = ['created_at', 'id']
 
     def __str__(self):
         return f'{self.acompte_id} → {self.facture_id} : {self.montant}'

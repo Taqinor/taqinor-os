@@ -2,6 +2,10 @@
 recopie des imputations existantes (``AcompteFournisseur.facture_imputee`` /
 ``montant_consomme``) en une ligne d'imputation chacune. Revertable : le
 retour arrière supprime la table (la recopie n'a rien modifié d'autre).
+
+Socle SCA4 (``core.models.TenantModel`` : ``created_at``/``updated_at``) ;
+FK en PROTECT — une imputation est une trace financière (jamais purgée en
+cascade avec sa société, son acompte ou sa facture).
 """
 import django.db.models.deletion
 from django.db import migrations, models
@@ -44,27 +48,29 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('montant', models.DecimalField(
                     decimal_places=2, max_digits=14)),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
                 ('acompte', models.ForeignKey(
-                    on_delete=django.db.models.deletion.CASCADE,
+                    on_delete=django.db.models.deletion.PROTECT,
                     related_name='imputations',
                     to='stock.acomptefournisseur')),
                 ('company', models.ForeignKey(
                     blank=True, null=True,
-                    on_delete=django.db.models.deletion.CASCADE,
+                    on_delete=django.db.models.deletion.PROTECT,
                     related_name='imputations_acompte_fournisseur',
-                    to='authentication.company')),
+                    to='authentication.company', verbose_name='Société')),
                 ('facture', models.ForeignKey(
-                    on_delete=django.db.models.deletion.CASCADE,
+                    on_delete=django.db.models.deletion.PROTECT,
                     related_name='imputations_acompte',
                     to='achats.facturefournisseur')),
             ],
             options={
                 'verbose_name': "Imputation d'acompte fournisseur",
                 'verbose_name_plural': "Imputations d'acompte fournisseur",
-                'ordering': ['date_creation', 'id'],
+                'ordering': ['created_at', 'id'],
+                'abstract': False,
             },
         ),
         migrations.RunPython(
