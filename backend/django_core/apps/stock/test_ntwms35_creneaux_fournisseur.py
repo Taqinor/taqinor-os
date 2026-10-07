@@ -108,7 +108,23 @@ class Ntwms35CreneauxTests(Ntwms35Base):
         creneaux = creneaux_disponibles(
             self.company, date_debut=self.jour, periode_jours=3650)
         jours = {c['date'] for c in creneaux}
-        self.assertEqual(len(jours), FENETRE_MAX_JOURS)
+        # ASTK191 : la génération balaie au plus FENETRE_MAX_JOURS jours
+        # calendaires depuis ``date_debut``, ne garde que l'horizon
+        # [aujourd'hui, aujourd'hui + FENETRE_MAX_JOURS] et que les jours
+        # ouvrés (société sans calendrier configuré : lundi-vendredi). Oracle
+        # recalculé ici, indépendamment du service.
+        horizon = timezone.localdate() + datetime.timedelta(
+            days=FENETRE_MAX_JOURS)
+        attendus = set()
+        for offset in range(FENETRE_MAX_JOURS):
+            jour = self.jour + datetime.timedelta(days=offset)
+            if jour <= horizon and jour.weekday() < 5:
+                attendus.add(jour.isoformat())
+        self.assertEqual(jours, attendus)
+        # Plafond : 3650 jours demandés, jamais au-delà de la fenêtre.
+        self.assertLess(
+            max(jours),
+            (self.jour + datetime.timedelta(days=FENETRE_MAX_JOURS)).isoformat())
 
     def test_aucun_creneau_dune_autre_societe(self):
         autre_emplacement = EmplacementStock.objects.create(
