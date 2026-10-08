@@ -163,6 +163,8 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
+        # ADEV23 — la réponse égale la ligne RELUE (après re-tarification).
+        serializer.instance.refresh_from_db()
 
     def perform_update(self, serializer):
         from ..domain.modifiabilite import (
@@ -180,6 +182,8 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
+        # ADEV23 — la réponse égale la ligne RELUE (après re-tarification).
+        serializer.instance.refresh_from_db()
 
     def perform_destroy(self, instance):
         from ..domain.modifiabilite import (
