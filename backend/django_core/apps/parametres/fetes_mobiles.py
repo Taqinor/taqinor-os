@@ -46,53 +46,95 @@ def _to_date(valeur):
     raise ValueError(f'Date invalide : {valeur!r}')
 
 
-def valider_saisie(annee: int, dates: dict) -> list[str]:
-    """Valide la saisie des 4 fêtes mobiles pour ``annee`` avant sauvegarde.
+def erreurs_par_champ(annee: int, dates: dict, existantes: dict | None = None,
+                      aujourd_hui: datetime.date | None = None) -> dict:
+    """Erreurs de saisie par clé de fête : ``{cle: [message, ...]}`` (vide =
+    saisie valide).
 
-    Renvoie la liste des erreurs (VIDE = saisie valide, prête à enregistrer).
-    Règles : les 4 clés doivent être présentes et non vides ; aucune date ne
-    peut être dans le passé ; chaque date doit tomber dans l'année cible
-    ``annee`` (cohérence — on ne saisit pas la fête de l'année suivante ici
-    par erreur).
+    Règles :
+    * une clé ABSENTE/vide n'est tolérée que si la fête est déjà enregistrée
+      pour ``annee`` (``existantes[cle]``) — APAR14 : saisie partielle d'une
+      correction ; une première saisie reste « tout ou rien » (NTI18N33) ;
+    * le passé n'est refusé que pour une date NOUVELLE ou MODIFIÉE (APAR14) :
+      renvoyer telle quelle une fête déjà passée (Aïd el-Fitr) ne bloque plus
+      la correction d'une fête future ;
+    * chaque date doit tomber dans l'année cible ``annee``.
+
+    ``existantes`` : ``{cle: 'YYYY-MM-DD'|None}`` (forme de
+    ``fetes_mobiles_saisies``) ; ``aujourd_hui`` injectable (jamais un mock).
     """
-    erreurs = []
-    aujourd_hui = _aujourd_hui()
+    existantes = existantes or {}
+    if aujourd_hui is None:
+        aujourd_hui = _aujourd_hui()
+    erreurs = {}
     for cle in FETES_MOBILES_CLES:
         libelle = FETES_MOBILES_LIBELLES[cle]
         brut = dates.get(cle)
+        deja = existantes.get(cle)
         if not brut:
-            erreurs.append(f'La date de {libelle} est manquante.')
+            if not deja:
+                erreurs.setdefault(cle, []).append(
+                    f'La date de {libelle} est manquante.')
             continue
         try:
             valeur = _to_date(brut)
         except ValueError:
-            erreurs.append(f'Date invalide pour {libelle}.')
+            erreurs.setdefault(cle, []).append(
+                f'Date invalide pour {libelle}.')
             continue
-        if valeur < aujourd_hui:
-            erreurs.append(f'La date de {libelle} est dans le passé.')
+        inchangee = bool(deja) and _to_date(deja) == valeur
+        if valeur < aujourd_hui and not inchangee:
+            erreurs.setdefault(cle, []).append(
+                f'La date de {libelle} est dans le passé.')
         if valeur.year != annee:
-            erreurs.append(
+            erreurs.setdefault(cle, []).append(
                 f'La date de {libelle} ({valeur.isoformat()}) ne tombe pas '
                 f'en {annee}.')
     return erreurs
 
 
-def enregistrer_fetes_mobiles(company, annee: int, dates: dict):
-    """Valide puis enregistre les 4 fêtes mobiles comme ``Holiday``
+def valider_saisie(annee: int, dates: dict, existantes: dict | None = None,
+                   aujourd_hui: datetime.date | None = None) -> list[str]:
+    """Valide la saisie des fêtes mobiles pour ``annee`` avant sauvegarde.
+
+    Renvoie la liste à plat des erreurs (VIDE = saisie valide, prête à
+    enregistrer) — règles : voir :func:`erreurs_par_champ`.
+    """
+    par_champ = erreurs_par_champ(annee, dates, existantes, aujourd_hui)
+    return [msg for cle in FETES_MOBILES_CLES for msg in par_champ.get(cle, [])]
+
+
+class SaisieFetesInvalide(ValueError):
+    """Saisie refusée ; ``erreurs`` = ``{cle: [message, ...]}``."""
+
+    def __init__(self, erreurs: dict):
+        self.erreurs = erreurs
+        super().__init__(' '.join(
+            msg for cle in FETES_MOBILES_CLES for msg in erreurs.get(cle, [])))
+
+
+def enregistrer_fetes_mobiles(company, annee: int, dates: dict,
+                              aujourd_hui: datetime.date | None = None):
+    """Valide puis enregistre les fêtes mobiles saisies comme ``Holiday``
     (``recurrent_annuel=False``) pour ``company``.
 
-    Lève ``ValueError`` (message = erreurs jointes) si la saisie est
-    invalide — l'appelant (vue) le traduit en 400. JAMAIS d'enregistrement
-    partiel : la validation complète précède toute écriture.
+    Lève ``SaisieFetesInvalide`` (``ValueError`` ; message = erreurs jointes,
+    ``.erreurs`` par champ) si la saisie est invalide — l'appelant (vue) le
+    traduit en 400. JAMAIS d'enregistrement partiel d'une saisie invalide : la
+    validation complète précède toute écriture. Seules les clés FOURNIES sont
+    écrites (APAR14 : une correction ne renvoie que la fête corrigée).
     """
-    erreurs = valider_saisie(annee, dates)
+    existantes = fetes_mobiles_saisies(company, annee)
+    erreurs = erreurs_par_champ(annee, dates, existantes, aujourd_hui)
     if erreurs:
-        raise ValueError(' '.join(erreurs))
+        raise SaisieFetesInvalide(erreurs)
 
     from apps.notifications.models import Holiday
 
     resultats = []
     for cle in FETES_MOBILES_CLES:
+        if not dates.get(cle):
+            continue
         valeur = _to_date(dates[cle])
         obj, _ = Holiday.objects.update_or_create(
             company=company, date=valeur, nom=FETES_MOBILES_LIBELLES[cle],
