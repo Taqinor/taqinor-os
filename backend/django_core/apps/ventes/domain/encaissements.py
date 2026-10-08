@@ -546,6 +546,55 @@ def expirer_liens_paiement_perimes(facture):
     ).update(statut=PaymentLink.Statut.EXPIRE)
 
 
+def argent_rattache(facture):
+    """AFAC11 (C-AFAC-004) — TOUT l'argent rattaché à une facture, par nature.
+
+    Prédicat UNIQUE du domaine (lu par « Remettre en brouillon » et par la
+    garde d'annulation AFAC12) : une facture qui porte de l'argent ne se
+    rouvre ni ne s'annule sans qu'on dise où va cet argent. L'ancienne garde
+    (``facture.paiements.exists()``) ne voyait ni une avance VENTILÉE (zéro
+    paiement direct), ni une note de débit émise, ni une retenue subie.
+
+    Renvoie ``{paiements, affectations, notes_debit, retenues, avoirs_actifs}``
+    en ``Decimal`` (TTC), clés du contrat ``facture_annulation.json``
+    (``argent_rattache``). Un paiement REJETÉ ne porte plus d'argent (YLEDG5)."""
+    from ..models import Paiement
+
+    rejete = Paiement.Statut.REJETE
+    paiements = sum(
+        (p.montant for p in facture.paiements.all() if p.statut != rejete),
+        Decimal('0'))
+    affectations = sum(
+        (a.montant for a in facture.affectations_paiement.select_related(
+            'paiement') if a.paiement.statut != rejete),
+        Decimal('0'))
+    return {
+        'paiements': paiements,
+        'affectations': affectations,
+        'notes_debit': facture.notes_debit_total,
+        'retenues': facture.retenues_subies_total,
+        'avoirs_actifs': facture.avoirs_total,
+    }
+
+
+#: Libellés français des natures d'argent (message de refus).
+LIBELLES_ARGENT_RATTACHE = {
+    'paiements': 'paiements',
+    'affectations': 'avances ventilées',
+    'notes_debit': 'notes de débit',
+    'retenues': 'retenues à la source subies',
+    'avoirs_actifs': 'avoirs actifs',
+}
+
+
+def decrire_argent_rattache(argent):
+    """AFAC11 — phrase française qui NOMME l'argent rattaché (ou '' si aucun)."""
+    morceaux = [
+        f"{LIBELLES_ARGENT_RATTACHE[cle]} {montant:.2f} MAD"
+        for cle, montant in argent.items() if montant and montant > 0]
+    return ', '.join(morceaux)
+
+
 def revoquer_lien_paiement(*, facture, user=None):
     """AUD136 — révoque le lien de paiement actif d'une facture (ANNULÉ).
 
