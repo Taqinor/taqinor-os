@@ -878,9 +878,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # déclenche rien (comportement historique inchangé).
         if inst.equipement_id and inst.client_id:
             from .models import ContratMaintenance
-            contrat = (ContratMaintenance.objects
-                       .filter(client_id=inst.client_id, actif=True)
-                       .order_by('-date_creation').first())
+            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
+            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None and not contrat.couvre_equipement(inst.equipement):
                 activity.log_note(
                     inst, self.request.user,
@@ -893,9 +892,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
             from .models import ContratMaintenance
             from .selectors import droits_restants
-            contrat = (ContratMaintenance.objects
-                       .filter(client_id=inst.client_id, actif=True)
-                       .order_by('-date_creation').first())
+            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
+            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None:
                 droits = droits_restants(contrat, inst.date_ouverture.year)
                 if (inst.type == Ticket.Type.PREVENTIF

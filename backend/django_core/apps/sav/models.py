@@ -1664,12 +1664,30 @@ class ContratMaintenance(models.Model):
         ``sla_resolution_days`` non NULL)."""
         if client is None:
             return None
-        return (cls.objects
-                .filter(client=client, actif=True)
-                .exclude(sla_response_days__isnull=True,
-                         sla_resolution_days__isnull=True)
-                .order_by('-date_creation')
-                .first())
+        # ASAV26 — « actif » = ``est_actif(date)`` (expiration + grâce), comme
+        # la couverture : un contrat échu n'impose plus son SLA.
+        for contrat in (cls.objects
+                        .filter(client=client, actif=True)
+                        .exclude(sla_response_days__isnull=True,
+                                 sla_resolution_days__isnull=True)
+                        .order_by('-date_creation')):
+            if contrat.est_actif():
+                return contrat
+        return None
+
+    @classmethod
+    def valide_pour_client(cls, client_id, today=None):
+        """ASAV26 — contrat le plus récent du client qui COUVRE encore
+        (drapeau ``actif`` ET ``est_actif`` : expiration + grâce), sans
+        condition d'override SLA. None sinon."""
+        if not client_id:
+            return None
+        for contrat in (cls.objects
+                        .filter(client_id=client_id, actif=True)
+                        .order_by('-date_creation')):
+            if contrat.est_actif(today):
+                return contrat
+        return None
 
     def prochaine_visite(self):
         """Date de la prochaine visite (dernière visite ou début + période).

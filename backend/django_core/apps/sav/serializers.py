@@ -362,9 +362,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         if client.id not in self._contrat_actif_cache:
             contrat = ContratMaintenance.actif_pour_client(client)
             if contrat is None:
-                contrat = (ContratMaintenance.objects
-                           .filter(client=client, actif=True)
-                           .order_by('-date_creation').first())
+                contrat = ContratMaintenance.valide_pour_client(client.id)
             self._contrat_actif_cache[client.id] = contrat
         return self._contrat_actif_cache[client.id]
 
