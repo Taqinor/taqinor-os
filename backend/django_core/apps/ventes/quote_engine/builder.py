@@ -120,6 +120,21 @@ def _roof_photo_data_uri(devis) -> str:
         return ""
 
 
+def cle_toit_de_la_societe(devis, key=None) -> bool:
+    """ASEC24 (C-ASEC-008) — la clé de toit ``key`` (défaut : ``roof_image``
+    du devis) est-elle sous le préfixe de la SOCIÉTÉ du devis
+    (``roofs/<company_id>/``, le seul que la porte d'écriture produit) ?
+    ``False`` pour toute autre clé (autre société, chemin relatif, préfixe
+    absent) : le lecteur ne la télécharge pas."""
+    key = (key if key is not None
+           else (getattr(devis, "roof_image", None) or "")).strip()
+    company_id = getattr(devis, "company_id", None)
+    if not key or company_id is None:
+        return False
+    prefixe = "roofs/%s/" % company_id
+    return key.startswith(prefixe) and ".." not in key[len(prefixe):]
+
+
 def _roof_render_data_uri(devis) -> str:
     """CALEPDF — LE CALEPINAGE DU CLIENT, celui que sa page en ligne lui montre.
 
@@ -146,6 +161,13 @@ def _roof_render_data_uri(devis) -> str:
     """
     key = (getattr(devis, "roof_image", None) or "").strip()
     if not key:
+        return ""
+    # ASEC24 — jamais une image hors du préfixe de la société du devis : la
+    # page se rend sans toit, l'anomalie est journalisée (sans la clé).
+    if not cle_toit_de_la_societe(devis, key):
+        logger.warning(
+            "ASEC24 : clé de toit hors société ignorée (société %s, devis %s)",
+            getattr(devis, "company_id", None), getattr(devis, "pk", None))
         return ""
     try:
         import base64
