@@ -10,8 +10,9 @@ module —, d'où ce pin, jumeau de ``test_services_surface`` (QJR5).
 
 CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
 
-* ``SURFACE_PUBLIQUE`` — les 49 noms PUBLICS que le module offre (38 avant
-  QJR104, + les 11 du type ``Optimum`` et de sa règle de publication) : ceux
+* ``SURFACE_PUBLIQUE`` — les 52 noms PUBLICS que le module offre (38 avant
+  QJR104, + les 11 du type ``Optimum`` et de sa règle de publication, + 3
+  AMOT31/AMOT59 : lignes_vendues, prix_client_*) : ceux
   qu'il
   DÉFINIT (le balayage pur) ET ceux qu'il RÉ-EXPORTE depuis
   ``domain/dimensionnement_devis.py``. La liste est vérifiée EXACTE : un nom
@@ -115,6 +116,7 @@ SURFACE_PUBLIQUE = (
     "facteur_remise_du_devis",
     "grimper_par_pas_marginaux",
     "horizon_du_pas",
+    "lignes_vendues",
     "logger",
     "module_batterie_du_devis",
     "optima_publiables",
@@ -125,6 +127,8 @@ SURFACE_PUBLIQUE = (
     "plafond_toit_du_devis",
     "plus_grande_contenance",
     "point_depart_meilleur_payback",
+    "prix_client_au_facteur",
+    "prix_client_composition",
     "publier_si_decrit",
     "ratio_pas_marginal",
     "recommander_taille",
