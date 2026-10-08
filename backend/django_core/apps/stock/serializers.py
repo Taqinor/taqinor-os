@@ -412,6 +412,10 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
     # Réutilise le sélecteur YPROC9 existant (jamais de logique dupliquée).
     quantite_en_commande = serializers.SerializerMethodField()
     bcf_sources_en_commande = serializers.SerializerMethodField()
+    # ASTK207 — LA quantité suggérée (cible − disponible − en commande,
+    # seuil saisonnier) : même fonction serveur que a-reapprovisionner et
+    # previsions-reappro ; le catalogue la lit au lieu de la recalculer.
+    quantite_suggeree = serializers.SerializerMethodField()
     # PVOND — bloc SOLAIRE en LECTURE SEULE : famille (onduleur/batterie/
     # module), fenêtre de tension batterie d'un onduleur, tension nominale
     # d'une batterie, et les variables du CONTRAT ONDULEUR encore absentes.
@@ -535,6 +539,23 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             raise serializers.ValidationError(
                 "Le seuil d'alerte ne peut pas être négatif.")
         return value
+
+    # ASTK214 — tarifs de location : prix de vente, jamais négatifs.
+    @staticmethod
+    def _tarif_location_positif(value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le tarif de location ne peut pas être négatif.')
+        return value
+
+    def validate_tarif_location_jour(self, value):
+        return self._tarif_location_positif(value)
+
+    def validate_tarif_location_semaine(self, value):
+        return self._tarif_location_positif(value)
+
+    def validate_tarif_location_mois(self, value):
+        return self._tarif_location_positif(value)
 
     def validate_tva(self, value):
         if value is not None and not (0 <= value <= 100):
@@ -717,6 +738,17 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             # ZSAL9 — avertissement de vente (« sale warnings ») : message +
             # drapeau bloquant. Non sensible (jamais de prix), affiché au devis.
             'avertissement_vente', 'avertissement_bloquant',
+            # ASTK214 (C-ASTK-045, CAT-8) — champs maîtres LUS par des
+            # consommateurs (rangement hazmat NTWMS38, réappro, location
+            # XCTR17, contrats récurrents XCTR1) mais jusqu'ici inatteignables
+            # par l'API (PATCH « 200 sans effet »). Lecture ET écriture sous les
+            # permissions d'écriture stock existantes ; choix validés par le
+            # modèle (400 nommé), tarifs ≥ 0. `tarif_location_*` = prix de
+            # VENTE (location), jamais un prix d'achat.
+            'classe_danger', 'quantite_reappro_cible',
+            'louable', 'tarif_location_jour', 'tarif_location_semaine',
+            'tarif_location_mois',
+            'est_recurrent', 'periodicite_defaut',
             # Stock
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)
@@ -756,6 +788,8 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             'stock_par_emplacement',
             # ZPUR10 — en-commande (fiche produit) + BCF sources
             'quantite_en_commande', 'bcf_sources_en_commande',
+            # ASTK207 — quantité suggérée nette (lecture seule)
+            'quantite_suggeree',
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
         # ARC27 — ``unite`` est un MIROIR (posé par le backfill), lecture seule :
@@ -1116,6 +1150,35 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
 
     def get_bcf_sources_en_commande(self, obj):
         return self._en_commande_map().get(obj.id, [])
+
+    def _profils_index(self):
+        """ASTK207 — profils saisonniers actifs indexés UNE fois par
+        sérialisation (pas de requête par produit)."""
+        cache = getattr(self, '_profils_index_cache', None)
+        if cache is not None:
+            return cache
+        from .services import profils_saisonniers_index
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = profils_saisonniers_index(company) if company is not None \
+            else ({}, {})
+        self._profils_index_cache = cache
+        return cache
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_quantite_suggeree(self, obj):
+        # ASTK207 — disponible = stock − réservé (N14), en-commande = la même
+        # map que `quantite_en_commande` : agrégats déjà en cache.
+        from .services import quantite_suggeree_nette
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return None
+        return quantite_suggeree_nette(
+            company, obj,
+            disponible=obj.quantite_stock - self._reserved_map().get(obj.id, 0),
+            en_commande=self.get_quantite_en_commande(obj),
+            index=self._profils_index())
 
     @extend_schema_field(inline_serializer('ProduitSpecsSolaire', {
         'famille': serializers.CharField(allow_null=True),

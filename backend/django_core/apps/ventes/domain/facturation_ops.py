@@ -156,7 +156,7 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
 
 
 def decompter_stock_lignes(*, lignes, company, user, reference, note,
-                           multiplicateur=1, manquants=None):
+                           multiplicateur=1, manquants=None, sorties=None):
     """AUD116 — LE DÉCOMPTEUR UNIQUE de stock des lignes d'un devis.
 
     Il existait DEUX décompteurs pour le MÊME panier, et ils ne faisaient pas
@@ -185,6 +185,10 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
     sortie est posée quand même (le stock ERP passe sous zéro) et chaque
     manque est ajouté à la liste ``(nom, disponible, requis)`` pour être
     signalé. ``None`` = garde bloquante historique (livraison BC).
+
+    ``sorties`` (dict, facultatif) — ASTK135 : reçoit ``{produit_id: qte}``
+    des quantités réellement sorties, pour que l'appelant SOLDE la
+    réservation du chantier (``solder_reservations_chantier_vente``).
     """
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
@@ -240,8 +244,32 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
             note=note,
             created_by=user,
         )
+        if sorties is not None:
+            sorties[produit.id] = sorties.get(produit.id, 0) + qte
         moved = True
     return moved
+
+
+def solder_reservations_chantier_vente(*, devis, company, sorties, reference,
+                                       user=None):
+    """ASTK135 (C-ASTK-028) — « une vente = une sortie ».
+
+    Le matériel d'une vente SORTI par la facture directe ou par la livraison
+    d'un BC (toggle OFF) SOLDE la réservation N14 du chantier du devis, sinon
+    « Installé » le sortait une seconde fois. Service UNIQUE du propriétaire
+    chantiers (ASTK120), appelé via ``apps.installations`` (doctrine
+    cross-app, imports fonction-locaux) DANS la transaction de la sortie ;
+    idempotent par (référence, produit). No-op sans chantier ou sans sortie.
+    """
+    if devis is None or not sorties:
+        return 0
+    from apps.installations.selectors import installation_for_devis
+    from apps.installations.services import solder_reservations_vente
+    installation = installation_for_devis(devis, company=company)
+    if installation is None:
+        return 0
+    return solder_reservations_vente(
+        installation, sorties, reference, user=user)
 
 
 def reserver_stock_devis_facture(*, devis, user, company):
@@ -293,6 +321,7 @@ def reserver_stock_devis_facture(*, devis, user, company):
     # facture. La sortie est posée quand même (stock ERP sous zéro) et le
     # manque est noté sur le devis pour recompter le stock.
     manquants = []
+    sorties = {}
     moved = decompter_stock_lignes(
         lignes=option_lines(devis),
         company=company,
@@ -301,7 +330,13 @@ def reserver_stock_devis_facture(*, devis, user, company):
         note=f'Facturation directe — devis {reference}',
         multiplicateur=nombre_proprietes(devis),
         manquants=manquants,
+        sorties=sorties,
     )
+    # ASTK135 — la sortie de la vente solde la réservation du chantier (même
+    # transaction : un échec de la sortie annule aussi le solde).
+    solder_reservations_chantier_vente(
+        devis=devis, company=company, sorties=sorties, reference=reference,
+        user=user)
     if manquants:
         from apps.ventes import activity
         detail = ' ; '.join(
@@ -314,7 +349,7 @@ def reserver_stock_devis_facture(*, devis, user, company):
     return moved
 
 
-def entete_facture_depuis_devis(devis):
+def entete_facture_depuis_devis(devis, *, ttc=None):
     """AUD113 — champs d'EN-TÊTE qu'une facture reprend de son devis à la
     création (``Facture.objects.create(**entete)``).
 
@@ -322,10 +357,33 @@ def entete_facture_depuis_devis(devis):
     repli pointent vers des objets DIFFÉRENTS : ``LigneDevis.taux_tva_effectif``
     retombe sur ``devis.taux_tva``, ``LigneFacture.taux_tva_effectif`` sur
     ``facture.taux_tva``. Sans ce transport, un devis à 10 % dont les lignes
-    portent un taux NULL était facturé au défaut 20 %."""
+    portent un taux NULL était facturé au défaut 20 %.
+
+    ATOT4 (C-ATOT-002) — l'en-tête porte AUSSI, quelle que soit la porte
+    (tranche, BC, complète, consolidée) :
+      * ``reference_commande_client`` du devis (CIQ216) ;
+      * la retenue de garantie demandée sur le devis (CIQ214) : taux × ``ttc``
+        de CETTE facture (``ttc`` absent ⇒ TTC de l'option effective du
+        devis, celui d'une facture complète/BC), calculée par LE geste
+        partagé ``echeancier.retenue_de_tranche`` → ``retenue_garantie_mad``
+        + la phrase AUD180 dans ``conditions_paiement``. Sans retenue : clés
+        absentes (facture d'hier)."""
     entete = {}
-    if devis is not None and devis.taux_tva is not None:
+    if devis is None:
+        return entete
+    if devis.taux_tva is not None:
         entete['taux_tva'] = devis.taux_tva
+    entete['reference_commande_client'] = (
+        getattr(devis, 'reference_commande_client', '') or '')
+    from apps.ventes.utils.echeancier import retenue_de_tranche
+    if ttc is None and isinstance(getattr(devis, 'retenue_garantie', None),
+                                  dict):
+        from apps.ventes.utils.options import option_totaux
+        ttc = option_totaux(devis)['ttc']
+    retenue = retenue_de_tranche(devis, ttc) if ttc is not None else None
+    if retenue is not None:
+        entete['retenue_garantie_mad'] = retenue['montant']
+        entete['conditions_paiement'] = retenue['phrase']
     return entete
 
 
@@ -351,7 +409,6 @@ def copier_devis_sur_facture(facture, devis):
     from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
     from apps.ventes.models import LigneFacture
     from apps.ventes.selectors import nombre_proprietes
-    from apps.ventes.utils.options import option_lines
 
     g = Decimal(str(devis.remise_globale or 0))
     if g:
@@ -361,19 +418,82 @@ def copier_devis_sur_facture(facture, devis):
     facture.arrondi_pas = int(PAS_ARRONDI_DEVIS)
     facture.arrondi_unites = n_prop
     facture.save(update_fields=['arrondi_pas', 'arrondi_unites'])
-    for ligne in option_lines(devis):
-        LigneFacture.objects.create(
-            facture=facture,
-            produit=ligne.produit,
-            designation=ligne.designation,
-            quantite=ligne.quantite * n_prop,
-            prix_unitaire=ligne.prix_unitaire,
-            remise=ligne.remise,
-            # Reporte le taux TVA de la ligne de devis (10/20), pour que la
-            # facture reproduise fidèlement la TVA.
-            taux_tva=ligne.taux_tva,
-        )
+    for champs in lignes_facture_du_devis(devis):
+        LigneFacture.objects.create(facture=facture, **champs)
     return facture
+
+
+def lignes_facture_du_devis(devis, *, taux_effectif=False):
+    """LE PANIER d'un devis tel qu'une facture le recopie (liste de champs
+    ``LigneFacture``) : lignes de l'option effective (``option_lines`` —
+    lignes produit COMPTÉES seulement : ni section/note, ni option non
+    activée), quantité ×N villas, prix, remise de ligne et taux de la ligne.
+
+    Partagé par ``copier_devis_sur_facture`` (BC, facture complète) et par la
+    facture consolidée (ATOT3 : sa boucle ``d.lignes.all()`` recopiait les
+    sections — 500 —, les options non activées et les deux options).
+    ``taux_effectif=True`` reporte ``taux_tva_effectif`` (taux du devis pour
+    une ligne sans taux) : obligatoire quand le repli de la facture n'est pas
+    le taux du devis (consolidée de plusieurs devis)."""
+    from apps.ventes.selectors import nombre_proprietes
+    from apps.ventes.utils.options import option_lines
+
+    n_prop = nombre_proprietes(devis)
+    return [{
+        'produit': ligne.produit,
+        'designation': ligne.designation,
+        'quantite': ligne.quantite * n_prop,
+        'prix_unitaire': ligne.prix_unitaire,
+        'remise': ligne.remise,
+        # Reporte le taux TVA de la ligne de devis (10/20), pour que la
+        # facture reproduise fidèlement la TVA.
+        'taux_tva': (ligne.taux_tva_effectif if taux_effectif
+                     else ligne.taux_tva),
+    } for ligne in option_lines(devis)]
+
+
+def ventiler_document_depuis_facture(document, facture, *, partiel=False,
+                                     lignes_saisies=None):
+    """ATOT6 (C-ATOT-004) — un avoir / une note de débit d'une facture
+    VENTILÉE (tranche à taux mixtes, CIQ215) porte autant de paniers TVA que
+    sa facture, au prorata exact au centime (``ventilation_document_fige``).
+
+    * document TOTAL (lignes de la facture recopiées, ou montants figés) :
+      la ventilation de la facture, à l'identique ;
+    * document PARTIEL dont les lignes saisies ne déclarent AUCUN taux (elles
+      héritaient du « taux mélangé » de tête, qui n'existe pas) : son TTC est
+      réparti au prorata des paniers de la facture et ses montants FIGÉS ;
+      une ligne qui déclare son taux garde la chaîne de ses lignes.
+
+    Facture non ventilée (mono-taux, à lignes) : no-op, document d'hier.
+    Renvoie True si une ventilation a été posée."""
+    from apps.facturation.totaux import ventilation_document_fige
+
+    ventilation = getattr(facture, 'ventilation_tva', None)
+    if not ventilation or len(ventilation) < 2:
+        return False
+    if partiel and any(li.get('taux_tva') is not None
+                       for li in (lignes_saisies or [])):
+        return False
+    if partiel:
+        ttc = Decimal(str(document.total_ttc))
+        vent = ventilation_document_fige(ventilation, ttc)
+    else:
+        ttc = Decimal(str(facture.total_ttc))
+        vent = ventilation_document_fige(
+            ventilation, ttc, ht=Decimal(str(facture.total_ht)),
+            tva=Decimal(str(facture.total_tva)))
+    if not vent:
+        return False
+    ht = sum((Decimal(b['base_ht']) for b in vent), Decimal('0'))
+    tva = sum((Decimal(b['montant']) for b in vent), Decimal('0'))
+    document.montant_ht = ht
+    document.montant_tva = tva
+    document.montant_ttc = ht + tva
+    document.ventilation_tva = vent
+    document.save(update_fields=[
+        'montant_ht', 'montant_tva', 'montant_ttc', 'ventilation_tva'])
+    return True
 
 
 class FacturationRefusee(Exception):
@@ -471,7 +591,7 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
     n'existait aucun chemin simple pour émettre SA facture. Ce service :
 
       1. refuse un devis non accepté, ou déjà facturé (échéancier OU bon de
-         commande — LE prédicat partagé ``factures_du_devis``, AUD112), en
+         commande, consolidée — LA garde ``exiger_devis_facturable``, ATOT2), en
          nommant les références existantes ;
       2. valide les paiements déjà reçus (``valider_paiements_saisis``) ;
       3. dans UNE transaction : réserve le stock comme la facturation directe
@@ -493,21 +613,20 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
 
     from apps.ventes.domain.encaissements import encaisser_sur_facture
     from apps.ventes.models import BonCommande, Facture
-    from apps.ventes.selectors import factures_du_devis
+    from apps.ventes.selectors_facturation import (
+        DevisDejaFacture, exiger_devis_facturable,
+    )
     from apps.ventes.utils.company_settings import create_numbered
 
     if devis.statut != devis.Statut.ACCEPTE:
         raise FacturationRefusee(
             'Seul un devis accepté peut être facturé : ce devis est au statut '
             f'« {devis.get_statut_display()} ».')
-    existantes = list(factures_du_devis(devis).order_by('id')
-                      .values_list('reference', flat=True))
-    if existantes:
-        refs = ', '.join(existantes)
-        pluriel = 'les factures' if len(existantes) > 1 else 'la facture'
-        raise FacturationRefusee(
-            f'Ce devis a déjà {pluriel} {refs} : ouvrez-la dans Ventes → '
-            'Factures pour y encaisser les paiements.')
+    # ATOT2 — LA garde unique des quatre portes (consolidée comprise).
+    try:
+        exiger_devis_facturable(devis, 'complete')
+    except DevisDejaFacture as exc:
+        raise FacturationRefusee(exc.motif) from exc
     saisis = valider_paiements_saisis(paiements)
 
     # Le bon de commande du devis est rattaché s'il n'a encore AUCUNE facture
@@ -716,6 +835,103 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     logger.info(
         'XPRJ3: facture régie %s créée (company %s, montant HT %s)',
         facture.reference, company.id, montant_ht)
+    return facture
+
+
+# ── ASTK197 — Facture d'une consommation de dépôt de consignation ──────────
+
+#: Préfixe du marqueur d'origine porté par ``Facture.note`` (aucun champ
+#: « référence d'origine » n'existe sur Facture : note libre, nommée ici).
+MARQUEUR_ORIGINE_CONSIGNATION = '[origine:'
+
+
+def _marqueur_origine(reference_origine):
+    return f'{MARQUEUR_ORIGINE_CONSIGNATION}{reference_origine}]'
+
+
+def creer_facture_consignation(*, company, client, user, lignes,
+                               reference_origine):
+    """ASTK197 (C-ASTK-047) — Facture BROUILLON d'une consommation déclarée
+    sur un dépôt de consignation (appelant : ``stock.services_consignation.
+    declarer_consommation``, ASTK198, via ``apps.ventes.services``).
+
+    * ``client`` : ``crm.Client`` résolu par l'APPELANT ; ``lignes`` :
+      itérable de ``{'produit': Produit, 'quantite': n}`` (produits déjà
+      résolus côté appelant ; un produit d'une autre société est refusé) ;
+    * chaque ligne au PRIX DE VENTE catalogue HT (``Produit.prix_vente``,
+      même lecture que les factures classiques SAV/intervention — jamais
+      ``prix_achat``), TVA du produit, sinon le knob société
+      ``tva_standard`` (comme ``creer_facture_regie``, AUD181) ;
+    * totaux NON figés (``montant_*`` NULL) : la chaîne Sous-total → TVA →
+      TTC est calculée sur les lignes, la facture reste éditable ;
+    * numérotation ``apps/ventes/utils/references.py`` (jamais count()+1) ;
+    * IDEMPOTENTE par ``reference_origine`` (ex. ``CONSIGNATION-<id>``) :
+      Facture n'a pas de champ « référence d'origine », le marqueur
+      ``[origine:<ref>]`` est porté par ``Facture.note`` et relu (société +
+      client, facture non annulée) sous la même transaction.
+
+    Lève ``ValueError`` si le client ou un produit n'appartient pas à
+    ``company``, ou si ``reference_origine`` est vide. Renvoie la Facture.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import Facture, LigneFacture
+    from apps.ventes.utils.references import create_with_reference
+
+    from ..utils.company_settings import tva_standard
+
+    reference_origine = str(reference_origine or '').strip()
+    if not reference_origine:
+        raise ValueError('reference_origine est obligatoire.')
+    if client is None or client.company_id != company.id:
+        raise ValueError("Le client n'appartient pas à cette société.")
+    lignes = list(lignes or [])
+    for ligne in lignes:
+        produit = ligne.get('produit')
+        if produit is None or produit.company_id != company.id:
+            raise ValueError(
+                "Un produit de la consignation n'appartient pas à cette "
+                'société.')
+
+    marqueur = _marqueur_origine(reference_origine)
+    with transaction.atomic():
+        existante = (Facture.objects.select_for_update()
+                     .filter(company=company, client=client,
+                             note__contains=marqueur)
+                     .exclude(statut=Facture.Statut.ANNULEE)
+                     .order_by('id').first())
+        if existante is not None:
+            return existante
+
+        taux_defaut = tva_standard(company)
+
+        def _create(ref):
+            return Facture.objects.create(
+                reference=ref, company=company, client=client,
+                statut=Facture.Statut.BROUILLON,
+                type_facture=Facture.TypeFacture.COMPLETE,
+                taux_tva=taux_defaut,
+                libelle=f'Consommation de consignation {reference_origine}',
+                note=marqueur,
+                created_by=user,
+            )
+
+        facture = create_with_reference(Facture, 'FAC', company, _create)
+        for ligne in lignes:
+            produit = ligne['produit']
+            quantite = Decimal(str(ligne.get('quantite') or 0))
+            if quantite <= 0:
+                continue
+            LigneFacture.objects.create(
+                facture=facture, produit=produit, designation=produit.nom,
+                quantite=quantite,
+                prix_unitaire=Decimal(str(produit.prix_vente or 0)),
+                taux_tva=(produit.tva if produit.tva is not None
+                          else taux_defaut),
+            )
+    logger.info(
+        'ASTK197: facture consignation %s créée (company %s, origine %s)',
+        facture.reference, company.id, reference_origine)
     return facture
 
 

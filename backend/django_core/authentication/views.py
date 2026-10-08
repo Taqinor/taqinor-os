@@ -30,6 +30,7 @@ from .throttles import (
     RegisterRateThrottle,
 )
 from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
+from core.throttling import CookieRefreshThrottle
 
 # ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
 # Les jetons JWT sont posés en cookies ``httpOnly`` (jamais lisibles par JS, ce
@@ -407,6 +408,8 @@ class CookieTokenRefreshView(APIView):
     Le client n'a pas besoin d'envoyer quoi que ce soit dans le body.
     """
     permission_classes = [permissions.AllowAny]
+    # ASEC17 — plafond anonyme par IP sur le rafraîchissement par cookie.
+    throttle_classes = [CookieRefreshThrottle]
     # AUD408 — cette vue ne lit QUE le cookie refresh (jamais ``request.user``).
     # Sans cette ligne, le cookie d'accès d'une session révoquée ferait échouer
     # l'authentification par défaut AVANT le corps de la vue, et le client

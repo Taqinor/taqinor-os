@@ -726,7 +726,11 @@ class ContratNegoceTests(WmsBase):
         rep = self.api.post(f'{url}declarer-consommation/',
                             decl['exemple_corps'], format='json')
         self.assertEqual(rep.status_code, 201, rep.content)
-        self.assertMemesCles(rep.json(), decl['exemple'], 'déclaration')
+        # ASTK198 — la déclaration est facturée : la réponse porte les clés
+        # NOUVELLES (facture_id, facture_reference) de l'exemple facturé.
+        self.assertMemesCles(rep.json(), decl['exemple_nouveau_astk198'],
+                             'déclaration')
+        self.assertEqual(rep.json()['statut'], 'facturee')
         # Les clés NOUVELLES (ASTK198) sont un sur-ensemble déclaré.
         self.assertEqual(
             set(decl['exemple_nouveau_astk198']) - set(decl['exemple']),

@@ -36,7 +36,7 @@ vi.mock('../../api/stockApi', () => ({
     getComptesAPayer: vi.fn(),
     getFacturesEnException: vi.fn(),
     getFactureFournisseur: vi.fn(),
-    getFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
+    getAllFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
     getBonsCommandeFournisseur: vi.fn(() => Promise.resolve({ data: [] })),
     acomptesFournisseurOuverts: vi.fn(() => Promise.resolve({ data: [] })),
     // Fiche 360

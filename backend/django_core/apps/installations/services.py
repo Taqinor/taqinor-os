@@ -4786,6 +4786,50 @@ def _stamp_statut_dates(inst, old_statut):
     return None
 
 
+# ADOC172 — statut canonique atteint → (phase du jalon, libellé, champ date).
+_STATUT_JALON_SUIVI = {
+    Installation.Statut.MATERIEL_COMMANDE: (
+        'appro', 'Matériel commandé', 'date_materiel_commande'),
+    Installation.Statut.INSTALLE: (
+        'pose', 'Installation', 'date_pose_reelle'),
+}
+
+
+def _publier_jalon_statut(inst, canon_old, canon_new, user):
+    """ADOC172 — à l'ARRIVÉE à ``materiel_commande`` / ``installe``, atteint le
+    jalon de phase correspondant (``appro`` / ``pose``) puis le publie au suivi
+    client par ``synchroniser_jalon_portail`` (même primitive que la réception).
+    Idempotent (contrainte unique installation+phase) ; un retour en arrière
+    n'atteint rien de nouveau ; best-effort, ne bloque jamais la transition."""
+    if canon_new == canon_old or canon_new not in _STATUT_JALON_SUIVI:
+        return None
+    phase, libelle, champ_date = _STATUT_JALON_SUIVI[canon_new]
+    try:
+        from django.db import transaction
+        from django.utils import timezone
+        from .models import JalonProjet
+        with transaction.atomic():
+            jalon, _ = JalonProjet.objects.get_or_create(
+                installation=inst, phase=phase,
+                defaults={'company': inst.company, 'libelle': libelle})
+            champs = []
+            if not jalon.atteint:
+                jalon.atteint = True
+                champs.append('atteint')
+            if jalon.date_reelle is None:
+                jalon.date_reelle = (getattr(inst, champ_date, None)
+                                     or timezone.localdate())
+                champs.append('date_reelle')
+            if champs:
+                jalon.save(update_fields=champs)
+        synchroniser_jalon_portail(jalon, user)
+        return phase
+    except Exception:  # pragma: no cover - défensif, best-effort
+        logger.warning('ADOC172 — jalon %s du chantier %s non publié',
+                       phase, inst.pk, exc_info=True)
+        return None
+
+
 def _apply_stock_statut_effects(inst, canon_old, canon_new, user):
     """N14 — effets STOCK d'un changement de statut canonique du chantier.
 
@@ -5102,6 +5146,9 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
 
     effets = {}
     effets['date_jalon'] = _stamp_statut_dates(installation, ancien_statut)
+    # ADOC172 — « Matériel » / « Installation » du suivi client.
+    effets['jalon_suivi'] = _publier_jalon_statut(
+        installation, canon_old, canon_new, user)
     activity.log_changes(old, installation, user)
     if (canon_new == Installation.Statut.RECEPTIONNE
             and canon_old != Installation.Statut.RECEPTIONNE):

@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole
 from core.mixins import TenantMixin
+from core.throttling import LoginBannerThrottle
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import IdentityProvider, IpAllowRule, NetworkPolicy, TrustedDevice
@@ -148,6 +149,8 @@ class LoginBannerView(APIView):
     """
 
     permission_classes = [permissions.AllowAny]
+    # ASEC17 — plafond anonyme par IP (GET + POST) : au-delà, 429.
+    throttle_classes = [LoginBannerThrottle]
 
     def get(self, request):
         profile = _banner_profile(request)
@@ -163,6 +166,21 @@ class LoginBannerView(APIView):
             # Aucune bannière configurée → rien à acquitter (inchangé).
             return Response({'acknowledged': False})
         company = getattr(profile, 'company', None)
+        # ASEC17 — UNE alerte SECURITY_ALERT agrégée par IP et par heure : un
+        # POST anonyme répété n'inonde plus le journal d'audit. ``cache.add``
+        # est atomique ; ``False`` = déjà alertée cette heure (``None`` = cache
+        # en panne → on journalise, un audit manquant est pire qu'un doublon).
+        from django.core.cache import cache
+        from django.utils import timezone
+        cle = (f'login_banner_ack:{company.pk if company else 0}:'
+               f'{_client_ip(request)}:'
+               f'{timezone.now().strftime("%Y%m%d%H")}')
+        try:
+            premiere = cache.add(cle, 1, timeout=3600)
+        except Exception:  # noqa: BLE001 - cache indisponible
+            premiere = None
+        if premiere is False:
+            return Response({'acknowledged': True})
         try:
             from apps.audit.models import AuditLog
             from apps.audit.recorder import record

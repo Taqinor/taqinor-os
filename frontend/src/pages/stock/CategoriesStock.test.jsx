@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -51,7 +51,8 @@ beforeEach(() => {
     data: [{ id: 4, nom: 'Onduleurs', ordre: 1, nb_produits: 3, type_equipement: '' }],
   })
   stockApi.deleteCategorie.mockRejectedValue({ response: { status: 400, data: { detail: DETAIL } } })
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  // ASTK231 — l'AlertDialog commune remplace la boîte native (jamais appelée).
+  vi.spyOn(window, 'confirm')
 })
 
 afterEach(() => { window.confirm.mockRestore() })
@@ -60,7 +61,10 @@ describe('CategoriesStock — suppression d\'une catégorie utilisée (ASTK83)',
   it('suppression refusée affiche le detail serveur', async () => {
     renderPage()
     fireEvent.click(await screen.findByLabelText('Supprimer la catégorie'))
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/Catégorie utilisée par 3 produits/))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/Catégorie utilisée par 3 produits/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
+    expect(window.confirm).not.toHaveBeenCalled()
     await waitFor(() => expect(stockApi.deleteCategorie).toHaveBeenCalledWith(4))
     expect(await screen.findByText(DETAIL)).toBeInTheDocument()
     expect(screen.queryByText(/peut être protégée/)).toBeNull()

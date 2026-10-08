@@ -14,6 +14,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 /* WIR109 — XSTK14 : revalorisation manuelle du stock (document tracé,
    admin-only, jamais client-facing). Corrige le COÛT MOYEN d'un produit sans
@@ -104,6 +106,7 @@ function RevalorisationForm({ produits, onClose, onSaved }) {
 }
 
 export default function RevalorisationsStock() {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const isAdmin = useIsAdmin()
 
   const [items, setItems] = useState(null)
@@ -125,7 +128,10 @@ export default function RevalorisationsStock() {
   }, [])
 
   const valider = async (r) => {
-    if (!window.confirm('Valider cette revalorisation ? Le document sera verrouillé.')) return
+    if (!(await confirmer({
+      title: 'Valider cette revalorisation ?', description: 'Le document sera verrouillé.',
+      confirmLabel: 'Valider', severity: 'low',
+    }))) return
     try {
       await stockApi.validerRevalorisationStock(r.id)
       reload()
@@ -135,7 +141,7 @@ export default function RevalorisationsStock() {
   }
 
   const supprimer = async (r) => {
-    if (!window.confirm('Supprimer ce brouillon de revalorisation ?')) return
+    if (!(await confirmer({ title: 'Supprimer ce brouillon de revalorisation ?', confirmLabel: 'Supprimer' }))) return
     try {
       await stockApi.deleteRevalorisationStock(r.id)
       reload()
@@ -215,6 +221,7 @@ export default function RevalorisationsStock() {
         <RevalorisationForm produits={produits}
                             onClose={() => setShowForm(false)} onSaved={reload} />
       )}
+      {dialogueConfirmation}
     </div>
   )
 }

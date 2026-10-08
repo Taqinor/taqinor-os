@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from freezegun import freeze_time
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -147,6 +148,10 @@ class ValorisationADateTests(Xstk13Base):
         self.assertEqual(resp.status_code, 403)
 
 
+# ASTK203 — l'exercice 2026 n'est figeable qu'une fois CLOS : ces tests se
+# placent au 10/01/2027 (le refus d'un exercice ouvert est couvert par
+# test_astk_figer_exercice.py).
+@freeze_time('2027-01-10 10:00:00')
 class InventaireAnnuelTests(Xstk13Base):
     def test_figer_archive_snapshot_complet(self):
         self._bcf_recu(10, '1000', datetime.date(2026, 1, 15))

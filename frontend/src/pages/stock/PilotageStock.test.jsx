@@ -58,7 +58,7 @@ beforeEach(() => {
   stockApi.produitsAReapprovisionner.mockResolvedValue({
     data: [{
       produit_id: 1, nom: 'Panneau 550', sku: 'PAN-550',
-      quantite_stock: 2, seuil_alerte: 5, quantite_suggere: 10,
+      quantite_stock: 2, seuil_alerte: 5, quantite_suggere: 10, quantite_suggeree: 10,
       fournisseur_id: 3, fournisseur_nom: 'JA Solar', prix_achat: '700.00',
     }],
   })
@@ -109,6 +109,34 @@ describe('WR3 — rendu des quatre rapports', () => {
     // Le message 403 apparaît (dans le KPI + la section rotation).
     await waitFor(() => {
       expect(screen.getAllByText(/Réservé à l['’]administrateur\./).length).toBeGreaterThan(0)
+    })
+  })
+})
+
+/* ASTK207 (C-ASTK-053, MVT-21) — Réappro et Prévisions lisent LA même
+   quantité serveur (`quantite_suggeree`, calculée par quantite_suggeree_nette) :
+   stock 2, seuil 6, cible 20, 5 en commande → 13 dans les deux panneaux. */
+describe('ASTK207 — une seule quantité suggérée', () => {
+  it('les deux panneaux affichent la même quantité', async () => {
+    stockApi.produitsAReapprovisionner.mockResolvedValueOnce({
+      data: [{
+        produit_id: 7, nom: 'Onduleur 5 kW', sku: 'OND-5',
+        quantite_stock: 2, seuil_alerte: 6, quantite_suggeree: 13,
+        fournisseur_id: 3, fournisseur_nom: 'Fournisseur Réappro', prix_achat: '700.00',
+      }],
+    })
+    stockApi.previsionsReappro.mockResolvedValueOnce({
+      data: [{
+        produit_id: 7, nom: 'Onduleur 5 kW', sku: 'OND-5',
+        consommation_mensuelle_moy: 1.5, quantite_stock: 2,
+        disponible: 2, en_commande: 5, cible: 20, quantite_suggeree: 13,
+      }],
+    })
+    render(<PilotageStock />, { wrapper })
+    expect(await screen.findByText('Fournisseur Réappro')).toBeVisible()
+    await waitFor(() => {
+      const cellules = screen.getAllByText('13').filter((el) => el.className.includes('font-semibold'))
+      expect(cellules.length).toBeGreaterThanOrEqual(2)
     })
   })
 })

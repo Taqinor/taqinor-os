@@ -5,7 +5,9 @@ est faux, les endpoints correspondants renvoient un **403 explicite** — pas
 seulement une entrée de menu cachée côté UI. Un admin est refusé comme les
 autres : c'est une fonctionnalité DÉSACTIVÉE, pas un droit manquant.
 """
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_field, inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -33,6 +35,28 @@ class DeclarationConsommationSerializer(CompanyScopedRelationsMixin,
         fields = ['id', 'depot', 'quantite', 'date_declaration', 'statut',
                   'document_reference', 'note', 'created_at']
         read_only_fields = ['statut', 'document_reference', 'created_at']
+
+
+class DeclarationFactureeSerializer(DeclarationConsommationSerializer):
+    """ASTK198 — réponse de ``declarer-consommation`` : la déclaration plus
+    la facture BROUILLON créée (``facture_id`` / ``facture_reference``,
+    contrat ``negoce_consignation_rfa.json`` ``exemple_nouveau_astk198``)."""
+    facture_id = serializers.SerializerMethodField()
+    facture_reference = serializers.SerializerMethodField()
+
+    class Meta(DeclarationConsommationSerializer.Meta):
+        fields = DeclarationConsommationSerializer.Meta.fields + [
+            'facture_id', 'facture_reference']
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_facture_id(self, obj):
+        facture = getattr(obj, 'facture', None)
+        return facture.pk if facture is not None else None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_facture_reference(self, obj):
+        facture = getattr(obj, 'facture', None)
+        return facture.reference if facture is not None else None
 
 
 class DepotConsignationSerializer(CompanyScopedRelationsMixin,
@@ -157,11 +181,13 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(request=None,
-                   responses={201: DeclarationConsommationSerializer})
+                   responses={201: DeclarationFactureeSerializer})
     @action(detail=True, methods=['post'], url_path='declarer-consommation',
             permission_classes=[IsResponsableOrAdmin])
     def declarer_consommation(self, request, pk=None):
-        """NTDST3 — le client déclare ce qu'il a consommé.
+        """NTDST3 — le client déclare ce qu'il a consommé ; ASTK198 : la
+        déclaration est facturée (facture BROUILLON, ``facture_id`` /
+        ``facture_reference`` dans la réponse).
 
         Ne retouche JAMAIS le stock : la marchandise est partie du dépôt à la
         mise en consignation. Refuse une quantité négative ou supérieure au
@@ -178,7 +204,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        return Response(DeclarationConsommationSerializer(declaration).data,
+        return Response(DeclarationFactureeSerializer(declaration).data,
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(responses={

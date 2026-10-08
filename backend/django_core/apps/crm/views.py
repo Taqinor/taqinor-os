@@ -2320,8 +2320,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             raise DRFValidationError(
                 {'limite': f'Entier attendu entre 1 et {PLACEMENT_LOT_MAX} '
                            f'(défaut {PLACEMENT_LOT_DEFAUT}).'})
+        # ALEA25 — borné par la portée du viewset (société + équipe).
         rapport = placer_anciens_leads(
-            request.user.company, request.user, apply=apply, limite=limite)
+            request.user.company, request.user, apply=apply, limite=limite,
+            leads_en_portee=self._leads_en_portee())
         return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='resoudre-gps',

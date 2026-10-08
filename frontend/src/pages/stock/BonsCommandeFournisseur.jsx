@@ -35,6 +35,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
@@ -231,6 +233,7 @@ export function MotifAnnulationModal({ onClose, onConfirm, busy }) {
 // ── Modal de création / consultation / réception d'un BCF ──
 // Export nommé : testé directement (QS1 — bouton « PDF (interne) »).
 export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const isNew = !bcf?.id
   const statut = bcf?.statut ?? 'brouillon'
   const editableLignes = isNew || statut === 'brouillon'
@@ -486,7 +489,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const envoyer = async () => {
     // Confirme l'envoi si une ligne a un prix d'achat à 0 (pompes/placeholder).
     if (voitPrix && aLignePrixZero(buildPayload().lignes)
-        && !window.confirm('Une ou plusieurs lignes ont un prix d\'achat à 0. Envoyer quand même ?')) {
+        && !(await confirmer({
+          title: 'Envoyer avec un prix à 0 ?',
+          description: 'Une ou plusieurs lignes ont un prix d\'achat à 0. Envoyer quand même ?',
+          confirmLabel: 'Envoyer',
+        }))) {
       return
     }
     setBusy(true); setError(null)
@@ -1188,6 +1195,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           </DialogContent>
         </Dialog>
       )}
+      {dialogueConfirmation}
     </Dialog>
   )
 }
@@ -1376,7 +1384,7 @@ export default function BonsCommandeFournisseur() {
     reload()
     reloadEnRetard()
     reloadSuggestions()
-    stockApi.getFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
+    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
 

@@ -39,10 +39,18 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
     HasPermissionOrLegacy,
 )
+from core.permissions import declared_action_permissions
+
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+#: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
+#: (Administrateur, Directeur, Commercial et Commercial responsable par
+#: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
+#: de rôles codée ici : le code est la seule source (compte hérité sans rôle
+#: fin = palier responsable, comme ``HasPermissionOrLegacy``).
+PeutEncaisser = HasPermissionOrLegacy('encaisser')
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -55,6 +63,18 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
     'type_facture',
 ])
+
+# ATOT9 (C-ATOT-007, D-ATOT-1) — les champs d'ARGENT d'une facture sont FIGÉS
+# dès qu'elle quitte le brouillon, QUEL QUE SOIT `factures_immuables` : une
+# facture émise se corrige par avoir (ou `remettre-brouillon`), jamais en
+# place. Le flag ne gouverne plus que le reste de FACTURE_CHAMPS_FINANCIERS.
+FACTURE_CHAMPS_ARGENT = frozenset([
+    'montant_ht', 'montant_tva', 'montant_ttc', 'remise_globale', 'taux_tva',
+    'pourcentage', 'arrondi_pas', 'arrondi_unites',
+])
+MESSAGE_MONTANT_FIGE = (
+    'Montant figé après émission : corrigez par un avoir '
+    '(ou remettez la facture en brouillon).')
 
 
 # ZFAC11 — `arrondir_au_pas` / `proposer_arrondi_caisse` vivent désormais dans
@@ -144,6 +164,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
+        # ASEC29 — la garde DÉCLARÉE par l'@action PRIME (patron AUD421) :
+        # sans cette ligne, le ``permission_classes=`` des gestes d'argent
+        # était jeté en silence au profit du tiering ci-dessous.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         if self.action in READ_ACTIONS + [
             'paiements', 'relances', 'emails', 'arrondi_caisse', 'kpis',
         ]:
@@ -293,6 +319,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # non financiers (conditions, notes, dates de livraison…) restent
         # modifiables.
         facture = self.get_object()
+        argent_touche = (set(serializer.validated_data.keys())
+                         & FACTURE_CHAMPS_ARGENT)
+        if facture.statut != Facture.Statut.BROUILLON and argent_touche:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({
+                'detail': MESSAGE_MONTANT_FIGE,
+                'champs_refuses': sorted(argent_touche),
+            })
         if facture.statut != Facture.Statut.BROUILLON:
             from apps.parametres.models import CompanyProfile
             profile = CompanyProfile.get(company=facture.company)
@@ -311,9 +345,29 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         ),
                         'champs_refuses': sorted(champs_touches),
                     })
+        # ATOT9 — toute modification d'argent ACCEPTÉE (brouillon) laisse une
+        # trace avant/après dans le chatter de la facture.
+        avant = {champ: getattr(facture, champ) for champ in argent_touche}
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern created_by.
         serializer.save(updated_by=self.request.user)
+        if argent_touche:
+            from ..models import FactureActivity
+            instance = serializer.instance
+            for champ in sorted(argent_touche):
+                apres = getattr(instance, champ)
+                if apres == avant[champ]:
+                    continue
+                FactureActivity.objects.create(
+                    company=instance.company, facture=instance,
+                    user=self.request.user,
+                    kind=FactureActivity.Kind.MODIFICATION,
+                    field=champ, field_label=champ,
+                    old_value='' if avant[champ] is None else str(avant[champ]),
+                    new_value='' if apres is None else str(apres),
+                    body=(f'Montant modifié sur le brouillon : {champ} '
+                          f'{avant[champ]} -> {apres}.'),
+                )
 
     @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
@@ -540,8 +594,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     {'detail': 'Cette facture ne peut plus être annulée.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            paiements = list(locked.paiements.all())
-            net_acompte = sum((p.montant for p in paiements), Decimal('0'))
+            # ATOT7 (D-ATOT-4) — LA définition unique du payé : un paiement
+            # REJETÉ (chèque impayé) n'est ni remboursé ni transféré, et le
+            # net est `Facture.montant_paye` — plus aucune somme locale de
+            # `p.montant` (elle remboursait 45 000 jamais encaissés).
+            paiements = [p for p in locked.paiements.all()
+                         if p.statut != Paiement.Statut.REJETE]
+            net_acompte = Decimal(str(locked.montant_paye))
 
             if acompte_action == 'transferer':
                 if net_acompte <= 0:
@@ -734,7 +793,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def enregistrer_paiement(self, request, pk=None):
         """Enregistre MANUELLEMENT un paiement (montant + date + mode).
 
@@ -769,7 +828,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         )
 
     @action(detail=True, methods=['post'], url_path='abandonner-solde',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def abandonner_solde(self, request, pk=None):
         """XFAC13 — abandon manuel du résiduel (write-off).
 
@@ -1109,7 +1168,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
-    @action(detail=True, methods=['post'], url_path='creer-avoir')
+    @action(detail=True, methods=['post'], url_path='creer-avoir',
+            permission_classes=[PeutEncaisser])
     def creer_avoir(self, request, pk=None):
         """Crée un Avoir (note de crédit) depuis une facture ÉMISE — admin only
         (get_permissions par défaut). Total ou partiel : si `lignes` est fourni
@@ -1257,6 +1317,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     avoir.montant_ttc = source.total_ttc
                     avoir.save(update_fields=[
                         'montant_ht', 'montant_tva', 'montant_ttc'])
+            # ATOT6 — autant de paniers TVA que la facture d'origine.
+            from ..domain.facturation_ops import (
+                ventiler_document_depuis_facture,
+            )
+            ventiler_document_depuis_facture(
+                avoir, source, partiel=bool(clean_lignes),
+                lignes_saisies=clean_lignes)
             return avoir
 
         # AUD126 — LECTURE DU PLAFOND ET CRÉATION SÉRIALISÉES. `creer_avoir`
@@ -1307,6 +1374,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # compta.ecriture_pour_avoir, jamais d'import de son service ici).
             from core.events import avoir_cree
             avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+            # ATOT8 — le statut de paiement suit le reste dû : un avoir qui
+            # solde la facture la passe PAYÉE (`facture_payee` émis une fois).
+            if mode != 'contre_passation':
+                from ..domain.encaissements import recalculer_statut_paiement
+                recalculer_statut_paiement(
+                    locked, user=request.user, source='avoir')
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf
@@ -1426,6 +1499,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     note_debit.montant_ttc = facture.total_ttc
                     note_debit.save(update_fields=[
                         'montant_ht', 'montant_tva', 'montant_ttc'])
+            # ATOT6 — même règle que l'avoir : paniers de la facture.
+            from ..domain.facturation_ops import (
+                ventiler_document_depuis_facture,
+            )
+            ventiler_document_depuis_facture(
+                note_debit, facture, partiel=bool(clean_lignes),
+                lignes_saisies=clean_lignes)
             return note_debit
 
         note_debit = create_numbered(
@@ -1841,7 +1921,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='encaissement-groupe',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def encaissement_groupe(self, request):
         """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
         (virement global, chèque unique). Body : ``{client, montant, mode,

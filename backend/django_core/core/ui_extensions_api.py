@@ -7,7 +7,8 @@ TOUTE la société (écran d'administration : gérer aussi les éléments inacti
 réservés à un autre palier). Écriture réservée à l'administration.
 """
 from django.db.models import Q
-from rest_framework import serializers
+from rest_framework import serializers
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -61,7 +62,7 @@ def _instance_field_context(instance):
     return out
 
 
-class UiActionBoutonSerializer(serializers.ModelSerializer):
+class UiActionBoutonSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model = UiActionBouton
         fields = ['id', 'cible', 'libelle', 'icone', 'type_action', 'ref',
@@ -138,7 +139,7 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
         return Response({'ok': ok, 'message': message})
 
 
-class UiOngletCustomSerializer(serializers.ModelSerializer):
+class UiOngletCustomSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model = UiOngletCustom
         fields = ['id', 'cible', 'titre', 'type_contenu', 'ref', 'condition',

@@ -90,11 +90,17 @@ describe('ConditionnementsProduit (WIR109)', () => {
       data: [{ id: 1, nom: 'Touret 100 m', produit_nom: 'Câble 6mm²', facteur: 100, unite_stock: 'm' }],
     })
     stockApi.deleteConditionnementProduit.mockResolvedValue({})
-    window.confirm = vi.fn(() => true)
+    const natif = vi.spyOn(window, 'confirm')
 
     renderPage()
     const grid = await screen.findByRole('grid', { name: 'Conditionnements produit' })
     await userEvent.click(within(grid).getByRole('button', { name: 'Supprimer' }))
+    // ASTK231 — confirmation par l'AlertDialog commune, sans dialogue natif.
+    const dialog = await screen.findByRole('alertdialog')
+    expect(stockApi.deleteConditionnementProduit).not.toHaveBeenCalled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
+    expect(natif).not.toHaveBeenCalled()
+    natif.mockRestore()
 
     await waitFor(() => {
       expect(stockApi.deleteConditionnementProduit).toHaveBeenCalledWith(1)

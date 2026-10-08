@@ -18,6 +18,7 @@ export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
 import OtpLectureForm from '../../components/OtpLectureForm.astro';
+import ChainePrix from '../../components/proposition/ChainePrix.astro';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -5433,31 +5434,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     data-fr="Voir le détail du prix"
                     data-en="See the price breakdown"
                     data-ar="عرض تفصيل الثمن">Voir le détail du prix</summary>
-                <!-- Chaîne de prix explicite -->
-                  <dl class="mt-3 space-y-1.5 text-sm">
-                    <div class="flex justify-between">
-                      <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-en="Subtotal excl. tax" data-ar="المجموع الفرعي (بدون ضريبة)">Sous-total HT</dt>
-                      <dd class="fig text-lune-soft" dir="ltr" data-figure="sous_total_ht" data-figure-option={figOption(opt)}>{formatMAD(totaux.ht_brut)}</dd>
-                    </div>
-                    {totaux.remise > 0 && (
-                      <div class="flex justify-between">
-                        <dt class="text-lune-faint" data-i18n data-fr="Remise" data-en="Discount" data-ar="التخفيض">Remise</dt>
-                        <dd class="fig text-brass-300" dir="ltr" data-figure="remise" data-figure-option={figOption(opt)}>−{formatMAD(totaux.remise)}</dd>
-                      </div>
-                    )}
-                    <div class="flex justify-between">
-                      <dt class="text-lune-faint" data-i18n data-fr="Total HT" data-en="Total excl. tax" data-ar="المجموع (بدون ضريبة)">Total HT</dt>
-                      <dd class="fig text-lune-soft" dir="ltr" data-figure="total_ht" data-figure-option={figOption(opt)}>{formatMAD(totaux.ht_net)}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                      <dt class="text-lune-faint" data-i18n data-fr="TVA" data-en="VAT" data-ar="الضريبة على القيمة المضافة">TVA</dt>
-                      <dd class="fig text-lune-soft" dir="ltr" data-figure="tva" data-figure-option={figOption(opt)}>{formatMAD(totaux.tva)}</dd>
-                    </div>
-                    <div class="flex justify-between border-t border-white/10 pt-2">
-                      <dt class="text-lune" data-i18n data-fr="Total TTC" data-en="Total incl. tax" data-ar="المجموع شامل الضريبة">Total TTC</dt>
-                      <dd class="fig text-lg text-lune" dir="ltr" data-figure="total_ttc" data-figure-option={figOption(opt)}>{formatMAD(totaux.ttc)}</dd>
-                    </div>
-                  </dl>
+                <!-- ATOT34 — la chaîne ENTIÈRE du contrat (Sous-total → Remise → Arrondi
+                     commercial → Total HT → TVA → Total TTC), au centime, par le seul
+                     composant qui la rend : ChainePrix.astro. -->
+                  <ChainePrix totaux={totaux} option={figOption(opt)} />
                   </details>
                 )}
               </article>

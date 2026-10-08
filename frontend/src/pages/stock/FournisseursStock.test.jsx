@@ -20,7 +20,7 @@ import authReducer from '../../features/auth/store/authSlice'
 
 vi.mock('../../api/stockApi', () => ({
   default: {
-    getFournisseurs: vi.fn(() => Promise.resolve({
+    getAllFournisseurs: vi.fn(() => Promise.resolve({
       data: [
         { id: 1, nom: 'Actif SARL', statut: 'actif', nb_produits: 2, nb_bons_commande: 1 },
         {
@@ -29,14 +29,24 @@ vi.mock('../../api/stockApi', () => ({
         },
       ],
     })),
+    // ASTK185 — page 1 SEULE (50 lignes + next) : un écran qui l'appellerait
+    // encore perdrait le 51ᵉ fournisseur (test-du-test de « affiche le 51ᵉ »).
+    getFournisseurs: vi.fn(() => Promise.resolve({
+      data: {
+        count: 51, next: '?page=2',
+        results: Array.from({ length: 50 }, (_, i) => ({ id: 100 + i, nom: `Fournisseur ${i + 1}` })),
+      },
+    })),
     // WIR219/NTPRT25 — décision (valider/rejeter) une candidature.
     deciderCandidatureFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     createFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     updateFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     deleteFournisseur: vi.fn(() => Promise.resolve({ data: { archived: false } })),
+    // ASTK184 — « Supprimer » = archivage (PATCH is_archived).
+    archiveFournisseur: vi.fn(() => Promise.resolve({ data: { id: 1, is_archived: true } })),
     performanceFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     // WIR190 — fournisseurs archivés (repli PROTECT, patron StockList).
-    getFournisseursArchived: vi.fn(() => Promise.resolve({
+    getAllFournisseursArchived: vi.fn(() => Promise.resolve({
       data: [{ id: 3, nom: 'Archivé SARL', nb_produits: 1, nb_bons_commande: 2 }],
     })),
     unarchiveFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
@@ -52,6 +62,7 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 import FournisseursStock from './FournisseursStock'
 
 function makeStore({ role = 'admin', permissions = ['stock_modifier', 'stock_voir'] } = {}) {
@@ -74,6 +85,12 @@ function renderPage(store = makeStore()) {
       </MemoryRouter>
     </Provider>,
   )
+}
+
+// ASTK184 — confirme le geste dans l'AlertDialog maison (jamais window.confirm).
+async function confirmer(libelle) {
+  const dialog = await screen.findByRole('alertdialog')
+  await userEvent.click(within(dialog).getByRole('button', { name: libelle }))
 }
 
 describe('FournisseursStock — statut de blocage (WIR26) + fiche 360 (WIR27)', () => {
@@ -139,14 +156,13 @@ describe('FournisseursStock — fournisseurs archivés (WIR190)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Archivés/ }))
     const grid = await screen.findByRole('grid', { name: 'Fournisseurs archivés' })
     expect(grid).toBeInTheDocument()
-    expect(stockApi.getFournisseursArchived).toHaveBeenCalled()
+    expect(stockApi.getAllFournisseursArchived).toHaveBeenCalled()
     // Le DataTable double chaque ligne (grille desktop + carte mobile) : on
     // porte la requête sur la grille, comme le test « Réactiver » plus bas.
     expect(within(grid).getByText('Archivé SARL')).toBeInTheDocument()
   })
 
   it('« Réactiver » un fournisseur archivé appelle unarchiveFournisseur', async () => {
-    window.confirm = vi.fn(() => true)
     renderPage()
     await screen.findByRole('grid', { name: 'Fournisseurs' })
     await userEvent.click(screen.getByRole('button', { name: /Archivés/ }))
@@ -154,6 +170,7 @@ describe('FournisseursStock — fournisseurs archivés (WIR190)', () => {
     const row = within(grid).getByText('Archivé SARL').closest('tr')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Réactiver' }))
+    await confirmer('Désarchiver')
     await waitFor(() => expect(stockApi.unarchiveFournisseur).toHaveBeenCalledWith(3))
   })
 
@@ -175,17 +192,96 @@ describe('FournisseursStock — fournisseurs archivés (WIR190)', () => {
     await waitFor(() => expect(stockApi.forceDeleteFournisseur).toHaveBeenCalledWith(3))
   })
 
-  it('supprimer un fournisseur avec des données réelles rattachées explique l\'archivage (repli 200)', async () => {
-    window.confirm = vi.fn(() => true)
-    stockApi.deleteFournisseur.mockResolvedValueOnce({
-      data: { archived: true, detail: 'Ce fournisseur a été archivé car des données réelles lui sont rattachées.' },
-    })
+})
+
+/* ============================================================================
+   ASTK184 (C-ASTK-042, FOUR-19) — plus aucune boîte native ; « Supprimer » un
+   fournisseur l'ARCHIVE (un DELETE détruirait en CASCADE contacts, comptes
+   portail, jetons et dossier d'onboarding) ; la suppression définitive passe
+   UNIQUEMENT par ForceDeleteFournisseurModal (nom à taper).
+   ========================================================================== */
+describe('FournisseursStock — confirmations maison (ASTK184)', () => {
+  it('supprimer ouvre une AlertDialog et archive', async () => {
+    stockApi.deleteFournisseur.mockClear()
+    stockApi.archiveFournisseur.mockClear()
     renderPage()
     const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
     const row = within(grid).getByText('Actif SARL').closest('tr')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Supprimer' }))
-    await waitFor(() => expect(stockApi.deleteFournisseur).toHaveBeenCalledWith(1))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/Actif SARL/)).toBeInTheDocument()
+    expect(stockApi.archiveFournisseur).not.toHaveBeenCalled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Archiver' }))
+    await waitFor(() => expect(stockApi.archiveFournisseur).toHaveBeenCalledWith(1))
+    expect(stockApi.deleteFournisseur).not.toHaveBeenCalled()
+  })
+
+  it('annuler l\'AlertDialog n\'archive rien', async () => {
+    stockApi.archiveFournisseur.mockClear()
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Actif SARL').closest('tr')
+    await userEvent.click(within(row).getByRole('button', { name: 'Supprimer' }))
+    await confirmer('Annuler')
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(stockApi.archiveFournisseur).not.toHaveBeenCalled()
+  })
+
+  it('aucun window.confirm sur les 4 gestes', async () => {
+    const spy = vi.spyOn(window, 'confirm').mockImplementation(() => true)
+    stockApi.getAllFournisseurs.mockResolvedValueOnce({
+      data: [
+        { id: 1, nom: 'Actif SARL', statut: 'actif', nb_produits: 2, nb_bons_commande: 1 },
+        { id: 4, nom: 'Candidat SARL', statut: 'actif',
+          statut_validation: 'en_attente_validation', nb_produits: 0, nb_bons_commande: 0 },
+      ],
+    })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    // 1. Décision de candidature.
+    await userEvent.click(within(within(grid).getByText('Candidat SARL').closest('tr'))
+      .getByRole('button', { name: 'Rejeter la candidature' }))
+    await confirmer('Rejeter')
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, false))
+    // 2. Supprimer (archive) un fournisseur.
+    const grid2 = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(within(within(grid2).getByText('Actif SARL').closest('tr'))
+      .getByRole('button', { name: 'Supprimer' }))
+    await confirmer('Archiver')
+    // 3. Désarchivage.
+    await userEvent.click(screen.getByRole('button', { name: /Archivés/ }))
+    const archGrid = await screen.findByRole('grid', { name: 'Fournisseurs archivés' })
+    await userEvent.click(within(within(archGrid).getByText('Archivé SARL').closest('tr'))
+      .getByRole('button', { name: 'Réactiver' }))
+    await confirmer('Désarchiver')
+    // 4. Suppression d'une catégorie.
+    await userEvent.click(screen.getByRole('button', { name: 'Catégories' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
+    await confirmer('Supprimer')
+    await waitFor(() => expect(stockApi.deleteCategorieFournisseur).toHaveBeenCalledWith(10))
+    expect(stockApi.archiveFournisseur).toHaveBeenCalledWith(1)
+    expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, false)
+    expect(stockApi.unarchiveFournisseur).toHaveBeenCalledWith(3)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('la suppression définitive exige le nom', async () => {
+    stockApi.forceDeleteFournisseur.mockClear()
+    renderPage()
+    await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(screen.getByRole('button', { name: /Archivés/ }))
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs archivés' })
+    const row = within(grid).getByText('Archivé SARL').closest('tr')
+    await userEvent.click(within(row).getByRole('button', { name: 'Supprimer définitivement' }))
+    const dialog = await screen.findByRole('alertdialog')
+    const btn = within(dialog).getByRole('button', { name: 'Supprimer définitivement' })
+    await userEvent.type(within(dialog).getByLabelText(/Tapez/), 'Archivé')
+    expect(btn).toBeDisabled()
+    await userEvent.click(btn)
+    expect(stockApi.forceDeleteFournisseur).not.toHaveBeenCalled()
   })
 })
 
@@ -229,7 +325,7 @@ describe('FournisseursStock — catégories fournisseur (WIR108)', () => {
 describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
   // `mockResolvedValueOnce` — n'affecte QUE ces tests, jamais la liste par
   // défaut consommée par les autres describe (WIR27 compte exactement 2 liens).
-  const listeAvecCandidature = () => stockApi.getFournisseurs.mockResolvedValueOnce({
+  const listeAvecCandidature = () => stockApi.getAllFournisseurs.mockResolvedValueOnce({
     data: [
       { id: 1, nom: 'Actif SARL', statut: 'actif', nb_produits: 2, nb_bons_commande: 1 },
       {
@@ -252,24 +348,24 @@ describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
   })
 
   it('Admin : « Valider » appelle deciderCandidatureFournisseur(id, true) — la candidature rejoint le sourcing', async () => {
-    window.confirm = vi.fn(() => true)
     listeAvecCandidature()
     renderPage()
     const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
     const row = within(grid).getByText('Candidat SARL').closest('tr')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Valider la candidature' }))
+    await confirmer('Valider')
     await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, true))
   })
 
   it('Admin : « Rejeter » appelle deciderCandidatureFournisseur(id, false)', async () => {
-    window.confirm = vi.fn(() => true)
     listeAvecCandidature()
     renderPage()
     const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
     const row = within(grid).getByText('Candidat SARL').closest('tr')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Rejeter la candidature' }))
+    await confirmer('Rejeter')
     await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, false))
   })
 
@@ -284,7 +380,6 @@ describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
   })
 
   it('un 403 serveur (rôle insuffisant malgré tout) est affiché en FR', async () => {
-    window.confirm = vi.fn(() => true)
     listeAvecCandidature()
     stockApi.deciderCandidatureFournisseur.mockRejectedValueOnce({
       response: { status: 403, data: { detail: 'Réservé à l\'administrateur.' } },
@@ -294,6 +389,7 @@ describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
     const row = within(grid).getByText('Candidat SARL').closest('tr')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Valider la candidature' }))
+    await confirmer('Valider')
     // toastError best-effort — le point vérifiable est l'appel serveur lui-même
     // (le rendu du toast n'est pas garanti sans <Toaster> monté dans ce test).
     await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, true))
@@ -305,6 +401,81 @@ describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
    déjà : le serveur crée (201, non bloquant) et renvoie
    `avertissements.nom` ; la liste l'affiche après fermeture du formulaire.
    ========================================================================== */
+/* ============================================================================
+   ASTK185 (C-ASTK-042, FOUR-8) — la liste lit TOUTES les pages : le 51ᵉ
+   fournisseur est listé, cherchable et compté.
+   ========================================================================== */
+describe('FournisseursStock — liste complète (ASTK185)', () => {
+  it('affiche le 51ᵉ fournisseur', async () => {
+    const tous = Array.from({ length: 51 }, (_, i) => ({ id: 100 + i, nom: `Fournisseur ${i + 1}` }))
+    stockApi.getAllFournisseurs.mockResolvedValueOnce({ data: tous })
+    renderPage()
+    await screen.findByRole('grid', { name: 'Fournisseurs' })
+    expect(await screen.findByText('51 fournisseur(s)')).toBeInTheDocument()
+    // (Au-delà de 50 lignes le DataTable se virtualise — jsdom sans hauteur
+    // n'en rend aucune : le compteur d'en-tête est la preuve lisible ici.)
+    expect(stockApi.getAllFournisseurs).toHaveBeenCalledWith({ ordering: 'nom' })
+  })
+})
+
+/* ============================================================================
+   ASTK225 (C-ASTK-045, FOUR-12) — identité légale saisissable sur la fiche :
+   ICE / IF / RC / RIB envoyés par les routes existantes ; le 400 du serveur
+   (format ICE) s'affiche sous le champ ; l'avertissement de doublon ICE du
+   serveur est affiché tel quel. Réponses = le contrat committé.
+   ========================================================================== */
+describe('FournisseursStock — identité légale (ASTK225)', () => {
+  const contrat = documentContrat('stock', 'fournisseur_conformite').routes
+
+  it('saisir ICE et RIB', async () => {
+    const corps = contrat.fournisseurs_conformite_champs.exemple_corps
+    stockApi.updateFournisseur.mockResolvedValueOnce({ data: contrat.fournisseurs_conformite_champs.exemple })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(within(within(grid).getByText('Actif SARL').closest('tr'))
+      .getByRole('button', { name: 'Modifier' }))
+    await screen.findByRole('dialog')
+    await userEvent.type(screen.getByLabelText('ICE'), corps.ice)
+    await userEvent.type(screen.getByLabelText('Identifiant fiscal (IF)'), corps.identifiant_fiscal)
+    await userEvent.type(screen.getByLabelText('Registre du commerce (RC)'), corps.rc)
+    await userEvent.type(screen.getByLabelText('RIB'), corps.rib)
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(stockApi.updateFournisseur).toHaveBeenCalledWith(
+      1, expect.objectContaining(corps)))
+  })
+
+  it("le 400 du serveur sur l'ICE s'affiche sous le champ", async () => {
+    stockApi.updateFournisseur.mockRejectedValueOnce({
+      response: { status: 400, data: {
+        error: 'Données invalides.',
+        ice: ["Format ICE invalide : l'ICE doit comporter exactement 15 chiffres."],
+      } },
+    })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(within(within(grid).getByText('Actif SARL').closest('tr'))
+      .getByRole('button', { name: 'Modifier' }))
+    await screen.findByRole('dialog')
+    await userEvent.type(screen.getByLabelText('ICE'), '123')
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByText(/Format ICE invalide/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it("affiche l'avertissement de doublon ICE renvoyé par le serveur", async () => {
+    stockApi.updateFournisseur.mockResolvedValueOnce({ data: contrat.fournisseurs_ice_doublon.exemple })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(within(within(grid).getByText('Actif SARL').closest('tr'))
+      .getByRole('button', { name: 'Modifier' }))
+    await screen.findByRole('dialog')
+    await userEvent.type(screen.getByLabelText('ICE'), contrat.fournisseurs_ice_doublon.exemple_corps.ice)
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByText(contrat.fournisseurs_ice_doublon.exemple.ice_duplicate_warning))
+      .toBeInTheDocument()
+  })
+})
+
 describe('FournisseursStock — doublon de nom (ASTK95)', () => {
   it("affiche l'avertissement de nom renvoyé par le serveur", async () => {
     stockApi.createFournisseur.mockResolvedValueOnce({

@@ -530,6 +530,8 @@ ignore_imports =
     core.tests.test_sensitive_field_leak -> apps.stock.models
     core.tests.test_public_endpoint_hardening -> apps.ventes.models
     core.tests.test_public_endpoint_hardening -> apps.crm.models
+# ASEC17 — même test : il relit le journal (AuditLog) de l'alerte de sécurité de la bannière.
+    core.tests.test_public_endpoint_hardening -> apps.audit.models
     core.tests.test_registre_traitements -> apps.crm.models
 # YHARD4/YHARD10 — two more core cross-layer INTEGRATION tests: YHARD4 asserts
 # the i18n content-translation layer round-trips a real domain serializer, and

@@ -520,7 +520,7 @@ export default function FacturesFournisseur() {
   useEffect(() => { reload() }, [aPayerSeul, enExceptionSeul])
 
   useEffect(() => {
-    stockApi.getFournisseurs({ page_size: 1000 })
+    stockApi.getAllFournisseurs()
       .then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getBonsCommandeFournisseur({ page_size: 1000 })
       .then((r) => setBons(r.data?.results ?? r.data ?? [])).catch(() => {})

@@ -72,27 +72,16 @@ def reset_relance_escalation(facture):
     return changed
 
 
-def _rouvrir_facture_apres_rejet(facture):
+def _rouvrir_facture_apres_rejet(facture, user=None):
     """YLEDG5/AUD104 — recalcule le statut d'une facture après un rejet.
 
-    Reste dû > 0 → repasse ÉMISE (ou EN_RETARD si l'échéance est déjà
-    dépassée) ; jamais « payée » ni « annulée » — les états terminaux sont
-    préservés à part la réouverture. Idempotent."""
-    from django.utils import timezone
-    from ..models import Facture
-
-    facture.refresh_from_db()
-    # CIQ214 — rouverte (et relancée) seulement si l'EXIGIBLE redevient dû :
-    # une retenue de garantie non libérée ne rouvre pas la facture.
-    if facture.statut == Facture.Statut.ANNULEE \
-            or facture.montant_exigible <= 0:
-        return
-    today = timezone.now().date()
-    if facture.date_echeance and facture.date_echeance < today:
-        facture.statut = Facture.Statut.EN_RETARD
-    else:
-        facture.statut = Facture.Statut.EMISE
-    facture.save(update_fields=['statut'])
+    ATOT8 — la réouverture vit désormais dans LE service unique
+    ``encaissements.recalculer_statut_paiement`` (aussi appelé à la création
+    et à l'annulation d'un avoir) : reste exigible > 0 → ÉMISE (ou EN_RETARD
+    si l'échéance est dépassée) ; une retenue de garantie non libérée ne
+    rouvre pas (CIQ214) ; états terminaux préservés. Idempotent."""
+    from .encaissements import recalculer_statut_paiement
+    recalculer_statut_paiement(facture, user=user, source='rejet_paiement')
 
 
 class PaiementRejectError(Exception):
@@ -139,7 +128,7 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
 
         facture = paiement.facture
         if facture is not None:
-            _rouvrir_facture_apres_rejet(facture)
+            _rouvrir_facture_apres_rejet(facture, user=user)
             from .. import activity
             activity.log_facture_paiement_rejete(facture, user, paiement, motif)
         else:
@@ -153,7 +142,7 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
                 touchee = affectation.facture
                 if touchee is None:
                     continue
-                _rouvrir_facture_apres_rejet(touchee)
+                _rouvrir_facture_apres_rejet(touchee, user=user)
                 from .. import activity
                 activity.log_facture_paiement_rejete(
                     touchee, user, paiement, motif)

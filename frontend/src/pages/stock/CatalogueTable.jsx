@@ -76,17 +76,11 @@ function VignetteProduit({ produit }) {
 const valeurVente = (rows) => rows.reduce(
   (s, p) => s + (parseFloat(p.prix_vente) || 0) * (Number(p.quantite_stock) || 0), 0)
 
-// Suggestion de réassort : vise 2× le seuil, jamais négative. Sert au libellé
-// « commander ~N » sur un produit en stock bas. ERR-QAH-STOCK-REAPPRO-QTE-
-// INCOHERENTE — MÊME formule que l'API `a-reapprovisionner` (panneau
-// « Suggestions ») : cible − disponible (stock − réservé) − déjà en commande,
-// pour ne jamais afficher deux quantités différentes pour un même produit.
-const suggestionCommande = (p) => {
-  const seuil = Number(p.seuil_alerte) || 0
-  const disponible = Number(p.quantite_disponible ?? p.quantite_stock) || 0
-  const enCommande = Number(p.quantite_en_commande) || 0
-  return Math.max(seuil * 2 - disponible - enCommande, 0)
-}
+// ASTK207 (MVT-21) — la suggestion de réassort (« commander ~N ») est LUE du
+// serveur (`quantite_suggeree` du ProduitSerializer = `quantite_suggeree_nette`,
+// la même fonction que a-reapprovisionner et previsions-reappro : cible
+// effective − disponible − en commande). Plus aucune formule ici (l'ancien
+// « seuil × 2 » ignorait la cible de réappro et le seuil saisonnier).
 
 /* APX19 — Ton de la jauge par sévérité. La logique de sévérité elle-même
    (`severiteStock`) et le barème de la jauge (`jaugeStock`) vivent dans
@@ -467,7 +461,7 @@ export function CatalogueTable({
     // produit qui en a besoin, et la quantité suggérée est DANS le libellé —
     // c'est elle qui vivait en 3ᵉ ligne de la cellule Seuil.
     if (onReapprovisionner && severiteStock(p) !== SEV_OK) {
-      const suggestion = suggestionCommande(p)
+      const suggestion = Number(p.quantite_suggeree) || 0
       acts.push({
         id: 'reappro',
         label: suggestion > 0

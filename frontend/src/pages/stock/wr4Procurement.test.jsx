@@ -12,7 +12,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 vi.mock('../../api/stockApi', () => ({
   default: {
-    getFournisseurs: vi.fn(),
+    getAllFournisseurs: vi.fn(),
     deleteFournisseur: vi.fn(),
     performanceFournisseur: vi.fn(),
     facturerReception: vi.fn(),
@@ -50,7 +50,7 @@ beforeEach(() => {
       addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
     }))
   }
-  stockApi.getFournisseurs.mockResolvedValue({
+  stockApi.getAllFournisseurs.mockResolvedValue({
     data: [{ id: 9, nom: 'JA Solar', nb_produits: 4, nb_bons_commande: 2 }],
   })
 })
