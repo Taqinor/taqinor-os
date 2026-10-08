@@ -16,6 +16,15 @@ from apps.ventes.tests._quote_engine_common import (
 
 FIXE = "irradiation moyenne du Maroc"
 
+#: Les entrées d'étude (même forme que ``TestEtudeFooter`` du résidentiel) :
+#: sans elles la page « Étude » n'est pas rendue.
+ETUDE = {
+    'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+    'taux_autoconso': 100, 'taux_couverture': 10.4,
+    'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+    'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+}
+
 
 class PhraseEtudeTests(TestCase):
     def setUp(self):
@@ -30,7 +39,9 @@ class PhraseEtudeTests(TestCase):
         self.n += 1
         devis = make_devis(self.company, self.user, self.client_obj, lignes,
                            reference='DEV-AMOT22-%d' % self.n,
-                           etude_params=etude_params)
+                           etude_params={**ETUDE, **etude_params})
+        devis.mode_installation = 'industriel'
+        devis.save(update_fields=['mode_installation'])
         data = build_quote_data(devis, clean_pdf_options(
             {'include_etude': True, 'include_calepinage': False}))
         data['client_ville_libelle'] = ville or ''
@@ -42,7 +53,9 @@ class PhraseEtudeTests(TestCase):
             G.generate_premium_pdf(data, '/tmp/_amot22_test.pdf')
         finally:
             G._render_pdf_weasyprint = orig
-        return capture.get('html', '')
+        html = capture.get('html', '')
+        self.assertIn("\u00c9tude d'autoconsommation", html)
+        return html
 
     def test_mono_avec_batterie(self):
         html = self._html([
