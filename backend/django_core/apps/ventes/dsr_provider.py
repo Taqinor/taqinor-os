@@ -97,6 +97,84 @@ def export_ventes(company, subject_identifier):
     }
 
 
+#: ADEV59 — clés qui portent une POSITION absolue dans ``etude_params.toiture``
+#: (et ses pans) : retirées à l'effacement, la géométrie relative reste.
+CLES_POSITION = frozenset({
+    'pin', 'lat', 'lng', 'lon', 'latitude', 'longitude', 'gps',
+    'coordonnees', 'coordinates', 'centerLat', 'centerLng', 'repereAcquitte',
+})
+
+
+def _sans_position(valeur):
+    """Copie de ``valeur`` sans aucune clé de :data:`CLES_POSITION` — PURE."""
+    if isinstance(valeur, dict):
+        return {k: _sans_position(v) for k, v in valeur.items()
+                if k not in CLES_POSITION}
+    if isinstance(valeur, list):
+        return [_sans_position(v) for v in valeur]
+    return valeur
+
+
+def _layout_sans_position(layout):
+    """ADEV59 — la copie du toit portée par le devis, sans position absolue.
+
+    MÊME règle que l'effacement du calepinage (``document_anonymise`` : épingle
+    retirée, chaque coordonnée ``[lng, lat]`` translatée en mètres LOCAUX
+    relatifs à l'ancienne épingle) — réutilisée, jamais recopiée (fonction
+    pure, aucun modèle du calepinage importé). Le repère du lead acquitté
+    (``repereAcquitte``) part aussi : c'est une position de la maison. Les
+    panneaux, comptes et résultats restent (cohérence des totaux).
+    """
+    if not isinstance(layout, dict) or not layout:
+        return layout
+    from apps.calepinage.dsr_provider import document_anonymise
+
+    nouveau = document_anonymise(layout)
+    if isinstance(nouveau, dict):
+        nouveau.pop('pin', None)
+        nouveau.pop('repereAcquitte', None)
+    return nouveau
+
+
+def _effacer_copie_toit(devis):
+    """ADEV59 (C-ADEV-042) — efface la copie du toit portée par les devis du
+    sujet : ``roof_layout`` sans épingle ni coordonnée absolue,
+    ``etude_params.toiture`` sans coordonnées, ``roof_image`` détachée (objet
+    stocké supprimé quand aucun autre devis ne le référence). Rend le nombre de
+    devis modifiés. Aucun statut, montant ni référence n'est touché."""
+    from .models import Devis
+    from .services import supprimer_fichier_toiture
+
+    count = 0
+    ids = list(devis.values_list('pk', flat=True))
+    for d in Devis.objects.filter(pk__in=ids):
+        champs = []
+        layout = _layout_sans_position(d.roof_layout)
+        if layout != d.roof_layout:
+            d.roof_layout = layout
+            champs.append('roof_layout')
+        etude = d.etude_params
+        if isinstance(etude, dict) and isinstance(etude.get('toiture'), dict):
+            toiture = _sans_position(etude['toiture'])
+            if toiture != etude['toiture']:
+                d.etude_params = {**etude, 'toiture': toiture}
+                champs.append('etude_params')
+        cle = d.roof_image
+        if cle:
+            d.roof_image = None
+            champs.append('roof_image')
+        if not champs:
+            continue
+        d.save(update_fields=champs)
+        count += 1
+        if cle and not Devis.objects.filter(roof_image=cle).exists():
+            try:
+                supprimer_fichier_toiture(cle)
+            except Exception:  # noqa: BLE001 — l'objet stocké est best-effort
+                pass
+    return count
+
+
 def erase_ventes(company, subject_identifier):
     """Pseudonymise les données personnelles détenues par les Ventes.
 
@@ -118,6 +196,8 @@ def erase_ventes(company, subject_identifier):
         e.corps = ''
         e.save(update_fields=['to_email', 'from_email', 'corps'])
         count += 1
+
+    count += _effacer_copie_toit(devis)
 
     return {
         'pseudonymises': count,
