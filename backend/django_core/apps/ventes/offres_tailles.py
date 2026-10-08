@@ -748,7 +748,35 @@ def _tableau_du_devis(devis):
     return tableau if isinstance(tableau, list) else []
 
 
+def borner_eco(champs, toit_max=None):
+    """AMOT32 (C-AMOT-033) — l'Éco tient sous le toit ET sous Max.
+
+    L'Éco est la taille au meilleur payback du balayage, qui ignore le toit :
+    elle pouvait dépasser Max (30 panneaux pour un Max de 26). Propriété
+    tenue ici : ``eco ≤ min(toit_max, max)`` ; une Éco qui ne tient pas est
+    RETIRÉE (collapse), jamais proposée. Pure : rend une copie."""
+    champs = dict(champs or {})
+    eco = champs.get('eco')
+    if eco is None:
+        return champs
+    bornes = [int(b) for b in (toit_max, champs.get('max'))
+              if b is not None and int(b) > 0]
+    if bornes and int(eco) > min(bornes):
+        champs.pop('eco')
+    return champs
+
+
 def _champs_des_tailles(contexte, nb_panneaux_devis):
+    """``{cle: nb_panneaux}`` — les champs des trois tailles, Éco BORNÉE par
+    le toit et par Max (AMOT32 ; devis aux règles d'origine : d'hier)."""
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    champs = _champs_des_tailles_bruts(contexte, nb_panneaux_devis)
+    if not calcul_corrige(contexte.devis):
+        return champs
+    return borner_eco(champs, contexte.toit_max)
+
+
+def _champs_des_tailles_bruts(contexte, nb_panneaux_devis):
     """``{cle: nb_panneaux}`` — le champ PV de chacune des trois tailles.
 
     Une clé ABSENTE = cette taille n'est pas dérivable (ou a convergé vers une
