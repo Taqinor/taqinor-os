@@ -245,7 +245,12 @@ const ventesApi = {
   // Approbation admin de la remise (T17) — débloque l'envoi.
   approuverRemise: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
   // N25 — acceptation explicite (date + nom), déclencheur de chantier + chatter.
-  accepterDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/accepter/`, payload),
+  // L'acceptation crée chantier, contrat, PDF scellé… et dépasse souvent les
+  // 20 s du timeout global (08/10/2026 : 499 nginx, fête jamais lancée alors
+  // que le devis ÉTAIT accepté). On lui laisse 2 min ; les appelants gèrent
+  // eux-mêmes l'erreur (pas de second toast global).
+  accepterDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/accepter/`, payload,
+    { timeout: 120000, suppressErrorToast: true }),
   // WR1 — FG44 : refus explicite (motif/date/chatter), fait avancer le funnel
   // (devis_refused) — chemin canonique, à la place d'un PATCH statut direct.
   refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
@@ -557,6 +562,13 @@ const ventesApi = {
   // Contrat partagé : `apps/ventes/contract_samples/ventes_economie.json`
   // (CALX280, servi par l'action CALX288).
   getEconomieDevis: (id) => api.get(`/ventes/devis/${id}/economie/`),
+}
+
+// 409 « déjà accepté » sur un POST d'acceptation : le devis EST accepté (clic
+// répété, ou réponse précédente perdue) — l'appelant le traite comme un succès.
+export function acceptationDejaFaite(err) {
+  return err?.response?.status === 409
+    && /d[ée]j[àa] accept/i.test(String(err?.response?.data?.detail ?? ''))
 }
 
 export default ventesApi
