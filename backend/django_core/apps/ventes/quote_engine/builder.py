@@ -98,7 +98,10 @@ def _roof_photo_data_uri(devis) -> str:
         from django.contrib.contenttypes.models import ContentType
         from apps.records.models import Attachment
         from apps.records.storage import fetch_attachment
-        ct = ContentType.objects.get(app_label='ventes', model='devis')
+        # APRF3 — ``get_for_model`` lit le cache de ContentType (une seule
+        # requête par processus), plus une par devis.
+        from apps.ventes.models import Devis as _Devis
+        ct = ContentType.objects.get_for_model(_Devis)
         keys = ('toiture', 'calepinage', 'implantation', 'roof', 'panneaux')
         att = None
         for a in (Attachment.objects
@@ -1564,10 +1567,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
+    # APRF3 (C-APRF-001) — chemin des TOTAUX de liste (``display_totals``) :
+    # rien n'est lu hors préchargement — ni pièce jointe (affiche de toiture),
+    # ni révision remplacée, ni lien de partage. Le mode DOCUMENT est
+    # inchangé (drapeau serveur, jamais dans la whitelist des options).
+    _totaux_seuls = bool((pdf_options or {}).get("_totaux_seuls"))
     # PV11 — la fiche technique du produit est jointe ici : la résolution du
     # wattage panneau la lit sans requête supplémentaire par ligne.
-    lignes = list(
-        devis.lignes.select_related("produit", "produit__fiche_technique").all())
+    # APRF3 — lignes servies depuis le PRÉCHARGEMENT de l'appelant
+    # (``lignes__produit__fiche_technique``) quand il le DÉCLARE
+    # (``_lignes_prechargees`` : une page de liste fraîchement chargée) ;
+    # sinon la requête d'hier, mot pour mot — un devis dont les lignes ont pu
+    # bouger depuis son chargement n'est jamais servi depuis un cache périmé.
+    _cache_lignes = getattr(devis, "_prefetched_objects_cache", None) or {}
+    if ((pdf_options or {}).get("_lignes_prechargees")
+            and "lignes" in _cache_lignes):
+        lignes = list(devis.lignes.all())
+    else:
+        lignes = list(devis.lignes.select_related(
+            "produit", "produit__fiche_technique").all())
 
     # ── XSAL14 — Lignes de section/note : rendues HORS totaux, à part ─────────
     # Une ligne de section (intertitre) ou de note (texte sans prix) ne porte NI
@@ -3670,7 +3688,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.ventes.models import ShareLink
         from apps.ventes.utils.client_links import chemin_proposition
         _pk = getattr(devis, "pk", None)
-        if _pk is not None:
+        # APRF3 — aucun lien de partage lu sur le chemin des totaux de liste.
+        if _pk is not None and not _totaux_seuls:
             # ── QRP1/A5 — LE QR SUIT LE LIEN QUI SERT CE DOCUMENT ────────────
             # ``ShareLink.for_devis`` rend le lien à l'EXPIRATION LA PLUS
             # LOINTAINE, sans regarder son niveau : un PDF rendu au niveau
@@ -3758,12 +3777,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QJR628 — marquage de correction : « Document mis à jour le … »
         # (correction après envoi, D-QJR5-1) et « Remplace le devis … »
         # (révision). '' = rien à imprimer (octet-identique).
-        "mis_a_jour_le": date_correction_apres_envoi(devis),
-        "remplace_reference": reference_remplacee(devis),
+        "mis_a_jour_le": ("" if _totaux_seuls
+                          else date_correction_apres_envoi(devis)),
+        "remplace_reference": ("" if _totaux_seuls
+                               else reference_remplacee(devis)),
         "client_name": client_name or "Client",
         # QRES39 — vraie toiture du client (pièce jointe image du devis dont
         # le nom évoque la toiture) ; '' → schéma illustratif.
-        "roof_photo": _roof_photo_data_uri(devis),
+        "roof_photo": "" if _totaux_seuls else _roof_photo_data_uri(devis),
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
@@ -4763,12 +4784,16 @@ def echapper_textes_client(data: dict) -> dict:
     return sortie
 
 
-def display_totals(devis) -> dict:
+def display_totals(devis, *, lignes_prechargees=False) -> dict:
     """Total d'affichage canonique pour la liste des devis — calculé par le
     MÊME chemin que les PDF (mode une-page, qui ne lève jamais), donc identique
     au document au dirham près. Repli sûr sur le total stocké."""
     try:
-        data = build_quote_data(devis, {"pdf_mode": "onepage"})
+        # APRF3 — drapeau serveur « totaux seuls » : aucune lecture hors
+        # préchargement (affiche, révision, lien), mêmes totaux au centime.
+        data = build_quote_data(devis, {
+            "pdf_mode": "onepage", "_totaux_seuls": True,
+            "_lignes_prechargees": bool(lignes_prechargees)})
         # ERR-QAC-MULTIVILLA-TOTAL-XN — la liste, le Kanban, la salle de vente
         # et la page publique des gammes affichent le total ×N que le
         # document imprime et que l'ERP facture (décision fondateur
