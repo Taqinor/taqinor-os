@@ -386,7 +386,6 @@ def copier_devis_sur_facture(facture, devis):
     from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
     from apps.ventes.models import LigneFacture
     from apps.ventes.selectors import nombre_proprietes
-    from apps.ventes.utils.options import option_lines
 
     g = Decimal(str(devis.remise_globale or 0))
     if g:
@@ -396,19 +395,38 @@ def copier_devis_sur_facture(facture, devis):
     facture.arrondi_pas = int(PAS_ARRONDI_DEVIS)
     facture.arrondi_unites = n_prop
     facture.save(update_fields=['arrondi_pas', 'arrondi_unites'])
-    for ligne in option_lines(devis):
-        LigneFacture.objects.create(
-            facture=facture,
-            produit=ligne.produit,
-            designation=ligne.designation,
-            quantite=ligne.quantite * n_prop,
-            prix_unitaire=ligne.prix_unitaire,
-            remise=ligne.remise,
-            # Reporte le taux TVA de la ligne de devis (10/20), pour que la
-            # facture reproduise fidèlement la TVA.
-            taux_tva=ligne.taux_tva,
-        )
+    for champs in lignes_facture_du_devis(devis):
+        LigneFacture.objects.create(facture=facture, **champs)
     return facture
+
+
+def lignes_facture_du_devis(devis, *, taux_effectif=False):
+    """LE PANIER d'un devis tel qu'une facture le recopie (liste de champs
+    ``LigneFacture``) : lignes de l'option effective (``option_lines`` —
+    lignes produit COMPTÉES seulement : ni section/note, ni option non
+    activée), quantité ×N villas, prix, remise de ligne et taux de la ligne.
+
+    Partagé par ``copier_devis_sur_facture`` (BC, facture complète) et par la
+    facture consolidée (ATOT3 : sa boucle ``d.lignes.all()`` recopiait les
+    sections — 500 —, les options non activées et les deux options).
+    ``taux_effectif=True`` reporte ``taux_tva_effectif`` (taux du devis pour
+    une ligne sans taux) : obligatoire quand le repli de la facture n'est pas
+    le taux du devis (consolidée de plusieurs devis)."""
+    from apps.ventes.selectors import nombre_proprietes
+    from apps.ventes.utils.options import option_lines
+
+    n_prop = nombre_proprietes(devis)
+    return [{
+        'produit': ligne.produit,
+        'designation': ligne.designation,
+        'quantite': ligne.quantite * n_prop,
+        'prix_unitaire': ligne.prix_unitaire,
+        'remise': ligne.remise,
+        # Reporte le taux TVA de la ligne de devis (10/20), pour que la
+        # facture reproduise fidèlement la TVA.
+        'taux_tva': (ligne.taux_tva_effectif if taux_effectif
+                     else ligne.taux_tva),
+    } for ligne in option_lines(devis)]
 
 
 class FacturationRefusee(Exception):

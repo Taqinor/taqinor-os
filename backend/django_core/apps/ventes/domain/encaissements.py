@@ -895,6 +895,42 @@ def enregistrer_paiement_avec_retenue(
 
 # ── XFAC11 — Facture consolidée multi-devis/BC d'un même client ────────────
 
+def _composer_remise_et_palier(facture, devis_qs):
+    """ATOT3 — pose sur la consolidée la remise globale et le palier
+    d'arrondi qui lui font valoir Σ TTC des devis (``option_totaux``) AU
+    CENTIME, ou refuse (400) : jamais un total faux.
+
+    Une remise globale n'est composable que si TOUS les devis portent la
+    même ; le palier ARRONDI-100 du devis (appliqué par devis) n'est gardé
+    que s'il redonne la somme, sinon le total brut des lignes est essayé."""
+    from rest_framework.exceptions import ValidationError
+
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.utils.options import option_totaux
+
+    noms = ', '.join(d.reference for d in devis_qs)
+    remises = {Decimal(str(d.remise_globale or 0)) for d in devis_qs}
+    if len(remises) > 1:
+        raise ValidationError({'devis_ids': (
+            f'Les devis {noms} portent des remises globales différentes : '
+            'une seule facture ne peut pas les reproduire au centime. '
+            'Facturez-les séparément.')})
+    attendu = sum((Decimal(str(option_totaux(d)['ttc'])) for d in devis_qs),
+                  Decimal('0'))
+    facture.remise_globale = remises.pop()
+    facture.arrondi_unites = 1
+    for pas in (int(PAS_ARRONDI_DEVIS), 0):
+        facture.arrondi_pas = pas
+        facture.save(update_fields=[
+            'remise_globale', 'arrondi_pas', 'arrondi_unites'])
+        if Decimal(str(facture.total_ttc)) == attendu:
+            return
+    raise ValidationError({'devis_ids': (
+        f'Les devis {noms} ne se regroupent pas en une facture au centime '
+        f'(total attendu {attendu:.2f} MAD : remises ou arrondis non '
+        'composables). Facturez-les séparément.')})
+
+
 def consolider_factures(*, company, devis_ids, user, created_by=None):
     """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
     client (ex. projet multi-sites : ferme à N forages, tranches). Chaque
@@ -963,27 +999,27 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
 
         facture = create_numbered(Facture, company, 'facture', _create)
 
-        from ..selectors import nombre_proprietes
+        # ATOT3 (C-ATOT-002) — chaque devis apporte EXACTEMENT le panier de
+        # `copier_devis_sur_facture` (`lignes_facture_du_devis` : option
+        # effective, lignes comptées seulement, ×N villas, taux par ligne —
+        # effectif, le repli de la consolidée n'étant pas le taux du devis).
+        # La boucle `d.lignes.all()` recopiait les sections (500), les
+        # options non activées et les deux options, et perdait la remise.
+        from apps.ventes.domain.facturation_ops import lignes_facture_du_devis
         for d in devis_qs:
             sous_total = Decimal('0')
-            # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis « ×N villas identiques »
-            # se facture au total ×N (décision fondateur 30/09/2026), comme la
-            # facture de BC : chaque quantité ×N. N=1 → inchangé.
-            n_prop = nombre_proprietes(d)
-            for ligne in d.lignes.all():
-                LigneFacture.objects.create(
-                    facture=facture, produit=ligne.produit,
-                    designation=f'{d.reference} — {ligne.designation}',
-                    quantite=ligne.quantite * n_prop,
-                    prix_unitaire=ligne.prix_unitaire,
-                    remise=ligne.remise, taux_tva=ligne.taux_tva,
-                    source_devis=d,
+            for champs in lignes_facture_du_devis(d, taux_effectif=True):
+                ligne = LigneFacture.objects.create(
+                    facture=facture, source_devis=d,
+                    **{**champs, 'designation':
+                       f'{d.reference} — {champs["designation"]}'},
                 )
-                sous_total += ligne.total_ht * n_prop
+                sous_total += Decimal(str(ligne.total_ht))
             FactureSource.objects.create(
                 company=company, facture=facture, devis=d,
                 sous_total_ht=sous_total,
             )
+        _composer_remise_et_palier(facture, devis_qs)
 
         # AUD101 — l'émission passe par LE service unique, APRÈS la recopie
         # des lignes (émettre une facture consolidée encore vide écrirait une
