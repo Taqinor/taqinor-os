@@ -297,6 +297,56 @@ describe('StockList — export unique sur le moteur DataTable (STKCAT26)', () =>
    (PATCH is_archived=true) ; il ne le SUPPRIME jamais (l'ancien onUndo
    appelait deleteProduit : un produit sans relation disparaissait pour de bon).
    ========================================================================== */
+/* ASTK209 (C-ASTK-053, MVT-22) — l'inventaire physique ne tronque plus 7.5
+   en 7 (parseInt muet) : l'erreur s'affiche sous le champ fautif et rien
+   n'est envoyé tant qu'une ligne est invalide. */
+describe('StockList — inventaire physique : quantités entières (ASTK209)', () => {
+  const ouvrirInventaire = async () => {
+    fireEvent.click(screen.getAllByRole('button', { name: /^Inventaire$/ })[0])
+    return screen.findByRole('dialog')
+  }
+
+  it("7.5 affiche une erreur et n'envoie rien", async () => {
+    renderPage()
+    await ouvrirInventaire()
+    const champ = screen.getByLabelText('Compté — Panneau 550 Wc')
+    fireEvent.change(champ, { target: { value: '7.5' } })
+    fireEvent.click(screen.getByRole('button', { name: "Valider l'inventaire" }))
+    expect(await screen.findByText('Quantité entière ≥ 0 attendue.')).toBeInTheDocument()
+    expect(champ).toHaveAttribute('aria-invalid', 'true')
+    expect(stockApi.inventaire).not.toHaveBeenCalled()
+  })
+
+  it('un négatif est refusé ; une saisie entière part telle quelle', async () => {
+    renderPage()
+    await ouvrirInventaire()
+    fireEvent.change(screen.getByLabelText('Compté — Panneau 550 Wc'), { target: { value: '-3' } })
+    fireEvent.change(screen.getByLabelText('Compté — Onduleur Deye 5 kW'), { target: { value: '7' } })
+    fireEvent.click(screen.getByRole('button', { name: "Valider l'inventaire" }))
+    expect(await screen.findByText('Quantité entière ≥ 0 attendue.')).toBeInTheDocument()
+    expect(stockApi.inventaire).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Compté — Panneau 550 Wc'), { target: { value: '7' } })
+    fireEvent.click(screen.getByRole('button', { name: "Valider l'inventaire" }))
+    await waitFor(() => expect(stockApi.inventaire).toHaveBeenCalledWith({
+      motif: '',
+      lignes: [{ produit: 1, quantite_comptee: 7 }, { produit: 2, quantite_comptee: 7 }],
+    }))
+  })
+
+  it('le 400 serveur par ligne est affiché sous le champ du produit', async () => {
+    stockApi.inventaire.mockRejectedValueOnce({
+      response: { status: 400, data: { error: 'x', lignes: { 0: ['Quantité entière ≥ 0 attendue.'] } } },
+    })
+    renderPage()
+    await ouvrirInventaire()
+    fireEvent.change(screen.getByLabelText('Compté — Panneau 550 Wc'), { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: "Valider l'inventaire" }))
+    expect(await screen.findByText('Quantité entière ≥ 0 attendue.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Compté — Panneau 550 Wc')).toHaveAttribute('aria-invalid', 'true')
+  })
+})
+
 describe('StockList — annuler un désarchivage (ASTK83)', () => {
   it('annuler un désarchivage ré-archive sans supprimer', async () => {
     const archive = baseProduit({ id: 7, nom: 'Ancien câble', sku: 'CAB-OLD', is_archived: true })

@@ -162,25 +162,52 @@ def export_products_xlsx(produits):
 # action amont peut transformer ces manques en un BonCommandeFournisseur
 # brouillon. Le prix d'achat reste INTERNE (jamais sur un document client).
 
+def _quantite_comptee_entiere(valeur):
+    """ASTK209 — ``valeur`` en ``int`` si c'est un entier ≥ 0 (``7``,
+    ``"7"``, ``7.0``), sinon ``None`` (``7.5``, ``"7.5"``, ``-3``, ``True``,
+    texte, absent)."""
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = Decimal(str(valeur).strip())
+    except (InvalidOperation, ValueError):
+        return None
+    if not nombre.is_finite() or nombre != nombre.to_integral_value() or nombre < 0:
+        return None
+    return int(nombre)
+
+
 def apply_inventory_count(*, company, user, motif, lignes):
     """N16 — inventaire : pose un comptage physique par produit et enregistre
     l'écart en MouvementStock (AJUSTEMENT). Renvoie {ajustes, inchanges,
     mouvements:[…]}. Le stock devient la quantité comptée ; rien n'est touché
     quand le comptage = stock actuel. Tout est scopé à la société."""
     from django.db import transaction
+    from rest_framework.exceptions import ValidationError
     from .models import Produit, MouvementStock
+
+    # ASTK209 (C-ASTK-053, MVT-22) — chaque quantité comptée doit être un
+    # ENTIER ≥ 0 : 7.5 n'est plus tronqué en 7, "7.5" et -3 ne sont plus
+    # ignorés en silence. Toutes les lignes sont validées AVANT toute
+    # écriture : une seule ligne invalide → 400 qui nomme chaque ligne
+    # fautive (par index), rien n'est appliqué.
+    lignes = list(lignes or [])
+    erreurs = {}
+    comptes = []
+    for index, ligne in enumerate(lignes):
+        compte = _quantite_comptee_entiere(
+            ligne.get('quantite_comptee') if isinstance(ligne, dict) else None)
+        if compte is None:
+            erreurs[str(index)] = ['Quantité entière ≥ 0 attendue.']
+        comptes.append(compte)
+    if erreurs:
+        raise ValidationError({'lignes': erreurs})
 
     motif = (motif or '').strip()
     result = {'ajustes': 0, 'inchanges': 0, 'mouvements': []}
     with transaction.atomic():
-        for ligne in (lignes or []):
+        for ligne, compte in zip(lignes, comptes):
             pid = ligne.get('produit')
-            try:
-                compte = int(ligne.get('quantite_comptee'))
-            except (TypeError, ValueError):
-                continue
-            if compte < 0:
-                continue
             produit = Produit.objects.select_for_update().filter(
                 id=pid, company=company).first()
             if produit is None:
