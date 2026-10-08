@@ -105,6 +105,52 @@ NB_PARTITIONS = 8
 # réel que le rapport imprime en CI.
 PLANCHER_EXERCES_PCT = 30
 
+# ── ASEC18 — étape « écriture » (FK inscriptible vers une ligne du voisin) ───
+#
+# Pour chaque viewset EXERCÉ, l'administrateur de A PATCHe SON objet (et, si
+# la route existe, rejoue sa création) en posant dans chaque FK inscriptible
+# vers un modèle tenant l'identifiant d'une ligne de B. Attendu : 400/404 (ou
+# champ ignoré) et la relation relue EN BASE ne pointe jamais la ligne de B.
+#
+# Exemptions = liste NOMMÉE (site → (raison, tâche qui la retire)) qui ne peut
+# que décroître, plus les sites encore constatés d'ERR-SPL72 lus dans
+# ``scripts/fk_scoping_allow.txt`` (même format ``chemin::Serializer.champ``,
+# même propriétaire ; chaque ligne retirée là-bas l'est ici). Vide pour les
+# sites corrigés par ASEC6, 7, 22, 26, 27, 28, 30, 32, 33, 34, 35.
+EXEMPTIONS_ECRITURE = {}
+EXEMPTIONS_ECRITURE_PLAFOND = 0
+TACHE_SPL72 = 'ERR-SPL72-FK-SCOPING-95'
+
+#: Part minimale, par tranche, des sites d'écriture (viewsets à modèle servant
+#: PATCH ou création) dont l'étape a réellement inspecté le sérialiseur.
+PLANCHER_ECRITURE_PCT = 30
+
+
+@functools.lru_cache(maxsize=None)
+def sites_spl72():
+    """Sites ERR-SPL72 encore ouverts (``scripts/fk_scoping_allow.txt``)."""
+    from pathlib import Path
+
+    from django.conf import settings
+
+    chemin = (Path(settings.BASE_DIR).resolve().parent.parent / 'scripts'
+              / 'fk_scoping_allow.txt')
+    if not chemin.is_file():
+        return frozenset()
+    return frozenset(
+        ligne.strip() for ligne in chemin.read_text(encoding='utf-8')
+        .splitlines() if ligne.strip() and not ligne.startswith('#'))
+
+
+def exemption_ecriture(site):
+    """Tâche qui retire l'exemption de ``site``, ou ``None``."""
+    if site in EXEMPTIONS_ECRITURE:
+        return EXEMPTIONS_ECRITURE[site][1]
+    if site in sites_spl72():
+        return TACHE_SPL72
+    return None
+
+
 #: Quelle forme de clé d'identifiant chercher dans une ligne de liste.
 _CLES_ID = ('id', 'pk')
 
@@ -112,6 +158,11 @@ _CLES_ID = ('id', 'pk')
 @functools.lru_cache(maxsize=None)
 def _entrees():
     return tuple(ts.decouvrir_viewsets())
+
+
+@functools.lru_cache(maxsize=None)
+def _apiviews_ecriture():
+    return tuple(ts.decouvrir_apiviews_ecriture())
 
 
 def _a_balayer(index):
@@ -148,6 +199,11 @@ class _Resultat:
     sondes: int = 0
     non_sondees: int = 0
     a_liste_voit: bool = False
+    # ASEC18 — étape « écriture » : sans_ecriture | exerce | non_exerce
+    ecriture: str = 'sans_ecriture'
+    constats_fk: list = field(default_factory=list)
+    sites_sondes: set = field(default_factory=set)
+    fk_sondees: int = 0
 
 
 class _BalayageTenant:
@@ -166,21 +222,40 @@ class _BalayageTenant:
 
     # -- orchestration --------------------------------------------------------
 
-    def test_isolation_de_chaque_viewset_de_la_tranche(self):
+    def _resultats_tranche(self):
+        """Le balayage de la tranche, joué UNE fois par classe : les deux
+        tests (isolation, écriture) jugent les mêmes résultats — la tranche
+        ne coûte pas deux constructions du parc."""
+        cls = type(self)
+        cache_classe = cls.__dict__.get('_resultats_caches')
+        if cache_classe is not None:
+            return cache_classe
         entrees = _a_balayer(self.INDEX)
         self.assertTrue(entrees, f'tranche {self.INDEX} vide')
         self.client_a = _client(self.user_a)
         self.client_b = _client(self.user_b)
         self.cons_a = ts.Constructeur(self.company_a, self.user_a, ts.MARQUE_A)
         self.cons_b = ts.Constructeur(self.company_b, self.user_b, ts.MARQUE_B)
-        resultats = []
-        for entree in entrees:
-            with self.subTest(viewset=entree.libelle):
-                res = self._balayer_protege(entree)
-                resultats.append(res)
-                self._verifier_cliquet(res)
+        resultats = [self._balayer_protege(entree) for entree in entrees]
         self._rapport(resultats)
+        cls._resultats_caches = resultats
+        return resultats
+
+    def test_isolation_de_chaque_viewset_de_la_tranche(self):
+        resultats = self._resultats_tranche()
+        for res in resultats:
+            with self.subTest(viewset=res.libelle):
+                self._verifier_cliquet(res)
         self._verifier_couverture(resultats)
+
+    def test_ecriture_fk_voisine_refusee(self):
+        """ASEC18 — A ne peut lier À SON objet aucune ligne de B par une FK
+        inscriptible (PATCH, création) ; exemptions nommées seulement."""
+        resultats = self._resultats_tranche()
+        for res in resultats:
+            with self.subTest(viewset=res.libelle):
+                self._verifier_cliquet_ecriture(res)
+        self._verifier_couverture_ecriture(resultats)
 
     def _balayer_protege(self, entree):
         """Un défaut du BALAI (pas du code testé) ne doit ni tout faire tomber
@@ -252,6 +327,7 @@ class _BalayageTenant:
                          absentes)
         self._sonder_listes(entree, res, model, valeurs, obj=obj)
         self._sonder_company_etrangere(entree, res, model, valeurs)
+        self._sonder_fk_voisines(entree, res, model, valeurs, obj)
         if route is not None and 'delete' in methodes_detail:
             self._sonder(entree, res, 'delete', 'destroy', route, valeurs,
                          absentes)
@@ -471,6 +547,144 @@ class _BalayageTenant:
                 'PATCH partial_update (company étrangère)',
                 f'HTTP {rep.statut} : B a DÉPLACÉ son objet dans la société A'))
 
+    # -- ASEC18 : étape « écriture » ----------------------------------------
+
+    def _sonder_fk_voisines(self, entree, res, model, valeurs, obj):
+        """A pose, sur SON objet, l'identifiant d'une ligne de B dans chaque
+        FK inscriptible vers un modèle tenant (PATCH détail, puis création).
+        La relation relue en base ne doit jamais pointer la ligne de B."""
+        route = entree.route_detail()
+        patch = route is not None and 'patch' in {
+            m for m, _a in route.methodes}
+        creations = entree.routes_action('create')
+        if not patch and not creations:
+            return  # aucun site d'écriture générique sur ce viewset
+        if res.statut != 'exerce':
+            res.ecriture = 'non_exerce'
+            return
+        segments = {k: v for k, v in valeurs.items()
+                    if k != entree.lookup_kwarg}
+        try:
+            with transaction.atomic():
+                action = 'partial_update' if patch else 'create'
+                vue = ts.instancier_vue(
+                    entree, ts.requete_drf(self.user_a, 'patch' if patch
+                                           else 'post'), action,
+                    kwargs=segments)
+                serializer = (vue.get_serializer(obj, data={}, partial=True)
+                              if patch else vue.get_serializer())
+                champs = ts.champs_fk_inscriptibles(serializer)
+        except Exception as exc:  # noqa: BLE001 — dette du balai, nommée
+            res.ecriture = 'non_exerce'
+            res.notes.append(f'écriture : sérialiseur non instanciable '
+                             f'({type(exc).__name__})')
+            return
+        res.ecriture = 'exerce'
+        chemin_patch = route.remplir(valeurs) if patch else None
+        for nom, source, cible, multiple in champs:
+            site = ts.site_serialiseur(serializer, nom)
+            try:
+                avant = ts.valeur_relation(obj, source)
+            except Exception:  # noqa: BLE001 — source hors modèle
+                res.notes.append(f'écriture : {nom} non relisible en base')
+                continue
+            cache_b = dict(self.cons_b._cache)
+            construits_b = {k: set(v)
+                            for k, v in self.cons_b.construits.items()}
+            try:
+                with transaction.atomic():
+                    voisin = self.cons_b.parent(cible)
+            except Exception as exc:  # noqa: BLE001 — construction de B
+                # Les parents construits puis annulés ne doivent plus être
+                # servis par le cache (même règle que ``_balayer_protege``).
+                self.cons_b._cache = cache_b
+                self.cons_b.construits.clear()
+                self.cons_b.construits.update(construits_b)
+                res.notes.append(f'écriture : {nom} non sondé (ligne de B '
+                                 f'{cible._meta.label} : {type(exc).__name__})')
+                continue
+            valeur = [voisin.pk] if multiple else voisin.pk
+            res.sites_sondes.add(site)
+            if chemin_patch is not None:
+                rep = self._requete(
+                    self.client_a, 'patch', chemin_patch, {nom: valeur},
+                    apres=lambda _r, s=source: ts.valeur_relation(obj, s))
+                res.sondes += 1
+                res.fk_sondees += 1
+                if (ts.fk_voisine_ecrite(rep.apres, voisin.pk)
+                        and not ts.fk_voisine_ecrite(avant, voisin.pk)):
+                    res.constats_fk.append((site, f'PATCH fk:{nom}', (
+                        f'HTTP {rep.statut} : la ligne {voisin.pk} de B '
+                        f'({cible._meta.label}) est liée à l\'objet de A')))
+            if creations:
+                self._sonder_creation_fk(entree, res, model, valeurs, obj,
+                                         creations, (nom, source, site),
+                                         voisin, valeur)
+
+    def _sonder_creation_fk(self, entree, res, model, valeurs, obj,
+                            creations, champ, voisin, valeur):
+        nom, source, site = champ
+        chemin = creations[0][1].remplir(valeurs)
+        if chemin is None:
+            return
+        segments = {k: v for k, v in valeurs.items()
+                    if k != entree.lookup_kwarg}
+        try:
+            with transaction.atomic():
+                vue = ts.instancier_vue(
+                    entree, ts.requete_drf(self.user_a, 'post'), 'create',
+                    kwargs=segments)
+                corps = ts.charge_utile(vue.get_serializer(), obj)
+        except Exception:  # noqa: BLE001 — création non rejouable
+            return
+        corps[nom] = valeur
+        filtre = {source: voisin}
+        try:
+            with transaction.atomic():
+                avant = model._base_manager.filter(**filtre).count()
+        except Exception:  # noqa: BLE001 — relation non filtrable
+            return
+        rep = self._requete(
+            self.client_a, 'post', chemin, corps,
+            apres=lambda _r: model._base_manager.filter(**filtre).count())
+        res.sondes += 1
+        res.fk_sondees += 1
+        if 200 <= rep.statut < 300 and (rep.apres or 0) > avant:
+            res.constats_fk.append((site, f'POST fk:{nom}', (
+                f'HTTP {rep.statut} : un objet de A est né lié à la ligne '
+                f'{voisin.pk} de B')))
+
+    def _verifier_cliquet_ecriture(self, res):
+        non_exemptes = [(site, sonde, detail)
+                        for site, sonde, detail in res.constats_fk
+                        if exemption_ecriture(site) is None]
+        self.assertEqual(
+            non_exemptes, [],
+            f'FK VOISINE écrite ({res.libelle}) : ' + ' | '.join(
+                f'{site} [{sonde}] {detail}'
+                for site, sonde, detail in non_exemptes)
+            + ' — bornez le champ (`same_company_fields` / '
+              '`CompanyScopedRelationsMixin` / `validate_<champ>`), sinon '
+              'ouvrez une tâche ERR et nommez le site dans EXEMPTIONS_ECRITURE.')
+        fuyants = {site for site, _s, _d in res.constats_fk}
+        perimees = sorted(site for site in res.sites_sondes
+                          if site in EXEMPTIONS_ECRITURE
+                          and site not in fuyants)
+        self.assertEqual(
+            perimees, [],
+            f'exemption(s) d\'écriture plus observée(s) sur {res.libelle} : '
+            f'{perimees} — retirez-les de EXEMPTIONS_ECRITURE et baissez '
+            'EXEMPTIONS_ECRITURE_PLAFOND.')
+
+    def _verifier_couverture_ecriture(self, resultats):
+        sites = [r for r in resultats if r.ecriture != 'sans_ecriture']
+        exerces = [r for r in sites if r.ecriture == 'exerce']
+        self.assertGreaterEqual(
+            len(exerces) * 100, PLANCHER_ECRITURE_PCT * len(sites),
+            f'ASEC18 tranche {self.INDEX} : seulement {len(exerces)}/'
+            f'{len(sites)} sites d\'écriture exercés (plancher '
+            f'{PLANCHER_ECRITURE_PCT} %).')
+
     # -- cliquets et rapport ------------------------------------------------
 
     def _verifier_cliquet(self, res):
@@ -509,6 +723,23 @@ class _BalayageTenant:
             for res in par_statut.get(statut, []):
                 print(f'  [{statut}] {res.libelle} '  # noqa: T201
                       f'({res.modele or "?"}) : {res.raison}')
+        ecriture = {}
+        for res in resultats:
+            ecriture.setdefault(res.ecriture, []).append(res)
+        apiviews = ts.partition(list(_apiviews_ecriture()), self.INDEX,
+                                NB_PARTITIONS)
+        print(f'ASEC18 — écriture tranche {self.INDEX} : '  # noqa: T201
+              + ', '.join(f'{k}={len(v)}' for k, v in sorted(
+                  ecriture.items()))
+              + f', FK sondées={sum(r.fk_sondees for r in resultats)}, '
+              f'APIView/@api_view à écriture découvertes (non exercées '
+              f'génériquement)={len(apiviews)}')
+        for res in resultats:
+            for site, sonde, detail in res.constats_fk:
+                tache = exemption_ecriture(site)
+                etiquette = f'exemptée {tache}' if tache else 'NON EXEMPTÉE'
+                print(f'  [FK VOISINE {etiquette}] {res.libelle} :: '  # noqa: T201
+                      f'{sonde} — {site} : {detail}')
         for res in resultats:
             for constat in res.constats:
                 print(f'  [FUITE {constat.genre}] {constat.cle} : '  # noqa: T201
@@ -640,8 +871,66 @@ class GardesStatiques(SimpleTestCase):
         self.assertLessEqual(len(FUITES_CONNUES), FUITES_CONNUES_PLAFOND)
 
 
+class GardesEcriture(SimpleTestCase):
+    """ASEC18 — cliquets de l'étape « écriture » et découverte des APIView."""
+
+    def test_les_exemptions_sont_nommees_et_ne_peuvent_que_retrecir(self):
+        for site, (raison, tache) in EXEMPTIONS_ECRITURE.items():
+            with self.subTest(site=site):
+                self.assertIn('::', site, 'site = chemin::Serializer.champ')
+                self.assertGreaterEqual(len(raison), 20)
+                self.assertRegex(tache, r'^(ERR|ASEC)')
+        self.assertLessEqual(len(EXEMPTIONS_ECRITURE),
+                             EXEMPTIONS_ECRITURE_PLAFOND)
+        self.assertGreaterEqual(PLANCHER_ECRITURE_PCT, 30)
+
+    def test_les_sites_spl72_sont_lus(self):
+        """Les exemptions ERR-SPL72 viennent du fichier statique (même
+        format) : un fichier introuvable viderait la liste en silence."""
+        sites = sites_spl72()
+        self.assertTrue(sites, 'scripts/fk_scoping_allow.txt introuvable')
+        self.assertTrue(all('::' in s for s in sites))
+
+    def test_les_apiview_a_ecriture_sont_decouvertes(self):
+        apiviews = _apiviews_ecriture()
+        self.assertGreaterEqual(len(apiviews), 50)
+        viewsets = {e.libelle for e in _entrees()}
+        for libelle, _gabarit, methodes in apiviews:
+            self.assertNotIn(libelle, viewsets)
+            self.assertTrue(set(methodes) <= set(ts.METHODES_ECRITURE))
+
+
 class OracleEtOutillage(SimpleTestCase):
     """Les briques pures du balai, prouvées en isolation."""
+
+    def test_fk_voisine_ecrite(self):
+        self.assertTrue(ts.fk_voisine_ecrite(7, 7))
+        self.assertTrue(ts.fk_voisine_ecrite('7', 7))
+        self.assertTrue(ts.fk_voisine_ecrite(frozenset({3, 7}), 7))
+        self.assertFalse(ts.fk_voisine_ecrite(None, 7))
+        self.assertFalse(ts.fk_voisine_ecrite(frozenset({3}), 7))
+        self.assertFalse(ts.fk_voisine_ecrite(8, 7))
+
+    def test_champs_fk_inscriptibles_et_site(self):
+        from django.apps import apps
+        from rest_framework import serializers as drf
+
+        class _LigneSerializer(drf.ModelSerializer):
+            class Meta:
+                model = apps.get_model('ventes', 'LigneDevis')
+                fields = ['id', 'devis', 'produit', 'designation']
+                read_only_fields = ['devis']
+
+        serializer = _LigneSerializer()
+        champs = {nom: (source, cible._meta.label, multiple)
+                  for nom, source, cible, multiple
+                  in ts.champs_fk_inscriptibles(serializer)}
+        self.assertEqual(champs, {'produit': ('produit', 'stock.Produit',
+                                              False)})
+        self.assertEqual(
+            ts.site_serialiseur(serializer, 'produit'),
+            'backend/django_core/tests/test_tenant_sweep.py'
+            '::_LigneSerializer.produit')
 
     def test_verdict_404_nest_jamais_une_fuite(self):
         self.assertIsNone(ts.verdict('get', 404, None, False))
