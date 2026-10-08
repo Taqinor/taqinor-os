@@ -1721,19 +1721,24 @@ def _materialiser_touche_suivante(etape_close, user=None):
             ecart = ((getattr(gabarit, 'delai_minutes', 0) or 0)
                      - (getattr(gabarit_close, 'delai_minutes', 0) or 0))
             base = etape_close.traite_le or timezone.now()
+            # ACRM36 — le samedi du barreau (CAD43) tient aussi ici.
             echeance = horaires.prochain_creneau_appel(
                 base + datetime.timedelta(minutes=max(0, ecart)),
                 lead.company,
-                canal=_canal_effectif(gabarit))
+                canal=_canal_effectif(gabarit),
+                samedi=bool(getattr(gabarit, 'samedi_ok', False)))
         # CAD22 — une touche ne NAÎT JAMAIS déjà échue : après l'appel du
         # dimanche (posé entre J+5 et J+11), la J+7 du protocole naissait avec
         # une date passée et ne pouvait plus jamais être « à l'heure ». Elle
         # est ramenée au prochain créneau joignable — le J+N du protocole
         # n'est pas touché, seule cette échéance-ci l'est.
+        # ACRM36 — samedi et heure cible du barreau transmis au recalage.
         echeance = cadence_temps.echeance_jamais_echue(
             echeance, company=lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
-            canal=_canal_effectif(gabarit))
+            canal=_canal_effectif(gabarit),
+            samedi=bool(getattr(gabarit, 'samedi_ok', False)),
+            heure_cible=getattr(gabarit, 'heure_cible', None))
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance, due_initial_at=echeance,
@@ -2690,8 +2695,10 @@ def _echeance_configuree(lead, config, *, depuis=None, jours=None):
         dimanche=bool(config.get('dimanche_ok')),
         samedi=bool(config.get('samedi_ok')))
     if echeance < maintenant:
+        # ACRM36 — les drapeaux du barreau voyagent jusqu'au recalage.
         echeance = cadence_temps.echeance_jamais_echue(
-            echeance, company=lead.company, canal=canal)
+            echeance, company=lead.company, canal=canal,
+            samedi=bool(config.get('samedi_ok')), heure_cible=heure)
     return echeance
 
 
@@ -14546,11 +14553,15 @@ def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,
         config = cadence_config.config_cle(lead.company, cle)
         if a_la_date is not None:
             canal_config = _canal_configure(config)
+            # ACRM36 — le samedi de la clé (CAD43) tient aussi à la date
+            # convenue ; l'heure cible n'y entre pas (l'heure est convenue).
             quand = horaires.prochain_creneau_appel(
-                a_la_date, lead.company, canal=canal_config)
+                a_la_date, lead.company, canal=canal_config,
+                samedi=bool(config.get('samedi_ok')))
             if quand < timezone.now():
                 quand = cadence_temps.echeance_jamais_echue(
-                    quand, company=lead.company, canal=canal_config)
+                    quand, company=lead.company, canal=canal_config,
+                    samedi=bool(config.get('samedi_ok')))
         else:
             quand = _echeance_configuree(lead, config, jours=jours)
         libelle = config['libelle']
