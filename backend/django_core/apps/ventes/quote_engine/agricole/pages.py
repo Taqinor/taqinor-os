@@ -898,9 +898,13 @@ def densite_compacte(d) -> int:
         seuils = (7, 9, 13)
     else:
         seuils = (9, 12, 16)
+    # AMOT37 — densité MINIMALE imposée par le renderer quand le rendu
+    # mesuré déborde de ses 3 pages (``_densite_min``, drapeau serveur).
+    plancher = int(d.get("_densite_min") or 0)
     if lignes + options >= seuils[2]:
         return 2
-    return 1 if lignes >= seuils[0] or lignes + options >= seuils[1] else 0
+    calcul = 1 if lignes >= seuils[0] or lignes + options >= seuils[1] else 0
+    return max(calcul, min(plancher, 2))
 
 
 def build_ctx(d):
