@@ -316,7 +316,12 @@ CALEPINAGE_EMPREINTE = ""
 # d'avant. Le délai est celui des articles 49 et 50 — c'est la loi, pas un
 # réglage société, et il ne se recopie nulle part ailleurs dans ce module.
 SIGNE_AU_DOMICILE = False
-DELAI_RETRACTATION_DOMICILE_JOURS = 7
+# AMOT23 — délai légal : UNE source (annexe_domicile, partagée avec le
+# gabarit résidentiel).
+from .annexe_domicile import (  # noqa: E402
+    DELAI_RETRACTATION_DOMICILE_JOURS,
+    corps_annexe_domicile as _corps_annexe_domicile,
+)
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # AGR313 — la synthèse agricole (``agricole/synthese.synthese_agricole``) : la
 # MÊME fonction que le document de 3 pages et /proposition. None hors agricole.
@@ -3656,21 +3661,12 @@ def page_annexe_domicile():
       * ce n'est PAS une seconde voie de PDF (règle #4) : c'est une page de
         plus, rendue par le moteur vendu, dans le même document.
     """
-    _cadre = (f'border:1px dashed {CG4};border-radius:8px;'
-              f'padding:12px 14px;background:white;')
-    _mentions = [
-        "Nom et adresse du vendeur, et nom du représentant qui vous a "
-        "rendu visite.",
-        "Désignation précise de la nature et des caractéristiques des "
-        "biens ou services proposés.",
-        "Conditions d&#8217;exécution du contrat, notamment les modalités "
-        "et le délai de livraison.",
-        "Prix global à payer et modalités de paiement.",
-        "Faculté de renonciation, ainsi que ses conditions d&#8217;exercice, "
-        "et de façon apparente le texte intégral des articles 49 et 50.",
-    ]
-    _mentions_html = "".join(
-        f'<li style="margin-bottom:3px;">{m}</li>' for m in _mentions)
+    # AMOT23 — le CORPS vient de la fonction partagée (annexe_domicile) :
+    # le gabarit résidentiel 3 pages imprime la MÊME annexe.
+    _corps = _corps_annexe_domicile(
+        ref=REF, vendeur=ENT_NOM_MARQUE,
+        couleurs={'navy': CN, 'texte': CG7, 'muet': CG4, 'fond': CG1,
+                  'filet': CG2})
     return f"""
 <div class="page">
   <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -3683,43 +3679,7 @@ def page_annexe_domicile():
   <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
   <div style="padding:14px 24px;flex:1;min-height:0;">
-    <div style="font-size:8pt;color:{CG7};line-height:1.5;margin-bottom:10px;">
-      Cette commande a été signée à votre domicile. La loi
-      n° 31-08 édictant des mesures de protection du consommateur vous
-      ouvre un délai de rétractation de
-      <strong>{DELAI_RETRACTATION_DOMICILE_JOURS} jours</strong> à
-      compter de la commande. Pendant ce délai, <strong>aucun acompte ni
-      aucun paiement ne peut être exigé ni encaissé</strong>
-      (articles 49 et 50).
-    </div>
-
-    <div style="background:{CG1};border:1px solid {CG2};border-radius:7px;padding:9px 12px;margin-bottom:12px;">
-      <div style="font-size:7.5pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Mentions de l&#8217;article 48</div>
-      <ul style="margin:0;padding-left:16px;font-size:7.5pt;color:{CG7};line-height:1.45;">{_mentions_html}</ul>
-    </div>
-
-    <div style="font-size:7.5pt;color:{CG4};font-style:italic;margin-bottom:8px;">
-      Détachez, complétez et renvoyez le formulaire ci-dessous si vous
-      souhaitez renoncer à cette commande.
-    </div>
-
-    <div style="{_cadre}">
-      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Formulaire détachable de rétractation</div>
-      <div style="font-size:8pt;color:{CG7};line-height:1.9;">
-        À l&#8217;attention de : <strong>{ENT_NOM_MARQUE}</strong><br>
-        Je soussigné(e) : _______________________________________________<br>
-        Adresse : ____________________________________________________<br>
-        déclare renoncer à la commande n° <strong>{REF}</strong>,
-        signée le : ___/___/______<br>
-        Fait à : _______________________ le : ___/___/______
-      </div>
-      <div style="display:flex;gap:18px;margin-top:10px;">
-        <div style="flex:1;">
-          <div style="border-bottom:1px solid {CG2};min-height:26px;"></div>
-          <div style="font-size:7pt;color:{CG4};margin-top:3px;">Signature du client (de sa main)</div>
-        </div>
-      </div>
-    </div>
+{_corps}
   </div>
 
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
