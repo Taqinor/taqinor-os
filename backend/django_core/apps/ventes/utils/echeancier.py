@@ -986,7 +986,15 @@ def solde_devis(devis):
          for f in actives for a in f.avoirs.all() if a.statut != 'annulee'),
         Decimal('0'),
     )
-    restant = total - paye - avoirs
+    # ATOT7 (C-ATOT-005) — LA définition unique du reste (D-ATOT-4) : le dû
+    # des factures actives (``Facture.montant_du`` : payé valide, avoirs,
+    # notes de débit, retenues subies, abandon) + ce qui reste à FACTURER
+    # (TTC du devis − facturé net des avoirs, borné à 0). L'ancienne formule
+    # ``total − payé − avoirs`` comptait deux fois un avoir de révision
+    # (déjà sorti du total révisé) et ignorait notes de débit et RAS.
+    du = sum((Decimal(str(f.montant_du)) for f in actives), Decimal('0'))
+    a_facturer = total - (facture - avoirs)
+    restant = du + (a_facturer if a_facturer > 0 else Decimal('0'))
     # ATOT2 — ``tranches_facturees`` ne compte plus que les factures de
     # TRANCHE (la complète et la facture de BC n'en sont pas) ; la porte
     # suivante est DITE par le serveur (contrat ``devis_solde.json``).

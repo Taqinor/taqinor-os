@@ -540,8 +540,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     {'detail': 'Cette facture ne peut plus être annulée.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            paiements = list(locked.paiements.all())
-            net_acompte = sum((p.montant for p in paiements), Decimal('0'))
+            # ATOT7 (D-ATOT-4) — LA définition unique du payé : un paiement
+            # REJETÉ (chèque impayé) n'est ni remboursé ni transféré, et le
+            # net est `Facture.montant_paye` — plus aucune somme locale de
+            # `p.montant` (elle remboursait 45 000 jamais encaissés).
+            paiements = [p for p in locked.paiements.all()
+                         if p.statut != Paiement.Statut.REJETE]
+            net_acompte = Decimal(str(locked.montant_paye))
 
             if acompte_action == 'transferer':
                 if net_acompte <= 0:
