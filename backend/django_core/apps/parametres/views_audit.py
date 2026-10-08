@@ -75,12 +75,15 @@ def purge_audit_retention(request):
     """FG26 — purge le journal d'audit de la société au-delà de sa fenêtre de
     rétention (``CompanyProfile.audit_retention_days``). Admin uniquement.
 
-    No-op (0, 0) si la société n'a pas fixé de fenêtre (rétention illimitée)."""
+    No-op (0, 0) si la société n'a pas fixé de fenêtre (rétention illimitée).
+    APAR3 : plancher légal 365 j, purge journalisée au nom de l'admin ; une
+    erreur de suppression remonte (500 journalisé), jamais avalée."""
     from .retention import purge_company_audit
     company = request.user.company if request.user.company_id else None
     if company is None:
         return Response({'detail': 'Aucune société.'}, status=400)
-    audit_deleted, settings_deleted = purge_company_audit(company)
+    audit_deleted, settings_deleted = purge_company_audit(
+        company, user=request.user)
     return Response({
         'audit_deleted': audit_deleted,
         'settings_deleted': settings_deleted,

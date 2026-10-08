@@ -20,7 +20,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 __all__ = ['CLES_INTERDITES', 'construire_contexte', 'cibles_supportees',
-           'contexte_demonstration', 'EXEMPLES']
+           'contexte_demonstration', 'apercu_contexte', 'EXEMPLES']
 
 #: Fragments de nom qu'un placeholder ne portera JAMAIS (donnée interne).
 CLES_INTERDITES = ('prix_achat', 'marge', 'cout_achat')
@@ -47,6 +47,12 @@ def _contexte_chantier(company, cible_id):
     chantier = installation_scoped(company, cible_id)
     if chantier is None:
         return None
+    return _champs_chantier(chantier)
+
+
+def _champs_chantier(chantier):
+    """APAR33 — clés d'un chantier (pur : même source pour le rendu réel et
+    pour la vérification des clés d'EXEMPLES)."""
     client = getattr(chantier, 'client', None)
     return {
         'reference': _texte(getattr(chantier, 'reference', '')),
@@ -66,6 +72,11 @@ def _contexte_client(company, cible_id):
     client = get_company_client(company, cible_id)
     if client is None:
         return None
+    return _champs_client(client)
+
+
+def _champs_client(client):
+    """APAR33 — clés d'un client (pur)."""
     return {
         'nom': _texte(getattr(client, 'nom', '')),
         'prenom': _texte(getattr(client, 'prenom', '')),
@@ -83,6 +94,11 @@ def _contexte_ticket(company, cible_id):
     ticket = ticket_scoped(company, cible_id)
     if ticket is None:
         return None
+    return _champs_ticket(ticket)
+
+
+def _champs_ticket(ticket):
+    """APAR33 — clés d'un ticket SAV (pur)."""
     client = getattr(ticket, 'client', None)
     return {
         'reference': _texte(getattr(ticket, 'reference', '')),
@@ -118,10 +134,9 @@ def _contexte_objet_custom(company, cible_id):
 # NTEXT39 — contexte de DÉMONSTRATION (aperçu de mise en page).
 #
 # Aucune requête base, aucune donnée réelle : des valeurs d'exemple, par cible,
-# pour vérifier la mise en page d'un gabarit AVANT de l'utiliser. Un
-# placeholder inconnu du jeu d'exemples reçoit une valeur générique dérivée de
-# son nom — l'aperçu montre donc TOUS les emplacements remplis, jamais un
-# gabarit à moitié vide.
+# pour vérifier la mise en page d'un gabarit AVANT de l'utiliser. APAR33 : un
+# placeholder que le rendu réel ne servira pas n'est plus rempli d'une valeur
+# inventée — il reste vide (comme au rendu) et l'aperçu le SIGNALE.
 # ---------------------------------------------------------------------------
 
 #: Valeurs d'exemple par cible (mêmes clés que les résolveurs réels ci-dessus).
@@ -161,20 +176,60 @@ EXEMPLES = {
 }
 
 
+#: Cibles à schéma DYNAMIQUE : leurs clés (champs ``customfields``) ne sont
+#: connues qu'avec une fiche réelle — l'aperçu y garde une valeur d'exemple
+#: générique plutôt qu'un faux avertissement.
+CIBLES_SCHEMA_DYNAMIQUE = ('objet_custom',)
+
+
+def _envelopper(cible, contexte):
+    """Même enveloppe que le rendu réel : clés plates ET ``{cible: {...}}``
+    (``{{ reference }}`` comme ``{{ chantier.reference }}``)."""
+    return {**contexte, cible: dict(contexte)}
+
+
+def _connue(nom, cible, base):
+    """Vrai si le placeholder ``nom`` est servi par l'enveloppe du rendu réel."""
+    parts = str(nom).split('.')
+    if len(parts) == 1:
+        return parts[0] in base
+    return len(parts) == 2 and parts[0] == cible and parts[1] in base
+
+
+def apercu_contexte(cible, variables=None):
+    """APAR33 — contexte d'APERÇU + avertissements.
+
+    Le contexte a la MÊME enveloppe que :func:`construire_contexte` (clés
+    plates + ``{cible: {...}}``), alimentée par :data:`EXEMPLES` (mêmes clés
+    que les résolveurs). Une variable que le rendu réel ne servira jamais
+    (faute de frappe, ``{{ clien_nom }}``) n'est plus « inventée » : elle reste
+    vide dans l'aperçu comme au rendu, et un avertissement la signale. La garde
+    ``_propre`` s'applique comme au rendu réel.
+
+    Retourne ``(contexte, avertissements)``.
+    """
+    cle = (cible or '').strip().lower()
+    base = dict(EXEMPLES.get(cle, {}))
+    avertissements = []
+    for nom in variables or []:
+        if _connue(nom, cle, base):
+            continue
+        if cle in CIBLES_SCHEMA_DYNAMIQUE:
+            racine = str(nom).split('.')[-1]
+            base.setdefault(racine, f'Exemple {racine.replace("_", " ")}')
+            continue
+        avertissements.append(f'variable inconnue : {nom}')
+    base = _propre(base)
+    return _envelopper(cle, base), avertissements
+
+
 def contexte_demonstration(cible, variables=None):
     """Jeu de valeurs de DÉMONSTRATION pour ``cible`` (jamais une vraie fiche).
 
-    ``variables`` = placeholders réellement présents dans le gabarit : chacun
-    reçoit une valeur, prise dans :data:`EXEMPLES` quand elle existe, sinon
-    générée depuis le nom du placeholder. La garde ``_propre`` s'applique comme
-    au rendu réel (aucune clé de prix d'achat / marge, même en exemple).
+    APAR33 — enveloppe du rendu réel, sans valeur inventée pour une variable
+    inconnue (voir :func:`apercu_contexte`, qui rend aussi les avertissements).
     """
-    base = dict(EXEMPLES.get((cible or '').strip().lower(), {}))
-    for nom in variables or []:
-        racine = str(nom).split('.')[0]
-        if racine not in base:
-            base[racine] = f'Exemple {racine.replace("_", " ")}'
-    return _propre(base)
+    return apercu_contexte(cible, variables)[0]
 
 
 #: Registre FERMÉ cible → constructeur de contexte.
@@ -212,5 +267,4 @@ def construire_contexte(cible, company, cible_id):
     # Deux écritures pour le même contenu : ``{{ reference }}`` (plat) et
     # ``{{ chantier.reference }}`` (préfixé par la cible, comme les exemples
     # de gabarit NTEXT18). Aucune donnée supplémentaire n'est exposée.
-    cle = (cible or '').strip().lower()
-    return {**contexte, cle: dict(contexte)}
+    return _envelopper((cible or '').strip().lower(), contexte)

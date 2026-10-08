@@ -44,3 +44,44 @@ def notifier_changement_plan(profile, *, ancien_plan_id, user=None):
         })
     except Exception:  # noqa: BLE001 — jamais bloquant
         pass
+
+
+def journaliser_modification_palier(plan, avant, user=None):
+    """APAR55 — trace la modification d'un PALIER ``PlanLicence`` (admin
+    founder, ``apps.adminops.admin.PlanLicenceAdmin.save_model``) dans le
+    journal ``licence`` de CHAQUE société rattachée à ce palier (avant/après).
+
+    ``avant`` : ``{champ: valeur}`` lu en base AVANT l'enregistrement. Retourne
+    le nombre de lignes écrites. Une société n'apprend jamais en silence que
+    son palier a changé de contenu."""
+    from .models import CompanyProfile, SettingsAuditLog
+
+    champs = (
+        ('modules_inclus', 'Modules inclus du palier'),
+        ('actif', 'Palier actif'),
+        ('nom', 'Nom du palier'),
+        ('code', 'Code du palier'),
+    )
+    changes = []
+    for champ, libelle in champs:
+        ancien = (avant or {}).get(champ)
+        nouveau = getattr(plan, champ, None)
+        if champ == 'modules_inclus':
+            ancien = sorted(ancien or [])
+            nouveau = sorted(nouveau or [])
+        if ancien != nouveau:
+            changes.append((champ, libelle, ancien, nouveau))
+    if not changes:
+        return 0
+    ecrites = 0
+    profils = CompanyProfile.objects.filter(plan_id=plan.pk).exclude(
+        company__isnull=True).select_related('company')
+    for profil in profils:
+        for champ, libelle, ancien, nouveau in changes:
+            SettingsAuditLog.log_change(
+                company=profil.company, user=user, section='licence',
+                field=f'palier.{champ}',
+                field_label=f'{libelle} « {plan.nom} »',
+                old=ancien, new=nouveau)
+            ecrites += 1
+    return ecrites
