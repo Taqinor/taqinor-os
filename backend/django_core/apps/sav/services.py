@@ -152,15 +152,20 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
     crees = 0
     existants = 0
     lignes = []
-    seen = set()
+    # ACHT46 — une entrée par produit, quantité cumulée des lignes.
+    ordre = []
+    quantites = {}
+    designations = {}
     for ligne in bom:
         produit_id = (ligne or {}).get('produit_id')
         if not produit_id:
             continue
-        # Plusieurs lignes peuvent référencer le même produit : on ne crée
-        # qu'un seul équipement par produit (idempotence intra-balayage).
-        if produit_id in seen:
-            continue
+        if produit_id not in quantites:
+            ordre.append(produit_id)
+            quantites[produit_id] = 0
+            designations[produit_id] = ligne.get('designation')
+        quantites[produit_id] += _quantite_ligne(ligne)
+    for produit_id in ordre:
         produit = resolve_produit(produit_id)
         if produit is None:
             continue
@@ -169,11 +174,11 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
         categorie = getattr(produit, 'categorie', None)
         if getattr(categorie, 'type_equipement', None) in TYPES_HORS_PARC:
             continue
-        seen.add(produit_id)
-        _equip, created = ensure_equipement_for_bom_line(
-            company=company, produit=produit, installation=installation,
-            date_pose=date_pose, created_by=created_by)
-        designation = (ligne.get('designation')
+        created = _balayer_produit(
+            company=company, installation=installation, produit=produit,
+            quantite_ligne=quantites[produit_id], date_pose=date_pose,
+            created_by=created_by)
+        designation = (designations[produit_id]
                        or getattr(produit, 'nom', '') or '')
         lignes.append({'designation': designation, 'cree': created})
         if created:
@@ -181,6 +186,120 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
         else:
             existants += 1
     return {'crees': crees, 'existants': existants, 'lignes': lignes}
+
+
+def _quantite_ligne(ligne):
+    """Quantité entière (≥ 1) d'une ligne de nomenclature."""
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+    try:
+        qte = int(Decimal(str((ligne or {}).get('quantite') or 1)).quantize(
+            Decimal('1'), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError):
+        qte = 1
+    return max(qte, 1)
+
+
+def _equipements_produit(company, installation, produit):
+    """(séries relevées, placeholders sans série) du chantier pour ce produit,
+    hors équipements mis au rebut."""
+    from django.db.models import Q
+
+    from .models import Equipement
+    base = Equipement.objects.filter(
+        company=company, installation=installation, produit=produit,
+        mis_au_rebut=False)
+    sans_serie = Q(numero_serie__isnull=True) | Q(numero_serie='')
+    return base.exclude(sans_serie), base.filter(sans_serie).order_by('pk')
+
+
+def _balayer_produit(*, company, installation, produit, quantite_ligne,
+                     date_pose, created_by):
+    """ACHT46 — état cible du parc d'un (chantier, produit) à la réception,
+    indépendant de l'ordre réception / relevé : les équipements à série
+    relevés AVANT la réception (datés du jour du relevé) sont recalés à la
+    date de réception, et un placeholder sans série existe tant que les séries
+    relevées sont moins nombreuses que la quantité de la ligne. Renvoie True
+    si un équipement a été créé."""
+    series, placeholders = _equipements_produit(company, installation, produit)
+    nb_series = series.count()
+    if date_pose:
+        for eq in series:
+            cree_le = (timezone.localtime(eq.date_creation).date()
+                       if eq.date_creation else None)
+            if eq.date_pose == cree_le and eq.date_pose != date_pose:
+                eq.date_pose = date_pose
+                eq.recompute_garanties()
+                eq.save(update_fields=[
+                    'date_pose', 'date_fin_garantie',
+                    'date_fin_garantie_production'])
+    if placeholders.exists() or nb_series >= quantite_ligne:
+        return False
+    create_equipement_from_serial(
+        company=company, produit=produit, installation=installation,
+        numero_serie=None, date_pose=date_pose, created_by=created_by)
+    return True
+
+
+def assurer_equipement_chantier(*, company, installation, produit,
+                                numero_serie, quantite_ligne, date_pose,
+                                created_by):
+    """ACHT46 — ÉCRIVAIN UNIQUE du parc d'un chantier : le relevé d'une série
+    remplit le placeholder sans série de (chantier, produit) quand c'est la
+    dernière série attendue de la ligne, sinon crée l'équipement et laisse le
+    placeholder. Garde de doublon alignée sur la contrainte DB
+    ``(company, numero_serie)`` + savepoint : jamais d'exception.
+
+    Renvoie ``('cree'|'rempli'|'doublon', equipement)``."""
+    from django.db import IntegrityError, transaction
+
+    from .models import Equipement
+
+    numero_serie = (numero_serie or '').strip() or None
+    if numero_serie:
+        existant = Equipement.objects.filter(
+            company=company, numero_serie=numero_serie).first()
+        if existant is not None:
+            return 'doublon', existant
+    series, placeholders = _equipements_produit(company, installation, produit)
+    placeholder = placeholders.first() if numero_serie else None
+    quantite_ligne = max(int(quantite_ligne or 1), 1)
+    try:
+        with transaction.atomic():
+            if placeholder is not None and series.count() + 1 >= quantite_ligne:
+                placeholder.numero_serie = numero_serie
+                placeholder.save(update_fields=['numero_serie'])
+                return 'rempli', placeholder
+            equip = create_equipement_from_serial(
+                company=company, produit=produit, installation=installation,
+                numero_serie=numero_serie, date_pose=date_pose,
+                created_by=created_by)
+            return 'cree', equip
+    except IntegrityError:
+        existant = Equipement.objects.filter(
+            company=company, numero_serie=numero_serie).first()
+        return 'doublon', existant
+
+
+def recaler_garanties_chantier(*, company, installation, ancienne_date,
+                               nouvelle_date):
+    """ACHT46 — la date de réception d'un chantier est corrigée : les
+    équipements datés de l'ANCIENNE date passent à la nouvelle (garanties
+    recalculées) ; un équipement dont la date a été modifiée à la main est
+    intact. Renvoie le nombre d'équipements recalés."""
+    from .models import Equipement
+
+    if not nouvelle_date or ancienne_date == nouvelle_date:
+        return 0
+    recales = 0
+    for eq in Equipement.objects.filter(
+            company=company, installation=installation,
+            date_pose=ancienne_date, mis_au_rebut=False):
+        eq.date_pose = nouvelle_date
+        eq.recompute_garanties()
+        eq.save(update_fields=[
+            'date_pose', 'date_fin_garantie', 'date_fin_garantie_production'])
+        recales += 1
+    return recales
 
 
 def assign_technicien_auto(*, company):
