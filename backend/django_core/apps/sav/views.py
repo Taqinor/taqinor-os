@@ -2215,7 +2215,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
         # ASAV25 — le doublon doit être VISIBLE par l'utilisateur (sinon sa
         # fusion transférerait son chatter vers un ticket qu'il voit).
-        doublon = _tickets_visibles(request).filter(pk=doublon_id).first()
+        doublon = _tickets_visibles(request).filter(
+            pk=doublon_id, company=principal.company).first()
         if doublon is None:
             return Response({'detail': 'Ticket doublon introuvable.'}, status=404)
 
