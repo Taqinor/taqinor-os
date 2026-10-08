@@ -131,10 +131,12 @@ class AUD521ScansSlaSansNPlusUnTest(TestCase):
             date_ouverture=self.today - timedelta(days=30),
             sla_due_at=self.today - timedelta(days=10))
 
-        self.assertEqual(scan_sla_breaches(), 1)
+        # ASAV57 — le retard est calculé pour les deux sociétés ; seule la
+        # société ON reçoit une NOTIFICATION.
+        self.assertEqual(scan_sla_breaches(), 2)
         t_off.refresh_from_db()
         t_on.refresh_from_db()
-        self.assertFalse(t_off.sla_breach)
+        self.assertTrue(t_off.sla_breach)
         self.assertTrue(t_on.sla_breach)
 
     def test_societe_sans_reglage_enregistre_reste_servie(self):
@@ -152,7 +154,7 @@ class AUD521ScansSlaSansNPlusUnTest(TestCase):
             date_ouverture=self.today - timedelta(days=30),
             sla_due_at=self.today - timedelta(days=10))
         from apps.sav.views import scan_sla_breaches
-        # sla_breach_enabled est False par défaut → aucun breach posé, mais
+        # ASAV57 — le retard est calculé même interrupteur OFF (défaut) ;
         # le scan ne doit pas exploser sur la société sans réglage.
-        self.assertEqual(scan_sla_breaches(), 0)
+        self.assertEqual(scan_sla_breaches(), 1)
         self.assertTrue(SavSlaSettings.objects.filter(company=company).exists())

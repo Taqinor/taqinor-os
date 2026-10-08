@@ -383,8 +383,8 @@ def compute_sla_reponse_due_at(company, client, priorite, date_ouverture):
     from .models import SavSlaSettings
 
     sla = SavSlaSettings.get(company)
-    if not sla.sla_breach_enabled:
-        return None
+    # ASAV57 (D-ASAV-5 Q2 a) — l'interrupteur ``sla_breach_enabled`` ne
+    # gouverne plus que les NOTIFICATIONS : l'échéance est toujours calculée.
     jours = response_days_pour(company, client, priorite)
     if jours is None:
         return None
@@ -435,8 +435,9 @@ def compute_sla_echeance(company, client, priorite, date_ouverture,
     from .models import SavSlaSettings
 
     sla = SavSlaSettings.get(company)
-    if not sla.sla_breach_enabled:
-        return None, None
+    # ASAV57 (D-ASAV-5 Q2 a) — l'échéance est TOUJOURS calculée ;
+    # ``sla_breach_enabled`` ne gouverne plus que les notifications (scan,
+    # pré-alerte, escalade).
 
     # NTSRV11 — chemin HEURES ouvrées (opt-in double : flag + clé de priorité).
     if sla.sla_heures_ouvrees_actif:

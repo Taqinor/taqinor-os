@@ -1206,17 +1206,16 @@ def ticket_en_retard_sla(ticket, today=None, *, sla_actif=None):
     En retard = société au SLA activé, ticket ouvert non annulé portant une
     échéance, et ``today`` au-delà de l'échéance EFFECTIVE
     (``sla_due_at_effectif`` : pauses « en attente client » décomptées).
-    Société sans SLA = jamais en retard. ``sla_actif`` évite la lecture du
+    ASAV57 : l'interrupteur société ne change plus le retard. ``sla_actif``
+    évite la lecture du
     réglage quand l'appelant l'a déjà (balayages sans N+1)."""
     if not ticket.sla_due_at or ticket.annule:
         return False
     if ticket.statut not in Ticket.OPEN_STATUTS:
         return False
-    if sla_actif is None:
-        from .models import SavSlaSettings
-        sla_actif = SavSlaSettings.get(ticket.company).sla_breach_enabled
-    if not sla_actif:
-        return False
+    # ASAV57 (D-ASAV-5 Q2 a) — le retard se calcule toujours ; l'interrupteur
+    # société ne gouverne que les notifications (``sla_actif`` conservé pour
+    # compatibilité des appelants, sans effet sur la décision).
     if ticket.sla_echeance_at:
         # ASAV21 — SLA en heures ouvrées : comparé à maintenant.
         return timezone.now() > ticket.sla_echeance_at_effectif()
