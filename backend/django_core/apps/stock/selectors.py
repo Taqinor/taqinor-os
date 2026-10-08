@@ -3086,6 +3086,16 @@ def _role_pompage_pour(produit):
     return None, None
 
 
+def role_pompage_produit(produit):
+    """AGR624 — le rôle pompage EFFECTIF d'un produit (déclaré > catégorie >
+    nom, la même lecture que ``produits_pompage``) ou ``None``. Point d'entrée
+    cross-app : un équipement posé avec une pompe du catalogue (OSP seedées
+    sans ``role_pompage`` déclaré) garde son rôle partout."""
+    if produit is None:
+        return None
+    return _role_pompage_pour(produit)[0]
+
+
 def _alimentation_pompage_pour(produit):
     """alimentation déclarée > ``tension_v`` > nom (« Monophasé »/« Triphasé »,
     puis 220V/380V avec la règle stricte « nombre isolé + V »)."""

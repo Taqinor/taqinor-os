@@ -1977,6 +1977,15 @@ TYPES_RELEVE_PORTAIL_PAR_ROLE = {
 _SUFFIXE_COMPTEUR = {('m3',): "compteur d'eau", ('heures',): 'compteur horaire'}
 
 
+def types_releve_portail(produit):
+    """AGR624 — les types de relevé portail admis pour ce produit, selon son
+    rôle pompage EFFECTIF (``stock.selectors.role_pompage_produit`` : déclaré
+    > catégorie > nom), jamais la seule colonne déclarée — une pompe OSP du
+    catalogue (rôle non déclaré) admet bien ses relevés m³. ``()`` sinon."""
+    from apps.stock.selectors import role_pompage_produit
+    return TYPES_RELEVE_PORTAIL_PAR_ROLE.get(role_pompage_produit(produit), ())
+
+
 def _equipements_releve(company, client_id, chantier_id):
     from apps.installations.selectors import chantier_du_client_portail_obj
 
@@ -1987,10 +1996,9 @@ def _equipements_releve(company, client_id, chantier_id):
         return []
     equipements = (Equipement.objects
                    .filter(company=company, installation_id=chantier.id)
-                   .select_related('produit').order_by('id'))
-    return [eq for eq in equipements
-            if getattr(eq.produit, 'role_pompage', '')
-            in TYPES_RELEVE_PORTAIL_PAR_ROLE]
+                   .select_related('produit', 'produit__categorie')
+                   .order_by('id'))
+    return [eq for eq in equipements if types_releve_portail(eq.produit)]
 
 
 def equipements_releve_portail(company, client_id, chantier_id):
@@ -2000,7 +2008,7 @@ def equipements_releve_portail(company, client_id, chantier_id):
     client. Jamais un prix ni un champ interne."""
     sortie = []
     for eq in _equipements_releve(company, client_id, chantier_id):
-        types = TYPES_RELEVE_PORTAIL_PAR_ROLE[eq.produit.role_pompage]
+        types = types_releve_portail(eq.produit)
         nom = (getattr(eq.produit, 'nom', '') or '').strip() or 'Équipement'
         sortie.append({'id': eq.id,
                        'libelle': '{} — {}'.format(
