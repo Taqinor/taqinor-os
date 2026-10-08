@@ -20,3 +20,19 @@ backend/django_core/apps/chat/tasks.py
 # named files ») : à migrer par une tâche dédiée, sans urgence de sécurité.
 backend/django_core/apps/adminops/tasks.py
 backend/django_core/apps/compta/scheduled.py
+
+# AFAC44/AFAC93 - PASSIF GELE : requetes sur un modele a FK company, dans un module beat,
+# sans active_companies() ni filtre company. Cle stable fichier::fonction. NE PEUT QUE
+# DECROITRE (une cle morte fait echouer la garde). Raison : balayage ou lecture par objet
+# a scoper ; tache qui la retire = C-AFAC-036 (recouvrement : AFAC43) ou le plan du proprietaire.
+backend/django_core/apps/installations/tasks.py::rappel_rdv_j1
+backend/django_core/apps/installations/tasks.py::meteo_planning_j3
+backend/django_core/apps/installations/tasks.py::_deja_notifie_aujourdhui
+backend/django_core/apps/publicapi/tasks.py::deliver_webhook
+backend/django_core/apps/stock/tasks.py::_deja_notifie_aujourdhui
+backend/django_core/apps/ventes/scheduled.py::_check_promesses_expirees
+backend/django_core/apps/ventes/scheduled.py::releve_mensuel_reminders
+backend/django_core/apps/ventes/scheduled.py::engagement_followup_engine
+backend/django_core/apps/ventes/tasks.py::_societe_du_devis
+backend/django_core/apps/ventes/tasks.py::_content_version
+backend/django_core/apps/ventes/tasks.py::ranger_simulation

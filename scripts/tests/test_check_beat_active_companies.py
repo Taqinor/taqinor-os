@@ -148,5 +148,69 @@ class AllowlistTests(unittest.TestCase):
         self.assertEqual(guard.main([]), 0)
 
 
+class BalayageGlobalNonScopeTests(unittest.TestCase):
+    """AFAC44 / AFAC93 — balayage global non scopé d'un modèle à FK company (comportemental :
+    le vérificateur tourne sur une arborescence temporaire)."""
+
+    MODELE = ("from django.db import models\n\n\nclass Facture(models.Model):\n"
+              "    company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE)\n"
+              "    statut = models.CharField(max_length=10)\n")
+
+    def _lancer(self, scheduled_src, allow=''):
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            r = Path(tmp)
+            apps = r / 'backend' / 'django_core' / 'apps' / 'ventes'
+            apps.mkdir(parents=True)
+            (apps / 'models.py').write_text(self.MODELE, encoding='utf-8')
+            (apps / 'scheduled.py').write_text(scheduled_src, encoding='utf-8')
+            allow_path = r / 'allow.txt'
+            allow_path.write_text(allow, encoding='utf-8')
+            with mock.patch.object(guard, 'ROOT', r), \
+                    mock.patch.object(guard, 'DJANGO_CORE', r / 'backend' / 'django_core'), \
+                    mock.patch.object(guard, 'SCAN_ROOT', r / 'backend' / 'django_core' / 'apps'), \
+                    mock.patch.object(guard, 'ALLOWLIST_PATH', allow_path):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    code = guard.main([])
+                return code, buf.getvalue()
+
+    def test_filtre_facture_sans_societe_signale(self):
+        code, out = self._lancer(
+            "def relance_reminders():\n    return Facture.objects.filter(statut='x')\n")
+        self.assertEqual(code, 1, out)
+        self.assertIn('scheduled.py::relance_reminders', out)
+        self.assertIn('active_companies()', out)
+
+    def test_boucle_active_companies_acceptee(self):
+        code, out = self._lancer(
+            "def relance_reminders():\n    for c in active_companies():\n"
+            "        Facture.objects.filter(company=c, statut='x')\n")
+        self.assertEqual(code, 0, out)
+        code, out = self._lancer(
+            "def f():\n    ids = active_company_ids()\n    return Facture.objects.filter(statut='x')\n")
+        self.assertEqual(code, 0, out)
+
+    def test_filtre_company_in_accepte(self):
+        code, out = self._lancer(
+            "def f(ids):\n    return Facture.objects.filter(company__in=ids)\n")
+        self.assertEqual(code, 0, out)
+
+    def test_passif_gele_accepte_et_cle_morte_echoue(self):
+        src = "def f():\n    return Facture.objects.filter(statut='x')\n"
+        code, out = self._lancer(
+            src, 'backend/django_core/apps/ventes/scheduled.py::f\n')
+        self.assertEqual(code, 0, out)
+
+    def test_cle_morte_echoue(self):
+        code, out = self._lancer(
+            "def f(ids):\n    return Facture.objects.filter(company__in=ids)\n",
+            'backend/django_core/apps/ventes/scheduled.py::f\n')
+        self.assertEqual(code, 1, out)
+        self.assertIn('clé morte', out)
+
+
 if __name__ == '__main__':
     unittest.main()
