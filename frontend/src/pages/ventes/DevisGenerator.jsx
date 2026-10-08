@@ -377,6 +377,9 @@ export default function DevisGenerator({
   // EN PLACE (mêmes référence et statut) au lieu d'une création.
   const editId = embedded ? editIdProp : searchParams.get('edit')
   const [editDevis, setEditDevis] = useState(null)
+  // AGNR21 — l'enregistrement PARTIEL (lignes écrites, étude ou registre
+  // refusés) : bandeau persistant, l'écran reste sur le formulaire.
+  const [reserveEnregistrement, setReserveEnregistrement] = useState(null)
   // QJR549 (contrat QJR503) — VERROU OPTIMISTE. `jetonRef` = `updated_at` du
   // devis tel que l'écran le connaît : capturé au chargement `?edit=` (et à
   // chaque rechargement), ré-armé depuis la réponse de CHAQUE écriture de cet
@@ -2077,6 +2080,7 @@ export default function DevisGenerator({
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
+    setEditDevis, setReserveEnregistrement,
   })
 
   // Réinitialiser : recharge la page, comme le bouton du simulateur
@@ -3405,6 +3409,12 @@ export default function DevisGenerator({
                            overridesErreur={overridesErreur} overridesReg={overridesReg}
                            regenererOverride={regenererOverride} />
 
+        {reserveEnregistrement && (
+          <div role="alert" data-testid="reserve-enregistrement"
+               className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            {reserveEnregistrement}
+          </div>
+        )}
         {/* SPL49 — échéancier, notes client, avertissements et carte Création (déplacés tels quels). */}
         <CarteCreation
           embedded={embedded} clients={clients} saving={saving} errors={errors} warnings={warnings}

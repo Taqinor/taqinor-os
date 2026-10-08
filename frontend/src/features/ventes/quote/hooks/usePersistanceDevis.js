@@ -38,6 +38,7 @@ export function usePersistanceDevis(ctx) {
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
+    setEditDevis, setReserveEnregistrement,
   } = ctx
 
   // ── Sauvegarde ──
@@ -352,8 +353,15 @@ export function usePersistanceDevis(ctx) {
   // QJR553 — `surcharge` (optionnelle, « Revenir à cette version ») :
   // `{ lignes, entete, etude_params }` d'un instantané rejoués par CE MÊME
   // chemin d'écriture (replace-lines + jeton) — jamais un second chemin.
+  // AGNR21 — une écriture refusée par le serveur (réponse HTTP) ou perdue en
+  // route (réseau) ; jamais une erreur de programmation côté écran.
+  const refusDistant = (err) => Boolean(err?.response) || err?.code === 'ERR_NETWORK'
+
   const persisterDevis = async (surcharge = null) => {
     setSaving(true)
+    // AGNR21 — trois issues : ok, PARTIEL (lignes écrites, étude ou registre
+    // refusés : `reserve` porte le message), échec (null).
+    let reserve = null
     try {
       // QJR515 — `statut` n'est JAMAIS dans l'en-tête d'édition (un envoyé ne
       // repasse jamais en brouillon) : posé seulement à la création ci-dessous.
@@ -417,6 +425,12 @@ export function usePersistanceDevis(ctx) {
         })
         devisId = data.id
         devisCree = data
+        // AGNR21 — le devis EXISTE désormais : un nouvel essai (après une
+        // réserve) l'édite, il n'en crée jamais un second.
+        if (data?.id) {
+          setEditDevis((d) => d || data)
+          armerJeton(data?.updated_at)
+        }
       }
 
       // QJR66 — l'étude du marché courant part par l'endpoint de FUSION, APRÈS
@@ -439,9 +453,15 @@ export function usePersistanceDevis(ctx) {
           // CIQ222 — un 400 qui nomme un champ du tarif déclaré s'affiche SOUS ce champ.
           const erreursTarif = erreursTarifDeclare(detail)
           if (Object.keys(erreursTarif).length) setErrors((e) => ({ ...e, tarifDeclare: erreursTarif }))
-          toast.error(typeof detail === 'string'
+          // AGNR21 — un refus qui vise les factures s'affiche aussi sous elles.
+          else if (typeof detail === 'string' && /factur/i.test(detail)) setErrors((e) => ({ ...e, factures: detail }))
+          const message = typeof detail === 'string'
             ? `Devis enregistré, étude non attachée : ${detail}`
-            : "Devis enregistré, mais l'étude n'a pas pu être attachée.")
+            : "Devis enregistré, mais l'étude n'a pas pu être attachée."
+          // AGNR21 — un refus du SERVEUR (ou une coupure réseau) laisse le
+          // devis à moitié enregistré : c'est une réserve, l'écran reste.
+          if (refusDistant(errEtude)) reserve = message
+          toast.error(message)
         }
       }
 
@@ -470,11 +490,14 @@ export function usePersistanceDevis(ctx) {
         } catch (errOv) {
           const msg = messageErreurOverrides(errOv)
           setOverridesErreur(msg)
-          toast.error(`Devis enregistré, registre non mis à jour : ${msg}`)
+          const message = `Devis enregistré, registre non mis à jour : ${msg}`
+          if (refusDistant(errOv)) reserve = reserve || message
+          toast.error(message)
         }
       }
 
-      return { devisId, devisCree }
+      setReserveEnregistrement(reserve)
+      return { devisId, devisCree, reserve }
     } catch (err) {
       // QJR549 — 409 `devis_modifie` : quelqu'un (ou le catalogue) a écrit ce
       // devis depuis l'ouverture. Bannière NON bloquante, rien d'autre écrit.
@@ -526,7 +549,7 @@ export function usePersistanceDevis(ctx) {
   const enregistrerAvantModele = async () => {
     if (!validate()) return false
     const res = await persisterDevis()
-    if (!res) return false
+    if (!res || res.reserve) return false
     clear(); marquerEnregistre()
     return true
   }
@@ -562,7 +585,7 @@ export function usePersistanceDevis(ctx) {
     if (Array.isArray(contenu.echeancier)) entete.echeancier = contenu.echeancier
     const etude = contenu.etude && Object.keys(contenu.etude).length ? contenu.etude : undefined
     const res = await persisterDevis({ lignes: lignesSnap, entete, etude_params: etude })
-    if (res) {
+    if (res && !res.reserve) {
       toast.success('Version restaurée et enregistrée.')
       clear()
       setVersionHistorique(n => n + 1)
@@ -574,7 +597,10 @@ export function usePersistanceDevis(ctx) {
     e.preventDefault()
     if (!validate()) return
     const res = await persisterDevis()
-    if (res) { clear(); marquerEnregistre(); finish(res.devisId, res.devisCree) }
+    // AGNR21 — sur une réserve, l'écran RESTE (formulaire, brouillon local,
+    // bandeau persistant) : aucun panneau de succès ni envoi depuis un état
+    // partiel.
+    if (res && !res.reserve) { clear(); marquerEnregistre(); finish(res.devisId, res.devisCree) }
   }
 
   // PV23bis (fondateur 20/08) — « Concevoir en 3D » depuis l'écran de devis :
@@ -591,7 +617,7 @@ export function usePersistanceDevis(ctx) {
       return
     }
     const res = await persisterDevis()
-    if (!res) return
+    if (!res || res.reserve) return
     clear()
     marquerEnregistre()
     navigate(`/ventes/devis/${res.devisId}/design`)
