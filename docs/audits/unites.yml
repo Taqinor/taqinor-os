@@ -577,13 +577,13 @@ unites:
     I: 3
     score: 9
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ASAV
     plan: docs/plans/PLAN_AUDIT_SAV.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
+    pr: 876
+    date: 2026-10-08
+    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-sav.md) : 51 constats (3 S1 + 1 décision fondateur), 86 tâches ASAV ; ticket couvert par contrat facturé depuis l'écran, quotas de contrat faux, garantie recalculée à chaque modification."
 
   - id: X7
     rang: 18
