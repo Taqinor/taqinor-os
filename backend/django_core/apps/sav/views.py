@@ -650,6 +650,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # ASAV39 — « suis-je abonné ? » préchargé (1 requête pour la page).
+        if getattr(self.request.user, 'pk', None):
+            from django.db.models import Prefetch
+            qs = qs.prefetch_related(Prefetch(
+                'followers',
+                queryset=TicketFollower.objects.filter(
+                    user=self.request.user),
+                to_attr='_suivis_de_moi'))
         # Portée de visibilité (Feature F) — tickets créés par soi / dont on est
         # le technicien responsable / ceux de l'équipe. 'all' → inchangé.
         from authentication.scoping import scope_queryset

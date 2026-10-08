@@ -108,16 +108,22 @@ class EquipementSerializer(serializers.ModelSerializer):
         return f"{c.nom} {c.prenom or ''}".strip()
 
     def get_garantie_jours_restants(self, obj):
-        if not obj.date_fin_garantie:
+        # ASAV44 — calculé sur la garantie EFFECTIVE (légale / constructeur).
+        fin = obj.date_fin_garantie_effective
+        if not fin:
             return None
-        return (obj.date_fin_garantie - timezone.localdate()).days
+        return (fin - timezone.localdate()).days
 
     def get_garantie_etat(self, obj):
         """État de garantie : non_renseignee / sous_garantie / expire_bientot /
-        hors_garantie. Sert d'indicateur clair côté écran."""
-        if not obj.date_fin_garantie:
+        hors_garantie. Sert d'indicateur clair côté écran.
+
+        ASAV44 — sur ``date_fin_garantie_effective`` : même garantie que
+        ``Ticket.sous_garantie_effectif``."""
+        fin = obj.date_fin_garantie_effective
+        if not fin:
             return 'non_renseignee'
-        jours = (obj.date_fin_garantie - timezone.localdate()).days
+        jours = (fin - timezone.localdate()).days
         if jours < 0:
             return 'hors_garantie'
         if jours <= EXPIRING_SOON_DAYS:
@@ -298,6 +304,16 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         source='equipement.produit.nom', read_only=True, default=None)
     equipement_fin_garantie = serializers.DateField(
         source='equipement.date_fin_garantie', read_only=True, default=None)
+    # ASAV44 — fin de garantie EFFECTIVE (max légale / constructeur), celle
+    # que ``sous_garantie_effectif`` utilise ; la constructeur reste servie
+    # ci-dessus.
+    equipement_fin_garantie_effective = serializers.DateField(
+        source='equipement.date_fin_garantie_effective', read_only=True,
+        default=None)
+    # ASAV39 — l'utilisateur courant suit-il ce ticket ?
+    je_suis_abonne = serializers.SerializerMethodField()
+    # ASAV43 — transitions que le serveur accepte depuis le statut courant.
+    statuts_suivants = serializers.SerializerMethodField()
     technicien_nom = serializers.SerializerMethodField()
     # Garantie effective : calculée depuis l'équipement lié, sinon manuelle.
     sous_garantie_effectif = serializers.SerializerMethodField()
@@ -437,6 +453,23 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
 
     def get_sous_garantie_effectif(self, obj):
         return obj.sous_garantie_calcule
+
+    def get_je_suis_abonne(self, obj):
+        """ASAV39 — vrai si l'utilisateur de la requête est suiveur. La
+        liste précharge ``_suivis_de_moi`` (une requête pour toute la page) ;
+        hors liste (détail unique), une seule requête."""
+        suivis = getattr(obj, '_suivis_de_moi', None)
+        if suivis is not None:
+            return len(suivis) > 0
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not getattr(user, 'pk', None):
+            return False
+        return obj.followers.filter(user=user).exists()
+
+    def get_statuts_suivants(self, obj):
+        from . import machine_etats
+        return machine_etats.statuts_suivants(obj)
 
     def get_sous_garantie_effectif_display(self, obj):
         return dict(Ticket.SousGarantie.choices).get(
