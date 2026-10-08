@@ -469,12 +469,17 @@ export async function queueOperation(module, opType, payload, { target, clientOp
  * généralisé aux autres modules.
  */
 export async function queueIfOffline(module, onlineCall, opType, payload, { target } = {}) {
+  // ADEP16 — UNE clé d'idempotence par action, générée AVANT l'appel : un timeout
+  // (ECONNABORTED, aucune réponse) peut survenir APRÈS l'effet serveur ; l'op mise en
+  // file doit alors porter la MÊME clé pour que le rejeu soit un `replayed`, pas un
+  // second effet. L'appelant peut l'ignorer (argument facultatif).
+  const clientOpId = makeOpId()
   try {
-    const data = await onlineCall()
+    const data = await onlineCall(clientOpId)
     return { queued: false, data }
   } catch (err) {
     if (err?.response) throw err // erreur applicative : jamais filée en silence
-    const clientOpId = await queueOperation(module, opType, payload, { target })
+    await queueOperation(module, opType, payload, { target, clientOpId })
     return { queued: true, clientOpId }
   }
 }

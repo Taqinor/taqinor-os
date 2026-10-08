@@ -190,3 +190,33 @@ test('NTMOB24 — comptage par clé de corps (file terrain : payload.chantier)',
   assert.equal(compte.size, 2)
   assert.equal(countByPayloadKey(undefined, 'chantier').size, 0)
 })
+
+// ADEP16 — un timeout APRES l'effet serveur ne doit jamais produire un second effet :
+// la MEME cle d'idempotence voyage avec l'appel en ligne et avec l'op mise en file.
+test('queueIfOffline : timeout après effet serveur → une seule application (ADEP16)', async () => {
+  await reset()
+  const serveur = fakeServer()           // idempotent par client_op_id
+  setModuleSender(serveur.sender)
+  const ecritures = []                   // clés vues par l'appel EN LIGNE
+  const appelEnLigne = async (clientOpId) => {
+    // l'effet a lieu côté serveur (dédoublonné par clé), la réponse n'arrive jamais
+    if (!serveur.vues.has(clientOpId)) {
+      serveur.vues.add(clientOpId)
+      serveur.applied.push({ client_op_id: clientOpId, via: 'en ligne' })
+    }
+    ecritures.push(clientOpId)
+    throw Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' })
+  }
+  const r = await queueIfOffline('visites', appelEnLigne, 'visite.mesures',
+    { visite: 1, categorie: 'toit', valeurs: { a: 1 } }, { target: 1 })
+  assert.equal(r.queued, true)
+  assert.ok(ecritures[0], 'l’appel en ligne reçoit une clé d’idempotence')
+  assert.equal(r.clientOpId, ecritures[0], 'l’op filée porte la clé de l’appel en ligne')
+  const [op] = await pendingModuleOps()
+  assert.equal(op.client_op_id, ecritures[0])
+
+  await flushModuleOutboxes()
+  assert.equal(serveur.applied.length, 1, 'UN effet pour UNE action')
+  assert.equal((await pendingModuleOps()).length, 0)
+  await reset()
+})
