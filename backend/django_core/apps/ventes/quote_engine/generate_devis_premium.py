@@ -4772,6 +4772,14 @@ def apply_quote_data(data: dict) -> None:
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}
     SLD_SVG        = data.get("sld_svg") or ""
     INCLUDE_CALEPINAGE = bool(data.get("include_calepinage", False))
+    # ACAL103 (C-ACAL-117, QJR666) — un devis RÉSIDENTIEL rendu par ce moteur
+    # (cas « + étude ») n'ajoute la planche que sur une demande EXPLICITE
+    # (``include_calepinage_demande``, posé par le builder) : l'AUTO n'ajoute
+    # aucune page, exactement comme ``residential/render.calepinage_demande``.
+    # Les autres marchés gardent l'AUTO (D-QJR5-12).
+    if (MODE_INSTALLATION.strip().lower() in ("", "residentiel", "résidentiel")
+            and not data.get("include_calepinage_demande")):
+        INCLUDE_CALEPINAGE = False
     # CAD122 — marqueur « signé au domicile », posé CÔTÉ SERVEUR depuis le bon
     # de commande (jamais une option du corps client : c'est un fait juridique,
     # pas une préférence de rendu). Faux = document inchangé (art. 32).
