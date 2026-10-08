@@ -4499,8 +4499,80 @@ def _formes_total_ttc():
     return tuple(formes)
 
 
-def _mesure_onepage(html):
+def _formes_dernier_bloc():
+    """AMOT20 \u2014 formes qui rep\u00e8rent le DERNIER bloc de la zone de contenu : la
+    ligne Validit\u00e9 / Acompte / mise en marche / TVA (libell\u00e9
+    \u00ab apr\u00e8s mise en marche \u00bb, propre \u00e0 cette ligne), le bon pour accord
+    agricole et, en filet, le Total TTC (``_formes_total_ttc``)."""
+    formes = list(_formes_total_ttc())
+    for brut in (_L("apres_mise_en_marche"),
+                 i18n_labels.libelle("apres_mise_en_marche", "fr")):
+        for forme in (brut, brut.upper()):
+            if forme and forme not in formes:
+                formes.append(forme)
+    return tuple(formes)
+
+
+#: AMOT20 \u2014 renvoi D\u00c9CLAR\u00c9 quand la note ou les clauses ne tiennent pas sur le
+#: une-page (jamais une condition effac\u00e9e en silence). Textes en/ar \u00e0 relire
+#: par le fondateur.
+RENVOI_TEXTE_INTEGRAL = {
+    "fr": "texte int\u00e9gral sur la proposition en ligne",
+    "en": "full text in the online proposal",
+    "ar": "\u0627\u0644\u0646\u0635 \u0627\u0644\u0643\u0627\u0645\u0644 \u0641\u064a \u0627\u0644\u0639\u0631\u0636 \u0639\u0628\u0631 \u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a",
+}
+
+
+def _renvoi_texte_integral():
+    return RENVOI_TEXTE_INTEGRAL.get(LANGUE_SORTIE) or RENVOI_TEXTE_INTEGRAL["fr"]
+
+
+def _couper_au_mot(texte, longueur):
+    """``texte`` (D\u00c9J\u00c0 \u00e9chapp\u00e9) coup\u00e9 \u00e0 ``longueur`` au dernier espace : une
+    entit\u00e9 HTML ne contient aucun espace, elle n'est donc jamais coup\u00e9e."""
+    if len(texte) <= longueur:
+        return texte
+    coupe = texte[:longueur]
+    espace = coupe.rfind(" ")
+    if espace > 0:
+        coupe = coupe[:espace]
+    else:
+        # Aucun espace : on recule jusqu'\u00e0 sortir d'une entit\u00e9 ouverte.
+        amp = coupe.rfind("&")
+        if amp >= 0 and ";" not in coupe[amp:]:
+            coupe = coupe[:amp]
+    return coupe.rstrip()
+
+
+def _tronquer_conditions():
+    """AMOT20 \u2014 UNE \u00e9tape de troncature D\u00c9CLAR\u00c9E des conditions du une-page :
+    la note est raccourcie de moiti\u00e9 (au mot), puis les clauses sont retir\u00e9es
+    par la fin ; le texte retir\u00e9 est remplac\u00e9 par le renvoi \u00ab texte int\u00e9gral
+    sur la proposition en ligne \u00bb. Rend ``False`` quand plus rien ne peut \u00eatre
+    retir\u00e9. Agit sur les globaux de rendu (restaur\u00e9s par l'appelant)."""
+    global NOTE_CLIENT, CLAUSES_CGV
+    renvoi = _renvoi_texte_integral()
+    suffixe = f" \u2026 ({renvoi})"
+    note = NOTE_CLIENT
+    corps_note = note[:-len(suffixe)] if note.endswith(suffixe) else note
+    if len(corps_note) > 40:
+        NOTE_CLIENT = _couper_au_mot(corps_note, len(corps_note) // 2) + suffixe
+        return True
+    reelles = [c for c in CLAUSES_CGV if c.get("corps_texte") != f"\u2026 {renvoi}"]
+    if reelles:
+        CLAUSES_CGV = reelles[:-1] + [{"nom": "", "corps_texte": f"\u2026 {renvoi}"}]
+        return True
+    if corps_note and note != suffixe.strip():
+        NOTE_CLIENT = suffixe.strip()
+        return True
+    return False
+
+
+def _mesure_onepage(html, formes=None):
     """QJR161 \u2014 MESURE du bas du bloc de totaux et de la hauteur d'une ligne.
+
+    AMOT20 \u2014 ``formes`` (d\u00e9faut : ``_formes_total_ttc``) choisit le bloc
+    mesur\u00e9 ; ``_formes_dernier_bloc`` mesure le DERNIER bloc de la zone.
 
     Rend ``(depassement_px, hauteur_ligne_px)`` : ``depassement_px`` est de
     combien le bloc \u00ab Total TTC \u00bb franchit la ligne de rognage
@@ -4525,7 +4597,7 @@ def _mesure_onepage(html):
         limite = page.height - ONEPAGE_FOOTER_PX
         bas_totaux = None
         hauteurs = []
-        formes = _formes_total_ttc()
+        formes = formes or _formes_total_ttc()
         for boite in _boites_texte_onepage(page):
             texte = (getattr(boite, "text", "") or "")
             if any(forme in texte for forme in formes):
@@ -5081,7 +5153,7 @@ def _onepage_html_qui_tient(items):
             return html
         depassement, hauteur_ligne = mesure
         if depassement <= 0 or len(lignes) <= 1:
-            return html
+            break
         a_retirer = 1
         if hauteur_ligne > 0:
             a_retirer = max(1, int(depassement // hauteur_ligne) + 1)
@@ -5089,7 +5161,35 @@ def _onepage_html_qui_tient(items):
         lignes = lignes[:-a_retirer]
         tronquees += a_retirer
         html = build_html_onepage(lignes, tronquees)
-    return html
+    return _onepage_conditions_qui_tiennent(lignes, tronquees, html)
+
+
+#: AMOT20 — étapes de troncature des conditions (note, puis clauses).
+_ONEPAGE_PASSES_CONDITIONS = 12
+
+
+def _onepage_conditions_qui_tiennent(lignes, tronquees, html):
+    """AMOT20 (C-AMOT-018) — la postcondition du une-page porte sur le DERNIER
+    bloc de la zone (ligne Validité / Acompte / mise en marche / TVA, ou bon
+    pour accord agricole), mesuré sur le HTML RENDU : tant qu'il franchit la
+    ligne de rognage, la note puis les clauses sont tronquées avec le renvoi
+    DÉCLARÉ « texte intégral sur la proposition en ligne » — plus jamais une
+    condition effacée en silence par ``overflow:hidden``. Les globaux de
+    rendu (note, clauses) sont restaurés après composition."""
+    global NOTE_CLIENT, CLAUSES_CGV
+    note_avant, clauses_avant = NOTE_CLIENT, list(CLAUSES_CGV)
+    formes = _formes_dernier_bloc()
+    try:
+        for _ in range(_ONEPAGE_PASSES_CONDITIONS):
+            mesure = _mesure_onepage(html, formes)
+            if mesure is None or mesure[0] <= 0:
+                return html
+            if not _tronquer_conditions():
+                return html
+            html = build_html_onepage(lignes, tronquees)
+        return html
+    finally:
+        NOTE_CLIENT, CLAUSES_CGV = note_avant, clauses_avant
 
 
 def _render_premium_pdf(data: dict, out_path) -> str:
