@@ -580,6 +580,9 @@ const NON_LU: Readonly<Record<string, string>> = {
   // CIQ319 (06/10/2026) — la moitié serveur sert `signature_entreprise` ;
   // le formulaire de signature C&I qui la lira est la tâche web CIW305 (WEB_PLAN).
   'signature_entreprise': 'Identité d’entreprise du signataire servie par le serveur (CIQ319) : le formulaire de signature C&I (raison sociale, nom, qualité, ICE) qui la lira est CIW305 (docs/WEB_PLAN.md), pas encore construit.',
+  // ADEV50 (08/10/2026) — le cumul 25 ans par option, servi par le serveur.
+  'economies_cumul_25_ans.sans_batterie': 'Cumul 25 ans de l’option sans batterie, servi (ADEV50) : lu par `savingsHeadline` sur le payload brut pour le titre « Économies cumulées », pas par le lecteur typé.',
+  'economies_cumul_25_ans.avec_batterie': 'Cumul 25 ans de l’option avec batterie, servi (ADEV50) : lu par `savingsHeadline` sur le payload brut pour le titre « Économies cumulées », pas par le lecteur typé.',
 };
 
 /** La prose du contrat : jamais servie à un navigateur, mais elle se décide aussi. */

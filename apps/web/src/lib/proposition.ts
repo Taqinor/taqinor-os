@@ -245,6 +245,13 @@ export interface ProposalResponse {
    */
   date_validite?: string | null;
   /**
+   * ADEV50 (C-ADEV-017) — cumul BRUT des économies sur 25 ans de CHAQUE option
+   * (MAD), servi par le serveur depuis le MÊME flux annuel que le PDF
+   * `/proposal`. Clé ADDITIVE : absente sans flux d'économies (agricole, C&I,
+   * case « économies » décochée) — la page n'affiche alors aucun cumul.
+   */
+  economies_cumul_25_ans?: Partial<Record<OptionKey, number>>;
+  /**
    * PREVIEW-V3 (16/09/2026) — la PREMIÈRE tranche de l'échéancier, telle que
    * le devis la facturera (`apps/ventes/utils/echeancier.next_tranche`, LE
    * même helper que l'écran de succès post-signature). Clé ADDITIVE : absente
@@ -1869,27 +1876,6 @@ export function normalizeAcceptResponse(status: number, payload: unknown): Accep
 export const SAVINGS_HORIZON_YEARS = 25;
 
 /**
- * WJ9 — Dérive annuelle de la facture d'électricité (« coût de ne rien faire »).
- * Hypothèse PRUDENTE et libellée : 0 % par défaut (économies à tarif constant).
- * Le calcul de cumul reste honnête même sans inflation tarifaire. Toute hausse
- * réelle ne ferait qu'augmenter l'économie — on ne la promet donc pas.
- *
- * WJ75 — CONFIRMÉ ALIGNÉ avec le backend (lu dans le moteur de devis vendorisé,
- * `apps/ventes/quote_engine/`) : `pricing.py calculate_savings_roi` fixe
- * `eco_a_cumul = economie_opt2` (l'économie ANNUELLE, malgré son nom) SANS
- * aucune dérive tarifaire, et `generate_devis_premium.py` l'utilise comme un
- * TAUX PAR AN pour bâtir sa courbe cumulative sur 26 points (0 à 25 ans) :
- * `CUMUL_A = [-TOTAL_AVEC + eco_a_cumul * y for y in YEARS]` — une simple
- * multiplication linéaire, aucun terme `(1+i)^y`. Le PDF premium et cette page
- * web utilisent donc EXACTEMENT la même hypothèse (0 % d'escalade tarifaire) ;
- * aucun décalage à corriger entre les deux documents. Le nom du champ backend
- * (« cumul ») est trompeur — c'est un TAUX ANNUEL, pas un total déjà cumulé
- * (voir savingsHeadline ci-dessous, qui le multiplie désormais par `years`
- * au lieu de l'afficher tel quel comme un cumul déjà calculé).
- */
-export const BILL_INFLATION_RATE = 0;
-
-/**
  * WJ14 — Facteur d'émission du réseau électrique marocain, en kg de CO₂ évité
  * par kWh solaire autoconsommé.
  *
@@ -2225,7 +2211,7 @@ export function signStampLabel(reference: string, d: Date, lang: PropLang): stri
 export interface SavingsHeadline {
   /** Économie annuelle (MAD/an) — backend `eco_*_ann`. */
   annual: number | null;
-  /** Économie cumulée sur l'horizon (MAD) — dérivée du TAUX annuel `eco_a_cumul` (× years) ou du calcul local. */
+  /** Économies cumulées sur 25 ans (MAD) — `economies_cumul_25_ans[opt]` SERVI, tel quel. */
   cumulative: number | null;
   /** Horizon retenu (ans). */
   years: number;
@@ -2233,32 +2219,20 @@ export interface SavingsHeadline {
   monthly: number | null;
   /** Retour sur investissement (déjà formaté). */
   payback: string | null;
-  /** Vrai si le TAUX vient directement du backend (`eco_a_cumul`) plutôt que du fallback `annual`. */
+  /** Vrai quand le cumul vient du serveur — toujours le cas quand `cumulative` est non nul. */
   cumulativeFromBackend: boolean;
 }
 
 /**
- * WJ9/WJ75 — Construit le bandeau « money over time » de l'option recommandée.
+ * WJ9 — Construit le bandeau « money over time » d'une option.
  *
  *  - `annual` : économie annuelle backend (`eco_*_ann`).
- *  - `cumulative` : sur l'horizon (`years`, 25 ans par défaut).
- *
- * WJ75 — CORRECTIF : malgré son nom, le champ backend `eco_a_cumul`
- * (`apps/ventes/quote_engine/pricing.py calculate_savings_roi`) n'est PAS déjà
- * un total cumulé — c'est le même chiffre que l'économie ANNUELLE
- * (`eco_a_cumul == eco_a_ann` côté backend), utilisé par le moteur PDF comme un
- * TAUX PAR AN : `generate_devis_premium.py` construit sa courbe cumulative par
- * `CUMUL_A = [-total + eco_a_cumul * y for y in YEARS]` (multiplication
- * linéaire, AUCUNE dérive tarifaire — 0 % d'escalade, comme `BILL_INFLATION_RATE`
- * ci-dessus). Avant ce correctif, cette fonction affichait `eco_a_cumul`
- * DIRECTEMENT comme si le backend avait déjà fait `× 25` — ce qui montrait la
- * valeur d'UNE SEULE ANNÉE sous le libellé « cumul sur 25 ans » (sous-estimation
- * ≈25× du chiffre le plus visible de la page). Le calcul respecte maintenant la
- * MÊME hypothèse que le PDF (taux annuel backend × horizon, 0 % d'escalade) —
- * les deux documents sont désormais alignés, jamais un cumul sur 25 ans qui
- * n'est en réalité qu'un an. Le repli local (sans backend) applique la même
- * discipline (`BILL_INFLATION_RATE`, 0 % par défaut) à `annual`. On NE calcule
- * jamais sans un taux/annuel positif présent.
+ *  - `cumulative` : ADEV50 (C-ADEV-017) — le cumul 25 ans de CETTE option,
+ *    SERVI par `economies_cumul_25_ans[opt]` (même flux annuel que le PDF
+ *    `/proposal` : dégradation, escalade, batterie, onduleur). La page ne le
+ *    recalcule plus : l'ancien « `eco_a_cumul` × 25 » affichait 400 350 MAD pour
+ *    les DEUX options (sonde VA p7) là où le PDF disait 342 314 / 346 653. Clé
+ *    absente ⇒ `null` ⇒ aucun cumul affiché (jamais un chiffre inventé).
  *  - `monthly` : annuel / 12 (simple cadrage de lecture, pas un nouveau chiffre).
  */
 export function savingsHeadline(
@@ -2266,7 +2240,7 @@ export function savingsHeadline(
   opt: OptionKey,
   years: number = SAVINGS_HORIZON_YEARS,
 ): SavingsHeadline {
-  // CIW300 — le cumul « économie × 25 ans » ne sert plus le C&I (commercial / industriel) :
+  // CIW300 — le cumul ne sert plus le C&I (commercial / industriel) :
   // son argent est `synthese_ci.argent`, servi par le moteur. Tout à `null`.
   const modeCi = resolveInstallMode(p);
   if (modeCi === 'commercial' || modeCi === 'industriel') {
@@ -2277,22 +2251,8 @@ export function savingsHeadline(
     ? annualRaw : null;
   const paybackRaw = opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
 
-  // WJ75 — `eco_a_cumul` est un TAUX ANNUEL (voir la note ci-dessus), jamais un
-  // total déjà cumulé : on le multiplie par `years`, exactement comme le fait
-  // le moteur PDF (`eco_a_cumul * y`), au lieu de l'afficher tel quel.
-  const backendRate = p.quote?.eco_a_cumul;
-  const hasBackendRate = typeof backendRate === 'number' && Number.isFinite(backendRate) && backendRate > 0;
-  const rate = hasBackendRate ? backendRate : annual;
-  let cumulative: number | null = null;
-  const cumulativeFromBackend = hasBackendRate;
-  if (rate !== null && years > 0) {
-    // Série honnête : taux constant (0 % d'escalade, comme le PDF) sauf si
-    // BILL_INFLATION_RATE est un jour changé — alors Σ taux·(1+i)^k, k=0..years-1.
-    const i = BILL_INFLATION_RATE;
-    cumulative = i === 0
-      ? rate * years
-      : Math.round((rate * (Math.pow(1 + i, years) - 1)) / i);
-  }
+  const servi = p.economies_cumul_25_ans?.[opt];
+  const cumulative = typeof servi === 'number' && Number.isFinite(servi) && servi > 0 ? servi : null;
 
   return {
     annual,
@@ -2300,7 +2260,7 @@ export function savingsHeadline(
     years,
     monthly: annual !== null ? Math.round(annual / 12) : null,
     payback: formatPayback(paybackRaw),
-    cumulativeFromBackend,
+    cumulativeFromBackend: cumulative !== null,
   };
 }
 
@@ -3910,7 +3870,7 @@ export function hypothesesCiItems(ci: SyntheseCi | null): AssumptionItem[] {
  *  - AGW302 : le mode vient de `resolveInstallMode` (clé machine), jamais de
  *    `quote.inst_type` ;
  *  - hors agricole — cadre tarifaire : loi 82-21 autoconsommation, tarif du
- *    distributeur (SRM régionale, Q16), dérive 0 % (BILL_INFLATION_RATE) ; horizon :
+ *    distributeur (SRM régionale, Q16), cumul 25 ans SERVI (ADEV50) ; horizon :
  *    SAVINGS_HORIZON_YEARS (25 ans, durée de vie économique retenue — la garantie de
  *    performance panneau va au-delà : 30 ans, cf. warranty.ts) ;
  *  - agricole — heures de pompage, HMT retenue et débit à cette HMT lus dans le

@@ -270,13 +270,13 @@ function proposal(over: Partial<ProposalResponse> = {}): ProposalResponse {
 
 describe('P18 — savingsHeadline rend EXACTEMENT les champs servis', () => {
   it('économie annuelle, payback et cumul viennent du payload, sans second modèle', () => {
-    const p = proposal();
+    const p = proposal({ economies_cumul_25_ans: { sans_batterie: 342314, avec_batterie: 346653 } });
     const h = savingsHeadline(p, 'avec_batterie');
     // Égalité STRICTE avec le champ servi — aucune correction locale.
     expect(h.annual).toBe(p.quote.eco_a_ann);
     expect(h.payback).toBe(formatPayback(p.quote.roi_a));
-    // Le cumul est le TAUX backend × horizon (même multiplication que le PDF).
-    expect(h.cumulative).toBe((p.quote.eco_a_cumul as number) * h.years);
+    // ADEV50 — le cumul est la valeur SERVIE pour cette option, telle quelle.
+    expect(h.cumulative).toBe(346653);
     expect(h.cumulativeFromBackend).toBe(true);
     // Le cadrage mensuel n'est qu'un changement d'unité de l'annuel servi.
     expect(h.monthly).toBe(Math.round((p.quote.eco_a_ann as number) / 12));

@@ -980,6 +980,48 @@ def _vider_economies_residentielles(data):
     return data
 
 
+#: ADEV50 — par option publique : (clé de la série cumulée du moteur, clé de
+#: l'économie annuelle, clé de l'investissement de cette série).
+_OPTIONS_CUMUL_25_ANS = (
+    ('sans_batterie', 'cashflow_sans', 'eco_s_ann', 'total_sans'),
+    ('avec_batterie', 'cashflow_avec', 'eco_a_ann', 'total_avec'),
+)
+
+
+def _economies_cumul_25_ans_publique(data):
+    """ADEV50 (C-ADEV-017) — le cumul BRUT des économies sur 25 ans de CHAQUE
+    option, lu sur LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``
+    du moteur, ``pricing.compute_cashflow_payback`` : dégradation, escalade,
+    rendement batterie, provision onduleur) : cumul final + investissement de
+    cette série = somme des 25 flux annuels. Aucun calcul de flux ici — une
+    LECTURE de ``data`` (règle #4 : le moteur rend, la vue publie).
+
+    Appelée APRÈS les retraits de la vue (ancrage Z2, agricole/C&I, option
+    non vendable, mono-option) : une option dont l'économie annuelle ou les
+    totaux ne sont plus publiés ne porte pas de cumul. Rend ``None`` quand
+    aucune option n'a de flux (clé ADDITIVE absente, jamais ``null``)."""
+    out = {}
+    for option, cle_flux, cle_eco, cle_total in _OPTIONS_CUMUL_25_ANS:
+        flux = data.get(cle_flux)
+        if not isinstance(flux, list) or not flux:
+            continue
+        if data.get(cle_eco) is None:
+            continue
+        totaux = data.get('totaux_sans' if option == 'sans_batterie'
+                          else 'totaux_avec')
+        if not totaux:
+            continue
+        try:
+            dernier = float(flux[-1])
+            investissement = float(data.get(cle_total) or 0)
+        except (TypeError, ValueError):
+            continue
+        if investissement <= 0:
+            continue
+        out[option] = round(dernier + investissement)
+    return out or None
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -1391,6 +1433,13 @@ def proposal_data(request, token):
         # exactement comme sur un devis sans simulation.
         if bankable is not None and _section_servie(link, 'bankable'):
             payload['bankable'] = bankable
+        # ADEV50 (C-ADEV-017) — le cumul 25 ans de CHAQUE option, servi : la
+        # page l'affiche tel quel (plus de « économie × 25 » en JS). Même
+        # section que les économies ; additive (absente sans flux).
+        _cumul_25 = (_economies_cumul_25_ans_publique(data)
+                     if _section_servie(link, 'economies') else None)
+        if _cumul_25 is not None:
+            payload['economies_cumul_25_ans'] = _cumul_25
         # AGR308 — synthèse agricole (additive). Son bloc ``economies`` obéit à
         # la case « Synthèse d'économies » du lien, comme la synthèse
         # résidentielle (L-SECT) : décochée, l'argent ne part pas.

@@ -1454,8 +1454,8 @@ const clientConsommateur = installMode === 'residentiel';
 
 // ── WJ9 — Argent dans le temps : cumul 25 ans + payback + cadrage mensuel ────
 // Tous ces nombres SONT ceux du moteur : `annual` = backend `eco_s_ann`/`eco_a_ann`,
-// `payback` = backend `roi_s`/`roi_a`, `cumulative` = taux backend `eco_a_cumul`
-// × horizon (la MÊME multiplication linéaire que le PDF). La page n'a aucun
+// `payback` = backend `roi_s`/`roi_a`, `cumulative` = `economies_cumul_25_ans[opt]`
+// SERVI (ADEV50 — le flux du PDF, plus jamais « × 25 » en JS). La page n'a aucun
 // modèle d'économies à elle — le moteur corrigé se propage tout seul ici.
 // CIW300 — jamais le cumul « économie × 25 ans » en C&I (l'argent C&I = `synthese_ci`).
 const headline = ok && !isAutoconso ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
@@ -3876,24 +3876,18 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 data-ar={`بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
                 Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
               </p>
-              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr" data-detail-cumul-value>{formatMAD(headline.cumulative)}</p>
-              <!-- WJ75 — la mention « tarif constant » s'affiche désormais TOUJOURS,
-                   que le taux vienne du backend ou du repli local : les deux
-                   partagent la MÊME hypothèse 0 % d'escalade tarifaire (voir
-                   savingsHeadline/BILL_INFLATION_RATE dans lib/proposition.ts —
-                   vérifié dans le moteur PDF vendorisé, generate_devis_premium.py,
-                   qui construit sa propre courbe cumulative par une simple
-                   multiplication linéaire, sans terme de dérive). Avant ce
-                   correctif, la mention disparaissait quand le taux venait du
-                   backend, laissant croire — à tort — que ce chiffre intégrait
-                   une hausse tarifaire que ni lui ni le PDF ne modélisent. -->
+              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr" data-detail-cumul-value data-figure="economies_cumul_25_ans" data-figure-option={reco === 'avec_batterie' ? 'avec' : 'sans'}>{formatMAD(headline.cumulative)}</p>
+              <!-- ADEV50 — le chiffre est `economies_cumul_25_ans[option]`, servi
+                   par le serveur depuis le MÊME flux annuel que le PDF
+                   (`cashflow_*` du moteur) : la phrase « même calcul que votre
+                   devis PDF » est vraie, option par option. -->
               <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}. Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.`}
-                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}. Estimate at constant tariff (law 82-21, self-consumption) — the same assumption as your PDF quote.`}
-                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}. تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي) — نفس الافتراض المعتمد في عرض PDF الخاص بكم.`}>
+                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}. Même calcul que votre devis PDF (loi 82-21, autoconsommation).`}
+                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}. Same calculation as your PDF quote (law 82-21, self-consumption).`}
+                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}. نفس الحساب المعتمد في عرض PDF الخاص بكم (القانون 82-21، الاستهلاك الذاتي).`}>
                 Économies cumulées estimées sur {headline.years} ans
                 {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
-                <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.</span>
+                <span class="text-lune-faint"> Même calcul que votre devis PDF (loi 82-21, autoconsommation).</span>
               </p>
             </div>
           ) : null}
