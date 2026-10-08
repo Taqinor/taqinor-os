@@ -130,6 +130,27 @@ def cash_flow_forecast(request):
             retard_moyen = scores_cache[f.client_id]['retard_moyen_jours']
             ech_bucket = date_encaissement_prevue(f, retard_moyen) or ech
 
+        # AFAC25 — la retenue de garantie non libérée (CIQ214) n'est PAS due
+        # à l'échéance : sa date est la libération. Elle part en
+        # « sans_echeance », jamais dans « en_retard » ; seul l'EXIGIBLE suit
+        # l'échéance.
+        retenue = du - f.montant_exigible
+        if retenue > 0:
+            buckets['sans_echeance']['montant'] += retenue
+            buckets['sans_echeance']['count'] += 1
+            total += retenue
+            rows.append({
+                'facture_reference': f.reference,
+                'client': client_name,
+                'date_echeance': None,
+                'montant_du': _s(retenue),
+                'jours_retard': 0,
+                'bucket': 'sans_echeance',
+            })
+            du = du - retenue
+            if du <= 0:
+                continue
+
         if ech_bucket is None:
             bucket = 'sans_echeance'
         elif ech_bucket < today:

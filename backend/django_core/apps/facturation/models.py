@@ -587,11 +587,11 @@ class Facture(TotauxDocumentMixin, models.Model):
 
     @property
     def jours_retard(self):
-        """Jours de retard (échéance dépassée) si la facture reste due."""
+        """Jours de retard si l'EXIGIBLE reste dû (AFAC25 : jamais la retenue)."""
         from django.utils import timezone
         if not self.date_echeance or self.statut in ('payee', 'annulee'):
             return 0
-        if self.montant_du <= 0:
+        if self.montant_exigible <= 0:
             return 0
         delta = (timezone.now().date() - self.date_echeance).days
         return delta if delta > 0 else 0
