@@ -1137,6 +1137,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         self._profils_index_cache = cache
         return cache
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_quantite_suggeree(self, obj):
         # ASTK207 — disponible = stock − réservé (N14), en-commande = la même
         # map que `quantite_en_commande` : agrégats déjà en cache.
