@@ -104,8 +104,9 @@ def active_delegation_for(delegant, *, at=None):
     at = at or timezone.now()
     # ASEC30 — bornée à la société du délégant : une délégation d'une autre
     # société ne s'applique jamais.
+    company_id = getattr(delegant, 'company_id', None)
     return ApprovalDelegation.objects.filter(
-        company_id=getattr(delegant, 'company_id', None),
+        company_id=company_id, suppleant__company_id=company_id,
         delegant=delegant, date_debut__lte=at, date_fin__gte=at,
     ).first()
 
@@ -115,10 +116,14 @@ def visible_demandeur_ids_for(user, *, at=None):
     lui-même s'il est délégant actif (transparence) PLUS chaque délégant pour
     qui ``user`` est actuellement suppléant actif (XKB3)."""
     at = at or timezone.now()
+    company_id = getattr(user, 'company_id', None)
     ids = {user.pk}
     ids.update(
+        # ASEC30 — la ligne ET le délégant appartiennent à la société du
+        # suppléant : une ligne incohérente portant le délégant d'une autre
+        # société ne lui ouvre jamais ses demandes.
         ApprovalDelegation.objects.filter(
-            company_id=getattr(user, 'company_id', None),
+            company_id=company_id, delegant__company_id=company_id,
             suppleant=user, date_debut__lte=at, date_fin__gte=at,
         ).values_list('delegant_id', flat=True)
     )
