@@ -1,4 +1,5 @@
 """Tests FG44 — refus explicite d'un devis (date + motif + chatter + lead perdu)."""
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -8,6 +9,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from testkit.time import frozen
 from apps.crm.models import Client, Lead, MotifPerte
 from apps.ventes.models import Devis, DevisActivity
 
@@ -63,12 +65,15 @@ class TestDevisRefus(TestCase):
     def test_refuser_default_date_today(self):
         """Sans date explicite, date_refus = aujourd'hui."""
         devis = self._devis(num=2)
-        r = self.api.post(
-            f'/api/django/ventes/devis/{devis.id}/refuser/',
-            {}, format='json')
+        with frozen('2026-06-15 12:00:00'):
+            # Jeton émis SOUS l'horloge figée : sinon son ``iat`` (réel) serait
+            # dans le futur de l'instant figé.
+            r = auth(self.user).post(
+                f'/api/django/ventes/devis/{devis.id}/refuser/',
+                {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         devis.refresh_from_db()
-        self.assertEqual(devis.date_refus, timezone.now().date())
+        self.assertEqual(devis.date_refus, date(2026, 6, 15))
 
     def test_refuser_logs_chatter(self):
         """Le refus est consigné dans le chatter du devis (DevisActivity)."""
