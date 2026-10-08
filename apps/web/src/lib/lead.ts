@@ -1289,10 +1289,11 @@ export function buildIdempotencyKey(rand: () => number = secureRandom): string {
 }
 
 /**
- * Identifiant court, NON réversible, dérivé du téléphone E.164 — pour corréler
- * deux lignes de log d'un même lead SANS jamais journaliser le numéro. FNV-1a
- * 32 bits (suffisant pour une corrélation de logs, pas pour de la sécurité) ;
- * pur, synchrone, aucune dépendance, fonctionne hors Workers (tests).
+ * Pseudonyme court dérivé du téléphone E.164 — NON anonyme : FNV-1a 32 bits
+ * est inversible par énumération en quelques secondes (AACQ43). Ne JAMAIS le
+ * journaliser (cf. `redactLeadForLog`, qui corrèle par `idempotencyKey`) ; il
+ * ne sert qu'à dériver un `event_id` de déduplication CAPI de repli et la
+ * variante A/B (edgeVariant). Pur, synchrone, aucune dépendance.
  */
 export function leadLogId(phoneE164: string): string {
   let h = 0x811c9dc5;
@@ -1306,14 +1307,15 @@ export function leadLogId(phoneE164: string): string {
 /**
  * Vue d'un lead SÛRE pour les logs (ERR32) : aucune PII (nom, téléphone, ville,
  * e-mail, consentement) ne doit atterrir dans les logs Cloudflare. On ne
- * journalise que des diagnostics non identifiants — un id corrélable haché, des
- * indicateurs/longueurs, et des champs de campagne déjà publics (UTM/fbclid
+ * journalise que des diagnostics non identifiants — l'`idempotencyKey`
+ * (aléatoire, non dérivée du téléphone) pour corréler, des indicateurs/longueurs, et des champs de campagne déjà publics (UTM/fbclid
  * sont des paramètres d'URL, pas de la PII). Le payload PII complet n'est
  * JAMAIS sérialisé pour les logs.
  */
 export function redactLeadForLog(record: LeadRecord): Record<string, unknown> {
   return {
-    id: leadLogId(record.phoneE164),
+    // AACQ43 — aucune empreinte du téléphone : corrélation par la clé aléatoire.
+    ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
     qualified: record.qualified,
     billRange: record.billRange,
     roofType: record.roofType,
@@ -1365,13 +1367,19 @@ export function resetForwardLeadFailureStreak(): void {
  * vis-à-vis de l'appelant : ne lève jamais, ne bloque jamais — un simple
  * indicateur pour décider de journaliser une ligne d'ALERTE plus visible.
  */
-export function trackForwardLeadOutcome(delivered: boolean, reason?: string): { shouldAlert: boolean; streak: number } {
+export function trackForwardLeadOutcome(
+  delivered: boolean,
+  reason?: string,
+  production: boolean = false,
+): { shouldAlert: boolean; streak: number } {
   if (delivered) {
     consecutiveForwardFailures = 0;
     return { shouldAlert: false, streak: 0 };
   }
   // Les états normaux (pas de panne) ne comptent jamais comme un échec de livraison.
-  if (reason === 'below-threshold' || reason === 'no-webhook-configured') {
+  // AACQ41 — `no-webhook-configured` est une PANNE de configuration en production
+  // (le lead n'est plus transmis au CRM) ; en développement c'est l'état normal.
+  if (reason === 'below-threshold' || (reason === 'no-webhook-configured' && !production)) {
     return { shouldAlert: false, streak: consecutiveForwardFailures };
   }
   consecutiveForwardFailures += 1;
@@ -1418,7 +1426,20 @@ export async function forwardLead(
     return { delivered: false, reason: 'below-threshold' };
   }
   const url = env.LEAD_WEBHOOK_URL?.trim();
-  if (!url) return { delivered: false, reason: 'no-webhook-configured' };
+  if (!url) {
+    // AACQ41 — URL absente/vide : ne PLUS jeter le lead. Avec la liaison
+    // `LEADS_DLQ`, le record complet est déposé en lettre morte (même file que
+    // l'échec réseau) et `resendDeadLetters` le renvoie dès que l'URL revient.
+    // Sans liaison : comportement historique (aucun dépôt, aucun avertissement).
+    if (env.LEADS_DLQ) {
+      const payload: LeadRecord = record.idempotencyKey
+        ? record
+        : { ...record, idempotencyKey: crypto.randomUUID() };
+      const deadLettered = await storeDeadLetter(env.LEADS_DLQ, payload);
+      if (deadLettered) return { delivered: false, reason: 'no-webhook-configured', deadLettered };
+    }
+    return { delivered: false, reason: 'no-webhook-configured' };
+  }
   try {
     // Secret statique attendu par le récepteur taqinor-os
     // (apps/crm/webhooks.py, en-tête X-Webhook-Secret). Sans secret

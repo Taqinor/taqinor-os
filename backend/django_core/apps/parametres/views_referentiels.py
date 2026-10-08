@@ -16,12 +16,15 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models_payment_terms import ConditionPaiement
 from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
 from .models_taxes import TauxTVA
+from .views_common import SettingsAuditedMixin
 from .models_units import UniteMesure
 from .serializers_referentiels import (
     CadenceRelanceEtapeSerializer,
@@ -33,13 +36,21 @@ from .serializers_referentiels import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class _ReferentielViewSet(CompanyScopedModelViewSet):
-    """Base commune : lecture ouverte, écriture réservée admin/responsable."""
+class _ReferentielViewSet(SettingsAuditedMixin, CompanyScopedModelViewSet):
+    """Base commune : lecture ouverte, écriture réservée admin/responsable.
+
+    APAR28 — chaque écriture est journalisée (``SettingsAuditedMixin``)."""
+
+    audit_section = 'referentiels'
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        # APAR5 — écriture des réglages société : palier ET droit
+        # `parametres_modifier` (même couple qu'ASEC31) — Admin RH,
+        # Technicien/Commercial responsable n'y écrivent plus.
+        return [IsAdminOrResponsableTier(),
+                HasPermissionOrLegacy('parametres_modifier')()]
 
 
 class TauxTVAViewSet(_ReferentielViewSet):
@@ -47,6 +58,7 @@ class TauxTVAViewSet(_ReferentielViewSet):
 
     queryset = TauxTVA.objects.all()
     serializer_class = TauxTVASerializer
+    audit_libelle = 'Taux de TVA'
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -64,11 +76,18 @@ class TauxTVAViewSet(_ReferentielViewSet):
         """
         taux = self.get_object()
         company = taux.company
+        ancien = (TauxTVA.objects.filter(company=company, defaut=True)
+                  .exclude(pk=taux.pk).first())
         TauxTVA.objects.filter(company=company, defaut=True).exclude(
             pk=taux.pk).update(defaut=False)
         if not taux.defaut:
             taux.defaut = True
             taux.save(update_fields=['defaut'])
+        # APAR28 — le changement du taux par défaut est journalisé.
+        self._journaliser(
+            taux.pk, 'désigné par défaut',
+            old=f'{ancien.libelle if ancien else "—"}',
+            new=f'{getattr(taux, "libelle", taux.pk)}')
         return Response(self.get_serializer(taux).data)
 
 
@@ -77,6 +96,7 @@ class ConditionPaiementViewSet(_ReferentielViewSet):
 
     queryset = ConditionPaiement.objects.all()
     serializer_class = ConditionPaiementSerializer
+    audit_libelle = 'Condition de paiement'
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -91,6 +111,7 @@ class UniteMesureViewSet(_ReferentielViewSet):
 
     queryset = UniteMesure.objects.all()
     serializer_class = UniteMesureSerializer
+    audit_libelle = 'Unité de mesure'
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -122,6 +143,7 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
 
     queryset = CadenceRelanceEtape.objects.all()
     serializer_class = CadenceRelanceEtapeSerializer
+    audit_libelle = 'Étape de cadence de relance'
 
     def get_queryset(self):
         qs = super().get_queryset()

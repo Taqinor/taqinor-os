@@ -64,11 +64,12 @@ class Qw8CallbackEmailTests(TestCase):
         with mock.patch(
                 'apps.notifications.services.timezone.now',
                 return_value=_WEEKDAY_DAYTIME):
-            notif = notify(
-                self.user, EventType.LEAD_CALLBACK_REQUESTED,
-                'Rappel demandé',
-                body='Le prospect a demandé à être rappelé.',
-                link='/crm/leads?lead=1')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notif = notify(
+                    self.user, EventType.LEAD_CALLBACK_REQUESTED,
+                    'Rappel demandé',
+                    body='Le prospect a demandé à être rappelé.',
+                    link='/crm/leads?lead=1')
 
         # In-app créée ET un email sortant capté.
         self.assertIsNotNone(notif)

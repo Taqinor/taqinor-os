@@ -15,7 +15,7 @@ from decimal import Decimal
 
 from rest_framework.test import APIClient
 
-from apps.ventes.models import LigneDevis, ShareLink
+from apps.ventes.models import Devis, LigneDevis, ShareLink
 from apps.ventes.public.payload_variantes import _gammes_public, _variant_summaries
 from apps.ventes.services import (
     GAMME_ENVOI_LES_DEUX, GAMME_ENVOI_SEULE, regler_envoi_gamme,
@@ -185,6 +185,9 @@ class TestPayloadPublic(GammeBase):
 
     def test_payload_public_expose_gammes_et_jamais_prix_achat(self):
         source, soeur = self._paire('DEV-GAM-036', nom='Premium')
+        # ADEV11 : un brouillon n'est jamais servi au jeton client -> envoyé.
+        Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
+            statut=Devis.Statut.ENVOYE)
         link = ShareLink.for_devis(source)
         anon = APIClient()
         resp = anon.get(url_proposal(link.token))
@@ -196,15 +199,20 @@ class TestPayloadPublic(GammeBase):
         self.assertNotIn('marge', brut)
 
     def test_payload_public_mode_seule_sans_gammes(self):
-        source, _ = self._paire('DEV-GAM-037')
+        source, soeur = self._paire('DEV-GAM-037')
         regler_envoi_gamme(source, GAMME_ENVOI_SEULE)
+        # ADEV11 : un brouillon n'est jamais servi au jeton client -> envoyé.
+        Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
+            statut=Devis.Statut.ENVOYE)
         link = ShareLink.for_devis(source)
         resp = APIClient().get(url_proposal(link.token))
         self.assertEqual(resp.status_code, 200)
         self.assertIsNone(resp.data.get('gammes'))
 
     def test_devis_sans_gamme_payload_inchange(self):
-        d = make_devis(self.company, self.user, self.client_obj, 'DEV-GAM-038')
+        # ADEV11 : envoyé, un brouillon n'est jamais servi au jeton client.
+        d = make_devis(self.company, self.user, self.client_obj, 'DEV-GAM-038',
+                       statut='envoye')
         add_ligne(d, self.panneau, qty='6')
         # Le moteur refuse (a raison) un devis a options sans onduleur : la
         # fixture doit porter une composition credible, pas un panneau seul.

@@ -167,9 +167,11 @@ class CanalMessage(models.TextChoices):
 # « Notification Taqinor ». Le corps reste vide par défaut (l'action retombe
 # alors sur ``action_config['body']`` ou un modèle Paramètres, inchangé).
 MODELE_MESSAGE_DEFAULTS = {
-    CanalMessage.EMAIL: {'objet': 'Notification Taqinor', 'corps': ''},
+    # APAR6 — « {entreprise} » est rendu par ``actions.rendre_texte`` (raison
+    # sociale de LA société) : plus la marque Taqinor pour tous les tenants.
+    CanalMessage.EMAIL: {'objet': 'Notification {entreprise}', 'corps': ''},
     CanalMessage.WHATSAPP: {'objet': '', 'corps': ''},
-    CanalMessage.DOC: {'objet': 'Notification Taqinor', 'corps': ''},
+    CanalMessage.DOC: {'objet': 'Notification {entreprise}', 'corps': ''},
 }
 
 

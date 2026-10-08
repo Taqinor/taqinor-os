@@ -552,12 +552,13 @@ class BasculePerformUpdate(_BaseEcran):
         journal = self._espionner_les_quatre()
 
         # Passe Fable M5a — ``etude_params`` est READ-ONLY depuis QJR67 : le
-        # PATCHer décrirait une écriture devenue impossible. Le dispatch des
-        # quatre études est inconditionnel sur tout PATCH accepté ; on exerce
-        # donc un champ ENCORE écrivable.
+        # PATCHer décrirait une écriture devenue impossible. ADEV26 — le
+        # dispatch des quatre études n'a lieu que si le PATCH change une
+        # ENTRÉE d'étude (ici le marché) ; une note seule n'en relance aucune
+        # (``test_un_patch_sans_entree_d_etude_ne_relance_rien``).
         reponse = self.api.patch(
             '/api/django/ventes/devis/%s/' % devis.id,
-            {'note': 'QJR94 — un PATCH quelconque rafraîchit les 4 études'},
+            {'mode_installation': 'industriel'},
             format='json')
         self.assertEqual(reponse.status_code, 200, reponse.content)
 
@@ -579,6 +580,20 @@ class BasculePerformUpdate(_BaseEcran):
             {'rafraichir_etude_horaire_devis': True,
              'rafraichir_dimensionnement_devis': True,
              'rafraichir_profils_comparatifs_devis': True})
+
+    def test_un_patch_sans_entree_d_etude_ne_relance_rien(self):
+        """ADEV26 — une note (ou ``date_validite``) n'est lue par aucune
+        étude : le PATCH ne relance aucun des quatre rafraîchisseurs."""
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MOIS}-QJR9404',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20'), created_by=self.user)
+        journal = self._espionner_les_quatre()
+        reponse = self.api.patch(
+            '/api/django/ventes/devis/%s/' % devis.id,
+            {'note': 'ADEV26', 'taux_tva': '20'}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(journal, [])
 
     def test_un_devis_fige_ne_declenche_aucune_etude(self):
         """YDOCF2 — la garde du devis figé vit AVANT le pipeline et n'a pas

@@ -14,6 +14,7 @@ NO-OP silencieux (comportement actuel préservé).
 """
 import logging
 
+from django.db import transaction
 from django.utils import timezone
 
 from .models import (
@@ -627,11 +628,18 @@ def notify(user, event_type, title, body='', link=None, company=None,
                 user, company, event_type, channel='in_app', ok=True,
                 instance=created)
 
-    # Diffusions hors-app : best-effort, chacune isolée.
-    _diffuser_hors_app(
+    # Diffusions hors-app : best-effort, chacune isolée. APAR18 — DIFFÉRÉES
+    # au commit de la transaction de l'émetteur : une notification émise dans
+    # une transaction ensuite ANNULÉE (devis repassé en brouillon, paiement
+    # annulé) ne part sur AUCUN canal externe, et aucun appel HTTP (Brevo,
+    # web push) n'est fait pendant qu'un verrou de ligne est tenu. La ligne
+    # in-app, elle, reste transactionnelle (créée/annulée avec l'émetteur).
+    # Hors transaction (autocommit), ``on_commit`` exécute immédiatement :
+    # comportement inchangé.
+    transaction.on_commit(lambda: _diffuser_hors_app(
         user, company, event_type, title, body, link, prefs,
         instance=created, skip_email=skip_email,
-        approval_action=approval_action)
+        approval_action=approval_action))
     return created
 
 

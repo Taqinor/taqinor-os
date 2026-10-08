@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
 /** Les échantillons que la moitié `apps/web` du parcours devis consomme. */
-const ECHANTILLONS = ['taille_detail.json', 'proposal_data.json'] as const;
+const ECHANTILLONS = ['taille_detail.json', 'proposal_data.json', 'proposal_accept.json'] as const;
 
 const copieWeb = (nom: string) => lire(`../src/contract_samples/${nom}`);
 const jumeauBackend = (nom: string) =>
@@ -53,7 +53,7 @@ describe('QJW1 — les échantillons de contrat de `apps/web` sont les jumeaux d
     );
   });
 
-  it('les deux échantillons sont bien du JSON objet non vide (pas un fichier tronqué)', () => {
+  it('les échantillons sont bien du JSON objet non vide (pas un fichier tronqué)', () => {
     for (const nom of ECHANTILLONS) {
       const doc = JSON.parse(copieWeb(nom));
       expect(doc && typeof doc === 'object' && !Array.isArray(doc)).toBe(true);

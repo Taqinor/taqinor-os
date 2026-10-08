@@ -20,10 +20,23 @@ from rest_framework.response import Response
 
 from .noyau import (
     PublicLinkRateThrottle, _client_ip, _noindex, _not_found,
-    _parse_client_ts, _refus_apercu_interne, _resolve_proposal_link,
-    _texte_du_corps,
+    _parse_client_ts, _refus_apercu_interne, _refus_brouillon,
+    _resolve_proposal_link, _texte_du_corps,
 )
 from .paiement_views import _deposit_success_payload
+
+
+def _refus_aucun_canal(err):
+    """ADEV20 (C-ADEV-021) — « Code envoyé. » seulement si un code est
+    réellement parti : quand le service rend ``OTP_AUCUN_CANAL``, 409
+    ``{detail, code: "aucun_canal"}`` (contrat ``proposal_accept.json``, bloc
+    ``otp``) ; ``None`` sinon."""
+    from ..domain.cycle_vie import OTP_AUCUN_CANAL
+    if err != OTP_AUCUN_CANAL:
+        return None
+    return _noindex(Response(
+        {'detail': OTP_AUCUN_CANAL, 'code': 'aucun_canal'},
+        status=status.HTTP_409_CONFLICT))
 
 
 @api_view(['POST'])
@@ -57,13 +70,17 @@ def proposal_contact_request(request, token):
     un double clic sur le MÊME canal répond « déjà transmise » sans
     re-notifier ; un canal différent passe toujours.
     """
-    link = _resolve_proposal_link(token)
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
         return _not_found()
     # R4 — l'aperçu interne ne demande pas de rappel au nom du client (chatter
     # du lead + notification du responsable ET de son supérieur).
     if link.via_interne:
         return _refus_apercu_interne()
+    # ADEV11 — un brouillon (jamais envoyé) n'engage rien au jeton client.
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
 
     canal = (str(
         request.data.get('channel') or request.data.get('canal') or ''
@@ -140,15 +157,21 @@ def proposal_request_otp(request, token):
     No-op quand le toggle est OFF (retourne succès immédiatement — comportement
     byte-identique à aujourd'hui). Quand ON : génère un code, l'envoie via
     WhatsApp (wa.me draft) ou email et le stocke en cache (10 min)."""
-    link = _resolve_proposal_link(token)
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
         return _not_found()
     # R4 — un aperçu interne ne fait PAS partir un code de signature sur le
     # téléphone (ou dans la boîte mail) du client.
     if link.via_interne:
         return _refus_apercu_interne()
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
     from ..services import request_esign_otp
     err = request_esign_otp(link)
+    refus = _refus_aucun_canal(err)
+    if refus is not None:
+        return refus
     if err:
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
@@ -181,7 +204,7 @@ def proposal_request_otp_lecture(request, token):
     dès que ce booléen est vrai, sans dépendre d'aucun toggle. Un lien dont
     ``otp_lecture`` est False renvoie 200 immédiatement (rien à demander,
     comportement inchangé — la lecture n'est de toute façon pas gatée)."""
-    link = _resolve_proposal_link(token)
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
         return _not_found()
     # R4 — même règle que l'OTP de signature : aucun code ne part vers le
@@ -189,10 +212,16 @@ def proposal_request_otp_lecture(request, token):
     # déjà de l'OTP de lecture (voir ``proposal_data``).
     if link.via_interne:
         return _refus_apercu_interne()
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
     if not link.otp_lecture:
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
     from ..services import request_otp_lecture
     err = request_otp_lecture(link)
+    refus = _refus_aucun_canal(err)
+    if refus is not None:
+        return refus
     if err:
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
@@ -211,7 +240,7 @@ def proposal_verify_otp_lecture(request, token):
     relisent ce drapeau à chaque appel plutôt que d'exiger un code par GET
     (contrairement à l'acceptation, la lecture est consultée plusieurs
     fois)."""
-    link = _resolve_proposal_link(token)
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
         return _not_found()
     # R4 — vérifier un code depuis l'aperçu DÉVERROUILLERAIT la lecture du
@@ -219,6 +248,9 @@ def proposal_verify_otp_lecture(request, token):
     # client. L'aperçu n'en a aucun besoin : il lit sans OTP.
     if link.via_interne:
         return _refus_apercu_interne()
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
     if not link.otp_lecture:
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
     from ..services import validate_otp_lecture
@@ -244,7 +276,7 @@ def proposal_accept(request, token):
     « accepté » À TRAVERS le service d'acceptation unique — la chaîne
     bon-commande/facture est donc préservée 1:1 (règle #4). Idempotent : un
     double envoi ne re-signe pas. Pas de login : le jeton authentifie."""
-    link = _resolve_proposal_link(token)
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
         return _not_found()
     # L-INTPREV (25/08/2026) — le jeton interne ne peut JAMAIS signer : un
@@ -253,6 +285,11 @@ def proposal_accept(request, token):
     # jeton interne d'un jeton simplement invalide).
     if link.via_interne:
         return _not_found()
+    # ADEV11 — un brouillon (jamais envoyé) ne se signe pas au jeton client :
+    # 409 ``brouillon`` du contrat ``proposal_accept.json``, rien n'est écrit.
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
     # ── QJR132 / ES1 (audit du 30/08/2026) — SIGNER EST AU MOINS AUSSI GARDÉ
     #    QUE LIRE. Ce endpoint n'appelait JAMAIS ``otp_lecture_verified``,
     #    contrairement aux TROIS routes de LECTURE de la même proposition
@@ -364,8 +401,13 @@ def proposal_accept(request, token):
             entreprise=entreprise,
         )
     except AcceptError as exc:
+        corps = {'detail': exc.message}
+        # ADEV11 — un refus qui porte un code du contrat (``codes_409`` de
+        # ``proposal_accept.json``) le renvoie ; les autres restent inchangés.
+        if exc.code:
+            corps['code'] = exc.code
         return _noindex(Response(
-            {'detail': exc.message},
+            corps,
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
     # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
@@ -406,13 +448,16 @@ def proposal_activate_option(request, token):
     crée/duplique jamais de ligne. Ne touche AUCUN statut de devis (règle #4) :
     seule l'acceptation (``proposal_accept``) fige le document. Jeton
     invalide/expiré → 404 amical ; devis figé → 409."""
-    link = _resolve_proposal_link(token)
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
     if link is None:
         return _not_found()
     # R4 — activer une option CHANGE le périmètre facturé du devis : c'est une
     # décision du client, jamais un geste d'aperçu.
     if link.via_interne:
         return _refus_apercu_interne()
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
     # ── QJR418 (DR2, actions) — SIGNER EST AU MOINS AUSSI GARDÉ QUE LIRE, ET
     # ACTIVER UNE OPTION PAYANTE AUSSI. Ce endpoint ne consultait JAMAIS
     # ``otp_lecture_verified`` : quiconque détenait le jeton pouvait CHANGER LE

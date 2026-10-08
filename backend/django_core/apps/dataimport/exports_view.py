@@ -29,7 +29,13 @@ def _co_qs(model, user, company_id=None):
 
 def _devis_rows(user, ids, company_id=None):
     from apps.ventes.models import Devis
-    qs = _co_qs(Devis, user, company_id).select_related('client')
+    from apps.ventes.selectors import devis_avec_totaux
+    # APRF15 (C-APRF-004) — ``total_ttc`` lu sur des devis préchargés par LE
+    # préchargement unique des totaux (``devis_avec_totaux`` :
+    # ``lignes__produit``) + la société (réglages lus par le calcul) : le
+    # nombre de requêtes ne dépend plus du nombre de devis exportés.
+    qs = devis_avec_totaux(
+        _co_qs(Devis, user, company_id).select_related('client', 'company'))
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['Référence', 'Client', 'Statut', 'Total TTC', 'Créé le', 'Validité']
@@ -129,5 +135,14 @@ def export_list(request, entity):
                             'société doit désigner la société à exporter.'},
                 status=400)
     ids = request.data.get('ids') or []
+    # APRF15 (C-APRF-028) — comme le jumeau leads (``export-xlsx``), l'export
+    # des devis exporte une SÉLECTION : ``ids`` vide n'exporte plus toute la
+    # société (aucune borne) mais répond 400. Les autres entités sont
+    # inchangées ici (garde APRF28).
+    if entity == 'devis' and not ids:
+        return Response(
+            {'detail': 'Sélection requise : sélectionnez au moins un devis '
+                       'à exporter.'},
+            status=400)
     filename, headers, rows, title = builder(request.user, ids, company_id)
     return build_xlsx_response(filename, headers, rows, sheet_title=title)

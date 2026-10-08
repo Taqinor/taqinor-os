@@ -46,7 +46,7 @@ def seeder_disponible(pays: str) -> bool:
 
 def provisionner_localisation(
         company, *, pays='MA', devise=None,
-        fuseau_horaire=None, langue_repli=None):
+        fuseau_horaire=None, langue_repli=None, user=None):
     """Configure en un seul appel les réglages de localisation de ``company``
     puis enchaîne le seed des jours fériés du ``pays`` choisi.
 
@@ -55,22 +55,42 @@ def provisionner_localisation(
     (jamais écrasée par une valeur absente). Renvoie un dict décrivant ce qui
     a été fait, pour affichage synchrone dans l'assistant (« configurée en
     un seul flux, sans quitter l'écran »).
+
+    APAR29 — les valeurs passent par ``CompanyProfileSerializer(partial=True)``
+    (les MÊMES validations que ``PATCH /parametres/update/``) : un fuseau
+    inconnu, une langue hors choix ou une devise trop longue lèvent
+    ``rest_framework.exceptions.ValidationError`` (400 nommant le champ) au
+    lieu d'être écrits (ou de lever un 500). Chaque valeur changée est
+    journalisée (``SettingsAuditLog``, section ``localisation``).
     """
     from django.core.management import call_command
+    from rest_framework.exceptions import ValidationError
+
+    from apps.parametres.models_audit import SettingsAuditLog
     from apps.parametres.models_company import CompanyProfile
+    from apps.parametres.serializers_company import CompanyProfileSerializer
 
     profile = CompanyProfile.get(company)
-    champs_modifies = []
+    demandes = {}
     if devise:
-        profile.devise_defaut = devise
-        champs_modifies.append('devise_defaut')
+        demandes['devise_defaut'] = devise
     if fuseau_horaire:
-        profile.fuseau_horaire = fuseau_horaire
-        champs_modifies.append('fuseau_horaire')
+        demandes['fuseau_horaire'] = fuseau_horaire
     if langue_repli:
-        profile.langue_repli = langue_repli
-        champs_modifies.append('langue_repli')
-    if champs_modifies:
+        demandes['langue_repli'] = langue_repli
+    champs_modifies = list(demandes)
+    if demandes:
+        ser = CompanyProfileSerializer(profile, data=demandes, partial=True)
+        if not ser.is_valid():
+            raise ValidationError(ser.errors)
+        for champ, valeur in ser.validated_data.items():
+            ancien = getattr(profile, champ, None)
+            setattr(profile, champ, valeur)
+            if ancien != valeur:
+                SettingsAuditLog.log_change(
+                    company=company, user=user, section='localisation',
+                    field=champ, field_label=f'Localisation — {champ}',
+                    old=ancien, new=valeur)
         profile.save(update_fields=champs_modifies)
 
     feries_seedes = False

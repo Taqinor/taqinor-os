@@ -65,9 +65,10 @@ class ApprobationGroupeeServiceTests(TestCase):
     def test_cinq_decisions_journalisees_distinctes(self):
         instances = self._cinq_instances('ntwfl16-cinq')
         steps = [workflow.etape_courante_de(i) for i in instances]
+        # APAR46 — décider exige le palier approbateur.
         decideur = CustomUser.objects.create_user(
             username='ntwfl16-decideur', password='mdp-73914',
-            company=self.company)
+            company=self.company, role_legacy='responsable')
 
         resultat = workflow.approuver_en_masse(
             steps, user=decideur, commentaire='Lot validé en bloc',

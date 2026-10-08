@@ -2,9 +2,13 @@
 
 Depuis FG267, ``regulatory_docs`` déclare la pièce ``schema_unifilaire`` et
 ``generer-checklist`` la SÈME — mais rien ne la fournissait. Ces tests arment la
-boucle enfin fermée : POST ``generer-schema`` rend le PDF (service partagé
+boucle enfin fermée : ``joindre_schema_unifilaire`` rend le PDF (service partagé
 ``core.pdf``), l'attache par ``records.Attachment`` (jamais un FileField, ARC26)
 et bascule la pièce en « fourni », sans doublon au second passage.
+
+ADEV65 — les actions HTTP ``generer-schema`` / ``generer-checklist`` n'avaient
+aucun appelant de production : retirées (404). Les assertions métier portent
+désormais sur les fonctions de domaine de ``views/regulatory.py``.
 
 Run :
     DB_NAME=erp_ventes python manage.py test \
@@ -67,15 +71,23 @@ class GenererSchemaTest(TestCase):
         return ("/api/django/ventes/dossiers-reglementaires/%s/generer-schema/"
                 % dossier.id)
 
+    def _joindre(self, dossier):
+        """Rend ``{attachment_id, file_key, remplacee}`` comme l'ancienne
+        réponse de l'action retirée."""
+        from apps.ventes.views.regulatory import joindre_schema_unifilaire
+        piece_jointe, _item, remplacee = joindre_schema_unifilaire(
+            dossier, self.user)
+        return {'attachment_id': piece_jointe.pk,
+                'file_key': piece_jointe.file_key, 'remplacee': remplacee}
+
     def test_le_dossier_est_une_cible_de_piece_jointe(self):
         self.assertIn(('ventes', 'regulatorydossier'), ALLOWED_TARGETS)
 
     def test_piece_fournie_et_attachee(self):
         dossier = self._make_dossier(self.company)
         with mock.patch('core.pdf.render_pdf', side_effect=_faux_rendu):
-            resp = self.api.post(self._url(dossier), {}, format="json")
-        self.assertEqual(resp.status_code, 200)
-        self.assertFalse(resp.data['remplacee'])
+            resp = self._joindre(dossier)
+        self.assertFalse(resp['remplacee'])
 
         piece = dossier.checklist_items.get(code='schema_unifilaire')
         self.assertEqual(piece.statut, DossierChecklistItem.Statut.FOURNI)
@@ -96,13 +108,11 @@ class GenererSchemaTest(TestCase):
     def test_rejouer_remplace_sans_dupliquer(self):
         dossier = self._make_dossier(self.company)
         with mock.patch('core.pdf.render_pdf', side_effect=_faux_rendu):
-            premier = self.api.post(self._url(dossier), {}, format="json")
-            second = self.api.post(self._url(dossier), {}, format="json")
-        self.assertEqual(second.status_code, 200)
-        self.assertTrue(second.data['remplacee'])
-        self.assertEqual(premier.data['attachment_id'],
-                         second.data['attachment_id'])
-        self.assertNotEqual(premier.data['file_key'], second.data['file_key'])
+            premier = self._joindre(dossier)
+            second = self._joindre(dossier)
+        self.assertTrue(second['remplacee'])
+        self.assertEqual(premier['attachment_id'], second['attachment_id'])
+        self.assertNotEqual(premier['file_key'], second['file_key'])
         self.assertEqual(
             Attachment.objects.filter(
                 content_type=ContentType.objects.get_for_model(
@@ -114,14 +124,13 @@ class GenererSchemaTest(TestCase):
 
     def test_apres_generer_checklist_la_piece_existante_bascule(self):
         dossier = self._make_dossier(self.company)
-        self.api.post(
-            "/api/django/ventes/dossiers-reglementaires/%s/generer-checklist/"
-            % dossier.id, {}, format="json")
+        from apps.ventes.views.regulatory import generer_checklist_dossier
+        generer_checklist_dossier(dossier)
         piece = dossier.checklist_items.get(code='schema_unifilaire')
         self.assertEqual(piece.statut, DossierChecklistItem.Statut.A_FAIRE)
 
         with mock.patch('core.pdf.render_pdf', side_effect=_faux_rendu):
-            self.api.post(self._url(dossier), {}, format="json")
+            self._joindre(dossier)
         piece.refresh_from_db()
         self.assertEqual(piece.statut, DossierChecklistItem.Statut.FOURNI)
         self.assertEqual(
@@ -129,17 +138,29 @@ class GenererSchemaTest(TestCase):
             1)
 
     def test_scope_societe_404(self):
+        # ADEV65 — la route est retirée : 404 pour tout dossier, d'une autre
+        # société comme de la sienne, et rien n'est attaché.
+        for dossier in (self._make_dossier(self.other),
+                        self._make_dossier(self.company)):
+            with mock.patch('core.pdf.render_pdf', side_effect=_faux_rendu):
+                resp = self.api.post(self._url(dossier), {}, format="json")
+            self.assertEqual(resp.status_code, 404)
+        self.assertEqual(Attachment.objects.count(), 0)
+
+    def test_piece_jointe_dans_la_societe_du_dossier(self):
         dossier = self._make_dossier(self.other)
         with mock.patch('core.pdf.render_pdf', side_effect=_faux_rendu):
-            resp = self.api.post(self._url(dossier), {}, format="json")
-        self.assertEqual(resp.status_code, 404)
-        self.assertEqual(Attachment.objects.count(), 0)
+            self._joindre(dossier)
+        piece_jointe = Attachment.objects.get()
+        self.assertEqual(piece_jointe.company_id, self.other.id)
+        self.assertTrue(
+            piece_jointe.file_key.startswith('ventes/%s/' % self.other.id))
 
     def test_ne_touche_pas_le_statut_du_devis(self):
         dossier = self._make_dossier(self.company)
         statut = dossier.devis.statut
         with mock.patch('core.pdf.render_pdf', side_effect=_faux_rendu):
-            self.api.post(self._url(dossier), {}, format="json")
+            self._joindre(dossier)
         dossier.devis.refresh_from_db()
         self.assertEqual(dossier.devis.statut, statut)
 
@@ -152,7 +173,7 @@ class GenererSchemaTest(TestCase):
             return _faux_rendu(*args, **kwargs)
 
         with mock.patch('core.pdf.render_pdf', side_effect=_capture):
-            self.api.post(self._url(dossier), {}, format="json")
+            self._joindre(dossier)
         self.assertIn('<svg', capture['html'])
         self.assertNotIn('1000', capture['html'])
         self.assertNotIn('prix', capture['html'].lower())
@@ -166,5 +187,7 @@ class GenererSchemaTest(TestCase):
         api.force_authenticate(technicien)
         with mock.patch('core.pdf.render_pdf', side_effect=_faux_rendu):
             resp = api.post(self._url(dossier), {}, format="json")
-        self.assertIn(resp.status_code, (401, 403))
+        # ADEV65 — plus aucune porte HTTP : refus (route absente) quel que
+        # soit le rôle, rien n'est attaché.
+        self.assertIn(resp.status_code, (401, 403, 404))
         self.assertEqual(Attachment.objects.count(), 0)

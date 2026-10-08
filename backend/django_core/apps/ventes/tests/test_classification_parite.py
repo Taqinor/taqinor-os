@@ -33,6 +33,7 @@ corrige.
 """
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from django.test import SimpleTestCase
 
@@ -45,6 +46,12 @@ from apps.ventes.quote_engine.builder import (
     _is_panel,
     _is_reseau_inverter,
     _parse_kwh,
+    panneaux_et_watt_lu,
+)
+from apps.ventes.utils.options import (
+    blob_va_dans_avec,
+    blob_va_dans_sans,
+    texte_classement,
 )
 
 CONTRAT = (Path(__file__).resolve().parent.parent
@@ -201,3 +208,56 @@ class ClassificationRoleStkcat19Test(SimpleTestCase):
                     classer_produit(d), c['role'],
                     "classer_produit(« {} ») attendu {} (contrat "
                     "QJR2/STKCAT19)".format(d, c['role']))
+
+
+class CasLigneProduitTest(SimpleTestCase):
+    """AGNR2 — section ``exemple.cas_ligne_produit`` (contrat d'abord).
+
+    Une désignation RETOUCHÉE à la main est classée sur désignation + nom du
+    produit lié (``texte_classement``) : paniers sans/avec, kWh batterie,
+    provision onduleur, panneau et watt LU (``panneaux_et_watt_lu``). Le
+    serveur est la référence ; la moitié JS (AGNR18, AGNR36) lira la même
+    section.
+    """
+
+    COLONNES = ('designation', 'produit_nom', 'panier_sans', 'panier_avec',
+                'kwh_batterie', 'provision_onduleur', 'est_panneau',
+                'watt_lu')
+
+    @staticmethod
+    def _section():
+        with CONTRAT.open(encoding='utf-8') as fh:
+            return json.load(fh).get('exemple', {}).get(
+                'cas_ligne_produit', [])
+
+    def test_cas_ligne_produit(self):
+        section = self._section()
+        self.assertTrue(
+            section, 'classification_lignes.json ne porte pas la section '
+            'exemple.cas_ligne_produit (AGNR2)')
+        for c in section:
+            for col in self.COLONNES:
+                self.assertIn(col, c, '{} sans la colonne {}'.format(
+                    c.get('designation'), col))
+            d, nom = c['designation'], c['produit_nom']
+            texte = texte_classement(d, nom)
+            ligne = SimpleNamespace(
+                designation=d, quantite=1,
+                produit=(SimpleNamespace(nom=nom, fiche_technique=None)
+                         if nom else None))
+            nb, watt = panneaux_et_watt_lu([ligne])
+            obtenu = {
+                'panier_sans': blob_va_dans_sans(texte),
+                'panier_avec': blob_va_dans_avec(texte),
+                'kwh_batterie': (_parse_kwh(texte) if _is_battery(texte)
+                                 else None),
+                'provision_onduleur': _is_inverter(texte),
+                'est_panneau': nb > 0,
+                'watt_lu': watt,
+            }
+            for col, valeur in obtenu.items():
+                with self.subTest(cas=d, produit=nom, colonne=col):
+                    self.assertEqual(
+                        valeur, c[col],
+                        '« {} » + « {} » : {} attendu {} (contrat AGNR2), '
+                        'obtenu {}'.format(d, nom, col, c[col], valeur))

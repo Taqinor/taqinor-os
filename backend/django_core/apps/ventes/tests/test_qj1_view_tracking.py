@@ -53,7 +53,8 @@ def _make_client(company, nom='Client QJ1'):
 def _make_devis(company, client, ref='DEV-QJ1-0001'):
     return Devis.objects.get_or_create(
         company=company, reference=ref,
-        defaults={'client': client, 'taux_tva': Decimal('20')},
+        defaults={'client': client, 'taux_tva': Decimal('20'),
+                  'statut': Devis.Statut.ENVOYE},
     )[0]
 
 

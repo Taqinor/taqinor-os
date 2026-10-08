@@ -60,11 +60,15 @@ class Regularisation8221ApiTest(TestCase):
         self.assertEqual(regul.statut, 'a_regulariser')
 
     def test_generer_declaration_advances_status_not_devis(self):
+        # ADEV65 — l'action ``generer-declaration`` (sans appelant de
+        # production, chaîne libre ``declaration_pdf`` jamais relue) est
+        # retirée : le statut avance par le geste câblé à l'écran
+        # (``patchReglementaire`` → PATCH), mêmes assertions métier.
         regul = Regularisation8221.objects.create(
             company=self.company, devis=self.devis,
             regime_8221='declaration_bt')
-        url = f'{self.url}{regul.id}/generer-declaration/'
-        resp = self.api.post(url, {
+        resp = self.api.patch(f'{self.url}{regul.id}/', {
+            'statut': 'declaration_generee',
             'declaration_pdf': 'declarations/reg-1.pdf'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         regul.refresh_from_db()
@@ -74,13 +78,18 @@ class Regularisation8221ApiTest(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'accepte')
 
-    def test_generer_declaration_requires_pdf_path(self):
+    def test_generer_declaration_route_retiree(self):
+        # ADEV65 — la route ne fait plus avancer le statut : 404, rien écrit.
         regul = Regularisation8221.objects.create(
             company=self.company, devis=self.devis,
             regime_8221='declaration_bt')
         resp = self.api.post(
-            f'{self.url}{regul.id}/generer-declaration/', {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+            f'{self.url}{regul.id}/generer-declaration/',
+            {'declaration_pdf': 'declarations/reg-1.pdf'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        regul.refresh_from_db()
+        self.assertEqual(regul.statut, 'a_regulariser')
+        self.assertFalse(regul.declaration_pdf)
 
     def test_devis_of_other_company_refused(self):
         other_user = make_user(self.other, 'reg33_o')
