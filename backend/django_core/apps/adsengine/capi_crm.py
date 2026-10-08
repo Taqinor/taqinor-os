@@ -493,6 +493,21 @@ def _capture_old_stage(sender, instance, **kwargs):
     setattr(instance, _STASH_ATTR, old)
 
 
+def on_commit_best_effort(fn):
+    """AACQ19 — Exécute ``fn`` après le COMMIT de la transaction courante
+    (immédiatement hors transaction) ; une exception y est journalisée, jamais
+    remontée."""
+    from django.db import transaction
+
+    def _run():
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('CAPI CRM : émission après commit échouée',
+                           exc_info=True)
+    transaction.on_commit(_run)
+
+
 def _emit_on_stage_change(sender, instance, created, **kwargs):
     """``post_save`` : sur une transition d'étape AVANT, émet l'événement CAPI
     CRM-stage. Best-effort — jamais d'exception remontée au save du lead."""
@@ -505,9 +520,13 @@ def _emit_on_stage_change(sender, instance, created, **kwargs):
         old_stage = getattr(instance, _STASH_ATTR, None)
         if not created and old_stage == new_stage:
             return  # save sans changement d'étape → rien à émettre.
-        emit_lead_stage_event(
-            getattr(instance, 'company_id', None), instance.pk, new_stage,
-            old_stage=old_stage)
+        company_id = getattr(instance, 'company_id', None)
+        lead_pk = instance.pk
+        # AACQ19 — émission APRÈS validation de la transaction (comme QJ9 et
+        # ``lead_erased``) : une écriture annulée n'envoie aucune conversion,
+        # et aucun appel réseau (urlopen 5 s) ne part sous verrou.
+        on_commit_best_effort(lambda: emit_lead_stage_event(
+            company_id, lead_pk, new_stage, old_stage=old_stage))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning('ADSENG32: récepteur CRM-stage CAPI échoué',
                        exc_info=True)

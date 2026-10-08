@@ -202,7 +202,9 @@ class SignalTriggerTests(TestCase):
         # déclencheur atteigne l'émetteur (mocké ici).
         with mock.patch.dict(
                 os.environ, {'META_CRM_STAGE_CAPI_ENABLED': '1'}), \
-                mock.patch.object(capi_crm, 'emit_lead_stage_event', _recorder):
+                mock.patch.object(capi_crm, 'emit_lead_stage_event', _recorder), \
+                self.captureOnCommitCallbacks(execute=True):
+            # AACQ19 — l'émission part APRÈS le commit (callbacks exécutés).
             lead = Lead.objects.create(
                 company=self.company, nom='P',
                 source=Lead.Source.META_LEAD_ADS, canal=Lead.Canal.META_ADS,
@@ -214,6 +216,69 @@ class SignalTriggerTests(TestCase):
         transitions = [(new, old) for (_lid, new, old) in calls]
         # la création (→ NEW) puis la transition (NEW → CONTACTED) sont émises.
         self.assertIn((CONTACTED, NEW), transitions)
+
+    def _meta_lead(self, external_id, stage):
+        return Lead.objects.create(
+            company=self.company, nom='P',
+            source=Lead.Source.META_LEAD_ADS, canal=Lead.Canal.META_ADS,
+            external_system='meta_lead_ads', external_id=external_id,
+            telephone='0612345678', stage=stage)
+
+    def _envois(self):
+        envois = []
+
+        def _transport(url, payload, **kw):
+            envois.append(payload)
+            return {'events_received': 1}
+        return envois, _transport
+
+    def test_rollback_aucun_envoi(self):
+        """AACQ19 — une transition annulée (rollback) n'envoie RIEN."""
+        from django.db import transaction
+        lead = self._meta_lead('444', NEW)
+        envois, transport = self._envois()
+        with mock.patch.dict(os.environ, _ENV_ON), \
+                mock.patch.object(capi_crm, '_default_transport', transport), \
+                self.captureOnCommitCallbacks(execute=True):
+            try:
+                with transaction.atomic():
+                    lead.stage = CONTACTED
+                    lead.save()
+                    raise RuntimeError('écriture annulée')
+            except RuntimeError:
+                pass
+        self.assertEqual(envois, [])
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, NEW)
+
+    def test_accept_devis_annule_aucun_signed(self):
+        """AACQ19 — passage en SIGNED dans une transaction qui échoue ensuite
+        (abonné ``devis_accepted`` en erreur simulé) : aucun SIGNED envoyé ;
+        la même transition validée : 1 SIGNED, envoyé seulement au commit."""
+        from django.db import transaction
+        lead = self._meta_lead('555', QUOTE_SENT)
+        envois, transport = self._envois()
+        with mock.patch.dict(os.environ, _ENV_ON), \
+                mock.patch.object(capi_crm, '_default_transport', transport):
+            with self.captureOnCommitCallbacks(execute=True):
+                try:
+                    with transaction.atomic():
+                        lead.stage = SIGNED
+                        lead.save()
+                        raise RuntimeError('abonné devis_accepted en erreur')
+                except RuntimeError:
+                    pass
+            self.assertEqual(envois, [])
+            lead.refresh_from_db()
+            self.assertEqual(lead.stage, QUOTE_SENT)
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                with transaction.atomic():
+                    lead.stage = SIGNED
+                    lead.save()
+                    # Rien n'est parti SOUS le bloc atomique.
+                    self.assertEqual(envois, [])
+            self.assertGreaterEqual(len(callbacks), 1)
+        self.assertEqual(len(envois), 1)
 
     def test_no_stage_change_does_not_fire(self):
         lead = Lead.objects.create(
