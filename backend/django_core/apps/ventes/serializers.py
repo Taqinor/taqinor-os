@@ -946,6 +946,8 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
             'acompte_pct', 'acompte_montant',
             # Prix cible + prix/kWc gelé (SCA47).
             'prix_cible_kwc', 'prix_par_kwc', 'remise_approuvee',
+            # ADEV33 — profondeur de remise approuvée (lecture seule).
+            'remise_approuvee_pct',
             # Versionnage / cycle de vie technique.
             'version', 'is_active', 'custom_data', 'devise', 'taux_change',
             # Calepinage 3D + rendus. ``roof_layout`` et ``layout_hash`` sont
@@ -981,6 +983,11 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
                             # admin `approuver-remise` et la garde de domaine
                             # (admin implicite) l'écrivent.
                             'remise_approuvee', 'remise_approuvee_par',
+                            # ADEV33 — la PROFONDEUR approuvée suit la même
+                            # règle : seule l'approbation (domaine
+                            # ``tarification``) la pose ; un PATCH qui
+                            # l'élèverait s'auto-approuverait une remise.
+                            'remise_approuvee_pct',
                             # Posés côté serveur uniquement.
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',
