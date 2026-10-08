@@ -12,7 +12,7 @@ import {
   controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
 } from '../../solar'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures } from '../etatDevis'
+import { etatVersEcritures, baremePourDerivation } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -321,8 +321,9 @@ export function usePersistanceDevis(ctx) {
     if (conso == null && stockee && !stockee.descendDesFactures) conso = stockee.valeur
     const factures = entrees.factures_mensuelles_reelles || stockee?.factures || null
     if (conso == null && factures) {
+      const bareme = baremePourDerivation(baremeSociete, stockee, factures)
       const derivee = consoAnnuelleDepuisFactures(factures, distributeur,
-        baremeSociete?.tranches, baremeSociete?.chargesFixes)
+        bareme?.tranches, bareme?.chargesFixes)
       if (derivee > 0) { conso = derivee; auBareme = true }
     }
     if (conso == null && consoAnnuelleReelle > 0) {

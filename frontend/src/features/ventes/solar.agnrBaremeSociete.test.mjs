@@ -58,3 +58,22 @@ test('AGNR35 — computeROI au modèle « factures » lit la grille et la redeva
   assert.equal(societe.savings_model, 'factures')
   assert.notEqual(societe.eco_annuelle_sans, national.eco_annuelle_sans)
 })
+
+test('AGNR35 — rouvrir puis ré-enregistrer sans toucher ne change jamais la conso stockée', async () => {
+  const { devisVersEtat, entreesDeEtat } = await import('./quote/etatDevis.js')
+  const b = baremeDepuisProfil(SOCIETE)
+  const devis = (conso) => ({
+    id: 5, mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0', lignes: [],
+    etude_params: { factures_mensuelles_reelles: FACTURES, conso_annuelle: conso, distributeur: 'onee' },
+  })
+  // Stockée au barème NATIONAL (avant AGNR35) : identique à la réécriture.
+  const ancien = devisVersEtat(devis(10057), { bareme: b })
+  assert.equal(entreesDeEtat({ ...ancien, bareme: b }).conso_annuelle, 10057)
+  // Stockée au barème SOCIÉTÉ : identique aussi.
+  const recent = devisVersEtat(devis(10189), { bareme: b })
+  assert.equal(entreesDeEtat({ ...recent, bareme: b }).conso_annuelle, 10189)
+  // Des factures RETOUCHÉES se re-dérivent au barème société.
+  const retouche = { ...ancien, bareme: b, monthly: Array(12).fill(1600) }
+  assert.equal(entreesDeEtat(retouche).conso_annuelle,
+    consoAnnuelleDepuisFactures(Array(12).fill(1600), 'onee', b.tranches, b.chargesFixes))
+})

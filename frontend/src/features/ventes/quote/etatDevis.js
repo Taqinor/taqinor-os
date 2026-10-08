@@ -248,6 +248,11 @@ export function devisVersEtat(d, { bareme = null } = {}) {
     factures,
     // AGNR35 — une conso dérivée au barème SOCIÉTÉ est reconnue aussi.
     descendDesFactures: consoDescendDesFactures(e.conso_annuelle, factures, e.distributeur, bareme),
+    // AGNR35 — la conso stockée a-t-elle été dérivée au barème société ?
+    // Sinon, ré-enregistrer sans toucher la re-dérive au barème qui l'a
+    // produite : jamais un chiffre d'un devis existant changé en silence.
+    auBaremeSociete: Boolean(bareme && factures && Math.abs(Number(e.conso_annuelle)
+      - consoAnnuelleDepuisFactures(factures, null, bareme.tranches, bareme.chargesFixes)) <= 12),
   } : null
   if (etat.consoStockee && !etat.consoStockee.descendDesFactures) {
     etat.realBillMode = 'kwh'
@@ -281,6 +286,21 @@ export function choixDeEtat(etat, { recommended } = {}) {
 /** Les ENTRÉES réelles relues du devis (factures, conso, distributeur) : la
  *  conso saisie repart telle quelle ; une conso qui descend des factures est
  *  re-dérivée au barème (COUV-HOR). */
+/**
+ * AGNR35 — le barème avec lequel RE-DÉRIVER la conso d'un devis : celui de la
+ * société, SAUF quand la conso stockée descend de ces mêmes factures
+ * (inchangées) au barème NATIONAL — elle est alors re-dérivée au national,
+ * donc identique (aucun chiffre d'un devis existant ne bouge sans geste).
+ */
+export function baremePourDerivation(bareme, stockee, factures) {
+  if (!bareme) return null
+  const memes = stockee && Array.isArray(stockee.factures) && Array.isArray(factures)
+    && stockee.factures.length === factures.length
+    && stockee.factures.every((v, i) => (parseFloat(v) || 0) === (parseFloat(factures[i]) || 0))
+  if (stockee && stockee.descendDesFactures && !stockee.auBaremeSociete && memes) return null
+  return bareme
+}
+
 export function entreesDeEtat(etat) {
   const entrees = {}
   const stockee = etat.consoStockee
@@ -290,8 +310,9 @@ export function entreesDeEtat(etat) {
   let auBareme = false
   if (stockee && !stockee.descendDesFactures) conso = stockee.valeur
   if (conso == null && factures) {
+    const bareme = baremePourDerivation(etat.bareme, stockee, factures)
     const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee',
-      etat.bareme?.tranches, etat.bareme?.chargesFixes)
+      bareme?.tranches, bareme?.chargesFixes)
     if (derivee > 0) { conso = derivee; auBareme = true }
   }
   if (conso != null) {
