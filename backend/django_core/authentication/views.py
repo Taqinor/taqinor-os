@@ -881,6 +881,20 @@ class LogoutView(generics.GenericAPIView):
                     ).update(revoked=True)
             except Exception:
                 pass
+        # APAR57 — désabonne CET appareil du push : le corps peut porter
+        # ``push_endpoint`` (additif, optionnel). Sans cela, un poste partagé
+        # continuait de recevoir des push porteurs de jetons « Approuver/
+        # Refuser » après déconnexion. Borné à l'utilisateur courant ;
+        # best-effort (ne fait jamais échouer la déconnexion).
+        try:
+            push_endpoint = (request.data or {}).get('push_endpoint')
+            if push_endpoint:
+                from apps.notifications.services import (
+                    supprimer_abonnement_push,
+                )
+                supprimer_abonnement_push(request.user, push_endpoint)
+        except Exception:
+            pass
         # Journal d'activité (Feature G) — déconnexion. Best-effort.
         try:
             from apps.audit.recorder import record

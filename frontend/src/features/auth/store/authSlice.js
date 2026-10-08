@@ -3,6 +3,8 @@ import api from '../../../api/axios'
 // VX162 — logout propagé à tous les onglets (poste partagé).
 // LW45 — logout local (cet onglet) : purge les caches best-effort (ex. leadPrefetch.js).
 import { broadcastLogout, emitAuthLogout } from '../../../providers/session-bridge'
+// APAR57 — désabonnement push de l'appareil à la déconnexion.
+import { pushSupported, unsubscribeFromPush } from '../../pwa/pushSubscribe'
 
 // Recupere les infos utilisateur depuis l'API (cookie envoye automatiquement)
 export const fetchMe = createAsyncThunk(
@@ -22,12 +24,43 @@ export const fetchMe = createAsyncThunk(
   }
 )
 
+// APAR57 — borne une étape push best-effort : un service worker absent ou
+// bloqué ne doit JAMAIS retenir la déconnexion.
+const PUSH_DELAI_MS = 2000
+function avecDelai(promise, ms, defaut) {
+  let timer
+  const garde = new Promise((resolve) => { timer = setTimeout(() => resolve(defaut), ms) })
+  return Promise.race([promise, garde]).finally(() => clearTimeout(timer))
+}
+
+// APAR57 — désabonne CET appareil du push AVANT /auth/logout/ (poste partagé :
+// plus aucun push porteur de jetons « Approuver/Refuser » vers ce navigateur).
+// Rend l'endpoint désabonné (transmis au serveur, qui supprime la ligne) ou null.
+async function desabonnerPushAvantLogout() {
+  if (!pushSupported()) return null
+  try {
+    const sw = navigator.serviceWorker
+    const reg = await avecDelai(
+      sw.getRegistration ? sw.getRegistration() : sw.ready, PUSH_DELAI_MS, null,
+    )
+    if (!reg || !reg.pushManager) return null
+    const sub = await avecDelai(reg.pushManager.getSubscription(), PUSH_DELAI_MS, null)
+    if (!sub) return null
+    const endpoint = sub.endpoint || null
+    await avecDelai(unsubscribeFromPush(), PUSH_DELAI_MS, null)
+    return endpoint
+  } catch {
+    return null
+  }
+}
+
 export const logoutUser = createAsyncThunk(
   'auth/logoutUser',
   async (_, { dispatch }) => {
+    const pushEndpoint = await desabonnerPushAvantLogout()
     try {
       // Le cookie refresh_token est envoye automatiquement
-      await api.post('/auth/logout/', {})
+      await api.post('/auth/logout/', pushEndpoint ? { push_endpoint: pushEndpoint } : {})
     } catch {
       // Continuer meme si le serveur echoue
     }
