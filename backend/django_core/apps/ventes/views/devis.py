@@ -78,6 +78,9 @@ class DevisViewSet(DevisEditionActionsMixin,
     queryset = Devis.objects.select_related(
         'client', 'created_by', 'lead', 'bon_commande', 'signature',
         'superseded_by', 'version_parent',
+        # APRF4 (C-APRF-002) — `updated_by_nom` et la société (profil,
+        # validité) lus PAR LIGNE de liste : un SELECT par devis sans eux.
+        'updated_by', 'company',
     ).prefetch_related(
         # YOPSB13 — paiements/avoirs imbriqués préchargés : DevisSerializer.
         # get_solde (via solde_devis) itère f.paiements/f.avoirs PAR facture ;
@@ -89,7 +92,14 @@ class DevisViewSet(DevisEditionActionsMixin,
         # grandit avec le nombre de devis (même prefetch que
         # generate_premium_devis_pdf). Rend le total de liste O(1).
         'lignes', 'lignes__produit',
+        # APRF4 — la fiche technique de chaque produit (moteur d'affichage),
+        # et ce que `solde_devis` lit par facture : affectations de paiement
+        # (patron AUD157 de FactureViewSet), lignes de facture et d'avoir
+        # (totaux non figés). Sans eux : une requête par facture active.
+        'lignes__produit__fiche_technique',
         'factures', 'factures__paiements', 'factures__avoirs',
+        'factures__affectations_paiement__paiement', 'factures__lignes',
+        'factures__avoirs__lignes',
         'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur
