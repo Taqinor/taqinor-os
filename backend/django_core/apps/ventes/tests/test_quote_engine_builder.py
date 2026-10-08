@@ -1349,9 +1349,12 @@ class TestBuilderWiresTenantSite(TestCase):
         from apps.ventes.quote_engine import build_quote_data
         self._set_site('https://www.helios.ma/')
         devis = self._residential_devis('DEV-SCA27-WITH')
-        # ADEV68 — le lien « signer » n'est frappé que HORS brouillon.
+        # ADEV68 / AMOT13 — « signer » : devis HORS brouillon, lien frappé
+        # par l'envoi (le moteur le lit, ne le crée jamais).
+        from apps.ventes.models import ShareLink
         type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
         devis.refresh_from_db()
+        ShareLink.for_devis(devis)
         data = build_quote_data(devis)
         # Ligne site du pied de page = SON site (forme d'affichage normalisée).
         self.assertEqual(data['site_url'], 'helios.ma')

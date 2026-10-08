@@ -3696,7 +3696,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 # voit imprimé. Lecture du statut seulement (règle #4).
                 if getattr(devis, "statut", None) == "brouillon":
                     raise _PasDeLienSigner()
-                _share = ShareLink.for_devis(devis)
+                # AMOT13 (C-AMOT-010) — LECTURE PURE : le lien valide EXISTANT
+                # (même règle que ``ShareLink.for_devis`` : non révoqué, non
+                # expiré ou prolongé par le suivi), jamais créé ni prolongé
+                # par un rendu (GET de liste, de détail, page publique,
+                # /proposal). Aucun lien ⇒ aucun « signer » imprimé ; le geste
+                # d'ENVOI, lui, frappe et prolonge (``views/devis_envoi``).
+                from django.db.models import Q as _Q
+                from django.utils import timezone as _tz_lien
+                _share = (ShareLink.objects.filter(
+                    _Q(expires_at__gt=_tz_lien.now())
+                    | _Q(suivi_prolonge_le__isnull=False),
+                    devis=devis, revoque_le__isnull=True)
+                    .order_by('-expires_at').first())
+                if _share is None:
+                    raise _PasDeLienSigner()
             if _tenant_site:
                 _signer_base = "https://" + _tenant_site
             else:

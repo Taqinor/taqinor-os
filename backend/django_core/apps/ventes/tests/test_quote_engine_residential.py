@@ -597,11 +597,15 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
                 1200, 1200, 1300, 1400, 1600, 1800,
                 1900, 1900, 1700, 1500, 1300, 1200],
         })
-        # ADEV68 — le lien « signer » n'est frappé que HORS brouillon : ces
-        # tests du CTA de signature portent sur un devis ENVOYÉ (le cas
-        # brouillon est couvert par test_quote_engine_adev68_*).
+        # ADEV68 / AMOT13 — le moteur n'imprime « signer » que pour un devis
+        # HORS brouillon, et LIT le lien sans jamais le créer : ces tests du
+        # CTA de signature portent donc sur un devis ENVOYÉ dont le lien a été
+        # frappé par l'envoi (cas brouillon : test_quote_engine_adev68_* ;
+        # lecture pure : test_quote_engine_amot13_*).
+        from apps.ventes.models import ShareLink
         type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
         devis.refresh_from_db()
+        ShareLink.for_devis(devis)
         return devis
 
     def test_builder_mints_tokenized_signer_link(self):
