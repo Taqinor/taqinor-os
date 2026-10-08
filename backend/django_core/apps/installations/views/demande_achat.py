@@ -73,6 +73,15 @@ def _exiger_brouillon(demande):
 CHAMPS_ENTETE_LIBRES = frozenset({'epinglee'})
 
 
+def _toucher_demande(demande):
+    """ACHT15 (C-ACHT-014) — toute modification de ligne rafraîchit
+    `DemandeAchat.date_modification` : la purge NTP2P35 (brouillons non
+    retouchés) n'archive jamais une demande activement éditée."""
+    if demande is not None and demande.pk:
+        DemandeAchat.objects.filter(pk=demande.pk).update(
+            date_modification=timezone.now())
+
+
 def _notifier_demandeur_decision(da, approuvee):
     """VX213 (c) — bord RETOUR : notifie le DEMANDEUR (``created_by``) de la
     décision d'approbation de sa réquisition (motif inclus si refus).
@@ -203,8 +212,11 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         # AUD819 — la transition passe par la table TRANSITIONS du kit
         # (``core.documents.changer_statut``) : garde + événement bus.
         try:
+            # ACHT15 — une demande qui quitte le brouillon n'est plus
+            # « abandonnée » : elle sort de l'archive (liste active).
             services.appliquer_statut_document(
-                da, DemandeAchat.Statut.SOUMISE, user=request.user)
+                da, DemandeAchat.Statut.SOUMISE, user=request.user,
+                champs={'archivee': False, 'date_archivage': None})
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -509,6 +521,8 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 quantite=quantite, prix_estime=prix_estime)
             creees.append(ligne.id)
 
+        if creees:
+            _toucher_demande(da)  # ACHT15
         return Response({
             'importees': len(creees),
             'lignes_creees': creees,
@@ -600,14 +614,21 @@ class DemandeAchatLigneViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         self._check_parent(serializer)
         _exiger_brouillon(serializer.validated_data.get('demande'))
-        serializer.save()
+        ligne = serializer.save()
+        _toucher_demande(ligne.demande)
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
-        _exiger_brouillon(serializer.instance.demande)
+        ancienne = serializer.instance.demande
+        _exiger_brouillon(ancienne)
         _exiger_brouillon(serializer.validated_data.get('demande'))
-        serializer.save()
+        ligne = serializer.save()
+        _toucher_demande(ancienne)
+        if ligne.demande_id != ancienne.pk:
+            _toucher_demande(ligne.demande)
 
     def perform_destroy(self, instance):
-        _exiger_brouillon(instance.demande)
+        demande = instance.demande
+        _exiger_brouillon(demande)
         instance.delete()
+        _toucher_demande(demande)
