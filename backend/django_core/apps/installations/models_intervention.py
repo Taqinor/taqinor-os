@@ -204,6 +204,10 @@ class Intervention(models.Model):
     lien_rapport_token = models.CharField(
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien compte-rendu signé (ZFSM2).")
+    # ACHT36 — instant de la PREMIÈRE clôture notifiée : `intervention_completed`
+    # n'est émis qu'une fois (un cycle terminée → sur site → terminée ne
+    # rejoue aucun effet de clôture).
+    cloturee_notifiee_le = models.DateTimeField(null=True, blank=True)
 
     # ── XFSM21 — météo sur le planning (travaux toiture) ─────────────────────
     # Prévision J+3 (Open-Meteo, gratuit, sans clé) récupérée par la tâche Beat

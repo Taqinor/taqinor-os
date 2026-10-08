@@ -5679,8 +5679,15 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
 
     old = etat_avant if etat_avant is not None else (
         _Intervention.objects.get(pk=intervention.pk))
+    termines = (_Intervention.Statut.TERMINEE, _Intervention.Statut.VALIDEE)
     intervention.statut = nouveau_statut
-    intervention.save(update_fields=['statut'])
+    champs_ecrits = ['statut']
+    if ancien in termines and nouveau_statut not in termines:
+        # ACHT36 — RECUL d'une intervention clôturée : la date de réalisation
+        # est remise à vide (tracée au chatter) ; la re-clôture la reposera.
+        intervention.date_realisee = None
+        champs_ecrits.append('date_realisee')
+    intervention.save(update_fields=champs_ecrits)
 
     effets = {}
     _stamp_date_realisee_intervention(intervention)
@@ -5692,11 +5699,15 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
             f"Intervention modifiée : "
             f"{intervention.get_type_intervention_display()}")
         effets['chatter_chantier'] = True
-    termines = (_Intervention.Statut.TERMINEE, _Intervention.Statut.VALIDEE)
-    if ancien not in termines and intervention.statut in termines:
+    if (ancien not in termines and intervention.statut in termines
+            and intervention.cloturee_notifiee_le is None):
         # YSERV2 — sav s'y abonne pour avancer le ticket lié (installations
         # n'importe JAMAIS sav) ; ZFSM4 y accroche la facturation.
+        # ACHT36 — émis SEULEMENT à la première clôture.
+        from django.utils import timezone as _tz
         from core.events import intervention_completed
+        intervention.cloturee_notifiee_le = _tz.now()
+        intervention.save(update_fields=['cloturee_notifiee_le'])
         intervention_completed.send(
             sender=_Intervention, intervention=intervention,
             company=intervention.company, user=user)

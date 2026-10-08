@@ -45,6 +45,12 @@ class InterventionLienClientPublicView(APIView):
         return Response(intervention_public_payload(interv))
 
 
+def _rapport_publiable(interv):
+    """ACHT36 — le compte-rendu public n'est servi qu'en terminée/validée."""
+    return interv.statut in (
+        Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+
+
 class InterventionRapportPublicView(APIView):
     """ZFSM2 — page publique tokenisée du compte-rendu d'intervention signé
     (F19) : photos avant/après, réserves, matériel consommé SANS prix
@@ -59,7 +65,9 @@ class InterventionRapportPublicView(APIView):
             Intervention.objects
             .select_related('installation')
             .filter(lien_rapport_token=token).first())
-        if interv is None:
+        # ACHT36 — un compte-rendu rouvert (recul de statut) n'est plus servi
+        # tant que l'intervention n'est pas reclôturée.
+        if interv is None or not _rapport_publiable(interv):
             return Response(
                 {'detail': 'Lien invalide ou expiré.'},
                 status=status.HTTP_404_NOT_FOUND)
@@ -78,7 +86,7 @@ class InterventionRapportPdfPublicView(APIView):
         interv = (
             Intervention.objects
             .filter(lien_rapport_token=token).first())
-        if interv is None:
+        if interv is None or not _rapport_publiable(interv):
             return Response(
                 {'detail': 'Lien invalide ou expiré.'},
                 status=status.HTTP_404_NOT_FOUND)

@@ -310,6 +310,10 @@ def _h_terminer(company, user, payload):
     statut = (payload.get('statut') or Intervention.Statut.TERMINEE)
     if statut not in Intervention.Statut.values:
         raise FieldOpError('Statut inconnu.')
+    # ACHT36 — la synchro ne CLÔTURE que : jamais de recul par cette voie.
+    if statut not in (Intervention.Statut.TERMINEE,
+                      Intervention.Statut.VALIDEE):
+        raise FieldOpError('Statut non admis par la synchro.')
     try:
         recu = changer_statut_intervention(iv, statut, user)
     except TransitionRefusee as exc:
