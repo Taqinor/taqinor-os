@@ -24,7 +24,9 @@ function fichiers(dir: string): string[] {
 
 /** Les noms trouvés hors exemptions. */
 export function nomsLitteraux(fichiersSrc: { rel: string; contenu: string }[]): string[] {
-  return fichiersSrc.filter((f) => !EXEMPTES(f.rel) && NOMS.test(f.contenu)).map((f) => f.rel);
+  // Les noms de VARIABLES d'exécution du Worker (`YANBOW_RDV_URL`…, YBW54) sont des identifiants, pas un nom affiché.
+  const sansVariables = (c: string) => c.replace(/\bYANBOW_[A-Z0-9_]+/g, '');
+  return fichiersSrc.filter((f) => !EXEMPTES(f.rel) && NOMS.test(sansVariables(f.contenu))).map((f) => f.rel);
 }
 
 describe('YBW19 — noms depuis UNE constante', () => {
@@ -40,6 +42,8 @@ describe('YBW19 — noms depuis UNE constante', () => {
   it('cas négatif : un nom écrit en dur dans un composant est détecté', () => {
     expect(nomsLitteraux([{ rel: 'components/Header.astro', contenu: '<a>SolarBow</a>' }])).toEqual(['components/Header.astro']);
     expect(nomsLitteraux([{ rel: 'i18n/pages/x.fr.ts', contenu: "t: 'SolarBow'" }])).toEqual([]);
+    expect(nomsLitteraux([{ rel: 'lib/rdv/forward.ts', contenu: 'env.YANBOW_RDV_URL' }])).toEqual([]);
+    expect(nomsLitteraux([{ rel: 'lib/rdv/forward.ts', contenu: "env.YANBOW_RDV_URL + ' YanBow'" }])).toEqual(['lib/rdv/forward.ts']);
   });
 
   it('aucun nom produit littéral dans src/ hors brand.ts, dictionnaires et registre', () => {
