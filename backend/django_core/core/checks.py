@@ -382,3 +382,93 @@ def verifier_garantie_rls(app_configs=None, **kwargs):
                  '(backend/db/rls_roles.sql), ou coupez POSTGRES_RLS_ENABLED.',
             id=ID_RLS))
     return messages
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP31 — ``core.W_EMAIL`` / ``core.E_EMAIL`` : réglages e-mail contradictoires.
+# ─────────────────────────────────────────────────────────────────────────────
+ID_W_EMAIL = 'core.W_EMAIL'
+ID_E_EMAIL = 'core.E_EMAIL'
+
+#: Backends Django qui n'ENVOIENT rien (impression, mémoire, fichier, néant).
+BACKENDS_NON_ENVOYEURS = frozenset({
+    'django.core.mail.backends.console.EmailBackend',
+    'django.core.mail.backends.dummy.EmailBackend',
+    'django.core.mail.backends.locmem.EmailBackend',
+    'django.core.mail.backends.filebased.EmailBackend',
+})
+
+#: Les clés d'envoi lues par anymail (``settings.ANYMAIL``) et leur variable.
+CLES_ENVOI = (
+    ('SENDINBLUE_API_KEY', 'BREVO_API_KEY'),
+    ('SENDGRID_API_KEY', 'SENDGRID_API_KEY'),
+)
+
+
+def backend_email_envoie(backend=None):
+    """SOURCE UNIQUE — le backend e-mail chargé envoie-t-il réellement ?
+
+    Faux pour console / dummy / locmem / filebased (rien ne quitte le
+    process) ; vrai pour tout autre backend (anymail, SMTP…). Prédicat de la
+    fondation ``core``, réutilisable par les apps (jamais l'inverse).
+    """
+    if backend is None:
+        backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
+    return bool(backend) and backend not in BACKENDS_NON_ENVOYEURS
+
+
+def cles_envoi_posees():
+    """Les variables d'environnement des clés d'envoi posées (non vides)."""
+    anymail = getattr(settings, 'ANYMAIL', None) or {}
+    return [variable for cle, variable in CLES_ENVOI
+            if str(anymail.get(cle) or '').strip()]
+
+
+def expediteur_non_verifiable(expediteur=None):
+    """Vrai si ``DEFAULT_FROM_EMAIL`` est en ``*.local`` (jamais vérifiable)."""
+    if expediteur is None:
+        expediteur = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or ''
+    domaine = str(expediteur).strip().rstrip('>').rsplit('@', 1)[-1].lower()
+    return domaine == 'local' or domaine.endswith('.local')
+
+
+def contradictions_email():
+    """Les états e-mail contradictoires, en phrases (vide = état sain)."""
+    backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
+    constats = []
+    cles = cles_envoi_posees()
+    if cles and not backend_email_envoie(backend):
+        constats.append(
+            f'{", ".join(cles)} est posé mais EMAIL_BACKEND vaut « {backend} » '
+            f'— aucun e-mail ne part réellement (il est imprimé ou jeté) alors '
+            f'que la configuration semble prête à envoyer.')
+    expediteur = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or ''
+    if backend_email_envoie(backend) and expediteur_non_verifiable(expediteur):
+        constats.append(
+            f'EMAIL_BACKEND « {backend} » envoie réellement mais '
+            f'DEFAULT_FROM_EMAIL vaut « {expediteur} » (domaine .local) — '
+            f'aucun fournisseur ne peut vérifier cet expéditeur.')
+    return constats
+
+
+_INDICE_EMAIL = (
+    'Posez EMAIL_BACKEND selon le fournisseur (Brevo : '
+    'anymail.backends.sendinblue.EmailBackend ; SendGrid : '
+    'anymail.backends.sendgrid.EmailBackend) et DEFAULT_FROM_EMAIL=<expéditeur '
+    'vérifié>, ou retirez la clé d\'envoi pour rester en console.')
+
+
+@register(Tags.compatibility)
+def verifier_email_au_demarrage(app_configs=None, **kwargs):
+    """ADEP31 — avertissement au démarrage, JAMAIS bloquant (migrate passe)."""
+    from django.core.checks import Warning as CheckWarning
+
+    return [CheckWarning(constat, hint=_INDICE_EMAIL, id=ID_W_EMAIL)
+            for constat in contradictions_email()]
+
+
+@register(Tags.security, deploy=True)
+def verifier_email_deploiement(app_configs=None, **kwargs):
+    """ADEP31 — erreur sous ``manage.py check --deploy`` seulement."""
+    return [Error(constat, hint=_INDICE_EMAIL, id=ID_E_EMAIL)
+            for constat in contradictions_email()]
