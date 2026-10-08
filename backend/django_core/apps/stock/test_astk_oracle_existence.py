@@ -49,6 +49,7 @@ def _neutralise(texte, pk):
     if isinstance(enveloppe, dict) and 'request_id' in enveloppe:
         enveloppe['request_id'] = '<REQUEST_ID>'
     return json.dumps(corps, ensure_ascii=False, sort_keys=True).replace(
+        f'« {pk} »', '« <ID> »').replace(
         f'« {pk} »', '« <ID> »').replace(f'"{pk}"', '"<ID>"').replace(
         f'\\"{pk}\\"', '\\"<ID>\\"').replace(f"'{pk}'", "'<ID>'")
 
