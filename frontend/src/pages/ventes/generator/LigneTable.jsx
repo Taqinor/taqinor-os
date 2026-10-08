@@ -114,9 +114,9 @@ export default function LigneTable({
               </div>
               {multiPreview?.mode === 'multiplicateur' && (
                 <div className="text-sm text-muted-foreground">
-                  {multiPreview.nombreProprietes} × {formatMoney(multiPreview.totalUnitaireSans)}
+                  {multiPreview.nombreProprietes} × {formatMoney(multiPreview.totalUnitaire)}
                   {' = '}
-                  <strong className="text-foreground">{formatMoney(multiPreview.totalMultiSans)}</strong>
+                  <strong className="text-foreground">{formatMoney(multiPreview.totalMulti)}</strong>
                   {' '}(total pour {multiPreview.nombreProprietes} propriétés)
                 </div>
               )}
@@ -149,7 +149,7 @@ export default function LigneTable({
               {multiPreview?.mode === 'villas' && (
                 <div className="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
                   {multiPreview.groupes.map(g => (
-                    <div key={g.index} className="flex justify-between gap-4">
+                    <div key={g.index ?? 'hors-groupe'} className="flex justify-between gap-4">
                       <span>{g.label}</span>
                       <span className="tabular-nums">{formatMoney(g.totalTtc)}</span>
                     </div>

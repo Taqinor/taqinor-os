@@ -19571,11 +19571,12 @@
      },
      {
       "produit": "22",
-      "designation": "Onduleur réseau Huawei 25kW Triphasé",
+      "designation": "Structures acier",
       "quantite": 1,
       "prix_unit_ttc": 35000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -19656,11 +19657,12 @@
      },
      {
       "produit": "33",
-      "designation": "Batterie Dyness 5 kWh",
+      "designation": "Suivi journalier, maintenance chaque 12 mois pendant 2 ans",
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "34",
@@ -20481,11 +20483,12 @@
      },
      {
       "produit": "22",
-      "designation": "Onduleur réseau Huawei 25kW Triphasé",
+      "designation": "Structures acier",
       "quantite": 1,
       "prix_unit_ttc": 35000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -20566,11 +20569,12 @@
      },
      {
       "produit": "33",
-      "designation": "Batterie Dyness 5 kWh",
+      "designation": "Suivi journalier, maintenance chaque 12 mois pendant 2 ans",
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "34",
@@ -21094,8 +21098,9 @@
       "quantite": 1,
       "prix_unit_ttc": 20000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "13",
@@ -21103,7 +21108,8 @@
       "quantite": 1,
       "prix_unit_ttc": 28000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "27",
@@ -21111,7 +21117,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "28",
@@ -21119,7 +21126,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "16",
@@ -21127,7 +21135,8 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "18",
@@ -21135,7 +21144,8 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "19",
@@ -21143,8 +21153,9 @@
       "quantite": "1",
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "22",
@@ -21152,7 +21163,8 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -21160,7 +21172,8 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -21168,8 +21181,9 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "25",
@@ -21177,7 +21191,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -21185,7 +21200,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -21193,7 +21209,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -21201,8 +21218,9 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "31",
@@ -21210,7 +21228,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -21218,7 +21237,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -21226,8 +21246,9 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -21906,8 +21927,9 @@
       "quantite": 1,
       "prix_unit_ttc": 20000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "13",
@@ -21915,7 +21937,8 @@
       "quantite": 1,
       "prix_unit_ttc": 28000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "27",
@@ -21923,7 +21946,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "28",
@@ -21931,7 +21955,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "16",
@@ -21939,7 +21964,8 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "18",
@@ -21947,7 +21973,8 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "19",
@@ -21955,8 +21982,9 @@
       "quantite": "1",
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "22",
@@ -21964,7 +21992,8 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -21972,7 +22001,8 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -21980,8 +22010,9 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "25",
@@ -21989,7 +22020,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -21997,7 +22029,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -22005,7 +22038,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -22013,8 +22047,9 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "31",
@@ -22022,7 +22057,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -22030,7 +22066,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -22038,8 +22075,9 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -22511,8 +22549,9 @@
       "quantite": "2",
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -22526,8 +22565,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -22535,8 +22575,9 @@
       "quantite": 8,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -22544,8 +22585,9 @@
       "quantite": "1",
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "19",
@@ -22553,7 +22595,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -22561,8 +22604,9 @@
       "quantite": 8,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "23",
@@ -22570,7 +22614,8 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -22578,8 +22623,9 @@
       "quantite": "31",
       "prix_unit_ttc": 80,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "25",
@@ -22587,7 +22633,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -22595,8 +22642,9 @@
       "quantite": 40,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "29",
@@ -22604,7 +22652,8 @@
       "quantite": 1,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -22612,7 +22661,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1950,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -22620,7 +22670,8 @@
       "quantite": 1,
       "prix_unit_ttc": 4800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -22628,8 +22679,9 @@
       "quantite": "2",
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "33",
@@ -22637,8 +22689,9 @@
       "quantite": "1",
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -23396,8 +23449,9 @@
       "quantite": "2",
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -23411,8 +23465,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -23420,8 +23475,9 @@
       "quantite": 8,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -23429,8 +23485,9 @@
       "quantite": "1",
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "19",
@@ -23438,7 +23495,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -23446,8 +23504,9 @@
       "quantite": 8,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "23",
@@ -23455,7 +23514,8 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -23463,8 +23523,9 @@
       "quantite": "31",
       "prix_unit_ttc": 80,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "25",
@@ -23472,7 +23533,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -23480,8 +23542,9 @@
       "quantite": 40,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "29",
@@ -23489,7 +23552,8 @@
       "quantite": 1,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -23497,7 +23561,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1950,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -23505,7 +23570,8 @@
       "quantite": 1,
       "prix_unit_ttc": 4800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -23513,8 +23579,9 @@
       "quantite": "2",
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "33",
@@ -23522,8 +23589,9 @@
       "quantite": "1",
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -24071,7 +24139,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "28",
@@ -24079,7 +24148,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "16",
@@ -24087,7 +24157,8 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "18",
@@ -24095,7 +24166,8 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "19",
@@ -24103,7 +24175,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -24111,7 +24184,8 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -24119,8 +24193,9 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -24128,7 +24203,8 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -24142,8 +24218,9 @@
       "quantite": "61",
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "26",
@@ -24151,7 +24228,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -24159,7 +24237,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -24167,7 +24246,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -24175,8 +24255,9 @@
       "quantite": 1,
       "prix_unit_ttc": 4800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "32",
@@ -24184,7 +24265,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -24192,7 +24274,8 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -24940,7 +25023,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "28",
@@ -24948,7 +25032,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "16",
@@ -24956,7 +25041,8 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "18",
@@ -24964,7 +25050,8 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "19",
@@ -24972,7 +25059,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -24980,7 +25068,8 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -24988,8 +25077,9 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -24997,7 +25087,8 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -25011,8 +25102,9 @@
       "quantite": "61",
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "26",
@@ -25020,7 +25112,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -25028,7 +25121,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -25036,7 +25130,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -25044,8 +25139,9 @@
       "quantite": 1,
       "prix_unit_ttc": 4800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "32",
@@ -25053,7 +25149,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -25061,7 +25158,8 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -25582,11 +25680,12 @@
      },
      {
       "produit": "22",
-      "designation": "Structures acier",
+      "designation": "Onduleur réseau Huawei 25kW Triphasé",
       "quantite": 8,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "102",
@@ -25676,11 +25775,12 @@
      },
      {
       "produit": "33",
-      "designation": "Suivi journalier, maintenance chaque 12 mois pendant 2 ans",
+      "designation": "Batterie Dyness 5 kWh",
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "",
@@ -26490,11 +26590,12 @@
      },
      {
       "produit": "22",
-      "designation": "Structures acier",
+      "designation": "Onduleur réseau Huawei 25kW Triphasé",
       "quantite": 8,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "102",
@@ -26584,11 +26685,12 @@
      },
      {
       "produit": "33",
-      "designation": "Suivi journalier, maintenance chaque 12 mois pendant 2 ans",
+      "designation": "Batterie Dyness 5 kWh",
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "",
@@ -27102,7 +27204,8 @@
       "quantite": 1,
       "prix_unit_ttc": 20000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "13",
@@ -27110,7 +27213,8 @@
       "quantite": 1,
       "prix_unit_ttc": 28000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "27",
@@ -27118,7 +27222,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "28",
@@ -27126,8 +27231,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -27135,8 +27241,9 @@
       "quantite": "16",
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -27144,8 +27251,9 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "19",
@@ -27153,7 +27261,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -27167,8 +27276,9 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "23",
@@ -27176,8 +27286,9 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -27185,7 +27296,8 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "25",
@@ -27193,8 +27305,9 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "26",
@@ -27202,7 +27315,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -27210,8 +27324,9 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -27225,7 +27340,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -27233,7 +27349,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -27241,8 +27358,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "33",
@@ -27250,7 +27368,8 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      }
     ],
     "conflits": [
@@ -27953,7 +28072,8 @@
       "quantite": 1,
       "prix_unit_ttc": 20000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "13",
@@ -27961,7 +28081,8 @@
       "quantite": 1,
       "prix_unit_ttc": 28000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "27",
@@ -27969,7 +28090,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "28",
@@ -27977,8 +28099,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -27986,8 +28109,9 @@
       "quantite": "16",
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -27995,8 +28119,9 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "19",
@@ -28004,7 +28129,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -28018,8 +28144,9 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "23",
@@ -28027,8 +28154,9 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -28036,7 +28164,8 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "25",
@@ -28044,8 +28173,9 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "26",
@@ -28053,7 +28183,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -28061,8 +28192,9 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -28076,7 +28208,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -28084,7 +28217,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -28092,8 +28226,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "33",
@@ -28101,7 +28236,8 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      }
     ],
     "conflits": [
@@ -28578,8 +28714,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "28",
@@ -28587,8 +28724,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -28596,8 +28734,9 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -28605,8 +28744,9 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -28620,8 +28760,9 @@
       "quantite": "1",
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "22",
@@ -28629,8 +28770,9 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "23",
@@ -28638,7 +28780,8 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -28646,8 +28789,9 @@
       "quantite": "17",
       "prix_unit_ttc": 80,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "25",
@@ -28655,7 +28799,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -28663,7 +28808,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -28671,7 +28817,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -28679,7 +28826,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -28687,7 +28835,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -28695,7 +28844,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -28703,8 +28853,9 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -29434,8 +29585,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "28",
@@ -29443,8 +29595,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -29452,8 +29605,9 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -29461,8 +29615,9 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -29476,8 +29631,9 @@
       "quantite": "1",
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "22",
@@ -29485,8 +29641,9 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "23",
@@ -29494,7 +29651,8 @@
       "quantite": 0,
       "prix_unit_ttc": 850,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -29502,8 +29660,9 @@
       "quantite": "17",
       "prix_unit_ttc": 80,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "25",
@@ -29511,7 +29670,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -29519,7 +29679,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -29527,7 +29688,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "30",
@@ -29535,7 +29697,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -29543,7 +29706,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -29551,7 +29715,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -29559,8 +29724,9 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -30018,7 +30184,8 @@
       "quantite": 1,
       "prix_unit_ttc": 20000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "13",
@@ -30026,8 +30193,9 @@
       "quantite": 1,
       "prix_unit_ttc": 28000,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "27",
@@ -30035,8 +30203,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "28",
@@ -30044,8 +30213,9 @@
       "quantite": "2",
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -30053,8 +30223,9 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -30062,8 +30233,9 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "19",
@@ -30071,7 +30243,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -30079,7 +30252,8 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -30087,8 +30261,9 @@
       "quantite": "1",
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -30096,7 +30271,8 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "25",
@@ -30104,7 +30280,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -30112,7 +30289,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -30120,7 +30298,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -30134,7 +30313,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -30142,7 +30322,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -30150,7 +30331,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -30158,8 +30340,9 @@
       "quantite": "1",
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -30868,7 +31051,8 @@
       "quantite": 1,
       "prix_unit_ttc": 20000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "13",
@@ -30876,8 +31060,9 @@
       "quantite": 1,
       "prix_unit_ttc": 28000,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "27",
@@ -30885,8 +31070,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "28",
@@ -30894,8 +31080,9 @@
       "quantite": "2",
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "16",
@@ -30903,8 +31090,9 @@
       "quantite": 15,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "18",
@@ -30912,8 +31100,9 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
+      "optionnelle": true,
       "compose": true,
-      "optionnelle": true
+      "variante": ""
      },
      {
       "produit": "19",
@@ -30921,7 +31110,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -30929,7 +31119,8 @@
       "quantite": 15,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -30937,8 +31128,9 @@
       "quantite": "1",
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -30946,7 +31138,8 @@
       "quantite": 30,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "25",
@@ -30954,7 +31147,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -30962,7 +31156,8 @@
       "quantite": 55,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "29",
@@ -30970,7 +31165,8 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -30984,7 +31180,8 @@
       "quantite": 1,
       "prix_unit_ttc": 3656.25,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -30992,7 +31189,8 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "32",
@@ -31000,7 +31198,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -31008,8 +31207,9 @@
       "quantite": "1",
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      }
     ],
     "conflits": [
@@ -31518,11 +31718,12 @@
      },
      {
       "produit": "22",
-      "designation": "Onduleur réseau Huawei 25kW Triphasé",
+      "designation": "Structures acier",
       "quantite": 1,
       "prix_unit_ttc": 35000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -31609,11 +31810,12 @@
      },
      {
       "produit": "33",
-      "designation": "Batterie Dyness 5 kWh",
+      "designation": "Suivi journalier, maintenance chaque 12 mois pendant 2 ans",
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "34",
@@ -32426,11 +32628,12 @@
      },
      {
       "produit": "22",
-      "designation": "Onduleur réseau Huawei 25kW Triphasé",
+      "designation": "Structures acier",
       "quantite": 1,
       "prix_unit_ttc": 35000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "24",
@@ -32517,11 +32720,12 @@
      },
      {
       "produit": "33",
-      "designation": "Batterie Dyness 5 kWh",
+      "designation": "Suivi journalier, maintenance chaque 12 mois pendant 2 ans",
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "34",
@@ -33088,8 +33292,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "28",
@@ -33097,7 +33302,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "16",
@@ -33105,7 +33311,8 @@
       "quantite": 8,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -33119,7 +33326,8 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "19",
@@ -33127,7 +33335,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -33135,7 +33344,8 @@
       "quantite": 8,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -33143,8 +33353,9 @@
       "quantite": "1",
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -33152,7 +33363,8 @@
       "quantite": 16,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "25",
@@ -33160,7 +33372,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -33168,8 +33381,9 @@
       "quantite": "56",
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "29",
@@ -33177,8 +33391,9 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "30",
@@ -33186,7 +33401,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1950,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -33194,8 +33410,9 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "32",
@@ -33203,7 +33420,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -33211,7 +33429,8 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      }
     ],
     "conflits": [
@@ -33936,8 +34155,9 @@
       "quantite": 1,
       "prix_unit_ttc": 1800,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "28",
@@ -33945,7 +34165,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1200,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "16",
@@ -33953,7 +34174,8 @@
       "quantite": 8,
       "prix_unit_ttc": 1400,
       "taux_tva": 10,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "designation": "Section golden",
@@ -33967,7 +34189,8 @@
       "quantite": 0,
       "prix_unit_ttc": 17000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "19",
@@ -33975,7 +34198,8 @@
       "quantite": 0,
       "prix_unit_ttc": 30000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "22",
@@ -33983,7 +34207,8 @@
       "quantite": 8,
       "prix_unit_ttc": 500,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "23",
@@ -33991,8 +34216,9 @@
       "quantite": "1",
       "prix_unit_ttc": 850,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "24",
@@ -34000,7 +34226,8 @@
       "quantite": 16,
       "prix_unit_ttc": 80,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "25",
@@ -34008,7 +34235,8 @@
       "quantite": 60,
       "prix_unit_ttc": 14,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "26",
@@ -34016,8 +34244,9 @@
       "quantite": "56",
       "prix_unit_ttc": 14,
       "taux_tva": 20,
+      "quantiteManuelle": true,
       "compose": true,
-      "quantiteManuelle": true
+      "variante": ""
      },
      {
       "produit": "29",
@@ -34025,8 +34254,9 @@
       "quantite": 1,
       "prix_unit_ttc": 937.5,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "30",
@@ -34034,7 +34264,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1950,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "31",
@@ -34042,8 +34273,9 @@
       "quantite": 1,
       "prix_unit_ttc": 6900,
       "taux_tva": 20,
+      "prixManuel": true,
       "compose": true,
-      "prixManuel": true
+      "variante": ""
      },
      {
       "produit": "32",
@@ -34051,7 +34283,8 @@
       "quantite": 1,
       "prix_unit_ttc": 1000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      },
      {
       "produit": "33",
@@ -34059,7 +34292,8 @@
       "quantite": 0,
       "prix_unit_ttc": 5000,
       "taux_tva": 20,
-      "compose": true
+      "compose": true,
+      "variante": ""
      }
     ],
     "conflits": [
@@ -37552,6 +37786,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 43100,
+    "totalMulti": 86200,
     "totalUnitaireSans": 43100,
     "totalUnitaireAvec": 46100,
     "totalMultiSans": 86200,
@@ -37693,6 +37930,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 40900,
+    "totalMulti": 81800,
     "totalUnitaireSans": 40900,
     "totalUnitaireAvec": 43800,
     "totalMultiSans": 81800,
@@ -37834,6 +38074,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 39800,
+    "totalMulti": 79600,
     "totalUnitaireSans": 39800,
     "totalUnitaireAvec": 42600,
     "totalMultiSans": 79600,
@@ -37975,6 +38218,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 43100,
+    "totalMulti": 215500,
     "totalUnitaireSans": 43100,
     "totalUnitaireAvec": 46100,
     "totalMultiSans": 215500,
@@ -38116,6 +38362,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 40900,
+    "totalMulti": 204500,
     "totalUnitaireSans": 40900,
     "totalUnitaireAvec": 43800,
     "totalMultiSans": 204500,
@@ -38257,6 +38506,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 39800,
+    "totalMulti": 199000,
     "totalUnitaireSans": 39800,
     "totalUnitaireAvec": 42600,
     "totalMultiSans": 199000,
@@ -38398,6 +38650,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 43100,
+    "totalMulti": 129300,
     "totalUnitaireSans": 43100,
     "totalUnitaireAvec": 46100,
     "totalMultiSans": 129300,
@@ -38539,6 +38794,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 40900,
+    "totalMulti": 122700,
     "totalUnitaireSans": 40900,
     "totalUnitaireAvec": 43800,
     "totalMultiSans": 122700,
@@ -38680,6 +38938,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 39800,
+    "totalMulti": 119400,
     "totalUnitaireSans": 39800,
     "totalUnitaireAvec": 42600,
     "totalMultiSans": 119400,
@@ -38855,20 +39116,20 @@
      {
       "index": 0,
       "label": "Équipement commun",
-      "totalTtc": 17980
+      "totalTtc": 17980.07
      },
      {
       "index": 1,
       "label": "Villa 1",
-      "totalTtc": 34990
+      "totalTtc": 34990.3
      },
      {
       "index": 2,
       "label": "Villa 2",
-      "totalTtc": 7160
+      "totalTtc": 7160.16
      }
     ],
-    "grandTotalTtc": 60130
+    "grandTotalTtc": 60100
    }
   },
   {
@@ -39040,20 +39301,20 @@
      {
       "index": 0,
       "label": "Équipement commun",
-      "totalTtc": 17980
+      "totalTtc": 16182.06
      },
      {
       "index": 1,
       "label": "Villa 1",
-      "totalTtc": 34990
+      "totalTtc": 31491.27
      },
      {
       "index": 2,
       "label": "Villa 2",
-      "totalTtc": 7160
+      "totalTtc": 6444.14
      }
     ],
-    "grandTotalTtc": 60130
+    "grandTotalTtc": 54100
    }
   },
   {
@@ -39978,6 +40239,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 68000,
+    "totalMulti": 136000,
     "totalUnitaireSans": 68000,
     "totalUnitaireAvec": 76000,
     "totalMultiSans": 136000,
@@ -40119,6 +40383,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 64600,
+    "totalMulti": 129200,
     "totalUnitaireSans": 64600,
     "totalUnitaireAvec": 72200,
     "totalMultiSans": 129200,
@@ -40260,6 +40527,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 62900,
+    "totalMulti": 125800,
     "totalUnitaireSans": 62900,
     "totalUnitaireAvec": 70300,
     "totalMultiSans": 125800,
@@ -40401,6 +40671,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 68000,
+    "totalMulti": 340000,
     "totalUnitaireSans": 68000,
     "totalUnitaireAvec": 76000,
     "totalMultiSans": 340000,
@@ -40542,6 +40815,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 64600,
+    "totalMulti": 323000,
     "totalUnitaireSans": 64600,
     "totalUnitaireAvec": 72200,
     "totalMultiSans": 323000,
@@ -40683,6 +40959,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 62900,
+    "totalMulti": 314500,
     "totalUnitaireSans": 62900,
     "totalUnitaireAvec": 70300,
     "totalMultiSans": 314500,
@@ -40824,6 +41103,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 68000,
+    "totalMulti": 204000,
     "totalUnitaireSans": 68000,
     "totalUnitaireAvec": 76000,
     "totalMultiSans": 204000,
@@ -40965,6 +41247,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 64600,
+    "totalMulti": 193800,
     "totalUnitaireSans": 64600,
     "totalUnitaireAvec": 72200,
     "totalMultiSans": 193800,
@@ -41106,6 +41391,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 62900,
+    "totalMulti": 188700,
     "totalUnitaireSans": 62900,
     "totalUnitaireAvec": 70300,
     "totalMultiSans": 188700,
@@ -41281,20 +41569,20 @@
      {
       "index": 0,
       "label": "Équipement commun",
-      "totalTtc": 25538
+      "totalTtc": 25537.62
      },
      {
       "index": 1,
       "label": "Villa 1",
-      "totalTtc": 60996
+      "totalTtc": 60996.6
      },
      {
       "index": 2,
       "label": "Villa 2",
-      "totalTtc": 9470
+      "totalTtc": 9470.22
      }
     ],
-    "grandTotalTtc": 96004
+    "grandTotalTtc": 96000
    }
   },
   {
@@ -41466,20 +41754,20 @@
      {
       "index": 0,
       "label": "Équipement commun",
-      "totalTtc": 25538
+      "totalTtc": 22983.85
      },
      {
       "index": 1,
       "label": "Villa 1",
-      "totalTtc": 60996
+      "totalTtc": 54896.94
      },
      {
       "index": 2,
       "label": "Villa 2",
-      "totalTtc": 9470
+      "totalTtc": 8523.19
      }
     ],
-    "grandTotalTtc": 96004
+    "grandTotalTtc": 86400
    }
   },
   {
@@ -41564,6 +41852,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41585,6 +41876,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41606,6 +41900,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41627,6 +41924,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41648,6 +41948,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41669,6 +41972,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41690,6 +41996,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41711,6 +42020,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -41732,6 +42044,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 0,
+    "totalMulti": 0,
     "totalUnitaireSans": 0,
     "totalUnitaireAvec": 0,
     "totalMultiSans": 0,
@@ -42682,6 +42997,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 66700,
+    "totalMulti": 133400,
     "totalUnitaireSans": 66700,
     "totalUnitaireAvec": 31700,
     "totalMultiSans": 133400,
@@ -42823,6 +43141,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 63400,
+    "totalMulti": 126800,
     "totalUnitaireSans": 63400,
     "totalUnitaireAvec": 30100,
     "totalMultiSans": 126800,
@@ -42964,6 +43285,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 2,
+    "option": "sans",
+    "totalUnitaire": 61700,
+    "totalMulti": 123400,
     "totalUnitaireSans": 61700,
     "totalUnitaireAvec": 29300,
     "totalMultiSans": 123400,
@@ -43105,6 +43429,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 66700,
+    "totalMulti": 333500,
     "totalUnitaireSans": 66700,
     "totalUnitaireAvec": 31700,
     "totalMultiSans": 333500,
@@ -43246,6 +43573,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 63400,
+    "totalMulti": 317000,
     "totalUnitaireSans": 63400,
     "totalUnitaireAvec": 30100,
     "totalMultiSans": 317000,
@@ -43387,6 +43717,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 5,
+    "option": "sans",
+    "totalUnitaire": 61700,
+    "totalMulti": 308500,
     "totalUnitaireSans": 61700,
     "totalUnitaireAvec": 29300,
     "totalMultiSans": 308500,
@@ -43528,6 +43861,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 66700,
+    "totalMulti": 200100,
     "totalUnitaireSans": 66700,
     "totalUnitaireAvec": 31700,
     "totalMultiSans": 200100,
@@ -43669,6 +44005,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 63400,
+    "totalMulti": 190200,
     "totalUnitaireSans": 63400,
     "totalUnitaireAvec": 30100,
     "totalMultiSans": 190200,
@@ -43810,6 +44149,9 @@
    "attendu": {
     "mode": "multiplicateur",
     "nombreProprietes": 3,
+    "option": "sans",
+    "totalUnitaire": 61700,
+    "totalMulti": 185100,
     "totalUnitaireSans": 61700,
     "totalUnitaireAvec": 29300,
     "totalMultiSans": 185100,
@@ -43985,20 +44327,20 @@
      {
       "index": 0,
       "label": "Équipement commun",
-      "totalTtc": 37688
+      "totalTtc": 37687.5
      },
      {
       "index": 1,
       "label": "Villa 1",
-      "totalTtc": 12161
+      "totalTtc": 12161.74
      },
      {
       "index": 2,
       "label": "Villa 2",
-      "totalTtc": 16910
+      "totalTtc": 16910.46
      }
     ],
-    "grandTotalTtc": 66759
+    "grandTotalTtc": 66700
    }
   },
   {
@@ -44170,20 +44512,20 @@
      {
       "index": 0,
       "label": "Équipement commun",
-      "totalTtc": 37688
+      "totalTtc": 33918.74
      },
      {
       "index": 1,
       "label": "Villa 1",
-      "totalTtc": 12161
+      "totalTtc": 10945.56
      },
      {
       "index": 2,
       "label": "Villa 2",
-      "totalTtc": 16910
+      "totalTtc": 15219.41
      }
     ],
-    "grandTotalTtc": 66759
+    "grandTotalTtc": 60000
    }
   },
   {

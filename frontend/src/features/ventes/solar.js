@@ -8,7 +8,9 @@ import { formatMAD } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
-import { ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques } from './remise.js'
+import {
+  ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques, repartirRemiseParLigne,
+} from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
@@ -415,6 +417,9 @@ export function paybackMoteurHoraire(total, ecoAnnuelle, {
 export function computeROI({
   kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
   consoAnnuelleKwh, utility, productible,
+  // AGNR35 — barème EFFECTIF de la société (`baremeDepuisProfil`) : grille et
+  // redevance réglées ; absent ⇒ constantes nationales (inchangé).
+  bareme = null,
   // Q1 (fondateur 20/08/2026) — lignes RÉELLES du devis, pour retrouver le
   // prix TTC de l'onduleur de chaque option (provision de remplacement à
   // l'année 12). Optionnel : sans lignes, aucune provision (jamais un
@@ -548,8 +553,10 @@ export function computeROI({
   let savingsModel = 'estimation'
   let factureSans = null, factureAvecSans = null, factureAvecAvec = null
   if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
-    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility)
-    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility)
+    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility,
+      bareme?.tranches, bareme?.chargesFixes)
+    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility,
+      bareme?.tranches, bareme?.chargesFixes)
     if (tbSans && tbAvec) {
       savingsModel = 'factures'
       autoconsoSansEff = autoconsoSansPlaf
@@ -559,6 +566,44 @@ export function computeROI({
       factureSans = tbSans.factureSans
       factureAvecSans = tbSans.factureAvec
       factureAvecAvec = tbAvec.factureAvec
+      // AGNR23 — la série mensuelle est RÉPARTIE depuis l'annuel FINAL (clé
+      // de répartition = la forme de production de la série estimée, comme
+      // la clé solaire mensuelle du serveur) : Σ des 12 points = la carte.
+      const repartir = (serie, cible) => {
+        const somme = serie.reduce((s, v) => s + v, 0)
+        if (!(somme > 0)) return
+        for (let i = 0; i < 12; i++) serie[i] = serie[i] * (cible / somme)
+      }
+      repartir(ecoSansMonthly, ecoAnnuelleSans)
+      repartir(ecoAvecMonthly, ecoAnnuelleAvec)
+      for (let i = 0; i < 12; i++) {
+        monthlyDetail[i].eco_sans = ecoSansMonthly[i]
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
+    }
+  }
+
+  // AGNR25 — chemin « estimation » : l'apport batterie se calcule sur
+  // l'ANNÉE par `autoconsoAvecRatio` (part diurne + capacité × 1 cycle/jour ×
+  // 365, plafonné production / conso), exactement `calculate_savings_roi`
+  // (production arrondie × taux × tarif) — plus la borne MENSUELLE du
+  // stockable, qui sous-estimait les grosses batteries (12 408 au lieu de
+  // 12 854 MAD/an). La série mensuelle « avec » est répartie depuis l'annuel.
+  if (savingsModel === 'estimation' && (parseFloat(batteryKwh) || 0) > 0 && productionCanonique > 0) {
+    const ratioAvec = Math.max(
+      autoconsoAvecRatio(productionCanonique, batteryKwh, { base: dayPct, consoAnnuelleKwh }),
+      autoconsoSansEff)
+    // Invariant « avec ≥ sans » (la part sans batterie de l'écran porte la
+    // production non arrondie).
+    ecoAnnuelleAvec = Math.max(productionCanonique * ratioAvec * PRICE, ecoAnnuelleSans)
+    batteryShiftAnnuel = Math.max(0, (ratioAvec - autoconsoSansEff) * productionCanonique)
+    autoconsoAvecEff = ratioAvec
+    const sommeAvec = ecoAvecMonthly.reduce((acc, v) => acc + v, 0)
+    if (sommeAvec > 0) {
+      for (let i = 0; i < 12; i++) {
+        ecoAvecMonthly[i] = ecoAvecMonthly[i] * (ecoAnnuelleAvec / sommeAvec)
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
     }
   }
 
@@ -726,6 +771,26 @@ export const ONEE_TRANCHES = trancheTable([
                      // 1,15142 HT × TVA 20% ; voir la note ci-dessus
   [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
+// AGNR35 — le barème EFFECTIF de la société, servi par le profil
+// (`bareme_effectif`, contrat parametres/bareme_effectif.json) → la forme de
+// l'écran : `{ tranches, chargesFixes }`, ou `null` en `national` (les
+// constantes ci-dessous restent alors seules en jeu, chiffres inchangés).
+export function baremeDepuisProfil(baremeEffectif) {
+  const b = baremeEffectif
+  if (!b || b.source !== 'societe') return null
+  let tranches = null
+  if (b.tranches && Array.isArray(b.tranches.pairs) && b.tranches.pairs.length) {
+    const pairs = b.tranches.pairs.map(([plafond, prix]) => [plafond == null ? null : Number(plafond), Number(prix)])
+    const seuil = parseFloat(b.tranches.selective_threshold)
+    tranches = trancheTable(pairs, seuil > 0
+      ? { seuil, tolerance: parseFloat(b.tranches.boundary_tolerance) || 0 } : null)
+  }
+  const redevance = parseFloat(b.redevance_compteur_mad_mois)
+  const chargesFixes = Number.isFinite(redevance) && redevance >= 0 ? redevance : null
+  if (!tranches && chargesFixes == null) return null
+  return { tranches, chargesFixes }
+}
+
 // Q7 (decision fondateur du 20/08/2026) — UN SEUL BAREME NATIONAL. Les grilles
 // « approximatives » Lydec et Redal disparaissent : elles etaient inventees
 // (trois paliers ronds « a confirmer ») et faisaient diverger l'ecran du
@@ -837,6 +902,9 @@ function kwhFromBillBisect(bill, tranches) {
 // QF1 — inverse EXACT du barème : facture mensuelle (MAD TTC) → kWh/mois.
 // Miroir kwh_from_bill (analytique si progressif, dichotomie si sélectif).
 // Retourne { kwhMensuel, approximatif, estimation }.
+// AGNR14 — inverse de la facture d'ÉNERGIE SEULE : jamais pour un montant de
+// facture TOTALE (lignes fixes + TPPAN comprises) — celui-là passe par
+// `kwhDepuisFactureMad` / `consoAnnuelleDepuisFactures`.
 export function kwhFromBill(billMad, utility, tranchesOverride) {
   const bill = parseFloat(billMad) || 0
   if (bill <= 0) return { kwhMensuel: 0, approximatif: false, estimation: true }
@@ -877,10 +945,10 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
 // la borne de boucle.
 const PLAFOND_DICHOTOMIE_KWH = 1e6
 export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
-  jours = TPPAN_JOURS_REFERENCE) {
+  jours = TPPAN_JOURS_REFERENCE, chargesFixes = null) {
   const montant = parseFloat(totalMad) || 0
   if (montant <= 0) return 0
-  const total = (k) => factureMad(k, tranches, jours).totalMad
+  const total = (k) => factureMad(k, tranches || ONEE_TRANCHES, jours, chargesFixes).totalMad
   if (montant <= total(0)) return 0
   let bas = 0
   let haut = 1000
@@ -904,12 +972,15 @@ export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
 // `utility` n'est plus lu (gardé pour la signature des appelants) ;
 // `tranchesOverride` = grille vendeur. Un mois non inversable ⇒ 0 (le serveur
 // omet toute la série). 0 quand aucune facture exploitable — l'appelant OMET.
-export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride) {
+// AGNR35 — `chargesFixes` : la redevance de compteur RÉGLÉE par la société
+// (`bareme_effectif.redevance_compteur_mad_mois`) ; absente ⇒ lignes fixes
+// nationales.
+export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride, chargesFixes = null) {
   if (!Array.isArray(factures) || !factures.length) return 0
   const table = tranchesOverride && tranchesOverride.length ? tranchesOverride : ONEE_TRANCHES
   let total = 0
   for (const bill of factures) {
-    const kwh = kwhDepuisFactureMad(bill, table)
+    const kwh = kwhDepuisFactureMad(bill, table, TPPAN_JOURS_REFERENCE, chargesFixes)
     if (kwh === null) return 0
     total += kwh
   }
@@ -932,11 +1003,16 @@ function consoAnnuelleEnergieSeule(factures, utility) {
 // réafficher comme des kWh tapés puis de la réécrire à l'identique (le
 // 165 000 kWh de DEV-202609-0113 revenait à chaque enregistrement). Tolérance
 // 12 kWh/an : la dérive ×12 de l'aller-retour kWh/mois (110 000 → 110 004).
-export function consoDescendDesFactures(conso, factures, distributeur) {
+export function consoDescendDesFactures(conso, factures, distributeur, bareme = null) {
   const c = parseFloat(conso) || 0
   if (c <= 0 || !Array.isArray(factures) || !factures.length) return false
   const derivee = consoAnnuelleDepuisFactures(factures)
   if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
+  // AGNR35 — une conso dérivée au barème SOCIÉTÉ reste reconnue.
+  if (bareme) {
+    const societe = consoAnnuelleDepuisFactures(factures, null, bareme.tranches, bareme.chargesFixes)
+    if (societe > 0 && Math.abs(c - societe) <= 12) return true
+  }
   for (const d of new Set([distributeur || undefined, 'onee', undefined])) {
     const ancienne = consoAnnuelleEnergieSeule(factures, d)
     if (ancienne > 0 && Math.abs(c - ancienne) <= 12) return true
@@ -1000,8 +1076,9 @@ export function chargesFixesTtc() {
 //     s'écarte de plus de 25 % de la facture d'hiver du lead ⇒
 //     `{ serie, lead }`, à faire CONFIRMER, jamais corrigé en silence.
 export const ECART_FACTURE_LEAD_MAX = 0.25
-export function controlerFacturesSaisies(factures, { factureHiverLead } = {}) {
-  const plancher = chargesFixesTtc()
+export function controlerFacturesSaisies(factures, { factureHiverLead, chargesFixes = null } = {}) {
+  // AGNR35 — plancher = la redevance société quand elle est réglée.
+  const plancher = Number.isFinite(parseFloat(chargesFixes)) ? parseFloat(chargesFixes) : chargesFixesTtc()
   const serie = Array.isArray(factures) ? factures.map(v => Number(v) || 0) : []
   const sousPlancher = []
   serie.forEach((v, i) => { if (v > 0 && v < plancher) sousPlancher.push(i + 1) })
@@ -1026,12 +1103,12 @@ const RATIO_KWH_FACTURE_MAX = 2
 export const MESSAGE_KWH_INCOHERENT =
   'kWh déclarés incohérents avec les factures — corriger la fiche du lead'
 export function controlerKwhDeclare(kwhMensuel, { factureHiver, factureEte, eteDifferente } = {},
-  tranches = ONEE_TRANCHES) {
+  tranches = ONEE_TRANCHES, chargesFixes = null) {
   const kwh = parseFloat(kwhMensuel) || 0
   const factures = [factureHiver, eteDifferente ? factureEte : null]
     .map(v => parseFloat(v) || 0).filter(v => v > 0)
   if (!(kwh > 0) || !factures.length) return null
-  const factureBareme = factureMad(kwh, tranches).totalMad
+  const factureBareme = factureMad(kwh, tranches || ONEE_TRANCHES, TPPAN_JOURS_REFERENCE, chargesFixes).totalMad
   const ratios = factures.map(f => factureBareme / f)
   return {
     factureBareme,
@@ -1067,10 +1144,12 @@ export function tppanMad(kwhMensuel, jours = TPPAN_JOURS_REFERENCE) {
 // dans l'ordre de la vraie facture. Jumeau de bareme.facture_mad. Une
 // consommation nulle ne doit RIEN en énergie ni en TPPAN, mais les lignes
 // fixes restent dues : c'est la réalité d'un abonnement.
-export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) {
+// AGNR35 — `chargesFixes` (MAD TTC/mois) REMPLACE en bloc les deux lignes
+// fixes nationales, exactement comme le serveur (`charges_fixes_mad`).
+export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE, chargesFixes = null) {
   const kwh = parseFloat(kwhMensuel) || 0
   const energie = kwh > 0 ? monthlyBillFromKwh(kwh, tranches) : 0
-  const fixes = chargesFixesTtc()
+  const fixes = Number.isFinite(parseFloat(chargesFixes)) ? parseFloat(chargesFixes) : chargesFixesTtc()
   const taxe = tppanMad(kwh, jours)
   return {
     energieMad: energie,
@@ -1088,14 +1167,15 @@ export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) 
 // comme le serveur depuis QJR157 : le mois reste l'unité de tarification (le
 // seuil des marches est MENSUEL), on ne divise jamais l'année après avoir
 // tarifé. Mois MOYEN, comme le repli serveur sans répartition mensuelle.
-export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride) {
+export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride,
+  chargesFixes = null) {
   const { table } = resolveTranches(utility, tranchesOverride)
   if (!table) return null
   const conso = parseFloat(consoAnnuelleKwh) || 0
   const prod = parseFloat(productionKwh) || 0
   const ratio = parseFloat(autoconsoRatio) || 0
   if (conso <= 0 || prod <= 0 || ratio <= 0) return null
-  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table).totalMad * 12
+  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table, TPPAN_JOURS_REFERENCE, chargesFixes).totalMad * 12
   const factureSans = Math.round(factureAnnuelle(conso))
   const autoconsoKwh = Math.min(prod * ratio, conso)
   const residuel = Math.max(0, conso - autoconsoKwh)
@@ -1701,6 +1781,69 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 
+// ATOT25 — LA REMISE « PAR LIGNE » DE L'ÉCRAN = CELLE DU PDF, PAR PANIER.
+// Miroir de `builder._annoter_remise` : chaque option (panier Sans / Avec,
+// même population que `optionTotalsTTC`) répartit SA remise sur les HT
+// PERSISTÉS de ses lignes (`htFromTtc` au centime × quantité × remise de
+// ligne), par `repartirRemiseParLigne` (miroir de
+// `argent.repartir_remise_par_ligne`, plus fort reste), puis chaque part HT
+// passe au TTC à son propre taux, au centime. L'« Arrondi commercial » est ce
+// qui sépare la somme des lignes affichées du total (palier ARRONDI-100) :
+// Σ lignes + arrondi = total affiché, toujours.
+//
+// Rend `{ parLigne, sans: {total, sommeLignes, arrondi}, avec: {...} }` ;
+// `parLigne` est ALIGNÉ sur `lines` (montant TTC remisé, ou `null` pour une
+// ligne qui ne compte pas) — une ligne des deux paniers prend la valeur du
+// panier de l'option effective (`option`).
+export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans' } = {}) {
+  const tous = lines || []
+  const comptees = tous.filter(ligneCompteDansTotaux)
+  let lignesSans = comptees.filter(appartientAuPanierSans)
+  let lignesAvec = comptees.filter(appartientAuPanierAvec)
+  if (comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
+      || alternativeDeclareeServable(comptees, scenario)) {
+    lignesSans = _retirerAccessoiresHuawei(lignesSans)
+    lignesAvec = _retirerAccessoiresHuawei(lignesAvec)
+  }
+  const pct = parseFloat(discountPct) || 0
+  const centimes = (v) => BigInt(Math.round((Number(v) || 0) * 100))
+  const panier = (rows) => {
+    const valeurs = new Map()
+    if (pct > 0) {
+      const parts = repartirRemiseParLigne(rows.map((l) => {
+        const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
+        const htC = BigInt(Math.round(parseFloat(htFromTtc(l?.prix_unit_ttc, l?.taux_tva ?? TVA_STANDARD_DEFAUT)) * 100))
+        const remH = BigInt(Math.round((parseFloat(l?.remise) || 0) * 100))
+        // q ×100 · HT centimes · (1 − remise) ×10 000 = 1e-8 MAD → MAD
+        return { totalHt: Number(qH * htC * (10000n - remH)) / 1e8 }
+      }), pct)
+      rows.forEach((l, k) => {
+        const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
+        const t = Number.isFinite(taux) ? taux : TVA_STANDARD_DEFAUT
+        // TTC = q(part HT × (1 + taux)), moitié vers le haut, en centimes entiers.
+        const partC = centimes(parts[k])
+        const num = partC * BigInt(Math.round((100 + t) * 100))
+        const ttcC = num >= 0n ? (num + 5000n) / 10000n : -((-num + 5000n) / 10000n)
+        valeurs.set(l, Number(ttcC) / 100)
+      })
+    } else {
+      rows.forEach((l) => {
+        valeurs.set(l, Math.round((parseFloat(l?.quantite) || 0) * (parseFloat(l?.prix_unit_ttc) || 0) * 100) / 100)
+      })
+    }
+    const total = totauxCanoniquesTtc(rows, pct, PAS_ARRONDI_DEVIS)
+    const sommeC = [...valeurs.values()].reduce((acc, v) => acc + centimes(v), 0n)
+    return { valeurs, total, sommeLignes: Number(sommeC) / 100, arrondi: Number(centimes(total) - sommeC) / 100 }
+  }
+  const sans = panier(lignesSans)
+  const avec = panier(lignesAvec)
+  const [premier, second] = option === 'avec' ? [avec, sans] : [sans, avec]
+  const parLigne = tous.map((l) => (premier.valeurs.has(l) ? premier.valeurs.get(l)
+    : (second.valeurs.has(l) ? second.valeurs.get(l) : null)))
+  const resume = ({ total, sommeLignes, arrondi }) => ({ total, sommeLignes, arrondi })
+  return { parLigne, sans: resume(sans), avec: resume(avec) }
+}
+
 // ── L-2OPT — deux optimiseurs indépendants (fondateur 24/08) ─────────────────
 // Un devis résidentiel « Les deux (Sans + Avec) » ne dimensionne plus les
 // deux options sur le MÊME kWc : `autoFillLines` est appelé une fois par
@@ -1815,10 +1958,24 @@ export function fusionnerRecomposition(anciennes, generees) {
   const fusionnees = gens.map((g, gi) => {
     const file = g?.produit ? files.get(String(g.produit)) : null
     const oi = file && file.length ? file.shift() : null
-    const base = { ...g, compose: true }
-    if (oi == null) return base
+    if (oi == null) return { ...g, compose: true }
     appariee.set(oi, gi)
     const o = olds[oi]
+    // AGNR20 — la ligne ANCIENNE appariée est la base : la composition
+    // n'écrase que ce qu'elle POSSÈDE — le produit, la quantité (si elle
+    // n'est pas figée), la variante et le prix (s'il n'est pas tapé). Taux
+    // de TVA (0 % + base légale), désignation, remise de ligne, groupe villa,
+    // lot, rôle… restent ceux du vendeur. Une clé que seule la composition
+    // porte est reprise d'elle.
+    const base = {
+      ...g,
+      ...o,
+      compose: true,
+      produit: g.produit,
+      variante: g.variante ?? '',
+      quantite: g.quantite,
+      prix_unit_ttc: g.prix_unit_ttc,
+    }
     if (o.prixManuel) {
       base.prix_unit_ttc = o.prix_unit_ttc
       base.prixManuel = true
@@ -1900,13 +2057,28 @@ export function fusionnerVariantes(lignesSans, lignesAvec) {
 //       HT→TVA→TTC (backend, qui reste la source AUTORITAIRE au moment du PDF).
 // Retourne null quand aucun des deux modes n'est utilisé (aperçu inchangé).
 const _foisN = (ttc, n) => (Math.round((Number(ttc) || 0) * 100) * n) / 100
-export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct } = {}) {
+// ATOT24 — l'aperçu suit la CHAÎNE DU RAIL : (A) l'option EFFECTIVE (celle
+// que le rail affiche) et le scénario (même population que `optionTotalsTTC`
+// du rail : accessoires Huawei retirés d'un « Les deux ») ; (B) chaque villa =
+// totaux canoniques de SES lignes (HT → remise → TVA → TTC, option exclue),
+// les lignes sans groupe forment le groupe « Hors groupe », et le total
+// général est la chaîne canonique de TOUTES les lignes au palier
+// ARRONDI-100 — exactement `multi_villa_totaux` (selectors.py).
+export function multiPropertyPreviewTTC(lines, {
+  nombreProprietes, discountPct, scenario, option,
+} = {}) {
   const n = parseInt(nombreProprietes, 10)
   if (Number.isFinite(n) && n > 1) {
-    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct)
+    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct, { scenario })
+    const opt = option === 'avec' || option === 'sans'
+      ? option : (scenario === 'Avec batterie' ? 'avec' : 'sans')
+    const totalUnitaire = opt === 'avec' ? totalAvec : totalSans
     return {
       mode: 'multiplicateur',
       nombreProprietes: n,
+      option: opt,
+      totalUnitaire,
+      totalMulti: _foisN(totalUnitaire, n),
       totalUnitaireSans: totalSans, totalUnitaireAvec: totalAvec,
       // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N AU CENTIME, comme le backend
       // (`selectors.totaux_multi_proprietes` / `builder._scale_tot`) : ce
@@ -1917,10 +2089,11 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
     }
   }
 
-  const grouped = lines.filter(l => l.groupeIndex != null)
+  const tous = lines || []
+  const grouped = tous.filter(l => l.groupeIndex != null)
   if (!grouped.length) return null
 
-  const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  const pct = parseFloat(discountPct) || 0
   const byIndex = new Map()
   for (const l of grouped) {
     const idx = l.groupeIndex
@@ -1931,14 +2104,17 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
   }
   const groupes = [...byIndex.keys()].sort((a, b) => a - b).map(idx => {
     const bucket = byIndex.get(idx)
-    const totalTtc = bucket.lignes.reduce((s, l) => s + ttc(l), 0)
     return {
       index: idx,
       label: bucket.label || (idx === 0 ? 'Équipement commun' : `Villa ${idx}`),
-      totalTtc: Math.round(totalTtc),
+      totalTtc: totauxCanoniquesTtc(bucket.lignes, pct, 0),
     }
   })
-  const grandTotalTtc = Math.round(groupes.reduce((s, g) => s + g.totalTtc, 0))
+  const horsGroupe = tous.filter(l => l.groupeIndex == null && ligneCompteDansTotaux(l))
+  if (horsGroupe.length) {
+    groupes.push({ index: null, label: 'Hors groupe', totalTtc: totauxCanoniquesTtc(horsGroupe, pct, 0) })
+  }
+  const grandTotalTtc = totauxCanoniquesTtc(tous, pct, PAS_ARRONDI_DEVIS)
   return { mode: 'villas', groupes, grandTotalTtc }
 }
 
@@ -2160,10 +2336,13 @@ const placeholder = (designation, quantite) => ({
 // byte-identique à l'historique (voir `orderLinesByRolePreference`).
 export function defaultProductLines(produits, ordreLignes) {
   const byType = indexProduits(produits)
-  const first = (type) => (byType[type] ?? [])[0] ?? null
+  // AGNR27 — garde « aucun produit sans prix » : un rôle pointe le premier
+  // produit PRIX CONNU, ou reste sans produit (placeholder) — jamais un
+  // article à 0 MAD (ex. « Structure bac acier C&I » du seed C&I).
+  const first = (type) => (byType[type] ?? []).find(_hasPrix) ?? null
   const exactOr = (type, needle) => {
     const pool = byType[type] ?? []
-    return pool.find(p => _norm(p.nom).includes(needle)) ?? null
+    return pool.find(p => _hasPrix(p) && _norm(p.nom).includes(needle)) ?? null
   }
   const row = (p, designation, quantite) =>
     p ? lineFrom(p, quantite) : placeholder(designation, quantite)
@@ -2631,10 +2810,8 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // (repli de `computeROI` et défaut `quoteLogic.kwhPrice` du générateur).
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
-// Heures de pompage effectives par défaut (champ 1.4× surdimensionné →
-// la pompe tourne à régime nominal bien au-delà des heures équivalentes
-// plein-soleil ; ~7 h/jour est l'hypothèse marché retenue — modifiable).
-export const HEURES_POMPAGE_DEFAUT = 7
+// AGNR26 — `HEURES_POMPAGE_DEFAUT` retiré : plus rien ne le lisait depuis
+// AGR114/AGR130 (production heure par heure côté serveur).
 
 // QJR546 — exporté : le générateur saute (et nomme) les lignes d'un modèle
 // dont le produit n'a plus de prix, avec la MÊME garde que l'auto-remplissage.

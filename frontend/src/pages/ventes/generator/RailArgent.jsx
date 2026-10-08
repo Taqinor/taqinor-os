@@ -22,7 +22,28 @@ export default function RailArgent({
   tauxTva, setTauxTva,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
   marge, kpiTotal, margeLignesSansAchat = 0,
+  // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
+  // commercial » qui sépare Σ lignes affichées du total (palier ARRONDI-100).
+  remiseParPanier = null,
+  // AGNR33 — refus 400 par champ et notes de normalisation (AGNR8).
+  erreursChamps = {}, notesNormalisation = {},
 }) {
+  const sousChamp = (champ) => (
+    <>
+      {erreursChamps[champ] && (
+        <span className="text-destructive ml-1.5" style={{ fontSize: 11 }} data-testid={`erreur-champ-${champ}`}>
+          {erreursChamps[champ]}
+        </span>
+      )}
+      {notesNormalisation[champ] && (
+        <span className="text-muted-foreground ml-1.5" style={{ fontSize: 11 }} data-testid={`note-champ-${champ}`}>
+          {notesNormalisation[champ]}
+        </span>
+      )}
+    </>
+  )
+  const arrondiSans = remiseParPanier?.sans?.arrondi ?? 0
+  const arrondiAvec = remiseParPanier?.avec?.arrondi ?? 0
   return (
     <>
       {/* VX138 — chaîne de totaux hiérarchisée (paliers F121 existants) :
@@ -48,6 +69,7 @@ export default function RailArgent({
           <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                  value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
           <span style={{ fontWeight: 700 }}>%</span>
+          {sousChamp('remise_globale')}
           {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
             /* VX17 — couleur d'avertissement via token de thème. */
             <span className="text-warning ml-1.5" style={{ fontSize: 11 }}>
@@ -60,6 +82,7 @@ export default function RailArgent({
           <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                  value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
           <span style={{ fontWeight: 700 }}>%</span>
+          {sousChamp('taux_tva')}
         </div>
         {parseFloat(discountPct) > 0 && showSans && (
           <div className="gen-total-item gen-tier-3">
@@ -71,6 +94,20 @@ export default function RailArgent({
           <div className="gen-total-item gen-tier-3">
             <span className="gen-total-label green">Total final AVEC batterie</span>
             <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
+          </div>
+        )}
+        {/* ATOT25 — l'« Arrondi commercial » est DIT : Σ des lignes affichées
+            (remisées au centime comme le PDF) + arrondi = total affiché. */}
+        {showSans && arrondiSans !== 0 && (
+          <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-sans">
+            <span className="gen-total-label">Arrondi commercial{showAvec ? ' SANS batterie' : ''}</span>
+            <span className="gen-total-value">{formatMoney(arrondiSans)}</span>
+          </div>
+        )}
+        {showAvec && arrondiAvec !== 0 && (
+          <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-avec">
+            <span className="gen-total-label">Arrondi commercial{showSans ? ' AVEC batterie' : ''}</span>
+            <span className="gen-total-value">{formatMoney(arrondiAvec)}</span>
           </div>
         )}
       </div>
@@ -106,6 +143,7 @@ export default function RailArgent({
           <input type="number" min="0" step="any" className="gen-discount-input"
                  style={{ width: 100 }} placeholder="ex: 9000"
                  value={prixCible} onChange={e => setPrixCible(e.target.value)} />
+          {sousChamp('prix_cible_kwc')}
           <Button type="button" size="sm" variant="outline"
                   onClick={applyPrixCible}
                   disabled={!(kwp > 0) || prixCible === ''}>

@@ -11,6 +11,7 @@ import {
   baseLegaleManquante, erreursBaseLegaleServeur,
 } from './lignesEcran.js'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples.js'
+import { lireSourceGenerateur } from '../../../pages/ventes/DevisGeneratorSource.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 
@@ -114,7 +115,9 @@ test('lignes vides / sans produit / quantité nulle ne partent pas', () => {
 })
 
 test('garde de source : plus de mappeur inline dans DevisGenerator.jsx', () => {
-  const src = readFileSync(join(ICI, '../../../pages/ventes/DevisGenerator.jsx'), 'utf8')
+  // SPL44 — le générateur est réparti en plusieurs fichiers : la garde lit
+  // TOUTE la concaténation (jamais la seule coquille, sinon vacueuse).
+  const src = lireSourceGenerateur()
   assert.ok(!src.includes('ttcFromHt(l.prix_unitaire'),
     'conversion HT → TTC inline d’une ligne serveur : passer par lignesServeurVersEcran')
   assert.ok(!src.includes('ttcExactFromHt(l.prix_unitaire'),

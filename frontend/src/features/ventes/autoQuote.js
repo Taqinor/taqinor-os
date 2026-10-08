@@ -99,6 +99,9 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
  * catalogue, les marques épinglées et l'ordre des lignes de la société.
  */
 export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc }) {
+  // AGNR35 — le barème EFFECTIF de la société (`baremeDepuisProfil`), option
+  // de l'appelant (la signature publique reste celle épinglée par EZ5).
+  const bareme = arguments[0]?.bareme ?? null
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
   // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -144,8 +147,9 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc 
         ? lead.distributeur : undefined
       // COUV-HOR — barème NATIONAL (Q7) même sans distributeur connu : jamais
       // factures ÷ 1,20 MAD/kWh (DEV-202609-0113 : 165 000 kWh au lieu de 122 007).
+      // AGNR35 — au barème EFFECTIF de la société quand il est réglé.
       const consoAnnuelleReelle = consoAnnuelleDepuisFactures(
-        facturesReelles, distributeurLead || 'onee')
+        facturesReelles, distributeurLead || 'onee', bareme?.tranches, bareme?.chargesFixes)
       etudeExtra.factures_mensuelles_reelles = facturesReelles
       if (consoAnnuelleReelle > 0) etudeExtra.conso_annuelle = consoAnnuelleReelle
       if (distributeurLead) etudeExtra.distributeur = distributeurLead

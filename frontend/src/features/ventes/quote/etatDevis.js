@@ -137,7 +137,7 @@ export function entreesPompageEcran(etat) {
 }
 
 /** Le devis servi → l'état de l'écran d'Édition complète. */
-export function devisVersEtat(d) {
+export function devisVersEtat(d, { bareme = null } = {}) {
   const devis = d || {}
   const e = devis.etude_params || {}
   const mode = devis.mode_installation || undefined
@@ -246,7 +246,13 @@ export function devisVersEtat(d) {
   etat.consoStockee = e.conso_annuelle > 0 ? {
     valeur: Number(e.conso_annuelle),
     factures,
-    descendDesFactures: consoDescendDesFactures(e.conso_annuelle, factures, e.distributeur),
+    // AGNR35 — une conso dérivée au barème SOCIÉTÉ est reconnue aussi.
+    descendDesFactures: consoDescendDesFactures(e.conso_annuelle, factures, e.distributeur, bareme),
+    // AGNR35 — la conso stockée a-t-elle été dérivée au barème société ?
+    // Sinon, ré-enregistrer sans toucher la re-dérive au barème qui l'a
+    // produite : jamais un chiffre d'un devis existant changé en silence.
+    auBaremeSociete: Boolean(bareme && factures && Math.abs(Number(e.conso_annuelle)
+      - consoAnnuelleDepuisFactures(factures, null, bareme.tranches, bareme.chargesFixes)) <= 12),
   } : null
   if (etat.consoStockee && !etat.consoStockee.descendDesFactures) {
     etat.realBillMode = 'kwh'
@@ -280,6 +286,21 @@ export function choixDeEtat(etat, { recommended } = {}) {
 /** Les ENTRÉES réelles relues du devis (factures, conso, distributeur) : la
  *  conso saisie repart telle quelle ; une conso qui descend des factures est
  *  re-dérivée au barème (COUV-HOR). */
+/**
+ * AGNR35 — le barème avec lequel RE-DÉRIVER la conso d'un devis : celui de la
+ * société, SAUF quand la conso stockée descend de ces mêmes factures
+ * (inchangées) au barème NATIONAL — elle est alors re-dérivée au national,
+ * donc identique (aucun chiffre d'un devis existant ne bouge sans geste).
+ */
+export function baremePourDerivation(bareme, stockee, factures) {
+  if (!bareme) return null
+  const memes = stockee && Array.isArray(stockee.factures) && Array.isArray(factures)
+    && stockee.factures.length === factures.length
+    && stockee.factures.every((v, i) => (parseFloat(v) || 0) === (parseFloat(factures[i]) || 0))
+  if (stockee && stockee.descendDesFactures && !stockee.auBaremeSociete && memes) return null
+  return bareme
+}
+
 export function entreesDeEtat(etat) {
   const entrees = {}
   const stockee = etat.consoStockee
@@ -289,7 +310,9 @@ export function entreesDeEtat(etat) {
   let auBareme = false
   if (stockee && !stockee.descendDesFactures) conso = stockee.valeur
   if (conso == null && factures) {
-    const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee')
+    const bareme = baremePourDerivation(etat.bareme, stockee, factures)
+    const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee',
+      bareme?.tranches, bareme?.chargesFixes)
     if (derivee > 0) { conso = derivee; auBareme = true }
   }
   if (conso != null) {
@@ -313,14 +336,25 @@ export function entreesDeEtat(etat) {
  * @returns {{lignes: Array, entete: object, etude: object|null}}
  */
 export function etatVersEcritures(etat, vif = {}) {
+  // AGNR8 — les nombres d'en-tête partent à la forme du serveur
+  // (`DecimalField(decimal_places=2)`) : arrondi 2 décimales au demi
+  // supérieur, vide ⇒ clé omise (taux) ou effacée (prix cible) ; chaque
+  // arrondi est rendu dans `normalisations` pour être dit au vendeur.
+  const normalisations = []
   const entete = {
     date_validite: etat.dateValidite || null,
-    taux_tva: etat.tauxTva,
-    remise_globale: etat.discountPct || '0',
     note: etat.note || null,
     mode_installation: etat.mode,
-    prix_cible_kwc: etat.prixCible !== '' && etat.prixCible != null ? etat.prixCible : null,
   }
+  const tva = normaliserNombreEntete(etat.tauxTva)
+  if (tva.envoye !== null) entete.taux_tva = tva.envoye
+  if (tva.change) normalisations.push({ champ: 'taux_tva', tape: tva.tape, envoye: tva.envoye })
+  const remise = normaliserNombreEntete(etat.discountPct)
+  entete.remise_globale = remise.envoye ?? '0'
+  if (remise.change) normalisations.push({ champ: 'remise_globale', tape: remise.tape, envoye: entete.remise_globale })
+  const cible = normaliserNombreEntete(etat.prixCible)
+  entete.prix_cible_kwc = cible.envoye
+  if (cible.change) normalisations.push({ champ: 'prix_cible_kwc', tape: cible.tape, envoye: cible.envoye })
   // QJR624 — l'échéancier ne part que s'il était propre au devis ou touché.
   if (etat.echeancierAEnvoyer) entete.echeancier = saisieVersEcheancier(etat.echeancier)
   // CIQ226 — les conditions partent dans l'en-tête dès que l'écran les porte.
@@ -361,5 +395,31 @@ export function etatVersEcritures(etat, vif = {}) {
     lignes: lignesEcranVersPayload(etat.lignes || [], { multiMode: etat.multiMode }),
     entete,
     etude,
+    normalisations,
   }
+}
+
+/**
+ * AGNR8 — un nombre d'en-tête tapé → le texte que le serveur accepte (2
+ * décimales, arrondi au demi supérieur, calculé sur le TEXTE décimal : jamais
+ * l'erreur binaire de `12.345 * 100`). Vide ⇒ `envoye: null`. Illisible ⇒
+ * `envoye: null` et `change: true` (le vendeur l'apprend, jamais un 400).
+ */
+export function normaliserNombreEntete(valeur) {
+  if (valeur === null || valeur === undefined) return { tape: valeur, envoye: null, change: false }
+  const tape = String(valeur).trim()
+  if (tape === '') return { tape, envoye: null, change: false }
+  // Déjà acceptable (au plus 2 décimales, point) : envoyé tel que tapé.
+  if (/^-?\d+(\.\d{1,2})?$/.test(tape)) return { tape, envoye: tape, change: false }
+  const m = /^([+-]?)(\d*)(?:[.,](\d*))?$/.exec(tape.replace(/\s/g, ''))
+  if (!m || (m[2] === '' && !(m[3] || ''))) return { tape, envoye: null, change: true }
+  const negatif = m[1] === '-'
+  const entier = m[2] || '0'
+  const frac = m[3] || ''
+  let centimes = BigInt(entier) * 100n + BigInt((frac + '00').slice(0, 2))
+  if (frac.length > 2 && Number(frac[2]) >= 5) centimes += 1n
+  const abs = centimes.toString().padStart(3, '0')
+  const texteAbs = `${abs.slice(0, -2)}.${abs.slice(-2)}`
+  const envoye = negatif && centimes > 0n ? `-${texteAbs}` : texteAbs
+  return { tape, envoye, change: Number(envoye) !== Number(tape.replace(/\s/g, '').replace(',', '.')) }
 }

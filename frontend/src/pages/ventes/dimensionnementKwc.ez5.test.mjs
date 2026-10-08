@@ -10,9 +10,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { panneauxPourKwc } from '../../features/ventes/solar.js'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
+const gen = lireSourceGenerateur()
 // QJR101 — les champs de saisie du marché vivent maintenant dans les quatre
 // panneaux. La garde « rien n'est jamais rejeté » les lit AVEC l'écran : sinon
 // elle resterait verte en ne surveillant plus que les champs restés en haut.

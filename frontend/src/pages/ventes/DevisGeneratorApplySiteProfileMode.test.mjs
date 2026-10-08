@@ -18,12 +18,12 @@
 // Run : node --test src/pages/ventes/DevisGeneratorApplySiteProfileMode.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 
 // QJR99 — la BASCULE a déplacé les écritures gardées d'`applySiteProfile` dans
 // la transition `PROFIL_SITE_APPLIQUE` du reducer (le garde-fou `touche.mode`

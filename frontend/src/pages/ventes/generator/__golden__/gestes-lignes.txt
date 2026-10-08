@@ -1,0 +1,406 @@
+== TEXTE ==
+Générateur de Devis Solaire
+Édition — DEV-202610-036
+Retour aux devis
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+Sans batterie seulement
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead &amp; Client
+Lead / client du devis
+…
+Changer de client = créer un nouveau devis.
+Téléphone
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-distributeur">
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+span]:line-clamp-1 [&amp;>span]:text-left w-24">
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+5,72 kWp
+Les lignes portent 10 panneaux, la cible en vise 8 — recomposer ? (Auto-remplir)
+Type de Structure
+Acier galvanisé
+Aluminium
+Consommation diurne (%)
+60%
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Calcul du moteur horaire en cours…
+Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
+Production annuelle
+8 785
+kWh / an
+Sans batterie★ Recommandé
+Économies
+9 224estimation d'exemple
+MAD / an
+ROI
+1.3 ansestimation d'exemple
+retour sur invest.
+Coût
+12 100
+MAD TTC
+Économies mensuelles estimées (MAD / mois)
+Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
+Tailles Éco / Recommandé / Max
+Les tailles ne sont pas encore disponibles pour ce devis.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+Panneau Canadien Solar 715W
+Tarif : Revendeur
+Qté figée
+Libérer
+HT : 1 000 MAD
+11 000 MADHT : 10 000 MAD
+Onduleur réseau 5kW Monophasé
+Tarif : Revendeur
+HT : 917 MAD
+1 100 MADHT : 917 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Total SANS batterie ⭐
+12 100 MAD
+Réduction
+%
+TVA
+%
+Prix / kWc
+1 692 MAD/kWc
+Prix cible / kWc
+Appliquer via remise
+Marge indicative (interne)
+-4 700 MAD (-39 %)
+Le total après remise est INFÉRIEUR au coût d'achat estimé — vous vendez à perte. Réduisez la remise ou le prix cible.
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+Modèles de devis
+Ajouter le BOQ électrique
+Reporte le bordereau de la conception électrique en lignes du devis. Enregistrez d’abord vos modifications en cours : l’écran est rechargé.
+Lots / multi-sites
+Afficher
+Pièces jointes
+0 pièce(s) jointe(s)
+Glissez un fichier ici ou cliquez pour choisir
+PDF · PNG · JPEG · WEBP — max 10,0 Mo · PDF/PNG/JPEG/WebP — 10 Mo max
+PDF/PNG/JPEG/WebP — 10 Mo max
+Aucune pièce jointe.
+Échéancier de paiement
+Ce devis suit l'échéancier de la société (Paramètres → Devis).
+Personnaliser l'échéancier
+Conditions demandées par le client
+Le client demande une retenue de garantie (libérée à la réception définitive)
+Pénalités de retard (% par semaine)
+Plafond des pénalités (%)
+Caution (nature)
+Caution : montant ou %
+Caution : plafond
+Référence de commande du client
+Organisme financeur
+— aucun —
+Client Golden
+Acompte client (%)
+Échéancier organisme financeur
+Texte pour le client (imprimé sur le devis)
+Modification du devis DEV-202610-036
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+12 100 MAD
+Contacter mon supérieur
+Réinitialiser
+Annuler
+Enregistrer les modifications
+Total sans batterie · TTC
+12 100 MAD
+Marge indicative (interne)
+-4 700 MAD (-39 %)
+Système
+5,72 kWc · 8 panneaux
+Enregistrer
+Annuler
+== CHAMPS ==
+gen-num=Généré automatiquement
+#1=reseau
+#2=Sans batterie
+#3=on [ ]
+#4=Auto
+gen-validite=2026-11-07
+gen-tel=
+gen-hiver=
+gen-ete=
+#9=500
+#10=450
+#11=400
+#12=380
+#13=360
+#14=500
+#15=700
+#16=680
+#17=580
+#18=480
+#19=430
+#20=480
+#21=onee
+gen-realbill=
+#23=mad
+gen-kwc-cible=5.72
+gen-nbpanneaux=8
+gen-panelw=715
+#27=60
+#28=on [ ]
+#29=Panneau Canadien Solar 715W
+line-qty=10
+#31=1100.00
+#32=10
+Ligne optionnelle (add-on hors total)=on [ ]
+#34=Onduleur réseau 5kW Monophasé
+line-qty=1
+#36=1100.00
+#37=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#39=
+line-qty=0
+#41=0
+#42=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#44=0
+#45=20.00
+#46=
+:id0:=
+gen-cond-retenue=on [ ]
+gen-cond-penaliteTaux=
+gen-cond-penalitePlafond=
+gen-cond-cautionNature=
+gen-cond-cautionMontant=
+gen-cond-cautionPlafond=
+gen-cond-referenceCommande=
+gen-cond-tiersPayeur=
+gen-cond-acompte-financeur=
+#57=
+== APPELS ==
+{
+  "crmApi.getClients": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "crmApi.getLeads": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "stockApi.getProduits": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "parametresApi.getProfile": [
+    []
+  ],
+  "ventesApi.getDevisById": [
+    [
+      "36"
+    ],
+    [
+      36
+    ]
+  ],
+  "ventesApi.getHistoriqueConfigurationDevis": [
+    [
+      36
+    ]
+  ],
+  "ventesApi.getOffresTaillesDevis": [
+    [
+      "36"
+    ]
+  ],
+  "ventesApi.getPrefillSite": [
+    [
+      "9"
+    ]
+  ],
+  "ventesApi.getPrixApplicable": [
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ]
+  ],
+  "ventesApi.lireOverrides": [
+    [
+      36
+    ]
+  ],
+  "ventesApi.postEtudeHorairePreview": [
+    [
+      {
+        "dimensionner": true,
+        "devis": 36
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 5.72
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 7.15
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ]
+}
