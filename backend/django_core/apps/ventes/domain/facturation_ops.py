@@ -349,7 +349,7 @@ def reserver_stock_devis_facture(*, devis, user, company):
     return moved
 
 
-def entete_facture_depuis_devis(devis):
+def entete_facture_depuis_devis(devis, *, ttc=None):
     """AUD113 — champs d'EN-TÊTE qu'une facture reprend de son devis à la
     création (``Facture.objects.create(**entete)``).
 
@@ -357,10 +357,33 @@ def entete_facture_depuis_devis(devis):
     repli pointent vers des objets DIFFÉRENTS : ``LigneDevis.taux_tva_effectif``
     retombe sur ``devis.taux_tva``, ``LigneFacture.taux_tva_effectif`` sur
     ``facture.taux_tva``. Sans ce transport, un devis à 10 % dont les lignes
-    portent un taux NULL était facturé au défaut 20 %."""
+    portent un taux NULL était facturé au défaut 20 %.
+
+    ATOT4 (C-ATOT-002) — l'en-tête porte AUSSI, quelle que soit la porte
+    (tranche, BC, complète, consolidée) :
+      * ``reference_commande_client`` du devis (CIQ216) ;
+      * la retenue de garantie demandée sur le devis (CIQ214) : taux × ``ttc``
+        de CETTE facture (``ttc`` absent ⇒ TTC de l'option effective du
+        devis, celui d'une facture complète/BC), calculée par LE geste
+        partagé ``echeancier.retenue_de_tranche`` → ``retenue_garantie_mad``
+        + la phrase AUD180 dans ``conditions_paiement``. Sans retenue : clés
+        absentes (facture d'hier)."""
     entete = {}
-    if devis is not None and devis.taux_tva is not None:
+    if devis is None:
+        return entete
+    if devis.taux_tva is not None:
         entete['taux_tva'] = devis.taux_tva
+    entete['reference_commande_client'] = (
+        getattr(devis, 'reference_commande_client', '') or '')
+    from apps.ventes.utils.echeancier import retenue_de_tranche
+    if ttc is None and isinstance(getattr(devis, 'retenue_garantie', None),
+                                  dict):
+        from apps.ventes.utils.options import option_totaux
+        ttc = option_totaux(devis)['ttc']
+    retenue = retenue_de_tranche(devis, ttc) if ttc is not None else None
+    if retenue is not None:
+        entete['retenue_garantie_mad'] = retenue['montant']
+        entete['conditions_paiement'] = retenue['phrase']
     return entete
 
 

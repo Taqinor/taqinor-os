@@ -526,10 +526,9 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 statut=Facture.Statut.BROUILLON,
                 created_by=request.user,
                 company=company,
-                # CIQ216 — la référence de commande du client suit le devis.
-                reference_commande_client=(
-                    bc.devis.reference_commande_client or ''
-                    if bc.devis_id else ''),
+                # CIQ216/ATOT4 — référence de commande du client et retenue
+                # de garantie du devis : portées par `entete` (geste partagé
+                # des quatre portes).
                 **entete,
             )
             if bc.devis:

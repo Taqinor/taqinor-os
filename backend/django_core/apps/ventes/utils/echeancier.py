@@ -853,15 +853,18 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     # CIQ214 — retenue de garantie DEMANDÉE par le client (D-CIQ-14) : taux ×
     # TTC de la tranche, au centime, retenue sur le RÈGLEMENT — ni le HT ni
     # la TVA ne baissent (phrase AUD180). Sans retenue : facture d'hier.
-    retenue = retenue_de_tranche(devis, tr['ttc'])
+    # ATOT4 — retenue et réf. client par LE geste partagé des quatre portes
+    # (`entete_facture_depuis_devis`, sur le TTC de la tranche) ; le taux de
+    # tête d'une tranche reste le taux mélangé de l'option (ci-dessous).
+    from apps.ventes.domain.facturation_ops import entete_facture_depuis_devis
+    entete = entete_facture_depuis_devis(devis, ttc=tr['ttc'])
+    entete.pop('taux_tva', None)
     # CIQ215 — TVA ventilée par taux (devis à taux mixtes) ; None sinon.
     ventilation = ventilation_tva_tranche(devis, tr)
 
     def _create(ref):
         extra = {} if echeance is None else {'date_echeance': echeance}
-        if retenue is not None:
-            extra['retenue_garantie_mad'] = retenue['montant']
-            extra['conditions_paiement'] = retenue['phrase']
+        extra.update(entete)
         return Facture.objects.create(
             **extra,
             reference=ref,
@@ -876,9 +879,6 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             montant_ttc=tr['ttc'],
             taux_tva=blended_tva_pct(devis),
             ventilation_tva=ventilation,
-            # CIQ216 — la référence de commande du client suit le devis.
-            reference_commande_client=(
-                getattr(devis, 'reference_commande_client', '') or ''),
             created_by=user,
             company=company,
         )

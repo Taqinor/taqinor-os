@@ -931,6 +931,35 @@ def _composer_remise_et_palier(facture, devis_qs):
         'composables). Facturez-les séparément.')})
 
 
+def _entete_consolidee(facture, devis_qs):
+    """ATOT4 — l'en-tête de la consolidée par LE geste partagé
+    ``entete_facture_depuis_devis``, appelé devis par devis : retenue de
+    garantie = Σ des retenues de chaque devis sur SON TTC (prorata), phrases
+    AUD180 conservées, références de commande client distinctes jointes. Le
+    taux de tête n'est pas repris (chaque ligne porte son taux effectif)."""
+    from apps.ventes.domain.facturation_ops import entete_facture_depuis_devis
+    retenue = Decimal('0')
+    phrases, refs = [], []
+    for d in devis_qs:
+        entete = entete_facture_depuis_devis(d)
+        if entete.get('retenue_garantie_mad') is not None:
+            retenue += Decimal(str(entete['retenue_garantie_mad']))
+            phrases.append(f'{d.reference} : {entete["conditions_paiement"]}')
+        ref = entete.get('reference_commande_client') or ''
+        if ref and ref not in refs:
+            refs.append(ref)
+    champs = []
+    if phrases:
+        facture.retenue_garantie_mad = retenue
+        facture.conditions_paiement = '\n'.join(phrases)
+        champs += ['retenue_garantie_mad', 'conditions_paiement']
+    if refs:
+        facture.reference_commande_client = ', '.join(refs)[:60]
+        champs.append('reference_commande_client')
+    if champs:
+        facture.save(update_fields=champs)
+
+
 def consolider_factures(*, company, devis_ids, user, created_by=None):
     """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
     client (ex. projet multi-sites : ferme à N forages, tranches). Chaque
@@ -1020,6 +1049,7 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
                 sous_total_ht=sous_total,
             )
         _composer_remise_et_palier(facture, devis_qs)
+        _entete_consolidee(facture, devis_qs)
 
         # AUD101 — l'émission passe par LE service unique, APRÈS la recopie
         # des lignes (émettre une facture consolidée encore vide écrirait une
