@@ -2411,7 +2411,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     from apps.ventes.utils.options import AVEC_BATTERIE as _SIGNE_AVEC
     from apps.ventes.utils.options import SANS_BATTERIE as _SIGNE_SANS
     _option_signee = getattr(devis, 'option_acceptee', '') or ''
-    if _option_signee and _deux_options_structurel:
+    # AMOT10 (C-AMOT-005) — une VARIANTE demandée qui rétrécit le document à
+    # UNE option (``deux_options`` faux après QF6/L-VAR) décrit une option et
+    # UN total : celui de cette variante (= ``totaux_all``), jamais celui de
+    # l'option signée imprimé au-dessus des lignes de l'autre.
+    _variante_retrecie = bool(
+        _corrige and opts.get('variante_option') and not deux_options)
+    if (_option_signee and _deux_options_structurel
+            and not _variante_retrecie):
         if _option_signee == _SIGNE_SANS:
             display_total = totaux_sans["ttc"]
         elif _option_signee == _SIGNE_AVEC:
