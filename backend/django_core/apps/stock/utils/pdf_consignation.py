@@ -80,7 +80,7 @@ def render_releve_consignation_html(depot):
   <table>
     <thead><tr>
       <th>Date</th><th>Mouvement</th><th class="num">Quantité</th>
-      <th>Statut</th><th>Document</th>
+      <th>Statut</th><th>Facture</th>
     </tr></thead>
     <tbody>{depot_html}{lignes_html}</tbody>
     <tfoot><tr>

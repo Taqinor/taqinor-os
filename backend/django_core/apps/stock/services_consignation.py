@@ -4,7 +4,9 @@ Deux écritures, et deux seulement :
   * ``creer_depot_consignation`` — sort la marchandise du dépôt principal
     (``MouvementStock`` SORTIE motivé « consignation ») SANS créer de facture ;
   * ``declarer_consommation`` — enregistre ce que le client a consommé, sans
-    JAMAIS retoucher le stock (la marchandise est déjà partie).
+    JAMAIS retoucher le stock (la marchandise est déjà partie), et la FACTURE
+    (ASTK198 : facture BROUILLON via ``ventes.services.
+    creer_facture_consignation``, déclaration passée ``facturee``).
 
 C'est cette asymétrie qui évite le double décrément — l'erreur classique du
 dépôt-vente.
@@ -114,7 +116,8 @@ def declarer_consommation(*, depot, user, quantite, date_declaration,
 
     NE TOUCHE PAS AU STOCK : la marchandise a quitté le dépôt à la création du
     dépôt de consignation. Refuse une quantité nulle/négative ou supérieure au
-    restant, et un dépôt CLOS.
+    restant, et un dépôt CLOS. ASTK198 : la déclaration est facturée dans la
+    même transaction (``facturer_declaration``).
     """
     from django.db import transaction
 
@@ -149,7 +152,49 @@ def declarer_consommation(*, depot, user, quantite, date_declaration,
             depot.statut = DepotConsignation.Statut.CLOS
             champs.append('statut')
         depot.save(update_fields=champs)
+        # ASTK198 (C-ASTK-047) — la consommation déclarée est FACTURÉE dans
+        # la MÊME transaction : si ventes refuse, déclaration et facture sont
+        # annulées ensemble (jamais une consommation non facturée en silence).
+        facturer_declaration(declaration, user=user, depot=depot)
     return declaration
+
+
+def reference_origine_declaration(declaration):
+    """Marqueur d'origine (idempotence côté ventes) d'une déclaration."""
+    return f'CONSIGNATION-DECL-{declaration.pk}'
+
+
+def facturer_declaration(declaration, *, user, depot=None):
+    """ASTK198 — facture BROUILLON d'une déclaration de consommation.
+
+    Appelle ``apps.ventes.services.creer_facture_consignation`` (prix de vente
+    catalogue, jamais ``prix_achat`` ; idempotente par la référence d'origine
+    ``CONSIGNATION-DECL-<id>``), puis passe la déclaration ``facturee`` avec
+    ``document_reference`` = n° de la facture. Rejouer la même déclaration
+    renvoie la MÊME facture (aucune seconde facture). La facture est posée
+    sur ``declaration.facture`` (attribut non persistant, lu par la réponse
+    de l'endpoint). Renvoie la Facture.
+    """
+    from django.db import transaction
+
+    from apps.ventes.services import creer_facture_consignation
+
+    from .models import DeclarationConsommation
+
+    depot = depot or declaration.depot
+    with transaction.atomic():
+        facture = creer_facture_consignation(
+            company=depot.company, client=depot.client, user=user,
+            lignes=[{'produit': depot.produit,
+                     'quantite': declaration.quantite}],
+            reference_origine=reference_origine_declaration(declaration))
+        if (declaration.statut != DeclarationConsommation.Statut.FACTUREE
+                or declaration.document_reference != facture.reference):
+            declaration.statut = DeclarationConsommation.Statut.FACTUREE
+            declaration.document_reference = facture.reference
+            declaration.save(update_fields=['statut', 'document_reference'])
+    declaration.facture = facture
+    return facture
 
 
 def releve_consignation(depot):

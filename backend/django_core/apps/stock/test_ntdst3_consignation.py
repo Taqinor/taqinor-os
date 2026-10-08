@@ -146,11 +146,12 @@ class Ntdst3DepotTests(Ntdst3Base):
 
     def test_le_releve_cumule_les_quatre_quantites(self):
         depot = self._depot(quantite=20)
+        # ASTK198 — chaque déclaration est facturée à sa création.
         declaration = declarer_consommation(
             depot=depot, user=self.admin, quantite=5,
             date_declaration=JOUR_CONSO)
-        declaration.statut = DeclarationConsommation.Statut.FACTUREE
-        declaration.save(update_fields=['statut'])
+        self.assertEqual(declaration.statut,
+                         DeclarationConsommation.Statut.FACTUREE)
         declarer_consommation(depot=depot, user=self.admin, quantite=3,
                               date_declaration=JOUR_CONSO)
 
@@ -158,7 +159,7 @@ class Ntdst3DepotTests(Ntdst3Base):
         releve = releve_consignation(depot)
         self.assertEqual(releve['quantite_deposee'], 20)
         self.assertEqual(releve['quantite_consommee'], 8)
-        self.assertEqual(releve['quantite_facturee'], 5)
+        self.assertEqual(releve['quantite_facturee'], 8)
         self.assertEqual(releve['quantite_restante'], 12)
         self.assertEqual(len(releve['declarations']), 2)
 
