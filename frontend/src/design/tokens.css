@@ -947,16 +947,100 @@
   outline-offset: 1px;
 }
 
-/* VX40 — Le délice mesuré : burst CSS-only posé par ui/celebrate.js autour du
-   toast sonner « devis signé » (rare, significatif, jamais gamifié). Chaque
-   span anime sa propre paire angle/distance via les variables inline
-   --vx40-angle/--vx40-distance posées en JS. `celebrate.js` ne pose même pas
-   ces spans sous reduced-motion (garde JS en amont) ; la règle globale
-   `@media (prefers-reduced-motion: reduce)` d'index.css neutraliserait de
-   toute façon la translation si jamais posée. */
-@keyframes vx40-burst {
-  from { opacity: 1; transform: rotate(var(--vx40-angle)) translateX(0) scale(1) }
-  to { opacity: 0; transform: rotate(var(--vx40-angle)) translateX(var(--vx40-distance)) scale(0.4) }
+/* Fête « affaire signée » (ui/DealSignedCelebration.jsx + ui/celebrate.js) —
+   demande du fondateur 08/10/2026 : une vraie fête de 35 s. Nuit étoilée
+   (fait ressortir les feux d'artifice), soleil rayonnant façon « rainbow man »
+   d'Odoo, couronne qui tombe, titre en or. `.deal-party--still` = version
+   reduced-motion : même carte, aucune animation. Couleurs volontairement
+   fixes (or/nuit) : identiques en clair et en sombre, c'est une scène. */
+.deal-party {
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(64, 44, 120, 0.85), transparent 65%),
+    radial-gradient(ellipse at 50% 110%, rgba(245, 197, 66, 0.25), transparent 60%),
+    #070818;
+  color: #fff8e6;
+  animation: deal-party-in 400ms ease-out both;
+}
+.deal-party__flash {
+  position: absolute; inset: 0; background: #fff; pointer-events: none;
+  animation: deal-party-flash 700ms ease-out both;
+}
+.deal-party__rays {
+  position: absolute; left: 50%; top: 42%; width: 220vmax; height: 220vmax;
+  margin: -110vmax 0 0 -110vmax; pointer-events: none; opacity: 0.35;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 215, 106, 0.55) 0deg 6deg, transparent 6deg 18deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 45%);
+  mask-image: radial-gradient(circle, #000 0%, transparent 45%);
+  animation: deal-party-spin 24s linear infinite;
+}
+.deal-party__ticker {
+  position: absolute; top: 18px; left: 0; right: 0; overflow: hidden; white-space: nowrap;
+  font-weight: 800; letter-spacing: 0.2em; font-size: 0.85rem; color: #ffd76a;
+  text-shadow: 0 0 12px rgba(255, 215, 106, 0.7); pointer-events: none; z-index: 5;
+}
+.deal-party__ticker span { display: inline-block; animation: deal-party-ticker 18s linear infinite; }
+.deal-party__card {
+  padding: 2.5rem 2rem 2rem; border-radius: 28px;
+  background: rgba(14, 12, 36, 0.55); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 215, 106, 0.45);
+  box-shadow: 0 0 60px rgba(255, 215, 106, 0.35), inset 0 0 40px rgba(255, 215, 106, 0.08);
+  animation: deal-party-pop 900ms cubic-bezier(.2, 1.6, .4, 1) 150ms both;
+}
+.deal-party__crown {
+  position: absolute; top: -58px; left: 50%; font-size: 76px; line-height: 1;
+  filter: drop-shadow(0 0 18px rgba(255, 215, 106, 0.9));
+  animation: deal-party-crown 1.3s cubic-bezier(.3, 1.5, .5, 1) 500ms both,
+    deal-party-bob 2.4s ease-in-out 1.9s infinite;
+}
+.deal-party__eyebrow {
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #ffd76a;
+}
+.deal-party__title {
+  margin-top: 0.4rem; font-size: clamp(2.4rem, 7vw, 4.2rem); font-weight: 900; line-height: 1.05;
+  background: linear-gradient(90deg, #fff1b8, #f5c542, #ff9f1a, #ffd76a, #fff1b8);
+  background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 22px rgba(245, 197, 66, 0.55));
+  animation: deal-party-shine 3s linear infinite, deal-party-throb 1.6s ease-in-out infinite;
+}
+.deal-party__cheer {
+  margin-top: 0.75rem; min-height: 1.6em; font-size: 1.1rem; font-weight: 600; color: #fff8e6;
+  animation: deal-party-cheer 600ms ease-out both;
+}
+.deal-party__amount {
+  margin-top: 1.1rem; font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 900; color: #fff;
+  text-shadow: 0 0 18px rgba(63, 169, 245, 0.8);
+}
+.deal-party__meta { margin-top: 0.25rem; font-size: 0.9rem; color: rgba(255, 248, 230, 0.8); }
+.deal-party__cta {
+  background: linear-gradient(90deg, #f5c542, #ff9f1a); color: #1a1205;
+  box-shadow: 0 0 24px rgba(245, 197, 66, 0.6);
+}
+.deal-party__cta:hover { filter: brightness(1.08); }
+.deal-party__mute { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.deal-party__hint { margin-top: 0.9rem; font-size: 0.75rem; color: rgba(255, 248, 230, 0.6); }
+.deal-party--still, .deal-party--still * { animation: none !important; }
+
+@keyframes deal-party-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes deal-party-flash { from { opacity: 0.9 } to { opacity: 0 } }
+@keyframes deal-party-spin { to { transform: rotate(360deg) } }
+@keyframes deal-party-ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+@keyframes deal-party-pop {
+  from { opacity: 0; transform: scale(0.3) rotate(-6deg) }
+  to { opacity: 1; transform: scale(1) rotate(0) }
+}
+@keyframes deal-party-crown {
+  from { opacity: 0; transform: translate(-50%, -100vh) rotate(-40deg) }
+  to { opacity: 1; transform: translate(-50%, 0) rotate(-8deg) }
+}
+@keyframes deal-party-bob {
+  0%, 100% { transform: translate(-50%, 0) rotate(-8deg) }
+  50% { transform: translate(-50%, -8px) rotate(8deg) }
+}
+@keyframes deal-party-shine { to { background-position: 300% 0 } }
+@keyframes deal-party-throb { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.04) } }
+@keyframes deal-party-cheer {
+  from { opacity: 0; transform: translateY(10px) scale(0.95) }
+  to { opacity: 1; transform: none }
 }
 
 /* Respect de prefers-reduced-motion (F/M : confort de mouvement) */

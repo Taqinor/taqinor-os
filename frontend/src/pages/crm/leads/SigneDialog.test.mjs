@@ -57,14 +57,14 @@ test('LW5 : date par défaut + comparaison "future" en LOCAL, jamais toISOString
   assert.match(SRC, /const today = todayLocalStr\(\)/)
 })
 
-// La carte elle-même reste responsable du burst CSS-only VX40 (posé une
-// seule fois, jamais dupliqué dans SigneDialog).
-test('DealSignedCelebration : réutilise celebrateDealSigned (VX40), montant + kWc réels', () => {
+// La carte elle-même reste responsable de la fête (lancée une seule fois,
+// jamais dupliquée dans SigneDialog).
+test('DealSignedCelebration : lance la fête celebrateDealSigned, montant + kWc réels', () => {
   const CELEB_SRC = readFileSync(
     join(HERE, '..', '..', '..', 'ui', 'DealSignedCelebration.jsx'), 'utf8')
   assert.match(CELEB_SRC, /from '\.\/celebrate'/)
-  assert.match(CELEB_SRC, /celebrateDealSigned\(\)/)
-  assert.match(CELEB_SRC, /formatMAD\(montantTtc\)/)
+  assert.match(CELEB_SRC, /celebrateDealSigned\(/)
+  assert.match(CELEB_SRC, /formatMAD\([^)]*montantTtc/)
   assert.match(CELEB_SRC, /kwc/)
 })
 
