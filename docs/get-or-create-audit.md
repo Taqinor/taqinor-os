@@ -83,7 +83,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/services.py:4591` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
 | `backend/django_core/apps/ged/services.py:5307` | get_or_create | DocumentTag.objects | company, slug |
 | `backend/django_core/apps/ged/services.py:6669` | get_or_create | Folder.objects | cabinet, company, nom, parent |
-| `backend/django_core/apps/ged/views.py:2374` | get_or_create | DocumentLien.objects | content_type, document, object_id |
+| `backend/django_core/apps/ged/views.py:2380` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/installations/field_capture.py:77` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:332` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:389` | get_or_create | SafetySignoff.objects | intervention |
