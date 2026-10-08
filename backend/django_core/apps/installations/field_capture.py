@@ -68,6 +68,25 @@ def _bom_quantities(installation):
     return out
 
 
+#: ACHT30 — messages des gardes communes (synchro terrain + vues).
+MESSAGE_CONSOMMATION_VALIDEE = 'Réconciliation déjà validée.'
+MESSAGE_INTERVENTION_VALIDEE = 'Intervention validée.'
+
+
+def consommation_modifiable(cons):
+    """ACHT30 (C-ACHT-028) — LA garde : une réconciliation validée (stock
+    déjà sorti) n'est plus modifiable, ni en ligne ni par la synchro."""
+    return cons is None or not cons.valide
+
+
+def intervention_modifiable(intervention):
+    """ACHT30 — une intervention validée ne reçoit plus de relevé terrain
+    (série, réserve) par la synchro."""
+    from .models import Intervention
+    return (intervention is None
+            or intervention.statut != Intervention.Statut.VALIDEE)
+
+
 def ensure_consommation(intervention):
     """F11 — garantit la réconciliation matériel de l'intervention et amorce ses
     lignes depuis la nomenclature gelée (prévu). Idempotent : ne touche pas une

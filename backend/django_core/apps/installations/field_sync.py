@@ -150,6 +150,8 @@ def _h_serial(company, user, payload):
         if produit is None:
             raise FieldOpError('Produit inconnu.')
     iv = _intervention(company, payload, user)
+    if not field_capture.intervention_modifiable(iv):  # ACHT30
+        raise FieldOpError(field_capture.MESSAGE_INTERVENTION_VALIDEE)
     serial = ComponentSerial.objects.create(
         company=company, intervention=iv, produit=produit,
         designation=(payload.get('designation') or '').strip(),
@@ -165,6 +167,8 @@ def _h_consommation_ligne(company, user, payload):
     réconciliation (la validation reste une action en ligne explicite)."""
     iv = _intervention(company, payload, user)
     cons = field_capture.ensure_consommation(iv)
+    if not field_capture.consommation_modifiable(cons):  # ACHT30
+        raise FieldOpError(field_capture.MESSAGE_CONSOMMATION_VALIDEE)
     ligne = cons.lignes.filter(id=payload.get('ligne')).first()
     if ligne is None:
         raise FieldOpError('Ligne de consommation inconnue.')
@@ -184,6 +188,8 @@ def _h_consommation_ligne(company, user, payload):
 def _h_reserve(company, user, payload):
     """F16 — crée une réserve (punch-list). Idempotente par sa clé d'op."""
     iv = _intervention(company, payload, user)
+    if not field_capture.intervention_modifiable(iv):  # ACHT30
+        raise FieldOpError(field_capture.MESSAGE_INTERVENTION_VALIDEE)
     from .models import Reserve
     reserve = Reserve.objects.create(
         company=company, intervention=iv,

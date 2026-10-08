@@ -1059,9 +1059,12 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         designation, quantite_utilisee, [produit], [justification]."""
         from apps.stock.selectors import get_produit_scoped
         interv = self.get_object()
-        if getattr(interv, 'consommation', None) and interv.consommation.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # ACHT30 — garde commune avec la synchro terrain.
+        if not field_capture.consommation_modifiable(
+                getattr(interv, 'consommation', None)):
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         cons = field_capture.ensure_consommation(interv)
         designation = (request.data.get('designation') or '').strip()
         if not designation:
@@ -1094,9 +1097,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from decimal import Decimal, InvalidOperation
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
-        if cons.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not field_capture.consommation_modifiable(cons):  # ACHT30
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
@@ -1129,9 +1133,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         """F11 — supprime une ligne HORS-nomenclature. Corps : {"ligne": <id>}."""
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
-        if cons.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not field_capture.consommation_modifiable(cons):  # ACHT30
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         ligne = cons.lignes.filter(
             id=request.data.get('ligne'), hors_nomenclature=True).first()
         if ligne is None:
@@ -1149,9 +1154,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         n'est pas justifiée (texte ou mémo vocal)."""
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
-        if cons.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not field_capture.consommation_modifiable(cons):  # ACHT30
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         # Pré-contrôle des justifications manquantes : on construit le message
         # utilisateur (libellés des lignes en écart) à partir des DONNÉES, sans
         # le faire transiter par un objet exception (évite toute fuite
