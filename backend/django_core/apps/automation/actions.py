@@ -195,6 +195,10 @@ def variables_enregistrement(instance, company):
     entreprise = _nom_entreprise(company)
     if entreprise:
         valeurs['entreprise'] = entreprise
+        # APAR50 — {marque} des gabarits WhatsApp livrés (devis_unique,
+        # devis_multi_entete, facture, relance) : même source que
+        # ``ventes.utils.whatsapp.marque_societe`` (profil, sinon Company.nom).
+        valeurs['marque'] = entreprise
     if instance is None:
         return valeurs
     reference = getattr(instance, 'reference', None)

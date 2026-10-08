@@ -102,3 +102,17 @@ class RenduSociete43Tests(TestCase):
         self.assertIn('Soleil Atlas', message)
         self.assertNotIn('{marque}', message)
         self.assertIsNone(MARQUE_RE.search(message))
+
+
+class AutomationRenduMarqueTests(TestCase):
+    def test_automation_porte_la_marque_jamais_le_placeholder(self):
+        from types import SimpleNamespace
+
+        from apps.automation.actions import _message_body
+        co = Company.objects.create(nom='Soleil Atlas', slug='s43-auto')
+        for cle in ('facture', 'relance', 'devis_unique'):
+            rule = SimpleNamespace(
+                action_config={'template': cle, 'langue': 'fr'}, company=co)
+            texte = _message_body(rule, {}, None, co)
+            self.assertIn('Soleil Atlas', texte, cle)
+            self.assertNotIn('{marque}', texte, cle)
