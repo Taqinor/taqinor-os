@@ -86,9 +86,10 @@ test('DevisGenerator.jsx monte <DevisOffresTailles> UNE fois, avec editId/modeIn
 test('le composant reste SOUS le montage recalcDim/Aperçu — coordination avec la lane du bouton « Recalculer le dimensionnement » (correction #5), jamais entrelacé', () => {
   // SPL42 — l'ancre est le VRAI point de montage de la carte (son titre),
   // lu dans la coquille : 'Aperçu de la Simulation' seul ne trouvait qu'un
-  // commentaire (région déplacée par SPL51).
+  // commentaire (région déplacée par SPL51). SPL52 — la carte vit dans
+  // `generator/ApercuSimulation.jsx` : l'ancre devient son point de montage.
   const COQUILLE = lireSourceCoquille()
-  const idxAppercu = COQUILLE.indexOf('title="Aperçu de la Simulation"')
+  const idxAppercu = COQUILLE.indexOf('<ApercuSimulation')
   const idxTailles = COQUILLE.indexOf('<DevisOffresTailles')
   // QJR100 — la carte « Lignes de Produits » est montée par `<LigneTable/>`
   // (son titre vit dans `generator/LigneTable.jsx`) : l'ancre d'ordre suit le
