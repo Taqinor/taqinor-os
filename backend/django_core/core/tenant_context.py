@@ -128,26 +128,109 @@ def _company_id_from_request(request) -> Optional[int]:
     return getattr(getattr(result[0], 'company', None), 'pk', None)
 
 
+def _transaction_serveur_inactive(raw) -> bool:
+    """Vrai si AUCUNE transaction n'est encore ouverte côté serveur.
+
+    psycopg (2 et 3) expose ``info.transaction_status`` : ``0`` = IDLE (hors
+    transaction — en mode non-autocommit, le prochain statement ouvrira
+    implicitement la transaction), ``2`` = INTRANS. État inconnu → ``True`` :
+    reposer le GUC est idempotent, ne jamais le reposer serait fail-closed mais
+    rendrait les lignes invisibles.
+    """
+    info = getattr(raw, 'info', None)
+    statut = getattr(info, 'transaction_status', None)
+    if statut is None and hasattr(raw, 'get_transaction_status'):
+        statut = raw.get_transaction_status()
+    try:
+        return int(statut) == 0
+    except (TypeError, ValueError):
+        return True
+
+
+class TenantGucWrapper:
+    """ADEP30 — ``execute_wrapper`` qui fait TENIR le GUC tenant.
+
+    Le constat C-ADEP-001 : le middleware posait ``set_config(..., true)``
+    (transaction-scopé, SCA14) mais ``ATOMIC_REQUESTS`` n'est pas activé. En
+    autocommit, le ``SET LOCAL`` s'effaçait à la fin de SA propre transaction
+    implicite : toutes les requêtes ORM suivantes de la requête HTTP tournaient
+    SANS GUC — sous un rôle NOBYPASSRLS, 0 ligne visible et INSERT refusé.
+
+    Garantie : chaque statement de la requête HTTP s'exécute dans une
+    transaction où le GUC a été posé :
+      * connexion en autocommit → on ouvre un ``atomic`` autour de la pose ET
+        du statement (le GUC s'efface au commit : jamais de fuite) ;
+      * dans un ``atomic`` → on pose le GUC au PREMIER statement de chaque
+        nouvelle transaction serveur (statut IDLE), avant tout ``SAVEPOINT``.
+
+    La pose passe par un curseur BRUT de la connexion (hors chaîne de wrappers :
+    pas de récursion) et reste ``is_local=true`` — jamais un ``SET`` de session.
+    """
+
+    def __init__(self, company_id: int):
+        self.company_id = int(company_id)
+
+    def _poser(self) -> None:
+        with connection.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_company', %s, true)",
+                [str(self.company_id)],
+            )
+
+    def poser_si_transaction_ouverte(self) -> None:
+        """À l'installation : une transaction déjà ouverte reçoit le GUC."""
+        connection.ensure_connection()
+        if connection.get_autocommit():
+            return
+        if not _transaction_serveur_inactive(connection.connection):
+            self._poser()
+
+    def __call__(self, execute, sql, params, many, context):
+        if connection.get_autocommit():
+            from django.db import transaction
+            with transaction.atomic(using=connection.alias):
+                self._poser()
+                return execute(sql, params, many, context)
+        if _transaction_serveur_inactive(connection.connection):
+            self._poser()
+        return execute(sql, params, many, context)
+
+
 class TenantContextMiddleware:
-    """Pose ``app.current_company`` au début de chaque requête authentifiée.
+    """Pose ``app.current_company`` pour toute la requête authentifiée.
 
     Se place APRÈS l'authentification Django. No-op total quand RLS est
     désactivé (défaut) : le flag est vérifié EN PREMIER, donc aucune résolution
     de société ni requête SQL n'a lieu — le chemin par défaut est byte-identique
     à l'absence de ce middleware (prouvé par un test au budget de requêtes).
+
+    ADEP30 — flag ON : un ``TenantGucWrapper`` (``connection.execute_wrapper``)
+    garantit le GUC sur CHAQUE statement de la requête, qu'une transaction soit
+    ouverte ou non (``ATOMIC_REQUESTS`` n'est pas activé dans les settings).
+    Requête anonyme / sans société → aucun GUC → la policy ne montre rien.
     """
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        if rls_enabled():
-            company_id = _company_id_from_request(request)
-            if company_id is not None:
-                # Pose le GUC ; le SET LOCAL sera visible pour toute la
-                # transaction ouverte par ATOMIC_REQUESTS/les vues.
-                set_current_company(company_id)
-        return self.get_response(request)
+        if not rls_enabled():
+            return self.get_response(request)
+        company_id = _company_id_from_request(request)
+        if company_id is None:
+            return self.get_response(request)
+        # NTPLT46 — tag Sentry de la société (no-op si Sentry non initialisé).
+        try:
+            from . import monitoring
+            monitoring.bind_company(company_id)
+        except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête
+            pass
+        if connection.vendor != 'postgresql':
+            return self.get_response(request)
+        wrapper = TenantGucWrapper(company_id)
+        with connection.execute_wrapper(wrapper):
+            wrapper.poser_si_transaction_ouverte()
+            return self.get_response(request)
 
 
 # ── NTPLT4 — GUC tenant dans les tâches Celery ───────────────────────────────
