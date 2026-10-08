@@ -1904,6 +1904,12 @@ def creer_ticket_depuis_email_alias(message, company):
     if categorie is None:
         return None  # pas d'alias configuré → route générique inchangée.
 
+    # ASAV35 — un message d'un fil CONNU ne crée jamais de ticket, même adressé
+    # à l'alias d'une catégorie (« répondre à tous ») : le handler de fil
+    # (NTSRV1) le rattache au ticket d'origine.
+    if ticket_du_fil_email(company, message) is not None:
+        return None
+
     from apps.crm.selectors import find_client_by_email
     from apps.ventes.utils.references import create_with_reference
     from .models import Ticket
