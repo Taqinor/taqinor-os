@@ -18,7 +18,7 @@
 // la porte pas, l'écran garde sa valeur » — jamais une valeur inventée.
 // Fonctions PURES : aucun React, aucun réseau (node --test).
 import {
-  consoAnnuelleDepuisFactures, consoDescendDesFactures,
+  consoAnnuelleDepuisFactures, consoDescendDesFactures, comptePanneauxOption,
 } from '../solar.js'
 import { SCENARIO_SANS, SCENARIO_AVEC } from './sizingReducer.js'
 import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js'
@@ -137,7 +137,7 @@ export function entreesPompageEcran(etat) {
 }
 
 /** Le devis servi → l'état de l'écran d'Édition complète. */
-export function devisVersEtat(d, { bareme = null } = {}) {
+export function devisVersEtat(d, { bareme = null, produits = [] } = {}) {
   const devis = d || {}
   const e = devis.etude_params || {}
   const mode = devis.mode_installation || undefined
@@ -157,9 +157,10 @@ export function devisVersEtat(d, { bareme = null } = {}) {
     echeancier: echeancierVersSaisie(devis.echeancier),
     lignes,
     // L-2OPT — panneaux de la branche SANS (commun + 'sans').
-    panneaux: lignes
-      .filter(r => /panneau/i.test(r.designation) && r.variante !== 'avec')
-      .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0),
+    // AGNR45 — même règle que le kWc facturé (AGNR18) : `isPanel` sur la
+    // désignation + le nom du produit lié (`produits`, catalogue de l'écran),
+    // jamais `/panneau/i` (20 × « JA Solar 550 Wc » rouvraient à 0).
+    panneaux: comptePanneauxOption(lignes, 'sans', produits),
     // QJR526 — wattage, structure, hors-réseau, composition libre.
     reouverture: deriverReouverture(lignes, { mode }),
     scenario: e.scenario || undefined,
