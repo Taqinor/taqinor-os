@@ -23,6 +23,8 @@ from rest_framework.throttling import SimpleRateThrottle
 from .models import Equipement, Ticket, TicketSatisfaction
 
 MAX_PIECES_JOINTES_PORTAIL = 5
+# ASAV24 — fenêtre de rejeu d'un signalement public identique (5 min).
+FENETRE_REJEU_SIGNALEMENT_S = 300
 
 
 # ── Throttle ─────────────────────────────────────────────────────────────────
@@ -281,6 +283,27 @@ def equipement_public_signaler(request, token):
     corps = description
     if telephone:
         corps += f'\n\nTéléphone communiqué : {telephone}'
+
+    # ASAV24 — idempotence : un rejeu identique (même équipement, même
+    # description, fenêtre de quelques minutes) renvoie la référence du
+    # ticket existant sans créer de ticket ni consommer de numéro.
+    import hashlib
+    import time
+
+    from core.idempotency import dedupe_event
+    empreinte = hashlib.sha256(description.encode('utf-8')).hexdigest()[:16]
+    fenetre = int(time.time() // FENETRE_REJEU_SIGNALEMENT_S)
+    if not dedupe_event(
+            company=equipement.company, source='sav_signalement_qr',
+            event_id=f'{equipement.pk}:{empreinte}:{fenetre}'):
+        existant = (Ticket.objects
+                    .filter(company=equipement.company,
+                            equipement=equipement,
+                            description__startswith=description)
+                    .order_by('-date_creation').first())
+        if existant is not None:
+            return _noindex(Response(
+                {'reference': existant.reference}, status=status.HTTP_200_OK))
 
     from apps.ventes.utils.references import create_with_reference
 
