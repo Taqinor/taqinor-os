@@ -19,6 +19,8 @@ import unittest
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+
 try:
     from fastapi import HTTPException
 
@@ -29,6 +31,7 @@ try:
 except Exception as exc:  # pragma: no cover - dependances manquantes
     _security = None
     _ERR = exc
+    verifier_import_optionnel(exc)
 
 
 @unittest.skipIf(_security is None, f"app non importable: {_ERR}")

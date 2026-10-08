@@ -549,13 +549,13 @@ unites:
     I: 5
     score: 10
     niveau: L1
-    statut: à auditer
+    statut: audité
     groupe: ADEP
     plan: docs/plans/PLAN_AUDIT_DEPLOY.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_LEAD.md]
+    pr: 873
+    date: 2026-10-08
+    notes: "Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app. Audit L1 du 08/10/2026 (dossier docs/audits/2026-10-08-deploy.md) : 22 constats (1 S1 : pas de pg_dump/pg_restore dans l'image de prod), 50 tâches ADEP routées chez 10 propriétaires."
 
   - id: J4
     rang: 17
@@ -577,13 +577,13 @@ unites:
     I: 3
     score: 9
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ASAV
     plan: docs/plans/PLAN_AUDIT_SAV.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
+    pr: 876
+    date: 2026-10-08
+    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-sav.md) : 51 constats (3 S1 + 1 décision fondateur), 86 tâches ASAV ; ticket couvert par contrat facturé depuis l'écran, quotas de contrat faux, garantie recalculée à chaque modification."
 
   - id: X7
     rang: 18
