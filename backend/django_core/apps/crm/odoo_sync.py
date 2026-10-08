@@ -510,56 +510,82 @@ def align_stages_from_rows(company, rows, apply_changes):
     return rapport
 
 
+class PushMoves:
+    """AACQ32 — Résultat de ``compute_push_moves`` : se déballe toujours en
+    ``(moves, coherents, non_rapproches)`` et porte en plus les compteurs
+    ``inconnus`` (colonne Odoo vide/hors table : intouchée), ``ambigus``
+    (rapprochement email/téléphone sur PLUSIEURS fiches : non poussé) et
+    ``corbeille`` (lead ERP supprimé : non poussé)."""
+
+    def __init__(self, moves, coherents, non_rapproches, inconnus=0,
+                 ambigus=0, corbeille=0):
+        self.moves = moves
+        self.coherents = coherents
+        self.non_rapproches = non_rapproches
+        self.inconnus = inconnus
+        self.ambigus = ambigus
+        self.corbeille = corbeille
+
+    def __iter__(self):
+        return iter((self.moves, self.coherents, self.non_rapproches))
+
+
 def compute_push_moves(company, odoo_leads):
     """ERP → Odoo : liste les déplacements d'étape à faire CÔTÉ ODOO.
 
     Un lead Odoo bouge seulement si son étape actuelle, convertie en clé
     canonique, DIFFÈRE de l'étape ERP du lead rapproché — la colonne cible
-    est alors ``PUSH_STAGE_TARGETS[étape ERP]``. Rapprochement : clé odoo,
-    puis email normalisé, puis téléphone normalisé (mêmes étages que
-    l'import, dans le même ordre)."""
-    from apps.crm.management.commands.import_odoo_leads import _map_stage
+    est alors ``PUSH_STAGE_TARGETS[étape ERP]``.
 
-    par_ext = {}
-    par_email = {}
-    par_tel = {}
-    for lead in Lead.objects.filter(company=company):
-        if lead.external_system == 'odoo' and lead.external_id:
-            par_ext[str(lead.external_id)] = lead
-        email = services.normalize_email(lead.email)
-        if email and email not in PLACEHOLDER_EMAILS:
-            par_email.setdefault(email, lead)
-        tel = services.normalize_phone(lead.telephone)
-        if tel:
-            par_tel.setdefault(tel, lead)
+    AACQ32 — MÊMES règles de sélection que l'alignement
+    (``align_stages_from_rows``) :
+      * rapprochement par ``_find_existing`` (clé odoo, puis email, puis
+        téléphone ; la fiche la plus ANCIENNE gagne) ; un rapprochement
+        AMBIGU (plusieurs fiches) n'est PAS poussé et est compté « ambigus » ;
+      * colonne Odoo vide ou hors table (``_map_stage_connu`` → ``None``) :
+        lead intouché, compté « inconnus » (jamais assimilé à « New ») ;
+      * lead ERP en corbeille : jamais poussé.
+    L'écriture Odoo (``push_stage_moves``) est inchangée."""
+    from apps.crm.management.commands.import_odoo_leads import (
+        _find_existing, _map_stage_connu)
 
     moves = {}          # nom d'étape Odoo cible -> [ids crm.lead]
     coherents = 0
     non_rapproches = 0
+    inconnus = 0
+    ambigus = 0
+    corbeille = 0
     for odoo_lead in odoo_leads:
-        erp = par_ext.get(str(odoo_lead['id']))
-        if erp is None:
-            email = services.normalize_email(
-                (odoo_lead.get('email_from') or '').strip().lower())
-            if email and email not in PLACEHOLDER_EMAILS:
-                erp = par_email.get(email)
-        if erp is None:
-            tel = services.normalize_phone(odoo_lead.get('phone'))
-            if tel:
-                erp = par_tel.get(tel)
+        email = services.normalize_email(
+            (odoo_lead.get('email_from') or '').strip().lower())
+        if email in PLACEHOLDER_EMAILS:
+            email = ''
+        erp, ambigu = _find_existing(company, str(odoo_lead['id']), {
+            'email': email, 'telephone': odoo_lead.get('phone')})
         if erp is None:
             non_rapproches += 1
             continue
+        if ambigu:
+            ambigus += 1
+            continue
+        if erp.is_deleted:
+            corbeille += 1
+            continue
         stage_odoo = (odoo_lead['stage_id'][1]
                       if odoo_lead.get('stage_id') else '')
-        if _map_stage(stage_odoo) == erp.stage:
+        connu = _map_stage_connu(stage_odoo)
+        if connu is None:
+            inconnus += 1
+            continue
+        if connu == erp.stage:
             coherents += 1
             continue
         cible = PUSH_STAGE_TARGETS.get(erp.stage)
         if not cible:
             continue
         moves.setdefault(cible, []).append(odoo_lead['id'])
-    return moves, coherents, non_rapproches
+    return PushMoves(moves, coherents, non_rapproches, inconnus, ambigus,
+                     corbeille)
 
 
 def push_stage_moves(config, moves):

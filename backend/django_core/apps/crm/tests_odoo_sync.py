@@ -467,3 +467,58 @@ class TestPushCommand(OdooSyncBase):
             sortie = self._push(apply=True)
         self.assertEqual(self.fake.writes, [])
         self.assertIn('Config Odoo absente', sortie)
+
+
+class PushSelectionTests(OdooSyncBase):
+    """AACQ32 — ``push_odoo_stages`` choisit les leads à déplacer avec les
+    MÊMES règles que l'alignement : colonne Odoo inconnue/vide = intouchée
+    (« inconnus ») ; rapprochement ambigu = non poussé (« ambigus »)."""
+
+    def _lead(self, **kwargs):
+        return Lead.objects.create(company=self.company, **kwargs)
+
+    def _odoo(self, odoo_id, stage, *, email='', phone=''):
+        return {'id': odoo_id, 'email_from': email, 'phone': phone,
+                'stage_id': stage}
+
+    def test_unknown_odoo_stage_not_pushed(self):
+        self._lead(nom='Maison', external_system='odoo', external_id='99',
+                   stage=stages.CONTACTED)
+        resultat = odoo_sync.compute_push_moves(
+            self.company, [self._odoo(99, [99, 'Colonne Maison'])])
+        moves, coherents, non_rapproches = resultat
+        self.assertEqual(moves, {})
+        self.assertEqual(resultat.inconnus, 1)
+
+    def test_empty_odoo_stage_not_pushed(self):
+        self._lead(nom='Sans etape', external_system='odoo',
+                   external_id='98', stage=stages.CONTACTED)
+        resultat = odoo_sync.compute_push_moves(
+            self.company, [self._odoo(98, False)])
+        self.assertEqual(resultat.moves, {})
+        self.assertEqual(resultat.inconnus, 1)
+
+    def test_ambiguous_email_not_pushed(self):
+        self._lead(nom='A ancien', email='double@example.test',
+                   stage=stages.NEW)
+        self._lead(nom='B recent', email='double@example.test',
+                   stage=stages.SIGNED)
+        resultat = odoo_sync.compute_push_moves(self.company, [
+            self._odoo(97, [1, 'New'], email='double@example.test')])
+        self.assertEqual(resultat.moves, {})
+        self.assertEqual(resultat.ambigus, 1)
+
+    def test_nominal_lead_still_pushed(self):
+        self._lead(nom='Nominal', external_system='odoo', external_id='96',
+                   stage=stages.NEW)
+        resultat = odoo_sync.compute_push_moves(
+            self.company, [self._odoo(96, [33, 'Cold Lead'])])
+        self.assertEqual(resultat.moves, {'New': [96]})
+        self.assertEqual((resultat.inconnus, resultat.ambigus), (0, 0))
+
+    def test_command_prints_both_counters(self):
+        self._lead(nom='Alpha', external_system='odoo', external_id='11',
+                   stage=stages.NEW)
+        sortie = self._push()
+        self.assertIn('inconnus : 0', sortie)
+        self.assertIn('ambigus : 0', sortie)
