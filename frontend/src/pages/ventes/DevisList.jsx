@@ -384,6 +384,11 @@ export default function DevisList() {
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptEntreprise, setAcceptEntreprise] = useState(ENTREPRISE_VIDE)
   const [acceptBusy, setAcceptBusy] = useState(false)
+  // ADEV15 — refus 403 serveur (avertissement de vente bloquant / blocage
+  // crédit) : { nature: 'sale_warning'|'credit_hold', detail } ; le serveur
+  // reste juge (ADEV14), le bouton « Passer outre » n'est qu'une commodité
+  // pour Administrateur / Responsable.
+  const [acceptBlocage, setAcceptBlocage] = useState(null)
   // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
   // porte pas les lignes du devis — jamais un chiffre inventé).
   const [dealCelebration, setDealCelebration] = useState(null)
@@ -406,6 +411,7 @@ export default function DevisList() {
     setAcceptOption('sans_batterie')
     setAcceptEntreprise({ ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(d) })
     setAcceptBusy(false)
+    setAcceptBlocage(null)
   }
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
@@ -613,16 +619,20 @@ export default function DevisList() {
   }
 
   // T9 — Acceptation via la modale inline (nom / date / option).
-  const submitAccept = async () => {
+  const submitAccept = async (overrides = {}) => {
     const d = acceptTarget
     if (!d) return
     setAcceptBusy(true)
     try {
-      await ventesApi.accepterDevis(d.id, corpsAcceptation({
-        nom: acceptNom,
-        date: acceptDate,
-        option: d.nb_options === 2 ? acceptOption : '',
-      }, d, acceptEntreprise))
+      await ventesApi.accepterDevis(d.id, {
+        ...corpsAcceptation({
+          nom: acceptNom,
+          date: acceptDate,
+          option: d.nb_options === 2 ? acceptOption : '',
+        }, d, acceptEntreprise),
+        ...overrides,
+      })
+      setAcceptBlocage(null)
       dispatch(fetchDevis())
       setAcceptTarget(null)
       // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
@@ -634,7 +644,16 @@ export default function DevisList() {
         kwc: null,
       })
     } catch (err) {
-      toast.error(frenchError(err, 'Acceptation impossible.'))
+      const data = err?.response?.data
+      if (err?.response?.status === 403 && (data?.sale_warning || data?.credit_hold)) {
+        // ADEV15 — on garde la modale ouverte et on montre le motif.
+        setAcceptBlocage({
+          nature: data.credit_hold ? 'credit_hold' : 'sale_warning',
+          detail: data.detail || 'Acceptation bloquée.',
+        })
+      } else {
+        toast.error(frenchError(err, 'Acceptation impossible.'))
+      }
     } finally {
       setAcceptBusy(false)
     }
@@ -933,13 +952,28 @@ export default function DevisList() {
         footer={(
           <>
             <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
-            <Button onClick={submitAccept} loading={acceptBusy}>
+            {acceptBlocage && peutNoter && (
+              <Button
+                variant="outline"
+                loading={acceptBusy}
+                onClick={() => submitAccept(acceptBlocage.nature === 'credit_hold'
+                  ? { override_credit: true } : { override_avertissement: true })}
+              >
+                Passer outre
+              </Button>
+            )}
+            <Button onClick={() => submitAccept()} loading={acceptBusy}>
               <Check /> Confirmer l'acceptation
             </Button>
           </>
         )}
       >
           <div className="flex flex-col gap-4">
+            {acceptBlocage && (
+              <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                {acceptBlocage.detail}
+              </div>
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="accept-nom">Nom de la personne qui accepte</Label>
               <Input id="accept-nom" value={acceptNom}
