@@ -3239,7 +3239,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         except (TypeError, ValueError):
             raise ValidationError({'ticket_ids': 'Ticket inconnu.'})
 
-        tickets = list(Ticket.objects.filter(
+        # ASAV76 — bornés à la portée de l'utilisateur (comme lier-ticket).
+        tickets = list(_tickets_visibles(request).filter(
             pk__in=demandes, company=company))
         if len(tickets) != len(set(demandes)):
             raise ValidationError(
