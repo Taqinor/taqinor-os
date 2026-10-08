@@ -1996,10 +1996,8 @@ def _dispatch(client, action):
             adset_id=payload.get('adset_id', ''),
             extra_fields=extra)
     if kind == EngineAction.Kind.REBALANCE_BUDGET:
-        # Rééquilibrage de budget dans la bande. La méthode concrète de mise à
-        # jour de budget du client atterrit avec le groupe budget (ADSENG) ; ici
-        # on route déjà l'appel. Un client réel qui ne l'expose pas encore lève
-        # (→ action « echouee », jamais d'application silencieuse ni d'activation).
+        # Rééquilibrage de budget dans la bande → ``MetaClient.update_adset_
+        # budget`` (AACQ4 : POST /<adset_id> {daily_budget}, jamais de status).
         return client.update_adset_budget(
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
@@ -2049,8 +2047,8 @@ def _dispatch(client, action):
         # Les garde-fous budget ont été appliqués AVANT par
         # ``_guard_before_dispatch`` (plafond + variation hebdo + pas ≤15% + G4
         # + propriété miroir) ; on route vers la même méthode budget que
-        # REBALANCE_BUDGET (un client réel qui ne l'expose pas encore lève →
-        # « echouee », jamais d'activation ni d'application silencieuse).
+        # REBALANCE_BUDGET (AACQ4 — ``MetaClient.update_adset_budget``, jamais
+        # de status : aucune activation possible).
         return client.update_adset_budget(
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),

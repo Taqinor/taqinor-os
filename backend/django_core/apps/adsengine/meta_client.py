@@ -1100,6 +1100,30 @@ class MetaClient:
         payload = self._edit_payload(base, extra_fields)
         return self._request('POST', f'{object_id}', data=payload)
 
+    def update_adset_budget(self, *, adset_id, daily_budget, extra_fields=None):
+        """AACQ4 — Pose le budget QUOTIDIEN d'un ad set EXISTANT :
+        ``POST /<adset_id>`` avec ``{daily_budget}`` (entier, unités MINEURES
+        de la devise du compte, comme Meta l'exige). Édition : AUCUN ``status``
+        n'est jamais envoyé (``_edit_payload`` — invariant permanent règle #3 :
+        un changement de budget ne peut ni activer ni dé-pauser). Les
+        garde-fous (plafond, variation, pas, propriété miroir) sont appliqués
+        AVANT par ``services._guard_before_dispatch``."""
+        if not str(adset_id or '').strip():
+            raise MetaError("update_adset_budget : adset_id requis.")
+        try:
+            amount_f = float(daily_budget)
+            amount = int(amount_f)
+        except (TypeError, ValueError, OverflowError):
+            raise MetaError(
+                "update_adset_budget : daily_budget entier requis (unités "
+                "mineures de la devise du compte).") from None
+        if amount <= 0 or amount_f != amount:
+            raise MetaError(
+                "update_adset_budget : daily_budget doit être un entier "
+                "strictement positif.")
+        payload = self._edit_payload({'daily_budget': amount}, extra_fields)
+        return self._request('POST', f'{adset_id}', data=payload)
+
     def set_adset_schedule(self, *, adset_id, adset_schedule, extra_fields=None):
         """ADSDEEP36 — Dayparting NATIF Meta : pose ``adset_schedule`` sur un ad
         set (exige côté Meta un ad set en BUDGET LIFETIME + pacing day_parting —
