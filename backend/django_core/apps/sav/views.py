@@ -774,6 +774,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return
         installation = getattr(equipement, 'installation', None)
         if installation is None:
+            # ASAV40 — équipement vendu au comptoir (XPOS9) : pas de chantier,
+            # mais un client de vente.
+            if (serializer.validated_data.get('client') is None
+                    and equipement.client_vente_id):
+                serializer.validated_data['client'] = equipement.client_vente
             return
         if serializer.validated_data.get('installation') is None:
             serializer.validated_data['installation'] = installation
@@ -2690,7 +2695,9 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
             # l'équipement lié à l'alarme quand c'est possible.
             equipement = alarme.equipement
             installation = getattr(equipement, 'installation', None)
-            client = getattr(installation, 'client', None)
+            client = (getattr(installation, 'client', None)
+                      if installation is not None
+                      else getattr(equipement, "client_vente", None))  # ASAV40
             if client is None:
                 raise ValidationError({
                     'ticket': "Aucun ticket fourni et l'alarme n'a pas "
