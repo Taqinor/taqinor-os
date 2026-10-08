@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ecrireLastTva } from '../../../../features/ventes/quote/ecranDefauts.js'
 import ventesApi from '../../../../api/ventesApi'
-import { _hasPrix, appliquerRecomposition, deriveRoleOrderFromLines, lignesManuellesEnConflitPossible, tauxTvaOf, ttcFromHt } from '../../../../features/ventes/solar'
+import { _hasPrix, appliquerRecomposition, deriveRoleOrderFromLines, lignesManuellesEnConflitPossible, tauxTvaOf, ttcExactFromHt, ttcFromHt } from '../../../../features/ventes/solar'
 import stockApi from '../../../../api/stockApi'
 import { emptyLine, structureLine, withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
 import { toast } from '../../../../ui/confirm'
@@ -78,8 +78,15 @@ export function useLignesEcran(ctx) {
         // jamais un `lines` capturé au lancement de l'appel réseau, qui serait
         // périmé) : le vendeur reprend la main tant qu'il n'a pas resélectionné
         // le produit de cette ligne (onProduitChange lève le verrou).
+        // AGNR15 — le prix servi est HT (contrat AGNR1, `unite: 'HT'`) : il est
+        // converti au taux de CETTE ligne, au centime (`ttcExactFromHt`, que
+        // `htFromTtc` inverse exactement à l'enregistrement), jamais écrit tel
+        // quel dans un champ TTC (1 350 HT s'affichait 1 350 et s'enregistrait
+        // 1 125,00 HT).
         setLines(ls => ls.map(l =>
-          (l._key === key && !l.prixManuel) ? { ...l, prix_unit_ttc: String(data.prix) } : l))
+          (l._key === key && !l.prixManuel)
+            ? { ...l, prix_unit_ttc: String(ttcExactFromHt(data.prix, l.taux_tva)) }
+            : l))
       } else {
         setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
       }
