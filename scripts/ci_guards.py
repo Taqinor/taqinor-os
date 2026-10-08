@@ -58,6 +58,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Tests symboles du moteur sans lecteur (AMOT75)',
+         'python -m unittest scripts.tests.test_check_services_appeles_constantes -v',
+         '.'),
         ('Check echeances reglementaires du moteur (AMOT74 : rouge 60 j avant chaque fin de validite)',
          'python scripts/check_echeances_reglementaires.py',
          '.'),
