@@ -10,13 +10,12 @@ d'annulation pour une action réversible.
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.exceptions import ParseError, PermissionDenied
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.views import APIView
 
-from authentication.permissions import IsAdminRole
+from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import AgentActionLog
 from .registry import for_user
@@ -40,7 +39,9 @@ _RESULTED_OBJECT_MODELS = {
 class AgentActionsView(APIView):
     """Catalogue des actions exécutables par l'utilisateur courant."""
 
-    permission_classes = [IsAuthenticated]
+    # ASEC43 — vues agent INTERNES : un compte portail (portee != interne)
+    # reçoit 403 (IsAnyRole = authentifié ET interne).
+    permission_classes = [IsAnyRole]
 
     def get(self, request):
         actions = [a.as_dict() for a in for_user(request.user)]
@@ -66,7 +67,7 @@ class AgentActionLogView(APIView):
     confirmées, scopé société, admin/Directeur uniquement (paramétrage
     interne — pas une surface grand public)."""
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAnyRole, IsAdminRole]
 
     def get(self, request):
         user = request.user
@@ -85,7 +86,7 @@ class AgentActionUndoView(APIView):
     action réversible non déjà annulée. Company-scopée (une entrée d'une
     autre société renvoie 404, jamais une fuite d'existence)."""
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAnyRole, IsAdminRole]
 
     def post(self, request, pk):
         user = request.user
@@ -120,7 +121,8 @@ class AgentActionConfirmerView(APIView):
     Directeur (``AgentActionLogView``/``AgentActionUndoView``). ``company``/
     ``user`` posés côté serveur, jamais lus du corps."""
 
-    permission_classes = [IsAuthenticated]
+    # ASEC43 — self-service INTERNE seulement (compte portail -> 403).
+    permission_classes = [IsAnyRole]
 
     @extend_schema(request=OpenApiTypes.OBJECT, responses=inline_serializer(
         'AgentActionConfirmee', {
@@ -201,9 +203,13 @@ class AutomationDraftView(APIView):
     ``apps.automation.models`` ici — frontière cross-app respectée) : c'est
     ce service qui re-valide le brouillon contre le catalogue fermé et crée
     la règle TOUJOURS désactivée. ``company`` est imposée depuis
-    ``request.user`` (jamais depuis le corps)."""
+    ``request.user`` (jamais depuis le corps).
 
-    permission_classes = [IsAuthenticated]
+    ASEC43 — même droit que le viewset canonique des automatisations
+    (``IsAdminRole``) : un Viewer, un Commercial ou un compte portail
+    reçoivent 403 sans brouillon créé."""
+
+    permission_classes = [IsAnyRole, IsAdminRole]
 
     def post(self, request):
         from apps.automation.services import DraftRuleError, \

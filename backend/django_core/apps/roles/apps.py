@@ -15,3 +15,12 @@ class RolesConfig(AppConfig):
         'description': 'Rôles et matrice de permissions.',
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # ASEC11-lint — injecte le registre module→codes dans la fondation
+        # ``authentication.permissions`` (IsResponsableOrAdmin) : c'est la
+        # fondation qui est APPELÉE, elle n'importe jamais apps.roles.
+        from authentication.permissions import enregistrer_registre_modules
+
+        from .permissions_registre import PERMISSION_MODULE
+        enregistrer_registre_modules(PERMISSION_MODULE)

@@ -72,16 +72,24 @@ class AssignationBase(TestCase):
 
 class NotificationDAssignationTests(AssignationBase):
     def test_la_creation_previent_l_assigne(self):
+        # ALEA9 — la création passe par ``planifier_visite`` qui REFUSE une
+        # date passée : la date figée « 2026-09-15 » est devenue passée ; le
+        # test prend une date à venir, relative à l'horloge serveur.
+        import datetime
+
+        from django.utils import timezone
+
+        jour = timezone.localdate() + datetime.timedelta(days=7)
         reponse = auth(self.bureau).post(
             '/api/django/visites/visites/',
             {'lead': self.lead.id, 'commercial': self.terrain.id,
-             'date_prevue': '2026-09-15'}, format='json')
+             'date_prevue': jour.isoformat()}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
         notification = self._assignations(self.terrain).get()
         self.assertEqual(notification.company_id, self.company.id)
         self.assertEqual(notification.link,
                          f'/visites/{reponse.data["id"]}')
-        self.assertIn('15/09/2026', notification.body)
+        self.assertIn(jour.strftime('%d/%m/%Y'), notification.body)
         self.assertIn('Bennani', notification.body)
 
     def test_on_ne_se_notifie_jamais_soi_meme(self):

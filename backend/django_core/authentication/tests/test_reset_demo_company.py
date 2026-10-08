@@ -11,8 +11,15 @@ class ResetDemoCompanyTest(TestCase):
     SLUG = 'taqinor-demo-full'
 
     def test_refuses_slug_without_demo(self):
-        with self.assertRaises(CommandError):
-            call_command('reset_demo_company', slug='acme-corp', verbosity=0)
+        # ASEC16 — le seul critère est ``Company.est_demo`` : une société
+        # RÉELLE existante est refusée et reste intacte, même si son slug
+        # contient « demo ».
+        for slug in ('acme-corp', 'taqinor-demo'):
+            with self.subTest(slug=slug):
+                Company.objects.create(nom=slug, slug=slug, est_demo=False)
+                with self.assertRaises(CommandError):
+                    call_command('reset_demo_company', slug=slug, verbosity=0)
+                self.assertTrue(Company.objects.filter(slug=slug).exists())
 
     def test_requires_slug(self):
         # --slug est obligatoire (pas de défaut) → erreur sans lui.

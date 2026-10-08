@@ -83,3 +83,62 @@ def sync_role_legacy(user_model):
             user.save(update_fields=['role_legacy'])
             updated += 1
     return updated
+
+
+# ── ASEC2 — garde de RANG sur la gestion des comptes ────────────────────────
+# ``validate_role`` (ERR21/NTADM21) garde le RÔLE assigné ; cette garde-ci garde
+# le RANG de la CIBLE : un acteur ne gère jamais (mot de passe, e-mail, état,
+# rôle, avatar, rotation forcée, suppression) un compte de palier supérieur au
+# sien, un compte propriétaire protégé ou le dernier propriétaire de la société.
+# UNE seule fonction, appelée par update/partial_update/destroy/avatar — aucune
+# copie de la logique de palier ailleurs.
+CODE_RANG_CIBLE = 'rang_cible'
+CODE_ROLE_PLUS_LARGE = 'role_plus_large'
+
+_RANG = {ROLE_NORMAL: 1, ROLE_RESPONSABLE: 2, ROLE_ADMIN: 3}
+
+
+def rang(user):
+    """Rang numérique du palier de ``user`` (superuser au-dessus de tout)."""
+    if getattr(user, 'is_superuser', False):
+        return 4
+    return _RANG.get(getattr(user, 'menu_tier', None), 1)
+
+
+def peut_gerer(acteur, cible):
+    """``(True, None)`` si ``acteur`` peut gérer le compte ``cible``, sinon
+    ``(False, CODE_RANG_CIBLE)``.
+
+    - un superuser gère tout ; personne d'autre ne gère un superuser ;
+    - on se gère soi-même (les gardes propriétaire existantes restent) ;
+    - un compte ``is_protected`` ou dernier propriétaire n'est géré que par
+      lui-même ;
+    - sinon le rang de la cible ne dépasse jamais celui de l'acteur."""
+    if getattr(acteur, 'is_superuser', False):
+        return True, None
+    if getattr(cible, 'is_superuser', False):
+        return False, CODE_RANG_CIBLE
+    if getattr(acteur, 'pk', None) is not None \
+            and acteur.pk == getattr(cible, 'pk', None):
+        return True, None
+    if getattr(cible, 'is_protected', False):
+        return False, CODE_RANG_CIBLE
+    est_dernier = getattr(cible, 'est_dernier_proprietaire', None)
+    if callable(est_dernier) and est_dernier():
+        return False, CODE_RANG_CIBLE
+    if rang(cible) > rang(acteur):
+        return False, CODE_RANG_CIBLE
+    return True, None
+
+
+def codes_plus_larges(permissions_acteur, permissions_role):
+    """Codes du rôle ``permissions_role`` que l'acteur ne porte PAS lui-même,
+    triés. Les marqueurs qui RESTREIGNENT (portée ``records_scope_*``,
+    visibilité d'app ``app_<clé>_voir``) ne comptent jamais comme plus larges."""
+    a = set(permissions_acteur or [])
+    return sorted(
+        c for c in set(permissions_role or [])
+        if c not in a
+        and not c.startswith('records_scope')
+        and not (c.startswith('app_') and c.endswith('_voir'))
+    )

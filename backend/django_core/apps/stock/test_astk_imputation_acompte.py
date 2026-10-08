@@ -35,7 +35,10 @@ class ImputationAcompteTests(TestCase):
             nom='astk106-co', slug='astk106-co')
         role = Role.objects.create(
             company=self.company, nom='r-astk106',
-            permissions=['stock_voir', 'stock_modifier'])
+            permissions=['stock_voir', 'stock_modifier',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.user = User.objects.create_user(
             username='astk106-user', password='x', company=self.company,
             role=role, role_legacy='responsable')

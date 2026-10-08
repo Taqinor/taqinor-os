@@ -361,6 +361,16 @@ class RendezVousTransporteur(TenantModel):
     immatriculation = models.CharField(max_length=30, blank=True, default='')
     note = models.TextField(blank=True, null=True)
     date_arrivee = models.DateTimeField(null=True, blank=True)
+    # ASTK192 — rendez-vous réservé par jeton fournisseur : le fournisseur
+    # porteur du jeton et le BCF visé sont POSÉS PAR LE SERVEUR (jamais lus du
+    # corps pour le fournisseur) au lieu de ne survivre que dans la `note`
+    # libre. Nullables : les rendez-vous transporteur historiques n'en ont pas.
+    fournisseur = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='rendez_vous_quai')
+    bon_commande = models.ForeignKey(
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='rendez_vous_quai')
     # NTWMS8 — code remis au chauffeur pour s'enregistrer au kiosque de quai
     # SANS compte ERP. Généré côté serveur, imprévisible (secrets), unique par
     # société. Il ne donne accès à RIEN d'autre que la confirmation d'arrivée

@@ -90,11 +90,11 @@ def _signatures_for_day(company, day):
     éteint — distinct d'un vrai zéro signature)."""
     from .odoo_client import is_configured
 
-    if not is_configured():
+    if not is_configured(company):  # ASEC40 — société propriétaire seule
         return None
     try:
         from .odoo_selectors import signed_deals
-        deals = signed_deals(since=day)
+        deals = signed_deals(since=day, company=company)
     except Exception:  # noqa: BLE001 — jamais un 500/crash sur une panne Odoo
         logger.warning(
             'adsdeep62: lecture des signatures Odoo échouée pour %s',

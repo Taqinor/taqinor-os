@@ -270,6 +270,30 @@ describe('UsersManagement — DataTable (J145)', () => {
     )
   })
 
+  it('ASEC3 — l\'édition avec mot de passe appelle l\'action dédiée (jamais password dans le PATCH)', async () => {
+    renderPage()
+    await screen.findAllByText('sami')
+    const editButtons = screen.getAllByRole('button', { name: 'Modifier' })
+    fireEvent.click(editButtons[editButtons.length - 1])
+    const dialog = await waitFor(() => {
+      const d = document.querySelector('[role="dialog"].modal')
+      expect(d).toBeTruthy()
+      return d
+    })
+    fireEvent.change(dialog.querySelector('#edit-password'), { target: { value: 'Nouveau-mdp-456!' } })
+    fireEvent.change(dialog.querySelector('#edit-password2'), { target: { value: 'Nouveau-mdp-456!' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() =>
+      expect(apiMock.post).toHaveBeenCalledWith(
+        '/users/11/reinitialiser-mot-de-passe/',
+        { password: 'Nouveau-mdp-456!' },
+      ),
+    )
+    await waitFor(() => expect(apiMock.patch).toHaveBeenCalled())
+    const [, patchBody] = apiMock.patch.mock.calls[apiMock.patch.mock.calls.length - 1]
+    expect(patchBody).not.toHaveProperty('password')
+  })
+
   it('supprime un utilisateur via la confirmation maison (DELETE /users/<id>/)', async () => {
     const user = userEvent.setup()
     const { container } = renderPage()

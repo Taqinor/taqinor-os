@@ -97,7 +97,8 @@ class TestSavTicketsCoutGating(SavPivotBase):
     def test_cout_visible_with_permission(self):
         role = Role.objects.create(
             company=self.company, nom='AvecPrixAchat',
-            permissions=['tickets_gerer', 'prix_achat_voir'])
+            # ASEC11 — module reporting : un code reporting est désormais requis.
+            permissions=['tickets_gerer', 'prix_achat_voir', 'reporting_voir'])
         allowed = User.objects.create_user(
             username='zsav7_allowed', password='x', company=self.company,
             role=role)

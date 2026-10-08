@@ -89,25 +89,16 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(produit_id=produit_id)
         return qs
 
-    def _check_company(self, serializer):
-        company = self.request.user.company
-        produit = serializer.validated_data.get('produit')
-        fournisseur = serializer.validated_data.get('fournisseur')
-        from rest_framework.exceptions import ValidationError
-        if produit is not None and produit.company_id != getattr(
-                company, 'id', None):
-            raise ValidationError({'produit': 'Produit hors de votre entreprise.'})
-        if fournisseur is not None and fournisseur.company_id != getattr(
-                company, 'id', None):
-            raise ValidationError(
-                {'fournisseur': 'Fournisseur hors de votre entreprise.'})
+    # ASTK212 (ACAL298) — `produit` et `fournisseur` sont bornés à la société
+    # par `PrixFournisseurSerializer` (CompanyScopedRelationsMixin) : un id
+    # d'une autre société échoue à la résolution comme un id absent. L'ancien
+    # `_check_company` (message propre « produit/fournisseur hors société ») était un second
+    # message, donc un oracle d'existence : retiré.
 
     def perform_create(self, serializer):
-        self._check_company(serializer)
         serializer.save(company=self.request.user.company)
 
     def perform_update(self, serializer):
-        self._check_company(serializer)
         serializer.save(company=self.request.user.company)
 
     @action(detail=False, methods=['get'], url_path='effectif')

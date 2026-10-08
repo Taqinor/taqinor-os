@@ -1,0 +1,154 @@
+{
+  "endpoint": "GET /api/django/stock/produits/<int:pk>/",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Contrat posé SEUL sur `main` (PACT10) : `exemple` ne montre QUE les 10 champs maîtres DÉJÀ servis par ProduitSerializer mais sans geste d'écriture à l'écran (plus `id`, `nom` pour situer l'objet). Les 8 champs NOUVEAUX du serializer sont dans `exemple_nouveau_astk214` (clés `cles_nouvelles_astk214`) : ASTK214 les ajoute à `ProduitSerializer.Meta.fields` et remet les affirmations serveur.",
+  "pourquoi": "ASTK169 (M0, PACT10, C-ASTK-045 — volet CAT-8) — champs maîtres produit à rendre saisissables, posé SEUL sur main avant les deux moitiés (ASTK214 affirme les clés, ASTK230 en est nourri). GET/PATCH produits/<id>/ restreint à ces champs. Déjà servis (serializers.py, ProduitSerializer.Meta.fields) mais absents de ProduitForm.jsx : role_devis, unite_stock, code_barres, code_sh, pays_origine, avertissement_vente, avertissement_bloquant, paliers_prix_vente, suivi_serie, politique_facturation_achat. ABSENTS du serializer aujourd'hui (champs du modèle, models.py) : classe_danger, quantite_reappro_cible, louable, tarif_location_jour, tarif_location_semaine, tarif_location_mois, est_recurrent, periodicite_defaut — « NOUVEAU — ASTK214 ». Aucun n'est un prix d'achat. Hors périmètre : `quantite_stock` écrivable (C-ASTK-005). Jumeaux non dupliqués : produit_ci.json / produit_pompage.json.",
+  "exemple": {
+    "id": 5,
+    "nom": "Batterie 5 kWh",
+    "role_devis": "batterie",
+    "unite_stock": "unité",
+    "code_barres": "6111234567890",
+    "code_sh": "8507.60",
+    "pays_origine": "Chine",
+    "avertissement_vente": "Vérifier la compatibilité onduleur avant devis.",
+    "avertissement_bloquant": false,
+    "paliers_prix_vente": [
+      {
+        "seuil_min": 1,
+        "seuil_max": 9,
+        "prix_vente_ttc": "7200.00"
+      },
+      {
+        "seuil_min": 10,
+        "seuil_max": null,
+        "prix_vente_ttc": "6900.00"
+      }
+    ],
+    "suivi_serie": true,
+    "politique_facturation_achat": "sur_reception"
+  },
+  "exemple_corps_patch": {
+    "code_barres": "6111234567890",
+    "code_sh": "8507.60",
+    "pays_origine": "Chine",
+    "avertissement_vente": "Vérifier la compatibilité onduleur avant devis.",
+    "avertissement_bloquant": false,
+    "suivi_serie": true,
+    "politique_facturation_achat": "sur_reception",
+    "role_devis": "batterie",
+    "unite_stock": "unité"
+  },
+  "exemple_erreur_400_code_barres": {
+    "code_barres": [
+      "Ce code-barres est déjà utilisé par un autre produit."
+    ]
+  },
+  "nouveau_astk214": "NOUVEAU — ASTK214 : les 8 clés ci-dessous sont à ajouter à ProduitSerializer (lecture ET écriture sous les permissions d'écriture stock existantes). `tarif_location_*` = décimaux (chaîne, null si non loué), `periodicite_defaut` null = annuel.",
+  "exemple_nouveau_astk214": {
+    "id": 5,
+    "nom": "Batterie 5 kWh",
+    "classe_danger": "BATTERIE_LITHIUM",
+    "quantite_reappro_cible": 20,
+    "louable": false,
+    "tarif_location_jour": null,
+    "tarif_location_semaine": null,
+    "tarif_location_mois": null,
+    "est_recurrent": false,
+    "periodicite_defaut": null
+  },
+  "cles_nouvelles_astk214": [
+    "classe_danger",
+    "est_recurrent",
+    "louable",
+    "periodicite_defaut",
+    "quantite_reappro_cible",
+    "tarif_location_jour",
+    "tarif_location_mois",
+    "tarif_location_semaine"
+  ],
+  "choices": {
+    "role_devis": {
+      "source": "core/product_roles.py ROLES_DEVIS (valeurs = libellés, `null` = non déclaré)",
+      "valeurs": [
+        "onduleur_reseau",
+        "onduleur_hybride",
+        "onduleur_offgrid",
+        "panneau",
+        "batterie",
+        "structure",
+        "structure_acier",
+        "structure_alu",
+        "socle",
+        "cable_dc",
+        "cable_terre",
+        "smart_meter",
+        "wifi_dongle",
+        "accessoires",
+        "tableau",
+        "installation",
+        "transport",
+        "suivi"
+      ]
+    },
+    "unite_stock": {
+      "source": "models.py Produit.unite_stock — CharField LIBRE (max 20, défaut « unité »), SANS TextChoices ; le référentiel parametres.UniteMesure en est un miroir (unite_stock reste maître)",
+      "valeurs": null
+    },
+    "classe_danger": {
+      "source": "models.py Produit.ClasseDanger",
+      "valeurs": [
+        [
+          "AUCUNE",
+          "Aucune"
+        ],
+        [
+          "BATTERIE_LITHIUM",
+          "Batterie lithium"
+        ],
+        [
+          "INFLAMMABLE",
+          "Inflammable"
+        ],
+        [
+          "CORROSIF",
+          "Corrosif"
+        ]
+      ]
+    },
+    "periodicite_defaut": {
+      "source": "models.py Produit.PeriodiciteDefaut (`null` = vide = annuel)",
+      "valeurs": [
+        [
+          "mensuel",
+          "Mensuel"
+        ],
+        [
+          "trimestriel",
+          "Trimestriel"
+        ],
+        [
+          "semestriel",
+          "Semestriel"
+        ],
+        [
+          "annuel",
+          "Annuel"
+        ]
+      ]
+    },
+    "politique_facturation_achat": {
+      "source": "models.py Produit.PolitiqueFacturationAchat",
+      "valeurs": [
+        [
+          "sur_reception",
+          "Sur réception"
+        ],
+        [
+          "sur_commande",
+          "Sur commande"
+        ]
+      ]
+    }
+  }
+}

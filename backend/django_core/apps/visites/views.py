@@ -44,6 +44,10 @@ from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
 #: IMAGES — un PDF n'est pas une photo de toit.
 MIMES_PHOTO = ('image/png', 'image/jpeg', 'image/webp')
 
+#: ALEA24 — code rendu pour une action d'écriture non déclarée dans
+#: ``PERMISSIONS_ECRITURE`` : il n'existe dans aucun rôle, donc refusé.
+CODE_ACTION_NON_DECLAREE = 'visites_action_non_declaree'
+
 
 def _erreur(champ, message, code=status.HTTP_400_BAD_REQUEST):
     """400 qui NOMME le champ fautif (règle maison)."""
@@ -62,10 +66,32 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     serializer_class = VisiteTerrainSerializer
     read_permission = 'visites_voir'
 
-    #: Codes d'écriture par action (le reste retombe sur ``visites_modifier``).
+    #: ALEA24 — code d'écriture EXPLICITE pour CHAQUE action d'écriture du
+    #: viewset (CRUD + toute ``@action`` non GET). Plus aucun repli implicite
+    #: sur ``visites_modifier`` : une action absente de cette table est
+    #: REFUSÉE (code inexistant), et la garde
+    #: ``tests/test_alea_garde_codes_actions.py`` nomme toute nouvelle
+    #: ``@action`` d'écriture oubliée ici.
     PERMISSIONS_ECRITURE = {
         'create': 'visites_creer',
+        'update': 'visites_modifier',
+        'partial_update': 'visites_modifier',
+        'destroy': 'visites_modifier',
+        'photos': 'visites_modifier',
+        'supprimer_photo': 'visites_modifier',
+        'mesures': 'visites_modifier',
+        'demarrer_route': 'visites_modifier',
+        'arriver': 'visites_modifier',
+        'qualification': 'visites_modifier',
+        'terminer': 'visites_modifier',
+        'assembler_photos': 'visites_modifier',
+        'calage': 'visites_modifier',
         'valider': 'visites_valider',
+        # ALEA8 — renvoyer est un geste du BUREAU D'ÉTUDES (« celui qui
+        # relève n'est pas celui qui donne — ou retire — le feu vert ») : le
+        # Technicien responsable (sans ``visites_modifier``) renvoie, le
+        # Commercial terrain ne se renvoie pas sa propre visite validée.
+        'renvoyer': 'visites_valider',
     }
 
     @property
@@ -76,9 +102,16 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         ``ScopedPermission`` (le défaut de la base) lit cet attribut, donc
         aucune garde déclarée sur une ``@action`` ne peut être écrasée en
         silence (garde AUD421).
+
+        ALEA24 — une action d'écriture ABSENTE de la table rend un code qui
+        n'existe dans aucun rôle (refus 403), jamais ``visites_modifier`` par
+        défaut. Seul le cas ``action is None`` (méthode HTTP non routée — DRF
+        répondra 405, aucun handler ne s'exécute) garde ``visites_modifier``.
         """
-        return self.PERMISSIONS_ECRITURE.get(
-            getattr(self, 'action', None), 'visites_modifier')
+        action = getattr(self, 'action', None)
+        if action is None:
+            return 'visites_modifier'
+        return self.PERMISSIONS_ECRITURE.get(action, CODE_ACTION_NON_DECLAREE)
 
     # -- VTA6 : PORTEE DURE "MES VISITES" -------------------------------------
     #
@@ -125,26 +158,27 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # ── Création ─────────────────────────────────────────────────────────────
 
     def create(self, request, *args, **kwargs):
+        # Le sérialiseur ne fait que LIRE et BORNER le corps (lead/commercial
+        # de la société, date au bon format) ; l'écriture est déléguée.
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        visite = serializer.instance
-        if visite.commercial_id is None:
-            visite.commercial = request.user
-            visite.save(update_fields=['commercial'])
-        # AGR412 — le gabarit suit le type du lead (posé serveur, jamais lu
-        # du corps).
-        if services.recaler_gabarit(visite):
-            visite.save(update_fields=['gabarit'])
-        services.journaliser_visite(visite, request.user, 'creation')
-        # VTA7 — l'assigne apprend tout de suite que sa journee a change.
-        services.notifier_assignation(visite, acteur=request.user)
-        # VISITE-CADENCE — une visite CRÉÉE AVEC une date prévue EST un
-        # rendez-vous : le suivi commercial doit s'y recaler exactement comme
-        # si elle avait été posée depuis la fiche lead. Sans date, rien n'est
-        # émis (le service s'en charge) — un brouillon sans date n'est pas un
-        # rendez-vous.
-        services.emettre_visite_planifiee(visite, request.user)
+        donnees = serializer.validated_data
+        # ALEA9 — UNE porte : ``services.planifier_visite``, la même que la
+        # fiche lead. Mêmes gardes (date passée, commercial inactif → 400
+        # nommant le champ), un rendez-vous EN ATTENTE est DÉPLACÉ au lieu
+        # d'être doublé, et le chatter ne porte qu'UNE note (« Visite
+        # technique planifiée le … » publiée par ``visite_planifiee`` ; une
+        # visite sans date garde « Visite technique créée. »). Le gabarit
+        # (AGR412), la cloche de l'assigné (VTA7) et l'événement
+        # ``visite_planifiee`` (VISITE-CADENCE) sont posés par le service.
+        visite, erreurs = services.planifier_visite(
+            donnees['lead'], request.user, donnees.get('date_prevue'),
+            commercial=donnees.get('commercial'),
+            notes=donnees.get('notes') or '',
+            replanifier=True, date_requise=False,
+            assigne_par_defaut=request.user)
+        if erreurs:
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
         return Response(selectors.contexte_visite_terrain(visite),
                         status=status.HTTP_201_CREATED)
 
@@ -162,6 +196,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         refus = self._refus_si_gelee(visite)
         if refus is not None:
             return refus
+        # ALEA7 — les notes d'une visite TERMINÉE sont parties au CRM avec le
+        # retour terrain : un changement réel est refusé (renvoi BE).
+        if ('notes' in request.data
+                and (request.data.get('notes') or '') != (visite.notes or '')):
+            refus = services.refus_transition(visite, 'notes')
+            if refus is not None:
+                return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         # VTA7 — on releve l'assigne AVANT l'ecriture : une REASSIGNATION
         # (changement reel d'assigne) previent le nouveau. Un PATCH qui ne
         # touche pas `commercial` ne notifie personne -- sinon chaque
@@ -235,11 +276,19 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if message:
             return _erreur('gps_lng', message)
 
-        VisiteMedia.objects.create(
+        nouvelle = VisiteMedia.objects.create(
             company=request.user.company, visite=visite, attachment=attachment,
             slot_code=slot_code,
             commentaire=(request.data.get('commentaire') or '').strip(),
             gps_lat=gps_lat, gps_lng=gps_lng)
+        # ALEA12 — la nouvelle photo REMPLACE une photo « à refaire » du même
+        # slot : le terrain reprend la photo, il n'a pas à supprimer l'autre
+        # à la main avant de pouvoir « Terminer » (chemin UI réel, et la file
+        # hors-ligne ``PHOTO_VISITE`` arrive aussi ici).
+        services.remplacer_photo_a_refaire(visite, slot_code,
+                                           nouvelle=nouvelle)
+        # ALEA14 — une photo toiture de plus : l'assemblage est périmé.
+        services.invalider_assemblage_si_toiture(visite, slot_code)
         _marquer_en_cours(visite)
         return self._agregat(visite)
 
@@ -257,7 +306,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if media is None:
             return _erreur('media_id', 'Cette photo n’existe pas sur cette '
                                        'visite.', status.HTTP_404_NOT_FOUND)
-        media.delete()
+        services.supprimer_media(media)
+        # ALEA14 — la suppression a pu remettre l'assemblage à zéro.
+        visite.refresh_from_db()
         return self._agregat(visite)
 
     # ── Mesures par catégorie ────────────────────────────────────────────────
@@ -350,6 +401,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             visite)
         if refus is not None:
             return refus
+        # ALEA7 — une visite TERMINÉE a déjà envoyé sa qualification au CRM :
+        # la corriger passe par un renvoi du bureau d'études.
+        refus = services.refus_transition(visite, 'qualification')
+        if refus is not None:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         visite, erreurs = services.enregistrer_qualification(
             visite, request.data)
         if erreurs:
@@ -399,8 +455,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def valider(self, request, pk=None):
         """Feu vert calepinage — réservé au code ``visites_valider``."""
         visite = self.get_object()
-        if visite.statut == VisiteTerrain.Statut.VALIDEE:
-            return _erreur('statut', 'Cette visite est déjà validée.')
+        # ALEA6 — la table des transitions (services.TRANSITIONS) : seule une
+        # visite TERMINÉE et COMPLÈTE reçoit le feu vert.
+        refus = services.refus_transition(visite, 'valider')
+        if refus is not None:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         services.valider_visite(visite, request.user)
         return self._agregat(visite)
 
@@ -412,6 +471,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if not serializer.is_valid():
             return Response({'erreurs': serializer.errors},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ALEA6 — un brouillon (ou une visite déjà « à refaire ») ne se
+        # renvoie pas : seule une visite terminée ou validée a été revue.
+        refus = services.refus_transition(visite, 'renvoyer')
+        if refus is not None:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         donnees = serializer.validated_data
         message = services.renvoyer_visite(
             visite, request.user,

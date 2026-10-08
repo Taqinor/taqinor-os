@@ -950,6 +950,39 @@ def versionner_si_modifie(document, contenu, *, filename='', mime='',
 _versionner_document = versionner_si_modifie
 
 
+# ── ASEC37 — clés de stockage : jamais une clé fournie par le client ─────────
+#
+# Une clé produite par le serveur pour une société porte son id en second
+# segment (``attachments/<id>/…`` SCA42, ``ged/<id>/…``, ``devis/<id>/…``). Une
+# clé PLATE (``attachments/<uuid>.pdf``, historique) ne dit rien de sa
+# société : elle n'est admise que si elle est DÉJÀ enregistrée sur une version
+# de la société (compatibilité des fichiers existants).
+_RE_CLE_SOCIETE = re.compile(r'^[^/]+/(\d+)/')
+
+
+def _company_pk(company):
+    return getattr(company, 'pk', company)
+
+
+def cle_d_une_autre_societe(company, file_key):
+    """Vrai si ``file_key`` porte EXPLICITEMENT l'id d'une autre société."""
+    m = _RE_CLE_SOCIETE.match(file_key or '')
+    return bool(m) and int(m.group(1)) != _company_pk(company)
+
+
+def cle_stockage_autorisee(company, file_key):
+    """ASEC37 — une clé reçue d'un appelant n'est acceptée que si elle est
+    vide, sous le préfixe de LA société, ou déjà enregistrée sur une version
+    de cette société (clé plate historique)."""
+    if not file_key:
+        return True
+    m = _RE_CLE_SOCIETE.match(file_key)
+    if m:
+        return int(m.group(1)) == _company_pk(company)
+    return DocumentVersion.objects.filter(
+        company_id=_company_pk(company), file_key=file_key).exists()
+
+
 def find_duplicate(company, checksum, *, document=None):
     """Première version d'une société portant ce checksum, ou None (dedup).
 

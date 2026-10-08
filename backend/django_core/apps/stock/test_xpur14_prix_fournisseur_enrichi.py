@@ -64,7 +64,10 @@ class Xpur14Base(TestCase):
             # get_permissions), gate intentionnel — voir
             # test_aud213_prix_fournisseur_gate.py. Ce fichier teste le prix
             # d'achat lui-même, donc la permission est légitimement accordée.
-            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur Tarif')

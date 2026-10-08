@@ -38,7 +38,10 @@ class BcfStatutTests(TestCase):
         self.company = Company.objects.create(nom='ASTK22', slug='astk22-co')
         role = Role.objects.create(
             company=self.company, nom='r-astk22',
-            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.user = User.objects.create_user(
             username='astk22-resp', password='x', company=self.company,
             role=role, role_legacy='responsable')

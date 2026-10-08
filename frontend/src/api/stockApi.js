@@ -336,20 +336,13 @@ const stockApi = {
   // côté frontend quand l'API ne filtre pas déjà nativement.
   getFacturesFournisseurDe: (fournisseurId, params) =>
     api.get('/stock/factures-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
+  // ASTK178 — BCF et retours filtrés CÔTÉ SERVEUR par `?fournisseur=` (le
+  // filtre client ratait les documents hors première page et comparait l'id
+  // de route '7' au nombre 7).
   getRetoursFournisseurDe: (fournisseurId, params) =>
-    api.get('/stock/retours-fournisseur/', { params }).then((r) => ({
-      ...r,
-      data: Array.isArray(r.data?.results)
-        ? { ...r.data, results: r.data.results.filter((x) => x.fournisseur === fournisseurId) }
-        : (r.data ?? []).filter((x) => x.fournisseur === fournisseurId),
-    })),
+    api.get('/stock/retours-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
   getBonsCommandeFournisseurDe: (fournisseurId, params) =>
-    api.get('/stock/bons-commande-fournisseur/', { params }).then((r) => ({
-      ...r,
-      data: Array.isArray(r.data?.results)
-        ? { ...r.data, results: r.data.results.filter((x) => x.fournisseur === fournisseurId) }
-        : (r.data ?? []).filter((x) => x.fournisseur === fournisseurId),
-    })),
+    api.get('/stock/bons-commande-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
   // XPUR1 — documents de conformité, filtrés serveur par ?fournisseur=.
   getDocumentsConformiteFournisseur: (fournisseurId) =>
     api.get('/stock/documents-conformite-fournisseur/', { params: { fournisseur: fournisseurId } }),

@@ -81,12 +81,16 @@ def is_won_lead(lead):
     return False
 
 
-def _resolve_client(client):
-    """Client injecté (tests) ou construit depuis l'env ; None si non configuré."""
-    return client if client is not None else OdooClient.from_env()
+def _resolve_client(client, company=None):
+    """Client injecté (tests, commandes qui ont déjà contrôlé la société) ou
+    construit depuis l'env POUR ``company`` ; None si non configuré ou si
+    ``company`` n'est pas la société propriétaire du connecteur (ASEC40)."""
+    if client is not None:
+        return client
+    return OdooClient.from_env(company=company)
 
 
-def signed_deals(since=None, client=None):
+def signed_deals(since=None, client=None, company=None):
     """Liste des DEALS SIGNÉS Odoo, normalisée pour l'attribution.
 
     Renvoie une liste de dicts ::
@@ -115,7 +119,7 @@ def signed_deals(since=None, client=None):
     """
     from apps.crm.selectors import normalize_phone_key
 
-    client = _resolve_client(client)
+    client = _resolve_client(client, company)
     if client is None:
         return []
 
@@ -224,7 +228,7 @@ def signed_deals(since=None, client=None):
     return deals
 
 
-def all_leads(client=None):
+def all_leads(client=None, company=None):
     """FIXPUB6 — TOUS les leads Odoo normalisés pour l'attribution PAR ANNONCE.
 
     Là où ``signed_deals`` ne renvoie que les deals SIGNÉS (le numérateur des
@@ -246,7 +250,7 @@ def all_leads(client=None):
     réinventée."""
     from apps.crm.selectors import normalize_phone_key
 
-    client = _resolve_client(client)
+    client = _resolve_client(client, company)
     if client is None:
         return []
     out = []
@@ -262,15 +266,15 @@ def all_leads(client=None):
     return out
 
 
-def signed_count(since=None, client=None):
+def signed_count(since=None, client=None, company=None):
     """Nombre de deals signés Odoo (``len(signed_deals)``). 0 sans config."""
-    return len(signed_deals(since=since, client=client))
+    return len(signed_deals(since=since, client=client, company=company))
 
 
-def lead_stage_counts(client=None):
+def lead_stage_counts(client=None, company=None):
     """Répartition des ``crm.lead`` Odoo par étape (libellé → compte). Utile au
     diagnostic. ``{}`` sans config Odoo."""
-    client = _resolve_client(client)
+    client = _resolve_client(client, company)
     if client is None:
         return {}
     counts = {}

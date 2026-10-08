@@ -216,7 +216,9 @@ describe('QS2 — création produit inline dans le BCF', () => {
     stockApi.createProduit.mockResolvedValue({
       data: { id: 55, nom: 'Module test', prix_vente: 5000, prix_achat: 3200, is_archived: false },
     })
-    renderDetail({ bcf: newBcf, produits: [] }, { role_nom: 'Directeur', permissions: ['stock_creer'] })
+    // ASTK15 (D-ASTK-2) — le Directeur porte `prix_achat_voir` : sans lui, le
+    // prix d'achat n'est ni affiché ni pré-rempli.
+    renderDetail({ bcf: newBcf, produits: [] }, { role_nom: 'Directeur', permissions: ['stock_creer', 'prix_achat_voir'] })
     fireEvent.click(screen.getByLabelText('Nouveau produit'))
     fireEvent.change(screen.getByLabelText(/Nom du produit/), { target: { value: 'Module test' } })
     fireEvent.click(screen.getByRole('button', { name: /Créer et sélectionner/ }))

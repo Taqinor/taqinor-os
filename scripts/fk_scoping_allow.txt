@@ -23,11 +23,7 @@ backend/django_core/apps/credit/serializers.py::DerogationCreditSerializer.devis
 backend/django_core/apps/credit/serializers.py::EncoursGarantiClientSerializer.client
 backend/django_core/apps/credit/serializers.py::LimiteCreditSerializer.client
 backend/django_core/apps/credit/serializers.py::SegmentClientCreditSerializer.client
-backend/django_core/apps/crm/serializers.py::ClientSerializer.liste_prix
-backend/django_core/apps/crm/serializers.py::ClientSerializer.tiers
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.activity_type
-backend/django_core/apps/crm/serializers.py::LeadSerializer.entite
-backend/django_core/apps/crm/serializers.py::LeadSerializer.tiers
 backend/django_core/apps/douane/serializers.py::DossierExportSerializer.devis
 backend/django_core/apps/douane/serializers.py::DossierExportSerializer.facture
 backend/django_core/apps/douane/serializers.py::PieceDossierExportSerializer.attachment
@@ -38,9 +34,6 @@ backend/django_core/apps/education/serializers.py::MatiereClasseSerializer.ensei
 backend/django_core/apps/education/serializers.py::PresenceSerializer.justificatif
 backend/django_core/apps/education/serializers.py::RemiseSerializer.justificatif
 backend/django_core/apps/education/serializers.py::SeanceSerializer.enseignant
-backend/django_core/apps/ged/serializers.py::AclGedSerializer.role
-backend/django_core/apps/ged/serializers.py::CoffreSerializer.client
-backend/django_core/apps/ged/serializers.py::RegleAclMetadonneeSerializer.role
 backend/django_core/apps/migration/serializers.py::ParcoursCertificationPartenaireSerializer.partenaire
 backend/django_core/apps/mrp/serializers.py::CoutStandardSerializer.produit
 backend/django_core/apps/mrp/serializers.py::GammeSerializer.kit_source
@@ -75,7 +68,6 @@ backend/django_core/apps/scm/serializers.py::EvenementDemandeSerializer.produit
 backend/django_core/apps/scm/serializers.py::LigneOffreSOPSerializer.produit
 backend/django_core/apps/scm/serializers.py::PolitiqueStockSerializer.produit
 backend/django_core/apps/scm/serializers.py::PrevisionDemandeSerializer.produit
-backend/django_core/apps/uxviews/serializers.py::SavedViewSerializer.role
 backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.facture
 backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.paiement
 backend/django_core/apps/ventes/serializers_facturation.py::AvoirSerializer.client
@@ -96,7 +88,6 @@ backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.de
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.entite
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.lead
 backend/django_core/apps/ventes/serializers_facturation.py::LigneAvoirSerializer.produit
-backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.produit
 backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.produit
 backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.source_devis
 backend/django_core/apps/ventes/serializers_facturation.py::LigneNoteDebitSerializer.produit
@@ -108,7 +99,6 @@ backend/django_core/apps/ventes/serializers_facturation.py::NoteDebitSerializer.
 backend/django_core/apps/ventes/serializers_facturation.py::PaiementSerializer.client
 backend/django_core/apps/ventes/serializers_facturation.py::ParametrageRelanceClientSerializer.client
 backend/django_core/apps/ventes/serializers_facturation.py::PromessePaiementSerializer.facture
-backend/django_core/apps/ventes/serializers.py::RegleListePrixSerializer.produit
 # SPL72 — 95 sites PRÉEXISTANTS que la garde ne voyait pas (découverte étendue à
 # serializers*.py / *_serializers.py / models*.py et héritage résolu à l'échelle de l'app) :
 # installations 66, stock 17, ventes 8, sav 4 (72 dans des serializers.py d'autres apps,
@@ -190,8 +180,6 @@ backend/django_core/apps/ventes/serializers_commissioning.py::AttestationConform
 backend/django_core/apps/ventes/serializers_commissioning.py::AttestationRESerializer.chantier
 backend/django_core/apps/ventes/serializers_commissioning.py::CommissioningTestSerializer.chantier
 backend/django_core/apps/ventes/serializers_commissioning.py::TestPerformanceReceptionSerializer.chantier
-backend/django_core/apps/ventes/serializers_regulatory.py::Regularisation8221Serializer.chantier
-backend/django_core/apps/ventes/serializers_regulatory.py::RegulatoryDossierSerializer.chantier
 
 # AANA47 - sites PRE-EXISTANTS releves le 2026-10-07 (M2M, FK utilisateur/role, serialiseurs hors serializers*.py). CONSTATES, pas approuves : chaque ligne retiree = une fuite fermee ; correction par proprietaire.
 backend/django_core/apps/accessreview/serializers.py::AccessReviewItemSerializer.user
@@ -202,15 +190,10 @@ backend/django_core/apps/adminops/serializers.py::SandboxEnvironmentSerializer.c
 backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer.consentement_par
 backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer.initiee_par
 backend/django_core/apps/adminops/serializers.py::SessionImpersonationSerializer.utilisateur_cible
-backend/django_core/apps/automation/serializers.py::ApprovalDelegationSerializer.delegant
-backend/django_core/apps/automation/serializers.py::ApprovalDelegationSerializer.suppleant
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.decided_by
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.requested_by
-backend/django_core/apps/crm/serializers.py::EquipeCommercialeSerializer.membres
-backend/django_core/apps/crm/serializers.py::EquipeCommercialeSerializer.responsable
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.assigne_par_defaut
 backend/django_core/apps/crm/serializers.py::ForecastSnapshotSerializer.owner
-backend/django_core/apps/crm/serializers.py::ObjectifCommercialSerializer.owner
 backend/django_core/apps/crm/serializers.py::SavedViewSerializer.user
 backend/django_core/apps/ged/serializers.py::CertificatDestructionSerializer.detruit_par
 backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.created_by
@@ -221,9 +204,6 @@ backend/django_core/apps/installations/serializers.py::EquipeSerializer.membres
 backend/django_core/apps/installations/serializers.py::EtapeApprobationAchatSerializer.approbateur
 backend/django_core/apps/installations/serializers.py::GeofenceAlertSerializer.acquittee_par
 backend/django_core/apps/installations/serializers.py::GpsConsentRecordSerializer.technicien
-backend/django_core/apps/installations/serializers.py::InstallationSerializer.technicien_responsable
-backend/django_core/apps/installations/serializers.py::InterventionSerializer.equipe
-backend/django_core/apps/installations/serializers.py::InterventionSerializer.technicien
 backend/django_core/apps/installations/serializers.py::LotPrelevementSerializer.operateur
 backend/django_core/apps/installations/serializers.py::OrdreAssemblageSerializer.responsable
 backend/django_core/apps/installations/serializers.py::ProjetSerializer.responsable
@@ -233,11 +213,9 @@ backend/django_core/apps/installations/serializers.py::RevisionKitSerializer.use
 backend/django_core/apps/notifications/serializers.py::NotificationRoutingRuleSerializer.target_user
 backend/django_core/apps/parametres/serializers_audit.py::SettingsAuditLogSerializer.user
 backend/django_core/apps/publicapi/serializers.py::ApiKeySerializer.created_by
-backend/django_core/apps/records/serializers.py::ActivitySerializer.assigned_to
 backend/django_core/apps/records/serializers.py::AttachmentSerializer.uploaded_by
 backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_definition
 backend/django_core/apps/sav/serializers.py::TicketActiviteAFaireSerializer.assigne
-backend/django_core/apps/sav/serializers.py::TicketSerializer.technicien_responsable
 backend/django_core/apps/stock/serializers.py::RevisionKitSerializer.user
 backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.bon_commande
 backend/django_core/apps/stock/views/budget_departement.py::EngagementBudgetSerializer.demande_achat
@@ -253,23 +231,13 @@ backend/django_core/apps/ventes/serializers_facturation.py::RemiseEncaissementSe
 backend/django_core/apps/accessreview/serializers.py::AccessReviewItemSerializer.campagne
 backend/django_core/apps/adsengine/serializers.py::AdMirrorSerializer.adset
 backend/django_core/apps/adsengine/serializers.py::AdSetMirrorSerializer.campaign
-backend/django_core/apps/adsengine/serializers.py::CreativeAssetSerializer.parent
-backend/django_core/apps/automation/serializers.py::ApprovalRequestSerializer.request_type
 backend/django_core/apps/automation/serializers.py::AutomationApprovalSerializer.rule
 backend/django_core/apps/automation/serializers.py::AutomationRuleVersionSerializer.rule
 backend/django_core/apps/automation/serializers.py::AutomationRunSerializer.rule
-backend/django_core/apps/automation/serializers.py::IncomingWebhookTriggerSerializer.rule
-backend/django_core/apps/crm/serializers.py::DealEnregistreSerializer.apporteur
-backend/django_core/apps/crm/serializers.py::DealEnregistreSerializer.lead
 backend/django_core/apps/crm/serializers.py::EtapePlanActiviteSerializer.plan
-backend/django_core/apps/crm/serializers.py::ForecastEntrySerializer.lead
 backend/django_core/apps/crm/serializers.py::LeadPlaybookProgressSerializer.lead
-backend/django_core/apps/crm/serializers.py::PlanCompteSerializer.client
 backend/django_core/apps/crm/serializers.py::PlaybookEtapeSerializer.playbook
-backend/django_core/apps/crm/serializers.py::RevueCompteSerializer.plan
 backend/django_core/apps/crm/serializers.py::SalleVenteItemSerializer.salle
-backend/django_core/apps/crm/serializers.py::SalleVenteSerializer.client
-backend/django_core/apps/crm/serializers.py::SalleVenteSerializer.lead
 backend/django_core/apps/crm/serializers.py::VisiteExterneSerializer.lead
 backend/django_core/apps/crm/serializers.py::WebsiteLeadPayloadSerializer.lead
 backend/django_core/apps/customfields/serializers.py::FieldRolePermissionSerializer.field_def
@@ -306,7 +274,6 @@ backend/django_core/apps/installations/serializers.py::EtapeOrdreSerializer.ordr
 backend/django_core/apps/installations/serializers.py::FicheInterventionChampSerializer.template
 backend/django_core/apps/installations/serializers.py::FraisImportSerializer.dossier
 backend/django_core/apps/installations/serializers.py::InstallationSerializer.etape
-backend/django_core/apps/installations/serializers.py::InterventionSerializer.equipe_ref
 backend/django_core/apps/installations/serializers.py::InterventionSerializer.installation
 backend/django_core/apps/installations/serializers.py::KitComposantSerializer.kit
 backend/django_core/apps/installations/serializers.py::LandedCostLigneSerializer.dossier
@@ -347,7 +314,6 @@ backend/django_core/apps/notifications/serializers.py::AnnonceLectureSerializer.
 backend/django_core/apps/outillage/serializers.py::KitOutillageItemSerializer.kit
 backend/django_core/apps/outillage/serializers.py::KitOutillageItemSerializer.outil
 backend/django_core/apps/publicapi/serializers.py::WebhookDeliverySerializer.webhook
-backend/django_core/apps/records/serializers.py::ActivitySerializer.activity_type
 backend/django_core/apps/records/serializers.py::TaggedItemSerializer.tag
 backend/django_core/apps/reporting/saved_reports_api.py::EnvoiRapportSerializer.saved_report
 backend/django_core/apps/sav/serializers.py::AlarmeOnduleurSerializer.equipement
@@ -358,8 +324,6 @@ backend/django_core/apps/sav/serializers.py::EquipementSerializer.categorie
 backend/django_core/apps/sav/serializers.py::EquipementSerializer.remplace_par_ticket
 backend/django_core/apps/sav/serializers.py::PretEquipementSerializer.ticket
 backend/django_core/apps/sav/serializers.py::ReleveCompteurEquipementSerializer.equipement
-backend/django_core/apps/sav/serializers.py::TicketSerializer.categorie
-backend/django_core/apps/sav/serializers.py::TicketSerializer.categorie_equipement
 backend/django_core/apps/sav/serializers.py::TicketSerializer.cause
 backend/django_core/apps/sav/serializers.py::TicketSerializer.equipe
 backend/django_core/apps/sav/serializers.py::TicketSerializer.equipement
@@ -376,7 +340,6 @@ backend/django_core/apps/stock/views/catalogue_achat.py::CatalogueAchatSerialize
 backend/django_core/apps/ventes/serializers.py::DevisActivitySerializer.devis
 backend/django_core/apps/ventes/serializers.py::EmailLogSerializer.devis
 backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.devis
-backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.lot
 backend/django_core/apps/ventes/serializers.py::LignePrixListeSerializer.liste
 backend/django_core/apps/ventes/serializers.py::RegleListePrixSerializer.liste
 backend/django_core/apps/ventes/serializers_commissioning.py::AsBuiltPackSerializer.devis

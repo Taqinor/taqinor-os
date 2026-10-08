@@ -237,6 +237,7 @@ C-AFAC-018 re-gradé S3 (latent : page injoignable aujourd'hui). Une tâche peut
   sondées par W5 : 3 défauts REPRO, AFAC90-92 ; deux non-risques prouvés : prix HT, appel séquentiel idempotent) ; `tools/facture`
   hors ERP avec un JSON client versionné (AFAC88, décision) ; aucune notion de facture « contestée » (AFAC89) ; 10 fusions ;
   6 constats prolongent une ATOT ouverte (→ `@after`, jamais de réécriture d'ATOT) ; 10 décisions fondateur.
+- **Recouvrement avec ADEV (audit devis, fusionné sur main pendant cet audit)** : à la synchronisation, ADEV70 (pagination des écrans facture / avoirs / paiements) et ADEV35 (pagination du store des BC) recouvrent AFAC63 et AFAC64 ; ces deux tâches sont gardées (référencées par d'autres AFAC), préfixées « Recouvre ADEVn » et chaînées `@after` — le constructeur coche « déjà présent » si ADEV les livre.
 - **Correction de fait relevée** : `docs/ownership.yml` déclare `core/events/facturation.py`, fichier inexistant (glob mort
   signalé par `check_ownership --verbose`, laissé à la session de propriété).
 

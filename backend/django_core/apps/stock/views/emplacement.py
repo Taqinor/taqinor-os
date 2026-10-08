@@ -84,18 +84,47 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
     def _holds_stock(self, emplacement):
         return emplacement.stocks.filter(quantite__gt=0).exists()
 
-    def destroy(self, request, *args, **kwargs):
-        emp = self.get_object()
+    def _refus_retrait(self, emp, geste):
+        """ASTK202 (C-ASTK-050) — UNE règle pour supprimer ET archiver :
+        le principal ne se retire jamais (400), un emplacement qui détient
+        du stock non plus (409). ``geste`` = « supprimé »/« archivé »."""
         if emp.is_principal:
             return Response(
-                {'detail': 'Le dépôt principal ne peut pas être supprimé.'},
+                {'detail': f'Le dépôt principal ne peut pas être {geste}.'},
                 status=status.HTTP_400_BAD_REQUEST)
         if self._holds_stock(emp):
+            infinitif = {'supprimé': 'le supprimer',
+                         'archivé': "l'archiver"}[geste]
             return Response(
                 {'detail': 'Cet emplacement détient du stock — transférez-le '
-                           'avant de le supprimer.'},
+                           f'avant de {infinitif}.'},
                 status=status.HTTP_409_CONFLICT)
+        return None
+
+    def destroy(self, request, *args, **kwargs):
+        refus = self._refus_retrait(self.get_object(), 'supprimé')
+        if refus is not None:
+            return refus
         return super().destroy(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        """ASTK202 — PATCH comme PUT : archiver passe la même garde que
+        supprimer (l'archivage retirait l'emplacement de la ventilation et
+        de la valorisation sans transférer son stock)."""
+        from rest_framework.fields import BooleanField
+
+        emp = self.get_object()
+        demande = request.data.get('archived')
+        if demande is not None and not emp.archived:
+            try:
+                archiver = BooleanField().to_internal_value(demande)
+            except Exception:
+                archiver = False  # valeur invalide : le serializer tranche
+            if archiver:
+                refus = self._refus_retrait(emp, 'archivé')
+                if refus is not None:
+                    return refus
+        return super().update(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='suggestions-reappro',
             permission_classes=[IsAdminRole])

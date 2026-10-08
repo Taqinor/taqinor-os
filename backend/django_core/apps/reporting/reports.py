@@ -244,15 +244,31 @@ def stock_report(request):
     sum_vente = Coalesce(
         Sum(F('prix_vente') * F('quantite_stock'), output_field=dec),
         Decimal('0'))
-    sum_achat = Coalesce(
-        Sum(F('prix_achat') * F('quantite_stock'), output_field=dec),
-        Decimal('0'))
     val_vente = qs.aggregate(t=sum_vente)['t']
     # AANA26 — la valorisation d'ACHAT n'est servie qu'à `can_view_buy_prices`
     # (permission `prix_achat_voir`, repli légacy) : la clé est ABSENTE sinon
     # (même patron que sav_pivot). Pas même calculée pour les autres.
     voit_achat = bool(getattr(request.user, 'can_view_buy_prices', False))
-    val_achat = qs.aggregate(t=sum_achat)['t'] if voit_achat else None
+    val_achat = None
+    if voit_achat:
+        # ASTK42 (C-ASTK-008) — la valeur de l'écran Valorisation, lue via le
+        # sélecteur source unique (coût de l'accesseur unique × quantité,
+        # marchandise de tiers et produits archivés exclus) — plus jamais
+        # `prix_achat × quantite_stock` (1 000,00 au lieu de 500,00 pour un
+        # produit catalogue 100 reçu 10 @ 50).
+        # Superutilisateur sans société (co = {}) : somme des sociétés
+        # présentes dans le périmètre, comme l'ancien agrégat global.
+        from apps.stock.selectors import valeur_stock_par_produit
+        if co.get('company') is not None:
+            societes = [co['company']]
+        else:
+            from authentication.models import Company
+            societes = list(Company.objects.filter(
+                id__in=qs.values('company_id')))
+        val_achat = Decimal('0.00')
+        for societe in societes:
+            val_achat += sum(
+                valeur_stock_par_produit(societe).values(), Decimal('0.00'))
     par_categorie = list(
         qs.values('categorie__nom')
         .annotate(nb=Count('id'), valeur_vente=sum_vente)

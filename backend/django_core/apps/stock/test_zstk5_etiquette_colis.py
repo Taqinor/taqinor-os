@@ -50,7 +50,13 @@ class Zstk5Base(TestCase):
         self.company = _company('zstk5-co')
         self.user = _user(
             self.company, 'zstk5-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier',
+                         # ASEC11 — l'étiquette de colis relève du module
+                         # installations (ColisViewSet) : code de lecture requis.
+                         'installation_voir'])
         self.api = _api(self.user)
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client ZSTK5',
