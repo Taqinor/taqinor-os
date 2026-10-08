@@ -10,7 +10,7 @@ chiffres imprimés (retour sur investissement, économies…) au re-rendu d'un d
 **on les construit, mais « nouveaux rendus seulement »** — un devis envoyé continue de montrer
 exactement ce que le client a reçu ; seuls les brouillons et les nouveaux rendus prennent le calcul
 corrigé. Mécanisme : `Devis.regles_calcul` (1 = règles d'origine, posé sur tout devis non brouillon
-par la migration ventes 0134 ; 2 = corrigé, défaut des nouveaux devis et révisions), lu via
+par la migration ventes 0136 ; 2 = corrigé, défaut des nouveaux devis et révisions), lu via
 `domain/regles_calcul.calcul_corrige(devis)` aux seuls points où un correctif change un chiffre.
 Dry-run en lecture seule : `manage.py regles_calcul_ecarts_dryrun` (aucune écriture, aucune
 réparation sans nouvel accord).

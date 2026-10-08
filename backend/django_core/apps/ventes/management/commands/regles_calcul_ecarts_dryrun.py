@@ -2,7 +2,7 @@
 règles de calcul corrigées (décision fondateur 08/10/2026, « nouveaux rendus
 seulement »).
 
-Les devis envoyés avant la migration 0134 portent ``regles_calcul = 1`` et
+Les devis envoyés avant la migration 0136 portent ``regles_calcul = 1`` et
 restent rendus avec les règles d'origine. Cette commande rend chacun DEUX fois
 en mémoire (règles d'origine, puis règles corrigées — l'attribut est changé
 sur l'instance, jamais enregistré) et liste ceux dont une figure client

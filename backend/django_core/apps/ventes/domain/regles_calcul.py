@@ -2,7 +2,7 @@
 
 Décision fondateur (08/10/2026) : les corrections du moteur qui changent des
 chiffres imprimés (AMOT8…AMOT60, ADEV28) ne s'appliquent qu'aux NOUVEAUX
-rendus. Un devis déjà envoyé à la date de la migration 0134 porte
+rendus. Un devis déjà envoyé à la date de la migration 0136 porte
 ``regles_calcul = 1`` et continue d'être rendu (PDF, ``/proposal``, page
 publique, cartes de tailles) avec les règles d'origine : le client relit
 exactement ce qu'il a reçu. Tout autre devis (brouillons, devis créés ensuite,
