@@ -3591,8 +3591,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (``panneaux_et_watt_lu`` : désignation ET nom du produit lié). Au point où
     # ces puces étaient construites, la clé interne avait déjà été effacée —
     # d'où les deux lectures divergentes du même document.
-    def _bullets(rows):
+    def _bullets(rows, watt_option=None):
         out = []
+        # AMOT16 (C-AMOT-014/015) — la puissance de CETTE option (jamais le
+        # watt scalaire du document, porté par l'option « avec » quand les
+        # champs divergent) et la puce « Structures + installation » seulement
+        # si l'option porte réellement une structure ET une pose.
+        _watt_puce = (watt_option or watt) if _corrige else watt
         # QJR17 (b) — MÊME PRÉDICAT, MÊMES ENTRÉES que le total compté :
         # « Module PV 550 W » était compté comme panneau par le scalaire et
         # ABSENT de la puce du même document (celle-ci ne lisait que la
@@ -3606,7 +3611,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             # depuis M3) : la puce imprimait littéralement « 16 panneaux
             # None W ». Même doctrine que la vignette du moteur legacy — on
             # écrit « N panneaux » tout court, jamais un défaut catalogue.
-            out.append(f"{n} panneaux {watt} W" if watt else f"{n} panneaux")
+            out.append(f"{n} panneaux {_watt_puce} W" if _watt_puce
+                       else f"{n} panneaux")
         for r in rows:
             if r["quantite"] <= 0:
                 continue
@@ -3624,11 +3630,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
         if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
             out.append("Smart Meter + monitoring")
-        out.append("Structures + installation complète")
+        if _corrige:
+            from apps.ventes.domain.catalogue import classer_produit
+            _roles = {classer_produit(r["designation"]) for r in rows
+                      if r["quantite"] > 0}
+            if _roles & {"structure", "socle"} and "installation" in _roles:
+                out.append("Structures + installation complète")
+        else:
+            out.append("Structures + installation complète")
         return out[:6]
 
-    sans_bullets = _bullets(sans_items)
-    avec_bullets = _bullets(avec_items)
+    sans_bullets = _bullets(sans_items, _scal.get("watt_sans"))
+    avec_bullets = _bullets(avec_items, _scal.get("watt_avec"))
     if avec_batterie_differee:
         # BAT-DIFF — la carte de l'option « avec » DIT que la batterie est à
         # ajouter (aucune puce batterie ne sort de ``_bullets`` : la ligne est
