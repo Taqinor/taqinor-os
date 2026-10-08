@@ -6,10 +6,15 @@ généré et streamé à la demande.
 CÔTÉ CLIENT : aucun prix d'achat, aucune marge — jamais. Les pièces (si le
 modèle en porte un jour) n'affichent que désignation/marque/quantité.
 """
+import re
+
 from apps.parametres.selectors import nom_intervenant
+
 from apps.ventes.utils.pdf import (
     _company_context, _render_html, _html_to_pdf,
 )
+
+_EMAIL_RE = re.compile(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+')
 
 
 def _interventions_payload(ticket):
@@ -129,11 +134,15 @@ def _chatter_payload(ticket):
             texte = f'{entree.field_label or entree.field} : {avant} → {apres}'
         else:
             texte = entree.body or ''
+        # ASAV34 — un ancien journal peut citer un identifiant de connexion
+        # (« Ticket créé par prenom@domaine ») : jamais imprimé sur la fiche.
+        auteur = nom_intervenant(entree.user, ticket.company) or '—'
+        texte = _EMAIL_RE.sub(auteur, texte)
         rows.append({
             'date': entree.created_at,
             'genre': kinds.get(entree.kind, entree.kind),
             # ASAV34 — nom d'intervenant, jamais l'identifiant de connexion.
-            'auteur': nom_intervenant(entree.user, ticket.company) or '—',
+            'auteur': auteur,
             'texte': texte,
             'issue': outcomes.get(entree.outcome, '') if entree.outcome else '',
             'duree_minutes': entree.duree_minutes,
