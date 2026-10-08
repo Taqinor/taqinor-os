@@ -80,8 +80,14 @@ export const addLigneDevis = createAsyncThunk('ventes/addLigneDevis', async (dat
 // ── Bons de commande ───────────────────────────────────
 export const fetchBonsCommande = createAsyncThunk('ventes/fetchBonsCommande', async (_, { rejectWithValue }) => {
   try {
-    const res = await ventesApi.getBonsCommande()
-    return res.data
+    // ADEV35 / AFAC64 — TOUTES les pages (la liste plafonnait à 50 : sonde
+    // `count 57, len(results) 50`). `fetchAllPages` renvoie telle quelle une
+    // réponse non paginée (tableau brut) ; sinon la liste complète.
+    const tout = await fetchAllPages(
+      (page) => ventesApi.getBonsCommande({ page }).then((r) => r.data),
+      { concurrency: 20 },
+    )
+    return { results: Array.isArray(tout) ? tout : (tout?.results ?? []) }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }
