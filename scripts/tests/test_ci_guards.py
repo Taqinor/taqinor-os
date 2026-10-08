@@ -302,5 +302,16 @@ class ToutEstBrancheTests(unittest.TestCase):
                                  f"{rel} est desormais branche - retirez la ligne (cliquet)")
 
 
+class RegistresDeriveTests(unittest.TestCase):
+    """ADEP22 - les deux registres generes sont gardes en `--check` (derive seulement ; les
+    violations restent consultatives, YDATA22 / AUD831 inchanges)."""
+
+    def test_registres_derive_branches(self):
+        commandes = [c for rows in ci_guards.GARDES.values() for _n, c, _w in rows]
+        for script in ("check_db_invariants.py", "check_money_monodevise.py"):
+            with self.subTest(script=script):
+                self.assertIn(f"python scripts/{script} --check", commandes)
+
+
 if __name__ == "__main__":
     unittest.main()

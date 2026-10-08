@@ -1,4 +1,4 @@
 # ADEP21 - scripts volontairement HORS de ci_guards.GARDES / workflows.
 # Format : `fichier | motif | date`. Cliquet DECROISSANT : une ligne dont le fichier est
 # desormais cite (ou disparu) fait echouer scripts/tests/test_ci_guards.py - on la retire.
-check_db_invariants.py | registre de derive pas encore branche en --check (ADEP22) | 2026-10-08
+# (vide : tout script est branche - ADEP22 a branche check_db_invariants.py en --check)
