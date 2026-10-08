@@ -834,6 +834,18 @@ SPECTACULAR_SETTINGS = {
         # « multiple names for the same choice set » et deux composants
         # jumeaux. Nommage de schéma uniquement — aucun choix ne change.
         'CreneauEquipementEnum': 'apps.crm.models.Lead.CreneauClim',
+        # Vague 5 (08/10/2026) — ASTK214 expose `periodicite_defaut`
+        # (stock.Produit.PeriodiciteDefaut) : jeu IDENTIQUE à
+        # sav.ContratMaintenance.Periodicite (mensuel/trimestriel/semestriel/
+        # annuel). ASTK198 sert `statut` de DeclarationConsommation sous deux
+        # composants (DeclarationFactureeSerializer en hérite). Sans ces
+        # entrées : « multiple names for the same choice set » et des noms
+        # hachés (PeriodiciteA1cEnum, Statut437Enum). On ré-épingle les noms
+        # historiques. Nommage de schéma uniquement — aucun choix ne change.
+        'ContratMaintenancePeriodiciteEnum':
+            'apps.sav.models.ContratMaintenance.Periodicite',
+        'DeclarationConsommationStatutEnum':
+            'apps.stock.models_consignation.DeclarationConsommation.Statut',
         # particulier / entreprise
         'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
         # SOLMVP (21/09/2026) — `langue` (crm.MessageTemplate.Langue) et `langue`
