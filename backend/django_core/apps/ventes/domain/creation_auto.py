@@ -35,7 +35,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                panel_watt=_AUTO_PANEL_WATT, scenario=None,
                                structure_type='acier',
                                structure_produit_id=None,
-                               taux_tva=Decimal('20'), mppt_paires=1,
+                               taux_tva=None, mppt_paires=1,
                                gamme_nom_devis=None, phase=None,
                                dimensionnement_avec=None,
                                hors_reseau=False, ville=''):
@@ -75,6 +75,10 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     rendu une composition SANS onduleur, ou (pire) invité à lui substituer un
     hybride que ce client ne peut pas raccorder.
     """
+    # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
+    if taux_tva is None:
+        from apps.ventes.utils.company_settings import tva_standard
+        taux_tva = tva_standard(company)
     kwp = float(kwc or 0)
     nb_force = int(nb_panneaux or 0)
     watt = float(panel_watt or 0) or float(_AUTO_PANEL_WATT)
@@ -150,6 +154,10 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     roles = list(getattr(lignes, 'roles', ()) or ())
     # AMOT69 — un 0 % EXPLICITE reste 0 % ; seul un taux absent vaut 20.
     taux_demande = Decimal(str(20 if taux_tva is None else taux_tva))
+    # APAR49 — « 14.00 » (colonne société à 2 décimales) rendu « 14 », comme
+    # le taux d'une fiche produit : la forme de la valeur ne change pas.
+    if taux_demande == taux_demande.to_integral_value():
+        taux_demande = Decimal(int(taux_demande))
     rendu = []
     for index, ligne in enumerate(lignes):
         # TVA-LIGNE (06/10/2026) — le taux PAR LIGNE : celui du produit quand
@@ -248,7 +256,7 @@ def _ecrire_devis_auto_par_pipeline(*, company, user, lead, creer, lignes,
     return devis
 
 
-def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
+def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
                          target_kwc=None):
     """CIQ120 — devis automatique COMMERCIAL / INDUSTRIEL par le serveur.
 
@@ -261,6 +269,10 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
     du lead n'est JAMAIS changé (convention 20). Aucun statut touché (#4).
     Refus ``AutoDevisError`` nommant la donnée manquante ou la cause moteur.
     """
+    # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
+    if taux_tva is None:
+        from apps.ventes.utils.company_settings import tva_standard
+        taux_tva = tva_standard(company)
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.domain.etude_ci import (
         entrees_pour_etude_params, etudier_ci, lignes_du_devis_ci,
@@ -321,7 +333,7 @@ def _fr_nombre(valeur):
     return texte.replace('.', ',')
 
 
-def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
+def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
                                journal_auto=None):
     """AGR124 — devis automatique AGRICOLE (pompage) par le serveur.
 
@@ -337,6 +349,10 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
     (provenance ``lead``). Le type du lead n'est JAMAIS changé (D-AGR-9) ;
     aucun statut touché (règle #4). ``journal_auto['alertes']`` reçoit les
     alertes de l'étude et les articles « prix à renseigner » omis."""
+    # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
+    if taux_tva is None:
+        from apps.ventes.utils.company_settings import tva_standard
+        taux_tva = tva_standard(company)
     from apps.crm.selectors import champs_devis_auto_manquants
     from apps.crm.services import resolve_client_for_lead, \
         visite_point_eau_requise
@@ -422,7 +438,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
     return devis
 
 
-def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
+def build_devis_auto(*, lead, user, company, taux_tva=None,
                      remise_globale=Decimal('0'), target_kwc=None,
                      scenario=None, etude_extra=None, plafond_toit=None,
                      journal_auto=None, origine=None,
@@ -485,6 +501,10 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     (``zone_toit_depuis_contour``) : l'écran 3D ouvre sur le toit du client,
     déjà pavé, au lieu d'une carte vierge.
     """
+    # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
+    if taux_tva is None:
+        from apps.ventes.utils.company_settings import tva_standard
+        taux_tva = tva_standard(company)
     marche = (getattr(lead, 'type_installation', '') or '').lower()
     if marche in ('commercial', 'industriel'):
         # CIQ120 — le C&I passe par LE moteur serveur (D-CIQ-0), origine

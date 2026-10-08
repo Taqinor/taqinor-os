@@ -149,8 +149,10 @@ class DevisCalepinageActionsMixin:
         # ACAL278 — UNE règle de module (fini, 0..100, 2 décimales) au lieu
         # d'un ``_dec`` imbriqué sans borne : 400 NOMMÉ, jamais l'IntegrityError
         # de ck_devis_remise_globale_0_100 (500).
+        # APAR49 — défaut = taux STANDARD de la société (``tva_standard``).
+        from ..utils.company_settings import tva_standard
         taux_tva, erreur = _pourcentage_saisi(
-            request.data, 'taux_tva', Decimal('20'))
+            request.data, 'taux_tva', tva_standard(company))
         remise, erreur_remise = _pourcentage_saisi(
             request.data, 'remise_globale', Decimal('0'))
         erreur = erreur or erreur_remise
