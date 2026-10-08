@@ -13,10 +13,10 @@ import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { Button, Spinner } from '../../../ui'
 // VX182 — le shell fait-main de SigneDialog est passé à ResponsiveDialog.
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
-// VX155 — la carte de victoire (enrichit le Done= de VX40) remplace le
-// toast plat + celebrateDealSigned() appelés directement d'ici ; le burst
-// CSS-only reste posé, mais DEPUIS <DealSignedCelebration> lui-même.
-import DealSignedCelebration from '../../../ui/DealSignedCelebration'
+// La fête « affaire signée » est annoncée au bus global : elle est rendue par
+// <DealSignedCelebrationHost/> (ShellGlobal), HORS de la fenêtre lead — sinon
+// elle restait cachée derrière le dialogue (z-index / transform / focus-trap).
+import { annoncerAffaireSignee } from '../../../ui/dealSignedBus'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
 import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
@@ -156,9 +156,6 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const [previewBlob, setPreviewBlob] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
-  // VX155 — carte de victoire affichée après acceptation (null = pas encore
-  // signé) ; { reference, montantTtc, kwc } réels, jamais un chiffre inventé.
-  const [celebration, setCelebration] = useState(null)
 
   // Le dialogue est monté à neuf par lead (clé signeLead) → un seul fetch.
   useEffect(() => {
@@ -259,7 +256,10 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
         montantTtc,
         kwc: chosenDetail?.kwc ?? null,
       }
-      setCelebration(victoire)
+      // La fête part de l'hôte global, puis on ferme aussitôt le dialogue / la
+      // fenêtre lead : aucune modale Radix ne reste à lutter avec la fête.
+      annoncerAffaireSignee(victoire)
+      onConfirmed?.()
     } catch (err) {
       setError(err?.response?.data?.detail
         ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
@@ -268,21 +268,6 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   }
 
   const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
-
-  // VX155 — après acceptation, la carte de victoire remplace le dialogue ;
-  // onConfirmed() (qui ferme SigneDialog côté appelant) n'est appelé qu'à la
-  // fermeture de la carte — jamais avant que le vendeur l'ait vue.
-  if (celebration) {
-    return (
-      <DealSignedCelebration
-        open
-        reference={celebration.reference}
-        montantTtc={celebration.montantTtc}
-        kwc={celebration.kwc}
-        onClose={() => { setCelebration(null); onConfirmed?.() }}
-      />
-    )
-  }
 
   return (
     // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-

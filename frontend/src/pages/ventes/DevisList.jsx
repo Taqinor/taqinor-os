@@ -31,10 +31,8 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import FacturerDevisDialog from '../../features/ventes/FacturerDevisDialog'
-// VX155 — la carte de victoire (enrichit VX40) remplace le toast plat +
-// celebrateDealSigned() appelés directement d'ici ; le burst reste posé,
-// mais DEPUIS <DealSignedCelebration> lui-même.
-import DealSignedCelebration from '../../ui/DealSignedCelebration'
+// La fête « affaire signée » est rendue par l'hôte global (ShellGlobal).
+import { annoncerAffaireSignee } from '../../ui/dealSignedBus'
 import { DataTable } from '../../ui/datatable'
 import { StateBlock } from '../../components/StateBlock'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
@@ -384,9 +382,6 @@ export default function DevisList() {
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptEntreprise, setAcceptEntreprise] = useState(ENTREPRISE_VIDE)
   const [acceptBusy, setAcceptBusy] = useState(false)
-  // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
-  // porte pas les lignes du devis — jamais un chiffre inventé).
-  const [dealCelebration, setDealCelebration] = useState(null)
 
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
   // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
@@ -629,7 +624,7 @@ export default function DevisList() {
       // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
       // (rare, lié au revenu). La carte de victoire remplace le toast plat
       // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
-      setDealCelebration({
+      annoncerAffaireSignee({
         reference: d.reference,
         montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
         kwc: null,
@@ -984,16 +979,6 @@ export default function DevisList() {
         description="Proposition client. Téléchargeable ou ouvrable dans un onglet."
         filename={previewDevis ? `${previewDevis.reference}.pdf` : undefined}
         fetchBlob={fetchDevisPreviewBlob}
-      />
-
-      {/* VX155 — carte de victoire posée sur l'acceptation inline (montant
-          réel ; pas de kWc dans cette vue liste). */}
-      <DealSignedCelebration
-        open={!!dealCelebration}
-        reference={dealCelebration?.reference}
-        montantTtc={dealCelebration?.montantTtc}
-        kwc={dealCelebration?.kwc}
-        onClose={() => setDealCelebration(null)}
       />
 
       {/* QX26 — Modale de refus OBLIGATOIRE : motif MotifPerte (taxonomie

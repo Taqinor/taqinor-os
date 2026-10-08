@@ -15,13 +15,15 @@ duplique donc jamais le chantier. La création est company-scopée
 from django.dispatch import receiver
 
 from core.events import (
-    bon_commande_cree, devis_accepted, reception_fournisseur_annulee,
+    bon_commande_cree, devis_acceptation_annulee, devis_accepted,
+    reception_fournisseur_annulee,
     reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
 
 from .models import Installation
 from .services import (
-    create_installation_from_devis, extourner_gr_ir_reception,
+    annuler_chantiers_desaccepte, create_installation_from_devis,
+    extourner_gr_ir_reception,
     provisionner_gr_ir_reception, lettrer_gr_ir_facture,
     peupler_series_entrepot_reception,
     replafonner_reservation_recue_pour_chantier,
@@ -45,6 +47,21 @@ def _creer_chantier_on_devis_accepted(sender, devis, user, ancien_statut,
         return
     inst, _created = create_installation_from_devis(devis, user, company)
     _ouvrir_dossier_8221_ci(devis, inst, user)
+
+
+@receiver(devis_acceptation_annulee,
+          dispatch_uid="installations_annuler_chantier_on_acceptation_annulee")
+def _annuler_chantier_on_acceptation_annulee(sender, devis, user, **kwargs):
+    """Décision fondateur (08/10/2026) — l'acceptation du devis est annulée
+    (lead sorti de « Signé ») : le chantier qu'elle avait créé est annulé
+    (drapeau + motif-marqueur, jamais supprimé), ses réservations libérées.
+    Synchrone et SANS filet : on est dans la transaction de dés-acceptation,
+    une erreur l'annule en bloc. Le dossier 82-21 encore « en constitution »
+    reste en place : la ré-acceptation le réutilise (idempotent)."""
+    company = getattr(devis, 'company', None)
+    if company is None:
+        return
+    annuler_chantiers_desaccepte(devis, user, company)
 
 
 def _ouvrir_dossier_8221_ci(devis, inst, user):

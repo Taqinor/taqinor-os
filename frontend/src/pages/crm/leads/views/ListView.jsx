@@ -19,6 +19,7 @@ import {
   PRIORITE_LABELS,
   PRIORITE_STARS,
   isPerdu,
+  isSortieSigne,
   isStageMoveBackward,
   tagList,
   tagColor,
@@ -359,6 +360,9 @@ const ListRow = memo(function ListRow({
           onSave={async (v) => {
             const enArriere = isStageMoveBackward(lead.stage, v)
             if (enArriere && !(await confirmerRecul(lead, v))) return
+            // Décision fondateur 08/10/2026 — Signé → Froid dés-accepte aussi.
+            if (!enArriere && isSortieSigne(lead.stage, v)
+                && !(await confirmerRecul(lead, v))) return
             await onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere })
               .catch((e) => { if (!isSigneIntercept(e)) throw e })
           }}

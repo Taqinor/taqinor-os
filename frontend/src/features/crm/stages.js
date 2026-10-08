@@ -161,6 +161,21 @@ export function isStageMoveBackward(current, target) {
   return funnelRank(target) < funnelRank(current)
 }
 
+// Décision fondateur (Reda, 08/10/2026) — QUITTER « Signé » (vers n'importe
+// quelle autre étape, Froid compris) dés-accepte le devis côté serveur : le
+// devis repasse « Envoyé » et le chantier créé à la signature est annulé. Les
+// trois surfaces (board, liste, fenêtre lead) demandent donc confirmation
+// AVANT le PATCH, même quand le mouvement n'est pas un recul (→ Froid).
+export function isSortieSigne(current, target) {
+  return current === CONVERSION_STAGE && target !== CONVERSION_STAGE
+}
+
+// Référence du devis ACCEPTÉ d'un lead (lignes `lead.devis` du serializer),
+// ou null — pour nommer le devis dans la question ci-dessus.
+export const devisAccepteReference = (lead) => (
+  (lead?.devis ?? []).find((d) => d?.statut === 'accepte')?.reference ?? null
+)
+
 // Total TTC du devis le plus récent du lead (le serializer trie déjà du plus
 // récent au plus ancien) — 0 si aucun devis.
 export const latestDevisTotal = (lead) => {

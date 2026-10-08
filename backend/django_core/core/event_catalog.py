@@ -63,6 +63,10 @@ CATALOG = {
     'devis_accepted': _e(
         'Un devis passe à « accepté ».',
         ['devis', 'user', 'ancien_statut']),
+    'devis_acceptation_annulee': _e(
+        "L'acceptation d'un devis est annulée (le lead sort de « Signé ») : "
+        'le devis repasse « envoyé ».',
+        ['devis', 'user', 'option_acceptee', 'date_acceptation', 'motif']),
     'devis_sent': _e(
         'Un devis passe à « envoyé » (partage client).',
         ['devis', 'user', 'ancien_statut']),
