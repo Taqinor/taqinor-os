@@ -1,0 +1,168 @@
+{
+  "largeurs": [
+    375,
+    1440
+  ],
+  "captures": [
+    {
+      "candidat": "a",
+      "langue": "fr",
+      "largeur": 375,
+      "schema": "clair",
+      "chemin": "/_design/a/",
+      "fichier": "a-fr-375-clair.jpg"
+    },
+    {
+      "candidat": "a",
+      "langue": "fr",
+      "largeur": 1440,
+      "schema": "clair",
+      "chemin": "/_design/a/",
+      "fichier": "a-fr-1440-clair.jpg"
+    },
+    {
+      "candidat": "a",
+      "langue": "fr",
+      "largeur": 375,
+      "schema": "sombre",
+      "chemin": "/_design/a/",
+      "fichier": "a-fr-375-sombre.jpg"
+    },
+    {
+      "candidat": "a",
+      "langue": "fr",
+      "largeur": 1440,
+      "schema": "sombre",
+      "chemin": "/_design/a/",
+      "fichier": "a-fr-1440-sombre.jpg"
+    },
+    {
+      "candidat": "a",
+      "langue": "en",
+      "largeur": 375,
+      "schema": "clair",
+      "chemin": "/_design/a/en/",
+      "fichier": "a-en-375-clair.jpg"
+    },
+    {
+      "candidat": "a",
+      "langue": "en",
+      "largeur": 1440,
+      "schema": "clair",
+      "chemin": "/_design/a/en/",
+      "fichier": "a-en-1440-clair.jpg"
+    },
+    {
+      "candidat": "a",
+      "langue": "en",
+      "largeur": 375,
+      "schema": "sombre",
+      "chemin": "/_design/a/en/",
+      "fichier": "a-en-375-sombre.jpg"
+    },
+    {
+      "candidat": "a",
+      "langue": "en",
+      "largeur": 1440,
+      "schema": "sombre",
+      "chemin": "/_design/a/en/",
+      "fichier": "a-en-1440-sombre.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "fr",
+      "largeur": 375,
+      "schema": "clair",
+      "chemin": "/_design/b/",
+      "fichier": "b-fr-375-clair.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "fr",
+      "largeur": 1440,
+      "schema": "clair",
+      "chemin": "/_design/b/",
+      "fichier": "b-fr-1440-clair.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "fr",
+      "largeur": 375,
+      "schema": "sombre",
+      "chemin": "/_design/b/",
+      "fichier": "b-fr-375-sombre.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "fr",
+      "largeur": 1440,
+      "schema": "sombre",
+      "chemin": "/_design/b/",
+      "fichier": "b-fr-1440-sombre.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "en",
+      "largeur": 375,
+      "schema": "clair",
+      "chemin": "/_design/b/en/",
+      "fichier": "b-en-375-clair.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "en",
+      "largeur": 1440,
+      "schema": "clair",
+      "chemin": "/_design/b/en/",
+      "fichier": "b-en-1440-clair.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "en",
+      "largeur": 375,
+      "schema": "sombre",
+      "chemin": "/_design/b/en/",
+      "fichier": "b-en-375-sombre.jpg"
+    },
+    {
+      "candidat": "b",
+      "langue": "en",
+      "largeur": 1440,
+      "schema": "sombre",
+      "chemin": "/_design/b/en/",
+      "fichier": "b-en-1440-sombre.jpg"
+    },
+    {
+      "candidat": "c",
+      "langue": "fr",
+      "largeur": 375,
+      "schema": "clair",
+      "chemin": "/_design/c/",
+      "fichier": "c-fr-375-clair.jpg"
+    },
+    {
+      "candidat": "c",
+      "langue": "fr",
+      "largeur": 1440,
+      "schema": "clair",
+      "chemin": "/_design/c/",
+      "fichier": "c-fr-1440-clair.jpg"
+    },
+    {
+      "candidat": "c",
+      "langue": "en",
+      "largeur": 375,
+      "schema": "clair",
+      "chemin": "/_design/c/en/",
+      "fichier": "c-en-375-clair.jpg"
+    },
+    {
+      "candidat": "c",
+      "langue": "en",
+      "largeur": 1440,
+      "schema": "clair",
+      "chemin": "/_design/c/en/",
+      "fichier": "c-en-1440-clair.jpg"
+    }
+  ]
+}
