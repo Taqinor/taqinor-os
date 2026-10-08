@@ -20,11 +20,13 @@ export function useLeadClientEcran(ctx) {
   } = ctx
   const vide = (v) => v == null || String(v).trim() === ''
 
-  const applyLead = (id) => {
+  // AGNR19 — `leadLu` : le lead déjà relu par son id (arrivée `?lead=`,
+  // prop `leadId`) ; à défaut, la liste chargée (sélecteur).
+  const applyLead = (id, leadLu = null) => {
     setLeadId(id)
     if (!id) return
     setClientId('') // le client est résolu côté serveur depuis le lead
-    const lead = leads.find(l => String(l.id) === String(id))
+    const lead = leadLu || leads.find(l => String(l.id) === String(id))
     if (!lead) return
     // QJR99 — les SEPT écritures gardées (mode, scénario, structure, tension,
     // alimentation pompe, taille souhaitée, dimensionnement par facture) sont

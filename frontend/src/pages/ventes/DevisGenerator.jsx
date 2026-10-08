@@ -306,6 +306,12 @@ export default function DevisGenerator({
   // relu par son id : la liste `leads` n'est que la PREMIÈRE page paginée, un
   // lead plus ancien n'y figurait pas et le sélecteur repartait vide.
   const [leadDuDevis, setLeadDuDevis] = useState(null)
+  // AGNR19 — le client d'ARRIVÉE (`?client=<id>`) relu par son id : jamais
+  // cherché dans une page de la liste.
+  const [clientArrivee, setClientArrivee] = useState(null)
+  const clientsConnus = (clientArrivee
+    && !clients.some(c => String(c.id) === String(clientArrivee.id)))
+    ? [...clients, clientArrivee] : clients
   const [produits, setProduits] = useState([])
   // STKCAT10 — LES STRUCTURES RÉELLEMENT SÉLECTIONNABLES de la société (non
   // archivées, chiffrées, de catégorie typée « structure »). Une seule et même
@@ -1152,7 +1158,7 @@ export default function DevisGenerator({
       || Boolean(incoherenceSegment)
       || (typeLeadEffectif !== '' && !['commercial', 'industriel'].includes(typeLeadEffectif)))
   // CIQ423 (D-CIQ-11) — rappel NON bloquant : l'ICE d'un client entreprise.
-  const clientDuDevis = clients.find(c => String(c.id) === String(clientId))
+  const clientDuDevis = clientsConnus.find(c => String(c.id) === String(clientId))
   const identiteEntreprise = clientDuDevis?.identite_entreprise
     ?? selectedLead?.identite_entreprise ?? null
   const rappelIce = ['commercial', 'industriel'].includes(modeInstallation)
@@ -1762,20 +1768,50 @@ export default function DevisGenerator({
     if (!leadParam || autoRan.current || editId) return
     if (!leads.length || !produits.length) return
     autoRan.current = true
-    const lead = leads.find(l => String(l.id) === leadParam)
-    if (!lead) return
-    // Initialisation unique (garde autoRan) — pas de cascade.
-    applyLead(leadParam)
-    const wantAuto = embedded ? autoProp : (searchParams.get('auto') === '1')
-    const discount = embedded ? (discountProp || '0') : (searchParams.get('discount') || '0')
-    if (wantAuto) {
-      runAutoQuote(lead, discount)
-      // SPL50 — `applyLead` vient désormais d'un hook (opaque pour la règle) :
-      // la directive suit le premier setState synchrone visible.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (discount) setDiscountPct(discount)
+    // AGNR19 — le lead d'ARRIVÉE est relu PAR SON ID (jamais cherché dans la
+    // page 1 d'une liste paginée) ; la liste chargée ne sert que de repli, et
+    // un id introuvable des deux côtés est DIT.
+    const appliquerArrivee = (lead) => {
+      if (!lead) {
+        setErrors(prev => ({ ...prev, client: `Lead introuvable (n° ${leadParam}).` }))
+        return
+      }
+      // Initialisation unique (garde autoRan) — pas de cascade.
+      applyLead(leadParam, lead)
+      const wantAuto = embedded ? autoProp : (searchParams.get('auto') === '1')
+      const discount = embedded ? (discountProp || '0') : (searchParams.get('discount') || '0')
+      if (wantAuto) {
+        runAutoQuote(lead, discount)
+        if (discount) setDiscountPct(discount)
+      }
     }
+    // Présent dans la liste chargée : appliqué tout de suite (comportement
+    // d'avant) ; sinon relu PAR SON ID, puis appliqué.
+    const dejaCharge = leads.find(l => String(l.id) === String(leadParam))
+    if (dejaCharge) {
+      appliquerArrivee(dejaCharge)
+      return
+    }
+    Promise.resolve()
+      .then(() => crmApi.getLead(leadParam))
+      .then((rep) => (rep?.data && String(rep.data.id) === String(leadParam) ? rep.data : null))
+      .catch(() => null)
+      .then((lead) => {
+        if (lead) setLeadDuDevis(lead)
+        appliquerArrivee(lead)
+      })
   }, [leads, produits]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // AGNR19 — le client d'arrivée (`?client=<id>`, plein écran sans lead) est
+  // relu par son id, une fois.
+  const clientArriveeLu = useRef(false)
+  useEffect(() => {
+    if (clientArriveeLu.current || embedded) return
+    const id = searchParams.get('client')
+    if (!id || searchParams.get('lead')) return
+    clientArriveeLu.current = true
+    crmApi.getClient(id).then(({ data }) => { if (data) setClientArrivee(data) }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Factures : estimation hiver/été + suggestion panneaux ──
   // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead/
@@ -1925,7 +1961,7 @@ export default function DevisGenerator({
     recomposerLignes, avecQuantitesFigees, apercuPompage,
   })
 
-  const selectedClient = clients.find(c => String(c.id) === String(clientId))
+  const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))
 
   // ZSAL9 — avertissements de vente (« sale warnings ») : message du client
   // sélectionné + des produits présents dans les lignes. Purement informatif à
