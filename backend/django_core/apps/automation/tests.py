@@ -789,12 +789,14 @@ class BeatTaskTests(TestCase):
         from apps.ventes.models import Facture
         from apps.automation.beat_tasks import _trigger_facture_overdue
 
-        self._rule(TriggerType.FACTURE_OVERDUE)
         client = Client.objects.create(company=self.co, nom='CliF')
         Facture.objects.create(
             company=self.co, client=client, reference='F-BEAT',
             statut='emise', montant_ttc=Decimal('1000'),  # APAR7 — relançable
             date_echeance=date.today() - timedelta(days=1))
+        # APAR8 — règle créée APRÈS la facture : le signal de création partage
+        # le marqueur d'occurrence et aurait sinon déjà consommé l'échéance.
+        self._rule(TriggerType.FACTURE_OVERDUE)
 
         count = _trigger_facture_overdue(self.co)
         self.assertEqual(count, 1)

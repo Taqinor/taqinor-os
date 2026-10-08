@@ -8,7 +8,7 @@ instance, company)` pour chaque instance correspondante, so que les règles
 configurables sur ces déclencheurs temporels s'exécutent réellement.
 
 Principes :
-  - IDEMPOTENT PAR JOUR ET PAR OBJET (AUD822) : un marqueur `AutomationRun` est
+  - IDEMPOTENT PAR OCCURRENCE ET PAR OBJET (AUD822 → APAR8) : un marqueur `AutomationRun` est
     posé après chaque évaluation et vérifié avant la suivante — voir la section
     « Marqueur d'idempotence » ci-dessous. Re-lancer la tâche le même jour ne
     ré-exécute jamais une règle déjà tirée pour le même objet.
@@ -53,11 +53,44 @@ OVERDUE_GRACE_DAYS = 0       # facture en retard dès l'échéance dépassée
 # pas le journal des sociétés qui n'automatisent pas.
 MARQUEUR_PREFIXE = 'AUD822'
 
+# APAR8 — la clé n'est plus le JOUR du passage mais l'OCCURRENCE MÉTIER : la
+# date d'échéance de la facture, la ``prochaine_visite()`` du contrat, la fin
+# de garantie de l'équipement. Avant, la clé journalière relançait le client
+# CHAQUE JOUR (« 60 e-mails pour 60 jours ») ; désormais une occurrence = une
+# relance, et seule une NOUVELLE occurrence (facture rééchelonnée, visite
+# suivante) relance de nouveau.
+FACTURE_LABEL = 'ventes.facture'
 
-def _marqueur(trigger_type, model_label, obj_pk, jour):
-    """Clé stable du marqueur : déclencheur + objet + JOUR."""
-    return (f'{MARQUEUR_PREFIXE}:{trigger_type}:{model_label}:{obj_pk}:'
-            f'{jour.isoformat()}')
+
+def _marqueur(trigger_type, model_label, obj_pk, occurrence):
+    """Clé stable du marqueur : déclencheur + objet + OCCURRENCE métier."""
+    occ = (occurrence.isoformat() if hasattr(occurrence, 'isoformat')
+           else str(occurrence))
+    return f'{MARQUEUR_PREFIXE}:{trigger_type}:{model_label}:{obj_pk}:{occ}'
+
+
+def marqueur_facture(facture):
+    """APAR8 — marqueur de l'occurrence « facture échue à telle échéance »,
+    PARTAGÉ par le balayage et le signal ``_facture_saved``."""
+    from apps.automation.models import TriggerType
+    return _marqueur(TriggerType.FACTURE_OVERDUE, FACTURE_LABEL, facture.pk,
+                     facture.date_echeance)
+
+
+def evaluer_facture_overdue_une_fois(facture, company):
+    """APAR8 — évalue FACTURE_OVERDUE pour l'occurrence courante de la
+    facture SAUF si elle a déjà été évaluée (signal OU balayage). Renvoie
+    True si une évaluation a eu lieu."""
+    from apps.automation.engine import evaluate
+    from apps.automation.models import TriggerType
+    garde = _a_des_regles(company, TriggerType.FACTURE_OVERDUE)
+    marqueur = marqueur_facture(facture)
+    if garde and _deja_declenche(company, marqueur):
+        return False
+    evaluate(TriggerType.FACTURE_OVERDUE, facture, company)
+    if garde:
+        _poser_marqueur(company, marqueur, FACTURE_LABEL, facture.pk)
+    return True
 
 
 def _a_des_regles(company, trigger_type):
@@ -125,11 +158,12 @@ def _trigger_warranty_expiring(company):
             date_fin_garantie__lte=horizon,
         )
         count = 0
-        # AUD822 — un équipement déjà évalué AUJOURD'HUI n'est pas réévalué.
+        # APAR8 — un équipement est évalué UNE fois par fin de garantie.
         garde = _a_des_regles(company, TriggerType.WARRANTY_EXPIRING)
         for eq in qs:
             marqueur = _marqueur(
-                TriggerType.WARRANTY_EXPIRING, 'sav.equipement', eq.pk, today)
+                TriggerType.WARRANTY_EXPIRING, 'sav.equipement', eq.pk,
+                eq.date_fin_garantie)
             if garde and _deja_declenche(company, marqueur):
                 continue
             try:
@@ -159,8 +193,8 @@ def _trigger_maintenance_due(company):
         qs = ContratMaintenance.objects.filter(company=company, actif=True)
         count = 0
         # AUD822 — sans ce marqueur, une règle CREATE_SAV_TICKET créait un
-        # ticket par JOUR tant que le contrat restait dû.
-        today = date.today()
+        # ticket par JOUR tant que le contrat restait dû. APAR8 — clé = la
+        # visite due (``prochaine_visite()``), pas le jour du passage.
         garde = _a_des_regles(company, TriggerType.MAINTENANCE_DUE)
         for contrat in qs:
             try:
@@ -168,7 +202,7 @@ def _trigger_maintenance_due(company):
                     continue
                 marqueur = _marqueur(
                     TriggerType.MAINTENANCE_DUE, 'sav.contratmaintenance',
-                    contrat.pk, today)
+                    contrat.pk, contrat.prochaine_visite())
                 if garde and _deja_declenche(company, marqueur):
                     continue
                 evaluate(TriggerType.MAINTENANCE_DUE, contrat, company)
@@ -200,7 +234,7 @@ def _trigger_facture_overdue(company):
     try:
         from django.utils import timezone
         from apps.automation.engine import (
-            FACTURE_STATUTS_RELANCABLES, evaluate, motif_etat_metier,
+            FACTURE_STATUTS_RELANCABLES, motif_etat_metier,
         )
         from apps.automation.models import TriggerType
         from apps.ventes.models import Facture
@@ -213,23 +247,16 @@ def _trigger_facture_overdue(company):
             statut__in=FACTURE_STATUTS_RELANCABLES,
         )
         count = 0
-        # AUD822 — sans ce marqueur, le client recevait le MÊME email de
-        # relance chaque jour tant que la facture restait impayée.
-        garde = _a_des_regles(company, TriggerType.FACTURE_OVERDUE)
+        # AUD822/APAR8 — sans ce marqueur, le client recevait le MÊME email de
+        # relance chaque jour tant que la facture restait impayée ; il est
+        # désormais clé sur l'ÉCHÉANCE (une relance par occurrence) et partagé
+        # avec le signal ``_facture_saved``.
         for facture in qs:
             if motif_etat_metier(TriggerType.FACTURE_OVERDUE, facture):
                 continue  # APAR7 — soldée : aucune relance, aucun marqueur.
-            marqueur = _marqueur(
-                TriggerType.FACTURE_OVERDUE, 'ventes.facture', facture.pk,
-                today)
-            if garde and _deja_declenche(company, marqueur):
-                continue
             try:
-                evaluate(TriggerType.FACTURE_OVERDUE, facture, company)
-                if garde:
-                    _poser_marqueur(
-                        company, marqueur, 'ventes.facture', facture.pk)
-                count += 1
+                if evaluer_facture_overdue_une_fois(facture, company):
+                    count += 1
             except Exception:  # pragma: no cover
                 logger.warning('automation.beat: facture_overdue %s échouée',
                                facture.pk, exc_info=True)
