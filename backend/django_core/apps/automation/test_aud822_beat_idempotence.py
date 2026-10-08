@@ -15,6 +15,7 @@ Test ROUGE d'abord : sur l'arbre d'avant AUD822, deux appels successifs de
 `SEND_EMAIL` (deux mails dans `mail.outbox`).
 """
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.core import mail
 from django.test import TestCase
@@ -67,7 +68,8 @@ class FactureOverdueIdempotenceTests(_Base):
             company=self.co, nom='Cli822', email=email)
         return Facture.objects.create(
             company=self.co, client=client, reference=reference,
-            statut='envoye', date_echeance=date.today() - timedelta(days=30))
+            statut='emise', montant_ttc=Decimal('1000'),  # APAR7 — relançable
+            date_echeance=date.today() - timedelta(days=30))
 
     def test_deux_passages_le_meme_jour_ne_declenchent_quune_fois(self):
         self._regle(TriggerType.FACTURE_OVERDUE)

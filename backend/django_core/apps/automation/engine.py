@@ -185,6 +185,65 @@ def _trigger_matches(rule, instance, context):
     return True
 
 
+# ── APAR7 — prédicat d'état MÉTIER des déclencheurs temporels ─────────────
+# FACTURE_OVERDUE et DATE_ECHEANCE_CHAMP réagissent à une DATE ; la date seule
+# ne dit pas si la relance a encore un objet. Une facture annulée, un brouillon
+# jamais émis ou une facture déjà soldée ne se relancent pas ; un devis accepté,
+# refusé ou resté brouillon ne reçoit pas « toujours d'actualité ? ». Ce
+# prédicat UNIQUE est lu par le signal, le balayage ET la reprise après
+# approbation (``run_approved``) — jamais trois copies divergentes.
+
+#: Statuts de facture qui peuvent faire l'objet d'une relance.
+FACTURE_STATUTS_RELANCABLES = ('emise', 'en_retard')
+
+
+def _motif_facture(facture):
+    statut = getattr(facture, 'statut', None)
+    if statut == 'payee':
+        return 'Facture soldée : relance sans objet.'
+    if statut == 'annulee':
+        return 'Facture annulée : relance sans objet.'
+    if statut not in FACTURE_STATUTS_RELANCABLES:
+        return (f'Facture non émise ({statut or "sans statut"}) : '
+                f'relance sans objet.')
+    try:
+        reste = facture.montant_exigible
+    except Exception:  # pragma: no cover - défensif (facture détachée)
+        reste = None
+    if reste is not None and reste <= 0:
+        return 'Facture soldée : relance sans objet.'
+    return None
+
+
+def motif_etat_metier(trigger_type, instance):
+    """Motif (français) pour lequel l'état MÉTIER de ``instance`` interdit
+    l'action d'un déclencheur temporel, ou ``None`` si l'action a un objet.
+
+    - FACTURE_OVERDUE : seule une facture ``emise``/``en_retard`` dont le
+      reste exigible est > 0 est relancée ;
+    - DATE_ECHEANCE_CHAMP : sur un devis, seul un devis ``envoye`` est ciblé ;
+      sur un lead, un lead perdu est exclu.
+    Ne lève jamais.
+    """
+    if instance is None:
+        return None
+    try:
+        if trigger_type == TriggerType.FACTURE_OVERDUE:
+            return _motif_facture(instance)
+        if trigger_type == TriggerType.DATE_ECHEANCE_CHAMP:
+            label = _model_label(instance)
+            if label == 'ventes.devis':
+                statut = getattr(instance, 'statut', None)
+                if statut != 'envoye':
+                    return (f'Devis {statut or "sans statut"} : relance sans '
+                            f'objet (seul un devis envoyé est relancé).')
+            elif label == 'crm.lead' and getattr(instance, 'perdu', False):
+                return 'Lead perdu : relance sans objet.'
+    except Exception:  # pragma: no cover - défensif
+        logger.exception("automation: prédicat d'état métier en échec")
+    return None
+
+
 # ── Approbation (N73) ─────────────────────────────────────────────────────
 
 def _needs_approval(rule, context):
@@ -595,6 +654,13 @@ def run_approved(approval, *, user=None):
         return
     instance = _resolve_target(
         approval.target_model, approval.target_id, approval.company)
+    # APAR7 — l'état métier a pu changer entre la demande et la décision
+    # (facture payée entre-temps) : l'action différée n'a plus d'objet.
+    motif = motif_etat_metier(rule.trigger_type, instance)
+    if motif:
+        _log_run(rule, approval.company, instance,
+                 AutomationRun.Status.SKIPPED, motif)
+        return
     run_action(rule, instance, approval.company,
                context=approval.context, user=user)
 

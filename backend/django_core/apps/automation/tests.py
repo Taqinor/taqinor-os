@@ -6,6 +6,7 @@ caractère best-effort des signaux (jamais casser le save d'origine), isolation
 par société, et la sécurité des écritures (champ protégé refusé).
 """
 import json
+from decimal import Decimal
 from datetime import date, timedelta
 from unittest import mock
 
@@ -578,7 +579,8 @@ class FactureOverdueTimezoneTests(TestCase):
     def _facture(self, echeance):
         return Facture.objects.create(
             company=self.co, reference='F-TZ', statut='emise',
-            client=self.client_obj, date_echeance=echeance)
+            client=self.client_obj, date_echeance=echeance,
+            montant_ttc=Decimal('1000'))  # APAR7 — reste dû > 0 : relançable
 
     def test_uses_localdate_not_utc(self):
         # localdate() = hier ; date UTC simulée = demain. La facture dont
@@ -791,7 +793,7 @@ class BeatTaskTests(TestCase):
         client = Client.objects.create(company=self.co, nom='CliF')
         Facture.objects.create(
             company=self.co, client=client, reference='F-BEAT',
-            statut='envoye',
+            statut='emise', montant_ttc=Decimal('1000'),  # APAR7 — relançable
             date_echeance=date.today() - timedelta(days=1))
 
         count = _trigger_facture_overdue(self.co)
@@ -821,7 +823,7 @@ class BeatTaskTests(TestCase):
         # Facture de l'AUTRE société.
         Facture.objects.create(
             company=other_co, client=other_client, reference='F-OTHER',
-            statut='envoye',
+            statut='emise', montant_ttc=Decimal('1000'),  # APAR7 — relançable
             date_echeance=date.today() - timedelta(days=1))
 
         count = _trigger_facture_overdue(other_co)

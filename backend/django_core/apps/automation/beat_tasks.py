@@ -199,19 +199,26 @@ def _trigger_facture_overdue(company):
     n'est pas encore dépassée."""
     try:
         from django.utils import timezone
-        from apps.automation.engine import evaluate
+        from apps.automation.engine import (
+            FACTURE_STATUTS_RELANCABLES, evaluate, motif_etat_metier,
+        )
         from apps.automation.models import TriggerType
         from apps.ventes.models import Facture
         today = timezone.localdate()
+        # APAR7 — seules les factures ÉMISES (ou en retard) sont candidates ;
+        # le reste exigible > 0 est vérifié par le prédicat unique ci-dessous.
         qs = Facture.objects.filter(
             company=company,
             date_echeance__lt=today,
-        ).exclude(statut='payee')
+            statut__in=FACTURE_STATUTS_RELANCABLES,
+        )
         count = 0
         # AUD822 — sans ce marqueur, le client recevait le MÊME email de
         # relance chaque jour tant que la facture restait impayée.
         garde = _a_des_regles(company, TriggerType.FACTURE_OVERDUE)
         for facture in qs:
+            if motif_etat_metier(TriggerType.FACTURE_OVERDUE, facture):
+                continue  # APAR7 — soldée : aucune relance, aucun marqueur.
             marqueur = _marqueur(
                 TriggerType.FACTURE_OVERDUE, 'ventes.facture', facture.pk,
                 today)
@@ -251,7 +258,7 @@ def _trigger_date_echeance_champ(company):
     try:
         from django.apps import apps as django_apps
         from django.utils import timezone
-        from apps.automation.engine import evaluate
+        from apps.automation.engine import evaluate, motif_etat_metier
         from apps.automation.models import (
             AutomationRule, AutomationRun, DATE_TRIGGER_TARGETS, TriggerType,
         )
@@ -292,6 +299,9 @@ def _trigger_date_echeance_champ(company):
             except Exception:  # pragma: no cover - champ FK-incompatible
                 continue
             for obj in qs:
+                # APAR7 — seul un devis ENVOYÉ (lead non perdu) est relancé.
+                if motif_etat_metier(TriggerType.DATE_ECHEANCE_CHAMP, obj):
+                    continue
                 marker = (
                     f'XPLT3:{rule.pk}:{model_label}:{obj.pk}:'
                     f'{target_date.isoformat()}')
