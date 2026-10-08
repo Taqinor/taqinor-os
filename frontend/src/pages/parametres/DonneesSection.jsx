@@ -13,6 +13,7 @@ import {
   ClipboardCheck, FileText, Archive, Plus, Trash2, ExternalLink, Pencil, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Button, IconButton, Badge, Spinner, EmptyState,
@@ -20,6 +21,15 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+
+// APAR40 — liste COMPLÈTE (suit les pages DRF, 200 par page max) au lieu d'un
+// `page_size: 1000/500` que le serveur plafonne à 200 : avec 311 produits le
+// sélecteur en propose 311. Une réponse non paginée passe inchangée.
+async function toutesLesPages(appel) {
+  const res = await fetchAllPages(
+    (page) => appel({ page, page_size: 200 }).then((r) => r?.data))
+  return Array.isArray(res) ? res : (res?.results ?? [])
+}
 
 const INV_STATUT = {
   brouillon: { label: 'Brouillon', tone: 'warning' },
@@ -187,8 +197,7 @@ function KitExplosion() {
       const facteur = facteurEchelle.trim() ? Number(facteurEchelle) : undefined
       const r = await stockApi.dupliquerKit(kitId, facteur)
       setDupliqueInfo(`Kit dupliqué : « ${r.data?.nom ?? '—'} » (révision 1).`)
-      const kr = await stockApi.getKits({ page_size: 500 })
-      setKits(kr.data?.results ?? kr.data ?? [])
+      setKits(await toutesLesPages(stockApi.getKits))
     } catch (e) {
       setError(frErr(e, 'La duplication a échoué.'))
     } finally { setDupliquant(false) }
@@ -206,8 +215,8 @@ function KitExplosion() {
   }
 
   useEffect(() => {
-    stockApi.getKits({ page_size: 500 })
-      .then((r) => setKits(r.data?.results ?? r.data ?? []))
+    toutesLesPages(stockApi.getKits)
+      .then(setKits)
       .catch(() => {})
   }, [])
 
@@ -442,8 +451,8 @@ function FichesTechniques() {
   // asynchrones (jamais synchrone dans l'effet).
   useEffect(() => {
     load()
-    stockApi.getProduits({ page_size: 1000 })
-      .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    toutesLesPages(stockApi.getProduits)
+      .then(setProduits).catch(() => {})
   }, [])
 
   // Produits sans fiche (une fiche par produit, OneToOne) — sauf la fiche en
@@ -708,8 +717,8 @@ function RemplacementComposant() {
   const [done, setDone] = useState(null)
 
   useEffect(() => {
-    stockApi.getProduits({ page_size: 1000 })
-      .then((r) => setProduits(r.data?.results ?? r.data ?? []))
+    toutesLesPages(stockApi.getProduits)
+      .then(setProduits)
       .catch(() => {})
   }, [])
 
