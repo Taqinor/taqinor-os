@@ -63,6 +63,10 @@ def _intervention(company, payload, user=None):
     iv = qs.filter(id=iv_id).select_related('installation').first()
     if iv is None:
         raise FieldOpError('Intervention inconnue.')
+    # ACHT34 — aucune op terrain (saisie ou statut) sur une intervention
+    # annulée tant que le chantier n'est pas réactivé.
+    if iv.annulee:
+        raise FieldOpError(field_services.MESSAGE_INTERVENTION_ANNULEE)
     return iv
 
 
