@@ -48,6 +48,11 @@ _SECRET_RES = [
 ]
 
 
+# Seuls chemins couverts par tos_risk/meta_ad_library_api.md ; tout ajout exige d'abord
+# la mise a jour du fichier de risque et l'accord du fondateur (CLAUDE.md regle #5).
+CHEMINS_AUTORISES = frozenset({"ads_archive", "debug_token"})
+
+
 class ProbeStop(Exception):
     """Arret propre de la sonde (budget, code Meta, rejeu epuise)."""
 
@@ -155,6 +160,8 @@ class Probe:
 
     # -- un appel
     def call(self, exp, path, params, use_header=False, extra_log=None):
+        if path not in CHEMINS_AUTORISES:  # perimetre de tos_risk/meta_ad_library_api.md (regle #5)
+            raise ProbeStop("chemin hors perimetre tos_risk : %s" % path)
         if self.calls >= self.max_calls:
             raise ProbeStop("budget --max-calls atteint (%d)" % self.max_calls)
         if self.pending_pause:
@@ -339,16 +346,8 @@ def e8(p, mots, **_):
     p.log({"exp": "E8", "evenement": "resultat", "entete_authorization_accepte": ok, "statut": r.status})
 
 
-def e6(p, mots, **_):
-    # Dernier : un code 10 (permission) est la mesure attendue, et arrete la sonde.
-    r = p.call("E6", "me", {"fields": "id,name"})
-    err = r.body.get("error") or {}
-    p.log({"exp": "E6", "evenement": "resultat", "ok": r.status == 200 and not err,
-           "code_erreur": err.get("code"), "sous_code": err.get("error_subcode")})
-
-
 EXPERIMENTS = [("E0", e0), ("E1", e1), ("E2", e2), ("E2-UK", e2_uk), ("E3", e3), ("E4", e4),
-               ("E5", e5), ("E7", e7), ("E8", e8), ("E6", e6)]
+               ("E5", e5), ("E7", e7), ("E8", e8)]
 
 
 def run(probe, mots, only=None):

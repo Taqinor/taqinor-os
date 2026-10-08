@@ -71,6 +71,7 @@ export default function ComparatorScreen() {
   const [sourceKey, setSourceKey] = useState('ads')
   const [pool, setPool] = useState([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [query, setQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState(() => new Set())
 
@@ -83,8 +84,12 @@ export default function ComparatorScreen() {
       ? adsengineApi.campaigns.list()
       : adsengineApi.metrics.adsCockpit()
     fetcher
-      .then(r => setPool(key === 'campaigns' ? unwrapList(r) : (Array.isArray(r.data) ? r.data : [])))
-      .catch(() => setPool([]))
+      .then(r => {
+        setPool(key === 'campaigns' ? unwrapList(r) : (Array.isArray(r.data) ? r.data : []))
+        setLoadError(false)
+      })
+      // AACQ74 — panne ≠ « Aucun élément ».
+      .catch(() => { setPool([]); setLoadError(true) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -146,7 +151,10 @@ export default function ComparatorScreen() {
 
       {loading ? <p className="page-loading">Chargement…</p> : (
         <>
-          {filteredPool.length === 0
+          {loadError
+            ? <p data-testid="ae-comparator-load-error" role="alert" style={{ color: '#dc2626' }}>
+                Éléments indisponibles — <button type="button" className="btn btn-light" onClick={() => load(sourceKey)}>réessayer</button></p>
+            : filteredPool.length === 0
             ? <p data-testid="ae-comparator-pool-empty" style={{ color: '#64748b' }}>Aucun élément.</p>
             : (
               <div data-testid="ae-comparator-pool" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem' }}>

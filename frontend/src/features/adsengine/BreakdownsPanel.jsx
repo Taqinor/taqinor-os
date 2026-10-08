@@ -31,14 +31,16 @@ function pct(value, max) {
 export default function BreakdownsPanel({ objectType = 'campaign', objectId }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(() => {
     if (!objectId) { setRows([]); setLoading(false); return }
     setLoading(true)
     adsengineApi.breakdowns
       .list({ object_type: objectType, object_id: objectId })
-      .then((r) => setRows(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setRows([]))
+      .then((r) => { setRows(Array.isArray(r.data) ? r.data : []); setLoadError(false) })
+      // AACQ74 — panne ≠ « Aucune ventilation disponible ».
+      .catch(() => { setRows([]); setLoadError(true) })
       .finally(() => setLoading(false))
   }, [objectType, objectId])
 
@@ -64,7 +66,9 @@ export default function BreakdownsPanel({ objectType = 'campaign', objectId }) {
       <h3>Audience &amp; diffusion</h3>
       {/* ADSDEEP66 — les ventilations ne sont synchronisées que sur 28 j. */}
       <DataWindowNotice kind="breakdowns" />
-      {!hasAny && (
+      {loadError && <p data-testid="ae-breakdowns-load-error" role="alert" style={{ color: '#dc2626' }}>
+              Ventilations indisponibles — <button type="button" className="btn btn-light" onClick={load}>réessayer</button></p>}
+      {!hasAny && !loadError && (
         <p data-testid="ae-breakdowns-empty">
           Aucune ventilation disponible pour cet objet.
         </p>

@@ -127,6 +127,11 @@ export default function ReportsScreen() {
   const [auditData, setAuditData] = useState(null)
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditError, setAuditError] = useState(false)
+  // AACQ74 — zones dont le chargement a échoué (panne ≠ « Aucune variante » / zéros muets).
+  const [loadErrors, setLoadErrors] = useState({})
+  const setZoneError = useCallback((zone, failed) => {
+    setLoadErrors(prev => (prev[zone] === failed ? prev : { ...prev, [zone]: failed }))
+  }, [])
 
   const runAudit = useCallback(() => {
     setAuditLoading(true)
@@ -146,10 +151,10 @@ export default function ReportsScreen() {
   const loadBilan = useCallback(() => {
     setBilanLoading(true)
     adsengineApi.reports.attributionBilan()
-      .then(r => setBilan(r.data))
-      .catch(() => setBilan(null))
+      .then(r => { setBilan(r.data); setZoneError('bilan', false) })
+      .catch(() => { setBilan(null); setZoneError('bilan', true) })
       .finally(() => setBilanLoading(false))
-  }, [])
+  }, [setZoneError])
 
   // DATAPUB3 — série temporelle des leads Odoo (jour/semaine).
   const [leadsSeries, setLeadsSeries] = useState(null)
@@ -159,10 +164,10 @@ export default function ReportsScreen() {
   const loadLeads = useCallback(() => {
     setLeadsLoading(true)
     adsengineApi.reports.leadsTimeseries({ granularite: leadsGran })
-      .then(r => setLeadsSeries(r.data))
-      .catch(() => setLeadsSeries(null))
+      .then(r => { setLeadsSeries(r.data); setZoneError('leads', false) })
+      .catch(() => { setLeadsSeries(null); setZoneError('leads', true) })
       .finally(() => setLeadsLoading(false))
-  }, [leadsGran])
+  }, [leadsGran, setZoneError])
 
   // DATAPUB4 — audience (démographie), chargée à l'ouverture de l'onglet.
   const [audienceData, setAudienceData] = useState(null)
@@ -171,36 +176,39 @@ export default function ReportsScreen() {
   const loadAudience = useCallback(() => {
     setAudienceLoading(true)
     adsengineApi.reports.audience()
-      .then(r => setAudienceData(r.data))
-      .catch(() => setAudienceData(null))
+      .then(r => { setAudienceData(r.data); setZoneError('audience', false) })
+      .catch(() => { setAudienceData(null); setZoneError('audience', true) })
       .finally(() => setAudienceLoading(false))
-  }, [])
+  }, [setZoneError])
 
   const load = useCallback(() => {
     setLoading(true)
     adsengineApi.reports.variants()
-      .then(r => setVariants(normalizeVariants(r.data)))
-      .catch(() => setVariants([]))
+      .then(r => { setVariants(normalizeVariants(r.data)); setZoneError('variants', false) })
+      .catch(() => { setVariants([]); setZoneError('variants', true) })
     adsengineApi.reports.funnel()
-      .then(r => setFunnel(normalizeFunnel(r.data)))
-      .catch(() => setFunnel([]))
+      .then(r => { setFunnel(normalizeFunnel(r.data)); setZoneError('funnel', false) })
+      .catch(() => { setFunnel([]); setZoneError('funnel', true) })
     adsengineApi.reports.cohorts()
-      .then(r => setCohorts(normalizeCohorts(r.data)))
-      .catch(() => setCohorts([]))
+      .then(r => { setCohorts(normalizeCohorts(r.data)); setZoneError('cohorts', false) })
+      .catch(() => { setCohorts([]); setZoneError('cohorts', true) })
       .finally(() => setLoading(false))
-  }, [])
+  }, [setZoneError])
 
   const loadCreative = useCallback(() => {
     setCreativeLoading(true)
     const params = { dimension, ...periodParams(periodDays) }
     adsengineApi.reports.leaderboard(params)
-      .then(r => setLeaderboard(normalizeLeaderboard(r.data)))
-      .catch(() => setLeaderboard({ classement: [], untaggedCount: 0 }))
+      .then(r => { setLeaderboard(normalizeLeaderboard(r.data)); setZoneError('leaderboard', false) })
+      .catch(() => { setLeaderboard({ classement: [], untaggedCount: 0 }); setZoneError('leaderboard', true) })
     adsengineApi.reports.scatter(periodParams(periodDays))
-      .then(r => setScatter(normalizeScatter(r.data)))
-      .catch(() => setScatter({ points: [], medianHookRate: null, medianSpend: null }))
+      .then(r => { setScatter(normalizeScatter(r.data)); setZoneError('scatter', false) })
+      .catch(() => {
+        setScatter({ points: [], medianHookRate: null, medianSpend: null })
+        setZoneError('scatter', true)
+      })
       .finally(() => setCreativeLoading(false))
-  }, [dimension, periodDays])
+  }, [dimension, periodDays, setZoneError])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -237,6 +245,15 @@ export default function ReportsScreen() {
       .catch(() => {})
   }, [])
 
+  const failedZones = Object.keys(loadErrors).filter(k => loadErrors[k])
+  const retryFailed = () => {
+    load()
+    loadCreative()
+    if (loadErrors.bilan) loadBilan()
+    if (loadErrors.leads) loadLeads()
+    if (loadErrors.audience) loadAudience()
+  }
+
   const funnelMax = useMemo(
     () => funnel.reduce((m, e) => Math.max(m, Number.isFinite(e.valeur) ? e.valeur : 0), 0) || 1,
     [funnel])
@@ -272,6 +289,13 @@ export default function ReportsScreen() {
         {/* PUB51 — palette de commandes (Ctrl-K) */}
         <CommandPalette />
       </div>
+
+      {failedZones.length > 0 && (
+        <p data-testid="ae-reports-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Données indisponibles ({failedZones.join(', ')}) —{' '}
+          <button type="button" className="btn btn-light" onClick={retryFailed}>réessayer</button>
+        </p>
+      )}
 
       <div role="tablist" aria-label="Sections du reporting"
         style={{ display: 'flex', gap: '0.5rem', margin: '0 0 1rem' }}>

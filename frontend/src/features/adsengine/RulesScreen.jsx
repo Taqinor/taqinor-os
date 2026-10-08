@@ -90,6 +90,7 @@ export default function RulesScreen() {
   const canManage = has('adsengine_manage')
   const [templates, setTemplates] = useState([])
   const [anomalies, setAnomalies] = useState([])
+  const [anomaliesError, setAnomaliesError] = useState(false)
   const [history, setHistory] = useState([])
   const [journal, setJournal] = useState([]) // ADSDEEP43 — journal d'exécution enrichi
   const [loading, setLoading] = useState(true)
@@ -141,8 +142,10 @@ export default function RulesScreen() {
           meta[a.id] = { detector: a.detector || '', feedback: a.feedback || '' }
         })
         setAnomalyMeta(meta)
+        setAnomaliesError(false)
       })
-      .catch(() => { setAnomalies([]); setAnomalyMeta({}) })
+      // AACQ74 — panne ≠ « aucune anomalie ».
+      .catch(() => { setAnomalies([]); setAnomalyMeta({}); setAnomaliesError(true) })
     reloadDetectors()
     adsengineApi.alerts.history()
       .then(r => setHistory(normalizeAlerts(r.data)))
@@ -452,7 +455,10 @@ export default function RulesScreen() {
           {/* ── Flux d'anomalies (ENG16) ── */}
           <section className="ae-anomalies" data-testid="ae-anomalies">
             <h3 style={{ margin: '0 0 0.6rem' }}>Anomalies détectées</h3>
-            {anomalies.length === 0
+            {anomaliesError
+              ? <p data-testid="ae-anomalies-load-error" role="alert" style={{ color: '#dc2626' }}>
+                  Anomalies indisponibles — <button type="button" className="btn btn-light" onClick={load}>réessayer</button></p>
+              : anomalies.length === 0
               ? <p data-testid="ae-anomalies-empty" style={{ color: '#64748b' }}>
                   Aucune anomalie détectée.</p>
               : (

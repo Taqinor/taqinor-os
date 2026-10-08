@@ -171,5 +171,26 @@ class ProbeCase(unittest.TestCase):
         self.assertNotIn(TOKEN, json.dumps(out))
 
 
+class PerimetreTosRisk(ProbeCase):
+    def test_chemins_dans_le_perimetre_tos_risk(self):
+        seen = []
+
+        def transport(url, params, headers):
+            seen.append(url.rsplit("/", 1)[-1])
+            return ok(3)
+
+        p = sonde.Probe(TOKEN, transport, self.path, max_calls=150,
+                        sleep=self.sleeps.append, pause_s=0, clock=lambda: 1)
+        sonde.run(p, "sandals")
+        self.assertTrue(seen)
+        self.assertTrue(set(seen) <= {"ads_archive", "debug_token"}, set(seen))
+
+    def test_chemin_hors_liste_leve_probestop(self):
+        p = self.probe([ok()])
+        with self.assertRaises(sonde.ProbeStop):
+            p.call("X", "me", {})
+        self.assertEqual(self.transport.calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
