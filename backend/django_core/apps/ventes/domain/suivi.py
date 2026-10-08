@@ -11,6 +11,14 @@ Le lien public (``ShareLink`` du devis : même jeton pour ``/proposition`` et
   (le lien vit tout le 90e jour) et remet ``suivi_prolonge_le`` à null ;
 * ``revoquer_liens_publics`` coupe le lien immédiatement (``revoque_le``).
 
+ADEV17 (C-ADEV-009) — la chaîne de révision : une V1 acceptée puis révisée
+gardait un lien prolongé « jusqu'à la réception » que plus rien ne fermait
+(le chantier est rattaché à la V2). Désormais ``ouvrir_suivi`` sur la V2 lève
+la prolongation des versions qu'elle remplace
+(``selectors.devis_predecesseurs_revision_ids``), et la réception ferme
+immédiatement (``expires_at`` = maintenant) les liens encore ouverts de toutes
+ces versions : seul le lien de la version réceptionnée vit réception + 90 j.
+
 Aucun statut n'est écrit ici (devis, BC, facture, chantier) : seules les dates
 du lien changent.
 """
@@ -22,10 +30,22 @@ from django.utils import timezone
 SUIVI_APRES_RECEPTION_JOURS = 90
 
 
+def _predecesseurs_ids(devis):
+    from apps.ventes.selectors import devis_predecesseurs_revision_ids
+    return devis_predecesseurs_revision_ids(devis)
+
+
 def ouvrir_suivi(devis):
     """Prolonge les liens publics non révoqués de ``devis`` jusqu'à la
-    réception de son chantier. Renvoie le nombre de liens prolongés."""
+    réception de son chantier, et lève la prolongation des versions que
+    ``devis`` remplace (ADEV17). Renvoie le nombre de liens prolongés."""
     from apps.ventes.models import ShareLink
+    predecesseurs = _predecesseurs_ids(devis)
+    if predecesseurs:
+        (ShareLink.objects
+         .filter(devis_id__in=predecesseurs,
+                 suivi_prolonge_le__isnull=False)
+         .update(suivi_prolonge_le=None))
     return (ShareLink.objects
             .filter(devis_id=devis.pk, revoque_le__isnull=True,
                     suivi_prolonge_le__isnull=True)
@@ -47,11 +67,25 @@ def fermer_suivi_a_reception(devis_id, date_reception=None):
     from apps.ventes.models import ShareLink
     if not devis_id:
         return 0
+    from apps.ventes.models import Devis
+    from django.db.models import Q
     date_reception = date_reception or timezone.localdate()
-    return (ShareLink.objects
-            .filter(devis_id=devis_id, revoque_le__isnull=True)
-            .update(expires_at=echeance_apres_reception(date_reception),
-                    suivi_prolonge_le=None))
+    n = (ShareLink.objects
+         .filter(devis_id=devis_id, revoque_le__isnull=True)
+         .update(expires_at=echeance_apres_reception(date_reception),
+                 suivi_prolonge_le=None))
+    # ADEV17 — les versions remplacées par révision : leurs liens encore
+    # ouverts (prolongés ou non expirés) sont fermés MAINTENANT.
+    devis = Devis.objects.filter(pk=devis_id).only('pk', 'company_id').first()
+    predecesseurs = _predecesseurs_ids(devis) if devis is not None else []
+    if predecesseurs:
+        maintenant = timezone.now()
+        n += (ShareLink.objects
+              .filter(devis_id__in=predecesseurs, revoque_le__isnull=True)
+              .filter(Q(suivi_prolonge_le__isnull=False)
+                      | Q(expires_at__gt=maintenant))
+              .update(expires_at=maintenant, suivi_prolonge_le=None))
+    return n
 
 
 def on_chantier_receptionne(sender, installation=None, **kwargs):

@@ -269,6 +269,16 @@ class Parcours:
     def effectif(self, chemin):
         return overrides.effectif(self.recharger(), chemin, None)
 
+    def _get_public_envoye(self, chemin):
+        """GET public CLIENT d'un devis ENVOYÉ (ADEV11 : un brouillon n'est
+        plus servi sur le jeton client). Le statut BROUILLON de la fixture
+        est restauré aussitôt : le reste du parcours est inchangé."""
+        Devis.objects.filter(pk=self.devis.pk).update(statut='envoye')
+        try:
+            return self.case.public.get(chemin)
+        finally:
+            Devis.objects.filter(pk=self.devis.pk).update(statut='brouillon')
+
     # ── les dix étapes du parcours, dans l'ordre ────────────────────────────
 
     def etape_replace_lines(self):
@@ -317,7 +327,7 @@ class Parcours:
         return 200, (200,)
 
     def etape_proposal_data(self):
-        r = self.case.public.get(
+        r = self._get_public_envoye(
             f'/api/django/public/proposal/{self.token}/data/')
         return r.status_code, (200,)
 
@@ -333,7 +343,7 @@ class Parcours:
         return 200, (200,)
 
     def etape_taille_detail(self):
-        r = self.case.public.get(
+        r = self._get_public_envoye(
             f'/api/django/public/proposal/{self.token}/taille/eco/'
             '?variante=sans')
         # 404 GÉNÉRIQUE = refus documenté (taille non envoyée, dérivation

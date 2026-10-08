@@ -422,7 +422,8 @@ class WebPushTests(TestCase):
             endpoint='https://push.example/on', p256dh='p', auth='a')
         with mock.patch(
                 'apps.notifications.services._dispatch_webpush') as disp:
-            notify(self.user, EventType.LEAD_ASSIGNED, 'Nouveau lead')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notify(self.user, EventType.LEAD_ASSIGNED, 'Nouveau lead')
         disp.assert_called_once()
 
     @override_settings(VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='')

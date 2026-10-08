@@ -138,6 +138,10 @@ class BlocsHorairesCiChargeUtileTest(_BaseDevis):
             with self.subTest(mode=mode):
                 devis = self._devis(ref, mode=mode, tension=tension)
                 self.assertIn('etude_ci', devis.etude_params)
+                # ADEV11 — le jeton client ne sert plus un BROUILLON (404) ;
+                # ``_devis`` (CIQ210) crée un brouillon : on le passe
+                # « envoyé », seul état où un lien client existe réellement.
+                Devis.objects.filter(pk=devis.pk).update(statut='envoye')
                 p = self._payload(devis)
                 courbes = p['courbes_journalieres']
                 self.assertEqual(courbes['source'], 'moteur_ci')

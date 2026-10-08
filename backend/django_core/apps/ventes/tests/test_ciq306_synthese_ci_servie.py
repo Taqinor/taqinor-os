@@ -51,10 +51,16 @@ class SyntheseCiServieTest(_BaseDevis):
         return reponse.json()
 
     def _cas(self):
-        return (
+        # ADEV11 — le jeton client ne sert plus un BROUILLON (404) ;
+        # ``_devis`` (CIQ210) crée un brouillon : on le passe « envoyé »,
+        # seul état où un lien client existe réellement.
+        cas = (
             self._devis('DEV-CIQ306-0010', mode='commercial', tension='bt'),
             self._devis('DEV-CIQ306-0020', mode='industriel', tension='mt'),
         )
+        Devis.objects.filter(pk__in=[d.pk for d in cas]).update(
+            statut='envoye')
+        return tuple(Devis.objects.get(pk=d.pk) for d in cas)
 
     def test_parite_cle_par_cle_avec_la_fonction_du_pdf(self):
         for devis in self._cas():

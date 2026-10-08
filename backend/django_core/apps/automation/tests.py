@@ -6,6 +6,7 @@ caractère best-effort des signaux (jamais casser le save d'origine), isolation
 par société, et la sécurité des écritures (champ protégé refusé).
 """
 import json
+from decimal import Decimal
 from datetime import date, timedelta
 from unittest import mock
 
@@ -45,6 +46,15 @@ def auth(user):
     api = APIClient()
     api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
     return api
+
+
+def _run_au_commit(test, rule, instance, company):
+    """APAR10 — exécute ``run_action`` puis le COMMIT (les envois e-mail sont
+    différés en ``on_commit``) ; rend le statut/message du run JOURNALISÉ."""
+    with test.captureOnCommitCallbacks(execute=True):
+        engine.run_action(rule, instance, company)
+    run = AutomationRun.objects.filter(rule=rule).order_by('-id').first()
+    return run.status, run.message
 
 
 def rows(resp):
@@ -122,8 +132,11 @@ class RuleMatchingTests(TestCase):
             client=client)
         devis.statut = 'accepte'
         devis.save()
-        devis_accepted.send(
-            sender=Devis, devis=devis, user=None, ancien_statut='brouillon')
+        # APAR10 — l'e-mail part (et se journalise) au COMMIT.
+        with self.captureOnCommitCallbacks(execute=True):
+            devis_accepted.send(
+                sender=Devis, devis=devis, user=None,
+                ancien_statut='brouillon')
         run = AutomationRun.objects.filter(
             rule__trigger_type=TriggerType.DEVIS_ACCEPTED).first()
         self.assertIsNotNone(run)
@@ -240,8 +253,10 @@ class ApprovalGatingTests(TestCase):
         approval = AutomationApproval.objects.get(rule=rule)
 
         api = auth(self.owner)
-        resp = api.post(
-            f'/api/django/automation/approvals/{approval.pk}/approve/')
+        # APAR17 — l'action différée part APRÈS le commit de la décision.
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = api.post(
+                f'/api/django/automation/approvals/{approval.pk}/approve/')
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
         self.assertEqual(approval.status, AutomationApproval.Status.APPROVED)
@@ -530,7 +545,7 @@ class SendEmailHonestyTests(TestCase):
             client=client)
         # send_mail renvoie 0 (aucun message remis) → FAILED honnête.
         with mock.patch('django.core.mail.send_mail', return_value=0):
-            status, _ = engine.run_action(rule, devis, self.co)
+            status, _ = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.FAILED)
 
     def test_send_error_is_reported_failed(self):
@@ -545,7 +560,7 @@ class SendEmailHonestyTests(TestCase):
             client=client)
         with mock.patch('django.core.mail.send_mail',
                         side_effect=RuntimeError('SMTP down')):
-            status, msg = engine.run_action(rule, devis, self.co)
+            status, msg = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.FAILED)
         self.assertIn('SMTP down', msg)
 
@@ -560,7 +575,7 @@ class SendEmailHonestyTests(TestCase):
             company=self.co, reference='DEV-MAIL3', statut='brouillon',
             client=client)
         mail.outbox = []
-        status, _ = engine.run_action(rule, devis, self.co)
+        status, _ = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.SUCCESS)
 
 
@@ -578,7 +593,8 @@ class FactureOverdueTimezoneTests(TestCase):
     def _facture(self, echeance):
         return Facture.objects.create(
             company=self.co, reference='F-TZ', statut='emise',
-            client=self.client_obj, date_echeance=echeance)
+            client=self.client_obj, date_echeance=echeance,
+            montant_ttc=Decimal('1000'))  # APAR7 — reste dû > 0 : relançable
 
     def test_uses_localdate_not_utc(self):
         # localdate() = hier ; date UTC simulée = demain. La facture dont
@@ -602,7 +618,8 @@ class FactureOverdueTimezoneTests(TestCase):
 
 class ModeleMessageTests(TestCase):
     """DC18 — sujet/corps d'email résolus depuis un modèle stocké éditable,
-    avec repli sur l'ancien défaut codé en dur (« Notification Taqinor »)."""
+    avec repli sur « Notification {entreprise} » (APAR6 — rendu à la raison
+    sociale de LA société, plus « Notification Taqinor » pour tous)."""
 
     def setUp(self):
         self.co = make_company('auto-mm', 'Auto MM')
@@ -624,7 +641,7 @@ class ModeleMessageTests(TestCase):
 
     def test_resolve_falls_back_to_default_subject_when_absent(self):
         objet, corps = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
         self.assertEqual(corps, '')
 
     def test_resolve_uses_stored_template(self):
@@ -639,14 +656,14 @@ class ModeleMessageTests(TestCase):
         ModeleMessage.objects.create(
             company=self.co, canal=CanalMessage.EMAIL, objet='', corps='')
         objet, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
 
     def test_resolve_disabled_template_ignored(self):
         ModeleMessage.objects.create(
             company=self.co, canal=CanalMessage.EMAIL,
             objet='Désactivé', corps='x', enabled=False)
         objet, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
 
     def test_resolve_per_channel(self):
         ModeleMessage.objects.create(
@@ -654,7 +671,7 @@ class ModeleMessageTests(TestCase):
             objet='WA', corps='wa body')
         # Le modèle WhatsApp ne fuit pas sur le canal email.
         objet_email, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet_email, 'Notification Taqinor')
+        self.assertEqual(objet_email, 'Notification {entreprise}')
         objet_wa, corps_wa = ModeleMessage.resolve(
             self.co, CanalMessage.WHATSAPP)
         self.assertEqual(objet_wa, 'WA')
@@ -666,7 +683,7 @@ class ModeleMessageTests(TestCase):
             objet='Modèle A', corps='a')
         # Une autre société ne voit pas le modèle de self.co → défaut.
         objet, _ = ModeleMessage.resolve(self.co_b, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
 
     # ── Intégration avec actions._send_email ────────────────────────────
 
@@ -674,9 +691,9 @@ class ModeleMessageTests(TestCase):
         rule = self._send_rule()
         devis = self._devis_with_email('DEV-MM-DEF')
         mail.outbox = []
-        status, _ = engine.run_action(rule, devis, self.co)
+        status, _ = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.SUCCESS)
-        self.assertEqual(mail.outbox[-1].subject, 'Notification Taqinor')
+        self.assertEqual(mail.outbox[-1].subject, 'Notification Auto MM')
 
     def test_send_email_uses_stored_subject(self):
         ModeleMessage.objects.create(
@@ -685,7 +702,7 @@ class ModeleMessageTests(TestCase):
         rule = self._send_rule()
         devis = self._devis_with_email('DEV-MM-SUB')
         mail.outbox = []
-        engine.run_action(rule, devis, self.co)
+        _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(mail.outbox[-1].subject, 'Sujet personnalisé')
 
     def test_action_config_subject_overrides_template(self):
@@ -699,7 +716,7 @@ class ModeleMessageTests(TestCase):
             action_config={'body': 'salut', 'subject': 'Sujet explicite'})
         devis = self._devis_with_email('DEV-MM-OVR')
         mail.outbox = []
-        engine.run_action(rule, devis, self.co)
+        _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(mail.outbox[-1].subject, 'Sujet explicite')
 
     def test_send_email_body_falls_back_to_template_corps(self):
@@ -713,7 +730,7 @@ class ModeleMessageTests(TestCase):
             action_type=ActionType.SEND_EMAIL, action_config={})
         devis = self._devis_with_email('DEV-MM-BODY')
         mail.outbox = []
-        engine.run_action(rule, devis, self.co)
+        _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(mail.outbox[-1].body, 'Corps du modèle')
 
 
@@ -787,12 +804,14 @@ class BeatTaskTests(TestCase):
         from apps.ventes.models import Facture
         from apps.automation.beat_tasks import _trigger_facture_overdue
 
-        self._rule(TriggerType.FACTURE_OVERDUE)
         client = Client.objects.create(company=self.co, nom='CliF')
         Facture.objects.create(
             company=self.co, client=client, reference='F-BEAT',
-            statut='envoye',
+            statut='emise', montant_ttc=Decimal('1000'),  # APAR7 — relançable
             date_echeance=date.today() - timedelta(days=1))
+        # APAR8 — règle créée APRÈS la facture : le signal de création partage
+        # le marqueur d'occurrence et aurait sinon déjà consommé l'échéance.
+        self._rule(TriggerType.FACTURE_OVERDUE)
 
         count = _trigger_facture_overdue(self.co)
         self.assertEqual(count, 1)
@@ -821,7 +840,7 @@ class BeatTaskTests(TestCase):
         # Facture de l'AUTRE société.
         Facture.objects.create(
             company=other_co, client=other_client, reference='F-OTHER',
-            statut='envoye',
+            statut='emise', montant_ttc=Decimal('1000'),  # APAR7 — relançable
             date_echeance=date.today() - timedelta(days=1))
 
         count = _trigger_facture_overdue(other_co)

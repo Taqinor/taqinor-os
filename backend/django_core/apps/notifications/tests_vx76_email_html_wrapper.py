@@ -44,11 +44,12 @@ class Vx76NotifyHtmlWrapperTests(TestCase):
         with mock.patch(
                 'apps.notifications.services.timezone.now',
                 return_value=_WEEKDAY_DAYTIME):
-            notify(
-                self.user, EventType.LEAD_CALLBACK_REQUESTED,
-                'Rappel demandé',
-                body='Le prospect a demandé à être rappelé.',
-                link='/crm/leads?lead=1')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notify(
+                    self.user, EventType.LEAD_CALLBACK_REQUESTED,
+                    'Rappel demandé',
+                    body='Le prospect a demandé à être rappelé.',
+                    link='/crm/leads?lead=1')
 
         self.assertEqual(len(mail.outbox), 1)
         msg = mail.outbox[0]

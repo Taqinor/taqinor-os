@@ -10,11 +10,45 @@ du bloc de la page 2 : aucun texte client n'est écrit ici.
 """
 from ..ci import categories as ci_categories
 
-#: Pictogramme par catégorie (emoji rendu par WeasyPrint via Noto).
+#: APDF15 (C-APDF-017) — pictogramme par catégorie : SVG EN LIGNE (trait,
+#: couleur héritée ``currentColor``), plus JAMAIS un emoji. L'image ne porte
+#: aucune police emoji (``fc-list :charset=1f3ea`` vide) : WeasyPrint imprimait
+#: un carré vide devant le titre de la couverture. Aucun texte, aucun glyphe.
+_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="1.6" '
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '{}</svg>')
 ICONES = {
-    "hotel": "🏨", "restaurant": "🍽️", "commerce": "🛒", "bureau": "🏢",
-    "sante": "🏥", "ecole": "🎓", "hammam": "🧖", "boulangerie": "🥖",
-    "froid": "❄️", "autre": "🏪",
+    "hotel": _SVG.format(
+        '<path d="M3 18V7M3 14h18v4M21 18v-4a3 3 0 0 0-3-3h-8v3"/>'
+        '<circle cx="7" cy="11" r="1.6"/>'),
+    "restaurant": _SVG.format(
+        '<path d="M7 3v18M5 3v5a2 2 0 0 0 4 0V3M17 3c-2 2-2 6 0 8v10"/>'),
+    "commerce": _SVG.format(
+        '<path d="M3 4h2l2.4 10.2a1 1 0 0 0 1 .8h8.8a1 1 0 0 0 1-.8L20 8H6.2"/>'
+        '<circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>'),
+    "bureau": _SVG.format(
+        '<path d="M5 21V4h10v17M15 9h4v12M3 21h18M8 8h1M11 8h1M8 12h1'
+        'M11 12h1M8 16h1M11 16h1"/>'),
+    "sante": _SVG.format(
+        '<rect x="4" y="4" width="16" height="16" rx="3"/>'
+        '<path d="M12 8v8M8 12h8"/>'),
+    "ecole": _SVG.format(
+        '<path d="M2 9l10-5 10 5-10 5z"/>'
+        '<path d="M6 11v5c3 2 9 2 12 0v-5M22 9v6"/>'),
+    "hammam": _SVG.format(
+        '<path d="M8 4c-1 1.5 1 2.5 0 4M12 4c-1 1.5 1 2.5 0 4'
+        'M16 4c-1 1.5 1 2.5 0 4"/>'
+        '<path d="M4 12h16v2a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z"/>'),
+    "boulangerie": _SVG.format(
+        '<path d="M5 18h14a2 2 0 0 0 2-2c0-5-4-9-9-9s-9 4-9 9a2 2 0 0 0 2 2z"/>'
+        '<path d="M9 10l-1.5 4M13 9.5l-1 4.5M16.5 10.5l-1 3.5"/>'),
+    "froid": _SVG.format(
+        '<path d="M12 2v20M4.5 6.5l15 11M19.5 6.5l-15 11M9 4l3 2 3-2'
+        'M9 20l3-2 3 2"/>'),
+    "autre": _SVG.format(
+        '<path d="M4 9l1.5-5h13L20 9M4 9h16M4 9a2.7 2.7 0 0 0 5.3 0 '
+        '2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0M5 11v10h14V11M10 21v-5h4v5"/>'),
 }
 
 #: Les catégories connues (mêmes clés que la table CIQ330).

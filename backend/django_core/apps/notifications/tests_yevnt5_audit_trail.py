@@ -67,7 +67,8 @@ class NotifyAuditTrailTests(TestCase):
                 return_value=_WEEKDAY_DAYTIME), mock.patch(
                 'apps.notifications.services._dispatch_email',
                 return_value=True) as mocked:
-            notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
         self.assertTrue(mocked.called)
         self.assertEqual(
             AuditLog.objects.filter(action=AuditLog.Action.EMAIL).count(), 1)
@@ -82,7 +83,8 @@ class NotifyAuditTrailTests(TestCase):
                 return_value=_WEEKDAY_DAYTIME), mock.patch(
                 'apps.notifications.services._dispatch_whatsapp',
                 return_value=True) as mocked:
-            notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
         self.assertTrue(mocked.called)
         self.assertEqual(
             AuditLog.objects.filter(action=AuditLog.Action.WHATSAPP).count(), 1)
@@ -97,7 +99,8 @@ class NotifyAuditTrailTests(TestCase):
                 return_value=_WEEKDAY_DAYTIME), mock.patch(
                 'apps.notifications.services._dispatch_email',
                 return_value=False):
-            notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
         entry = AuditLog.objects.filter(action=AuditLog.Action.EMAIL).first()
         self.assertIsNotNone(entry)
         self.assertIn('échoué', entry.detail)

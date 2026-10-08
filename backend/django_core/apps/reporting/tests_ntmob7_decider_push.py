@@ -42,13 +42,14 @@ class DeciderApprobationViaPushTests(TestCase):
     def test_approve_automation_via_token_without_any_session(self):
         approval = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
+        # APAR46 — le jeton porte un décideur au palier approbateur.
         token = make_approval_token(
-            self.user.id, 'automation', approval.id, 'approuver')
+            self.resp_user.id, 'automation', approval.id, 'approuver')
         resp = self.api.post(self._url(), {'token': token}, format='json')
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
         self.assertEqual(approval.status, AutomationApproval.Status.APPROVED)
-        self.assertEqual(approval.decided_by_id, self.user.id)
+        self.assertEqual(approval.decided_by_id, self.resp_user.id)
 
     def test_reject_automation_needs_no_motif_in_body(self):
         # NTMOB7 — contrairement à `decider/` (motif obligatoire pour un
@@ -57,7 +58,7 @@ class DeciderApprobationViaPushTests(TestCase):
         approval = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
         token = make_approval_token(
-            self.user.id, 'automation', approval.id, 'refuser')
+            self.resp_user.id, 'automation', approval.id, 'refuser')
         resp = self.api.post(self._url(), {'token': token}, format='json')
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
@@ -69,7 +70,7 @@ class DeciderApprobationViaPushTests(TestCase):
         approval = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
         token = make_approval_token(
-            self.user.id, 'automation', approval.id, 'refuser')
+            self.resp_user.id, 'automation', approval.id, 'refuser')
         resp = self.api.post(
             self._url(), {'token': token, 'decision': 'approuver'},
             format='json')

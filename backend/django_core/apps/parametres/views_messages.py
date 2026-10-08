@@ -9,7 +9,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 from .models import (
     CLES_RELANCE,
     MESSAGE_TEMPLATE_DEFAULTS,
@@ -20,11 +22,17 @@ from .models import (
 )
 
 
-# Placeholders proposés par clé (aide à la saisie côté UI).
-_MESSAGE_PLACEHOLDERS = {
-    'devis_unique': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'devis_multi_entete': ['{civilite}', '{nom}', '{n}'],
-    'devis_multi_ligne': ['{reference}', '{lien}'],
+# APAR12 — variables FOURNIES PAR LE RENDU de chaque clé, EN PLUS de celles
+# que porte son texte livré (``placeholders_autorises`` fait l'union). Avant,
+# ce dict tenu à la main ÉTAIT la liste blanche : les 4 modèles livrés absents
+# (rappel_rdv, livraison_*, relance_email_j10) refusaient leur PROPRE texte à
+# l'enregistrement, et ``{lien_rdv}`` — rendu par
+# ``ventes.utils.whatsapp.build_devis_whatsapp`` — était refusé sur les devis.
+_VARIABLES_RENDU = {
+    'devis_unique': ['{civilite}', '{nom}', '{reference}', '{lien}',
+                     '{lien_rdv}'],
+    'devis_multi_entete': ['{civilite}', '{nom}', '{n}', '{lien_rdv}'],
+    'devis_multi_ligne': ['{reference}', '{lien}', '{lien_rdv}'],
     'facture': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'relance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     # XSAV4 — notifications client aux transitions du ticket SAV.
@@ -32,9 +40,7 @@ _MESSAGE_PLACEHOLDERS = {
     'ticket_planifie': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'ticket_resolu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     # MRY12 — les clés du moteur de relances partagent LA MÊME liste
-    # autorisée (`PLACEHOLDERS_RELANCE`) : sans entrée ici, l'écran
-    # Paramètres → Messages refuserait tout placeholder à la sauvegarde
-    # (`_unknown_placeholders` prend un ensemble VIDE pour une clé absente).
+    # autorisée (`PLACEHOLDERS_RELANCE`).
     **{cle: list(PLACEHOLDERS_RELANCE) for cle in CLES_RELANCE},
 }
 
@@ -42,14 +48,27 @@ _MESSAGE_PLACEHOLDERS = {
 _PLACEHOLDER_RE = re.compile(r'\{[^{}]*\}')
 
 
+def placeholders_autorises(cle):
+    """APAR12 — liste blanche DÉRIVÉE de la source : variables fournies par
+    le rendu de la clé ∪ variables du texte livré (FR + Darija). Ordre stable
+    (rendu d'abord, puis première apparition dans les textes livrés)."""
+    vus = list(_VARIABLES_RENDU.get(cle, []))
+    for source in (MESSAGE_TEMPLATE_DEFAULTS,
+                   MESSAGE_TEMPLATE_DEFAULTS_DARIJA):
+        for tok in _PLACEHOLDER_RE.findall(source.get(cle, '') or ''):
+            if tok not in vus:
+                vus.append(tok)
+    return vus
+
+
 def _unknown_placeholders(text, cle):
     """Tokens {…} présents dans ``text`` mais NON autorisés pour cette clé.
 
     L775 — un modèle ne peut référencer que les placeholders whitelistés
-    (``_MESSAGE_PLACEHOLDERS``). Renvoie la liste, dans l'ordre, des tokens
-    inconnus (dédoublonnée) pour pouvoir nommer le fautif dans l'erreur FR.
+    (``placeholders_autorises``, APAR12). Renvoie la liste, dans l'ordre, des
+    tokens inconnus (dédoublonnée) pour nommer le fautif dans l'erreur FR.
     """
-    allowed = set(_MESSAGE_PLACEHOLDERS.get(cle, []))
+    allowed = set(placeholders_autorises(cle))
     seen = []
     for tok in _PLACEHOLDER_RE.findall(text or ''):
         if tok not in allowed and tok not in seen:
@@ -64,9 +83,14 @@ def messages_endpoint(request):
     Responsable promu, jamais le palier limité)."""
     if request.method == 'GET':
         return _messages_list(request)
-    if not IsAdminOrResponsableTier().has_permission(request, None):
+    # APAR5 — palier ET droit `parametres_modifier` (couple ASEC31) : le
+    # texte envoyé au client n'est plus réécrit par un rôle non habilité.
+    if not (IsAdminOrResponsableTier().has_permission(request, None)
+            and HasPermissionOrLegacy('parametres_modifier')()
+            .has_permission(request, None)):
         return Response(
-            {'detail': "Réservé à l'administrateur ou au responsable."},
+            {'detail': "Droit « Modifier les paramètres » requis.",
+             'code': 'droit_manquant'},
             status=status.HTTP_403_FORBIDDEN,
         )
     return _messages_save(request)
@@ -92,7 +116,7 @@ def _messages_list(request):
             # sans lui, l'écran Paramètres → Messages n'avait aucun moyen de
             # montrer le texte Darija validé en aperçu/défaut.
             'default_darija': MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle, ''),
-            'placeholders': _MESSAGE_PLACEHOLDERS.get(cle, []),
+            'placeholders': placeholders_autorises(cle),
         })
     return Response(out)
 
@@ -127,6 +151,14 @@ def _messages_save(request):
                 field=cle, field_label=f'Message {cle} (réinitialisé)',
                 old=before_fr, new=obj.corps_fr,
             )
+        if obj.corps_darija != before_darija:
+            # APAR28 — le texte Darija EFFACÉ par la réinitialisation reste
+            # lisible dans le journal (il n'était tracé nulle part).
+            SettingsAuditLog.log_change(
+                company=company, user=request.user, section='messages',
+                field=cle, field_label=f'Message {cle} (Darija réinitialisé)',
+                old=before_darija, new=obj.corps_darija,
+            )
         return Response({
             'cle': obj.cle, 'corps_fr': obj.corps_fr,
             'corps_darija': obj.corps_darija,
@@ -138,7 +170,7 @@ def _messages_save(request):
             continue
         inconnus = _unknown_placeholders(request.data.get(champ) or '', cle)
         if inconnus:
-            autorises = ' '.join(_MESSAGE_PLACEHOLDERS.get(cle, [])) or 'aucun'
+            autorises = ' '.join(placeholders_autorises(cle)) or 'aucun'
             return Response(
                 {'detail': f'Placeholder non supporté dans le message {langue} : '
                            f'{", ".join(inconnus)}. '

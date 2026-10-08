@@ -414,6 +414,7 @@ class DevisCycleActionsMixin:
         entre deux instantanés (ajoutées / retirées / modifiées). Lecture
         seule : ne crée ni ne modifie aucun instantané."""
         from ..services import diff_configurations_devis
+        from ..domain.historique_config import contenu_servi
         devis = self.get_object()
         snapshots = list(devis.config_snapshots.select_related('auteur').all())
         payload = {
@@ -423,7 +424,9 @@ class DevisCycleActionsMixin:
                 'auteur': (getattr(s.auteur, 'username', None)
                            if s.auteur_id else None),
                 'nb_lignes': len((s.contenu or {}).get('lignes') or []),
-                'contenu': s.contenu,
+                # AGNR9 — clés ÉCRAN absentes = null, même pour un
+                # instantané stocké avant (normalisation à la lecture).
+                'contenu': contenu_servi(s.contenu),
             } for s in snapshots],
         }
         a_id = request.query_params.get('a')
@@ -512,10 +515,7 @@ class DevisCycleActionsMixin:
         chatter du devis et avance le funnel CRM (→ SIGNED). C'est le
         déclencheur explicite de la création d'un chantier."""
         from datetime import date as _date
-        from ..services import (
-            accept_devis, AcceptError, verifier_credit_hold, CreditHoldError,
-            verifier_sale_warnings, SaleWarningError,
-        )
+        from ..services import accept_devis, AcceptError
         devis = self.get_object()
         nom = (request.data.get('nom') or '').strip()
         date_str = (request.data.get('date') or '').strip()
@@ -529,7 +529,8 @@ class DevisCycleActionsMixin:
         # ICE FACULTATIFS ici (D-CIQ-11 ne les exige qu'en ligne) ; un ICE
         # saisi est validé par ``validate_ice_ma`` (400 qui nomme le champ).
         from ..domain.cycle_vie import (
-            EntrepriseInvalide, lire_entreprise_acceptation,
+            AcceptationBloquee, EntrepriseInvalide,
+            lire_entreprise_acceptation,
         )
         try:
             entreprise = lire_entreprise_acceptation(
@@ -537,38 +538,6 @@ class DevisCycleActionsMixin:
         except EntrepriseInvalide as exc:
             return Response({'detail': exc.detail, 'champ': exc.champ},
                             status=status.HTTP_400_BAD_REQUEST)
-        # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op,
-        # comportement FG41 intact (avertissement seul). Flag ON et client en
-        # dépassement → 403, sauf override explicite responsable/admin
-        # (journalisé chatter + audit).
-        if devis.client_id is not None:
-            override = bool(request.data.get('override_credit'))
-            try:
-                verifier_credit_hold(
-                    devis.client, override=override, user=request.user,
-                    chatter_target=devis, contexte='acceptation devis')
-            except CreditHoldError as exc:
-                return Response(
-                    {'detail': (
-                        'Client en blocage crédit : '
-                        f'{exc.motif}. Un responsable/admin peut passer '
-                        'outre avec `override_credit: true`.'),
-                     'credit_hold': True},
-                    status=status.HTTP_403_FORBIDDEN)
-        # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide (défaut)
-        # → no-op. Bloquant → 403, sauf override responsable/admin journalisé.
-        try:
-            verifier_sale_warnings(
-                devis, override=bool(request.data.get('override_avertissement')),
-                user=request.user, chatter_target=devis)
-        except SaleWarningError as exc:
-            return Response(
-                {'detail': (
-                    f'Avertissement de vente bloquant : {exc.motif}. '
-                    'Un responsable/admin peut passer outre avec '
-                    '`override_avertissement: true`.'),
-                 'sale_warning': True},
-                status=status.HTTP_403_FORBIDDEN)
         # A1 — option retenue (« Sans batterie » / « Avec batterie »). La
         # résolution (deux options → choix explicite obligatoire ; mono-option
         # → déduit du scénario) et le tampon d'acceptation passent désormais
@@ -584,10 +553,33 @@ class DevisCycleActionsMixin:
             # acceptation réussie. On reprend donc sa VALEUR DE RETOUR — jamais
             # un second ``refresh_from_db`` qui redemanderait ce que le service
             # a déjà en main.
+            # ADEV13 — blocage crédit (XFAC28) et avertissement de vente
+            # bloquant (ZSAL9) : la garde vit DANS ``accept_devis`` (une seule
+            # règle pour les trois portes) ; cette vue ne fait que transmettre
+            # les drapeaux d'override et traduire le refus en 403 détaillé.
             devis = accept_devis(
                 devis=devis, user=request.user, nom=nom,
                 date_acceptation=date_acc, option=option,
-                idempotent_reaccept=False, entreprise=entreprise)
+                idempotent_reaccept=False, entreprise=entreprise,
+                override_credit=bool(request.data.get('override_credit')),
+                override_avertissement=bool(
+                    request.data.get('override_avertissement')))
+        except AcceptationBloquee as exc:
+            if exc.nature == 'credit_hold':
+                return Response(
+                    {'detail': (
+                        'Client en blocage crédit : '
+                        f'{exc.motif}. Un responsable ou un administrateur '
+                        'peut passer outre avec `override_credit: true`.'),
+                     'credit_hold': True},
+                    status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable ou un administrateur peut passer outre '
+                    'avec `override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
         except AcceptError as exc:
             return Response(
                 {'detail': exc.message},

@@ -68,8 +68,11 @@ class ExportSelecteurSocieteTests(TestCase):
         self.assertIn('company', resp.data)
 
     def test_endpoint_accepte_avec_selecteur(self):
+        # APRF15 — l'export des devis exporte une SÉLECTION (ids vide → 400).
+        ids = list(Devis.objects.filter(company=self.co_a)
+                   .values_list('id', flat=True))
         resp = _auth(self.root).post(
-            URL, {'company': self.co_a.id}, format='json')
+            URL, {'company': self.co_a.id, 'ids': ids}, format='json')
 
         self.assertEqual(resp.status_code, 200)
 
@@ -80,6 +83,8 @@ class ExportSelecteurSocieteTests(TestCase):
         self.assertEqual([r[0] for r in rows], ['DEV-A315'])
 
     def test_utilisateur_scope_exporte_toujours_sa_societe(self):
-        resp = _auth(self.staff_a).post(URL, {}, format='json')
+        ids = list(Devis.objects.filter(company=self.co_a)
+                   .values_list('id', flat=True))
+        resp = _auth(self.staff_a).post(URL, {'ids': ids}, format='json')
 
         self.assertEqual(resp.status_code, 200)

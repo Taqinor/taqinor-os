@@ -13,6 +13,7 @@ de dépendance externe nouvelle. Aucun prix d'achat ni marge n'est exposé.
   - sav_ticket:{'type': 'preventif', 'priorite': 'normale', 'description': '...'}
 """
 import logging
+import string
 
 from django.conf import settings
 
@@ -152,45 +153,253 @@ def _substitute_variables(body, context):
         return body
 
 
-def _message_body(rule, context):
-    """Corps du message : texte littéral, sinon modèle Paramètres existant.
+# ── APAR6 — résolveur UNIQUE des variables d'enregistrement ────────────────
+#
+# Les recettes et préréglages écrivent « Bonjour {client_nom}, votre facture
+# {reference} … » mais AUCUN émetteur (signal, balayage) ne fournit ces clés
+# dans ``context`` : le client recevait les accolades telles quelles, et un
+# sujet jamais substitué. Les variables partent désormais de l'INSTANCE
+# déclencheuse (aucun émetteur à modifier) ; ``context`` (variables métier
+# d'un émetteur, XPRJ23) complète et prime. ``entreprise`` = raison sociale du
+# profil de LA société (jamais la marque d'une autre).
 
-    Substitue les variables ``{var}`` (XPRJ23) depuis ``context`` quand le
-    corps en contient — no-op quand aucune accolade n'est présente
-    (comportement historique inchangé pour toutes les règles existantes).
+def _nom_personne(obj):
+    if obj is None:
+        return ''
+    morceaux = [getattr(obj, 'prenom', None), getattr(obj, 'nom', None)]
+    nom = ' '.join(str(m).strip() for m in morceaux if m and str(m).strip())
+    if nom:
+        return nom
+    return str(getattr(obj, 'raison_sociale', '') or '').strip()
+
+
+def _nom_entreprise(company):
+    nom = ''
+    try:
+        from apps.parametres.selectors import company_identity
+        nom = (company_identity(company) or {}).get('nom') or ''
+    except Exception:  # pragma: no cover - défensif
+        nom = ''
+    return nom or str(getattr(company, 'nom', '') or '')
+
+
+def variables_enregistrement(instance, company):
+    """Variables ``{…}`` résolues depuis l'enregistrement déclencheur.
+
+    Clés : ``entreprise``, ``reference``, ``client_nom``, ``produit_nom``,
+    ``numero_serie`` — une clé n'est présente que si l'enregistrement la
+    porte (une clé absente rend la variable NON résoluble). Lecture seule :
+    ne crée jamais de client (contrairement à ``_resolve_client`` sur un lead).
     """
+    valeurs = {}
+    entreprise = _nom_entreprise(company)
+    if entreprise:
+        valeurs['entreprise'] = entreprise
+    if instance is None:
+        return valeurs
+    reference = getattr(instance, 'reference', None)
+    if reference:
+        valeurs['reference'] = str(reference)
+    if _model_name(instance) == 'lead':
+        nom = _nom_personne(instance)
+    else:
+        nom = _nom_personne(client_de_la_fiche(instance))
+    if nom:
+        valeurs['client_nom'] = nom
+    if _model_name(instance) == 'produit':
+        produit_nom = getattr(instance, 'nom', None)
+    else:
+        produit_nom = getattr(getattr(instance, 'produit', None), 'nom', None)
+    if produit_nom:
+        valeurs['produit_nom'] = str(produit_nom)
+    if _has_field(instance, 'numero_serie'):
+        valeurs['numero_serie'] = str(getattr(instance, 'numero_serie', '') or '')
+    return valeurs
+
+
+def rendre_texte(texte, instance, company, context=None):
+    """APAR6 — rend ``texte`` : ``(rendu, variables_manquantes)``.
+
+    Toute variable non résoluble (inconnue, positionnelle ``{}``, accès
+    d'attribut ``{a.b}``, accolade non appariée) est listée dans
+    ``variables_manquantes`` et le texte est rendu TEL QUEL : l'appelant ne
+    l'envoie pas (jamais un message avec ``{…}``).
+    """
+    if not texte:
+        return texte or '', []
+    valeurs = variables_enregistrement(instance, company)
+    for cle, val in (context or {}).items():
+        if val is not None and not isinstance(val, (dict, list)):
+            valeurs[str(cle)] = val
+    try:
+        champs = [f for _, f, _, _ in string.Formatter().parse(texte)
+                  if f is not None]
+    except ValueError:
+        return texte, ['accolade non appariée']
+    manquantes = sorted({
+        f or '{}' for f in champs
+        if not f or not f.isidentifier() or f not in valeurs})
+    if manquantes:
+        return texte, manquantes
+    try:
+        return texte.format_map(valeurs), []
+    except Exception:  # pragma: no cover - défensif (spécificateur invalide)
+        return texte, ['format invalide']
+
+
+def motif_variables(manquantes, quoi):
+    """Motif FR d'un SKIPPED pour variables non résolues."""
+    liste = ', '.join(
+        m if m.startswith(('{', 'accolade', 'format')) else '{' + m + '}'
+        for m in manquantes)
+    return f'Variable(s) non résolue(s) : {liste} — {quoi}.'
+
+
+def _texte_brut(rule, company):
+    """Corps BRUT configuré : texte littéral, sinon modèle Paramètres."""
     cfg = rule.action_config or {}
-    body = cfg.get('body')
+    # APAR25 — les préréglages WhatsApp écrivent leur texte sous ``message`` :
+    # la clé n'était jamais lue (corps vide).
+    body = cfg.get('body') or cfg.get('message')
     if body:
-        return _substitute_variables(body, context)
+        return body
     template_key = cfg.get('template')
     if template_key:
         try:
             from apps.parametres.models_messages import MessageTemplate
-            corps = MessageTemplate.get_corps(
-                rule.company, template_key, cfg.get('langue', 'fr'))
-            return _substitute_variables(corps, context)
+            return MessageTemplate.get_corps(
+                company, template_key, cfg.get('langue', 'fr')) or ''
         except Exception:
             return ''
     return ''
 
 
-def _send_whatsapp(rule, instance, company, context, user):
-    # WhatsApp est un canal MANUEL (lien wa.me) — aucun envoi automatique
-    # n'existe dans l'app. On prépare donc le lien et on journalise ; pas
-    # d'effet réseau. Sans numéro exploitable → no-op.
+def _message_body(rule, context, instance=None, company=None):
+    """Corps du message : texte littéral, sinon modèle Paramètres existant.
+
+    Substitue les variables ``{var}`` connues (enregistrement — APAR6 — puis
+    ``context``, XPRJ23) ; une variable inconnue reste littérale. Les envois
+    e-mail passent par :func:`rendre_texte` (strict : SKIPPED si une variable
+    manque).
+    """
+    if company is None:
+        company = getattr(rule, 'company', None)
+    brut = _texte_brut(rule, company)
+    if not brut:
+        return ''
+    valeurs = variables_enregistrement(instance, company)
+    valeurs.update(context or {})
+    return _substitute_variables(brut, valeurs)
+
+
+# ── APAR26 — fenêtre des messages de la société ────────────────────────────
+#
+# Décision fondateur « messages ≥ 8 h 30 » : un client ne reçoit pas un e-mail
+# d'automatisation à 23 h 30. Hors de la fenêtre (lecteur canonique
+# ``notifications.selectors.fenetre_notifications`` — jours ouvrés, fériés,
+# Ramadan, horaires ``crm.horaires``), l'envoi est REPORTÉ au prochain créneau
+# par une étape planifiée (mécanique NTEXT7, reprise par le beat
+# ``automation-process-due-steps``) — jamais sauté. Même interrupteur
+# d'urgence que les notifications (``NOTIFICATIONS_QUIET_HOURS_ENABLED``).
+
+def reporter_hors_fenetre(rule, instance, company, context):
+    """``None`` si l'envoi peut partir maintenant ; sinon planifie la reprise
+    au prochain créneau et rend ``(NOOP, motif)``. Best-effort : toute erreur
+    de lecture des horaires laisse partir l'envoi (jamais perdu)."""
+    if not getattr(settings, 'NOTIFICATIONS_QUIET_HOURS_ENABLED', False):
+        return None
+    try:
+        from apps.notifications.selectors import fenetre_notifications
+        fenetre = fenetre_notifications(company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+    if fenetre.ouverte:
+        return None
+    try:
+        from django.utils import timezone
+
+        from .engine import CLE_REPORT_FENETRE, _json_safe, _model_label
+        from .models import AutomationScheduledStep
+        regle = getattr(rule, '_rule', rule)  # étape (_StepView) ou règle
+        index = 0
+        step = getattr(rule, 'step', None)
+        if step is not None:
+            index = [s.pk for s in regle.steps.all()].index(step.pk)
+        AutomationScheduledStep.objects.create(
+            company=company, rule=regle,
+            target_model=_model_label(instance),
+            target_id=getattr(instance, 'pk', None),
+            next_step_index=index, run_at=fenetre.prochaine_ouverture,
+            context={**_json_safe(context or {}), CLE_REPORT_FENETRE: True})
+        quand = timezone.localtime(fenetre.prochaine_ouverture)
+    except Exception:  # pragma: no cover - défensif : jamais d'envoi perdu
+        logger.exception('automation: report hors fenêtre impossible')
+        return None
+    return Status.NOOP, (
+        f'Hors de la fenêtre des messages : envoi reporté au '
+        f'{quand:%d/%m/%Y à %H:%M}.')
+
+
+#: APAR25 — résumé de la tâche qui porte le lien WhatsApp préparé.
+RESUME_TACHE_WHATSAPP = 'Envoyer ce WhatsApp'
+
+
+def preparer_whatsapp(rule, instance, company, context):
+    """APAR25 — prédicat PARTAGÉ par le handler et la simulation.
+
+    Renvoie ``(motif_noop, phone, url, body)`` : ``motif_noop`` non vide ⇒
+    rien ne serait produit (et rien n'est produit)."""
+    if instance is None or getattr(instance, 'pk', None) is None:
+        return 'Aucune fiche cible : lien WhatsApp non conservé.', None, None, ''
     phone = _resolve_phone(instance)
     if not phone:
-        return Status.NOOP, 'Aucun numéro WhatsApp : envoi ignoré.'
-    body = _message_body(rule, context)
+        return 'Aucun numéro WhatsApp : envoi ignoré.', None, None, ''
+    body = _message_body(rule, context, instance, company)
     try:
         from apps.ventes.utils.whatsapp import build_wa_url
         url = build_wa_url(phone, body or '')
     except Exception:
         url = None
     if not url:
-        return Status.NOOP, 'Numéro WhatsApp inexploitable : envoi ignoré.'
-    return Status.SUCCESS, f'Lien WhatsApp préparé pour {phone}.'
+        return ('Numéro WhatsApp inexploitable : envoi ignoré.', phone, None,
+                body)
+    return '', phone, url, body
+
+
+def _creer_tache(instance, company, user, resume, note):
+    """Tâche planifiée (chatter générique ``records.Activity``, app de
+    fondation) rattachée à la fiche cible, échéance aujourd'hui."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.utils import timezone
+
+    from apps.records.models import Activity
+    return Activity.objects.create(
+        company=company,
+        content_type=ContentType.objects.get_for_model(instance.__class__),
+        object_id=instance.pk,
+        summary=resume[:255], note=note or '',
+        due_date=timezone.localdate(), created_by=user)
+
+
+def _send_whatsapp(rule, instance, company, context, user):
+    # WhatsApp est un canal MANUEL (lien wa.me) — aucun envoi automatique
+    # n'existe dans l'app. APAR25 — le lien n'était que journalisé (SUCCESS
+    # sans effet observable) : il est désormais CONSERVÉ comme tâche
+    # « Envoyer ce WhatsApp » sur la fiche, que l'équipe ouvre et envoie.
+    motif, phone, url, body = preparer_whatsapp(
+        rule, instance, company, context)
+    if motif:
+        return Status.NOOP, motif
+    report = reporter_hors_fenetre(rule, instance, company, context)
+    if report is not None:  # APAR26 — jamais en pleine nuit
+        return report
+    try:
+        _creer_tache(instance, company, user, RESUME_TACHE_WHATSAPP,
+                     f'{body}\n\n{url}' if body else url)
+    except Exception as exc:
+        return Status.FAILED, f'Tâche WhatsApp non créée : {exc}'
+    return Status.SUCCESS, (
+        f'Tâche « {RESUME_TACHE_WHATSAPP} » créée (lien pour {phone}).')
 
 
 def _send_email(rule, instance, company, context, user):
@@ -204,9 +413,20 @@ def _send_email(rule, instance, company, context, user):
     # comportement reste identique à l'ancien sujet codé en dur.
     tmpl_objet, tmpl_corps = ModeleMessage.resolve(
         company, CanalMessage.EMAIL)
-    body = _message_body(rule, context) or tmpl_corps
-    subject = (rule.action_config or {}).get('subject') or tmpl_objet \
-        or 'Notification Taqinor'
+    # APAR6 — sujet ET corps rendus par le résolveur unique ; une variable
+    # non résoluble ⇒ SKIPPED motivé, jamais un e-mail avec des accolades.
+    subject, manque_sujet = rendre_texte(
+        (rule.action_config or {}).get('subject') or tmpl_objet
+        or SUJET_EMAIL_DEFAUT, instance, company, context)
+    body, manque_corps = rendre_texte(
+        _texte_brut(rule, company) or tmpl_corps, instance, company, context)
+    manquantes = sorted(set(manque_sujet) | set(manque_corps))
+    if manquantes:
+        return Status.SKIPPED, motif_variables(
+            manquantes, 'e-mail non envoyé')
+    report = reporter_hors_fenetre(rule, instance, company, context)
+    if report is not None:  # APAR26 — aucun e-mail client en pleine nuit
+        return report
     from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or \
         getattr(settings, 'CONTACT_FROM_EMAIL', 'no-reply@taqinor.ma')
     try:
@@ -224,8 +444,17 @@ def _send_email(rule, instance, company, context, user):
     return Status.SUCCESS, f'Email envoyé à {to}.'
 
 
+#: APAR6 — repli de sujet : la société, jamais « Taqinor » pour tout tenant.
+SUJET_EMAIL_DEFAUT = 'Notification {entreprise}'
+
+
+#: APAR25 — actions retirées du catalogue (création refusée) tant qu'aucun
+#: fournisseur ne les exécute : leur simulation et leur exécution sont NOOP.
+ACTIONS_INDISPONIBLES = frozenset({ActionType.SEND_SMS})
+
+
 def _send_sms(rule, instance, company, context, user):
-    # Aucun fournisseur SMS n'est configuré dans le repo : no-op sûr.
+    # Aucun fournisseur SMS n'est branché sur les automatisations : no-op sûr.
     phone = _resolve_phone(instance)
     if not phone:
         return Status.NOOP, 'Aucun numéro : SMS ignoré.'
@@ -239,6 +468,19 @@ def _create_activity(rule, instance, company, context, user):
     disponible). Pour les autres modèles → no-op journalisé."""
     body = (rule.action_config or {}).get('body') or rule.nom
     label = getattr(getattr(instance, '_meta', None), 'model_name', '')
+    if instance is None or getattr(instance, 'pk', None) is None:
+        return Status.NOOP, 'Aucune fiche cible : activité ignorée.'
+    if label != 'lead':
+        # APAR25 — produit, contrat, équipement… : note sur le chatter
+        # GÉNÉRIQUE de la fiche (``records``) au lieu d'un SUCCESS/NOOP sans
+        # effet — les recettes « stock bas », « maintenance due » produisent
+        # enfin ce qu'elles annoncent.
+        try:
+            from apps.records.services import log_note
+            log_note(instance, user, body, company=company)
+            return Status.SUCCESS, 'Activité (note) créée sur la fiche.'
+        except Exception as exc:
+            return Status.FAILED, f'Activité non créée : {exc}'
     if label == 'lead':
         try:
             from apps.crm.models import LeadActivity
@@ -296,11 +538,15 @@ def _set_field(rule, instance, company, context, user):
             'assignables (machine à états / champ financier / non déclaré) : '
             'refusé.')
     value = cfg.get('value')
+    ancienne = getattr(instance, field, None)
     try:
         setattr(instance, field, value)
         instance.save(update_fields=[field])
         return Status.SUCCESS, f'Champ « {field} » mis à jour.'
     except Exception as exc:
+        # APAR10 — l'écriture est annulée (point de sauvegarde du moteur) :
+        # l'instance de l'émetteur ne garde pas la valeur refusée en mémoire.
+        setattr(instance, field, ancienne)
         return Status.FAILED, f'Mise à jour échouée : {exc}'
 
 
@@ -394,6 +640,13 @@ def _create_sav_ticket(rule, instance, company, context, user):
     client = _resolve_client(instance)
     if client is None:
         return Status.NOOP, 'Aucun client résolu : ticket SAV ignoré.'
+    # APAR6 — description rendue par le résolveur unique (plus d'accolades
+    # brutes dans le ticket).
+    description, manquantes = rendre_texte(
+        cfg.get('description') or rule.nom, instance, company, context)
+    if manquantes:
+        return Status.SKIPPED, motif_variables(
+            manquantes, 'ticket SAV non créé')
     try:
         from apps.sav.models import Ticket
         from apps.ventes.utils.references import create_with_reference
@@ -409,7 +662,7 @@ def _create_sav_ticket(rule, instance, company, context, user):
                 installation=installation,
                 type=cfg.get('type', Ticket.Type.PREVENTIF),
                 priorite=cfg.get('priorite', Ticket.Priorite.NORMALE),
-                description=cfg.get('description') or rule.nom,
+                description=description,
                 created_by=user,
             )
 
@@ -581,8 +834,23 @@ def _has_field(instance, name):
     return name in {f.name for f in meta.concrete_fields}
 
 
-def _resolve_client(instance):
+def client_de_la_fiche(instance):
+    """Client DÉJÀ lié à la fiche (lecture seule, ne crée jamais) : champ
+    ``client``, sinon ``installation.client``, sinon ``client_vente`` (APAR25
+    — un équipement porte son client par l'installation ou la vente)."""
+    if instance is None:
+        return None
     client = getattr(instance, 'client', None)
+    if client is None:
+        client = getattr(getattr(instance, 'installation', None), 'client',
+                         None)
+    if client is None:
+        client = getattr(instance, 'client_vente', None)
+    return client
+
+
+def _resolve_client(instance):
+    client = client_de_la_fiche(instance)
     if client is not None:
         return client
     # Un lead peut résoudre vers un client via le service CRM existant.

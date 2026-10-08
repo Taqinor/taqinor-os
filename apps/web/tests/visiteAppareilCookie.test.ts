@@ -168,6 +168,12 @@ function makeCookieStore(): SimpleCookieStore & { data: Map<string, string> } {
 const UUID_A = '550e8400-e29b-41d4-a716-446655440000';
 const UUID_B = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
+// AACQ44 — appareilId() porte la garde de consentement : les cas directs
+// ci-dessous testent le chemin « consentement accordé » (le describe
+// demarrerBalise, plus bas, remet lui-même tq_consent à zéro avant chaque cas).
+beforeEach(() => localStorage.setItem('tq_consent', 'granted'));
+afterEach(() => localStorage.removeItem('tq_consent'));
+
 describe('appareilId — priorité cookie > storage', () => {
   it('le cookie plausible gagne même si le storage porte déjà une AUTRE valeur plausible', () => {
     const storage = makeStorage();
@@ -408,6 +414,9 @@ describe("demarrerBalise — consentement gate le cookie ET le localStorage (M2)
     expect(setItemSpy).not.toHaveBeenCalled();
     expect(cookieWrites.some((w) => w.startsWith('tq_appareil='))).toBe(false);
 
+    // Comme ConsentBanner.astro : tq_consent est écrit AVANT l'événement
+    // (AACQ44 : appareilId() relit ce consentement).
+    localStorage.setItem('tq_consent', 'granted');
     window.dispatchEvent(new CustomEvent('tq:consent-change', { detail: { value: 'granted' } }));
 
     expect(setItemSpy).toHaveBeenCalled();

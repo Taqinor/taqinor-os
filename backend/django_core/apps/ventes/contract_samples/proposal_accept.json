@@ -1,0 +1,89 @@
+{
+  "endpoint": "POST /api/django/public/proposal/<token>/accept/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ADEV2 (C-ADEV-015 à C-ADEV-019, action de classe PACT10 de la page publique, 08/10/2026) — CONTRAT D'ABORD, posé SEUL sur main, backend + copie jumelle `apps/web/src/contract_samples/proposal_accept.json` (JSON-égales : `scripts/check_api_shapes.py` et `apps/web/tests/contractSamplesParite.test.ts`). Aujourd'hui `apps/web/src/lib/proposition.ts::normalizeAcceptResponse` traite TOUT 409 comme un succès et l'acceptation n'a aucun contrat : ce fichier fige le corps (`exemple`), la réponse 200 (`reponse_200`, avec `paiement`) et les réponses 409 `{detail, code}` aux codes FERMÉS (`codes_409`), plus le 409 `aucun_canal` des demandes d'OTP (`otp`). Même vue sous le mount `ventes/` (`/api/django/ventes/proposal/<token>/accept/`) — jamais de logique dupliquée. Le bloc `entreprise` (C&I) est celui de `acceptation_entreprise.json` (CIW305) : référencé, jamais redéfini ici. Moitiés : serveur ADEV49-ADEV53 et ADEV20 (OTP), page web ADEV48-ADEV53 — toutes `@after: ADEV2` (PACT11). AUCUN statut nouveau (règle #4 : brouillon/envoye/accepte/refuse/expire restent 1:1). Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "nom": "Karim Exemple",
+    "option": "sans",
+    "consent_esign": true,
+    "signature_data_url": "data:image/png;base64,iVBORw0KGgo...",
+    "signed_at_client": "2026-10-08T10:15:00+00:00",
+    "on_behalf_of": "",
+    "otp_code": "",
+    "empreinte_contenu": "3f9a1c0e7b2d4a65c8e1f0b97d3a2c4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c"
+  },
+  "corps": {
+    "empreinte_contenu": "Texte, OBLIGATOIRE : la valeur `empreinte_contenu` servie par `proposal_data` (contrat `proposal_data.json`, fragment `exemple_adev2`) au moment où le client a lu la proposition. Différente de l'empreinte courante ⇒ 409 `empreinte_perimee` (le client a lu un autre contenu que celui qu'il signerait).",
+    "entreprise": "Bloc C&I défini par `acceptation_entreprise.json` (CIW305) — référencé, pas dupliqué.",
+    "autres": "`nom`, `option`, `consent_esign`, `signature_data_url`, `signed_at_client`, `on_behalf_of`, `otp_code` : inchangés (vue `public/signature_views.proposal_accept`)."
+  },
+  "reponse_200": {
+    "detail": "Proposition acceptée. Merci !",
+    "reference": "DEV-202610-0004",
+    "statut": "accepte",
+    "accepte_par_nom": "Karim Exemple",
+    "paiement": {
+      "acompte_ttc": "12000.00",
+      "pourcentage": 30,
+      "rib": "",
+      "message": "",
+      "declare_url": "/api/django/public/proposal/<token>/virement/",
+      "card_payment_url": null
+    },
+    "entreprise": null
+  },
+  "codes_409": [
+    "version_remplacee",
+    "inactive",
+    "expiree",
+    "brouillon",
+    "empreinte_perimee",
+    "validation_requise",
+    "statut"
+  ],
+  "reponses_409": {
+    "forme": "Toute réponse 409 de l'acceptation porte EXACTEMENT `{detail, code}` : `detail` = phrase française affichée telle quelle par la page, `code` ∈ `codes_409` (liste FERMÉE — un code hors liste est un bug du serveur). La page ne traite JAMAIS un 409 comme un succès.",
+    "version_remplacee": {
+      "detail": "Cette proposition a été remplacée par une version plus récente : ouvrez le nouveau lien.",
+      "code": "version_remplacee"
+    },
+    "inactive": {
+      "detail": "Cette proposition n'est plus active.",
+      "code": "inactive"
+    },
+    "expiree": {
+      "detail": "Cette offre a expiré : contactez votre conseiller pour une nouvelle proposition.",
+      "code": "expiree"
+    },
+    "brouillon": {
+      "detail": "Cette proposition n'a pas encore été envoyée : elle ne peut pas être signée.",
+      "code": "brouillon"
+    },
+    "empreinte_perimee": {
+      "detail": "La proposition a changé depuis votre lecture : rechargez la page avant de signer.",
+      "code": "empreinte_perimee"
+    },
+    "validation_requise": {
+      "detail": "Cette proposition attend une validation interne avant de pouvoir être signée.",
+      "code": "validation_requise"
+    },
+    "statut": {
+      "detail": "Cette proposition ne peut plus être signée dans son état actuel.",
+      "code": "statut"
+    }
+  },
+  "otp": {
+    "endpoints": [
+      "POST /api/django/public/proposal/<token>/otp/",
+      "POST /api/django/public/proposal/<token>/otp-lecture/demander/"
+    ],
+    "regle": "« Code envoyé. » (200) seulement si un code est réellement parti ; sinon 409 `{detail, code: \"aucun_canal\"}` et aucun code mis en cache (ADEV20).",
+    "reponse_200": {
+      "detail": "Code envoyé."
+    },
+    "reponse_409": {
+      "detail": "Aucun moyen d'envoyer le code : contactez votre conseiller.",
+      "code": "aucun_canal"
+    }
+  }
+}

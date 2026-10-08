@@ -12,7 +12,12 @@ export const fetchMe = createAsyncThunk(
       const { data } = await api.get('/auth/me/')
       return data
     } catch (err) {
-      return rejectWithValue(err.response?.data)
+      // ADEP33 — le rejet DISTINGUE un refus d'authentification (401/403) d'une
+      // panne : ``reseau`` = aucune réponse reçue (hors ligne, DNS, timeout),
+      // ``status`` = code HTTP reçu (null sans réponse). Contrat interne front
+      // consommé par le routeur (ADEP19).
+      const status = err?.response?.status ?? null
+      return rejectWithValue({ status, reseau: !err?.response })
     }
   }
 )
@@ -47,6 +52,9 @@ const authSlice = createSlice({
     // aujourd'hui (aucun module masqué tant qu'aucun toggle n'existe).
     modulesDesactives: [],
     isAuthenticated: false,
+    // ADEP33 — vrai quand /auth/me/ n'a PAS pu trancher (panne réseau, 5xx) :
+    // la session courante est conservée, ni confirmée ni révoquée.
+    sessionInconnue: false,
     loading: true, // true au demarrage : on verifie la session
   },
   reducers: {
@@ -58,6 +66,7 @@ const authSlice = createSlice({
       state.permissions = action.payload.permissions || []
       state.modulesDesactives = action.payload.modules_desactives || []
       state.isAuthenticated = true
+      state.sessionInconnue = false
       state.loading = false
     },
     logout: (state) => {
@@ -67,6 +76,7 @@ const authSlice = createSlice({
       state.permissions = []
       state.modulesDesactives = []
       state.isAuthenticated = false
+      state.sessionInconnue = false
       state.loading = false
     },
   },
@@ -87,12 +97,23 @@ const authSlice = createSlice({
         state.permissions = action.payload.permissions || []
         state.modulesDesactives = action.payload.modules_desactives || []
         state.isAuthenticated = true
+        state.sessionInconnue = false
         state.loading = false
       })
-      .addCase(fetchMe.rejected, (state) => {
-        // Pas de session valide
-        state.isAuthenticated = false
+      .addCase(fetchMe.rejected, (state, action) => {
         state.loading = false
+        const status = action.payload?.status
+        if (status === 401 || status === 403) {
+          // Refus d'authentification : pas de session valide (comme avant).
+          state.isAuthenticated = false
+          state.sessionInconnue = false
+          return
+        }
+        // ADEP33 — panne (pas de réponse, 5xx, autre) : le serveur n'a PAS dit
+        // « non authentifié ». On ne déconnecte pas : la session (et le profil)
+        // courants sont conservés tels quels — un démarrage à froid reste donc
+        // non authentifié (état initial), aucune session n'est jamais créée ici.
+        state.sessionInconnue = true
       })
   },
 })

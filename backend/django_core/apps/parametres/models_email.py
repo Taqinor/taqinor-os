@@ -20,7 +20,11 @@ dur pour l'instant — le câblage est volontairement laissé à une autre lane 
 ici on fournit seulement le modèle + l'API + l'aide ``get_template`` /
 ``render``.
 """
+import logging
+
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 
 # Sujet + corps par défaut pour chaque clé. Le défaut s'applique tant que la
@@ -284,9 +288,42 @@ class EmailTemplate(models.Model):
         }
 
 
-def _safe_format(text, context):
-    """``str.format``-like qui laisse intacts les tokens absents du contexte."""
-    class _Default(dict):
-        def __missing__(self, key):
-            return '{' + key + '}'
+class _Default(dict):
+    def __missing__(self, key):
+        return '{' + key + '}'
+
+
+def _formater(text, context):
+    """Rendu STRICT (lève sur une accolade non appariée)."""
     return (text or '').format_map(_Default(context))
+
+
+def _safe_format(text, context):
+    """``str.format``-like qui laisse intacts les tokens absents du contexte.
+
+    APAR13 — TOLÉRANT : un modèle déjà en base mal saisi (« Total 5 } »,
+    « Réf {abc ») ne fait plus lever l'envoi d'un devis (500) : le texte BRUT
+    part et un avertissement est journalisé."""
+    try:
+        return _formater(text, context)
+    except (ValueError, IndexError, KeyError, AttributeError) as exc:
+        logger.warning("Modèle d'e-mail mal formé (%s) : texte brut envoyé.",
+                       exc)
+        return text or ''
+
+
+#: APAR13 — message sous le champ quand le texte ne se rend pas.
+MESSAGE_ACCOLADE = (
+    "Accolade non fermée ou isolée : un placeholder s'écrit entre deux "
+    "accolades, par exemple {reference}.")
+
+
+def erreur_de_rendu(text):
+    """APAR13 — ``None`` si ``text`` se rend par le MÊME moteur que l'envoi
+    (``_formater`` sur un contexte factice), sinon le message FR à afficher
+    sous le champ."""
+    try:
+        _formater(text, {})
+    except (ValueError, IndexError, KeyError, AttributeError):
+        return MESSAGE_ACCOLADE
+    return None

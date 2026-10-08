@@ -37,15 +37,69 @@ def _ligne_contenu(ligne):
     return contenu
 
 
+def _cles_etude_ecran():
+    """AGNR9 — les clés d'ENTRÉE ÉCRAN du schéma, dans son ordre (aucune
+    liste codée en dur)."""
+    from apps.ventes.domain.etude_schema import ECRAN, ENTREE, SCHEMA
+    return [cle for cle, regle in SCHEMA.items()
+            if regle.get('nature') == ENTREE
+            and regle.get('proprietaire') == ECRAN]
+
+
 def _etude_contenu(devis):
     """QJR551 — les clés d'ENTRÉE de l'étude que l'ÉCRAN possède (schéma
     ``etude_schema.SCHEMA``, aucune liste codée en dur) : ce que
-    « Revenir à cette version » rejoue par ``etude_params`` (contrat QJR504)."""
-    from apps.ventes.domain.etude_schema import ECRAN, ENTREE, SCHEMA
+    « Revenir à cette version » rejoue par ``etude_params`` (contrat QJR504).
+
+    AGNR9 (C-AGNR-013) — CHAQUE clé ÉCRAN est portée, une clé absente du
+    devis valant ``None`` : rejouée par replace-lines, ``etude_schema.ecrire``
+    RETIRE la clé (``None`` = retrait). Restaurer V1 retire donc le ×4
+    (``nombre_proprietes``) ou le ``kit_retire`` posé depuis — avant, la clé
+    absente de V1 n'était pas dans l'instantané et survivait à la
+    restauration."""
     etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
-    return {cle: etude[cle] for cle, regle in SCHEMA.items()
-            if regle.get('nature') == ENTREE
-            and regle.get('proprietaire') == ECRAN and cle in etude}
+    return {cle: etude.get(cle) for cle in _cles_etude_ecran()}
+
+
+def contenu_servi(contenu):
+    """AGNR9 — un instantané tel qu'on le SERT (« Historique »), y compris un
+    instantané stocké AVANT AGNR9 : chaque clé ÉCRAN absente de son ``etude``
+    vaut ``None`` (normalisation à la lecture, aucune migration). Ne modifie
+    jamais l'objet stocké."""
+    if not isinstance(contenu, dict):
+        return contenu
+    etude = contenu.get('etude')
+    etude = dict(etude) if isinstance(etude, dict) else {}
+    for cle in _cles_etude_ecran():
+        etude.setdefault(cle, None)
+    return {**contenu, 'etude': etude}
+
+
+def _entete_valeur(valeur):
+    """ADEV18 — une valeur d'en-tête JSON-safe (Decimal → str, date → ISO)."""
+    import datetime as _dt
+    if isinstance(valeur, (_dt.date, _dt.datetime)):
+        return valeur.isoformat()
+    if isinstance(valeur, list):
+        return list(valeur)
+    return _valeur_json(valeur)
+
+
+def cle_entete(champ):
+    """ADEV18 — la clé d'instantané d'un champ d'en-tête visible : la clé
+    étrangère voyage par son nom d'écriture (``client_id`` → ``client``),
+    celui qu'accepte l'``entete`` de replace-lines (contrat QJR504)."""
+    return champ[:-3] if champ.endswith('_id') else champ
+
+
+def _entete_contenu(devis):
+    """ADEV18 — TOUS les champs d'en-tête que le client voit, sur la liste
+    UNIQUE ``modifiabilite.CHAMPS_ENTETE_VISIBLES`` (celle que lit
+    ``empreinte_visible`` : aucune liste retapée). Rejouée telle quelle comme
+    ``entete`` de replace-lines par « Revenir à cette version »."""
+    from apps.ventes.domain.modifiabilite import CHAMPS_ENTETE_VISIBLES
+    return {cle_entete(champ): _entete_valeur(getattr(devis, champ, None))
+            for champ in CHAMPS_ENTETE_VISIBLES}
 
 
 def _totaux_contenu(devis):
@@ -64,7 +118,12 @@ def configuration_devis_contenu(devis):
     QJR551 — instantané COMPLET et RESTAURABLE : chaque ligne porte les champs
     de ``domain/lignes.CHAMPS_CLONES`` (sans id de ligne), plus
     ``remise_globale``, ``echeancier`` (D-QJR5-10), les clés d'entrée ÉCRAN de
-    l'étude et les totaux HT net / TTC. JAMAIS de prix d'achat ni de marge."""
+    l'étude et les totaux HT net / TTC. JAMAIS de prix d'achat ni de marge.
+
+    ADEV18 — plus la ``note`` client et l'``entete`` complet (client,
+    validité, TVA, remise, échéancier, acompte) : une correction qui ne
+    change QUE ces champs crée un nouvel instantané, et la restauration les
+    rejoue (``entete`` + ``note`` → replace-lines)."""
     echeancier = devis.echeancier
     return {
         'lignes': [_ligne_contenu(li)
@@ -72,6 +131,8 @@ def configuration_devis_contenu(devis):
         'remise_globale': _valeur_json(devis.remise_globale),
         'echeancier': (list(echeancier) if isinstance(echeancier, list)
                        else echeancier),
+        'note': devis.note or '',
+        'entete': _entete_contenu(devis),
         'etude': _etude_contenu(devis),
         'totaux': _totaux_contenu(devis),
     }
