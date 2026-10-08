@@ -1919,11 +1919,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         interventions sans technicien sont groupées sous la clé `non_assigne`."""
         from django.contrib.auth import get_user_model
         User = get_user_model()
-        company = request.user.company
         params = request.query_params
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        qs = Intervention.objects.filter(company=company, annulee=False)
+        # ACHT50 — part du queryset du viewset (société + portée de
+        # visibilité Feature F) : un Technicien de portée équipe ne voit ici
+        # que ce que sa liste lui montre.
+        qs = self.get_queryset().filter(annulee=False)
         if date_from:
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:

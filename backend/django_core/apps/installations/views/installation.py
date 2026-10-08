@@ -989,9 +989,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         issues des jalons (date_signature → date_cloture). Lecture seule. Renvoie
         chantiers actifs (non clôturés, non annulés) avec leurs jalons datés pour
         un rendu recharts/Gantt côté frontend."""
-        company = request.user.company
-        qs = (Installation.objects
-              .filter(company=company, annule=False)
+        # ACHT50 — part du queryset du viewset (société + portée de
+        # visibilité Feature F) ; les préchargements de la liste sont inutiles
+        # ici (lecture de colonnes à plat).
+        qs = (self.get_queryset().prefetch_related(None)
+              .filter(annule=False)
               .exclude(statut=Installation.Statut.CLOTURE)
               .select_related('client', 'technicien_responsable')
               .order_by('date_pose_prevue', 'date_creation'))
