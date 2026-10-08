@@ -4363,6 +4363,90 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
     return {'jour': str(jour), 'propositions': propositions}
 
 
+MESSAGE_DATE_INVALIDE = 'Date invalide (AAAA-MM-JJ).'
+
+
+def parser_date_rdv(brut):
+    """ACHT38 — date de rendez-vous parsée et validée (AAAA-MM-JJ). Lève
+    `ValueError(MESSAGE_DATE_INVALIDE)` : jamais d'écriture d'une chaîne brute
+    sur un `DateField` (500 + transaction cassée)."""
+    import datetime
+    from django.utils.dateparse import parse_date
+
+    if isinstance(brut, datetime.datetime):
+        return brut.date()
+    if isinstance(brut, datetime.date):
+        return brut
+    try:
+        valeur = parse_date(str(brut or '').strip())
+    except ValueError:
+        valeur = None
+    if valeur is None:
+        raise ValueError(MESSAGE_DATE_INVALIDE)
+    return valeur
+
+
+def enregistrer_report_rdv(intervention, ancienne_date, motif, user, *,
+                           confirme=None, trace=True):
+    """ACHT38 — effets d'un REPORT de rendez-vous (la date est déjà écrite) :
+    confirmation remise à zéro (le client n'a pas accepté la nouvelle date),
+    compteur `rdv_reschedule_count` incrémenté atomiquement (F, AUD829), trace
+    au chatter. `confirme` (optionnel) repose explicitement la confirmation
+    après le report (geste « confirmer-rdv » avec nouvelle date)."""
+    from django.db.models import F
+    from django.utils import timezone
+    from . import intervention_activity
+
+    intervention.rdv_confirme = bool(confirme)
+    intervention.rdv_confirme_le = timezone.now() if confirme else None
+    intervention.save(update_fields=['rdv_confirme', 'rdv_confirme_le'])
+    type(intervention).objects.filter(pk=intervention.pk).update(
+        rdv_reschedule_count=F('rdv_reschedule_count') + 1)
+    intervention.refresh_from_db(fields=['rdv_reschedule_count'])
+    if trace:
+        motif = (motif or '').strip()
+        intervention_activity.log_note(
+            intervention, user,
+            f"RDV reporté du {ancienne_date or '—'} au "
+            f"{intervention.date_prevue}"
+            f"{f' ({motif})' if motif else ''} "
+            f"(report n°{intervention.rdv_reschedule_count}).")
+    return intervention
+
+
+def replanifier(intervention, date, motif, user, *, confirme=None,
+                technicien_id=None, trace=True):
+    """ACHT38 — SERVICE UNIQUE de report d'un rendez-vous d'intervention
+    (`confirmer-rdv`, replanification de masse ; le PATCH de `date_prevue`
+    passe par `enregistrer_report_rdv`). La date est PARSÉE avant toute
+    écriture (`ValueError` → 400 côté vue). Une date identique à l'actuelle
+    n'est pas un report : seule la confirmation éventuelle est posée.
+    Renvoie `True` si c'était un report."""
+    nouvelle = parser_date_rdv(date)
+    ancienne = intervention.date_prevue
+    champs = []
+    if technicien_id is not None and (
+            intervention.technicien_id != technicien_id):
+        intervention.technicien_id = technicien_id
+        champs.append('technicien')
+    report = nouvelle != ancienne
+    if report:
+        intervention.date_prevue = nouvelle
+        champs.append('date_prevue')
+    if champs:
+        intervention.save(update_fields=champs)
+    if report:
+        enregistrer_report_rdv(
+            intervention, ancienne, motif, user, confirme=confirme,
+            trace=trace)
+    elif confirme is not None:
+        from django.utils import timezone
+        intervention.rdv_confirme = bool(confirme)
+        intervention.rdv_confirme_le = timezone.now() if confirme else None
+        intervention.save(update_fields=['rdv_confirme', 'rdv_confirme_le'])
+    return report
+
+
 def appliquer_replanification_masse(company, *, jour, motif, user,
                                     technicien_id=None, intervention_ids=None):
     """XFSM3 — applique en UN appel les propositions de
@@ -4396,13 +4480,10 @@ def appliquer_replanification_masse(company, *, jour, motif, user,
             ancien_tech_id = interv.technicien_id
             nouvelle_date = proposition['date']
             nouveau_tech_id = proposition['technicien_id']
-            interv.technicien_id = nouveau_tech_id
-            if str(interv.date_prevue) != nouvelle_date:
-                interv.rdv_reschedule_count = (
-                    interv.rdv_reschedule_count or 0) + 1
-            interv.date_prevue = nouvelle_date
-            interv.save(update_fields=[
-                'technicien_id', 'date_prevue', 'rdv_reschedule_count'])
+            # ACHT38 — service unique : date parsée, compteur, confirmation
+            # remise à zéro (la trace de masse ci-dessous reste la ligne).
+            replanifier(interv, nouvelle_date, motif, user,
+                        technicien_id=nouveau_tech_id, trace=False)
             intervention_activity.log_note(
                 interv, user,
                 f"Replanification en masse ({motif or 'sans motif'}) : "

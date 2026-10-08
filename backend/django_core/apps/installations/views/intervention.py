@@ -458,6 +458,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             if technicien_change:
                 from ..services import _notifier_intervention_assignee
                 _notifier_intervention_assignee(interv, self.request.user)
+            # ACHT38 — un PATCH qui DÉPLACE une date déjà fixée est un report :
+            # compteur +1, confirmation remise à zéro (service unique).
+            if (old.date_prevue is not None
+                    and interv.date_prevue is not None
+                    and interv.date_prevue != old.date_prevue):
+                from ..services import enregistrer_report_rdv
+                enregistrer_report_rdv(
+                    interv, old.date_prevue, None, self.request.user)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : effets « édition » inchangés.
                 self._stamp_date_realisee(interv)
@@ -1855,30 +1863,30 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         `confirme=false`). Incrémente `rdv_reschedule_count` quand une nouvelle
         date est fournie avec `date_prevue` (reschedule). Métadonnées only —
         ne touche JAMAIS le statut de l'intervention."""
+        from ..services import replanifier
         interv = self.get_object()
         confirme = bool(request.data.get('confirme', True))
         new_date = request.data.get('date_prevue')
-        fields = ['rdv_confirme', 'rdv_confirme_le']
-        interv.rdv_confirme = confirme
-        interv.rdv_confirme_le = timezone.now() if confirme else None
-        is_reschedule = bool(
-            new_date and new_date != str(interv.date_prevue or ''))
-        if is_reschedule:
-            interv.date_prevue = new_date
-            fields += ['date_prevue']
-        interv.save(update_fields=fields)
-        if is_reschedule:
-            # AUD829 — F() atomic increment: a bare
-            # `interv.rdv_reschedule_count = (... or 0) + 1` then save()
-            # loses a concurrent reschedule under two racing requests on
-            # the same intervention.
-            type(interv).objects.filter(pk=interv.pk).update(
-                rdv_reschedule_count=F('rdv_reschedule_count') + 1)
-            interv.refresh_from_db(fields=['rdv_reschedule_count'])
+        # ACHT38 — report via le service unique (date parsée AVANT toute
+        # écriture : date invalide → 400 sous le champ, jamais de 500).
+        is_reschedule = False
+        if new_date:
+            try:
+                is_reschedule = replanifier(
+                    interv, new_date, request.data.get('motif'),
+                    request.user, confirme=confirme, trace=False)
+            except ValueError as exc:
+                return Response({'date_prevue': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
+        else:
+            interv.rdv_confirme = confirme
+            interv.rdv_confirme_le = timezone.now() if confirme else None
+            interv.save(update_fields=['rdv_confirme', 'rdv_confirme_le'])
         msg = ("RDV confirmé." if confirme
                else "Confirmation RDV annulée.")
         if is_reschedule:
-            msg += f" Reporté au {new_date} (reschedule #{interv.rdv_reschedule_count})."
+            msg += (f" Reporté au {interv.date_prevue} "
+                    f"(reschedule #{interv.rdv_reschedule_count}).")
         intervention_activity.log_note(interv, request.user, msg)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
