@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import L from 'leaflet'
 import MapView from './MapView'
 import { ThemeProvider } from '../design/ThemeProvider'
 
@@ -54,6 +55,36 @@ describe('MapView (VX195 — accessibilité clavier)', () => {
     await user.click(summary)
     await user.click(screen.getByRole('button', { name: 'Chantier B' }))
     expect(onMarkerClick).toHaveBeenCalledWith(expect.objectContaining({ id: 2, label: 'Chantier B' }))
+  })
+
+  it('CAD177 : le cadrage sur les marqueurs n’est jamais animé (démontage pendant le zoom)', () => {
+    const fit = vi.spyOn(L.Map.prototype, 'fitBounds')
+    renderMap()
+    expect(fit).toHaveBeenCalled()
+    for (const [, options] of fit.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ animate: false }))
+    }
+    fit.mockRestore()
+  })
+
+  it('CAD177 : démonté pendant un zoom animé, le timer Leaflet ne lève plus rien', () => {
+    let carte = null
+    const addLayer = L.Map.prototype.addLayer
+    const spy = vi.spyOn(L.Map.prototype, 'addLayer').mockImplementation(function (couche) {
+      carte = this
+      return addLayer.call(this, couche)
+    })
+    const { unmount } = renderMap()
+    spy.mockRestore()
+    expect(carte).not.toBeNull()
+    // Un zoom animé est EN COURS au démontage (état posé par `_animateZoom`).
+    carte._animatingZoom = true
+    carte._animateToCenter = carte.getCenter()
+    carte._animateToZoom = carte.getZoom()
+    unmount()
+    // Le `setTimeout` de 250 ms de Leaflet rappelle ensuite ceci : il levait
+    // « reading '_leaflet_pos' » sur le panneau détruit.
+    expect(() => carte._onZoomTransitionEnd()).not.toThrow()
   })
 
   it('n\'affiche pas la liste clavier quand il n\'y a aucun marqueur', () => {

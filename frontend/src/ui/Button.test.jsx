@@ -16,6 +16,33 @@ describe('Button (primitif UI)', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 
+  it('VX66 : un double-tap immédiat ne déclenche onClick qu’une fois', async () => {
+    const onClick = vi.fn()
+    render(<Button onClick={onClick}>Valider</Button>)
+    const btn = screen.getByRole('button', { name: 'Valider' })
+    btn.click()
+    btn.click()
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('CAD177 : sans aucun rendu du bouton, un nouveau clic passe après la fenêtre du double-tap', async () => {
+    // Cas réel : le clic ouvre une confirmation tenue AILLEURS (ConfirmProvider)
+    // puis « Annuler » — le bouton ne se re-rend jamais ; il restait verrouillé.
+    vi.useFakeTimers()
+    try {
+      const onClick = vi.fn()
+      render(<Button onClick={onClick}>Passer en Industriel</Button>)
+      const btn = screen.getByRole('button', { name: 'Passer en Industriel' })
+      btn.click()
+      expect(onClick).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(450)
+      btn.click()
+      expect(onClick).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('est désactivé et non cliquable pendant le chargement (aria-busy)', async () => {
     const onClick = vi.fn()
     render(

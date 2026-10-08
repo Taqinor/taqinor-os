@@ -1342,8 +1342,7 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': "Cet équipement n'appartient pas à ce chantier."},
                 status=status.HTTP_400_BAD_REQUEST)
-        admis = sav_selectors.TYPES_RELEVE_PORTAIL_PAR_ROLE[
-            equipement.produit.role_pompage]
+        admis = sav_selectors.types_releve_portail(equipement.produit)
         type_releve = corps.get('type')
         if type_releve not in admis:
             return Response(

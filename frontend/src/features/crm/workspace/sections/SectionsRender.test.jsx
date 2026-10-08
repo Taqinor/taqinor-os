@@ -895,3 +895,42 @@ describe('CIQ428 — indicateur audit 47-09 dans la section Professionnel', () =
     expect(container.querySelector('[data-audit-47-09]')).toBeNull()
   })
 })
+
+/* CIQ666 — contrat d'électricité DÉCLARÉ (décision fondateur 08/10/2026) :
+   le champ de la section « Professionnel » montre la valeur servie par le
+   contrat `lead_pro.json` et écrit la clé serveur, sans contrat supposé. */
+describe('CIQ666 — contrat d’électricité du lead pro', () => {
+  const contrat = documentContrat('crm', 'lead_pro')
+  const monter = (lead, props = {}) => render(
+    <SectionPro state={initState({ lead: { ...lead, nom: 'Commerce' }, mode: 'edit' })} {...base} {...props} />,
+  )
+
+  it('affiche le contrat servi et ses choix (vocabulaire du tarif déclaré)', () => {
+    monter(contrat.exemple)
+    const select = document.getElementById('lf-contrat-electricite')
+    expect(select.value).toBe('bt_patente')
+    const valeurs = Array.from(select.options).map((o) => o.value).filter(Boolean)
+    const colonne = contrat.colonnes_pro.find((c) => c.nom === 'contrat_electricite')
+    expect(valeurs).toEqual(colonne.choix)
+    expect(document.getElementById('lf-option-tarifaire-bt').value).toBe('')
+  })
+
+  it('un lead sans contrat déclaré n’en affiche aucun (jamais un défaut)', () => {
+    monter({ ...contrat.exemple, contrat_electricite: null })
+    expect(document.getElementById('lf-contrat-electricite').value).toBe('')
+  })
+
+  it('choisir la force motrice et le bi-horaire écrit les clés serveur', () => {
+    const setField = vi.fn()
+    monter(contrat.exemple, { setField })
+    fireEvent.change(document.getElementById('lf-contrat-electricite'), { target: { value: 'bt_force_motrice' } })
+    expect(setField).toHaveBeenCalledWith('contrat_electricite', 'bt_force_motrice')
+    fireEvent.change(document.getElementById('lf-option-tarifaire-bt'), { target: { value: 'bi_horaire' } })
+    expect(setField).toHaveBeenCalledWith('option_tarifaire_bt', 'bi_horaire')
+  })
+
+  it('la provenance servie de l’entrée `contrat_electricite` s’affiche', () => {
+    monter(contrat.exemple)
+    expect(document.querySelector('[data-provenance="contrat_electricite"]').textContent).toContain('déclaré')
+  })
+})

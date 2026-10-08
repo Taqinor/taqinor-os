@@ -15,7 +15,7 @@
 //      FR puis en AR, jointe au rapport.
 // Aucun mock réseau. Base partagée, workers: 1 : nettoyage best-effort.
 import { test, expect } from '@playwright/test'
-import { choisirMarche } from './helpers'
+import { choisirMarche, nombrePagesPdf } from './helpers'
 
 const API = '/api/django'
 const devisIds = []
@@ -23,12 +23,6 @@ const devisIds = []
 async function json(res, quoi) {
   expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
   return res.json()
-}
-
-/** Nombre de pages d'un PDF, lu sur ses objets /Type /Page (pas /Pages). */
-function nombrePages(octets) {
-  const texte = Buffer.from(octets).toString('latin1')
-  return (texte.match(/\/Type\s*\/Page(?![s\w])/g) || []).length
 }
 
 async function premierClient(request) {
@@ -88,12 +82,19 @@ test('AGR318 — créer, rouvrir, ré-enregistrer : etude_params identique', asy
   const sauvegarde = page.waitForResponse((r) => r.request().method() !== 'GET'
     && new RegExp(`/ventes/devis/${devisId}/replace-lines/`).test(new URL(r.url()).pathname)
     && r.status() < 300, { timeout: 60_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Enregistrer/ }).first().click()
+  await page.locator('#gen-form').getByRole('button', { name: 'Enregistrer les modifications' }).click()
   await sauvegarde
+  // L'estampille de provenance du lead est REPOSÉE à chaque enregistrement
+  // sans dérive (DC11/QJR106, ventes.domain.pipeline.estampiller_provenance) :
+  // seule son heure `captured_at` change ; tout le reste doit être identique.
+  const sansHeureDeCapture = (etude) => ({
+    ...etude, provenance: etude?.provenance && { ...etude.provenance, captured_at: undefined },
+  })
   await expect.poll(async () => {
     const relu = await json(await request.get(`${API}/ventes/devis/${devisId}/`), 'devis relu')
-    return relu.etude_params
-  }, { timeout: 30_000, message: 'etude_params identique après réouverture' }).toEqual(etudeAvant)
+    return sansHeureDeCapture(relu.etude_params)
+  }, { timeout: 30_000, message: 'etude_params identique après réouverture' })
+    .toEqual(sansHeureDeCapture(etudeAvant))
 })
 
 test('AGR318 — /proposal : 3 pages au format complet, 1 page en une-page', async ({ request }) => {
@@ -101,10 +102,10 @@ test('AGR318 — /proposal : 3 pages au format complet, 1 page en une-page', asy
   expect(devisId, 'le test de création doit précéder').toBeTruthy()
   const complet = await request.get(`${API}/ventes/devis/${devisId}/proposal/?pdf_mode=full`)
   expect(complet.status(), '/proposal full').toBe(200)
-  expect(nombrePages(await complet.body()), 'pages du format complet').toBe(3)
+  expect(await nombrePagesPdf(await complet.body()), 'pages du format complet').toBe(3)
   const unePage = await request.get(`${API}/ventes/devis/${devisId}/proposal/?pdf_mode=onepage`)
   expect(unePage.status(), '/proposal onepage').toBe(200)
-  expect(nombrePages(await unePage.body()), 'pages de la une-page').toBe(1)
+  expect(await nombrePagesPdf(await unePage.body()), 'pages de la une-page').toBe(1)
 })
 
 test('AGR318 — lien public : synthèse agricole, aucun chiffre résidentiel', async ({ request }) => {
@@ -121,8 +122,19 @@ test('AGR318 — lien public : synthèse agricole, aucun chiffre résidentiel', 
   const kpis = data.mode_kpis || {}
   expect('bassin_m3' in kpis, 'mode_kpis.bassin_m3').toBeFalsy()
   expect('fda_eligible' in kpis, 'mode_kpis.fda_eligible').toBeFalsy()
-  // Aucun « 30 % » isolé (le taux de subvention n'est jamais promis seul).
-  expect(JSON.stringify(data)).not.toMatch(/(^|[^\d.,])30\s?%/)
+  // Aucun « 30 % » isolé : le taux de subvention n'est jamais promis seul.
+  // D-AGR (docs/claude-memory/agricole-decisions-fondateur.md) : l'aide FDA est
+  // servie comme une RÈGLE sans montant — son texte porte le taux AVEC ses
+  // plafonds (« … 30 % …, plafonnée à 3 000 DH par hectare … »). L'autre
+  // « 30 % » légitime est l'acompte de l'échéancier (« Acompte à la commande : 30% »).
+  const texte = JSON.stringify(data)
+  for (const m of texte.matchAll(/(^|[^\d.,])30\s?%/g)) {
+    const avant = texte.slice(Math.max(0, m.index - 40), m.index + 1)
+    const suite = texte.slice(m.index, m.index + 160)
+    expect(/3[\s\u00a0\u202f,.]?000/.test(suite) || /Acompte/i.test(avant),
+      `« 30 % » sans plafond ni acompte : ${avant}${suite}`).toBeTruthy()
+  }
+  expect(texte, 'aucun montant d’aide FDA chiffré').not.toMatch(/"montant_aide[^"]*":\s*\d/)
 
   test.info().annotations.push({ type: 'jeton', description: jeton })
 })

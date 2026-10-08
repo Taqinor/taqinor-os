@@ -1389,6 +1389,16 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 raise serializers.ValidationError({champ: [
                     "« Heure de fin » : elle doit être après l'heure de "
                     'début.']})
+        # CIQ666 — le bi-horaire n'est ouvert qu'à la force motrice
+        # (``tarifs_officiels.grille_bt``) : jamais à un patenté ni en MT.
+        if 'option_tarifaire_bt' in attrs or 'contrat_electricite' in attrs:
+            if (_valeur('option_tarifaire_bt') == 'bi_horaire'
+                    and _valeur('contrat_electricite') != 'bt_force_motrice'):
+                champ = ('option_tarifaire_bt' if 'option_tarifaire_bt' in attrs
+                         else 'contrat_electricite')
+                raise serializers.ValidationError({champ: [
+                    "« Option tarifaire BT » : le bi-horaire est réservé au "
+                    'contrat BT force motrice.']})
         if attrs.get('reponses_categorie') is not None:
             reponses = attrs['reponses_categorie']
             categorie = _valeur('categorie_commerciale')

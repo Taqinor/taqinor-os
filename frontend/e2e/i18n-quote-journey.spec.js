@@ -149,7 +149,10 @@ test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', 
   // catalogue (lignes ordinaires, prix catalogue), pour que le moteur rende.
   const devisCree = await reponseCreation.json()
   for (const [recherche, motCle, quantite] of [
-    ['Onduleur', /onduleur/i, 1], ['Panneau', /panneau/i, 10],
+    // Un onduleur RÉSEAU : le classifieur d'options du moteur (builder.py,
+    // « Sans batterie » = onduleur réseau/injection) ne range pas un
+    // micro-onduleur — la 1re passe (« Micro-onduleur 800W ») gardait le 500.
+    ['Onduleur réseau', /onduleur r[ée]seau/i, 1], ['Panneau', /panneau/i, 10],
   ]) {
     const produits = listeDe(await lireJson(await page.request.get(
       `${API_DJANGO}/stock/produits/?search=${encodeURIComponent(recherche)}`), `catalogue ${recherche}`))
