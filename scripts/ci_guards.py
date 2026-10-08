@@ -58,6 +58,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Tests nginx : no-store sur l API seulement, en-tetes de securite herites (ADEP5)',
+         'python -m unittest scripts.tests.test_nginx_cache_control -v',
+         '.'),
         ('Check date du jour en UTC : plus de nouveau toISOString().slice(0, 10) (ADEV73)',
          'python scripts/check_date_jour_utc.py',
          '.'),
