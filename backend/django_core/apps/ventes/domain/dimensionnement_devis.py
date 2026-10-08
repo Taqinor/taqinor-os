@@ -343,12 +343,48 @@ def _compter_modules_batterie_generique(lignes_vue):
     return (total, module_kwh) if total > 0 else (0, None)
 
 
+def lignes_vendues(devis, option=None):
+    """AMOT31 (C-AMOT-032) — les seules lignes VENDUES de ce devis : lignes
+    produit chiffrées qui COMPTENT dans les totaux
+    (``LigneDevis.compte_dans_totaux`` : ni section/note, ni ligne
+    ``optionnelle`` non activée — XSAL5) et, si ``option`` (``'sans'`` /
+    ``'avec'``) est donnée, celles de cette variante (lignes communes
+    comprises). Une ligne optionnelle ne change donc aucune capacité, aucun
+    calibre, matériel, module ni facteur de remise, et « Appliquer » ne
+    l'écrit jamais. Ne lève jamais."""
+    try:
+        lignes = list(devis.lignes.all())
+    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+        return []
+    vendues = []
+    for ligne in lignes:
+        compte = getattr(ligne, 'compte_dans_totaux', None)
+        if compte is None:
+            compte = (getattr(ligne, 'est_ligne_produit', True)
+                      and not getattr(ligne, 'optionnelle', False))
+        if not compte or ligne.quantite is None \
+                or ligne.prix_unitaire is None:
+            continue
+        variante = getattr(ligne, 'variante', '') or ''
+        if option and variante and variante != option:
+            continue
+        vendues.append(ligne)
+    return vendues
+
+
 def _lignes_produit_du_devis(devis):
     """Les LIGNES PRODUIT réellement facturées par ce devis, ou ``[]``.
 
     Les intertitres de section et les notes (``XSAL14``) ne portent ni prix ni
     quantité : ils ne comptent dans aucun total, donc dans aucune lecture de
-    ce module. Ne lève jamais (un devis non sauvegardé n'a pas de lignes)."""
+    ce module. Ne lève jamais (un devis non sauvegardé n'a pas de lignes).
+
+    AMOT31 — règles corrigées : :func:`lignes_vendues` (les lignes
+    optionnelles non activées sont exclues, comme des totaux). Devis aux
+    règles d'origine (décision fondateur 08/10/2026) : la lecture d'hier."""
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    if calcul_corrige(devis):
+        return lignes_vendues(devis)
     try:
         lignes = list(devis.lignes.all())
     except Exception:  # noqa: BLE001 — devis détaché / sans lignes
