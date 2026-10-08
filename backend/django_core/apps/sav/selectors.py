@@ -991,11 +991,14 @@ def fil_client_du_ticket(company, client_id, ticket_id):
                .filter(company=company, ticket=ticket, visible_client=True)
                .select_related('user')
                .order_by('created_at', 'id'))
+    # ASAV34 — l'auteur affiché au client est le nom d'intervenant (nom
+    # complet, sinon la raison sociale), jamais l'identifiant de connexion.
+    from apps.parametres.selectors import nom_intervenant
     return [{
         'id': entree.id,
         'body': entree.body or '',
         'created_at': entree.created_at,
-        'auteur': getattr(entree.user, 'username', '') or '',
+        'auteur': nom_intervenant(entree.user, company),
     } for entree in entrees]
 
 
