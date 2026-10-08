@@ -1349,6 +1349,9 @@ class TestBuilderWiresTenantSite(TestCase):
         from apps.ventes.quote_engine import build_quote_data
         self._set_site('https://www.helios.ma/')
         devis = self._residential_devis('DEV-SCA27-WITH')
+        # ADEV68 — le lien « signer » n'est frappé que HORS brouillon.
+        type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
         data = build_quote_data(devis)
         # Ligne site du pied de page = SON site (forme d'affichage normalisée).
         self.assertEqual(data['site_url'], 'helios.ma')

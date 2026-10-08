@@ -583,7 +583,7 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         self.client_obj = make_client(self.company)
 
     def _resid_devis(self):
-        return make_devis(self.company, self.user, self.client_obj, [
+        devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
@@ -597,6 +597,12 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
                 1200, 1200, 1300, 1400, 1600, 1800,
                 1900, 1900, 1700, 1500, 1300, 1200],
         })
+        # ADEV68 — le lien « signer » n'est frappé que HORS brouillon : ces
+        # tests du CTA de signature portent sur un devis ENVOYÉ (le cas
+        # brouillon est couvert par test_quote_engine_adev68_*).
+        type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        return devis
 
     def test_builder_mints_tokenized_signer_link(self):
         from apps.ventes.models import ShareLink

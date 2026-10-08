@@ -120,6 +120,10 @@ def _roof_photo_data_uri(devis) -> str:
         return ""
 
 
+class _PasDeLienSigner(Exception):
+    """ADEV68 — signal interne : aucun lien « signer » pour ce rendu."""
+
+
 def cle_toit_de_la_societe(devis, key=None) -> bool:
     """ASEC24 (C-ASEC-008) — la clé de toit ``key`` (défaut : ``roof_image``
     du devis) est-elle sous le préfixe de la SOCIÉTÉ du devis
@@ -3648,6 +3652,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                     devis=devis, token=_tok,
                     expires_at__gt=_tz.now()).first()
             if _share is None:
+                # ADEV68 (C-ADEV-004) — un BROUILLON rendu (aperçu, /proposal,
+                # generer-pdf) ne frappe ni n'imprime de lien « signer » : un
+                # PDF de brouillon transmis par erreur ne mène à aucune page
+                # signable. Seul un appelant qui PASSE le jeton d'un lien déjà
+                # créé (envoi par e-mail, juste avant ``mark_devis_sent``) le
+                # voit imprimé. Lecture du statut seulement (règle #4).
+                if getattr(devis, "statut", None) == "brouillon":
+                    raise _PasDeLienSigner()
                 _share = ShareLink.for_devis(devis)
             if _tenant_site:
                 _signer_base = "https://" + _tenant_site
@@ -3657,6 +3669,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 _signer_base = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
             # PV84 — chemin partagé, nom du client inclus (cosmétique).
             links["signer"] = f"{_signer_base}{chemin_proposition(devis, _share.token)}"
+    except _PasDeLienSigner:
+        links = {}
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         links = {}
 
