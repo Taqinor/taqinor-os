@@ -12,6 +12,7 @@ l'appel no-op proprement (aucune exception), donc rien ne casse ici.
 import logging
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 
 from .models import ApprovalDecision, ApprovalDelegation, ApprovalRequest
@@ -33,6 +34,46 @@ def _notify_best_effort(user, event_type, title, body='', company=None):
     except Exception:  # pragma: no cover - best-effort
         logger.debug('automation: notification best-effort échouée',
                      exc_info=True)
+
+
+# ── APAR27 — service UNIQUE d'écriture du journal de configuration ─────────
+#
+# Toute écriture de CONFIGURATION des automatisations (règle, recette
+# installée, webhook entrant, restauration de version, type de demande
+# d'approbation) laisse UNE ligne ``SettingsAuditLog`` (section
+# ``automatisations``) : qui, quand, avant/après. Un secret ou un jeton n'y
+# apparaît JAMAIS en clair (:func:`masquer_secret`).
+
+def masquer_secret(valeur):
+    """Rend un secret/jeton affichable : ``••••`` + 4 derniers caractères
+    (au-delà de 8 caractères), sinon ``••••`` ; vide si absent."""
+    texte = str(valeur or '')
+    if not texte:
+        return ''
+    return '••••' + texte[-4:] if len(texte) > 8 else '••••'
+
+
+def journaliser_config(user, field, label, old=None, new=None):
+    """APAR27 — écrit UNE ligne du Journal d'audit des Paramètres (section
+    ``automatisations``). Acteur + société côté serveur. Best-effort : ne
+    casse jamais l'écriture de configuration elle-même."""
+    try:
+        from apps.parametres.models import SettingsAuditLog
+        SettingsAuditLog.log_change(
+            company=getattr(user, 'company', None), user=user,
+            section='automatisations', field=field, field_label=label,
+            old=old, new=new)
+    except Exception:  # pragma: no cover - best-effort
+        logger.warning('automation: journal de configuration indisponible',
+                       exc_info=True)
+
+
+def resume_webhook(trigger):
+    """État AFFICHABLE d'un webhook entrant (jeton/secret masqués)."""
+    return (f'règle #{trigger.rule_id}, '
+            f'{"actif" if trigger.enabled else "inactif"}, '
+            f'jeton {masquer_secret(trigger.token)}, '
+            f'HMAC {masquer_secret(trigger.hmac_secret) or "aucun"}')
 
 
 class ApprovalError(Exception):
@@ -362,26 +403,76 @@ def create_draft_rule_from_agent(
     )
 
 
+class DecisionInterdite(PermissionDenied):
+    """APAR46 — le décideur n'a pas le palier approbateur, ou il est le
+    demandeur lui-même (séparation des tâches). Traduit en 403."""
+
+
+def verifier_decideur_approval(approval, user):
+    """APAR46 — « qui peut décider » une ``AutomationApproval`` : palier
+    Responsable/Admin ET séparation des tâches (le demandeur ne décide pas sa
+    propre demande ; override admin audité, YEVNT11). ``user=None`` = décision
+    système (jamais refusée)."""
+    from core.workflow import MOTIF_PALIER, a_palier_approbateur
+
+    from . import engine
+
+    if user is None:
+        return
+    if not a_palier_approbateur(user):
+        raise DecisionInterdite(MOTIF_PALIER)
+    try:
+        engine.enforce_requester_not_approver(
+            requester=approval.requested_by, approver=user,
+            company=approval.company, label=f'approval#{approval.pk}')
+    except engine.SodViolation as exc:
+        raise DecisionInterdite(str(exc)) from exc
+
+
 def decider_approval(approval, *, approve, user):
     """XKB1 — approuve/rejette une ``AutomationApproval`` en attente.
 
     Lève ``DecisionError`` si l'approbation n'est pas ``PENDING``. Une
     approbation relance l'action différée (``engine.run_approved``) ; un rejet
-    n'exécute jamais l'action."""
+    n'exécute jamais l'action.
+
+    APAR46 — lève ``DecisionInterdite`` (403) si ``user`` n'a pas le palier
+    approbateur ou s'il est le demandeur, QUEL QUE SOIT le chemin (boîte
+    unifiée, décision en masse, jeton push)."""
+    from django.db import transaction
+
     from . import engine
     from .models import AutomationApproval
 
     if approval.status != AutomationApproval.Status.PENDING:
         raise DecisionError('Décision déjà prise.')
-
-    approval.status = (
-        AutomationApproval.Status.APPROVED if approve
-        else AutomationApproval.Status.REJECTED)
-    approval.decided_by = user
-    approval.decided_at = timezone.now()
-    approval.save(update_fields=['status', 'decided_by', 'decided_at'])
-    if approve:
-        engine.run_approved(approval, user=user)
+    # APAR46 — « qui peut décider » AVANT la transaction : la ligne d'audit
+    # SOD (refus ou override) ne doit pas être annulée avec elle.
+    verifier_decideur_approval(approval, user)
+    # APAR17 — la décision est VERROUILLÉE : la ligne est relue PENDING sous
+    # ``select_for_update`` dans une transaction. Deux décisions concurrentes
+    # (approuver + refuser lues avant la première) ne donnent plus qu'UNE
+    # exécution et UN statut ; la seconde lève « Décision déjà prise. ».
+    with transaction.atomic():
+        verrou = (AutomationApproval.objects.select_for_update()
+                  .filter(pk=approval.pk,
+                          status=AutomationApproval.Status.PENDING)
+                  .first())
+        if verrou is None:
+            raise DecisionError('Décision déjà prise.')
+        verrou.status = (
+            AutomationApproval.Status.APPROVED if approve
+            else AutomationApproval.Status.REJECTED)
+        verrou.decided_by = user
+        verrou.decided_at = timezone.now()
+        verrou.save(update_fields=['status', 'decided_by', 'decided_at'])
+        if approve:
+            # L'action différée part APRÈS le commit de la décision.
+            transaction.on_commit(
+                lambda: engine.run_approved(verrou, user=user))
+    approval.status = verrou.status
+    approval.decided_by = verrou.decided_by
+    approval.decided_at = verrou.decided_at
     return approval
 
 
@@ -446,6 +537,15 @@ def declencher_bouton_ui(company, ref, target_model, target_id, user=None):
         return False, (
             f"Aucun enregistrement « {target_model} » d'identifiant "
             f'{target_id} dans cette société.')
+    # APAR47 — même porte que le moteur (``evaluate``) : une règle à
+    # approbation crée la DEMANDE au lieu d'exécuter, quel que soit le rôle de
+    # celui qui clique (un Commercial ne contourne plus l'approbation).
+    if engine._needs_approval(rule, {}):
+        engine._create_approval(rule, company, instance, {}, user)
+        message = "Demande d'approbation créée : l'action attend sa décision."
+        engine._log_run(rule, company, instance,
+                        AutomationRun.Status.PENDING_APPROVAL, message)
+        return True, message
     status, message = engine.run_action(
         rule, instance, company, user=user)
     return status != AutomationRun.Status.FAILED, message

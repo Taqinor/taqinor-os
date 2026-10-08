@@ -46,7 +46,8 @@ def _garde_kwh_declare(devis):
     (facture au barème ÷ facture déclarée hors [0,5 ; 2]) REFUSE
     l'enregistrement : 400 ``{detail, code}``, jamais un chiffrage
     silencieux. Partagée par ``/atomic`` (sous sa transaction, rien n'est
-    créé) et ``replace-lines`` (avant toute écriture)."""
+    créé) et ``replace-lines`` (ADEV27 : sous sa transaction aussi, après
+    l'écriture de l'en-tête et de l'étude entrants — rien n'est écrit)."""
     from rest_framework.exceptions import ValidationError
     from ..etude_horaire import controle_kwh_declare_du_devis
     from ..horaire.conso import CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT
@@ -122,6 +123,60 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
                     'remise_globale', instance.remise_globale))
         except RemiseNonApprouvee as erreur:
             raise ValidationError({'statut': erreur.message})
+
+
+#: ADEV26 (C-ADEV-035) — les champs d'en-tête qu'une étude LIT (marché,
+#: dossier lead/client → factures/profil/ville, prix → économies/payback).
+#: Un PATCH qui n'en change AUCUN ne relance pas les quatre études : sur un
+#: ENVOYÉ, un enregistrement « sans rien toucher » réécrivait ``ville_calcul``,
+#: ``dimensionnement``, ``etude_horaire``… sans la moindre trace.
+#: ``date_validite``, ``note``, ``echeancier``… n'en font pas partie.
+_ENTREES_ETUDE_ENTETE = (
+    'mode_installation', 'lead', 'client', 'taux_tva', 'remise_globale',
+    'devise', 'taux_change', 'prix_cible_kwc',
+)
+
+
+def _cle_comparable(valeur):
+    """Une FK compare par pk, un scalaire par valeur (Decimal == Decimal)."""
+    return getattr(valeur, 'pk', valeur)
+
+
+def _entrees_etude_changees(instance, validated_data):
+    """ADEV26 — les entrées d'étude que ce PATCH CHANGE réellement (valeur
+    entrante ≠ valeur en base). Un champ renvoyé à l'identique n'en est pas
+    une : l'écran renvoie tout l'en-tête à chaque enregistrement."""
+    return [
+        champ for champ in _ENTREES_ETUDE_ENTETE
+        if champ in validated_data
+        and _cle_comparable(validated_data[champ])
+        != _cle_comparable(getattr(instance, champ, None))
+    ]
+
+
+def _etude_en_base(devis):
+    """``etude_params`` relu en BASE, sans le marqueur ``resync_apres_envoi``
+    (que la trace elle-même pose)."""
+    etude = (Devis.objects.filter(pk=devis.pk)
+             .values_list('etude_params', flat=True).first()) or {}
+    if not isinstance(etude, dict):
+        return {}
+    return {k: v for k, v in etude.items() if k != 'resync_apres_envoi'}
+
+
+def _tracer_etude_reecrite(devis, user, activite):
+    """ADEV26 — une étude d'un ENVOYÉ réellement ré-écrite : trace
+    « Corrigé après envoi — étude » + marqueur ``resync_apres_envoi``. Si la
+    fin de geste vient déjà de consigner une correction (en-tête…), l'étude
+    est AJOUTÉE à son résumé : une seule ligne de chatter par clic."""
+    if activite is not None:
+        activite.new_value = '%s, étude' % (activite.new_value or '')
+        activite.body = f'Corrigé après envoi — {activite.new_value}.'
+        activite.save(update_fields=['new_value', 'body'])
+        return activite
+    from ..domain.modifiabilite import consigner_correction_apres_envoi
+    return consigner_correction_apres_envoi(
+        devis, user=user, objet='etude', resume='étude')
 
 
 class _DevisModifie(APIException):
@@ -325,8 +380,10 @@ class DevisEditionActionsMixin:
             _gardes_mise_a_jour(devis, entete_ser.validated_data,
                                 request.user, t17=False)
         _valider_etude_ecran(etude_in)
-        # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — avant toute écriture.
-        _garde_kwh_declare(devis)
+        # ADEV27 (C-ADEV-038) — la garde kWh n'est PLUS jugée ici, sur l'état
+        # d'AVANT : elle l'est dans la transaction, APRÈS l'écriture de
+        # l'en-tête et des choix d'écran entrants (comme ``/atomic``). Même
+        # corps ⇒ même verdict sur les deux chemins ; un refus annule tout.
         from ..services import (
             RemiseNonApprouvee, reverifier_remise_apres_correction)
         from ..domain.tarification import profondeur_remise_effective
@@ -347,6 +404,10 @@ class DevisEditionActionsMixin:
                 if etude_in:
                     from ..domain.etude_schema import ECRAN, ecrire
                     ecrire(devis, proprietaire=ECRAN, **etude_in)
+                # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES / ADEV27 — jugée sur
+                # la saisie ENTRANTE, sous la transaction : un kWh déclaré
+                # contredit n'écrit RIEN (rollback de l'en-tête et de l'étude).
+                _garde_kwh_declare(devis)
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
                 # qu'hier : un échec préserve les lignes d'origine.
                 # QJR518 — ``user`` : l'auteur d'une correction après envoi
@@ -431,6 +492,12 @@ class DevisEditionActionsMixin:
             debut_de_geste_devis, fin_de_geste_devis)
         avant_geste = debut_de_geste_devis(
             serializer.instance, self.request.user)
+        # ADEV26 — décidé AVANT l'écriture (l'instance porte encore la base).
+        entrees_etude = _entrees_etude_changees(
+            serializer.instance, serializer.validated_data)
+        envoye = serializer.instance.statut == Devis.Statut.ENVOYE
+        etude_avant = (_etude_en_base(serializer.instance)
+                       if entrees_etude and envoye else None)
         super().perform_update(serializer)
         # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
         # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
@@ -467,11 +534,25 @@ class DevisEditionActionsMixin:
         # raison qui l'imposait aux deux premiers (un PATCH change des
         # grandeurs qu'aucune lecture de lignes ne voit) vaut à l'identique
         # pour les deux autres.
-        appliquer(serializer.instance, IntentionDevis(
-            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
-            company=company, force_etudes=True))
-        fin_de_geste_devis(serializer.instance, self.request.user,
-                           avant=avant_geste, objet='en-tête')
+        #
+        # ADEV26 (C-ADEV-035) — ``force_etudes=True`` SEULEMENT quand le PATCH
+        # change réellement une entrée d'étude (``_ENTREES_ETUDE_ENTETE``).
+        # ``etude_params`` est en lecture seule sur ce corps (QJR67) : un
+        # PATCH vide, ou qui ne change que ``date_validite`` / ``note``, ne
+        # ré-écrit donc AUCUNE étude (objet octet-identique, aucune trace).
+        # Les CACHES (kWc depuis les lignes, marge interne — QJR554) ne
+        # dépendent que des lignes et des prix : aucun champ hors
+        # ``_ENTREES_ETUDE_ENTETE`` ne les bouge, ils ne sont pas relancés.
+        if entrees_etude:
+            appliquer(serializer.instance, IntentionDevis(
+                origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
+                company=company, force_etudes=True))
+        activite = fin_de_geste_devis(serializer.instance, self.request.user,
+                                      avant=avant_geste, objet='en-tête')
+        if (etude_avant is not None
+                and _etude_en_base(serializer.instance) != etude_avant):
+            _tracer_etude_reecrite(serializer.instance, self.request.user,
+                                   activite)
         # QJR545 — les écritures de fin de geste passent en ``update_fields`` :
         # le jeton servi par la réponse est réaligné sur la base.
         from ..domain.verrou_devis import toucher

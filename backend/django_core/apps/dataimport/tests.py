@@ -251,9 +251,12 @@ class TestGenericExport(ImportBase):
         c = Client.objects.create(company=self.company, nom='C')
         from decimal import Decimal
         from apps.ventes.models import Devis
-        Devis.objects.create(company=self.company, reference='DEV-EXP-1', client=c,
-                             taux_tva=Decimal('20'), remise_globale=Decimal('0'))
-        resp = self.api.post('/api/django/imports/export/devis/', {}, format='json')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-EXP-1', client=c,
+            taux_tva=Decimal('20'), remise_globale=Decimal('0'))
+        # APRF15 — l'export des devis exporte une SÉLECTION (ids vide → 400).
+        resp = self.api.post('/api/django/imports/export/devis/',
+                             {'ids': [devis.id]}, format='json')
         self.assertEqual(resp.status_code, 200)
         body = b''.join(resp.streaming_content) if resp.streaming else resp.content
         self.assertTrue(body.startswith(b'PK'))

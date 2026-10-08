@@ -75,7 +75,7 @@ AUTOMATION_TEMPLATES = [
                 'Bonjour {client_nom},\n\n'
                 'Votre facture {reference} est en attente de règlement.\n\n'
                 'Merci de procéder au paiement dans les meilleurs délais.\n\n'
-                "Cordialement,\nL'équipe Taqinor"
+                "Cordialement,\nL'équipe {entreprise}"
             ),
         },
         'requires_approval': False,
@@ -158,7 +158,8 @@ CATALOGUE_MODELES = [
                 'body': (
                     'Bonjour {client_nom},\n\nVotre devis {reference} '
                     "est-il toujours d'actualité ? N'hésitez pas à nous "
-                    'contacter pour toute question.\n\nCordialement.'
+                    'contacter pour toute question.\n\nCordialement,\n'
+                    "L'équipe {entreprise}"
                 ),
             }},
         ],

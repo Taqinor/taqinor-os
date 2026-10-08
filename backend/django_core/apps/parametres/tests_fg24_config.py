@@ -39,7 +39,9 @@ class FG24ConfigTest(TestCase):
             company=self.src, rib='SECRET-RIB-123',
             quote_validity_days=45, couleur_principale='#abcdef')
         MessageTemplate.objects.create(
-            company=self.src, cle='facture', corps_fr='Bonjour {client}')
+            # APAR30 — placeholder AUTORISÉ par l'écran : l'import applique
+            # désormais la même liste blanche ({client} serait refusé, 400).
+            company=self.src, cle='facture', corps_fr='Bonjour {nom}')
         Role.objects.create(
             company=self.src, nom='Rôle perso',
             permissions=['crm_voir'], est_systeme=False)
@@ -98,7 +100,7 @@ class FG24ConfigTest(TestCase):
             bundle, format='json')
         self.assertEqual(
             MessageTemplate.objects.get(company=dst, cle='facture').corps_fr,
-            'Bonjour {client}')
+            'Bonjour {nom}')
 
     def test_import_requires_admin(self):
         dst = _company('fg24-dst4', 'Dest4')

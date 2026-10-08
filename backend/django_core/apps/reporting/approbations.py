@@ -27,6 +27,7 @@ d'une autre app (contrat import-linter). ``core`` est fondation, importable
 directement (``core.workflow``)."""
 import datetime
 
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes)
@@ -414,6 +415,10 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
                 return 404, {'detail': 'Introuvable.'}
             core_workflow.decide_step(
                 step, approve=approve, user=user, commentaire=motif)
+    except PermissionDenied as exc:
+        # APAR46 — « qui peut décider » est porté par le SERVICE source
+        # (palier approbateur + séparation des tâches) : 403, jamais 400.
+        return 403, {'detail': str(exc) or 'Accès refusé.'}
     except Exception as exc:  # garde générique : jamais de 500 opaque
         return 400, {'detail': str(exc)}
 
@@ -484,7 +489,7 @@ def _approuver_en_masse_workflow(company, user, workflow_items, motif):
     try:
         rapport = core_workflow.approuver_en_masse(
             steps, user=user, commentaire=motif)
-    except ValueError as exc:
+    except (ValueError, PermissionDenied) as exc:  # APAR46 — palier
         # Sélection vide ou cohortes mélangées (types/paliers différents) :
         # AUCUNE étape de ce sous-lot n'a été décidée — un motif explicite,
         # jamais un succès partiel silencieux.

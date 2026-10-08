@@ -53,10 +53,87 @@ logger = logging.getLogger("apps.ventes.services")
 class AcceptError(Exception):
     """Raised when a devis cannot be accepted (wrong status / bad option)."""
 
-    def __init__(self, message, conflict=False):
+    def __init__(self, message, conflict=False, code=None):
         super().__init__(message)
         self.message = message
         self.conflict = conflict  # True → 409, False → 400
+        # ADEV11 — code machine du 409 (liste FERMÉE ``codes_409`` du contrat
+        # ``proposal_accept.json``) ; ``None`` = refus historique sans code.
+        self.code = code
+
+
+#: ADEV13 — message NEUTRE du 409 ``validation_requise`` (contrat
+#: ``proposal_accept.json``, ``reponses_409.validation_requise`` — ADEV2) :
+#: aucun motif interne (crédit, avertissement) n'est exposé au client.
+VALIDATION_REQUISE_REFUS = (
+    'Cette proposition attend une validation interne avant de pouvoir être '
+    'signée.')
+
+
+class AcceptationBloquee(AcceptError):
+    """ADEV13 (C-ADEV-005) — acceptation refusée par un blocage crédit
+    (XFAC28) ou un avertissement de vente bloquant (ZSAL9).
+
+    Sous-classe d'``AcceptError`` : la signature publique et le portail
+    (qui attrapent ``AcceptError``) répondent donc 409 avec le message NEUTRE
+    et ``code = "validation_requise"`` ; la vue interne l'attrape AVANT et
+    garde son 403 détaillé (``motif``, ``nature`` = ``credit_hold`` |
+    ``sale_warning``)."""
+
+    def __init__(self, nature, motif):
+        super().__init__(VALIDATION_REQUISE_REFUS, conflict=True,
+                         code='validation_requise')
+        self.nature = nature
+        self.motif = motif
+
+
+def peut_passer_outre(user):
+    """ADEV14 (C-ADEV-006) — seul un Administrateur ou un Responsable (palier
+    ``menu_tier`` faisant autorité, dérivé du rôle) peut passer outre un
+    blocage crédit ou un avertissement de vente bloquant. Porter
+    ``ventes_valider`` (rôle « Commercial ») ne suffit PAS. Sans utilisateur
+    (signature publique) : jamais."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return getattr(user, 'menu_tier', None) in ('admin', 'responsable')
+
+
+def _garde_blocages_acceptation(devis, *, user, override_credit=False,
+                                override_avertissement=False):
+    """ADEV13 — LA garde unique des trois portes d'acceptation (interne,
+    signature publique, portail) : blocage crédit dur (XFAC28) puis
+    avertissement de vente bloquant (ZSAL9). Lève ``AcceptationBloquee`` ;
+    un override n'est honoré que s'il est demandé (les portes client ne le
+    demandent jamais) ET que ``peut_passer_outre(user)`` (ADEV14) — un
+    drapeau posé par un Commercial est ignoré, le refus tombe."""
+    from apps.ventes.domain.recouvrement import (
+        CreditHoldError, SaleWarningError, verifier_credit_hold,
+        verifier_sale_warnings,
+    )
+    autorise = peut_passer_outre(user)
+    override_credit = bool(override_credit) and autorise
+    override_avertissement = bool(override_avertissement) and autorise
+    if devis.client_id is not None:
+        try:
+            verifier_credit_hold(
+                devis.client, override=bool(override_credit), user=user,
+                chatter_target=devis, contexte='acceptation devis')
+        except CreditHoldError as exc:
+            raise AcceptationBloquee('credit_hold', exc.motif) from exc
+    try:
+        verifier_sale_warnings(
+            devis, override=bool(override_avertissement), user=user,
+            chatter_target=devis)
+    except SaleWarningError as exc:
+        raise AcceptationBloquee('sale_warning', exc.motif) from exc
+
+
+#: ADEV11 — message du 409 ``brouillon`` (contrat ``proposal_accept.json``,
+#: ``reponses_409.brouillon`` — ADEV2), repris tel quel ; partagé par la
+#: garde du service et celle du résolveur public (``public/noyau.py``).
+BROUILLON_REFUS = (
+    "Cette proposition n'a pas encore été envoyée : elle ne peut pas être "
+    'signée.')
 
 
 def activate_optional_line(*, devis, ligne_id, user=None):
@@ -104,8 +181,24 @@ def activate_optional_line(*, devis, ligne_id, user=None):
         if not ligne.optionnelle:
             return ligne
 
+        # ADEV19 (C-ADEV-012) — l'activation par le client est un GESTE DE
+        # LIGNE comme un autre : état vu par le client capturé AVANT
+        # l'écriture (instantané « avant correction », envoyé seulement).
+        from apps.ventes.domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis,
+        )
+        avant_geste = debut_de_geste_devis(ligne.devis, user)
+
         ligne.optionnelle = False
         ligne.save(update_fields=['optionnelle'])
+
+    # ADEV19 — après la transaction (best-effort, comme ``LigneDevisViewSet``) :
+    # rafraîchissement (MODE_RAFRAICHIR : études, kWc, marge), instantané du
+    # geste, trace « corrigé après envoi — option client » et AVANCE du jeton
+    # d'édition (``updated_at``) — un écran interne ouvert avant l'activation
+    # reçoit alors 409 ``devis_modifie`` au lieu d'effacer le choix du client.
+    _geste_option_client(devis, user=user, avant=avant_geste,
+                         fin_de_geste=fin_de_geste_devis)
 
     # Chatter (hors transaction — miroir de accept_devis).
     try:
@@ -116,6 +209,31 @@ def activate_optional_line(*, devis, ligne_id, user=None):
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         pass
     return ligne
+
+
+def _geste_option_client(devis, *, user, avant, fin_de_geste):
+    """ADEV19 — la moitié « après écriture » du geste d'option client, dans
+    l'ordre du jumeau interne (``views/ligne_devis.py``) : rafraîchir, puis
+    instantané, puis trace d'envoi, puis jeton. Chaque étape est best-effort :
+    l'option est déjà activée, rien ne doit l'annuler."""
+    try:
+        from apps.ventes.domain.pipeline import (
+            MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
+        )
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
+            company=devis.company))
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception('ADEV19 : rafraîchissement ignoré (devis %s)',
+                         devis.pk)
+    try:
+        from apps.ventes.domain.historique_config import instantane_de_geste
+        instantane_de_geste(devis, user=user)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception('ADEV19 : instantané ignoré (devis %s)', devis.pk)
+    fin_de_geste(devis, user, avant=avant, objet='option client')
+    from apps.ventes.domain.verrou_devis import toucher
+    toucher(devis)
 
 
 # ── QJ11 — OTP e-signature (toggle) ─────────────────────────────────────────
@@ -215,6 +333,22 @@ def _plafond_demandes_otp_atteint(prefixe, link_token):
     return compte > OTP_DEMANDES_MAX_PAR_JOUR
 
 
+#: ADEV20 (C-ADEV-021) — message du 409 ``aucun_canal`` (contrat
+#: ``proposal_accept.json``, bloc ``otp.reponse_409`` — ADEV2), rendu par les
+#: deux demandes d'OTP quand AUCUN code n'est réellement parti.
+OTP_AUCUN_CANAL = "Aucun moyen d'envoyer le code : contactez votre conseiller."
+
+
+def canal_otp_disponible(client):
+    """ADEV20 — vrai si un code peut réellement partir vers ``client``.
+
+    Le seul canal câblé est l'e-mail : WhatsApp est un STUB (QX10,
+    ``_send_otp_whatsapp`` rend toujours False tant qu'aucun BSP n'est
+    branché). Sert à refuser ``otp_lecture`` au ``share-link`` d'un client
+    injoignable — sinon le lien serait illisible pour toujours."""
+    return bool((getattr(client, 'email', '') or '').strip())
+
+
 def request_esign_otp(link):
     """QJ11 — Génère et envoie un OTP au contact du devis (wa.me ou email).
 
@@ -263,8 +397,11 @@ def request_esign_otp(link):
         logger.warning(
             'QJ11: OTP généré pour %s mais aucun canal disponible (phone=%s, email=%s)',
             devis.reference, bool(phone), bool(email))
-    else:
-        logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
+        # ADEV20 — aucun code n'est parti : aucun code ne reste en cache, et
+        # la vue répond 409 ``aucun_canal`` au lieu de « Code envoyé. ».
+        cache.delete(cache_key)
+        return OTP_AUCUN_CANAL
+    logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
     return None
 
 
@@ -401,8 +538,10 @@ def request_otp_lecture(link):
         logger.warning(
             'L-NIV: OTP lecture généré pour %s mais aucun canal disponible '
             '(phone=%s, email=%s)', devis.reference, bool(phone), bool(email))
-    else:
-        logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
+        # ADEV20 — même règle que l'OTP de signature (jumeau).
+        cache.delete(_otp_lecture_cache_key(link.token))
+        return OTP_AUCUN_CANAL
+    logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
     return None
 
 
@@ -1313,7 +1452,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
-                 entreprise=None):
+                 entreprise=None, override_credit=False,
+                 override_avertissement=False):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1434,12 +1574,30 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 message = "Cette proposition n'est plus active."
             raise AcceptError(message, conflict=True)
 
+        # ADEV11 (C-ADEV-004) — la signature PUBLIQUE (``user=None`` : le
+        # jeton authentifie, aucun compte) ne peut jamais accepter un
+        # BROUILLON, même si une vue l'appelle sans passer par
+        # ``_resolve_proposal_link`` : un devis jamais envoyé n'a pas été
+        # présenté au client. L'acceptation INTERNE d'un brouillon (``user``
+        # posé) reste régie par ERR33 ci-dessous (ADEV12, GATED D-ADEV-2).
+        if user is None and devis.statut == Devis.Statut.BROUILLON:
+            raise AcceptError(BROUILLON_REFUS, conflict=True, code='brouillon')
+
         # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
         if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
             raise AcceptError(
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
                 conflict=True)
+
+        # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
+        # bloquant : UNE garde, ici, pour les trois portes (vue interne,
+        # signature publique, portail client). Auparavant seule la vue
+        # interne la posait — le lien public et le portail acceptaient un
+        # client bloqué (chantier créé). Rien n'est écrit sur refus.
+        _garde_blocages_acceptation(
+            devis, user=user, override_credit=override_credit,
+            override_avertissement=override_avertissement)
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).

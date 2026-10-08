@@ -181,10 +181,13 @@ def _confirmation_email_publique(devis):
     rétractation à 7 jours. La promettre sans qu'elle parte ne raccourcit
     aucun délai — cela ajoute seulement une phrase fausse sur un document
     contractuel."""
+    # ADEP34 — UNE seule règle : ``email_service.is_email_configured`` (clé
+    # d'envoi posée ET backend chargé qui envoie). La clé seule sur le backend
+    # console ne promet plus rien ; un backend « qui envoie » sans clé non
+    # plus.
     try:
-        from django.conf import settings
-        backend = str(getattr(settings, 'EMAIL_BACKEND', '') or '').strip()
-        if backend in EMAIL_BACKENDS_SANS_ENVOI:
+        from apps.ventes.email_service import is_email_configured
+        if not is_email_configured():
             return False
         client = getattr(devis, 'client', None)
         return bool((getattr(client, 'email', '') or '').strip())

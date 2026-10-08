@@ -42,7 +42,6 @@ const TRIGGERS = [
 const ACTIONS = [
   { key: 'send_whatsapp', label: 'Envoyer un WhatsApp' },
   { key: 'send_email', label: 'Envoyer un email' },
-  { key: 'send_sms', label: 'Envoyer un SMS' },
   { key: 'create_activity', label: 'Créer une activité / tâche' },
   { key: 'assign_record', label: 'Assigner un enregistrement' },
   { key: 'set_field', label: 'Mettre à jour un champ' },

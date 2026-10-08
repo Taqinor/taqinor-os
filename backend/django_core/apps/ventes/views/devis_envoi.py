@@ -99,6 +99,19 @@ class DevisEnvoiActionsMixin:
         absent/false → comportement d'avant, byte-identique."""
         from ..models import ShareLink
         devis = self.get_object()
+        # ADEV20 (C-ADEV-021) — un code de lecture exigé d'un client qu'aucun
+        # canal ne peut joindre rendrait le lien illisible pour toujours : 400
+        # qui nomme ``otp_lecture``, AVANT tout effet (gamme, mint, statut).
+        if 'otp_lecture' in request.data \
+                and bool(request.data.get('otp_lecture')):
+            from ..domain.cycle_vie import canal_otp_disponible
+            if not canal_otp_disponible(getattr(devis, 'client', None)):
+                return Response(
+                    {'otp_lecture': [
+                        "Ce client n'a ni e-mail ni canal actif : aucun code "
+                        "de lecture ne pourrait lui parvenir. Renseignez son "
+                        "e-mail ou désactivez le code d'accès."]},
+                    status=status.HTTP_400_BAD_REQUEST)
         # QJR539 — garde T17 AVANT tout effet d'un ENVOI (gamme, mint, statut).
         if request.data.get('envoi'):
             _exiger_remise_envoi(devis, request.user)

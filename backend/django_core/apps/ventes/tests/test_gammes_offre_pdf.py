@@ -12,7 +12,7 @@ Lancer :
 """
 from rest_framework.test import APIClient
 
-from apps.ventes.models import ShareLink
+from apps.ventes.models import Devis, ShareLink
 from apps.ventes.public.payload_variantes import _gammes_public
 from apps.ventes.tests._gammes_offre_common import GammeBase, url_proposal
 
@@ -35,6 +35,10 @@ class TestPdfParGamme(GammeBase):
 
     def test_le_payload_du_jeton_soeur_rend_la_soeur(self):
         source, soeur = self._paire('DEV-GAM-052', nom='Premium')
+        # ADEV11 : un brouillon n'est jamais servi au jeton client -> envoyé.
+        Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
+            statut=Devis.Statut.ENVOYE)
+        soeur.refresh_from_db()
         lien = ShareLink.for_devis(soeur)
         resp = APIClient().get(url_proposal(lien.token))
         self.assertEqual(resp.status_code, 200)

@@ -70,6 +70,11 @@ function makeStorage(): SimpleStorage & { data: Map<string, string> } {
 }
 
 describe('appareilId', () => {
+  // AACQ44 — appareilId() porte la garde de consentement : ces cas testent le
+  // chemin « consentement accordé ».
+  beforeEach(() => localStorage.setItem('tq_consent', 'granted'));
+  afterEach(() => localStorage.removeItem('tq_consent'));
+
   it('génère un uuid la première fois puis le RELIT (stable)', () => {
     const storage = makeStorage();
     const first = appareilId(storage);
@@ -342,6 +347,9 @@ describe('demarrerBalise', () => {
     localStorage.removeItem('tq_consent');
     demarrerBalise('/index', { fetchFn, storage });
     expect(fetchFn).not.toHaveBeenCalled();
+    // Comme ConsentBanner.astro : tq_consent est écrit AVANT l'événement
+    // (AACQ44 : appareilId() relit ce consentement).
+    localStorage.setItem('tq_consent', 'granted');
     window.dispatchEvent(new CustomEvent('tq:consent-change', { detail: { value: 'granted' } }));
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });

@@ -38,7 +38,9 @@ import uuid
 from pathlib import Path
 
 from django.forms.models import model_to_dict
-from django.test import Client as DjangoClient, SimpleTestCase, TestCase
+from django.test import (
+    Client as DjangoClient, SimpleTestCase, TestCase, override_settings,
+)
 
 from apps.ventes.tests import split_golden as sg
 from apps.ventes.tests.test_l_niv_niveau import (
@@ -206,6 +208,10 @@ def _reponse(resp):
 JOUR_DE_CAPTURE = '2026-10-05T17:00:00Z'
 
 
+# ADEP34 — le golden a été capturé quand ``confirmation_email`` valait vrai
+# sous locmem sans clé ; la règle exige désormais une clé d'envoi posée : on
+# la pose pour rejouer EXACTEMENT les mêmes conditions (même payload).
+@override_settings(ANYMAIL={'SENDINBLUE_API_KEY': 'split-pv-key'})
 class ComportementPublicTests(TestCase):
     """Digests de comportement des vues publiques — identiques avant/après."""
 

@@ -14,7 +14,7 @@ from unittest import mock
 
 from rest_framework.test import APIClient
 
-from apps.ventes.models import ShareLink
+from apps.ventes.models import Devis, ShareLink
 from apps.ventes.public.payload_variantes import _gammes_public
 from apps.ventes.services import gamme_soeur
 from apps.ventes.tests._gammes_offre_common import GammeBase, url_accept
@@ -35,6 +35,9 @@ class TestAcceptationChoix(GammeBase):
                 return_value='devis/1/DEV-GAM-042.pdf')
     def test_gamme_refusee_disparait_du_choix(self, _moteur):
         source, soeur = self._paire('DEV-GAM-042')
+        # ADEV11 : l'acceptation par jeton client exige un devis envoyé.
+        Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
+            statut=Devis.Statut.ENVOYE)
         lien_soeur = ShareLink.for_devis(soeur)
         APIClient().post(url_accept(lien_soeur.token), {
             'nom': 'Salma Alaoui', 'consent_esign': True,

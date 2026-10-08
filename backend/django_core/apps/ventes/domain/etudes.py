@@ -241,6 +241,17 @@ def puissances_etude_horaire(devis):
         [li for li in lignes if _variante_de_ligne(li) in ('', 'avec')])
     if par_option['divergents']:
         return par_option['kwc_avec'], par_option['kwc_sans']
+    # ERR-ETUDE-KWC-DOUBLE — panneaux VARIANTÉS à comptes ÉGAUX (8 « sans » +
+    # 8 « avec ») : ``divergents`` est faux (drapeau de COMPTES), mais la
+    # lecture sur TOUTES les lignes additionnait les deux paniers — le bloc
+    # portait EXACTEMENT LE DOUBLE du kWc des lignes (16 panneaux pour un
+    # tableau qui en liste 8), refusé ensuite par la garde de fraîcheur. Même
+    # correctif que le builder (ACAL-NB2OPT) : dès qu'une ligne panneau porte
+    # une variante, le bloc décrit UNE option (les deux étant égales).
+    # Sans variante, le panier AVEC = toutes les lignes : lecture inchangée.
+    if any(_variante_de_ligne(li) in ('sans', 'avec')
+           for li in lignes if panneaux_et_watt_lu([li])[0]):
+        return par_option['kwc_avec'] or par_option['kwc_sans'], None
     nb_panneaux, watt = panneaux_et_watt_lu(lignes)
     kwc = (round(nb_panneaux * watt / 1000, 2)
            if nb_panneaux > 0 and watt else None)

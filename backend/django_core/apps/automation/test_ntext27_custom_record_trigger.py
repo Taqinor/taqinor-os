@@ -47,13 +47,12 @@ class CustomRecordTriggerTests(TestCase):
         self._rule(object_code='suivi-qualite')
         CustomRecord.objects.create(
             company=self.co, objet=self.objet_a, data={'titre': 'x'})
-        # Le déclenchement TIRE bien (un run est journalisé) ; l'action
-        # CREATE_ACTIVITY choisie ici n'a de chatter que pour un lead — sur
-        # un CustomRecord, elle NOOP proprement (comportement inchangé
-        # d'AUTOMATION, hors périmètre NTEXT27 qui porte sur le déclencheur).
+        # Le déclenchement TIRE bien (un run est journalisé). APAR25 —
+        # réécrit explicitement : CREATE_ACTIVITY écrit désormais une note sur
+        # le chatter GÉNÉRIQUE de toute fiche (records) au lieu d'un NOOP.
         self.assertEqual(self._runs().count(), 1)
         self.assertEqual(
-            self._runs().first().status, AutomationRun.Status.NOOP)
+            self._runs().first().status, AutomationRun.Status.SUCCESS)
 
     def test_enregistrement_dun_autre_objet_ne_declenche_pas(self):
         self._rule(object_code='suivi-qualite')

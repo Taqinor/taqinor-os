@@ -2217,5 +2217,24 @@
         }
       ]
     }
+  },
+  "notes_adev2": {
+    "pourquoi": "ADEV2 (C-ADEV-015 à C-ADEV-019, action de classe PACT10 de la page publique, 08/10/2026) — CONTRAT D'ABORD, posé SEUL sur main en copies JSON-égales backend et `apps/web` : la page `/proposition/<token>` recalculait en JS des chiffres que le serveur ne servait pas (cumul 25 ans dans `savingsHeadline`, expiration dans `resolveValidity`) et traitait tout 409 d'acceptation comme un succès (`normalizeAcceptResponse`). `exemple_adev2` est un FRAGMENT (seules les cinq clés nouvelles sont montrées ; toutes les autres clés gardent la forme de `exemple`). `exemple` reste inchangé tant que la vue ne les émet pas (`forme_serveur: complete` vert) : la moitié serveur (ADEV49-ADEV53, `@after: ADEV2`, PACT11) les ajoute à `exemple` AVEC la vue, et la moitié web retire alors le préfixe `exemple_adev2.` de `FRAGMENTS_DOCUMENTATION` (tests/propositionPayload.test.ts).",
+    "additives": "Les cinq clés sont ADDITIVES au sens du bloc `notes.additif_vs_null` : ABSENTES de la réponse quand il n'y a rien à montrer, JAMAIS `null`.",
+    "economies_cumul_25_ans": "Objet `{<option>: nombre}` — par option servable (`sans_batterie`, `avec_batterie`), le cumul BRUT des économies sur 25 ans, en MAD, du MÊME flux annuel que le PDF (sonde VA p7 : 342314 / 346653). La page l'affiche tel quel, elle ne le recalcule plus. Absente quand le devis n'a pas de flux d'économies (agricole, C&I sans étude, case « économies » décochée).",
+    "empreinte_contenu": "Texte — empreinte du CONTENU signable (lignes, totaux, option, conditions) au moment où la page a été servie. Le corps de l'acceptation la renvoie (`proposal_accept.json`) ; si le contenu a bougé entre-temps, le serveur répond 409 `empreinte_perimee`. Absente quand le devis n'est pas signable (brouillon, remplacé, accepté).",
+    "offre_expiree": "Booléen — vrai quand la date de validité est passée (jour de Casablanca) : la page n'affiche plus le bouton de signature. Absente quand le devis n'a aucune validité posée.",
+    "date_expiration": "Texte ISO `AAAA-MM-JJ` — le dernier jour où l'offre peut être signée, calculé par le serveur (la page ne le dérive plus de `date`). Absente quand aucune validité n'est posée.",
+    "pdf_disponible": "Booléen — vrai quand `/proposal` peut rendre le PDF de ce lien (sinon la page masque « Télécharger le PDF » au lieu d'un lien mort). Absente quand le lien ne propose pas de PDF (section décochée)."
+  },
+  "exemple_adev2": {
+    "economies_cumul_25_ans": {
+      "sans_batterie": 342314,
+      "avec_batterie": 346653
+    },
+    "empreinte_contenu": "3f9a1c0e7b2d4a65c8e1f0b97d3a2c4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c",
+    "offre_expiree": false,
+    "date_expiration": "2026-10-15",
+    "pdf_disponible": true
   }
 }

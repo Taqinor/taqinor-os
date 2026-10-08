@@ -78,7 +78,10 @@ class DecideStepOnBehalfOfTests(TestCase):
     def setUpTestData(cls):
         cls.company = make_company('ntwfl3-decide', 'NTWFL3 Decide')
         cls.suppleant = make_user(cls.company, 'ntwfl3-sup')
-        cls.delegant = make_user(cls.company, 'ntwfl3-del')
+        # APAR46 — la décision « au nom de » vaut le palier du DÉLÉGANT.
+        cls.delegant = User.objects.create_user(
+            username='ntwfl3-del', password='x', company=cls.company,
+            role_legacy='responsable')
 
     def test_sans_on_behalf_of_comportement_inchange(self):
         instance = _make_instance(self.company)

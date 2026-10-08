@@ -9,6 +9,8 @@ faisaient un `setattr`+`save()` SANS jamais appeler `SettingsAuditLog.log_change
 `RoleViewSet.perform_update` (journalise). Un Admin pouvait importer (mode
 overwrite) un bundle d'une autre société avec `tva_standard=0` sans laisser
 la moindre trace dans l'écran Journal d'audit des Paramètres."""
+from decimal import Decimal
+
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -57,8 +59,16 @@ class Aud808ConfigImportProfileAuditTest(TestCase):
             company=self.company, section='config_import',
             field='tva_standard').first()
         self.assertIsNotNone(row)
-        self.assertEqual(row.new_value, '0')
+        # APAR29 — l'import passe par CompanyProfileSerializer : la valeur
+        # journalisée est le Decimal VALIDÉ du champ (DecimalField à 2
+        # décimales → « 0.00 »), comme le PATCH de l'écran. On compare la
+        # VALEUR, pas sa forme textuelle.
+        self.assertEqual(Decimal(row.new_value), Decimal('0'))
+        self.assertEqual(Decimal(row.old_value), Decimal('20'))
         self.assertIsNotNone(row.user_id)
+        self.assertEqual(
+            CompanyProfile.objects.get(company=self.company).tva_standard,
+            Decimal('0'))
 
     def test_merge_mode_never_touches_profile_so_no_audit_row(self):
         r = self.api.post(
