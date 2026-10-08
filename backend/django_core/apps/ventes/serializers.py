@@ -870,6 +870,11 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
         is_auth = bool(user is not None and getattr(user, 'is_authenticated', False))
         if not is_auth:
             data.pop('marge_snapshot', None)
+        # APRF6 (C-APRF-003) — la conception électrique (≈ 55 % des octets
+        # d'une ligne de liste, aucun lecteur en liste) n'est servie qu'au
+        # DÉTAIL ; même patron que ``get_calepinage`` (``self.parent``).
+        if self.parent is not None:
+            data.pop('electrical_design', None)
         return data
 
     class Meta:
