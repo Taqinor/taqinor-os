@@ -89,7 +89,10 @@ class TestHypothesesInData(TestCase):
         h = data['hypotheses']
         self.assertTrue(h['autoconso_first'])
         joined = ' '.join(h['items'])
-        self.assertIn('82-21', joined)
+        # AMOT25 — la mention sourcée unique (constants_82_21.MENTION_BT)
+        # remplace « Loi 82-21 : … » ; l'autoconsommation d'abord reste dite.
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_BT
+        self.assertIn(MENTION_BT, joined)
         self.assertIn('autoconsommation', joined.lower())
         # production basis present
         self.assertIsNotNone(h['productible_kwh_kwc'])

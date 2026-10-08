@@ -229,17 +229,20 @@ def log_devis_sent(devis, user):
     )
 
 
-def log_devis_refusal(devis, user, motif, date_refus):
-    """FG44 — Consigne le refus du devis (qui + quand + motif) dans son chatter."""
+def log_devis_refusal(devis, user, motif, date_refus, note=''):
+    """FG44 — Consigne le refus du devis (qui + quand + motif) dans son chatter.
+
+    ADEV44 — ``note`` : le détail libre saisi à l'écran, ajouté au corps."""
     qui = getattr(user, 'username', '?')
     motif_part = f" — motif : {motif}" if motif else ''
+    note_part = f" Détail : {note}" if note else ''
     return DevisActivity.objects.create(
         company=devis.company, devis=devis, user=user,
         kind=DevisActivity.Kind.MODIFICATION,
         field='statut', field_label='Refus',
         old_value='',
         new_value=f"Refusé le {date_refus} par {qui}{motif_part}",
-        body=f"Devis refusé le {date_refus} par {qui}{motif_part}.",
+        body=f"Devis refusé le {date_refus} par {qui}{motif_part}.{note_part}",
     )
 
 

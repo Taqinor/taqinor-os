@@ -25,7 +25,10 @@ test('utilise les méthodes crmApi déjà existantes (aucune nouvelle route fron
 
 test('suppression demande confirmation avant d\'appeler deleteMessageTemplate', () => {
   const delBody = SRC.slice(SRC.indexOf('const delTemplate ='), SRC.indexOf('return ('))
-  assert.match(delBody, /window\.confirm\(/)
+  // APAR41 — dialogue de confirmation MAISON (useConfirmDialog), jamais window.confirm ;
+  // la suppression n'est appelée qu'après un accord explicite.
+  assert.match(delBody, /if \(!\(await confirmerSuppression\(/)
+  assert.doesNotMatch(delBody, /window\.confirm\(/)
 })
 
 test('LeadsSection monte MessageTemplatesCrmSection', () => {

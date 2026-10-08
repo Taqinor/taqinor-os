@@ -18,11 +18,11 @@
 // Sécurité : lecture tout rôle, écriture Administrateur/Responsable — le
 // SERVEUR re-vérifie (IsAdminOrResponsableTier). `company` n'est JAMAIS
 // envoyée : imposée côté serveur (TenantMixin).
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ShieldAlert, Plus, Trash2 } from 'lucide-react'
 import api from '../../api/axios'
-import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast } from '../../ui/confirm'
+import useSectionListeAdmin from './useSectionListeAdmin'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -52,24 +52,12 @@ const TIER_LABELS = Object.fromEntries(APPROVER_TIERS)
 const VIDE = { action_type: '', seuil: '', approver_tier: 'admin', note: '' }
 
 export default function ApprobationsPolitiquesSection() {
-  const canManage = useIsAdminOrResponsable()
-
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const [busy, setBusy] = useState(false)
+  // APAR41 — confirmation MAISON + droit + état de liste : useSectionListeAdmin.
+  const {
+    confirmerSuppression, canManage, rows, loading, loadError, busy, setBusy, charger,
+  } = useSectionListeAdmin('/parametres/approbations/')
   const [draft, setDraft] = useState(VIDE)
   const [erreur, setErreur] = useState('')
-
-  const charger = () => api.get('/parametres/approbations/')
-    .then((res) => {
-      setRows(res.data?.results ?? res.data ?? [])
-      setLoadError(false)
-    })
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
-
-  useEffect(() => { charger() }, [])
 
   // Une seule politique par type d'action (contrainte serveur) : on ne propose
   // que les types encore libres, plutôt que de laisser l'utilisateur se prendre
@@ -112,7 +100,7 @@ export default function ApprobationsPolitiquesSection() {
 
   const supprimer = async (row) => {
     const libelle = row.action_type_label || row.action_type
-    if (!window.confirm(`Supprimer la politique « ${libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la politique « ${libelle} » ?` }))) return
     try {
       await api.delete(`/parametres/approbations/${row.id}/`)
       charger()

@@ -16,7 +16,7 @@
 import { useEffect, useState } from 'react'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Download, Lock, FileCheck2, ShieldCheck } from 'lucide-react'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
 // PACT119 — le registre de consentement consomme `/core/consent-records/`
 // directement via l'instance axios (aucun ajout au client partagé coreApi :
@@ -39,6 +39,8 @@ const STATUT_LABELS = { recue: 'Reçue', traitee: 'Traitée', refusee: 'Refusée
 
 // ── Bloc 1 : registre des traitements CNDP ───────────────────────────────────
 function RegistreTraitements() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -75,7 +77,7 @@ function RegistreTraitements() {
   }
 
   const delRow = async (row) => {
-    if (!window.confirm(`Supprimer le traitement « ${row.code} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le traitement « ${row.code} » ?` }))) return
     try { await coreApi.confidentialite.registreTraitements.remove(row.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }

@@ -718,7 +718,10 @@ def build_pages(ctx) -> list:
     # (jamais « option avec batterie » sur un devis sans batterie).
     if deux_options or avec_ok:
         _eco_ref, _tot_ref = d.get("eco_a_ann", 0), d.get("total_avec", 0)
-        gain25_label = "option avec batterie" if deux_options else "avec batterie"
+        # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF).
+        _lib_avec = str(d.get("libelle_avec") or "Avec batterie")
+        _lib_avec = _lib_avec[:1].lower() + _lib_avec[1:]
+        gain25_label = f"option {_lib_avec}" if deux_options else _lib_avec
     else:
         _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
         gain25_label = "sans batterie"
@@ -1318,10 +1321,12 @@ def build_pages(ctx) -> list:
 
     # QRES57 — la ligne « fiches techniques » fusionne avec la légende TVA
     # (une seule ligne de légende sous les totaux, ~5 mm rendus à la courbe).
+    # AMOT18 — société identifiée sans site : aucun lien de fiches.
     fiche_inline = (
         ' &middot; fiches techniques&nbsp;: <a class="p2-fiche-btn" '
         f'href="{_produits_href(produits_link)}">{produits_link}'
-        '<span class="p2-fiche-i"> &rsaquo;</span></a>')
+        '<span class="p2-fiche-i"> &rsaquo;</span></a>'
+        if produits_link else "")
 
     # QRES30/48 — mono-option : carte de totaux PLEINE LARGEUR (les montants
     # internes s'alignent déjà à droite, donc le TOTAL TTC retombe sur le rail
@@ -1378,13 +1383,21 @@ def build_pages(ctx) -> list:
     # papier — QRES61), donc illisible autrement que comme une erreur de
     # graphique. La légende, juste sous la courbe, le NOMME. L'année vient de
     # ``pricing`` (source unique du modèle), jamais d'un littéral recopié.
+    # AMOT34 (C-AMOT-044) — la phrase du palier n'est imprimée QUE si la
+    # provision existe (``inverter_replace_cost`` non nul — onduleur chiffré),
+    # avec l'année RÉELLEMENT servie par ``cashflow_assumptions`` : un
+    # onduleur offert (prix 0) n'a pas de palier, la légende ne l'invente pas.
     from ..pricing import INVERTER_REPLACE_YEAR as _REPL_AN
+    _cf_leg = d.get("cashflow_assumptions") or {}
+    _repl_an = _cf_leg.get("inverter_replace_year") or _REPL_AN
+    _palier = (f' Le palier en année&nbsp;{_repl_an} : provision de '
+               'remplacement de l\'onduleur, déjà déduite.'
+               if _cf_leg.get("inverter_replace_cost") else '')
     _fin_cap = (
         '<div class="p2-fin-cap">Projection <b>à tarif électricité '
         'constant</b> — toute hausse future du prix de l\'électricité '
-        'accélère votre rentabilité, votre coût solaire restant fixe. '
-        f'Le palier en année&nbsp;{_REPL_AN} : provision de remplacement '
-        'de l\'onduleur, déjà déduite.</div>')
+        'accélère votre rentabilité, votre coût solaire restant fixe.'
+        f'{_palier}</div>')
 
     # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
     # gain net : la carte-stat « Gain net » disparaît (plus de doublon).

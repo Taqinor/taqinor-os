@@ -73,11 +73,40 @@ def build_html(data: dict, pages_fn) -> str:
         # en-têtes) casse la liaison des lettres arabes, et la face 700
         # vendorisée sort illisible en gras — l'arabe prend la police
         # système (Noto Sans Arabic de l'image), sans espacement de lettres.
-        css_langue = (".i18n-rtl{unicode-bidi:isolate;}"
-                      "body *{letter-spacing:0 !important;}")
+        css_langue = css_arabe()
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{css_langue}</style></head>"
             f"<body>{body}</body></html>")
+
+
+#: APDF6 — la pile de polices arabe : la police SYSTÈME de l'image
+#: (``fonts-noto-core``, famille « Noto Sans Arabic »), jamais un @font-face
+#: vendorisé homonyme (glyphes superposés mesurés, C-APDF-002).
+PILE_ARABE = "'Noto Sans Arabic','DM Sans',sans-serif"
+
+
+def css_arabe(*, libelles=False, document=False) -> str:
+    """APDF6 (C-APDF-002) — LA CSS d'un document ARABE, partagée par tous les
+    moteurs (commercial/industriel ici, résidentiel ``theme.css_langue``,
+    agricole, une-page / legacy ``_css_arabe``) : isolation bidi, AUCUN
+    espacement de lettres (il casse la liaison), police système.
+
+    * ``libelles`` — les libellés traduits (``.i18n-rtl``) prennent la pile
+      arabe (le reste du gabarit garde ses polices) ;
+    * ``document`` — tout le document prend la pile arabe.
+
+    Aucun ``@font-face`` : jamais une police vendorisée homonyme de la police
+    système."""
+    regles = []
+    if libelles:
+        regles.append(f".i18n-rtl{{font-family:{PILE_ARABE};"
+                      "unicode-bidi:isolate;}")
+    else:
+        regles.append(".i18n-rtl{unicode-bidi:isolate;}")
+    regles.append("body *{letter-spacing:0 !important;}")
+    if document:
+        regles.append(f"body,body *{{font-family:{PILE_ARABE} !important;}}")
+    return "".join(regles)
 
 
 def render_pdf(out_path, html: str, base_dir) -> str:

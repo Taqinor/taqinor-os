@@ -50,7 +50,7 @@ import { STATUT_DISPLAY, DL_ECRAN } from './devisList/devisListConstants.js'
 // SPL204 — flux PDF et son dialogue (move only).
 import { useDevisPdf } from './devisList/useDevisPdf.js'
 import DevisPdfDialog from './devisList/DevisPdfDialog.jsx'
-import { frenchError, useDevisListSynthese } from './devisList/devisListHelpers.js'
+import { corpsRefus, frenchError, useDevisListSynthese } from './devisList/devisListHelpers.js'
 // SPL205 — parcours d'envoi et ses dialogues (move only).
 import { useDevisEnvoi } from './devisList/useDevisEnvoi.js'
 import EnvoiDialogs from './devisList/EnvoiDialogs.jsx'
@@ -594,10 +594,9 @@ export default function DevisList() {
     if (!d || !refusMotifId) return
     setRefusBusy(true)
     try {
-      await ventesApi.refuserDevis(d.id, {
-        motif_perte: refusMotifId,
-        motif: refusNote.trim() || undefined,
-      })
+      await ventesApi.refuserDevis(d.id, corpsRefus({
+        motifsPerte, motifId: refusMotifId, note: refusNote,
+      }))
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} marqué « Refusé ».`)
       closeRefusModal()

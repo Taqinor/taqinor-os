@@ -11,7 +11,7 @@
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, RefreshCw, Wand2, Sparkles } from 'lucide-react'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import automationApi from '../../api/automationApi'
 import { formatDateTime } from '../../lib/format'
 import {
@@ -34,9 +34,12 @@ const TRIGGERS = [
   { key: 'date_echeance_champ', label: 'Échéance de champ (± N jours)' },
   { key: 'webhook_inbound', label: 'Webhook entrant' },
   { key: 'record_state_change', label: "Changement d'état d'un enregistrement" },
-  { key: 'projet_status_change', label: 'Changement de statut de projet' },
-  { key: 'projet_phase_change', label: 'Changement de phase de projet' },
+  // APAR43 — émetteur parqué (gestion_projet) : libellé gardé pour les règles
+  // existantes, jamais proposé à la création (refusé 400 côté serveur).
+  { key: 'projet_status_change', label: 'Changement de statut de projet', indisponible: true },
+  { key: 'projet_phase_change', label: 'Changement de phase de projet', indisponible: true },
 ]
+const TRIGGERS_PROPOSES = TRIGGERS.filter((t) => !t.indisponible)
 
 // Actions — clés EN alignées sur ActionType.
 const ACTIONS = [
@@ -73,6 +76,8 @@ function toJson(obj) {
 // URL tokenisée devient le contexte des conditions/actions. Le token/URL sont
 // générés côté serveur ; la rotation invalide immédiatement l'ancien token.
 function IncomingWebhookPanel({ rules }) {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [hooks, setHooks] = useState([])
   const [ruleId, setRuleId] = useState('')
   const [secret, setSecret] = useState('')
@@ -104,7 +109,7 @@ function IncomingWebhookPanel({ rules }) {
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const remove = async (h) => {
-    if (!window.confirm('Supprimer ce webhook ? Son URL cessera de fonctionner.')) return
+    if (!(await confirmerSuppression({ title: 'Supprimer ce webhook ? Son URL cessera de fonctionner.' }))) return
     try { await automationApi.deleteWebhook(h.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -173,6 +178,8 @@ function IncomingWebhookPanel({ rules }) {
 }
 
 export default function AutomatisationsSection() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [rules, setRules] = useState([])
   const [runs, setRuns] = useState([])
   const [approvals, setApprovals] = useState([])
@@ -298,7 +305,7 @@ export default function AutomatisationsSection() {
     try { await automationApi.toggleRule(r.id); loadRules() } catch { /* */ }
   }
   const delRule = async (r) => {
-    if (!window.confirm(`Supprimer la règle « ${r.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la règle « ${r.nom} » ?` }))) return
     try { await automationApi.deleteRule(r.id); loadRules() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -393,7 +400,7 @@ export default function AutomatisationsSection() {
                       onValueChange={(v) => setAiDraft((d) => ({ ...d, trigger_type: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {TRIGGERS.map((t) => (
+                        {TRIGGERS_PROPOSES.map((t) => (
                           <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
                         ))}
                       </SelectContent>
@@ -482,7 +489,7 @@ export default function AutomatisationsSection() {
                   onValueChange={(v) => setDraft((d) => ({ ...d, trigger_type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {TRIGGERS.map((t) => (
+                    {TRIGGERS_PROPOSES.map((t) => (
                       <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>

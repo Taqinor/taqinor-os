@@ -691,7 +691,6 @@
 8f21fc9cc876|frontend/src/pages/sav/ContratsMaintenance.jsx,frontend/src/pages/sav/WarrantyClaimsPage.jsx
 8f4b562de902|apps/web/src/pages/api/roof-estimate.ts,apps/web/src/pages/api/roof-production.ts,apps/web/src/pages/api/roof-yield.ts
 8f57e504c5a9|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-8f7725971041|frontend/src/pages/parametres/ApprobationsPolitiquesSection.jsx,frontend/src/pages/parametres/ExportsPlanifiesSection.jsx,frontend/src/pages/parametres/ModelesBrandesSection.jsx
 8f82ae4a8f38|apps/web/src/pages/guides/loi-82-21-expliquee.astro,apps/web/src/pages/loi-82-21.astro,apps/web/src/pages/regularization-article-33.astro
 8f9a97cdb08e|apps/web/src/pages/en/guides/loi-82-21-expliquee.astro,apps/web/src/pages/en/loi-82-21.astro,apps/web/src/pages/en/regularization-article-33.astro
 8fbe79368437|frontend/src/pages/parametres/EquipeTerrainSection.jsx,frontend/src/pages/parametres/EquipesCommercialesSection.jsx
@@ -1133,7 +1132,6 @@ f0e41d5043fe|frontend/src/pages/sav/EquipementsPage.jsx,frontend/src/pages/sav/T
 f0fc78ae7a28|apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 f0fe055f8086|frontend/src/features/calepinage/ModeTerrain.jsx,frontend/src/features/calepinage/Ombriere.jsx
 f1105c270094|frontend/src/pages/parametres/EquipeTerrainSection.jsx,frontend/src/pages/parametres/EquipesCommercialesSection.jsx
-f111cb05d805|frontend/src/pages/parametres/ApprobationsPolitiquesSection.jsx,frontend/src/pages/parametres/ModelesBrandesSection.jsx
 f13d783584f2|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.nestedShortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.paletteActions.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
 f1826b2c514c|frontend/src/pages/installations/InstallationsPage.jsx,frontend/src/pages/interventions/InterventionsPage.jsx
 f1a25df39a9a|frontend/src/features/ventes/PdfPreviewSheet.jsx,frontend/src/pages/crm/leads/LeadDevisPanel.jsx

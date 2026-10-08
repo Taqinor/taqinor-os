@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import parametresApi from '../../api/parametresApi'
 import { formatDateTime } from '../../lib/format'
 import {
-  Badge, EmptyState, Spinner,
+  Badge, Button, EmptyState, Spinner,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 
@@ -48,17 +48,43 @@ export default function SettingsAuditFeed({ section = null, limit = 50, classNam
       .catch(() => setSections([]))
   }, [locked])
 
+  // APAR32 — pagination serveur : `next` = offset de la page suivante (null
+  // en fin de journal) ; « Charger plus » ajoute la page suivante.
+  const [next, setNext] = useState(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const paramsFor = (offset) => {
+    const sec = locked ? section : filter
+    const params = { limit, offset }
+    if (sec && sec !== ALL) params.section = sec
+    return params
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     const sec = locked ? section : filter
-    const params = { limit }
+    const params = { limit, offset: 0 }
     if (sec && sec !== ALL) params.section = sec
     parametresApi.getAudit(params)
-      .then(r => setAudit(r.data.results ?? r.data))
-      .catch(() => setAudit([]))
+      .then(r => {
+        setAudit(r.data.results ?? r.data)
+        setNext(r.data?.next ?? null)
+      })
+      .catch(() => { setAudit([]); setNext(null) })
       .finally(() => setLoading(false))
   }, [locked, section, filter, limit])
+
+  const chargerPlus = () => {
+    if (next == null) return
+    setLoadingMore(true)
+    parametresApi.getAudit(paramsFor(next))
+      .then(r => {
+        setAudit(prev => [...(prev ?? []), ...(r.data.results ?? [])])
+        setNext(r.data?.next ?? null)
+      })
+      .catch(() => setNext(null))
+      .finally(() => setLoadingMore(false))
+  }
 
   return (
     <div className={className}>
@@ -119,6 +145,12 @@ export default function SettingsAuditFeed({ section = null, limit = 50, classNam
               </div>
             )
           })}
+          {next != null && (
+            <Button type="button" variant="outline" size="sm" className="self-start"
+              loading={loadingMore} disabled={loadingMore} onClick={chargerPlus}>
+              Charger plus
+            </Button>
+          )}
         </div>
       )}
     </div>

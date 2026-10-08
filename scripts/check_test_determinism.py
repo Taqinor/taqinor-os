@@ -48,7 +48,6 @@ LIVE_NOW_IN_ASSERTION_RE = re.compile(
 WHITELISTED_LIVE_NOW: set[str] = {
     "apps/ventes/tests/test_acceptation.py :: self.assertEqual(devis.date_acceptation, timezone.now().date())",
     "apps/ventes/tests/test_qg8_devis_whatsapp.py :: self.assertGreater(share.expires_at, timezone.now())",
-    "apps/ventes/tests/test_refus.py :: self.assertEqual(devis.date_refus, timezone.now().date())",
 }
 
 

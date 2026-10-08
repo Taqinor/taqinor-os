@@ -226,6 +226,49 @@ function DelegationsTab() {
   )
 }
 
+// APAR41 — dialogue MAISON de saisie d'un motif OBLIGATOIRE (refus unitaire,
+// demande de complément) : remplace `window.prompt`. Le bouton de
+// confirmation reste inerte tant que le motif est vide ; Annuler n'envoie rien.
+function MotifDialog({ etat, onChange, onAnnuler, onConfirmer, submitting }) {
+  if (!etat) return null
+  return (
+    <ResponsiveDialog
+      open
+      onOpenChange={(o) => { if (!o) onAnnuler() }}
+      title={etat.titre}
+      description="Le motif est obligatoire : il est transmis tel quel au demandeur."
+      footer={(
+        <>
+          <Button variant="ghost" onClick={onAnnuler} disabled={submitting}>
+            Annuler
+          </Button>
+          <Button variant={etat.destructive ? 'destructive' : 'default'}
+                  onClick={onConfirmer}
+                  disabled={submitting || !etat.motif.trim()}>
+            {etat.bouton}
+          </Button>
+        </>
+      )}
+    >
+      <Textarea
+        aria-label={etat.libelle}
+        value={etat.motif}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+      />
+    </ResponsiveDialog>
+  )
+}
+
+const MOTIF_REFUS = {
+  titre: 'Refuser la demande', libelle: 'Motif du refus',
+  bouton: 'Confirmer le refus', destructive: true,
+}
+const MOTIF_COMPLEMENT = {
+  titre: 'Demander un complément', libelle: 'Motif du complément demandé',
+  bouton: 'Demander le complément', destructive: false,
+}
+
 function ApprobationsFileTab() {
   // WIR176 — les liens de notification approbation atterrissent ici via
   // `/approbations?source=<automation|installations|ged|…>` : le filtre
@@ -271,20 +314,19 @@ function ApprobationsFileTab() {
     return () => { active = false }
   }, [params])
 
-  const decider = async (item, decision) => {
+  // APAR41 — refus unitaire : dialogue de motif maison (plus de prompt natif).
+  const [motifRefus, setMotifRefus] = useState(null) // { item, motif, ...MOTIF_REFUS } | null
+
+  const decider = async (item, decision, motif = '') => {
     const key = `${item.source}-${item.id}`
     if (decidingKey) return
-    let motif = ''
-    if (decision === 'refuser') {
-      motif = window.prompt('Motif du refus (obligatoire) :') || ''
-      if (!motif.trim()) {
-        toast.error('Un motif de refus est obligatoire.')
-        return
-      }
+    if (decision === 'refuser' && !motif.trim()) {
+      setMotifRefus({ item, motif: '', ...MOTIF_REFUS })
+      return
     }
     setDecidingKey(key)
     try {
-      await reportingApi.deciderApprobation(item.source, item.id, decision, motif)
+      await reportingApi.deciderApprobation(item.source, item.id, decision, motif.trim())
       toast.success(decision === 'approuver' ? 'Demande approuvée.' : 'Demande refusée.')
       reload()
     } catch (err) {
@@ -516,6 +558,18 @@ function ApprobationsFileTab() {
         />
       )}
 
+      <MotifDialog
+        etat={motifRefus}
+        onChange={(v) => setMotifRefus((st) => (st ? { ...st, motif: v } : st))}
+        onAnnuler={() => setMotifRefus(null)}
+        onConfirmer={() => {
+          const { item, motif } = motifRefus
+          setMotifRefus(null)
+          decider(item, 'refuser', motif)
+        }}
+        submitting={Boolean(decidingKey)}
+      />
+
       {refuserMasse && (
         <ResponsiveDialog
           open
@@ -590,6 +644,8 @@ function DemandesAdHocTab() {
   // WIR261 — resoumission après un complément d'information demandé
   // (ZCTR8) : payload corrigé avant de rouvrir le cycle.
   const [resoumettreState, setResoumettreState] = useState(null) // { demande, values } | null
+  // APAR41 — refus / complément : motif saisi dans le dialogue maison.
+  const [motifDemande, setMotifDemande] = useState(null) // { id, action, motif, ... } | null
 
   const load = () => {
     setLoading(true)
@@ -649,11 +705,16 @@ function DemandesAdHocTab() {
     finally { setBusy(false) }
   }
 
-  const decider = async (id, approve) => {
+  const decider = async (id, approve, motif = '') => {
+    // APAR41 — un refus porte le motif RÉEL saisi (plus jamais « Refusé »).
+    if (!approve && !motif.trim()) {
+      setMotifDemande({ id, action: 'refus', motif: '', ...MOTIF_REFUS })
+      return
+    }
     setBusy(true)
     try {
       if (approve) await automationApi.approveApprovalRequest(id, '')
-      else await automationApi.rejectApprovalRequest(id, 'Refusé')
+      else await automationApi.rejectApprovalRequest(id, motif.trim())
       toast.success('Décision enregistrée.')
       load()
     } catch { toast.error('Décision impossible (séparation des tâches ?).') }
@@ -662,10 +723,9 @@ function DemandesAdHocTab() {
 
   // WIR261 — ZCTR8 : l'approbateur renvoie la demande à l'émetteur SANS la
   // rejeter (motif obligatoire, comme le refus en masse XKB1).
-  const demanderComplement = async (id) => {
-    const motif = window.prompt('Motif du complément demandé (obligatoire) :') || ''
+  const demanderComplement = async (id, motif = '') => {
     if (!motif.trim()) {
-      toast.error('Un motif est obligatoire.')
+      setMotifDemande({ id, action: 'complement', motif: '', ...MOTIF_COMPLEMENT })
       return
     }
     setBusy(true)
@@ -868,6 +928,19 @@ function DemandesAdHocTab() {
           </ul>
         )}
       </Card>
+
+      <MotifDialog
+        etat={motifDemande}
+        onChange={(v) => setMotifDemande((st) => (st ? { ...st, motif: v } : st))}
+        onAnnuler={() => setMotifDemande(null)}
+        onConfirmer={() => {
+          const { id, action, motif } = motifDemande
+          setMotifDemande(null)
+          if (action === 'refus') decider(id, false, motif)
+          else demanderComplement(id, motif)
+        }}
+        submitting={busy}
+      />
 
       {resoumettreState && (
         <ResponsiveDialog

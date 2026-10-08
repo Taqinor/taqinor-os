@@ -40,8 +40,8 @@ class ToCompanyTzWithProfileTest(TestCase):
     def test_uses_company_profile_timezone(self):
         company = Company.objects.create(nom='Acme', slug='ntobs23-acme')
         profile = CompanyProfile.get(company)
-        profile.timezone_affichage = 'America/New_York'
-        profile.save(update_fields=['timezone_affichage'])
+        profile.fuseau_horaire = 'America/New_York'
+        profile.save(update_fields=['fuseau_horaire'])
 
         dt = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=ZoneInfo('UTC'))
         result = to_company_tz(dt, company)
@@ -52,8 +52,8 @@ class ToCompanyTzWithProfileTest(TestCase):
     def test_invalid_timezone_name_falls_back_to_default(self):
         company = Company.objects.create(nom='Acme', slug='ntobs23-bad-tz')
         profile = CompanyProfile.get(company)
-        profile.timezone_affichage = 'Pas/UnFuseau'
-        profile.save(update_fields=['timezone_affichage'])
+        profile.fuseau_horaire = 'Pas/UnFuseau'
+        profile.save(update_fields=['fuseau_horaire'])
 
         dt = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=ZoneInfo('UTC'))
         result = to_company_tz(dt, company)
@@ -69,8 +69,8 @@ class MaintenanceWindowLocalTimestampsTest(TestCase):
         self.casa = Company.objects.create(nom='Casa', slug='ntobs23-casa')
         self.tokyo = Company.objects.create(nom='Tokyo', slug='ntobs23-tokyo')
         profile = CompanyProfile.get(self.tokyo)
-        profile.timezone_affichage = 'Asia/Tokyo'
-        profile.save(update_fields=['timezone_affichage'])
+        profile.fuseau_horaire = 'Asia/Tokyo'
+        profile.save(update_fields=['fuseau_horaire'])
 
         self.user_casa = User.objects.create_user(
             'u_casa', password='x', company=self.casa)
@@ -100,8 +100,8 @@ class SlaSnapshotLocalTimestampTest(TestCase):
     def test_genere_le_local_present_and_scoped_to_snapshot_company(self):
         company = Company.objects.create(nom='Acme', slug='ntobs23-sla')
         profile = CompanyProfile.get(company)
-        profile.timezone_affichage = 'Asia/Tokyo'
-        profile.save(update_fields=['timezone_affichage'])
+        profile.fuseau_horaire = 'Asia/Tokyo'
+        profile.save(update_fields=['fuseau_horaire'])
         generer_snapshot_societe(company, datetime.date(2026, 6, 1))
 
         user = User.objects.create_user('u1', password='x', company=company)

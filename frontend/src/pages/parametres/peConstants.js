@@ -330,3 +330,15 @@ export function joursDepuisReleve(releveLe, aujourdhui = new Date()) {
     aujourdhui.getDate()).getTime()
   return Math.max(0, Math.round((debut - t) / 86400000))
 }
+
+// APAR16 — n'envoie que les clés dont la valeur (déjà coercée) diffère de
+// l'état chargé, plus l'horodatage du verrou optimiste. Comparaison par
+// valeur JSON (objets imbriqués : jalons, numérotation, repères…).
+export function diffProfilePayload(base, next, updatedAt) {
+  const diff = {}
+  for (const k of Object.keys(next)) {
+    if (JSON.stringify(next[k]) !== JSON.stringify(base?.[k])) diff[k] = next[k]
+  }
+  if (updatedAt !== undefined) diff.updated_at = updatedAt
+  return diff
+}

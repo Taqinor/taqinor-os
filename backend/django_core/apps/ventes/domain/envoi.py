@@ -167,6 +167,15 @@ def mark_devis_sent(*, devis, user=None):
     if devis.statut != Devis.Statut.BROUILLON:
         return devis
 
+    # ADEV7 — une version REMPLACÉE ou archivée (``is_active=False``) n'est
+    # jamais marquée envoyée : aucun tampon, aucun ``devis_sent`` (funnel,
+    # cadence). Les vues d'envoi renvoient 409 ``version_remplacee`` AVANT
+    # d'arriver ici ; ce filet couvre les appelants internes (crm), sans
+    # changer leur signature : le devis est rendu inchangé.
+    from apps.ventes.domain.modifiabilite import ENVOYER, geste_cycle_permis
+    if not geste_cycle_permis(devis, ENVOYER)[0]:
+        return devis
+
     # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
     # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
     # Lève ``RemiseNonApprouvee`` — le devis reste brouillon.

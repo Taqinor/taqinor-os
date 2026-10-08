@@ -149,8 +149,10 @@ class DevisCalepinageActionsMixin:
         # ACAL278 — UNE règle de module (fini, 0..100, 2 décimales) au lieu
         # d'un ``_dec`` imbriqué sans borne : 400 NOMMÉ, jamais l'IntegrityError
         # de ck_devis_remise_globale_0_100 (500).
+        # APAR49 — défaut = taux STANDARD de la société (``tva_standard``).
+        from ..utils.company_settings import tva_standard
         taux_tva, erreur = _pourcentage_saisi(
-            request.data, 'taux_tva', Decimal('20'))
+            request.data, 'taux_tva', tva_standard(company))
         remise, erreur_remise = _pourcentage_saisi(
             request.data, 'remise_globale', Decimal('0'))
         erreur = erreur or erreur_remise
@@ -357,13 +359,36 @@ class DevisCalepinageActionsMixin:
             build_electrical_design, conception_electrique_stockee)
 
         devis = self.get_object()  # borné société par get_queryset
+        # ADEV58 (C-ADEV-040) — prédicat de modifiabilité (geste ETUDE) : un
+        # devis accepté/refusé/expiré ou remplacé ne voit plus son étude
+        # RÉÉCRITE (le schéma servi au client d'un accepté est figé).
+        non_modifiable = _refus_modifiabilite(devis, 'ETUDE')
         if request.method == 'GET':
             stockee = conception_electrique_stockee(devis)
             if stockee is not None:
                 return Response(stockee)
-            return Response(build_electrical_design(devis))
+            # GET non modifiable sans étude rangée : calculée pour l'affichage,
+            # JAMAIS persistée.
+            return Response(build_electrical_design(
+                devis, persister=not non_modifiable))
+        if non_modifiable:
+            return _reponse_non_modifiable(devis, 'ETUDE')
+        from ..domain.modifiabilite import (
+            consigner_correction_apres_envoi, _est_envoye)
+        from ..domain.verrou_devis import toucher
+
         surcharges = request.data if isinstance(request.data, dict) else {}
-        return Response(build_electrical_design(devis, overrides=surcharges))
+        hash_avant = devis.electrical_design_hash
+        design = build_electrical_design(devis, overrides=surcharges)
+        # Un ENVOYÉ se corrige sur place (D-QJR5-1) : une étude réellement
+        # réécrite est tracée « corrigé après envoi — étude » et avance le
+        # jeton d'édition. Aux mêmes entrées (idempotence) : rien.
+        if devis.electrical_design_hash != hash_avant and _est_envoye(devis):
+            consigner_correction_apres_envoi(
+                devis, user=request.user, objet='etude',
+                resume='étude (conception électrique)')
+            toucher(devis)
+        return Response(design)
 
     @action(detail=True, methods=['post'], url_path='simuler',
             permission_classes=[IsResponsableOrAdmin])
@@ -397,6 +422,10 @@ class DevisCalepinageActionsMixin:
         )
 
         devis = self.get_object()  # borné société par get_queryset
+        # ADEV58 — même garde que la conception : l'étude bancable d'un devis
+        # accepté ou remplacé n'est plus relancée (409).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
         zones = zones_etude_du_devis(devis)
         if not zones:
             return Response(

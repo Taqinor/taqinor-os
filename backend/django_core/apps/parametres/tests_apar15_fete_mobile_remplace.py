@@ -38,7 +38,7 @@ class FeteMobileRemplaceTests(TestCase):
 
     def _adha_2027(self):
         return list(Holiday.objects.filter(
-            company=self.company, nom='Aïd el-Adha', date__year=2027,
+            company=self.company, nom='Aïd al-Adha', date__year=2027,
         ).values_list('date', flat=True))
 
     def test_correction_laisse_une_seule_ligne(self):
@@ -72,7 +72,7 @@ class FeteMobileRemplaceTests(TestCase):
 
     def test_doublon_herite_resorbe(self):
         Holiday.objects.create(
-            company=self.company, nom='Aïd el-Adha',
+            company=self.company, nom='Aïd al-Adha',
             date=datetime.date(2027, 5, 19), recurrent_annuel=False)
         enregistrer_fetes_mobiles(
             self.company, 2027, {'aid_el_adha': '2027-05-18'},
@@ -92,7 +92,7 @@ class FeteMobileRemplaceTests(TestCase):
             'aid_el_adha': f'{annee}-05-18'}}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(Holiday.objects.filter(
-            company=self.company, nom='Aïd el-Adha', date__year=annee,
+            company=self.company, nom='Aïd al-Adha', date__year=annee,
         ).count(), 1)
         self.assertTrue(SettingsAuditLog.objects.filter(
             company=self.company, section='fetes_mobiles',

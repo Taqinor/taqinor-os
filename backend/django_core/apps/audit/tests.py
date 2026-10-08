@@ -142,11 +142,25 @@ class TestPdfEventCapture(AuditBase):
             company=self.company, reference='DEV-AUD-0001',
             client=self._client(), statut='brouillon',
             taux_tva=Decimal('20.00'), created_by=self.directeur)
+        # ADEV22 (C-ADEV-028) — l'audit n'est plus écrit à la DEMANDE
+        # ``generer-pdf`` (202, la tâche peut échouer) mais au RENDU réussi :
+        # ``/proposal`` 200 (synchrone, même requête ⇒ même acteur). Le rendu
+        # et le stockage sont doublés ; signal et receveur audit réels.
         with patch('apps.ventes.tasks.task_generate_devis_pdf') as task:
             task.delay.return_value = MagicMock(id='t1')
             resp = auth(self.directeur).post(
                 f'/api/django/ventes/devis/{devis.id}/generer-pdf/')
         self.assertEqual(resp.status_code, 202)
+        self.assertFalse(AuditLog.objects.filter(
+            action='pdf', object_id=str(devis.id)).exists())
+        rendu = patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                      return_value='fake-key')
+        relecture = patch('apps.ventes.utils.pdf.download_pdf',
+                          return_value=b'%PDF-1.4 fake')
+        with rendu, relecture:
+            resp = auth(self.directeur).get(
+                f'/api/django/ventes/devis/{devis.id}/proposal/')
+        self.assertEqual(resp.status_code, 200)
         entry = AuditLog.objects.filter(
             action='pdf', object_id=str(devis.id)).first()
         self.assertIsNotNone(entry)

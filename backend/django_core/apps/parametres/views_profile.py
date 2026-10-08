@@ -3,6 +3,8 @@
 Domaine « Société & identité / Devis & logique métier ». Extrait de l'ancien
 ``views.py`` sans aucun changement d'endpoint, de permission ni de
 comportement."""
+from django.utils.dateparse import parse_datetime
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -146,6 +148,41 @@ def _audit_profile_changes(request, profile, before):
         )
 
 
+def _auteur_derniere_ecriture(request, profile):
+    """Nom de l'auteur de la dernière écriture journalisée du profil."""
+    ligne = (SettingsAuditLog.objects
+             .filter(company=_audit_company(request), section='profil')
+             .select_related('user').order_by('-timestamp', '-id').first())
+    user = getattr(ligne, 'user', None)
+    if user is None:
+        return 'un autre utilisateur'
+    return user.get_full_name() or user.get_username()
+
+
+def _conflit_verrou(request, profile):
+    """APAR16 — verrou optimiste. Si le corps porte ``updated_at`` (lu au
+    chargement par l'écran) et qu'il diffère de l'horodatage courant du
+    profil, quelqu'un a écrit entre-temps : 409, rien n'est écrit. Un appelant
+    qui n'envoie pas ``updated_at`` (sections qui ne patchent qu'un champ)
+    garde le comportement historique."""
+    if 'updated_at' not in request.data:
+        return None
+    brut = request.data.get('updated_at')
+    lu = parse_datetime(brut) if isinstance(brut, str) and brut else None
+    if brut not in (None, '') and lu is None:
+        return Response({'updated_at': ['Horodatage illisible.']},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if lu == profile.updated_at:
+        return None
+    auteur = _auteur_derniere_ecriture(request, profile)
+    return Response({
+        'detail': (f'Le profil a été modifié par {auteur} entre-temps : '
+                   "recharger la page avant d'enregistrer."),
+        'code': 'profil_modifie',
+        'updated_at': CompanyProfileSerializer(profile).data.get('updated_at'),
+    }, status=status.HTTP_409_CONFLICT)
+
+
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def get_profile(request):
@@ -161,6 +198,9 @@ def get_profile(request):
                      HasPermissionOrLegacy('parametres_modifier')])
 def update_profile(request):
     profile = _profile(request)
+    conflit = _conflit_verrou(request, profile)
+    if conflit is not None:
+        return conflit
     partial = request.method == 'PATCH'
     # Capture l'état AVANT save pour l'audit (N55).
     before = {f: getattr(profile, f, None) for f in _PROFILE_AUDIT_FIELDS}

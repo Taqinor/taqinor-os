@@ -108,7 +108,7 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields, origine=None):
     service cross-app, pas un second chemin de création.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
     from apps.crm.services import resolve_client_for_lead
 
     if lead is None:
@@ -145,7 +145,7 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields, origine=None):
             mode_installation=mode,
         )
 
-    devis = create_with_reference(Devis, 'DEV', company, _create)
+    devis = create_numbered(Devis, company, 'devis', _create)
     logger.info('FG106: devis brouillon %s créé depuis OCR (company %s)',
                 devis.reference, getattr(company, 'id', '?'))
     return devis
@@ -220,7 +220,7 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
     pas de lead d'origine).
     """
     from ..models import Devis
-    from ..utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
     from apps.crm.models import Client
 
     client = Client.objects.get(pk=client_id, company=company)
@@ -231,7 +231,7 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
             statut=Devis.Statut.BROUILLON, created_by=user,
             note=note or '',
         )
-    devis = create_with_reference(Devis, 'DEV', company, _create)
+    devis = create_numbered(Devis, company, 'devis', _create)
 
     for ligne in (lignes or []):
         produit_id = ligne.get('produit_id')
@@ -271,7 +271,7 @@ def create_devis_upsell_from_intervention(*, intervention, user):
     devis existant, le renvoie tel quel plutôt que d'en créer un second.
     Renvoie le ``Devis`` créé (ou réutilisé)."""
     from ..models import Devis
-    from ..utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
 
     if intervention.devis_upsell_id:
         existant = Devis.objects.filter(
@@ -303,7 +303,7 @@ def create_devis_upsell_from_intervention(*, intervention, user):
             note=note,
         )
 
-    devis = create_with_reference(Devis, 'DEV', company, _create)
+    devis = create_numbered(Devis, company, 'devis', _create)
     intervention.devis_upsell_id = devis.id
     intervention.save(update_fields=['devis_upsell_id'])
     logger.info(

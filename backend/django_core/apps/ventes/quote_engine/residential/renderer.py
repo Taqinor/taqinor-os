@@ -276,9 +276,15 @@ def _augment(data: dict) -> dict:
     # par le builder (data['links']['signer']) — sinon repli historique.
     ent = d.get("entreprise") or {}
     ent_site = (ent.get("site_url") or "").strip().rstrip("/")
-    site_url = ent_site or d.get("site_url") or "taqinor.ma"
+    # AMOT18 — société identifiée SANS site : aucun lien taqinor.ma ; les
+    # liens réalisations/produits/garanties et le repli « signer » sont omis
+    # (le lien de signature réel, posé par le builder, reste).
+    from . import theme as _theme
+    _identifiee = _theme.societe_identifiee(d)
+    site_url = ent_site or d.get("site_url") or (
+        "" if _identifiee else "taqinor.ma")
     _existing_links = dict(d.get("links") or {})
-    _default_links = {
+    _default_links = {} if not site_url else {
         # QK5 — « avis » pointe vers /realisations (page réelle : nos
         # réalisations clients). Le chemin /avis n'existe pas sur taqinor.ma ;
         # un lien 404 sur un PDF client est corrigé ici. On ne fabrique jamais

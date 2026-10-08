@@ -18,7 +18,7 @@ import { Link } from 'react-router-dom'
 import { Boxes, Plus, Trash2, ArrowRight } from 'lucide-react'
 import api from '../../api/axios'
 import customFieldsApi from '../../api/customFieldsApi'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   Button, IconButton, Input, Badge, Spinner, EmptyState, Card, CardContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -51,6 +51,8 @@ function messageErreur(e, fallback) {
 }
 
 export default function ObjetsPersonnalisesPage() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [objets, setObjets] = useState([])
   const [loading, setLoading] = useState(true)
   const [selection, setSelection] = useState(null)
@@ -107,7 +109,7 @@ export default function ObjetsPersonnalisesPage() {
   }
 
   const supprimerObjet = async (objet) => {
-    if (!window.confirm(`Supprimer l'objet « ${objet.libelle} » et ses enregistrements ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer l'objet « ${objet.libelle} » et ses enregistrements ?` }))) return
     try {
       await api.delete(`/custom-fields/objects/${objet.id}/`)
       if (selection?.id === objet.id) { setSelection(null); setChamps([]) }
@@ -141,7 +143,7 @@ export default function ObjetsPersonnalisesPage() {
   }
 
   const supprimerChamp = async (champ) => {
-    if (!window.confirm(`Supprimer le champ « ${champ.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le champ « ${champ.libelle} » ?` }))) return
     try {
       await customFieldsApi.deleteDef(champ.id)
       chargerChamps(selection)

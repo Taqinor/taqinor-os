@@ -103,3 +103,9 @@ rougit pas tant que la route n'existe pas.
 | Fichier | Endpoint / ce qu'il apparie |
 | --- | --- |
 | `devis_solde.json` | GET ventes/devis/<id>/ (et la liste, même sérialiseur) : bloc `solde` {total_ttc, facture, paye, avoirs, restant, tranches_total, tranches_facturees — tout en texte} + NOUVELLE clé `porte_facturation` (`libre`/`tranche`/`aucune`), la porte de facturation dite par le serveur (ATOT18 ; producteur ATOT2, consommateur ATOT31) |
+
+## Groupe AGNR — M0 contrats posés SEULS (08/10/2026)
+
+| Fichier | Endpoint / ce qu'il apparie |
+| --- | --- |
+| `prix_applicable.json` | GET ventes/prix-applicable/ : `produit`, `quantite`, `prix` (texte, HT), NOUVELLE clé `unite: "HT"`, `source` standard/liste/regle, `liste_nom`, `remise_volume` (NTCPQ17) — AGNR1 ; consommateurs AGNR15 (écran générateur) et AGNR10 (page des listes) |
