@@ -8,6 +8,7 @@ entrée ``beat_schedule`` et sa route ``scheduled`` — la garde
 ``core/tests/test_celery_task_routes.py`` refuse toute divergence.
 
 NTI18N38 — purge mensuelle des traductions de CONTENU orphelines.
+APAR34 — purge quotidienne de rétention des journaux d'audit.
 NTI18N51 — notification hebdomadaire groupée des traductions manquantes.
 
 ``core.models.ContentTranslation`` (YHARD4) désigne sa cible par
@@ -251,3 +252,19 @@ def notifier_traductions_manquantes_hebdo(limite=None):
         societes += 1
         total_cles += len(lignes)
     return {'societes_notifiees': societes, 'cles': total_cles}
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# APAR34 — rétention d'audit PLANIFIÉE (D-APAR-3, révisable par le fondateur).
+#
+# Délègue à l'UNIQUE purgeur ``retention.purge_all_companies`` (le même que la
+# commande ``purge_audit_retention`` et l'endpoint admin) : seules les sociétés
+# qui ont réglé ``audit_retention_days`` > 0 sont touchées, jamais sous le
+# plancher légal de 365 j (``effective_retention_days``), chaque purge
+# journalisée par société (section ``audit``, champ ``purge_retention``).
+# ───────────────────────────────────────────────────────────────────────────
+@shared_task(name='parametres.purger_audit')
+def purger_audit():
+    """Purge planifiée des journaux d'audit au-delà de la rétention réglée."""
+    from .retention import purge_all_companies
+    return purge_all_companies()

@@ -1285,6 +1285,8 @@ CELERY_TASK_ROUTES = {
     # NTI18N51 — notification hebdomadaire des traductions manquantes.
     'parametres.notifier_traductions_manquantes_hebdo': {
         'queue': 'scheduled'},
+    # APAR34 — purge quotidienne de rétention des journaux d'audit.
+    'parametres.purger_audit': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
