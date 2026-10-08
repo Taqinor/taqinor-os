@@ -62,6 +62,57 @@ class AcceptError(Exception):
         self.code = code
 
 
+#: ADEV13 — message NEUTRE du 409 ``validation_requise`` (contrat
+#: ``proposal_accept.json``, ``reponses_409.validation_requise`` — ADEV2) :
+#: aucun motif interne (crédit, avertissement) n'est exposé au client.
+VALIDATION_REQUISE_REFUS = (
+    'Cette proposition attend une validation interne avant de pouvoir être '
+    'signée.')
+
+
+class AcceptationBloquee(AcceptError):
+    """ADEV13 (C-ADEV-005) — acceptation refusée par un blocage crédit
+    (XFAC28) ou un avertissement de vente bloquant (ZSAL9).
+
+    Sous-classe d'``AcceptError`` : la signature publique et le portail
+    (qui attrapent ``AcceptError``) répondent donc 409 avec le message NEUTRE
+    et ``code = "validation_requise"`` ; la vue interne l'attrape AVANT et
+    garde son 403 détaillé (``motif``, ``nature`` = ``credit_hold`` |
+    ``sale_warning``)."""
+
+    def __init__(self, nature, motif):
+        super().__init__(VALIDATION_REQUISE_REFUS, conflict=True,
+                         code='validation_requise')
+        self.nature = nature
+        self.motif = motif
+
+
+def _garde_blocages_acceptation(devis, *, user, override_credit=False,
+                                override_avertissement=False):
+    """ADEV13 — LA garde unique des trois portes d'acceptation (interne,
+    signature publique, portail) : blocage crédit dur (XFAC28) puis
+    avertissement de vente bloquant (ZSAL9). Lève ``AcceptationBloquee`` ;
+    un override n'est honoré que s'il est demandé (les portes client ne le
+    demandent jamais)."""
+    from apps.ventes.domain.recouvrement import (
+        CreditHoldError, SaleWarningError, verifier_credit_hold,
+        verifier_sale_warnings,
+    )
+    if devis.client_id is not None:
+        try:
+            verifier_credit_hold(
+                devis.client, override=bool(override_credit), user=user,
+                chatter_target=devis, contexte='acceptation devis')
+        except CreditHoldError as exc:
+            raise AcceptationBloquee('credit_hold', exc.motif) from exc
+    try:
+        verifier_sale_warnings(
+            devis, override=bool(override_avertissement), user=user,
+            chatter_target=devis)
+    except SaleWarningError as exc:
+        raise AcceptationBloquee('sale_warning', exc.motif) from exc
+
+
 #: ADEV11 — message du 409 ``brouillon`` (contrat ``proposal_accept.json``,
 #: ``reponses_409.brouillon`` — ADEV2), repris tel quel ; partagé par la
 #: garde du service et celle du résolveur public (``public/noyau.py``).
@@ -1324,7 +1375,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
-                 entreprise=None):
+                 entreprise=None, override_credit=False,
+                 override_avertissement=False):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1460,6 +1512,15 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
                 conflict=True)
+
+        # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
+        # bloquant : UNE garde, ici, pour les trois portes (vue interne,
+        # signature publique, portail client). Auparavant seule la vue
+        # interne la posait — le lien public et le portail acceptaient un
+        # client bloqué (chantier créé). Rien n'est écrit sur refus.
+        _garde_blocages_acceptation(
+            devis, user=user, override_credit=override_credit,
+            override_avertissement=override_avertissement)
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).
