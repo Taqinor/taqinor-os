@@ -518,6 +518,12 @@ def creer_ligne(devis, **champs):
         taux_produit = _taux_tva_du_produit(champs)
         if taux_produit is not None:
             champs['taux_tva'] = taux_produit
+        elif str(champs.get('type_ligne') or 'produit') == 'produit':
+            # ATOT20 — une ligne PRODUIT naît TOUJOURS avec un taux : celui du
+            # produit, sinon celui du DEVIS (le taux que le serveur et le PDF
+            # lui appliquaient de toute façon : total inchangé). Plus aucune
+            # ligne NULL dont l'écran devait deviner le taux.
+            champs['taux_tva'] = getattr(devis, 'taux_tva', None)
     return LigneDevis.objects.create(devis=devis, **champs)
 
 

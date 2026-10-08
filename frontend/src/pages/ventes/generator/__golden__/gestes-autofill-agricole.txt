@@ -272,7 +272,7 @@ HT : 0 MAD
 0 MADHT : 0 MAD
 — Produit —
 HT : 0 MAD
-10 % attendu
+TVA appliquée : 20 % (catalogue : 10 %)
 0 MADHT : 0 MAD
 — Produit —
 HT : 0 MAD

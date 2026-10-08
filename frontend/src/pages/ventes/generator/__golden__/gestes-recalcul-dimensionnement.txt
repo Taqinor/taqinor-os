@@ -147,7 +147,7 @@ HT : 1 200 MAD
 1 440 MADHT : 1 200 MAD
 — Produit —
 HT : 1 450 MAD
-10 % attendu
+TVA appliquée : 20 % (catalogue : 10 %)
 13 920 MADHT : 11 600 MAD
 — Produit —
 HT : 16 000 MAD

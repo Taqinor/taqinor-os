@@ -51,11 +51,13 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
     .slice()
     .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || (a.id ?? 0) - (b.id ?? 0))
     .map((l) => {
-      // TVA-LIGNE (06/10/2026) — une ligne SANS taux prend d'abord celui de
-      // sa fiche produit (`produit_tva`, DC7 : 10 % panneaux PV), et
-      // seulement ensuite le taux du devis : sinon le prochain
-      // enregistrement figeait 20 % sur un panneau. 0 % reste 0 % (AGR216).
-      const taux = tauxTvaOuDefaut(l.taux_tva ?? l.produit_tva ?? tauxDevis, 20)
+      // ATOT20 — UNE règle avec le serveur : une ligne relue SANS taux est
+      // chiffrée au taux du DEVIS (le serveur et le PDF lui appliquent ce
+      // taux) ; jamais celui de la fiche produit (`produit_tva`), qui changeait
+      // le total au premier « Enregistrer » sans saisie. Les lignes NOUVELLES
+      // naissent avec le taux de leur produit (serveur `creer_ligne`,
+      // TVA-LIGNE). 0 % reste 0 % (AGR216).
+      const taux = tauxTvaOuDefaut(l.taux_tva ?? tauxDevis, 20)
       const produit = l.produit ?? l.produit_id
       // Marqueur d'écran `compose` ⇄ provenance persistée `ligne_composee`
       // (ERR-QJR570) : composée ⇒ remplacée par la prochaine recomposition,
