@@ -423,6 +423,10 @@ class RapportAlignement:
     # Lignes Odoo qui retombent sur une fiche ERP déjà traitée dans la même
     # passe (doublons INTERNES au pipeline Odoo) — la première ligne gagne.
     doublons_odoo: int = 0
+    # AACQ33 — leads perdus, archivés ou « ne plus contacter » : jamais
+    # avancés par l'alignement (le funnel d'un lead perdu ne bouge plus
+    # automatiquement), comptés ici.
+    geles: int = 0
     regressions: list = field(default_factory=list)
 
 
@@ -477,6 +481,13 @@ def align_stages_from_rows(company, rows, apply_changes):
                 continue
             if lead.is_deleted:
                 rapport.corbeille += 1
+                continue
+            if (getattr(lead, 'perdu', False)
+                    or getattr(lead, 'is_archived', False)
+                    or getattr(lead, 'ne_plus_contacter', False)):
+                # AACQ33 — lead GELÉ : aucune écriture d'étape, aucun signal
+                # ``lead_stage_changed`` (même « Signé » dans Odoo).
+                rapport.geles += 1
                 continue
             if lead.pk in deja_traites:
                 # CRX10 — DEUX lignes Odoo pointent la même fiche ERP : la

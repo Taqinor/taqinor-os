@@ -522,3 +522,78 @@ class PushSelectionTests(OdooSyncBase):
         sortie = self._push()
         self.assertIn('inconnus : 0', sortie)
         self.assertIn('ambigus : 0', sortie)
+
+
+class AlignementGelTests(OdooSyncBase):
+    """AACQ33 — l'alignement Odoo n'avance JAMAIS un lead perdu, archivé ou
+    « ne plus contacter » (aucune écriture d'étape, aucun signal) ; il le
+    compte « gelé »."""
+
+    def _lead(self, **kwargs):
+        return Lead.objects.create(company=self.company, **kwargs)
+
+    def _align(self, rows, apply_changes=True):
+        return odoo_sync.align_stages_from_rows(
+            self.company, rows, apply_changes=apply_changes)
+
+    def _capturer_evenements(self):
+        recus = []
+
+        def _capture(sender, **kwargs):
+            recus.append((kwargs['lead'].pk, kwargs['old_stage'],
+                          kwargs['new_stage']))
+
+        lead_stage_changed.connect(_capture, weak=False)
+        self.addCleanup(lead_stage_changed.disconnect, _capture)
+        return recus
+
+    def test_perdu_archive_npc_jamais_avances(self):
+        geles = [
+            self._lead(nom='Perdu', external_system='odoo', external_id='60',
+                       stage=stages.CONTACTED, perdu=True),
+            self._lead(nom='Archive', external_system='odoo',
+                       external_id='61', stage=stages.CONTACTED,
+                       is_archived=True),
+            self._lead(nom='NPC', external_system='odoo', external_id='62',
+                       stage=stages.CONTACTED, ne_plus_contacter=True),
+        ]
+        vivant = self._lead(nom='Vivant', external_system='odoo',
+                            external_id='63', stage=stages.NEW)
+        recus = self._capturer_evenements()
+
+        rapport = self._align([
+            {'id': 60, 'stage': 'Quote Discussed'},
+            {'id': 61, 'stage': 'Quote Discussed'},
+            {'id': 62, 'stage': 'Quote Discussed'},
+            {'id': 63, 'stage': 'Quote Discussed'},
+        ])
+
+        for lead in geles:
+            lead.refresh_from_db()
+            self.assertEqual(lead.stage, stages.CONTACTED)
+            self.assertFalse(LeadActivity.objects.filter(lead=lead).exists())
+        self.assertEqual(rapport.geles, 3)
+        vivant.refresh_from_db()
+        self.assertEqual(vivant.stage, stages.FOLLOW_UP)
+        self.assertEqual([r[0] for r in recus], [vivant.pk])
+
+    def test_perdu_signe_odoo_reste_gele(self):
+        lead = self._lead(nom='Perdu signe', external_system='odoo',
+                          external_id='64', stage=stages.QUOTE_SENT,
+                          perdu=True)
+        recus = self._capturer_evenements()
+        rapport = self._align(
+            [{'id': 64, 'stage': 'Contract Signed + Deposit'}])
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.QUOTE_SENT)
+        self.assertTrue(lead.perdu)
+        self.assertEqual(rapport.geles, 1)
+        self.assertEqual(recus, [])
+
+    def test_commande_affiche_les_geles(self):
+        self._lead(nom='Beta perdu', email='beta@example.test',
+                   stage=stages.NEW, perdu=True)
+        sortie = self._sync()
+        self.assertIn('gelé(s) :', sortie)
+        beta = Lead.objects.get(company=self.company, nom='Beta perdu')
+        self.assertEqual(beta.stage, stages.NEW)
