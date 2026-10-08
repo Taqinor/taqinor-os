@@ -4634,6 +4634,20 @@ _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
                         "accepte_par_nom", "note_client")
 
 
+def _echapper_chaines(valeur, echapper):
+    """AMOT42 — copie de ``valeur`` dont chaque chaîne FEUILLE (valeurs de
+    dict, éléments de liste) est échappée ; clés, nombres et booléens
+    intacts."""
+    if isinstance(valeur, dict):
+        return {cle: _echapper_chaines(val, echapper)
+                for cle, val in valeur.items()}
+    if isinstance(valeur, list):
+        return [_echapper_chaines(val, echapper) for val in valeur]
+    if isinstance(valeur, str):
+        return echapper(valeur)
+    return valeur
+
+
 def echapper_textes_client(data: dict) -> dict:
     """Copie de ``data`` dont les textes CONTRÔLÉS PAR L'UTILISATEUR sont
     échappés HTML, pour les renderers qui écrivent leur HTML à la main
@@ -4731,6 +4745,12 @@ def echapper_textes_client(data: dict) -> dict:
             ({**li, "designation": _e(li.get("designation"))}
              if isinstance(li, dict) else li)
             for li in sortie["om_ci_lignes"]]
+    # AMOT42 (C-AMOT-053) — le bloc ``economie_ci`` porte des textes SAISIS
+    # (``saisies_economie_ci`` : prêteur, référence d'offre, source du taux)
+    # recomposés en libellés par ``economie_ci`` : il est parcouru ici, UNE
+    # fois, comme le reste (les clés et les nombres sont intacts).
+    if isinstance(sortie.get("economie_ci"), dict):
+        sortie["economie_ci"] = _echapper_chaines(sortie["economie_ci"], _e)
     # CIQ218 — conditions générales C&I : texte saisi par la société.
     if isinstance(sortie.get("cgv_ci"), list):
         sortie["cgv_ci"] = [_e(v) for v in sortie["cgv_ci"]]
