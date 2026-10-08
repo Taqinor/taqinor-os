@@ -532,6 +532,10 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
             # ASEC32 — l'étape configurable n'avance QUE par ses transitions
             # gardées (`avancer-etape`, gates CH2) : jamais par un PATCH.
             'etape',
+            # ACHT4 — un chantier par affaire : le devis d'origine n'est posé
+            # que par `creer-depuis-devis` / l'acceptation (et le rattachement
+            # à une révision), jamais par un POST ou un PATCH générique.
+            'devis',
         ]
 
     def validate(self, attrs):

@@ -514,6 +514,25 @@ def _freeze_bom(devis):
     return bom
 
 
+def _devis_successeurs_revision_ids(devis):
+    """ACHT4 — ids des versions qui REMPLACENT ``devis`` (chaîne
+    ``superseded_by`` : v1 → v2 → v3), même société, sans cycle. Lu par
+    traversée de la FK du devis reçu (aucun import de ``ventes.models``)."""
+    ids = []
+    vus = {getattr(devis, 'pk', None)}
+    courant = devis
+    while True:
+        suivant_id = getattr(courant, 'superseded_by_id', None)
+        if not suivant_id or suivant_id in vus:
+            return ids
+        suivant = getattr(courant, 'superseded_by', None)
+        if suivant is None or suivant.company_id != devis.company_id:
+            return ids
+        vus.add(suivant_id)
+        ids.append(suivant_id)
+        courant = suivant
+
+
 def _rattacher_chantier_de_revision(devis, user, company):
     """QJR559 — si une version que ``devis`` REMPLACE (révision, lue par
     ``ventes.selectors.devis_predecesseurs_revision_ids``) a déjà un chantier,
@@ -645,6 +664,16 @@ def create_installation_from_devis(devis, user, company):
         devis=devis, company=company).first()
     if existing is not None:
         return existing, False
+    # ACHT4 (C-ACHT-004) — UN chantier par AFFAIRE : une version REMPLACÉE
+    # (V1 révisée) dont l'affaire a déjà un chantier (porté par une version
+    # plus récente) renvoie ce chantier, jamais un second.
+    successeurs = _devis_successeurs_revision_ids(devis)
+    if successeurs:
+        existing = (Installation.objects
+                    .filter(company=company, devis_id__in=successeurs)
+                    .order_by('pk').first())
+        if existing is not None:
+            return existing, False
     # QJR559 — V2 d'un devis signé (D-QJR5-2) : le chantier de la version
     # remplacée est RATTACHÉ à la révision acceptée, jamais dupliqué.
     # ASTK177 (décision ASTK173 (a)) — tant que le chantier n'est pas
