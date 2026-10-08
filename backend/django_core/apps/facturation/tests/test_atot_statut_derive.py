@@ -45,6 +45,11 @@ class StatutDeriveTests(TestCase):
         self.produit = Produit.objects.create(
             company=self.company, nom='Remise ATOT8', sku=f'ATOT8-{_nxt()}',
             prix_vente=Decimal('0'), quantite_stock=0)
+        # La ligne produit du devis porte son produit du catalogue
+        # (`LigneFacture.produit` est NOT NULL : sans lui, facturer-complet → 500).
+        self.kit = Produit.objects.create(
+            company=self.company, nom='Kit ATOT8', sku=f'ATOT8K-{_nxt()}',
+            prix_vente=Decimal('125000'), quantite_stock=10)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
@@ -64,7 +69,8 @@ class StatutDeriveTests(TestCase):
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
             taux_tva=Decimal('20.00'), mode_installation='residentiel')
         LigneDevis.objects.create(
-            devis=devis, designation='Centrale PV', quantite=Decimal('1'),
+            devis=devis, produit=self.kit, designation='Centrale PV',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('125000'), remise=Decimal('0'),
             taux_tva=Decimal('20.00'))
         r = self.api.post(
