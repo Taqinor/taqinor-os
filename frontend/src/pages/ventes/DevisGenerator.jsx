@@ -461,6 +461,20 @@ export default function DevisGenerator({
   const [fHiver, setFHiver] = useState('')
   const [fEte, setFEte] = useState('')
   const [monthly, setMonthly] = useState(DEFAULT_MONTHLY_BILLS)
+  // AGNR13 — la PROVENANCE de chaque case du détail mensuel : 'exemple'
+  // (valeur du simulateur, jamais une facture du client), 'derivee' (hiver /
+  // été, lead) ou 'tapee'. Tant qu'une case est 'exemple', la série ne part
+  // jamais comme `factures_mensuelles_reelles`.
+  const [provenanceMois, setProvenanceMois] = useState(() => Array(12).fill('exemple'))
+  const poserMoisDerives = (valeurs) => {
+    setMonthly(valeurs)
+    setProvenanceMois(Array(12).fill('derivee'))
+  }
+  // Une série RELUE du devis (`?edit=`) est celle que le vendeur avait saisie.
+  const poserMoisRelus = (valeurs) => {
+    setMonthly(valeurs)
+    setProvenanceMois(Array(12).fill('tapee'))
+  }
   // QF4 — distributeur réel + facture/consommation réelle du client, pour que
   // le calcul « deux factures » par tranche (backend QF2) utilise ses vrais
   // chiffres au lieu des défauts. Stockés dans etude_params à l'enregistrement
@@ -698,7 +712,7 @@ export default function DevisGenerator({
   // produits ne sont jamais persistés — seulement la saisie de l'utilisateur).
   const draftSnapshot = useMemo(() => ({
     leadId, clientId, dateValidite, scenario, recommendedChoice, note,
-    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    fHiver, fEte, monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh,
     realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
@@ -712,7 +726,7 @@ export default function DevisGenerator({
 
   }), [
     leadId, clientId, dateValidite, scenario, recommendedChoice, note,
-    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    fHiver, fEte, monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh,
     realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
@@ -801,6 +815,14 @@ export default function DevisGenerator({
     if (d.fHiver != null) setFHiver(d.fHiver)
     if (d.fEte != null) setFEte(d.fEte)
     if (d.monthly != null) setMonthly(d.monthly)
+    // AGNR13 — la provenance revient avec le brouillon ; un brouillon ancien
+    // (sans elle) garde la règle d'avant : une série modifiée = saisie.
+    if (Array.isArray(d.provenanceMois) && d.provenanceMois.length === 12) {
+      setProvenanceMois(d.provenanceMois)
+    } else if (Array.isArray(d.monthly)
+      && d.monthly.some((v, i) => Number(v) !== DEFAULT_MONTHLY_BILLS[i])) {
+      setProvenanceMois(Array(12).fill('tapee'))
+    }
     if (d.distributeur != null) setDistributeur(d.distributeur)
     if (d.realBillMode != null) setRealBillMode(d.realBillMode)
     if (d.realBillMad != null) setRealBillMad(d.realBillMad)
@@ -1077,8 +1099,11 @@ export default function DevisGenerator({
   // le graphique écran peut se présenter comme un fait (N4) et si
   // `etude_params.factures_mensuelles_reelles` doit être semé à
   // l'enregistrement (N1) — jamais les valeurs d'exemple.
-  const facturesSaisies = monthly.some(
-    (v, i) => Number(v) !== DEFAULT_MONTHLY_BILLS[i])
+  // AGNR13 — case par case : une seule case d'EXEMPLE suffit à bloquer
+  // l'envoi (taper Janvier seul n'envoie plus 11 mois d'exemple).
+  const facturesSaisies = provenanceMois.every(p => p !== 'exemple')
+  const moisNonSaisis = provenanceMois.some(p => p !== 'exemple')
+    ? CHART_MONTHS.filter((_, i) => provenanceMois[i] === 'exemple') : []
 
   // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
   // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
@@ -1619,7 +1644,7 @@ export default function DevisGenerator({
     applyLead, applyClient, runAutoQuote,
   } = useLeadClientEcran({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
-    setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly, modeInstallation,
+    setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerPartDiurneDuMarche, appliquerEntreesPompage,
   })
@@ -1631,7 +1656,7 @@ export default function DevisGenerator({
     setLeadDuDevis, setErrors, dispatchSizing, cancel, editId, setEditDevis, jetonRef,
     captureReferenceJusqua, rechargeEdit, setRechargeEdit, setRecommendedChoice, setLeadId,
     setClientId, setDateValidite, setNote, setEcheancierSaisieBrut, echeancierAEnvoyer,
-    setConditions, conditionsServies, setFHiver, setFEte, setMonthly, setDistributeur,
+    setConditions, conditionsServies, setFHiver, setFEte, setMonthly: poserMoisRelus, setDistributeur,
     setRealBillMode, setRealBillKwh, setDistributeurChoisi, consoStockee, modeInstallation,
     setDayUsage, setLines, setLeadValeursModifiees, setTauxTva, setDiscountPct, linesInitialized,
     setMultiMode, setNombreProprietes, setVillaGroups, setConsoMensuelle, setProfilCi,
@@ -1763,7 +1788,7 @@ export default function DevisGenerator({
         sizingLocal,
       })
     }
-    setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
+    poserMoisDerives(estimerMois(hiver, ete > 0 ? ete : hiver))
   }
 
   // VX237 — montant collé d'Excel/facture ("12 500,00", "3 200 DH"...) nettoyé
@@ -1791,11 +1816,15 @@ export default function DevisGenerator({
       return
     }
     setErrors(e => ({ ...e, bills: null }))
-    setMonthly(estimerMois(hiver, ete))
+    poserMoisDerives(estimerMois(hiver, ete))
   }
 
-  const setMonth = (i, v) =>
+  const setMonth = (i, v) => {
     setMonthly(m => m.map((old, idx) => (idx === i ? v : old)))
+    // AGNR13 — une case vidée n'est pas « tapée ».
+    const tapee = String(v ?? '').trim() !== ''
+    setProvenanceMois(p => p.map((old, idx) => (idx === i ? (tapee ? 'tapee' : 'exemple') : old)))
+  }
 
   // SPL47 — gestes de lignes, villas, recomposition et modèles (déplacés tels quels dans le hook).
   const {
@@ -2066,7 +2095,7 @@ export default function DevisGenerator({
   const socleFactures = {
     marche: modeInstallation,
     fHiver, setFHiver, fEte, setFEte, syncBillEstimator,
-    onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth,
+    onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth, moisNonSaisis,
     distributeur, setDistributeur: choisirDistributeur, realBillMode, setRealBillMode,
     realBillMad, setRealBillMad: saisirRealBillMad,
     realBillKwh, setRealBillKwh: saisirRealBillKwh,
