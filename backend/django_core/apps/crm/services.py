@@ -1466,10 +1466,10 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         body=f'Plan de relance initialisé — cadence « {cadence} » '
              f'({len(echeances)} touche(s) prévue(s), première le {quand}).')
 
-    if not lead.relance_date or lead.relance_date > premiere.due_date:
-        lead.relance_date = premiere.due_date
-        lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique (``_recaler_file``) : une ancienne
+    # ``relance_date`` déjà passée n'est plus conservée — le lead n'apparaît
+    # plus « en retard » alors que sa première touche est à venir.
+    _recaler_file(lead, user)
     # VALID1 (fondateur 07/09/2026) — le plan après-devis POSE la validité
     # de la proposition (si vide) : valable jusqu'à la DERNIÈRE touche du
     # plan — une date dérivée des cadences du fondateur, jamais inventée.
@@ -2023,10 +2023,8 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
             logger.warning(
                 'VISITE-CADENCE: filet « planifier la visite » non posé '
                 '(étape #%s)', getattr(etape, 'pk', '?'), exc_info=True)
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique de la file (``_recaler_file``).
+    _recaler_file(lead, user)
     if not suite:
         # CAD-A — l'appelant pose (ou refuse) lui-même la suite.
         return etape
@@ -2361,10 +2359,8 @@ def annuler_touche_relance(etape, user):
         etape.traite_par = None
         etape.traite_le = None
         etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
-        prochaine = _prochaine_touche_a_faire(lead)
-        lead.relance_date = prochaine.due_date if prochaine else None
-        lead.save(update_fields=['relance_date'])
-        sync_relance_activity(lead, user)
+        # ACRM37 — LE recalage unique de la file.
+        _recaler_file(lead, user)
         # JAMAIS un prénom en dur : l'auteur vient de la variable `user`.
         qui = getattr(user, 'username', '') or 'système'
         morceaux = [
@@ -2979,9 +2975,9 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         template_cle=config['template_cle'],
         due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
         note='Posée automatiquement : aucune autre relance ouverte.')
-    lead.relance_date = etape.due_date
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique : la file pointe la prochaine touche
+    # ouverte (celle-ci, sauf si une plus proche existe déjà).
+    _recaler_file(lead, user)
     # Note SYSTÈME (``user=None``, même motif que `arreter_cadence`) : poser
     # un rappel n'est pas AVOIR contacté le lead (garde QJ7).
     quand_local = quand.astimezone(horaires.CASABLANCA)
@@ -4130,10 +4126,8 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
                   + f'{(cible.libelle or cible.get_canal_display())} »'
                   + FIN_NOTE_REPORT))
 
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique de la file (``_recaler_file``).
+    _recaler_file(lead, user)
     return cible
 
 
@@ -4191,10 +4185,8 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Cadence {quelles} arrêtée ({len(pks)} touche(s)) : {motif}.')
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique de la file (``_recaler_file``).
+    _recaler_file(lead, user)
     return len(pks)
 
 
@@ -10617,10 +10609,8 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     # `initialiser_plan_relance` a pointé `relance_date` sur la PREMIÈRE
     # touche — celle qu'on vient peut-être de sauter. On la recale sur la
     # prochaine réellement à faire, exactement comme `marquer_etape_relance`.
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else relance_avant
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — par LE recalage unique (une touche au moins reste ouverte ici).
+    _recaler_file(lead, user)
     return True
 
 
