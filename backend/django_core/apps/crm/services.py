@@ -6465,6 +6465,45 @@ def _apply_meta_form_extras(lead, extras):
     return changed
 
 
+def _enrichir_meta_trace(lead, extras):
+    """ACRM14 (C-ACRM-009) — applique ``_apply_meta_form_extras`` et
+    JOURNALISE chaque champ écrit (une ligne MODIFICATION par champ :
+    champ, ancienne → nouvelle valeur, acteur système) : un enrichissement
+    automatique est visible au chatter comme toute autre écriture. Enregistre
+    les champs modifiés et les rend."""
+    from . import activity as _activity
+
+    avant = {}
+    for champ in ('type_installation', 'facture_hiver',
+                  'facture_tranche_declaree', 'categorie_commerciale',
+                  'societe', 'fonction_contact', 'source_eau',
+                  'pompe_alim_actuelle', 'surface_irriguee_ha',
+                  'depense_carburant_mad_mois', 'priorite', 'project_timeline',
+                  'whatsapp'):
+        avant[champ] = getattr(lead, champ, None)
+    changed = _apply_meta_form_extras(lead, extras)
+    if changed:
+        lead.save(update_fields=changed)
+        for champ in changed:
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.MODIFICATION, field=champ,
+                field_label=_activity.TRACKED_FIELDS.get(champ, champ),
+                old_value=_activity._display(lead, champ, avant.get(champ)),
+                new_value=_activity._display(
+                    lead, champ, getattr(lead, champ, None)))
+    return changed
+
+
+def _meta_deja_enrichi(lead):
+    """ACRM14 — la note « [Formulaire Meta] » (marqueur EXISTANT de
+    ``_ensure_meta_form_note``) dit qu'une première passe a déjà enrichi ce
+    lead : une passe suivante (rejeu webhook, pull) ne réécrit plus rien —
+    une correction humaine faite entre-temps SURVIT."""
+    return LeadActivity.objects.filter(
+        lead=lead, body__startswith=_META_FORM_NOTE_MARKER).exists()
+
+
 def _ensure_meta_form_note(lead, extras, form_id=''):
     """Une note chatter avec TOUTES les réponses verbatim du formulaire —
     rien n'est perdu, même les questions non reconnues. Idempotente par
@@ -6643,12 +6682,15 @@ def create_lead_from_meta_lead_ads(
         company=company, external_system=_META_LEAD_ADS_SYSTEM,
         external_id=str(leadgen_id)).first()
     if existing is not None:
-        changed = _apply_meta_form_extras(existing, extras)
+        # ACRM14 — UNE seule passe d'enrichissement : déjà enrichi (note
+        # « [Formulaire Meta] » présente) → aucune écriture, la saisie
+        # humaine faite depuis la première passe gagne.
+        if _meta_deja_enrichi(existing):
+            return existing
+        _enrichir_meta_trace(existing, extras)
         if fields.get('ville') and not existing.ville:
             existing.ville = fields['ville']
-            changed.append('ville')
-        if changed:
-            existing.save(update_fields=changed)
+            existing.save(update_fields=['ville'])
         _ensure_meta_form_note(existing, extras, form_id=str(form_id or ''))
         return existing
 
@@ -6736,9 +6778,8 @@ def create_lead_from_meta_lead_ads(
     )
     # Réponses métier du formulaire → champs structurés (facture hiver,
     # type d'installation, priorité selon le délai déclaré, wa.me).
-    changed = _apply_meta_form_extras(lead, extras)
-    if changed:
-        lead.save(update_fields=changed)
+    # ACRM14 — chaque champ écrit est journalisé (ancien → nouveau).
+    _enrichir_meta_trace(lead, extras)
     # MRY0 (lot B) — vraie date d'arrivée : ``date_creation`` est
     # ``auto_now_add`` (models.py), donc jamais posable au ``create()``.
     moment_meta = _parse_meta_created_time(created_time)
