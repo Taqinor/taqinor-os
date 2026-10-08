@@ -20,6 +20,8 @@ export const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 //: Les fichiers qui composent le générateur (la coquille d'abord).
 export const FILES = [
   'pages/ventes/DevisGenerator.jsx',
+  'features/ventes/quote/ligneFabrique.js',
+  'features/ventes/quote/ecranDefauts.js',
 ]
 
 //: Le marqueur posé avant le contenu de chaque fichier concaténé.
