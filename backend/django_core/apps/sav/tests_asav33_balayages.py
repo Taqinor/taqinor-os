@@ -72,6 +72,10 @@ class BalayagesSavTests(TestCase):
         t1 = self._ticket(self.suspendue, Ticket.Statut.EN_COURS, **echu)
         t2 = self._ticket(self.suspendue, Ticket.Statut.EN_COURS, **echu)
         resolu = self._resolu_dormant(self.suspendue)
+        # La CRÉATION d'un ticket notifie déjà (YEVNT4, signal hors balayage) :
+        # seules les notifications posées PAR LES BALAYAGES sont jugées.
+        avant = set(Notification.objects.filter(
+            company=self.suspendue).values_list('pk', flat=True))
         tasks.scan_sla_breaches()
         tasks.scan_sla_pre_alerts_and_escalations()
         tasks.scan_auto_cloture_tickets_resolus()
@@ -82,7 +86,7 @@ class BalayagesSavTests(TestCase):
         resolu.refresh_from_db()
         self.assertEqual(resolu.statut, Ticket.Statut.RESOLU)
         self.assertFalse(Notification.objects.filter(
-            company=self.suspendue).exists())
+            company=self.suspendue).exclude(pk__in=avant).exists())
 
     def test_auto_cloture_appliquee(self):
         t = self._resolu_dormant(self.active)

@@ -359,6 +359,9 @@ class ChaineDuplicateGagnantTests(ChainBase):
         RulePolicy.objects.create(
             company=self.company, template_key='winner_duplicate',
             enabled=True, dry_run=False, mode=RulePolicy.Mode.PROPOSE)
+        # AACQ16 — la duplication pose un daily_budget : le plafond quotidien
+        # s'évalue (fail-closed sans GuardrailConfig). 100 MAD ≤ plafond 100.
+        GuardrailConfig.objects.create(company=self.company)
 
     def test_winner_to_graph_end_to_end(self):
         # 1) Le moteur PROPOSE (jamais n'applique).

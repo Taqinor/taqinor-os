@@ -85,7 +85,12 @@ class ContratChantierDevisTests(TestCase):
             set(visites.values_list('installation_id', flat=True)),
             {chantier.id})
 
-    def test_sans_chantier_reste_none(self):
+    def test_sans_chantier_prealable_rattache_au_chantier_ne(self):
+        # Pas de chantier AVANT l'acceptation : ``installations`` crée le
+        # chantier de l'affaire sur ``devis_accepted`` (receveur abonné avant
+        # celui de sav) — le contrat porte CE chantier, jamais un autre.
         contrat, _ = self._devis_accepte(3, avec_chantier=False)
         contrat.refresh_from_db()
-        self.assertIsNone(contrat.installation_id)
+        chantier_ne = Installation.objects.get(
+            company=self.company, client=self.client_obj)
+        self.assertEqual(contrat.installation_id, chantier_ne.id)

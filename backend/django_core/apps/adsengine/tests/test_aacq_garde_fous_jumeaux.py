@@ -31,7 +31,9 @@ class GardeFousJumeauxTests(TestCase):
         self.company = Company.objects.create(nom='GF', slug='aacq13-gf')
         role = Role.objects.create(
             company=self.company, nom='aacq13-role',
-            permissions=['adsengine_view', 'adsengine_manage'])
+            # AACQ12 — changer un plafond est réservé à adsengine_approve.
+            permissions=['adsengine_view', 'adsengine_manage',
+                         'adsengine_approve'])
         self.user = User.objects.create_user(
             username='aacq13-admin', password='x', company=self.company,
             role_legacy='normal', role=role)

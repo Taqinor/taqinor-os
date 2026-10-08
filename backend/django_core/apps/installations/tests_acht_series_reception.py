@@ -78,7 +78,10 @@ class SeriesReceptionTests(TestCase):
     def test_re_reception_remet_en_stock(self):
         ligne = self._ligne_cmd(4)
         r1 = self._reception(ligne, 2, ['C8B1', 'C8B2'])
-        annuler_reception_confirmee(r1, self.user)
+        # ASTK56 — le signal d'annulation part APRÈS COMMIT (abonné ASTK57
+        # qui repasse les séries « retourné ») : on exécute les on_commit.
+        with self.captureOnCommitCallbacks(execute=True):
+            annuler_reception_confirmee(r1, self.user)
         self.assertEqual(self._en_stock(), set())
         r2 = self._reception(ligne, 2, ['C8B1', 'C8B2'])
         self.assertEqual(self._en_stock(), {'C8B1', 'C8B2'})

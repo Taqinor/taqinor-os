@@ -46,10 +46,10 @@ class SlaReponseTests(TestCase):
             company=self.company, nom='Client', prenom='ASAV19',
             email='asav19-client@example.invalid')
 
-    def _creer(self):
+    def _creer(self, description='Onduleur en défaut.'):
         r = self.api.post(f'{BASE}/', {
             'client': self.client_obj.pk, 'priorite': 'haute',
-            'type': 'correctif', 'description': 'Onduleur en défaut.',
+            'type': 'correctif', 'description': description,
         }, format='json')
         self.assertEqual(r.status_code, 201, r.content)
         return Ticket.objects.get(pk=r.data['id'])
@@ -80,7 +80,8 @@ class SlaReponseTests(TestCase):
                       format='json')
         t1.refresh_from_db()
         self.assertIsNotNone(t1.date_premiere_reponse)
-        t2 = self._creer()
+        # ASAV23 — second ticket : autre demande (sinon doublon 409).
+        t2 = self._creer(description='Compteur muet.')
         self.api.post(f'{BASE}/{t2.pk}/noter/', {
             'body': 'Pièce commandée.', 'visible_client': True},
             format='json')
