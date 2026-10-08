@@ -510,7 +510,16 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     def _display(self, obj):
         if not hasattr(obj, '_display_totals_cache'):
             from .quote_engine.builder import display_totals
-            obj._display_totals_cache = display_totals(obj)
+            # APRF5 (C-APRF-001) — UN passage moteur par ligne : ses données
+            # sont mémoïsées pour ``get_comparaison_options`` (carte A/B,
+            # servie en liste). En LISTE (``self.parent``), les lignes du
+            # préchargement de la page sont déclarées (APRF3) ; au détail,
+            # la requête d'hier (instance possiblement fraîchement écrite).
+            capture = {}
+            obj._display_totals_cache = display_totals(
+                obj, lignes_prechargees=self.parent is not None,
+                donnees_moteur=capture)
+            obj._display_data_cache = capture.get('data')
         return obj._display_totals_cache
 
     def get_total_affiche(self, obj):
@@ -695,8 +704,13 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
         if d.get('nb_options', 1) != 2:
             return None
         try:
-            from .quote_engine.builder import build_quote_data
-            data = build_quote_data(obj, {'pdf_mode': 'onepage'})
+            # APRF5 — le passage moteur de ``_display`` (mêmes totaux au
+            # centime : chemin « totaux seuls » d'APRF3) ; un second passage
+            # seulement s'il n'a pas eu lieu (repli).
+            data = getattr(obj, '_display_data_cache', None)
+            if data is None:
+                from .quote_engine.builder import build_quote_data
+                data = build_quote_data(obj, {'pdf_mode': 'onepage'})
             # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas : la comparaison montre
             # les totaux ×N, ceux du total affiché et facturé.
             multi = data.get('totaux_multi') or {}
