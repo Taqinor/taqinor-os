@@ -135,7 +135,8 @@ export default function ParametresEntreprise() {
   // (IsAdminOrResponsableTier) ; ce contrôle UI empêche un rôle non autorisé
   // de voir/modifier les champs sensibles.
   const canManageSensitive = useIsAdmin()
-  // APAR38 — droit d'écrire les réglages (aligné sur la garde serveur).
+  // APAR38 — droit d'écrire les réglages : palier admin/responsable + permission
+  // `parametres_modifier` (calcul dans useCanModifierParametres).
   const canModifier = useCanModifierParametres()
 
   // Onglet actif (D1). Société & identité par défaut.
