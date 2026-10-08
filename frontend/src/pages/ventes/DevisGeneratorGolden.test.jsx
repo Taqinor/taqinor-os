@@ -144,4 +144,21 @@ describe('SPL40 — golden du générateur (DOM + appels API)', () => {
     await waitFor(() => expect(vue.ventesApi.postEtudeHorairePreview).toHaveBeenCalled(), { timeout: 5000 })
     await figerDom(vue.container, 'i-residentiel-etude-horaire')
   }, 60000)
+
+  // SPL55 — branche U3-900 de la carte « Paramètres Techniques » : le moteur
+  // horaire serveur DÉCLINE le dimensionnement (aucune recommandation) ; son
+  // motif FR verbatim s'affiche (`sizing-serveur-refus`), aucun panneau
+  // prérempli. Capturé AVANT le déplacement de la carte.
+  it('(j) création depuis ?lead=, dimensionnement refusé par le moteur (U3-900)', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?lead=${LEAD.id}`, {
+      etudeHoraire: {
+        dimensionnement: { recommandation: null, motivation: 'Dimensionnement impossible : ville du lead inconnue.' },
+        avertissements: [],
+      },
+    })
+    await waitFor(() => expect(vue.ventesApi.postEtudeHorairePreview).toHaveBeenCalled(), { timeout: 5000 })
+    await waitFor(() => expect(vue.container.querySelector('[data-testid="sizing-serveur-refus"]')).toBeTruthy(),
+      { timeout: 5000 })
+    await figerDom(vue.container, 'j-residentiel-refus-moteur')
+  }, 60000)
 })
