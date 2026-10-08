@@ -88,7 +88,9 @@ def etude_ci_preview(request):
     if corps.get('devis') not in (None, '') and devis is None:
         # ADEV21 — un devis désigné mais hors société ou hors portée : 404,
         # jamais un calcul silencieux sur ses données.
-        return Response({'detail': 'Devis introuvable.'}, status=404)
+        # (exception, pas un dict : la forme 200 du contrat reste seule.)
+        from rest_framework.exceptions import NotFound
+        raise NotFound('Devis introuvable.')
     lead = _lead_de_la_societe(company, corps.get('lead'))
     entrees = {k: v for k, v in corps.items() if k not in CLES_CONTEXTE}
     etude = etudier_ci(company, entrees, devis=devis, lead=lead)
