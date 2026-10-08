@@ -1,0 +1,428 @@
+/*
+ * Candidat A « Encre et papier » (YBW42) — mise en page. Studio éditorial :
+ * papier, encre, grandes lignes de titre en Outfit léger, texte en
+ * Instrument Sans, beaucoup d'air, filets fins. UN orange : la flèche du logo,
+ * prolongée en un long trait qui traverse le héros jusqu'à l'unique action.
+ * Aucune couleur ici (jetons : a.tokens.css).
+ */
+@import './a.tokens.css';
+@import './socle.css';
+
+body {
+  font-family: var(--police-texte);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--police-titre);
+  font-weight: var(--poids-titre);
+}
+
+/* ------------------------------------------------------------ en-tête */
+.entete-int {
+  min-block-size: 5.5rem;
+}
+
+.bouton-entete {
+  min-block-size: 44px;
+  padding-inline: var(--espace-6);
+}
+
+/* ------------------------------------------------------------ surtitres */
+.surtitre {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espace-3);
+  font-size: var(--texte-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-texte);
+}
+
+.surtitre::before {
+  content: '';
+  inline-size: 2rem;
+  block-size: 2px;
+  background-color: var(--accent-graphique);
+}
+
+/* ------------------------------------------------------------ héros */
+.hero {
+  padding-block: clamp(3rem, 9vw, 8rem) clamp(2.5rem, 5vw, 4.5rem);
+  overflow: hidden;
+}
+
+.hero-titre {
+  margin-block-start: var(--espace-6);
+  max-inline-size: 19ch;
+  font-size: clamp(2.5rem, 1.1rem + 5.2vw, 5.25rem);
+  line-height: 1.02;
+  letter-spacing: -0.032em;
+}
+
+/* La trajectoire : un long trait-flèche (proportions du logo, YBW40) qui part
+   du bord de la page et pointe sur l'unique action. */
+.hero-trajectoire {
+  display: grid;
+  gap: var(--espace-6);
+  align-items: center;
+  margin-block-start: clamp(2.5rem, 6vw, 4.5rem);
+  margin-inline-start: calc(-1 * var(--gouttiere));
+}
+
+.hero-trajectoire .hero-fleche {
+  display: none;
+}
+
+.hero-trajectoire .fleche-courte {
+  display: block;
+}
+
+.hero-trajectoire .bouton {
+  justify-self: start;
+  margin-inline-start: var(--gouttiere);
+  min-block-size: 56px;
+  padding-inline: var(--espace-8);
+  font-size: var(--texte-base);
+}
+
+.hero-bas {
+  display: grid;
+  gap: var(--espace-6);
+  margin-block-start: clamp(2rem, 4vw, 3.5rem);
+}
+
+.hero-intro {
+  max-inline-size: 36rem;
+  font-size: var(--texte-lg);
+  line-height: 1.55;
+  color: var(--texte-attenue);
+}
+
+@media (min-width: 40rem) {
+  .hero-trajectoire {
+    grid-template-columns: 1fr auto;
+    gap: var(--espace-4);
+  }
+
+  .hero-trajectoire .bouton {
+    margin-inline-start: 0;
+  }
+
+  .hero-trajectoire .fleche-courte {
+    display: none;
+  }
+
+  .hero-trajectoire .fleche-moyenne {
+    display: block;
+  }
+}
+
+@media (min-width: 64rem) {
+  .hero-trajectoire {
+    margin-inline-start: calc(-1 * (var(--gouttiere) + max(0px, (100vw - var(--largeur-max)) / 2)));
+  }
+
+  .hero-trajectoire .fleche-moyenne {
+    display: none;
+  }
+
+  .hero-trajectoire .fleche-longue {
+    display: block;
+  }
+
+  .hero-bas {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .hero-intro {
+    grid-column: 6 / span 6;
+  }
+
+  .hero-bas .lien-fleche {
+    grid-column: 6 / span 6;
+    justify-self: start;
+  }
+}
+
+/* ------------------------------------------------------------ capture du héros */
+.capture-hero {
+  margin-block-end: clamp(4rem, 9vw, 8rem);
+}
+
+.capture-hero .capture-cadre {
+  box-shadow: 0 2.5rem 5rem -2.5rem var(--ombre);
+}
+
+.capture-legende::before {
+  content: '';
+  display: inline-block;
+  vertical-align: middle;
+  inline-size: 1rem;
+  block-size: 2px;
+  margin-inline-end: var(--espace-2);
+  background-color: var(--accent-graphique);
+}
+
+/* ------------------------------------------------------------ sections */
+.section {
+  padding-block: clamp(4rem, 9vw, 8rem);
+  border-block-start: 1px solid var(--trait);
+}
+
+.section-tete {
+  display: grid;
+  gap: var(--espace-4);
+  margin-block-end: clamp(2.5rem, 6vw, 4.5rem);
+}
+
+.section-tete h2 {
+  max-inline-size: 22ch;
+  font-size: clamp(2rem, 1.2rem + 2.8vw, 3.5rem);
+  line-height: 1.06;
+  letter-spacing: -0.024em;
+}
+
+.section-tete p:not(.surtitre) {
+  max-inline-size: 36rem;
+  font-size: var(--texte-lg);
+  color: var(--texte-attenue);
+}
+
+@media (min-width: 64rem) {
+  .section-tete {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--espace-8);
+  }
+
+  .section-tete .surtitre {
+    grid-column: 1 / span 3;
+    align-self: start;
+    margin-block-start: 0.9rem;
+  }
+
+  .section-tete h2,
+  .section-tete p:not(.surtitre) {
+    grid-column: 4 / span 9;
+  }
+}
+
+/* ------------------------------------------------------------ produits */
+.produits-grille {
+  display: grid;
+  gap: clamp(3.5rem, 7vw, 5rem) clamp(2rem, 4vw, 4rem);
+}
+
+@media (min-width: 52rem) {
+  .produits-grille {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.produit {
+  display: grid;
+  align-content: start;
+  gap: var(--espace-4);
+  padding-block-start: var(--espace-6);
+  border-block-start: 2px solid var(--texte);
+  scroll-margin-block-start: var(--espace-8);
+}
+
+.produit-surtitre {
+  font-size: var(--texte-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--texte-attenue);
+}
+
+.produit h3 {
+  font-size: clamp(2.25rem, 1.6rem + 2vw, 3.25rem);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.produit-description {
+  max-inline-size: 32rem;
+  color: var(--texte-attenue);
+}
+
+.points {
+  list-style: none;
+  padding: 0;
+  border-block-start: 1px solid var(--trait);
+}
+
+.points li {
+  position: relative;
+  padding-block: var(--espace-3);
+  padding-inline-start: var(--espace-8);
+  border-block-end: 1px solid var(--trait);
+}
+
+.points li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: calc(var(--espace-3) + 0.8em);
+  inline-size: 1.15rem;
+  block-size: 2px;
+  background-color: var(--accent-graphique);
+}
+
+.produit .capture {
+  margin-block-start: var(--espace-2);
+}
+
+/* ------------------------------------------------------------ sur mesure */
+.sur-mesure-grille {
+  display: grid;
+  gap: clamp(2.5rem, 6vw, 4rem);
+}
+
+.sur-mesure-texte {
+  display: grid;
+  align-content: start;
+  gap: var(--espace-6);
+}
+
+.sur-mesure-texte h2 {
+  font-size: clamp(2rem, 1.2rem + 2.2vw, 3rem);
+  line-height: 1.06;
+  letter-spacing: -0.024em;
+}
+
+.sur-mesure-texte p:not(.surtitre) {
+  font-size: var(--texte-lg);
+  color: var(--texte-attenue);
+}
+
+.etapes {
+  counter-reset: etape;
+  list-style: none;
+  padding: 0;
+  border-block-start: 1px solid var(--trait);
+}
+
+.etapes li {
+  counter-increment: etape;
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 1fr);
+  gap: var(--espace-1) var(--espace-4);
+  padding-block: var(--espace-6);
+  border-block-end: 1px solid var(--trait);
+}
+
+.etapes li::before {
+  content: counter(etape, decimal-leading-zero);
+  grid-row: span 2;
+  font-family: var(--police-titre);
+  font-size: var(--texte-2xl);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--accent-graphique);
+}
+
+.etape-titre {
+  font-family: var(--police-titre);
+  font-size: var(--texte-xl);
+  line-height: 1.2;
+}
+
+.etape-detail {
+  color: var(--texte-attenue);
+}
+
+@media (min-width: 64rem) {
+  .sur-mesure-grille {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--espace-8);
+  }
+
+  .sur-mesure-texte {
+    grid-column: 1 / span 5;
+    position: sticky;
+    inset-block-start: var(--espace-8);
+    align-self: start;
+  }
+
+  .etapes {
+    grid-column: 7 / span 6;
+  }
+}
+
+/* ------------------------------------------------------------ société */
+.societe {
+  background-color: var(--fond-alt);
+}
+
+.societe-int {
+  display: grid;
+  gap: var(--espace-8);
+  align-items: start;
+}
+
+.societe-int h2 {
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  max-inline-size: 26ch;
+}
+
+.societe-int p:not(.surtitre) {
+  max-inline-size: 40rem;
+  margin-block-start: var(--espace-4);
+  font-size: var(--texte-lg);
+  color: var(--texte-attenue);
+}
+
+@media (min-width: 48rem) {
+  .societe-int {
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: clamp(2rem, 6vw, 5rem);
+  }
+}
+
+/* ------------------------------------------------------------ bande finale */
+.bande {
+  background-color: var(--bande-fond);
+  color: var(--bande-texte);
+  padding-block: clamp(4.5rem, 10vw, 8.5rem);
+  overflow: hidden;
+  scroll-margin-block-start: 0;
+}
+
+.bande h2 {
+  max-inline-size: 18ch;
+  font-size: clamp(2.25rem, 1.1rem + 4.4vw, 4.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+.bande p {
+  max-inline-size: 34rem;
+  margin-block-start: var(--espace-6);
+  font-size: var(--texte-lg);
+  color: var(--bande-attenue);
+}
+
+.bande .hero-trajectoire {
+  margin-block-start: clamp(2.5rem, 6vw, 4rem);
+}
+
+.bande :focus-visible {
+  outline-color: var(--bande-texte);
+}
+
+/* ------------------------------------------------------------ pied */
+.pied {
+  padding-block: clamp(3rem, 6vw, 4.5rem);
+}
+
+/* Le logo suit la bande quand il y est posé (jetons du logo, jamais redessiné). */
+.bande .logo {
+  --logo-ink: var(--bande-logo-ink);
+}

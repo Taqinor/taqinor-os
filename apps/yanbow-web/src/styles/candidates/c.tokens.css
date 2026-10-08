@@ -1,0 +1,93 @@
+/*
+ * Candidat C « Continuité du deck » (YBW42) — jetons. CLAIR SEULEMENT (aucun
+ * bloc prefers-color-scheme: dark, `color-scheme: light`). SEUL fichier du
+ * candidat où une couleur est écrite. Contrastes CALCULÉS par
+ * tests/designCandidates.test.ts pour le schéma clair et chaque portée locale
+ * (`.nuit` = bleu nuit, `.aplat` = sarcelle).
+ * Règles du deck : sarcelle #2E7D6B en APLAT seulement (jamais en texte ni en
+ * trait) et JAMAIS posée sur le bleu nuit #16294A (2,94:1) ; ambre en grands
+ * titres seulement (>= 24 px) sur le bleu nuit.
+ */
+:root[data-candidat='c'] {
+  --c-nuit: #16294A;
+  --c-sarcelle: #2E7D6B;
+  --c-ambre: #E3A740;
+  --c-blanc: #FFFFFF;
+  --c-ivoire: #F6F4EF;
+  --c-texte: #2B3445;
+  --c-gris: #5B6577;
+  --c-gris-nuit: #B9C3D3;
+  --c-orange: #C8762B;
+  --c-encre: #1B1B1B;
+  --c-trait: #E1E4EA;
+  --c-trait-fort: #C3C9D3;
+  --c-capture: #EEF1F5;
+
+  --fond: var(--c-blanc);
+  --fond-surface: var(--c-blanc);
+  --fond-alt: var(--c-ivoire);
+  --texte: var(--c-texte);
+  --texte-titre: var(--c-nuit);
+  --texte-attenue: var(--c-gris);
+  --accent-texte: var(--c-nuit);
+  --accent-graphique: var(--c-nuit);
+  --bouton-fond: var(--c-nuit);
+  --bouton-texte: var(--c-blanc);
+  --logo-ink: var(--c-encre);
+  --logo-arrow: var(--c-orange);
+  --trait: var(--c-trait);
+  --trait-fort: var(--c-trait-fort);
+  --focus: var(--c-nuit);
+  --ombre: color-mix(in srgb, var(--c-nuit) 22%, transparent);
+  --ruban-fond: var(--c-nuit);
+  --ruban-texte: var(--c-blanc);
+  --capture-fond: var(--c-capture);
+  --capture-trait: var(--c-trait-fort);
+  --capture-texte: var(--c-gris);
+  --capture-grille: color-mix(in srgb, var(--c-nuit) 7%, transparent);
+  --aplat: var(--c-sarcelle);
+
+  --police-titre: 'Fraunces', 'Fraunces repli', serif;
+  --police-texte: 'Plus Jakarta Sans', 'Plus Jakarta Sans repli', sans-serif;
+  --poids-titre: 560;
+  --rayon-bouton: var(--rayon-1);
+  --rayon-capture: var(--rayon-1);
+
+  color-scheme: light;
+}
+
+/* Diapositive bleu nuit : texte blanc, ambre en grands titres, bouton ambre. */
+:root[data-candidat='c'] .nuit {
+  --fond: var(--c-nuit);
+  --fond-surface: var(--c-nuit);
+  --fond-alt: var(--c-nuit);
+  --texte: var(--c-blanc);
+  --texte-titre: var(--c-blanc);
+  --titre-grand: var(--c-ambre);
+  --texte-attenue: var(--c-gris-nuit);
+  --accent-texte: var(--c-ambre);
+  --accent-graphique: var(--c-ambre);
+  --bouton-fond: var(--c-ambre);
+  --bouton-texte: var(--c-nuit);
+  --logo-ink: var(--c-blanc);
+  --logo-arrow: var(--c-orange);
+  --focus: var(--c-ambre);
+}
+
+/* Aplat sarcelle (fond seulement), posé sur le blanc : texte blanc. */
+:root[data-candidat='c'] .aplat {
+  --fond: var(--c-sarcelle);
+  --fond-surface: var(--c-sarcelle);
+  --fond-alt: var(--c-sarcelle);
+  --texte: var(--c-blanc);
+  --texte-titre: var(--c-blanc);
+  --texte-attenue: var(--c-blanc);
+  --accent-texte: var(--c-blanc);
+  --accent-graphique: var(--c-blanc);
+  /* Aucun bouton ni logo dans un aplat ; s'il en venait un : blanc, jamais le bleu nuit. */
+  --bouton-fond: var(--c-blanc);
+  --bouton-texte: var(--c-nuit);
+  --logo-ink: var(--c-blanc);
+  --logo-arrow: var(--c-blanc);
+  --focus: var(--c-blanc);
+}
