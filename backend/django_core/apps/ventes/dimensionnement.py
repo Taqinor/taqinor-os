@@ -521,7 +521,8 @@ def config_vendue_du_devis(devis):
     """
     panneaux = batterie = None
     try:
-        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+        from apps.ventes.quote_engine.lignes_classement import (  # SPL162
+            panneaux_et_watt_lu)
         lignes = [
             li for li in devis.lignes.select_related(
                 'produit', 'produit__fiche_technique').all()

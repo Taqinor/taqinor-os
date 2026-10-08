@@ -104,6 +104,8 @@ QUANTIZE_REPRISE_REASON = (
 TARGET_FILES = [
     VENTES / "services.py",
     VENTES / "quote_engine" / "builder.py",
+    # SPL162 — helpers de classement déplacés hors de builder (move only).
+    VENTES / "quote_engine" / "lignes_classement.py",
     VENTES / "quote_engine" / "generate_devis_premium.py",
     VENTES / "quote_engine" / "pricing.py",
     VENTES / "quote_engine" / "bareme.py",

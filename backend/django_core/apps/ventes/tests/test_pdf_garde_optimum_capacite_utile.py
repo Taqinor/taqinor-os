@@ -105,14 +105,20 @@ class ParseKwhUnique(TestCase):
         import ast
         from pathlib import Path
         from apps.ventes.domain import catalogue
-        from apps.ventes.quote_engine import builder
+        # SPL162 — le lecteur du moteur vit dans ``lignes_classement`` (et
+        # reste ré-exporté par ``builder``) : c'est celui du catalogue.
+        from apps.ventes.quote_engine import builder, lignes_classement
+        self.assertIs(lignes_classement._parse_kwh, catalogue._parse_kwh)
         self.assertIs(builder._parse_kwh, catalogue._parse_kwh)
         racine = Path(__file__).resolve().parent.parent
-        source = (racine / 'quote_engine' / 'builder.py').read_text(
-            encoding='utf-8')
-        defs = [n.name for n in ast.walk(ast.parse(source))
-                if isinstance(n, ast.FunctionDef)]
-        self.assertNotIn('_parse_kwh', defs)
+        # Absence de ``def _parse_kwh`` vérifiée sur les DEUX fichiers (une
+        # garde sur builder.py seul passerait à vide après le déplacement).
+        for nom in ('builder.py', 'lignes_classement.py'):
+            source = (racine / 'quote_engine' / nom).read_text(
+                encoding='utf-8')
+            defs = [n.name for n in ast.walk(ast.parse(source))
+                    if isinstance(n, ast.FunctionDef)]
+            self.assertNotIn('_parse_kwh', defs, nom)
         # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
         # garde lit le GROUPE (jamais vide), pas un fichier qui se vide.
         from apps.ventes.tests.split_golden import fichiers_du_groupe
