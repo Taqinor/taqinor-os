@@ -3,6 +3,8 @@
 Domaine « Avancé / Journal d'audit ». Ouverte à l'Administrateur ET au
 Responsable (promu) — comme le reste de l'écran Paramètres — jamais au palier
 limité."""
+from django.utils.dateparse import parse_date
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -11,31 +13,82 @@ from .models import SettingsAuditLog
 from .serializers import SettingsAuditLogSerializer
 
 
+def _entier(request, cle, defaut, mini=0):
+    """APAR32 — paramètre entier ≥ ``mini`` ; illisible ⇒ ValueError (400)."""
+    brut = request.GET.get(cle)
+    if brut in (None, ''):
+        return defaut
+    try:
+        valeur = int(brut)
+    except (TypeError, ValueError):
+        raise ValueError(cle)
+    if valeur < mini:
+        raise ValueError(cle)
+    return valeur
+
+
+def _date(request, cle):
+    brut = request.GET.get(cle)
+    if not brut:
+        return None
+    try:
+        valeur = parse_date(brut)
+    except ValueError:
+        raise ValueError(cle)
+    if valeur is None:
+        raise ValueError(cle)
+    return valeur
+
+
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def settings_audit_log(request):
     """Journal des changements de paramètres (qui, quoi, quand).
 
-    Filtres : `?section=...`, `?user=<id>`, `?limit=N` (défaut 100, max 500).
+    Filtres : `?section=...`, `?user=<id>`, `?field=<champ>`,
+    `?date_debut=AAAA-MM-JJ`, `?date_fin=AAAA-MM-JJ` (incluses).
+    Pagination (APAR32) : `?limit=N` (défaut 100, max 500) + `?offset=N` ;
+    `count` = total RÉEL filtré (plus la taille de la page), `next` = offset
+    de la page suivante (``None`` en fin de journal). Un `user`/`limit`/
+    `offset`/date illisible ⇒ 400, jamais 500.
     Company-scopé. Sections connues (FG18) :
     `profil`, `messages`, `roles`, `utilisateurs`, `automatisations`.
     L'endpoint `sections/` retourne la liste des sections présentes pour
     alimenter le filtre côté UI.
     """
+    try:
+        limit = min(_entier(request, 'limit', 100, mini=1), 500)
+        offset = _entier(request, 'offset', 0)
+        user_id = _entier(request, 'user', None)
+        date_debut = _date(request, 'date_debut')
+        date_fin = _date(request, 'date_fin')
+    except (TypeError, ValueError) as exc:
+        cle = exc.args[0] if exc.args and exc.args[0] in (
+            'limit', 'offset', 'user', 'date_debut', 'date_fin') else None
+        return Response(
+            {'detail': 'Paramètre de filtre invalide'
+                       + (f' : « {cle} ».' if cle else '.')},
+            status=status.HTTP_400_BAD_REQUEST)
     company = request.user.company if request.user.company_id else None
     qs = SettingsAuditLog.objects.filter(company=company)
     section = request.GET.get('section')
     if section:
         qs = qs.filter(section=section)
-    user_id = request.GET.get('user')
-    if user_id:
+    if user_id is not None:
         qs = qs.filter(user_id=user_id)
-    try:
-        limit = min(int(request.GET.get('limit', 100)), 500)
-    except (TypeError, ValueError):
-        limit = 100
-    data = SettingsAuditLogSerializer(qs[:limit], many=True).data
-    return Response({'count': len(data), 'results': data})
+    champ = request.GET.get('field')
+    if champ:
+        qs = qs.filter(field=champ)
+    if date_debut:
+        qs = qs.filter(timestamp__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(timestamp__date__lte=date_fin)
+    total = qs.count()
+    page = qs.select_related('user').order_by(
+        '-timestamp', '-id')[offset:offset + limit]
+    data = SettingsAuditLogSerializer(page, many=True).data
+    suivant = offset + limit if offset + limit < total else None
+    return Response({'count': total, 'results': data, 'next': suivant})
 
 
 # FG18 — sections connues du journal d'audit (pour alimenter le filtre UI).
