@@ -1289,7 +1289,7 @@ def rendre_schema_du_devis(devis, *, standard=False):
                          standard=standard)
 
 
-def build_electrical_design(devis, *, overrides=None):
+def build_electrical_design(devis, *, overrides=None, persister=True):
     """PV41 — conçoit (ou re-conçoit) l'étude électrique d'un devis et la range.
 
     Retourne TOUJOURS le dict du contrat partagé
@@ -1347,6 +1347,10 @@ def build_electrical_design(devis, *, overrides=None):
 
     design = projeter_contrat(entree, concevoir(entree),
                               source_entree=source)
+    # ADEV58 — ``persister=False`` : calcul d'affichage pour un devis non
+    # modifiable (accepté, remplacé) — rien n'est rangé sur le devis.
+    if not persister:
+        return design
     devis.electrical_design = design
     devis.electrical_design_hash = empreinte
     if devis.pk:
