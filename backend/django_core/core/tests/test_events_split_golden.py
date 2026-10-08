@@ -94,6 +94,16 @@ OWNER_MODULE = {
         'mouvement_stock_enregistre', 'produit_modifie',
         'demande_achat_approuvee', 'rfq_attribuee',
     ],
+    # SPL289 — lead / visites (propriétaire lead).
+    'lead': [
+        'lead_erased', 'lead_created', 'visite_validee', 'visite_planifiee',
+        'visite_terminee', 'lead_stage_changed', 'deal_commission_due',
+        'appointment_effectue', 'salle_vente_signal_interet',
+    ],
+    # SPL289 — acquisition (émetteur crm/webhooks.py, D-EV-3).
+    # ``lead_trace_toit_recu`` (ACAL189, postérieur au plan) suit le même
+    # émetteur.
+    'acquisition': ['meta_lead_captured', 'lead_trace_toit_recu'],
 }
 
 INIT_EVENTS = Path(__file__).resolve().parents[1] / 'events' / '__init__.py'
