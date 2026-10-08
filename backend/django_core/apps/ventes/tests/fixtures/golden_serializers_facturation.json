@@ -2498,7 +2498,7 @@
     ],
     "statut": [
      "ChoiceField",
-     false,
+     true,
      false,
      null,
      false

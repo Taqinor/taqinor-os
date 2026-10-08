@@ -638,9 +638,12 @@ class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
     class Meta:
         model = RemiseEncaissement
         fields = '__all__'
+        # AFAC16 (C-AFAC-012) — `statut` en lecture seule : seule l'action
+        # `cloturer` le change (un technicien ne « valide » plus sa propre
+        # remise par PATCH, une remise ne naît plus clôturée).
         read_only_fields = [
             'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
-            'company', 'cloture_par', 'date_cloture',
+            'company', 'cloture_par', 'date_cloture', 'statut',
         ]
 
 
