@@ -373,7 +373,8 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect générique',
             telephone='+212600998855', owner=self.owner)
-        notify_new_lead(lead)
+        with self.captureOnCommitCallbacks(execute=True):  # APAR18
+            notify_new_lead(lead)
         self.assertEqual(len(mail.outbox), 1)
 
     def test_le_defaut_generique_reste_email_off(self):

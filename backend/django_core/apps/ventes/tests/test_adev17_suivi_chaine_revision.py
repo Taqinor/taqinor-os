@@ -55,10 +55,14 @@ class SuiviChaineRevisionTests(TestCase):
         self.lien_v2.refresh_from_db()
 
     def _receptionner(self, devis, date_reception):
+        # Mêmes kwargs que l'émetteur réel
+        # (``installations.services`` : installation, user, ancien_statut) —
+        # les récepteurs sav/monitoring les exigent en arguments nommés.
         chantier_receptionne.send(
             sender=self.__class__,
             installation=SimpleNamespace(
-                devis_id=devis.pk, date_reception=date_reception))
+                devis_id=devis.pk, date_reception=date_reception),
+            user=None, ancien_statut='installe')
 
     def test_reception_ferme_lien_v1(self):
         # La prolongation de V1 survit (sonde : elle n'était jamais levée)
