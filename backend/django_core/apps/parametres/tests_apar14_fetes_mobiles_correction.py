@@ -51,12 +51,15 @@ class CorrectionFetesTests(TestCase):
         enregistrer_fetes_mobiles(
             self.company, 2026, {'aid_el_adha': '2026-10-21'},
             aujourd_hui=AUJOURD_HUI)
+        # APAR36 — libellés CANONIQUES (core.calendar), ceux du setUp : les
+        # anciens littéraux « Aïd el-Adha »/« Aïd el-Fitr » ne sont plus que
+        # des alias de lecture.
         self.assertTrue(Holiday.objects.filter(
-            company=self.company, nom='Aïd el-Adha',
+            company=self.company, nom=FETES_MOBILES_LIBELLES['aid_el_adha'],
             date=datetime.date(2026, 10, 21)).exists())
         # Les fêtes non renvoyées restent identiques.
         self.assertTrue(Holiday.objects.filter(
-            company=self.company, nom='Aïd el-Fitr',
+            company=self.company, nom=FETES_MOBILES_LIBELLES['aid_el_fitr'],
             date=datetime.date(2026, 3, 20)).exists())
 
     def test_date_passee_modifiee_reste_refusee_sous_son_champ(self):
