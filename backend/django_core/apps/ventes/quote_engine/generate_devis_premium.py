@@ -4444,16 +4444,11 @@ def _css_arabe():
     police syst\u00e8me (d\u00e9gradation propre, jamais un PDF cass\u00e9), au prix d'un
     rendu arabe moins soign\u00e9.
     """
-    faces = (_font_face("Noto Sans Arabic", 400, "normal",
-                        _load_gfont("NotoSansArabic-400.woff2"))
-             + _font_face("Noto Sans Arabic", 700, "normal",
-                          _load_gfont("NotoSansArabic-700.woff2")))
-    if not faces:
-        return ""
-    # La pile garde DM Sans derri\u00e8re : les chiffres et les segments latins
-    # (r\u00e9f\u00e9rences, MAD, noms de marque) restent dans la police du document.
-    return (faces + 'body,body *{font-family:"Noto Sans Arabic","DM Sans",'
-                    'sans-serif !important;}')
+    # APDF6 (C-APDF-002) — plus d'@font-face woff2 vendorisé homonyme de la
+    # police système (glyphes superposés mesurés) : LA CSS arabe partagée,
+    # police système de l'image, aucun espacement de lettres.
+    from .premium_base import css_arabe
+    return css_arabe(libelles=True, document=True)
 
 
 def _attributs_langue_html():

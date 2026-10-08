@@ -809,24 +809,16 @@ def libelle_doc(data, cle: str, fr: str) -> str:
 
 
 def css_langue(data) -> str:
-    """CSS propre à la langue : vide pour fr/en ; pour l'arabe, la police
-    Noto Sans Arabic vendorisée (``assets/fonts``) appliquée aux seuls
-    libellés traduits — les chiffres et le reste du gabarit gardent leurs
-    polices. Police absente ⇒ police système (jamais un PDF cassé)."""
+    """CSS propre à la langue : vide pour fr/en ; pour l'arabe, LA CSS
+    arabe partagée (APDF6, ``premium_base.css_arabe``) : la police SYSTÈME
+    « Noto Sans Arabic » appliquée aux seuls libellés traduits (les chiffres
+    et le reste du gabarit gardent leurs polices), aucun espacement de
+    lettres, aucun @font-face vendorisé homonyme."""
     from .. import i18n_labels
     if not i18n_labels.est_rtl(langue_doc(data)):
         return ""
-    faces = []
-    for wt in (400, 700):
-        b64 = _font_b64(f"NotoSansArabic-{wt}.woff2")
-        if b64:
-            faces.append(
-                f"@font-face{{font-family:'Noto Sans Arabic';font-weight:{wt};"
-                f"font-style:normal;src:url('data:font/woff2;base64,{b64}') "
-                "format('woff2');}")
-    return ("".join(faces)
-            + ".i18n-rtl{font-family:'Noto Sans Arabic','DM Sans',sans-serif;"
-              "unicode-bidi:isolate;}")
+    from ..premium_base import css_arabe
+    return css_arabe(libelles=True)
 
 
 def company_identity(data: dict) -> dict:

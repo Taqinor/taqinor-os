@@ -946,9 +946,11 @@ def build_html(d: dict, elastic: dict | None = None) -> str:
     else:
         racine = (f'<html lang="{langue}" '
                   f'dir="{i18n_labels.direction(langue)}">')
-    css_arabe = (
-        "body,body *{font-family:'Noto Sans Arabic','DM Sans',sans-serif"
-        " !important;}" if i18n_labels.est_rtl(langue) else "")
+    # APDF6 — LA CSS arabe partagée (police système, letter-spacing 0) ;
+    # ``theme.css_langue`` porte déjà la part « libellés ».
+    from ..premium_base import css_arabe as _css_arabe_partagee
+    css_arabe = (_css_arabe_partagee(libelles=True, document=True)
+                 if i18n_labels.est_rtl(langue) else "")
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{theme.css_langue(d)}"
             f"{_css(ctx['C'], ctx['fonts'], ctx['compact'])}{css_arabe}"
