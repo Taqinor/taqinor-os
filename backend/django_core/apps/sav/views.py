@@ -3361,23 +3361,33 @@ def scan_sla_breaches():
     from apps.notifications.services import notify
     from apps.notifications.types_evenements import EventType
 
+    from .selectors import ticket_en_retard_sla
+
     today = timezone.localdate()
-    breached = list(Ticket.objects.filter(
+    # ASAV17 — candidats : échéance BRUTE dépassée (l'effective n'est jamais
+    # plus tôt) OU drapeau déjà levé (à remettre à False si le retard n'est
+    # plus vrai : pause, société au SLA désactivé). La décision vient de
+    # ``selectors.ticket_en_retard_sla`` — une seule définition du retard.
+    candidats = list(Ticket.objects.filter(
         statut__in=Ticket.OPEN_STATUTS,
         annule=False,
-        sla_due_at__lt=today,
-        sla_breach=False,
-    ).select_related('company', 'technicien_responsable'))
+    ).filter(Q(sla_due_at__lt=today) | Q(sla_breach=True))
+     .select_related('company', 'technicien_responsable'))
     # AUD521 — réglages chargés UNE fois par société (plus un get_or_create
     # par ticket).
-    reglage_pour = _reglages_sla_par_ticket(breached)
+    reglage_pour = _reglages_sla_par_ticket(candidats)
 
     updated = 0
-    for ticket in breached:
-        # Vérifie que la société a activé les notifications SLA.
-        sla = reglage_pour(ticket)
-        if not sla.sla_breach_enabled:
+    for ticket in candidats:
+        retard = ticket_en_retard_sla(
+            ticket, today, sla_actif=reglage_pour(ticket).sla_breach_enabled)
+        if not retard:
+            if ticket.sla_breach:
+                ticket.sla_breach = False
+                ticket.save(update_fields=['sla_breach'])
             continue
+        if ticket.sla_breach:
+            continue  # déjà signalé — idempotent.
         ticket.sla_breach = True
         ticket.save(update_fields=['sla_breach'])
         updated += 1

@@ -1181,6 +1181,53 @@ def resume_par_equipe(company):
 
 # ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────
 
+def ticket_en_retard_sla(ticket, today=None, *, sla_actif=None):
+    """ASAV17 — LA définition du retard SLA d'un ticket (écran, scan, KPI).
+
+    En retard = société au SLA activé, ticket ouvert non annulé portant une
+    échéance, et ``today`` au-delà de l'échéance EFFECTIVE
+    (``sla_due_at_effectif`` : pauses « en attente client » décomptées).
+    Société sans SLA = jamais en retard. ``sla_actif`` évite la lecture du
+    réglage quand l'appelant l'a déjà (balayages sans N+1)."""
+    if not ticket.sla_due_at or ticket.annule:
+        return False
+    if ticket.statut not in Ticket.OPEN_STATUTS:
+        return False
+    if sla_actif is None:
+        from .models import SavSlaSettings
+        sla_actif = SavSlaSettings.get(ticket.company).sla_breach_enabled
+    if not sla_actif:
+        return False
+    today = today or timezone.localdate()
+    return today > ticket.sla_due_at_effectif(today=today)
+
+
+def sla_respecte(ticket):
+    """ASAV17 — le SLA de résolution a-t-il été tenu ? ``None`` quand ce
+    n'est pas mesurable (pas d'échéance ou pas de date de résolution).
+
+    Compare ``date_resolution`` à l'échéance EFFECTIVE à cette date (pauses
+    décomptées) — jamais à ``sla_due_at`` brut."""
+    if not ticket.sla_due_at or not ticket.date_resolution:
+        return None
+    return ticket.date_resolution <= ticket.sla_due_at_effectif(
+        today=ticket.date_resolution)
+
+
+def _sla_moitie_ecoulee(ticket, today):
+    """ASAV17 — plus de la moitié du délai SLA ACTIF écoulée (pauses
+    exclues) ; un ticket en attente client n'est jamais « à relancer »."""
+    if ticket.en_attente_client or not (
+            ticket.date_ouverture and ticket.sla_due_at):
+        return False
+    total_jours = (ticket.sla_due_at - ticket.date_ouverture).days
+    if total_jours <= 0:
+        return False
+    pause = ticket.jours_pause + ticket._pause_en_cours_jours(today=today)
+    ecoules = (today - ticket.date_ouverture).days - pause
+    return ecoules >= total_jours / 2
+
+
 def file_action(company, *, today=None):
     """ZSAV6 — Regroupe les tickets OUVERTS de la société par « action
     attendue » (parité Odoo « Activity view »), chaque ticket dans EXACTEMENT
@@ -1221,14 +1268,11 @@ def file_action(company, *, today=None):
         if t.statut == Ticket.Statut.PLANIFIE and t.date_tournee is None:
             buckets['a_planifier'].append(t.id)
             continue
+        # ASAV17 — délai ACTIF (pauses exclues), même source que le retard.
         if (t.statut == Ticket.Statut.EN_COURS
-                and t.date_ouverture and t.sla_due_at):
-            total_jours = (t.sla_due_at - t.date_ouverture).days
-            if total_jours > 0:
-                ecoules = (today - t.date_ouverture).days
-                if ecoules >= total_jours / 2:
-                    buckets['a_relancer'].append(t.id)
-                    continue
+                and _sla_moitie_ecoulee(t, today)):
+            buckets['a_relancer'].append(t.id)
+            continue
         if t.statut == Ticket.Statut.RESOLU:
             # XSAV24 journalise désormais TOUJOURS la création du ticket dans
             # son chatter (kind=CREATION) — la dernière activité n'est donc
@@ -1873,9 +1917,11 @@ def performance_agent(company, *, date_debut=None, date_fin=None):
         # Respect du SLA : mesuré seulement quand le ticket porte une
         # échéance ET une date de résolution ; les autres sont exclus du
         # dénominateur plutôt que comptés « respectés » par défaut.
-        if ticket.sla_due_at and ticket.date_resolution:
+        # ASAV17 — échéance EFFECTIVE (pauses décomptées) via sla_respecte.
+        respecte = sla_respecte(ticket)
+        if respecte is not None:
             seau['sla_total'] += 1
-            if ticket.date_resolution <= ticket.sla_due_at:
+            if respecte:
                 seau['sla_respectes'] += 1
 
     def _moyenne(valeurs, chiffres=1):
