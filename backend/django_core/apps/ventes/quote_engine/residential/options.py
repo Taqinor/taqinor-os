@@ -1383,13 +1383,21 @@ def build_pages(ctx) -> list:
     # papier — QRES61), donc illisible autrement que comme une erreur de
     # graphique. La légende, juste sous la courbe, le NOMME. L'année vient de
     # ``pricing`` (source unique du modèle), jamais d'un littéral recopié.
+    # AMOT34 (C-AMOT-044) — la phrase du palier n'est imprimée QUE si la
+    # provision existe (``inverter_replace_cost`` non nul — onduleur chiffré),
+    # avec l'année RÉELLEMENT servie par ``cashflow_assumptions`` : un
+    # onduleur offert (prix 0) n'a pas de palier, la légende ne l'invente pas.
     from ..pricing import INVERTER_REPLACE_YEAR as _REPL_AN
+    _cf_leg = d.get("cashflow_assumptions") or {}
+    _repl_an = _cf_leg.get("inverter_replace_year") or _REPL_AN
+    _palier = (f' Le palier en année&nbsp;{_repl_an} : provision de '
+               'remplacement de l\'onduleur, déjà déduite.'
+               if _cf_leg.get("inverter_replace_cost") else '')
     _fin_cap = (
         '<div class="p2-fin-cap">Projection <b>à tarif électricité '
         'constant</b> — toute hausse future du prix de l\'électricité '
-        'accélère votre rentabilité, votre coût solaire restant fixe. '
-        f'Le palier en année&nbsp;{_REPL_AN} : provision de remplacement '
-        'de l\'onduleur, déjà déduite.</div>')
+        'accélère votre rentabilité, votre coût solaire restant fixe.'
+        f'{_palier}</div>')
 
     # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
     # gain net : la carte-stat « Gain net » disparaît (plus de doublon).
