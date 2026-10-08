@@ -48,6 +48,8 @@ export interface ProposalItem {
 export interface TvaParTaux {
   taux: number;
   base?: number;
+  /** ATOT26 — base HT du taux (contrat `proposal_data.json`). */
+  ht_net?: number;
   montant: number;
 }
 
@@ -55,6 +57,12 @@ export interface TvaParTaux {
 export interface ProposalTotaux {
   ht_brut: number;
   remise: number;
+  /**
+   * ATOT26/ATOT34 — baisse commerciale de HT qui ramène le TTC au palier de
+   * 100 MAD inférieur (0 quand déjà au palier). Étage de la chaîne
+   * Sous-total − Remise − Arrondi = Total HT ; absent d'un ancien payload.
+   */
+  arrondi?: number;
   ht_net: number;
   tva: number;
   tva_par_taux?: TvaParTaux[];
@@ -772,6 +780,21 @@ export function formatMAD(amount: number | null | undefined): string {
   const digits = Math.abs(rounded).toString();
   const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return `${sign}${grouped} MAD`;
+}
+
+/**
+ * ATOT34 — montant AU CENTIME : `61 512,58 MAD` (milliers en espace, virgule
+ * décimale, toujours deux décimales). Sert la chaîne de prix de la page
+ * publique : arrondir chaque étage au dirham (`formatMAD`) faisait afficher une
+ * chaîne qui ne s'additionne pas (Sous-total − Remise ≠ Total HT).
+ */
+export function formatMADCentimes(amount: number | null | undefined): string {
+  const n = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+  const cents = Math.round(Math.abs(n) * 100);
+  const sign = n < 0 && cents > 0 ? '-' : '';
+  const entier = Math.trunc(cents / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const dec = (cents % 100).toString().padStart(2, '0');
+  return `${sign}${entier},${dec} MAD`;
 }
 
 /**
