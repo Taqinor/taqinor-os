@@ -780,6 +780,13 @@ class ImportChantierPhotoView(APIView):
             return Response(
                 {'detail': 'chantier_id et attachment_id requis.'}, status=400)
         from . import creative_factory as cf
+        # AACQ15 — puissance lue telle que l'écran l'envoie (chaîne, virgule) ;
+        # illisible → 400 sous le champ, jamais une 500.
+        try:
+            cf.parse_puissance_kwc(body.get('puissance_kwc'))
+        except ValueError:
+            return Response(
+                {'puissance_kwc': [cf.PUISSANCE_KWC_ILLISIBLE]}, status=400)
         result = cf.import_chantier_photo(
             company, chantier_id=chantier_id, attachment_id=attachment_id,
             client_id=client_id, puissance_kwc=body.get('puissance_kwc'),
