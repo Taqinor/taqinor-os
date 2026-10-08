@@ -4553,6 +4553,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # formats d'origine : le client relit exactement ce qu'il a reçu.
     if not _corrige:
         data["regles_calcul_origine"] = True
+    else:
+        # AMOT48 — garde de classe : un écart entre le total imprimé, les
+        # lignes imprimées et le noyau est DIT au vendeur (interne) ; la
+        # règle nocturne ``DOC_TOTAL_IMPRIME_NE_NOYAU`` le signale aussi.
+        if opts.get('variante_option'):
+            data["variante_rendue"] = True
+        _noyau = None
+        if not _totaux_seuls:
+            try:
+                _noyau = devis.total_ttc
+            except Exception:  # noqa: BLE001 — un PDF ne casse jamais ici
+                _noyau = None
+        _ecarts_totaux = ecarts_totaux_imprimes(data, _noyau)
+        if _ecarts_totaux:
+            data["avertissements_internes"] = (
+                list(data.get("avertissements_internes") or [])
+                + [f"totaux : {e}" for e in _ecarts_totaux])
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une
@@ -4809,6 +4826,64 @@ def _echapper_chaines(valeur, echapper):
     if isinstance(valeur, str):
         return echapper(valeur)
     return valeur
+
+
+#: AMOT48 — écart toléré (MAD) entre deux totaux imprimés d'un même document.
+TOLERANCE_TOTAUX_IMPRIMES = 0.011
+
+
+def ecarts_totaux_imprimes(data, total_noyau=None):
+    """AMOT48 (C-AMOT-001/005) — garde de classe « aucun dirham ne s'évapore
+    entre le devis et son PDF ». Rend la liste (vide si sain) des écarts :
+
+    * document à UNE option : ``display_total`` = ``totaux_all.ttc`` (le total
+      imprimé décrit les lignes imprimées) ;
+    * ``display_total`` est l'un des TTC imprimés (sans / avec / tout) ;
+    * ``total_noyau`` (``Devis.total_ttc``, option effective) fourni et
+      document à une option non rétréci par une variante : égal au total
+      imprimé.
+
+    Pure (lecture du dict de rendu). Un document ×N villas compare ses
+    totaux unitaires (le ×N a sa propre clé)."""
+    tol = TOLERANCE_TOTAUX_IMPRIMES
+    out = []
+
+    def _ttc(cle):
+        tot = data.get(cle)
+        try:
+            return float(tot.get("ttc")) if isinstance(tot, dict) else None
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        affiche = float(data.get("display_total"))
+    except (TypeError, ValueError):
+        return out
+    tout, sans, avec = _ttc("totaux_all"), _ttc("totaux_sans"), _ttc("totaux_avec")
+    if data.get("nb_options") == 1 and tout is not None \
+            and abs(affiche - tout) > tol:
+        out.append(f"total imprimé {affiche:.2f} ≠ Σ lignes imprimées "
+                   f"{tout:.2f} (document à une option)")
+    imprimes = [v for v in (tout, sans, avec) if v is not None]
+    if imprimes and not any(abs(affiche - v) <= tol for v in imprimes):
+        out.append(f"total imprimé {affiche:.2f} absent des chaînes de "
+                   "totaux imprimées")
+    if (total_noyau is not None and data.get("nb_options") == 1
+            and not data.get("variante_rendue")):
+        try:
+            noyau = float(total_noyau)
+        except (TypeError, ValueError):
+            noyau = None
+        # ×N villas : le noyau facture le total ×N, imprimé sous sa clé.
+        try:
+            affiche_n = float(data.get("display_total_multi"))
+        except (TypeError, ValueError):
+            affiche_n = affiche
+        if noyau is not None and abs(affiche_n - noyau) > tol:
+            affiche = affiche_n
+            out.append(f"total imprimé {affiche:.2f} ≠ total du devis "
+                       f"{noyau:.2f} (noyau)")
+    return out
 
 
 def echapper_textes_client(data: dict) -> dict:

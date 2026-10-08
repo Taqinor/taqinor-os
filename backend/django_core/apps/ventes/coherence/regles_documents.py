@@ -387,3 +387,26 @@ def ligne_sans_prix(r, devis, ctx):
     return [r.violation(devis, f"{len(ids)} ligne(s) produit sans quantité ou "
                                "sans prix, comptées pour 0.",
                         valeurs={'lignes': ids, 'statut': devis.statut})]
+
+
+@regle('DOC_TOTAL_IMPRIME_NE_NOYAU',
+       "Total imprimé d'un document à une option différent de ses lignes "
+       "imprimées ou du total du devis",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_DEVIS, besoin_rendu=True)
+def total_imprime_ne_noyau(r, devis, ctx):
+    """AMOT48 — complète ``DOC_TOTAUX_IMPRIMES`` (survivant : la chaîne de
+    chaque option tient au centime et le TTC du devis figure sur UNE option).
+    Ici : sur un document à UNE option, le total imprimé (``display_total``)
+    égale la somme des lignes imprimées (``totaux_all``) ET le noyau
+    (``Devis.total_ttc``) — le défaut d'AMOT8 (batterie hors tableau) ou
+    d'AMOT10 (total de l'option signée sur la variante) le viole. Même
+    fonction que la garde du moteur (``builder.ecarts_totaux_imprimes``)."""
+    from apps.ventes.quote_engine.builder import ecarts_totaux_imprimes
+    data = ctx.donnees_devis(devis)
+    return [
+        r.violation(devis, f"Totaux imprimés : {e}.",
+                    valeurs={'display_total': data.get('display_total'),
+                             'total_devis': _f(devis.total_ttc)},
+                    attendu=_f(devis.total_ttc), cle={'ecart': i})
+        for i, e in enumerate(ecarts_totaux_imprimes(data, devis.total_ttc))
+    ]
