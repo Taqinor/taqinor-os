@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { Provider } from 'react-redux'
@@ -25,6 +25,10 @@ vi.mock('../../api/stockApi', () => ({
     getFacturesFournisseurDe: vi.fn(),
     getRetoursFournisseurDe: vi.fn(),
     getDocumentsConformiteFournisseur: vi.fn(),
+    // ASTK225 — CRUD des pièces XPUR1.
+    createDocumentConformiteFournisseur: vi.fn(),
+    updateDocumentConformiteFournisseur: vi.fn(),
+    deleteDocumentConformiteFournisseur: vi.fn(),
     // WIR108 — acomptes/avoirs/contacts.
     getAcomptesFournisseurDe: vi.fn(),
     createAcompteFournisseur: vi.fn(),
@@ -51,6 +55,7 @@ vi.mock('../../api/stockApi', () => ({
 vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 
 import stockApi from '../../api/stockApi'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 import FournisseurFiche360 from './FournisseurFiche360.jsx'
 
 function makeStore({ role = 'admin', permissions = [] } = {}) {
@@ -556,5 +561,67 @@ describe('WIR268/XPUR14 — onglet Tarif (export/import xlsx)', () => {
     const panel = await ouvrirTarif()
     expect(within(panel).queryByText(/Importer un tarif/)).toBeNull()
     expect(within(panel).getByRole('button', { name: /Exporter le tarif/ })).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ASTK225 (C-ASTK-045, FOUR-12) — onglet Conformité : CRUD des pièces XPUR1
+   datées + TYPES requis manquants lus du serveur (ASTK188). Réponses = le
+   contrat committé `fournisseur_conformite.json`.
+   ========================================================================== */
+describe('ASTK225 — onglet Conformité saisissable', () => {
+  const routes = documentContrat('stock', 'fournisseur_conformite').routes
+
+  it('ajouter une pièce de conformité datée', async () => {
+    const vue = routes.fournisseurs_vue_360.exemple_vue_360_nouveau_astk188
+    const piece = routes.documents_conformite_fournisseur.exemple_element
+    stockApi.getFournisseur360.mockResolvedValue({ data: vue })
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur
+      .mockResolvedValueOnce({ data: routes.documents_conformite_fournisseur.exemple_vide })
+      .mockResolvedValue({ data: routes.documents_conformite_fournisseur.exemple })
+    stockApi.createDocumentConformiteFournisseur.mockResolvedValue({ data: piece })
+
+    renderPage({ fournisseurId: '12' })
+    await userEvent.click(await screen.findByRole('tab', { name: /Conformité/ }))
+    const panel = await screen.findByTestId('f360-tab-documents')
+    expect(await within(panel).findByTestId('conformite-manquants'))
+      .toHaveTextContent('Attestation CNSS, Assurance')
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Ajouter une pièce/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Référence'), piece.reference)
+    fireEvent.change(within(dialog).getByLabelText("Date d'expiration"), { target: { value: piece.date_expiration } })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(stockApi.createDocumentConformiteFournisseur).toHaveBeenCalledWith({
+      fournisseur: 12, type_document: 'arf', reference: piece.reference,
+      date_emission: null, date_expiration: piece.date_expiration, obligatoire: true,
+    }))
+    // La pièce relue et le résumé (types manquants) rechargé.
+    expect(await within(panel).findByText(/ARF-2026-01/)).toBeInTheDocument()
+    await waitFor(() => expect(stockApi.getFournisseur360).toHaveBeenCalledTimes(2))
+  })
+
+  it('le 400 serveur sur la date s\'affiche sous le champ', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: routes.documents_conformite_fournisseur.exemple_vide })
+    stockApi.createDocumentConformiteFournisseur.mockRejectedValue({
+      response: { status: 400, data: { error: 'x', date_expiration: ['Date invalide.'] } },
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /Conformité/ }))
+    const panel = await screen.findByTestId('f360-tab-documents')
+    await userEvent.click(await within(panel).findByRole('button', { name: /Ajouter une pièce/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+    expect(await within(dialog).findByText('Date invalide.')).toBeInTheDocument()
   })
 })

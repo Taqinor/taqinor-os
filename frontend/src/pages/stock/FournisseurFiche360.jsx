@@ -9,7 +9,8 @@ import {
   Pencil, Trash2, Check, X, Download, Upload,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { formatMAD } from '../../lib/format'
+import { formatDate, formatMAD } from '../../lib/format'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { telHref } from '../../lib/contactLinks'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
@@ -776,21 +777,136 @@ function statutExpiration(dateExpiration) {
   return { label: 'Valide', tone: 'success' }
 }
 
-function OngletDocuments({ fournisseurId }) {
+// ASTK225 — types XPUR1 (DocumentConformiteFournisseur.Type, models.py).
+const TYPES_CONFORMITE = [
+  { value: 'arf', label: 'Attestation de régularité fiscale (ARF)' },
+  { value: 'cnss', label: 'Attestation CNSS' },
+  { value: 'rc', label: 'Registre du commerce (RC)' },
+  { value: 'assurance', label: 'Assurance' },
+  { value: 'autre', label: 'Autre pièce' },
+]
+const libelleTypeConformite = (v) => TYPES_CONFORMITE.find((t) => t.value === v)?.label ?? v
+
+// ASTK225 — premier message d'un 400 DRF par champ (sous le champ fautif).
+function erreursParChamp(err, champs) {
+  const data = err?.response?.data ?? {}
+  const out = {}
+  for (const k of champs) {
+    const v = data[k]
+    const m = Array.isArray(v) ? v[0] : v
+    if (typeof m === 'string') out[k] = m
+  }
+  return out
+}
+
+function DocumentConformiteForm({ fournisseurId, document, onClose, onSaved }) {
+  const isNew = !document?.id
+  const [fields, setFields] = useState({
+    type_document: document?.type_document ?? 'arf',
+    reference: document?.reference ?? '',
+    date_emission: document?.date_emission ?? '',
+    date_expiration: document?.date_expiration ?? '',
+    obligatoire: document?.obligatoire ?? true,
+  })
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    setSaving(true); setErrors({})
+    const payload = {
+      type_document: fields.type_document,
+      reference: fields.reference.trim() || null,
+      date_emission: fields.date_emission || null,
+      date_expiration: fields.date_expiration || null,
+      obligatoire: !!fields.obligatoire,
+    }
+    try {
+      if (isNew) {
+        await stockApi.createDocumentConformiteFournisseur({ fournisseur: Number(fournisseurId), ...payload })
+      } else {
+        await stockApi.updateDocumentConformiteFournisseur(document.id, payload)
+      }
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      const parChamp = erreursParChamp(err, Object.keys(payload))
+      setErrors({ ...parChamp, submit: Object.keys(parChamp).length ? undefined : frErr(err, "L'enregistrement a échoué.") })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isNew ? 'Nouvelle pièce de conformité' : 'Modifier la pièce'}</DialogTitle>
+          <DialogDescription>Pièce légale du fournisseur (donnée interne).</DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Type de pièce" htmlFor="conf-type" error={errors.type_document}>
+            <Select value={fields.type_document} onValueChange={(v) => setField('type_document', v)}>
+              <SelectTrigger id="conf-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPES_CONFORMITE.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Référence" htmlFor="conf-ref" error={errors.reference}>
+            <Input id="conf-ref" value={fields.reference} onChange={(e) => setField('reference', e.target.value)} />
+          </FormField>
+          <FormField label="Date d'émission" htmlFor="conf-emission" error={errors.date_emission}>
+            <Input id="conf-emission" type="date" value={fields.date_emission}
+                   onChange={(e) => setField('date_emission', e.target.value)} />
+          </FormField>
+          <FormField label="Date d'expiration" htmlFor="conf-expiration" error={errors.date_expiration}>
+            <Input id="conf-expiration" type="date" value={fields.date_expiration}
+                   onChange={(e) => setField('date_expiration', e.target.value)} />
+          </FormField>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <Checkbox checked={!!fields.obligatoire} onCheckedChange={(v) => setField('obligatoire', !!v)} />
+            Pièce obligatoire
+          </label>
+          {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>Enregistrer</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OngletDocuments({ fournisseurId, canWrite, resume, onConformiteChange }) {
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
+  const [editing, setEditing] = useState(null) // {} = nouvelle pièce
+  const [aSupprimer, setASupprimer] = useState(null)
+  const [actionError, setActionError] = useState(null)
+  const isAdmin = useIsAdmin()
 
-  useEffect(() => {
-    let active = true
+  const reload = () => {
     stockApi.getDocumentsConformiteFournisseur(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
-      .catch((e) => { if (active) setError(frErr(e, 'Documents indisponibles.')) })
-    return () => { active = false }
-  }, [fournisseurId])
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Documents indisponibles.')))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [fournisseurId])
+
+  const apresEcriture = () => { reload(); onConformiteChange?.() }
+  const supprimer = async (d) => {
+    setASupprimer(null); setActionError(null)
+    try {
+      await stockApi.deleteDocumentConformiteFournisseur(d.id)
+      apresEcriture()
+    } catch (err) {
+      setActionError(frErr(err, 'Suppression impossible.'))
+    }
+  }
 
   if (error) return <Indisponible message={error} />
   if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
-  if (items.length === 0) return <Indisponible message="Aucun document de conformité." />
 
   const toneClass = {
     destructive: 'text-destructive',
@@ -798,19 +914,77 @@ function OngletDocuments({ fournisseurId }) {
     success: 'text-emerald-600',
     muted: 'text-muted-foreground',
   }
+  // ASTK188 — TYPES requis manquants, calculés par le serveur (vue-360).
+  const manquants = Array.isArray(resume?.conformite_documents_manquants)
+    ? resume.conformite_documents_manquants : null
 
   return (
-    <ul className="flex flex-col gap-2">
-      {items.map((d) => {
-        const st = statutExpiration(d.date_expiration)
-        return (
-          <li key={d.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
-            <span>{d.type_document ?? `Document #${d.id}`}</span>
-            <span className={toneClass[st.tone]}>{st.label} · {fmtDate(d.date_expiration)}</span>
-          </li>
+    <div className="flex flex-col gap-3">
+      {manquants && (
+        manquants.length > 0 ? (
+          <div data-testid="conformite-manquants" role="status"
+               className="rounded-lg border border-warning/30 bg-warning/10 p-2 text-sm">
+            Pièces requises manquantes : {manquants.map(libelleTypeConformite).join(', ')}
+          </div>
+        ) : (
+          <div data-testid="conformite-manquants" className="text-sm text-emerald-600">
+            Toutes les pièces requises sont présentes et valides.
+          </div>
         )
-      })}
-    </ul>
+      )}
+      {canWrite && (
+        <div>
+          <Button type="button" size="sm" onClick={() => setEditing({})}>
+            <Plus className="size-4" /> Ajouter une pièce
+          </Button>
+        </div>
+      )}
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      {items.length === 0 ? (
+        <Indisponible message="Aucun document de conformité." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((d) => {
+            const st = statutExpiration(d.date_expiration)
+            return (
+              <li key={d.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+                <span className="flex-1">
+                  {d.type_document_display ?? libelleTypeConformite(d.type_document) ?? `Document #${d.id}`}
+                  {d.reference ? <span className="text-muted-foreground"> · {d.reference}</span> : null}
+                </span>
+                <span className={toneClass[st.tone]}>
+                  {st.label}{d.date_expiration ? ` · ${formatDate(d.date_expiration)}` : ''}
+                </span>
+                {canWrite && (
+                  <IconButton size="sm" variant="ghost" label="Modifier la pièce" onClick={() => setEditing(d)}>
+                    <Pencil className="size-4" aria-hidden="true" />
+                  </IconButton>
+                )}
+                {isAdmin && (
+                  <IconButton size="sm" variant="ghost" label="Supprimer la pièce"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setASupprimer(d)}>
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </IconButton>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {editing && (
+        <DocumentConformiteForm fournisseurId={fournisseurId} document={editing.id ? editing : null}
+                                onClose={() => setEditing(null)} onSaved={apresEcriture} />
+      )}
+      <ConfirmDialog
+        open={!!aSupprimer}
+        onOpenChange={(o) => { if (!o) setASupprimer(null) }}
+        title="Supprimer la pièce ?"
+        description={aSupprimer ? `${libelleTypeConformite(aSupprimer.type_document)} sera supprimée.` : ''}
+        confirmLabel="Supprimer"
+        onConfirm={() => supprimer(aSupprimer)}
+      />
+    </div>
   )
 }
 
@@ -1006,6 +1180,8 @@ export default function FournisseurFiche360({
   const [resumeData, setResumeData] = useState(null)
   const [resumeUnavailable, setResumeUnavailable] = useState(false)
   const [resumeLoading, setResumeLoading] = useState(true)
+  // ASTK225 — rechargé après chaque écriture de conformité (types manquants).
+  const [resumeVersion, setResumeVersion] = useState(0)
   useEffect(() => {
     if (!fournisseurId || !canView) return undefined
     let active = true
@@ -1014,7 +1190,7 @@ export default function FournisseurFiche360({
       .catch(() => { if (active) setResumeUnavailable(true) })
       .finally(() => { if (active) setResumeLoading(false) })
     return () => { active = false }
-  }, [fournisseurId, canView])
+  }, [fournisseurId, canView, resumeVersion])
 
   // NTP2P8 — score de risque (0-100) affiché en badge sous le titre. En cas
   // d'échec on laisse `null` : le badge disparaît plutôt que d'afficher un
@@ -1179,7 +1355,8 @@ export default function FournisseurFiche360({
         </TabsList>
         {tabs.map((t) => (
           <TabsContent key={t.value} value={t.value} data-testid={`f360-tab-${t.value}`}>
-            <t.Comp fournisseurId={fournisseurId} canWrite={canWrite} />
+            <t.Comp fournisseurId={fournisseurId} canWrite={canWrite} resume={resumeData}
+                    onConformiteChange={() => setResumeVersion((v) => v + 1)} />
           </TabsContent>
         ))}
       </Tabs>

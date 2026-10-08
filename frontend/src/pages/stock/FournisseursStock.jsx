@@ -207,6 +207,12 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
     motif_blocage: fournisseur?.motif_blocage ?? '',
     // XPUR5 — catégorie (référentiel léger, optionnelle).
     categorie: fournisseur?.categorie != null ? String(fournisseur.categorie) : '',
+    // ASTK225 (FOUR-12) — identité légale, écrivable par l'API mais jusqu'ici
+    // sans champ à l'écran. Format ICE contrôlé par le SERVEUR (400 nommé).
+    ice: fournisseur?.ice ?? '',
+    identifiant_fiscal: fournisseur?.identifiant_fiscal ?? '',
+    rc: fournisseur?.rc ?? '',
+    rib: fournisseur?.rib ?? '',
   })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
@@ -269,17 +275,34 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
         motif_blocage: fields.motif_blocage.trim() || null,
         // XPUR5 — catégorie référentielle (optionnelle).
         categorie: fields.categorie ? Number(fields.categorie) : null,
+        // ASTK225 — identité légale (données INTERNES, jamais sur un document client).
+        ice: fields.ice.trim() || null,
+        identifiant_fiscal: fields.identifiant_fiscal.trim() || null,
+        rc: fields.rc.trim() || null,
+        rib: fields.rib.trim() || null,
       }
       const reponse = isNew
         ? await stockApi.createFournisseur(payload)
         : await stockApi.updateFournisseur(fournisseur.id, payload)
       // ASTK95 (C-ASTK-026) — avertissement NON bloquant du serveur : un
       // fournisseur au nom normalisé identique existe déjà ; affiché par la
-      // liste après fermeture (jamais stocké).
-      onSaved?.(reponse?.data?.avertissements?.nom ?? null)
+      // liste après fermeture (jamais stocké). ASTK225 — le doublon d'ICE
+      // (`ice_duplicate_warning`, XPUR5) est affiché tel quel, au même endroit.
+      const d = reponse?.data
+      const avertissements = [d?.avertissements?.nom, d?.ice_duplicate_warning ?? d?.avertissements?.ice]
+        .filter(Boolean)
+      onSaved?.(avertissements.length ? avertissements.join(' ') : null)
       onClose()
     } catch (err) {
-      setErrors((prev) => ({ ...prev, submit: frErr(err, "L'enregistrement a échoué.") }))
+      // ASTK225 — les 400 du serveur sur l'identité légale s'affichent SOUS le champ.
+      const data = err?.response?.data ?? {}
+      const champ = (k) => (Array.isArray(data[k]) ? data[k][0] : (typeof data[k] === 'string' ? data[k] : undefined))
+      const parChamp = Object.fromEntries(
+        ['ice', 'identifiant_fiscal', 'rc', 'rib'].map((k) => [k, champ(k)]).filter(([, v]) => v))
+      setErrors((prev) => ({
+        ...prev, ...parChamp,
+        submit: Object.keys(parChamp).length ? undefined : frErr(err, "L'enregistrement a échoué."),
+      }))
     } finally { setSaving(false) }
   }
 
@@ -342,6 +365,24 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
                 ))}
               </SelectContent>
             </Select>
+          </FormField>
+          {/* ASTK225 (FOUR-12) — identité légale : ICE (15 chiffres, contrôlé
+              par le serveur), IF, RC, RIB. Données internes. */}
+          <FormField label="ICE" htmlFor="fou-ice" error={errors.ice}>
+            <Input id="fou-ice" value={fields.ice} invalid={!!errors.ice} inputMode="numeric"
+                   onChange={(e) => setField('ice', e.target.value)} />
+          </FormField>
+          <FormField label="Identifiant fiscal (IF)" htmlFor="fou-if" error={errors.identifiant_fiscal}>
+            <Input id="fou-if" value={fields.identifiant_fiscal} invalid={!!errors.identifiant_fiscal}
+                   onChange={(e) => setField('identifiant_fiscal', e.target.value)} />
+          </FormField>
+          <FormField label="Registre du commerce (RC)" htmlFor="fou-rc" error={errors.rc}>
+            <Input id="fou-rc" value={fields.rc} invalid={!!errors.rc}
+                   onChange={(e) => setField('rc', e.target.value)} />
+          </FormField>
+          <FormField label="RIB" htmlFor="fou-rib" error={errors.rib}>
+            <Input id="fou-rib" value={fields.rib} invalid={!!errors.rib}
+                   onChange={(e) => setField('rib', e.target.value)} />
           </FormField>
           <FormField label="Adresse" htmlFor="fou-adr" fullWidth>
             <Textarea id="fou-adr" rows={2} value={fields.adresse}

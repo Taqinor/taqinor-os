@@ -62,6 +62,7 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 import FournisseursStock from './FournisseursStock'
 
 function makeStore({ role = 'admin', permissions = ['stock_modifier', 'stock_voir'] } = {}) {
@@ -414,6 +415,64 @@ describe('FournisseursStock — liste complète (ASTK185)', () => {
     // (Au-delà de 50 lignes le DataTable se virtualise — jsdom sans hauteur
     // n'en rend aucune : le compteur d'en-tête est la preuve lisible ici.)
     expect(stockApi.getAllFournisseurs).toHaveBeenCalledWith({ ordering: 'nom' })
+  })
+})
+
+/* ============================================================================
+   ASTK225 (C-ASTK-045, FOUR-12) — identité légale saisissable sur la fiche :
+   ICE / IF / RC / RIB envoyés par les routes existantes ; le 400 du serveur
+   (format ICE) s'affiche sous le champ ; l'avertissement de doublon ICE du
+   serveur est affiché tel quel. Réponses = le contrat committé.
+   ========================================================================== */
+describe('FournisseursStock — identité légale (ASTK225)', () => {
+  const contrat = documentContrat('stock', 'fournisseur_conformite').routes
+
+  it('saisir ICE et RIB', async () => {
+    const corps = contrat.fournisseurs_conformite_champs.exemple_corps
+    stockApi.updateFournisseur.mockResolvedValueOnce({ data: contrat.fournisseurs_conformite_champs.exemple })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(within(within(grid).getByText('Actif SARL').closest('tr'))
+      .getByRole('button', { name: 'Modifier' }))
+    await screen.findByRole('dialog')
+    await userEvent.type(screen.getByLabelText('ICE'), corps.ice)
+    await userEvent.type(screen.getByLabelText('Identifiant fiscal (IF)'), corps.identifiant_fiscal)
+    await userEvent.type(screen.getByLabelText('Registre du commerce (RC)'), corps.rc)
+    await userEvent.type(screen.getByLabelText('RIB'), corps.rib)
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(stockApi.updateFournisseur).toHaveBeenCalledWith(
+      1, expect.objectContaining(corps)))
+  })
+
+  it("le 400 du serveur sur l'ICE s'affiche sous le champ", async () => {
+    stockApi.updateFournisseur.mockRejectedValueOnce({
+      response: { status: 400, data: {
+        error: 'Données invalides.',
+        ice: ["Format ICE invalide : l'ICE doit comporter exactement 15 chiffres."],
+      } },
+    })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(within(within(grid).getByText('Actif SARL').closest('tr'))
+      .getByRole('button', { name: 'Modifier' }))
+    await screen.findByRole('dialog')
+    await userEvent.type(screen.getByLabelText('ICE'), '123')
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByText(/Format ICE invalide/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it("affiche l'avertissement de doublon ICE renvoyé par le serveur", async () => {
+    stockApi.updateFournisseur.mockResolvedValueOnce({ data: contrat.fournisseurs_ice_doublon.exemple })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    await userEvent.click(within(within(grid).getByText('Actif SARL').closest('tr'))
+      .getByRole('button', { name: 'Modifier' }))
+    await screen.findByRole('dialog')
+    await userEvent.type(screen.getByLabelText('ICE'), contrat.fournisseurs_ice_doublon.exemple_corps.ice)
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByText(contrat.fournisseurs_ice_doublon.exemple.ice_duplicate_warning))
+      .toBeInTheDocument()
   })
 })
 

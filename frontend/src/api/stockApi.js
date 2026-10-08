@@ -353,6 +353,9 @@ const stockApi = {
     api.post('/stock/documents-fournisseur/', data),
   televerserDocumentFournisseur: (id, formData) =>
     api.post(`/stock/documents-fournisseur/${id}/televerser/`, formData),
+  // ASTK225 — date d'expiration d'une pièce d'onboarding déjà créée.
+  updateDocumentFournisseur: (id, data) =>
+    api.patch(`/stock/documents-fournisseur/${id}/`, data),
   // Onglets détaillés — réutilisent les endpoints EXISTANTS déjà câblés
   // ailleurs (WR4/FG55/FG56/FG58/FG59, XPUR1, XPUR9), filtrés par fournisseur
   // côté frontend quand l'API ne filtre pas déjà nativement.
@@ -368,6 +371,13 @@ const stockApi = {
   // XPUR1 — documents de conformité, filtrés serveur par ?fournisseur=.
   getDocumentsConformiteFournisseur: (fournisseurId) =>
     api.get('/stock/documents-conformite-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  // ASTK225 — CRUD des pièces XPUR1 (écriture stock_modifier, suppression Admin).
+  createDocumentConformiteFournisseur: (data) =>
+    api.post('/stock/documents-conformite-fournisseur/', data),
+  updateDocumentConformiteFournisseur: (id, data) =>
+    api.patch(`/stock/documents-conformite-fournisseur/${id}/`, data),
+  deleteDocumentConformiteFournisseur: (id) =>
+    api.delete(`/stock/documents-conformite-fournisseur/${id}/`),
   // WIR26 — Paramètres → Achats (singleton par société). GET crée le réglage
   // si besoin (`AchatsParametres.for_company`) ; PATCH exige un `id` (route
   // détail du ViewSet), obtenu via le GET précédent.
