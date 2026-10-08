@@ -1026,8 +1026,68 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
 # (pacing, réconciliation) ou d'une donnée non encore stockée (impressions pour
 # zéro-delivery) ne sont PAS câblés ici et sont consignés ``evaluated: False``
 # (jamais un skip muet — c'est audité dans ``last_result``).
+def _eval_zero_delivery(company, policy, template, *, now, config):
+    """AACQ24 — « Zéro diffusion malgré dépense » (seul gabarit de cadence
+    CRITIQUE) : sur les snapshots de la fenêtre ``hours`` (48 h par défaut),
+    dépense > ``min_spend_mad`` ET 0 impression ⇒ déclenché (détecteur pur
+    ``anomaly.detect_zero_delivery``, niveau 1 seulement — le niveau 2 « clics
+    sans résultat » appartient au gabarit ``zero_results``). Aucune donnée →
+    ``insufficient_data``. Le seuil ``min_spend_mad`` passe par la porte de
+    devise AACQ2 (compte non-MAD : non applicable, aucun taux inventé)."""
+    import math
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import anomaly
+
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    hours = float(params.get('hours', 48) or 48)
+    min_spend = float(params.get('min_spend_mad', 0) or 0)
+    days = max(1, int(math.ceil(hours / 24.0)))
+    blocked = guardrails.mad_threshold_blocked_reason(company)
+    currency = account_currency(company)
+    model, mirrors = _scoped_mirrors(company, policy, 'campaign')
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        base = {'target_type': 'campaign', 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if blocked:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': blocked,
+                             'computed': {'metric': 'spend'}})
+            continue
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=days)
+        if not snaps:
+            det = anomaly.detect_zero_delivery(
+                spend=None, impressions=None, clicks=None, leads=None,
+                hours_since_launch=0, min_spend_mad=min_spend,
+                currency=currency)
+        else:
+            det = anomaly.detect_zero_delivery(
+                spend=_sum_attr(snaps, 'spend'),
+                impressions=int(_sum_attr(snaps, 'impressions')),
+                clicks=int(_sum_attr(snaps, 'link_clicks')),
+                leads=int(_sum_attr(snaps, 'results')),
+                # Niveau 1 seulement : jamais le niveau 2 (> 24 h) ici.
+                hours_since_launch=0, min_spend_mad=min_spend,
+                currency=currency)
+        fired = bool(det.fired and det.kind == anomaly.KIND_ZERO_DELIVERY)
+        findings.append({
+            **base, 'fired': fired,
+            'insufficient_data': bool(det.insufficient_data),
+            'computed': {**(det.computed or {}), 'hours': hours,
+                         'min_spend': min_spend}})
+    return findings
+
+
 _EVALUATORS = {
     'frequency_high': _eval_frequency_high,
+    # AACQ24 — boucle CRITIQUE (6 h) : zéro diffusion malgré dépense.
+    'zero_delivery': _eval_zero_delivery,
     'cpl_band': _eval_cpl_band,
     # ADSDEEP40 — stop-loss (CPL campagne > plafond dur ⇒ pause proposée).
     'stop_loss_cpl': _eval_stop_loss,
@@ -1044,6 +1104,11 @@ _EVALUATORS = {
     # proposition de DUPLICATION via le hint ``v2['action']='duplicate'``.
     'winner_duplicate': _eval_winner_duplicate,
 }
+
+
+def is_template_wired(template_key):
+    """AACQ24 — Vrai si le gabarit a un évaluateur (donc ARMABLE)."""
+    return template_key in _EVALUATORS
 
 
 # ── Reasons FR (une phrase par déclenchement) ─────────────────────────────────

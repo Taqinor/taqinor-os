@@ -457,6 +457,15 @@ class RulePolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le mode automatique est interdit en simulation (dry-run) : "
                 "désactivez d'abord la simulation.")
+        # AACQ24 — un gabarit SANS évaluateur ne s'arme pas (sinon la règle
+        # « armée » n'évalue jamais rien : « évaluateur non câblé »).
+        from .rules_engine import is_template_wired
+        enabled = attrs.get('enabled', getattr(self.instance, 'enabled', False))
+        template_key = attrs.get(
+            'template_key', getattr(self.instance, 'template_key', ''))
+        if enabled and not is_template_wired(template_key):
+            raise serializers.ValidationError({
+                'template_key': "Gabarit non branché : non armable."})
         return attrs
 
 
