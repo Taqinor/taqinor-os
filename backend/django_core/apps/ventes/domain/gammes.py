@@ -168,7 +168,9 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
             statut=Devis.Statut.BROUILLON,
             taux_tva=devis.taux_tva,
             remise_globale=devis.remise_globale,
-            note=(f'[Gamme {nom_gamme}] ' + (devis.note or '')).strip(),
+            # ADEV32 — note client du frère telle quelle ; « [Gamme …] » au
+            # chatter de la sœur (jamais au client).
+            note=devis.note,
             mode_installation=devis.mode_installation,
             etude_params=params_soeur,
             prix_cible_kwc=devis.prix_cible_kwc,
@@ -216,6 +218,8 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
         # et ce qu'« à l'identique » recouvre n'est plus retapé à trois
         # endroits.
         cloner_lignes(devis, soeur)
+        from apps.ventes.activity import log_devis_note
+        log_devis_note(soeur, user, f'[Gamme {nom_gamme}]')
     # QJR117 — les études de la SŒUR sont recalculées sur SES lignes (force :
     # le dimensionnement se court-circuite sinon sur empreinte concordante).
     rafraichir_etudes_du_devis(soeur, force=True)
@@ -295,12 +299,14 @@ def create_devis_from_reserve(*, reserve, user):
     company = reserve.company or installation.company
 
     description = (reserve.description or '').strip()
-    note_lines = ["Devis de réparation généré depuis une réserve d'intervention."]
-    if description:
-        note_lines.append(f"Description : {description}")
+    # ADEV32 (C-ADEV-045) — ``note`` est le TEXTE CLIENT : il ne garde que la
+    # description du défaut. L'origine et la pièce jointe (« pièce jointe
+    # #… », marqueur interne) vont au chatter du devis.
+    note = f"Description : {description}" if description else ''
+    trace_lines = ["Devis de réparation généré depuis une réserve d'intervention."]
     if reserve.photo_id:
-        note_lines.append(f"Photo référencée : pièce jointe #{reserve.photo_id}")
-    note = "\n".join(note_lines)
+        trace_lines.append(f"Photo référencée : pièce jointe #{reserve.photo_id}")
+    trace_interne = "\n".join(trace_lines)
 
     # QJR129 / CS7 — LE MODE DU CHANTIER. Le devis d'origine du chantier le
     # porte le plus précisément ; à défaut le chantier lui-même
@@ -324,6 +330,8 @@ def create_devis_from_reserve(*, reserve, user):
         )
 
     devis = create_numbered(Devis, company, 'devis', _create)
+    from apps.ventes.activity import log_devis_note
+    log_devis_note(devis, user, trace_interne)
     logger.info(
         'XFSM18: devis de réparation %s créé depuis la réserve %s (company %s)',
         devis.reference, reserve.id, getattr(company, 'id', '?'))

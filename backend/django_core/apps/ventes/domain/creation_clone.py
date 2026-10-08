@@ -184,12 +184,16 @@ def dupliquer_devis(devis, *, user):
     liste des champs n'est plus écrite ici. Ce chemin ne garde que ce qui
     lui est propre — le préfixe de note et l'absence de lien de version.
     """
+    # ADEV32 (C-ADEV-045) — ``note`` est le TEXTE CLIENT (page publique,
+    # /proposal) : la copie garde la note client de l'original telle quelle,
+    # le marqueur interne « [Copie de …] » va au chatter de la copie.
     copie = cloner_devis(
         devis, user=user,
-        note=(f'[Copie de {devis.reference}] ' + (devis.note or '')).strip(),
         # Duplicata indépendant : jamais de groupe de version (à la
         # différence de dupliquer-variante, QJ15).
         version=1, version_parent=None)
+    from apps.ventes.activity import log_devis_note
+    log_devis_note(copie, user, f'[Copie de {devis.reference}]')
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
                 devis.reference, copie.reference,
                 getattr(devis.company, 'id', '?'))

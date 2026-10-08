@@ -158,7 +158,11 @@ class NonRegressionDuCheminDejaCorrect(_Base):
         self.assertEqual(copie.version, 1)
         self.assertIsNone(copie.version_parent)
         self.assertEqual(copie.statut, Devis.Statut.BROUILLON)
-        self.assertTrue(copie.note.startswith('[Copie de '))
+        # ADEV32 — le marqueur « [Copie de …] » est au chatter, plus dans la
+        # note client (qui reste celle de l'original).
+        self.assertEqual(copie.note, self.source.note)
+        self.assertTrue(copie.activites.filter(
+            body__startswith='[Copie de ').exists())
         self.assertEqual(Decimal(str(copie.total_ttc)),
                          Decimal(str(self.source.total_ttc)))
 
