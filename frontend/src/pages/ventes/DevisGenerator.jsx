@@ -747,7 +747,9 @@ export default function DevisGenerator({
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
-
+    // AGNR30 — conditions, échéancier, tarif déclaré et éco C&I : les
+    // modifier arme la garde de sortie et crée un brouillon local.
+    conditions, echeancierSaisie, tarifSaisie, ecoCi,
   }), [
     leadId, clientId, dateValidite, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh,
@@ -761,6 +763,7 @@ export default function DevisGenerator({
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
+    conditions, echeancierSaisie, tarifSaisie, ecoCi,
   ])
   // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
   // (au moins un identifiant de cible OU une note OU des factures OU des
@@ -839,6 +842,11 @@ export default function DevisGenerator({
     if (d.fHiver != null) setFHiver(d.fHiver)
     if (d.fEte != null) setFEte(d.fEte)
     if (d.monthly != null) setMonthly(d.monthly)
+    // AGNR30 — conditions, échéancier, tarif déclaré, éco C&I.
+    if (d.conditions != null) setConditions(d.conditions)
+    if (d.echeancierSaisie != null) setEcheancierSaisie(d.echeancierSaisie)
+    if (d.tarifSaisie != null) setTarifSaisie(d.tarifSaisie)
+    if (d.ecoCi != null) setEcoCi(d.ecoCi)
     // AGNR13 — la provenance revient avec le brouillon ; un brouillon ancien
     // (sans elle) garde la règle d'avant : une série modifiée = saisie.
     if (Array.isArray(d.provenanceMois) && d.provenanceMois.length === 12) {
