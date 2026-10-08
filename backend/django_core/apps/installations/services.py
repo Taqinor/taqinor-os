@@ -4633,9 +4633,19 @@ def peupler_series_entrepot_reception(*, reception, company, user):
     principal, statut « en stock »). Une série déjà enregistrée pour ce
     produit+société n'est jamais dupliquée (contrainte unique_together —
     `get_or_create`). Sans BCF ni séries, no-op. Renvoie le nombre de séries
-    créées."""
+    créées.
+
+    ACHT14 (C-ACHT-013) — le registre « en stock » d'une ligne est PLAFONNÉ à
+    la quantité RÉELLEMENT entrée (`stock.services.
+    quantite_entree_ligne_reception`, survivant unique : les premières
+    séries saisies, dans l'ordre) ; une série « retournée » (réception
+    annulée, ASTK57) qui revient par une nouvelle réception repasse « en
+    stock » avec la référence de CETTE réception. Une série sortie ou
+    réservée n'est jamais remise en stock en silence."""
     from .models_serie_entrepot import SerieEntrepot
-    from apps.stock.services import ensure_emplacements
+    from apps.stock.services import (
+        ensure_emplacements, quantite_entree_ligne_reception,
+    )
 
     if company is None or reception is None:
         return 0
@@ -4645,12 +4655,15 @@ def peupler_series_entrepot_reception(*, reception, company, user):
         if ligne.produit_id is None:
             continue
         series = getattr(ligne, 'numeros_serie', None) or []
+        numeros = []
         for numero in series:
             numero = (numero or '').strip() if isinstance(numero, str) \
                 else numero
-            if not numero:
-                continue
-            _, was_created = SerieEntrepot.objects.get_or_create(
+            if numero and numero not in numeros:
+                numeros.append(numero)
+        plafond = max(0, quantite_entree_ligne_reception(ligne))
+        for numero in numeros[:plafond]:
+            serie, was_created = SerieEntrepot.objects.get_or_create(
                 company=company, produit_id=ligne.produit_id,
                 numero_serie=numero,
                 defaults={
@@ -4661,6 +4674,10 @@ def peupler_series_entrepot_reception(*, reception, company, user):
                 })
             if was_created:
                 created += 1
+            elif serie.statut == SerieEntrepot.Statut.RETOURNE:
+                serie.statut = SerieEntrepot.Statut.EN_STOCK
+                serie.reference_reception = reception.reference
+                serie.save(update_fields=['statut', 'reference_reception'])
     return created
 
 
