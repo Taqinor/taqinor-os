@@ -259,7 +259,7 @@
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
     interventions:inconnu, seuil_pct:inconnu
 - frontend/src/api/installationsApi.js :: supprimerLigneConsommation -> /api/django/installations/interventions/<>/supprimer-ligne-consommation
-    detail:texte
+    detail:inconnu
 - frontend/src/api/installationsApi.js :: supprimerMemo -> /api/django/installations/interventions/<>/supprimer-memo
     detail:texte
 - frontend/src/api/installationsApi.js :: supprimerPhoto -> /api/django/installations/interventions/<>/supprimer-photo
