@@ -87,7 +87,7 @@ def fetes_mobiles_enregistrer(request):
             status=status.HTTP_400_BAD_REQUEST)
     dates = request.data.get('dates') or {}
     try:
-        enregistrer_fetes_mobiles(company, annee, dates)
+        enregistrer_fetes_mobiles(company, annee, dates, user=request.user)
     except SaisieFetesInvalide as exc:
         # APAR14 — erreurs aussi rangées SOUS leur champ (« erreurs »), en plus
         # du « detail » à plat historique.

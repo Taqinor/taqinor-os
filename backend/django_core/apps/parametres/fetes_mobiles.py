@@ -114,7 +114,8 @@ class SaisieFetesInvalide(ValueError):
 
 
 def enregistrer_fetes_mobiles(company, annee: int, dates: dict,
-                              aujourd_hui: datetime.date | None = None):
+                              aujourd_hui: datetime.date | None = None,
+                              user=None):
     """Valide puis enregistre les fêtes mobiles saisies comme ``Holiday``
     (``recurrent_annuel=False``) pour ``company``.
 
@@ -129,18 +130,48 @@ def enregistrer_fetes_mobiles(company, annee: int, dates: dict,
     if erreurs:
         raise SaisieFetesInvalide(erreurs)
 
+    from django.db import transaction
+
     from apps.notifications.models import Holiday
 
+    from .models import SettingsAuditLog
+
     resultats = []
-    for cle in FETES_MOBILES_CLES:
-        if not dates.get(cle):
-            continue
-        valeur = _to_date(dates[cle])
-        obj, _ = Holiday.objects.update_or_create(
-            company=company, date=valeur, nom=FETES_MOBILES_LIBELLES[cle],
-            defaults={'recurrent_annuel': False},
-        )
-        resultats.append(obj)
+    with transaction.atomic():
+        for cle in FETES_MOBILES_CLES:
+            if not dates.get(cle):
+                continue
+            valeur = _to_date(dates[cle])
+            libelle = FETES_MOBILES_LIBELLES[cle]
+            # APAR15 — une fête mobile = UNE ligne par société + libellé +
+            # année : une correction REMPLACE la date (jamais une 2e ligne).
+            lignes = list(Holiday.objects.select_for_update().filter(
+                company=company, nom=libelle, date__year=annee,
+                recurrent_annuel=False).order_by('date', 'pk'))
+            ancienne = lignes[0].date if lignes else None
+            # Doublons hérités (même fête, même année) : retirés, tracés.
+            for doublon in lignes[1:]:
+                SettingsAuditLog.log_change(
+                    company=company, user=user, section='fetes_mobiles',
+                    field=cle, field_label=f'{libelle} {annee} (doublon retiré)',
+                    old=doublon.date.isoformat(), new='')
+                Holiday.objects.filter(pk=doublon.pk).delete()
+            if lignes:
+                obj = lignes[0]
+                if obj.date != valeur:
+                    obj.date = valeur
+                    obj.save(update_fields=['date'])
+            else:
+                obj = Holiday.objects.create(
+                    company=company, nom=libelle, date=valeur,
+                    recurrent_annuel=False)
+            if ancienne != valeur:
+                SettingsAuditLog.log_change(
+                    company=company, user=user, section='fetes_mobiles',
+                    field=cle, field_label=f'{libelle} {annee}',
+                    old=ancienne.isoformat() if ancienne else '',
+                    new=valeur.isoformat())
+            resultats.append(obj)
     return resultats
 
 
