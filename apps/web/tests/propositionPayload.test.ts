@@ -585,6 +585,9 @@ const NON_LU: Readonly<Record<string, string>> = {
   'economies_cumul_25_ans.avec_batterie': 'Cumul 25 ans de l’option avec batterie, servi (ADEV50) : lu par `savingsHeadline` sur le payload brut pour le titre « Économies cumulées », pas par le lecteur typé.',
   // ADEV51 (08/10/2026) — l'empreinte du contenu signable.
   'empreinte_contenu': 'Empreinte du contenu signable (ADEV51) : passée telle quelle au script de signature (`signConfig.empreinte`) puis renvoyée à `/accept/`, jamais affichée — pas une donnée du lecteur typé.',
+  // ADEV52 (08/10/2026) — la règle d'expiration servie.
+  'offre_expiree': 'Verdict serveur d’expiration (ADEV52) : lu par `resolveValidity`/`resolveOfferState` sur le payload brut pour masquer la signature, pas par le lecteur typé.',
+  'date_expiration': 'Dernier jour signable calculé par le serveur (ADEV52) : lu par `resolveValidity` pour le libellé d’échéance, pas par le lecteur typé.',
 };
 
 /** La prose du contrat : jamais servie à un navigateur, mais elle se décide aussi. */

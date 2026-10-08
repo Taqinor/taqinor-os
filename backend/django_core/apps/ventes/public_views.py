@@ -1705,6 +1705,14 @@ def proposal_data(request, token):
             empreinte_contenu, signable_au_jeton)
         if not link.via_interne and signable_au_jeton(devis):
             payload['empreinte_contenu'] = empreinte_contenu(devis)
+        # ADEV52 (C-ADEV-019) — LA règle d'expiration, servie : la page ne
+        # calcule plus rien (« 12:00 UTC du dernier jour » supprimé). Deux clés
+        # additives, absentes quand aucune validité n'est déterminable.
+        from .utils.expiry import date_expiration, is_expired
+        _expiration = date_expiration(devis)
+        if _expiration is not None:
+            payload['date_expiration'] = _expiration.isoformat()
+            payload['offre_expiree'] = bool(is_expired(devis))
         payload['paiement_moyens'] = list(PAIEMENT_MOYENS_PUBLICS)
         payload['confirmation_email'] = _confirmation_email_publique(devis)
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est

@@ -48,12 +48,16 @@ def empreinte_contenu(devis):
 
 def signable_au_jeton(devis):
     """ADEV51 — le devis peut-il être signé au jeton client MAINTENANT ?
-    Envoyé, version en vigueur (pas remplacée). Hors de ce cas, aucune
-    empreinte n'est servie ni exigée : les gardes d'``accept_devis`` disent
-    elles-mêmes pourquoi (``version_remplacee``, ``statut``…)."""
+    Envoyé, version en vigueur (pas remplacée), offre non expirée (ADEV52).
+    Hors de ce cas, aucune empreinte n'est servie ni exigée : les gardes
+    d'``accept_devis`` disent elles-mêmes pourquoi (``version_remplacee``,
+    ``expiree``, ``statut``…)."""
     from ..domain.modifiabilite import ACCEPTER, geste_cycle_permis
     from ..models import Devis
+    from ..utils.expiry import is_expired
     if devis is None or devis.statut != Devis.Statut.ENVOYE:
+        return False
+    if is_expired(devis):
         return False
     permis, _message = geste_cycle_permis(devis, ACCEPTER)
     return permis

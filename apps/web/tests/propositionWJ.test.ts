@@ -79,10 +79,12 @@ describe('WJ15 — fenêtre de validité (jamais inventée, jamais de compte-à-
     expect(v.label).toBe('30 septembre 2026');
   });
 
-  it('signale une échéance déjà passée', () => {
-    const p = makeProposal({ date_validite: '2026-01-01' });
+  it('ADEV52 — signale une échéance passée quand le SERVEUR le dit (offre_expiree)', () => {
+    const p = makeProposal({ date_validite: '2026-01-01', offre_expiree: true });
     const v = resolveValidity(p, new Date(Date.UTC(2026, 5, 22)));
     expect(v.expired).toBe(true);
+    // Sans verdict serveur, aucune expiration déduite localement.
+    expect(resolveValidity(makeProposal({ date_validite: '2026-01-01' })).expired).toBe(false);
   });
 
   it('repli HONNÊTE sans date backend : aucun label fabriqué', () => {

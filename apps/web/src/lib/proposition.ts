@@ -259,6 +259,14 @@ export interface ProposalResponse {
    */
   empreinte_contenu?: string;
   /**
+   * ADEV52 (C-ADEV-019) — verdict SERVEUR d'expiration (`utils/expiry.is_expired` :
+   * fin du dernier jour de validité à l'heure du Maroc). La page ne calcule plus
+   * rien. Absente quand aucune validité n'est déterminable.
+   */
+  offre_expiree?: boolean;
+  /** ADEV52 — dernier jour où l'offre peut être signée (ISO `AAAA-MM-JJ`), calculé par le serveur. */
+  date_expiration?: string;
+  /**
    * PREVIEW-V3 (16/09/2026) — la PREMIÈRE tranche de l'échéancier, telle que
    * le devis la facturera (`apps/ventes/utils/echeancier.next_tranche`, LE
    * même helper que l'écran de succès post-signature). Clé ADDITIVE : absente
@@ -1022,7 +1030,7 @@ export type OfferState = 'live' | 'accepted' | 'refused' | 'expired' | 'withdraw
  */
 export function resolveOfferState(
   p: Pick<ProposalResponse, 'statut' | 'accepted' | 'date_validite' | 'quote'>
-    & Partial<Pick<ProposalResponse, 'remplace_par'>>,
+    & Partial<Pick<ProposalResponse, 'remplace_par' | 'offre_expiree' | 'date_expiration'>>,
   now: Date = new Date(),
 ): OfferState {
   // QJR536 — une version REMPLACÉE n'est plus signable, quel que soit son
@@ -2016,22 +2024,28 @@ export function formatDateLang(dt: Date, lang: PropLang): string {
 
 /**
  * WJ15 — Résout la fenêtre de validité du devis SANS jamais inventer une date.
- *  - Si le backend fournit `date_validite` (racine ou `quote`), on l'affiche
- *    telle quelle (`fromBackend: true`), en signalant si elle est déjà passée.
+ *  - Le libellé est le dernier jour servi par le backend : `date_expiration`
+ *    (ADEV52), sinon `date_validite` (racine ou `quote`) — `fromBackend: true`.
+ *  - ADEV52 (C-ADEV-019) — `expired` est le verdict SERVEUR `offre_expiree`
+ *    (fin du dernier jour à l'heure du Maroc), jamais un calcul local : l'ancien
+ *    « date < maintenant » comparait à 12:00 UTC du dernier jour et déclarait
+ *    l'offre expirée l'après-midi même où le serveur l'acceptait encore.
  *  - Sinon, repli HONNÊTE : `label = null` + `fromBackend: false` → la page
  *    affiche une mention libellée (« sous réserve de validité ») et NON un
- *    compte-à-rebours. `now` est injectable pour les tests (déterminisme).
+ *    compte-à-rebours. `_now` reste dans la signature (compatibilité des
+ *    appelants) mais ne décide plus rien.
  */
 export function resolveValidity(
-  p: Pick<ProposalResponse, 'date_validite' | 'quote'>,
-  now: Date = new Date(),
+  p: Pick<ProposalResponse, 'date_validite' | 'quote'>
+    & Partial<Pick<ProposalResponse, 'offre_expiree' | 'date_expiration'>>,
+  _now: Date = new Date(),
 ): ValidityWindow {
-  const raw = p.date_validite ?? p.quote?.date_validite ?? null;
+  const raw = p.date_expiration ?? p.date_validite ?? p.quote?.date_validite ?? null;
   const dt = parseBackendDate(raw);
   if (!dt) {
-    return { label: null, labelEn: null, labelAr: null, fromBackend: false, expired: false };
+    return { label: null, labelEn: null, labelAr: null, fromBackend: false, expired: p.offre_expiree === true };
   }
-  const expired = dt.getTime() < now.getTime();
+  const expired = p.offre_expiree === true;
   return {
     label: formatFrenchDate(dt),
     labelEn: formatDateLang(dt, 'en'),
