@@ -1,0 +1,23 @@
+{
+  "endpoint": "POST /api/django/ventes/paiements/import-releve/commit/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AFAC3 (C-AFAC-009) — le commit rejoue les DÉCISIONS d'un dry-run jetonné (usage unique). `lignes` (optionnel) restreint l'import : chaque élément est soit un NUMÉRO de ligne importable, soit un objet `{ligne, facture_reference}` qui RÉSOUT une ligne ambiguë en choisissant UNE facture parmi ses `candidats` (AFAC6 ; hors candidats ou ligne non ambiguë sous forme objet ⇒ 400 en français). La réponse donne un bilan PAR LIGNE : ligne créée ⇒ `statut: \"created\"` + `facture_reference` + `paiement_id` ; ligne ignorée ⇒ son `statut` (non_selectionnee, non_trouve, deja_regle, surpaiement, montant_invalide, ambigu, client_non_identifie, doublon_import, date_invalide) ; erreur ⇒ `statut: \"erreur\"` + `detail`. Montants en texte décimal.",
+  "requete": {
+    "token": "q3Zt0b7c1nYw2kVx9mL4pR8sT6uE5aHd",
+    "lignes": [2, {"ligne": 3, "facture_reference": "FAC-2026-06-0014"}]
+  },
+  "exemple": {
+    "token": "q3Zt0b7c1nYw2kVx9mL4pR8sT6uE5aHd",
+    "created": 2,
+    "skipped": 1,
+    "errors": 0,
+    "results": [
+      {"ligne": 2, "statut": "created", "facture_reference": "FAC-2026-06-0012", "paiement_id": 931},
+      {"ligne": 3, "statut": "created", "facture_reference": "FAC-2026-06-0014", "paiement_id": 932},
+      {"ligne": 4, "statut": "date_invalide"}
+    ]
+  },
+  "exemple_refus_400": {
+    "detail": "Ligne 3 : la facture FAC-2026-06-0099 ne fait pas partie des candidates de cette ligne (FAC-2026-06-0014, FAC-2026-06-0019)."
+  }
+}

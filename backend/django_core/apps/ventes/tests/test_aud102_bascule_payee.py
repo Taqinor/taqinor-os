@@ -178,7 +178,9 @@ class TestNeufCheminsEmettentFacturePayee(_BaseSolde):
             enregistrer_paiement_avec_retenue(
                 facture=facture, montant=Decimal('1000'),
                 date_paiement=timezone.localdate(), mode='virement',
-                type_retenue='ras_tva', taux=Decimal('20'),
+                # AFAC30 — la RAS-TVA porte sur la TVA (200 sur 1 200 TTC) :
+                # 1 000 payés + RAS-TVA 100 % = 200 soldent la facture.
+                type_retenue='ras_tva', taux=Decimal('100'),
                 created_by=self.user)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.PAYEE)

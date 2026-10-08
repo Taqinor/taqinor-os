@@ -6,7 +6,8 @@ FOURNISSEUR existent mais rien ne permettait un retour CLIENT depuis une
 
   * générer un retour depuis une livraison LIVREE pré-remplit les lignes
     (quantite_livree = quantité livrée) ;
-  * valider ré-incrémente le stock du dépôt source EXACTEMENT une fois ;
+  * valider ré-incrémente le stock du dépôt source EXACTEMENT une fois
+    (ACHT21 : par TRANSFERT camionnette → dépôt, stock global inchangé) ;
   * quantité retournée > livrée → refusée (400 / ValueError) ;
   * générer un retour depuis une livraison NON livrée est refusé ;
   * cross-company → 404 ;
@@ -30,7 +31,9 @@ from apps.installations.models import (
 )
 from apps.installations.services import (
     generer_retour_livraison, valider_retour_livraison,
+    ventiler_stock_livraison,
 )
+from apps.stock.services import stock_breakdown
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -68,19 +71,32 @@ def make_installation(company):
 
 
 def make_livraison_livree(company, installation, quantite=10):
+    # ACHT21 — une livraison livrée a été VENTILÉE (dépôt → camionnette) à
+    # l'expédition : le retour la reprend par transfert, jamais par entrée.
     depot = EmplacementStock.objects.create(
         company=company, nom='Dépôt principal', is_principal=True)
     produit = Produit.objects.create(
         company=company, nom='Batterie ZSTK8',
-        prix_vente=Decimal('300'), quantite_stock=Decimal('0'))
+        prix_vente=Decimal('300'), quantite_stock=Decimal(quantite))
     liv = Livraison.objects.create(
         company=company, reference=f'LIV-ZSTK8-{next(_seq)}',
         installation=installation, depot=depot,
-        statut=Livraison.Statut.LIVREE)
+        statut=Livraison.Statut.PLANIFIEE)
     LivraisonLigne.objects.create(
         livraison=liv, produit=produit, designation=produit.nom,
         quantite=quantite)
+    ventiler_stock_livraison(liv, None)
+    liv.statut = Livraison.Statut.LIVREE
+    liv.save(update_fields=['statut'])
     return liv, produit, depot
+
+
+def au_depot(produit, depot):
+    produit.refresh_from_db()
+    for ligne in stock_breakdown(produit):
+        if ligne.get('emplacement_id') == depot.id:
+            return ligne['quantite']
+    return 0
 
 
 class TestGenererRetourLivraison(TestCase):
@@ -108,8 +124,9 @@ class TestGenererRetourLivraison(TestCase):
 
         applied = valider_retour_livraison(retour, self.user)
         self.assertEqual(applied, 1)
-        self.produit.refresh_from_db()
-        self.assertEqual(self.produit.quantite_stock, Decimal('4'))
+        # ACHT21 — transfert : le dépôt est recrédité, le global ne bouge pas.
+        self.assertEqual(au_depot(self.produit, self.depot), 4)
+        self.assertEqual(self.produit.quantite_stock, Decimal('10'))
 
         retour.refresh_from_db()
         self.assertEqual(retour.statut, RetourLivraison.Statut.VALIDE)
@@ -117,8 +134,8 @@ class TestGenererRetourLivraison(TestCase):
         # Ré-valider : idempotent (ValueError, aucun second mouvement).
         with self.assertRaises(ValueError):
             valider_retour_livraison(retour, self.user)
-        self.produit.refresh_from_db()
-        self.assertEqual(self.produit.quantite_stock, Decimal('4'))
+        self.assertEqual(au_depot(self.produit, self.depot), 4)
+        self.assertEqual(self.produit.quantite_stock, Decimal('10'))
 
     def test_quantite_retournee_superieure_a_livree_refusee(self):
         retour = generer_retour_livraison(self.liv, self.user)
@@ -127,8 +144,8 @@ class TestGenererRetourLivraison(TestCase):
         ligne.save(update_fields=['quantite_retournee'])
         with self.assertRaises(ValueError):
             valider_retour_livraison(retour, self.user)
-        self.produit.refresh_from_db()
-        self.assertEqual(self.produit.quantite_stock, Decimal('0'))
+        self.assertEqual(au_depot(self.produit, self.depot), 0)
+        self.assertEqual(self.produit.quantite_stock, Decimal('10'))
 
     def test_endpoint_generer_retour_refuse_si_pas_livree(self):
         self.liv.statut = Livraison.Statut.PLANIFIEE
@@ -149,8 +166,8 @@ class TestGenererRetourLivraison(TestCase):
 
         r3 = self.api.post(f'{BASE}/retours-livraison/{retour_id}/valider/')
         self.assertEqual(r3.status_code, 200, r3.data)
-        self.produit.refresh_from_db()
-        self.assertEqual(self.produit.quantite_stock, Decimal('3'))
+        self.assertEqual(au_depot(self.produit, self.depot), 3)
+        self.assertEqual(self.produit.quantite_stock, Decimal('10'))
 
     def test_cross_company_404(self):
         other_company = make_company()

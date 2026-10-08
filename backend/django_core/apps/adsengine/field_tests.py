@@ -362,8 +362,11 @@ def propose_micro_test_structures(company, ft, *, city='', proposed_by=None,
             f"proposer un micro-test sans objectif de campagne connu.")
 
     cap = micro_test_budget_cap_mad()
+    from . import guardrails
     currency = account_currency(company)
-    if currency != MICRO_TEST_BUDGET_CURRENCY:
+    # AACQ2 — même porte unique de devise que les règles et garde-fous.
+    if (MICRO_TEST_BUDGET_CURRENCY != guardrails.THRESHOLD_CURRENCY
+            or guardrails.mad_threshold_blocked_reason(company)):
         raise ValueError(
             f"Devise du compte {currency} ≠ {MICRO_TEST_BUDGET_CURRENCY} — "
             f"plafond micro-test {cap} {MICRO_TEST_BUDGET_CURRENCY} non "

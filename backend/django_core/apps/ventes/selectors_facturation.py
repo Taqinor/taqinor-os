@@ -501,7 +501,10 @@ def etat_recouvrement_client(company, client_id):
         jr = f.jours_retard
         if jr > 0:
             retard_max = max(retard_max, jr)
-            encours_echu += f.montant_du
+            # AFAC25 — l'échu est l'EXIGIBLE : une retenue de garantie non
+            # libérée n'est jamais « en retard » (elle n'est pas due avant sa
+            # libération).
+            encours_echu += f.montant_exigible
 
     if retard_max <= 0:
         return {
@@ -932,10 +935,13 @@ def kpis_factures(qs):
         total_du += du
         # Une facture au statut « En retard » compte même sans échéance : la
         # tuile doit dire ce que les lignes affichent (ERR-QAH-VENTES-…-KPI).
-        if (facture.jours_retard > 0
-                or facture.statut == Facture.Statut.EN_RETARD):
+        # AFAC25 — « en retard » = EXIGIBLE échu : une retenue de garantie non
+        # libérée n'entre jamais dans la tuile « En retard ».
+        exigible = facture.montant_exigible
+        if exigible > 0 and (facture.jours_retard > 0
+                             or facture.statut == Facture.Statut.EN_RETARD):
             nb_en_retard += 1
-            total_en_retard += du
+            total_en_retard += exigible
         elif (facture.date_echeance
                 and aujourdhui <= facture.date_echeance <= dans_7_jours):
             total_a_echoir_7j += du

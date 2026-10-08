@@ -108,7 +108,8 @@ def tournee_preventive(company, origin_lat=None, origin_lng=None):
     return rows
 
 
-def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None):
+def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None,
+                      user=None):
     """FG88 — Affecte EN LOT une date de tournée (et un technicien optionnel) à
     un ensemble de tickets préventifs de la société.
 
@@ -135,10 +136,18 @@ def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None):
         if technicien is not None:
             ticket.technicien_responsable = technicien
             fields.append('technicien_responsable')
-        if ticket.statut == Ticket.Statut.NOUVEAU:
-            ticket.statut = Ticket.Statut.PLANIFIE
-            fields.append('statut')
         ticket.save(update_fields=fields)
+        if ticket.statut == Ticket.Statut.NOUVEAU:
+            # ASAV75 — NOUVEAU → PLANIFIE par LE service gardé (effets
+            # complets d'ASAV12), jamais une écriture directe du statut.
+            from .services import (
+                TransitionTicketRefusee, appliquer_transition_ticket,
+            )
+            try:
+                appliquer_transition_ticket(
+                    ticket, Ticket.Statut.PLANIFIE, user)
+            except TransitionTicketRefusee:
+                pass
         updated += 1
     return updated
 
@@ -287,7 +296,8 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         technicien_id = request.data.get('technicien_id')
         try:
             n = planifier_tournee(
-                request.user.company, ticket_ids, date_tournee, technicien_id)
+                request.user.company, ticket_ids, date_tournee, technicien_id,
+                user=request.user)
         except ValidationError as exc:
             return Response({'ok': False, 'detail': exc.detail},
                             status=status.HTTP_400_BAD_REQUEST)

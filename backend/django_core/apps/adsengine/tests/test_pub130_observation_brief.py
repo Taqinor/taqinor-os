@@ -187,7 +187,7 @@ class ExperimentCompanyGoldenTests(TestCase):
             company=self.company,
             content_type=ContentType.objects.get_for_model(AdCampaignMirror),
             object_id=self.campaign.pk, date=NOW, spend='120.00', results=6,
-            frequency=None)
+            leads_count=6, frequency=None)
 
     def test_data_carries_no_observation_key(self):
         brief = brief_mod.build_brief(self.company, now=NOW)
@@ -201,7 +201,8 @@ class ExperimentCompanyGoldenTests(TestCase):
             '',
             "## Ce qui s'est passé",
             '- Dépense de la semaine : 120.00 MAD pour 6 résultat(s).',
-            '- Coût par lead (semaine) : 20.00 MAD.',
+            # AACQ26 — le coût par lead nomme sa source.
+            '- Coût par lead (semaine, leads Meta) : 20.00 MAD.',
             '- Cadence créative : 0 créatif(s) neuf(s) cette semaine '
             '(repère marché 12-19/semaine) → sous cible.',
             '- Taux de gagnants : aucun ad lancé cette semaine — '

@@ -380,7 +380,10 @@ class TestTicketWarrantyAndChatter(TestCase):
 
     def test_default_list_shows_open_only(self):
         open_id = self._open_ticket().data['id']
-        closed_id = self._open_ticket().data['id']
+        # ASAV23 — un second ticket identique dans les 60 s = doublon (409) :
+        # description distincte, c'est une autre demande.
+        closed_id = self._open_ticket(
+            description='Panne compteur').data['id']
         self.api.post(f'/api/django/sav/tickets/{closed_id}/demarrer/',
                       {}, format='json')
         self.api.post(f'/api/django/sav/tickets/{closed_id}/resoudre/',

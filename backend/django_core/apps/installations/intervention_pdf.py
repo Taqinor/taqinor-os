@@ -72,6 +72,26 @@ def _reserves_payload(intervention):
     ]
 
 
+def _signature_payload(intervention):
+    """ACHT29 (C-ACHT-027) — signature client recueillie sur l'intervention
+    (image data-URL validée ADOC78, signataire, date/heure locale), ou None.
+    Même source que la fiche SAV (`apps/sav/pdf.py`)."""
+    from django.utils import timezone
+
+    from .signature_validation import erreur_signature_client
+
+    image = getattr(intervention, 'signature_client', None)
+    if not image or erreur_signature_client(image):
+        return None
+    signe_le = getattr(intervention, 'signe_le', None)
+    return {
+        'image': image,
+        'nom': (intervention.signataire_nom or '').strip(),
+        'date': (timezone.localtime(signe_le).strftime('%d/%m/%Y %H:%M')
+                 if signe_le else ''),
+    }
+
+
 def compte_rendu_pdf(intervention):
     """Génère le compte-rendu d'intervention (PDF, octets). Client-facing."""
     inst = intervention.installation
@@ -103,6 +123,7 @@ def compte_rendu_pdf(intervention):
         'serials': _serials_payload(intervention),
         'consommation': _consommation_payload(intervention),
         'reserves': _reserves_payload(intervention),
+        'signature': _signature_payload(intervention),
     })
     html = _render_html('compte_rendu_intervention.html', context)
     return _html_to_pdf(html)

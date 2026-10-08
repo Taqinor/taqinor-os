@@ -222,16 +222,26 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        # AFAC30 (C-AFAC-029) — l'ENTRÉE est validée par un sérialiseur :
+        # 400 en français sous le champ fautif, plus jamais un 500 ni un
+        # `mode`/`type_retenue` inconnu enregistré.
+        from ..serializers_facturation import (
+            PaiementAvecRetenueEntreeSerializer,
+        )
+        entree = PaiementAvecRetenueEntreeSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors,
+                            status=status.HTTP_400_BAD_REQUEST)
+        donnees = entree.validated_data
         try:
             paiement, retenue = _enregistrer_avec_retenue(
-                facture=facture, montant=request.data.get('montant'),
-                date_paiement=request.data.get('date_paiement'),
-                mode=request.data.get('mode', Paiement.Mode.VIREMENT),
-                type_retenue=request.data.get(
-                    'type_retenue', RetenueSubie.TypeRetenue.RAS_TVA),
-                taux=request.data.get('taux'),
-                reference=request.data.get('reference', ''),
-                note=request.data.get('note', ''),
+                facture=facture, montant=donnees['montant'],
+                date_paiement=donnees['date_paiement'],
+                mode=donnees['mode'],
+                type_retenue=donnees['type_retenue'],
+                taux=donnees['taux'],
+                reference=donnees['reference'],
+                note=donnees['note'],
                 created_by=request.user,
             )
         except ValidationError as exc:

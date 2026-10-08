@@ -65,6 +65,10 @@ def make_chantier_avec_devis(company, user):
         company=company, reference=f'DEV-{company.id}-{n}', client=client,
         lead=lead, statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
     inst, _ = create_installation_from_devis(devis, user, company)
+    # ACHT2 — « Planifié » suit « Matériel commandé » (un pas à la fois).
+    Installation.objects.filter(pk=inst.pk).update(
+        statut=Installation.Statut.MATERIEL_COMMANDE)
+    inst.refresh_from_db()
     return inst, devis, client
 
 
@@ -162,7 +166,8 @@ class SansDevisLieTests(TestCase):
         profil.save(update_fields=['exiger_acompte_avant_planification'])
         self.inst = Installation.objects.create(
             company=self.company, reference=f'INST-{next(_seq)}',
-            statut=Installation.Statut.SIGNE)
+            # ACHT2 — « Planifié » suit « Matériel commandé ».
+            statut=Installation.Statut.MATERIEL_COMMANDE)
 
     def test_sans_devis_jamais_bloque(self):
         r = self.api.patch(

@@ -259,7 +259,10 @@ class FullFlowTests(FieldSyncBaseTest):
              'payload': {'intervention': self.iv.id, 'cle': 'epi_portes'}},
             {'client_op_id': 'f6', 'op_type': 'intervention.signer_client',
              'payload': {'intervention': self.iv.id,
-                         'signature_client': 'data:img', 'signataire_nom': 'M. Client'}},
+                         # ACHT28 — l'op passe par le validateur ADOC78 :
+                         # une data-URL PNG réelle (plus « data:img »).
+                         'signature_client': 'data:image/png;base64,AA==',
+                         'signataire_nom': 'M. Client'}},
             {'client_op_id': 'f7', 'op_type': 'intervention.retour',
              'payload': {'intervention': self.iv.id}},
         ]

@@ -357,10 +357,27 @@ class MetaClient:
         except Exception:  # noqa: BLE001 — cache indisponible : no-op
             pass
 
+    # AACQ17 — l'API Graph n'a AUCUNE idempotence : rejouer un POST dont la
+    # réponse s'est perdue (timeout de lecture, 5xx) peut créer DEUX objets /
+    # publier DEUX fois. Seuls les GET (et cette liste blanche justifiée) sont
+    # rejoués. Liste blanche : ``<nœud>/insights`` en POST = démarrage d'un
+    # RAPPORT asynchrone (``insights_backfill``), sans aucun effet visible.
+    _REPLAYABLE_POST_SUFFIXES = ('/insights',)
+    LOST_RESPONSE_FR = (
+        "Réponse de Meta perdue après l'envoi : l'écriture a pu être faite — "
+        "vérifier dans Meta avant de relancer (aucune relance automatique).")
+
+    def _replayable(self, method, path):
+        if str(method).upper() == 'GET':
+            return True
+        clean = '/' + str(path).strip('/')
+        return any(clean.endswith(sfx) for sfx in self._REPLAYABLE_POST_SUFFIXES)
+
     def _request(self, method, path, *, params=None, data=None):
         url = f'{self._base_url}/{path.lstrip("/")}'
         # Token dans l'en-tête (jamais dans l'URL) : aucun secret en query string.
         headers = {'Authorization': f'Bearer {self._token}'}
+        replayable = self._replayable(method, path)
         attempt = 0
         while True:
             attempt += 1
@@ -368,20 +385,36 @@ class MetaClient:
             try:
                 resp = self._client.request(
                     method, url, params=params, data=data, headers=headers)
-            except httpx.TransportError as exc:
+            except httpx.ConnectError as exc:
+                # Connexion jamais établie : la requête n'a pas atteint Meta,
+                # la rejouer ne peut rien dupliquer.
                 if attempt <= self._max_retries:
                     self._sleep(attempt)
                     continue
                 raise MetaError(f'Erreur réseau Meta : {exc}') from exc
+            except httpx.TransportError as exc:
+                if replayable and attempt <= self._max_retries:
+                    self._sleep(attempt)
+                    continue
+                if not replayable:
+                    raise MetaError(self.LOST_RESPONSE_FR) from exc
+                raise MetaError(f'Erreur réseau Meta : {exc}') from exc
             self._record_usage(resp)
             if resp.status_code >= 400:
                 err = self._classify(resp)
-                transient = (
-                    isinstance(err, MetaRateLimitError)
-                    or resp.status_code >= 500)
-                if transient and attempt <= self._max_retries:
+                # Limite de débit : Meta a REFUSÉ la requête (rien d'écrit) —
+                # rejouable même en POST. Un 5xx sur un POST : réponse perdue.
+                rate_limited = isinstance(err, MetaRateLimitError)
+                server_error = resp.status_code >= 500
+                if ((rate_limited or (server_error and replayable))
+                        and attempt <= self._max_retries):
                     self._sleep(attempt)
                     continue
+                if server_error and not replayable and not rate_limited:
+                    raise MetaError(
+                        self.LOST_RESPONSE_FR,
+                        code=getattr(err, 'code', None),
+                        subcode=getattr(err, 'subcode', None)) from err
                 raise err
             try:
                 return resp.json()
@@ -1099,6 +1132,30 @@ class MetaClient:
         base = {'name': name}
         payload = self._edit_payload(base, extra_fields)
         return self._request('POST', f'{object_id}', data=payload)
+
+    def update_adset_budget(self, *, adset_id, daily_budget, extra_fields=None):
+        """AACQ4 — Pose le budget QUOTIDIEN d'un ad set EXISTANT :
+        ``POST /<adset_id>`` avec ``{daily_budget}`` (entier, unités MINEURES
+        de la devise du compte, comme Meta l'exige). Édition : AUCUN ``status``
+        n'est jamais envoyé (``_edit_payload`` — invariant permanent règle #3 :
+        un changement de budget ne peut ni activer ni dé-pauser). Les
+        garde-fous (plafond, variation, pas, propriété miroir) sont appliqués
+        AVANT par ``services._guard_before_dispatch``."""
+        if not str(adset_id or '').strip():
+            raise MetaError("update_adset_budget : adset_id requis.")
+        try:
+            amount_f = float(daily_budget)
+            amount = int(amount_f)
+        except (TypeError, ValueError, OverflowError):
+            raise MetaError(
+                "update_adset_budget : daily_budget entier requis (unités "
+                "mineures de la devise du compte).") from None
+        if amount <= 0 or amount_f != amount:
+            raise MetaError(
+                "update_adset_budget : daily_budget doit être un entier "
+                "strictement positif.")
+        payload = self._edit_payload({'daily_budget': amount}, extra_fields)
+        return self._request('POST', f'{adset_id}', data=payload)
 
     def set_adset_schedule(self, *, adset_id, adset_schedule, extra_fields=None):
         """ADSDEEP36 — Dayparting NATIF Meta : pose ``adset_schedule`` sur un ad

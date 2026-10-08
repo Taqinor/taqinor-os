@@ -65,12 +65,15 @@ class XFAC4RetenueSubieTests(TestCase):
                 'paiement-avec-retenue/')
 
     def test_paiement_avec_retenue_soldes_facture_exactly(self):
-        """9 250 payé + 750 RAS (taux 8.108...%) soldent exactement 10 000."""
-        # taux = 750 / 9250 * 100 (base = montant + retenue, arrondi 2 déc.)
-        taux = (Decimal('750') / Decimal('9250') * 100).quantize(Decimal('0.01'))
+        """8 750 payé + 1 250 RAS-TVA (75 % de la TVA 1 666,67) soldent
+        exactement 10 000.
+
+        AFAC30 — la RAS se calcule sur son ASSIETTE (TVA × taux), plus sur
+        « reste − montant » : l'ancien taux fabriqué (750 / 9 250) ne
+        couvrait que 135 MAD de TVA réelle et soldait pourtant la facture."""
         r = self.api.post(self._url(), {
-            'montant': '9250', 'date_paiement': timezone.now().date().isoformat(),
-            'mode': 'virement', 'type_retenue': 'ras_tva', 'taux': str(taux),
+            'montant': '8750', 'date_paiement': timezone.now().date().isoformat(),
+            'mode': 'virement', 'type_retenue': 'ras_tva', 'taux': '75',
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.facture.refresh_from_db()

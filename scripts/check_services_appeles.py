@@ -271,6 +271,92 @@ ENTETE_BASE = """\
 """
 
 
+# ===========================================================================
+# 3 bis. AMOT75 - symboles du MOTEUR (constantes et fonctions publiques) sans lecteur
+# ===========================================================================
+# Le meme mal que les services orphelins, cote moteur de devis : un jumeau Python reste
+# apres la suppression du miroir JS (`injection_annuelle`, `tarif_mt_moyen`, `KWH_PRICE`,
+# `KG_CO2_PAR_ARBRE_AN`, `DIVERGENCES_PRICING`...). Pour `quote_engine/constants*.py` et
+# `bareme.py` : tout symbole PUBLIC de premier niveau (constante MAJUSCULE, fonction,
+# classe) sans AUCUN lecteur de production - ni un autre fichier .py non-test du backend
+# (nom, attribut `c8221.X` / `constants.X`, import nomme), ni une lecture interne a son
+# propre module - echoue, sauf s'il figure dans `scripts/symboles_moteur_allow.txt`
+# (`fichier::symbole`, motive, decroissant : une cle sans symbole mort est une erreur).
+
+FICHIERS_MOTEUR = ("constants*.py", "bareme.py")
+MOTEUR_REL = "backend/django_core/apps/ventes/quote_engine"
+
+
+def _symboles_publics(arbre) -> set:
+    noms = set()
+    for n in arbre.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if not n.name.startswith("_"):
+                noms.add(n.name)
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                if isinstance(t, ast.Name) and t.id.isupper() and not t.id.startswith("_"):
+                    noms.add(t.id)
+        elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+            if n.target.id.isupper() and not n.target.id.startswith("_"):
+                noms.add(n.target.id)
+    return noms
+
+
+def symboles_moteur_sans_lecteur(racine: Path | None = None) -> list:
+    """['fichier::symbole', ...] des symboles publics du moteur sans lecteur de production."""
+    racine = ROOT if racine is None else racine
+    moteur = racine / MOTEUR_REL
+    if not moteur.is_dir():
+        return []
+    cibles = []
+    for motif in FICHIERS_MOTEUR:
+        cibles += sorted(moteur.glob(motif))
+    lectures = {}
+    for f in sorted((racine / "backend").rglob("*.py")):
+        if est_test(f) or {"migrations", "parked"} & set(f.parts):
+            continue
+        arbre = _arbre(f)
+        if arbre is None:
+            continue
+        vus = set()
+        for n in ast.walk(arbre):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+                vus.add(n.id)
+            elif isinstance(n, ast.Attribute):
+                vus.add(n.attr)
+            elif isinstance(n, ast.ImportFrom):
+                vus.update(a.name for a in n.names)
+        lectures[f.resolve()] = vus
+    morts = []
+    for cible in cibles:
+        arbre = _arbre(cible)
+        if arbre is None:
+            continue
+        for nom in sorted(_symboles_publics(arbre)):
+            lu_ailleurs = any(nom in vus for f, vus in lectures.items()
+                              if f != cible.resolve())
+            lu_ici = any(isinstance(n, ast.Name) and n.id == nom and isinstance(n.ctx, ast.Load)
+                         for n in ast.walk(arbre))
+            if not lu_ailleurs and not lu_ici:
+                morts.append(f"{cible.relative_to(racine).as_posix()}::{nom}")
+    return morts
+
+
+def verifier_symboles_moteur(racine: Path | None = None, allow: set | None = None) -> list:
+    """Erreurs en clair : symboles sans lecteur hors liste + cles mortes de la liste."""
+    if allow is None:
+        allow = charger_base((ROOT if racine is None else racine) / "scripts" / "symboles_moteur_allow.txt")
+    morts = set(symboles_moteur_sans_lecteur(racine))
+    erreurs = [f"{cle} : symbole public du moteur sans aucun lecteur de production - "
+               "branchez-le, supprimez-le ou motivez l'exception dans "
+               "scripts/symboles_moteur_allow.txt" for cle in sorted(morts - allow)]
+    erreurs += [f"{cle} : cle morte de scripts/symboles_moteur_allow.txt (symbole supprime ou "
+                "desormais lu) - retirez la ligne (la liste ne fait que decroitre)"
+                for cle in sorted(allow - morts)]
+    return erreurs
+
+
 def charger_base(path: Path | None = None) -> set:
     # Resolu A L'APPEL, jamais en valeur par defaut : une valeur par defaut est
     # figee a la definition du module, si bien qu'un test qui reassigne
@@ -372,6 +458,14 @@ def main(argv=None) -> int:
               "services ont ete ecrites, testees et fusionnees sans jamais "
               "etre appelees. Voir l'en-tete de "
               "scripts/check_services_appeles.py. NE LA DESACTIVEZ PAS.")
+        return 1
+
+    erreurs_moteur = verifier_symboles_moteur()
+    if erreurs_moteur:
+        print(f"\nECHEC : {len(erreurs_moteur)} symbole(s) du moteur de devis "
+              "(AMOT75) :\n")
+        for e in erreurs_moteur:
+            print(f"  {e}")
         return 1
 
     print(f"OK : {stats['fonctions']} fonction(s) publique(s) de service "

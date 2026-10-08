@@ -23,6 +23,7 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.roles.models import Role
 from apps.adsengine import budget_applier, guardrails, pacing, services
+from apps.adsengine.meta_client import MetaClient  # AACQ4 — spec réelle
 from apps.adsengine.models import (
     AdCampaignMirror, AdSetMirror, EngineAction, GuardrailConfig,
     InsightSnapshot,
@@ -50,7 +51,7 @@ class PauseForMonthCycleTests(TestCase):
         self.assertEqual(action.kind, pacing.KIND_PAUSE_FOR_MONTH)
         self.assertEqual(action.status, EngineAction.Statut.PROPOSEE)
         services.approve_action(action, user=self.user)
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.update_status_paused.return_value = {
             'id': 'c1', 'status': 'PAUSED'}
         services.apply_action(action, client=client)
@@ -75,7 +76,7 @@ class BudgetKindsCycleTests(TestCase):
         AdSetMirror.objects.create(company=self.company, meta_id='as1')
 
     def _apply(self, action):
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.update_adset_budget.return_value = {'success': True}
         services.apply_action(action, client=client)
         return client
@@ -109,7 +110,7 @@ class BudgetKindsCycleTests(TestCase):
             reason_fr='Rééquilibrage.', status=EngineAction.Statut.APPROUVEE,
             payload={'adset_id': 'ghost', 'current_budget': 10000,
                      'daily_budget': 11000})
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(budget_applier.MirrorOwnershipViolation):
             services.apply_action(action, client=client)
         client.update_adset_budget.assert_not_called()
@@ -125,7 +126,7 @@ class BudgetKindsCycleTests(TestCase):
             reason_fr='Rééquilibrage.', status=EngineAction.Statut.APPROUVEE,
             payload={'adset_id': 'as1', 'current_budget': 10000,
                      'daily_budget': 11800})
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(budget_applier.BudgetStepViolation):
             services.apply_action(action, client=client)
         client.update_adset_budget.assert_not_called()
@@ -145,7 +146,7 @@ class BudgetKindsCycleTests(TestCase):
             reason_fr='Rééquilibrage.', status=EngineAction.Statut.APPROUVEE,
             payload={'adset_id': 'as1', 'current_budget': 11800,
                      'daily_budget': 13500})
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(guardrails.GuardrailViolation):
             services.apply_action(action, client=client)
         client.update_adset_budget.assert_not_called()
@@ -177,7 +178,7 @@ class EnableCboProposeOnlyTests(TestCase):
             reason_fr='8 ad sets consistants.', as_of=self.AS_OF)
         self.assertEqual(action.kind, pacing.KIND_ENABLE_CBO)
         services.approve_action(action, user=self.user)
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(ValueError):
             services.apply_action(action, client=client)
         # Aucune méthode Meta appelée : le moteur n'active jamais CBO.

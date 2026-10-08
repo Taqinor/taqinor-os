@@ -68,10 +68,10 @@ class SelectionFilterTests(TestCase):
     def test_pattern_restricts_to_matching_objects(self):
         match = AdSetMirror.objects.create(
             company=self.company, meta_id='m1', name='PROSPECTION-A',
-            status='PAUSED')
+            status='ACTIVE')
         other = AdSetMirror.objects.create(
             company=self.company, meta_id='m2', name='BRAND-B',
-            status='PAUSED')
+            status='ACTIVE')
         _seed_freq(self.company, match)
         _seed_freq(self.company, other)
         _live_creative(self.company, match)
@@ -86,10 +86,10 @@ class SelectionFilterTests(TestCase):
     def test_empty_pattern_covers_all(self):
         a = AdSetMirror.objects.create(
             company=self.company, meta_id='m1', name='PROSPECTION-A',
-            status='PAUSED')
+            status='ACTIVE')
         b = AdSetMirror.objects.create(
             company=self.company, meta_id='m2', name='BRAND-B',
-            status='PAUSED')
+            status='ACTIVE')
         _seed_freq(self.company, a)
         _seed_freq(self.company, b)
         _live_creative(self.company, a)
@@ -107,7 +107,7 @@ class SelectionFilterTests(TestCase):
         # Un ad set matchant est créé PLUS TARD (campagne « future »).
         future = AdSetMirror.objects.create(
             company=self.company, meta_id='future1',
-            name='PROSPECTION-NOUVEAU', status='PAUSED')
+            name='PROSPECTION-NOUVEAU', status='ACTIVE')
         _seed_freq(self.company, future)
         _live_creative(self.company, future)
         # Cooldown écoulé côté test : on relance sur une évaluation neuve.

@@ -32,7 +32,9 @@ class BriefGeneratorTests(TestCase):
     def _snap(self, *, spend, results, freq, day=NOW):
         InsightSnapshot.objects.create(
             company=self.company, content_type=self.ct, object_id=self.camp.pk,
-            date=day, spend=spend, results=results, frequency=freq)
+            # AACQ26 — campagne leads : chaque résultat est un lead Meta.
+            date=day, spend=spend, results=results, leads_count=results,
+            frequency=freq)
 
     def test_brief_aggregates_window_numbers(self):
         self._snap(spend='120.00', results=6, freq='1.80')

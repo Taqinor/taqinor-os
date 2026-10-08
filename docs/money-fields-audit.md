@@ -67,9 +67,9 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/parametres/models_company.py:235` | CompanyProfile.remise_max_pct | 5 | 2 |
 | `backend/django_core/apps/portail/models.py:266` | PaiementFacturePortail.montant | 14 | 2 |
 | `backend/django_core/apps/sav/models.py:731` | Ticket.cout | 10 | 2 |
-| `backend/django_core/apps/sav/models.py:1387` | WarrantyClaim.cout_recupere | 10 | 2 |
-| `backend/django_core/apps/sav/models.py:1487` | ContratMaintenance.prix | 10 | 2 |
-| `backend/django_core/apps/sav/models.py:1791` | PrestationContrat.prix_ht | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:1405` | WarrantyClaim.cout_recupere | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:1505` | ContratMaintenance.prix | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:1809` | PrestationContrat.prix_ht | 10 | 2 |
 | `backend/django_core/apps/stock/models.py:442` | AchatsParametres.tolerance_prix_pct | 5 | 2 |
 | `backend/django_core/apps/stock/models.py:444` | AchatsParametres.tolerance_prix_absolu_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models.py:470` | AchatsParametres.seuil_deviation_prix_pct | 5 | 2 |
@@ -124,7 +124,7 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/ventes/models_facturation.py:562` | RetenueSubie.montant | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:598` | PromessePaiement.montant_promis | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:687` | PaymentLink.montant | 12 | 2 |
-| `backend/django_core/apps/ventes/models_facturation.py:764` | RemiseEncaissement.montant_declare | 12 | 2 |
+| `backend/django_core/apps/ventes/models_facturation.py:769` | RemiseEncaissement.montant_declare | 12 | 2 |
 | `backend/django_core/apps/ventes/models_regulatory.py:336` | SubventionDossier.montant_demande | 12 | 2 |
 | `backend/django_core/apps/ventes/models_regulatory.py:339` | SubventionDossier.montant_accorde | 12 | 2 |
 | `backend/django_core/core/models.py:1139` | MatriceApprobation.montant_min | 14 | 2 |

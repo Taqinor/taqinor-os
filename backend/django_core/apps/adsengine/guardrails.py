@@ -48,6 +48,36 @@ class GuardrailInoperative(GuardrailViolation):
     « règle inopérante » — jamais un échec silencieux (leçon Madgicx n°1)."""
 
 
+# AACQ2 — PORTE UNIQUE de devise des seuils/plafonds ``*_mad``. Meta rapporte
+# dépense et budgets dans la devise DU COMPTE ; un seuil saisi en MAD n'est
+# comparable qu'à un compte MAD. Compte non-MAD → « non applicable » (fail-
+# closed) tant que le fondateur n'a pas tranché (D-AACQ-1, AACQ90) — aucun taux
+# de change n'est inventé. Patron d'origine : ``field_tests`` (PUB134).
+THRESHOLD_CURRENCY = 'MAD'
+
+
+def mad_threshold_blocked_reason(company):
+    """Raison FR si un seuil/plafond en MAD n'est PAS comparable aux montants
+    du compte de ``company`` (instance ou pk) ; ``None`` si comparable."""
+    if company is None:
+        return None
+    from .rules_engine import account_currency
+    currency = (account_currency(company) or THRESHOLD_CURRENCY).upper()
+    if currency == THRESHOLD_CURRENCY:
+        return None
+    return (f"Seuil en MAD, compte facturé en {currency} : seuil non "
+            f"applicable tant que la devise n'est pas décidée (aucun taux "
+            f"inventé).")
+
+
+def assert_mad_comparable(company, *, alert_company=None):
+    """AACQ2 — Lève ``GuardrailInoperative`` (+ alerte) si la porte refuse."""
+    reason = mad_threshold_blocked_reason(company)
+    if reason:
+        return _inoperative(alert_company, reason)
+    return True
+
+
 def enforce(*, target_status, config=None):
     """Vérifie qu'une transition de statut de campagne est permise.
 
@@ -144,6 +174,11 @@ def check_daily_ceiling(config, daily_budget_mad, *, company=None):
         return _inoperative(
             company, "Plafond quotidien non évaluable : budget quotidien "
                      "proposé illisible.")
+    # AACQ2 — plafond MAD vs budget en devise du compte : fail-closed.
+    assert_mad_comparable(
+        company if company is not None
+        else getattr(config, 'company_id', None),
+        alert_company=company)
     ceiling = config.daily_budget_ceiling_mad
     if budget > ceiling:
         msg = (

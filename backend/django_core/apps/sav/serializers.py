@@ -376,6 +376,10 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             'company', 'reference', 'created_by',
             'date_creation', 'date_modification',
             'sla_breach', 'sla_due_at', 'date_premiere_reponse',
+            # ASAV19 — échéance de première réponse, posée par le serveur.
+            'sla_reponse_due_at',
+            # ASAV21 — échéance horodatée (heures ouvrées), posée par le serveur.
+            'sla_echeance_at',
             # FG88 — date_tournee est posée par l'action de planification de
             # tournée (bulk-assign), jamais directement du corps de requête.
             'date_tournee',
@@ -405,6 +409,8 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             # (``TicketViewSet`` à la création), le coût interne hors du
             # corps d'un PATCH générique.
             'non_facturable', 'est_recidive', 'cout',
+            # ASAV14 — posée/vidée par le service de transition uniquement.
+            'date_resolution',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir

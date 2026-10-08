@@ -1,0 +1,7 @@
+# ADEP24 - base DECROISSANTE des sleeps reveles par check_test_determinism.py (BARE_SLEEP_RE
+# backend + setTimeout( bare dans frontend/e2e). Identite de CONTENU : `fichier :: ligne`.
+# Une entree dont le site a disparu fait echouer la garde (retirez-la) ; ne jamais en ajouter.
+# Mesure au 08/10/2026 : deux minuteurs executes DANS la page (delai d'observation / garde
+# anti-blocage), pas des attentes de test.
+frontend/e2e/apps-a11y.spec.js :: setTimeout(() => resolve(Math.round(dernier)), 500)
+frontend/e2e/monkey.spec.js :: minuteur = setTimeout(() => rejeter(new Error(

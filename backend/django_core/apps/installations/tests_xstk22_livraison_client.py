@@ -103,8 +103,10 @@ class TestNotificationTransit(TestCase):
 
         first_notified_at = self.liv.notifie_transit_le
         # Ré-appeler expedier (déjà en transit) ne renvoie PAS une 2e fois.
+        # ACHT19 — l'action hors séquence est désormais refusée (400 ;
+        # comportement inversé par la tâche), toujours sans second envoi.
         r2 = self.api.post(f'{BASE}/livraisons/{self.liv.id}/expedier/')
-        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertEqual(r2.status_code, 400, r2.data)
         self.liv.refresh_from_db()
         self.assertEqual(self.liv.notifie_transit_le, first_notified_at)
         self.assertEqual(len(mail.outbox), 1)
