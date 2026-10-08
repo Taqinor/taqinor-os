@@ -1039,7 +1039,7 @@ class Ticket(models.Model):
         if contrat is not None and contrat.couvre_equipement(self.equipement):
             from .selectors import droits_restants
             annee = ref.year
-            droits = droits_restants(contrat, annee)
+            droits = droits_restants(contrat, annee, ticket=self)
             if self.type == self.Type.PREVENTIF:
                 restant = droits['visites_restantes']
             else:

@@ -331,33 +331,52 @@ def contrats_maintenance_facturables(company):
     ]
 
 
-def droits_restants(contrat, annee=None):
+def droits_restants(contrat, annee=None, *, ticket=None):
     """XCTR3 — Compteurs de droits inclus (entitlements) consommés/restants
     pour ``contrat`` sur l'année civile ``annee`` (défaut : année courante).
 
-    Compte les tickets PREVENTIF (visites) et CORRECTIF (déplacements) ouverts
-    sur le contrat (via `installation` — même pivot que les visites générées)
-    dont ``date_ouverture`` tombe dans les bornes de l'année civile demandée.
-    Un quota NULL sur le contrat = illimité : jamais d'avertissement, le champ
+    Compte les tickets PREVENTIF (visites) et CORRECTIF (déplacements) NON
+    ANNULÉS dont ``date_ouverture`` tombe dans l'année demandée, rattachés au
+    contrat par son chantier, ou — ASAV5 — par son CLIENT quand le contrat n'a
+    pas de chantier. Un quota NULL sur le contrat = illimité : le champ
     ``restant`` renvoie ``None`` (pas de division/quota calculée).
+
+    ASAV5 — avec ``ticket`` (le ticket ÉVALUÉ) on ne compte que les tickets
+    ANTÉRIEURS : le ticket lui-même est exclu et seuls ceux ouverts au plus
+    tard à sa date (à date égale, créés avant lui) consomment un droit — un
+    quota de N couvre donc exactement les N premiers tickets. Sans ``ticket``
+    (écran des contrats) : compteur de l'année, tous tickets non annulés.
     """
     from datetime import date as _date
+
+    from django.db.models import Q
 
     annee = annee or timezone.localdate().year
     debut = _date(annee, 1, 1)
     fin = _date(annee, 12, 31)
 
+    base_qs = Ticket.objects.filter(
+        company_id=contrat.company_id, annule=False,
+        date_ouverture__gte=debut, date_ouverture__lte=fin,
+    )
     if contrat.installation_id:
-        base_qs = Ticket.objects.filter(
-            company_id=contrat.company_id,
-            installation_id=contrat.installation_id,
-            date_ouverture__gte=debut, date_ouverture__lte=fin,
-        )
-        visites_consommees = base_qs.filter(type=Ticket.Type.PREVENTIF).count()
-        deplacements_consommes = base_qs.filter(type=Ticket.Type.CORRECTIF).count()
+        base_qs = base_qs.filter(installation_id=contrat.installation_id)
+    elif contrat.client_id:
+        base_qs = base_qs.filter(client_id=contrat.client_id)
     else:
-        visites_consommees = 0
-        deplacements_consommes = 0
+        base_qs = base_qs.none()
+    if ticket is not None:
+        ref = ticket.date_reference_couverture
+        anterieur = Q(date_ouverture__lt=ref)
+        if ticket.pk:
+            anterieur |= Q(date_ouverture=ref, pk__lt=ticket.pk)
+            base_qs = base_qs.exclude(pk=ticket.pk)
+        else:
+            anterieur |= Q(date_ouverture=ref)
+        base_qs = base_qs.filter(anterieur)
+    visites_consommees = base_qs.filter(type=Ticket.Type.PREVENTIF).count()
+    deplacements_consommes = base_qs.filter(
+        type=Ticket.Type.CORRECTIF).count()
 
     def _restant(inclus, consomme):
         if inclus is None:
