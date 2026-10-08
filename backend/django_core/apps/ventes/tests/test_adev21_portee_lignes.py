@@ -19,6 +19,7 @@ from rest_framework.test import APIClient
 from apps.crm.models import Client
 from apps.roles.models import Role
 from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company
 
@@ -53,8 +54,15 @@ class PorteeLignesTests(TestCase):
         cls.devis_propre = Devis.objects.create(
             company=cls.company, reference='DV-ADEV21-P', client=client,
             created_by=cls.commercial)
+        # Une ligne PRODUIT référence un produit (XSAL14,
+        # ``LigneDevisSerializer.validate``) : sans lui, le PATCH de la ligne
+        # propre répond 400 « Une ligne produit doit référencer un produit. »
+        # avant même la portée testée ici.
+        produit = Produit.objects.create(
+            company=cls.company, nom='Câble solaire 6 mm²',
+            sku='ADEV21-CAB', prix_vente=Decimal('100'))
         cls.ligne_propre = LigneDevis.objects.create(
-            devis=cls.devis_propre, designation='Câblage',
+            devis=cls.devis_propre, produit=produit, designation='Câblage',
             quantite=1, prix_unitaire=Decimal('100'))
 
     def setUp(self):
