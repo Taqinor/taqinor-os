@@ -100,13 +100,13 @@ unites:
     I: 5
     score: 20
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: AFAC
     plan: docs/plans/PLAN_AUDIT_FACTURATION.md
-    plans_alimentes: []
+    plans_alimentes: [docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: null
-    date: null
-    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10)."
+    date: 2026-10-08
+    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-facturation.md) : 63 constats (7 S1), 89 tâches AFAC dont 10 décisions fondateur M1 (AFAC80-89) ; lien « Payer en ligne » relatif vers une API JSON constaté en direct ; portes de facture SAV / intervention ajoutées aux deux chemins connus."
 
   - id: D3
     rang: 3
