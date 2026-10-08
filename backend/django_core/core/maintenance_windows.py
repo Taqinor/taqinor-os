@@ -21,7 +21,8 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from rest_framework import generics, serializers, status
+from rest_framework import generics, serializers, status
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import (
     SAFE_METHODS, BasePermission, IsAuthenticated,
@@ -136,7 +137,7 @@ def notifier_fenetres_a_venir(now=None):
 
 # ── API ──────────────────────────────────────────────────────────────────
 
-class MaintenanceWindowSerializer(serializers.ModelSerializer):
+class MaintenanceWindowSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     # NTOBS23 — horodatages dans le fuseau d'affichage du VIEWER (pas de la
     # fenêtre elle-même : une fenêtre système-wide, company=None, doit
     # s'afficher à l'heure locale de CHAQUE tenant qui la consulte).

@@ -248,7 +248,7 @@ class WorkflowTemplateSerializer(serializers.Serializer):
     steps = WorkflowTemplateStepSerializer(many=True)
 
 
-class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
+class WorkflowStepDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — étape (modèle) d'un ``WorkflowDefinition``.
 
     Utilisée à la fois IMBRIQUÉE dans ``WorkflowDefinitionSerializer``
@@ -298,7 +298,7 @@ class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class WorkflowDefinitionSerializer(serializers.ModelSerializer):
+class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
     ses étapes imbriquées.
 
@@ -385,7 +385,7 @@ class WorkflowDefinitionSerializer(serializers.ModelSerializer):
         return code
 
 
-class MatriceApprobationSerializer(serializers.ModelSerializer):
+class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL1 — matrice d'approbation d'entreprise unifiée.
 
     ``company`` imposée côté serveur (``TenantMixin``). ``chaine_paliers`` est
@@ -451,7 +451,7 @@ class MatriceApprobationSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class FormulaireDefinitionSerializer(serializers.ModelSerializer):
+class FormulaireDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL12 — formulaire dynamique rattachable à une étape de workflow.
 
     ``company`` imposée côté serveur (``TenantMixin``). ``schema``/
@@ -497,7 +497,7 @@ class FormulaireDefinitionSerializer(serializers.ModelSerializer):
         return data
 
 
-class FormulaireChampReutilisableSerializer(serializers.ModelSerializer):
+class FormulaireChampReutilisableSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL13 — champ de bibliothèque réutilisable entre formulaires."""
 
     class Meta:
@@ -506,7 +506,7 @@ class FormulaireChampReutilisableSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class DashboardSerializer(serializers.ModelSerializer):
+class DashboardSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG381 — dashboard sans-code sauvegardé.
 
     ``company`` et ``owner`` ne sont JAMAIS lus du corps : ``company`` est
@@ -522,7 +522,7 @@ class DashboardSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 
-class PaymentTransactionSerializer(serializers.ModelSerializer):
+class PaymentTransactionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG370 — transaction de paiement carte en ligne (CMI / Payzone).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le statut, la
@@ -574,7 +574,7 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class SavedQuerySerializer(serializers.ModelSerializer):
+class SavedQuerySerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG382 — requête d'analyse ad-hoc sauvegardée.
 
     ``company`` et ``owner`` ne sont JAMAIS lus du corps (imposés côté serveur).
@@ -588,7 +588,7 @@ class SavedQuerySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
 
-class ScheduledExportSerializer(serializers.ModelSerializer):
+class ScheduledExportSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG383 — extrait planifié vers SFTP/S3.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le résultat de
@@ -612,7 +612,7 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
         ]
 
 
-class DeletionRecordSerializer(serializers.ModelSerializer):
+class DeletionRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG388 — entrée de corbeille (lecture seule + restauration via action).
 
     ``model_label`` expose le type de la cible (app.modele) sans révéler de
@@ -633,7 +633,7 @@ class DeletionRecordSerializer(serializers.ModelSerializer):
         return f'{ct.app_label}.{ct.model}' if ct else ''
 
 
-class ModuleToggleSerializer(serializers.ModelSerializer):
+class ModuleToggleSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG391 — état d'activation d'un module par société (LECTURE SEULE).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
@@ -652,7 +652,7 @@ class ModuleToggleSerializer(serializers.ModelSerializer):
                             'created_at', 'updated_at']
 
 
-class TenantThemeSerializer(serializers.ModelSerializer):
+class TenantThemeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG392 — thème white-label par société.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
@@ -666,7 +666,7 @@ class TenantThemeSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class BrandedTemplateSerializer(serializers.ModelSerializer):
+class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG393 — modèle brandé éditable (PDF/email/WhatsApp).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). ``variables``
@@ -687,7 +687,7 @@ class BrandedTemplateSerializer(serializers.ModelSerializer):
         return variables_utilisees(f'{obj.sujet}\n{obj.corps}')
 
 
-class ConsentRecordSerializer(serializers.ModelSerializer):
+class ConsentRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG394 — entrée du registre de consentement.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
@@ -723,7 +723,7 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
         return fields
 
 
-class DataSubjectRequestSerializer(serializers.ModelSerializer):
+class DataSubjectRequestSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG394 — demande de personne concernée (accès / effacement).
 
     ``company`` n'est JAMAIS lu du corps. Le statut et le résultat sont en
@@ -744,7 +744,7 @@ class DataSubjectRequestSerializer(serializers.ModelSerializer):
         ]
 
 
-class RegistreTraitementSerializer(serializers.ModelSerializer):
+class RegistreTraitementSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """XPLT23 — registre des traitements CNDP (loi 09-08).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
@@ -760,7 +760,7 @@ class RegistreTraitementSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class BackupRunSerializer(serializers.ModelSerializer):
+class BackupRunSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG395 — opération de sauvegarde/restauration (libre-service).
 
     ``company`` et ``declenche_par`` ne sont JAMAIS lus du corps (imposés côté
@@ -782,7 +782,7 @@ class BackupRunSerializer(serializers.ModelSerializer):
         ]
 
 
-class ApiUsagePlanSerializer(serializers.ModelSerializer):
+class ApiUsagePlanSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG398 — plan de tarif/quota API d'une société.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
@@ -796,7 +796,7 @@ class ApiUsagePlanSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class ChangelogEntrySerializer(serializers.ModelSerializer):
+class ChangelogEntrySerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG399 — note de version (journal des nouveautés).
 
     Modèle GLOBAL au produit (pas de portée société). ``lu`` indique si
@@ -819,7 +819,7 @@ class ChangelogEntrySerializer(serializers.ModelSerializer):
         return obj.pk in lus
 
 
-class TenantUsageSnapshotSerializer(serializers.ModelSerializer):
+class TenantUsageSnapshotSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTPLT6 — sortie lecture seule d'un instantané d'usage par tenant."""
 
     company_nom = serializers.CharField(
@@ -835,7 +835,7 @@ class TenantUsageSnapshotSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class BackgroundJobSerializer(serializers.ModelSerializer):
+class BackgroundJobSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTPLT29 — sortie lecture seule d'un job de fond avec progression."""
 
     class Meta:
@@ -847,7 +847,7 @@ class BackgroundJobSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class OutboxEventSerializer(serializers.ModelSerializer):
+class OutboxEventSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTPLT9/10 — sortie lecture seule d'un événement outbox (superviseur)."""
 
     class Meta:
