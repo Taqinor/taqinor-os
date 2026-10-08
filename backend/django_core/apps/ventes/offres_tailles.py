@@ -139,6 +139,7 @@ CHAMPS_CONFIG = ('nb_panneaux', 'batterie_nb_modules', 'equipements')
 #: silencieusement ignoré : le vendeur qui essaie apprend la règle.
 CHAMPS_DERIVES = (
     'prix_ttc', 'prix_par_kwc_ttc', 'economie_annuelle_mad', 'payback_annees',
+    'payback_jamais_rembourse',
     'couverture_pct', 'taux_autoconsommation_pct', 'production_annuelle_kwh',
     'economies_cumulees_25_ans_mad', 'puissance_kwc', 'capacite_utile_kwh',
     'batterie', 'materiel', 'familles', 'familles_diff', 'toit_ok',
@@ -204,6 +205,28 @@ def _payback(cout, economie):
     if cout is None or economie is None or cout <= 0 or economie <= 0:
         return None
     return round(cout / economie, 2)
+
+
+def _publier_payback(carte, devis, prix, economie, **cashflow):
+    """AMOT29 — pose le payback PUBLIÉ d'une carte : celui du cashflow 25 ans
+    (``pricing.payback_publiable``, mêmes arguments que le cumul de la carte),
+    « jamais remboursé » publié comme tel (``payback_jamais_rembourse``, aucune
+    année). Un devis aux règles d'origine garde le ratio simple d'hier.
+    Le ratio simple :func:`_payback` ne sert plus qu'au tri interne."""
+    from .domain.regles_calcul import calcul_corrige
+    if not calcul_corrige(devis):
+        paye = _payback(prix, economie)
+        if paye is not None:
+            carte['payback_annees'] = paye
+        return
+    from .quote_engine.pricing import payback_publiable
+    pub = payback_publiable(prix, economie, **cashflow)
+    if pub is None:
+        return
+    if pub['jamais_rembourse']:
+        carte['payback_jamais_rembourse'] = True
+    else:
+        carte['payback_annees'] = round(pub['annees'], 2)
 
 
 def _prix_par_kwc(prix_ttc, kwc):
@@ -895,22 +918,19 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                 carte['prix_par_kwc_ttc'] = prix_kwc
         if economie is not None:
             carte['economie_annuelle_mad'] = round(economie, 2)
-        paye = _payback(prix, economie)
-        if paye is not None:
-            carte['payback_annees'] = paye
-        _ajouter_taux(carte, annuel, variante)
-        if production is not None:
-            carte['production_annuelle_kwh'] = round(production, 2)
-        serie = {} if sortie_profonde is not None else None
-        cumul = _cumul_moteur(
-            prix, economie,
+        _cashflow = dict(
             stockage=bool(variante == 'avec' and capacite),
             part_batterie=(_part_batterie(annuel) if variante == 'avec'
                            else None),
             cout_onduleur_ttc=_cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise),
-            sortie=serie)
+                contexte.facteur_remise))
+        _publier_payback(carte, contexte.devis, prix, economie, **_cashflow)
+        _ajouter_taux(carte, annuel, variante)
+        if production is not None:
+            carte['production_annuelle_kwh'] = round(production, 2)
+        serie = {} if sortie_profonde is not None else None
+        cumul = _cumul_moteur(prix, economie, sortie=serie, **_cashflow)
         if serie and serie.get('cumulative'):
             sortie_profonde['cashflow'][variante] = serie['cumulative']
         if cumul is not None:
@@ -1200,9 +1220,17 @@ def _carte_du_devis(contexte, data, variante):
     # il n'est recalculé QUE s'il n'a pas été servi — jamais en concurrence.
     paye = _positif((data or {}).get(
         'roi_s' if variante == 'sans' else 'roi_a'))
-    if paye is None:
-        paye = _payback(prix, economie)
-    if paye is not None:
+    if (data or {}).get('roi_s_jamais' if variante == 'sans'
+                        else 'roi_a_jamais'):
+        from .domain.regles_calcul import calcul_corrige
+        if calcul_corrige(contexte.devis):
+            # AMOT29 — « jamais remboursé » servi par le document : publié
+            # comme tel, jamais la sentinelle « 25 ans ».
+            paye = None
+            carte['payback_jamais_rembourse'] = True
+    if paye is None and not carte.get('payback_jamais_rembourse'):
+        _publier_payback(carte, contexte.devis, prix, economie)
+    elif paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))
     if production is not None:

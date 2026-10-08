@@ -910,6 +910,22 @@ def _echelle_paliers_batterie(devis):
     capacite_retenue = capacite_batterie_des_lignes(devis)
     facteur_remise = facteur_remise_du_devis(devis)
 
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    _corrige = calcul_corrige(devis)
+
+    def _payback_publie(cout, economie):
+        """AMOT29 — le payback PUBLIÉ du palier : cashflow 25 ans
+        (``pricing.payback_publiable`` ; « jamais remboursé » ⇒ ``None``,
+        jamais la sentinelle), le ratio simple pour un devis aux règles
+        d'origine. L'économie horaire du palier est déjà nette du stockage."""
+        if not _corrige:
+            return _arrondi(_payback(cout, economie))
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        pub = payback_publiable(cout, economie)
+        if pub is None or pub['jamais_rembourse']:
+            return None
+        return _arrondi(pub['annees'])
+
     def rendu(entree, panneaux, remplissage_ok):
         """Un palier de l'échelle, au format EXACT du contrat."""
         vue, palier = entree['vue'], entree['palier']
@@ -937,7 +953,7 @@ def _echelle_paliers_batterie(devis):
             'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
             'prix_ttc': cout,
             'economies_annuelles': economie,
-            'payback_annees': _arrondi(_payback(cout, economie)),
+            'payback_annees': _payback_publie(cout, economie),
             'remplissage_ok': bool(remplissage_ok),
             'retenu': bool(capacite_retenue is not None
                            and abs(capacite - _num(capacite_retenue)) < 0.05),

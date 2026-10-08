@@ -968,6 +968,32 @@ def compute_cashflow_payback(
     }
 
 
+def payback_publiable(prix_ttc, economie_annuelle, *, stockage=False,
+                      part_batterie=None, cout_onduleur_ttc=None):
+    """AMOT29 (C-AMOT-030) — LE payback qu'une surface client publie : le
+    croisement du cumul du cashflow 25 ans (:func:`compute_cashflow_payback`,
+    mêmes paramètres que le document et que ``offres_tailles._cumul_moteur``),
+    jamais le ratio simple ``prix / économie`` (qui ne sert plus qu'au TRI
+    interne des tailles).
+
+    Retour : ``{'annees': float, 'jamais_rembourse': bool}`` — un cumul qui ne
+    croise jamais zéro est publié COMME TEL (``jamais_rembourse`` vrai, aucune
+    année imprimée) ; ``None`` quand prix ou économie manquent.
+    """
+    try:
+        prix = float(prix_ttc or 0)
+        eco = float(economie_annuelle or 0)
+    except (TypeError, ValueError):
+        return None
+    if prix <= 0 or eco <= 0:
+        return None
+    cf = compute_cashflow_payback(
+        prix, eco, battery=bool(stockage), battery_share=part_batterie,
+        inverter_replace_cost=cout_onduleur_ttc)
+    return {"annees": cf["payback_years"],
+            "jamais_rembourse": bool(cf.get("jamais_rembourse"))}
+
+
 def _fr_pct(v) -> str:
     """0.5 -> '0,5' ; 2.0 -> '2' (French decimal comma, no trailing zero)."""
     s = f"{float(v):g}"
