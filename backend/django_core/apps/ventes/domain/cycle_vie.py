@@ -1829,6 +1829,207 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     return devis
 
 
+# ── Décision fondateur (Reda, 08/10/2026) — DÉS-ACCEPTATION ─────────────────
+#
+# Un lead qui SORT de « Signé » par une action utilisateur (changement d'étape
+# unitaire ou en masse) dés-accepte son devis : le devis repasse « envoyé »,
+# les tampons d'acceptation sont effacés, les variantes sœurs refusées PAR
+# cette acceptation reviennent, et ce que l'acceptation a créé
+# AUTOMATIQUEMENT (chantier, contrat SAV, commission, parrainage) est défait
+# par les abonnés de ``devis_acceptation_annulee``. Si quelque chose de RÉEL
+# existe en aval (facture, bon de commande, chantier avancé, contrat SAV
+# facturé…), RIEN n'est écrit et la raison est rendue en français.
+#
+# La preuve de signature (``DevisSignature``, PDF scellé) n'est JAMAIS
+# supprimée : une note de chatter dit que l'acceptation a été annulée.
+
+#: Motif posé par l'effondrement des sœurs (``_effondrer_soeurs_et_publier``)
+#: — c'est le MARQUEUR qui prouve qu'une sœur a été refusée par l'acceptation
+#: (avec ``date_refus`` == date d'acceptation et le même groupe).
+MOTIF_VARIANTE_NON_RETENUE = 'variante non retenue'
+
+
+class AnnulationAcceptationBloquee(Exception):
+    """L'acceptation ne peut pas être annulée : quelque chose de réel existe
+    en aval. ``message`` nomme exactement ce qui bloque (français)."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def raison_blocage_annulation_acceptation(devis):
+    """Rend la raison (français) qui EMPÊCHE d'annuler l'acceptation de
+    ``devis``, ou ``None`` si l'annulation est permise. Lecture seule.
+
+    Bloquent : une facture non annulée liée au devis (directement, par son bon
+    de commande ou par une facture consolidée — brouillon comprise : elle
+    n'est jamais créée par l'acceptation), un bon de commande non annulé, un
+    dossier 82-21 sorti de « En constitution », puis ce que disent les
+    sélecteurs des apps propriétaires (chantier avancé, contrat SAV engagé)."""
+    from django.db.models import Q
+    from apps.ventes.models import (
+        BonCommande, Facture, RegulatoryDossier,
+    )
+
+    company_id = devis.company_id
+    facture = (Facture.objects
+               .filter(company_id=company_id)
+               .filter(Q(devis_id=devis.pk)
+                       | Q(bon_commande__devis_id=devis.pk)
+                       | Q(sources__devis_id=devis.pk))
+               .exclude(statut=Facture.Statut.ANNULEE)
+               .order_by('pk').distinct().first())
+    if facture is not None:
+        if facture.statut == Facture.Statut.BROUILLON:
+            return (f'la facture {facture.reference} (brouillon) est déjà '
+                    "créée. Supprimez-la ou annulez-la d'abord.")
+        if facture.statut == Facture.Statut.PAYEE:
+            return (f'la facture {facture.reference} est déjà payée. '
+                    "Annulez-la d'abord.")
+        return (f'la facture {facture.reference} est déjà émise. '
+                "Annulez-la d'abord.")
+    bc = (BonCommande.objects
+          .filter(company_id=company_id, devis_id=devis.pk)
+          .exclude(statut=BonCommande.Statut.ANNULE)
+          .first())
+    if bc is not None:
+        return (f'le bon de commande {bc.reference} existe déjà '
+                f"(« {bc.get_statut_display()} »). Annulez-le d'abord.")
+    dossier = (RegulatoryDossier.objects
+               .filter(company_id=company_id, devis_id=devis.pk)
+               .exclude(statut=RegulatoryDossier.Statut.EN_CONSTITUTION)
+               .first())
+    if dossier is not None:
+        nom = dossier.reference_dossier or f'n° {dossier.pk}'
+        return (f'le dossier 82-21 {nom} est déjà '
+                f'« {dossier.get_statut_display()} ».')
+    # Apps propriétaires — par leurs sélecteurs, jamais leurs modèles.
+    from apps.installations.selectors import (
+        blocage_annulation_acceptation as blocage_chantier,
+    )
+    from apps.sav.selectors import (
+        blocage_annulation_acceptation as blocage_sav,
+    )
+    company = devis.company
+    return (blocage_chantier(devis.pk, company)
+            or blocage_sav(devis.pk, company))
+
+
+def annuler_acceptation(*, devis, user, motif=''):
+    """Dés-accepte ``devis`` (miroir d'``accept_devis``) — décision fondateur
+    du 08/10/2026.
+
+    UNE transaction, sous le verrou du GROUPE DE VARIANTES pris dans l'ordre
+    des ``pk`` (le même qu'``accept_devis`` : jamais d'inter-blocage entre une
+    acceptation et une annulation concurrentes). Dans l'ordre :
+
+    1. contrôle de blocage (``raison_blocage_annulation_acceptation``) — un
+       blocage lève ``AnnulationAcceptationBloquee`` AVANT toute écriture ;
+    2. le devis repasse « envoyé », ``date_acceptation`` / ``accepte_par_nom``
+       / ``option_acceptee`` sont effacés (une ré-acceptation est une
+       acceptation FRAÎCHE : l'événement ``devis_accepted`` repart) ;
+    3. les sœurs refusées PAR cette acceptation (motif
+       ``MOTIF_VARIANTE_NON_RETENUE``, ``date_refus`` == date d'acceptation,
+       même groupe, jamais une version remplacée) redeviennent actives —
+       « envoyé » si elles avaient été envoyées, sinon « brouillon » ;
+    4. note de chatter (qui, quand, option et date annulées ; preuve de
+       signature conservée) ;
+    5. ``devis_acceptation_annulee`` est publié DANS la transaction : les
+       abonnés défont leurs effets et tombent avec elle en cas d'échec.
+
+    Un devis qui n'est pas « accepté » est rendu tel quel (no-op). La preuve
+    e-signature (``DevisSignature``, PDF scellé) n'est jamais touchée.
+    """
+    from django.db import transaction
+    from django.db.models import Q
+    from django.utils import timezone
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from core.events import devis_acceptation_annulee
+
+    with transaction.atomic():
+        racine = devis.version_parent_id or devis.pk
+        groupe = list(
+            Devis.objects
+            .select_related('company')
+            .select_for_update(of=('self',))
+            .filter(Q(pk=racine) | Q(version_parent_id=racine))
+            .order_by('pk'))
+        courant = next((d for d in groupe if d.pk == devis.pk), None)
+        if courant is None or courant.statut != Devis.Statut.ACCEPTE:
+            return courant or devis
+        devis = courant
+
+        raison = raison_blocage_annulation_acceptation(devis)
+        if raison:
+            raise AnnulationAcceptationBloquee(raison)
+
+        ancienne_option = devis.option_acceptee or ''
+        ancienne_date = devis.date_acceptation
+        ancien_nom = devis.accepte_par_nom or ''
+        devis.statut = Devis.Statut.ENVOYE
+        devis.date_acceptation = None
+        devis.accepte_par_nom = ''
+        devis.option_acceptee = ''
+        devis.save(update_fields=[
+            'statut', 'date_acceptation', 'accepte_par_nom',
+            'option_acceptee'])
+
+        # Sœurs refusées PAR cette acceptation — et elles seules.
+        restaurees = []
+        if ancienne_date is not None:
+            for soeur in groupe:
+                if (soeur.pk == devis.pk
+                        or soeur.company_id != devis.company_id
+                        or soeur.statut != Devis.Statut.REFUSE
+                        or soeur.is_active
+                        or soeur.superseded_by_id is not None
+                        or soeur.motif_refus != MOTIF_VARIANTE_NON_RETENUE
+                        or soeur.date_refus != ancienne_date):
+                    continue
+                soeur.statut = (Devis.Statut.ENVOYE if soeur.date_envoi
+                                else Devis.Statut.BROUILLON)
+                soeur.date_refus = None
+                soeur.motif_refus = ''
+                soeur.is_active = True
+                soeur.save(update_fields=[
+                    'statut', 'date_refus', 'motif_refus', 'is_active'])
+                activity.log_devis_note(
+                    soeur, user,
+                    f"Variante rétablie : l'acceptation de {devis.reference} "
+                    'a été annulée.')
+                restaurees.append(soeur.reference)
+
+        qui = getattr(user, 'username', None) or 'le système'
+        quand = timezone.localtime().strftime('%d/%m/%Y %H:%M')
+        details = []
+        if ancienne_option in Devis.OptionAcceptee.values:
+            details.append(
+                f'option « {Devis.OptionAcceptee(ancienne_option).label} »')
+        elif ancienne_option:
+            details.append(f'option « {ancienne_option} »')
+        if ancienne_date:
+            details.append(f'acceptée le {ancienne_date.strftime("%d/%m/%Y")}')
+        if ancien_nom:
+            details.append(f'par {ancien_nom}')
+        corps = (f'Acceptation annulée le {quand} par {qui}'
+                 + (f' ({", ".join(details)})' if details else '')
+                 + ' — le devis repasse « Envoyé ».')
+        if motif:
+            corps += f' Motif : {motif}.'
+        if restaurees:
+            corps += f' Variante(s) rétablie(s) : {", ".join(restaurees)}.'
+        corps += ' La preuve de signature du client est conservée.'
+        activity.log_devis_note(devis, user, corps)
+
+        devis_acceptation_annulee.send(
+            sender=Devis, devis=devis, user=user,
+            option_acceptee=ancienne_option,
+            date_acceptation=ancienne_date, motif=motif or '')
+    return devis
+
+
 def share_link_for_bcf(bcf):
     """QS3 — Point d'entrée cross-app : crée (ou réutilise) le lien tokenisé
     vers le PDF d'un Bon de Commande FOURNISSEUR (stock).

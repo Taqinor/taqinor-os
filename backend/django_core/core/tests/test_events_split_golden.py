@@ -85,6 +85,9 @@ OWNER_MODULE = {
     'devis': [
         'devis_accepted', 'devis_sent', 'layout_finalise', 'devis_revise',
         'devis_refused', 'devis_expired', 'document_pdf_generated',
+        # Décision fondateur 08/10/2026 — dés-acceptation (lead sorti de
+        # « Signé »), émetteur ventes/domain/cycle_vie.annuler_acceptation.
+        'devis_acceptation_annulee',
     ],
     # SPL288 — stock / achats. ``reception_fournisseur_annulee`` (ASTK55,
     # postérieur au plan) suit son émetteur stock/services.py.

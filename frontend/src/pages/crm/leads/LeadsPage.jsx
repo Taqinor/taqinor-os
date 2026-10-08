@@ -12,7 +12,7 @@ import StateBlock from '../../../components/StateBlock'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob'
-import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE } from '../../../features/crm/stages'
+import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE, devisAccepteReference } from '../../../features/crm/stages'
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
@@ -25,7 +25,7 @@ import {
 // ClientList/DevisList/LeadWorkspace : rien avant 300ms (anti-flash), un
 // spinner discret jusqu'à 500ms, puis un squelette au-delà.
 import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
-import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
+import { errorMessageFrom, toastWithUndo, toastError, toastSuccess } from '../../../lib/toast'
 // LB49 — vues DE COMPTE (serveur, crm.SavedView) : useSavedViews
 // (localStorage) reste aux autres écrans, la page leads passe au variant
 // serveur — rang 1 = défaut de connexion, réordonnable.
@@ -693,6 +693,15 @@ export default function LeadsPage() {
     if (opts.confirmeRecul) data.confirme_recul = true
     if (opts.undo) data.undo = true
     return dispatch(updateLead({ id: lead.id, data })).unwrap()
+      .catch((err) => {
+        // Décision fondateur 08/10/2026 — un refus serveur de changement
+        // d'étape (409 « Impossible de sortir ce lead de Signé : … ») est
+        // montré tel quel ; InlineEdit revient seul à la valeur réelle.
+        if (field === 'stage' && typeof err?.detail === 'string') {
+          toastError(err.detail)
+        }
+        throw err
+      })
   }, [dispatch])
 
   // LB5 — « ✗ Perdu » passe ENFIN par le store (blueprint I2, bug #3) :
@@ -736,6 +745,17 @@ export default function LeadsPage() {
       const data = { stage: newStage }
       if (confirmeRecul) data.confirme_recul = true
       await dispatch(updateLead({ id: lead.id, data })).unwrap()
+      // Décision fondateur 08/10/2026 — sortir de « Signé » a DÉS-ACCEPTÉ le
+      // devis côté serveur : un « Annuler » qui re-PATCHerait l'étape Signé
+      // laisserait un lead signé sans devis accepté. Pas d'undo ici : on
+      // revient en « Signé » par le SigneDialog (ré-acceptation, célébrée).
+      if (prev === CONVERSION_STAGE) {
+        const ref = devisAccepteReference(lead)
+        toastSuccess(ref
+          ? `Étape modifiée — le devis ${ref} est repassé en « Envoyé ».`
+          : 'Étape modifiée.')
+        return
+      }
       // VX95 — ce chemin est atteint par le drop kanban (jamais SIGNED —
       // gardé ci-dessus par SigneDialog). « Annuler » restaure l'étape
       // antérieure EXACTE : c'est l'undo de sa propre action, pas un recul
@@ -763,9 +783,16 @@ export default function LeadsPage() {
           }
         },
       })
-    } catch {
+    } catch (err) {
       dispatch(leadStagePatched({ id: lead.id, stage: prev }))
-      setStageError("Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
+      // Décision fondateur 08/10/2026 — quitter « Signé » est REFUSÉ (409)
+      // quand le devis accepté a une suite réelle (facture émise, chantier
+      // avancé…) : le texte serveur nomme la cause, on l'affiche tel quel
+      // (l'optimiste est déjà annulé ci-dessus). `unwrap()` rejette avec le
+      // corps de la réponse (rejectWithValue de updateLead).
+      const detail = typeof err?.detail === 'string' ? err.detail : null
+      setStageError(detail
+        ?? "Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
     } finally {
       setBusyLeadId(null)
     }
@@ -1218,7 +1245,14 @@ export default function LeadsPage() {
         <SigneDialog
           lead={signeLead}
           onClose={() => { setSigneLead(null); refetch() }}
-          onConfirmed={() => { setSigneLead(null); refetch() }}
+          onConfirmed={() => {
+            // La carte passe en « Signé » tout de suite (fête dès le clic) ;
+            // le serveur confirme pendant la fête, puis on resynchronise.
+            dispatch(leadStagePatched({ id: signeLead.id, stage: CONVERSION_STAGE }))
+            setSigneLead(null)
+          }}
+          onAccepted={() => refetch()}
+          onFailed={() => refetch()}
         />
       )}
 

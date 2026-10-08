@@ -24,6 +24,7 @@ import { pushRecentEntity } from '../../../providers/commandActions'
 import { normalizePhoneE164 } from '../../../lib/format'
 import { buildWaUrl } from '../../../lib/contactLinks'
 import { isStageMoveBackward } from '../stages'
+import { isSortieSigne } from '../stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question que sur le board (elle nomme le
 // lead et les deux étapes) : une seule formulation pour tous les gestes qui
 // font reculer un lead.
@@ -197,6 +198,7 @@ export default function LeadWorkspace({
   // L'étape de RÉFÉRENCE est celle du serveur, jamais celle du draft : `stage`
   // n'entre jamais dans le draft (voir useLeadDraft.changeStage).
   const stageCourant = state.server?.stage ?? null
+  const devisLead = state.server?.devis
   const leadNom = state.server?.nom ?? lead?.nom ?? ''
 
   // ── Données de référence (partagées avec les rails / sections) ────────────
@@ -342,11 +344,19 @@ export default function LeadWorkspace({
      touche à rien : aucun PATCH, l'étape affichée ne bouge pas. */
   const confirmerRecul = useConfirmerRecul()
   const changeStageConfirme = useCallback(async (cible) => {
+    // Décision fondateur 08/10/2026 — quitter « Signé » dés-accepte le devis
+    // côté serveur : la question est posée même vers Froid (pas un recul) ;
+    // un 409 (suite réelle) est affiché par le moteur (texte serveur).
+    const fiche = { nom: leadNom, stage: stageCourant, devis: devisLead }
+    if (!isStageMoveBackward(stageCourant, cible) && isSortieSigne(stageCourant, cible)) {
+      if (!(await confirmerRecul(fiche, cible))) return undefined
+      return changeStage(cible)
+    }
     if (!isStageMoveBackward(stageCourant, cible)) return changeStage(cible)
-    const ok = await confirmerRecul({ nom: leadNom, stage: stageCourant }, cible)
+    const ok = await confirmerRecul(fiche, cible)
     if (!ok) return undefined
     return changeStage(cible, { confirmeRecul: true })
-  }, [changeStage, confirmerRecul, stageCourant, leadNom])
+  }, [changeStage, confirmerRecul, stageCourant, leadNom, devisLead])
 
   /* PV22 — « Concevoir la toiture (3D) » NE MÈNE PLUS À UN ÉCRAN VIDE.
      La conception 3D travaille désormais SUR un devis (PV20/PV21) : le geste
@@ -977,7 +987,9 @@ export default function LeadWorkspace({
         <SigneDialog
           lead={state.server}
           onClose={() => setSigneOpen(false)}
-          onConfirmed={() => { setSigneOpen(false); onSaved?.(); onClose?.() }}
+          onConfirmed={() => { setSigneOpen(false); onClose?.() }}
+          onAccepted={() => onSaved?.()}
+          onFailed={() => onSaved?.()}
         />
       )}
       {planOpen && (

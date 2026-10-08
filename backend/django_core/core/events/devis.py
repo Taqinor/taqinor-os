@@ -15,6 +15,22 @@ les émetteurs et abonnés continuent d'importer ``core.events``.
     * ``user`` — l'utilisateur qui accepte (peut être ``None``) ;
     * ``ancien_statut`` — le statut du devis avant l'acceptation.
 
+``devis_acceptation_annulee``
+    Émis quand l'acceptation d'un devis est ANNULÉE (« dés-acceptation ») :
+    le lead sort de « Signé » par une action utilisateur (décision fondateur
+    du 08/10/2026), le devis repasse « envoyé ». Émis DANS la transaction de
+    ``apps.ventes.domain.cycle_vie.annuler_acceptation`` : les écritures des
+    abonnés tiennent ou tombent avec elle. Abonnés : ``installations``
+    (annule le chantier auto-créé), ``sav`` (désactive le contrat
+    auto-créé), ``crm`` (commission, parrainage, notes de chatter).
+    Arguments du signal :
+
+    * ``devis`` — l'instance ``Devis`` désormais ``envoye`` ;
+    * ``user`` — l'utilisateur à l'origine de l'annulation (peut être ``None``) ;
+    * ``option_acceptee`` — l'option qui était acceptée (peut être vide) ;
+    * ``date_acceptation`` — la date d'acceptation annulée (peut être ``None``) ;
+    * ``motif`` — le motif libre de l'annulation.
+
 ``devis_sent``
     Émis quand un devis passe à « envoyé » suite à un partage client (U4), p.
     ex. la génération d'un lien WhatsApp. Abonné par ``crm`` pour avancer
@@ -49,6 +65,12 @@ import django.dispatch
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
+
+# Émis à l'ANNULATION de l'acceptation d'un devis (décision fondateur du
+# 08/10/2026 : un lead qui sort de « Signé » dés-accepte son devis).
+# Arguments : devis, user, option_acceptee, date_acceptation, motif.
+# Abonnés : installations, sav, crm (chacun défait SON effet d'acceptation).
+devis_acceptation_annulee = django.dispatch.Signal()
 
 # Émis à l'ENVOI d'un devis (U4) — passage brouillon → envoyé déclenché par un
 # partage client (ex. lien WhatsApp). Arguments : devis, user, ancien_statut.
@@ -94,6 +116,7 @@ document_pdf_generated = django.dispatch.Signal()
 
 __all__ = [
     'devis_accepted',
+    'devis_acceptation_annulee',
     'devis_sent',
     'layout_finalise',
     'devis_revise',
