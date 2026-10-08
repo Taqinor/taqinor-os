@@ -145,6 +145,13 @@ class DevisPdfActionsMixin:
             if 'include_calepinage' in request.query_params:
                 raw['include_calepinage'] = (
                     request.query_params['include_calepinage'] in ('1', 'true'))
+            # APDF16 (C-APDF-007) — annexe « Note de calcul » agricole
+            # (AGR319) : même convention que `include_etude` (`1`/`true` =
+            # oui). Absent ⇒ défaut moteur (pas d'annexe) ; un devis non
+            # agricole ignore l'option (le moteur en décide).
+            if 'include_note_calcul' in request.query_params:
+                raw['include_note_calcul'] = (
+                    request.query_params['include_note_calcul'] in ('1', 'true'))
             # NTI18N4 — langue de sortie du document, INDÉPENDANTE de la
             # langue d'interface de qui génère le PDF. `?langue=` écrase la
             # résolution auto (priorité : explicite > Client.langue_document
