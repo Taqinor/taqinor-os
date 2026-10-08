@@ -718,7 +718,10 @@ def build_pages(ctx) -> list:
     # (jamais « option avec batterie » sur un devis sans batterie).
     if deux_options or avec_ok:
         _eco_ref, _tot_ref = d.get("eco_a_ann", 0), d.get("total_avec", 0)
-        gain25_label = "option avec batterie" if deux_options else "avec batterie"
+        # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF).
+        _lib_avec = str(d.get("libelle_avec") or "Avec batterie")
+        _lib_avec = _lib_avec[:1].lower() + _lib_avec[1:]
+        gain25_label = f"option {_lib_avec}" if deux_options else _lib_avec
     else:
         _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
         gain25_label = "sans batterie"

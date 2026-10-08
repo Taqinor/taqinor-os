@@ -174,7 +174,11 @@ def build(ctx):
     # est une page pleine, on ne lui ajoute pas une ligne au passage.
     opt_caption = ""
     if deux_options:
-        _opt_txt = ("avec batterie" if d.get("eco_option", "avec") == "avec"
+        # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF : « hybride,
+        # batterie plus tard »), jamais « avec batterie » codé en dur.
+        _lib_avec = str(d.get("libelle_avec") or "Avec batterie")
+        _opt_txt = ((_lib_avec[:1].lower() + _lib_avec[1:])
+                    if d.get("eco_option", "avec") == "avec"
                     else "sans batterie")
         # Guillemets DOUBLES à l'extérieur : aucun antislash dans la f-string
         # (RENDERING_NOTES.md §3 — la prod rend les PDF sur Python 3.11, où un

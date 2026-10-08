@@ -1312,7 +1312,7 @@ def make_chart_roi():
         ax.plot(x, ys, color=CNM, linewidth=2.5, label="Sans batterie", zorder=4, solid_capstyle="round")
     if _show_a:
         ax.fill_between(x, ya, 0, where=(ya >= 0), alpha=0.08, color=CA,  zorder=2)
-        ax.plot(x, ya, color=CA,  linewidth=2.5, label="Avec batterie",  zorder=4, solid_capstyle="round")
+        ax.plot(x, ya, color=CA,  linewidth=2.5, label=LIBELLE_AVEC,  zorder=4, solid_capstyle="round")
     # QJR125 — l'étoile sort du croisement à zéro de la courbe TRACÉE, plus du
     # payback annoncé ailleurs : les deux pouvaient désigner deux années
     # différentes sur la même image. Pas de croisement ⇒ pas d'étoile.
@@ -1408,7 +1408,7 @@ def make_chart_monthly():
     if _show_a:
         legend_handles.append(Line2D([0], [0], color=CA,  linewidth=2.2, marker="o", markersize=5.5,
                markerfacecolor="white", markeredgewidth=1.8, markeredgecolor=CA,
-               label="\u00c9conomies Option\u00a02 \u2013 Avec batterie"))
+               label=f"\u00c9conomies Option\u00a02 \u2013 {LIBELLE_AVEC}"))
     leg = ax.legend(handles=legend_handles, fontsize=8.5, frameon=True,
                     loc="upper center", bbox_to_anchor=(0.5, 1.20), ncol=3,
                     edgecolor="#E5E7EB", facecolor="white",
@@ -2254,8 +2254,8 @@ def page1():
     <div style="flex:1;min-width:0;overflow:hidden;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFF3E0;position:relative;{_s2}">
       {_r2}
       <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">Option 2</div>
-      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">Avec batterie</div>
-      <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">Stockage + autonomie nocturne</div>
+      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{LIBELLE_AVEC}</div>
+      <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_sous_titre_avec()}</div>
       {_ta_price}
       <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">Prix total TTC{_pkwc_a}</div>
       {_roi_pill_a}
@@ -2418,7 +2418,7 @@ def page2(sans_items, img_roi, img_mon):
       </div>
 
       <div style="flex:1;min-width:0;{_p2_s2}">
-        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">Option 2 \u2014 Avec batterie</div>
+        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">Option 2 \u2014 {LIBELLE_AVEC}</div>
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>D\u00e9signation</th>
@@ -2572,8 +2572,8 @@ def page3():
         f'background:{CAL};display:flex;align-items:center;gap:9px;">'
         f'<div style="width:17px;height:17px;border:2px solid {CA};border-radius:3px;flex-shrink:0;"></div>'
         f'<div>'
-        f'<div style="font-size:9pt;font-weight:700;color:{CN};">Avec batterie</div>'
-        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">Option 2 &#8212; R&#233;seau + Stockage</div>'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};">{LIBELLE_AVEC}</div>'
+        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">Option 2 &#8212; {_composition_avec()}</div>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -2589,7 +2589,7 @@ def page3():
         f'<div>'
         f'<div style="font-size:9pt;font-weight:700;color:{CN};">'
         f'Syst&#232;me photovolta&#239;que{_kwc_mention()} &#8212; '
-        f'{"Sans batterie" if SCENARIO == "Sans batterie" else "Avec batterie"}</div>'
+        f'{"Sans batterie" if SCENARIO == "Sans batterie" else LIBELLE_AVEC}</div>'
         f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">'
         f'Je confirme la commande du syst&#232;me d&#233;crit dans ce devis</div>'
         f'</div>'
@@ -3126,12 +3126,38 @@ def _branche_nommee():
         return ""
     if _capacite_batterie_vendue() <= 0:
         return ""
-    return " &#8212; option avec batterie"
+    return f" &#8212; option {_libelle_avec_minuscule()}"
 
 
 def _branche_phrase():
     """QJR159 (c) — la MÊME précision, en incise dans une phrase."""
-    return (" (option avec batterie)" if _branche_nommee() else "")
+    return (f" (option {_libelle_avec_minuscule()})"
+            if _branche_nommee() else "")
+
+
+def _batterie_differee():
+    """AMOT21 (C-AMOT-019) — l'option 2 est-elle « hybride, batterie plus
+    tard » (BAT-DIFF) ? Le serveur le DIT par ``libelle_avec``."""
+    return LIBELLE_AVEC != "Avec batterie"
+
+
+def _libelle_avec_minuscule():
+    """AMOT21 — le libellé serveur de l'option 2, en incise (« avec
+    batterie » / « hybride, batterie plus tard »)."""
+    return LIBELLE_AVEC[:1].lower() + LIBELLE_AVEC[1:]
+
+
+def _sous_titre_avec():
+    """AMOT21 — sous-titre de la carte option 2 : aucun stockage promis
+    quand la batterie n'est pas vendue."""
+    return ("Onduleur hybride &#8212; batterie ajoutable"
+            if _batterie_differee() else "Stockage + autonomie nocturne")
+
+
+def _composition_avec():
+    """AMOT21 — composition affichée de l'option 2 (« Réseau + Stockage »
+    seulement quand une batterie est vendue)."""
+    return "Hybride" if _batterie_differee() else "R&#233;seau + Stockage"
 
 
 def _config_identifiante(panneaux, batterie_kwh):
