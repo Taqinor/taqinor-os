@@ -47,7 +47,7 @@ class PaymentProvider:
     key = 'base'
     label = 'Fournisseur'
 
-    def create_session(self, link):
+    def create_session(self, link, request=None):
         """Renvoie {'pay_url', 'provider_ref'} pour un PaymentLink donné."""
         raise NotImplementedError
 
@@ -87,10 +87,14 @@ class NoOpProvider(PaymentProvider):
     key = 'noop'
     label = 'Paiement manuel (aucune passerelle)'
 
-    def create_session(self, link):
-        # URL relative de la page publique interne — pas d'hôte externe.
+    def create_session(self, link, request=None):
+        # AFAC21 (C-AFAC-017) — URL ABSOLUE de la page CLIENT `/payer/<token>`
+        # (jamais l'API JSON relative `/api/django/public/pay/…`, inutilisable
+        # par un client) ; sans base absolue connue (ni `PUBLIC_BASE_URL`, ni
+        # requête — un cron), `None` : aucun lien plutôt qu'un lien cassé.
+        from ..domain.encaissements import url_page_paiement
         return {
-            'pay_url': f'/api/django/public/pay/{link.token}/',
+            'pay_url': url_page_paiement(link, request=request),
             'provider_ref': '',
         }
 
@@ -156,19 +160,19 @@ class HostedGatewayProvider(PaymentProvider):
         # Aucune source câblée → vide → no-op sûr.
         return {}
 
-    def create_session(self, link):
+    def create_session(self, link, request=None):
         creds = self._credentials(link)
         if not creds:
             # Sans identifiants → retombe sur la page interne (no-op sûr).
-            return NoOpProvider().create_session(link)
+            return NoOpProvider().create_session(link, request=request)
         try:
             # import httpx  # déjà une dépendance — importé seulement si câblé.
             # ... créer une session hébergée et renvoyer son URL + ref ...
-            return NoOpProvider().create_session(link)  # squelette inerte
+            return NoOpProvider().create_session(link, request=request)  # squelette inerte
         except Exception:  # noqa: BLE001 — un connecteur ne casse jamais l'OS.
             logger.warning('HostedGateway create_session a échoué (no-op).',
                            exc_info=True)
-            return NoOpProvider().create_session(link)
+            return NoOpProvider().create_session(link, request=request)
 
     def verify_webhook(self, link, payload):
         creds = self._credentials(link)
@@ -251,11 +255,32 @@ class MockTokenizedProvider(PaymentProvider):
 
 
 # ── Registre des fournisseurs (swappable, comme le monitoring) ───────────────
+# AFAC21 (C-AFAC-020) — `MockTokenizedProvider` (fournisseur de TEST) n'est
+# plus dans le registre de PRODUCTION : il n'est résolu que sous les tests
+# (`settings.TESTING`, voir `_registre`), où il prouve le câblage mandat →
+# débit sans réseau.
 _REGISTRY = {
     NoOpProvider.key: NoOpProvider,
     HostedGatewayProvider.key: HostedGatewayProvider,
-    MockTokenizedProvider.key: MockTokenizedProvider,
 }
+
+#: AFAC21 — fournisseurs capables de servir un LIEN « Payer en ligne »
+#: (`create_session`). La clé `provider` d'une requête de lien est validée
+#: contre CETTE liste blanche : toute autre clé → 400, aucun lien créé.
+FOURNISSEURS_LIEN = (NoOpProvider.key, HostedGatewayProvider.key)
+
+
+def _registre():
+    from django.conf import settings
+    if getattr(settings, 'TESTING', False):
+        return {**_REGISTRY, MockTokenizedProvider.key: MockTokenizedProvider}
+    return _REGISTRY
+
+
+def fournisseur_lien_valide(key):
+    """AFAC21 — vrai si `key` désigne un fournisseur de lien ACTIVÉ."""
+    return (isinstance(key, str) and key in FOURNISSEURS_LIEN
+            and key in _registre())
 
 
 def register_provider(cls):
@@ -266,10 +291,10 @@ def register_provider(cls):
 
 def available_providers():
     """Liste [(clé, libellé)] des fournisseurs pour l'UI/les choix."""
-    return [(cls.key, cls.label) for cls in _REGISTRY.values()]
+    return [(cls.key, cls.label) for cls in _registre().values()]
 
 
 def get_provider(key):
     """Instancie le fournisseur de la clé donnée ; NoOp si inconnu (sûr)."""
-    cls = _REGISTRY.get(key or 'noop', NoOpProvider)
+    cls = _registre().get(key or 'noop', NoOpProvider)
     return cls()

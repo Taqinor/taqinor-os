@@ -1114,14 +1114,24 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         `montant` (la trace figée à la création)."""
         facture = self.get_object()
         from ..services import LinkError, create_payment_link
-        from ..payments.providers import get_provider
+        from ..payments.providers import fournisseur_lien_valide, get_provider
         provider_key = request.data.get('provider') or 'noop'
+        # AFAC21 (C-AFAC-020) — clé validée contre la liste blanche des
+        # fournisseurs de LIEN activés AVANT toute écriture : une clé inconnue
+        # créait un lien orphelin (201), `mock_tokenized` levait un 500 en
+        # laissant un lien en attente, une clé de 41 caractères un 500 SQL.
+        if not fournisseur_lien_valide(provider_key):
+            return Response(
+                {'detail': 'Fournisseur de paiement inconnu ou inactif.'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             link = create_payment_link(facture=facture, provider=provider_key)
         except LinkError as exc:
             return Response({'detail': exc.message},
                             status=status.HTTP_400_BAD_REQUEST)
-        session = get_provider(link.provider).create_session(link)
+        # AFAC21 — `pay_url` ABSOLU vers la page client `/payer/<token>`.
+        session = get_provider(link.provider).create_session(
+            link, request=request)
         return Response({
             'token': link.token,
             'statut': link.statut,
