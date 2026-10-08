@@ -122,7 +122,7 @@ class AtteignabiliteViaCalculerEtudeHoraireTest(SimpleTestCase):
                                 ville=VILLE, occupation=occupation,
                                 equipements=equipements,
                                 batterie_kwh_utile=10.0,
-                                jour_reference=jour_reference)
+                                jour_reference=jour_reference, tranches=None, charges_fixes_mad=None)
                         except ValueError as exc:
                             self.fail(
                                 'ValueError atteint en production : %s '

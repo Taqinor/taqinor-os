@@ -1093,6 +1093,30 @@ def _finaliser(bloc):
     return sortie
 
 
+def kwargs_moteur_horaire(entrees):
+    """AMOT30 (C-AMOT-031) — LES arguments de :func:`calculer_etude_horaire`
+    tirés d'un ``EntreesMoteur`` (lecture seule) : consommation, localisation,
+    occupation, équipements, barème société (``tranches``,
+    ``charges_fixes_mad``), jour de référence et source de conso. Les cartes
+    Éco/Max, le détail de taille et le devis appellent ainsi le moteur avec
+    LES MÊMES entrées : à kWc égal, même économie."""
+    def _lire(cle):
+        try:
+            return entrees[cle]
+        except (KeyError, TypeError):
+            return getattr(entrees, cle, None)
+    return {
+        'conso_kwh_mensuelles': _lire('conso_kwh_mensuelles'),
+        'ville': _lire('ville'), 'lat': _lire('lat'), 'lon': _lire('lon'),
+        'occupation': _lire('occupation'),
+        'equipements': _lire('equipements'),
+        'tranches': _lire('tranches'),
+        'charges_fixes_mad': _lire('charges_fixes_mad'),
+        'jour_reference': _lire('jour_reference'),
+        'source_conso': _lire('source_conso'),
+    }
+
+
 def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            ville=None, lat=None, lon=None,
                            occupation=None, equipements=None,
@@ -1102,11 +1126,17 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            batterie_puissance_charge_kw=None,
                            batterie_rendement=None,
                            batterie_rendement_source=None,
-                           tranches=None, charges_fixes_mad=None,
+                           tranches, charges_fixes_mad,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
                            source_conso=None, detail_conso=None,
                            jour_reference=None):
     """LE calcul canonique. Renvoie le bloc ``etude_horaire``, ou ``None``.
+
+    AMOT30 — ``tranches`` et ``charges_fixes_mad`` sont OBLIGATOIRES (nommés,
+    ``None`` = barème national assumé) : un appelant qui les oubliait
+    chiffrait en silence au barème national pendant que le devis chiffrait au
+    barème de la société. Construire les arguments par
+    :func:`kwargs_moteur_horaire` (un seul constructeur).
 
     Paramètres
     ----------

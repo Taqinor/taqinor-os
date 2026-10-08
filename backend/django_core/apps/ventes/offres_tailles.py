@@ -460,7 +460,7 @@ def _cumul_servi(data, variante, prix_ttc):
 
 
 def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
-                  cout_onduleur_ttc, sortie=None):
+                  cout_onduleur_ttc, sortie=None, battery_roundtrip=None):
     """Le cumul 25 ans d'une taille DÉRIVÉE — mêmes arguments que la page.
 
     ``compute_cashflow_payback`` reçoit ici les DEUX arguments que
@@ -485,10 +485,12 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
         return None
     try:
         from .quote_engine.pricing import compute_cashflow_payback
+        _rt = {} if not battery_roundtrip else {
+            'battery_roundtrip': float(battery_roundtrip)}
         resultat = compute_cashflow_payback(
             float(prix_ttc), float(economie_annuelle),
             battery=bool(stockage), battery_share=part_batterie,
-            inverter_replace_cost=cout_onduleur_ttc)
+            inverter_replace_cost=cout_onduleur_ttc, **_rt)
     except Exception:  # noqa: BLE001 — un cumul indisponible s'omet
         logger.warning('cumul 25 ans indisponible', exc_info=True)
         return None
@@ -640,14 +642,40 @@ class _Contexte:
 
     @property
     def etude_kwargs(self):
-        return {
-            'conso_kwh_mensuelles': self.entrees['conso_kwh_mensuelles'],
-            'ville': self.entrees['ville'],
-            'lat': self.entrees['lat'],
-            'lon': self.entrees['lon'],
-            'occupation': self.entrees['occupation'],
-            'equipements': self.entrees['equipements'],
-        }
+        # AMOT30 — LE constructeur unique : barème société, charges fixes,
+        # jour de référence et source de conso, comme le devis.
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        from apps.ventes.etude_horaire import kwargs_moteur_horaire
+        kw = kwargs_moteur_horaire(self.entrees)
+        if not calcul_corrige(self.devis):
+            # Devis envoyé avant les corrections : les arguments d'hier.
+            for cle in ('tranches', 'charges_fixes_mad', 'jour_reference',
+                        'source_conso'):
+                kw[cle] = None
+        return kw
+
+    @property
+    def balayage_kwargs(self):
+        """Les mêmes entrées pour ``balayer_stockage_horaire`` (qui ne prend
+        pas la source de conso)."""
+        kw = dict(self.etude_kwargs)
+        kw.pop('source_conso', None)
+        return kw
+
+    @property
+    def rendement_batterie(self):
+        """AMOT30 — rendement aller-retour de la fiche batterie du devis
+        (``None`` ⇒ hypothèse de référence du cashflow)."""
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        if not calcul_corrige(self.devis):
+            return None
+        try:
+            from apps.ventes.horaire.batterie_lignes import (
+                rendement_batterie_du_devis)
+            return (rendement_batterie_du_devis(self.devis) or {}).get(
+                'rendement')
+        except Exception:  # noqa: BLE001 — une fiche illisible : hypothèse
+            return None
 
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
         """Une composition catalogue RÉELLE, ou ``None`` — jamais une levée.
@@ -930,7 +958,11 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
         if production is not None:
             carte['production_annuelle_kwh'] = round(production, 2)
         serie = {} if sortie_profonde is not None else None
-        cumul = _cumul_moteur(prix, economie, sortie=serie, **_cashflow)
+        cumul = _cumul_moteur(prix, economie, sortie=serie,
+                              battery_roundtrip=(contexte.rendement_batterie
+                                                 if variante == 'avec'
+                                                 else None),
+                              **_cashflow)
         if serie and serie.get('cumulative'):
             sortie_profonde['cashflow'][variante] = serie['cumulative']
         if cumul is not None:
@@ -1031,7 +1063,7 @@ def _remplissage_ok(contexte, kwc, capacite, bornes):
                         'batterie_puissance_decharge_onduleur_kw'),
                     'charge_kw': bornes.get('batterie_puissance_charge_kw'),
                 }} if bornes else None),
-            **contexte.etude_kwargs)
+            **contexte.balayage_kwargs)
     except Exception:  # noqa: BLE001 — un verdict indisponible s'omet
         logger.warning('verdict de remplissage indisponible', exc_info=True)
         return None

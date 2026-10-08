@@ -138,7 +138,7 @@ class MoteurHoraireTests(SimpleTestCase):
         return conso
 
     def _etude(self, **extra):
-        base = dict(kwc=8.0, conso_kwh_mensuelles=self._conso(),
+        base = dict(tranches=None, charges_fixes_mad=None, kwc=8.0, conso_kwh_mensuelles=self._conso(),
                     ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
                     batterie_kwh_utile=10.0)
         base.update(extra)

@@ -801,7 +801,12 @@ def _echelle_paliers_batterie(devis):
     if not cibles:
         return []
 
-    etude_kwargs = {
+    # AMOT30 — même constructeur que les cartes et le devis ; la conso
+    # retenue ici (``conso``) prime.
+    from apps.ventes.etude_horaire import kwargs_moteur_horaire
+    etude_kwargs = dict(kwargs_moteur_horaire(entrees))
+    etude_kwargs.pop('source_conso', None)
+    etude_kwargs.update({
         'conso_kwh_mensuelles': conso, 'ville': entrees['ville'],
         'lat': entrees['lat'], 'lon': entrees['lon'],
         'occupation': entrees['occupation'],
@@ -818,7 +823,7 @@ def _echelle_paliers_batterie(devis):
         # ``EntreesMoteur`` que le tableau.
         'tranches': entrees['tranches'],
         'charges_fixes_mad': entrees['charges_fixes_mad'],
-    }
+    })
 
     sondes = {}
 
