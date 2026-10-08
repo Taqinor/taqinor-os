@@ -9,6 +9,11 @@
 //
 // `normalise()` ne réécrit QUE les jetons `useId` de React (`:r0:`, `«r0»`, `_r_0_` en React 19) :
 // tout ce qui irait plus loin masquerait une vraie dérive.
+import { createElement as h } from 'react'
+import { vi } from 'vitest'
+import { render } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 
 import authReducer from '../../features/auth/store/authSlice'
@@ -239,4 +244,92 @@ export async function attendreStable(container, act, { pas = 100, stables = 15, 
     }
   }
   return container.innerHTML
+}
+
+// ── Montage de l'écran RÉEL ──────────────────────────────────────────────────
+// `vi.resetModules()` par scénario : le compteur de clés de lignes
+// (`_keyCounter`, `data-line-key`) repart de zéro, chaque capture est
+// indépendante de l'ordre des autres. Les `vi.mock` des quatre API vivent
+// dans le fichier de test ; ces imports dynamiques en reçoivent les mocks.
+export async function charger() {
+  vi.resetModules()
+  // Les API d'abord, une à une : l'écran importé ensuite reçoit ces instances.
+  const crm = await import('../../api/crmApi')
+  const stock = await import('../../api/stockApi')
+  const param = await import('../../api/parametresApi')
+  const ventes = await import('../../api/ventesApi')
+  const gen = await import('./DevisGenerator')
+  return {
+    DevisGenerator: gen.default,
+    crmApi: crm.default, stockApi: stock.default, parametresApi: param.default, ventesApi: ventes.default,
+  }
+}
+
+export function configurer({ crmApi, stockApi, parametresApi, ventesApi }, {
+  devis, registre, etudeHoraire, historique = [], leads = [LEAD], clients = [CLIENT],
+} = {}) {
+  crmApi.getClients.mockResolvedValue({ data: clients })
+  crmApi.getLeads.mockResolvedValue({ data: leads })
+  crmApi.getLead.mockImplementation((id) => Promise.resolve({
+    data: leads.find((l) => String(l.id) === String(id)) || LEAD,
+  }))
+  stockApi.getProduits.mockResolvedValue({ data: CATALOGUE })
+  parametresApi.getProfile.mockResolvedValue({ data: {} })
+  ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: { editable: false } })
+  ventesApi.lireOverrides.mockResolvedValue({ data: registre || {} })
+  ventesApi.getPrixApplicable.mockResolvedValue({ data: { prix: null } })
+  ventesApi.getHistoriqueConfigurationDevis.mockResolvedValue({ data: historique })
+  ventesApi.getLotsDevis.mockResolvedValue({ data: [] })
+  if (devis) ventesApi.getDevisById.mockResolvedValue({ data: devis })
+  ventesApi.postEtudeHorairePreview.mockImplementation(() => (etudeHoraire
+    ? Promise.resolve({ data: etudeHoraire }) : new Promise(() => {})))
+  ventesApi.etudeCiPreview.mockImplementation(() => new Promise(() => {}))
+  ventesApi.economieCiPreview.mockImplementation(() => new Promise(() => {}))
+  ventesApi.economiePompagePreview.mockImplementation(() => new Promise(() => {}))
+  ventesApi.replaceLignesDevis.mockResolvedValue({ data: devis || {} })
+  ventesApi.createDevisAtomic.mockResolvedValue({ data: { id: 900 } })
+  ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
+  ventesApi.poserOverrides.mockResolvedValue({ data: registre || {} })
+  ventesApi.regenererOverride.mockResolvedValue({ data: registre || {} })
+}
+
+export async function monter(url, options = {}) {
+  const apis = await charger()
+  configurer(apis, options)
+  if (options.avant) options.avant(apis)
+  const { DevisGenerator } = apis
+  const vue = render(
+    h(Provider, { store: makeStore(options.role) },
+      h(MemoryRouter, { initialEntries: [url] },
+        h(Routes, null,
+          h(Route, { path: '/ventes/devis/nouveau', element: h(DevisGenerator) }),
+          h(Route, { path: '*', element: h('div', null, 'APRES-ENREGISTREMENT') })))),
+  )
+  return { ...apis, ...vue }
+}
+
+/**
+ * SPL41 — l'instantané d'un GESTE : le texte utile du DOM (une ligne par nœud
+ * texte, dans l'ordre), les valeurs des champs (que `innerHTML` ne porte pas
+ * toujours), puis les appels de TOUTES les API mockées.
+ */
+export function instantaneGeste(container, apis) {
+  const texte = formaterGolden(container.innerHTML).split('\n')
+    .map((l) => l.replace(/<[^>]*>/g, '').trim()).filter(Boolean)
+  const champs = [...container.querySelectorAll('input, select, textarea')].map((el, i) => {
+    const nom = el.id || el.getAttribute('name') || el.getAttribute('aria-label')
+      || el.getAttribute('data-role') || el.getAttribute('data-testid') || `#${i}`
+    const coche = el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? ' [x]' : ' [ ]') : ''
+    return `${nom}=${el.value}${coche}`
+  })
+  const appels = {}
+  for (const [module, api] of Object.entries({
+    crmApi: apis.crmApi, stockApi: apis.stockApi, parametresApi: apis.parametresApi, ventesApi: apis.ventesApi,
+  })) {
+    for (const [nom, fn] of Object.entries(api)) {
+      if (fn?.mock?.calls?.length) appels[`${module}.${nom}`] = fn.mock.calls
+    }
+  }
+  const json = sansCr(JSON.stringify(appels, null, 2)).replace(/\\r\\n/g, '\\n')
+  return `== TEXTE ==\n${sansCr(texte.join('\n'))}\n== CHAMPS ==\n${champs.join('\n')}\n== APPELS ==\n${json}\n`
 }

@@ -16,12 +16,10 @@
 // Régénérer (après un changement VOULU de l'écran, jamais pour un
 // déplacement) : npx vitest run src/pages/ventes/DevisGeneratorGolden.test.jsx -u
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, act, waitFor, fireEvent, cleanup } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { act, waitFor, fireEvent, cleanup } from '@testing-library/react'
 
 import {
-  CATALOGUE, LEAD, CLIENT, DATE_FIGEE, makeStore, formaterGolden, serialiseAppels, attendreStable,
+  LEAD, DATE_FIGEE, monter, formaterGolden, serialiseAppels, attendreStable,
   DEVIS_ENVOYE_LES_DEUX, DEVIS_INDUSTRIEL_MT, DEVIS_COMMERCIAL_HOTEL, DEVIS_AGRICOLE_POMPE,
   DEVIS_MULTI_VILLAS, DEVIS_REGISTRE, REGISTRE_NON_VIDE, DEVIS_ETUDE_HORAIRE,
 } from './DevisGeneratorGoldenHarnais'
@@ -49,64 +47,6 @@ vi.mock('../../api/parametresApi', () => apiAuto())
 vi.mock('../../api/ventesApi', () => apiAuto())
 
 const DOSSIER = './generator/__golden__'
-
-// `vi.resetModules()` par scénario : le compteur de clés de lignes
-// (`_keyCounter`, `data-line-key`) repart de zéro, chaque capture est
-// indépendante de l'ordre des autres.
-async function charger() {
-  vi.resetModules()
-  // Les API d'abord, une à une : l'écran importé ensuite reçoit ces instances.
-  const crm = await import('../../api/crmApi')
-  const stock = await import('../../api/stockApi')
-  const param = await import('../../api/parametresApi')
-  const ventes = await import('../../api/ventesApi')
-  const gen = await import('./DevisGenerator')
-  return {
-    DevisGenerator: gen.default,
-    crmApi: crm.default, stockApi: stock.default, parametresApi: param.default, ventesApi: ventes.default,
-  }
-}
-
-function configurer({ crmApi, stockApi, parametresApi, ventesApi }, { devis, registre, etudeHoraire } = {}) {
-  crmApi.getClients.mockResolvedValue({ data: [CLIENT] })
-  crmApi.getLeads.mockResolvedValue({ data: [LEAD] })
-  crmApi.getLead.mockResolvedValue({ data: LEAD })
-  stockApi.getProduits.mockResolvedValue({ data: CATALOGUE })
-  parametresApi.getProfile.mockResolvedValue({ data: {} })
-  ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: { editable: false } })
-  ventesApi.lireOverrides.mockResolvedValue({ data: registre || {} })
-  ventesApi.getPrixApplicable.mockResolvedValue({ data: { prix: null } })
-  ventesApi.getHistoriqueConfigurationDevis.mockResolvedValue({ data: [] })
-  ventesApi.getLotsDevis.mockResolvedValue({ data: [] })
-  if (devis) ventesApi.getDevisById.mockResolvedValue({ data: devis })
-  ventesApi.postEtudeHorairePreview.mockImplementation(() => (etudeHoraire
-    ? Promise.resolve({ data: etudeHoraire }) : new Promise(() => {})))
-  ventesApi.etudeCiPreview.mockImplementation(() => new Promise(() => {}))
-  ventesApi.economieCiPreview.mockImplementation(() => new Promise(() => {}))
-  ventesApi.economiePompagePreview.mockImplementation(() => new Promise(() => {}))
-  ventesApi.replaceLignesDevis.mockResolvedValue({ data: devis || {} })
-  ventesApi.createDevisAtomic.mockResolvedValue({ data: { id: 900 } })
-  ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
-  ventesApi.poserOverrides.mockResolvedValue({ data: registre || {} })
-  ventesApi.regenererOverride.mockResolvedValue({ data: registre || {} })
-}
-
-async function monter(url, options = {}) {
-  const apis = await charger()
-  configurer(apis, options)
-  const { DevisGenerator } = apis
-  const vue = render(
-    <Provider store={makeStore(options.role)}>
-      <MemoryRouter initialEntries={[url]}>
-        <Routes>
-          <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
-          <Route path="*" element={<div>APRES-ENREGISTREMENT</div>} />
-        </Routes>
-      </MemoryRouter>
-    </Provider>,
-  )
-  return { ...apis, ...vue }
-}
 
 async function figerDom(container, nom) {
   const html = await attendreStable(container, act)

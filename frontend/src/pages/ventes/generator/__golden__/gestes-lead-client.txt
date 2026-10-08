@@ -1,0 +1,1311 @@
+== TEXTE ==
+Générateur de Devis Solaire
+Nouveau devis · tout est en TTC
+Retour aux devis
+Brouillon enregistré à 09:00
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+Les deux (Sans + Avec batterie)
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead &amp; Client
+Lead (point de départ)*
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-lead">
+Khalid Golden — 3000 MAD/mois
+Khalid Golden — 3000 MAD/mois
+Téléphone
+✓ Client du devis : Khalid Golden (sera créé automatiquement depuis le lead) · factures remplies depuis le lead (3000 MAD/mois)
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-distributeur">
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+span]:line-clamp-1 [&amp;>span]:text-left w-24">
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+—
+Type de Structure
+Acier galvanisé
+Aluminium
+Consommation diurne (%)
+60%
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Calcul du moteur horaire en cours…
+Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Smart Meter
+HT : 1 200 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+10 % attendu
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Structures acier
+HT : 375 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Total SANS batterie
+0 MAD
+Total AVEC batterie ⭐
+0 MAD
+Réduction
+%
+TVA
+%
+Prix cible / kWc
+Appliquer via remise
+Marge indicative (interne)
+0 MAD
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+Modèles de devis
+Texte pour le client (imprimé sur le devis)
+Création du Devis
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+0 MAD
+Réinitialiser
+Annuler
+Créer le devis
+Total sans batterie · TTC
+0 MAD
+Total avec batterie · TTC
+0 MAD
+Option recommandée
+Écart batterie : 0 MAD
+Marge indicative (interne)
+0 MAD
+Système
+— kWc
+Créer le devis
+Annuler
+== CHAMPS ==
+gen-num=Généré automatiquement
+#1=reseau
+#2=Les deux (Sans + Avec)
+#3=on [ ]
+#4=Auto
+gen-validite=
+#6=77
+gen-tel=0600000000
+gen-hiver=3000
+gen-ete=
+#10=3000
+#11=3000
+#12=3000
+#13=3000
+#14=3000
+#15=3000
+#16=3000
+#17=3000
+#18=3000
+#19=3000
+#20=3000
+#21=3000
+#22=onee
+gen-realbill=
+#24=mad
+gen-kwc-cible=
+gen-nbpanneaux=
+gen-panelw=710
+#28=60
+#29=on [ ]
+#30=Onduleur réseau
+line-qty=1
+#32=0
+#33=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#35=Onduleur hybride
+line-qty=1
+#37=0
+#38=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#40=Smart Meter
+line-qty=0
+#42=1440
+#43=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#45=Wifi Dongle
+line-qty=0
+#47=0
+#48=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#50=Panneaux
+line-qty=0
+#52=0
+#53=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#55=Batterie
+line-qty=1
+#57=0
+#58=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#60=Batterie
+line-qty=0
+#62=0
+#63=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#65=Structures acier
+line-qty=0
+#67=450
+#68=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#70=Structures aluminium
+line-qty=0
+#72=0
+#73=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#75=Socles
+line-qty=0
+#77=0
+#78=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#80=Accessoires
+line-qty=1
+#82=0
+#83=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#85=Tableau De Protection AC/DC
+line-qty=1
+#87=0
+#88=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#90=Installation
+line-qty=1
+#92=0
+#93=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#95=Transport
+line-qty=1
+#97=0
+#98=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#100=Suivi journalier, maintenance chaque 12 mois pendant 2 ans
+line-qty=1
+#102=0
+#103=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#105=0
+#106=20.00
+#107=
+#108=
+== APPELS ==
+{
+  "crmApi.getClients": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "crmApi.getLeads": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "crmApi.searchClients": [
+    [
+      "Golden"
+    ]
+  ],
+  "stockApi.getProduits": [
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ],
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "parametresApi.getProfile": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "ventesApi.getOffresTaillesDevis": [
+    [
+      "36"
+    ],
+    [
+      "35"
+    ],
+    [
+      "36"
+    ],
+    [
+      "36"
+    ],
+    [
+      "36"
+    ]
+  ],
+  "ventesApi.lireOverrides": [
+    [
+      36
+    ],
+    [
+      35
+    ],
+    [
+      36
+    ],
+    [
+      36
+    ],
+    [
+      36
+    ]
+  ],
+  "ventesApi.getPrixApplicable": [
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "41",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "42",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "51",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "52",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "12",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "61",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "71",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "72",
+        "quantite": "16"
+      }
+    ],
+    [
+      {
+        "produit": "81",
+        "quantite": "60"
+      }
+    ],
+    [
+      {
+        "produit": "82",
+        "quantite": "40"
+      }
+    ],
+    [
+      {
+        "produit": "91",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "92",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "93",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "94",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "41",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "42",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "51",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "52",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "12",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "61",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "71",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "72",
+        "quantite": "16"
+      }
+    ],
+    [
+      {
+        "produit": "81",
+        "quantite": "60"
+      }
+    ],
+    [
+      {
+        "produit": "82",
+        "quantite": "40"
+      }
+    ],
+    [
+      {
+        "produit": "91",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "92",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "93",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "94",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "10"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "12",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "101",
+        "client": "9",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "102",
+        "client": "9",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ]
+  ],
+  "ventesApi.getHistoriqueConfigurationDevis": [
+    [
+      36
+    ],
+    [
+      35
+    ],
+    [
+      36
+    ],
+    [
+      36
+    ],
+    [
+      36
+    ],
+    [
+      36
+    ]
+  ],
+  "ventesApi.postEtudeHorairePreview": [
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia",
+        "kwc": 5.68,
+        "batterie_kwh": 5
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia",
+        "kwc": 5.68,
+        "batterie_kwh": 5
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 5.72
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 7.15
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 35
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 35,
+        "kwc": 12.87
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 5.72
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 79,
+        "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 78,
+        "facture_hiver": 300,
+        "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 5.72
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 5.72
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ],
+  "ventesApi.etudeCiPreview": [
+    [
+      {
+        "mode": "industriel",
+        "lead": 79,
+        "devis": null,
+        "site": {
+          "ville": "Mohammedia",
+          "lat": null,
+          "lon": null
+        },
+        "tension": null,
+        "phases": null,
+        "puissance_souscrite_kva": null,
+        "consommation": {
+          "kwh_mensuels": null,
+          "kwh_annuel": null,
+          "factures_mad": [],
+          "registres_mt": null
+        },
+        "tarif": null,
+        "rythme": {
+          "jours_ouverts": null,
+          "plages": null,
+          "equipes": null,
+          "debut_equipe_h": null,
+          "fermetures": [],
+          "ramadan": null,
+          "talon": null,
+          "categorie_commerciale": null,
+          "reponses_categorie": null
+        },
+        "courbe_mesuree": null,
+        "toit": {
+          "type_pose": null,
+          "surface_utile_m2": null,
+          "surface_type": null,
+          "pente_deg": null,
+          "azimut_deg": null,
+          "couverture": null,
+          "charge_admissible_kg_m2": null,
+          "charge_admissible_source": null
+        },
+        "contraintes": {
+          "revente_choisie": false,
+          "nb_points_raccordement": null,
+          "longueur_dc_m": null,
+          "longueur_ac_m": null,
+          "besoin_cellule_mt": null
+        },
+        "tva_recuperable": null,
+        "options": {
+          "batterie_souhaitee": null,
+          "om": null
+        },
+        "taille_explicite_kwc": null
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ],
+  "ventesApi.replaceLignesDevis": [
+    [
+      36,
+      [
+        {
+          "produit": 12,
+          "designation": "Panneau Canadien Solar 710W",
+          "quantite": "8.00",
+          "prix_unitaire": "100.00",
+          "remise": "0.00",
+          "taux_tva": "20.00",
+          "variante": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "prix_manuel": false,
+          "quantite_manuelle": false
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": "2026-11-07",
+          "note": null,
+          "mode_installation": "residentiel",
+          "taux_tva": "20.00",
+          "remise_globale": "0.00",
+          "prix_cible_kwc": null,
+          "echeancier": [
+            {
+              "libelle": "Acompte",
+              "type": "acompte",
+              "pct_or_montant": 40
+            },
+            {
+              "libelle": "Solde",
+              "type": "solde",
+              "pct_or_montant": 60
+            }
+          ]
+        },
+        "etude_params": {
+          "scenario": "Les deux (Sans + Avec)",
+          "nombre_proprietes": null,
+          "kit_retire": null
+        }
+      }
+    ]
+  ],
+  "ventesApi.poserOverrides": [
+    [
+      36,
+      {
+        "scenario": {
+          "valeur": "Avec batterie"
+        }
+      }
+    ]
+  ],
+  "ventesApi.regenererOverride": [
+    [
+      36,
+      "scenario"
+    ]
+  ],
+  "ventesApi.composerDevis": [
+    [
+      {
+        "kwc": 5.68,
+        "panel_watt": 710,
+        "structure_type": "acier",
+        "lead": 77
+      }
+    ],
+    [
+      {
+        "kwc": 5.68,
+        "panel_watt": 710,
+        "structure_type": "acier",
+        "lead": 77
+      }
+    ]
+  ],
+  "ventesApi.getDevisById": [
+    [
+      "36"
+    ],
+    [
+      36
+    ],
+    [
+      "35"
+    ],
+    [
+      35
+    ],
+    [
+      "36"
+    ],
+    [
+      36
+    ],
+    [
+      "36"
+    ],
+    [
+      "36"
+    ],
+    [
+      36
+    ],
+    [
+      "36"
+    ],
+    [
+      36
+    ]
+  ],
+  "ventesApi.getPrefillSite": [
+    [
+      "9"
+    ],
+    [
+      "9"
+    ],
+    [
+      "9"
+    ],
+    [
+      "9"
+    ],
+    [
+      "9"
+    ]
+  ]
+}
