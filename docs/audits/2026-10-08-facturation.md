@@ -85,3 +85,15 @@ seulement sur preuve exécutée.
 | R2 jugement (8) | FBC facture & BC (opus/high) · FENC encaissements, relevé, remises, mandats (opus/high) · FPAY paiement en ligne & webhooks (opus/high) · FCOR avoirs, notes de débit, RAS, retours (opus/high) · FREC recouvrement & tâches planifiées (sonnet/medium) · FDOC sorties PDF / exports / DGI (sonnet/medium) · FUI écrans (sonnet/medium) · FEVT événements & multi-société (opus/high) |
 | R3 porte empirique | vérificateurs FRAIS opus/high (jamais l'auteur), une sonde par constat dans une transaction ANNULÉE sur la base démo locale |
 | Live | orchestrateur : Playwright `demo_admin`, pile locale |
+
+## 4. Exécution (phase 4) — état intermédiaire
+
+- **Détecteurs** (scout haiku, `d096f2233`) : `check_parked_apps`, `check_services_appeles` (576 fonctions, 0 nouvelle dette),
+  `check_ecrans_atteignables` (585 écrans), `check_api_shapes --stats` (318 endpoints), `check_api_contract` (2 054 appels),
+  `check_tests_source_regex`, `check_invariants` (19), `ci_guards stage-names` : **8/8 verts** alors que les constats ci-dessous se
+  reproduisent. Non exécutés : `lint-imports` (non rapporté par le scout), `audit_coherence` (aucune règle facture/paiement).
+- **Lanes R2** : 8 lanes → **72 constats bruts** (FBC 7, FENC 9, FPAY 8, FCOR 8, FREC 11, FDOC 12, FUI 13, FEVT 4).
+- **Porte empirique R3** : 8 vérificateurs frais opus ; **72/72 REPRO ou STATIQUE, 0 réfuté** (sondes dans des transactions
+  annulées, non-persistance prouvée par lane). Taux de réfutation nul ⇒ seconde lentille (3 réfuteurs) sur les 13 plus lourds.
+- **Scout de dédoublonnage : sortie FAUSSE écartée** (il déclarait les tâches ATOT « cochées et mergées » ; `grep` : 16/16 ATOT
+  ouvertes dans `PLAN_AUDIT_FACTURATION.md`) — le dédoublonnage est fait par l'orchestrateur et la seconde lentille.
