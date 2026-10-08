@@ -51,6 +51,15 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
         champ visé est désormais confronté au registre FERMÉ
         ``actions.SET_FIELD_TARGETS`` — voir ``_valider_set_field``."""
         self._valider_set_field(attrs)
+        # APAR25 — une action sans fournisseur (SMS) n'est plus proposée : sa
+        # simulation promettait un envoi que l'exécution ne faisait jamais.
+        from .actions import ACTIONS_INDISPONIBLES
+        if attrs.get('action_type') in ACTIONS_INDISPONIBLES and (
+                self.instance is None
+                or self.instance.action_type != attrs['action_type']):
+            raise serializers.ValidationError({'action_type': (
+                "Canal SMS non disponible pour les automatisations : aucun "
+                "fournisseur n'est branché.")})
         trigger_type = attrs.get(
             'trigger_type', getattr(self.instance, 'trigger_type', None))
         if trigger_type != TriggerType.RECORD_STATE_CHANGE:

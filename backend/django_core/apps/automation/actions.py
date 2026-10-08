@@ -203,11 +203,7 @@ def variables_enregistrement(instance, company):
     if _model_name(instance) == 'lead':
         nom = _nom_personne(instance)
     else:
-        client = getattr(instance, 'client', None)
-        if client is None:
-            installation = getattr(instance, 'installation', None)
-            client = getattr(installation, 'client', None)
-        nom = _nom_personne(client)
+        nom = _nom_personne(client_de_la_fiche(instance))
     if nom:
         valeurs['client_nom'] = nom
     if _model_name(instance) == 'produit':
@@ -262,7 +258,9 @@ def motif_variables(manquantes, quoi):
 def _texte_brut(rule, company):
     """Corps BRUT configuré : texte littéral, sinon modèle Paramètres."""
     cfg = rule.action_config or {}
-    body = cfg.get('body')
+    # APAR25 — les préréglages WhatsApp écrivent leur texte sous ``message`` :
+    # la clé n'était jamais lue (corps vide).
+    body = cfg.get('body') or cfg.get('message')
     if body:
         return body
     template_key = cfg.get('template')
@@ -294,13 +292,20 @@ def _message_body(rule, context, instance=None, company=None):
     return _substitute_variables(brut, valeurs)
 
 
-def _send_whatsapp(rule, instance, company, context, user):
-    # WhatsApp est un canal MANUEL (lien wa.me) — aucun envoi automatique
-    # n'existe dans l'app. On prépare donc le lien et on journalise ; pas
-    # d'effet réseau. Sans numéro exploitable → no-op.
+#: APAR25 — résumé de la tâche qui porte le lien WhatsApp préparé.
+RESUME_TACHE_WHATSAPP = 'Envoyer ce WhatsApp'
+
+
+def preparer_whatsapp(rule, instance, company, context):
+    """APAR25 — prédicat PARTAGÉ par le handler et la simulation.
+
+    Renvoie ``(motif_noop, phone, url, body)`` : ``motif_noop`` non vide ⇒
+    rien ne serait produit (et rien n'est produit)."""
+    if instance is None or getattr(instance, 'pk', None) is None:
+        return 'Aucune fiche cible : lien WhatsApp non conservé.', None, None, ''
     phone = _resolve_phone(instance)
     if not phone:
-        return Status.NOOP, 'Aucun numéro WhatsApp : envoi ignoré.'
+        return 'Aucun numéro WhatsApp : envoi ignoré.', None, None, ''
     body = _message_body(rule, context, instance, company)
     try:
         from apps.ventes.utils.whatsapp import build_wa_url
@@ -308,8 +313,42 @@ def _send_whatsapp(rule, instance, company, context, user):
     except Exception:
         url = None
     if not url:
-        return Status.NOOP, 'Numéro WhatsApp inexploitable : envoi ignoré.'
-    return Status.SUCCESS, f'Lien WhatsApp préparé pour {phone}.'
+        return ('Numéro WhatsApp inexploitable : envoi ignoré.', phone, None,
+                body)
+    return '', phone, url, body
+
+
+def _creer_tache(instance, company, user, resume, note):
+    """Tâche planifiée (chatter générique ``records.Activity``, app de
+    fondation) rattachée à la fiche cible, échéance aujourd'hui."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.utils import timezone
+
+    from apps.records.models import Activity
+    return Activity.objects.create(
+        company=company,
+        content_type=ContentType.objects.get_for_model(instance.__class__),
+        object_id=instance.pk,
+        summary=resume[:255], note=note or '',
+        due_date=timezone.localdate(), created_by=user)
+
+
+def _send_whatsapp(rule, instance, company, context, user):
+    # WhatsApp est un canal MANUEL (lien wa.me) — aucun envoi automatique
+    # n'existe dans l'app. APAR25 — le lien n'était que journalisé (SUCCESS
+    # sans effet observable) : il est désormais CONSERVÉ comme tâche
+    # « Envoyer ce WhatsApp » sur la fiche, que l'équipe ouvre et envoie.
+    motif, phone, url, body = preparer_whatsapp(
+        rule, instance, company, context)
+    if motif:
+        return Status.NOOP, motif
+    try:
+        _creer_tache(instance, company, user, RESUME_TACHE_WHATSAPP,
+                     f'{body}\n\n{url}' if body else url)
+    except Exception as exc:
+        return Status.FAILED, f'Tâche WhatsApp non créée : {exc}'
+    return Status.SUCCESS, (
+        f'Tâche « {RESUME_TACHE_WHATSAPP} » créée (lien pour {phone}).')
 
 
 def _send_email(rule, instance, company, context, user):
@@ -355,8 +394,13 @@ def _send_email(rule, instance, company, context, user):
 SUJET_EMAIL_DEFAUT = 'Notification {entreprise}'
 
 
+#: APAR25 — actions retirées du catalogue (création refusée) tant qu'aucun
+#: fournisseur ne les exécute : leur simulation et leur exécution sont NOOP.
+ACTIONS_INDISPONIBLES = frozenset({ActionType.SEND_SMS})
+
+
 def _send_sms(rule, instance, company, context, user):
-    # Aucun fournisseur SMS n'est configuré dans le repo : no-op sûr.
+    # Aucun fournisseur SMS n'est branché sur les automatisations : no-op sûr.
     phone = _resolve_phone(instance)
     if not phone:
         return Status.NOOP, 'Aucun numéro : SMS ignoré.'
@@ -370,6 +414,19 @@ def _create_activity(rule, instance, company, context, user):
     disponible). Pour les autres modèles → no-op journalisé."""
     body = (rule.action_config or {}).get('body') or rule.nom
     label = getattr(getattr(instance, '_meta', None), 'model_name', '')
+    if instance is None or getattr(instance, 'pk', None) is None:
+        return Status.NOOP, 'Aucune fiche cible : activité ignorée.'
+    if label != 'lead':
+        # APAR25 — produit, contrat, équipement… : note sur le chatter
+        # GÉNÉRIQUE de la fiche (``records``) au lieu d'un SUCCESS/NOOP sans
+        # effet — les recettes « stock bas », « maintenance due » produisent
+        # enfin ce qu'elles annoncent.
+        try:
+            from apps.records.services import log_note
+            log_note(instance, user, body, company=company)
+            return Status.SUCCESS, 'Activité (note) créée sur la fiche.'
+        except Exception as exc:
+            return Status.FAILED, f'Activité non créée : {exc}'
     if label == 'lead':
         try:
             from apps.crm.models import LeadActivity
@@ -723,8 +780,23 @@ def _has_field(instance, name):
     return name in {f.name for f in meta.concrete_fields}
 
 
-def _resolve_client(instance):
+def client_de_la_fiche(instance):
+    """Client DÉJÀ lié à la fiche (lecture seule, ne crée jamais) : champ
+    ``client``, sinon ``installation.client``, sinon ``client_vente`` (APAR25
+    — un équipement porte son client par l'installation ou la vente)."""
+    if instance is None:
+        return None
     client = getattr(instance, 'client', None)
+    if client is None:
+        client = getattr(getattr(instance, 'installation', None), 'client',
+                         None)
+    if client is None:
+        client = getattr(instance, 'client_vente', None)
+    return client
+
+
+def _resolve_client(instance):
+    client = client_de_la_fiche(instance)
     if client is not None:
         return client
     # Un lead peut résoudre vers un client via le service CRM existant.
