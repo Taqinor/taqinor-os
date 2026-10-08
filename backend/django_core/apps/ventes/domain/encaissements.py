@@ -698,31 +698,17 @@ def create_payment_link(*, facture, provider=None):
     )
 
 
-def _public_url(path, request=None):
-    """Construit une URL publique ABSOLUE à partir d'un chemin.
+def _public_url(path):
+    """Construit une URL publique absolue à partir d'un chemin ``/api/...``.
 
-    ``settings.PUBLIC_BASE_URL`` d'abord (même pattern que ``bcf_share_url``),
-    sinon ``request.build_absolute_uri(path)`` quand une requête est connue.
-    AFAC21 (C-AFAC-017) — sans base absolue connue (cron, PDF hors requête),
-    renvoie ``None`` : un chemin relatif dans un e-mail ou un QR imprimé
-    n'ouvre rien chez le client — aucun lien plutôt qu'un lien cassé. Unique
-    constructeur des URL de paiement."""
+    Réutilise ``settings.PUBLIC_BASE_URL`` (même pattern que
+    ``bcf_share_url``) ; sans réglage, renvoie le chemin relatif tel quel (le
+    QR reste valide une fois servi depuis le même domaine)."""
     from django.conf import settings
     base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
     if base:
         return base.rstrip('/') + path
-    if request is not None:
-        try:
-            return request.build_absolute_uri(path)
-        except Exception:  # noqa: BLE001 — hôte invalide : pas de lien
-            return None
-    return None
-
-
-def url_page_paiement(link, request=None):
-    """AFAC21 — URL ABSOLUE de la page CLIENT « Payer » d'un lien
-    (``/payer/<token>``, route front), ou ``None`` sans base absolue."""
-    return _public_url(f'/payer/{link.token}', request=request)
+    return path
 
 
 def qr_svg_for_facture_pdf(facture):
@@ -744,17 +730,11 @@ def qr_svg_for_facture_pdf(facture):
             facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
             expires_at__gt=timezone.now(),
         ).order_by('-created_at').first())
-    url = None
     if active_link is not None:
-        # AFAC21 — même URL que l'e-mail et l'écran : la page CLIENT
-        # `/payer/<token>`, ABSOLUE (sinon pas de QR de paiement).
-        url = url_page_paiement(active_link)
-    if not url:
-        # Partage public du document (lecture seule) — chemin historique
-        # inchangé (relatif sans `PUBLIC_BASE_URL`, hors périmètre AFAC21).
+        url = _public_url(f'/api/django/public/pay/{active_link.token}/')
+    else:
         share = ShareLink.for_facture(facture)
-        chemin = f'/api/django/public/document/{share.token}/'
-        url = _public_url(chemin) or chemin
+        url = _public_url(f'/api/django/public/document/{share.token}/')
 
     if not url:
         return None

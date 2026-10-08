@@ -189,9 +189,6 @@ def pay_page(request, token):
         'statut': statut,
         'paye': link.statut == PaymentLink.Statut.PAYE,
         'expire': not link.is_valid and link.statut != PaymentLink.Statut.PAYE,
-        # AFAC21 — forme EXACTE de `facturation/contract_samples/
-        # paiement_public.json` : coordonnées de virement (null si aucune).
-        'rib': _company_rib() or None,
     }))
 
 
