@@ -1756,6 +1756,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         sans_lignes = list(lignes)
 
     opts = clean_pdf_options(pdf_options)
+    # APDF7 (C-APDF-003) — LA langue du document est résolue ICI quand
+    # l'appelant n'en passe pas (envoi, lien public, copie signée, Celery,
+    # generer-pdf) : client (``langue_document``), puis repli société, puis
+    # français. Un ``langue_sortie`` explicite (``?langue=``) reste
+    # prioritaire. Lecture seule (règle #4) ; un client FR sans repli
+    # société reste FR, octet pour octet.
+    if not opts.get('langue_sortie'):
+        try:
+            from apps.parametres.i18n_resolver import resolve_langue_sortie
+            _langue = resolve_langue_sortie(
+                client=getattr(devis, 'client', None),
+                company=getattr(devis, 'company', None))
+        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+            _langue = None
+        if _langue in LANGUES_SORTIE_PDF and _langue != 'fr':
+            opts['langue_sortie'] = _langue
     mode = devis.mode_installation or ""
     # CIQ301 — commercial / industriel : leurs économies ne sortent JAMAIS du
     # modèle résidentiel/BT (``calculate_savings_roi``) ni d'une étude JS.
