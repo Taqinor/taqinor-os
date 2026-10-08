@@ -3944,11 +3944,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         qs = super().get_queryset()
         if not self.request.user.company_id:
             return qs
-        from authentication.scoping import scope_queryset
-        leads_visibles = scope_queryset(
-            Lead.objects.filter(company=self.request.user.company),
-            self.request.user, ['owner'])
-        return qs.filter(lead_id__in=leads_visibles.values('id'))
+        # ACRM28 — portée propriétaire ET périmètre d'entités (une seule
+        # définition, ``selectors.leads_visibles``).
+        from .selectors import leads_visibles
+        visibles = leads_visibles(
+            self.request.user, self.request.user.company)
+        return qs.filter(lead_id__in=visibles.values('id'))
 
     def list(self, request, *args, **kwargs):
         """File « Relances du jour ». ``?scope=overdue|today|all`` (défaut

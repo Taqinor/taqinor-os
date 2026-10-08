@@ -150,24 +150,41 @@ def normalize_name_key(nom, prenom=None, societe=None):
     return crm_services.normalize_name(nom, prenom, societe)
 
 
-def leads_en_portee(user):
-    """ACRM8 — LA portée de lecture/écriture des leads d'un utilisateur :
-    société active (``company_qs``), périmètre d'entités (NTADM3) et portée
-    de visibilité du rôle (``scope_queryset`` sur ``owner`` — Feature F).
-
-    Une seule définition : ``LeadViewSet._leads_en_portee`` l'appelle, et les
-    viewsets ENFANTS d'un lead (rendez-vous, concurrents, points de contact,
-    forecast, deals, playbook, aperçu de gabarit) valident ou filtrent leur
-    lead par elle — un lead hors portée y est traité comme ABSENT."""
+def portee_leads(qs, user):
+    """ACRM28 — restreint un queryset de LEADS à ce que ``user`` voit :
+    portée de visibilité du rôle (``scope_queryset`` sur ``owner`` —
+    Feature F) ET périmètre d'entités (``scope_entite_queryset``, NTADM3).
+    Un rôle sans entités visibles → seule la portée propriétaire, comme
+    avant."""
     from authentication.scoping import scope_queryset
     from core.entite_scoping import scope_entite_queryset
+
+    return scope_entite_queryset(
+        scope_queryset(qs, user, ['owner']), user, 'entite')
+
+
+def leads_visibles(user, company=None):
+    """ACRM28 — LES leads visibles de ``user`` : société (``company``, ou
+    la société active par ``company_qs``), portée propriétaire et périmètre
+    d'entités (``portee_leads``). Une seule définition, lue par toutes les
+    files (relances, cockpit, « Ma file », clôture des cadences) et par les
+    viewsets enfants d'un lead (ACRM8 — ``leads_en_portee`` en est l'alias) :
+    un lead qui répond 404 à l'utilisateur n'apparaît nulle part."""
     from core.mixins import company_qs
 
     from .models import Lead
 
-    qs = company_qs(Lead.objects.all(), user)
-    qs = scope_entite_queryset(qs, user, 'entite')
-    return scope_queryset(qs, user, ['owner'])
+    qs = (Lead.objects.filter(company=company) if company is not None
+          else company_qs(Lead.objects.all(), user))
+    return portee_leads(qs, user)
+
+
+def leads_en_portee(user):
+    """ACRM8 — alias de ``leads_visibles`` (ACRM28) : la portée des
+    viewsets ENFANTS d'un lead (rendez-vous, concurrents, points de contact,
+    forecast, deals, playbook, aperçu de gabarit). Un lead hors portée y est
+    traité comme ABSENT."""
+    return leads_visibles(user)
 
 
 def find_lead_id_by_phone(company, phone):
@@ -3663,13 +3680,12 @@ def relances_du_jour(company, user, scope='today', today=None):
     """
     import datetime
     from core.dates import aujourd_hui_local
-    from authentication.scoping import scope_queryset
     from .models import Lead
 
     today = today or aujourd_hui_local()
     qs = Lead.objects.filter(
         company=company, is_archived=False, relance_date__isnull=False)
-    qs = scope_queryset(qs, user, ['owner'])
+    qs = portee_leads(qs, user)  # ACRM28 — + périmètre d'entités
     if scope == 'overdue':
         qs = qs.filter(relance_date__lt=today)
     elif scope == 'week':
@@ -3720,8 +3736,7 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     from django.db.models import Q
 
     from core.dates import aujourd_hui_local
-    from authentication.scoping import scope_queryset
-    from .models import Lead, RelanceEtape
+    from .models import RelanceEtape
     from .suite_touche import q_tache
 
     today = today or aujourd_hui_local()
@@ -3748,9 +3763,9 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
 
     # Portée de visibilité : mêmes leads que scope_queryset(..., ['owner'])
     # appliqué à Lead, traduit ici en filtre sur `lead_id`.
-    leads_visibles = scope_queryset(
-        Lead.objects.filter(company=company), user, ['owner'])
-    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+    # ACRM28 — portée propriétaire ET périmètre d'entités.
+    visibles = leads_visibles(user, company)
+    qs = qs.filter(lead_id__in=visibles.values('id'))
 
     if owner:
         qs = qs.filter(lead__owner_id=owner)
@@ -3778,9 +3793,8 @@ def file_du_cockpit(company, user, *, owner=None, today=None):
     import datetime as _dt
 
     from core.dates import aujourd_hui_local
-    from authentication.scoping import scope_queryset
     from . import horaires
-    from .models import Lead, RelanceEtape
+    from .models import RelanceEtape
 
     today = today or aujourd_hui_local()
     debut = _dt.datetime.combine(today, _dt.time(0, 0),
@@ -3789,9 +3803,8 @@ def file_du_cockpit(company, user, *, owner=None, today=None):
         company=company, statut=RelanceEtape.Statut.FAIT,
         lead__is_archived=False,
         traite_le__gte=debut, traite_le__lt=debut + _dt.timedelta(days=1),
-        lead_id__in=scope_queryset(
-            Lead.objects.filter(company=company), user,
-            ['owner']).values('id'))
+        # ACRM28 — portée propriétaire ET périmètre d'entités.
+        lead_id__in=leads_visibles(user, company).values('id'))
     if owner:
         faites = faites.filter(lead__owner_id=owner)
     return {
@@ -3853,9 +3866,8 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
     from django.db.models import Count, F, Q
 
     from core.dates import aujourd_hui_local
-    from authentication.scoping import scope_queryset
     from .controle_suivi import seuil_retard
-    from .models import Lead, RelanceEtape
+    from .models import RelanceEtape
 
     today = today or aujourd_hui_local()
     # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance.
@@ -3865,9 +3877,9 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
         due_date__gte=date_debut, due_date__lte=date_fin,
     ).select_related('lead', 'lead__owner', 'devis', 'traite_par')
 
-    leads_visibles = scope_queryset(
-        Lead.objects.filter(company=company), user, ['owner'])
-    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+    # ACRM28 — portée propriétaire ET périmètre d'entités.
+    visibles = leads_visibles(user, company)
+    qs = qs.filter(lead_id__in=visibles.values('id'))
     if owner:
         qs = qs.filter(lead__owner_id=owner)
 
@@ -4229,7 +4241,6 @@ def leads_chauds_non_contactes(company, user, seuil_score=None):
     ``seuil_score`` par défaut = 60 (« chaud » sur l'échelle 0-100 de QJ6). Un
     lead archivé/perdu/déjà signé est exclu (funnel via STAGES.py — règle #2).
     """
-    from authentication.scoping import scope_queryset
     from . import stages as stage_mod
     from .models import Lead
 
@@ -4238,7 +4249,7 @@ def leads_chauds_non_contactes(company, user, seuil_score=None):
         company=company, is_archived=False, perdu=False,
         first_contacted_at__isnull=True, score__gte=seuil,
     ).exclude(stage__in=(stage_mod.SIGNED, stage_mod.COLD))
-    qs = scope_queryset(qs, user, ['owner'])
+    qs = portee_leads(qs, user)  # ACRM28 — + périmètre d'entités
     return qs.order_by('-score', 'date_creation')
 
 
@@ -4255,14 +4266,14 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
     """
     import datetime
     from core.dates import aujourd_hui_local
-    from authentication.scoping import scope_queryset
     from .models import Lead
 
     today = today or aujourd_hui_local()
     limite = today + datetime.timedelta(days=dans_jours)
-    leads = scope_queryset(
+    # ACRM28 — portée propriétaire ET périmètre d'entités.
+    leads = portee_leads(
         Lead.objects.filter(company=company, is_archived=False),
-        user, ['owner']).prefetch_related('devis')
+        user).prefetch_related('devis')
 
     out = []
     for lead in leads:
@@ -4294,14 +4305,13 @@ def leads_rappel_demande(company, user):
     ['owner'])``, même convention que ``relances_du_jour``/
     ``leads_chauds_non_contactes``). Lecture seule, scopée société.
     """
-    from authentication.scoping import scope_queryset
     from .models import Lead
 
     qs = Lead.objects.filter(
         company=company, is_archived=False, perdu=False,
         contact_preference='phone_ok',
     )
-    qs = scope_queryset(qs, user, ['owner'])
+    qs = portee_leads(qs, user)  # ACRM28 — + périmètre d'entités
     return qs.order_by('-date_creation')
 
 
@@ -6164,8 +6174,7 @@ def cadences_echues_a_clore(company, user, *, jours, today=None, limit=200):
     import datetime as _dt
 
     from core.dates import aujourd_hui_local
-    from authentication.scoping import scope_queryset
-    from .models import Lead, RelanceEtape
+    from .models import RelanceEtape
     from .stages import COLD
 
     try:
@@ -6196,9 +6205,9 @@ def cadences_echues_a_clore(company, user, *, jours, today=None, limit=200):
           .exclude(lead__stage=COLD)
           .select_related('lead', 'lead__owner'))
 
-    leads_visibles = scope_queryset(
-        Lead.objects.filter(company=company), user, ['owner'])
-    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+    # ACRM28 — portée propriétaire ET périmètre d'entités.
+    visibles = leads_visibles(user, company)
+    qs = qs.filter(lead_id__in=visibles.values('id'))
 
     lignes = []
     vus = set()
