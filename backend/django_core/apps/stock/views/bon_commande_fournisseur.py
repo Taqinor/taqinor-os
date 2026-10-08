@@ -57,7 +57,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     """
     queryset = BonCommandeFournisseur.objects.select_related(
         'fournisseur', 'created_by',
-    ).prefetch_related('lignes__produit').all()
+    # APRF33 — acomptes (+ leur BCF, posé par le préchargement inverse) et
+    # annonces de livraison préchargés : requêtes plates en liste.
+    ).prefetch_related(
+        'lignes__produit', 'acomptes', 'annonces_livraison').all()
     serializer_class = BonCommandeFournisseurSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'fournisseur__nom', 'note']

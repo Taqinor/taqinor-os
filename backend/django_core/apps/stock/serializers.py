@@ -821,6 +821,26 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         self._reserved_map_cache = cache
         return cache
 
+    def _unite_libelle_map(self, company):
+        """APRF32 — {code: libellé} des unités actives de ``company``, lu UNE
+        fois par sérialisation et par société (même règle que
+        ``UniteMesure.libelle_pour_code`` : première unité active du code)."""
+        if company is None:
+            return {}
+        caches = getattr(self, '_unite_libelle_map_cache', None)
+        if caches is None:
+            caches = self._unite_libelle_map_cache = {}
+        if company.pk in caches:
+            return caches[company.pk]
+        from apps.parametres.models import UniteMesure
+        cache = {}
+        for code, libelle in UniteMesure.objects.filter(
+                company=company, actif=True).order_by(
+                'id').values_list('code', 'libelle'):
+            cache.setdefault(code, libelle)
+        caches[company.pk] = cache
+        return cache
+
     def _target_locale(self):
         """YHARD4 — langue cible pour les champs localisés : ``?locale=`` sur
         la requête (ex. rendu PDF/proposition) sinon ``None`` (repli FR
@@ -1217,9 +1237,8 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             return unite.libelle
         code = obj.unite_stock or ''
         try:
-            from apps.parametres.models import UniteMesure
-            libelle = UniteMesure.libelle_pour_code(
-                getattr(obj, 'company', None), code)
+            libelle = self._unite_libelle_map(
+                getattr(obj, 'company', None)).get(code)
         except Exception:
             libelle = None
         return libelle or code
