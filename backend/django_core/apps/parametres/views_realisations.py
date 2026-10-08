@@ -11,7 +11,9 @@ Même schéma de permission que les autres réglages de Paramètres
 ``company`` est filtrée ET forcée côté serveur par
 ``CompanyScopedModelViewSet`` (socle ARC2) — jamais lue du corps.
 """
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models_realisations import Realisation
@@ -29,7 +31,11 @@ class RealisationViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        # APAR5 — écriture des réglages société : palier ET droit
+        # `parametres_modifier` (même couple qu'ASEC31) — Admin RH,
+        # Technicien/Commercial responsable n'y écrivent plus.
+        return [IsAdminOrResponsableTier(),
+                HasPermissionOrLegacy('parametres_modifier')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

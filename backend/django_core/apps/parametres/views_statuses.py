@@ -16,7 +16,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 
 from .models import SettingsAuditLog
 from .models_statuses import StatutConfig
@@ -69,7 +71,11 @@ class StatutConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        # APAR5 — écriture des réglages société : palier ET droit
+        # `parametres_modifier` (même couple qu'ASEC31) — Admin RH,
+        # Technicien/Commercial responsable n'y écrivent plus.
+        return [IsAdminOrResponsableTier(),
+                HasPermissionOrLegacy('parametres_modifier')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

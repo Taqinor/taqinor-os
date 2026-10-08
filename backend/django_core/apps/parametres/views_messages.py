@@ -9,7 +9,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 from .models import (
     CLES_RELANCE,
     MESSAGE_TEMPLATE_DEFAULTS,
@@ -64,9 +66,14 @@ def messages_endpoint(request):
     Responsable promu, jamais le palier limité)."""
     if request.method == 'GET':
         return _messages_list(request)
-    if not IsAdminOrResponsableTier().has_permission(request, None):
+    # APAR5 — palier ET droit `parametres_modifier` (couple ASEC31) : le
+    # texte envoyé au client n'est plus réécrit par un rôle non habilité.
+    if not (IsAdminOrResponsableTier().has_permission(request, None)
+            and HasPermissionOrLegacy('parametres_modifier')()
+            .has_permission(request, None)):
         return Response(
-            {'detail': "Réservé à l'administrateur ou au responsable."},
+            {'detail': "Droit « Modifier les paramètres » requis.",
+             'code': 'droit_manquant'},
             status=status.HTTP_403_FORBIDDEN,
         )
     return _messages_save(request)
