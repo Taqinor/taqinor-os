@@ -785,10 +785,13 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         instancier_controle_qualite(ordre)
         resultat = request.data.get('resultat')
         valeur_mesuree = request.data.get('valeur_mesuree')
+        from ..services import SaisieAtelierRefusee
         try:
             controle = enregistrer_controle_qualite(
                 ordre, item_modele_id, resultat=resultat,
                 valeur_mesuree=valeur_mesuree, user=request.user)
+        except SaisieAtelierRefusee as exc:  # ACHT26 — sous le champ
+            raise ValidationError(exc.erreurs)
         except Exception as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(ControleQualiteOrdreSerializer(controle).data)
@@ -817,10 +820,13 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         except (TypeError, ValueError):
             raise ValidationError({
                 'duree_reelle_min': 'Durée réelle invalide.'})
+        from ..services import SaisieAtelierRefusee
         try:
             etape_ordre = cocher_etape_ordre(
                 ordre, etape_modele_id, fait=fait,
                 duree_reelle_min=duree_reelle_min, user=request.user)
+        except SaisieAtelierRefusee as exc:  # ACHT26
+            raise ValidationError(exc.erreurs)
         except Exception as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(EtapeOrdreSerializer(etape_ordre).data)
@@ -854,7 +860,8 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         forcer = str(request.data.get('forcer') or '').lower() in (
             '1', 'true', 'yes')
         motif_forcage = (request.data.get('motif_forcage') or '').strip()
-        if controle_qualite_bloque_cloture(ordre) and not forcer:
+        qc_bloque = controle_qualite_bloque_cloture(ordre)
+        if qc_bloque and not forcer:
             raise ValidationError({
                 'controle_qualite':
                     "Checklist qualité incomplète ou en échec : clôture "
@@ -955,6 +962,12 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                     active=True, consomme=False).update(consomme=True)
             ordre.save(update_fields=update_fields)
             activity.log_changes(old, ordre, request.user)
+            if qc_bloque and forcer:
+                # ACHT26 — le forçage laisse sa trace (motif + utilisateur).
+                activity.log_note(
+                    ordre, request.user,
+                    "Clôture forcée malgré le contrôle qualité : "
+                    f"{motif_forcage}")
             # XMFG7 — capture optionnelle des séries à la clôture (composite
             # produit + composants sérialisés consommés, si transmis).
             series_composite = request.data.get('series_composite')

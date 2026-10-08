@@ -3881,6 +3881,35 @@ def controle_qualite_bloque_cloture(ordre):
         c.resultat != ControleQualiteOrdre.Resultat.PASS_ for c in controles)
 
 
+class SaisieAtelierRefusee(ValueError):
+    """ACHT26 — saisie d'atelier refusée ; ``erreurs`` = {champ: message}."""
+
+    def __init__(self, erreurs):
+        self.erreurs = erreurs
+        super().__init__(' '.join(str(v) for v in erreurs.values()))
+
+
+def _dec_txt(valeur):
+    """ACHT26 — Decimal lisible (1.00 → « 1 », 2.50 → « 2.5 »), « — » si
+    absent."""
+    if valeur is None:
+        return '—'
+    from decimal import Decimal
+    texte = format(Decimal(str(valeur)).normalize(), 'f')
+    return texte
+
+
+def _exiger_ordre_ouvert_saisie(ordre):
+    """ACHT26 — aucune saisie de contrôle qualité ni d'étape une fois l'ordre
+    terminé ou annulé."""
+    from .models import OrdreAssemblage
+    if ordre.statut in (OrdreAssemblage.Statut.TERMINE,
+                        OrdreAssemblage.Statut.ANNULE):
+        raise SaisieAtelierRefusee({'statut': (
+            f"Ordre {ordre.get_statut_display().lower()} : saisie "
+            "figée.")})
+
+
 def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
                                  valeur_mesuree=None, photo=None, user):
     """XMFG13 — enregistre le résultat d'un item QC pour cet ordre. Si une
@@ -3890,15 +3919,35 @@ def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
     from django.utils import timezone
     from .models import ControleQualiteOrdre
 
+    _exiger_ordre_ouvert_saisie(ordre)  # ACHT26
     controle = ControleQualiteOrdre.objects.select_related('item_modele').get(
         ordre=ordre, item_modele_id=item_modele_id)
     item = controle.item_modele
 
+    if valeur_mesuree in ('',):
+        valeur_mesuree = None
     if valeur_mesuree is not None and not isinstance(valeur_mesuree, Decimal):
         try:
             valeur_mesuree = Decimal(str(valeur_mesuree))
         except (InvalidOperation, ValueError, TypeError):
             raise ValueError('valeur_mesuree invalide.')
+    # ACHT26 (C-ACHT-024) — résultat borné à la liste ; un « pass » saisi
+    # hors tolérance est refusé (il faut enregistrer un échec).
+    if resultat in ('',):
+        resultat = None
+    if resultat is not None and resultat not in ControleQualiteOrdre.Resultat.values:
+        raise SaisieAtelierRefusee({'resultat': (
+            f"Résultat « {resultat} » inconnu : pass, fail ou en_attente.")})
+    if (resultat == ControleQualiteOrdre.Resultat.PASS_
+            and valeur_mesuree is not None
+            and ((item.valeur_min is not None
+                  and valeur_mesuree < item.valeur_min)
+                 or (item.valeur_max is not None
+                     and valeur_mesuree > item.valeur_max))):
+        raise SaisieAtelierRefusee({'resultat': (
+            f"Valeur {_dec_txt(valeur_mesuree)} hors tolérance "
+            f"[{_dec_txt(item.valeur_min)} ; {_dec_txt(item.valeur_max)}] : "
+            "enregistrez un échec.")})
 
     if resultat is None and valeur_mesuree is not None and (
             item.valeur_min is not None or item.valeur_max is not None):
@@ -3949,6 +3998,7 @@ def cocher_etape_ordre(ordre, etape_modele_id, *, fait, duree_reelle_min, user):
     from django.utils import timezone
     from .models import EtapeOrdre
 
+    _exiger_ordre_ouvert_saisie(ordre)  # ACHT26 — même garde que le QC
     etape_ordre = EtapeOrdre.objects.get(
         ordre=ordre, etape_modele_id=etape_modele_id)
     etape_ordre.fait = bool(fait)
