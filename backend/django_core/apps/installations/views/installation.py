@@ -138,9 +138,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
         # chantiers qu'il a créés ou dont il est le technicien responsable /
         # ceux de son équipe. 'all' → inchangé.
-        from authentication.scoping import scope_queryset
-        qs = scope_queryset(
-            qs, self.request.user, ['technicien_responsable', 'created_by'])
+        # ACHT27 — même sélecteur que la synchro terrain (`field_sync`).
+        from ..selectors import scoper_chantiers
+        qs = scoper_chantiers(qs, self.request.user)
         params = self.request.query_params
         statut = params.get('statut')
         technicien = params.get('technicien')

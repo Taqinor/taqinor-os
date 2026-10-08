@@ -50,19 +50,26 @@ class FieldOpError(Exception):
 
 
 # ── Résolution scopée société des cibles ─────────────────────────────────────
-def _intervention(company, payload):
+#
+# ACHT27 (C-ACHT-025) — la cible est résolue par le MÊME sélecteur que le
+# viewset (`selectors.scoper_interventions` / `scoper_chantiers`, portée
+# Feature F) : une op sur une intervention ou un chantier invisible pour
+# l'utilisateur revient « inconnu » sans rien écrire.
+def _intervention(company, payload, user=None):
+    from .selectors import scoper_interventions
     iv_id = payload.get('intervention')
-    iv = (Intervention.objects
-          .filter(company=company, id=iv_id)
-          .select_related('installation').first())
+    qs = scoper_interventions(
+        Intervention.objects.filter(company=company), user)
+    iv = qs.filter(id=iv_id).select_related('installation').first()
     if iv is None:
         raise FieldOpError('Intervention inconnue.')
     return iv
 
 
-def _chantier(company, payload):
-    inst = (Installation.objects
-            .filter(company=company, id=payload.get('chantier')).first())
+def _chantier(company, payload, user=None):
+    from .selectors import scoper_chantiers
+    qs = scoper_chantiers(Installation.objects.filter(company=company), user)
+    inst = qs.filter(id=payload.get('chantier')).first()
     if inst is None:
         raise FieldOpError('Chantier inconnu.')
     return inst
@@ -70,7 +77,7 @@ def _chantier(company, payload):
 
 # ── Handlers — un par op_type. Chacun POSE un état (last-write-wins). ─────────
 def _h_depart_depot(company, user, payload):
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     iv.depart_depot_le = timezone.now()
     iv.save(update_fields=['depart_depot_le'])
     intervention_activity.log_note(iv, user, 'Départ dépôt enregistré (synchro hors-ligne).')
@@ -78,7 +85,7 @@ def _h_depart_depot(company, user, payload):
 
 
 def _h_checkin(company, user, payload):
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     iv.arrivee_site_le = timezone.now()
     fields = ['arrivee_site_le']
     lat, lng = payload.get('lat'), payload.get('lng')
@@ -95,7 +102,7 @@ def _h_checkin(company, user, payload):
 
 
 def _h_retour(company, user, payload):
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     iv.retour_depot_le = timezone.now()
     iv.save(update_fields=['retour_depot_le'])
     intervention_activity.log_note(iv, user, 'Retour dépôt enregistré (synchro hors-ligne).')
@@ -103,7 +110,7 @@ def _h_retour(company, user, payload):
 
 
 def _h_cocher_materiel(company, user, payload):
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     prep = field_services.ensure_preparation(iv)
     ligne = prep.materiel.filter(id=payload.get('ligne')).first()
     if ligne is None:
@@ -118,7 +125,7 @@ def _h_cocher_materiel(company, user, payload):
 
 
 def _h_cocher_outil(company, user, payload):
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     prep = field_services.ensure_preparation(iv)
     ligne = prep.outils.filter(id=payload.get('ligne')).first()
     if ligne is None:
@@ -142,7 +149,7 @@ def _h_serial(company, user, payload):
         produit = get_produit_scoped(company, produit_id)
         if produit is None:
             raise FieldOpError('Produit inconnu.')
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     serial = ComponentSerial.objects.create(
         company=company, intervention=iv, produit=produit,
         designation=(payload.get('designation') or '').strip(),
@@ -156,7 +163,7 @@ def _h_consommation_ligne(company, user, payload):
     """F11 — pose la quantité réellement utilisée d'une ligne de consommation
     (last-write-wins : on remplace, jamais d'incrément). Ne valide PAS la
     réconciliation (la validation reste une action en ligne explicite)."""
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     cons = field_capture.ensure_consommation(iv)
     ligne = cons.lignes.filter(id=payload.get('ligne')).first()
     if ligne is None:
@@ -176,7 +183,7 @@ def _h_consommation_ligne(company, user, payload):
 
 def _h_reserve(company, user, payload):
     """F16 — crée une réserve (punch-list). Idempotente par sa clé d'op."""
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     from .models import Reserve
     reserve = Reserve.objects.create(
         company=company, intervention=iv,
@@ -186,7 +193,7 @@ def _h_reserve(company, user, payload):
 
 
 def _h_cocher_safety(company, user, payload):
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     signoff = field_capture.ensure_safety_signoff(iv)
     item = signoff.items.filter(cle=payload.get('cle')).first()
     if item is None:
@@ -202,7 +209,7 @@ def _h_cocher_safety(company, user, payload):
 def _h_signer_client(company, user, payload):
     """N91 — signature PV de réception / intervention. Last-write-wins : la
     dernière signature synchronisée écrase (le terminal n'en file qu'une)."""
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     sig = (payload.get('signature_client') or '').strip()
     if not sig:
         raise FieldOpError('Signature vide.')
@@ -235,7 +242,7 @@ def _h_terminer(company, user, payload):
     le terminal peut la rejouer après avoir téléversé la photo manquante."""
     from .services import TransitionRefusee, changer_statut_intervention
 
-    iv = _intervention(company, payload)
+    iv = _intervention(company, payload, user)
     statut = (payload.get('statut') or Intervention.Statut.TERMINEE)
     if statut not in Intervention.Statut.values:
         raise FieldOpError('Statut inconnu.')
@@ -253,7 +260,7 @@ def _h_cocher_checklist(company, user, payload):
     """N91 — coche/décoche une étape de la checklist CHANTIER (last-write-wins).
     Ne fait PAS la capture de série ici (les séries passent par op `serial`)."""
     from .services import ensure_checklist_items
-    inst = _chantier(company, payload)
+    inst = _chantier(company, payload, user)
     ensure_checklist_items(inst)
     item = inst.checklist.filter(cle=payload.get('cle')).first()
     if item is None:

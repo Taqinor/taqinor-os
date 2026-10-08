@@ -179,8 +179,9 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             default=2, output_field=IntegerField()))
         # Portée de visibilité (Feature F) — interventions du technicien / de
         # son équipe. 'all' → inchangé.
-        from authentication.scoping import scope_queryset
-        qs = scope_queryset(qs, self.request.user, ['technicien', 'created_by'])
+        # ACHT27 — même sélecteur que la synchro terrain (`field_sync`).
+        from ..selectors import scoper_interventions
+        qs = scoper_interventions(qs, self.request.user)
         params = self.request.query_params
         installation = params.get('installation')
         ticket = params.get('ticket')

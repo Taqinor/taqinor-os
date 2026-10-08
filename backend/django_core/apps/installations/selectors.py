@@ -3327,3 +3327,38 @@ def _quantites_bom(bom, plafond=False):
             continue
         besoins[produit_id] = besoins.get(produit_id, 0) + qte
     return besoins
+
+
+# ── ACHT27 (C-ACHT-025) — portée de visibilité (Feature F), source unique ──
+#: Champs propriétaires/assignés qui bornent la portée d'un rôle restreint.
+CHAMPS_PORTEE_INTERVENTION = ['technicien', 'created_by']
+CHAMPS_PORTEE_CHANTIER = ['technicien_responsable', 'created_by']
+
+
+def scoper_interventions(qs, user):
+    """Restreint ``qs`` (déjà borné à la société) aux interventions visibles
+    par ``user`` — lu par ``InterventionViewSet.get_queryset`` ET par la
+    synchro terrain (`field_sync`). Portée 'all' → inchangé."""
+    from core.scoping import scope_queryset
+    return scope_queryset(qs, user, CHAMPS_PORTEE_INTERVENTION)
+
+
+def scoper_chantiers(qs, user):
+    """Jumeau chantier de ``scoper_interventions`` (InstallationViewSet +
+    synchro terrain)."""
+    from core.scoping import scope_queryset
+    return scope_queryset(qs, user, CHAMPS_PORTEE_CHANTIER)
+
+
+def interventions_visibles(user):
+    """Interventions de la société de ``user`` visibles dans sa portée."""
+    from .models import Intervention
+    return scoper_interventions(
+        Intervention.objects.filter(company=user.company), user)
+
+
+def chantiers_visibles(user):
+    """Chantiers de la société de ``user`` visibles dans sa portée."""
+    from .models import Installation
+    return scoper_chantiers(
+        Installation.objects.filter(company=user.company), user)
