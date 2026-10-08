@@ -8,8 +8,9 @@
  * capture porte sa légende dans la langue de la page.
  * Sur les jetons : contrastes CALCULÉS (règles YBW38) pour chaque candidat,
  * chaque schéma rendu (C : clair seulement) et chaque portée locale
- * (`.nuit`, `.aplat`) ; règles propres au candidat C (sarcelle en aplat
- * seulement, jamais sur le bleu nuit ; ambre en grands titres seulement).
+ * (`.nuit`) ; corrections de la critique YBW43 gardées : B sombre — bandes
+ * distinctes de la page ; C — UN seul accent (l'orange du logo, en grands
+ * titres seulement sur le bleu nuit), ni ambre ni sarcelle.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -26,7 +27,9 @@ const CANDIDATES = fileURLToPath(new URL('../src/styles/candidates/', import.met
 const ORANGE = '#C8762B';
 const BLANC = '#FFFFFF';
 const NUIT_C = '#16294A';
+/** Accents RETIRÉS de C par la critique YBW43 (C-1) : sarcelle et ambre. */
 const SARCELLE_C = '#2E7D6B';
+const AMBRE_C = '#E3A740';
 
 // ---------------------------------------------------------------- contraste WCAG 2.x
 const lin = (c: number) => {
@@ -133,6 +136,10 @@ const PAIRES: Paire[] = [
   ['--bande-attenue', '--bande-fond', 4.5, 'bande finale, texte atténué'],
   ['--bouton-fond', '--bande-fond', 3, 'bouton sur la bande'],
   ['--bande-logo-ink', '--bande-fond', 3, 'logo sur la bande'],
+  ['--bande-accent', '--bande-fond', 3, 'graphique sur la bande'],
+  ['--texte', '--carte-fond', 4.5, 'texte sur carte'],
+  ['--texte-attenue', '--carte-fond', 4.5, 'texte atténué sur carte'],
+  ['--accent-texte', '--carte-fond', 4.5, 'accent texte sur carte'],
 ];
 
 /** Violations de contraste de tous les schémas et portées d'un candidat. */
@@ -169,7 +176,7 @@ export function violationsRegles(feuille: string, d: Decl): string[] {
     const fond = decl['background-color'] ? resoudre(decl['background-color'], d) : null;
     if (couleur === ORANGE && !(px(decl['font-size'] ?? '') >= 24)) out.push(`${m[1].trim()} : texte ${ORANGE} sous 24 px`);
     if (couleur === BLANC && fond === ORANGE) out.push(`${m[1].trim()} : blanc sur ${ORANGE}`);
-    if (decl.color === 'var(--titre-grand)' && !(px(decl['font-size'] ?? '') >= 24)) out.push(`${m[1].trim()} : ambre sous 24 px`);
+    if (decl.color === 'var(--titre-grand)' && !(px(decl['font-size'] ?? '') >= 24)) out.push(`${m[1].trim()} : grand titre sous 24 px`);
   }
   return out;
 }
@@ -204,23 +211,40 @@ describe('YBW42 — jetons des candidats : contrastes calculés (règles YBW38)'
     expect(sansCommentaires(JETONS.c.source)).toMatch(/color-scheme:\s*light;/);
   });
 
-  it('valeurs du plan : encre/orange, #141414/#1B1B1B (B), bleu nuit/sarcelle (C)', () => {
+  it('valeurs du plan : papier (A), #141414/#1B1B1B (B), bleu nuit (C)', () => {
     expect(JETONS.a.schemas.clair.racine['--a-papier']).toBe('#FAF7F2');
     expect(JETONS.b.schemas.clair.racine['--b-nuit']).toBe('#141414');
     expect(JETONS.b.schemas.clair.racine['--b-nuit-2']).toBe('#1B1B1B');
     expect(JETONS.c.schemas.clair.racine['--c-nuit']).toBe(NUIT_C);
-    expect(JETONS.c.schemas.clair.racine['--c-sarcelle']).toBe(SARCELLE_C);
     expect(contraste(SARCELLE_C, NUIT_C).toFixed(2)).toBe('2.94');
   });
 
-  it('C : sarcelle en APLAT seulement, jamais dans une portée bleu nuit', () => {
+  it('A sombre : l’orange posé sur la bande papier est l’orange foncé (YBW43 A-2)', () => {
+    const d = JETONS.a.schemas.sombre.racine;
+    expect(resoudre(d['--bande-accent'], d)).toBe('#A6591A');
+    expect(contraste(ORANGE, resoudre(d['--bande-fond'], d)!)).toBeLessThan(3.05);
+  });
+
+  it('B sombre : les bandes de nuit se détachent de la page et sont bordées (YBW43 B-1)', () => {
+    const { racine, nuit } = JETONS.b.schemas.sombre;
+    expect(resoudre(nuit['--fond'], nuit)).not.toBe(resoudre(racine['--fond'], racine));
+    expect(resoudre(racine['--carte-fond'], racine)).not.toBe(resoudre(racine['--fond'], racine));
+    expect(resoudre(racine['--nuit-bord'], racine)).toMatch(/^#/);
+  });
+
+  it('C : UN seul accent — l’orange du logo, en grands titres sur le bleu nuit ; ni ambre ni sarcelle (YBW43 C-1)', () => {
     for (const [portee, d] of Object.entries(JETONS.c.schemas.clair)) {
-      const sarcelles = Object.keys(d).filter((k) => k !== '--c-sarcelle' && resoudre(d[k], d) === SARCELLE_C);
-      const permis = portee === 'aplat' ? ['--aplat', '--fond', '--fond-surface', '--fond-alt'] : ['--aplat'];
-      expect(sarcelles.filter((k) => !permis.includes(k)), portee).toEqual([]);
-      if (resoudre(d['--fond'], d) === NUIT_C) expect(sarcelles.filter((k) => k !== '--aplat'), portee).toEqual([]);
+      const valeurs = Object.keys(d).map((k) => resoudre(d[k], d));
+      expect(valeurs, portee).not.toContain(SARCELLE_C);
+      expect(valeurs, portee).not.toContain(AMBRE_C);
     }
-    expect(fichier('c.css')).not.toMatch(/--c-sarcelle|--aplat/);
+    const nuit = JETONS.c.schemas.clair.nuit;
+    expect(resoudre(nuit['--titre-grand'], nuit)).toBe(ORANGE);
+    // 4,19:1 : assez pour un grand titre (>= 3), jamais pour un petit texte (< 4,5).
+    expect(contraste(ORANGE, NUIT_C)).toBeGreaterThanOrEqual(3);
+    expect(contraste(ORANGE, NUIT_C)).toBeLessThan(4.5);
+    expect(resoudre(nuit['--accent-texte'], nuit)).not.toBe(ORANGE);
+    expect(resoudre(nuit['--bouton-texte'], nuit)).toBe('#1B1B1B');
   });
 
   it('cas négatifs : un gris trop clair, un texte orange < 24 px, du blanc sur orange rougissent', () => {
@@ -232,7 +256,7 @@ describe('YBW42 — jetons des candidats : contrastes calculés (règles YBW38)'
     expect(violationsRegles('.x { background-color: var(--o); color: var(--b); }', d)).toEqual(['.x : blanc sur #C8762B']);
     expect(violationsRegles('.x { color: #123456; }', d)).toEqual(['.x : couleur brute hors jetons']);
     expect(violationsRegles('.x { color: var(--titre-grand); font-size: var(--texte-sm); }', { '--texte-sm': '0.9375rem' })).toEqual([
-      '.x : ambre sous 24 px',
+      '.x : grand titre sous 24 px',
     ]);
   });
 });
@@ -311,9 +335,9 @@ describe('YBW42 — candidats rendus (FR et EN)', () => {
     });
   }
 
-  it('C : aucun aplat sarcelle dans (ni autour) d’une diapositive bleu nuit, aucun logo dans un aplat', () => {
+  it('C : ni aplat ni bande de noms de produits non cliquables imitant des logos (YBW43 C-1, C-2)', () => {
     for (const { page } of candidates().filter((x) => x.id === 'c')) {
-      expect(page.document.querySelectorAll('.nuit .aplat, .aplat .nuit, .aplat [data-logo]')).toHaveLength(0);
+      expect(page.document.querySelectorAll('.aplat, .hero-pied')).toHaveLength(0);
     }
   });
 

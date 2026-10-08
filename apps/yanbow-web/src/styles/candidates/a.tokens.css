@@ -43,6 +43,8 @@
   --bande-texte: var(--a-papier);
   --bande-attenue: var(--a-gris-bande);
   --bande-logo-ink: var(--a-papier);
+  /* Orange des graphiques posés sur la bande (flèche, filets) — YBW43 A-2. */
+  --bande-accent: var(--a-orange);
 
   --police-titre: 'Outfit', 'Outfit repli', sans-serif;
   --police-texte: 'Instrument Sans', 'Instrument Sans repli', sans-serif;
@@ -88,5 +90,7 @@
     --bande-texte: var(--a-encre);
     --bande-attenue: var(--a-gris);
     --bande-logo-ink: var(--a-encre);
+    /* Sur la feuille de papier : l'orange foncé (#C8762B n'y fait que 3,01:1) — YBW43 A-2. */
+    --bande-accent: var(--a-orange-texte);
   }
 }

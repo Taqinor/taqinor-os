@@ -50,10 +50,6 @@ const etapes = ['etape1', 'etape2', 'etape3', 'etape4'];
               </div>
             </div>
           </div>
-          <p class="hero-pied">
-            {Object.values(PRODUITS).map((p) => <span>{p.nom}</span>)}
-            <span>{tx('nav.surMesure')}</span>
-          </p>
         </div>
       </section>
 
@@ -73,7 +69,7 @@ const etapes = ['etape1', 'etape2', 'etape3', 'etape4'];
           <div class="produits-grille">
             {produits.map((p) => (
               <article id={p.id} class="produit" aria-labelledby={`${p.id}-titre`}>
-                <div class="aplat produit-tete">
+                <div class="produit-tete">
                   <p class="produit-surtitre">{tx('produit.surtitre')}</p>
                   <h3 id={`${p.id}-titre`}>{p.nom}</h3>
                 </div>

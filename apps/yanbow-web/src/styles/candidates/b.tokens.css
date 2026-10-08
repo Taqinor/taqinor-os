@@ -45,6 +45,9 @@
   --capture-trait: var(--b-trait-fort-jour);
   --capture-texte: var(--b-gris-jour);
   --capture-grille: color-mix(in srgb, var(--b-encre) 6%, transparent);
+  --carte-fond: var(--b-blanc);
+  --carte-bord: var(--b-trait-jour);
+  --nuit-bord: transparent;
 
   --police-titre: 'Urbanist', 'Urbanist repli', sans-serif;
   --police-texte: 'Geist', 'Geist repli', sans-serif;
@@ -74,6 +77,8 @@
   --capture-fond: var(--b-capture);
   --capture-trait: var(--b-capture);
   --capture-texte: var(--b-gris-jour);
+  --carte-fond: var(--b-nuit-2);
+  --carte-bord: var(--b-trait-nuit);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -94,10 +99,15 @@
     --capture-fond: var(--b-papier);
     --capture-trait: var(--b-papier);
     --capture-texte: var(--b-gris-jour);
+    --carte-fond: var(--b-nuit-3);
+    --carte-bord: var(--b-trait-fort-nuit);
+    --nuit-bord: var(--b-trait-fort-nuit);
   }
 
+  /* En sombre, la page est #141414 : les bandes passent à #232323, bordées (YBW43 B-1). */
   :root[data-candidat='b'] .nuit {
-    --fond: var(--b-nuit);
-    --fond-surface: var(--b-nuit-3);
+    --fond: var(--b-nuit-3);
+    --fond-surface: var(--b-nuit-2);
+    --fond-alt: var(--b-nuit-2);
   }
 }
