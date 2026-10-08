@@ -873,14 +873,18 @@ class TestResidentialFooterBranding(SimpleTestCase):
         self.assertNotIn('TAQINOR', foot)
         self.assertNotIn('contact@taqinor.com', foot)
 
-    def test_footer_nom_only_keeps_founder_contact_line(self):
-        """Nom fourni sans contact → contact fondateur préservé (comme DC1)."""
+    def test_footer_nom_only_omits_founder_contact_line(self):
+        """AMOT18 (C-AMOT-016) — nom fourni sans contact : la société est
+        IDENTIFIÉE, ses champs vides sont OMIS — jamais le contact fondateur
+        sous le nom d'un autre (la règle de ``bande_legale`` et du legacy ;
+        l'ancien repli « comme DC1 » est retiré par la décision d'audit)."""
         from apps.ventes.quote_engine.residential import theme
         foot = theme.page_footer(
             {'ref': 'DEV-3', 'entreprise': {'nom': 'Helios SARL'}})
         self.assertIn('<b>Helios SARL</b>', foot)
-        self.assertIn('contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10',
-                      foot)
+        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('+212 6 61 85 04 10', foot)
+        self.assertNotIn('taqinor.ma', foot)
 
     def test_footer_html_escapes_tenant_name(self):
         from apps.ventes.quote_engine.residential import theme
