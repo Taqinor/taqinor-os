@@ -36,6 +36,22 @@ export function buildRelanceWaUrl(waData, reference) {
   return `${base}?text=${encodeURIComponent(buildRelanceMessage(waData, reference))}`
 }
 
+// ADEV44 (C-ADEV-001) — le corps du POST « Refuser » selon le contrat
+// `apps/ventes/contract_samples/devis_refuser.json` : `motif` = le NOM du
+// MotifPerte choisi (la vue le valide contre les motifs actifs de la société),
+// `note` = le détail libre. Avant, l'écran envoyait `motif_perte: <id>` (clé
+// jamais lue par la vue) + la note sous `motif` : tout refus tombait « sans
+// motif ».
+export function corpsRefus({ motifsPerte, motifId, note }) {
+  const choisi = (motifsPerte || []).find(m => String(m.id) === String(motifId))
+  const nom = (choisi?.nom ?? choisi?.libelle ?? '').trim()
+  const corps = {}
+  if (nom) corps.motif = nom
+  const detail = (note || '').trim()
+  if (detail) corps.note = detail.slice(0, 255)
+  return corps
+}
+
 // SPL206 — dérivés de la synthèse de l'en-tête de page (move only).
 // Nombre de jours calendaires entre aujourd'hui et une date ISO (peut être
 // négatif). null si la date est absente/invalide.

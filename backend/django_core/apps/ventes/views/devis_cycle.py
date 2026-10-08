@@ -613,10 +613,25 @@ class DevisCycleActionsMixin:
                     'Seul un devis en cours (brouillon ou envoyé) peut être '
                     f'refusé ; statut actuel : '
                     f'« {devis.get_statut_display()} ».'
-                )},
+                ), 'code': 'statut'},
                 status=status.HTTP_409_CONFLICT,
             )
-        motif = (request.data.get('motif') or '').strip()[:255]
+        # ADEV44 (contrat devis_refuser.json) — ``motif`` = le NOM d'un
+        # MotifPerte ACTIF de la société, validé par le CRM (sans casse) et
+        # rangé sous son libellé exact ; un nom inconnu/archivé ⇒ 400 et le
+        # devis reste en l'état. Un refus SANS motif reste accepté tant que la
+        # question fondateur AGRM37 (motif obligatoire ?) est ouverte.
+        motif_saisi = (request.data.get('motif') or '').strip()
+        motif = ''
+        if motif_saisi:
+            from apps.crm.services import motif_refus_valide
+            motif = motif_refus_valide(devis.company, motif_saisi) or ''
+            if not motif:
+                return Response(
+                    {'motif': ['Choisissez un motif de refus de la liste.']},
+                    status=status.HTTP_400_BAD_REQUEST)
+        motif = motif[:255]
+        note = (request.data.get('note') or '').strip()[:255]
         date_str = (request.data.get('date') or '').strip()
         try:
             date_ref = _date.fromisoformat(date_str) if date_str \
@@ -631,7 +646,8 @@ class DevisCycleActionsMixin:
         devis.date_refus = date_ref
         devis.motif_refus = motif
         devis.save(update_fields=['statut', 'date_refus', 'motif_refus'])
-        activity.log_devis_refusal(devis, request.user, motif, date_ref)
+        activity.log_devis_refusal(devis, request.user, motif, date_ref,
+                                   note=note)
 
         # M6 — événement découplé : ventes émet, crm réagit
         # (marque le lead perdu si demandé et lead_id présent).

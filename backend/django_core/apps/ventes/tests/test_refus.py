@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm.models import Client, Lead
+from apps.crm.models import Client, Lead, MotifPerte
 from apps.ventes.models import Devis, DevisActivity
 
 User = get_user_model()
@@ -36,6 +36,10 @@ class TestDevisRefus(TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client', prenom='Refus',
             email='rfus@example.com', telephone='+212600000099')
+        # ADEV44 — ``motif`` = NOM d'un MotifPerte actif de la société.
+        for nom in ('Prix trop élevé', 'Concurrent moins cher',
+                    'Budget insuffisant', 'Autre projet', 'Test historique'):
+            MotifPerte.objects.create(company=self.company, nom=nom)
 
     def _devis(self, num=1, statut=Devis.Statut.ENVOYE):
         return Devis.objects.create(
