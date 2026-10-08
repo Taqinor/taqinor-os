@@ -9,7 +9,7 @@ import {
   fetchDevis,
   convertirDevisEnBC,
 } from '../../features/ventes/store/ventesSlice'
-import ventesApi from '../../api/ventesApi'
+import ventesApi, { acceptationDejaFaite } from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import {
@@ -32,7 +32,7 @@ import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcut
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import FacturerDevisDialog from '../../features/ventes/FacturerDevisDialog'
 // La fête « affaire signée » est rendue par l'hôte global (ShellGlobal).
-import { annoncerAffaireSignee } from '../../ui/dealSignedBus'
+import { annoncerAffaireSignee, effacerAffaireSignee } from '../../ui/dealSignedBus'
 import { DataTable } from '../../ui/datatable'
 import { StateBlock } from '../../components/StateBlock'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
@@ -612,27 +612,33 @@ export default function DevisList() {
   const submitAccept = async () => {
     const d = acceptTarget
     if (!d) return
+    const corps = corpsAcceptation({
+      nom: acceptNom,
+      date: acceptDate,
+      option: d.nb_options === 2 ? acceptOption : '',
+    }, d, acceptEntreprise)
+    // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
+    // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
+    // Décision fondateur 08/10/2026 — la fête part DÈS le clic ; l'acceptation
+    // (chantier, contrat, PDF scellé… souvent > 20 s) se fait PENDANT la fête.
+    setAcceptTarget(null)
+    annoncerAffaireSignee({
+      reference: d.reference,
+      montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
+      kwc: null,
+    })
     setAcceptBusy(true)
     try {
-      await ventesApi.accepterDevis(d.id, corpsAcceptation({
-        nom: acceptNom,
-        date: acceptDate,
-        option: d.nb_options === 2 ? acceptOption : '',
-      }, d, acceptEntreprise))
-      dispatch(fetchDevis())
-      setAcceptTarget(null)
-      // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
-      // (rare, lié au revenu). La carte de victoire remplace le toast plat
-      // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
-      annoncerAffaireSignee({
-        reference: d.reference,
-        montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
-        kwc: null,
-      })
+      await ventesApi.accepterDevis(d.id, corps)
     } catch (err) {
-      toast.error(frenchError(err, 'Acceptation impossible.'))
+      // Déjà accepté (réponse précédente perdue) = c'est signé : on garde la fête.
+      if (!acceptationDejaFaite(err)) {
+        effacerAffaireSignee()
+        toast.error(frenchError(err, 'Acceptation impossible.'))
+      }
     } finally {
       setAcceptBusy(false)
+      dispatch(fetchDevis())
     }
   }
 
