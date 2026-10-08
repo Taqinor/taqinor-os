@@ -1011,6 +1011,13 @@ CLES_PAR_SECTION = {
         'coverage_estimated', 'economies_cumul_25_ans',
         'economies_mensuelles', 'economies_periodes', 'profils_comparatifs',
         'offres_tailles',
+        # AMOT67 (C-AMOT-050) — l'argent C&I : économie an 1, flux, TRI, VAN,
+        # LCOE, sensibilités (le bloc ``economie_ci`` lui-même ne quitte plus
+        # jamais ``quote`` : la page lit ``synthese_ci``).
+        'economie_ci', 'economie_annee1', 'flux_ht', 'flux_ttc', 'jalons',
+        'jalons_ttc', 'tri_pct', 'tri_horizon_ans', 'retour_ans',
+        'retour_actualise_ans', 'van_mad', 'van_motif', 'lcoe_mad_kwh',
+        'lcoe_actualise', 'sensibilites',
     ),
 }
 
@@ -1049,6 +1056,23 @@ def _filtrer_sections_publiques(payload, link, cles_base):
                 payload.pop(cle, None)
         for cle, valeur in payload.items():
             _retirer_cles(valeur, cles)
+    return payload
+
+
+def _retirer_industriel_seul(payload):
+    """AMOT67 (D-CIQ-10) — retire de la charge d'un devis COMMERCIAL, à toute
+    profondeur, les clés « industriel seul » de ``synthese_ci``
+    (``CLES_INDUSTRIEL_SEUL`` : VAN, LCOE, sensibilités…). Blocs copiés en
+    profondeur d'abord (jamais ``devis.etude_params`` muté)."""
+    import copy
+
+    from .quote_engine.ci.synthese import CLES_INDUSTRIEL_SEUL
+    for cle in list(payload):
+        if cle in CLES_INDUSTRIEL_SEUL:
+            payload.pop(cle, None)
+        else:
+            payload[cle] = copy.deepcopy(payload[cle])
+            _retirer_cles(payload[cle], CLES_INDUSTRIEL_SEUL)
     return payload
 
 
@@ -1501,6 +1525,10 @@ def proposal_data(request, token):
         # ADEV49 — les clés de BASE (littéral ci-dessus) : à une case décochée
         # elles restent à ``null`` (contrat), les autres partent.
         _cles_base = frozenset(payload)
+        # AMOT67 (C-AMOT-050) — le bloc moteur ``economie_ci`` ne quitte plus
+        # ``quote`` : la page lit ``synthese_ci`` (même fonction que le PDF),
+        # qui suit la case « économies » et le segment (D-CIQ-10).
+        payload['quote'].pop('economie_ci', None)
         # PV77 — titre de l'étude bancable (P50 + économies 25 ans). La clé
         # n'est AJOUTÉE que lorsque le devis porte une simulation : sans elle,
         # la charge utile publique est exactement celle d'aujourd'hui.
@@ -1797,6 +1825,11 @@ def proposal_data(request, token):
         # profondeur (``quote`` compris) : ce que le client reçoit = ce que le
         # commercial a coché (en place ; copie profonde des blocs d'abord).
         _filtrer_sections_publiques(payload, link, _cles_base)
+        # AMOT67 (D-CIQ-10) — un devis COMMERCIAL ne publie ni VAN, ni LCOE,
+        # ni sensibilités, à AUCUN niveau : la liste est celle de
+        # ``synthese_ci`` (``CLES_INDUSTRIEL_SEUL``), jamais une seconde.
+        if _mode_public(data) == 'commercial':
+            _retirer_industriel_seul(payload)
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
