@@ -806,6 +806,7 @@ def exiger_devis_facturable(devis, porte):
                  'corrigez-la par un avoir.')
     raise DevisDejaFacture(motif)
 
+
 def kpis_q2c_periode(company, debut, fin):
     """AFAC53 — KPI factures du tableau Quote-to-Cash, sur les DÉFINITIONS du
     modèle et de la période ``[debut, fin]`` (dates incluses).
