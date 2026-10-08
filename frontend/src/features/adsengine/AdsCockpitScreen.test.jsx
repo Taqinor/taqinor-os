@@ -263,6 +263,20 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       expect(await screen.findByTestId('ae-cockpit-compare-summary'))
         .toHaveTextContent('vs période précédente')
     })
+
+    it('AACQ69 — le delta de dépense ne dépend pas de l’onglet', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-7j'))
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      const summary = await screen.findByTestId('ae-cockpit-compare-summary')
+      await waitFor(() => expect(summary).toHaveTextContent('1 250'))
+      const toutes = summary.textContent
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-top'))
+      expect(screen.getByTestId('ae-cockpit-compare-summary').textContent).toBe(toutes)
+      expect(toutes).toContain('0')
+    })
   })
 
   // ── FIXPUB2 — défaut « Tout » (aucune borne) ────────────────────────────

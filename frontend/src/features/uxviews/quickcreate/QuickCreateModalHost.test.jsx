@@ -17,7 +17,14 @@ vi.mock('./TicketQuickCreateModal', () => ({
 }))
 vi.mock('../../../ui/confirm', () => ({ toast: { success: vi.fn() } }))
 
-import QuickCreateModalHost from './QuickCreateModalHost'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import ticketsReducer from '../../sav/store/ticketsSlice'
+import QuickCreateModalHostRaw from './QuickCreateModalHost'
+function QuickCreateModalHost() {
+  const store = configureStore({ reducer: { tickets: ticketsReducer } })
+  return <Provider store={store}><QuickCreateModalHostRaw /></Provider>
+}
 import { openQuickCreate } from './quickCreateEvents'
 import { toast } from '../../../ui/confirm'
 

@@ -401,9 +401,16 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
         return client_label(company, obj.contact_id)
 
     def get_version_count(self, obj):
+        # APRF36 — annotation posée par DocumentViewSet.get_queryset ; repli
+        # hors liste (action, service) = une lecture.
+        annote = getattr(obj, 'nb_versions_annote', None)
+        if annote is not None:
+            return annote
         return obj.versions.count()
 
     def get_derniere_version(self, obj):
+        if hasattr(obj, 'derniere_version_annotee'):
+            return obj.derniere_version_annotee
         last = obj.versions.order_by('-version').first()
         return last.version if last else None
 
@@ -424,14 +431,22 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
     def get_derniere_mime(self, obj) -> str | None:
         """ADOC22 — mime de la version en vigueur (l'écran ne propose les
         opérations PDF — fusion — que pour des PDF)."""
+        if hasattr(obj, 'derniere_mime_annotee'):
+            return obj.derniere_mime_annotee
         last = obj.versions.order_by('-version').first()
         return last.mime if last else None
 
     def get_tags(self, obj):
         # GED9 — tags de la taxonomie appliqués au document (id + nom).
+        # APRF36 — lit le préchargement de la liste (`tag_assignments__tag`) ;
+        # hors liste, `.all()` repasse par la base avec le tag joint.
+        prefetched = 'tag_assignments' in getattr(
+            obj, '_prefetched_objects_cache', {})
+        assignments = (obj.tag_assignments.all() if prefetched
+                       else obj.tag_assignments.select_related('tag').all())
         return [
             {'id': a.tag_id, 'nom': a.tag.nom, 'slug': a.tag.slug}
-            for a in obj.tag_assignments.select_related('tag').all()
+            for a in assignments
         ]
 
     def validate_folder(self, value):

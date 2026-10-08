@@ -83,7 +83,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/services.py:4591` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
 | `backend/django_core/apps/ged/services.py:5307` | get_or_create | DocumentTag.objects | company, slug |
 | `backend/django_core/apps/ged/services.py:6669` | get_or_create | Folder.objects | cabinet, company, nom, parent |
-| `backend/django_core/apps/ged/views.py:2353` | get_or_create | DocumentLien.objects | content_type, document, object_id |
+| `backend/django_core/apps/ged/views.py:2380` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/installations/field_capture.py:77` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:332` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:389` | get_or_create | SafetySignoff.objects | intervention |
@@ -132,7 +132,6 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/notifications/views.py:237` | get_or_create | WorkingHoursConfig.objects | company |
 | `backend/django_core/apps/notifications/views.py:545` | update_or_create | PushSubscription.objects | endpoint |
 | `backend/django_core/apps/outillage/views.py:32` | get_or_create | KitOutillage.objects | company, nom |
-| `backend/django_core/apps/parametres/fetes_mobiles.py:97` | update_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/parametres/models_company.py:1095` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:1100` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:108` | get_or_create | cls.objects | company |

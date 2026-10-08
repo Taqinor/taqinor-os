@@ -35,11 +35,6 @@ chargé). Les montants sont des ``Decimal`` arrondis au centime.
 import datetime as _dt
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-# Bornes « théoriques » du barème sélectif, avant tolérance. La tolérance les
-# décale vers le haut (200→210, 300→310, 500→510). Elles correspondent aux
-# débuts de tranche 151–210 / 211–310 / 311–510 / >510.
-_SELECTIVE_NOMINAL_BOUNDS = (200, 300, 500)
-
 _CENT = Decimal('0.01')
 
 
@@ -62,34 +57,19 @@ def _tier_price_at(tiers, kwh):
     return tiers[-1]['prix_kwh_ttc'] if tiers else Decimal('0')
 
 
-def _operative_bounds(settings):
-    """Bornes opératoires du mode sélectif après application de la tolérance.
-
-    200/300/500 + tolérance → 210/310/510 par défaut.
-    """
-    tol = int(settings.tolerance_kwh or 0)
-    return tuple(b + tol for b in _SELECTIVE_NOMINAL_BOUNDS)
-
-
 def _selective_price(settings, tiers, kwh):
     """Prix unitaire UNIQUE appliqué au mois entier en mode sélectif.
 
-    On range ``kwh`` selon les bornes opératoires (tolérance incluse) puis on
-    lit le prix de la tranche correspondante dans le barème. Sous la tolérance,
-    un total de 205 kWh tombe dans 151–210 et garde le tarif de cette tranche.
+    APAR4 — ``effective_tiers`` porte déjà les bornes EFFECTIVES (210/310/510 =
+    200/300/500 + tolérance, cf. ``models_tariff.py``) : la tranche se choisit
+    donc par comparaison directe ``kwh ≤ max_kwh``, exactement comme le chemin
+    devis (``selectors.residential_tranches_for`` → ``pricing._monthly_bill_from_kwh``,
+    qui retire puis rajoute la tolérance). Les anciennes sondes
+    ``200/300/500 + tolerance_kwh`` re-décalaient des bornes déjà décalées :
+    toute tolérance ≠ 10 sur-facturait (205 kWh à tol 15 → tranche 211–310).
+    ``settings`` reste dans la signature (appelants inchangés).
     """
-    b1, b2, b3 = _operative_bounds(settings)
-    # On choisit un kWh « représentatif » de la tranche pour lire son prix dans
-    # le barème (le barème reste indexé sur les bornes nominales 210/310/510).
-    if kwh <= b1:
-        probe = b1            # tranche 151–210
-    elif kwh <= b2:
-        probe = b2            # tranche 211–310
-    elif kwh <= b3:
-        probe = b3            # tranche 311–510
-    else:
-        probe = b3 + 1        # >510
-    return _tier_price_at(tiers, probe)
+    return _tier_price_at(tiers, kwh)
 
 
 def monthly_bill_residentiel(settings, kwh):

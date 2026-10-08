@@ -144,3 +144,23 @@ describe('TreeScreen (PUB11) — cartes de croyance', () => {
     expect(screen.queryByTestId('ae-tree-node-tag-saison')).toBeNull()
   })
 })
+
+describe('TreeScreen (AACQ74) — panne ≠ vide', () => {
+  it('nœuds et file en échec : états d\'erreur, jamais « Aucun nœud »', async () => {
+    mocks.nodes.mockRejectedValue(new Error('500'))
+    mocks.queue.mockRejectedValue(new Error('500'))
+    renderScreen()
+    expect(await screen.findByTestId('ae-tree-load-error')).toHaveAttribute('role', 'alert')
+    expect(screen.getByTestId('ae-tree-queue-load-error')).toHaveAttribute('role', 'alert')
+    expect(screen.queryByTestId('ae-tree-empty')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ae-tree-queue-empty')).not.toBeInTheDocument()
+  })
+
+  it('200 vide : le message vide reste affiché', async () => {
+    mocks.nodes.mockResolvedValue({ data: [] })
+    mocks.queue.mockResolvedValue({ data: [] })
+    renderScreen()
+    expect(await screen.findByTestId('ae-tree-empty')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-tree-load-error')).not.toBeInTheDocument()
+  })
+})

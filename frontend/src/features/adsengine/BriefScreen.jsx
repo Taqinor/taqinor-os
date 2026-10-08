@@ -18,12 +18,14 @@ import TenantBrand from './TenantBrand'
 export default function BriefScreen() {
   const [brief, setBrief] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
     adsengineApi.brief.latest()
-      .then(r => setBrief(normalizeBrief(r.data)))
-      .catch(() => setBrief(normalizeBrief(null)))
+      .then(r => { setBrief(normalizeBrief(r.data)); setLoadError(false) })
+      // AACQ74 — panne ≠ « Aucun brief disponible ».
+      .catch(() => { setBrief(normalizeBrief(null)); setLoadError(true) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -44,6 +46,9 @@ export default function BriefScreen() {
 
       {loading
         ? <p className="page-loading">Chargement…</p>
+        : loadError
+          ? <p data-testid="ae-brief-load-error" role="alert" style={{ color: '#dc2626' }}>
+              Brief indisponible — <button type="button" className="btn btn-light" onClick={load}>réessayer</button></p>
         : !brief || brief.items.length === 0
           ? <p data-testid="ae-brief-empty" style={{ color: '#64748b' }}>
               Aucun brief disponible pour l&apos;instant.</p>

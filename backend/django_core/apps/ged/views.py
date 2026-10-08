@@ -447,12 +447,39 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         # GED8 — base : documents visibles selon l'ACL coffre-fort.
         # ADOC35 — `favori_utilisateur` annoté (Exists, sans N+1).
-        from django.db.models import Exists, OuterRef
+        from django.db.models import (
+            Count, Exists, IntegerField, OuterRef, Subquery, Value,
+        )
+        from django.db.models.functions import Coalesce
+        from .models import DocumentVersion
+        # APRF36 — dernière version / nombre de versions par sous-requête
+        # (plus de lecture par ligne) ; tags préchargés ; FK utilisateur jointes.
+        versions = DocumentVersion.objects.filter(
+            document_id=OuterRef('pk')).order_by('-version')
+        nb_versions = (DocumentVersion.objects
+                       .filter(document_id=OuterRef('pk'))
+                       .order_by().values('document_id')
+                       .annotate(n=Count('pk')).values('n'))
         qs = (selectors.documents_visible_to_user(self.request.user)
-              .select_related('folder', 'coffre', 'created_by')
+              .select_related('folder', 'coffre', 'created_by', 'locked_by',
+                              'supprime_par', 'proprietaire',
+                              'verrou_avertissement_par')
               .annotate(favori_utilisateur=Exists(FavoriGed.objects.filter(
                   utilisateur_id=self.request.user.pk,
                   document_id=OuterRef('pk')))))
+        if self.action == 'list':
+            # APRF36 — précharge/annotations réservées à la LISTE : une action
+            # de détail qui modifie le document puis le sérialise (tagger,
+            # nouvelle version…) relirait sinon un cache périmé.
+            qs = (qs.prefetch_related('tag_assignments__tag')
+                  .annotate(
+                      nb_versions_annote=Coalesce(
+                          Subquery(nb_versions, output_field=IntegerField()),
+                          Value(0)),
+                      derniere_version_annotee=Subquery(
+                          versions.values('version')[:1]),
+                      derniere_mime_annotee=Subquery(
+                          versions.values('mime')[:1])))
         folder = self.request.query_params.get('folder')
         if folder:
             qs = qs.filter(folder_id=folder)

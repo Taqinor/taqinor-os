@@ -27,7 +27,10 @@ class FG26RetentionTest(TestCase):
             company=self.company, audit_retention_days=30)
 
     def _make_old_and_new(self):
-        old = timezone.now() - timezone.timedelta(days=60)
+        # APAR3 — la fenêtre configurée (30 j) est relevée au plancher légal de
+        # 365 j : l'ancienne assertion (ligne de 60 j purgée) figeait le bug
+        # C-APAR-001 ; la ligne « ancienne » a donc 400 j (au-delà du plancher).
+        old = timezone.now() - timezone.timedelta(days=400)
         recent = timezone.now() - timezone.timedelta(days=5)
         a_old = AuditLog.objects.create(
             company=self.company, action=AuditLog.Action.LOGIN,

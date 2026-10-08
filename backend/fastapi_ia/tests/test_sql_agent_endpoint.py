@@ -19,6 +19,8 @@ from unittest import mock
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+
 try:
     from app.api.endpoints import sql_agent as _ep
     from fastapi import HTTPException as _HTTPException
@@ -29,15 +31,17 @@ except Exception as exc:  # pragma: no cover - fastapi absent
     _HTTPException = None
     _OK = False
     _ERR = exc
+    verifier_import_optionnel(exc)
 
 try:
     from fastapi import FastAPI as _FastAPI
     from fastapi.testclient import TestClient as _TestClient
     _HAS_CLIENT = True
-except Exception:  # pragma: no cover - starlette/httpx absents
+except Exception as exc:  # pragma: no cover - starlette/httpx absents
     _FastAPI = None
     _TestClient = None
     _HAS_CLIENT = False
+    verifier_import_optionnel(exc)
 
 from app.services import action_tools as _at  # noqa: E402
 

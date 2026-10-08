@@ -125,6 +125,8 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     seuils_sources = serializers.SerializerMethodField()
     # CIQ212 — échéancier RÉSOLU par mode (lecture seule).
     payment_terms_effectifs = serializers.SerializerMethodField()
+    # AGNR11 — barème résidentiel EFFECTIF (contrat bareme_effectif.json).
+    bareme_effectif = serializers.SerializerMethodField()
     # CIQ622 — délais déclarés sans le MinValueValidator du modèle : le refus
     # (≤ 0) est rendu par ``validate_<champ>`` avec un message français.
     delai_intervention_suivi_heures = serializers.IntegerField(
@@ -148,6 +150,13 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 'source': r8221.SEUIL_AUTORISATION_SOURCE,
             },
         }
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_bareme_effectif(self, obj):
+        """AGNR11 — tranches réglées + redevance de LA société du profil,
+        sinon ``national`` (lu par l'écran au lieu de ses constantes)."""
+        from apps.parametres.selectors import bareme_effectif
+        return bareme_effectif(getattr(obj, 'company', None))
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_payment_terms_effectifs(self, obj):

@@ -16,6 +16,7 @@ from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
 from .fetes_mobiles import (
     FETES_MOBILES_CLES,
+    SaisieFetesInvalide,
     enregistrer_fetes_mobiles,
     fetes_mobiles_saisies,
 )
@@ -86,7 +87,12 @@ def fetes_mobiles_enregistrer(request):
             status=status.HTTP_400_BAD_REQUEST)
     dates = request.data.get('dates') or {}
     try:
-        enregistrer_fetes_mobiles(company, annee, dates)
+        enregistrer_fetes_mobiles(company, annee, dates, user=request.user)
+    except SaisieFetesInvalide as exc:
+        # APAR14 — erreurs aussi rangées SOUS leur champ (« erreurs »), en plus
+        # du « detail » à plat historique.
+        return Response({'detail': str(exc), 'erreurs': exc.erreurs},
+                        status=status.HTTP_400_BAD_REQUEST)
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(fetes_mobiles_saisies(company, annee))
