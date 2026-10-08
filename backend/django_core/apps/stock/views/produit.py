@@ -289,8 +289,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
     # `specs_solaire` du serializer la lit sur CHAQUE ligne (contrat onduleur +
     # appariement batterie). Sans ce select_related, la liste catalogue ferait
     # une requête par produit.
+    # APRF32 — `company` et `unite` chargés avec la ligne : le sérialiseur lit
+    # `obj.unite` / `obj.company` (libellé d'unité) sans requête par produit.
     queryset = Produit.objects.select_related(
-        'categorie', 'fiche_technique').prefetch_related(
+        'categorie', 'fiche_technique', 'company', 'unite').prefetch_related(
         Prefetch(
             'fournisseur',
             queryset=Fournisseur.objects.annotate(
