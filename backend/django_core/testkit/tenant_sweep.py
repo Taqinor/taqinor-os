@@ -929,3 +929,109 @@ def valeur_absente(model, lookup_field):
     if isinstance(champ, (m.CharField, m.SlugField, m.TextField)):
         return 'qah4-inexistant'
     return 987654321
+
+
+# ── ASEC18 — étape « écriture » : FK inscriptible vers l'objet du voisin ─────
+#
+# Le balai ci-dessus rejoue l'objet de A avec l'utilisateur de B (lecture,
+# PATCH, DELETE). Il ne voyait pas l'autre sens de la fuite (C-ASEC-007) : A
+# écrit SUR SON PROPRE OBJET l'identifiant d'une ligne de B dans une FK
+# inscriptible (``assigned_to``, ``client``, ``produit``…). Le sérialiseur DRF
+# accepte toute clé primaire de la table cible ; la ligne de B est alors liée
+# à un document de A et son libellé lui est souvent renvoyé. Ces briques
+# énumèrent ces FK et jugent la relecture ; l'orchestration est dans
+# ``tests/test_tenant_sweep.py``.
+
+
+def champs_fk_inscriptibles(serializer):
+    """``[(nom, source, modele_cible, multiple)]`` — relations par clé
+    primaire INSCRIPTIBLES du sérialiseur vers un modèle tenant (hors
+    ``Company`` elle-même, déjà sondée par l'étape « company étrangère »).
+
+    Un champ dont la cible ne se résout pas sans requête (``get_queryset``
+    surchargé qui échoue) ou dont la source est imbriquée (``a.b``) est
+    ignoré : jamais deviné."""
+    from django.db import transaction
+    from rest_framework import relations
+
+    out = []
+    for nom, champ in serializer.fields.items():
+        if getattr(champ, 'read_only', False):
+            continue
+        multiple = isinstance(champ, relations.ManyRelatedField)
+        relation = champ.child_relation if multiple else champ
+        if not isinstance(relation, relations.PrimaryKeyRelatedField):
+            continue
+        source = getattr(champ, 'source', None)
+        if not source or source == '*' or '.' in source:
+            continue
+        queryset = getattr(relation, 'queryset', None)
+        if queryset is None:
+            try:
+                with transaction.atomic():
+                    queryset = relation.get_queryset()
+            except Exception:  # noqa: BLE001 — cible non résoluble
+                continue
+        cible = getattr(queryset, 'model', None)
+        if cible is None or _est_company(cible) or portee_tenant(cible) is None:
+            continue
+        out.append((nom, source, cible, multiple))
+    return out
+
+
+def valeur_relation(instance, source):
+    """Valeur RELUE EN BASE de la relation ``source`` de ``instance`` :
+    l'identifiant (FK) ou l'ensemble des identifiants (M2M). Lève si
+    ``source`` n'est pas un champ du modèle."""
+    model = type(instance)
+    champ = model._meta.get_field(source)
+    frais = model._base_manager.get(pk=instance.pk)
+    if champ.many_to_many:
+        return frozenset(getattr(frais, source).values_list('pk', flat=True))
+    return getattr(frais, champ.attname)
+
+
+def fk_voisine_ecrite(valeur, pk_voisin):
+    """Vrai si la relation relue POINTE la ligne du voisin."""
+    if isinstance(valeur, (set, frozenset, list, tuple)):
+        return any(str(v) == str(pk_voisin) for v in valeur)
+    return valeur is not None and str(valeur) == str(pk_voisin)
+
+
+def site_serialiseur(serializer, nom):
+    """Site au format de ``scripts/fk_scoping_allow.txt`` :
+    ``backend/django_core/<module>.py::Serializer.champ``."""
+    cls = type(serializer)
+    chemin = 'backend/django_core/' + cls.__module__.replace('.', '/') + '.py'
+    return f'{chemin}::{cls.__name__}.{nom}'
+
+
+METHODES_ECRITURE = ('post', 'put', 'patch')
+
+
+def decouvrir_apiviews_ecriture(prefixe=PREFIXE_BALAYE):
+    """Les APIView / ``@api_view`` (HORS viewsets) montées sous ``prefixe`` qui
+    acceptent une écriture : ``[(libellé, gabarit, (méthodes,))]`` trié.
+
+    Elles n'ont ni ``queryset`` ni sérialiseur déclaratif fiables : le balai
+    ne sait pas les exercer génériquement, mais il les COMPTE dans les sites
+    d'écriture (rapport) au lieu de les ignorer en silence."""
+    from rest_framework.views import APIView
+    from rest_framework.viewsets import ViewSetMixin
+
+    vus = {}
+    for brute, url_pattern in _iter_patterns(get_resolver().url_patterns):
+        if not brute.startswith(prefixe):
+            continue
+        cls = getattr(url_pattern.callback, 'cls', None)
+        if cls is None or not issubclass(cls, APIView) or issubclass(
+                cls, ViewSetMixin):
+            continue
+        gabarit, groupes = _gabarit(brute)
+        if 'format' in groupes:
+            continue
+        methodes = tuple(m for m in METHODES_ECRITURE if hasattr(cls, m))
+        if not methodes:
+            continue
+        vus.setdefault((libelle_viewset(cls), gabarit), methodes)
+    return sorted((lib, gab, meth) for (lib, gab), meth in vus.items())
