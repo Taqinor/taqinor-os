@@ -256,14 +256,19 @@ export default function CategoriesStock() {
   }
 
   const delCategorie = async (c) => {
-    if (!window.confirm(`Supprimer la catégorie « ${c.nom} » ?`)) return
+    // ASTK83 (C-ASTK-017) — la confirmation dit combien de produits
+    // l'utilisent ; le refus affiché est le `detail` réel du serveur.
+    const nb = c.nb_produits ?? nbProduitsParCategorie[c.id] ?? 0
+    const question = nb > 0
+      ? `Catégorie utilisée par ${nb} produit${nb > 1 ? 's' : ''} — supprimer « ${c.nom} » ?`
+      : `Supprimer la catégorie « ${c.nom} » ?`
+    if (!window.confirm(question)) return
     setError(null); setInfo(null)
     try {
       await stockApi.deleteCategorie(c.id)
       await loadCategories()
     } catch (err) {
-      // Une catégorie reliée à des produits peut être protégée côté serveur.
-      setError(frErr(err, 'Suppression impossible (catégorie utilisée).'))
+      setError(frErr(err, 'Suppression de la catégorie impossible.'))
     }
   }
 

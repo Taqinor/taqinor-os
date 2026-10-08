@@ -652,11 +652,19 @@ class AlerteRappelViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         """Déclenche le rappel : auteur posé côté serveur + notification
-        best-effort aux responsables (jamais bloquante)."""
-        from ..services import notifier_rappel
-        alerte = serializer.save(
-            company=self.request.user.company,
-            declenchee_par=self.request.user)
+        best-effort aux responsables (jamais bloquante).
+
+        ASTK199 — le stock restant du lot (ou du produit) rappelé est MIS EN
+        QUARANTAINE dans la même transaction : il sort du picking FEFO et
+        sa sortie est refusée jusqu'à la clôture."""
+        from django.db import transaction
+
+        from ..services import appliquer_quarantaine_rappel, notifier_rappel
+        with transaction.atomic():
+            alerte = serializer.save(
+                company=self.request.user.company,
+                declenchee_par=self.request.user)
+            appliquer_quarantaine_rappel(alerte, user=self.request.user)
         notifier_rappel(alerte)
 
     @extend_schema(responses={
@@ -682,7 +690,7 @@ class AlerteRappelViewSet(CompanyScopedModelViewSet):
         """Clôt le rappel (idempotent)."""
         from ..services import cloturer_alerte_rappel
         alerte = self.get_object()
-        cloturer_alerte_rappel(alerte)
+        cloturer_alerte_rappel(alerte, user=request.user)
         alerte.refresh_from_db()
         return Response(self.get_serializer(alerte).data)
 

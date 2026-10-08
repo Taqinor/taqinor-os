@@ -250,12 +250,44 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         # XPUR5 — doublon ICE (warning non bloquant) ajouté à la réponse.
         response = super().create(request, *args, **kwargs)
         self._attach_ice_warning(response, request)
+        self._attach_avertissements(response, request)
         return response
 
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
         self._attach_ice_warning(response, request)
+        self._attach_avertissements(response, request)
         return response
+
+    @staticmethod
+    def _nom_normalise(nom):
+        """ASTK95 — casse, espaces et accents neutralisés."""
+        import unicodedata
+        sans_accents = ''.join(
+            c for c in unicodedata.normalize('NFKD', nom or '')
+            if not unicodedata.combining(c))
+        return ' '.join(sans_accents.lower().split())
+
+    def _attach_avertissements(self, response, request):
+        """ASTK95 (C-ASTK-026) — avertissements NON bloquants de la création /
+        modification : `nom` = un autre fournisseur DE LA SOCIÉTÉ porte déjà
+        ce nom normalisé ; `ice` = le doublon ICE (XPUR5). Jamais stockés."""
+        if response.status_code not in (200, 201):
+            return
+        cible = self._nom_normalise(response.data.get('nom'))
+        homonyme = None
+        if cible:
+            autres = (Fournisseur.objects
+                      .filter(company=request.user.company)
+                      .exclude(pk=response.data.get('id'))
+                      .values_list('nom', flat=True))
+            homonyme = next(
+                (n for n in autres if self._nom_normalise(n) == cible), None)
+        response.data['avertissements'] = {
+            'nom': (f'Un fournisseur « {homonyme} » existe déjà.'
+                    if homonyme else None),
+            'ice': response.data.get('ice_duplicate_warning'),
+        }
 
     def _attach_ice_warning(self, response, request):
         if response.status_code not in (200, 201):

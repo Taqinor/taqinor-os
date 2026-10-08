@@ -97,9 +97,12 @@ describe('CatalogueTable (J142)', () => {
     expect(within(grid).queryByText('Produit 480', { exact: true })).toBeNull()
   })
 
-  it('edite une cellule (stock) sur le contrat clavier EditableCell -> onInlineSave', () => {
+  it('edite une cellule (stock) sur le contrat clavier EditableCell -> appelle l\'ajustement d\'inventaire', () => {
+    // ASTK33 (C-ASTK-005) — la cellule « Stock » pose un comptage
+    // d'inventaire (onAjusterStock), jamais un PATCH `quantite_stock`.
     const onInlineSave = vi.fn().mockResolvedValue({})
-    renderTable({ onInlineSave })
+    const onAjusterStock = vi.fn().mockResolvedValue({})
+    renderTable({ onInlineSave, onAjusterStock })
     const editButtons = screen.getAllByTitle('Double-cliquez pour modifier')
     expect(editButtons.length).toBeGreaterThan(0)
     const stockCell = editButtons.find((b) => b.textContent.includes('12'))
@@ -108,11 +111,11 @@ describe('CatalogueTable (J142)', () => {
     const input = document.querySelector('input')
     fireEvent.change(input, { target: { value: '20' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onInlineSave).toHaveBeenCalledTimes(1)
-    const [prod, field, value] = onInlineSave.mock.calls[0]
+    expect(onAjusterStock).toHaveBeenCalledTimes(1)
+    const [prod, value] = onAjusterStock.mock.calls[0]
     expect(prod.id).toBe(1)
-    expect(field).toBe('quantite_stock')
     expect(String(value)).toBe('20')
+    expect(onInlineSave).not.toHaveBeenCalled()
   })
 
   it('affiche un etat vide quand le catalogue filtre est vide', () => {

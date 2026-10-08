@@ -284,6 +284,14 @@ export default function MouvementsPage() {
     { id: 'sorties', header: 'Sorties', align: 'right', width: 110, searchable: false,
       accessor: (r) => r.sorties ?? 0,
       cell: (v) => <span className="text-destructive tabular-nums">-{v}</span> },
+    // ASTK208 — rebuts et ajustements (signés) : le net est la variation
+    // réelle du stock, calculée par le serveur.
+    { id: 'rebuts', header: 'Rebuts', align: 'right', width: 110, searchable: false,
+      accessor: (r) => r.rebuts ?? 0,
+      cell: (v) => <span className="text-destructive tabular-nums">-{v}</span> },
+    { id: 'ajustements', header: 'Ajustements', align: 'right', width: 120, searchable: false,
+      accessor: (r) => r.ajustements ?? 0,
+      cell: (v) => <span className="tabular-nums">{v > 0 ? '+' : ''}{v}</span> },
     { id: 'net', header: 'Net', align: 'right', width: 110, searchable: false,
       accessor: (r) => r.net ?? ((r.entrees ?? 0) - (r.sorties ?? 0)),
       cell: (v) => (

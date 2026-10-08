@@ -364,8 +364,6 @@
     detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
 - frontend/src/api/recordsApi.js :: getMyActivities -> /api/django/records/activities/mine
     a_venir:liste, aujourdhui:liste, en_retard:liste
-- frontend/src/api/recordsApi.js :: markActivityDone -> /api/django/records/activities/<>/done
-    activity:inconnu, chained:inconnu, next:inconnu, suggestion:inconnu
 - frontend/src/api/recordsApi.js :: snoozeApprobation -> /api/django/records/activities/snooze-approbation
     detail:texte, ok:booleen, snoozed_until:texte
 - frontend/src/api/recordsApi.js :: unfollow -> /api/django/records/followers/<>
@@ -415,7 +413,7 @@
 - frontend/src/api/savApi.js :: actionsGroupeesTickets -> /api/django/sav/tickets/actions-groupees
     echecs:inconnu, ids:texte, nb_echecs:nombre, nb_traites:nombre, operation:texte, priorite:texte, statut:texte, technicien:texte, traites:inconnu
 - frontend/src/api/savApi.js :: creerDevisTicket -> /api/django/sav/tickets/<>/creer-devis
-    detail:texte, devis_id:inconnu, devis_reference:inconnu
+    detail:texte, devis_id:inconnu, devis_reference:inconnu, lignes:inconnu
 - frontend/src/api/savApi.js :: creerLeadDepuisTicket -> /api/django/sav/tickets/<>/creer-lead
     created:inconnu, lead_id:inconnu
 - frontend/src/api/savApi.js :: creerProblemeDepuisRegroupement -> /api/django/sav/problemes/creer-depuis-regroupement
@@ -580,8 +578,6 @@
     detail:texte, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
     detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
-- frontend/src/api/visitesApi.js :: createVisite -> /api/django/visites/visites
-    _non_releves:inconnu, arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, gabarit:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:inconnu, qualification:inconnu, raison_lecture_seule:inconnu, releve_ci:inconnu, statut:inconnu
 - frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee
     date:texte, en_retard_count:nombre, visites:liste
 - frontend/src/api/visitesApi.js :: getVisite -> /api/django/visites/visites/<>
@@ -646,6 +642,8 @@
     detail:texte, offres:inconnu, unite_logistique:inconnu
 - frontend/src/features/stock/api/expeditionsApi.js :: tracking -> /api/django/stock/expeditions/<>/tracking
     a_une_etiquette:booleen, date_expedition:inconnu, destination:inconnu, numero_suivi:inconnu, statut:inconnu, transporteur_provider:inconnu
+- frontend/src/features/stock/api/kitsApi.js :: disponibilite -> /api/django/stock/kits/<>/disponibilite
+    composants:inconnu, detail:texte, goulots:inconnu, kit_id:inconnu, kit_nom:inconnu, kits_assemblables:inconnu
 - frontend/src/features/stock/api/negoceApi.js :: releve -> /api/django/stock/consignations/<>/releve
     adresse_site:inconnu, client_id:inconnu, date_depot:texte, declarations:liste, depot_id:inconnu, produit_id:inconnu, produit_nom:inconnu, quantite_consommee:inconnu, quantite_deposee:inconnu, quantite_facturee:inconnu, quantite_restante:inconnu, statut:inconnu
 - frontend/src/features/stock/api/quaisApi.js :: importAsn -> /api/django/stock/unites-logistiques/import-asn
@@ -1766,6 +1764,19 @@
 - frontend/src/features/stock/api/expeditionsApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
     champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
     politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/features/stock/api/kitsApi.js :: creerKit -> /api/django/stock/kits  [KitProduitSerializer]
+    champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
+- frontend/src/features/stock/api/kitsApi.js :: getKit -> /api/django/stock/kits/<>  [KitProduitSerializer]
+    champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
+- frontend/src/features/stock/api/kitsApi.js :: listKits -> /api/django/stock/kits  [KitProduitSerializer]
+    champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
+- frontend/src/features/stock/api/kitsApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
+    champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/features/stock/api/kitsApi.js :: modifierKit -> /api/django/stock/kits/<>  [KitProduitSerializer]
+    champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
+- frontend/src/features/stock/api/kitsApi.js :: supprimerKit -> /api/django/stock/kits/<>  [KitProduitSerializer]
+    champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
 - frontend/src/features/stock/api/negoceApi.js :: listProduits -> /api/django/stock/produits  [ProduitSerializer]
     champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
     politique_facturation_achat ∈ {sur_commande, sur_reception}
@@ -1795,7 +1806,7 @@
 - frontend/src/features/stock/api/qualiteApi.js :: creerPlan -> /api/django/stock/plans-echantillonnage  [PlanEchantillonnageSerializer]
     champs: actif, categorie, categorie_nom, created_at, id, note, taux_echantillon_pct, updated_at
 - frontend/src/features/stock/api/qualiteApi.js :: declarerRappel -> /api/django/stock/alertes-rappel  [AlerteRappelSerializer]
-    champs: created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
+    champs: blocages, created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
     statut ∈ {clos, en_cours}
 - frontend/src/features/stock/api/qualiteApi.js :: listCasiers -> /api/django/installations/bin-locations  [BinLocationSerializer]
     champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
@@ -1807,7 +1818,7 @@
     champs: alimentation, avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_frequence_hz, courbe_pompe, courbe_source, custom_data, date_creation, date_mise_a_jour, debit_m3j, delai_appro_jours, derniere_date_mouvement, description, description_localise, entite, etat_ci, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, paliers_prix_vente, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, role_ci, role_devis, role_devis_effectif, role_devis_source, role_pompage, seuil_alerte, sku, specs_solaire, stock_par_emplacement, suivi_serie, tension_v, tva, type_pompe, type_pose, unite, unite_stock, unite_stock_display
     politique_facturation_achat ∈ {sur_commande, sur_reception}
 - frontend/src/features/stock/api/qualiteApi.js :: listRappels -> /api/django/stock/alertes-rappel  [AlerteRappelSerializer]
-    champs: created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
+    champs: blocages, created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
     statut ∈ {clos, en_cours}
 - frontend/src/features/stock/api/rfaApi.js :: creerAccord -> /api/django/stock/accords-rfa-fournisseur  [AccordRFAFournisseurSerializer]
     champs: avoir_deja_genere, avoir_genere, created_at, fournisseur, fournisseur_nom, id, montant_fixe, note, periode_debut, periode_fin, seuil_ca_achat, statut, taux_pct
