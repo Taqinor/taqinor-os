@@ -29,6 +29,18 @@ CE QUI EST REFUSÉ
 ``.filter(actif = True)`` écrit autrement — la comparaison est faite sur l'AST,
 pas sur le texte).
 
+CLASSE « BALAYAGE GLOBAL NON SCOPÉ » (AFAC44 / AFAC93)
+-----------------------------------------------------
+Dans un module beat, une requête ``<Modèle>.objects.<méthode>(…)`` sur un modèle
+métier à FK ``company`` (``Facture``, ``RelanceLog``, ``PromessePaiement``…) dont la
+FONCTION n'appelle pas ``active_companies()`` / ``active_company_ids()`` et ne filtre
+aucun ``company…`` (mot-clé ``company``, ``company_id``, ``company__in``…) est refusée :
+elle balaie les données de TOUTES les sociétés, suspendues comprises. Clé stable
+``chemin::fonction`` (jamais un numéro de ligne). Les sites existants sont un PASSIF GELÉ
+dans l'allowlist, ligne ``chemin::fonction  # raison / tâche qui la retire`` ; une clé
+qui n'apparie plus aucun site (corrigé) FAIT ÉCHOUER la garde — la liste ne fait que
+décroître.
+
 ALLOWLIST (``scripts/beat_active_companies_allow.txt``)
 -------------------------------------------------------
 Une ligne ``chemin/relatif.py`` par exception ASSUMÉE, justifiée en
@@ -122,6 +134,85 @@ def _est_filtre_actif_vrai(node: ast.Call) -> bool:
     return False
 
 
+_METHODES_REQUETE = {
+    "all", "filter", "exclude", "get", "first", "last", "count", "exists",
+    "values", "values_list", "iterator", "annotate", "aggregate", "select_related",
+    "prefetch_related", "order_by", "update", "delete", "in_bulk",
+}
+_SELECTEURS_SOCIETE = {"active_companies", "active_company_ids"}
+
+
+def modeles_a_company(scan_root: Path = None) -> set:
+    """Noms des classes de modèle qui déclarent une FK ``company`` (AST des models)."""
+    scan_root = SCAN_ROOT if scan_root is None else scan_root
+    noms = set()
+    if not scan_root.is_dir():
+        return noms
+    for path in sorted(scan_root.rglob("models*.py")) + sorted(scan_root.rglob("models/*.py")):
+        if _is_test_path(path):
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for classe in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
+            for stmt in classe.body:
+                cible = None
+                if isinstance(stmt, ast.Assign) and stmt.targets:
+                    cible = stmt.targets[0]
+                elif isinstance(stmt, ast.AnnAssign):
+                    cible = stmt.target
+                valeur = getattr(stmt, "value", None)
+                if (isinstance(cible, ast.Name) and cible.id == "company"
+                        and isinstance(valeur, ast.Call)
+                        and isinstance(valeur.func, (ast.Attribute, ast.Name))
+                        and getattr(valeur.func, "attr", getattr(valeur.func, "id", ""))
+                        == "ForeignKey"):
+                    noms.add(classe.name)
+    return noms
+
+
+def _fonction_filtre_societe(fonction: ast.AST) -> bool:
+    """La fonction itère active_companies*() ou filtre un mot-clé ``company…``."""
+    for n in ast.walk(fonction):
+        if isinstance(n, ast.Call):
+            nom = _callee_name(n) or ""
+            if nom.split(".")[-1] in _SELECTEURS_SOCIETE:
+                return True
+            if any((kw.arg or "").startswith("company") for kw in n.keywords):
+                return True
+    return False
+
+
+def check_balayage_global(path: Path, modeles: set):
+    """[(cle_fonction, ligne, expression)] : requête sur un modèle à company, fonction non scopée."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+    sorties = []
+    fonctions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    for fonction in fonctions:
+        # Seules les requêtes DIRECTEMENT de cette fonction (pas celles d'une fonction imbriquée).
+        imbriquees = {id(x) for f in ast.walk(fonction) if f is not fonction
+                      and isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      for x in ast.walk(f)}
+        if _fonction_filtre_societe(fonction):
+            continue
+        for n in ast.walk(fonction):
+            if id(n) in imbriquees or not isinstance(n, ast.Call):
+                continue
+            nom = _callee_name(n)
+            if not nom:
+                continue
+            seg = nom.split(".")
+            if (len(seg) >= 3 and seg[-2] == "objects" and seg[-3] in modeles
+                    and seg[-1] in _METHODES_REQUETE):
+                sorties.append((fonction.name, n.lineno, f"{nom}()"))
+                break
+    return sorties
+
+
 def check_file(path: Path):
     """Renvoie [(ligne, expression)] des balayages non scopés trouvés."""
     try:
@@ -152,12 +243,27 @@ def main(argv):
     list_mode = "--list" in argv
     allow = _load_allowlist()
     offenders, listed = [], []
+    modeles = modeles_a_company()
+    cles_vues = set()
     for path in _iter_source_files():
         rel = _rel(path)
         for lineno, expr in check_file(path):
             listed.append(f"{rel}:{lineno}  {expr}")
             if rel not in allow:
                 offenders.append(f"{rel}:{lineno}  {expr}")
+        # AFAC44/93 — balayage global non scopé : clé stable `fichier::fonction`.
+        for fonction, lineno, expr in check_balayage_global(path, modeles):
+            cle = f"{rel}::{fonction}"
+            cles_vues.add(cle)
+            listed.append(f"{cle}  {expr}")
+            if cle not in allow and rel not in allow:
+                offenders.append(
+                    f"{cle}  {expr} — requête sur un modèle à FK company sans "
+                    f"{SELECTEUR} ni filtre company/company__in")
+    mortes = sorted(c for c in allow if "::" in c and c not in cles_vues)
+    for cle in mortes:
+        offenders.append(f"{cle}  — clé morte de l'allowlist (site corrigé ou disparu) : "
+                         "retirez la ligne (la liste ne fait que décroître)")
 
     if list_mode:
         for line in listed:
