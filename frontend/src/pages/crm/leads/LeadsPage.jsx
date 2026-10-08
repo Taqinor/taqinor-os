@@ -1245,7 +1245,14 @@ export default function LeadsPage() {
         <SigneDialog
           lead={signeLead}
           onClose={() => { setSigneLead(null); refetch() }}
-          onConfirmed={() => { setSigneLead(null); refetch() }}
+          onConfirmed={() => {
+            // La carte passe en « Signé » tout de suite (fête dès le clic) ;
+            // le serveur confirme pendant la fête, puis on resynchronise.
+            dispatch(leadStagePatched({ id: signeLead.id, stage: CONVERSION_STAGE }))
+            setSigneLead(null)
+          }}
+          onAccepted={() => refetch()}
+          onFailed={() => refetch()}
         />
       )}
 

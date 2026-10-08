@@ -987,7 +987,9 @@ export default function LeadWorkspace({
         <SigneDialog
           lead={state.server}
           onClose={() => setSigneOpen(false)}
-          onConfirmed={() => { setSigneOpen(false); onSaved?.(); onClose?.() }}
+          onConfirmed={() => { setSigneOpen(false); onClose?.() }}
+          onAccepted={() => onSaved?.()}
+          onFailed={() => onSaved?.()}
         />
       )}
       {planOpen && (
