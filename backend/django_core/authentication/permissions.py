@@ -1,6 +1,33 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
+class IsAuthenticatedInterne(BasePermission):
+    """ASEC51 (C-ASEC-017) — permission DRF PAR DÉFAUT (``REST_FRAMEWORK
+    ['DEFAULT_PERMISSION_CLASSES']``) : compte authentifié ET INTERNE.
+
+    Avant, le défaut était ``IsAuthenticated`` : toute vue sans
+    ``permission_classes`` explicite s'ouvrait à un compte PORTAIL externe
+    (client / fournisseur / partenaire) dès qu'il avait un JWT. Désormais une
+    vue n'est joignable par un compte portail QUE si elle le déclare
+    explicitement (gardes ``IsPortal*`` des endpoints ``/portail/*``, ou un
+    ``IsAuthenticated`` explicite comme ``/auth/me/``, ``/auth/logout/``,
+    ``/auth/change-password/``).
+
+    Lit le marqueur portail EXISTANT de ``CustomUser`` (``portee``, défaut
+    ``interne``) — aucune seconde notion de « compte interne », aucun import
+    d'``apps.*`` (``authentication`` reste une app de fondation). Un anonyme
+    reste refusé exactement comme par ``IsAuthenticated`` (401)."""
+
+    message = 'Accès réservé aux comptes internes.'
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        interne = getattr(type(user), 'PORTEE_INTERNE', 'interne')
+        return getattr(user, 'portee', interne) == interne
+
+
 class IsAdminRole(BasePermission):
     """Admin role or superuser only."""
     def has_permission(self, request, view):
