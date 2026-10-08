@@ -1144,14 +1144,6 @@ class UserViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         target = self.get_object()
         data = request.data
-        # ASEC3 — le mot de passe ne passe JAMAIS par l'update générique.
-        if 'password' in data:
-            return Response(
-                {'password': ["Le mot de passe se réinitialise par l'action "
-                              "dédiée « Réinitialiser le mot de passe »."],
-                 'code': 'password_via_reinitialisation'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         # Détecte une rétrogradation (perte du rôle admin) ou une
         # désactivation du compte.
         retro = False
@@ -1175,9 +1167,20 @@ class UserViewSet(viewsets.ModelViewSet):
                                'garder un administrateur.'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+        # ASEC2 — l'autorisation (rang de la cible) passe AVANT la validation
+        # du corps : un acteur qui ne peut pas gérer la cible reçoit 403
+        # ``rang_cible`` quel que soit le champ envoyé, mot de passe compris.
         refus = self._refus_rang(target)
         if refus is not None:
             return refus
+        # ASEC3 — le mot de passe ne passe JAMAIS par l'update générique.
+        if 'password' in data:
+            return Response(
+                {'password': ["Le mot de passe se réinitialise par l'action "
+                              "dédiée « Réinitialiser le mot de passe »."],
+                 'code': 'password_via_reinitialisation'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
