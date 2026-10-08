@@ -5169,6 +5169,28 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
 
 # ── QJ20 — Rendez-vous (visites commerciales/techniques) ──────────────────────
 
+def _libelle_statut_rdv(statut):
+    """ACRM23 — le libellé FR d'un statut de rendez-vous."""
+    return dict(Appointment.Statut.choices).get(statut, statut or '—')
+
+
+def _quand_rdv(quand):
+    """ACRM23 — « JJ/MM/AAAA à HH:MM » (heure de Casablanca)."""
+    if quand is None:
+        return '—'
+    from . import horaires
+    return quand.astimezone(horaires.CASABLANCA).strftime('%d/%m/%Y à %H:%M')
+
+
+def _noter_rdv(lead, user, corps):
+    """ACRM23 — une ligne de chatter du lead pour un geste sur un RDV,
+    l'acteur nommé (jamais un prénom en dur)."""
+    if lead is None:
+        return
+    qui = getattr(user, 'username', '') or 'système'
+    activity.log_note(lead, user, f'{corps} (par {qui}).')
+
+
 class AppointmentViewSet(CompanyScopedModelViewSet):
     """QJ20 — Rendez-vous planifiés sur les leads (visites commerciales/techniques).
 
@@ -5218,6 +5240,46 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         # and return the already-created appointment via the serializer for the
         # response. Patch self so the serializer picks up the instance.
         serializer.instance = appt
+
+    def perform_update(self, serializer):
+        """ACRM23 (C-ACRM-016) — l'annulation, le changement de statut et le
+        DÉPLACEMENT d'un rendez-vous sont journalisés au chatter du lead
+        (acteur + ancien → nouveau) ; un déplacement RÉARME le rappel
+        (``reminder_sent=False``). Un PATCH qui ne change rien reste muet."""
+        avant = serializer.instance
+        ancien_statut = avant.statut
+        ancien_quand = avant.scheduled_at
+        ancien_lead_id = avant.lead_id
+        rdv = serializer.save()
+        changements = []
+        if rdv.statut != ancien_statut:
+            changements.append(
+                f'{_libelle_statut_rdv(ancien_statut)} → '
+                f'{_libelle_statut_rdv(rdv.statut)}')
+        if rdv.scheduled_at != ancien_quand:
+            changements.append(
+                f'déplacé du {_quand_rdv(ancien_quand)} au '
+                f'{_quand_rdv(rdv.scheduled_at)}')
+            if rdv.reminder_sent:
+                rdv.reminder_sent = False
+                rdv.save(update_fields=['reminder_sent'])
+        if changements and rdv.lead_id:
+            _noter_rdv(rdv.lead, self.request.user,
+                       f'RDV #{rdv.pk} : ' + ' ; '.join(changements))
+        if rdv.lead_id and rdv.lead_id != ancien_lead_id and ancien_lead_id:
+            _noter_rdv(Lead.objects.filter(pk=ancien_lead_id).first(),
+                       self.request.user,
+                       f'RDV #{rdv.pk} : rattaché à un autre lead')
+
+    def perform_destroy(self, instance):
+        """ACRM23 — la SUPPRESSION d'un rendez-vous est journalisée au
+        chatter du lead (acteur, date du rendez-vous)."""
+        lead = instance.lead
+        pk, quand = instance.pk, instance.scheduled_at
+        super().perform_destroy(instance)
+        if lead is not None:
+            _noter_rdv(lead, self.request.user,
+                       f'RDV #{pk} du {_quand_rdv(quand)} : supprimé')
 
     @action(detail=True, methods=['get'], url_path='ics')
     def ics(self, request, pk=None):
