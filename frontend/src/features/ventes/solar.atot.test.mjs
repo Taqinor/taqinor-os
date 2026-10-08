@@ -8,7 +8,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { multiPropertyPreviewTTC, optionTotalsTTC, totauxCanoniquesTtc } from './solar.js'
+import {
+  multiPropertyPreviewTTC, optionTotalsTTC, totauxCanoniquesTtc, lignesRemiseesParPanier,
+} from './solar.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
@@ -85,4 +87,29 @@ test('hors groupe compte au total general (= multi_villa_totaux, palier compris)
   assert.equal(r.grandTotalTtc, totauxCanoniquesTtc(VILLAS, 10, PAS_ARRONDI_DEVIS))
   // Le total général est celui du rail (même chaîne, même palier).
   assert.equal(r.grandTotalTtc, optionTotalsTTC(VILLAS, 10).totalSans)
+})
+
+// ── ATOT25 — remise « par ligne » par panier, sur les HT persistés ──────────
+const KIT_REMISE = [
+  L('Panneau Canadien Solar 710W', 24, 1481, { taux_tva: '10' }),
+  L('Onduleur réseau Huawei 10kW', 1, 13999),
+  L('Structures acier', 1, 4351),
+]
+
+test('remise par ligne = PDF (HT persistés, plus fort reste, TTC au taux de la ligne)', () => {
+  const r = lignesRemiseesParPanier(KIT_REMISE, 7)
+  assert.deepEqual(r.parLigne, [33055.84, 13019.06, 4046.42])
+  assert.equal(r.sans.total, 50100)
+  assert.equal(r.sans.total, optionTotalsTTC(KIT_REMISE, 7).totalSans)
+  // Σ lignes + arrondi commercial = total affiché, au centime.
+  assert.equal(Math.round((r.sans.sommeLignes + r.sans.arrondi) * 100), 5010000)
+  assert.ok(r.sans.arrondi < 0, 'le palier ARRONDI-100 baisse le total')
+})
+
+test('remise par ligne : chaque option répartit SA remise (les paniers ne se mélangent pas)', () => {
+  const r = lignesRemiseesParPanier(KIT_DEUX_OPTIONS, 10, { scenario: LES_DEUX, option: 'avec' })
+  for (const opt of ['sans', 'avec']) {
+    assert.equal(Math.round((r[opt].sommeLignes + r[opt].arrondi) * 100), Math.round(r[opt].total * 100), opt)
+  }
+  assert.equal(r.avec.total, optionTotalsTTC(KIT_DEUX_OPTIONS, 10, { scenario: LES_DEUX }).totalAvec)
 })

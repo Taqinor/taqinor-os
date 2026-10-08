@@ -134,6 +134,8 @@ Réduction
 %
 TVA
 %
+Arrondi commercial
+-60 MAD
 Prix / kWc
 3 724 MAD/kWc
 Prix cible / kWc

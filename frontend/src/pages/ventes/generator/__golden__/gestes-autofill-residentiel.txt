@@ -182,6 +182,10 @@ Réduction
 %
 TVA
 %
+Arrondi commercial SANS batterie
+-34 MAD
+Arrondi commercial AVEC batterie
+-34 MAD
 Prix / kWc
 12 324 MAD/kWc
 Prix cible / kWc

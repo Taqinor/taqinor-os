@@ -119,7 +119,7 @@ import {
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  kwhFromBill, multiPropertyPreviewTTC,
+  kwhFromBill, multiPropertyPreviewTTC, lignesRemiseesParPanier,
   productibleForCity,
   COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
@@ -205,7 +205,7 @@ import PanneauAgricole from './generator/PanneauAgricole'
 // remise globale par ligne (même module que DevisForm.jsx, l'écran d'édition
 // HT déjà livré) ; jamais un calcul local ici. `puRemise` (P.U. après remise)
 // est utilisé par `DevisLineRow`, pas ici.
-import { repartirRemiseParLigne } from '../../features/ventes/remise'
+// ATOT25 — désormais via `solar.lignesRemiseesParPanier` (répartition par panier).
 import { usePersistanceDevis } from '../../features/ventes/quote/hooks/usePersistanceDevis'
 import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeurEdition'
 import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
@@ -1003,17 +1003,17 @@ export default function DevisGenerator({
   // séparément. Une vraie répartition PAR PANIER exigerait deux appels
   // distincts au miroir sur deux univers de lignes disjoints : hors périmètre
   // de QJRREM, laissé pour une tâche dédiée si le fondateur le demande.
-  const lignesRemiseesTtc = useMemo(
-    () => repartirRemiseParLigne(
-      lines.map(l => ({
-        totalHt: (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0),
-        optionnelle: l.optionnelle,
-        typeLigne: l.typeLigne,
-      })),
-      discountPct,
-    ),
-    [lines, discountPct],
+  // ATOT25 — la répartition se fait désormais PAR PANIER sur les HT
+  // persistés (miroir de `builder._annoter_remise`) : chaque ligne vaut la
+  // ligne du PDF au centime, et l'« Arrondi commercial » du rail explique
+  // l'écart entre Σ lignes et le total affiché.
+  const remiseParPanier = useMemo(
+    () => lignesRemiseesParPanier(lines, discountPct, {
+      scenario, option: avecRec && showAvec ? 'avec' : 'sans',
+    }),
+    [lines, discountPct, scenario, avecRec, showAvec],
   )
+  const lignesRemiseesTtc = remiseParPanier.parLigne
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
   // remise nulle ⇒ écran inchangé à l'octet (le miroir rend le catalogue).
   const montrerRemise = (parseFloat(discountPct) || 0) > 0
@@ -3269,6 +3269,7 @@ export default function DevisGenerator({
           montrerRemise={montrerRemise}
         >
           <RailArgent
+            remiseParPanier={remiseParPanier}
             showSans={showSans}
             showAvec={showAvec}
             sansRec={sansRec}

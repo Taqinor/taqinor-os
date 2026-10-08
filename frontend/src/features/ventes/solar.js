@@ -8,7 +8,9 @@ import { formatMAD } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
-import { ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques } from './remise.js'
+import {
+  ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques, repartirRemiseParLigne,
+} from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
@@ -1699,6 +1701,69 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   const totalSans = totauxCanoniquesTtc(linesSans, pct, pas)
   const totalAvec = totauxCanoniquesTtc(linesAvec, pct, pas)
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
+}
+
+// ATOT25 — LA REMISE « PAR LIGNE » DE L'ÉCRAN = CELLE DU PDF, PAR PANIER.
+// Miroir de `builder._annoter_remise` : chaque option (panier Sans / Avec,
+// même population que `optionTotalsTTC`) répartit SA remise sur les HT
+// PERSISTÉS de ses lignes (`htFromTtc` au centime × quantité × remise de
+// ligne), par `repartirRemiseParLigne` (miroir de
+// `argent.repartir_remise_par_ligne`, plus fort reste), puis chaque part HT
+// passe au TTC à son propre taux, au centime. L'« Arrondi commercial » est ce
+// qui sépare la somme des lignes affichées du total (palier ARRONDI-100) :
+// Σ lignes + arrondi = total affiché, toujours.
+//
+// Rend `{ parLigne, sans: {total, sommeLignes, arrondi}, avec: {...} }` ;
+// `parLigne` est ALIGNÉ sur `lines` (montant TTC remisé, ou `null` pour une
+// ligne qui ne compte pas) — une ligne des deux paniers prend la valeur du
+// panier de l'option effective (`option`).
+export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans' } = {}) {
+  const tous = lines || []
+  const comptees = tous.filter(ligneCompteDansTotaux)
+  let lignesSans = comptees.filter(appartientAuPanierSans)
+  let lignesAvec = comptees.filter(appartientAuPanierAvec)
+  if (comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
+      || alternativeDeclareeServable(comptees, scenario)) {
+    lignesSans = _retirerAccessoiresHuawei(lignesSans)
+    lignesAvec = _retirerAccessoiresHuawei(lignesAvec)
+  }
+  const pct = parseFloat(discountPct) || 0
+  const centimes = (v) => BigInt(Math.round((Number(v) || 0) * 100))
+  const panier = (rows) => {
+    const valeurs = new Map()
+    if (pct > 0) {
+      const parts = repartirRemiseParLigne(rows.map((l) => {
+        const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
+        const htC = BigInt(Math.round(parseFloat(htFromTtc(l?.prix_unit_ttc, l?.taux_tva ?? TVA_STANDARD_DEFAUT)) * 100))
+        const remH = BigInt(Math.round((parseFloat(l?.remise) || 0) * 100))
+        // q ×100 · HT centimes · (1 − remise) ×10 000 = 1e-8 MAD → MAD
+        return { totalHt: Number(qH * htC * (10000n - remH)) / 1e8 }
+      }), pct)
+      rows.forEach((l, k) => {
+        const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
+        const t = Number.isFinite(taux) ? taux : TVA_STANDARD_DEFAUT
+        // TTC = q(part HT × (1 + taux)), moitié vers le haut, en centimes entiers.
+        const partC = centimes(parts[k])
+        const num = partC * BigInt(Math.round((100 + t) * 100))
+        const ttcC = num >= 0n ? (num + 5000n) / 10000n : -((-num + 5000n) / 10000n)
+        valeurs.set(l, Number(ttcC) / 100)
+      })
+    } else {
+      rows.forEach((l) => {
+        valeurs.set(l, Math.round((parseFloat(l?.quantite) || 0) * (parseFloat(l?.prix_unit_ttc) || 0) * 100) / 100)
+      })
+    }
+    const total = totauxCanoniquesTtc(rows, pct, PAS_ARRONDI_DEVIS)
+    const sommeC = [...valeurs.values()].reduce((acc, v) => acc + centimes(v), 0n)
+    return { valeurs, total, sommeLignes: Number(sommeC) / 100, arrondi: Number(centimes(total) - sommeC) / 100 }
+  }
+  const sans = panier(lignesSans)
+  const avec = panier(lignesAvec)
+  const [premier, second] = option === 'avec' ? [avec, sans] : [sans, avec]
+  const parLigne = tous.map((l) => (premier.valeurs.has(l) ? premier.valeurs.get(l)
+    : (second.valeurs.has(l) ? second.valeurs.get(l) : null)))
+  const resume = ({ total, sommeLignes, arrondi }) => ({ total, sommeLignes, arrondi })
+  return { parLigne, sans: resume(sans), avec: resume(avec) }
 }
 
 // ── L-2OPT — deux optimiseurs indépendants (fondateur 24/08) ─────────────────

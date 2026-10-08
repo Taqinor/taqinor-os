@@ -22,7 +22,12 @@ export default function RailArgent({
   tauxTva, setTauxTva,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
   marge, kpiTotal, margeLignesSansAchat = 0,
+  // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
+  // commercial » qui sépare Σ lignes affichées du total (palier ARRONDI-100).
+  remiseParPanier = null,
 }) {
+  const arrondiSans = remiseParPanier?.sans?.arrondi ?? 0
+  const arrondiAvec = remiseParPanier?.avec?.arrondi ?? 0
   return (
     <>
       {/* VX138 — chaîne de totaux hiérarchisée (paliers F121 existants) :
@@ -71,6 +76,20 @@ export default function RailArgent({
           <div className="gen-total-item gen-tier-3">
             <span className="gen-total-label green">Total final AVEC batterie</span>
             <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
+          </div>
+        )}
+        {/* ATOT25 — l'« Arrondi commercial » est DIT : Σ des lignes affichées
+            (remisées au centime comme le PDF) + arrondi = total affiché. */}
+        {showSans && arrondiSans !== 0 && (
+          <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-sans">
+            <span className="gen-total-label">Arrondi commercial{showAvec ? ' SANS batterie' : ''}</span>
+            <span className="gen-total-value">{formatMoney(arrondiSans)}</span>
+          </div>
+        )}
+        {showAvec && arrondiAvec !== 0 && (
+          <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-avec">
+            <span className="gen-total-label">Arrondi commercial{showSans ? ' AVEC batterie' : ''}</span>
+            <span className="gen-total-value">{formatMoney(arrondiAvec)}</span>
           </div>
         )}
       </div>
