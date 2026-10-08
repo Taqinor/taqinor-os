@@ -18,7 +18,6 @@ le ré-export bit-identique — format ``DA-YYYYMM-NNNN`` inchangé). Les action
 d'approbation et leurs gardes restent STRICTEMENT inchangées (moteur propre,
 chemin ARC10 nommé) ; aucun PDF (document d'approbation interne).
 """
-from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -415,10 +414,17 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 {'detail': 'Cette demande ne contient aucune ligne.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        bon = creer_bcf_depuis_lignes(
-            company=request.user.company, user=request.user,
-            fournisseur=fournisseur, lignes=lignes,
-            note=f'Généré depuis {da.reference}')
+        # ACHT11 — le chantier de la DA suit le BCF (réception réservée) ;
+        # une quantité/un prix invalide (ValueError du service stock) → 400.
+        try:
+            bon = creer_bcf_depuis_lignes(
+                company=request.user.company, user=request.user,
+                fournisseur=fournisseur, lignes=lignes,
+                note=f'Généré depuis {da.reference}',
+                chantier_origine=da.chantier)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         from .. import services
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus
         # (le lien BCF est posé dans la MÊME écriture atomique).
@@ -502,23 +508,24 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                     {'ligne': numero,
                      'erreur': 'Ni désignation ni SKU renseigné.'})
                 continue
-            try:
-                quantite = Decimal(quantite_brute or '0')
-                prix_estime = Decimal(prix_brut or '0')
-            except InvalidOperation:
-                erreurs.append(
-                    {'ligne': numero,
-                     'erreur': 'Quantité ou prix estimé invalide.'})
+            # ACHT11 — chaque ligne est validée par le serializer de ligne
+            # (survivant unique des bornes quantité/prix : NaN, Infinity,
+            # négatif, hors format → erreur nommée, jamais de 500).
+            ser = DemandeAchatLigneSerializer(data={
+                'demande': da.pk,
+                'produit': produit.pk if produit else None,
+                'designation': designation or None,
+                'quantite': quantite_brute or '0',
+                'prix_estime': prix_brut or '0',
+            })
+            if not ser.is_valid():
+                detail = '; '.join(
+                    str(m) for msgs in ser.errors.values()
+                    for m in (msgs if isinstance(msgs, (list, tuple))
+                              else [msgs]))
+                erreurs.append({'ligne': numero, 'erreur': detail})
                 continue
-            if quantite <= 0:
-                erreurs.append(
-                    {'ligne': numero, 'erreur': 'Quantité doit être > 0.'})
-                continue
-
-            ligne = DemandeAchatLigne.objects.create(
-                demande=da, produit=produit,
-                designation=designation or None,
-                quantite=quantite, prix_estime=prix_estime)
+            ligne = ser.save()
             creees.append(ligne.id)
 
         if creees:

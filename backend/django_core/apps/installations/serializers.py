@@ -1236,6 +1236,20 @@ class DemandeAchatLigneSerializer(serializers.ModelSerializer):
             'quantite', 'prix_estime', 'total_estime',
         ]
 
+    def validate_quantite(self, value):
+        # ACHT11 — quantité finie et strictement positive.
+        if value is None or not value.is_finite() or value <= 0:
+            raise serializers.ValidationError(
+                'La quantité doit être supérieure à 0.')
+        return value
+
+    def validate_prix_estime(self, value):
+        # ACHT11 — prix estimé fini et non négatif.
+        if value is not None and (not value.is_finite() or value < 0):
+            raise serializers.ValidationError(
+                'Le prix estimé ne peut pas être négatif.')
+        return value
+
     def validate(self, attrs):
         produit = attrs.get('produit') if 'produit' in attrs else getattr(
             self.instance, 'produit', None)
