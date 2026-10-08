@@ -119,7 +119,7 @@ import {
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  kwhFromBill, multiPropertyPreviewTTC, lignesRemiseesParPanier,
+  consoAnnuelleDepuisFactures, multiPropertyPreviewTTC, lignesRemiseesParPanier,
   productibleForCity,
   COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
@@ -1088,8 +1088,12 @@ export default function DevisGenerator({
     }
     const mad = parseFloat(realBillMad) || 0
     if (mad <= 0) return null
-    const { kwhMensuel } = kwhFromBill(mad, distributeur)
-    return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
+    // AGNR14 — la « Facture réelle » est un montant de facture TOTALE
+    // (énergie + lignes fixes + TPPAN) : inversée au barème COMPLET, comme
+    // les 12 factures et le serveur (`kwh_from_bill(..., facture_totale=True)`),
+    // jamais par l'énergie seule (`kwhFromBill`, +40 % sur les petites factures).
+    const kwhAn = consoAnnuelleDepuisFactures(Array(12).fill(mad), distributeur)
+    return kwhAn > 0 ? kwhAn : null
   })()
 
   // N1/N4 — `monthly` démarre avec les valeurs D'EXEMPLE du simulateur

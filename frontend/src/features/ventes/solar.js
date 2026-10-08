@@ -839,6 +839,9 @@ function kwhFromBillBisect(bill, tranches) {
 // QF1 — inverse EXACT du barème : facture mensuelle (MAD TTC) → kWh/mois.
 // Miroir kwh_from_bill (analytique si progressif, dichotomie si sélectif).
 // Retourne { kwhMensuel, approximatif, estimation }.
+// AGNR14 — inverse de la facture d'ÉNERGIE SEULE : jamais pour un montant de
+// facture TOTALE (lignes fixes + TPPAN comprises) — celui-là passe par
+// `kwhDepuisFactureMad` / `consoAnnuelleDepuisFactures`.
 export function kwhFromBill(billMad, utility, tranchesOverride) {
   const bill = parseFloat(billMad) || 0
   if (bill <= 0) return { kwhMensuel: 0, approximatif: false, estimation: true }
