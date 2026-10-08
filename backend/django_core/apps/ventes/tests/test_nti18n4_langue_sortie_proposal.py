@@ -3,9 +3,9 @@
 Deux volets :
 - `clean_pdf_options` whiteliste `langue_sortie` (fr/en/ar), rejette tout le
   reste sur le défaut historique `None` (unité pure, pas de DB) ;
-- `DevisViewSet.proposal` résout systématiquement une langue (via
-  `apps.parametres.i18n_resolver.resolve_langue_sortie`) et la transmet au
-  moteur — `?langue=` explicite écrase, sinon `Client.langue_document` décide.
+- `DevisViewSet.proposal` transmet un `?langue=` explicite (validé par
+  `apps.parametres.i18n_resolver.resolve_langue_sortie`) ; sans lui (APDF18)
+  le moteur résout lui-même `Client.langue_document` (APDF7).
 """
 from unittest import mock
 
@@ -67,7 +67,12 @@ class ProposalLangueQueryParamTests(TestCase):
         resp, gen_mock = self._get_proposal()
         self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
         opts = gen_mock.call_args[0][1]
-        self.assertEqual(opts['langue_sortie'], 'ar')
+        # APDF18 — sans `?langue=`, la vue ne résout plus rien : elle laisse
+        # `langue_sortie` vide et LE MOTEUR résout (APDF7, build_quote_data).
+        self.assertIsNone(opts['langue_sortie'])
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self.assertEqual(
+            build_quote_data(self.devis, opts)['langue_sortie'], 'ar')
 
     def test_explicit_query_param_overrides_client(self):
         resp, gen_mock = self._get_proposal('?langue=en')
@@ -95,4 +100,8 @@ class ProposalLangueQueryParamTests(TestCase):
                 f'/api/django/ventes/devis/{devis_fr.id}/proposal/')
         self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
         opts = gen_mock.call_args[0][1]
-        self.assertEqual(opts['langue_sortie'], 'fr')
+        # APDF18 — résolution automatique déléguée au moteur (APDF7).
+        self.assertIsNone(opts['langue_sortie'])
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self.assertEqual(
+            build_quote_data(devis_fr, opts)['langue_sortie'], 'fr')
