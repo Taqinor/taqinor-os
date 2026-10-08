@@ -542,6 +542,8 @@
   ],
   "noms_publics": [
     "_allowed_methods",
+    "_avec_idempotence",
+    "_creer_atomique",
     "_idempotency_endpoint",
     "_idempotency_key",
     "_offres_tailles_reponse",

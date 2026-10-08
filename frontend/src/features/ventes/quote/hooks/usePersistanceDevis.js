@@ -21,7 +21,7 @@ import crmApi from '../../../../api/crmApi'
 import { fetchAllPages } from '../../../../utils/fetchAllPages'
 import { getApiError } from '../../../../lib/apiError'
 import { erreursBaseLegaleServeur, lignesServeurVersEcran } from '../lignesEcran'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { withKeys } from '../ligneFabrique.js'
 
 // AGNR33 — les champs d'en-tête dont un refus 400 se lit sous le champ.
@@ -395,6 +395,26 @@ export function usePersistanceDevis(ctx) {
   // route (réseau) ; jamais une erreur de programmation côté écran.
   const refusDistant = (err) => Boolean(err?.response) || err?.code === 'ERR_NETWORK'
 
+  // AGNR40 — UNE `Idempotency-Key` par session de création : posée au premier
+  // essai, renvoyée telle quelle à chaque nouvel essai (le serveur rejoue le
+  // premier devis si la coupure est survenue APRÈS son commit), oubliée dès
+  // qu'une création a réussi (la session de création est finie).
+  const cleCreationRef = useRef(null)
+  const cleCreation = () => {
+    if (!cleCreationRef.current) {
+      cleCreationRef.current = globalThis.crypto?.randomUUID?.()
+        || `devis-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+    }
+    return cleCreationRef.current
+  }
+  // AGNR40 — issue INCONNUE : la requête a pu être enregistrée sans que la
+  // réponse arrive (coupure, délai, 5xx sans corps) ou la clé a déjà servi.
+  const issueInconnue = (err) => {
+    if (err?.response?.data?.code === 'idempotency_conflict') return true
+    if (!err?.response) return ['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT'].includes(err?.code)
+    return err.response.status >= 500 && !err.response.data?.detail
+  }
+
   const persisterDevis = async (surcharge = null) => {
     setSaving(true)
     // AGNR21 — trois issues : ok, PARTIEL (lignes écrites, étude ou registre
@@ -464,7 +484,8 @@ export function usePersistanceDevis(ctx) {
         // repose les mêmes choix + les entrées réelles, sans bouger le total).
         const { data } = await ventesApi.createDevisAtomic({
           ...payload, etude_params: choixEcran(), lignes: lignesPayload,
-        })
+        }, { idempotencyKey: cleCreation() })
+        cleCreationRef.current = null
         devisId = data.id
         devisCree = data
         // AGNR21 — le devis EXISTE désormais : un nouvel essai (après une
@@ -580,6 +601,9 @@ export function usePersistanceDevis(ctx) {
         setErreursChamps(parChamp)
         msg = Object.entries(parChamp)
           .map(([champ, texte]) => `${LIBELLES_CHAMPS_ENTETE[champ]} : ${texte}`).join(' · ')
+      } else if (!editDevis && issueInconnue(err)) {
+        // AGNR40 — jamais « vérifiez les champs » quand le devis a pu être créé.
+        msg = 'La connexion a été interrompue — vérifiez la liste des devis avant de recréer.'
       } else if (typeof raw?.detail === 'string') {
         msg = raw.detail
       } else {

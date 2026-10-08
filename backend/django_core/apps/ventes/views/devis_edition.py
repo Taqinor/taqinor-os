@@ -203,7 +203,20 @@ class DevisEditionActionsMixin:
         client/mode_installation/etude_params…) + ``lignes`` : liste de
         ``{produit, designation, quantite, prix_unitaire, remise?, taux_tva?}``.
         La société est TOUJOURS forcée côté serveur. Aucun ``prix_achat``.
+
+        AGNR40 — IDEMPOTENTE : une ``Idempotency-Key`` (une par session de
+        création de l'écran) rejoue le PREMIER devis créé pour cette clé au lieu
+        d'en créer un second (2ᵉ clic après une coupure survenue APRÈS le
+        commit) ; corps différent → 409. Sans en-tête : inchangé.
         """
+        rejouer = getattr(self, '_avec_idempotence', None)
+        if rejouer is None:
+            return self._creer_atomique(request)
+        return rejouer(request, lambda: self._creer_atomique(request),
+                       suffixe='atomic')
+
+    def _creer_atomique(self, request):
+        """Le corps de ``POST /devis/atomic/`` (voir ``atomic``)."""
         from django.db import transaction
         from rest_framework.exceptions import ValidationError
         from apps.crm.services import resolve_client_for_lead
