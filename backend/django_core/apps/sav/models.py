@@ -1046,7 +1046,31 @@ class Ticket(models.Model):
                 restant = droits['deplacements_restants']
             if restant is None or restant > 0:
                 return self.Couverture.CONTRAT
+        if self.garantie_chantier_a_confirmer:
+            return self.Couverture.A_DETERMINER
         return self.Couverture.FACTURABLE
+
+    @property
+    def garantie_chantier_a_confirmer(self):
+        """ASAV11 (D-ASAV-2) — ticket SANS équipement daté dont le chantier
+        est encore dans une garantie (légale : réception + 12 mois ; ou de
+        pose : ``garantie_installation_mois``) à la date d'ouverture : la
+        garantie est « à confirmer », jamais facturée d'office. Une valeur
+        ``sous_garantie`` posée à la main, ou un équipement daté, prime."""
+        eq = self.equipement
+        if eq is not None and eq.date_fin_garantie_effective:
+            return False
+        if self.sous_garantie != self.SousGarantie.A_DETERMINER:
+            return False
+        chantier = self.installation
+        reception = getattr(chantier, 'date_reception', None)
+        if reception is None:
+            return False
+        fin = add_months(reception, Equipement.GARANTIE_LEGALE_MOIS)
+        pose = getattr(chantier, 'garantie_installation_mois', None)
+        if pose:
+            fin = max(fin, add_months(reception, pose))
+        return self.date_reference_couverture < fin
 
     def _contrat_couvrant(self, today=None):
         """AUD502 — contrat de maintenance du client qui COUVRE réellement à

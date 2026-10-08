@@ -2458,6 +2458,14 @@ def decision_facturation(ticket, user, override=False):
     couverture = ticket.couverture
     if couverture == Ticket.Couverture.A_DETERMINER:
         couverture = ticket.couverture_calculee()
+    if couverture == Ticket.Couverture.A_DETERMINER:
+        # ASAV11 (D-ASAV-2) — garantie de chantier à confirmer : jamais
+        # facturé d'office.
+        return {
+            'refuse': True, 'http': 409,
+            'detail': 'Garantie de chantier à confirmer avant de facturer.',
+            'couverture': couverture, 'couvert': False,
+        }
     return {
         'refuse': False, 'http': None, 'detail': '',
         'couverture': couverture,
