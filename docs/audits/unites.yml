@@ -489,7 +489,7 @@ unites:
     groupe: AGNR
     plan: docs/plans/PLAN_AUDIT_GENERATEUR.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md]
-    pr: null
+    pr: 870
     date: 2026-10-08
     notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build (d'où le rang 14 malgré le score 20). DevisGenerator.jsx = 5 668 lignes. Préfixe AGEN déjà pris (docs/done_task.md) → AGNR. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-generateur.md) : 28 constats (4 S1, 9 S2, 15 S3), 45 tâches AGNR ; prix de liste HT écrit dans le champ TTC, factures d'un lead reportées sur un autre."
 
