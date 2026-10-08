@@ -706,8 +706,10 @@ def compute_attainment(objectif):
       - nb_contacts : leads avec first_contacted_at dans la période
       - nb_rdv      : Appointment.statut=EFFECTUE avec scheduled_at dans la période
 
-    Métriques ventes (nb_devis / ca_signe) : retourne 0 ; un futur hook
-    d'un sélecteur ventes branchera la valeur sans importer ventes.models.
+    ACRM27 — métriques ventes calculées elles aussi (jamais un réalisé
+    constant à 0) :
+      - nb_devis : devis ENVOYÉS dans la période (``date_envoi``) ;
+      - ca_signe : ``ca_signe_periode`` — le MÊME chiffre que « Mes équipes ».
     """
     import datetime
     from decimal import Decimal
@@ -786,7 +788,14 @@ def compute_attainment(objectif):
             qs = qs.filter(created_by=owner)
         realise = Decimal(qs.count())
 
-    # else: nb_devis / ca_signe → réalisé = 0 (hook ventes futur)
+    elif metric == 'nb_devis':
+        realise = nb_devis_envoyes_periode(
+            company, None if owner is None else [owner.pk], start_dt, end_dt)
+
+    elif metric == 'ca_signe':
+        realise = ca_signe_periode(
+            company, None if owner is None else [owner.pk],
+            period_start, period_end)
 
     cible = objectif.cible or Decimal('0')
     taux = float(realise / cible * 100) if cible else 0.0
@@ -1062,26 +1071,58 @@ def _ca_signe_mois(company, membre_ids, today=None):
     import datetime
     from decimal import Decimal
     today = today or datetime.date.today()
-    debut_mois = today.replace(day=1)
     if not membre_ids:
         return Decimal('0')
+    return ca_signe_periode(company, membre_ids, today.replace(day=1), today)
+
+
+def ca_signe_periode(company, membre_ids, debut, fin):
+    """ACRM27 — LA lecture du CA TTC signé d'une période (bornes DATES
+    incluses, ``date_acceptation``), par owner du lead source : la carte
+    « Mes équipes » (``_ca_signe_mois``), le réalisé des objectifs ``ca_signe``
+    et les défis la partagent — jamais deux chiffres. ``membre_ids`` ``None``
+    = toute la société. Seule la version en vigueur compte
+    (``_devis_compte_comme_signe``, ACRM10). Lecture via ``lead.devis`` —
+    jamais un import de ``apps.ventes.models``."""
+    from decimal import Decimal
+
     from .models import Lead
-    leads = (Lead.objects
-             .filter(company=company, owner_id__in=membre_ids)
-             .prefetch_related('devis'))
+    leads = Lead.objects.filter(company=company)
+    if membre_ids is not None:
+        leads = leads.filter(owner_id__in=membre_ids)
     total = Decimal('0')
-    for lead in leads:
+    for lead in leads.prefetch_related('devis'):
         for devis in lead.devis.all():
             if not _devis_compte_comme_signe(devis):  # ACRM10
                 continue
             d = devis.date_acceptation
-            if d is None or d < debut_mois or d > today:
+            if d is None or d < debut or d > fin:
                 continue
             try:
                 total += Decimal(str(devis.total_ttc or 0))
             except Exception:
                 continue
     return total
+
+
+def nb_devis_envoyes_periode(company, membre_ids, start_dt, end_dt):
+    """ACRM27 — le nombre de devis ENVOYÉS dans la fenêtre
+    ``[start_dt, end_dt[`` (``date_envoi``), par owner du lead source
+    (``membre_ids`` ``None`` = toute la société) : le réalisé des objectifs
+    et défis ``nb_devis``. Lecture via ``lead.devis``."""
+    from decimal import Decimal
+
+    from .models import Lead
+    leads = Lead.objects.filter(company=company)
+    if membre_ids is not None:
+        leads = leads.filter(owner_id__in=membre_ids)
+    nombre = 0
+    for lead in leads.prefetch_related('devis'):
+        for devis in lead.devis.all():
+            envoye = getattr(devis, 'date_envoi', None)
+            if envoye is not None and start_dt <= envoye < end_dt:
+                nombre += 1
+    return Decimal(nombre)
 
 
 def stats_equipe(company):
@@ -5713,7 +5754,18 @@ def _metric_count_for_owner(company, metric, owner, start_dt, end_dt):
             company=company, created_by=owner,
             statut=Appointment.Statut.EFFECTUE,
             scheduled_at__gte=start_dt, scheduled_at__lt=end_dt).count())
-    # nb_devis / ca_signe — hors périmètre crm-only (comme compute_attainment).
+    # ACRM27 — les métriques ventes sont calculées (même lecture que
+    # ``compute_attainment``), jamais un 0 constant.
+    if metric == 'nb_devis':
+        return nb_devis_envoyes_periode(company, [owner.pk], start_dt, end_dt)
+    if metric == 'ca_signe':
+        import datetime
+
+        from core.dates import aujourd_hui_local
+        # Fenêtre [start_dt, end_dt[ ramenée aux jours locaux, bornes incluses.
+        return ca_signe_periode(
+            company, [owner.pk], aujourd_hui_local(start_dt),
+            aujourd_hui_local(end_dt - datetime.timedelta(microseconds=1)))
     return Decimal('0')
 
 
