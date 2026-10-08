@@ -22,6 +22,7 @@ export const FILES = [
   'pages/ventes/DevisGenerator.jsx',
   'features/ventes/quote/ligneFabrique.js',
   'features/ventes/quote/ecranDefauts.js',
+  'features/ventes/quote/hooks/usePersistanceDevis.js',
 ]
 
 //: Le marqueur posé avant le contenu de chaque fichier concaténé.
