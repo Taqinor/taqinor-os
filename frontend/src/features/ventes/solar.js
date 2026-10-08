@@ -2299,10 +2299,13 @@ const placeholder = (designation, quantite) => ({
 // byte-identique à l'historique (voir `orderLinesByRolePreference`).
 export function defaultProductLines(produits, ordreLignes) {
   const byType = indexProduits(produits)
-  const first = (type) => (byType[type] ?? [])[0] ?? null
+  // AGNR27 — garde « aucun produit sans prix » : un rôle pointe le premier
+  // produit PRIX CONNU, ou reste sans produit (placeholder) — jamais un
+  // article à 0 MAD (ex. « Structure bac acier C&I » du seed C&I).
+  const first = (type) => (byType[type] ?? []).find(_hasPrix) ?? null
   const exactOr = (type, needle) => {
     const pool = byType[type] ?? []
-    return pool.find(p => _norm(p.nom).includes(needle)) ?? null
+    return pool.find(p => _hasPrix(p) && _norm(p.nom).includes(needle)) ?? null
   }
   const row = (p, designation, quantite) =>
     p ? lineFrom(p, quantite) : placeholder(designation, quantite)
