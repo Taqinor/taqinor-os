@@ -58,6 +58,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Check parite image de prod <-> environnements CI (ADEP2)',
+         'python scripts/check_parite_image_ci.py',
+         '.'),
+        ('Tests de la garde parite image/CI (ADEP2)',
+         'python -m unittest scripts.tests.test_check_parite_image_ci -v',
+         '.'),
         ('Check pipeline stage names against STAGES.py',
          'python scripts/check_stages.py',
          '.'),
