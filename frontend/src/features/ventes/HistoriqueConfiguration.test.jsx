@@ -165,6 +165,37 @@ describe('QJR553 — historique des versions', () => {
     expect(document.body.textContent).not.toMatch(/prix_achat|Prix d.achat|marge/i)
   })
 
+  it('ADEV36 — un échéancier se lit « Acompte 40 % · Solde 60 % → Acompte 30 % · Solde 70 % »', async () => {
+    const tr = (a, s) => [
+      { libelle: 'Acompte', type: 'acompte', pct_or_montant: a },
+      { libelle: 'Solde', type: 'solde', pct_or_montant: s },
+    ]
+    const diffEch = { ajoutees: [], retirees: [], modifiees: [], parametres: {
+      echeancier: [tr(40, 60), tr(30, 70)],
+    } }
+    ventesApi.getHistoriqueConfigurationDevis.mockImplementation((id, params) => Promise.resolve({
+      data: params ? { snapshots: [V1, V2], diff: diffEch } : { snapshots: [V1, V2] },
+    }))
+    render(<HistoriqueConfiguration devisId={12} peutRevenir onRevenir={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: /Voir les différences/ }))
+    const diff = await screen.findByTestId('historique-diff')
+    expect(diff.textContent).toMatch(/Échéancier : Acompte 40 % · Solde 60 % → Acompte 30 % · Solde 70 %/)
+    expect(diff.textContent).not.toMatch(/modifié/)
+  })
+
+  it('ADEV36 — un échéancier vide s’affiche « — »', async () => {
+    const diffVide = { ajoutees: [], retirees: [], modifiees: [], parametres: {
+      echeancier: [[], [{ libelle: 'Solde', type: 'solde', pct_or_montant: 100 }]],
+    } }
+    ventesApi.getHistoriqueConfigurationDevis.mockImplementation((id, params) => Promise.resolve({
+      data: params ? { snapshots: [V1, V2], diff: diffVide } : { snapshots: [V1, V2] },
+    }))
+    render(<HistoriqueConfiguration devisId={12} peutRevenir onRevenir={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: /Voir les différences/ }))
+    const diff = await screen.findByTestId('historique-diff')
+    expect(diff.textContent).toMatch(/Échéancier : — → Solde 100 %/)
+  })
+
   it('pas de « Revenir » quand le devis n’est pas modifiable', async () => {
     ventesApi.getHistoriqueConfigurationDevis.mockResolvedValue({ data: { snapshots: [V1, V2] } })
     render(<HistoriqueConfiguration devisId={12} peutRevenir={false} onRevenir={vi.fn()} />)

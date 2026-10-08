@@ -42,6 +42,15 @@ function valeurLisible(v) {
   if (typeof v === 'number' || (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v))) {
     return formatNumber(Number(v))
   }
+  // ADEV36 — un échéancier (liste de tranches {libelle, pct_or_montant}) se lit
+  // « Acompte 40 % · Solde 60 % » ; une liste vide = « — » ; tout autre objet
+  // garde le repli « modifié ».
+  if (Array.isArray(v)) {
+    if (v.length === 0) return '—'
+    if (v.every(t => t && typeof t === 'object' && 'pct_or_montant' in t)) {
+      return v.map(t => `${t.libelle || t.type || 'Tranche'} ${formatNumber(Number(t.pct_or_montant))} %`).join(' · ')
+    }
+  }
   if (typeof v === 'object') return 'modifié'
   return String(v)
 }
