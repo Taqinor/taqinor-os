@@ -9,9 +9,11 @@ const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const NOMS = /yanbow|solarbow|marketingbow/i;
 /**
  * Seuls endroits autorisés à écrire un nom : la constante, les dictionnaires, le registre des affirmations,
- * et le pack logo `brand/` (fichiers de Reda copiés à l'octet, YBW35 : leurs noms et `aria-label` portent la marque).
+ * le pack logo `brand/` (fichiers de Reda copiés à l'octet, YBW35 : leurs noms et `aria-label` portent la marque),
+ * et les jumeaux de contrat `contract_samples/` (YBW53 : JSON-égaux à la copie ERP, jamais rendus).
  */
-const EXEMPTES = (rel: string) => rel === 'lib/brand.ts' || rel.startsWith('i18n/') || rel === 'lib/claims.ts' || rel.startsWith('brand/');
+const EXEMPTES = (rel: string) =>
+  rel === 'lib/brand.ts' || rel.startsWith('i18n/') || rel === 'lib/claims.ts' || rel.startsWith('brand/') || rel.startsWith('contract_samples/');
 
 function fichiers(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
