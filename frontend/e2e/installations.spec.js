@@ -51,12 +51,16 @@ test("E-INSTALL-2: transition bloquée par un gate -> les raisons s'affichent", 
   // muter). Cette 400 `{statut: [...]}` est exactement celle que CHT22 a
   // appris à rendre en liste à puces (ch6-blocked-reasons) côté Select
   // legacy, au lieu d'un message brut.
-  const res = await page.request.post('/api/django/installations/chantiers/', {
-    data: { statut: 'cloture' },
-  })
+  // ACHT2 — un chantier naît « Signé » quel que soit le corps, puis avance pas
+  // à pas (machine d'états serveur) jusqu'à « Clôturé ».
+  const res = await page.request.post('/api/django/installations/chantiers/', { data: {} })
   expect(res.ok()).toBeTruthy()
   const { id } = await res.json()
   createdChantiers.push(id)
+  for (const statut of ['materiel_commande', 'planifie', 'en_cours', 'installe', 'receptionne', 'cloture']) {
+    const pas = await page.request.patch(`/api/django/installations/chantiers/${id}/`, { data: { statut } })
+    expect(pas.ok(), `passage « ${statut} »`).toBeTruthy()
+  }
 
   await page.goto(`/chantiers?id=${id}`)
   await expect(page.getByRole('dialog')).toBeVisible()

@@ -5079,6 +5079,52 @@ def _derogation_ci_utilisee(installation, nouveau_statut, user,
         _gardes_ci(installation, nouveau_statut, user, None))
 
 
+RAISON_CHANTIER_ANNULE = (
+    "Chantier annulé : réactivez-le avant de changer son statut.")
+
+
+def _ordre_statuts_effectif(company):
+    """ACHT2 — l'entonnoir sur lequel se compte « un pas » : ``STATUT_ORDER``
+    pour une société sans étapes CH2 ; sinon les seuls statuts canoniques que
+    ses étapes ACTIVES portent (``statut_legacy``), dans l'ordre canonique —
+    le cycle par défaut passe d'« Approvisionnement » (Matériel commandé) à
+    « Montage » (En cours) sans étape « Planifié » : c'est UN pas."""
+    if not stages_configures(company):
+        return list(Installation.STATUT_ORDER)
+    portes = {Installation.canonical_statut(s.statut_legacy)
+              for s in stages_actifs(company) if s.statut_legacy}
+    return [s for s in Installation.STATUT_ORDER if s in portes]
+
+
+def raison_machine_etats(installation, nouveau_statut):
+    """ACHT2 (D-ACHT-2) — table de transitions ADJACENTES du chantier, gardée
+    par le serveur. Renvoie la raison française du refus, ou None.
+
+    * chantier annulé : tout changement de statut canonique est refusé ;
+    * pas en avant de plus d'un rang canonique (``STATUT_ORDER``, statuts
+      hérités rabattus sur leur colonne) : refusé — « un pas à la fois ».
+    Un recul n'est jamais bloqué ici (la réouverture d'un chantier clôturé
+    garde son verrou AUD326 dédié)."""
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if canon_old == canon_new:
+        return None
+    if getattr(installation, 'annule', False):
+        return RAISON_CHANTIER_ANNULE
+    ordre = _ordre_statuts_effectif(installation.company)
+    if canon_old not in ordre or canon_new not in ordre:
+        ordre = Installation.STATUT_ORDER
+    if canon_old not in ordre or canon_new not in ordre:
+        return None
+    i, j = ordre.index(canon_old), ordre.index(canon_new)
+    if j - i > 1:
+        libelles = dict(Installation.Statut.choices)
+        return (f"Passage de {libelles.get(canon_old, canon_old)} à "
+                f"{libelles.get(canon_new, canon_new)} refusé : un pas à la "
+                f"fois.")
+    return None
+
+
 def _raisons_transition(installation, nouveau_statut, user,
                         motif_override_acompte, motif_reouverture,
                         motif_derogation_8221=None):
@@ -5087,7 +5133,15 @@ def _raisons_transition(installation, nouveau_statut, user,
     Ordre : gates CH2 (étapes configurées), puis le verrou de clôture AUD326,
     puis le gate d'acompte YSERV1 — ce dernier armé sur TOUTE arrivée à
     PLANIFIE, quel que soit le chemin (il n'était testé que par le PATCH) —
-    puis CIQ621 : site pro sans convention, même sans étapes amorcées."""
+    puis CIQ621 : site pro sans convention, même sans étapes amorcées.
+
+    ACHT2 (D-ACHT-2) — EN TÊTE, la machine d'états serveur : un chantier
+    annulé ne change plus de statut, et aucun pas en AVANT ne saute un rang
+    canonique (miroir serveur de ``canMoveStatus``). Ces deux refus sont
+    exclusifs : le reste de la chaîne n'est pas évalué."""
+    raison_machine = raison_machine_etats(installation, nouveau_statut)
+    if raison_machine:
+        return [raison_machine]
     raisons = list(verifier_transition_statut(installation, nouveau_statut))
     raisons.extend(_gardes_ci(installation, nouveau_statut, user,
                               motif_derogation_8221))
@@ -5484,6 +5538,9 @@ def notifier_jalon_a_facturer(jalon, user=None):
     if jalon.rappel_facturation_envoye:
         return False
     installation = jalon.installation
+    # ACHT2 — un chantier annulé ne réclame aucune facture de tranche.
+    if getattr(installation, 'annule', False):
+        return False
     devis = getattr(installation, 'devis', None)
     if devis is None:
         return False

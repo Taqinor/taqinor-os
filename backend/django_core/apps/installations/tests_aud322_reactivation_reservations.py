@@ -83,6 +83,11 @@ class ReactivationReamorceLesReservationsTests(TestCase):
     def test_la_consommation_se_poste_apres_reactivation(self):
         """ROUGE avant AUD322 : aucune SORTIE, stock gonflé à 10."""
         self._annuler_puis_reactiver()
+        # ACHT2 — un pas à la fois : « Planifié » → « En cours » → « Installé ».
+        r = self.api.patch(
+            f'{BASE}/{self.inst.id}/',
+            {'statut': Installation.Statut.EN_COURS}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
         r = self.api.patch(
             f'{BASE}/{self.inst.id}/',
             {'statut': Installation.Statut.INSTALLE}, format='json')

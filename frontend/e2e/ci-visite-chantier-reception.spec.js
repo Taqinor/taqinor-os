@@ -211,6 +211,11 @@ test.describe('CIQ650 — site professionnel BT, de la visite à la réception',
   test('4. « En cours » refusé sans convention puis sans documents de sécurité, puis autorisé', async ({ page, request }, testInfo) => {
     test.setTimeout(180_000)
     const passerEnCours = () => request.patch(chantierUrl(), { data: { statut: 'en_cours' } })
+    // ACHT2 — la machine d'états serveur refuse tout saut de rang : le chantier
+    // (né « Signé ») avance pas à pas jusqu'à « Planifié » avant « En cours ».
+    for (const statut of ['materiel_commande', 'planifie']) {
+      await lireJson(await request.patch(chantierUrl(), { data: { statut } }), `passage « ${statut} »`)
+    }
 
     const sansConvention = await passerEnCours()
     expect(sansConvention.status(), 'travaux avant la convention').toBe(400)
@@ -311,6 +316,9 @@ test.describe('CIQ650 — site professionnel BT, de la visite à la réception',
 
   test('7. réception provisoire, PV signé avec fonction, définitive refusée tant que la réserve est ouverte', async ({ playwright, request, baseURL }) => {
     test.setTimeout(240_000)
+    // ACHT2 — un pas à la fois : « Installé » avant la réception.
+    await lireJson(await request.patch(chantierUrl(),
+      { data: { statut: 'installe' } }), 'passage « Installé »')
     const receptionne = await lireJson(await request.patch(chantierUrl(),
       { data: { statut: 'receptionne' } }), 'réception provisoire')
     expect(receptionne.statut).toBe('receptionne')

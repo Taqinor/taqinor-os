@@ -271,7 +271,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         company = self.request.user.company
 
         def _save(reference):
-            return serializer.save(company=company, reference=reference)
+            # ACHT2 (D-ACHT-2) — un chantier NAÎT « Signé » quel que soit le
+            # corps : le statut n'avance ensuite que pas à pas, par
+            # `changer_statut_chantier` (gardes + effets de chaque étape).
+            return serializer.save(company=company, reference=reference,
+                                   statut=Installation.Statut.SIGNE)
 
         create_with_reference(Installation, 'CHT', company, _save)
         inst = serializer.instance
