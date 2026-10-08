@@ -60,14 +60,14 @@ class ValiderSaisieTests(TestCase):
         del dates['aid_el_mawlid']
         erreurs = valider_saisie(annee, dates)
         self.assertTrue(erreurs)
-        self.assertIn('Aïd el-Mawlid', erreurs[0])
+        self.assertIn('Aïd al-Mawlid', erreurs[0])
 
     def test_empty_value_blocks_save(self):
         annee = _annee_future()
         dates = _dates_valides(annee)
         dates['aid_el_adha'] = ''
         erreurs = valider_saisie(annee, dates)
-        self.assertTrue(any('Aïd el-Adha' in e for e in erreurs))
+        self.assertTrue(any('Aïd al-Adha' in e for e in erreurs))
 
     def test_past_date_blocks_save(self):
         annee = _annee_future()
@@ -94,9 +94,10 @@ class EnregistrerFetesMobilesTests(TestCase):
         company = _company()
         annee = _annee_future()
         enregistrer_fetes_mobiles(company, annee, _dates_valides(annee))
+        # APAR36 — 4 fêtes + le « 2e jour » des deux Aïd.
         self.assertEqual(
             Holiday.objects.filter(
-                company=company, recurrent_annuel=False).count(), 4)
+                company=company, recurrent_annuel=False).count(), 6)
 
     def test_invalid_dates_raise_and_write_nothing(self):
         company = _company('nti18n33-co-2', 'NTI18N33 Co 2')
@@ -152,4 +153,4 @@ class FetesMobilesEndpointTests(TestCase):
             BASE + 'enregistrer/',
             {'annee': annee, 'dates': dates}, format='json')
         self.assertEqual(resp.status_code, 400)
-        self.assertIn('Aïd el-Adha', resp.data['detail'])
+        self.assertIn('Aïd al-Adha', resp.data['detail'])
