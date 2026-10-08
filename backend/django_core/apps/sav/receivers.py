@@ -67,50 +67,35 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
         if ticket.statut not in Ticket.OPEN_STATUTS or ticket.annule:
             return  # déjà résolu/clôturé/annulé — ne recule jamais.
 
-        update_fields = []
         if not ticket.date_resolution:
             ticket.date_resolution = timezone.localdate()
-            update_fields.append('date_resolution')
-        # YSERV12 — une intervention terminée = résolution SUR SITE (jamais
-        # écrasé si déjà posé explicitement).
-        if not ticket.canal_resolution:
-            ticket.canal_resolution = ticket.CanalResolution.SUR_SITE
-            update_fields.append('canal_resolution')
+            ticket.save(update_fields=['date_resolution'])
         ancien_statut = ticket.statut
-        # AUD514 — le statut passe désormais par la machine d'états GARDÉE
-        # (plus d'écriture directe qui contournait le graphe : NOUVEAU/
-        # PLANIFIE → RESOLU n'est PAS une transition humaine). Le saut est
-        # déclaré comme transition SYSTÈME et tracé au chatter — jamais
-        # silencieux. Une transition refusée (statut inattendu) laisse le
-        # ticket intact et n'est pas avalée : elle est journalisée.
-        from .machine_etats import TransitionInterdite, changer_statut
+        # ASAV12 — LE service unique de transition (même chaîne d'effets que
+        # l'action ``resoudre`` : SLA, immobilisations, notification client,
+        # suiveurs, ARC34, ``ticket_resolu``, chatter). Transition SYSTÈME
+        # (AUD514 : NOUVEAU/PLANIFIE → RESOLU n'est pas humaine) ; YSERV12 —
+        # une intervention terminée = résolution SUR SITE par défaut (jamais
+        # écrasé si déjà posé). Un refus laisse le ticket intact, journalisé.
+        from . import services as sav_services
         try:
-            changer_statut(ticket, Ticket.Statut.RESOLU,
-                           persister=False, systeme=True)
-        except TransitionInterdite as exc:
+            sav_services.appliquer_transition_ticket(
+                ticket, Ticket.Statut.RESOLU, user, systeme=True,
+                canal_resolution_defaut=Ticket.CanalResolution.SUR_SITE)
+        except sav_services.TransitionTicketRefusee as exc:
             logger.warning(
                 'sav: intervention terminée #%s — transition de ticket '
-                'refusée par la machine d\'états : %s',
+                "refusée par la machine d'états : %s",
                 getattr(intervention, 'pk', None), exc)
-            if update_fields:
-                ticket.save(update_fields=update_fields)
             return
-        update_fields.append('statut')
-        ticket.save(update_fields=update_fields)
         saut_systeme = ancien_statut != Ticket.Statut.EN_COURS
         activity.log_note(
             ticket, user,
             f"Intervention {intervention.get_type_intervention_display()} "
             'terminée — ticket avancé automatiquement vers Résolu '
             f'(depuis {ancien_statut}).'
-            + (' Transition système : le ticket n\'était pas encore en cours, '
-               'l\'intervention terminée fait foi.' if saut_systeme else ''))
-        # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu),
-        # même point d'émission unique que la transition manuelle gardée
-        # (apps/sav/views.py).
-        from . import services as sav_services
-        sav_services.emettre_ticket_resolu(
-            ticket, company=company, user=user, ancien_statut=ancien_statut)
+            + (" Transition système : le ticket n'était pas encore en cours, "
+               "l'intervention terminée fait foi." if saut_systeme else ''))
     except Exception:  # pragma: no cover - défensif (best-effort)
         logger.warning(
             'sav: échec avancement ticket sur intervention terminée '

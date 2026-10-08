@@ -1232,6 +1232,98 @@ def emettre_changement_statut_ticket(ticket, *, company, user=None,
         pass
 
 
+# ── ASAV12 — LE service unique de transition de statut d'un ticket ──────────
+
+class TransitionTicketRefusee(Exception):
+    """ASAV12 — transition refusée (graphe ou garde YSERV2). ``detail`` est le
+    dict d'erreur DRF à renvoyer tel quel (400) par une vue."""
+
+    def __init__(self, detail):
+        super().__init__(str(detail))
+        self.detail = detail
+
+
+def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
+                                request=None, canal_resolution_defaut=None):
+    """ASAV12 — applique UNE transition de statut GARDÉE et TOUS ses effets.
+
+    Chemin unique pour la vue (actions ``planifier/demarrer/resoudre/
+    cloturer/reouvrir``, actions groupées, ``planifier-intervention``) et le
+    récepteur d'intervention terminée : machine d'états (``systeme`` ouvre
+    les transitions automatiques AUD514), garde de clôture YSERV2, canal de
+    résolution YSERV12, ``ticket_resolu`` (ARC37), RECORD_STATE_CHANGE
+    (ARC34), ``sla_breach`` (FG81), ``reopen_count`` (XSAV11), chatter,
+    notification client (XSAV4), suiveurs (ZSAV9), clôture des
+    immobilisations (XSAV16). Lève ``TransitionTicketRefusee`` sans rien
+    écrire sur une transition refusée. Renvoie le ticket."""
+    from django.db.models import F
+
+    from . import activity, machine_etats
+    from .models import Ticket
+
+    clotures = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
+    old = Ticket.objects.get(pk=ticket.pk)
+    # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
+    # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
+    if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+        from apps.installations.selectors import (
+            interventions_ouvertes_pour_ticket,
+        )
+        ouvertes = interventions_ouvertes_pour_ticket(ticket.id)
+        if ouvertes:
+            raise TransitionTicketRefusee({
+                'statut': ('Impossible de clôturer : intervention(s) encore '
+                           'ouverte(s) sur ce ticket.'),
+                'interventions_ouvertes': ouvertes,
+            })
+    try:
+        machine_etats.changer_statut(
+            ticket, cible, persister=False, systeme=systeme)
+    except machine_etats.TransitionInterdite as exc:
+        raise TransitionTicketRefusee({'statut': str(exc)})
+    # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
+    # l'appelant n'en a pas déjà posé un (jamais écrasé) ; le champ est
+    # toujours listé dans update_fields (sinon perdu en silence).
+    update_fields = ['statut']
+    if cible == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU:
+        if not ticket.canal_resolution:
+            ticket.canal_resolution = (
+                canal_resolution_defaut or old.canal_resolution_propose())
+        update_fields.append('canal_resolution')
+    ticket.save(update_fields=update_fields)
+    emettre_ticket_resolu(
+        ticket, company=ticket.company, user=user, ancien_statut=old.statut)
+    emettre_changement_statut_ticket(
+        ticket, company=ticket.company, user=user, ancien_statut=old.statut)
+    # FG81 — recalcule sla_breach après toute mise à jour de statut.
+    ticket.recompute_sla_breach()
+    # XSAV11 / AUD829 — réouverture comptée par incrément atomique.
+    if old.statut in clotures and ticket.statut in Ticket.OPEN_STATUTS:
+        Ticket.objects.filter(pk=ticket.pk).update(
+            reopen_count=F('reopen_count') + 1)
+        ticket.refresh_from_db(fields=['reopen_count'])
+    ticket.save(update_fields=['sla_breach'])
+    activity.log_changes(old, ticket, user)
+    if old.statut != ticket.statut:
+        # XSAV4 — notification client best-effort (toggle OFF = no-op).
+        from .notifications_client import notify_ticket_transition
+        notify_ticket_transition(ticket, ticket.statut, request=request)
+        # ZSAV9 — notifie les suiveurs de la transition (best-effort).
+        from apps.notifications.types_evenements import EventType
+        notify_followers(
+            ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
+            title=f'Statut changé — {ticket.reference}',
+            body=f'Nouveau statut : {ticket.get_statut_display()}.',
+            link=f'/sav/tickets/{ticket.pk}',
+            exclude_user=user)
+        # XSAV16 — la résolution / clôture referme (idempotent) toute
+        # immobilisation EN COURS de CE ticket.
+        if ticket.statut in clotures:
+            for dt in ticket.downtimes.filter(fin__isnull=True):
+                dt.clore()
+    return ticket
+
+
 def abonner_suiveurs_globaux(ticket):
     """ZSAV9 — Abonne automatiquement (idempotent) chaque utilisateur listé
     dans ``SavSlaSettings.suivre_tous_tickets_sav`` au ticket nouvellement

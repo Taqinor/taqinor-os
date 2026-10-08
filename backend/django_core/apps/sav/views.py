@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
-from django.db.models import F, Q
+from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -884,96 +884,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
             sav_services.notifier_arret_installation(serializer.instance)
 
     def _appliquer_transition_statut(self, ticket, statut_cible):
-        """YDOCF1 — Applique une transition de statut GARDÉE (via
-        ``machine_etats.changer_statut``) et rejoue exactement la même chaîne
-        d'effets qu'avant YDOCF1 (SLA/réouverture/chatter/notification client/
-        clôture des downtimes). Lève ``ValidationError`` (400) nommant le
-        statut courant + les cibles permises sur une transition interdite."""
-        from . import machine_etats
-
-        old = Ticket.objects.get(pk=ticket.pk)
-        # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
-        # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
-        if (statut_cible == Ticket.Statut.CLOTURE
-                and old.statut != Ticket.Statut.CLOTURE):
-            ouvertes = self._interventions_ouvertes(old)
-            if ouvertes:
-                raise ValidationError({
-                    'statut': (
-                        'Impossible de clôturer : intervention(s) encore '
-                        'ouverte(s) sur ce ticket.'),
-                    'interventions_ouvertes': ouvertes,
-                })
-        try:
-            machine_etats.changer_statut(ticket, statut_cible, persister=False)
-        except machine_etats.TransitionInterdite as exc:
-            raise ValidationError({'statut': str(exc)})
-        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
-        # l'appelant n'en a pas déjà posé un explicitement (jamais écrasé).
-        # Dans les deux cas (posé explicitement par l'appelant AVANT cet
-        # appel, ou proposé automatiquement ici), le champ doit figurer dans
-        # `update_fields` sous peine d'être silencieusement perdu (un
-        # `save(update_fields=...)` n'écrit QUE les colonnes listées).
-        update_fields = ['statut']
-        if statut_cible == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU:
-            if not ticket.canal_resolution:
-                ticket.canal_resolution = old.canal_resolution_propose()
-            update_fields.append('canal_resolution')
-        ticket.save(update_fields=update_fields)
-        # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu) sur
-        # le FRANCHISSEMENT gardé par la condition ci-dessus. No-op si la
-        # transition n'atteint pas RESOLU (garde interne au service).
+        """ASAV12 — délégué d'une ligne vers LE service unique
+        ``services.appliquer_transition_ticket`` (même chaîne d'effets pour la
+        vue et le récepteur d'intervention terminée). Une transition refusée
+        lève ``ValidationError`` (400) avec le détail du service."""
         from . import services as sav_services
-        sav_services.emettre_ticket_resolu(
-            ticket, company=ticket.company, user=self.request.user,
-            ancien_statut=old.statut)
-        # ARC34 — déclencheur automation générique RECORD_STATE_CHANGE sur
-        # TOUTE transition de statut réussie (whitelist registre plateforme ;
-        # no-op sans règle). Émission via le service (frontière respectée).
-        sav_services.emettre_changement_statut_ticket(
-            ticket, company=ticket.company, user=self.request.user,
-            ancien_statut=old.statut)
-        # FG81 — recalcule sla_breach après toute mise à jour de statut.
-        ticket.recompute_sla_breach()
-        save_fields = ['sla_breach']
-        # XSAV11 — réouverture : résolu/clôturé → statut OUVERT. Compté côté
-        # serveur, jamais décrémenté. La transition est déjà tracée par
-        # TicketActivity (activity.log_changes ci-dessous).
-        # AUD829 — F() atomic increment: a bare `ticket.reopen_count += 1`
-        # then save() loses a concurrent reopen under two racing requests
-        # on the same ticket (lost-update anomaly).
-        if (old.statut in self._CLOTURE_STATUTS
-                and ticket.statut in Ticket.OPEN_STATUTS):
-            Ticket.objects.filter(pk=ticket.pk).update(
-                reopen_count=F('reopen_count') + 1)
-            ticket.refresh_from_db(fields=['reopen_count'])
-        ticket.save(update_fields=save_fields)
-        activity.log_changes(old, ticket, self.request.user)
-        # XSAV4 — notification client best-effort sur transition de statut
-        # (reçu/planifié/résolu). Toggle OFF par défaut = aucun effet.
-        if old.statut != ticket.statut:
-            from .notifications_client import notify_ticket_transition
-            notify_ticket_transition(
-                ticket, ticket.statut, request=self.request)
-            # ZSAV9 — notifie les suiveurs de la transition (best-effort).
-            from .services import notify_followers
-            from apps.notifications.types_evenements import EventType
-            notify_followers(
-                ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
-                title=f'Statut changé — {ticket.reference}',
-                body=f'Nouveau statut : {ticket.get_statut_display()}.',
-                link=f'/sav/tickets/{ticket.pk}',
-                exclude_user=self.request.user)
-        # XSAV16 — la clôture du ticket propose (= referme automatiquement,
-        # idempotent) toute immobilisation EN COURS liée à ce ticket. Ne
-        # ferme jamais une fenêtre déjà close, et n'affecte que les
-        # downtimes du même ticket (pas ceux d'autres tickets sur le même
-        # équipement).
-        if (old.statut != ticket.statut
-                and ticket.statut in self._CLOTURE_STATUTS):
-            for dt in ticket.downtimes.filter(fin__isnull=True):
-                dt.clore()
-        return ticket
+        try:
+            return sav_services.appliquer_transition_ticket(
+                ticket, statut_cible, self.request.user, request=self.request)
+        except sav_services.TransitionTicketRefusee as exc:
+            raise ValidationError(exc.detail)
 
     @action(detail=True, methods=['post'], url_path='planifier',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1812,11 +1732,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # un refus (statut inattendu) laisse simplement le ticket en l'état —
         # l'intervention, elle, est déjà créée.
         if ticket.statut == Ticket.Statut.NOUVEAU:
-            from .machine_etats import TransitionInterdite, changer_statut
+            # ASAV12 — même service unique que les actions de statut.
+            from .services import (
+                TransitionTicketRefusee, appliquer_transition_ticket,
+            )
             try:
-                changer_statut(ticket, Ticket.Statut.PLANIFIE, persister=False)
-                ticket.save(update_fields=['statut'])
-            except TransitionInterdite:
+                appliquer_transition_ticket(
+                    ticket, Ticket.Statut.PLANIFIE, request.user,
+                    request=request)
+            except TransitionTicketRefusee:
                 import logging
                 logging.getLogger(__name__).warning(
                     'sav: planifier_intervention — transition NOUVEAU → '
