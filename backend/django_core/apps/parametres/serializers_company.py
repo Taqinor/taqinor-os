@@ -354,7 +354,10 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # en attendant — comportement historique, puisque toute société
     # actuelle EST marocaine. Jamais bloquant pour un champ vide.
     def validate_ice(self, value):
-        from .tax_id_validators import validate_tax_id
+        # APAR31 — normalisé AVANT validation puis stocké sous sa forme
+        # canonique (15 chiffres) : « 001 234 567 000 089 » est accepté.
+        from .tax_id_validators import normaliser_ice, validate_tax_id
+        value = normaliser_ice(value)
         resultat = validate_tax_id('MA', 'ice', value)
         if not resultat['valide']:
             raise serializers.ValidationError(resultat['message'])
