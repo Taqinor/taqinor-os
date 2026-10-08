@@ -368,3 +368,16 @@ describe('RulesScreen — WIR272 backtest historique d\'une règle', () => {
     expect(screen.queryByTestId('ae-rule-backtest-result-fatigue')).toBeNull()
   })
 })
+
+describe('RulesScreen (AACQ74) — panne ≠ vide', () => {
+  it('anomalies en échec : « indisponibles », jamais « Aucune anomalie détectée »', async () => {
+    mocks.anomalies.mockRejectedValue(new Error('500'))
+    mocks.history.mockResolvedValue({ data: [] })
+    mocks.journal.mockResolvedValue({ data: { results: [] } })
+    mocks.detectors.mockResolvedValue({ data: [] })
+    renderScreen()
+    const alert = await screen.findByTestId('ae-anomalies-load-error')
+    expect(alert).toHaveAttribute('role', 'alert')
+    expect(screen.queryByTestId('ae-anomalies-empty')).not.toBeInTheDocument()
+  })
+})

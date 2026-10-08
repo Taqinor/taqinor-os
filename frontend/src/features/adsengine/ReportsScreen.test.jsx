@@ -307,3 +307,20 @@ describe('ReportsScreen — onglet Audit de compte (ADSDEEP63)', () => {
     expect(await screen.findByTestId('ae-audit-error')).toBeInTheDocument()
   })
 })
+
+describe('ReportsScreen (AACQ74) — panne ≠ vide', () => {
+  it('variantes en échec : bandeau d\'erreur role=alert', async () => {
+    mocks.variants.mockRejectedValue(new Error('500'))
+    renderScreen()
+    const banner = await screen.findByTestId('ae-reports-load-error')
+    expect(banner).toHaveAttribute('role', 'alert')
+    expect(banner).toHaveTextContent('variants')
+  })
+
+  it('chargements réussis : aucun bandeau d\'erreur', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.variants).toHaveBeenCalled())
+    await screen.findByTestId('ae-reports-variants-table')
+    expect(screen.queryByTestId('ae-reports-load-error')).not.toBeInTheDocument()
+  })
+})
