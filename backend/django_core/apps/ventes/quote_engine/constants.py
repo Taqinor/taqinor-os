@@ -30,20 +30,11 @@ CLE_SOLAIRE_MENSUELLE_HISTORIQUE = (0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
                                     0.116, 0.101, 0.087, 0.070, 0.052, 0.048)
 MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
 DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-EFFICIENCY = 0.8   # rendement global
-KWH_PRICE = 1.75   # MAD/kWh FIXE (utilisé en interne — ne pas afficher dans les PDF/UI)
 
-# DC9 — Productible annuel de RÉFÉRENCE (kWh/kWc/an). RÉCONCILIATION : le repère
-# CANONIQUE est CompanyProfile.productible_kwh_kwc (défaut 1600), consommé par le
-# moteur de devis via parametres.selectors.tariff_for (DC2/DC5). Cette constante
-# porte ce MÊME défaut (1600) pour rester alignée avec le profil société. À ne
-# pas confondre avec le repli de pricing._DEFAULT_PRODUCTIBLE, utilisé
-# UNIQUEMENT quand aucune donnée société n'est disponible ; dès qu'un devis
-# porte une société, c'est le 1600 (ou la valeur éditée) du profil qui prime.
-# QJR158 (d) — ce repli valait 1240 (≈ sum(GHI)×EFFICIENCY), soit 25 % sous le
-# repli canonique du dépôt ; il vaut désormais productible.DEFAULT_PRODUCTIBLE
-# (1651, Casablanca) : un seul repli, plus deux.
-PRODUCTIBLE_DEFAUT = 1600
+# AMOT47 (08/10/2026) — PRODUCTIBLE_DEFAUT, KWH_PRICE et EFFICIENCY sont
+# supprimés (zéro lecteur hors tests) : le productible de repli vit dans
+# ``productible.DEFAULT_PRODUCTIBLE``, le repère société dans
+# ``CompanyProfile.productible_kwh_kwc`` (DC9).
 
 # ---------- CONSTANTES IMPACT ENVIRONNEMENTAL (résidentiel) ----------
 # M8 (audit du 19/08/2026) — SOURCE UNIQUE : le PDF résidentiel (cover.py +
@@ -70,15 +61,5 @@ PRODUCTIBLE_DEFAUT = 1600
 # la seule des trois à décrire une grandeur physique mesurée — et on n'invente
 # AUCUNE citation.
 CO2_T_PAR_MWH = 0.81
-# Absorption annuelle d'un arbre (kg de CO₂/an) — conservée pour les calculs
-# INTERNES existants (agricole). « 22 » est une référence de vulgarisation sans
-# source vérifiable (l'absorption dépend de l'essence, de l'âge et du climat,
-# d'un facteur 5 au moins).
-# CO2SRC — PLUS AUCUN RENDU CLIENT. Cette lane l'a retirée des trois surfaces
-# PDF qui l'imprimaient (résidentiel cover.py + options.py, agricole
-# economics_page.py) ; la lane de la page client a retiré la sienne du site
-# dans le même lot (``apps/web`` n'exporte plus ``CO2_KG_PER_TREE_YEAR``). La
-# constante ne survit ici que pour un calcul INTERNE agricole (``economics``
-# publie encore une clé ``trees`` que plus personne n'imprime). Ne pas la
-# réafficher, nulle part, sans source nommée et datée.
-KG_CO2_PAR_ARBRE_AN = 22
+# AMOT47 (08/10/2026) — l'absorption « 22 kg/arbre/an » (sans source) est
+# supprimée : plus aucun lecteur, ni rendu ni calcul.

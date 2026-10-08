@@ -169,7 +169,7 @@ class TrancheTable(list):
 #
 #   Les cinq autres tranches gardent leur valeur extrapolée : AUCUNE facture
 #   2026 ne les couvre, et on ne bouge pas un chiffre sans preuve (le conflit
-#   ouvert sur T6 est publié dans ``bareme.DIVERGENCES_PRICING``).
+#   ouvert sur T6 est noté dans ``bareme`` — TRANCHES_2026).
 #
 # ÉDITABLE PAR SOCIÉTÉ (19/08/2026) — ces six valeurs restent le DÉFAUT codé
 # en dur ; une société peut les surcharger dans Paramètres → Tarification &

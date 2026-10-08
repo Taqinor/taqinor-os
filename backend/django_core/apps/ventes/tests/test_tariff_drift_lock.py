@@ -151,12 +151,6 @@ class TestClientT5UneSeuleValeur(SimpleTestCase):
                      if t['max_kwh'] == 510][0]['prix_kwh_ttc']
         self.assertAlmostEqual(float(t5_defaut), reference, places=9,
                                msg='DEFAULT_RESIDENTIAL_TIERS a divergé')
-        # 3) la divergence publiée est RÉSORBÉE, pas seulement silencieuse.
-        t5 = [d for d in bareme.DIVERGENCES_PRICING
-              if d['tranche'].startswith('311-510')][0]
-        self.assertEqual(t5['statut'], 'propagé')
-        self.assertAlmostEqual(t5['valeur_pricing'], t5['valeur_moteur'],
-                               places=9)
 
     def test_la_facture_actuelle_du_client_t5_est_celle_de_la_facture_reelle(self):
         # Dérivation à la main : 400 kWh/mois × 1,381704 = 552,6816 MAD/mois.

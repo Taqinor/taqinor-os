@@ -2624,16 +2624,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # AGR303 — plus de surcharge de l'énergie actuelle par une option de
     # rendu : l'étude rendue est l'étude STOCKÉE (énergie déclarée et datée,
     # D-AGR-5 ; le bloc AGR3 porte la dépense déclarée).
-    # QJ13 — tariff / self-consumption overrides from etude_params.
-    # Resolves: tarif_kwh_override → tranches_override → utility name → fallback.
-    # All are seller-editable via etude_params; nothing is fabricated from thin air.
-    _tarif_kwh_override = etude.get("tarif_kwh")  # explicit flat price (seller set)
-    _tranches_override = etude.get("tarif_tranches")  # custom schedule [[ceil, price], …]
+    # QJ13 — distributeur et autoconsommation lus dans etude_params.
+    # AMOT47 (08/10/2026) — les lectures ``etude.tarif_kwh`` / ``etude
+    # .tarif_tranches`` sont SUPPRIMÉES : ces clés sont inécrivables (le schéma
+    # d'étude les refuse, aucun devis ne les porte) ; le barème vient du
+    # réglage société ci-dessous, sinon de la grille nationale.
+    _tranches_override = None
     _utility = etude.get("distributeur")  # "onee" | "lydec" | "redal"
     # ORDRE FONDATEUR (19/08/2026) — barème ONEE résidentiel RÉGLABLE par
     # société (« correct all prices and keep them changable in the settings »).
-    # Le vendeur (etude.tarif_tranches, ci-dessus) reste souverain s'il a collé
-    # un barème custom pour CE devis ; à défaut, si le fondateur a ÉDITÉ le
+    # Si le fondateur a ÉDITÉ le
     # barème de sa société (Paramètres → Tarification & ROI, apps/parametres
     # TariffSettings), on l'utilise ; sinon aucun changement — pricing.py garde
     # ses défauts 2026 codés en dur. N'agit que sur ONEE (le réglage ne couvre
@@ -2659,7 +2659,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # « autre ») lit LA grille nationale, éditable par société. Réservée à
     # vide/'onee', la grille société était contournée dès qu'un SRM tarifait
     # (grille codée en dur, 1,6229 au lieu du 1,5958 de la société).
-    if _co_tranches and not _tranches_override:
+    if _co_tranches:
         _tranches_override = _co_tranches
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
@@ -2726,7 +2726,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
         utility=_utility or None,
-        tarif_kwh_override=float(_tarif_kwh_override) if _tarif_kwh_override else None,
         tranches_override=_tranches_override or None,
         # QJR409 — la redevance de compteur RÉGLÉE par la société atteint enfin
         # le modèle « factures » : sans elle, sa « Facture actuelle » comptait
@@ -3202,7 +3201,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     elif _tarif_txt:
         # QRES16 (fondateur, 2026-07-18) — ne JAMAIS présenter le défaut
         # interne du simulateur comme un « tarif retenu » réfléchi : le 1,75
-        # historique (constants.KWH_PRICE, marqué « ne pas afficher dans les
+        # historique (ex-``constants.KWH_PRICE``, supprimé par AMOT47, marqué « ne pas afficher dans les
         # PDF/UI ») s'imprimait tel quel via ce bloc et fragilisait la
         # confiance. Un tarif ÉGAL au défaut est présenté comme référence de
         # calcul avec le chemin vers l'exactitude (facture → barème par
@@ -3215,7 +3214,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # du défaut) reste affiché, car c'est la donnée du client.
         # Z3 × M11 — MÊME défaut, deux correctifs : on garde le plus
         # STRICT (M11). Z3 avait identifié la cause — la garde QRES55
-        # comparait le tarif à ``constants.KWH_PRICE`` (1,75, l'ANCIEN
+        # comparait le tarif à l'ex-``constants.KWH_PRICE`` (1,75, l'ANCIEN
         # défaut, plus jamais utilisé comme prix) au lieu du repli
         # réellement appliqué ``_FALLBACK_KWH_PRICE`` (1,20) : l'égalité
         # n'arrivant jamais, la branche « personnalisé » s'exécutait
