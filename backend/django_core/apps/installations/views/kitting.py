@@ -69,6 +69,23 @@ _VERBES_ORDRE = {
 }
 
 
+MESSAGE_NOMENCLATURE_VIDE = (
+    "Nomenclature vide : ce kit n'a aucun composant catalogue à quantité "
+    "positive — ajoutez-en avant de l'assembler.")
+
+
+def _exiger_nomenclature(kit, champ='kit'):
+    """ACHT25 (C-ACHT-023) — aucun composite n'entre en stock sans
+    consommation : un kit sans composant EXPLOITABLE (produit catalogue et
+    quantité > 0) refuse la création / la clôture d'un ordre et son
+    activation (400)."""
+    if kit is None:
+        return
+    if not kit.composants.filter(
+            produit__isnull=False, quantite__gt=0).exists():
+        raise ValidationError({champ: MESSAGE_NOMENCLATURE_VIDE})
+
+
 def _exiger_transition_ordre(ordre, cible, table):
     """ACHT18 — 400 en français nommant la transition refusée (aucune
     écriture : appelée AVANT tout effet)."""
@@ -139,6 +156,10 @@ class KitViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        # ACHT25 — un kit vide ne s'ACTIVE pas (inactif → actif).
+        if (serializer.validated_data.get('active') is True
+                and not serializer.instance.active):
+            _exiger_nomenclature(serializer.instance, champ='active')
         serializer.save(company=self.request.user.company)
 
     @action(detail=True, methods=['get'], url_path='revisions')
@@ -452,6 +473,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         company = self.request.user.company
         self._check_tenant(serializer)
+        _exiger_nomenclature(serializer.validated_data.get('kit'))  # ACHT25
 
         def _save(reference):
             return serializer.save(
@@ -822,6 +844,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
                        "(produit_compose) : clôture impossible."})
+        _exiger_nomenclature(ordre.kit)  # ACHT25
 
         # XMFG13 — gate qualité : un kit avec modèle QC actif bloque la
         # clôture tant que la checklist n'est pas entièrement passée, sauf
@@ -1111,6 +1134,8 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
         company = self.request.user.company
         self._check_tenant(serializer)
 
+        _exiger_nomenclature(serializer.validated_data.get('kit'))  # ACHT25
+
         def _save(reference):
             return serializer.save(
                 company=company, created_by=self.request.user,
@@ -1152,6 +1177,7 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
                        "(produit_compose) : démontage impossible."})
+        _exiger_nomenclature(ordre.kit)  # ACHT25
         # ASEC33 — emplacements de l'ordre bornés à sa société avant le
         # service de stock.
         _verifier_emplacements_ordre(ordre)
