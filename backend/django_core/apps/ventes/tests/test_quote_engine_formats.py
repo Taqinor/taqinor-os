@@ -1844,8 +1844,16 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # donc jamais épinglé à la main) : le HTML d'avant ne dépendait pas de
         # la demande full/onepage (AGR312) et AGR313 le change. Ré-épinglée
         # depuis le run CI 37341683181 (2026-10-05, PR #810 vague 2).
+        # Vague dev-all-9 (PR #886, 2026-10-08) — CHANGEMENTS VOULUS du
+        # lot A : ADEV68 (un BROUILLON n'imprime plus de lien « signer » ni
+        # de QR — la fixture est un brouillon), AMOT17 (société identifiée
+        # sans contact : la ligne de contact TAQINOR est omise — le profil
+        # auto-créé porte le nom « TAQINOR Fixture QJR307 »), ADEV67 (le
+        # premium agricole imprime clauses/CGV gelées). Ré-épinglée depuis
+        # le message d'échec du run CI de la PR #886 (shard fast tier) —
+        # jamais calculée à la main.
         EMPREINTE_EPINGLEE = (
-            'cba880aaa37496a9abebaae6eb86b1e327df07c0ebd441190e1a9259484dc233')
+            '9ece669334e9ed5db57aff6372bd52a2fb7e3ba986a18afb9dcc3c012efe39aa')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
