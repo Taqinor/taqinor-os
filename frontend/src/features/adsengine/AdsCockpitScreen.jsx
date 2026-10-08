@@ -332,7 +332,8 @@ export default function AdsCockpitScreen() {
   }
 
   const openRow = openAdId != null ? sortedRows.find(r => r.id === openAdId) : null
-  const currentTotal = totalSpend(sortedRows)
+  // AACQ69 — même base que la période précédente (TOUTES les lignes), quel que soit l'onglet.
+  const currentTotal = totalSpend(rows)
   const compareDelta = previousTotal != null ? computeDelta(currentTotal, previousTotal) : null
 
   return (

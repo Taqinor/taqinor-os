@@ -24,6 +24,8 @@ from unittest import mock
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+
 try:
     from app.api.endpoints import voice as _ep
     from app.services import transcription_service as _svc_mod
@@ -42,6 +44,7 @@ except Exception as exc:  # pragma: no cover - fastapi absent
     _HTTPException = None
     _OK = False
     _ERR = exc
+    verifier_import_optionnel(exc)
 
 
 def _run(coro):

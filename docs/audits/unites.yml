@@ -100,13 +100,13 @@ unites:
     I: 5
     score: 20
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: AFAC
     plan: docs/plans/PLAN_AUDIT_FACTURATION.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 862
+    date: 2026-10-08
+    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-facturation.md) : 63 constats (7 S1), 89 tâches AFAC dont 10 décisions fondateur M1 (AFAC80-89) ; lien « Payer en ligne » relatif vers une API JSON constaté en direct ; portes de facture SAV / intervention ajoutées aux deux chemins connus."
 
   - id: D3
     rang: 3
@@ -163,13 +163,13 @@ unites:
     I: 4
     score: 16
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: AACQ
     plan: docs/plans/PLAN_AUDIT_ACQUISITION.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    pr: 865
+    date: 2026-10-08
+    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-acquisition.md) : 53 constats reproduits (0 S1 confirmé), 65 tâches AACQ dont 3 décisions fondateur M1 ; action moteur modifiable après approbation, budget Meta jamais appliqué (méthode absente), seuils MAD comparés à de l'USD."
 
   - id: J1a
     rang: 5
@@ -224,13 +224,13 @@ unites:
     I: 4
     score: 16
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ACRM
     plan: docs/plans/PLAN_AUDIT_CRM.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Tailles (wc -l, 02/10) : services.py 13 547, selectors.py 5 889, views.py 5 817. Une lane partagée par les précisions v1 pour éviter le triple rapport."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CRM.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    pr: 863
+    date: 2026-10-08
+    notes: "Tailles (wc -l, 02/10) : services.py 13 547, selectors.py 5 889, views.py 5 817. Une lane partagée par les précisions v1 pour éviter le triple rapport. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-crm.md) : 45 constats (0 S1, 13 S2, 32 S3), 61 tâches ACRM (TRANSVERSE 49, LEAD 6, DEPLOY 5, CRM 1 — PLAN_AUDIT_CRM.md créé) ; 500 sur clients/segments?segment=dormants rejoué en direct ; société 43 non sondée."
 
   - id: X1
     rang: 7
@@ -292,13 +292,13 @@ unites:
     I: 5
     score: 15
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: APDF
     plan: null
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Monte à L3 dès qu'un chiffre client imprimé est contesté (go-deep : checked-facts)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 867
+    date: 2026-10-08
+    notes: "Monte à L3 dès qu'un chiffre client imprimé est contesté (go-deep : checked-facts). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-pdf.md) : 18 constats sur PDF rendus (1 S1 latent : identité TAQINOR imprimée pour toute société), 61 tâches APDF routées chez 10 propriétaires ; PDF EN/AR majoritairement en français."
 
   - id: D2
     rang: 9
@@ -325,13 +325,13 @@ unites:
     I: 5
     score: 15
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: AMOT
     plan: docs/plans/PLAN_AUDIT_MOTEUR.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Lanes de jugement en opus/high (règle #4). Manifeste de couverture obligatoire (lane QJR79 : constats dans des fichiers jamais lus avant ; chiffre 149 non re-vérifié)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_GENERATEUR.md]
+    pr: 868
+    date: 2026-10-08
+    notes: "Lanes de jugement en opus/high (règle #4). Manifeste de couverture obligatoire (lane QJR79 : constats dans des fichiers jamais lus avant ; chiffre 149 non re-vérifié). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-moteur.md) : 61 constats (14 S1), 75 tâches AMOT déposées + 1 tâche web (AMOT76, apps/web) gardée au dossier §7 en attente d'accord ; PDF public réel 3 pages, sans prix_achat."
 
   - id: J2
     rang: 10
@@ -356,13 +356,13 @@ unites:
     I: 4
     score: 12
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ACHT
     plan: docs/plans/PLAN_AUDIT_CHANTIERS.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "installations/services.py = 4 712 lignes : découpage par sous-flux (achats/réception, kitting/livraison, réception chantier → parc)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 871
+    date: 2026-10-08
+    notes: "installations/services.py = 4 712 lignes : découpage par sous-flux (achats/réception, kitting/livraison, réception chantier → parc). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-chantiers.md) : 70 constats (4 S1 : double sortie de stock après pose terrain, saut d'« Installé » côté serveur, 2 fuites FK entre sociétés), 84 tâches ACHT ; contre-vérification sur origin/main : 40/40 tiennent."
 
   - id: J3
     rang: 11
@@ -458,13 +458,13 @@ unites:
     I: 4
     score: 12
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: APAR
     plan: docs/plans/PLAN_AUDIT_PARAMETRES.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Documents envoyés/signés gardent leur version figée ; aucun texte client codé en dur ailleurs."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_STOCK.md]
+    pr: 874
+    date: 2026-10-08
+    notes: "Documents envoyés/signés gardent leur version figée ; aucun texte client codé en dur ailleurs. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-parametres.md) : 58 constats (2 S1, 19 S2), 67 tâches APAR ; purge d'audit sans plancher légal, tolérance kWh qui fait diverger facture et devis, textes vivants relus sur des devis envoyés."
 
   - id: D4
     rang: 14
@@ -485,13 +485,13 @@ unites:
     I: 5
     score: 20
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: AGNR
     plan: docs/plans/PLAN_AUDIT_GENERATEUR.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build (d'où le rang 14 malgré le score 20). DevisGenerator.jsx = 5 668 lignes. Préfixe AGEN déjà pris (docs/done_task.md) → AGNR."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md]
+    pr: 870
+    date: 2026-10-08
+    notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build (d'où le rang 14 malgré le score 20). DevisGenerator.jsx = 5 668 lignes. Préfixe AGEN déjà pris (docs/done_task.md) → AGNR. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-generateur.md) : 28 constats (4 S1, 9 S2, 15 S3), 45 tâches AGNR ; prix de liste HT écrit dans le champ TTC, factures d'un lead reportées sur un autre."
 
   - id: J1b
     rang: 15
@@ -549,13 +549,13 @@ unites:
     I: 5
     score: 10
     niveau: L1
-    statut: à auditer
+    statut: audité
     groupe: ADEP
     plan: docs/plans/PLAN_AUDIT_DEPLOY.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_LEAD.md]
+    pr: 873
+    date: 2026-10-08
+    notes: "Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app. Audit L1 du 08/10/2026 (dossier docs/audits/2026-10-08-deploy.md) : 22 constats (1 S1 : pas de pg_dump/pg_restore dans l'image de prod), 50 tâches ADEP routées chez 10 propriétaires."
 
   - id: J4
     rang: 17
@@ -577,13 +577,13 @@ unites:
     I: 3
     score: 9
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ASAV
     plan: docs/plans/PLAN_AUDIT_SAV.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
+    pr: 876
+    date: 2026-10-08
+    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-sav.md) : 51 constats (3 S1 + 1 décision fondateur), 86 tâches ASAV ; ticket couvert par contrat facturé depuis l'écran, quotas de contrat faux, garantie recalculée à chaque modification."
 
   - id: X7
     rang: 18
@@ -629,10 +629,10 @@ unites:
     I: 3
     score: 6
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: APRF
     plan: null
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Tâches routées vers les propriétaires des fichiers touchés."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_SECURITE.md]
+    pr: 877
+    date: 2026-10-08
+    notes: "Tâches routées vers les propriétaires des fichiers touchés. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-performance.md) : 33 constats C14 mesurés (21 S2, 12 S3), 42 tâches APRF (en-tête du groupe dans PLAN_AUDIT_TRANSVERSE) ; tests de budget de requêtes désactivés alors que déclarés appliqués."

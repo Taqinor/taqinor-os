@@ -657,7 +657,7 @@ REST_FRAMEWORK = {
         'authentication.cookie_auth.CookieJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        'authentication.permissions.IsAuthenticatedInterne',
     ),
     # YAPIC1 — pagination partagée avec plafond dur : page_size=50 par défaut,
     # ``?page_size=`` autorisé, max_page_size=200 (plafond serveur). L'enveloppe

@@ -6,6 +6,8 @@ promu. ``company`` est résolue côté serveur (jamais lue du corps). À chaque
 sauvegarde modifiée, ``version`` est incrémentée (N67) et chaque champ modifié
 est journalisé (SettingsAuditLog).
 """
+import copy
+
 from django.db.models import F
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -31,6 +33,10 @@ _DOC_AUDIT_FIELDS = {
     'bpa_titre': "Bon pour accord — titre",
     'bpa_mention': "Bon pour accord — mention",
     'acceptance_stamp': "Tampon d'acceptation — libellé",
+    # APDF23 — conditions générales C&I par mode : journalisées et versionnées
+    # comme les autres textes (volontairement HORS ``DEVIS_TEXT_KEYS`` /
+    # ``as_doc_texts`` : le rendu résidentiel reste octet-identique).
+    'cgv_par_mode': "Conditions générales par mode (C&I)",
 }
 
 
@@ -57,7 +63,8 @@ def get_document_templates(request):
 def update_document_templates(request):
     obj = _templates(request)
     partial = request.method == 'PATCH'
-    before = {f: getattr(obj, f, None) for f in DEVIS_TEXT_KEYS}
+    before = {f: copy.deepcopy(getattr(obj, f, None))
+              for f in set(DEVIS_TEXT_KEYS) | set(_DOC_AUDIT_FIELDS)}
     serializer = DocumentTemplatesSerializer(
         obj, data=request.data, partial=partial,
         context={'request': request},

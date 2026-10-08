@@ -26,8 +26,9 @@ E0 duree de vie du jeton (`debug_token`) · E1 taille de page (sans `limit`, pui
 500, 1000, 2000) · E2 un appel par pays (27 UE + GB) · E2-UK pubs GB sans pays UE dans la
 repartition de portee · E3 UNORDERED vs EXACT_PHRASE · E4 multi-pays (OU ou ET) · E5
 profondeur de pagination · E7 jeton present dans `ad_snapshot_url` · E8 jeton accepte en
-en-tete `Authorization` · E6 (en dernier) champs de Page avec le meme jeton, code d'erreur
-note (un code 10 est la mesure attendue et arrete la sonde).
+en-tete `Authorization`. Seuls les chemins `ads_archive` et `debug_token` sont appelables
+(liste blanche dans `Probe.call`) ; tout nouveau chemin exige d'abord son ajout a
+`tos_risk/meta_ad_library_api.md` et l'accord du fondateur (regle #5).
 
 ## Gardes
 

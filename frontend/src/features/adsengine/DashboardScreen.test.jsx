@@ -151,3 +151,27 @@ describe('DashboardScreen (ENG23)', () => {
     })
   })
 })
+
+describe('DashboardScreen (AACQ74) — panne ≠ vide', () => {
+  it('alertes en échec : bandeau d\'erreur, jamais un silence', async () => {
+    mocks.alerts.mockRejectedValue(new Error('500'))
+    renderScreen()
+    const banner = await screen.findByTestId('ae-alerts-load-error')
+    expect(banner).toHaveAttribute('role', 'alert')
+    expect(banner).toHaveTextContent('Alertes indisponibles')
+  })
+
+  it('métriques en échec : message dédié', async () => {
+    mocks.dashboard.mockRejectedValue(new Error('500'))
+    renderScreen()
+    expect(await screen.findByTestId('ae-metrics-load-error')).toHaveTextContent('Métriques indisponibles')
+  })
+
+  it('chargements réussis : aucun bandeau d\'erreur', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+    await screen.findByTestId('ae-alert-banner')
+    expect(screen.queryByTestId('ae-alerts-load-error')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ae-metrics-load-error')).not.toBeInTheDocument()
+  })
+})

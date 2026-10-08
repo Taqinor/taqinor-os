@@ -24,6 +24,7 @@ const SEGMENT_COLORS = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '
 export default function SimulationScreen() {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [report, setReport] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
 
@@ -40,9 +41,11 @@ export default function SimulationScreen() {
       .then(r => {
         const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
         setList(rows)
+        setLoadError(false)
         if (rows.length) loadReport(rows[0].id)
       })
-      .catch(() => setList([]))
+      // AACQ74 — panne ≠ « Aucune simulation à rejouer ».
+      .catch(() => { setList([]); setLoadError(true) })
       .finally(() => setLoading(false))
   }, [loadReport])
 
@@ -59,6 +62,9 @@ export default function SimulationScreen() {
 
       {loading
         ? <p className="page-loading">Chargement…</p>
+        : loadError
+          ? <p data-testid="ae-sim-load-error" role="alert" style={{ color: '#dc2626' }}>
+              Simulations indisponibles — <button type="button" className="btn btn-light" onClick={load}>réessayer</button></p>
         : list.length === 0
           ? <p data-testid="ae-sim-empty" style={{ color: '#64748b' }}>
               Aucune simulation à rejouer.</p>

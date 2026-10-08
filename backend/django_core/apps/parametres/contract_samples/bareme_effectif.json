@@ -1,0 +1,30 @@
+{
+  "endpoint": "GET /api/django/parametres/",
+  "pourquoi": "PACT10 / AGNR3 — le barème résidentiel EFFECTIF d'une société est lu par deux moitiés qui ne partageaient aucun fichier : le serveur (`etude_horaire._reglages_tarifaires`) et l'écran du générateur (constantes ONEE), d'où 10 189 kWh/an côté serveur contre 10 057 à l'écran pour 12 × 1 500 MAD quand la société a réglé son dernier palier (sonde V_VA p5). Ce contrat fige la clé `bareme_effectif` du profil société. `tranches` a la forme EXACTE de `parametres.selectors.residential_tranches_for` : `pairs` = liste de [plafond_kWh_NOMINAL | null, prix_MAD_kWh_TTC] (bornes nominales 100/150/200/300/500 — la tolérance n'est retirée qu'au-delà du seuil sélectif), `selective_threshold`, `boundary_tolerance`. `redevance_compteur_mad_mois` = charges fixes TTC de l'abonnement (TariffSettings.redevance_compteur_mad_mois). `source` vaut `societe` (réglage saisi dans Paramètres → Tarification) ou `national` ; en `national`, `tranches` ET `redevance_compteur_mad_mois` valent `null` et l'écran garde ses constantes ONEE.",
+  "exemple": {
+    "bareme_effectif": {
+      "source": "societe",
+      "tranches": {
+        "pairs": [
+          [100, 0.916272],
+          [150, 1.091388],
+          [200, 1.091388],
+          [300, 1.187388],
+          [500, 1.381704],
+          [null, 1.5958]
+        ],
+        "selective_threshold": 150,
+        "boundary_tolerance": 10
+      },
+      "redevance_compteur_mad_mois": 45
+    }
+  },
+  "exemple_national": {
+    "bareme_effectif": {
+      "source": "national",
+      "tranches": null,
+      "redevance_compteur_mad_mois": null
+    }
+  },
+  "notes": "Producteur : AGNR11 (`parametres.selectors.bareme_effectif`, servi par `CompanyProfileSerializer`). Consommateur : AGNR35 (DevisGenerator). Aucun autre champ du profil n'est figé par ce fichier."
+}

@@ -20,6 +20,8 @@ os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── ERR85 — gating DDL ────────────────────────────────────────────────────────
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+
 try:
     from app.core import database as _db
     _DB_OK = True
@@ -28,6 +30,7 @@ except Exception as exc:  # pragma: no cover - sqlalchemy absent
     _db = None
     _DB_OK = False
     _DB_ERR = exc
+    verifier_import_optionnel(exc)
 
 
 @unittest.skipUnless(_DB_OK, f"app.core.database indisponible: {_DB_ERR}")
@@ -64,6 +67,7 @@ except Exception as exc:  # pragma: no cover - fastapi absent
     _HTTPException = None
     _OCR_OK = False
     _OCR_ERR = exc
+    verifier_import_optionnel(exc)
 
 
 @unittest.skipUnless(_OCR_OK, f"app.api.endpoints.ocr indisponible: {_OCR_ERR}")
@@ -105,6 +109,7 @@ try:
 except Exception as exc:  # pragma: no cover - dependances manquantes
     _svc = None
     _SVC_ERR = exc
+    verifier_import_optionnel(exc)
 
 
 @unittest.skipIf(_svc is None, f"sql_agent_service non importable: {_SVC_ERR}")

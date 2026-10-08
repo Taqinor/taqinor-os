@@ -26,3 +26,4 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [Décisions YanBow (06/10)](yanbow-decisions-fondateur.md) — YanBow = Ltd UK + SARLAU marocaine à nommer ; SolarBow remplace Ancreto ; site public FR+EN, rendez-vous, sans prix (PLAN_YANBOW_WEB)
 - [Décisions revue sécurité vague 3 (ASEC)](asec-decisions-fondateur.md) — 07/10/2026 : verrou de connexion par compte+IP ; compte verrouillé = même 401 que faux ; Commercial/Technicien gardent l'agenda ; Admin Ventes sans `users_gerer`
 - [Décisions audit stock (ASTK)](astk-decisions-fondateur.md) — 06/10/2026 : écart d'inventaire = stock à la saisie ; seed_catalogue ne comble que les fiches vides (`--reappliquer-fiches` pour écraser) ; RAS-TVA sur toute la TVA de la facture (acompte compris)
+- [Prod sans sauvegarde](prod-sans-sauvegarde.md) — INCIDENT OUVERT 08/10 : 105/105 BackupRun en échec (pg_dump absent de l'image django), dernier dump manuel 12/06 ; ADEP1 P0
