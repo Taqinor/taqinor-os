@@ -1,3 +1,4 @@
+{# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -153,26 +154,15 @@
      NON remisé. UN GABARIT NE RECALCULE JAMAIS UN POURCENTAGE. #}
   {% set totaux = note_debit.totaux_affichage %}
   <div class="totaux">
-    <div class="totaux-row">
-      <span>Sous-total HT</span>
-      <span>{{ "%.2f"|format(totaux.ht_brut) }} MAD</span>
-    </div>
-    {% if totaux.remise > 0 %}
-    <div class="totaux-row remise">
-      <span>Remise globale ({{ note_debit.remise_globale }}%)</span>
-      <span>−{{ "%.2f"|format(totaux.remise) }} MAD</span>
-    </div>
-    {% endif %}
-    {% for b in totaux.tva_par_taux %}
-    <div class="totaux-row">
-      <span>TVA ({{ b.taux }}%)</span>
-      <span>{{ "%.2f"|format(b.montant) }} MAD</span>
-    </div>
-    {% endfor %}
-    <div class="totaux-row total-ttc">
-      <span>Total dû en supplément (TTC)</span>
-      <span>{{ "%.2f"|format(totaux.ttc) }} MAD</span>
-    </div>
+    {# ATOT11 — chaîne partagée (_chaine_totaux.html) : l'arrondi et le
+       Total HT, absents de cette copie, sont désormais imprimés. #}
+    {{ chaine_totaux(totaux, note_debit.remise_globale, {
+         'sous_total': 'Sous-total HT',
+         'remise_globale': 'Remise globale',
+         'arrondi': 'Arrondi commercial', 'total_ht': 'Total HT',
+         'tva': 'TVA', 'total_ttc': 'Total dû en supplément (TTC)',
+         'base_ht': 'Base HT',
+       }) }}
   </div>
 
   {% if signature_uri %}
