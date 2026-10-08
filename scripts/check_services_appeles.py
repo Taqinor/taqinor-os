@@ -70,7 +70,15 @@ BASELINE_PATH = ROOT / "scripts" / "services_appeles_allow.txt"
 # Les apps dont les services sont surveilles. En ajouter une = une chaine de
 # plus ici (ou `--app <nom>`) : la garde ne connait aucun nom de fonction, et
 # n'encode donc jamais l'etendue de la maladie qu'elle mesure.
-APPS_SURVEILLEES = ("calepinage",)
+APPS_SURVEILLEES = ("calepinage", "crm")
+
+# ALEA44 — au-dela du paquet `apps/<app>/services/`, les modules-FICHIERS de
+# service sont lus eux aussi : `apps/<app>/services.py` pour toute app
+# surveillee, plus des motifs propres a une app (`crm/cadence_*.py`, le
+# moteur de cadence ecrit hors du `services.py` partage). Un motif de plus =
+# une ligne ici, jamais un nom de fonction.
+FICHIERS_SERVICES = ("services.py",)
+FICHIERS_SERVICES_PAR_APP = {"crm": ("cadence_*.py",)}
 
 
 # ===========================================================================
@@ -82,6 +90,7 @@ def est_test(path: Path) -> bool:
     parties = set(path.parts)
     return (
         path.name.startswith("test_")
+        or path.name.startswith("tests_")
         or path.name == "conftest.py"
         or "tests" in parties
         or "testing" in parties
@@ -112,15 +121,21 @@ def relatif(path: Path) -> str:
 # ===========================================================================
 
 def modules_services(app: str) -> list:
-    """Les modules de ``apps/<app>/services/`` — hors facade et hors tests."""
+    """Les modules de ``apps/<app>/services/`` ET les modules-fichiers
+    (``services.py``, ``cadence_*.py`` du crm) — hors facade et hors tests."""
     dossier = DJANGO / "apps" / app / "services"
-    if not dossier.is_dir():
-        return []
     modules = []
-    for path in sorted(dossier.rglob("*.py")):
-        if path.name == "__init__.py" or est_test(path):
-            continue
-        modules.append(path.resolve())
+    if dossier.is_dir():
+        for path in sorted(dossier.rglob("*.py")):
+            if path.name == "__init__.py" or est_test(path):
+                continue
+            modules.append(path.resolve())
+    # Modules-fichiers (ALEA44) : `services.py` et les motifs propres a l'app.
+    racine = DJANGO / "apps" / app
+    for motif in FICHIERS_SERVICES + FICHIERS_SERVICES_PAR_APP.get(app, ()):
+        for path in sorted(racine.glob(motif)):
+            if path.is_file() and not est_test(path):
+                modules.append(path.resolve())
     return modules
 
 

@@ -2,19 +2,27 @@
 
 Avec un texte configuré : la bannière est renvoyée et l'accusé est journalisé
 (scopé société). Sans texte : réponse vide et aucun accusé (écran inchangé).
+
+ASEC14 — la société de la bannière est résolue par l'HÔTE (TenantTheme.domaine),
+plus par le ``username`` reçu : les requêtes portent donc l'hôte de la société.
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.audit.models import AuditLog
 from apps.parametres.models_company import CompanyProfile
 from authentication.models import Company, CustomUser
+from core.models import TenantTheme
+
+HOTE = 'banner-co.example'
 
 
+@override_settings(ALLOWED_HOSTS=[HOTE, 'testserver'])
 class LoginBannerTests(TestCase):
     def setUp(self):
-        self.api = APIClient()
+        self.api = APIClient(HTTP_HOST=HOTE)
         self.company = Company.objects.create(nom='Banner Co', slug='banner-co')
+        TenantTheme.objects.create(company=self.company, domaine=HOTE)
         self.user = CustomUser.objects.create_user(
             username='hank', password='x', company=self.company)
 

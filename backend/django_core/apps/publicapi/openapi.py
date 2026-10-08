@@ -18,7 +18,10 @@ import re
 
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
+
+from core.throttling import IdentIpPartageeMixin
 
 from .docs import public_api_reference
 
@@ -368,12 +371,28 @@ def build_openapi_schema():
     }
 
 
+class OpenApiPublicThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
+    """ASEC44 — débit anonyme du schéma OpenAPI public, par IP (primitive
+    partagée ``core.throttling``) : le document est reconstruit à chaque
+    appel, une rafale ne doit pas pouvoir occuper les workers."""
+    scope = 'public_openapi_schema'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request)}
+
+
 class PublicOpenApiSchemaView(APIView):
     """``GET /api/public/v1/openapi.json`` — document OpenAPI 3.1 public,
     aucune authentification requise (document de découverte, pas de donnée
-    de société)."""
+    de société). Throttlé par IP (ASEC44)."""
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [OpenApiPublicThrottle]
 
     def get(self, request):
         return Response(build_openapi_schema())

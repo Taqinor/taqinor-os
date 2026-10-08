@@ -64,10 +64,20 @@ def _date_exacte(valeur):
         return None
 
 
-def _reference_licence(company):
-    """Référence via le socle de numérotation (JAMAIS un count()+1)."""
-    from core.numbering import next_reference
-    return next_reference(FactureLicence, 'LIC', company)
+def _enregistrer_avec_reference(facture):
+    """ATOT32 — numérote ET enregistre ``facture`` via
+    ``core.numbering.create_with_reference`` (savepoint + nouvel essai sur
+    collision de référence), jamais un ``next_reference`` nu suivi d'un
+    ``save()`` : deux émissions concurrentes ne portent jamais le même numéro
+    (garanti en base par la contrainte unique ``(company, reference)``)."""
+    from core.numbering import create_with_reference
+
+    def _save(reference):
+        facture.reference = reference
+        facture.save()
+        return facture
+
+    return create_with_reference(FactureLicence, 'LIC', facture.company, _save)
 
 
 class FactureLicenceListView(APIView):
@@ -122,9 +132,10 @@ class FactureLicenceListView(APIView):
         if statut in dict(FactureLicence.Statut.choices):
             facture.statut = statut
         if facture.statut != FactureLicence.Statut.BROUILLON:
-            facture.reference = _reference_licence(company)
             facture.date_emission = timezone.localdate()
-        facture.save()
+            _enregistrer_avec_reference(facture)
+        else:
+            facture.save()
         return Response(FactureLicenceSerializer(facture).data,
                         status=status.HTTP_201_CREATED)
 
@@ -141,15 +152,16 @@ class FactureLicenceMarquerPayeeView(APIView):
             return Response({'detail': 'Facture introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
         if facture.statut != FactureLicence.Statut.PAYEE:
-            if not facture.reference:
-                facture.reference = _reference_licence(facture.company)
             if facture.date_emission is None:
                 facture.date_emission = timezone.localdate()
             facture.statut = FactureLicence.Statut.PAYEE
             facture.date_paiement = (
                 _date_exacte(request.data.get('date_paiement'))
                 or timezone.localdate())
-            facture.save()
+            if facture.reference:
+                facture.save()
+            else:
+                _enregistrer_avec_reference(facture)
         return Response(FactureLicenceSerializer(facture).data)
 
 

@@ -133,6 +133,17 @@ describe('RegisterCompany (PACT116)', () => {
       /Impossible de contacter le serveur/i)
   })
 
+  it('ASEC13 — inscription parquée (404) : « Les inscriptions sont fermées »', async () => {
+    post.mockRejectedValue({ response: { status: 404, data: { detail: 'Not found.' } } })
+    afficher()
+    remplir()
+    soumettre()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /Les inscriptions sont fermées/i)
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
   it('offre un retour vers la connexion', () => {
     afficher()
     expect(screen.getByRole('link', { name: /Se connecter/i }))

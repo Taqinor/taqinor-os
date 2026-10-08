@@ -13,6 +13,7 @@ vérifient qu'un mot de passe correct reste accepté sur les deux chemins.
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
+from django.test import override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -27,6 +28,7 @@ User = get_user_model()
 STRONG = 'Sup3rSecret!23'
 
 
+@override_settings(TENANT_SIGNUP_ENABLED=True)  # ASEC13 — inscription parquée par défaut
 class Aud402RegisterCompanyTest(TestCase):
     """Signup public : le mot de passe d'un caractère doit être refusé."""
 

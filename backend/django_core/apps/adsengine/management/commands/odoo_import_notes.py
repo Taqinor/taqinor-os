@@ -1,6 +1,6 @@
 """Import UNIDIRECTIONNEL (Odoo → ERP) des notes de lead dans le chatter CRM.
 
-    python manage.py odoo_import_notes [--company <slug-ou-id>] [--dry-run]
+    python manage.py odoo_import_notes --company <slug-ou-id> [--dry-run]
 
 Lit en LECTURE SEULE le chatter Odoo (``mail.message`` de type « comment » sur
 ``crm.lead`` — les notes internes de Meryem & co) et le champ ``description``
@@ -15,7 +15,7 @@ un doublon. **RIEN n'est écrit dans Odoo** (client hard-allowlisté lecture
 seule) ; les leads Odoo sans correspondance ERP sont comptés et attendront la
 migration complète (P3) — jamais créés ici.
 """
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils.html import strip_tags
 
 
@@ -39,7 +39,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             '--company', dest='company', default=None,
-            help="Slug ou id de la société ERP cible (défaut : première).")
+            help="Slug ou id de la société ERP propriétaire du connecteur "
+                 "(ODOO_COMPANY_ID) — OBLIGATOIRE (ASEC40).")
         parser.add_argument(
             '--dry-run', action='store_true', dest='dry_run',
             help="Compte ce qui serait importé sans rien écrire dans l'ERP.")
@@ -51,19 +52,23 @@ class Command(BaseCommand):
             if company is None and str(raw).isdigit():
                 company = Company.objects.filter(pk=int(raw)).first()
             return company
-        return Company.objects.order_by('id').first()
+        # ASEC40 — plus de repli « première société » : la société est
+        # explicite et doit être la propriétaire du connecteur.
+        return None
 
     def handle(self, *args, **options):
         from apps.adsengine import odoo_client
 
         company = self._resolve_company(options.get('company'))
         if company is None:
-            self.stdout.write(self.style.ERROR('Aucune société ERP trouvée.'))
-            return
-        client = odoo_client.OdooClient.from_env()
+            raise CommandError(
+                "Société requise : passez --company <slug|id> (la société "
+                "ERP propriétaire du connecteur, ODOO_COMPANY_ID).")
+        client = odoo_client.OdooClient.from_env(company=company)
         if client is None:
             self.stdout.write(self.style.WARNING(
-                'Connecteur Odoo non configuré (variables ODOO_*) — no-op.'))
+                'Connecteur Odoo non configuré pour cette société (variables '
+                'ODOO_* dont ODOO_COMPANY_ID) — no-op.'))
             return
 
         # 1. Fiches Odoo (actives + archivées) avec leurs coordonnées.

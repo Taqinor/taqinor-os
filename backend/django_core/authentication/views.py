@@ -22,7 +22,13 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
     UserSessionSerializer,
 )
-from .throttles import LoginRateThrottle, RegisterRateThrottle
+from rest_framework.settings import api_settings
+from .throttles import (
+    ChangementMotDePasseThrottle,
+    Desactivation2FAThrottle,
+    LoginRateThrottle,
+    RegisterRateThrottle,
+)
 from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
 
 # ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
@@ -223,68 +229,125 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginRateThrottle]
 
+    @staticmethod
+    def _refus_apres_mot_de_passe(user, ip=None):
+        """ASEC14 — 403 ``sso_required`` (NTSEC4 : IdP actif avec
+        ``enforce_sso`` ; super-admin et break-glass exemptés par le
+        sélecteur) — appelé UNIQUEMENT après un mot de passe correct. None
+        sinon. ``compte_verrouille`` ne subsiste ici que pour une course
+        (verrou posé pendant la requête) : un compte déjà verrouillé reçoit le
+        401 générique AVANT toute vérification (ASEC14-revue)."""
+        from .password_policy import is_locked
+        if user is None:
+            return None
+        if is_locked(user, ip):
+            return Response(
+                {'detail': 'Compte temporairement verrouillé après trop de '
+                           'tentatives. Réessayez plus tard.',
+                 'code': 'compte_verrouille'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            from apps.identity.selectors import local_password_login_blocked
+            if local_password_login_blocked(user):
+                return Response(
+                    {'detail': 'Connexion via SSO obligatoire pour cette '
+                               'société.', 'sso_required': True,
+                     'code': 'sso_required'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        except Exception:
+            pass
+        return None
+
     def post(self, request, *args, **kwargs):
         from rest_framework.exceptions import ValidationError
         from .password_policy import (
-            is_locked, register_failed_login, reset_failed_login,
+            register_failed_login, reset_failed_login,
         )
-        # FG22 — verrouillage de compte (par société, opt-in). Résout le compte
-        # par username (insensible à la casse) pour vérifier l'état de verrou
-        # AVANT de tenter l'authentification. Inerte si la société n'a pas armé
-        # ``lockout_max_attempts`` (aucun compte n'a alors de ``locked_until``).
+        # FG22 — compte résolu par username (insensible à la casse) pour le
+        # compteur d'échecs. ASEC14 — le VERROU et le SSO OBLIGATOIRE ne sont
+        # plus annoncés AVANT le mot de passe (ils révélaient l'existence et
+        # l'état du compte) : sans le bon mot de passe, inconnu / faux / SSO
+        # donnent le même 401 ; avec le bon mot de passe,
+        # ``_refus_apres_mot_de_passe`` répond 403 ``sso_required``. Un compte
+        # VERROUILLÉ reçoit le même 401, bon mot de passe ou non (ASEC14-revue).
         raw_uname0 = (request.data.get('username') or '').strip()
         locked_user = CustomUser.objects.filter(
             username__iexact=raw_uname0).first() if raw_uname0 else None
-        if locked_user is not None and is_locked(locked_user):
-            return Response(
-                {'detail': 'Compte temporairement verrouillé après trop de '
-                           'tentatives. Réessayez plus tard.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        # NTSEC4 — enforce-SSO : si la société de ce compte a un IdP actif avec
-        # ``enforce_sso``, le login par mot de passe local est interdit (le
-        # membre doit passer par le SSO). Fail-open (aucun IdP → inchangé) ;
-        # super-admin et comptes break-glass (NTSEC22) restent exemptés. On
-        # bloque AVANT toute tentative de mot de passe (pas de fuite d'état).
-        if locked_user is not None:
-            try:
-                from apps.identity.selectors import (
-                    local_password_login_blocked,
-                )
-                if local_password_login_blocked(locked_user):
-                    return Response(
-                        {'detail': 'Connexion via SSO obligatoire pour cette '
-                                   'société.', 'sso_required': True},
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
-            except Exception:
-                pass
+        # ASEC4-revue — le plancher plateforme verrouille le couple
+        # (compte, IP) : IP lue par LA primitive (ADOC79).
+        from core.throttling import ip_de_requete
+        ip = ip_de_requete(request)
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
         # sans divulguer l'état 2FA d'un compte avant que le mot de passe soit
         # validé.
+        from rest_framework.exceptions import AuthenticationFailed
+        # ASEC14-revue (décision fondateur « même réponse que faux ») : compte
+        # verrouillé (société, ou couple compte+IP) → le mot de passe n'est
+        # PAS vérifié ; on rend EXACTEMENT le 401 d'un mauvais mot de passe
+        # et la tentative est comptée.
+        from .password_policy import is_locked
+        if locked_user is not None and is_locked(locked_user, ip):
+            register_failed_login(locked_user, ip)
+            raise AuthenticationFailed(
+                self.get_serializer().error_messages['no_active_account'],
+                'no_active_account')
         try:
             response = super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            # ASEC4 — mauvais mot de passe : simplejwt lève AuthenticationFailed
+            # (401), jamais ValidationError — ce chemin n'était PAS compté, le
+            # verrou FG22 restait mort. Compté ici (compte connu uniquement ;
+            # identifiant inconnu → même 401, même corps).
+            if locked_user is not None:
+                register_failed_login(locked_user, ip)
+            raise
         except ValidationError as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get('otp_required'):
+                # ASEC14 — ``otp_required`` = mot de passe PROUVÉ : le verrou
+                # et le SSO obligatoire peuvent être annoncés maintenant.
+                refus = self._refus_apres_mot_de_passe(locked_user, ip)
+                if refus is not None:
+                    return refus
+                # ASEC4 — un code OTP FAUX (présenté après un bon mot de passe)
+                # est un échec compté ; l'absence de code (premier aller du
+                # formulaire 2FA) ne l'est pas.
+                if locked_user is not None \
+                        and str(request.data.get('otp') or '').strip():
+                    register_failed_login(locked_user, ip)
                 msg = detail.get('detail')
                 if isinstance(msg, (list, tuple)):
                     msg = msg[0] if msg else None
                 msg = str(msg) if msg else 'Double authentification requise.'
-                return Response(
-                    {'otp_required': True, 'detail': msg},
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
+                corps = {'otp_required': True, 'detail': msg}
+                code_err = detail.get('code')
+                if isinstance(code_err, (list, tuple)):
+                    code_err = code_err[0] if code_err else None
+                if code_err:
+                    corps['code'] = str(code_err)  # ASEC5 — otp_deja_utilise
+                return Response(corps, status=status.HTTP_401_UNAUTHORIZED)
             # FG22 — échec d'identifiants : compte le tentative ratée et
             # verrouille au seuil société. No-op si le verrouillage est off.
             if locked_user is not None:
-                register_failed_login(locked_user)
+                register_failed_login(locked_user, ip)
             raise
         if response.status_code == 200:
             access = response.data.pop('access', None)
             refresh = response.data.pop('refresh', None)
+            # ASEC14 — mot de passe (et OTP) prouvés : verrou / SSO obligatoire
+            # annoncés ici ; les jetons émis ne sont jamais remis (refresh
+            # blacklisté best-effort).
+            refus = self._refus_apres_mot_de_passe(locked_user, ip)
+            if refus is not None:
+                try:
+                    RefreshToken(refresh).blacklist()
+                except Exception:
+                    pass
+                return refus
             _set_auth_cookies(response, access, refresh)
             # ERR92 — sur un login RÉUSSI, résoudre l'objet utilisateur depuis
             # le username (insensible à la casse), source d'autorité.
@@ -292,7 +355,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             u = CustomUser.objects.filter(username__iexact=raw_uname).first()
             # FG22 — connexion réussie : remet à zéro le compteur d'échecs et
             # lève tout verrou éventuel. No-op si rien n'était posé.
-            reset_failed_login(u)
+            reset_failed_login(u, ip)
             # FG22 — expiration du mot de passe : si dépassée (société l'a
             # activée), on arme la rotation forcée à cette session (le frontend
             # lit must_change_password dans /auth/me/). Inerte si expiry=0.
@@ -555,6 +618,12 @@ class RegisterCompanyView(generics.GenericAPIView):
     serializer_class = RegisterSerializer  # requis par DRF GenericAPIView
 
     def post(self, request):
+        # ASEC13 / D-ASEC-2 — inscription libre PARQUÉE par défaut : éteinte,
+        # l'endpoint répond 404 et ne crée rien (même drapeau que la demande
+        # d'inscription N101, ``apps/adminops/views_signup.py``).
+        if not getattr(settings, 'TENANT_SIGNUP_ENABLED', False):
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
         company_nom = request.data.get('company_nom', '').strip()
         username = request.data.get('username', '').strip()
         password = request.data.get('password', '')
@@ -567,6 +636,16 @@ class RegisterCompanyView(generics.GenericAPIView):
             errors['username'] = ["Ce champ est requis."]
         if not password:
             errors['password'] = ["Ce champ est requis."]
+        # ASEC13 — e-mail obligatoire et valide (propriétaire joignable).
+        if not email:
+            errors['email'] = ["Ce champ est requis."]
+        else:
+            from django.core.exceptions import ValidationError as DjValidationError
+            from django.core.validators import validate_email
+            try:
+                validate_email(email)
+            except DjValidationError:
+                errors['email'] = ["Adresse e-mail invalide."]
         if errors:
             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -600,30 +679,36 @@ class RegisterCompanyView(generics.GenericAPIView):
             slug = f"{slug_base}-{i}"
             i += 1
 
-        company = Company.objects.create(nom=company_nom, slug=slug)
-
+        # ASEC13 — création ATOMIQUE du noyau (société, profil, rôles,
+        # propriétaire) : une erreur après la société ne laisse rien derrière.
+        # Le gabarit et les hooks (best-effort, isolés) suivent hors du bloc.
+        from django.db import transaction
         from apps.parametres.models import CompanyProfile
-        CompanyProfile.objects.get_or_create(
-            company=company,
-            defaults={'nom': company_nom},
-        )
+        with transaction.atomic():
+            company = Company.objects.create(nom=company_nom, slug=slug)
+            CompanyProfile.objects.get_or_create(
+                company=company,
+                defaults={'nom': company_nom},
+            )
 
-        roles = _create_system_roles(company)
-        # Le propriétaire fondateur de la nouvelle société est Directeur (accès
-        # total + Journal d'activité), pour qu'il y ait au moins un Directeur.
-        admin_role = roles['Directeur']
+            roles = _create_system_roles(company)
+            # Le propriétaire fondateur de la nouvelle société est Directeur
+            # (accès total + Journal d'activité), pour qu'il y ait au moins un
+            # Directeur.
+            admin_role = roles['Directeur']
 
-        user = CustomUser.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-            role_legacy=CustomUser.ROLE_ADMIN,
-            role=admin_role,
-            company=company,
-        )
-        # XPLT19 — la société d'attache est aussi la première société autorisée
-        # (membre). Un compte mono-société démarre donc avec {sa société}.
-        user.societes_autorisees.add(company)
+            user = CustomUser.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                role_legacy=CustomUser.ROLE_ADMIN,
+                role=admin_role,
+                company=company,
+            )
+            # XPLT19 — la société d'attache est aussi la première société
+            # autorisée (membre). Un compte mono-société démarre donc avec
+            # {sa société}.
+            user.societes_autorisees.add(company)
 
         # SOL10 — gabarit de tenant « Solaire » : compose l'existant (modules
         # rares éteints SOL8, plan de licence Solaire SOL9, rôles types,
@@ -807,6 +892,34 @@ class LogoutView(generics.GenericAPIView):
 
 
 # ── Gestion utilisateurs (admin) ───────────────────────────────
+class PeutGererComptes(permissions.BasePermission):
+    """ASEC10 / D-ASEC-4 — toute ÉCRITURE de compte (création, modification,
+    désactivation, suppression, photo, réinitialisation du mot de passe) exige
+    le code ``users_gerer`` (ou le palier administrateur). Les comptes hérités
+    sans rôle fin gardent le comportement du palier (repli légacy). La garde de
+    RANG d'ASEC2 s'applique ensuite, dans la vue."""
+    message = {
+        'detail': "Droit « Gérer les utilisateurs » manquant.",
+        'code': 'droit_manquant',
+    }
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_superuser or getattr(user, 'is_admin_role', False):
+            return True
+        if getattr(user, 'role_id', None):
+            return user.has_erp_permission('users_gerer')
+        return True  # légacy sans rôle fin : IsAdminOrResponsableTier tranche
+
+
+_ACTIONS_ECRITURE_COMPTES = frozenset({
+    'create', 'update', 'partial_update', 'destroy', 'avatar',
+    'reinitialiser_mot_de_passe',
+})
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
@@ -819,6 +932,8 @@ class UserViewSet(viewsets.ModelViewSet):
         # reste réservé à l'Administrateur/Responsable promu.
         if getattr(self, 'action', None) == 'avatar_image':
             return [permissions.IsAuthenticated()]
+        if getattr(self, 'action', None) in _ACTIONS_ECRITURE_COMPTES:
+            return [IsAdminOrResponsableTier(), PeutGererComptes()]
         return [IsAdminOrResponsableTier()]
 
     def get_queryset(self):
@@ -863,7 +978,44 @@ class UserViewSet(viewsets.ModelViewSet):
         except Exception:
             return str(role_id)
 
+    def _refus_rang(self, target):
+        """ASEC2 — 403 ``rang_cible`` si l'acteur ne peut pas gérer ``target``
+        (palier supérieur, protégé, dernier propriétaire). None sinon."""
+        from .role_tiers import peut_gerer
+        ok, code = peut_gerer(self.request.user, target)
+        if ok:
+            return None
+        return Response(
+            {'detail': "Vous ne pouvez pas gérer ce compte : son rang est "
+                       "supérieur au vôtre ou il est protégé.",
+             'code': code},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def _garde_role_plus_large(self, serializer):
+        """ASEC2 — 403 ``role_plus_large`` si un acteur non administrateur
+        attribue un rôle portant des codes qu'il n'a pas lui-même. Appelée
+        APRÈS la validation du serializer (``validate_role`` répond d'abord 400
+        sur un rôle étranger ou un rôle administrateur)."""
+        actor = self.request.user
+        role = serializer.validated_data.get('role')
+        if role is None or getattr(actor, 'is_admin_role', False):
+            return
+        instance = getattr(serializer, 'instance', None)
+        if instance is not None and instance.role_id == role.pk:
+            return  # rôle inchangé (PUT complet) : rien n'est attribué
+        from rest_framework.exceptions import PermissionDenied
+        from .role_tiers import CODE_ROLE_PLUS_LARGE, codes_plus_larges
+        acteur_perms = actor.role.permissions if actor.role_id else []
+        if codes_plus_larges(acteur_perms, role.permissions):
+            raise PermissionDenied({
+                'detail': "Ce rôle est plus large que le vôtre : vous ne "
+                          "pouvez pas l'attribuer.",
+                'code': CODE_ROLE_PLUS_LARGE,
+            })
+
     def perform_create(self, serializer):
+        self._garde_role_plus_large(serializer)
         instance = serializer.save(company=self.request.user.company)
         self._audit_user(
             field=f'user:{instance.username}', label='Utilisateur créé',
@@ -877,6 +1029,7 @@ class UserViewSet(viewsets.ModelViewSet):
         old_role_id = target.role_id
         old_active = target.is_active
         old_sup_id = target.supervisor_id
+        self._garde_role_plus_large(serializer)
         instance = serializer.save()
         uname = instance.username
         if instance.role_id != old_role_id:
@@ -911,6 +1064,9 @@ class UserViewSet(viewsets.ModelViewSet):
         sur tous ses leads (responsable)."""
         from .avatars import store_avatar
         target = self.get_object()
+        refus = self._refus_rang(target)
+        if refus is not None:
+            return refus
         file = request.FILES.get('file')
         if not file:
             return Response({'detail': 'Aucun fichier fourni.'},
@@ -925,6 +1081,24 @@ class UserViewSet(viewsets.ModelViewSet):
         target.save(update_fields=['avatar_key'])
         return Response(
             UserSerializer(target, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'],
+            url_path='reinitialiser-mot-de-passe')
+    def reinitialiser_mot_de_passe(self, request, pk=None):
+        """ASEC3 — réinitialisation du mot de passe d'un compte par un gérant
+        de rang égal ou supérieur : politique de mot de passe, révocation des
+        sessions de la cible, rotation forcée, journal (jamais la valeur)."""
+        from .services import reinitialiser_mot_de_passe
+        target = self.get_object()
+        refus = self._refus_rang(target)
+        if refus is not None:
+            return refus
+        errors = reinitialiser_mot_de_passe(
+            request.user, target, request.data.get('password', ''))
+        if errors:
+            return Response({'password': errors},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Mot de passe réinitialisé.'})
 
     @action(detail=False, methods=['get'], url_path='avatar-image',
             permission_classes=[permissions.IsAuthenticated])
@@ -970,6 +1144,14 @@ class UserViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         target = self.get_object()
         data = request.data
+        # ASEC3 — le mot de passe ne passe JAMAIS par l'update générique.
+        if 'password' in data:
+            return Response(
+                {'password': ["Le mot de passe se réinitialise par l'action "
+                              "dédiée « Réinitialiser le mot de passe »."],
+                 'code': 'password_via_reinitialisation'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # Détecte une rétrogradation (perte du rôle admin) ou une
         # désactivation du compte.
         retro = False
@@ -993,6 +1175,9 @@ class UserViewSet(viewsets.ModelViewSet):
                                'garder un administrateur.'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+        refus = self._refus_rang(target)
+        if refus is not None:
+            return refus
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -1019,6 +1204,9 @@ class UserViewSet(viewsets.ModelViewSet):
                            'le système doit toujours garder un administrateur.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        refus = self._refus_rang(target)
+        if refus is not None:
+            return refus
         return super().destroy(request, *args, **kwargs)
 
 
@@ -1506,7 +1694,6 @@ class TwoFactorEnableView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        import pyotp
         user = request.user
         if user.totp_enabled:
             return Response(
@@ -1520,7 +1707,9 @@ class TwoFactorEnableView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         code = str(request.data.get('code', '')).strip().replace(' ', '')
-        if not pyotp.TOTP(user.totp_secret).verify(code, valid_window=1):
+        # ASEC5 — même vérification que la connexion : le pas est consommé
+        # (le code d'activation ne resservira pas à se connecter).
+        if not code or not user.verify_totp(code):
             return Response(
                 {'detail': 'Code invalide. Vérifiez le code à 6 chiffres de '
                            'votre application d\'authentification.'},
@@ -1549,6 +1738,9 @@ class TwoFactorDisableView(APIView):
     """POST — désactive le 2FA. Exige un code TOTP/secours valide OU le mot de
     passe du compte. Efface le secret et les codes de secours."""
     permission_classes = [permissions.IsAuthenticated]
+    # ASEC5 — 5 désactivations/heure par UTILISATEUR (en plus du défaut).
+    throttle_classes = list(api_settings.DEFAULT_THROTTLE_CLASSES) + [
+        Desactivation2FAThrottle]
 
     def post(self, request):
         user = request.user
@@ -1669,6 +1861,9 @@ class ChangePasswordView(APIView):
     ``must_change_password``. Sert aussi bien au changement volontaire qu'au
     flux de rotation forcée déclenché par un administrateur."""
     permission_classes = [permissions.IsAuthenticated]
+    # ASEC5 — 5 changements/heure par UTILISATEUR (en plus du défaut).
+    throttle_classes = list(api_settings.DEFAULT_THROTTLE_CLASSES) + [
+        ChangementMotDePasseThrottle]
 
     def post(self, request):
         from django.utils import timezone

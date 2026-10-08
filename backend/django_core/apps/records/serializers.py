@@ -3,6 +3,8 @@ from datetime import date
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
     ALLOWED_TARGETS,
@@ -69,7 +71,11 @@ def activity_state(due_date, done):
     return 'upcoming'
 
 
-class ActivityTypeSerializer(serializers.ModelSerializer):
+class ActivityTypeSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    # ASEC6 — l'enchaînement ne désigne jamais le type d'une autre société.
+    same_company_fields = ('type_suivant',)
+
     class Meta:
         model = ActivityType
         # ZSAL1 — type_suivant/mode_enchainement/delai_jours additifs.
@@ -79,7 +85,11 @@ class ActivityTypeSerializer(serializers.ModelSerializer):
         read_only_fields = ['est_systeme']
 
 
-class ActivitySerializer(serializers.ModelSerializer):
+class ActivitySerializer(SameCompanyFKSerializerMixin,
+                         serializers.ModelSerializer):
+    # ASEC6 — utilisateur assigné et type bornés à la société de la requête
+    # (primitive AUD601/ACAL298 : un id étranger = « objet inexistant », 400).
+    same_company_fields = ('assigned_to', 'activity_type')
     activity_type_nom = serializers.CharField(
         source='activity_type.nom', read_only=True)
     activity_type_icone = serializers.CharField(

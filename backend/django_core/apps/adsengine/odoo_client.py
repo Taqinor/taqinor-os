@@ -20,6 +20,12 @@ les fonctionnalités Meta/CAPI : sans les 4 variables, ``is_configured()`` est
 faux et TOUTE lecture est un no-op propre renvoyant vide (jamais un 500, jamais un
 appel réseau).
 
+ASEC40 — UNE société propriétaire : le connecteur est un singleton du processus
+(un seul compte Odoo pour tout le serveur). ``ODOO_COMPANY_ID`` (lu à côté de
+``ODOO_URL``) déclare la société ERP à qui ces données appartiennent ; seule
+elle les reçoit (``is_configured(company)`` / ``OdooClient.from_env(company=)``).
+Sans ``ODOO_COMPANY_ID`` le connecteur est INACTIF pour tous (fail-closed).
+
 Aucune dépendance pip nouvelle : ``httpx`` est déjà épinglé (comme
 ``meta_client``). Le client est injectable (``http_client=``) pour être testé
 sans réseau via ``httpx.MockTransport``.
@@ -46,6 +52,7 @@ ENV_URL = 'ODOO_URL'
 ENV_DB = 'ODOO_DB'
 ENV_USERNAME = 'ODOO_USERNAME'
 ENV_API_KEY = 'ODOO_API_KEY'
+ENV_COMPANY_ID = 'ODOO_COMPANY_ID'
 
 
 # ── Taxonomie d'erreurs (miroir de meta_client) ──────────────────────────────
@@ -68,10 +75,49 @@ def _setting(name):
     return (val or os.environ.get(name, '') or '').strip()
 
 
-def is_configured():
-    """Les 4 variables ODOO_* sont-elles TOUTES posées ? Sans elles, tout le
-    connecteur no-ope (aucun appel réseau)."""
-    return all(_setting(k) for k in (ENV_URL, ENV_DB, ENV_USERNAME, ENV_API_KEY))
+_AVERTI_SANS_SOCIETE = []
+
+
+def owner_company_id():
+    """ASEC40 — id de la société ERP propriétaire du connecteur
+    (``ODOO_COMPANY_ID``), ou ``None`` si absent/illisible."""
+    brut = _setting(ENV_COMPANY_ID)
+    try:
+        return int(brut) if brut else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _company_pk(company):
+    pk = getattr(company, 'pk', company)
+    try:
+        return int(pk) if pk is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def is_configured(company=None):
+    """Les 4 variables ODOO_* ET ``ODOO_COMPANY_ID`` sont-elles posées ? Sans
+    elles, tout le connecteur no-ope (aucun appel réseau).
+
+    ASEC40 — avec ``company`` : vrai seulement pour la société propriétaire.
+    Sans ``ODOO_COMPANY_ID`` : faux pour TOUS (fail-closed, journalisé une
+    fois en nommant la variable)."""
+    if not all(_setting(k) for k in (
+            ENV_URL, ENV_DB, ENV_USERNAME, ENV_API_KEY)):
+        return False
+    owner = owner_company_id()
+    if owner is None:
+        if not _AVERTI_SANS_SOCIETE:
+            _AVERTI_SANS_SOCIETE.append(True)
+            import logging
+            logging.getLogger(__name__).warning(
+                'Connecteur Odoo inactif : ODOO_COMPANY_ID (société ERP '
+                'propriétaire des données Odoo) non posé (ASEC40).')
+        return False
+    if company is None:
+        return True
+    return _company_pk(company) == owner
 
 
 class OdooClient:
@@ -104,11 +150,14 @@ class OdooClient:
         self._rpc_id = 0
 
     @classmethod
-    def from_env(cls, **kwargs):
+    def from_env(cls, company=None, **kwargs):
         """Construit un client depuis les variables ODOO_*, ou ``None`` si le
         connecteur n'est pas configuré (chemin no-op propre — jamais d'appel
-        réseau ni d'exception quand les clés manquent)."""
-        if not is_configured():
+        réseau ni d'exception quand les clés manquent).
+
+        ASEC40 — ``company`` est EXIGÉE et doit être la société propriétaire
+        (``ODOO_COMPANY_ID``) : sinon ``None``, aucun appel réseau."""
+        if company is None or not is_configured(company):
             return None
         return cls(
             url=_setting(ENV_URL), db=_setting(ENV_DB),

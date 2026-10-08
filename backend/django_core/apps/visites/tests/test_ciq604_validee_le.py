@@ -37,8 +37,19 @@ class ValideeLeTests(VisiteTerrainBase):
         self.assertEqual(visite.validee_le, instant)
         self.assertEqual(visite.validee_par_id, self.valideur.id)
 
+    def _visite_terminee_complete(self):
+        """ALEA6 — la ROUTE ``valider`` exige une visite terminée ET
+        complète : on la mène au bout par le vrai parcours HTTP."""
+        visite_id = self.creer_visite()
+        self.remplir(visite_id)
+        resp = self.api.post(
+            f'/api/django/visites/visites/{visite_id}/terminer/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return VisiteTerrain.objects.get(pk=visite_id)
+
     def test_la_route_valider_pose_l_auteur_serveur(self):
-        visite = self._visite_terminee()
+        visite = self._visite_terminee_complete()
         resp = self.api_bureau.post(
             f'/api/django/visites/visites/{visite.id}/valider/', {},
             format='json')
@@ -48,7 +59,7 @@ class ValideeLeTests(VisiteTerrainBase):
         self.assertIsNotNone(visite.validee_le)
 
     def test_le_corps_de_requete_ne_peut_pas_forcer_la_date(self):
-        visite = self._visite_terminee()
+        visite = self._visite_terminee_complete()
         faux = (timezone.now() - datetime.timedelta(days=30)).isoformat()
         self.api_bureau.post(
             f'/api/django/visites/visites/{visite.id}/valider/',

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4838, operations: 7624, components: 2211}
+counts: {paths: 4838, operations: 7628, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1500,6 +1500,7 @@ operations:
 - patch /api/django/ged/politiques-retention/{id}/ -> django_ged_politiques_retention_partial_update
 - put /api/django/ged/politiques-retention/{id}/ -> django_ged_politiques_retention_update
 - get /api/django/ged/public/{token}/ -> django_ged_public_retrieve
+- post /api/django/ged/public/{token}/ -> django_ged_public_create
 - get /api/django/ged/quotas-stockage/ -> django_ged_quotas_stockage_list
 - post /api/django/ged/quotas-stockage/ -> django_ged_quotas_stockage_create
 - get /api/django/ged/quotas-stockage/etat/ -> django_ged_quotas_stockage_etat_retrieve
@@ -2672,6 +2673,7 @@ operations:
 - get /api/django/reporting/calendar/ -> django_reporting_calendar_retrieve
 - post /api/django/reporting/calendar/reschedule/ -> django_reporting_calendar_reschedule_create
 - get /api/django/reporting/calendar/subscription/ -> django_reporting_calendar_subscription_retrieve
+- post /api/django/reporting/calendar/subscription/ -> django_reporting_calendar_subscription_create
 - get /api/django/reporting/classeurs/ -> django_reporting_classeurs_list
 - post /api/django/reporting/classeurs/ -> django_reporting_classeurs_create
 - delete /api/django/reporting/classeurs/{id}/ -> django_reporting_classeurs_destroy
@@ -5350,6 +5352,7 @@ operations:
 - patch /api/v1/ged/politiques-retention/{id}/ -> v1_ged_politiques_retention_partial_update
 - put /api/v1/ged/politiques-retention/{id}/ -> v1_ged_politiques_retention_update
 - get /api/v1/ged/public/{token}/ -> v1_ged_public_retrieve
+- post /api/v1/ged/public/{token}/ -> v1_ged_public_create
 - get /api/v1/ged/quotas-stockage/ -> v1_ged_quotas_stockage_list
 - post /api/v1/ged/quotas-stockage/ -> v1_ged_quotas_stockage_create
 - get /api/v1/ged/quotas-stockage/etat/ -> v1_ged_quotas_stockage_etat_retrieve
@@ -6491,6 +6494,7 @@ operations:
 - get /api/v1/reporting/calendar/ -> v1_reporting_calendar_retrieve
 - post /api/v1/reporting/calendar/reschedule/ -> v1_reporting_calendar_reschedule_create
 - get /api/v1/reporting/calendar/subscription/ -> v1_reporting_calendar_subscription_retrieve
+- post /api/v1/reporting/calendar/subscription/ -> v1_reporting_calendar_subscription_create
 - get /api/v1/reporting/classeurs/ -> v1_reporting_classeurs_list
 - post /api/v1/reporting/classeurs/ -> v1_reporting_classeurs_create
 - delete /api/v1/reporting/classeurs/{id}/ -> v1_reporting_classeurs_destroy

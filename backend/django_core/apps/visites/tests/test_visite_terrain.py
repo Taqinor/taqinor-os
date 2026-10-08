@@ -287,6 +287,11 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
     def test_une_mesure_renvoyee_est_redemandee(self):
         visite_id = self.creer_visite()
         self.remplir(visite_id)
+        # ALEA6 — seule une visite TERMINÉE (ou validée) se renvoie : le
+        # renvoi d'une visite en cours sautait une étape du parcours.
+        self.assertEqual(
+            self.api.post(f'/api/django/visites/visites/{visite_id}/terminer/',
+                          {}, format='json').status_code, 200)
         bureau = auth(self.bureau)
         resp = bureau.post(
             f'/api/django/visites/visites/{visite_id}/renvoyer/',
@@ -313,6 +318,13 @@ class FeuVertTests(VisiteTerrainBase):
 
     def test_valider_gele_la_visite_en_lecture_seule(self):
         visite_id = self.creer_visite()
+        # ALEA6 — le feu vert ne se donne qu'à une visite TERMINÉE et
+        # complète : ce test validait un brouillon vide (l'état sauté que la
+        # table des transitions refuse désormais).
+        self.remplir(visite_id)
+        self.assertEqual(
+            self.api.post(f'/api/django/visites/visites/{visite_id}/terminer/',
+                          {}, format='json').status_code, 200)
         bureau = auth(self.bureau)
         resp = bureau.post(
             f'/api/django/visites/visites/{visite_id}/valider/', {},
@@ -407,6 +419,10 @@ class ChatterTests(VisiteTerrainBase):
 
     def test_le_renvoi_journalise_son_motif(self):
         visite_id = self.creer_visite()
+        # ALEA6 — on ne renvoie qu'une visite terminée (ou validée).
+        self.remplir(visite_id)
+        self.api.post(f'/api/django/visites/visites/{visite_id}/terminer/', {},
+                      format='json')
         bureau = auth(self.bureau)
         bureau.post(
             f'/api/django/visites/visites/{visite_id}/renvoyer/',
@@ -434,6 +450,16 @@ class CablageRetourLeadTests(VisiteTerrainBase):
                            {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         return resp
+
+    def _valider_par_le_service(self, visite_id):
+        """Feu vert posé par le SERVICE (ce que la route appelle après la
+        table des transitions) : ces tests portent sur ce que le feu vert
+        REDESCEND au lead, y compris pour une visite sans mesure — un état
+        que la route refuse depuis ALEA6 (visite non terminée/incomplète)."""
+        from apps.visites import services
+
+        services.valider_visite(VisiteTerrain.objects.get(pk=visite_id),
+                                self.bureau)
 
     # ── L'écriture en retour sur le lead ─────────────────────────────────────
 
@@ -470,7 +496,7 @@ class CablageRetourLeadTests(VisiteTerrainBase):
     def test_une_mesure_absente_est_omise_jamais_remplacee(self):
         """Zéro chiffre inventé : sans mesure relevée, aucune n'est affirmée."""
         visite_id = self.creer_visite()
-        self._valider(visite_id)
+        self._valider_par_le_service(visite_id)
 
         self.lead.refresh_from_db()
         notes = self.lead.visite_notes or ''
@@ -482,7 +508,7 @@ class CablageRetourLeadTests(VisiteTerrainBase):
         self.lead.visite_notes = 'Chien méchant dans la cour.'
         self.lead.save(update_fields=['visite_notes'])
         visite_id = self.creer_visite()
-        self._valider(visite_id)
+        self._valider_par_le_service(visite_id)
 
         self.lead.refresh_from_db()
         premier = self.lead.visite_notes
@@ -492,14 +518,14 @@ class CablageRetourLeadTests(VisiteTerrainBase):
         # Une re-validation (deuxième visite du même lead, aucune mesure de
         # plus) ne duplique pas le même récap sur la fiche.
         autre = self.creer_visite()
-        self._valider(autre)
+        self._valider_par_le_service(autre)
         self.lead.refresh_from_db()
         self.assertEqual(
             self.lead.visite_notes.count('Visite technique validée'), 1)
 
     def test_le_chatter_du_feu_vert_nest_pas_double(self):
         visite_id = self.creer_visite()
-        self._valider(visite_id)
+        self._valider_par_le_service(visite_id)
         feux = [note for note in LeadActivity.objects
                 .filter(lead=self.lead, kind=LeadActivity.Kind.NOTE)
                 .values_list('body', flat=True)

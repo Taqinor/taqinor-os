@@ -7,6 +7,8 @@ la connexion exige un code TOTP valide ; la désactivation le retire.
 Les codes valides sont produits avec ``pyotp.TOTP(secret).now()`` — jamais en
 dur — pour rester robustes à l'horloge.
 """
+import time
+
 import pyotp
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -17,6 +19,13 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 User = get_user_model()
+
+
+def _code_suivant(secret):
+    """ASEC5 — code du pas SUIVANT (accepté dans la fenêtre ±1) : le code
+    courant a été consommé par l'activation et ne resservirait pas (anti-rejeu)."""
+    return pyotp.TOTP(secret).at(int(time.time()) + 30)
+
 
 # Le throttle de connexion (/token/) s'appuie sur le cache. En test on le
 # bascule sur un cache local en mémoire — pas de dépendance Redis — et on le
@@ -157,7 +166,7 @@ class TestTwoFactorSetupEnableDisable(TestCase):
         self.assertEqual(wrong.status_code, 401, wrong.data)
 
         # Code valide → connexion OK.
-        ok = self._login(otp=pyotp.TOTP(secret).now())
+        ok = self._login(otp=_code_suivant(secret))
         self.assertEqual(ok.status_code, 200, ok.data)
         self.assertIn('access_token', ok.cookies)
 
@@ -171,14 +180,14 @@ class TestTwoFactorSetupEnableDisable(TestCase):
         second = self._login(otp=code)
         self.assertEqual(second.status_code, 401, second.data)
         # Mais le TOTP normal marche toujours.
-        ok = self._login(otp=pyotp.TOTP(secret).now())
+        ok = self._login(otp=_code_suivant(secret))
         self.assertEqual(ok.status_code, 200, ok.data)
 
     def test_disable_with_code_clears_2fa(self):
         secret, _ = self._enable_2fa()
         resp = self.auth.post(
             '/api/django/auth/2fa/disable/',
-            {'code': pyotp.TOTP(secret).now()}, format='json')
+            {'code': _code_suivant(secret)}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.user.refresh_from_db()
         self.assertFalse(self.user.totp_enabled)

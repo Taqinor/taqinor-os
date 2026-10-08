@@ -9,8 +9,10 @@ changement de mot de passe se comportent EXACTEMENT comme avant.
 Ces fonctions sont des helpers de fondation (``authentication``) ; elles lisent
 le profil via un import paresseux pour ne créer aucun cycle au chargement.
 """
+import hashlib
 import re
 
+from django.conf import settings
 from django.utils import timezone
 
 
@@ -88,25 +90,85 @@ def validate_new_password(password, company, user=None):
     return errors
 
 
-def is_locked(user):
-    """True si le compte est temporairement verrouillé (FG22)."""
+def _cle_plancher(user, ip, nature):
+    """ASEC4-revue — clé de cache du plancher pour le couple (compte, IP).
+
+    L'IP (lue par ``core.throttling.ip_de_requete`` chez l'appelant) n'est
+    jamais écrite en clair dans le cache : empreinte SHA-256 tronquée. Une IP
+    inconnue (appel hors requête) forme son propre seau ``inconnue``."""
+    empreinte = hashlib.sha256(
+        (ip or 'inconnue').encode('utf-8')).hexdigest()[:32]
+    return f'asec4:{nature}:{user.pk}:{empreinte}'
+
+
+def _plancher_verrouille(user, ip):
+    from django.core.cache import cache
+    try:
+        return bool(cache.get(_cle_plancher(user, ip, 'verrou')))
+    except Exception:  # noqa: BLE001 — cache en panne : pas de verrou
+        return False
+
+
+def is_locked(user, ip=None):
+    """True si le compte est verrouillé pour cette connexion.
+
+    * verrou SOCIÉTÉ (FG22, ``lockout_max_attempts`` > 0) : sur le COMPTE,
+      quelle que soit l'IP (``locked_until``) ;
+    * plancher PLATEFORME (ASEC4, décision fondateur « verrou par compte+IP »)
+      : sur le couple (compte, ``ip``) seulement — le titulaire qui se
+      connecte depuis une autre IP n'est pas gêné."""
     locked_until = getattr(user, 'locked_until', None)
-    return bool(locked_until and locked_until > timezone.now())
+    if locked_until and locked_until > timezone.now():
+        return True
+    if user is None or getattr(user, 'pk', None) is None:
+        return False
+    return _plancher_verrouille(user, ip)
 
 
-def register_failed_login(user):
-    """Incrémente le compteur d'échecs et verrouille si le seuil société est
-    atteint. No-op si la société n'active pas le verrouillage (seuil 0)."""
+def _plancher_echec(user, ip):
+    """ASEC4-revue — compte un échec du couple (compte, IP) ; True si le
+    plancher vient de verrouiller ce couple. Cache Django (Redis en prod,
+    comme les throttles) ; panne du cache = pas de verrou (dégradé ouvert,
+    comme les throttles)."""
+    from django.core.cache import cache
+    plancher = int(getattr(settings, 'LOGIN_PLANCHER_ECHECS', 10) or 0)
+    if plancher <= 0:
+        return False
+    minutes = int(getattr(settings, 'LOGIN_PLANCHER_VERROU_MINUTES', 15) or 15)
+    cle = _cle_plancher(user, ip, 'echecs')
+    try:
+        # Échecs CONSÉCUTIFS : remis à 0 au succès (``reset_failed_login``) ;
+        # la fenêtre d'un jour borne seulement la durée de vie de la clé.
+        if cache.add(cle, 1, timeout=86400):
+            compte = 1
+        else:
+            compte = cache.incr(cle)
+        if compte < plancher:
+            return False
+        cache.set(_cle_plancher(user, ip, 'verrou'), 1, timeout=minutes * 60)
+        cache.delete(cle)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def register_failed_login(user, ip=None):
+    """Compte un échec de connexion.
+
+    * verrou SOCIÉTÉ (FG22) — inchangé : au seuil ``lockout_max_attempts``
+      (si > 0), le COMPTE est verrouillé ``lockout_duration_minutes`` ;
+    * plancher PLATEFORME (ASEC4) — même quand la société n'a pas armé son
+      verrou : ``LOGIN_PLANCHER_ECHECS`` échecs CONSÉCUTIFS depuis la MÊME IP
+      verrouillent le couple (compte, IP) ``LOGIN_PLANCHER_VERROU_MINUTES``.
+      Aucune exemption (superuser compris)."""
     if user is None:
         return
     profile = get_policy(getattr(user, 'company', None))
-    max_attempts = getattr(profile, 'lockout_max_attempts', 0) or 0
-    if max_attempts <= 0:
-        return  # verrouillage désactivé → comportement historique
+    societe = getattr(profile, 'lockout_max_attempts', 0) or 0
     user.failed_login_count = (user.failed_login_count or 0) + 1
     fields = ['failed_login_count']
-    reached = user.failed_login_count >= max_attempts
-    if reached:
+    verrou_societe = societe > 0 and user.failed_login_count >= societe
+    if verrou_societe:
         minutes = getattr(profile, 'lockout_duration_minutes', 15) or 15
         user.locked_until = timezone.now() + timezone.timedelta(
             minutes=minutes)
@@ -116,28 +178,40 @@ def register_failed_login(user):
         user.save(update_fields=fields)
     except Exception:
         pass
-    # FG23 — alerte de sécurité quand le seuil d'échecs consécutifs est atteint
-    # (et que le compte vient d'être verrouillé). Best-effort : journalisée dans
-    # le Journal d'activité (action SECURITY_ALERT), visible dans l'onglet
-    # « Sécurité » réservé au Directeur. N'élève jamais.
-    if reached:
+    verrou_plancher = _plancher_echec(user, ip)
+    # FG23 — alerte de sécurité quand un verrou vient d'être posé.
+    # Best-effort : journalisée dans le Journal d'activité (action
+    # SECURITY_ALERT), visible dans l'onglet « Sécurité » réservé au
+    # Directeur. N'élève jamais.
+    if verrou_societe or verrou_plancher:
+        if verrou_societe:
+            detail = (f'Compte verrouillé après {societe} échecs de '
+                      'connexion consécutifs.')
+        else:
+            plancher = int(getattr(settings, 'LOGIN_PLANCHER_ECHECS', 10) or 0)
+            detail = (f'Compte verrouillé pour une adresse IP après '
+                      f'{plancher} échecs de connexion consécutifs.')
         try:
             from apps.audit.recorder import record
             from apps.audit.models import AuditLog
             record(
                 AuditLog.Action.SECURITY_ALERT, user=user,
                 actor_username=user.username,
-                company=getattr(user, 'company', None),
-                detail=(f'Compte verrouillé après {max_attempts} échecs de '
-                        'connexion consécutifs.'))
+                company=getattr(user, 'company', None), detail=detail)
         except Exception:
             pass
 
 
-def reset_failed_login(user):
-    """Remet le compteur à 0 et lève le verrou (connexion réussie)."""
+def reset_failed_login(user, ip=None):
+    """Remet le compteur à 0 et lève le verrou (connexion réussie) ; efface
+    aussi le compteur plancher du couple (compte, IP)."""
     if user is None:
         return
+    try:
+        from django.core.cache import cache
+        cache.delete(_cle_plancher(user, ip, 'echecs'))
+    except Exception:  # noqa: BLE001
+        pass
     if (user.failed_login_count or 0) == 0 and user.locked_until is None:
         return
     user.failed_login_count = 0

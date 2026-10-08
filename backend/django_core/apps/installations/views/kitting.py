@@ -766,17 +766,24 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             raise ValidationError({
                 'quantite_produite': 'La quantité produite doit être positive.'})
 
-        emplacement_source_id = request.data.get('emplacement_source')
-        emplacement_destination_id = request.data.get('emplacement_destination')
+        # ASEC33 — ids d'emplacement du corps résolus DANS la société avant
+        # tout appel au service de stock (étranger/inexistant → 400).
+        emplacement_source = _emplacement_de_la_societe(
+            ordre.company, request.data.get('emplacement_source'),
+            'emplacement_source')
+        emplacement_destination = _emplacement_de_la_societe(
+            ordre.company, request.data.get('emplacement_destination'),
+            'emplacement_destination')
 
         with transaction.atomic():
             ordre = OrdreAssemblage.objects.select_for_update().get(pk=ordre.pk)
             old = copy.copy(ordre)
             ordre.quantite_produite = quantite_produite
-            if emplacement_source_id:
-                ordre.emplacement_source_id = emplacement_source_id
-            if emplacement_destination_id:
-                ordre.emplacement_destination_id = emplacement_destination_id
+            if emplacement_source is not None:
+                ordre.emplacement_source = emplacement_source
+            if emplacement_destination is not None:
+                ordre.emplacement_destination = emplacement_destination
+            _verifier_emplacements_ordre(ordre)
             already_moved = ordre.stock_mouvemente
             ordre.statut = OrdreAssemblage.Statut.TERMINE
             ordre.date_terminaison = timezone.now()
@@ -894,6 +901,38 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             date_fin=params.get('date_fin')))
 
 
+_EMPLACEMENT_INCONNU = 'Emplacement inconnu pour votre société.'
+
+
+def _emplacement_de_la_societe(company, valeur, champ):
+    """ASEC33 — résout un id d'emplacement LU DU CORPS dans la société, via
+    le sélecteur stock borné (jamais un import de ``stock.models``). Vide →
+    ``None`` ; étranger, inexistant ou illisible → 400 sur ``champ`` (même
+    réponse : aucun oracle d'existence)."""
+    if valeur in (None, ''):
+        return None
+    from apps.stock.selectors import get_emplacement_scoped
+    try:
+        pk = int(valeur)
+    except (TypeError, ValueError):
+        raise ValidationError({champ: _EMPLACEMENT_INCONNU})
+    emplacement = get_emplacement_scoped(company, pk)
+    if emplacement is None:
+        raise ValidationError({champ: _EMPLACEMENT_INCONNU})
+    return emplacement
+
+
+def _verifier_emplacements_ordre(ordre):
+    """ASEC33 — un ordre ne mouvemente JAMAIS un emplacement d'une autre
+    société que la sienne (FK posée avant le correctif ou par un chemin non
+    borné) : 400 AVANT tout appel au service de stock."""
+    for champ in ('emplacement_source', 'emplacement_destination'):
+        emplacement = getattr(ordre, champ, None)
+        if (emplacement is not None
+                and emplacement.company_id != ordre.company_id):
+            raise ValidationError({champ: _EMPLACEMENT_INCONNU})
+
+
 class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
     """XMFG12 — lignes de démontage (quantité récupérée éditable). Pas de
     `company` propre : scope via l'ordre parent. Filtrable par `ordre`.
@@ -1007,6 +1046,9 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
                        "(produit_compose) : démontage impossible."})
+        # ASEC33 — emplacements de l'ordre bornés à sa société avant le
+        # service de stock.
+        _verifier_emplacements_ordre(ordre)
 
         with transaction.atomic():
             ordre = OrdreDemontage.objects.select_for_update().get(pk=ordre.pk)
