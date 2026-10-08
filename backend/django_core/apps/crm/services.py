@@ -8483,6 +8483,45 @@ def coerce_id_list(raw):
     return out
 
 
+def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):
+    """ACRM15 — le texte d'un message de la file WhatsApp en masse, rendu
+    avec la discipline de ``message_pour_etape`` (MRY13) :
+
+    * la LANGUE préférée du lead (``langue_relance_du_lead``) : un gabarit de
+      même nom dans cette langue est préféré au gabarit choisi ;
+    * ``{lien_rdv}`` résolu seulement s'il est présent ;
+    * une phrase dont un placeholder n'a PAS de valeur réelle (``{lien}`` —
+      aucun devis ici —, ``{lien_rdv}`` non généré, ``{prenom}``/``{ville}``
+      vides) est OMISE — jamais « Réservez votre visite : » suivi de rien."""
+    from apps.ventes.utils.whatsapp import render_message_template
+
+    from .models import MessageTemplate
+
+    corps = corps_direct or ''
+    if tpl is not None:
+        langue = langue_relance_du_lead(lead)
+        if tpl.langue != langue:
+            traduit = (MessageTemplate.objects
+                       .filter(company=lead.company, nom=tpl.nom,
+                               langue=langue, archived=False)
+                       .first())
+            if traduit is not None:
+                tpl = traduit
+        corps = tpl.corps or ''
+    contexte = {
+        'prenom': (lead.prenom or lead.nom or '').strip(),
+        'ville': (lead.ville or '').strip(),
+        'lien': '',
+    }
+    if '{lien_rdv}' in corps:
+        contexte['lien_rdv'] = (
+            resoudre_lien_rdv('{lien_rdv}', lead) or '')
+    manquants = [cle for cle, valeur in contexte.items()
+                 if '{' + cle + '}' in corps and not str(valeur).strip()]
+    return render_message_template(
+        _omettre_phrases_incompletes(corps, manquants), contexte)
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -8803,26 +8842,31 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
         from apps.ventes.utils.whatsapp import build_wa_url
         template_id = params.get('template_id')
         body_tpl = params.get('body') or ''
+        tpl = None
+        if template_id:
+            try:
+                from .models import MessageTemplate
+                tpl = MessageTemplate.objects.filter(
+                    company=company, id=template_id).first()
+            except Exception:  # noqa: BLE001 — id illisible : corps direct
+                tpl = None
         queue = []
         for lead in leads:
+            # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
+            # ``message_pour_etape`` / ``_lead_relancable``) : une personne
+            # qui a demandé à ne plus être contactée, un lead perdu ou
+            # archivé ne reçoit AUCUN message — sortis avec leur motif.
+            if getattr(lead, 'ne_plus_contacter', False):
+                skip(lead, 'ne plus contacter')
+                continue
+            if getattr(lead, 'perdu', False) or getattr(
+                    lead, 'is_archived', False):
+                skip(lead, 'perdu/archivé')
+                continue
             phone = lead.whatsapp or lead.telephone
             if not phone:
                 continue
-            # Résoudre le corps : template ou texte direct
-            corps = body_tpl
-            if template_id:
-                try:
-                    from .models import MessageTemplate
-                    tpl = MessageTemplate.objects.filter(
-                        company=company, id=template_id).first()
-                    if tpl:
-                        corps = tpl.render(
-                            prenom=lead.prenom or lead.nom or '',
-                            ville=lead.ville or '',
-                            lien='',
-                        )
-                except Exception:
-                    pass
+            corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
             wa_url = build_wa_url(phone, corps)
             queue.append({
                 'lead_id': lead.id,
@@ -8835,6 +8879,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
             'op': 'prepare_whatsapp',
             'queue': queue,
             'count': len(queue),
+            'skipped': skipped,
         }
 
     return {
