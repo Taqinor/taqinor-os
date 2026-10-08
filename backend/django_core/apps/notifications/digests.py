@@ -114,10 +114,14 @@ def _count_maintenances_dues(company):
 
 
 def _count_sav_ouverts(company):
-    """Tickets SAV encore ouverts (nouveau/planifié/en cours)."""
-    from apps.sav.models import Ticket
-    return Ticket.objects.filter(
-        company=company, statut__in=Ticket.OPEN_STATUTS).count()
+    """Tickets SAV encore ouverts (nouveau/planifié/en cours) et NON annulés.
+
+    APAR24 — lu via ``sav.selectors`` (frontière cross-app : plus d'import du
+    modèle SAV) : ``resume_par_equipe`` compte les tickets ouverts
+    non annulés par équipe active + « Sans équipe ». Un ticket annulé ne
+    gonfle plus « SAV ouverts »."""
+    from apps.sav.selectors import resume_par_equipe
+    return sum(ligne['ouverts'] for ligne in resume_par_equipe(company))
 
 
 # Chaque section : (libellé FR, fonction de comptage). L'ordre est l'ordre
