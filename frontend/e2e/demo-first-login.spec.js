@@ -10,7 +10,7 @@
 // le storageState partagé) : c'est tout l'intérêt du scénario « premier
 // login ».
 import { test, expect } from '@playwright/test'
-import { uiLogin, fermerMomentAccueil } from './helpers'
+import { uiLoginJusquAuxApps, fermerMomentAccueil } from './helpers'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -36,10 +36,7 @@ test.beforeAll(async ({ browser }) => {
   const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
   try {
     const page = await ctx.newPage()
-    await expect(async () => {
-      await uiLogin(page, DEMO_FULL_ADMIN)
-      await expect(page).toHaveURL(/\/apps/, { timeout: 10_000 })
-    }).toPass({ intervals: [5_000, 10_000, 15_000], timeout: 90_000 })
+    await uiLoginJusquAuxApps(page, DEMO_FULL_ADMIN)
     cookiesSession = (await ctx.storageState()).cookies
   } finally {
     await ctx.close()
