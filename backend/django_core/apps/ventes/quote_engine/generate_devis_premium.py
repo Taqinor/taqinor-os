@@ -456,6 +456,10 @@ def _apply_entreprise(ent):
     if email or tel:
         parts = [p for p in (_esc(email), _esc(tel)) if p]
         ENT_CONTACT_LINE = " &nbsp;&#183;&nbsp; ".join(parts)
+    else:
+        # AMOT17 (C-AMOT-016) — société IDENTIFIÉE sans contact : la ligne
+        # est OMISE, jamais le contact de TAQINOR sous le nom d'un autre.
+        ENT_CONTACT_LINE = ""
 
     # Pied de page ÉTUDE : reconstruit dès QU'UN contact quelconque est fourni
     # (email, site OU téléphone) — même sémantique que la ligne de contact
@@ -470,6 +474,9 @@ def _apply_entreprise(ent):
         if not etude_parts and tel:
             etude_parts = [_esc(tel)]
         ENT_ETUDE_CONTACT = " &nbsp;·&nbsp; ".join(etude_parts)
+    else:
+        # AMOT17 — idem pour le pied de la page Étude.
+        ENT_ETUDE_CONTACT = ""
 
     # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.
     legal_bits = []
@@ -518,7 +525,8 @@ def _apply_seller(seller):
     bits = f"Votre conseiller&#160;: {_esc(nom)}"
     if tel:
         bits += f" &#8212; {_esc(tel)}"
-    ENT_CONTACT_LINE = f"{ENT_CONTACT_LINE} &nbsp;&#183;&nbsp; {bits}"
+    ENT_CONTACT_LINE = (f"{ENT_CONTACT_LINE} &nbsp;&#183;&nbsp; {bits}"
+                        if ENT_CONTACT_LINE else bits)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
