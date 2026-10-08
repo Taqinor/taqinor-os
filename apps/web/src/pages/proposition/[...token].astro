@@ -98,6 +98,7 @@ import {
   proposalEndpoint,
   urlAfficheToiture,
   proposalPdfEndpoint,
+  pdfDisponible,
   hasProductionSeries,
   monthlySeries,
   formatPercent,
@@ -1721,6 +1722,9 @@ const waLinkReferral = ok ? whatsappReferralLink(Astro.url.origin, reference) : 
 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
+// ADEV49 — case « PDF » décochée (`pdf_disponible: false`) : AUCUN des trois
+// liens « Télécharger » n'est rendu (ils pointeraient vers un 404).
+const avecPdf = ok && pdfDisponible(data!);
 
 // ── L-VAR (ordre fondateur, 24/08/2026) — VARIANTE TÉLÉCHARGÉE ──────────────
 // Ce que le client coche pour SIGNER n'engage QUE sa signature : le devis
@@ -2580,7 +2584,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 formulaire, ~12 ecrans plus bas. Ce lien secondaire reutilise
                 EXACTEMENT le href de #pdf-download (meme endpoint, meme
                 variante par defaut) : aucun nouveau chemin PDF (regle #4). */}
-            <p class="mt-3">
+            {avecPdf && (<p class="mt-3">
               <a
                 id="prop-fold-pdf"
                 href={showPdfVariants ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}
@@ -2591,7 +2595,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               >
                 Télécharger le devis (PDF)
               </a>
-            </p>
+            </p>)}
             {/* ── PREVIEW v2 · SOMMAIRE CLIQUABLE ──────────────────────────────
                 Cette page est d'abord un aide-mémoire APRÈS l'appel, et une
                 preuve à transférer : le second lecteur arrive froid et cherche
@@ -6633,7 +6637,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  le client n'a plus besoin de chercher plus bas dans la page au
                  moment précis où il vient de s'engager. -->
             <div class="mt-6 flex flex-col gap-3 sm:flex-row">
-              <a
+              {avecPdf && (<a
                 href={pdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -6646,7 +6650,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
                 <span data-i18n data-fr="Télécharger le devis (PDF)" data-en="Download the quote (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
-              </a>
+              </a>)}
               <a href="#etapes-suivantes" class="btn-pill inline-flex items-center justify-center gap-2">
                 <span data-i18n data-fr="Voir « Et après ? »" data-en="See “What happens next?”" data-ar="ماذا بعد؟">Voir « Et après ? »</span>
               </a>
@@ -7363,7 +7367,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
              quelque chose. Le lien continue de s'ouvrir normalement (nouvel
              onglet) — l'affordance retombe seule après quelques secondes ou
              dès que l'utilisateur revient sur cet onglet. -->
-        <div class="mt-6 text-center">
+        {avecPdf && (<div class="mt-6 text-center">
           <a
             id="pdf-download"
             href={showPdfVariants ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}
@@ -7379,7 +7383,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             <span id="pdf-download-spinner" class="spinner" hidden aria-hidden="true"></span>
             <span id="pdf-download-label" data-i18n data-fr="Télécharger le devis (PDF)" data-en="Download the quote (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
           </a>
-        </div>
+        </div>)}
 
         <p class="mt-6 text-center text-xs text-lune-faint" data-i18n
           data-fr={`Proposition Taqinor · réf. ${reference}. Document non contractuel sans signature du devis officiel.`}

@@ -267,6 +267,11 @@ export interface ProposalResponse {
   /** ADEV52 — dernier jour où l'offre peut être signée (ISO `AAAA-MM-JJ`), calculé par le serveur. */
   date_expiration?: string;
   /**
+   * ADEV49 (C-ADEV-016) — `false` quand la case « PDF » du lien est décochée :
+   * `/proposal` répondrait 404, la page ne rend donc AUCUN lien « Télécharger ».
+   */
+  pdf_disponible?: boolean;
+  /**
    * PREVIEW-V3 (16/09/2026) — la PREMIÈRE tranche de l'échéancier, telle que
    * le devis la facturera (`apps/ventes/utils/echeancier.next_tranche`, LE
    * même helper que l'écran de succès post-signature). Clé ADDITIVE : absente
@@ -1842,6 +1847,15 @@ export interface AcceptResult {
   champ?: string;
   /** ADEV51 — code FERMÉ d'un 409 (`proposal_accept.json` › `codes_409`), ex. `empreinte_perimee`. */
   code?: string;
+}
+
+/**
+ * ADEV49 (C-ADEV-016) — la page rend-elle un lien « Télécharger le devis (PDF) » ?
+ * Non dès que le serveur sert `pdf_disponible: false` (case PDF décochée) :
+ * jamais un lien vers un 404 « lien expiré ».
+ */
+export function pdfDisponible(p: Pick<ProposalResponse, 'pdf_disponible'> | null | undefined): boolean {
+  return !!p && p.pdf_disponible !== false;
 }
 
 /** ADEV51 — le 409 qui dit « la proposition a changé depuis votre lecture ». */

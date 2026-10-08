@@ -588,6 +588,8 @@ const NON_LU: Readonly<Record<string, string>> = {
   // ADEV52 (08/10/2026) — la règle d'expiration servie.
   'offre_expiree': 'Verdict serveur d’expiration (ADEV52) : lu par `resolveValidity`/`resolveOfferState` sur le payload brut pour masquer la signature, pas par le lecteur typé.',
   'date_expiration': 'Dernier jour signable calculé par le serveur (ADEV52) : lu par `resolveValidity` pour le libellé d’échéance, pas par le lecteur typé.',
+  // ADEV49 (08/10/2026) — le PDF est-il servi par ce lien ?
+  'pdf_disponible': 'Drapeau serveur de la case « PDF » (ADEV49) : lu par `pdfDisponible` dans le frontmatter pour ne rendre aucun lien « Télécharger » vers un 404, pas par le lecteur typé.',
 };
 
 /** La prose du contrat : jamais servie à un navigateur, mais elle se décide aussi. */
