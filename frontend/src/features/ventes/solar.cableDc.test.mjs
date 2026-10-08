@@ -122,8 +122,9 @@ test('autoFillLines : la ligne câble DC reste un objet PLAT { produit, designat
   const kwp = 14 * 710 / 1000
   const rows = autoFillLines(catalogue, { kwp, panelW: 710, structureType: 'acier' })
   const cable = rows.find(r => /câble/i.test(r.designation) && !/terre/i.test(r.designation))
+  // ATOT28 — + `prixHtOrigine` (HT catalogue d'origine, marqueur d'écran).
   assert.deepEqual(Object.keys(cable).sort(),
-    ['designation', 'prix_unit_ttc', 'produit', 'quantite', 'taux_tva'])
+    ['designation', 'prixHtOrigine', 'prix_unit_ttc', 'produit', 'quantite', 'taux_tva'])
 })
 
 // ── 4. La classification (réseau/injection, hybride, batterie, panneau) et

@@ -33,6 +33,9 @@ export const withKeys = (rows) => rows.map(r => ({
   // AGNR16 — marqueur d'ÉCRAN « prix relu du serveur » (jamais envoyé) :
   // l'effet de tarif ne réécrit pas sans geste un prix déjà enregistré.
   prixRelu: !!r.prixRelu,
+  // ATOT28 — HT catalogue d'origine (marqueur d'ÉCRAN : `lignesEcranVersPayload`
+  // le renvoie tel quel tant que le prix n'a pas été tapé). null = aucun.
+  prixHtOrigine: r.prixHtOrigine ?? null,
   // L-2OPT (fondateur 24/08) — '' commun (défaut, comportement historique
   // inchangé) | 'sans' | 'avec' : posée par `fusionnerVariantes` quand les
   // deux optimiseurs résidentiels divergent, préservée au rechargement d'un

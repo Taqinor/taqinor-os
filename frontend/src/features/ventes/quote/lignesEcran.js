@@ -109,6 +109,22 @@ const lignesEnvoyees = (lines) => (lines || []).filter((l) => (estStructure(l)
  * @param {Array<object>} lines  lignes d'écran
  * @param {{multiMode?: string}} [opts]  groupes villa envoyés seulement en mode 'villas'
  */
+// ATOT28 — le HT ENVOYÉ d'une ligne : le HT catalogue d'origine tel quel
+// (`prixHtOrigine`) tant que le vendeur n'a pas tapé de prix et que le TTC
+// affiché est toujours celui qui en dérive (même taux) ; sinon le HT re-dérivé
+// du TTC saisi au taux DE LA LIGNE, comme avant.
+function prixUnitaireEnvoye(l) {
+  const taux = l.taux_tva ?? 20
+  const origine = l.prixHtOrigine
+  if (!l.prixManuel && origine != null && origine !== '') {
+    const ttcOrigine = ttcExactFromHt(origine, taux)
+    if (Math.abs(ttcOrigine - (parseFloat(l.prix_unit_ttc) || 0)) < 0.005) {
+      return (parseFloat(origine) || 0).toFixed(2)
+    }
+  }
+  return htFromTtc(l.prix_unit_ttc, taux)
+}
+
 export function lignesEcranVersPayload(lines, { multiMode } = {}) {
   const villas = multiMode === 'villas'
   const gardees = lignesEnvoyees(lines)
@@ -124,7 +140,7 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
       produit: parseInt(l.produit, 10),
       designation: l.designation,
       quantite: l.quantite,
-      prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
+      prix_unitaire: prixUnitaireEnvoye(l),
       remise: String(parseFloat(l.remise) || 0),
       taux_tva: String(l.taux_tva ?? 20),
       groupe_index: villas ? (l.groupeIndex ?? null) : null,

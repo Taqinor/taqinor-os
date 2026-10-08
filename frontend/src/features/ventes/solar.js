@@ -1551,9 +1551,38 @@ export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
 // par unité) était multipliée par la quantité (36 828 à l'écran contre
 // 36 873,11 au devis) puis PERSISTÉE au ré-enregistrement. Au centime,
 // `htFromTtc` retrouve exactement le HT d'origine (erreur < 0,005 ÷ (1 + t)).
+// ATOT28 — le TTC affiché est le PLUS SIMPLE (entier, puis dixième, puis
+// centime) que `htFromTtc` ramène EXACTEMENT au HT : un TTC entier tapé
+// (1 160 @10 % → 1 054,55 HT) se rouvre 1 160, jamais 1 160,01 ; un prix
+// catalogue 1 234,56 HT s'affiche 1 481,47 et revient 1 234,56.
 export function ttcExactFromHt(prixHt, tauxTva = TVA_STANDARD_DEFAUT) {
-  const factor = 1 + tauxTvaOuDefaut(tauxTva) / 100
-  return Math.round((parseFloat(prixHt) || 0) * factor * 100) / 100
+  const taux = tauxTvaOuDefaut(tauxTva)
+  const factor = 1 + taux / 100
+  const ht = parseFloat(prixHt) || 0
+  const brut = ht * factor
+  const htAttendu = ht.toFixed(2)
+  for (const echelle of [1, 10]) {
+    const candidat = Math.round(brut * echelle) / echelle
+    if (htFromTtc(candidat, taux) === htAttendu) return candidat
+  }
+  return Math.round(brut * 100) / 100
+}
+
+// ATOT28 — LA ligne d'écran née d'un produit du catalogue : TTC affiché au
+// centime (`ttcExactFromHt`) et HT d'origine PORTÉ (`prixHtOrigine`), renvoyé
+// tel quel à l'enregistrement tant que le vendeur n'a pas tapé de prix
+// (`lignesEcranVersPayload`) — un prix catalogue repris sans retouche est
+// stocké exactement et n'est pas « négocié ».
+export function ligneProduitCatalogue(p, quantite) {
+  const taux = tauxTvaOf(p)
+  return {
+    produit: String(p.id),
+    designation: p.nom,
+    quantite,
+    prix_unit_ttc: ttcExactFromHt(p.prix_vente, taux),
+    taux_tva: taux,
+    prixHtOrigine: (parseFloat(p.prix_vente) || 0).toFixed(2),
+  }
 }
 
 // Taux TVA d'un produit (réforme 2024–2026 : 10 % panneaux PV, 20 % le reste).
@@ -2367,15 +2396,16 @@ function indexProduits(produits) {
   return byType
 }
 
-const lineFrom = (p, quantite, ttcOverride = null) => ({
-  produit: p ? String(p.id) : '',
-  designation: p ? p.nom : '',
-  quantite,
-  prix_unit_ttc: p || ttcOverride != null
-    ? (ttcOverride != null ? ttcOverride : ttcFromHt(p.prix_vente, tauxTvaOf(p)))
-    : 0,
-  taux_tva: p ? tauxTvaOf(p) : 20,
-})
+const lineFrom = (p, quantite, ttcOverride = null) => ((p && ttcOverride == null)
+  // ATOT28 — prix catalogue repris tel quel (HT d'origine porté).
+  ? ligneProduitCatalogue(p, quantite)
+  : {
+      produit: p ? String(p.id) : '',
+      designation: p ? p.nom : '',
+      quantite,
+      prix_unit_ttc: p || ttcOverride != null ? ttcOverride : 0,
+      taux_tva: p ? tauxTvaOf(p) : 20,
+    })
 
 // Ligne vide placeholder (désignation canonique, pas de produit)
 const placeholder = (designation, quantite) => ({

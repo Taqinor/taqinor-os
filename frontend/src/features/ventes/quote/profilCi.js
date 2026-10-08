@@ -11,7 +11,7 @@
 // n'est arrondi ; aucun jour n'est coché d'office (le week-end n'est jamais
 // supposé) ; fonctions PURES, sans React ni réseau (node --test).
 import { normaliserCorpsCi, construireCorpsCi } from '../etudeCiPreviewPur.js'
-import { ttcFromHt, tauxTvaOf } from '../solar.js'
+import { ligneProduitCatalogue } from '../solar.js'
 
 export const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -330,12 +330,13 @@ export function lignesDepuisCompositionCi(composition, produits) {
     if (!Number.isFinite(quantite) || quantite <= 0) continue
     const p = (it.produit == null || it.prix_connu === false) ? null
       : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
-    rows.push({
-      produit: p ? String(p.id) : '',
-      designation: p ? p.nom : `${it.designation || 'Article C&I'} — prix à renseigner`,
+    // ATOT28 — un produit tarifé : ligne catalogue (HT d'origine porté).
+    rows.push(p ? ligneProduitCatalogue(p, quantite) : {
+      produit: '',
+      designation: `${it.designation || 'Article C&I'} — prix à renseigner`,
       quantite,
-      prix_unit_ttc: p ? ttcFromHt(p.prix_vente, tauxTvaOf(p)) : 0,
-      taux_tva: p ? tauxTvaOf(p) : 20,
+      prix_unit_ttc: 0,
+      taux_tva: 20,
     })
   }
   return rows

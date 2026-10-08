@@ -61,7 +61,8 @@ test('refreshTarif() ne réécrit prix_unit_ttc que si !l.prixManuel (lu au mome
   // `lines` fermé sur une valeur périmée — et vérifie `!l.prixManuel` avant
   // d'écraser le prix. AGNR15 — le prix servi (HT) est converti au taux de la
   // ligne (`ttcExactFromHt`), jamais écrit tel quel dans le champ TTC.
-  assert.match(body, /setLines\(ls => ls\.map\(l =>\s*\(l\._key === key && !l\.prixManuel\)\s*\? \{ \.\.\.l, prix_unit_ttc: String\(ttcExactFromHt\(data\.prix, l\.taux_tva\)\) \}\s*: l\)\)/)
+  // ATOT28 — le HT servi est en plus PORTÉ (`prixHtOrigine`), renvoyé tel quel.
+  assert.match(body, /setLines\(ls => ls\.map\(l =>\s*\(l\._key === key && !l\.prixManuel\)\s*\? \{ \.\.\.l, prix_unit_ttc: String\(ttcExactFromHt\(data\.prix, l\.taux_tva\)\),\s*prixHtOrigine: \(parseFloat\(data\.prix\) \|\| 0\)\.toFixed\(2\) \}\s*: l\)\)/)
   assert.doesNotMatch(body, /prix_unit_ttc: String\(data\.prix\)/)
 })
 

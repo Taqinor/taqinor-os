@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ecrireLastTva } from '../../../../features/ventes/quote/ecranDefauts.js'
 import ventesApi from '../../../../api/ventesApi'
-import { _hasPrix, appliquerRecomposition, deriveRoleOrderFromLines, lignesManuellesEnConflitPossible, tauxTvaOf, ttcExactFromHt, ttcFromHt } from '../../../../features/ventes/solar'
+import { _hasPrix, appliquerRecomposition, deriveRoleOrderFromLines, lignesManuellesEnConflitPossible, tauxTvaOf, ttcExactFromHt } from '../../../../features/ventes/solar'
 import stockApi from '../../../../api/stockApi'
 import { emptyLine, structureLine, withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
 import { toast } from '../../../../ui/confirm'
@@ -85,7 +85,8 @@ export function useLignesEcran(ctx) {
         // 1 125,00 HT).
         setLines(ls => ls.map(l =>
           (l._key === key && !l.prixManuel)
-            ? { ...l, prix_unit_ttc: String(ttcExactFromHt(data.prix, l.taux_tva)) }
+            ? { ...l, prix_unit_ttc: String(ttcExactFromHt(data.prix, l.taux_tva)),
+                prixHtOrigine: (parseFloat(data.prix) || 0).toFixed(2) }
             : l))
       } else {
         setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
@@ -105,7 +106,9 @@ export function useLignesEcran(ctx) {
             ...l,
             produit: produitId,
             designation: p?.nom ?? l.designation,
-            prix_unit_ttc: p ? String(ttcFromHt(p.prix_vente, tauxTvaOf(p))) : l.prix_unit_ttc,
+            // ATOT28 — TTC au centime, HT catalogue d'origine porté.
+            prix_unit_ttc: p ? String(ttcExactFromHt(p.prix_vente, tauxTvaOf(p))) : l.prix_unit_ttc,
+            prixHtOrigine: p ? (parseFloat(p.prix_vente) || 0).toFixed(2) : (l.prixHtOrigine ?? null),
             taux_tva: p ? String(tauxTvaOf(p)) : (l.taux_tva ?? '20'),
             // N2 — resélectionner un produit reprend la main sur son prix
             // catalogue : lève le verrou manuel posé par une frappe précédente.
