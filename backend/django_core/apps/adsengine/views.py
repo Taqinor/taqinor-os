@@ -2620,34 +2620,33 @@ class GuardrailSingletonView(APIView):
         if err is not None:
             return err
         cfg, _ = GuardrailConfig.objects.get_or_create(company=company)
-        data = request.data if isinstance(request.data, dict) else {}
-        changed = []
+        data = request.data if hasattr(request.data, 'get') else {}
+        # AACQ13 — même validation que ``garde-fous/`` : on TRADUIT les alias
+        # puis on délègue à ``GuardrailConfigSerializer`` (bornes du modèle,
+        # booléens parsés — ``'false'`` → False). Plus aucun ``int(float())``
+        # artisanal (``'inf'`` / négatif / hors borne = 500 avant).
+        payload = {}
+        screen_name = {}
         for src, field in self._ALIASED_FIELDS.items():
             if src in data and data[src] not in (None, ''):
-                try:
-                    setattr(cfg, field, int(float(data[src])))
-                except (TypeError, ValueError):
-                    return Response(
-                        {'detail': f'Valeur invalide pour {src}.'}, status=400)
-                changed.append(field)
+                payload[field] = data[src]
+                screen_name[field] = src
         for field in self._DIRECT_FIELDS:
             if field not in data:
                 continue
             value = data[field]
-            if field in self._BOOL_FIELDS:
-                setattr(cfg, field, bool(value))
-                changed.append(field)
+            if field not in self._BOOL_FIELDS and value in (None, ''):
                 continue
-            if value in (None, ''):
-                continue
-            try:
-                setattr(cfg, field, int(float(value)))
-            except (TypeError, ValueError):
-                return Response(
-                    {'detail': f'Valeur invalide pour {field}.'}, status=400)
-            changed.append(field)
-        if changed:
-            cfg.save(update_fields=changed + ['updated_at'])
+            payload[field] = value
+        if payload:
+            serializer = GuardrailConfigSerializer(
+                cfg, data=payload, partial=True)
+            if not serializer.is_valid():
+                errors = {screen_name.get(k, k): v
+                          for k, v in serializer.errors.items()}
+                return Response(errors, status=400)
+            serializer.save()
+            cfg.refresh_from_db()
         return Response(self._payload(cfg))
 
 
