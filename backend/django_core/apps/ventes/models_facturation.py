@@ -783,6 +783,16 @@ class RemiseEncaissement(models.Model):
         verbose_name = 'Remise d\'encaissement terrain'
         verbose_name_plural = 'Remises d\'encaissement terrain'
         ordering = ['-date_collecte', '-id']
+        # ATOT12 (C-ATOT-019) — deux remises d'une société ne portent jamais
+        # le même numéro : sans cette contrainte, le retry de
+        # `create_with_reference` ne pouvait jamais jouer (aucune
+        # IntegrityError). Référence vide (historique) hors contrainte.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=~models.Q(reference=''),
+                name='uniq_remiseencaissement_reference_par_societe'),
+        ]
 
     def __str__(self):
         return f'Remise {self.reference or self.id} — {self.technicien}'

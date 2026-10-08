@@ -1710,7 +1710,9 @@
   },
   "RemiseEncaissement": {
    "app_label": "ventes",
-   "constraints": [],
+   "constraints": [
+    "uniq_remiseencaissement_reference_par_societe"
+   ],
    "db_table": "ventes_remiseencaissement",
    "fields": [
     [
