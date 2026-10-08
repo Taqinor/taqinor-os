@@ -150,6 +150,30 @@ def normalize_name_key(nom, prenom=None, societe=None):
     return crm_services.normalize_name(nom, prenom, societe)
 
 
+#: ACRM17 — le motif FR d'un envoi refusé à une personne opposée (loi 09-08).
+MOTIF_CONTACT_REFUSE = ('Contact refusé : la personne a demandé à ne plus '
+                        'être contactée')
+
+
+def peut_contacter(instance, canal=None):
+    """ACRM17 (C-ACRM-010) — peut-on CONTACTER la personne derrière
+    ``instance`` par ``canal`` (e-mail, WhatsApp…) ?
+
+    Faux quand ``instance`` est un ``crm.Lead`` — ou porte un ``lead`` —
+    marqué ``ne_plus_contacter`` : aucun émetteur automatique (règles
+    d'automatisation, réveils, envois en masse) ne lui écrit. Vrai sinon (une
+    instance sans lead n'est pas concernée par ce drapeau). ``canal`` est
+    accepté pour l'avenir (consentement par canal, ACRM59) ; le drapeau
+    actuel couvre TOUS les canaux. Lecture pure."""
+    from .models import Lead
+
+    lead = instance if isinstance(instance, Lead) else getattr(
+        instance, 'lead', None)
+    if not isinstance(lead, Lead):
+        return True
+    return not getattr(lead, 'ne_plus_contacter', False)
+
+
 def portee_leads(qs, user):
     """ACRM28 — restreint un queryset de LEADS à ce que ``user`` voit :
     portée de visibilité du rôle (``scope_queryset`` sur ``owner`` —

@@ -381,11 +381,24 @@ def _creer_tache(instance, company, user, resume, note):
         due_date=timezone.localdate(), created_by=user)
 
 
+def _refus_opposition(instance, canal):
+    """ACRM17 — ``(SKIPPED, motif)`` si la personne derrière ``instance``
+    a demandé à ne plus être contactée (``crm.selectors.peut_contacter``),
+    sinon ``None``. Aucun envoi, aucun lien préparé."""
+    from apps.crm.selectors import MOTIF_CONTACT_REFUSE, peut_contacter
+    if peut_contacter(instance, canal):
+        return None
+    return Status.SKIPPED, MOTIF_CONTACT_REFUSE
+
+
 def _send_whatsapp(rule, instance, company, context, user):
     # WhatsApp est un canal MANUEL (lien wa.me) — aucun envoi automatique
     # n'existe dans l'app. APAR25 — le lien n'était que journalisé (SUCCESS
     # sans effet observable) : il est désormais CONSERVÉ comme tâche
     # « Envoyer ce WhatsApp » sur la fiche, que l'équipe ouvre et envoie.
+    refus = _refus_opposition(instance, 'whatsapp')
+    if refus is not None:
+        return refus
     motif, phone, url, body = preparer_whatsapp(
         rule, instance, company, context)
     if motif:
@@ -403,6 +416,9 @@ def _send_whatsapp(rule, instance, company, context, user):
 
 
 def _send_email(rule, instance, company, context, user):
+    refus = _refus_opposition(instance, 'email')
+    if refus is not None:
+        return refus
     to = _resolve_email(instance)
     if not to:
         return Status.NOOP, 'Aucune adresse email : envoi ignoré.'
