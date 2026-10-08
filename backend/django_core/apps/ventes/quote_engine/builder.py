@@ -4645,7 +4645,76 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if _entrees_ci:
             data["_entrees_ci_lead"] = _entrees_ci
 
+    # ── AMOT48 — GARDE DE CLASSE « aucun dirham ne s'évapore » ─────────────
+    # Σ lignes imprimées = total imprimé = totaux du noyau de l'option
+    # effective (et ``display_total == totaux_all.ttc`` pour un document à
+    # UNE option). Un écart n'interrompt jamais un rendu : il est DIT au
+    # vendeur (avertissement interne) et journalisé ; la règle nocturne
+    # ``DOC_TOTAL_IMPRIME_NE_NOYAU`` le signale sur les données réelles.
+    # Sauté pour le chemin léger des totaux de liste (APRF3 : aucune requête
+    # de plus par devis) ; la comparaison au noyau est sautée quand une
+    # VARIANTE demandée rétrécit le document (il décrit alors cette variante,
+    # pas l'option effective — AMOT10).
+    if not _totaux_seuls:
+        _ttc_noyau = None
+        if not _variante_retrecit:
+            try:
+                from apps.ventes.domain.argent import Vue as _Vue
+                from apps.ventes.domain.argent import totaux as _totaux_noyau
+                _ttc_noyau = float(_totaux_noyau(
+                    devis, vue=_Vue.NET, unitaire=True).ttc)
+            except Exception:  # noqa: BLE001 — une garde ne casse jamais
+                _ttc_noyau = None
+        for _e in ecarts_totaux_imprimes(data, _ttc_noyau):
+            _msg = (f"total imprimé incohérent ({_e['etage']}) : "
+                    f"{_e['porte']:.2f} au lieu de {_e['attendu']:.2f}")
+            logger.warning("Devis %s — AMOT48 %s",
+                           getattr(devis, "reference", "?"), _msg)
+            data.setdefault("avertissements_internes", []).append(_msg)
+
     return data
+
+
+def ecarts_totaux_imprimes(data, ttc_noyau=None, *, tol=0.011):
+    """AMOT48 — les écarts de l'invariant « aucun dirham ne s'évapore entre
+    le devis et son PDF », sur le dict de ``build_quote_data``.
+
+    * document à UNE option : ``display_total == totaux_all.ttc`` ;
+    * Σ (P.U. HT × quantité) des lignes imprimées (``all_items``) = HT brut
+      de ``totaux_all`` (à ``max(1 MAD, 1 centime par ligne)`` près — P.U.
+      au centime) ;
+    * ``ttc_noyau`` fourni (TTC UNITAIRE de l'option effective du noyau
+      ``domain.argent.totaux``) : ``display_total`` lui est égal au centime.
+
+    Rend une liste de ``{'etage', 'porte', 'attendu'}`` ; vide = invariant
+    tenu. Fonction PURE, partagée par la garde du moteur et la règle de
+    cohérence ``DOC_TOTAL_IMPRIME_NE_NOYAU`` (une seule écriture).
+    """
+    ecarts = []
+    tall = data.get("totaux_all") or {}
+    disp = data.get("display_total")
+    if (disp is not None and data.get("nb_options") == 1
+            and tall.get("ttc") is not None):
+        if abs(_nombre(disp) - _nombre(tall.get("ttc"))) > tol:
+            ecarts.append({"etage": "display_total_vs_totaux_all",
+                           "porte": _nombre(disp),
+                           "attendu": _nombre(tall.get("ttc"))})
+    items = [it for it in (data.get("all_items") or [])
+             if isinstance(it, dict)]
+    if items and tall.get("ht_brut") is not None:
+        somme = sum(_nombre(it.get("prix_unit_ht"))
+                    * _nombre(it.get("quantite")) for it in items)
+        if abs(somme - _nombre(tall.get("ht_brut"))) > max(
+                1.0, 0.01 * len(items)):
+            ecarts.append({"etage": "somme_lignes_vs_ht_brut",
+                           "porte": round(somme, 2),
+                           "attendu": _nombre(tall.get("ht_brut"))})
+    if ttc_noyau is not None and disp is not None:
+        if abs(_nombre(disp) - float(ttc_noyau)) > tol:
+            ecarts.append({"etage": "display_total_vs_noyau",
+                           "porte": _nombre(disp),
+                           "attendu": float(ttc_noyau)})
+    return ecarts
 
 
 class _LeadVuAgricole:

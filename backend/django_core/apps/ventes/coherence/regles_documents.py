@@ -166,6 +166,31 @@ def totaux_imprimes(r, devis, ctx):
     return out
 
 
+@regle('DOC_TOTAL_IMPRIME_NE_NOYAU',
+       "Lignes imprimées, total imprimé et total du noyau (option effective) "
+       "ne disent pas le même montant",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_DEVIS, besoin_rendu=True)
+def total_imprime_ne_noyau(r, devis, ctx):
+    """AMOT48 — complète ``DOC_TOTAUX_IMPRIMES`` (qui vérifie l'arithmétique
+    de chaque chaîne et que le TTC du devis figure PARMI les options) : ici,
+    LE total imprimé (``display_total``) doit ÊTRE le TTC unitaire de l'option
+    effective du noyau (``domain.argent.totaux``), la somme des lignes
+    imprimées (``all_items``) doit retomber sur le HT brut de ``totaux_all``,
+    et un document à une option imprime ``display_total == totaux_all.ttc``.
+    Même fonction que la garde du moteur
+    (``quote_engine.builder.ecarts_totaux_imprimes``) — une seule écriture."""
+    from apps.ventes.domain.argent import Vue, totaux
+    from apps.ventes.quote_engine.builder import ecarts_totaux_imprimes
+    data = ctx.donnees_devis(devis)
+    ttc_noyau = _f(totaux(devis, vue=Vue.NET, unitaire=True).ttc)
+    return [r.violation(
+        devis, f"Total imprimé incohérent : « {e['etage']} » porte "
+               f"{e['porte']:.2f} au lieu de {e['attendu']:.2f}.",
+        valeurs=e, attendu=e['attendu'], cle={'etage': e['etage']})
+        for e in ecarts_totaux_imprimes(
+            data, ttc_noyau, tol=TOLERANCES['centime'])]
+
+
 # ── Totaux de la facture ────────────────────────────────────────────────────
 @regle('DOC_TOTAUX_FACTURE',
        "Chaîne des totaux de la facture incohérente",
