@@ -139,6 +139,10 @@ const eid = (cle: string) => `${id}-erreur-${cle}`;
 </script>
 
 <style>
+  /* `hidden` doit l'emporter sur les `display` ci-dessous (formulaire masqué au succès). */
+  .rdv [hidden] {
+    display: none !important;
+  }
   .rdv-form {
     display: grid;
     gap: var(--espace-4);

@@ -130,7 +130,8 @@ export async function envoyerUneFois(corps: string, idempotencyKey: string, cfg:
       },
       body: corps,
       signal: ctrl.signal,
-      redirect: 'error',
+      // « error » n'existe pas dans les Workers : « manual », et un 3xx est un refus définitif.
+      redirect: 'manual',
     });
     if (r.status >= 200 && r.status < 300) return { issue: 'livre', motif: String(r.status) };
     if (r.status === 429 || r.status >= 500) return { issue: 'reessayer', motif: String(r.status) };

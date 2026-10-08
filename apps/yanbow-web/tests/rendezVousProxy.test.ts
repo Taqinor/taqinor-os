@@ -60,6 +60,7 @@ interface Capture {
   entetes: Record<string, string>;
   corps: string;
   t: number;
+  redirect?: RequestRedirect;
 }
 
 function banc(options: { reponses?: (number | 'reseau')[]; env?: Record<string, unknown>; dureeRepriseJours?: number | null } = {}) {
@@ -70,7 +71,7 @@ function banc(options: { reponses?: (number | 'reseau')[]; env?: Record<string, 
   const enAttente: Promise<unknown>[] = [];
   const fetchSimule = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const entetes = Object.fromEntries(new Headers(init?.headers).entries());
-    appels.push({ url: String(url), entetes, corps: String(init?.body), t: horloge });
+    appels.push({ url: String(url), entetes, corps: String(init?.body), t: horloge, redirect: init?.redirect });
     const r = reponses.length > 1 ? reponses.shift()! : reponses[0];
     if (r === 'reseau') throw new TypeError('fetch failed');
     return new Response(JSON.stringify({ id: 1, statut: 'recu' }), { status: r });
@@ -185,6 +186,8 @@ describe('YBW54 — envoi signé en arrière-plan', () => {
     expect(b.appels).toHaveLength(1);
     const [a] = b.appels;
     expect(a.url).toBe(URL_ERP);
+    // Les Workers refusent `redirect: 'error'` (TypeError à CHAQUE envoi — trouvé par le bout en bout YBW56).
+    expect(a.redirect).toBe('manual');
     const corps = JSON.parse(a.corps);
     for (const k of Object.keys(corps)) expect(CLES_CHAMPS).toContain(k);
     expect(Object.keys(corps)).not.toContain('company_id');
