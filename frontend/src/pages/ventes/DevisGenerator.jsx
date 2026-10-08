@@ -475,6 +475,23 @@ export default function DevisGenerator({
     setMonthly(valeurs)
     setProvenanceMois(Array(12).fill('tapee'))
   }
+  // AGNR17 — hiver / été TAPÉS par le vendeur (frappe ou collage) : avec un
+  // mois tapé ou relu, les factures sont PROTÉGÉES — aucun pré-remplissage
+  // (lead, profil de site, frappe hiver/été) ne les écrase sans geste.
+  const [facturesTapees, setFacturesTapees] = useState(false)
+  const facturesProtegees = facturesTapees || provenanceMois.includes('tapee')
+  // Lu par les réponses ASYNCHRONES (profil de site) : la valeur COURANTE,
+  // jamais celle du rendu qui a lancé la requête.
+  const facturesProtegeesRef = useRef(facturesProtegees)
+  useEffect(() => { facturesProtegeesRef.current = facturesProtegees }, [facturesProtegees])
+  // Un changement de lead repart d'un état VIDE (jamais les factures de A).
+  const reinitialiserFactures = () => {
+    setFHiver('')
+    setFEte('')
+    setMonthly(DEFAULT_MONTHLY_BILLS)
+    setProvenanceMois(Array(12).fill('exemple'))
+  }
+  const [avisFactures, setAvisFactures] = useState(null)
   // QF4 — distributeur réel + facture/consommation réelle du client, pour que
   // le calcul « deux factures » par tranche (backend QF2) utilise ses vrais
   // chiffres au lieu des défauts. Stockés dans etude_params à l'enregistrement
@@ -1651,6 +1668,8 @@ export default function DevisGenerator({
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerPartDiurneDuMarche, appliquerEntreesPompage,
+    facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
+    pompeCv, pompeHmt, pompeDebit,
   })
 
   // SPL45 — chargeur `?edit=` (déplacé tel quel dans le hook, même position : l'ordre des effets est inchangé).
@@ -1763,6 +1782,9 @@ export default function DevisGenerator({
   // applySiteProfile (computeAutoSizing, mémoïsée — cette fonction tourne à
   // chaque frappe sur le champ facture) ; sous le seuil, attend le moteur
   // horaire SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
+  // AGNR17 — frappe / collage du VENDEUR sur hiver / été : saisie protégée.
+  const saisirFHiver = (v) => { setFHiver(v); setFacturesTapees(true); setAvisFactures(null) }
+  const saisirFEte = (v) => { setFEte(v); setFacturesTapees(true); setAvisFactures(null) }
   const syncBillEstimator = (hiverVal, eteVal) => {
     const hiver = parseFloat(hiverVal) || 0
     const ete = parseFloat(eteVal) || 0
@@ -1792,7 +1814,9 @@ export default function DevisGenerator({
         sizingLocal,
       })
     }
-    poserMoisDerives(estimerMois(hiver, ete > 0 ? ete : hiver))
+    // AGNR17 — la frappe hiver/été ne remplace JAMAIS des mois tapés ou
+    // relus du devis : seul le geste « Estimer 12 mois » le fait.
+    if (!provenanceMois.includes('tapee')) poserMoisDerives(estimerMois(hiver, ete > 0 ? ete : hiver))
   }
 
   // VX237 — montant collé d'Excel/facture ("12 500,00", "3 200 DH"...) nettoyé
@@ -1800,9 +1824,9 @@ export default function DevisGenerator({
   // number (qui rejetterait silencieusement le format non reconnu). Déclarés
   // ici (après syncBillEstimator) pour respecter react-hooks/immutability.
   const onHiverPaste = usePasteClean(parsePastedAmount,
-    (clean) => { setFHiver(clean); syncBillEstimator(clean, fEte) })
+    (clean) => { saisirFHiver(clean); syncBillEstimator(clean, fEte) })
   const onEtePaste = usePasteClean(parsePastedAmount,
-    (clean) => { setFEte(clean); syncBillEstimator(fHiver, clean) })
+    (clean) => { saisirFEte(clean); syncBillEstimator(fHiver, clean) })
   // COUV-HOR — les gestes du VENDEUR sur la carte factures (frappe, collage,
   // choix du distributeur) ; `?edit=` et le brouillon passent par les setters
   // bruts et ne comptent donc jamais comme une saisie.
@@ -2098,8 +2122,9 @@ export default function DevisGenerator({
   // descend ici, l'état et les gestes restent définis ci-dessus.
   const socleFactures = {
     marche: modeInstallation,
-    fHiver, setFHiver, fEte, setFEte, syncBillEstimator,
+    fHiver, setFHiver: saisirFHiver, fEte, setFEte: saisirFEte, syncBillEstimator,
     onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth, moisNonSaisis,
+    avisFactures,
     distributeur, setDistributeur: choisirDistributeur, realBillMode, setRealBillMode,
     realBillMad, setRealBillMad: saisirRealBillMad,
     realBillKwh, setRealBillKwh: saisirRealBillKwh,

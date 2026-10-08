@@ -15,7 +15,10 @@ export function useLeadClientEcran(ctx) {
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly, modeInstallation,
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerPartDiurneDuMarche, appliquerEntreesPompage,
+    facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
+    pompeCv, pompeHmt, pompeDebit,
   } = ctx
+  const vide = (v) => v == null || String(v).trim() === ''
 
   const applyLead = (id) => {
     setLeadId(id)
@@ -51,7 +54,11 @@ export function useLeadClientEcran(ctx) {
         .then((rep) => appliquerEntreesPompage(rep?.data))
         .catch(() => { /* lead illisible : aucune entrée reprise */ })
     }
+    // AGNR17 — un changement de lead repart d'un état VIDE : la conso et les
+    // factures d'un lead précédent ne survivent jamais au lead suivant (sauf
+    // une saisie du vendeur, protégée).
     if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
+    else if (!facturesProtegeesRef.current) setConsoMensuelle('')
     const hiver = parseFloat(lead.facture_hiver) || 0
     // bascule OFF → la valeur unique vaut hiver ET été
     const ete = (lead.ete_differente && lead.facture_ete)
@@ -75,10 +82,14 @@ export function useLeadClientEcran(ctx) {
     // choisi lui-même (même garde « touché » que pompeAlim/structure/tension
     // ci-dessus dans le reducer — ici en état simple, voir sa déclaration).
     if (!horsReseauTouched) setHorsReseau(lead.raccordement === 'aucun')
-    if (hiver > 0) {
+    if (facturesProtegeesRef.current) {
+      if (hiver > 0) setAvisFactures('Factures du lead non appliquées : des factures sont déjà saisies.')
+    } else if (hiver > 0) {
       setFHiver(String(lead.facture_hiver))
       setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
       setMonthly(estimerMois(hiver, ete))
+    } else {
+      reinitialiserFactures()
     }
   }
 
@@ -104,18 +115,22 @@ export function useLeadClientEcran(ctx) {
     }
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
       // AGR420 — la pompe du profil est la pompe ACTUELLE (information).
-      if (p.pompe_actuelle_cv != null && p.pompe_actuelle_cv !== '') setPompeCv(String(p.pompe_actuelle_cv))
-      if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
-      if (p.pompe_debit_m3h != null && p.pompe_debit_m3h !== '') setPompeDebit(String(p.pompe_debit_m3h))
+      // AGNR17 — un pré-remplissage n'écrase jamais une valeur déjà saisie.
+      if (p.pompe_actuelle_cv != null && p.pompe_actuelle_cv !== '' && vide(pompeCv)) setPompeCv(String(p.pompe_actuelle_cv))
+      if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '' && vide(pompeHmt)) setPompeHmt(String(p.pompe_hmt_m))
+      if (p.pompe_debit_m3h != null && p.pompe_debit_m3h !== '' && vide(pompeDebit)) setPompeDebit(String(p.pompe_debit_m3h))
     }
-    if (p.conso_mensuelle_kwh) setConsoMensuelle(String(p.conso_mensuelle_kwh))
+    if (p.conso_mensuelle_kwh && vide(consoMensuelle)) setConsoMensuelle(String(p.conso_mensuelle_kwh))
     const hiver = parseFloat(p.facture_hiver) || 0
     const ete = (p.ete_differente && p.facture_ete) ? parseFloat(p.facture_ete) : hiver
     // CIQ126 — plus aucun balayage local (voir applyLead) : le résidentiel
     // attend le moteur horaire SERVEUR (U3-900), le C&I le moteur C&I serveur.
     const sizingLocal = null
     dispatchSizing({ type: 'PROFIL_SITE_APPLIQUE', profil: p, sizingLocal })
-    if (hiver > 0) {
+    if (hiver > 0 && facturesProtegeesRef.current) {
+      // AGNR17 — des factures déjà saisies gagnent : le profil ne les écrase pas.
+      setAvisFactures('Profil de site non appliqué aux factures déjà saisies.')
+    } else if (hiver > 0) {
       setFHiver(String(p.facture_hiver))
       setFEte(p.ete_differente && p.facture_ete ? String(p.facture_ete) : '')
       setMonthly(estimerMois(hiver, ete))

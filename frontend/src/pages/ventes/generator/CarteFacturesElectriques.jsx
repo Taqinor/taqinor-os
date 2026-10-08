@@ -30,7 +30,7 @@ export default function CarteFacturesElectriques({
   onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth,
   distributeur, setDistributeur, realBillMode, setRealBillMode,
   realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
-  onRealBillPaste, consoAnnuelleReelle, moisNonSaisis = [],
+  onRealBillPaste, consoAnnuelleReelle, moisNonSaisis = [], avisFactures = null,
   children,
 }) {
   return (
@@ -61,6 +61,10 @@ export default function CarteFacturesElectriques({
           </Button>
         </div>
         {errors.bills && <p className="mt-1 text-xs text-destructive">{errors.bills}</p>}
+        {/* AGNR17 — un pré-remplissage refusé est DIT (non bloquant). */}
+        {avisFactures && (
+          <p className="mt-1 text-xs text-info" data-testid="avis-factures">{avisFactures}</p>
+        )}
         <div className="gen-monthly-grid">
           {MONTHS_FR.map((m, i) => (
             <div key={m} className="gen-month">
