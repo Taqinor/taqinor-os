@@ -330,6 +330,10 @@ def reconcilier(devis, intention):
                   .filter(pk=getattr(devis, 'pk', None)).first())
         if verrou is None:
             raise SyncLayoutError('Devis introuvable.')
+        # ADEV30 — compte de panneaux AVANT toute écriture : un envoyé n'est
+        # re-tarifé que si la resynchronisation le change.
+        from .lignes import comptes_panneaux_du_devis
+        comptes_avant = comptes_panneaux_du_devis(verrou)
 
         # PVMRQ — gamme RÉELLE de ce devis, calculée une fois et transmise à
         # chaque ``_pick_product``/``_pick_batterie`` de cette resynchro.
@@ -1022,7 +1026,8 @@ def reconcilier(devis, intention):
         # D12 (prix_manuel, forfait commun divergent) sont préservées et DITES
         # — elles rejoignent la même liste que les autres refus de resynchro,
         # celle que l'écran affiche déjà.
-        retarifer_forfaits_par_panneau(verrou, avertissements=avertissements)
+        retarifer_forfaits_par_panneau(verrou, avertissements=avertissements,
+                                       comptes_avant=comptes_avant)
 
         # ── Étude : les clés géométriques + le scénario, jamais les champs
         # d'étude du générateur ──

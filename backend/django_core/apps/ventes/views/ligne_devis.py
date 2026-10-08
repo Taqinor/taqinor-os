@@ -12,7 +12,16 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-def _retarifer_forfaits(devis):
+def _comptes_avant(devis):
+    """ADEV30 — compte de panneaux AVANT le geste (best-effort)."""
+    from ..domain.lignes import comptes_panneaux_du_devis
+    try:
+        return comptes_panneaux_du_devis(devis)
+    except Exception:  # noqa: BLE001 — best-effort, comme la re-tarification
+        return None
+
+
+def _retarifer_forfaits(devis, comptes_avant=None):
     """QJR220 — les FORFAITS AU PANNEAU suivent le compte réellement écrit.
 
     ``retarifer_forfaits_par_panneau`` (QJR83) n'avait qu'UN appelant :
@@ -30,7 +39,7 @@ def _retarifer_forfaits(devis):
     from ..domain.lignes import retarifer_forfaits_par_panneau
 
     try:
-        retarifer_forfaits_par_panneau(devis)
+        retarifer_forfaits_par_panneau(devis, comptes_avant=comptes_avant)
     except Exception:  # noqa: BLE001 — best-effort, comme les études
         pass
 
@@ -146,6 +155,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # QJR518 — état vu par le client capturé AVANT (envoyé seulement).
         avant_geste = debut_de_geste_devis(
             serializer.validated_data.get('devis'), self.request.user)
+        comptes_avant = _comptes_avant(serializer.validated_data.get('devis'))
         serializer.save()
         # ACAL90 — une ligne de kit AJOUTÉE à la main sort du marqueur.
         from ..domain.lignes import noter_ligne_ajoutee
@@ -158,7 +168,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # le graphe de la page client sans toucher au schéma unifilaire, qui
         # continuait de décrire la composition d'avant. Best-effort, ne lève
         # jamais (voir ``services.rafraichir_etudes_du_devis``).
-        _retarifer_forfaits(serializer.instance.devis)
+        _retarifer_forfaits(serializer.instance.devis, comptes_avant)
         _rafraichir(serializer.instance.devis)
         _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
@@ -174,10 +184,11 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         self._check_devis_not_frozen(serializer.instance.devis)
         avant_geste = debut_de_geste_devis(
             serializer.instance.devis, self.request.user)
+        comptes_avant = _comptes_avant(serializer.instance.devis)
         serializer.save()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne
         # MODIFIÉE peut changer la puissance kWc).
-        _retarifer_forfaits(serializer.instance.devis)
+        _retarifer_forfaits(serializer.instance.devis, comptes_avant)
         _rafraichir(serializer.instance.devis)
         _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
@@ -191,6 +202,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         self._check_devis_not_frozen(instance.devis)
         devis = instance.devis
         avant_geste = debut_de_geste_devis(devis, self.request.user)
+        comptes_avant = _comptes_avant(devis)
         # ACAL90 — LE point de suppression à la main : une ligne de kit
         # retirée est mémorisée (``kit_retire``), jamais recréée par la
         # resynchro (D-ACAL-22).
@@ -198,7 +210,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         supprimer_ligne(instance)
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : une ligne
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
-        _retarifer_forfaits(devis)
+        _retarifer_forfaits(devis, comptes_avant)
         _rafraichir(devis)
         _instantane(devis, self.request.user)
         fin_de_geste_devis(devis, self.request.user, avant=avant_geste,
