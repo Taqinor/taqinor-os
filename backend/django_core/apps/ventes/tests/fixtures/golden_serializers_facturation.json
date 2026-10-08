@@ -564,6 +564,13 @@
      null,
      false
     ],
+    "cle_tranche": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
     "client": [
      "PrimaryKeyRelatedField",
      false,
@@ -1068,6 +1075,13 @@
     "bon_commande": [
      "PrimaryKeyRelatedField",
      false,
+     false,
+     null,
+     false
+    ],
+    "cle_tranche": [
+     "CharField",
+     true,
      false,
      null,
      false

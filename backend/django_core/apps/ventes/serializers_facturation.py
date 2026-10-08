@@ -287,7 +287,9 @@ class FactureSerializer(serializers.ModelSerializer):
                             # ARRONDI-100 — hérités du devis côté serveur.
                             'arrondi_pas', 'arrondi_unites',
                             # CIQ214 — posés par la tranche / ``liberer-retenue``.
-                            'retenue_garantie_mad', 'retenue_liberee_le']
+                            'retenue_garantie_mad', 'retenue_liberee_le',
+                            # ATOT5 — clé de tranche posée par le serveur.
+                            'cle_tranche']
 
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):
@@ -330,6 +332,8 @@ class FactureWriteSerializer(serializers.ModelSerializer):
             # CIQ215 — ventilation posée par le serveur à la création d'une
             # tranche, jamais depuis le corps.
             'ventilation_tva',
+            # ATOT5 — clé de tranche posée par le serveur, jamais le corps.
+            'cle_tranche',
         ]
 
 
