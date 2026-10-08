@@ -1289,10 +1289,11 @@ export function buildIdempotencyKey(rand: () => number = secureRandom): string {
 }
 
 /**
- * Identifiant court, NON réversible, dérivé du téléphone E.164 — pour corréler
- * deux lignes de log d'un même lead SANS jamais journaliser le numéro. FNV-1a
- * 32 bits (suffisant pour une corrélation de logs, pas pour de la sécurité) ;
- * pur, synchrone, aucune dépendance, fonctionne hors Workers (tests).
+ * Pseudonyme court dérivé du téléphone E.164 — NON anonyme : FNV-1a 32 bits
+ * est inversible par énumération en quelques secondes (AACQ43). Ne JAMAIS le
+ * journaliser (cf. `redactLeadForLog`, qui corrèle par `idempotencyKey`) ; il
+ * ne sert qu'à dériver un `event_id` de déduplication CAPI de repli et la
+ * variante A/B (edgeVariant). Pur, synchrone, aucune dépendance.
  */
 export function leadLogId(phoneE164: string): string {
   let h = 0x811c9dc5;
@@ -1306,14 +1307,15 @@ export function leadLogId(phoneE164: string): string {
 /**
  * Vue d'un lead SÛRE pour les logs (ERR32) : aucune PII (nom, téléphone, ville,
  * e-mail, consentement) ne doit atterrir dans les logs Cloudflare. On ne
- * journalise que des diagnostics non identifiants — un id corrélable haché, des
- * indicateurs/longueurs, et des champs de campagne déjà publics (UTM/fbclid
+ * journalise que des diagnostics non identifiants — l'`idempotencyKey`
+ * (aléatoire, non dérivée du téléphone) pour corréler, des indicateurs/longueurs, et des champs de campagne déjà publics (UTM/fbclid
  * sont des paramètres d'URL, pas de la PII). Le payload PII complet n'est
  * JAMAIS sérialisé pour les logs.
  */
 export function redactLeadForLog(record: LeadRecord): Record<string, unknown> {
   return {
-    id: leadLogId(record.phoneE164),
+    // AACQ43 — aucune empreinte du téléphone : corrélation par la clé aléatoire.
+    ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
     qualified: record.qualified,
     billRange: record.billRange,
     roofType: record.roofType,
