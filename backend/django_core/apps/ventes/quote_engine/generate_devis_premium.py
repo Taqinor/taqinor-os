@@ -232,6 +232,8 @@ ROI_A        = 0.0
 ROI_S_JAMAIS = False
 ROI_A_JAMAIS = False
 INST_TYPE    = ""
+# AMOT22 — ville de calcul du productible (libellé), posée par le builder.
+VILLE_CALCUL = ""
 SANS_ITEMS   = []
 AVEC_ITEMS   = []
 # XSAL14/XSAL5 \u2014 lignes de structure (sections/notes) + options propos\u00e9es.
@@ -3135,6 +3137,32 @@ def _branche_phrase():
             if _branche_nommee() else "")
 
 
+def _phrase_methode_etude():
+    """AMOT22 (C-AMOT-020) — la phrase de méthode de la page « Étude »,
+    composée depuis le DEVIS : ville de calcul (omise sans ville), phases
+    seulement si les lignes d'onduleur les portent, « sans batterie » seulement
+    pour un document sans batterie ; jamais une affirmation technique fixe
+    (« irradiation moyenne du Maroc », « onduleur réseau, triphasé »)."""
+    debut = ("Simulation \u00e9tablie sur le productible de "
+             f"{_esc(VILLE_CALCUL)}" if VILLE_CALCUL
+             else "Simulation \u00e9tablie")
+    precisions = []
+    if SCENARIO == "Sans batterie" or _capacite_batterie_vendue() <= 0:
+        precisions.append("sans batterie")
+    noms = " ".join(str(it.get("designation") or "").lower()
+                    for it in list(SANS_ITEMS) + list(AVEC_ITEMS)
+                    if "onduleur" in str(it.get("designation") or "").lower())
+    if "triphas" in noms and "monophas" not in noms:
+        precisions.append("raccordement triphas\u00e9")
+    elif "monophas" in noms and "triphas" not in noms:
+        precisions.append("raccordement monophas\u00e9")
+    phrase = (f"{debut} et le profil de consommation communiqu\u00e9. "
+              f"Mode\u00a0: {INST_TYPE}")
+    if precisions:
+        phrase += " \u2014 " + ", ".join(precisions)
+    return phrase + "."
+
+
 def _batterie_differee():
     """AMOT21 (C-AMOT-019) — l'option 2 est-elle « hybride, batterie plus
     tard » (BAT-DIFF) ? Le serveur le DIT par ``libelle_avec``."""
@@ -3471,9 +3499,7 @@ def page_etude():
 
   <div style="padding:14px 24px;flex:1;min-height:0;">
     <div style="font-size:8pt;color:{CG4};margin-bottom:10px;">
-      Simulation \u00e9tablie sur l'irradiation moyenne du Maroc et le profil de
-      consommation communiqu\u00e9. Mode\u00a0: {INST_TYPE} \u2014 sans batterie,
-      onduleur r\u00e9seau, raccordement triphas\u00e9 (sauf indication contraire).
+      {_phrase_methode_etude()}
     </div>
     <div style="display:flex;gap:9px;margin-bottom:9px;">{cards1}</div>
     <div style="display:flex;gap:9px;">{cards2}</div>
@@ -4687,7 +4713,7 @@ def apply_quote_data(data: dict) -> None:
     global MIS_A_JOUR_LE, REMPLACE_REF
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
-    global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE
+    global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE, VILLE_CALCUL
     global ROI_S_JAMAIS, ROI_A_JAMAIS
     global SANS_ITEMS, AVEC_ITEMS, ECO_S_M, ECO_A_M, CUMUL_S, CUMUL_A
     global FACTURES_M
@@ -4769,6 +4795,8 @@ def apply_quote_data(data: dict) -> None:
     ROI_S_JAMAIS = bool(data.get("roi_s_jamais"))
     ROI_A_JAMAIS = bool(data.get("roi_a_jamais"))
     INST_TYPE    = data["inst_type"]
+    VILLE_CALCUL = str(data.get("client_ville_libelle")
+                       or data.get("client_city") or "").strip()
     SCENARIO     = data.get("scenario", "Les deux (Sans + Avec)")
     RECOMMENDED  = data.get("recommended", "Avec batterie")
     SHOW_MONTHLY = data.get("show_monthly", True)
