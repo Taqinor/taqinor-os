@@ -36,3 +36,6 @@ backend/django_core/apps/ventes/scheduled.py::engagement_followup_engine
 backend/django_core/apps/ventes/tasks.py::_societe_du_devis
 backend/django_core/apps/ventes/tasks.py::_content_version
 backend/django_core/apps/ventes/tasks.py::ranger_simulation
+# Lecture d'UN devis par sa clé primaire (tâche déclenchée pour ce devis précis, pas un balayage) :
+# aucune itération sur des sociétés, donc rien à filtrer par active_companies().
+backend/django_core/apps/ventes/tasks.py::_signaler_pdf_devis_genere

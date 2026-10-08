@@ -37,7 +37,9 @@ def _display(ticket: Ticket, field: str, value):
     if isinstance(value, bool):
         return _BOOL_LABELS[value]
     if field == 'technicien_responsable':
-        return getattr(value, 'username', str(value))
+        # ASAV34 — nom d'intervenant, jamais l'identifiant de connexion.
+        from apps.parametres.selectors import nom_intervenant
+        return nom_intervenant(value, ticket.company) or '—'
     if field == 'equipement':
         return getattr(value, 'numero_serie', None) or str(value)
     if field in ('cause', 'remede'):

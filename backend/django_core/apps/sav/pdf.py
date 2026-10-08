@@ -120,8 +120,13 @@ def _chatter_payload(ticket):
     outcomes = dict(TicketActivity.OUTCOMES)
     for entree in lignes:
         if entree.kind == TicketActivity.Kind.MODIFICATION:
-            texte = (f'{entree.field_label or entree.field} : '
-                     f'{entree.old_value or "—"} → {entree.new_value or "—"}')
+            # ASAV34 — une valeur historisée contenant « @ » (identifiant de
+            # connexion d'un ancien journal) n'est jamais imprimée.
+            avant = entree.old_value or '—'
+            apres = entree.new_value or '—'
+            avant = '—' if '@' in avant else avant
+            apres = '—' if '@' in apres else apres
+            texte = f'{entree.field_label or entree.field} : {avant} → {apres}'
         else:
             texte = entree.body or ''
         rows.append({
