@@ -50,13 +50,39 @@ from core.throttling import CookieRefreshThrottle
 #      sans rouvrir de fenêtre CSRF sur les écritures. NE PAS repasser à 'None'
 #      sans un flux de jeton CSRF explicite (double-submit / X-CSRFToken).
 #   2. ``Secure`` en production (cookies HTTPS uniquement) — posé via
-#      ``_COOKIE_SECURE`` ci-dessous, renforcé par ``SESSION/CSRF_COOKIE_SECURE``
+#      ``_cookie_secure(request)`` ci-dessous (ASEC52), renforcé par ``SESSION/CSRF_COOKIE_SECURE``
 #      et ``SECURE_SSL_REDIRECT`` dans settings/prod.py.
 # Le frontend est servi depuis le même site eTLD+1 que l'API en production. Le
 # test ``tests_hardening.test_auth_cookies_are_samesite_lax_and_httponly``
 # verrouille cette valeur pour qu'un relâchement silencieux casse la CI.
-_COOKIE_SECURE = not settings.DEBUG
 _COOKIE_SAMESITE = 'Lax'
+
+
+def _cookie_secure(request=None):
+    """ASEC52 — attribut ``Secure`` des cookies d'authentification, décidé PAR
+    REQUÊTE (avant : ``not settings.DEBUG`` figé au chargement — or la prod
+    tourne en ``DEBUG=True`` sur ``settings.dev``, donc ses cookies JWT
+    partaient SANS ``Secure``).
+
+    1. ``AUTH_COOKIE_SECURE`` posé (env ``1``/``0``) ⇒ il décide, toujours ;
+    2. sinon la requête arrivée en HTTPS au bord (``request.is_secure()``, via
+       ``SECURE_PROXY_SSL_HEADER`` + ``X-Forwarded-Proto`` relayé par nginx
+       depuis Caddy) ⇒ ``Secure`` ;
+    3. sinon ``not DEBUG`` (comportement historique : ``settings.prod`` reste
+       toujours ``Secure``, le développement HTTP local reste fonctionnel).
+    """
+    explicite = getattr(settings, 'AUTH_COOKIE_SECURE', None)
+    if explicite is not None:
+        return bool(explicite)
+    if request is not None:
+        try:
+            if request.is_secure():
+                return True
+        except Exception:
+            pass
+    return not settings.DEBUG
+
+
 _ACCESS_MAX_AGE = int(
     settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
 )
@@ -65,13 +91,14 @@ _REFRESH_MAX_AGE = int(
 )
 
 
-def _set_auth_cookies(response, access, refresh=None):
+def _set_auth_cookies(response, access, refresh=None, request=None):
     """Positionne les cookies httpOnly sur la reponse Django."""
+    secure = _cookie_secure(request)
     response.set_cookie(
         'access_token', access,
         max_age=_ACCESS_MAX_AGE,
         httponly=True,
-        secure=_COOKIE_SECURE,
+        secure=secure,
         samesite=_COOKIE_SAMESITE,
         path='/',
     )
@@ -80,7 +107,7 @@ def _set_auth_cookies(response, access, refresh=None):
             'refresh_token', refresh,
             max_age=_REFRESH_MAX_AGE,
             httponly=True,
-            secure=_COOKIE_SECURE,
+            secure=secure,
             samesite=_COOKIE_SAMESITE,
             path='/',
         )
@@ -141,7 +168,7 @@ def _maybe_trust_device(user, request, response):
             'device_trust_id', token,
             max_age=max_age,
             httponly=True,
-            secure=_COOKIE_SECURE,
+            secure=_cookie_secure(request),
             samesite=_COOKIE_SAMESITE,
             path='/',
         )
@@ -355,7 +382,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 except Exception:
                     pass
                 return refus
-            _set_auth_cookies(response, access, refresh)
+            _set_auth_cookies(response, access, refresh, request=request)
             # ERR92 — sur un login RÉUSSI, résoudre l'objet utilisateur depuis
             # le username (insensible à la casse), source d'autorité.
             raw_uname = (request.data.get('username') or '').strip()
@@ -441,7 +468,7 @@ class CookieTokenRefreshView(APIView):
                 _clear_auth_cookies(refus)
             return refus
         response = Response({'detail': 'Token rafraichi.'})
-        _set_auth_cookies(response, access, new_refresh)
+        _set_auth_cookies(response, access, new_refresh, request=request)
         return response
 
 
@@ -624,7 +651,7 @@ class SwitchCompanyView(APIView):
             'company_id': company_id,
             'company_nom': cible.nom,
         })
-        _set_auth_cookies(response, str(access), str(refresh))
+        _set_auth_cookies(response, str(access), str(refresh), request=request)
         # Sessions actives (N96) — le nouveau refresh est tracé/révocable comme
         # une connexion. Best-effort, ne bloque jamais le switch.
         _record_session(user, str(refresh), request)

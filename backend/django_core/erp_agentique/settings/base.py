@@ -1742,6 +1742,24 @@ NUM_PROXIES = int(_num_proxies) if _num_proxies.isdigit() else None
 # adresses de lecture — jamais deux valeurs.
 REST_FRAMEWORK['NUM_PROXIES'] = NUM_PROXIES
 
+# ASEC52 — HTTPS VU AU BORD. Caddy termine le TLS public puis parle HTTP à
+# nginx ; nginx relaie le `X-Forwarded-Proto` de Caddy (pair de confiance, mêmes
+# plages que realip) au lieu de son propre `$scheme`. `request.is_secure()` est
+# donc vrai pour une requête arrivée en HTTPS, même sous `settings.dev` — c'est
+# ce qui pose `Secure` sur les cookies JWT et `device_trust_id`
+# (`authentication.views._cookie_secure`). Un appelant direct ne peut pas forger
+# l'en-tête : nginx l'écrase pour tout pair hors plages de confiance.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Forçage optionnel de l'attribut `Secure` des cookies d'authentification :
+# `1` toujours, `0` jamais (secours si un accès en HTTP pur doit rester
+# connecté) ; absent ⇒
+# décidé par requête (HTTPS au bord ⇒ Secure ; sinon `not DEBUG`).
+_auth_cookie_secure = os.environ.get('AUTH_COOKIE_SECURE', '').strip().lower()
+AUTH_COOKIE_SECURE = (
+    True if _auth_cookie_secure in ('1', 'true', 'yes')
+    else False if _auth_cookie_secure in ('0', 'false', 'no')
+    else None)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fondation IA (core.ai) — sélection des fournisseurs par capacité.
 # Dict {capacité: clé_fournisseur}. Le DÉFAUT de chaque capacité est 'noop' :
