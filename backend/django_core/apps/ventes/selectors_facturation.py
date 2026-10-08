@@ -746,6 +746,60 @@ def devis_deja_facture(devis):
     return factures_du_devis(devis).exists()
 
 
+def kpis_q2c_periode(company, debut, fin):
+    """AFAC53 — KPI factures du tableau Quote-to-Cash, sur les DÉFINITIONS du
+    modèle et de la période ``[debut, fin]`` (dates incluses).
+
+    * Facturé  = Σ ``Facture.total_ttc`` des factures émises (émise / payée /
+      en retard, jamais brouillon ni annulée) dont ``date_emission`` est dans
+      la période — la propriété modèle, pas la colonne ``montant_ttc`` (NULL
+      pour une facture classique à lignes).
+    * Encours  = Σ ``Facture.montant_du`` de ces factures encore ouvertes.
+    * Encaissé = paiements NON rejetés de la période, escompte compris — la
+      même définition que ``kpis_factures`` / ``Facture.montant_paye``.
+    * DSO      = encours / facturé × jours de la période (None si rien facturé).
+
+    Lecture seule ; renvoie des ``Decimal`` et un DSO flottant arrondi.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    from .models import Facture, Paiement
+
+    emises = (Facture.objects
+              .filter(company=company,
+                      statut__in=[Facture.Statut.EMISE, Facture.Statut.PAYEE,
+                                  Facture.Statut.EN_RETARD],
+                      date_emission__gte=debut, date_emission__lte=fin)
+              .prefetch_related('lignes', 'paiements', 'avoirs',
+                                'notes_debit', 'retenues_subies',
+                                'affectations_paiement__paiement'))
+    facture = Decimal('0')
+    encours = Decimal('0')
+    for f in emises:
+        facture += f.total_ttc
+        if f.statut == Facture.Statut.PAYEE:
+            continue
+        du = f.montant_du
+        if du > 0:
+            encours += du
+
+    agg = (Paiement.objects
+           .filter(company=company,
+                   date_paiement__gte=debut, date_paiement__lte=fin)
+           .exclude(statut=Paiement.Statut.REJETE)
+           .aggregate(montant=Sum('montant'), escompte=Sum('escompte_montant')))
+    encaisse = (agg['montant'] or Decimal('0')) + (agg['escompte'] or Decimal('0'))
+
+    jours = (fin - debut).days + 1
+    dso = None
+    if facture > 0 and jours > 0:
+        dso = round(float(encours) / float(facture) * jours, 1)
+    return {'facture': facture, 'encours': encours, 'encaisse': encaisse,
+            'dso_jours': dso}
+
+
 def kpis_factures(qs):
     """AUD157 (FAC-13) — LE PROPRIÉTAIRE UNIQUE des chiffres monétaires de
     l'écran Factures.
