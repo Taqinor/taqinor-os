@@ -150,6 +150,26 @@ def normalize_name_key(nom, prenom=None, societe=None):
     return crm_services.normalize_name(nom, prenom, societe)
 
 
+def leads_en_portee(user):
+    """ACRM8 — LA portée de lecture/écriture des leads d'un utilisateur :
+    société active (``company_qs``), périmètre d'entités (NTADM3) et portée
+    de visibilité du rôle (``scope_queryset`` sur ``owner`` — Feature F).
+
+    Une seule définition : ``LeadViewSet._leads_en_portee`` l'appelle, et les
+    viewsets ENFANTS d'un lead (rendez-vous, concurrents, points de contact,
+    forecast, deals, playbook, aperçu de gabarit) valident ou filtrent leur
+    lead par elle — un lead hors portée y est traité comme ABSENT."""
+    from authentication.scoping import scope_queryset
+    from core.entite_scoping import scope_entite_queryset
+    from core.mixins import company_qs
+
+    from .models import Lead
+
+    qs = company_qs(Lead.objects.all(), user)
+    qs = scope_entite_queryset(qs, user, 'entite')
+    return scope_queryset(qs, user, ['owner'])
+
+
 def find_lead_id_by_phone(company, phone):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que

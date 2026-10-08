@@ -568,6 +568,35 @@ class _CompanyScopedRelationsMixin:
         return fields
 
 
+#: ACRM8 — la réponse d'un lead hors portée, IDENTIQUE à un id inexistant.
+LEAD_INTROUVABLE = 'Lead introuvable.'
+
+
+class _LeadEnPorteeMixin:
+    """ACRM8 — le champ ``lead`` d'un sérialiseur ENFANT n'accepte que les
+    leads de la PORTÉE de l'utilisateur (``selectors.leads_en_portee``) :
+    hors portée ou inexistant → la même erreur ``{lead: ["Lead
+    introuvable."]}``. Posé en PREMIÈRE base (avant
+    ``_CompanyScopedRelationsMixin``) : la portée resserre le re-scope société.
+    Sans requête (rendu interne), rien ne change."""
+
+    def get_fields(self):
+        fields = super().get_fields()
+        field = fields.get('lead')
+        request = self.context.get('request') if hasattr(
+            self, 'context') else None
+        user = getattr(request, 'user', None)
+        if (field is not None and not field.read_only
+                and getattr(field, 'queryset', None) is not None
+                and user is not None and user.is_authenticated):
+            from .selectors import leads_en_portee
+            field.queryset = leads_en_portee(user)
+            field.error_messages = dict(
+                field.error_messages, does_not_exist=LEAD_INTROUVABLE,
+                incorrect_type=LEAD_INTROUVABLE)
+        return fields
+
+
 class _CompanyScopedUniqueValidator(UniqueValidator):
     """``UniqueValidator`` dont le queryset est re-scopé société.
 
@@ -2043,7 +2072,7 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
 
 # QJ20 — Rendez-vous (visites commerciales/techniques) ───────────────────────
 
-class AppointmentSerializer(serializers.ModelSerializer):
+class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     """QJ20 — Rendez-vous sur un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -2156,7 +2185,7 @@ class ObjectifAttainmentSerializer(serializers.Serializer):
 
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
-class ConcurrentPerteSerializer(serializers.ModelSerializer):
+class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -2205,7 +2234,7 @@ class ConcurrentPerteSerializer(serializers.ModelSerializer):
         return value
 
 
-class PointContactSerializer(serializers.ModelSerializer):
+class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     """FG204 — point de contact du parcours multi-touch d'un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -2301,7 +2330,8 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
 
 # ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
 
-class ForecastEntrySerializer(_CompanyScopedRelationsMixin,
+class ForecastEntrySerializer(_LeadEnPorteeMixin,
+                              _CompanyScopedRelationsMixin,
                               serializers.ModelSerializer):
     # CRX13 — ``lead`` est un OneToOne : DRF lui greffe automatiquement un
     # ``UniqueValidator`` sur TOUTES les sociétés. Le champ est re-scopé ET son
@@ -2563,7 +2593,8 @@ class ApporteurSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'token_acces']
 
 
-class DealEnregistreSerializer(_CompanyScopedRelationsMixin,
+class DealEnregistreSerializer(_LeadEnPorteeMixin,
+                               _CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTCRM20 — deal enregistré par un apporteur. La fenêtre de protection
     (``clean()`` du modèle) est appliquée via ``full_clean()`` explicite

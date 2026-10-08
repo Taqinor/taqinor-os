@@ -1031,9 +1031,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """ALEA27 — les leads que CET utilisateur peut voir (société + portée
         équipe/sous-arbre + entité), SANS les annotations de liste : la base
         de toute action annexe (bulk, doublons, contrôle de doublons). Une
-        seule source de vérité : ``get_queryset()``."""
-        return Lead.objects.filter(
-            pk__in=self.get_queryset().values('pk'))
+        seule source de vérité : ``get_queryset()``.
+
+        ACRM8 — la règle vit désormais dans ``selectors.leads_en_portee``
+        (une seule définition, partagée avec les viewsets enfants) ; seul le
+        filtre optionnel ``?entite=`` de la requête s'y ajoute ici."""
+        from core.entite_scoping import filtre_entite_demandee
+
+        from .selectors import leads_en_portee
+        return filtre_entite_demandee(
+            leads_en_portee(self.request.user), self.request)
 
     @staticmethod
     def _annoter_prochaine_touche(qs, company):
@@ -5013,15 +5020,22 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
         lien = request.data.get('lien', '')
         lien_rdv = ''
         lead_id = request.data.get('lead_id')
-        if lead_id and '{lien_rdv}' in (tmpl.corps or ''):
+        lead = None
+        if lead_id:
+            # ACRM8 — le lead est résolu dans la PORTÉE : un lead hors
+            # portée (ou inexistant) → 400, aucun lien de réservation créé.
+            from .selectors import leads_en_portee
+            lead = (leads_en_portee(request.user).filter(pk=lead_id).first()
+                    if str(lead_id).isdigit() else None)
+            if lead is None:
+                return Response({'lead': ['Lead introuvable.']},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
             from .services import public_booking_url
-            lead = Lead.objects.filter(
-                pk=lead_id, company=request.user.company).first()
-            if lead is not None:
-                try:
-                    lien_rdv = public_booking_url(lead, request=request)
-                except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
-                    lien_rdv = ''
+            try:
+                lien_rdv = public_booking_url(lead, request=request)
+            except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
+                lien_rdv = ''
         return Response({'texte': tmpl.render(
             prenom=prenom, ville=ville, lien=lien, lien_rdv=lien_rdv)})
 
@@ -5371,8 +5385,10 @@ class PointContactViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Paramètre ?lead=<id> requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        lead = Lead.objects.filter(
-            pk=lead_id, company=request.user.company).first()
+        # ACRM8 — lead résolu dans la PORTÉE (hors portée = absent : 404).
+        from .selectors import leads_en_portee
+        lead = (leads_en_portee(request.user).filter(pk=lead_id).first()
+                if str(lead_id).isdigit() else None)
         if lead is None:
             return Response(
                 {'detail': 'Lead inconnu.'},
@@ -5704,14 +5720,31 @@ class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
         return parent.playbook.company_id
 
 
+class _LeadPlaybookPermission(IsAnyRole):
+    """ACRM8 — lire la progression : tout rôle interne ; cocher une tâche
+    (POST) est une écriture commerciale : ``crm_modifier``."""
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return True
+        return HasPermissionOrLegacy('crm_modifier')().has_permission(
+            request, view)
+
+
 @api_view(['GET', 'POST'])
-@permission_classes([IsAnyRole])
+@permission_classes([_LeadPlaybookPermission])
 def lead_playbook_view(request, lead_id):
     """NTCRM12 — ``GET`` : progression playbook du lead (toutes les tâches
     générées pour son étape courante ou une étape antérieure). ``POST``
     ``{'tache': <id>, 'fait': true}`` : coche/décoche UNE tâche, pose
-    l'acteur+la date côté serveur (jamais silencieux)."""
-    lead = Lead.objects.filter(pk=lead_id, company=request.user.company).first()
+    l'acteur+la date côté serveur (jamais silencieux).
+
+    ACRM8/ACRM9 — le lead est résolu dans la PORTÉE de l'appelant : hors
+    portée = absent (404)."""
+    from .selectors import leads_en_portee
+    lead = leads_en_portee(request.user).filter(pk=lead_id).first()
     if lead is None:
         return Response({'detail': 'Lead introuvable.'}, status=status.HTTP_404_NOT_FOUND)
 
