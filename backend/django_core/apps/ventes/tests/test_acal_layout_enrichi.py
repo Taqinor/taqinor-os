@@ -277,6 +277,8 @@ class LayoutEnrichiTest(TestCase):
         devis = self._devis()
         r = self._post(devis, 'sync-layout', _layout(6, 6))
         self.assertEqual(r.status_code, 200, r.content)
+        # ADEV11 : un brouillon n'est plus servi sur le jeton client.
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
         lien = ShareLink.for_devis(devis)
         pub = APIClient().get(f'/api/django/ventes/proposal/{lien.token}/')
         self.assertEqual(pub.status_code, 200, pub.content)

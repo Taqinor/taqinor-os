@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 from django.test import Client as DjangoClient, TestCase, tag
 
-from apps.ventes.models import ShareLink
+from apps.ventes.models import Devis, ShareLink
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
 )
@@ -153,6 +153,8 @@ class TestProposalPdfWatermarkWiring(TestCase):
         self.devis = make_devis(
             self.company, self.user, self.client_obj, FULL_LINES,
             etude_params=DEUX_OPTIONS)
+        # ADEV11 : un brouillon n'est plus servi sur le jeton client.
+        Devis.objects.filter(pk=self.devis.pk).update(statut='envoye')
 
     def _link(self, niveau):
         token = str(uuid.uuid4())

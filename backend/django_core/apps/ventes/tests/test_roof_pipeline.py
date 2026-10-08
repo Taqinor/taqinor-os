@@ -46,14 +46,15 @@ def auth_client(user):
     return api
 
 
-def make_devis(company, ref='DEV-ROOF-0001', with_lines=True):
+def make_devis(company, ref='DEV-ROOF-0001', with_lines=True,
+               statut='brouillon'):
     client = Client.objects.create(
         company=company, nom='Toiti', prenom='Cli',
         email=f'{ref}@ex.com', telephone='+212600000000',
         adresse='Anfa, Casablanca')
     devis = Devis.objects.create(
         company=company, reference=ref, client=client,
-        statut='brouillon', taux_tva=Decimal('20.00'),
+        statut=statut, taux_tva=Decimal('20.00'),
         remise_globale=Decimal('0'))
     if with_lines:
         for desig, qty, pu in [
@@ -274,7 +275,7 @@ class TestQ6ProposalData(TestCase):
     def setUp(self):
         from apps.ventes.models import ShareLink
         self.company = make_company('q6-co')
-        self.devis = make_devis(self.company, ref='DEV-Q6-0001')
+        self.devis = make_devis(self.company, ref='DEV-Q6-0001', statut='envoye')
         self.link = ShareLink.for_devis(self.devis)
         self.api = APIClient()
 
@@ -303,7 +304,7 @@ class TestQ6ProposalData(TestCase):
     def test_no_cross_tenant_leak(self):
         # A second company's devis has its own token; this token never reveals it
         other = make_company('q6-other')
-        other_devis = make_devis(other, ref='DEV-Q6-OTHER')
+        other_devis = make_devis(other, ref='DEV-Q6-OTHER', statut='envoye')
         from apps.ventes.models import ShareLink
         other_link = ShareLink.for_devis(other_devis)
         resp = self.api.get(self._url(self.link.token))
@@ -334,7 +335,7 @@ class TestProposalPdfRoute(TestCase):
     def setUp(self):
         from apps.ventes.models import ShareLink
         self.company = make_company('pdf-co')
-        self.devis = make_devis(self.company, ref='DEV-PDF-0001')
+        self.devis = make_devis(self.company, ref='DEV-PDF-0001', statut='envoye')
         self.link = ShareLink.for_devis(self.devis)
         self.api = APIClient()
 
@@ -384,7 +385,7 @@ class TestProposalMonthlyArrays(TestCase):
     def setUp(self):
         from apps.ventes.models import ShareLink
         self.company = make_company('t4-co')
-        self.devis = make_devis(self.company, ref='DEV-T4-0001')
+        self.devis = make_devis(self.company, ref='DEV-T4-0001', statut='envoye')
         self.link = ShareLink.for_devis(self.devis)
         self.api = APIClient()
 
