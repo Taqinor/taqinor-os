@@ -540,6 +540,23 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 "Le seuil d'alerte ne peut pas être négatif.")
         return value
 
+    # ASTK214 — tarifs de location : prix de vente, jamais négatifs.
+    @staticmethod
+    def _tarif_location_positif(value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le tarif de location ne peut pas être négatif.')
+        return value
+
+    def validate_tarif_location_jour(self, value):
+        return self._tarif_location_positif(value)
+
+    def validate_tarif_location_semaine(self, value):
+        return self._tarif_location_positif(value)
+
+    def validate_tarif_location_mois(self, value):
+        return self._tarif_location_positif(value)
+
     def validate_tva(self, value):
         if value is not None and not (0 <= value <= 100):
             raise serializers.ValidationError(
@@ -721,6 +738,17 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             # ZSAL9 — avertissement de vente (« sale warnings ») : message +
             # drapeau bloquant. Non sensible (jamais de prix), affiché au devis.
             'avertissement_vente', 'avertissement_bloquant',
+            # ASTK214 (C-ASTK-045, CAT-8) — champs maîtres LUS par des
+            # consommateurs (rangement hazmat NTWMS38, réappro, location
+            # XCTR17, contrats récurrents XCTR1) mais jusqu'ici inatteignables
+            # par l'API (PATCH « 200 sans effet »). Lecture ET écriture sous les
+            # permissions d'écriture stock existantes ; choix validés par le
+            # modèle (400 nommé), tarifs ≥ 0. `tarif_location_*` = prix de
+            # VENTE (location), jamais un prix d'achat.
+            'classe_danger', 'quantite_reappro_cible',
+            'louable', 'tarif_location_jour', 'tarif_location_semaine',
+            'tarif_location_mois',
+            'est_recurrent', 'periodicite_defaut',
             # Stock
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)
