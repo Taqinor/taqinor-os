@@ -569,15 +569,15 @@ class DevisCycleActionsMixin:
                 return Response(
                     {'detail': (
                         'Client en blocage crédit : '
-                        f'{exc.motif}. Un responsable/admin peut passer '
-                        'outre avec `override_credit: true`.'),
+                        f'{exc.motif}. Un responsable ou un administrateur '
+                        'peut passer outre avec `override_credit: true`.'),
                      'credit_hold': True},
                     status=status.HTTP_403_FORBIDDEN)
             return Response(
                 {'detail': (
                     f'Avertissement de vente bloquant : {exc.motif}. '
-                    'Un responsable/admin peut passer outre avec '
-                    '`override_avertissement: true`.'),
+                    'Un responsable ou un administrateur peut passer outre '
+                    'avec `override_avertissement: true`.'),
                  'sale_warning': True},
                 status=status.HTTP_403_FORBIDDEN)
         except AcceptError as exc:

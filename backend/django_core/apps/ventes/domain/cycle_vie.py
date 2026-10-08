@@ -87,17 +87,32 @@ class AcceptationBloquee(AcceptError):
         self.motif = motif
 
 
+def peut_passer_outre(user):
+    """ADEV14 (C-ADEV-006) — seul un Administrateur ou un Responsable (palier
+    ``menu_tier`` faisant autorité, dérivé du rôle) peut passer outre un
+    blocage crédit ou un avertissement de vente bloquant. Porter
+    ``ventes_valider`` (rôle « Commercial ») ne suffit PAS. Sans utilisateur
+    (signature publique) : jamais."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return getattr(user, 'menu_tier', None) in ('admin', 'responsable')
+
+
 def _garde_blocages_acceptation(devis, *, user, override_credit=False,
                                 override_avertissement=False):
     """ADEV13 — LA garde unique des trois portes d'acceptation (interne,
     signature publique, portail) : blocage crédit dur (XFAC28) puis
     avertissement de vente bloquant (ZSAL9). Lève ``AcceptationBloquee`` ;
     un override n'est honoré que s'il est demandé (les portes client ne le
-    demandent jamais)."""
+    demandent jamais) ET que ``peut_passer_outre(user)`` (ADEV14) — un
+    drapeau posé par un Commercial est ignoré, le refus tombe."""
     from apps.ventes.domain.recouvrement import (
         CreditHoldError, SaleWarningError, verifier_credit_hold,
         verifier_sale_warnings,
     )
+    autorise = peut_passer_outre(user)
+    override_credit = bool(override_credit) and autorise
+    override_avertissement = bool(override_avertissement) and autorise
     if devis.client_id is not None:
         try:
             verifier_credit_hold(
