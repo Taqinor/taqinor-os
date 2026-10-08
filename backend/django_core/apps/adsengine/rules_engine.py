@@ -1270,6 +1270,11 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run,
             company=company, meta_id=target_id).first()
         if adset is None or adset.budget is None:
             return None  # pas de base budget → alerte seule
+        if getattr(adset, 'budget_type', '') == adset.BUDGET_TYPE_LIFETIME:
+            # AACQ16 — un budget À VIE n'est pas un budget quotidien.
+            finding['blocked_fr'] = (
+                "Budget à vie : montée de budget quotidien non applicable.")
+            return None
         # AACQ2 — budget du compte vs plafond MAD : non applicable hors MAD.
         blocked = guardrails.mad_threshold_blocked_reason(company)
         if blocked:

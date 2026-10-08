@@ -327,6 +327,15 @@ class AdSetMirror(TenantModel):
     budget = models.DecimalField(
         max_digits=14, decimal_places=2, null=True, blank=True,
         verbose_name='Budget (unités mineures Meta)')
+    # AACQ16 — TYPE du budget miroir : ``daily`` (quotidien) ou ``lifetime``
+    # (à vie, dès que Meta rapporte un ``lifetime_budget`` > 0) ; vide =
+    # inconnu (miroir antérieur). Un budget à vie n'est JAMAIS recopié comme
+    # budget quotidien (duplication, surf-scaling).
+    BUDGET_TYPE_DAILY = 'daily'
+    BUDGET_TYPE_LIFETIME = 'lifetime'
+    budget_type = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Type de budget (quotidien / à vie)')
     created_via_engine = models.BooleanField(
         default=False, verbose_name='Créé par le moteur')
     # FK MÊME APP (adsengine) — autorisée. Nullable : un ad set peut être

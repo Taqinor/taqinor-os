@@ -386,12 +386,17 @@ def propose_duplicate(company, *, adset, name_suffix=' (copie)', reason_fr=None)
         raise ValueError(
             "Aucun créatif LIVE (AdCreativeMirror) trouvé pour cet ad set : "
             "dupliquer sans créatif est impossible — resynchroniser d'abord.")
+    # AACQ16 — un budget À VIE n'est jamais recopié en budget quotidien.
+    if getattr(adset, 'budget_type', '') == adset.BUDGET_TYPE_LIFETIME:
+        raise ValueError(
+            "Budget à vie : dupliquez dans Meta (le moteur ne recopie qu'un "
+            "budget quotidien).")
     creative_id = source_ad.creative_mirror.creative_meta_id
 
     new_adset_name = f'{adset.name}{name_suffix}'
     new_ad_name = f'{source_ad.name}{name_suffix}'
     adset_extra_fields = {}
-    if adset.budget is not None:
+    if adset.budget is not None and adset.budget > 0:
         adset_extra_fields['daily_budget'] = int(adset.budget)
 
     reason_fr = reason_fr or f"Dupliquer l'ad set « {adset.name} » ({new_adset_name})."
@@ -2143,6 +2148,18 @@ def _dispatch(client, action):
     raise ValueError(f"Type d'action non routable : {kind}")
 
 
+def _payload_daily_budget(kind, payload):
+    """AACQ16 — ``daily_budget`` (centimes) posé par une action de CRÉATION
+    (duplication → ``adset_extra_fields`` ; création d'ad set → ``extra_fields``
+    ou racine), ou ``None``."""
+    if kind == KIND_DUPLICATE:
+        return (payload.get('adset_extra_fields') or {}).get('daily_budget')
+    if kind == EngineAction.Kind.CREATE_ADSET:
+        extra = payload.get('extra_fields') or {}
+        return extra.get('daily_budget', payload.get('daily_budget'))
+    return None
+
+
 def _centimes_to_mad(value):
     """ENGFIX1/G2 — Centimes (unités mineures Meta) → MAD (unités majeures).
 
@@ -2232,6 +2249,13 @@ def _guard_before_dispatch(action):
                     action.company, alert_type=guardrails.ALERT_GUARDRAIL,
                     message=msg)
                 raise guardrails.GuardrailViolation(msg)
+
+    # AACQ16 — toute action qui POSE un ``daily_budget`` (duplication,
+    # création d'ad set) passe AUSSI le plafond quotidien, avant tout POST.
+    new_daily = _payload_daily_budget(action.kind, payload)
+    if new_daily is not None:
+        guardrails.check_daily_ceiling(
+            config, _centimes_to_mad(new_daily), company=action.company)
 
     # Toute transition de statut demandée reste PAUSED-only (jamais d'activation).
     target_status = payload.get('target_status')
