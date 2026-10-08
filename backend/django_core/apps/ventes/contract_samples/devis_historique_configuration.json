@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/ventes/devis/<id>/historique-configuration/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR513 (M0 QJR5 ; D-QJR5-7) — historique de configuration d'un devis : versions, différences, restauration. « Revenir à cette version » n'a PAS d'endpoint propre : il rejoue replace-lines avec entete + etude_params (contrat devis_replace_lines_entete.json, QJR504). Forme du diff : QJR551. Jamais prix_achat ni marge.",
+  "pourquoi": "QJR513 (M0 QJR5 ; D-QJR5-7) — historique de configuration d'un devis : versions, différences, restauration. « Revenir à cette version » n'a PAS d'endpoint propre : il rejoue replace-lines avec entete + etude_params (contrat devis_replace_lines_entete.json, QJR504). Forme du diff : QJR551. ADEV18 : `contenu.note` (note client) et `contenu.entete` (TOUS les champs d'en-tête visibles de modifiabilite.CHAMPS_ENTETE_VISIBLES, clé étrangère par son nom d'écriture : client_id → client) — la restauration rejoue `entete` + `note` comme `entete` de replace-lines. Jamais prix_achat ni marge.",
   "exemple": {
     "snapshots": [
       {
@@ -39,6 +39,27 @@
               "pct_or_montant": 60
             }
           ],
+          "note": "Pose prévue en mars, accès toiture par l'escalier de service.",
+          "entete": {
+            "client": 57,
+            "date_validite": "2026-10-30",
+            "taux_tva": "20.00",
+            "remise_globale": "0.00",
+            "echeancier": [
+              {
+                "libelle": "Acompte",
+                "type": "acompte",
+                "pct_or_montant": 40
+              },
+              {
+                "libelle": "Solde",
+                "type": "solde",
+                "pct_or_montant": 60
+              }
+            ],
+            "acompte_pct": "40.00",
+            "acompte_montant": "19400.00"
+          },
           "etude": {
             "scenario": "Les deux (Sans + Avec)"
           },

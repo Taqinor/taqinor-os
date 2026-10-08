@@ -48,6 +48,33 @@ def _etude_contenu(devis):
             and regle.get('proprietaire') == ECRAN and cle in etude}
 
 
+def _entete_valeur(valeur):
+    """ADEV18 — une valeur d'en-tête JSON-safe (Decimal → str, date → ISO)."""
+    import datetime as _dt
+    if isinstance(valeur, (_dt.date, _dt.datetime)):
+        return valeur.isoformat()
+    if isinstance(valeur, list):
+        return list(valeur)
+    return _valeur_json(valeur)
+
+
+def cle_entete(champ):
+    """ADEV18 — la clé d'instantané d'un champ d'en-tête visible : la clé
+    étrangère voyage par son nom d'écriture (``client_id`` → ``client``),
+    celui qu'accepte l'``entete`` de replace-lines (contrat QJR504)."""
+    return champ[:-3] if champ.endswith('_id') else champ
+
+
+def _entete_contenu(devis):
+    """ADEV18 — TOUS les champs d'en-tête que le client voit, sur la liste
+    UNIQUE ``modifiabilite.CHAMPS_ENTETE_VISIBLES`` (celle que lit
+    ``empreinte_visible`` : aucune liste retapée). Rejouée telle quelle comme
+    ``entete`` de replace-lines par « Revenir à cette version »."""
+    from apps.ventes.domain.modifiabilite import CHAMPS_ENTETE_VISIBLES
+    return {cle_entete(champ): _entete_valeur(getattr(devis, champ, None))
+            for champ in CHAMPS_ENTETE_VISIBLES}
+
+
 def _totaux_contenu(devis):
     """QJR551 — totaux HT net / TTC par la façade ``argent`` (vue NET)."""
     from apps.ventes.domain.argent import Vue, totaux as totaux_argent
@@ -64,7 +91,12 @@ def configuration_devis_contenu(devis):
     QJR551 — instantané COMPLET et RESTAURABLE : chaque ligne porte les champs
     de ``domain/lignes.CHAMPS_CLONES`` (sans id de ligne), plus
     ``remise_globale``, ``echeancier`` (D-QJR5-10), les clés d'entrée ÉCRAN de
-    l'étude et les totaux HT net / TTC. JAMAIS de prix d'achat ni de marge."""
+    l'étude et les totaux HT net / TTC. JAMAIS de prix d'achat ni de marge.
+
+    ADEV18 — plus la ``note`` client et l'``entete`` complet (client,
+    validité, TVA, remise, échéancier, acompte) : une correction qui ne
+    change QUE ces champs crée un nouvel instantané, et la restauration les
+    rejoue (``entete`` + ``note`` → replace-lines)."""
     echeancier = devis.echeancier
     return {
         'lignes': [_ligne_contenu(li)
@@ -72,6 +104,8 @@ def configuration_devis_contenu(devis):
         'remise_globale': _valeur_json(devis.remise_globale),
         'echeancier': (list(echeancier) if isinstance(echeancier, list)
                        else echeancier),
+        'note': devis.note or '',
+        'entete': _entete_contenu(devis),
         'etude': _etude_contenu(devis),
         'totaux': _totaux_contenu(devis),
     }
