@@ -1214,6 +1214,15 @@ def sla_respecte(ticket):
         today=ticket.date_resolution)
 
 
+def premiere_reponse_respectee(ticket):
+    """ASAV19 — le SLA de PREMIÈRE RÉPONSE a-t-il été tenu ? ``None`` quand
+    ce n'est pas mesurable (pas d'échéance de réponse ou pas de réponse)."""
+    if not ticket.sla_reponse_due_at or not ticket.date_premiere_reponse:
+        return None
+    repondu_le = timezone.localtime(ticket.date_premiere_reponse).date()
+    return repondu_le <= ticket.sla_reponse_due_at
+
+
 def _sla_moitie_ecoulee(ticket, today):
     """ASAV17 — plus de la moitié du délai SLA ACTIF écoulée (pauses
     exclues) ; un ticket en attente client n'est jamais « à relancer »."""

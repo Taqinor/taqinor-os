@@ -789,6 +789,9 @@ class Ticket(models.Model):
     # Échéance cible pour la RÉSOLUTION (calculée à la création depuis le SLA
     # société). NULL quand le réglage SLA n'est pas activé.
     sla_due_at = models.DateField(null=True, blank=True)
+    # ASAV19 — échéance cible de PREMIÈRE RÉPONSE (même service que la
+    # résolution, premier terme de ``days_for``). NULL sans SLA activé.
+    sla_reponse_due_at = models.DateField(null=True, blank=True)
     # True quand sla_due_at est dépassé et le ticket toujours ouvert.
     # Mis à jour par le scan journalier + à chaque changement de statut.
     sla_breach = models.BooleanField(default=False)

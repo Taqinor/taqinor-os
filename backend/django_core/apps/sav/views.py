@@ -777,13 +777,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
         client = serializer.validated_data.get('client')
         sla_due_at = self._compute_sla_due_at(
             company, client, priorite, date_ouverture)
+        # ASAV19 — échéance de PREMIÈRE RÉPONSE, même service.
+        from .services import compute_sla_reponse_due_at
+        sla_reponse_due_at = compute_sla_reponse_due_at(
+            company, client, priorite, date_ouverture)
         create_with_reference(
             Ticket, 'SAV', company,
             lambda ref: serializer.save(
                 reference=ref, company=company,
                 created_by=self.request.user,
                 date_ouverture=date_ouverture,
-                sla_due_at=sla_due_at),
+                sla_due_at=sla_due_at,
+                sla_reponse_due_at=sla_reponse_due_at),
         )
         # XSAV9 — affectation automatique si aucun technicien n'a été choisi
         # à la création et que la société l'a activée (défaut OFF = inchangé).
@@ -877,17 +882,22 @@ class TicketViewSet(CompanyScopedModelViewSet):
         pré-alerte, escalade (paliers compris) et ``sla_breach`` remis à
         zéro puis ``sla_breach`` recalculé sur la nouvelle échéance."""
         from .services import compute_sla_due_at
+        from .services import compute_sla_reponse_due_at
+        ouverture = ticket.date_ouverture or timezone.localdate()
         ticket.sla_due_at = compute_sla_due_at(
-            ticket.company, ticket.client, ticket.priorite,
-            ticket.date_ouverture or timezone.localdate())
+            ticket.company, ticket.client, ticket.priorite, ouverture)
+        # ASAV19 — l'échéance de première réponse suit les mêmes entrées.
+        ticket.sla_reponse_due_at = compute_sla_reponse_due_at(
+            ticket.company, ticket.client, ticket.priorite, ouverture)
         ticket.sla_pre_alert_notifiee = False
         ticket.sla_escalade_notifiee = False
         ticket.sla_escalade_paliers_notifies = None
         ticket.sla_breach = False
         ticket.recompute_sla_breach()
         ticket.save(update_fields=[
-            'sla_due_at', 'sla_pre_alert_notifiee', 'sla_escalade_notifiee',
-            'sla_escalade_paliers_notifies', 'sla_breach'])
+            'sla_due_at', 'sla_reponse_due_at', 'sla_pre_alert_notifiee',
+            'sla_escalade_notifiee', 'sla_escalade_paliers_notifies',
+            'sla_breach'])
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
@@ -1240,6 +1250,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
             True, 'true', 'True', '1', 1, 'on')
         act = activity.log_note(
             ticket, request.user, body, visible_client=visible_client)
+        # ASAV19 — une note VISIBLE CLIENT est une réponse au client ; une
+        # note interne ne l'est pas.
+        if visible_client:
+            from .services import poser_premiere_reponse
+            poser_premiere_reponse(ticket)
         # ZSAV9 — notifie les suiveurs du ticket (jamais l'auteur de la note).
         from .services import notify_followers
         from apps.notifications.types_evenements import EventType
@@ -1313,8 +1328,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     return Response({'detail': 'Date invalide.'}, status=400)
             else:
                 at = timezone.now()
-            ticket.date_premiere_reponse = at
-            ticket.save(update_fields=['date_premiere_reponse'])
+            from .services import poser_premiere_reponse
+            poser_premiere_reponse(ticket, at)
             activity.log_note(
                 ticket, request.user,
                 f'Première réponse enregistrée le {at.strftime("%d/%m/%Y %H:%M")}')
@@ -1392,6 +1407,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
         entree = activity.log_appel(
             ticket, request.user, corps, outcome=issue, duree_minutes=duree)
+        # ASAV19 — un appel journalisé (hors « non joint ») est une réponse
+        # réelle au client : pose la première réponse (une seule fois).
+        if issue != 'non_joint':
+            from .services import poser_premiere_reponse
+            poser_premiere_reponse(ticket)
         return Response({
             'id': entree.pk, 'kind': entree.kind, 'body': entree.body,
             'issue': entree.outcome, 'duree_minutes': entree.duree_minutes,
@@ -1430,6 +1450,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         except ValueError as exc:
             champ, _, detail = str(exc).partition(': ')
             return Response({champ: detail or str(exc)}, status=400)
+        # ASAV19 — un e-mail envoyé au client pose la première réponse.
+        from .services import poser_premiere_reponse
+        poser_premiere_reponse(ticket)
         return Response({
             'id': ligne.pk, 'message_id': ligne.message_id,
             'thread_root': ligne.thread_root,

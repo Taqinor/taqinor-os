@@ -229,6 +229,51 @@ def resolution_days_pour(company, client, priorite):
     return resolution_days
 
 
+def response_days_pour(company, client, priorite):
+    """ASAV19 — délai de PREMIÈRE RÉPONSE (jours), même précédence que la
+    résolution : override du contrat de maintenance ACTIF du client >
+    ``sla_par_priorite`` (``response``) > défaut société."""
+    from .models import ContratMaintenance, SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    contrat = ContratMaintenance.actif_pour_client(client)
+    if contrat is not None and contrat.sla_response_days is not None:
+        return contrat.sla_response_days
+    response_days, _ = sla.days_for(priorite)
+    return response_days
+
+
+def compute_sla_reponse_due_at(company, client, priorite, date_ouverture):
+    """ASAV19 — échéance de PREMIÈRE RÉPONSE, ou None quand la société n'a
+    pas activé le SLA. Même service et même calendrier (jours ouvrés si
+    ``sla_jours_ouvres``) que l'échéance de résolution."""
+    from datetime import timedelta
+
+    from .models import SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    if not sla.sla_breach_enabled:
+        return None
+    jours = response_days_pour(company, client, priorite)
+    if jours is None:
+        return None
+    if sla.sla_jours_ouvres:
+        from core.calendar import add_working_days
+        return add_working_days(date_ouverture, jours)
+    return date_ouverture + timedelta(days=jours)
+
+
+def poser_premiere_reponse(ticket, at=None):
+    """ASAV19 — pose ``date_premiere_reponse`` UNE seule fois, à la première
+    réponse réelle au client (e-mail, appel abouti, note visible client,
+    action manuelle). Renvoie True si elle vient d'être posée."""
+    if ticket.date_premiere_reponse is not None:
+        return False
+    ticket.date_premiere_reponse = at or timezone.now()
+    ticket.save(update_fields=['date_premiere_reponse'])
+    return True
+
+
 def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
     """FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
     activé ``sla_breach_enabled``. Logique extraite telle quelle de
@@ -300,8 +345,12 @@ def poser_sla_due_at(ticket, *, persister=True):
     if due is None:
         return ticket
     ticket.sla_due_at = due
+    # ASAV19 — l'échéance de première réponse naît avec celle de résolution.
+    ticket.sla_reponse_due_at = compute_sla_reponse_due_at(
+        ticket.company, ticket.client, ticket.priorite,
+        ticket.date_ouverture or timezone.localdate())
     if persister:
-        ticket.save(update_fields=['sla_due_at'])
+        ticket.save(update_fields=['sla_due_at', 'sla_reponse_due_at'])
     return ticket
 
 
