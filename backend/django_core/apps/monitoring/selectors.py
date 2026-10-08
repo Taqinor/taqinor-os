@@ -22,10 +22,6 @@ from .services import _expected_recent_kwh
 # autoproduit). Même hypothèse que l'energy report (apps.installations) : on la
 # RECOPIE ici plutôt que d'importer un autre app domaine (frontière services).
 DEFAULT_CO2_KG_PAR_KWH = Decimal('0.81')
-# FG288 — tarif électricité par défaut (MAD/kWh) pour chiffrer les économies
-# côté portail client. Même hypothèse que l'energy report (recopiée, pas
-# importée).
-DEFAULT_TARIF_MAD_PAR_KWH = Decimal('1.40')
 
 
 def _q(value, places='0.01'):
@@ -201,8 +197,11 @@ def client_environmental_dashboard(company, client_id, *,
     (`installation__client_id`), sans importer un autre app domaine. Scoping
     société assuré par le filtre `company`.
     """
-    tarif = Decimal(str(tarif_mad_par_kwh)) if tarif_mad_par_kwh is not None \
-        else DEFAULT_TARIF_MAD_PAR_KWH
+    # APDF43 — tarif de la société (Paramètres), plus de 1,40 codé en dur.
+    if tarif_mad_par_kwh is None:
+        from apps.parametres.selectors import tariff_for
+        tarif_mad_par_kwh = tariff_for(company)['onee_tarif_kwh']
+    tarif = Decimal(str(tarif_mad_par_kwh))
     factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
         else DEFAULT_CO2_KG_PAR_KWH
 
