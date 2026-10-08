@@ -17,7 +17,7 @@ assignés / qu'il a créés : ``visible_user_ids`` inclut toujours son propre id
 le narrowing par queryset filtre sur ``owner|created_by|assigné ∈ visible_ids``.
 Liste vide = rendu propre (aucune fuite, aucune erreur).
 """
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 
 from apps.roles.permissions_registre import SCOPE_TEAM, SCOPE_SUBTREE
 
@@ -125,16 +125,45 @@ def scope_queryset(qs, user, owner_fields):
     return qs.filter(cond).distinct()
 
 
+#: APRF16 — les relations inverses du Client qui le rendent visible, et le
+#: champ utilisateur de chacune (chaînes : ``core`` n'importe aucun modèle métier).
+_CLIENT_RELATIONS_VISIBLES = (
+    ('devis', 'created_by_id'),
+    ('factures', 'created_by_id'),
+    ('avoirs', 'created_by_id'),
+    ('leads', 'owner_id'),
+)
+
+
+def _exists_relation(model, relation, champ_user, ids):
+    """``Exists`` corrélé : une ligne de la relation inverse ``relation`` de
+    ``model`` pointe la ligne externe ET porte ``champ_user`` dans ``ids``.
+
+    ``_base_manager`` (aucun filtre de manager, ex. soft-delete) : même
+    ensemble que l'ancienne jointure ``Q(relation__…)``, qui n'appliquait
+    aucun manager non plus."""
+    rel = model._meta.get_field(relation)
+    fk = rel.field
+    lignes = rel.related_model._base_manager.filter(**{
+        fk.attname: OuterRef(fk.target_field.attname),
+        f'{champ_user}__in': ids,
+    })
+    return Exists(lignes)
+
+
 def scope_client_queryset(qs, user):
     """Le Client n'a pas de propriétaire propre : on le rattache aux documents
     visibles (devis/factures/avoirs créés par un utilisateur visible, ou leads
-    dont le responsable est visible). Portée 'all' → inchangé."""
+    dont le responsable est visible). Portée 'all' → inchangé.
+
+    APRF16 — quatre ``Exists`` corrélés combinés par ``|`` : aucune jointure
+    multi-valuée (un client à 15 devis × 15 factures × 15 leads produisait
+    des milliers de lignes intermédiaires) et donc aucun ``distinct()``."""
     ids = visible_user_ids(user)
     if ids is None:
         return qs
-    return qs.filter(
-        Q(devis__created_by_id__in=ids)
-        | Q(factures__created_by_id__in=ids)
-        | Q(avoirs__created_by_id__in=ids)
-        | Q(leads__owner_id__in=ids)
-    ).distinct()
+    ids = list(ids)
+    cond = Q()
+    for relation, champ_user in _CLIENT_RELATIONS_VISIBLES:
+        cond |= Q(_exists_relation(qs.model, relation, champ_user, ids))
+    return qs.filter(cond)

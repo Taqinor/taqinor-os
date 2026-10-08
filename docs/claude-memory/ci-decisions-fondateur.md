@@ -77,6 +77,8 @@ Groupe CIQ (docs/PLAN.md) et le Groupe CIW (docs/WEB_PLAN.md).
 - **D-CIQ-22** Priorité : le Groupe CIQ se place JUSTE AVANT le Groupe AGR dans docs/PLAN.md (la priorité 0 SOLMVP
   et la priorité 1 CAD restent devant) ; les couches génériques d'AGR que CIQ réutilise restent liées par `@after`.
 
+**Ajouts du 08/10/2026 (questions interactives)** : CIQ127 — le lead commercial/industriel PORTE son contrat d'électricité déclaré (sinon le devis automatique C&I refuse « tarif omis ») → tâche CIQ666 ; CIQ623 — les 3 documents HSE restent NON bloquants par défaut sur « montage mécanique » (exigés avant « En cours » pour un site pro ; un Directeur peut rendre l'étape bloquante) ; CIQ627 — PR modélisé = 1 − pertes_pct du moteur C&I, affiché « estimation moteur », validé.
+
 **Why:** tranchées en séance interactive le 03/10/2026 sur la base de constats vérifiés (audit L3 : 13 lanes,
 26 vérificateurs ; production lue en lecture seule ; sources primaires : loi 82-21 BO 7400, décret 2.25.100
 BO 7489, décisions ANRE 04/26, 02/26, 03/26, page ONEE « Tarif Général (MT) », CGI 2026, KliK SR500 02/03/2026).

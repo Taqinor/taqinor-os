@@ -196,6 +196,9 @@ const fieldLabels = {
   // `facility_type` (« Type de site (pro) ») est MASQUÉ : la colonne reste.
   tension_raccordement: { label: 'Tension de raccordement', section: 'pro', inputId: 'lf-tension-raccordement' },
   tension_source: { label: 'Provenance de la tension', section: 'pro', inputId: 'lf-tension-source' },
+  // CIQ666 — contrat d'électricité déclaré (lu par le devis automatique C&I).
+  contrat_electricite: { label: "Contrat d'électricité", section: 'pro', inputId: 'lf-contrat-electricite' },
+  option_tarifaire_bt: { label: 'Option tarifaire BT', section: 'pro', inputId: 'lf-option-tarifaire-bt' },
   compteur_puissance_kva: {
     label: 'Puissance souscrite du compteur (kVA)', section: 'pro', inputId: 'lf-compteur-puissance-kva',
   },

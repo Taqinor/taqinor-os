@@ -179,7 +179,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # AVANT CommissionPartenaire) — MÊME champ, déclaration identique
     # (`paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:3815",  # CommissionPartenaire.paye_le (3305->3808 : vague 1 CIQ/AGR insère +503 lignes de modèles Lead/visites AVANT ; 3808->3815 : Lead.gclid + canal GOOGLE_ADS, +7 lignes AVANT ; déclaration relue identique, bug-class #34)
+    "backend/django_core/apps/crm/models.py:3845",  # CommissionPartenaire.paye_le (3305->3808 : vague 1 CIQ/AGR insère +503 lignes de modèles Lead/visites AVANT ; 3808->3815 : Lead.gclid + canal GOOGLE_ADS, +7 lignes AVANT ; 3815->3845 : CIQ666 contrat_electricite + option_tarifaire_bt, +30 lignes AVANT ; déclaration relue identique, bug-class #34)
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

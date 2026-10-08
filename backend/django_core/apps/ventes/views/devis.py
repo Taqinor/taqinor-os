@@ -40,7 +40,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-from authentication.scoping import scope_queryset  # noqa: E402
+from authentication.scoping import visible_user_ids  # noqa: E402
 
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
@@ -135,7 +135,17 @@ class DevisViewSet(DevisEditionActionsMixin,
                 statut=Devis.Statut.BROUILLON)
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
         # devis qu'il a créés / son équipe. 'all' → inchangé.
-        qs = scope_queryset(qs, self.request.user, ['created_by'])
+        # Règle fondateur (08/10/2026) : le RESPONSABLE d'un lead voit TOUJOURS
+        # tous les devis de SON lead, quel qu'en soit l'auteur (sinon le
+        # dialogue « Signé » ne propose pas le devis d'un collègue). Seuls ses
+        # propres leads sont ouverts ; la société reste bornée en amont.
+        visibles = visible_user_ids(user)
+        if visibles is not None:
+            from django.db.models import Q
+            from apps.crm.selectors import lead_ids_du_responsable
+            qs = qs.filter(
+                Q(created_by__in=visibles)
+                | Q(lead_id__in=lead_ids_du_responsable(user)))
         # Filtre optionnel ?lead=<id> — utilisé par le dialogue « Signé » (A2)
         # pour lister les devis d'un lead. Borné à la société par company_qs.
         lead_id = self.request.query_params.get('lead')
