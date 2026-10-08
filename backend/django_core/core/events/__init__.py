@@ -34,42 +34,6 @@ importe ``apps.audit``.
 Événements disponibles
 ----------------------
 
-``devis_accepted``
-    Émis quand un devis passe à « accepté » (action explicite ``accepter``).
-    Arguments du signal :
-
-    * ``devis`` — l'instance ``Devis`` acceptée ;
-    * ``user`` — l'utilisateur qui accepte (peut être ``None``) ;
-    * ``ancien_statut`` — le statut du devis avant l'acceptation.
-
-``devis_sent``
-    Émis quand un devis passe à « envoyé » suite à un partage client (U4), p.
-    ex. la génération d'un lien WhatsApp. Abonné par ``crm`` pour avancer
-    l'étape du lead vers QUOTE_SENT. Arguments du signal :
-
-    * ``devis`` — l'instance ``Devis`` envoyée ;
-    * ``user`` — l'utilisateur qui partage (peut être ``None``) ;
-    * ``ancien_statut`` — le statut du devis avant l'envoi.
-
-``devis_expired``
-    Émis quand un devis ``envoyé`` bascule automatiquement en ``expiré``
-    (QJ5, ``expire_stale_devis``) — YEVNT2. Jamais réémis pour un devis déjà
-    ``expiré`` (no-op). Abonné dans ce repo : ``notifications`` (notifie le
-    propriétaire du devis, ``EventType.DEVIS_EXPIRED``) ; ``crm`` continue
-    d'avancer le funnel séparément (avancement direct dans le même appel,
-    clés ``STAGES.py`` uniquement). Arguments du signal :
-
-    * ``devis`` — l'instance ``Devis`` désormais ``expire`` ;
-    * ``ancien_statut`` — toujours ``'envoye'``.
-
-``document_pdf_generated``
-    Émis quand un PDF de document de vente est généré (devis ou facture).
-    Abonné par le satellite ``audit`` (journalise une entrée ``AuditLog.PDF``).
-    Arguments du signal :
-
-    * ``instance`` — l'objet ``Devis`` ou ``Facture`` concerné ;
-    * ``kind`` — ``'devis'`` ou ``'facture'`` (sert au libellé d'audit).
-
 ``reception_fournisseur_confirmee``
     Émis à la CONFIRMATION d'une réception fournisseur (fin de
     ``stock.services.confirm_reception_fournisseur``). Arguments du signal :
@@ -219,6 +183,7 @@ importe ``apps.audit``.
 import django.dispatch
 from .parked import *  # noqa: F401,F403
 from .facturation import *  # noqa: F401,F403
+from .devis import *  # noqa: F401,F403
 
 # ADSDEEP17 — Émis quand un lead Meta Lead Ads est capturé par le webhook CRM
 # EXISTANT (``apps/crm/webhooks.meta_lead_ads_webhook``, après
@@ -257,35 +222,6 @@ lead_created = django.dispatch.Signal()
 # porte unique ACAL182) — ``crm`` n'importe jamais ``apps.calepinage``.
 lead_trace_toit_recu = django.dispatch.Signal()
 
-# Émis à l'acceptation d'un devis.
-# Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
-devis_accepted = django.dispatch.Signal()
-
-# Émis à l'ENVOI d'un devis (U4) — passage brouillon → envoyé déclenché par un
-# partage client (ex. lien WhatsApp). Arguments : devis, user, ancien_statut.
-# Abonné dans ce repo : crm (avance l'étape du lead → QUOTE_SENT), exactement
-# comme devis_accepted, pour que ventes n'importe jamais crm directement.
-devis_sent = django.dispatch.Signal()
-
-# Émis quand la conception 3D d'un devis est FINALISÉE (PV79) — création
-# depuis un calepinage (``from-layout``) ou resynchronisation réussie
-# (``sync-layout``). Arguments : devis, user.
-# Ce n'est PAS un changement de statut : le devis reste où il est (règle #4) ;
-# l'événement dit seulement que la toiture a été (re)dessinée et que les lignes
-# suivent. Abonné dans ce repo : crm (pose une note au chatter du lead), ce qui
-# évite que ventes importe crm directement.
-layout_finalise = django.dispatch.Signal()
-
-# ACAL91 (C-ACAL-115) — Émis quand « Réviser » a créé la V+1 d'un devis
-# (``apps.ventes.domain.revision.reviser_devis``), APRÈS le commit de la
-# transaction (``transaction.on_commit``), en best-effort (``send_robust`` :
-# un abonné en échec ne casse jamais la révision). Arguments : ancien (la
-# version remplacée), nouveau (la V+1), user. Ce n'est PAS un changement de
-# statut : aucun statut de devis n'est écrit (règle #4) — seuls ``is_active`` /
-# ``superseded_by`` de l'ancienne version ont bougé, par le service. Abonné
-# prévu : le calepinage, qui re-lie sa conception à la V+1 (D-ACAL-3, ACAL92) ;
-# d'ici là, réservé dans ``core.event_coverage.ALLOWED_UNCONSUMED``.
-devis_revise = django.dispatch.Signal()
 
 # VTA5 — Émis quand une visite technique terrain reçoit le FEU VERT du bureau
 # d'études (``apps.visites.services.valider_visite``). Arguments : visite
@@ -343,22 +279,6 @@ visite_planifiee = django.dispatch.Signal()
 # les commentaires, ``Lead.visite_effectuee``, recalage du débrief et
 # notification au RESPONSABLE du lead (« rappeler sous 24-48 h »).
 visite_terminee = django.dispatch.Signal()
-
-# Émis au refus d'un devis (FG44).
-# Arguments : devis, user, motif_refus.
-# Abonné optionnellement par crm pour marquer le lead perdu (→ COLD + perdu).
-devis_refused = django.dispatch.Signal()
-
-# Émis quand un devis envoyé bascule automatiquement en « expiré » (QJ5,
-# ``expire_stale_devis``) — YEVNT2. Arguments : devis, ancien_statut='envoye'.
-# Abonné dans ce repo : notifications (notifie le propriétaire).
-devis_expired = django.dispatch.Signal()
-
-# Émis à la génération d'un PDF de document de vente (devis/facture) — M4.
-# Arguments : instance (Devis|Facture), kind ('devis'|'facture').
-# Abonné par le satellite audit (journalise AuditLog.Action.PDF), ce qui évite
-# que ventes importe apps.audit (suppression de l'arête montante ventes→audit).
-document_pdf_generated = django.dispatch.Signal()
 
 
 # Émis à la CONFIRMATION d'une réception fournisseur (XQHS3 / YPROC3).

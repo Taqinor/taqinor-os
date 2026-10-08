@@ -80,6 +80,12 @@ OWNER_MODULE = {
         'facture_annulee', 'bon_commande_cree', 'paiement_enregistre',
         'avoir_cree', 'avoir_annule',
     ],
+    # SPL287 — cycle de vie du devis (propriétaire devis). ``devis_revise``
+    # (ACAL91, postérieur au plan) suit son émetteur ventes/domain/revision.py.
+    'devis': [
+        'devis_accepted', 'devis_sent', 'layout_finalise', 'devis_revise',
+        'devis_refused', 'devis_expired', 'document_pdf_generated',
+    ],
 }
 
 INIT_EVENTS = Path(__file__).resolve().parents[1] / 'events' / '__init__.py'
