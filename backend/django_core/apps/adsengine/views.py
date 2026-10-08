@@ -1695,6 +1695,11 @@ class EngineActionViewSet(AdsengineViewSet):
 
     queryset = EngineAction.objects.all()
     serializer_class = EngineActionSerializer
+    # AACQ1 — une action est FIGÉE dès sa proposition : aucun PUT/PATCH/DELETE
+    # (le contenu appliqué chez Meta = exactement le contenu approuvé ; le
+    # Journal d'actions n'est jamais réécrit ni amputé). Les gestes dédiés
+    # (approve/reject/apply/annuler/proposer) sont des POST.
+    http_method_names = ['get', 'post', 'head', 'options']
 
     _APPROVE_ACTIONS = ('approve', 'reject', 'apply')
 
