@@ -580,9 +580,8 @@ class PricingInchangeTest(SimpleTestCase):
         attendu = [round(m['economie_sans_mad']) for m in bloc['mois']]
         self.assertEqual(roi['eco_s_monthly'], attendu)
         # Et ce n'est PAS la vieille clé _SF appliquée au total.
-        _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-               0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
-        ancien = [round(roi['eco_s_ann'] * f) for f in _sf]
+        ancien = [round(roi['eco_s_ann'] * f)
+                  for f in pricing.CLE_SOLAIRE_MENSUELLE]
         self.assertNotEqual(roi['eco_s_monthly'], ancien)
 
     def test_autoconso_forfaitaire_reste_le_repli_documente(self):

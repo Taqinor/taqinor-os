@@ -2798,6 +2798,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if _corrige:
         # AMOT58 — rendement aller-retour de la batterie déduit UNE fois.
         roi_kwargs["rendement_une_fois"] = True
+        # AMOT27 — forme mensuelle = poids GHI de la production.
+        roi_kwargs["forme_mensuelle_ghi"] = True
     roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
                                 **roi_kwargs)
     # ── F1/L-2OPT (26/08/2026) — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION ──
@@ -2901,8 +2903,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi["roi_a"] = roi["roi_s"]
             # Payback LINÉAIRE d'une étude saisie : toujours un vrai nombre.
             roi["roi_s_jamais"] = roi["roi_a_jamais"] = False
-            _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                   0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+            from .constants import CLE_SOLAIRE_MENSUELLE_HISTORIQUE as _sf
             roi["eco_s_monthly"] = [round(eco * f) for f in _sf]
             roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
         # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
@@ -3418,8 +3419,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 (savings_model_avec, "eco_a_ann", "eco_a_monthly")):
             if _modele_opt == "horaire":
                 continue
+            from .pricing import (CLE_SOLAIRE_MENSUELLE,
+                                  CLE_SOLAIRE_MENSUELLE_HISTORIQUE)
             _serie = repartir_economie_plafonnee(
-                roi.get(_cle_ann), factures_mensuelles)
+                roi.get(_cle_ann), factures_mensuelles,
+                cle=(CLE_SOLAIRE_MENSUELLE if _corrige
+                     else CLE_SOLAIRE_MENSUELLE_HISTORIQUE))
             if _serie is not None:
                 roi[_cle_mois] = _serie
 

@@ -138,7 +138,10 @@ def _residential_sample_data():
     avec = shared + [_item("Onduleur hybride Deye 10kW Triphasé", 1, 23333, marque="Deye"),
                      _item("Batterie Dyness 10 kWh", 1, 25000, marque="Dyness")]
     eco = 20953
-    sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116, 0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+    # AMOT27 — la clé historique vit désormais dans ``constants`` (jeu de
+    # données de test inchangé au dirham près).
+    from apps.ventes.quote_engine.constants import (
+        CLE_SOLAIRE_MENSUELLE_HISTORIQUE as sf)
     eco_m = [round(eco * f) for f in sf]
     return {
         "ref": "DEV-202606-0071", "date": "21/06/2026",

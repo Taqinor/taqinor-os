@@ -1294,10 +1294,27 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
     }
 
 
-# Clé solaire saisonnière FIXE (somme = 1,000) : forme d'une économie annuelle
-# répartie sur douze mois quand aucun moteur n'a calculé les mois un par un.
-CLE_SOLAIRE_MENSUELLE = (0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                         0.116, 0.101, 0.087, 0.070, 0.052, 0.048)
+# AMOT27 — clé de forme d'une économie annuelle répartie sur douze mois quand
+# aucun moteur n'a calculé les mois un par un : la MÊME forme sourcée que la
+# production (poids GHI, ``constants.MOROCCO_SOLAR_MONTHLY_WEIGHTS``, table
+# verrouillée DC9). L'ancienne clé fixe vit dans ``constants`` (règles
+# d'origine seulement).
+from .constants import (  # noqa: E402 — clés de forme mensuelle
+    CLE_SOLAIRE_MENSUELLE_HISTORIQUE, MOROCCO_SOLAR_MONTHLY_WEIGHTS,
+)
+
+CLE_SOLAIRE_MENSUELLE = tuple(MOROCCO_SOLAR_MONTHLY_WEIGHTS)
+
+
+def repartir_annuel(total, cle=CLE_SOLAIRE_MENSUELLE):
+    """AMOT27 — ``total`` réparti sur douze mois par ``cle``, au dirham, le
+    reliquat d'arrondi porté par le mois le plus lourd : Σ = total arrondi."""
+    mois = [round(float(total or 0) * f) for f in cle]
+    ecart = round(float(total or 0)) - sum(mois)
+    if ecart and mois:
+        i = max(range(len(cle)), key=lambda k: cle[k])
+        mois[i] += ecart
+    return mois
 
 
 def repartir_economie_plafonnee(economie_annuelle, factures_mensuelles,
@@ -1415,6 +1432,9 @@ def calculate_savings_roi(
     # sortie byte-identique. C'est le seul chemin par lequel la note « douze
     # mois » devient atteignable depuis l'ERP.
     repartition_mensuelle=None,
+    # AMOT27 — vrai ⇒ répartition mensuelle par les poids GHI (Σ = annuel) ;
+    # faux (défaut) ⇒ l'ancienne clé fixe, sortie byte-identique.
+    forme_mensuelle_ghi: bool = False,
     # AMOT15 — économie annuelle SAISIE par un humain (étude stockée). Elle
     # REMPLACE l'économie dérivée des deux options AVANT le cashflow : payback,
     # courbe 25 ans, gain net et répartition mensuelle en découlent, chaque
@@ -1720,8 +1740,11 @@ def calculate_savings_roi(
     # appliquée à un total annuel — jamais douze calculs.
     if eco_monthly_reel:
         eco_s_monthly, eco_a_monthly = eco_monthly_reel
+    elif forme_mensuelle_ghi:
+        eco_s_monthly = repartir_annuel(economie_opt1)
+        eco_a_monthly = repartir_annuel(economie_opt2)
     else:
-        _SF = CLE_SOLAIRE_MENSUELLE
+        _SF = CLE_SOLAIRE_MENSUELLE_HISTORIQUE
         eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
         eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
 

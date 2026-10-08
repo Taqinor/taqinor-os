@@ -21,6 +21,13 @@ GHI = [83.99, 96.79, 133.43, 155.30, 175.28, 179.62, 179.56, 161.17, 137.03, 111
 # celle-ci. Sert UNIQUEMENT à répartir un total annuel RÉEL sur 12 mois : on ne
 # fabrique jamais le total, on le distribue.
 MOROCCO_SOLAR_MONTHLY_WEIGHTS = [round(g / sum(GHI), 6) for g in GHI]
+# AMOT27 — l'ANCIENNE clé fixe (non sourcée) de répartition mensuelle d'une
+# économie annuelle. Conservée ICI, et seulement ici, pour les devis rendus
+# aux règles d'origine (décision fondateur 08/10/2026) et pour les jeux de
+# données de test historiques ; tout nouveau rendu répartit par
+# ``MOROCCO_SOLAR_MONTHLY_WEIGHTS`` (la forme de la production imprimée).
+CLE_SOLAIRE_MENSUELLE_HISTORIQUE = (0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
+                                    0.116, 0.101, 0.087, 0.070, 0.052, 0.048)
 MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
 DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 EFFICIENCY = 0.8   # rendement global
