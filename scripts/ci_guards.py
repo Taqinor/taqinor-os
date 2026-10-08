@@ -58,6 +58,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Check filtre de chemins ci.yml : lectures croisees frontend (ADEP13)',
+         'python scripts/check_filtre_chemins_ci.py',
+         '.'),
+        ('Tests de la garde filtre de chemins (ADEP13)',
+         'python -m unittest scripts.tests.test_check_filtre_chemins_ci -v',
+         '.'),
         # ADEP12 - gardes qui lisent frontend/ : ici (job non gate), pas dans backend-lint-fast.
         ('Platform-kernel guards (check_platform — ARC8/26/11/6)',
          'python scripts/check_platform.py',

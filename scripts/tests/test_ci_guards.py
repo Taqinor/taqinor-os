@@ -196,7 +196,6 @@ finally:
 def _fichiers_ouverts(commande, wd, tmpdir, idx):
     import json
     import subprocess
-    import shlex
     sonde = os.path.join(tmpdir, "sonde.py")
     if not os.path.exists(sonde):
         with open(sonde, "w", encoding="utf-8") as fh:

@@ -269,6 +269,12 @@ jobs:
             grep -qE '^backend/nginx/' <<< "$changed" && frontend=true || true
             grep -qE '^backend/django_core/apps/[^/]+/contract_samples/' <<< "$changed" && frontend=true || true
             grep -qE '^docs/(on-delete-financial-audit\.md|openapi-schema\.yml|money-fields-audit\.md|currency-audit\.md)' <<< "$changed" && backend=true || true
+            # ADEP13 — lectures croisees RELEVEES par scripts/check_filtre_chemins_ci.py
+            # (fichiers hors frontend/ ouverts par un test frontend) + docs lu par une
+            # garde de backend-lint-fast : l'edition seule du fichier lu doit declencher
+            # le job qui le lit.
+            grep -qE '^backend/django_core/apps/(adsengine/(urls|views)|crm/platform|ventes/domain/etude_schema|parametres/serializers_tariff|sav/serializers|records/storage|stock/serializers)\.py$|^docs/engine/field-tests\.md$' <<< "$changed" && frontend=true || true
+            grep -qE '^docs/get-or-create-audit\.md$' <<< "$changed" && backend=true || true
             # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
             # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
             # `backend == true` et lisent leur BASELINE ici
