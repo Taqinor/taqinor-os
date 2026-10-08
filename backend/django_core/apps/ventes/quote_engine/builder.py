@@ -4422,6 +4422,28 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             round(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
             payment_terms, _tranches_montant)
         for branche in ("sans", "avec")}
+    # ── AMOT19 (C-AMOT-017) — LE TEXTE DES CONDITIONS = LES CASES ────────────
+    # Ligne « Paiement », puces CGV, ligne Conditions du une-page, « Prochaines
+    # étapes », conditions de la page publique : tous lisent
+    # ``data['payment_terms']``. Ils lisent désormais les pourcentages des
+    # CASES de la branche imprimée (``montants_tranches``) — somme = 100 %, et
+    # un créneau absent (échéancier à deux tranches, ``deux_cases``) vaut 0 :
+    # chaque lecteur l'omet, jamais « 60 % à la réception du matériel » à côté
+    # de cases 45/55. ``payment_terms`` (entrée ci-dessus) reste la source
+    # des cases elles-mêmes.
+    _branche_imprimee = ("sans" if option_servie == "sans"
+                         else ("avec" if (deux_options or avec_ok)
+                               else "sans"))
+    _cases = data["montants_tranches"].get(_branche_imprimee) or {}
+    if _cases:
+        if _cases.get("deux_cases"):
+            data["payment_terms"] = {"acompte": _cases.get("pct_a"),
+                                     "materiel": 0,
+                                     "solde": _cases.get("pct_s2")}
+        else:
+            data["payment_terms"] = {"acompte": _cases.get("pct_a"),
+                                     "materiel": _cases.get("pct_m"),
+                                     "solde": _cases.get("pct_s")}
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
     # Rendu SEUL, additif : la clé n'est posée QUE lorsqu'il existe au moins une
