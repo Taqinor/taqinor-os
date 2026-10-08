@@ -1516,7 +1516,28 @@ _OUTCOMES_SANS_MATERIALISATION = (
     _OUTCOMES_ARRET_CADENCE | {OUTCOME_VISITE_ACCEPTEE})
 
 
-def materialiser_touche_suivante(etape_close, user=None):
+class RaisonSuite:
+    """ACRM12 (C-ACRM-007) — POURQUOI ``materialiser_touche_suivante`` n'a
+    rien fait naître. Seule ``FIN_GABARIT`` (aucun barreau ACTIF d'ordre
+    supérieur, relu sur ``CadenceRelanceEtape.cadence_pour``) autorise
+    ``marquer_etape_relance`` à CLORE la cadence (Froid + étiquette) ; les
+    autres raisons laissent le filet poser la suite."""
+
+    CREEE = 'creee'                  # une touche est née
+    FIN_GABARIT = 'fin_gabarit'      # plus aucun barreau actif après celle-ci
+    INDETERMINE = 'indetermine'      # ancre introuvable, panne : on ne sait pas
+    DEJA_PRISE = 'deja_prise'        # le barreau suivant existe déjà
+    NON_RELANCABLE = 'non_relancable'  # lead hors relance, filet, visite
+
+
+def materialiser_touche_suivante(etape_close, user=None, *, avec_raison=False):
+    """ACRM12 — ``avec_raison=True`` rend ``(etape | None, RaisonSuite.*)``
+    au lieu de la seule étape (les appelants historiques sont inchangés)."""
+    etape, raison = _materialiser_touche_suivante(etape_close, user)
+    return (etape, raison) if avec_raison else etape
+
+
+def _materialiser_touche_suivante(etape_close, user=None):
     """CKP2 — Fait naître LA touche suivante du gabarit, à partir d'une touche
     qu'on vient de CLORE sans avoir joint le client.
 
@@ -1549,8 +1570,11 @@ def materialiser_touche_suivante(etape_close, user=None):
     chatter : c'est l'appelant (``marquer_etape_relance``) qui recale la file
     en une fois, comme il le faisait déjà.
 
-    Rend la ``RelanceEtape`` créée, ou ``None`` (fin du gabarit, lead qu'on ne
-    relance plus, société sans gabarit, ancre introuvable)."""
+    Rend ``(RelanceEtape créée | None, RaisonSuite.*)`` — ACRM12 : la raison
+    d'une absence est TYPÉE (fin du gabarit, lead qu'on ne relance plus,
+    barreau déjà pris, ancre introuvable) et seule la fin réelle du gabarit
+    clôt la cadence. Un barreau DÉSACTIVÉ (celui de la touche close) n'est
+    plus une fin : la suite part du premier barreau actif d'ordre supérieur."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import cadence_temps, horaires
@@ -1559,7 +1583,7 @@ def materialiser_touche_suivante(etape_close, user=None):
     if (getattr(lead, 'ne_plus_contacter', False)
             or getattr(lead, 'perdu', False)
             or getattr(lead, 'is_archived', False)):
-        return None
+        return None, RaisonSuite.NON_RELANCABLE
 
     # Les étapes du FILET (MRY34 / QJ-INVARIANT) portent la cadence
     # `generique` mais ne sont PAS un barreau de protocole : ce sont des
@@ -1576,7 +1600,7 @@ def materialiser_touche_suivante(etape_close, user=None):
     # à faire naître « le PDF s'ouvre bien ? ».
     # PARAM-CADENCE — reconnues par leur CLÉ, jamais par leur libellé.
     if est_etape_de_filet(etape_close) or est_etape_de_visite(etape_close):
-        return None
+        return None, RaisonSuite.NON_RELANCABLE
 
     cadence = etape_close.cadence
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
@@ -1584,7 +1608,11 @@ def materialiser_touche_suivante(etape_close, user=None):
         # Cadence sans gabarit (« generique », posée à la main par le filet) :
         # il n'y a pas de suite à faire naître — l'invariant « jamais un lead
         # actif sans prochaine touche » reste tenu par le filet lui-même.
-        return None
+        return None, RaisonSuite.NON_RELANCABLE
+    # ACRM12 — la FIN du gabarit se lit sur les barreaux ACTIFS : aucun
+    # barreau d'ordre supérieur à celui de la touche close.
+    if not any(g.ordre > etape_close.ordre for g in gabarits):
+        return None, RaisonSuite.FIN_GABARIT
 
     ancre = etape_close.cadence_depart
     if ancre is None:
@@ -1595,15 +1623,25 @@ def materialiser_touche_suivante(etape_close, user=None):
                  .exclude(due_at=None).order_by('due_at')
                  .values_list('due_at', flat=True).first())
     if ancre is None:
-        return None
+        return None, RaisonSuite.INDETERMINE
 
     echeances = calculer_echeances_cadence(
         lead, cadence, ancre, gabarits=gabarits)
     rang = next((i for i, (g, _e) in enumerate(echeances)
                  if g.ordre == etape_close.ordre), None)
     if rang is None:
-        return None
-    gabarit_close = echeances[rang][0]
+        # ACRM12 — le barreau de la touche close a été DÉSACTIVÉ (ou
+        # renuméroté) : ce n'est pas une fin de gabarit. La suite part du
+        # premier barreau actif d'ordre supérieur ; l'écart intra-journée se
+        # lit alors depuis 0 (pas de barreau de référence).
+        premier = next((i for i, (g, _e) in enumerate(echeances)
+                        if g.ordre > etape_close.ordre), None)
+        if premier is None:
+            return None, RaisonSuite.FIN_GABARIT
+        rang = premier - 1
+        gabarit_close = None
+    else:
+        gabarit_close = echeances[rang][0]
 
     deja = lead.relance_etapes.filter(cadence=cadence)
     if etape_close.devis_id is not None:
@@ -1623,7 +1661,7 @@ def materialiser_touche_suivante(etape_close, user=None):
             # touches échues ont été matérialisées d'un coup). On s'arrête —
             # SAUTER par-dessus pour en créer un plus loin ferait naître deux
             # touches au lieu d'une et casserait l'ordre du protocole.
-            return None
+            return None, RaisonSuite.DEJA_PRISE
         if (gabarit.delai_jours == 0
                 and not getattr(gabarit, 'dimanche_ok', False)
                 and getattr(gabarit, 'heure_cible', None) is None):
@@ -1653,8 +1691,8 @@ def materialiser_touche_suivante(etape_close, user=None):
         if cadence == 'reveil':
             _adapter_gabarits_reveil(lead, [etape], rang_initial=suivant)
         etape.save()
-        return etape
-    return None
+        return etape, RaisonSuite.CREEE
+    return None, RaisonSuite.FIN_GABARIT
 
 
 #: MRY10 — canal de la touche → type d'activité du chatter. Une touche traitée
@@ -1900,11 +1938,16 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # « intéressé » n'arrête PAS le suivi de proposition, il en fait naître le
     # barreau suivant, exactement comme « pas de réponse ».
     suivante = None
+    raison_suite = None
     if suite and (statut == RelanceEtape.Statut.SAUTEE
                   or issue_fait_naitre_la_suite(outcome, etape.cadence)):
         try:
-            suivante = materialiser_touche_suivante(etape, user)
+            suivante, raison_suite = materialiser_touche_suivante(
+                etape, user, avec_raison=True)
         except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
+            # ACRM12 — une panne n'est JAMAIS une fin de cadence : raison
+            # INDÉTERMINÉE, le filet plus bas pose la suite (jamais le Froid).
+            raison_suite = RaisonSuite.INDETERMINE
             logger.warning(
                 'CKP2: touche suivante non matérialisée (étape #%s)',
                 getattr(etape, 'pk', '?'), exc_info=True)
@@ -1952,7 +1995,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # Jamais plus : c'est le filet ci-dessous (QJ-INVARIANT) qui prend le
     # relais — le plan s'il est pendant, sinon « Rappeler — dernier essai
     # avant de chiffrer » (``_FILET_SANS_REPONSE_PALIERS``), puis le devis.
+    # ACRM12 (C-ACRM-007) — CINQUIÈME condition : la clôture n'a lieu que si
+    # le gabarit est RÉELLEMENT épuisé (``RaisonSuite.FIN_GABARIT``, relu sur
+    # les barreaux actifs). Un barreau désactivé, une panne, un barreau déjà
+    # pris ou un lead hors relance ne parquent plus le lead au Froid.
     if (restantes_avant == 0 and suivante is None
+            and raison_suite == RaisonSuite.FIN_GABARIT
             and (outcome or '') not in _OUTCOMES_SANS_CLOTURE
             and not est_etape_de_visite(etape)):
         cloturer_cadence(lead, user, etape.cadence)
