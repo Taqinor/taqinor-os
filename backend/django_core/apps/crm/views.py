@@ -2122,8 +2122,13 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         merge_leads(survivor, others, request.user)
         survivor.refresh_from_db()
-        return Response(
+        data = dict(
             LeadSerializer(survivor, context={'request': request}).data)
+        # ACRM40 — clé ADDITIVE : les fiches client distinctes (gardée en
+        # tête), vide quand il n'y en avait qu'une.
+        data['clients_distincts'] = getattr(
+            survivor, '_clients_distincts', [])
+        return Response(data)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])

@@ -4901,6 +4901,12 @@ def raison_refus_suppression(lead):
     return None
 
 
+def _nom_fiche_client(client):
+    """ACRM40 — « Nom Prénom (#id) » d'une fiche client, pour la note."""
+    nom = f"{client.nom or ''} {client.prenom or ''}".strip() or 'Client'
+    return f'{nom} (#{client.pk})'
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -4918,8 +4924,17 @@ def merge_leads(survivor, others, user):
 
     ct = ContentType.objects.get_for_model(Lead)
     relances_reprises = 0
+    # ACRM40 (C-ACRM-035) — les fiches client DISTINCTES rencontrées : le
+    # survivant garde la sienne, les devis de l'autre restent sur l'autre.
+    deux_clients = []
     with transaction.atomic():
         for absorbed in others:
+            if (survivor.client_id and absorbed.client_id
+                    and survivor.client_id != absorbed.client_id):
+                deux_clients.append((
+                    absorbed.client,
+                    list(absorbed.devis.filter(client_id=absorbed.client_id)
+                         .order_by('pk').values_list('reference', flat=True))))
             # 1) Devis → survivant (related_name='devis').
             absorbed.devis.update(lead=survivor)
             # 2) Chantiers liés au lead → survivant (FK SET_NULL, on réassigne).
@@ -4986,6 +5001,25 @@ def merge_leads(survivor, others, user):
                 kind=LeadActivity.Kind.NOTE,
                 body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
                       f" (#{absorbed.id}) absorbé dans cette fiche."))
+        # ACRM40 — DEUX fiches client pour une même personne : la fusion le
+        # DIT (chatter du survivant + ``survivor._clients_distincts`` que la
+        # vue rend) ; la fusion des clients reste un geste humain (outil de
+        # fusion de clients, NTDATA18) — jamais automatique.
+        survivor._clients_distincts = []
+        if deux_clients:
+            gardee = survivor.client
+            survivor._clients_distincts = [gardee.pk] + [
+                client.pk for client, _refs in deux_clients]
+            for client, refs in deux_clients:
+                devis_txt = (f"devis {', '.join(refs)} rattachés" if refs
+                             else 'aucun devis rattaché')
+                LeadActivity.objects.create(
+                    company=survivor.company, lead=survivor, user=user,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=(f'Deux fiches client pour ce lead : '
+                          f'{_nom_fiche_client(gardee)} (gardée) et '
+                          f'{_nom_fiche_client(client)} ({devis_txt}) — à '
+                          'fusionner (outil de fusion des clients).'))
         survivor.save()
     if relances_reprises:
         # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
