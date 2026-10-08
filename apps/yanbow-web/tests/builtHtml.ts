@@ -44,6 +44,14 @@ export function urlDeFichier(fichierRelatif: string): string {
   return '/' + posix;
 }
 
+/**
+ * Langue d'une URL : `en` sous `/en/`, et pour les candidats PRIVÉS du tour
+ * design (YBW42) sous `/_design/<candidat>/en/` ; sinon `fr`.
+ */
+export function langueDeUrl(url: string): 'fr' | 'en' {
+  return url === '/en/' || url.startsWith('/en/') || /^\/_design\/[a-z]+\/en\//.test(url) ? 'en' : 'fr';
+}
+
 /** Toutes les pages HTML construites (les deux langues si actives), triées par URL. */
 export function pagesRendues(): PageRendue[] {
   assurerBuild();
@@ -53,7 +61,7 @@ export function pagesRendues(): PageRendue[] {
       const html = readFileSync(fichier, 'utf-8');
       return {
         url,
-        langueUrl: url === '/en/' || url.startsWith('/en/') ? ('en' as const) : ('fr' as const),
+        langueUrl: langueDeUrl(url),
         fichier,
         html,
         document: new JSDOM(html).window.document,
