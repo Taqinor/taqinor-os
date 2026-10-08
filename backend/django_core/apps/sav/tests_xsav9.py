@@ -112,8 +112,11 @@ class XSAV9AffectationAutoTest(TestCase):
 
         chosen = []
         for i in range(4):
+            # ASAV23 — quatre demandes DISTINCTES (une description chacune) :
+            # quatre envois identiques en < 60 s seraient un double clic (409).
             resp = self.api.post('/api/django/sav/tickets/', {
                 'client': self.client_obj.id, 'installation': self.inst.id,
+                'description': f'Demande {i + 1}',
             }, format='json')
             self.assertEqual(resp.status_code, 201, resp.content)
             chosen.append(resp.data['technicien_responsable'])

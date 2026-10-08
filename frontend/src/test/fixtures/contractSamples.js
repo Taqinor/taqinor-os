@@ -87,3 +87,10 @@ export function enTexte(o) {
   }
   return typeof o === 'number' ? String(o) : o
 }
+
+/* ASAV1 — contrats SAV posés avant leur vue (PACT10) : un export par
+   échantillon, pour que les tests front d'ASAV10/31/42/45 importent le
+   document committé au lieu d'inventer leur charge utile. */
+export const contratSavTicketDetail = () => documentContrat('sav', 'ticket_detail')
+export const contratSavTicketSuiviPublic = () => documentContrat('sav', 'ticket_suivi_public')
+export const contratSavPieceRetiree = () => documentContrat('sav', 'piece_retiree')
