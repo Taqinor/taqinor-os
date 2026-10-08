@@ -865,6 +865,30 @@ class TicketViewSet(CompanyScopedModelViewSet):
     # compte comme une réouverture.
     _CLOTURE_STATUTS = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
 
+    @staticmethod
+    def _cle_sla(ticket):
+        """ASAV15 — les entrées de l'échéance SLA d'un ticket."""
+        return (ticket.priorite, ticket.date_ouverture, ticket.client_id)
+
+    @staticmethod
+    def _recalculer_sla(ticket):
+        """ASAV15 — recalcule l'échéance SLA (override contrat compris, même
+        ``compute_sla_due_at`` que la création) et ouvre un nouveau cycle :
+        pré-alerte, escalade (paliers compris) et ``sla_breach`` remis à
+        zéro puis ``sla_breach`` recalculé sur la nouvelle échéance."""
+        from .services import compute_sla_due_at
+        ticket.sla_due_at = compute_sla_due_at(
+            ticket.company, ticket.client, ticket.priorite,
+            ticket.date_ouverture or timezone.localdate())
+        ticket.sla_pre_alert_notifiee = False
+        ticket.sla_escalade_notifiee = False
+        ticket.sla_escalade_paliers_notifies = None
+        ticket.sla_breach = False
+        ticket.recompute_sla_breach()
+        ticket.save(update_fields=[
+            'sla_due_at', 'sla_pre_alert_notifiee', 'sla_escalade_notifiee',
+            'sla_escalade_paliers_notifies', 'sla_breach'])
+
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         # YDOCF1 — `statut` est désormais read-only sur le sérialiseur : plus
@@ -878,7 +902,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # dossier 82-21 (no-op hors site professionnel sous accord /
         # autorisation).
         etait_a_l_arret = bool(serializer.instance.arret_installation)
+        # ASAV15 — l'échéance SLA dépend de la priorité, de l'ouverture et du
+        # client (override contrat) : capturés AVANT la mise à jour.
+        avant = self._cle_sla(serializer.instance)
         super().perform_update(serializer)
+        if self._cle_sla(serializer.instance) != avant:
+            self._recalculer_sla(serializer.instance)
         if serializer.instance.arret_installation and not etait_a_l_arret:
             from . import services as sav_services
             sav_services.notifier_arret_installation(serializer.instance)
@@ -1050,6 +1079,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 old = Ticket.objects.get(pk=ticket.pk)
                 ticket.priorite = priorite
                 ticket.save(update_fields=['priorite'])
+                # ASAV15 — même recalcul d'échéance que le PATCH.
+                if old.priorite != priorite:
+                    self._recalculer_sla(ticket)
                 activity.log_changes(old, ticket, request.user)
                 traites.append(ticket.id)
 
