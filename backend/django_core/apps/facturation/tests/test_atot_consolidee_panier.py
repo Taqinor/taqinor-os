@@ -37,6 +37,12 @@ class ConsolideePanierTests(TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Panier', prenom='ATOT3',
             email=f'atot3-{_nxt()}@example.invalid')
+        # Une ligne PRODUIT de devis porte toujours son produit du catalogue
+        # (`LigneFacture.produit` est NOT NULL) : seules section/note n'en ont pas.
+        from apps.stock.models import Produit
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Kit ATOT3', sku=f'ATOT3-{_nxt()}',
+            prix_vente=Decimal('1000'), quantite_stock=10)
         self.user = User.objects.create_user(
             username=f'atot3_resp_{_nxt()}', password='x',
             role_legacy='responsable', company=self.company)
@@ -51,6 +57,8 @@ class ConsolideePanierTests(TestCase):
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
             taux_tva=Decimal(taux), remise_globale=Decimal(remise), **extra)
         for li in lignes:
+            if li.get('type_ligne', 'produit') == 'produit':
+                li = {'produit': self.produit, **li}
             LigneDevis.objects.create(devis=devis, **li)
         return Devis.objects.get(pk=devis.pk)
 
