@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from core.entite_scoping import EntiteScopeMixin
 from core.mixins import TenantMixin
+from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
@@ -421,6 +422,15 @@ class ClientViewSet(CompanyScopedModelViewSet):
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
+        # ACRM21 (C-ACRM-014) — les autres @action (consolidation,
+        # data-export, anonymize, segments) sont gardées par CE QUE LEUR
+        # DÉCORATEUR DÉCLARE (patron ``declared_action_permissions``) : le
+        # repli brut ``IsAdminRole`` refusait au Commercial le bloc « CA
+        # groupe » (déclaré ``IsAnyRole``) et l'export RGPD (déclaré
+        # ``IsResponsableOrAdmin``).
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         return [IsAdminRole()]
 
     @action(detail=True, methods=['post'], url_path='dupliquer',
@@ -645,8 +655,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
             )
 
     # FG32 — Segmentation clients ────────────────────────────────────────────
+    # ACRM21 — déclaration EXPLICITE (admin) : c'est la garde qui
+    # s'appliquait déjà par le repli ; elle est désormais lue sur l'@action.
     @action(detail=False, methods=['get'], url_path='segments',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def segments(self, request):
         """Segmentation client : top clients, sans devis récent, à recontacter.
 
