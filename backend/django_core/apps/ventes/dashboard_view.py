@@ -140,11 +140,13 @@ def dashboard_quote_to_cash(request):
     }
     """
     from .models import Devis, Facture
+    from .selectors import devis_en_jeu
     company = request.user.company
     periode = _period_filter(request)
 
     # ── Devis ────────────────────────────────────────────────────────────────
-    devis_qs = Devis.objects.filter(company=company).filter(periode)
+    # ADEV9 — une installation révisée compte UNE fois (version courante).
+    devis_qs = devis_en_jeu(Devis.objects.filter(company=company)).filter(periode)
     agg_devis = devis_qs.aggregate(
         total=Count('id'),
         envoyes=Count('id', filter=Q(statut='envoye')),
@@ -182,7 +184,7 @@ def dashboard_quote_to_cash(request):
     # la même ligne ; un devis mono-option, l'écrasante majorité, ne paie rien
     # de plus (ses lignes viennent du prefetch).
     devis_pipeline = list(
-        Devis.objects.filter(company=company, statut='envoye')
+        devis_en_jeu(Devis.objects.filter(company=company, statut='envoye'))
         .filter(periode)
         .select_related('created_by')
         # QJR302 — ``lignes__produit`` et non ``lignes`` : la chaîne canonique
@@ -230,7 +232,7 @@ def dashboard_quote_to_cash(request):
     n_acceptes = agg_devis['acceptes']
     # Devis acceptés avec au moins une facture.
     devis_avec_facture = (
-        Devis.objects.filter(company=company, statut='accepte')
+        devis_en_jeu(Devis.objects.filter(company=company, statut='accepte'))
         .filter(factures__isnull=False)
         .distinct().count()
     )
@@ -249,7 +251,7 @@ def dashboard_quote_to_cash(request):
     # Calcul approximatif côté Python (pas de DeltaField SQL).
     cycle_list = []
     accepted_with_pmt = (
-        Devis.objects.filter(company=company, statut='accepte')
+        devis_en_jeu(Devis.objects.filter(company=company, statut='accepte'))
         .prefetch_related('factures__paiements')
         .select_related('created_by')
     )[:200]  # cap pour éviter un scan complet
