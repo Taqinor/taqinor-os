@@ -210,6 +210,43 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     }
 
 
+def _ecrire_devis_auto_par_pipeline(*, company, user, lead, creer, lignes,
+                                    mode_installation):
+    """ADEV25 (C-ADEV-036) — le devis automatique commercial/industriel ou
+    agricole est écrit par le PIPELINE, comme le résidentiel : création
+    numérotée + ``appliquer(MODE_ECRIRE)`` (écrivain unique, provenance,
+    instantané) sous UNE ``transaction.atomic()`` — une erreur au milieu ne
+    laisse aucun devis partiel — puis ``MODE_RAFRAICHIR`` hors transaction
+    (études + caches : kWc et marge interne).
+
+    ``lignes`` : dicts ``{produit_id, designation, quantite, prix_unitaire}``
+    déjà arrêtés par le moteur (jamais recomposés ici)."""
+    from django.db import transaction
+
+    from apps.ventes.domain.pipeline import MODE_ECRIRE, MODE_RAFRAICHIR
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.company_settings import create_numbered
+
+    composition = [
+        {'produit': ligne['produit_id'],
+         'designation': ligne['designation'],
+         'quantite': str(ligne['quantite']),
+         'prix_unitaire': str(ligne['prix_unitaire']),
+         'ordre': ordre}
+        for ordre, ligne in enumerate(lignes)]
+    with transaction.atomic():
+        devis = create_numbered(Devis, company, 'devis', creer)
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_AUTO, mode=MODE_ECRIRE, company=company,
+            user=user, lead=lead, mode_installation=mode_installation,
+            composition=composition))
+    appliquer(devis, IntentionDevis(
+        origine=ORIGINE_AUTO, mode=MODE_RAFRAICHIR, company=company,
+        user=user, lead=lead, mode_installation=mode_installation))
+    devis.refresh_from_db()
+    return devis
+
+
 def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
                          target_kwc=None):
     """CIQ120 — devis automatique COMMERCIAL / INDUSTRIEL par le serveur.
@@ -227,9 +264,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
     from apps.ventes.domain.etude_ci import (
         entrees_pour_etude_params, etudier_ci, lignes_du_devis_ci,
         refus_devis_auto_ci)
-    from apps.ventes.domain.lignes import creer_ligne
     from apps.ventes.models import Devis
-    from apps.ventes.utils.company_settings import create_numbered
 
     taille = target_kwc if target_kwc not in (None, '') else getattr(
         lead, 'taille_souhaitee_kwc', None)
@@ -263,12 +298,9 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
             taux_tva=taux_tva, mode_installation=lead.type_installation,
             etude_params=entrees)
 
-    devis = create_numbered(Devis, company, 'devis', _create)
-    for ordre, ligne in enumerate(lignes):
-        creer_ligne(devis, produit_id=ligne['produit_id'],
-                    designation=ligne['designation'], quantite=ligne['quantite'],
-                    prix_unitaire=ligne['prix_unitaire'], ordre=ordre)
-    rafraichir_etudes_du_devis(devis)
+    devis = _ecrire_devis_auto_par_pipeline(
+        company=company, user=user, lead=lead, creer=_create, lignes=lignes,
+        mode_installation=lead.type_installation)
     logger.info('Auto-devis C&I %s: %s kWc (lead %s, company %s)', devis.reference,
                 (etude.get('taille') or {}).get('retenue_kwc'), getattr(lead, 'pk', '?'),
                 getattr(company, 'id', '?'))
@@ -308,11 +340,9 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
     from apps.crm.services import resolve_client_for_lead, \
         visite_point_eau_requise
     from apps.ventes.domain.catalogue import catalogue_de_la_societe
-    from apps.ventes.domain.lignes import creer_ligne
     from apps.ventes.domain.pompage import (
         etudier_pompage, lignes_kit_auto, saisies_economie_pompage_du_lead)
     from apps.ventes.models import Devis
-    from apps.ventes.utils.company_settings import create_numbered
 
     manquants = champs_devis_auto_manquants(lead)
     if manquants:
@@ -373,13 +403,9 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
             taux_tva=taux_tva, mode_installation='agricole',
             etude_params=etude)
 
-    devis = create_numbered(Devis, company, 'devis', _create)
-    for ordre, ligne in enumerate(lignes):
-        creer_ligne(devis, produit_id=ligne['produit_id'],
-                    designation=ligne['designation'],
-                    quantite=ligne['quantite'],
-                    prix_unitaire=ligne['prix_unitaire'], ordre=ordre)
-    rafraichir_etudes_du_devis(devis)
+    devis = _ecrire_devis_auto_par_pipeline(
+        company=company, user=user, lead=lead, creer=_create, lignes=lignes,
+        mode_installation='agricole')
     if journal_auto is not None:
         alertes = [dict(a) for a in (sortie.get('alertes') or [])]
         for designation in omises:
