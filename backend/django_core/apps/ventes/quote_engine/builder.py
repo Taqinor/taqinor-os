@@ -4801,7 +4801,7 @@ def _compte_du_layout(roof_layout) -> int:
         return 0
 
 
-def _pdf_key(devis, *, watermark=False, variante=None) -> str:
+def _pdf_key(devis, *, watermark=False, variante=None, apercu=False) -> str:
     """MinIO key, scoped by company to avoid cross-tenant collisions.
 
     L-NIV (24/08/2026) — ``watermark=True`` (PDF public niveau standard)
@@ -4820,6 +4820,12 @@ def _pdf_key(devis, *, watermark=False, variante=None) -> str:
     suffixe = "__pub-standard" if watermark else ""
     if variante in VARIANTES_PDF:
         suffixe += f"__opt-{variante}"
+    # AMOT14 (C-AMOT-012) — un rendu NON persisté (aperçu interne avec ses
+    # paramètres, pièce jointe d'e-mail, PDF public) part sous une clé
+    # d'APERÇU distincte : il n'écrase jamais le fichier mémorisé
+    # (``devis.fichier_pdf``) que « Télécharger » sert tel quel.
+    if apercu and not suffixe:
+        suffixe = "__apercu"
     return f"devis/{company_id}/{devis.reference}{suffixe}.pdf"
 
 
@@ -5059,7 +5065,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # servir le document complet du commercial).
     _variante_rendue = clean_pdf_options(pdf_options).get('variante_option')
     key = _pdf_key(devis, watermark=_filigrane_actif,
-                   variante=_variante_rendue)
+                   variante=_variante_rendue, apercu=not persist)
     _ensure_pdf_bucket()
     _upload_pdf(pdf_bytes, key)
 
@@ -5131,6 +5137,12 @@ def cle_pdf_a_jour(devis, pdf_options=None) -> str:
         options = pdf_options
     options = clean_pdf_options(options)
     empreinte_stockee = meta.get("empreinte")
+    # AMOT14 — des options DEMANDÉES différentes de celles du dernier rendu
+    # persisté ne servent jamais l'ancien fichier (format, langue…).
+    options_memorisees = (clean_pdf_options(meta.get("options"))
+                          if isinstance(meta.get("options"), dict) else None)
+    if options_memorisees is not None and options != options_memorisees:
+        empreinte_stockee = None
     if devis.fichier_pdf and empreinte_stockee:
         try:
             # CALEPDF/A8 — l'empreinte STOCKÉE est celle des données RENDUES,
