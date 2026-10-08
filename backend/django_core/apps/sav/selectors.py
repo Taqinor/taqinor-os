@@ -331,7 +331,7 @@ def contrats_maintenance_facturables(company):
     ]
 
 
-def droits_restants(contrat, annee=None, *, ticket=None):
+def droits_restants(contrat, annee=None, *, ticket=None, cache=None):
     """XCTR3 — Compteurs de droits inclus (entitlements) consommés/restants
     pour ``contrat`` sur l'année civile ``annee`` (défaut : année courante).
 
@@ -346,37 +346,44 @@ def droits_restants(contrat, annee=None, *, ticket=None):
     tard à sa date (à date égale, créés avant lui) consomment un droit — un
     quota de N couvre donc exactement les N premiers tickets. Sans ``ticket``
     (écran des contrats) : compteur de l'année, tous tickets non annulés.
+
+    APRF31 — ``cache`` (dict ``{(contrat_id, année): lignes}`` fourni par la
+    liste) : les tickets de l'année du contrat sont lus UNE fois par page et
+    comptés en Python — jamais deux ``count()`` par ticket.
     """
     from datetime import date as _date
-
-    from django.db.models import Q
 
     annee = annee or timezone.localdate().year
     debut = _date(annee, 1, 1)
     fin = _date(annee, 12, 31)
 
-    base_qs = Ticket.objects.filter(
-        company_id=contrat.company_id, annule=False,
-        date_ouverture__gte=debut, date_ouverture__lte=fin,
-    )
-    if contrat.installation_id:
-        base_qs = base_qs.filter(installation_id=contrat.installation_id)
-    elif contrat.client_id:
-        base_qs = base_qs.filter(client_id=contrat.client_id)
-    else:
-        base_qs = base_qs.none()
+    cle = (contrat.pk, annee)
+    lignes = cache.get(cle) if cache is not None else None
+    if lignes is None:
+        base_qs = Ticket.objects.filter(
+            company_id=contrat.company_id, annule=False,
+            date_ouverture__gte=debut, date_ouverture__lte=fin,
+        )
+        if contrat.installation_id:
+            base_qs = base_qs.filter(installation_id=contrat.installation_id)
+        elif contrat.client_id:
+            base_qs = base_qs.filter(client_id=contrat.client_id)
+        else:
+            base_qs = base_qs.none()
+        lignes = list(base_qs.values_list('type', 'date_ouverture', 'pk'))
+        if cache is not None:
+            cache[cle] = lignes
     if ticket is not None:
         ref = ticket.date_reference_couverture
-        anterieur = Q(date_ouverture__lt=ref)
-        if ticket.pk:
-            anterieur |= Q(date_ouverture=ref, pk__lt=ticket.pk)
-            base_qs = base_qs.exclude(pk=ticket.pk)
-        else:
-            anterieur |= Q(date_ouverture=ref)
-        base_qs = base_qs.filter(anterieur)
-    visites_consommees = base_qs.filter(type=Ticket.Type.PREVENTIF).count()
-    deplacements_consommes = base_qs.filter(
-        type=Ticket.Type.CORRECTIF).count()
+        lignes = [
+            (t, d, pk) for t, d, pk in lignes
+            if pk != ticket.pk and (
+                d < ref or (d == ref and (not ticket.pk or pk < ticket.pk)))
+        ]
+    visites_consommees = sum(
+        1 for t, _d, _pk in lignes if t == Ticket.Type.PREVENTIF)
+    deplacements_consommes = sum(
+        1 for t, _d, _pk in lignes if t == Ticket.Type.CORRECTIF)
 
     def _restant(inclus, consomme):
         if inclus is None:

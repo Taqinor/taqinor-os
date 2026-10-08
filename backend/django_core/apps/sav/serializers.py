@@ -376,6 +376,10 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         # des requêtes différentes, jamais interchangeables.
         self._contrat_actif_cache = {}
         self._contrat_recent_cache = {}
+        # APRF31 — registre des équipements et tickets de l'année PAR
+        # CONTRAT, lus une fois par page (jamais par ticket).
+        self._registre_cache = {}
+        self._droits_cache = {}
 
     def _contrat_actif_pour_client(self, client):
         from .models import ContratMaintenance
@@ -504,14 +508,18 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         contrat = self._contrat_actif_pour_client(obj.client)
         if contrat is None:
             return None
-        return contrat.couvre_equipement(obj.equipement)
+        return contrat.couvre_equipement(
+            obj.equipement, cache=self._registre_cache)
 
     def get_couverture_proposee(self, obj):
         # N+1 réel corrigé (YOPSB13) : partage le cache ContratMaintenance
         # (contrat actif le plus récent, sans condition d'override SLA — un
         # cache DISTINCT de get_equipement_couvert) par client sur toute la
         # page au lieu d'une requête par ticket.
-        return obj.couverture_calculee(contrat_cache=self._contrat_recent_cache)
+        return obj.couverture_calculee(
+            contrat_cache=self._contrat_recent_cache,
+            registre_cache=self._registre_cache,
+            droits_cache=self._droits_cache)
 
     def get_canal_resolution_propose(self, obj):
         return obj.canal_resolution_propose()

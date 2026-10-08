@@ -1010,7 +1010,8 @@ class Ticket(models.Model):
                     else self.SousGarantie.NON)
         return self.sous_garantie
 
-    def couverture_calculee(self, *, contrat_cache=None):
+    def couverture_calculee(self, *, contrat_cache=None, registre_cache=None,
+                            droits_cache=None):
         """XCTR4 — Propose une couverture (garantie / contrat / facturable)
         SANS écraser une valeur déjà posée manuellement.
 
@@ -1036,10 +1037,12 @@ class Ticket(models.Model):
             contrat = contrat_cache[cle]
         else:
             contrat = self._contrat_couvrant(ref)
-        if contrat is not None and contrat.couvre_equipement(self.equipement):
+        if contrat is not None and contrat.couvre_equipement(
+                self.equipement, cache=registre_cache):
             from .selectors import droits_restants
             annee = ref.year
-            droits = droits_restants(contrat, annee, ticket=self)
+            droits = droits_restants(
+                contrat, annee, ticket=self, cache=droits_cache)
             if self.type == self.Type.PREVENTIF:
                 restant = droits['visites_restantes']
             else:
@@ -1818,13 +1821,22 @@ class ContratMaintenance(models.Model):
             return False
         return (today or timezone.localdate()) >= self.prochaine_facturation()
 
-    def couvre_equipement(self, equipement):
+    def couvre_equipement(self, equipement, cache=None):
         """XCTR2 — True si `equipement` fait partie du registre couvert par ce
         contrat. Un contrat SANS équipement enregistré (M2M vide) est
         considéré comme couvrant tout le client (comportement historique,
-        aucune régression pour les contrats existants sans registre posé)."""
+        aucune régression pour les contrats existants sans registre posé).
+
+        APRF31 — ``cache`` (``{contrat_id: (a_registre, {ids})}`` partagé par
+        la liste) : le registre est lu UNE fois par contrat et par page."""
         if equipement is None:
             return True
+        if cache is not None:
+            if self.pk not in cache:
+                ids = set(self.equipements.values_list('pk', flat=True))
+                cache[self.pk] = (bool(ids), ids)
+            a_registre, ids = cache[self.pk]
+            return (not a_registre) or equipement.pk in ids
         if not self.equipements.exists():
             return True
         return self.equipements.filter(pk=equipement.pk).exists()
