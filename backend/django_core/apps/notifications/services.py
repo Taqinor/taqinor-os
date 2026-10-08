@@ -159,8 +159,9 @@ def _dispatch_email(user, title, body):
         html = _branded_html(getattr(user, 'company', None), title, corps)
         if html:
             msg.attach_alternative(html, 'text/html')
-        msg.send(fail_silently=True)
-        return True
+        # APAR19 — le VRAI résultat du backend (nombre de messages remis ;
+        # 0 quand l'envoi échoue en ``fail_silently``), plus un True d'office.
+        return bool(msg.send(fail_silently=True))
     except Exception as exc:  # pragma: no cover - dépend du backend réel
         logger.warning('Notification email échouée vers %s : %s', dest, exc)
         return False
@@ -184,10 +185,19 @@ def _whatsapp_link(user, title, body):
         return None
 
 
+#: APAR19 — statut journalisé d'une diffusion WhatsApp : aucun transport
+#: serveur n'existe (BSP GATED fondateur, ``whatsapp_bsp.py``) ; le lien wa.me
+#: est seulement PRÉPARÉ, jamais « envoyé ».
+STATUT_WHATSAPP_NON_ENVOYE = 'non envoyé : canal non configuré'
+
+
 def _dispatch_whatsapp(user, title, body):
-    """Best-effort : prépare le lien WhatsApp (no-op si numéro absent)."""
-    url = _whatsapp_link(user, title, body)
-    return bool(url)
+    """Prépare le lien WhatsApp (no-op si numéro absent) — n'ENVOIE rien.
+
+    APAR19 — renvoie toujours ``False`` : sans transport serveur, aucun
+    message ne part ; le journal dit « non envoyé » au lieu de « envoyé »."""
+    _whatsapp_link(user, title, body)
+    return False
 
 
 def resolve_vapid_keys():
@@ -513,7 +523,8 @@ def _diffuser_hors_app(user, company, event_type, title, body, link, prefs,
             logger.warning('Dispatch WhatsApp notification échoué : %s', exc)
         _audit_notify(
             user, company, event_type, channel='whatsapp', ok=wa_ok,
-            instance=instance)
+            instance=instance,
+            statut=None if wa_ok else STATUT_WHATSAPP_NON_ENVOYE)
 
     # Web push (N92) : best-effort, opt-in par APPAREIL (pas seulement un
     # toggle d'événement). NO-OP total sans clés VAPID ni abonnement — donc
@@ -729,8 +740,12 @@ _AUDIT_CHANNEL_ACTION = {
 }
 
 
-def _audit_notify(user, company, event_type, *, channel, ok, instance=None):
+def _audit_notify(user, company, event_type, *, channel, ok, instance=None,
+                  statut=None):
     """Écrit une ligne d'audit best-effort pour UN canal d'un envoi `notify()`.
+
+    APAR19 — ``statut`` force le libellé (ex. « non envoyé : canal non
+    configuré ») ; par défaut « envoyé » / « échec » selon ``ok``.
 
     Ne bloque JAMAIS l'envoi : toute erreur d'écriture d'audit est absorbée
     par `audit.recorder.record` lui-même (best-effort), et on l'entoure ici
@@ -738,7 +753,8 @@ def _audit_notify(user, company, event_type, *, channel, ok, instance=None):
     try:
         from apps.audit import recorder
         action = _AUDIT_CHANNEL_ACTION.get(channel, 'notify')
-        statut = 'envoyé' if ok else 'échoué'
+        if statut is None:
+            statut = 'envoyé' if ok else 'échec'
         detail = (
             f'Notification {event_type} → {channel} ({statut}) '
             f'destinataire={getattr(user, "username", user)}'
