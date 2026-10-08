@@ -4798,16 +4798,23 @@ def echapper_textes_client(data: dict) -> dict:
     return sortie
 
 
-def display_totals(devis, *, lignes_prechargees=False) -> dict:
+def display_totals(devis, *, lignes_prechargees=False, donnees=None) -> dict:
     """Total d'affichage canonique pour la liste des devis — calculé par le
     MÊME chemin que les PDF (mode une-page, qui ne lève jamais), donc identique
-    au document au dirham près. Repli sûr sur le total stocké."""
+    au document au dirham près. Repli sûr sur le total stocké.
+
+    APRF5 — ``donnees`` (dict, optionnel) reçoit le ``data`` COMPLET du
+    passage moteur quand il réussit : la carte A/B de la liste
+    (``DevisSerializer.get_comparaison_options``) le relit au lieu d'un second
+    ``build_quote_data`` par devis à deux options. Inchangé sinon."""
     try:
         # APRF3 — drapeau serveur « totaux seuls » : aucune lecture hors
         # préchargement (affiche, révision, lien), mêmes totaux au centime.
         data = build_quote_data(devis, {
             "pdf_mode": "onepage", "_totaux_seuls": True,
             "_lignes_prechargees": bool(lignes_prechargees)})
+        if isinstance(donnees, dict):
+            donnees.update(data)
         # ERR-QAC-MULTIVILLA-TOTAL-XN — la liste, le Kanban, la salle de vente
         # et la page publique des gammes affichent le total ×N que le
         # document imprime et que l'ERP facture (décision fondateur
