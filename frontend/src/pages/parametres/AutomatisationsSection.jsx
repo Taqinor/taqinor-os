@@ -11,7 +11,7 @@
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, RefreshCw, Wand2, Sparkles } from 'lucide-react'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import automationApi from '../../api/automationApi'
 import { formatDateTime } from '../../lib/format'
 import {
@@ -76,6 +76,8 @@ function toJson(obj) {
 // URL tokenisée devient le contexte des conditions/actions. Le token/URL sont
 // générés côté serveur ; la rotation invalide immédiatement l'ancien token.
 function IncomingWebhookPanel({ rules }) {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [hooks, setHooks] = useState([])
   const [ruleId, setRuleId] = useState('')
   const [secret, setSecret] = useState('')
@@ -107,7 +109,7 @@ function IncomingWebhookPanel({ rules }) {
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
   }
   const remove = async (h) => {
-    if (!window.confirm('Supprimer ce webhook ? Son URL cessera de fonctionner.')) return
+    if (!(await confirmerSuppression({ title: 'Supprimer ce webhook ? Son URL cessera de fonctionner.' }))) return
     try { await automationApi.deleteWebhook(h.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -176,6 +178,8 @@ function IncomingWebhookPanel({ rules }) {
 }
 
 export default function AutomatisationsSection() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [rules, setRules] = useState([])
   const [runs, setRuns] = useState([])
   const [approvals, setApprovals] = useState([])
@@ -301,7 +305,7 @@ export default function AutomatisationsSection() {
     try { await automationApi.toggleRule(r.id); loadRules() } catch { /* */ }
   }
   const delRule = async (r) => {
-    if (!window.confirm(`Supprimer la règle « ${r.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la règle « ${r.nom} » ?` }))) return
     try { await automationApi.deleteRule(r.id); loadRules() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }

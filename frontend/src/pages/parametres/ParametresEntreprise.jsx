@@ -22,7 +22,7 @@ import { CheckCircle2, AlertCircle, Save, Search, X, Info } from 'lucide-react'
 import {
   Button, Spinner, TooltipProvider, Input,
 } from '../../ui'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
@@ -125,6 +125,8 @@ const TABS_ECRITURE_PARAMETRES = [
 // rendu par son propre composant de section ; les briques de présentation et les
 // constantes sont partagées via ./peComponents et ./peConstants.
 export default function ParametresEntreprise() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirm: confirmerAction, confirmDelete: confirmerSuppression } = useConfirmDialog()
   const dispatch = useDispatch()
   const { profile, loading, saving, uploading, error, saveSuccess } = useSelector(s => s.parametres)
   const { categories, fournisseurs } = useSelector(s => s.stock)
@@ -340,7 +342,7 @@ export default function ParametresEntreprise() {
     } catch (e) { toast.error(cfErr(e, 'Réordonnancement impossible.')) }
   }
   const delCf = async (d) => {
-    if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le champ « ${d.libelle} » ?` }))) return
     try { await customFieldsApi.deleteDef(d.id); loadCfDefs(cfModule) }
     catch { /* */ }
   }
@@ -420,7 +422,7 @@ export default function ParametresEntreprise() {
     } catch { /* */ }
   }
   const delEtape = async (et) => {
-    if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer l'étape « ${et.libelle} » ?` }))) return
     try { await installationsApi.deleteChecklistEtape(et.id); loadChecklistEtapes() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
   }
@@ -438,7 +440,7 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch { /* */ }
   }
   const delCanal = async (c) => {
-    if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le canal « ${c.libelle} » ?` }))) return
     try { await crmApi.deleteCanal(c.id); loadCanaux() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -460,7 +462,7 @@ export default function ParametresEntreprise() {
     try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch { /* */ }
   }
   const delType = async (t) => {
-    if (!window.confirm(`Supprimer le type « ${t.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le type « ${t.libelle} » ?` }))) return
     try { await installationsApi.deleteTypeIntervention(t.id); loadTypesItv() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -471,7 +473,7 @@ export default function ParametresEntreprise() {
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delMarque = async (m) => {
-    if (!window.confirm(`Supprimer la marque « ${m.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la marque « ${m.nom} » ?` }))) return
     try { await stockApi.deleteMarque(m.id); loadMarques() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -491,7 +493,7 @@ export default function ParametresEntreprise() {
   }
   // L776 — réinitialiser un modèle WhatsApp au texte par défaut (endpoint reset).
   const resetMessage = async (m) => {
-    if (!window.confirm(`Réinitialiser le message « ${m.label} » au modèle par défaut ?`)) return
+    if (!(await confirmerAction({ title: `Réinitialiser le message « ${m.label} » au modèle par défaut ?` }))) return
     try {
       const r = await parametresApi.saveMessage({ cle: m.cle, reset: true })
       setMessages(ms => ms.map(x => (x.cle === m.cle
@@ -518,7 +520,7 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveTag(t.id, { couleur }) } catch { /* */ }
   }
   const delTag = async (t) => {
-    if (!window.confirm(`Supprimer l'étiquette « ${t.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer l'étiquette « ${t.nom} » ?` }))) return
     // L780 — la suppression est bloquée (409) si l'étiquette est utilisée :
     // on remonte le message serveur (qui propose l'archivage).
     try { await crmApi.deleteTag(t.id); loadTags() }
@@ -539,7 +541,7 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch { /* */ }
   }
   const delMotif = async (m) => {
-    if (!window.confirm(`Supprimer le motif « ${m.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le motif « ${m.nom} » ?` }))) return
     // L779 — bloqué (409) si le motif est utilisé : on remonte le message
     // serveur (qui propose l'archivage).
     try { await crmApi.deleteMotifPerte(m.id); loadMotifs() }
@@ -589,7 +591,7 @@ export default function ParametresEntreprise() {
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delNiveau = async (n) => {
-    if (!window.confirm(`Supprimer le niveau « ${n.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le niveau « ${n.nom} » ?` }))) return
     try { await ventesApi.deleteNiveauRelance(n.id); loadNiveaux() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }

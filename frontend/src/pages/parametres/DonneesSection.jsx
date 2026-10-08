@@ -21,6 +21,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { useConfirmDialog } from '../../ui/confirm'
 
 // APAR40 — liste COMPLÈTE (suit les pages DRF, 200 par page max) au lieu d'un
 // `page_size: 1000/500` que le serveur plafonne à 200 : avec 311 produits le
@@ -58,6 +59,8 @@ function frErr(err, fallback = 'Une erreur est survenue. Réessayez.') {
 
 // ── Sessions d'inventaire (FG63) ─────────────────────────────────────────────
 function InventaireSessions() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirm: confirmerAction } = useConfirmDialog()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -88,7 +91,7 @@ function InventaireSessions() {
   }
 
   const annuler = async (s) => {
-    if (!window.confirm(`Annuler la session ${s.reference} ?`)) return
+    if (!(await confirmerAction({ title: `Annuler la session ${s.reference} ?` }))) return
     setBusyId(s.id); setError(null); setInfo(null)
     try {
       await stockApi.annulerInventaireSession(s.id)
@@ -429,6 +432,8 @@ function champsNumeriquesPour(type) {
 }
 
 function FichesTechniques() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [produits, setProduits] = useState([])
   const [fiches, setFiches] = useState([])
   const [loading, setLoading] = useState(true)
@@ -525,7 +530,7 @@ function FichesTechniques() {
   }
 
   const supprimer = async (f) => {
-    if (!window.confirm(`Supprimer la fiche de « ${f.produit_nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la fiche de « ${f.produit_nom} » ?` }))) return
     setError(null)
     try {
       await stockApi.deleteFicheTechnique(f.id)
