@@ -1564,14 +1564,12 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # sans cette garde, signer le lien public de v1 après « Réviser »
         # acceptait v1 ET effondrait v2 (sa « sœur ») en REFUSE — plus aucune
         # version active, aucun BC. Rien n'est écrit (règle #4).
-        if not devis.is_active:
-            successeur = (Devis.objects.filter(pk=devis.superseded_by_id)
-                          .values_list('reference', flat=True).first()
-                          if devis.superseded_by_id else None)
-            if successeur:
-                message = f'Cette proposition a été remplacée par {successeur}.'
-            else:
-                message = "Cette proposition n'est plus active."
+        # ADEV7 — la règle vit dans ``modifiabilite.geste_cycle_permis``
+        # (partagée par refuser / envoyer / relancer).
+        from apps.ventes.domain.modifiabilite import (
+            ACCEPTER, geste_cycle_permis)
+        permis, message = geste_cycle_permis(devis, ACCEPTER)
+        if not permis:
             raise AcceptError(message, conflict=True)
 
         # ADEV11 (C-ADEV-004) — la signature PUBLIQUE (``user=None`` : le

@@ -605,6 +605,14 @@ class DevisCycleActionsMixin:
         from core.events import devis_refused
 
         devis = self.get_object()
+        # ADEV7 — une version remplacée par une révision ne se refuse plus :
+        # 409 ``version_remplacee`` (contrat devis_refuser.json), aucun
+        # ``devis_refused`` (le lead et la cadence de la V2 restent intacts).
+        from ..domain.modifiabilite import (
+            REFUSER, corps_version_remplacee, geste_cycle_permis)
+        if not geste_cycle_permis(devis, REFUSER)[0]:
+            return Response(corps_version_remplacee(devis),
+                            status=status.HTTP_409_CONFLICT)
         if devis.statut not in (
             Devis.Statut.BROUILLON, Devis.Statut.ENVOYE,
         ):
