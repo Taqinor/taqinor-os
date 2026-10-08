@@ -501,6 +501,31 @@ def facteur_remise_du_devis(devis) -> float:
     return facteur
 
 
+def prix_client_au_facteur(cout_catalogue, facteur_remise):
+    """AMOT59 — le prix de VENTE d'une composition catalogue : coût × facteur
+    de remise du devis, ramené au palier ``PAS_ARRONDI_DEVIS`` inférieur
+    (ARRONDI-100, comme le total de tout devis). ``None`` si illisible ; un
+    prix sous le palier passe tel quel."""
+    try:
+        prix = float(cout_catalogue) * float(facteur_remise)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(prix) or prix <= 0:
+        return None
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    pas = float(PAS_ARRONDI_DEVIS)
+    return float(math.floor(prix / pas) * pas) if prix >= pas else round(prix, 2)
+
+
+def prix_client_composition(cout_catalogue, devis):
+    """AMOT59 (C-AMOT-035) — LA fonction qui chiffre une composition
+    catalogue au prix CLIENT du devis (remise comprise, palier compris) :
+    partagée par l'échelle de paliers, le curseur de la page publique et les
+    cartes Éco/Max — un pack de plus ne fait plus « sauter » la remise."""
+    return prix_client_au_facteur(cout_catalogue,
+                                  facteur_remise_du_devis(devis))
+
+
 def capacite_batterie_des_lignes(devis, lignes=None):
     """La capacité batterie des LIGNES RÉELLES de ce devis, ou ``None``.
 
@@ -975,6 +1000,10 @@ def _echelle_paliers_batterie(devis):
         # est brute, le devis est remisé. Sans ce facteur, l'écart entre deux
         # pilules d'un devis remisé était faux (bases mélangées).
         cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
+        if _corrige:
+            # AMOT59 — LE prix client d'une composition (palier compris).
+            cout = prix_client_au_facteur(vue.get('cout_ttc'),
+                                          facteur_remise) or cout
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
         # A1 (revue adversariale Fable, 26/08/2026) — GÉNÉRALISATION additive :

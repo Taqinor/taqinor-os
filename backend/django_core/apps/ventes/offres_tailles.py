@@ -960,8 +960,11 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             # Une variante « avec batterie » sans batterie composée n'est pas
             # une variante : elle est ABSENTE, jamais une copie du « sans ».
             continue
-        prix = _palier_devis(
-            _positif(_num(vue.get('cout_ttc')) * contexte.facteur_remise))
+        # AMOT59 — LE prix client d'une composition (fonction partagée avec
+        # l'échelle et le curseur public).
+        from .domain.dimensionnement_devis import prix_client_au_facteur
+        prix = prix_client_au_facteur(vue.get('cout_ttc'),
+                                      contexte.facteur_remise)
         economie = _positif(annuel.get('economie_%s_mad' % variante))
         carte = {
             'nb_panneaux': int(nb_panneaux),
