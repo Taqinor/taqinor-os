@@ -58,6 +58,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Tests de la garde determinisme des tests (ADEP24)',
+         'python -m unittest scripts.tests.test_check_test_determinism -v',
+         '.'),
         # ADEP21 - modules de tests jamais executes jusque-la (PyYAML seul suffit).
         ('Tests celery tasks (ADEP21)',
          'python -m unittest scripts.tests.test_check_celery_tasks -v',
