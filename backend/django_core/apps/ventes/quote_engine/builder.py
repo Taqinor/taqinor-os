@@ -3096,10 +3096,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             _tarif_txt, _util_name, _savings_estimated))
     # QRES55 — formulations COMPACTES (le fondateur veut la même transparence
     # « en plus petit ») : une idée, une ligne courte.
+    # AMOT25 (C-AMOT-025) — LA mention sourcée unique (``constants_82_21``,
+    # identique au C&I, CIQ201) : plus de « plafond d'injection 20 %
+    # intégré » ni de « rachat BT non publié », phrases que le calcul ne fait
+    # pas.
+    from .constants_82_21 import MENTION_BT as _MENTION_BT
     hypotheses.append(
-        "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — le "
-        "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
-        "intégré, rachat BT non publié).")
+        f"{_MENTION_BT}. Seuls les kWh autoconsommés réduisent la facture.")
     if _prod_net_kwc:
         # Production NETTE affichée, la même que TOUS les calculs du document :
         # pertes système de 20 % AU TOTAL (ordre fondateur 18/08). Le chiffre
