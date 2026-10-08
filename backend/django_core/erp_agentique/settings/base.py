@@ -502,44 +502,52 @@ DATABASES = {
 
 # NTPLT3 — Rôle applicatif non-BYPASSRLS pour le RUNTIME quand RLS est actif.
 #
-# Quand POSTGRES_RLS_ENABLED=1 ET DB_APP_USER est défini, le serveur
-# Django/Celery se connecte avec le rôle APPLICATIF (app_rls, sans BYPASSRLS —
-# cf. backend/db/rls_roles.sql) : il est alors PHYSIQUEMENT soumis aux policies
-# RLS (NTPLT2), et le GUC app.current_company (NTPLT1) décide des lignes
+# Quand POSTGRES_RLS_ENABLED=1 ET DB_APP_USER est défini, le process WEB
+# (gunicorn, uvicorn, `manage.py runserver`) se connecte avec le rôle
+# APPLICATIF (app_rls, sans BYPASSRLS — cf. backend/db/rls_roles.sql) : il est
+# alors PHYSIQUEMENT soumis aux policies RLS (NTPLT2), et le GUC
+# app.current_company (NTPLT1, posé par requête — ADEP30) décide des lignes
 # visibles. Une fuite cross-tenant devient impossible même via SQL brut.
 #
-# MAIS les chemins OWNER (migrations, seed, dumps, la commande `rls` elle-même,
-# les tests) DOIVENT rester sur le rôle OWNER/BYPASSRLS pour voir toutes les
-# lignes de tous les tenants — sinon `migrate`/`core.dump_database` échoueraient
-# flag ON. On garde donc l'OWNER pour ces commandes de gestion, l'app role
-# UNIQUEMENT pour le service runtime. Défaut OFF : sans le flag, la config est
-# byte-identique à ci-dessus (l'owner partout, aucun rôle applicatif requis).
+# ADEP7 — WEB SEULEMENT. Tout le reste (workers et beat Celery, et TOUTE
+# commande `manage.py` : migrations, seed, dumps, `rls`, `audit_coherence`,
+# `publier_documents_meryem`, tests…) reste sur le rôle OWNER : aucune tâche
+# Celery n'est décorée `tenant_task` et aucune commande ne pose le GUC tenant,
+# donc sous app_rls elles ne verraient AUCUNE ligne. Avant ADEP7 la règle était
+# une liste d'exceptions (`_OWNER_COMMANDS`, 15 commandes + préfixe `seed`) :
+# Celery et toute commande hors liste prenaient app_rls. Défaut OFF : sans le
+# flag, la config est byte-identique à ci-dessus (l'owner partout).
 _RLS_ENABLED = os.environ.get('POSTGRES_RLS_ENABLED', '0') == '1'
 _DB_APP_USER = os.environ.get('DB_APP_USER', '').strip()
-# Commandes qui exigent le rôle OWNER (DDL / accès cross-tenant complet).
-_OWNER_COMMANDS = frozenset({
-    'migrate', 'makemigrations', 'sqlmigrate', 'dbshell', 'flush',
-    'loaddata', 'dumpdata', 'test', 'rls', 'dump_database', 'restore_drill',
-    'collectstatic', 'createsuperuser', 'shell', 'showmigrations',
-})
+
+
+def _commande_manage() -> bool:
+    """True si l'invocation courante est `manage.py <commande>`."""
+    argv = sys.argv
+    return len(argv) >= 2 and 'manage.py' in (argv[0] or '')
+
+
+def _process_web() -> bool:
+    """ADEP7 — True pour le process qui SERT les requêtes HTTP : gunicorn,
+    uvicorn, ou `manage.py runserver`. Pur argv : relancer le même process
+    donne le même rôle."""
+    argv = sys.argv
+    if _commande_manage():
+        return argv[1] == 'runserver'
+    exe = os.path.basename((argv[0] if argv else '') or '').lower()
+    chemin = ((argv[0] if argv else '') or '').replace('\\', '/').lower()
+    return any(nom in exe or f'/{nom}/' in chemin
+               for nom in ('gunicorn', 'uvicorn'))
 
 
 def _running_owner_command() -> bool:
-    """True si l'invocation courante est une commande OWNER (manage.py <cmd>).
-
-    Détection par sys.argv (le seed passe par des commandes `seed_*`, toutes
-    couvertes par le préfixe). Hors manage.py (gunicorn/celery) → False, donc
-    le service runtime prend bien le rôle applicatif.
-    """
-    argv = sys.argv
-    if len(argv) < 2 or 'manage.py' not in argv[0]:
-        # gunicorn/celery/asgi : pas une commande manage.py → runtime app role.
-        return False
-    cmd = argv[1]
-    return cmd in _OWNER_COMMANDS or cmd.startswith('seed')
+    """True pour une commande de gestion `manage.py <cmd>` (hors runserver) :
+    elle se connecte en DIRECT au rôle owner (jamais via pgbouncer, jamais en
+    app_rls). Hors manage.py (gunicorn/celery) → False."""
+    return _commande_manage() and sys.argv[1] != 'runserver'
 
 
-if _RLS_ENABLED and _DB_APP_USER and not _running_owner_command():
+if _RLS_ENABLED and _DB_APP_USER and _process_web():
     DATABASES['default']['USER'] = _DB_APP_USER
     DATABASES['default']['PASSWORD'] = os.environ.get('DB_APP_PASSWORD', '')
 
@@ -553,8 +561,8 @@ if _RLS_ENABLED and _DB_APP_USER and not _running_owner_command():
 # car posé en SET LOCAL par transaction (chaque transaction repose son GUC).
 #
 # Les commandes OWNER (migrate, dumps, seed, tests…) restent TOUJOURS sur la DB
-# DIRECTE — le DDL et les curseurs serveur cassent sous le pooler — via la même
-# détection `_running_owner_command()` que le rôle RLS ci-dessus. Défaut OFF :
+# DIRECTE — le DDL et les curseurs serveur cassent sous le pooler — via
+# `_running_owner_command()` (toute commande manage.py hors runserver). Défaut OFF :
 # sans PGBOUNCER=1, la config est byte-identique (hôte DB direct partout).
 if os.environ.get('PGBOUNCER') == '1' and not _running_owner_command():
     DATABASES['default']['HOST'] = os.environ.get('PGBOUNCER_HOST', 'pgbouncer')
