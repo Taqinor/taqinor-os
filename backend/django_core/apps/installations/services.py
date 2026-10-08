@@ -4013,8 +4013,21 @@ def appliquer_statut_document(instance, cible, *, user=None, champs=None):
             instance.save(update_fields=noms)
         ancien = instance.statut
         changer_statut(instance, cible, user=user)
+        _effets_statut_demande_achat(instance, cible)
     _log_transition_statut_chatter(instance, ancien, cible, user=user)
     return instance
+
+
+def _effets_statut_demande_achat(instance, cible):
+    """ACHT13 (C-ACHT-011) — effets attachés au POINT D'ÉCRITURE du statut
+    d'une demande d'achat : toute entrée en « refusée » (action `refuser`,
+    `rejeter-etape`, boîte d'approbations `decider_demande_achat`) rend
+    l'enveloppe budgétaire engagée — une seule fois, dans la transaction de
+    la transition."""
+    from .models import DemandeAchat
+    if (isinstance(instance, DemandeAchat)
+            and cible == DemandeAchat.Statut.REFUSEE):
+        liberer_budget_demande_achat(instance)
 
 
 # ── NTP2P38 — Événements Procure-to-Pay émis sur le bus ``core.events`` ──────

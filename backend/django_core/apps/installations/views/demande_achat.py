@@ -330,8 +330,9 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             statut=EtapeApprobationAchat.Statut.EN_ATTENTE
         ).update(statut=EtapeApprobationAchat.Statut.REJETE,
                  decision_le=timezone.now())
-        # NTP2P4 — l'enveloppe budgétaire engagée est rendue.
-        services.liberer_budget_demande_achat(da)
+        # NTP2P4/ACHT13 — l'enveloppe budgétaire engagée est rendue par le
+        # point d'écriture du statut (`appliquer_statut_document`), commun à
+        # tous les chemins de refus.
         _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
