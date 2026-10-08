@@ -754,6 +754,103 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     return facture
 
 
+# ── ASTK197 — Facture d'une consommation de dépôt de consignation ──────────
+
+#: Préfixe du marqueur d'origine porté par ``Facture.note`` (aucun champ
+#: « référence d'origine » n'existe sur Facture : note libre, nommée ici).
+MARQUEUR_ORIGINE_CONSIGNATION = '[origine:'
+
+
+def _marqueur_origine(reference_origine):
+    return f'{MARQUEUR_ORIGINE_CONSIGNATION}{reference_origine}]'
+
+
+def creer_facture_consignation(*, company, client, user, lignes,
+                               reference_origine):
+    """ASTK197 (C-ASTK-047) — Facture BROUILLON d'une consommation déclarée
+    sur un dépôt de consignation (appelant : ``stock.services_consignation.
+    declarer_consommation``, ASTK198, via ``apps.ventes.services``).
+
+    * ``client`` : ``crm.Client`` résolu par l'APPELANT ; ``lignes`` :
+      itérable de ``{'produit': Produit, 'quantite': n}`` (produits déjà
+      résolus côté appelant ; un produit d'une autre société est refusé) ;
+    * chaque ligne au PRIX DE VENTE catalogue HT (``Produit.prix_vente``,
+      même lecture que les factures classiques SAV/intervention — jamais
+      ``prix_achat``), TVA du produit, sinon le knob société
+      ``tva_standard`` (comme ``creer_facture_regie``, AUD181) ;
+    * totaux NON figés (``montant_*`` NULL) : la chaîne Sous-total → TVA →
+      TTC est calculée sur les lignes, la facture reste éditable ;
+    * numérotation ``apps/ventes/utils/references.py`` (jamais count()+1) ;
+    * IDEMPOTENTE par ``reference_origine`` (ex. ``CONSIGNATION-<id>``) :
+      Facture n'a pas de champ « référence d'origine », le marqueur
+      ``[origine:<ref>]`` est porté par ``Facture.note`` et relu (société +
+      client, facture non annulée) sous la même transaction.
+
+    Lève ``ValueError`` si le client ou un produit n'appartient pas à
+    ``company``, ou si ``reference_origine`` est vide. Renvoie la Facture.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import Facture, LigneFacture
+    from apps.ventes.utils.references import create_with_reference
+
+    from ..utils.company_settings import tva_standard
+
+    reference_origine = str(reference_origine or '').strip()
+    if not reference_origine:
+        raise ValueError('reference_origine est obligatoire.')
+    if client is None or client.company_id != company.id:
+        raise ValueError("Le client n'appartient pas à cette société.")
+    lignes = list(lignes or [])
+    for ligne in lignes:
+        produit = ligne.get('produit')
+        if produit is None or produit.company_id != company.id:
+            raise ValueError(
+                "Un produit de la consignation n'appartient pas à cette "
+                'société.')
+
+    marqueur = _marqueur_origine(reference_origine)
+    with transaction.atomic():
+        existante = (Facture.objects.select_for_update()
+                     .filter(company=company, client=client,
+                             note__contains=marqueur)
+                     .exclude(statut=Facture.Statut.ANNULEE)
+                     .order_by('id').first())
+        if existante is not None:
+            return existante
+
+        taux_defaut = tva_standard(company)
+
+        def _create(ref):
+            return Facture.objects.create(
+                reference=ref, company=company, client=client,
+                statut=Facture.Statut.BROUILLON,
+                type_facture=Facture.TypeFacture.COMPLETE,
+                taux_tva=taux_defaut,
+                libelle=f'Consommation de consignation {reference_origine}',
+                note=marqueur,
+                created_by=user,
+            )
+
+        facture = create_with_reference(Facture, 'FAC', company, _create)
+        for ligne in lignes:
+            produit = ligne['produit']
+            quantite = Decimal(str(ligne.get('quantite') or 0))
+            if quantite <= 0:
+                continue
+            LigneFacture.objects.create(
+                facture=facture, produit=produit, designation=produit.nom,
+                quantite=quantite,
+                prix_unitaire=Decimal(str(produit.prix_vente or 0)),
+                taux_tva=(produit.tva if produit.tva is not None
+                          else taux_defaut),
+            )
+    logger.info(
+        'ASTK197: facture consignation %s créée (company %s, origine %s)',
+        facture.reference, company.id, reference_origine)
+    return facture
+
+
 # ── XPRJ4 — Facture d'acompte pour une situation de travaux (décompte BTP) ───
 
 def creer_facture_acompte_situation(*, company, client, user, libelle,
