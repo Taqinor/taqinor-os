@@ -68,12 +68,6 @@ function makeStore({ role = 'admin', permissions = ['stock_modifier', 'stock_voi
   })
 }
 
-// ASTK184 — confirme le geste dans l'AlertDialog maison (jamais window.confirm).
-async function confirmer(libelle) {
-  const dialog = await screen.findByRole('alertdialog')
-  await userEvent.click(within(dialog).getByRole('button', { name: libelle }))
-}
-
 function renderPage(store = makeStore()) {
   return render(
     <Provider store={store}>
@@ -82,6 +76,12 @@ function renderPage(store = makeStore()) {
       </MemoryRouter>
     </Provider>,
   )
+}
+
+// ASTK184 — confirme le geste dans l'AlertDialog maison (jamais window.confirm).
+async function confirmer(libelle) {
+  const dialog = await screen.findByRole('alertdialog')
+  await userEvent.click(within(dialog).getByRole('button', { name: libelle }))
 }
 
 describe('FournisseursStock — statut de blocage (WIR26) + fiche 360 (WIR27)', () => {
