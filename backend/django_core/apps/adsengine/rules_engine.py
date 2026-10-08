@@ -969,6 +969,25 @@ def _recently_acted(company, template_key, target_meta_id, *, since):
 
 
 # ── Émission d'alerte (ADSENG15 : basique ; ADSENG18 enrichit ce point) ───────
+_MIRROR_FOR_TARGET = {
+    'campaign': 'AdCampaignMirror', 'adset': 'AdSetMirror', 'ad': 'AdMirror'}
+
+
+def _target_display_name(company, finding):
+    """AACQ7 — Nom du miroir ciblé par un finding (campagne/ad set/ad),
+    company-scopé ; repli sur l'id Meta si le miroir est introuvable/sans nom."""
+    from . import models as ads_models
+    target_id = finding.get('target_meta_id', '') or ''
+    model_name = _MIRROR_FOR_TARGET.get(finding.get('target_type', ''))
+    if model_name is None:
+        return target_id
+    qs = getattr(ads_models, model_name).objects.filter(company=company)
+    pk = finding.get('target_object_id')
+    mirror = (qs.filter(pk=pk).first() if pk is not None
+              else qs.filter(meta_id=target_id).first())
+    return (getattr(mirror, 'name', '') or target_id) if mirror else target_id
+
+
 def _emit_alert(company, *, template_key, finding, message, action=None,
                 dry_run=False, insufficient=False):
     """Point d'émission d'alerte du moteur. En simulation, aucune alerte n'est
@@ -989,8 +1008,13 @@ def _emit_alert(company, *, template_key, finding, message, action=None,
     if wa_key:
         target_type = finding.get('target_type', '')
         target_id = finding.get('target_meta_id', '')
+        # AACQ7 — NOM lisible de la cible (jamais l'id Meta seul) + devise
+        # RÉELLE du compte : l'alerte et la proposition d'un même constat
+        # portent le même nom de chiffre et la même unité.
         context = alerts_mod.context_from_computed(
-            target_id, finding.get('computed', {}))
+            _target_display_name(company, finding),
+            finding.get('computed', {}),
+            currency=account_currency(company))
         return alerts_mod.emit_guarded_alert(
             company, template_key=wa_key, target_type=target_type,
             target_id=target_id, context=context, action=action,

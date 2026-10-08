@@ -191,20 +191,32 @@ def deep_link(name):
     return base + DEEP_LINKS.get(name, DEEP_LINKS['dashboard'])
 
 
-# 8 gabarits. ``body`` = cause racine + recommandation (une phrase chacune) ;
+# 9 gabarits (AACQ7 : + coût par lead). ``body`` = cause racine + recommandation (une phrase chacune) ;
 # ``severity`` pilote emoji + label + cooldown ; ``link`` = destination du deep
 # link ; ``cta`` = libellé de l'appel à l'action.
 WA_TEMPLATES = {
+    # AACQ7 — montants Meta libellés dans la devise DU COMPTE (``{currency}``),
+    # jamais « MAD » en dur ; le stop-loss CPL a SON gabarit (coût par lead).
+    'cost_per_lead_ceiling': {
+        'severity': SEVERITY_CRITICAL, 'link': 'approvals',
+        'cta': 'Voir et approuver',
+        'body': ("Campagne « {campaign_name} » : coût par lead = {value} "
+                 "{currency} sur {window_days} j (plafond {threshold} "
+                 "{currency}). Recommandation : mettre en pause ou revoir le "
+                 "ciblage."),
+    },
     'cost_per_signature_ceiling': {
         'severity': SEVERITY_CRITICAL, 'link': 'approvals',
         'cta': 'Voir et approuver',
         'body': ("Campagne « {campaign_name} » : coût par signature = {value} "
-                 "MAD sur {window_days} j (plafond {threshold} MAD). "
-                 "Recommandation : mettre en pause ou revoir le ciblage."),
+                 "{currency} sur {window_days} j (plafond {threshold} "
+                 "{currency}). Recommandation : mettre en pause ou revoir le "
+                 "ciblage."),
     },
     'zero_delivery': {
         'severity': SEVERITY_CRITICAL, 'link': 'dashboard', 'cta': 'Détails',
-        'body': ("« {campaign_name} » dépense ({spend} MAD depuis {hours} h) "
+        'body': ("« {campaign_name} » dépense ({spend} {currency} depuis "
+                 "{hours} h) "
                  "mais 0 diffusion. Probable souci Meta "
                  "(paiement / révision / compte). Recommandation : vérifier le "
                  "compte Meta directement."),
@@ -231,7 +243,7 @@ WA_TEMPLATES = {
     },
     'spend_spike': {
         'severity': SEVERITY_WARNING, 'link': 'dashboard', 'cta': 'Détails',
-        'body': ("Dépense de « {campaign_name} » = {spend_today} MAD "
+        'body': ("Dépense de « {campaign_name} » = {spend_today} {currency} "
                  "aujourd'hui, {ratio}× la médiane des 7 derniers jours. "
                  "Recommandation : vérifier qu'aucun changement involontaire "
                  "n'a eu lieu."),
@@ -239,7 +251,8 @@ WA_TEMPLATES = {
     'spend_collapse': {
         'severity': SEVERITY_CRITICAL, 'link': 'dashboard', 'cta': 'Détails',
         'body': ("Dépense de « {campaign_name} » quasi nulle ({spend_today} "
-                 "MAD, médiane {median} MAD/j). Probable paiement échoué ou "
+                 "{currency}, médiane {median} {currency}/j). Probable "
+                 "paiement échoué ou "
                  "compte suspendu. Recommandation : vérifier le compte Meta "
                  "immédiatement."),
     },
@@ -258,7 +271,8 @@ WA_TEMPLATES = {
 _WA_FOR_CATALOGUE = {
     'frequency_high': 'frequency_runaway',
     'zero_delivery': 'zero_delivery',
-    'stop_loss_cpl': 'cost_per_signature_ceiling',
+    # AACQ7 — le stop-loss mesure un CPL : jamais « coût par signature ».
+    'stop_loss_cpl': 'cost_per_lead_ceiling',
     'zero_results': 'zero_results',
 }
 
@@ -275,11 +289,12 @@ def wa_template_for_catalogue(catalogue_key):
     return _WA_FOR_CATALOGUE.get(catalogue_key)
 
 
-def context_from_computed(target_name, computed):
+def context_from_computed(target_name, computed, *, currency='MAD'):
     """Contexte de rendu depuis un ``computed`` de détecteur + le nom de cible.
-    Ajoute des alias de nom (campaign/ad/adset) et de seuil, tolérants."""
+    Ajoute des alias de nom (campaign/ad/adset) et de seuil, tolérants.
+    AACQ7 — ``currency`` = devise RÉELLE du compte (``account_currency``)."""
     ctx = {'campaign_name': target_name, 'ad_name': target_name,
-           'adset_name': target_name}
+           'adset_name': target_name, 'currency': currency or 'MAD'}
     ctx.update(computed or {})
     ctx.setdefault('ceiling', ctx.get('threshold'))
     ctx.setdefault('value', ctx.get('cost_per_lead_mad'))
@@ -302,7 +317,9 @@ def render_whatsapp(template_key, context=None):
     severity = tpl['severity']
     emoji = SEVERITY_EMOJI.get(severity, '')
     label = SEVERITY_LABELS_FR.get(severity, '')
-    body = tpl['body'].format_map(_SafeDict(context or {}))
+    # AACQ7 — devise absente du contexte : même repli que ``account_currency``
+    # (compte sans devise connue), jamais un « ? » dans un montant.
+    body = tpl['body'].format_map(_SafeDict({'currency': 'MAD', **(context or {})}))
     link = deep_link(tpl['link'])
     return f"{emoji} {label} — {body} {tpl['cta']} → {link}"
 

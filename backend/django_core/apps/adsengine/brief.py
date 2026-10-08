@@ -436,8 +436,11 @@ def build_brief(company, *, now=None, create_proposals=True):
 
     proposals = _build_proposals(company, per_campaign) if create_proposals else []
 
+    from .rules_engine import account_currency
     data = {
         'periode': {'debut': start.isoformat(), 'fin': end.isoformat()},
+        # AACQ7 — devise RÉELLE du compte : tous les montants Meta du brief.
+        'devise': account_currency(company),
         'spend_semaine': str(spend),
         'resultats_semaine': results,
         'cpl_semaine': (str(cpl) if cpl is not None else None),
@@ -476,15 +479,19 @@ def render_markdown(data):
     """Rend le brief en markdown FR — uniquement des NOMBRES dans des phrases
     template (aucun texte généré). Déterministe."""
     p = data['periode']
+    # AACQ7 — montants libellés dans la devise du compte (repli MAD pour un
+    # brief historique sans la clé, même convention qu'``account_currency``).
+    devise = data.get('devise') or 'MAD'
     lines = [
         f"# Brief hebdomadaire ({p['debut']} → {p['fin']})",
         '',
         '## Ce qui s\'est passé',
-        f"- Dépense de la semaine : {data['spend_semaine']} MAD "
+        f"- Dépense de la semaine : {data['spend_semaine']} {devise} "
         f"pour {data['resultats_semaine']} résultat(s).",
     ]
     if data['cpl_semaine'] is not None:
-        lines.append(f"- Coût par lead (semaine) : {data['cpl_semaine']} MAD.")
+        lines.append(
+            f"- Coût par lead (semaine) : {data['cpl_semaine']} {devise}.")
     if data['frequence_moyenne'] is not None:
         fat = data['fatigue']['niveau']
         lines.append(
@@ -494,7 +501,7 @@ def render_markdown(data):
     if data['cout_par_signature_cumule'] is not None:
         lines.append(
             f"- Coût par signature (cumulé) : "
-            f"{data['cout_par_signature_cumule']} MAD "
+            f"{data['cout_par_signature_cumule']} {devise} "
             f"pour {data['signatures_cumulees']} signature(s).")
     # ADSDEEP48 — benchmarks internes (cadence créative + taux de gagnants),
     # repères du dossier concurrent (Motion, benchmark §2).

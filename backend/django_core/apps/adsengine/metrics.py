@@ -735,7 +735,12 @@ def today_queue(company, *, limit_per_category=QUEUE_ITEM_LIMIT_PER_CATEGORY):
     if brief is not None:
         data = brief.data if isinstance(brief.data, dict) else {}
         cps = data.get('cout_par_signature_cumule')
-        detail = (f"{cps} MAD/signature (cumulé)" if cps is not None
+        # AACQ7 — devise du compte (portée par le brief, sinon relue).
+        devise = data.get('devise')
+        if not devise:
+            from .rules_engine import account_currency
+            devise = account_currency(company)
+        detail = (f"{cps} {devise}/signature (cumulé)" if cps is not None
                   else 'Brief disponible.')
         items.append({
             'id': f'digest-{brief.pk}', 'categorie': 'digest',
