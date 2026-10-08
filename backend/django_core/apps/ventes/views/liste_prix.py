@@ -191,6 +191,9 @@ def prix_applicable_view(request):
         'produit': produit.id,
         'quantite': str(quantite),
         'prix': str(resolved['prix']),
+        # AGNR1 — le prix servi est HT (contrat prix_applicable.json) : tout
+        # écran TTC le convertit au taux de la ligne.
+        'unite': 'HT',
         'source': resolved['source'],
         'liste_nom': resolved['liste_nom'],
         # NTCPQ17 — décomposition (remise de ligne + cascade globale) au lieu
