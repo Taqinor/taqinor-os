@@ -12,7 +12,7 @@ import {
 } from './quote/sizingReducer.js'
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
-  computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
+  computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, GHI,
   totauxCanoniquesTtc, appartientAuPanierSans, appartientAuPanierAvec,
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
@@ -316,278 +316,22 @@ test('D5 — tarif ONEE et rendement éditables, défaut strictement inchangé',
   assert.equal(fallback.production_annuelle_kwh, def.production_annuelle_kwh)
 })
 
-test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simulateur', () => {
-  const kwp = 14 * 710 / 1000 // 9.94
-  const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-
-  // Onduleur réseau : plus petit ≥ 80 % de 9.94 → 10 kW, Triphasé préféré (≥10 kW)
-  const reseau = rows.find(r => r.designation.includes('réseau'))
-  assert.equal(reseau.designation, 'Onduleur réseau Huawei 10kW Triphasé')
-  assert.equal(reseau.quantite, 1)
-  assert.equal(reseau.prix_unit_ttc, 20000)
-
-  // Onduleur hybride : Deye 10 kW Triphasé
-  const hyb = rows.find(r => r.designation.includes('hybride'))
-  assert.equal(hyb.designation, 'Onduleur hybride Deye 10kW Triphasé')
-  assert.equal(hyb.prix_unit_ttc, 28000)
-
-  // Smart Meter + Wifi Dongle : qté 1 dès qu'un onduleur réseau est retenu
-  assert.equal(by('Smart Meter').quantite, 1)
-  assert.equal(by('Smart Meter').prix_unit_ttc, 1800)
-  assert.equal(by('Wifi').quantite, 1)
-  assert.equal(by('Wifi').prix_unit_ttc, 1200)
-
-  // Panneaux : Canadien Solar 710 W × 14 à 1 400 MAD
-  const pan = rows.find(r => r.designation.includes('Panneau'))
-  assert.equal(pan.designation, 'Panneau Canadien Solar 710W')
-  assert.equal(pan.quantite, 14)
-  assert.equal(pan.prix_unit_ttc, 1400)
-
-  // Batteries : cible 10 kWh → 1 × Dyness 10 kWh, 0 × 5 kWh
-  assert.equal(by('Dyness 10').quantite, 1)
-  assert.equal(by('Dyness 10').prix_unit_ttc, 30000)
-  assert.equal(by('Dyness 5').quantite, 0)
-
-  // Structures acier ×14 (500), aluminium 0 ; Socles ×28 (80)
-  assert.equal(by('acier').quantite, 14)
-  assert.equal(by('acier').prix_unit_ttc, 500)
-  assert.equal(by('aluminium').quantite, 0)
-  assert.equal(by('Socles').quantite, 28)
-  assert.equal(by('Socles').prix_unit_ttc, 80)
-
-  // L-FORFAIT (fondateur 24/08/2026) — cotés AU PANNEAU (miroir TTC des
-  // champs Stock) : accessoires 62,5×n, tableau 243,75×n, installation
-  // 2 400 + 300×n. À 14 panneaux :
-  assert.equal(by('Accessoires').prix_unit_ttc, 875)
-  assert.equal(by('Tableau').prix_unit_ttc, 3412.5)
-  assert.equal(by('Installation').prix_unit_ttc, 6600)
-  assert.equal(by('Transport').prix_unit_ttc, 1000)
-  assert.equal(by('Suivi').quantite, 0)
-
-  // Prix entiers à l'écran — SAUF les trois forfaits au panneau : les taux
-  // dérivés du fondateur (÷2 et +30 % sur les anciens ancrages) portent des
-  // centimes légitimes ; la chaîne de totaux les traite exactement.
-  const FORFAITS = ['Accessoires', 'Tableau', 'Installation']
-  rows.forEach(r => {
-    if (FORFAITS.some(f => r.designation.includes(f))) return
-    assert.ok(CLEAN_INT(r.prix_unit_ttc), `prix non entier: ${r.designation} ${r.prix_unit_ttc}`)
-  })
-
-  // Totaux par option, exactement comme updateTotals du simulateur
-  // (recalés L-FORFAIT : −1 312,50 de forfaits vs l'ancienne règle par blocs)
-  // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — les PRIX saisis restent ceux du
-  // simulateur (Σ TTC des paniers inchangée) ; le TOTAL affiché est celui que
-  // le noyau facture sur ces mêmes lignes (chaîne canonique HT → TVA).
-  const sommeTtc = (rs) => rs.reduce((s, r) => s + r.quantite * r.prix_unit_ttc, 0)
-  assert.equal(sommeTtc(rows.filter(appartientAuPanierSans)), 63727.5)
-  assert.equal(sommeTtc(rows.filter(appartientAuPanierAvec)), 101727.5)
-  // ARRONDI-100 : le total par option est ramené au palier de 100 MAD
-  // inférieur ; le noyau de référence reçoit le même palier.
-  const totals = optionTotalsTTC(rows, 0)
-  assert.equal(totals.totalSansBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierSans), 0, PAS_ARRONDI_DEVIS))
-  assert.equal(totals.totalAvecBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierAvec), 0, PAS_ARRONDI_DEVIS))
-  // ARRONDI-100 : 63 727,73 → palier de 100 inférieur (ancienne attente : à moins de 1 MAD de 63 727,5).
-  assert.equal(totals.totalSansBrut, 63700)
-  // ARRONDI-100 : 101 727,72 → palier de 100 inférieur (ancienne attente : à moins de 1 MAD de 101 727,5).
-  assert.equal(totals.totalAvecBrut, 101700)
-})
-
-test('auto-fill 24 panneaux × 710 W : batterie homogène 3×5 kWh (jamais 10+5), structures alu', () => {
-  // BATHOMO/F4 (fondateur 26/08/2026) — l'ancien calcul mélangeait 1×10 + 1×5
-  // (électriquement interdit, l'incident qui a fait retirer le Dyness 10 kWh
-  // du stock). Sur ce fixture (5 kWh = 17 000 TTC → 3 400/kWh ; 10 kWh =
-  // 30 000 TTC → 3 000/kWh), le 10 kWh est moins cher AU kWh, mais 15 kWh
-  // exigerait un 2×10 kWh EN SURPLUS (20 kWh, 60 000 TTC) contre un 3×5 kWh
-  // EXACT (51 000 TTC) : le moins cher au TOTAL gagne, jamais une préférence
-  // de calibre fixe — c'est le 5 kWh, homogène, jamais mélangé.
-  const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh
-  const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'aluminium' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Dyness 10').quantite, 0)
-  assert.equal(by('Dyness 5').quantite, 3)
-  assert.equal(by('Dyness 5').prix_unit_ttc, 17000)
-  assert.equal(by('aluminium').quantite, 24)
-  assert.equal(by('aluminium').prix_unit_ttc, 850)
-  assert.equal(by('acier').quantite, 0)
-  // L-FORFAIT — au panneau, 24 panneaux : 62,5×24 / 243,75×24 / 2 400+300×24
-  assert.equal(by('Accessoires').prix_unit_ttc, 1500)
-  assert.equal(by('Tableau').prix_unit_ttc, 5850)
-  assert.equal(by('Installation').prix_unit_ttc, 9600)
-  // réseau : plus petit ≥ 13.63 → Huawei 15kW Triphasé
-  assert.equal(rows.find(r => r.designation.includes('réseau')).designation,
-    'Onduleur réseau Huawei 15kW Triphasé')
-})
-
-test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré', () => {
-  const kwp = 5 * 710 / 1000 // 3.55 → seuil 2.84
-  const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'acier' })
-  assert.equal(rows.find(r => r.designation.includes('réseau')).designation,
-    'Onduleur réseau Huawei 5kW Monophasé')
-  assert.equal(rows.find(r => r.designation.includes('hybride')).designation,
-    'Onduleur hybride Deye 5kW Monophasé')
-  // cible batterie : max(5, round(3.55/5)*5) = 5 → 1 × Dyness 5 kWh
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Dyness 5').quantite, 1)
-  assert.equal(by('Dyness 10').quantite, 0)
-})
-
 // ── Tolérance d'orthographe Dyness / Deyness (fondateur, 2026-08-18) ─────────
 // La marque s'écrit « Dyness » ; le catalogue a longtemps écrit « Deyness ».
 // Une base pas encore migrée (ou un produit saisi à la main) doit continuer
 // d'alimenter le vivier batterie — sinon l'auto-remplissage retomberait sur
 // TOUTES les batteries du catalogue et proposerait un module Gel ou Lithium
 // générique à la place du bon.
-test('auto-fill : un catalogue encore écrit « Deyness » alimente le même vivier', () => {
-  const ancien = SEEDED.map(p => ({
-    ...p, nom: p.nom.replace('Dyness', 'Deyness'),
-  }))
-  // Le module GÉNÉRIQUE 5 kWh passe DEVANT : sans la tolérance d'orthographe, le
-  // vivier retomberait sur toutes les batteries et retiendrait celui-ci.
-  const iGenerique = ancien.findIndex(p => p.nom.includes('Batterie Lithium'))
-  ancien.unshift(...ancien.splice(iGenerique, 1))
-
-  // BATHOMO/F4 — cible 15 kWh → 3×5 kWh homogène (jamais 1×10 + 1×5 mélangé,
-  // même raison économique que le test « batterie homogène » ci-dessus).
-  const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh
-  const rows = autoFillLines(ancien, { kwp, panelW: 710, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Deyness 10').quantite, 0)
-  assert.equal(by('Deyness 10').prix_unit_ttc, 30000)
-  assert.equal(by('Deyness 5').quantite, 3)
-  assert.equal(by('Deyness 5').prix_unit_ttc, 17000)
-  // Aucune batterie générique ne s'est glissée à la place de la marque.
-  assert.ok(rows.every(r => !r.designation.includes('Lithium')))
-})
-
 // ── PVG4 — garde HAUTE TENSION (BAT-DYN-HV-16, miroir EXACT du garde backend
 // _is_battery_basse_tension, fondateur 2026-08-18) ────────────────────────────
 // La batterie Dyness haute tension (16 kWh) est réservée aux dossiers haute
 // tension : jamais auto-choisie en kit résidentiel, même moins chère et même
 // si sa capacité coïncide par coïncidence avec la cible basse tension.
-test('auto-fill : batterie « haute tension » jamais auto-choisie même moins chère', () => {
-  const avecHV = [...SEEDED]
-  const iDyness10 = avecHV.findIndex(p => p.nom === 'Batterie Dyness 10 kWh')
-  // Insérée AVANT la Dyness 10 kWh normale, bien moins chère (100 vs 30 000),
-  // même marque « Dyness » et capacité coïncidant à 10 kWh, casse mélangée
-  // (« HAUTE TENSION ») : sans le garde, le premier .find() par capacité la
-  // retiendrait à la place de la bonne batterie basse tension.
-  avecHV.splice(iDyness10, 0, P('Batterie Dyness HAUTE TENSION 10 kWh', 100))
-
-  const kwp = 14 * 710 / 1000 // 9.94 → cible batterie 10 kWh
-  const rows = autoFillLines(avecHV, { kwp, panelW: 710, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-
-  // La batterie haute tension n'apparaît dans AUCUNE ligne auto-composée.
-  assert.ok(rows.every(r => !r.designation.toLowerCase().includes('haute tension')))
-  // La vraie Dyness 10 kWh (30 000 DH) est retenue à sa place, comme avant.
-  assert.equal(by('Dyness 10').designation, 'Batterie Dyness 10 kWh')
-  assert.equal(by('Dyness 10').quantite, 1)
-  assert.equal(by('Dyness 10').prix_unit_ttc, 30000)
-})
-
-test('auto-fill : les batteries 5/10 kWh restent choisies (homogène) malgré une HV au catalogue', () => {
-  const avecHV = [...SEEDED, P('Batterie Dyness haute tension 16 kWh', 100)]
-
-  // BATHOMO/F4 — cible 15 kWh → 3×5 kWh homogène, même raison économique.
-  const rows24 = autoFillLines(avecHV, { kwp: 24 * 710 / 1000, panelW: 710, structureType: 'aluminium' })
-  const by24 = (frag) => rows24.find(r => r.designation.includes(frag))
-  assert.equal(by24('Dyness 10').quantite, 0)
-  assert.equal(by24('Dyness 5').quantite, 3)
-
-  const rows5 = autoFillLines(avecHV, { kwp: 5 * 710 / 1000, panelW: 710, structureType: 'acier' })
-  const by5 = (frag) => rows5.find(r => r.designation.includes(frag))
-  assert.equal(by5('Dyness 5').quantite, 1)
-  assert.equal(by5('Dyness 10').quantite, 0)
-})
-
 // ── BATHOMO/F4 (fondateur 26/08/2026, revue adversariale) — MIROIR EXACT du
 // moteur serveur (apps/ventes/services.py::composition_residentielle) :
 // homogène par calibre, EN STOCK seulement, prix TTC total le plus bas,
 // plafond de modules respecté. Mêmes cas que
 // apps/ventes/tests/test_bathomo_banque_homogene.py côté backend.
-test('F4 — prix RÉELS fondateur : 2×5 kWh (28 000 TTC) bat 1×10 kWh (30 000 TTC) pour une cible de 10 kWh', () => {
-  // « 2×5=28 000 beats 1×10=30 000 for a 10 kWh target » (fondateur,
-  // 26/08/2026) : catalogue de production, 5 kWh = 14 000 TTC (2 800/kWh),
-  // 10 kWh = 30 000 TTC (3 000/kWh) — le 5 kWh est moins cher au kWh.
-  const catalogue = [
-    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
-    P('Onduleur hybride Deye 5kW Monophasé', 17000),
-    P('Panneau Canadien Solar 710W', 1400),
-    P('Batterie Dyness 5 kWh', 14000),
-    P('Batterie Dyness 10 kWh', 30000),
-    P('Structures acier', 500), P('Socles', 80),
-    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
-    P('Installation', 4800), P('Transport', 1000),
-  ]
-  const kwp = 14 * 710 / 1000 // 9.94 → cible batterie 10 kWh
-  const rows = autoFillLines(catalogue, { kwp, panelW: 710, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Dyness 5').quantite, 2)
-  assert.equal(by('Dyness 10').quantite, 0)
-})
-
-test('F4 — jusqu\'à 40 kWh (8 packs de 5 kWh) le 5 kWh reste économique, jamais mélangé', () => {
-  const catalogue = [
-    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
-    P('Onduleur hybride Deye 5kW Monophasé', 17000),
-    P('Panneau Canadien Solar 710W', 1400),
-    P('Batterie Dyness 5 kWh', 14000),
-    P('Batterie Dyness 10 kWh', 30000),
-    P('Structures acier', 500), P('Socles', 80),
-    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
-    P('Installation', 4800), P('Transport', 1000),
-  ]
-  for (const cibleKwh of [15, 20, 25, 30, 35, 40]) {
-    const kwp = cibleKwh // panelW=1000W → kwp == cible arrondie au multiple de 5
-    const rows = autoFillLines(catalogue, { kwp, panelW: 1000, structureType: 'acier' })
-    const by = (frag) => rows.find(r => r.designation.includes(frag))
-    assert.equal(by('Dyness 10').quantite, 0, `cible ${cibleKwh} kWh`)
-    assert.equal(by('Dyness 5').quantite * 5, cibleKwh, `cible ${cibleKwh} kWh`)
-  }
-})
-
-test('F4 — un calibre à 0 en stock est EXCLU du choix économique', () => {
-  const catalogue = [
-    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
-    P('Onduleur hybride Deye 5kW Monophasé', 17000),
-    P('Panneau Canadien Solar 710W', 1400),
-    P('Batterie Dyness 5 kWh', 14000),
-    P('Batterie Dyness 10 kWh', 30000, /* qty */ 0), // rupture de stock
-    P('Structures acier', 500), P('Socles', 80),
-    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
-    P('Installation', 4800), P('Transport', 1000),
-  ]
-  // Cible 20 kWh : sans la garde de stock, le 10 kWh (moins cher au kWh à ce
-  // prix) gagnerait l'arbitrage économique — la garde de stock l'exclut.
-  const kwp = 20
-  const rows = autoFillLines(catalogue, { kwp, panelW: 1000, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Dyness 10').quantite, 0)
-  assert.equal(by('Dyness 5').quantite, 4)
-})
-
-test('F4 — max_modules_par_banc (specs_solaire) rejette une candidate qui le dépasse, jamais un mélange', () => {
-  const bat5 = P('Batterie Dyness 5 kWh', 14000)
-  bat5.specs_solaire = { famille: 'batterie', max_modules_par_banc: 2 }
-  const catalogue = [
-    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
-    P('Onduleur hybride Deye 5kW Monophasé', 17000),
-    P('Panneau Canadien Solar 710W', 1400),
-    bat5,
-    P('Batterie Dyness 10 kWh', 30000),
-    P('Structures acier', 500), P('Socles', 80),
-    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
-    P('Installation', 4800), P('Transport', 1000),
-  ]
-  // 20 kWh exigerait 4×5 (au-dessus du plafond 2) : REJETÉ — seul le 10 kWh
-  // (2×10, sans plafond) reste, jamais une banque tronquée à 2×5=10 kWh.
-  const rows = autoFillLines(catalogue, { kwp: 20, panelW: 1000, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Dyness 5').quantite, 0)
-  assert.equal(by('Dyness 10').quantite, 2)
-})
-
 // ── PVOND — garde batterie PILOTÉ PAR LA DONNÉE + verrou de complétude ──────
 // Les deux tests PVG4 ci-dessus restent VRAIS et inchangés : sans
 // `specs_solaire` au catalogue (fixtures ci-dessus), le repli mot-clé garde la
@@ -599,51 +343,6 @@ const _specs = (p, specs) => ({
     famille: null, plage_batterie_v: null, v_nominal: null, manquantes: [],
     ...specs,
   },
-})
-
-test('PVOND — une batterie hors plage est refusée même si son nom ne dit rien', () => {
-  // 204,8 V sous un onduleur 48 V : appairage électriquement impossible que le
-  // mot-clé « haute tension » ne voyait pas (le nom est parfaitement neutre).
-  const catalogue = SEEDED.map(p =>
-    p.nom === 'Onduleur hybride Deye 10kW Triphasé'
-      ? _specs(p, { famille: 'onduleur', plage_batterie_v: [40, 60] })
-      : p)
-  catalogue.push(_specs(P('Batterie LFP 10 kWh rack', 100),
-                        { famille: 'batterie', v_nominal: 204.8 }))
-
-  const rows = autoFillLines(catalogue, { kwp: 14 * 710 / 1000, panelW: 710, structureType: 'acier' })
-  assert.ok(rows.every(r => !r.designation.includes('LFP')))
-})
-
-test('PVOND — une batterie haute tension EST retenue sous un onduleur haute tension', () => {
-  // L'autre moitié du gain : le mot-clé interdisait l'appairage LÉGITIME.
-  const catalogue = SEEDED
-    .filter(p => !p.nom.startsWith('Batterie'))
-    .map(p => p.nom === 'Onduleur hybride Deye 10kW Triphasé'
-      ? _specs(p, { famille: 'onduleur', plage_batterie_v: [160, 700] })
-      : p)
-  catalogue.push(_specs(P('Batterie Dyness haute tension 10 kWh', 40000),
-                        { famille: 'batterie', v_nominal: 204.8 }))
-
-  const rows = autoFillLines(catalogue, { kwp: 14 * 710 / 1000, panelW: 710, structureType: 'acier' })
-  const bat = rows.find(r => r.designation.includes('haute tension'))
-  assert.ok(bat, 'la batterie HV aurait dû être retenue sous un onduleur HV')
-  assert.equal(bat.quantite, 1)
-})
-
-test('PVOND — un onduleur au contrat incomplet est écarté ET nommé', () => {
-  const catalogue = SEEDED.map(p =>
-    p.nom === 'Onduleur réseau Huawei 10kW Triphasé'
-      ? _specs(p, { famille: 'onduleur', manquantes: ['courant maxi par MPPT (A)'] })
-      : p)
-
-  const rows = autoFillLines(catalogue, { kwp: 10, panelW: 710, structureType: 'acier' })
-
-  assert.ok(rows.onduleursIncomplets.some(o => o.nom === 'Onduleur réseau Huawei 10kW Triphasé'))
-  assert.deepEqual(rows.onduleursIncomplets[0].manquantes, ['courant maxi par MPPT (A)'])
-  // Il n'est PAS chiffré : la ligne « Onduleur réseau » porte un autre modèle.
-  const reseau = rows.find(r => isReseauInverter(r.designation))
-  assert.notEqual(reseau?.designation, 'Onduleur réseau Huawei 10kW Triphasé')
 })
 
 // ── PVOND — LE REPLI MOT-CLÉ N'EST PLUS UN RATTRAPAGE UNIVERSEL ─────────────
@@ -674,27 +373,6 @@ test('PVOND — le repli mot-clé exige « batterie » dans le nom (miroir Pytho
   // Un produit qui n'est pas une batterie n'est jamais « compatible ».
   assert.equal(batterieCompatible(P('Onduleur hybride Deye 10kW', 28000), null),
                false)
-})
-
-test('PVOND — vivier batterie VIDE sous une plage : la composition AVERTIT', () => {
-  // Le cas RÉEL du catalogue : sous un Deye 15 kW (160-700 V), les batteries
-  // génériques sans fiche partaient quand même — désormais aucune ne passe, et
-  // le devis le DIT au lieu de partir silencieusement sans stockage.
-  const catalogue = SEEDED.map(p =>
-    p.nom === 'Onduleur hybride Deye 15kW Triphasé'
-      ? _specs(p, { famille: 'onduleur', plage_batterie_v: [160, 700] })
-      : p)
-
-  const rows = autoFillLines(catalogue, { kwp: 15, panelW: 710, structureType: 'acier' })
-
-  assert.equal(rows.avertissementsBatterie.length, 1)
-  assert.ok(rows.avertissementsBatterie[0].includes('160-700 V'))
-  assert.ok(rows.avertissementsBatterie[0].includes('SANS batterie'))
-})
-
-test('PVOND — aucune alerte batterie quand le vivier sert normalement', () => {
-  const rows = autoFillLines(SEEDED, { kwp: 10, panelW: 710, structureType: 'acier' })
-  assert.deepEqual(rows.avertissementsBatterie, [])
 })
 
 // ── PVOND — CONTRAT CONDITIONNEL À LA FAMILLE (ordre fondateur 18/08/2026) ──
@@ -736,111 +414,8 @@ test('PVOND — une plage SERVIE par l\'API l\'emporte sur le défaut de famille
   assert.deepEqual(plageBatterieOnduleur(reseauAvecBatterie), [350, 560])
 })
 
-test('PVOND — un RÉSEAU complet n\'est plus grisé, un HYBRIDE sans plage l\'est encore', () => {
-  const catalogue = SEEDED.map(p => {
-    if (p.nom === 'Onduleur réseau Huawei 10kW Triphasé') {
-      // Ce que le backend sert désormais : plage « aucune », rien ne manque.
-      return _specs(p, { famille: 'onduleur', plage_batterie_v: [0, 0], manquantes: [] })
-    }
-    if (p.nom === 'Onduleur hybride Deye 10kW Triphasé') {
-      return _specs(p, { famille: 'onduleur',
-                         manquantes: ['plage de tension batterie (V)'] })
-    }
-    return p
-  })
-
-  const rows = autoFillLines(catalogue, { kwp: 10, panelW: 710, structureType: 'acier' })
-
-  const noms = rows.onduleursIncomplets.map(o => o.nom)
-  assert.ok(!noms.includes('Onduleur réseau Huawei 10kW Triphasé'),
-            'un onduleur réseau ne doit plus être grisé pour la plage batterie')
-  assert.ok(noms.includes('Onduleur hybride Deye 10kW Triphasé'),
-            'un hybride sans plage batterie doit rester écarté ET nommé')
-  assert.deepEqual(
-    rows.onduleursIncomplets.find(o => o.nom === 'Onduleur hybride Deye 10kW Triphasé').manquantes,
-    ['plage de tension batterie (V)'])
-})
-
 // ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)
-test('QX19 — autoFillLines expose actualPanelW / nbPanneaux / kwcReel', () => {
-  const kwp = 14 * 710 / 1000
-  const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'acier' })
-  assert.equal(rows.actualPanelW, 710)     // catalogue a le 710 W demandé
-  assert.equal(rows.nbPanneaux, 14)
-  assert.equal(rows.kwcReel, Math.round(14 * 710 / 10) / 100)
-})
-
-test('QX19 — nbPanneaux override (taille souhaitée kWc) pilote le nb de panneaux', () => {
-  // taille souhaitée 7.1 kWc → panneauxPourKwc(7.1,710) = 10 panneaux
-  const rows = autoFillLines(SEEDED, { kwp: 7.1, panelW: 710, structureType: 'acier', nbPanneaux: 10 })
-  assert.equal(rows.nbPanneaux, 10)
-  // la ligne panneau (nom catalogue contient « Panneau ») porte la qté override
-  const panelRow = rows.find(r => /panneau/i.test(r.designation))
-  assert.equal(panelRow.quantite, 10)
-})
-
-test('QX19 — substitution de wattage : actualPanelW reflète le panneau retenu', () => {
-  // catalogue SANS panneau 710 W → substitution vers le plus proche (550 W)
-  const CAT550 = SEEDED.filter(p => !/710/.test(p.nom))
-    .concat([{ id: 9001, nom: 'Panneau mono 550W', prix_vente: ht(1400) }])
-  const rows = autoFillLines(CAT550, { kwp: 7.1, panelW: 710, structureType: 'acier' })
-  assert.equal(rows.actualPanelW, 550)     // wattage RÉEL du panneau substitué
-  assert.notEqual(rows.actualPanelW, 710)  // divergence détectable côté écran
-})
-
 // ── QF8 — Smart Meter + Clé Wifi UNIQUEMENT sur onduleur Huawei ─────────────
-test('QF8 — catalogue 100% Deye (réseau + hybride) : Smart Meter et Wifi Dongle qté 0', () => {
-  const DEYE_ONLY = [
-    P('Onduleur réseau Deye 10kW Triphasé', 18000),
-    P('Onduleur hybride Deye 10kW Triphasé', 28000),
-    P('Panneau Jinko 710W', 1400),
-    P('Batterie Dyness 10 kWh', 30000),
-    P('Structures acier', 500),
-    P('Socles', 80),
-    P('Smart Meter', 1800),
-    P('Wifi Dongle', 1200),
-    P('Accessoires', 2000),
-    P('Tableau De Protection AC/DC', 2000),
-    P('Installation', 4800),
-    P('Transport', 1000),
-  ]
-  const kwp = 14 * 710 / 1000
-  const rows = autoFillLines(DEYE_ONLY, { kwp, panelW: 710, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Smart Meter').quantite, 0)
-  assert.equal(by('Wifi').quantite, 0)
-})
-
-test('QF8 — réseau Huawei mais hybride Deye : Smart Meter/Wifi attachés (réseau Huawei suffit)', () => {
-  const MIXED = [
-    P('Onduleur réseau Huawei 10kW Triphasé', 20000),
-    P('Onduleur hybride Deye 10kW Triphasé', 28000),
-    P('Panneau Jinko 710W', 1400),
-    P('Smart Meter', 1800),
-    P('Wifi Dongle', 1200),
-  ]
-  const kwp = 14 * 710 / 1000
-  const rows = autoFillLines(MIXED, { kwp, panelW: 710, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Smart Meter').quantite, 1)
-  assert.equal(by('Wifi').quantite, 1)
-})
-
-test('QF8 — réseau Deye mais hybride Huawei : Smart Meter/Wifi attachés (hybride Huawei suffit)', () => {
-  const MIXED = [
-    P('Onduleur réseau Deye 10kW Triphasé', 18000),
-    P('Onduleur hybride Huawei 10kW Triphasé', 30000),
-    P('Panneau Jinko 710W', 1400),
-    P('Smart Meter', 1800),
-    P('Wifi Dongle', 1200),
-  ]
-  const kwp = 14 * 710 / 1000
-  const rows = autoFillLines(MIXED, { kwp, panelW: 710, structureType: 'acier' })
-  const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Smart Meter').quantite, 1)
-  assert.equal(by('Wifi').quantite, 1)
-})
-
 // ══ Multi-marchés ═════════════════════════════════════════════════════════════
 import {
   prixParKwc, discountForTarget, computeBuyCost,
@@ -1637,87 +1212,6 @@ test('STKCAT10 — structureChoisie : id résolu sur le catalogue COMPLET, aprè
   assert.equal(structureChoisie([...SEEDED_PERGOLA, sansPrix], 7777), null)
 })
 
-test('STKCAT10 — SANS produit choisi : composition BYTE-IDENTIQUE à l historique', () => {
-  const base = { kwp: KWP14, panelW: 710, structureType: 'acier' }
-  const avant = autoFillLines(SEEDED_PERGOLA, base)
-  // Les trois façons de « ne pas choisir » donnent le MÊME tableau, au
-  // caractère près, que l'appel historique sans le paramètre.
-  for (const vide of [undefined, null, '']) {
-    assert.deepEqual(
-      autoFillLines(SEEDED_PERGOLA, { ...base, structureProduitId: vide }), avant,
-      `structureProduitId=${JSON.stringify(vide)} doit être un no-op`)
-  }
-  // …et un id qui ne résout RIEN (autre société / produit sans prix) aussi.
-  assert.deepEqual(autoFillLines(SEEDED_PERGOLA, { ...base, structureProduitId: 99999 }), avant)
-  // La paire d'hier est bien là : acier à 14, aluminium à 0.
-  const acier = avant.find(r => r.designation.includes('acier'))
-  const alu = avant.find(r => r.designation.includes('aluminium'))
-  assert.equal(acier.quantite, 14)
-  assert.equal(alu.quantite, 0)
-})
-
-test('STKCAT10 — AVEC une pergola choisie : UNE ligne, à son nom, rôle générique structure', () => {
-  const rows = autoFillLines(SEEDED_PERGOLA, {
-    kwp: KWP14, panelW: 710, structureType: 'acier',
-    structureProduitId: PERGOLA.id,
-  })
-  const structures = rows.filter(r => String(r.produit) === String(PERGOLA.id))
-  assert.equal(structures.length, 1, 'une seule ligne structure, jamais la paire')
-  assert.equal(structures[0].designation, 'Pergola bioclimatique 4x3')
-  assert.equal(structures[0].quantite, 14)
-  assert.equal(structures[0].prix_unit_ttc, 12000)
-  // La paire figée a DISPARU : plus aucune ligne « Structures acier/aluminium ».
-  assert.equal(rows.filter(r => /Structures (acier|aluminium)/.test(r.designation)).length, 0)
-  // LE RÔLE ÉMIS, prouvé par l'ordre : `ordreLignes: ['structure']` ne peut
-  // remonter cette ligne en tête que si elle porte bien le rôle GÉNÉRIQUE.
-  const ordonne = autoFillLines(SEEDED_PERGOLA, {
-    kwp: KWP14, panelW: 710, structureType: 'acier',
-    structureProduitId: PERGOLA.id, ordreLignes: ['structure'],
-  })
-  assert.equal(ordonne[0].designation, 'Pergola bioclimatique 4x3')
-  // …et le rôle acier ne la classe PAS (ce serait l'ancien défaut implicite).
-  const ordonneAcier = autoFillLines(SEEDED_PERGOLA, {
-    kwp: KWP14, panelW: 710, structureType: 'acier',
-    structureProduitId: PERGOLA.id, ordreLignes: ['structure_acier'],
-  })
-  assert.notEqual(ordonneAcier[0].designation, 'Pergola bioclimatique 4x3')
-})
-
-test('STKCAT10 — un produit choisi qui porte encore « aluminium » garde le rôle structure_alu', () => {
-  const alu = SEEDED.find(p => p.nom === 'Structures aluminium')
-  const rows = autoFillLines(SEEDED_PERGOLA, {
-    kwp: KWP14, panelW: 710,
-    // Le bouton dit « acier » : le PRODUIT choisi l'emporte intégralement,
-    // les deux ne se combinent jamais (même règle que le serveur).
-    structureType: 'acier', structureProduitId: alu.id,
-    ordreLignes: ['structure_alu'],
-  })
-  assert.equal(rows[0].designation, 'Structures aluminium')
-  assert.equal(rows[0].quantite, 14)
-  assert.equal(rows.filter(r => /Structures acier/.test(r.designation)).length, 0)
-})
-
-test('STKCAT10 — un produit choisi ne déclenche AUCUNE « marque introuvable » de structure', () => {
-  // Une marque épinglée sans AUCUN candidat au stock : SANS choix explicite,
-  // c'est un vrai motif de refus (le devis partirait sans structure).
-  const marques = { structure_acier: 'MarqueInexistante', structure_alu: 'MarqueInexistante' }
-  const base = { kwp: KWP14, panelW: 710, structureType: 'acier', marques }
-  const sans = autoFillLines(SEEDED_PERGOLA, base)
-  const rolesSans = (sans.marquesManquantes ?? []).map((m) => m.role)
-  assert.ok(rolesSans.includes('structure_acier'), 'sans choix, la marque manquante est consignée')
-
-  // AVEC un produit choisi, le rôle n'est même pas consulté — miroir EXACT du
-  // serveur, qui n'appelle `par_marque` que dans sa branche `else`. Sans cette
-  // symétrie, une épingle orpheline ferait REFUSER un devis à pergola pour un
-  // rôle qu'il n'utilise pas.
-  const avec = autoFillLines(SEEDED_PERGOLA, { ...base, structureProduitId: PERGOLA.id })
-  const rolesAvec = (avec.marquesManquantes ?? []).map((m) => m.role)
-  assert.ok(!rolesAvec.some((r) => r.startsWith('structure')),
-    `aucun rôle structure attendu, reçu ${JSON.stringify(rolesAvec)}`)
-  // …et la pergola est bien la ligne structure, à sa quantité.
-  assert.equal(avec.filter((r) => String(r.produit) === String(PERGOLA.id)).length, 1)
-})
-
 // QJR529 — la remise PAR LIGNE stockée (LigneDevis.remise) compte dans le
 // même calcul que les totaux canoniques, comme `total_ht` = q × pu × (1 − remise/100)
 // côté serveur : sinon l'écran ≠ le PDF.
@@ -1743,3 +1237,32 @@ test('ERR-QJR576 — SCENARIOS_ALTERNATIVE est la liste unique de quote/scenario
   assert.deepEqual([...SCENARIOS_ALTERNATIVE].sort(),
     ['Avec batterie', 'Les deux (Sans + Avec)', 'Sans batterie'])
 })
+
+// ADEV69 — second composeur supprimé (D-QJR5-9) : la composition vit au serveur (apps/ventes/domain/composition.py, testée côté backend).
+// Tests retirés (ils ne protégeaient QUE `autoFillLines`) :
+//   · auto-fill 14 panneaux × 710 W : équipements et prix identiques au simulateur
+//   · auto-fill 24 panneaux × 710 W : batterie homogène 3×5 kWh (jamais 10+5), structures alu
+//   · auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré
+//   · auto-fill : un catalogue encore écrit « Deyness » alimente le même vivier
+//   · auto-fill : batterie « haute tension » jamais auto-choisie même moins chère
+//   · auto-fill : les batteries 5/10 kWh restent choisies (homogène) malgré une HV au catalogue
+//   · F4 — prix RÉELS fondateur : 2×5 kWh (28 000 TTC) bat 1×10 kWh (30 000 TTC) pour une cible de 10 kWh
+//   · F4 — jusqu\
+//   · F4 — un calibre à 0 en stock est EXCLU du choix économique
+//   · F4 — max_modules_par_banc (specs_solaire) rejette une candidate qui le dépasse, jamais un mélange
+//   · PVOND — une batterie hors plage est refusée même si son nom ne dit rien
+//   · PVOND — une batterie haute tension EST retenue sous un onduleur haute tension
+//   · PVOND — un onduleur au contrat incomplet est écarté ET nommé
+//   · PVOND — vivier batterie VIDE sous une plage : la composition AVERTIT
+//   · PVOND — aucune alerte batterie quand le vivier sert normalement
+//   · PVOND — un RÉSEAU complet n\
+//   · QX19 — autoFillLines expose actualPanelW / nbPanneaux / kwcReel
+//   · QX19 — nbPanneaux override (taille souhaitée kWc) pilote le nb de panneaux
+//   · QX19 — substitution de wattage : actualPanelW reflète le panneau retenu
+//   · QF8 — catalogue 100% Deye (réseau + hybride) : Smart Meter et Wifi Dongle qté 0
+//   · QF8 — réseau Huawei mais hybride Deye : Smart Meter/Wifi attachés (réseau Huawei suffit)
+//   · QF8 — réseau Deye mais hybride Huawei : Smart Meter/Wifi attachés (hybride Huawei suffit)
+//   · STKCAT10 — SANS produit choisi : composition BYTE-IDENTIQUE à l historique
+//   · STKCAT10 — AVEC une pergola choisie : UNE ligne, à son nom, rôle générique structure
+//   · STKCAT10 — un produit choisi qui porte encore « aluminium » garde le rôle structure_alu
+//   · STKCAT10 — un produit choisi ne déclenche AUCUNE « marque introuvable » de structure

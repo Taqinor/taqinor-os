@@ -111,7 +111,8 @@ import {
   // sur-vend jusqu'au plafond du balayage.
   // PVORD (fondateur 19/08/2026) — ordre par défaut des lignes de devis :
   // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
-  // ordre »), appliquée par autoFillLines via ordreLignes.
+  // ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
+  // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
   // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
   _hasPrix,
   // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures du lead.

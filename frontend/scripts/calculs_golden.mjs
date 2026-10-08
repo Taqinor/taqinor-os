@@ -91,8 +91,6 @@ export function figer(v) {
 export function calculer(e, f, cat) {
   const x = e.entree
   switch (e.axe) {
-    case 'autoFillLines':
-      return figer(f.autoFillLines(cat[x.catalogue], x.options))
     case 'defaultProductLines':
       return figer(f.defaultProductLines(cat[x.catalogue], x.ordreLignes))
     case 'structureRoleForName':
@@ -212,13 +210,14 @@ export function genEntrees(f, cat) {
     push('orderLinesByRolePreference', { tagged, ordreLignes })
   }
 
-  // Lignes de référence (DONNÉES figées dans le JSON) tirées d'autoFillLines.
-  const ref = (catalogue, options) => plain(f.autoFillLines(cat[catalogue], options))
-  const L5 = ref('seed94', { kwp: 5, panelW: 710, structureType: 'acier' })
-  const L10 = ref('seed94', { kwp: 10, panelW: 710, structureType: 'acier' })
-  const L7off = ref('seed94', { kwp: 7.1, panelW: 710, structureType: 'aluminium', offgrid: true })
-  const L30r = ref('realPage1', { kwp: 30, panelW: 710, structureType: 'acier', mpptPaires: 2 })
-  const LIGNES = [L5, L10, L7off, L30r]
+  // Lignes de référence (DONNÉES figées dans le JSON). ADEV69 — elles étaient
+  // tirées d'`autoFillLines` (supprimé : un seul composeur, côté serveur) :
+  // elles sont désormais RELUES du golden commis (les quatre premières entrées
+  // `deriveRoleOrderFromLines`, mêmes octets), jamais recalculées.
+  const precedent = JSON.parse(readFileSync(EXPECTED_PATH, 'utf8'))
+  const LIGNES = precedent.entries
+    .filter((e) => e.axe === 'deriveRoleOrderFromLines').slice(0, 4).map((e) => e.entree.lignes)
+  const [L5, L10, L7off, L30r] = LIGNES
 
   for (const lignes of LIGNES) push('deriveRoleOrderFromLines', { lignes })
   push('deriveRoleOrderFromLines', { lignes: [] })
@@ -298,7 +297,9 @@ async function main() {
   const cat = chargerCatalogues()
   // Aller-retour JSON AVANT le calcul : l'attendu est calculé sur l'entrée
   // exactement telle que le test la relira.
-  const entries = genEntrees(solar, cat).map((e) => {
+  // ADEV69 — l'axe `autoFillLines` n'est plus calculé (fonction supprimée) ;
+  // ses tirages restent dans la séquence (mêmes ids, même graine pour la suite).
+  const entries = genEntrees(solar, cat).filter((e) => e.axe !== 'autoFillLines').map((e) => {
     const relue = JSON.parse(JSON.stringify(e))
     return { ...relue, attendu: calculer(relue, solar, cat) }
   })

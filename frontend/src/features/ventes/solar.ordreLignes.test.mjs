@@ -12,7 +12,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  autoFillLines, defaultProductLines, orderLinesByRolePreference,
+  defaultProductLines, orderLinesByRolePreference,
   deriveRoleOrderFromLines,
 } from './solar.js'
 
@@ -74,46 +74,6 @@ test('orderLinesByRolePreference : tri STABLE — deux lignes du MÊME rôle pr�
 
 // ── 2. autoFillLines(..., ordreLignes) ──────────────────────────────────────
 
-test('autoFillLines sans ordreLignes : sortie BYTE-IDENTIQUE au comportement historique', () => {
-  const kwp = 14 * 710 / 1000
-  const opts = { kwp, panelW: 710, structureType: 'acier' }
-  const historique = autoFillLines(SEEDED, opts)
-  const sansPref = autoFillLines(SEEDED, { ...opts, ordreLignes: undefined })
-  const prefVide = autoFillLines(SEEDED, { ...opts, ordreLignes: [] })
-  assert.deepEqual(sansPref.map(r => r.designation), historique.map(r => r.designation))
-  assert.deepEqual(prefVide.map(r => r.designation), historique.map(r => r.designation))
-})
-
-test('autoFillLines(ordreLignes) : le panneau passe en TÊTE quand préféré', () => {
-  const kwp = 14 * 710 / 1000
-  const rows = autoFillLines(SEEDED, {
-    kwp, panelW: 710, structureType: 'acier', ordreLignes: ['panneau'],
-  })
-  assert.match(rows[0].designation, /Panneau/)
-})
-
-test('autoFillLines(ordreLignes) : les métadonnées du tableau (kwcReel, nbPanneaux, marquesManquantes…) survivent au réordonnancement', () => {
-  const kwp = 14 * 710 / 1000
-  const rows = autoFillLines(SEEDED, {
-    kwp, panelW: 710, structureType: 'acier', ordreLignes: ['panneau', 'batterie'],
-  })
-  assert.equal(rows.nbPanneaux, 14)
-  assert.ok(rows.kwcReel > 0)
-  assert.deepEqual(rows.marquesManquantes, [])
-  assert.deepEqual(rows.onduleursIncomplets, [])
-})
-
-test('autoFillLines(ordreLignes) : le total des quantités/prix ne change PAS — seul l\'ORDRE bouge', () => {
-  const kwp = 14 * 710 / 1000
-  const opts = { kwp, panelW: 710, structureType: 'acier' }
-  const historique = autoFillLines(SEEDED, opts)
-  const reordonne = autoFillLines(SEEDED, { ...opts, ordreLignes: ['transport', 'suivi', 'panneau'] })
-  const somme = (rows) => rows.reduce(
-    (s, r) => s + (parseFloat(r.quantite) || 0) * (parseFloat(r.prix_unit_ttc) || 0), 0)
-  assert.equal(somme(reordonne), somme(historique))
-  assert.equal(reordonne.length, historique.length)
-})
-
 // ── 3. defaultProductLines(..., ordreLignes) ────────────────────────────────
 
 test('defaultProductLines sans ordreLignes : ordre canonique inchangé', () => {
@@ -158,14 +118,10 @@ test('deriveRoleOrderFromLines : ignore les lignes SANS classification reconnue 
   assert.deepEqual(deriveRoleOrderFromLines(lines), ['panneau'])
 })
 
-test('deriveRoleOrderFromLines : round-trip — le résultat est ACCEPTÉ par orderLinesByRolePreference sans erreur', () => {
-  const lines = [
-    { designation: 'Transport' },
-    { designation: 'Panneau Canadien Solar 710W' },
-    { designation: 'Onduleur réseau Huawei 10kW Triphasé' },
-  ]
-  const derived = deriveRoleOrderFromLines(lines)
-  const kwp = 14 * 710 / 1000
-  const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'acier', ordreLignes: derived })
-  assert.equal(rows[0].designation, 'Transport')
-})
+// ADEV69 — second composeur supprimé (D-QJR5-9) : la composition vit au serveur (apps/ventes/domain/composition.py, testée côté backend).
+// Tests retirés (ils ne protégeaient QUE `autoFillLines`) :
+//   · autoFillLines sans ordreLignes : sortie BYTE-IDENTIQUE au comportement historique
+//   · autoFillLines(ordreLignes) : le panneau passe en TÊTE quand préféré
+//   · autoFillLines(ordreLignes) : les métadonnées du tableau (kwcReel, nbPanneaux, marquesManquantes…) survivent au réordonnancement
+//   · autoFillLines(ordreLignes) : le total des quantités/prix ne change PAS — seul l\
+//   · deriveRoleOrderFromLines : round-trip — le résultat est ACCEPTÉ par orderLinesByRolePreference sans erreur
