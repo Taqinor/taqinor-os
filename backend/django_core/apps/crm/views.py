@@ -766,8 +766,12 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from . import activity
         from .models import Lead
         client = self.get_object()
-        lead = (Lead.objects
-                .filter(company=client.company, client=client)
+        # ACRM7 — le lead relancé est choisi parmi ceux de la PORTÉE de
+        # l'appelant : jamais une note chez un collègue hors portée.
+        lead = (scope_queryset(
+                    Lead.objects.filter(company=client.company,
+                                        client=client),
+                    request.user, ['owner'])
                 .order_by('-date_creation').first())
         if lead is None:
             return Response(
@@ -1947,8 +1951,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             upload.close()
 
         try:
+            # ACRM7 (jumeau) — doublons cherchés dans la PORTÉE.
             result = scan_carte_visite(
-                company=request.user.company, file_bytes=content)
+                company=request.user.company, file_bytes=content,
+                queryset=self._leads_en_portee())
         except CarteVisiteScanUnavailable as exc:
             message = str(exc)
             unavailable = 'configuré' in message
@@ -2506,10 +2512,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         mode = (request.data.get('mode') or '').strip()
         client_id = request.data.get('client_id')
-        from .services import convertir_lead_en_client
+        from .services import ClientIntrouvable, convertir_lead_en_client
         try:
+            # ACRM7 — le client à lier est cherché dans la PORTÉE de
+            # l'appelant (même règle que ``ClientViewSet.get_queryset``).
             client = convertir_lead_en_client(
-                lead=lead, user=request.user, mode=mode, client_id=client_id)
+                lead=lead, user=request.user, mode=mode, client_id=client_id,
+                clients=scope_client_queryset(
+                    Client.objects.filter(company=lead.company),
+                    request.user))
+        except ClientIntrouvable as exc:
+            return Response({'client_id': [str(exc)]},
+                            status=status.HTTP_400_BAD_REQUEST)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -3090,8 +3104,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # le corps) ; une charge illisible est refusée sur `proprietaire`.
             corps = refus if 'proprietaire' in refus else {'proprietaire': refus}
             return Response(corps, status=status.HTTP_400_BAD_REQUEST)
+        # ACRM7 — rapprochement borné aux leads en portée (D-ACRM-1).
         proprietaire, cree = creer_lead_proprietaire(
-            lead, request.user, donnees)
+            lead, request.user, donnees, queryset=self._leads_en_portee())
         lead.refresh_from_db()
         return Response({
             'issue': 'proprietaire_cree' if cree else 'proprietaire_relie',

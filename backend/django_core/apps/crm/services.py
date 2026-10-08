@@ -5587,7 +5587,19 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
     return champs, message
 
 
-def convertir_lead_en_client(*, lead, user, mode, client_id=None):
+class ClientIntrouvable(ValueError):
+    """ACRM7 — le client à lier est absent OU hors de la portée de
+    l'appelant : les deux cas reçoivent la MÊME réponse (jamais un oracle
+    d'existence)."""
+
+    MESSAGE = 'Client introuvable.'
+
+    def __init__(self):
+        super().__init__(self.MESSAGE)
+
+
+def convertir_lead_en_client(*, lead, user, mode, client_id=None,
+                             clients=None):
     """ZSAL4 — assistant de conversion EXPLICITE lead → client (Odoo « Convert
     to Opportunity » : nouveau contact / lier un contact existant / ne pas
     lier), à la main du commercial.
@@ -5600,6 +5612,11 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None):
         société que le lead (``client_id`` obligatoire ; ValueError sinon,
         ou si le client n'existe pas / est d'une autre société).
       - ``'aucun'`` : marque le lead qualifié sans client (ne crée rien).
+
+    ACRM7 — ``clients`` (queryset) borne le mode ``'lier'`` à la PORTÉE de
+    l'appelant (la vue passe ``scope_client_queryset``) : un client hors
+    portée lève :class:`ClientIntrouvable`, exactement comme un id
+    inexistant. ``None`` = toute la société (chemins système).
 
     Toute conversion est journalisée dans le chatter du lead (choix +
     acteur). Retourne le :class:`Client` résolu (ou None pour ``'aucun'``).
@@ -5618,10 +5635,14 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None):
     if mode == 'lier':
         if not client_id:
             raise ValueError("client_id requis pour le mode « lier ».")
-        client = Client.objects.filter(
-            id=client_id, company=lead.company).first()
+        base = Client.objects if clients is None else clients
+        try:
+            client = base.filter(
+                id=int(client_id), company=lead.company).first()
+        except (TypeError, ValueError):
+            client = None
         if client is None:
-            raise ValueError("Client introuvable dans votre société.")
+            raise ClientIntrouvable()
         lead.client = client
         lead.save(update_fields=['client'])
         nom_client = f"{client.nom} {client.prenom or ''}".strip()
@@ -5781,7 +5802,7 @@ class CarteVisiteScanUnavailable(Exception):
     quand le fichier fourni n'est pas une image reconnue (400 côté vue)."""
 
 
-def scan_carte_visite(*, company, file_bytes, mime_hint=''):
+def scan_carte_visite(*, company, file_bytes, mime_hint='', queryset=None):
     """XSAL8 — Extrait nom/société/téléphone/email d'une photo de carte de
     visite, PRÉ-VÉRIFIE les doublons, et renvoie un dict prêt à pré-remplir le
     modal « Lead express » — NE CRÉE JAMAIS de lead (l'utilisateur valide).
@@ -5791,7 +5812,10 @@ def scan_carte_visite(*, company, file_bytes, mime_hint=''):
     n'est configuré (``ZHIPU_API_KEY`` absent — dégradation propre, jamais
     d'appel réseau). Ne persiste JAMAIS l'image reçue au-delà du traitement en
     mémoire (aucun stockage MinIO — contrairement aux autres flux OCR qui
-    rattachent le fichier en pièce jointe)."""
+    rattachent le fichier en pièce jointe).
+
+    ACRM7 (jumeau) — ``queryset`` borne la pré-vérification des doublons aux
+    leads de la PORTÉE de l'appelant (``None`` = toute la société)."""
     if not file_bytes:
         raise CarteVisiteScanUnavailable('Aucune image fournie.')
     if len(file_bytes) > _CARTE_VISITE_MAX_BYTES:
@@ -5825,7 +5849,8 @@ def scan_carte_visite(*, company, file_bytes, mime_hint=''):
     doublons = []
     if telephone or email:
         dupes = find_duplicates_by_contact(
-            company, phone=telephone or None, email=email or None)
+            company, phone=telephone or None, email=email or None,
+            queryset=queryset)
         doublons = [
             {'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
              'telephone': d.telephone, 'email': d.email}
@@ -15149,7 +15174,7 @@ def _marquer_locataire(lead, user):
     activity.log_changes(avant, lead, user)
 
 
-def creer_lead_proprietaire(locataire, user, donnees):
+def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
     """CAD164 — le propriétaire est joignable : SA fiche, liée au locataire.
 
     Un propriétaire DÉJÀ connu (même téléphone, même société) est RELIÉ, jamais
@@ -15157,6 +15182,12 @@ def creer_lead_proprietaire(locataire, user, donnees):
     « recommandation » de CAD127 s'applique à sa première touche), avec le
     logement du locataire (adresse, repère, segment) et le même responsable,
     puis sa cadence de prise de contact démarre par le chemin ordinaire.
+
+    ACRM7 (D-ACRM-1) — ``queryset`` borne le rapprochement aux leads de la
+    PORTÉE de l'appelant (la vue passe ses leads en portée) : un propriétaire
+    connu d'un collègue hors portée est traité comme ABSENT (fiche neuve,
+    aucune note ni identité chez le collègue). ``None`` (chemins système) =
+    toute la société, comportement historique.
 
     Renvoie ``(fiche du propriétaire, créée ?)``."""
     from django.db import transaction
@@ -15169,7 +15200,7 @@ def creer_lead_proprietaire(locataire, user, donnees):
         _marquer_locataire(locataire, user)
         existant = next(iter(find_duplicates_by_contact(
             locataire.company, phone=telephone or whatsapp,
-            exclude_pk=locataire.pk)), None)
+            exclude_pk=locataire.pk, queryset=queryset)), None)
         cree = existant is None
         if cree:
             proprietaire = Lead(
