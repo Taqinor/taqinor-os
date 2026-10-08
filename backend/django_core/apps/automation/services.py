@@ -478,6 +478,15 @@ def declencher_bouton_ui(company, ref, target_model, target_id, user=None):
         return False, (
             f"Aucun enregistrement « {target_model} » d'identifiant "
             f'{target_id} dans cette société.')
+    # APAR47 — même porte que le moteur (``evaluate``) : une règle à
+    # approbation crée la DEMANDE au lieu d'exécuter, quel que soit le rôle de
+    # celui qui clique (un Commercial ne contourne plus l'approbation).
+    if engine._needs_approval(rule, {}):
+        engine._create_approval(rule, company, instance, {}, user)
+        message = "Demande d'approbation créée : l'action attend sa décision."
+        engine._log_run(rule, company, instance,
+                        AutomationRun.Status.PENDING_APPROVAL, message)
+        return True, message
     status, message = engine.run_action(
         rule, instance, company, user=user)
     return status != AutomationRun.Status.FAILED, message
