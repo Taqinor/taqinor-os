@@ -11,10 +11,10 @@ Test-du-test : remettre l'émission dans ``generer_pdf`` ⇒
 """
 from unittest import mock
 
+from django.apps import apps as django_apps
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.audit.models import AuditLog
 from apps.ventes.tasks import task_generate_devis_pdf
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
@@ -37,6 +37,9 @@ class AuditPdfAuRenduTests(TestCase):
         self.api.force_authenticate(self.user)
 
     def _lignes_audit(self):
+        # Contrat M4 (import-linter) : ventes n'importe JAMAIS apps.audit —
+        # modèle résolu à l'exécution, hors du graphe d'imports statiques.
+        AuditLog = django_apps.get_model('audit', 'AuditLog')
         return AuditLog.objects.filter(
             action=AuditLog.Action.PDF, object_id=str(self.devis.pk),
             detail=DETAIL).count()
