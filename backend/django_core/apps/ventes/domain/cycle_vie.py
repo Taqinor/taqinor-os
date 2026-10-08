@@ -53,10 +53,21 @@ logger = logging.getLogger("apps.ventes.services")
 class AcceptError(Exception):
     """Raised when a devis cannot be accepted (wrong status / bad option)."""
 
-    def __init__(self, message, conflict=False):
+    def __init__(self, message, conflict=False, code=None):
         super().__init__(message)
         self.message = message
         self.conflict = conflict  # True → 409, False → 400
+        # ADEV11 — code machine du 409 (liste FERMÉE ``codes_409`` du contrat
+        # ``proposal_accept.json``) ; ``None`` = refus historique sans code.
+        self.code = code
+
+
+#: ADEV11 — message du 409 ``brouillon`` (contrat ``proposal_accept.json``,
+#: ``reponses_409.brouillon`` — ADEV2), repris tel quel ; partagé par la
+#: garde du service et celle du résolveur public (``public/noyau.py``).
+BROUILLON_REFUS = (
+    "Cette proposition n'a pas encore été envoyée : elle ne peut pas être "
+    'signée.')
 
 
 def activate_optional_line(*, devis, ligne_id, user=None):
@@ -1433,6 +1444,15 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             else:
                 message = "Cette proposition n'est plus active."
             raise AcceptError(message, conflict=True)
+
+        # ADEV11 (C-ADEV-004) — la signature PUBLIQUE (``user=None`` : le
+        # jeton authentifie, aucun compte) ne peut jamais accepter un
+        # BROUILLON, même si une vue l'appelle sans passer par
+        # ``_resolve_proposal_link`` : un devis jamais envoyé n'a pas été
+        # présenté au client. L'acceptation INTERNE d'un brouillon (``user``
+        # posé) reste régie par ERR33 ci-dessous (ADEV12, GATED D-ADEV-2).
+        if user is None and devis.statut == Devis.Statut.BROUILLON:
+            raise AcceptError(BROUILLON_REFUS, conflict=True, code='brouillon')
 
         # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
         if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
