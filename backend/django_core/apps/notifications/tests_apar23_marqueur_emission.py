@@ -87,4 +87,12 @@ class MarqueurEmissionTests(TestCase):
             self.company, EventType.FACTURE_OVERDUE, lien))
         self.assertTrue(sweeps._already_notified_today(
             self.company, EventType.FACTURE_OVERDUE, lien))
-        self.assertFalse(Notification.objects.exists())
+        # Le marqueur seul porte l'idempotence : aucune notification
+        # « facture en retard » n'est créée par la vérification. (Bornée à
+        # cet événement : la création du lead du setUp, avec propriétaire,
+        # émet légitimement ses propres notifications.)
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.FACTURE_OVERDUE).exists())
+        self.assertTrue(MarqueurEmissionBalayage.objects.filter(
+            company=self.company, event_type=EventType.FACTURE_OVERDUE,
+            cle=lien).exists())
