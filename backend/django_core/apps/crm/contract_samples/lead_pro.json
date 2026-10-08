@@ -9,6 +9,8 @@
     "societe": "Hôtel Exemple SARL",
     "tension_raccordement": "bt",
     "tension_source": "facture",
+    "contrat_electricite": "bt_patente",
+    "option_tarifaire_bt": null,
     "compteur_puissance_kva": null,
     "puissance_souscrite_source": null,
     "raccordement": "triphase",
@@ -102,6 +104,19 @@
           },
           "cle_etude": "tension",
           "chemin": "tension"
+        },
+        {
+          "colonne": "contrat_electricite",
+          "valeur": {
+            "contrat": "bt_patente"
+          },
+          "provenance": {
+            "origine": "lead",
+            "detail": "client",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "tarif_declare",
+          "chemin": "tarif_declare"
         },
         {
           "colonne": "raccordement",
@@ -357,6 +372,31 @@
       "segment": "commun",
       "etape_appel": 2,
       "question": "(posée avec la puissance) « Vous l'avez trouvée sur la facture, sur le contrat, ou c'est une estimation ? »"
+    },
+    {
+      "nom": "contrat_electricite",
+      "type": "choix",
+      "choix": [
+        "bt_domestique",
+        "bt_patente",
+        "bt_force_motrice",
+        "mt_general",
+        "ne_sait_pas"
+      ],
+      "segment": "commun",
+      "etape_appel": 2,
+      "question": "« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. » — CIQ666 (décision fondateur 08/10/2026) : vocabulaire de `tarifs_ci.json` (`tarif_declare.contrat`) ; « ne sait pas » = aucun contrat transmis, jamais un contrat supposé"
+    },
+    {
+      "nom": "option_tarifaire_bt",
+      "type": "choix",
+      "choix": [
+        "normale",
+        "bi_horaire"
+      ],
+      "segment": "commun",
+      "etape_appel": 2,
+      "question": "(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? » — le bi-horaire n'est transmis au moteur que pour la force motrice"
     },
     {
       "nom": "raccordement",
@@ -762,6 +802,7 @@
       "releve_conso[].kwh_pointe|kwh_pleines|kwh_creuses|puissance_atteinte_kva": "consommation.registres_mt",
       "facture_hiver": "consommation (MAD → kWh par le tarif déclaré) — seulement selon la règle `facture_hiver` de `regles_devis_auto`",
       "tension_raccordement": "tension (bt|mt ; ne_sait_pas → inconnue)",
+      "contrat_electricite / option_tarifaire_bt": "tarif_declare {contrat, option_bi_horaire?} (CIQ666, vocabulaire `tarifs_ci.json`) — le moteur résout la grille ONEE de CE contrat au lieu de « tarif_omis » ; ne_sait_pas → aucune entrée ; manquant seulement hors MT (la MT n'a qu'un Tarif Général) ; option_bi_horaire transmis pour la force motrice seule",
       "raccordement": "phases (monophase → mono, triphase → tri, inconnu → inconnu)",
       "compteur_puissance_kva": "puissance_souscrite_kva",
       "jours_ouverture": "rythme.jours_ouverts (7 drapeaux lun→dim)",

@@ -169,6 +169,9 @@ TRACKED_FIELDS = {
     # ``verbose_name`` du modèle.
     'tension_raccordement': 'Tension de raccordement',
     'tension_source': 'Provenance de la tension',
+    # CIQ666 — contrat d'électricité déclaré (lu par le devis automatique C&I).
+    'contrat_electricite': "Contrat d'électricité",
+    'option_tarifaire_bt': 'Option tarifaire BT',
     'puissance_souscrite_source': 'Provenance de la puissance souscrite',
     'categorie_commerciale': 'Activité (catégorie commerciale)',
     'reponses_categorie': "Réponses propres à l'activité",
@@ -241,6 +244,7 @@ _CHOICE_FIELDS = {
     'dossier_subvention',
     # CIQ401 — vocabulaires fermés du lead pro.
     'tension_raccordement', 'tension_source', 'puissance_souscrite_source',
+    'contrat_electricite', 'option_tarifaire_bt',
     'categorie_commerciale', 'export_ue_declare', 'regime_equipes',
     'type_surface', 'surface_source', 'groupe_electrogene', 'cos_phi_source',
     'tva_recuperable',
