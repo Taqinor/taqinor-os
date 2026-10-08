@@ -2337,14 +2337,59 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
 # quantité, prix) ; ``produit_id`` peut être ``None`` (ligne libre/service, DA
 # hors catalogue). Référence anti-collision (jamais count()+1).
 
-def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note=''):
+def _fmt_qte_fr(valeur):
+    return str(valeur).replace('.', ',')
+
+
+def _normaliser_ligne_bcf(index, ligne):
+    """ACHT10 — (produit_id, désignation, quantité entière > 0, prix >= 0) ou
+    ``ValueError`` en français nommant la ligne. Accepte le tuple historique
+    ``(produit_id, designation, qte, prix)`` ou un dict (``produit`` /
+    ``produit_id``, ``designation``, ``quantite``, ``prix``)."""
+    from decimal import Decimal, InvalidOperation
+    if isinstance(ligne, dict):
+        produit_id = ligne.get('produit_id', ligne.get('produit'))
+        designation = ligne.get('designation')
+        qte = ligne.get('quantite')
+        prix = ligne.get('prix', ligne.get('prix_achat_unitaire'))
+    else:
+        produit_id, designation, qte, prix = ligne
+    try:
+        qte_d = Decimal(str(qte if qte not in (None, '') else 0))
+        prix_d = Decimal(str(prix if prix not in (None, '') else 0))
+    except InvalidOperation:
+        raise ValueError(
+            f'Ligne {index} : quantité ou prix illisible.') from None
+    if not qte_d.is_finite() or not prix_d.is_finite():
+        raise ValueError(f'Ligne {index} : quantité ou prix illisible.')
+    if qte_d <= 0:
+        raise ValueError(
+            f'Ligne {index} : quantité {_fmt_qte_fr(qte_d.normalize())} '
+            f'invalide — elle doit être supérieure à 0.')
+    if qte_d != qte_d.to_integral_value():
+        raise ValueError(
+            f'Ligne {index} : quantité {_fmt_qte_fr(qte_d.normalize())} non '
+            f'entière — un BCF se commande en unités.')
+    if prix_d < 0:
+        raise ValueError(
+            f'Ligne {index} : le prix ne peut pas être négatif.')
+    return produit_id, designation or '', int(qte_d), prix_d
+
+
+def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note='',
+                            chantier_origine=None):
     """Crée un ``BonCommandeFournisseur`` BROUILLON depuis une liste de lignes.
 
-    ``lignes`` : itérable de tuples ``(produit_id, designation, qte, prix)``.
-    ``produit_id`` peut être ``None`` (ligne libre/service — ``sans_stock``
-    posé automatiquement par le modèle via l'absence de produit). Lève
-    ValueError si ``lignes`` est vide. Renvoie le ``BonCommandeFournisseur``
-    créé. INTERNE — jamais de prix d'achat sur un document client.
+    ``lignes`` : itérable de tuples ``(produit_id, designation, qte, prix)``
+    (ou de dicts, voir ``_normaliser_ligne_bcf``). ``produit_id`` peut être
+    ``None`` (ligne libre/service — ``sans_stock`` posé automatiquement par le
+    modèle via l'absence de produit). Lève ``ValueError`` si ``lignes`` est
+    vide, ou (ACHT10) si une quantité est ≤ 0 ou non entière, ou un prix
+    négatif : aucun BCF n'est alors créé (jamais de troncature silencieuse).
+    ``chantier_origine`` (optionnel, même société) est posé sur le BCF : sa
+    réception réserve alors la marchandise au chantier (comme
+    ``draft_bcf_for_shortfall``). Renvoie le ``BonCommandeFournisseur`` créé.
+    INTERNE — jamais de prix d'achat sur un document client.
     """
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
@@ -2352,17 +2397,24 @@ def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note=''):
     lignes = list(lignes)
     if not lignes:
         raise ValueError('Aucune ligne à commander.')
+    normalisees = [
+        _normaliser_ligne_bcf(i, ligne) for i, ligne in enumerate(lignes, 1)]
+    if chantier_origine is not None and (
+            getattr(chantier_origine, 'company_id', None) != company.pk):
+        raise ValueError(
+            "Le chantier d'origine n'appartient pas à cette société.")
 
     def _save(ref):
         bon = BonCommandeFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
-            note=note or '', created_by=user)
-        for produit_id, designation, qte, prix in lignes:
+            note=note or '', created_by=user,
+            chantier_origine=chantier_origine)
+        for produit_id, designation, qte, prix in normalisees:
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, produit_id=produit_id,
-                designation=designation or '', quantite=int(qte or 0),
-                prix_achat_unitaire=prix or 0)
+                designation=designation, quantite=qte,
+                prix_achat_unitaire=prix)
         return bon
 
     return create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
