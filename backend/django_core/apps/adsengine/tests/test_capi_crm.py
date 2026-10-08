@@ -62,6 +62,44 @@ class BuildStageEventTests(TestCase):
         self.assertEqual(len(ud['ph'][0]), 64)
         self.assertNotIn('0612345678', ud['ph'][0])
 
+    def test_ph_e164_partage(self):
+        """AACQ18 — même clé ``ph`` (sha256 de l'E.164) quelle que soit la
+        saisie ; aucune clé ``ph`` pour un numéro illisible ; même dérivation
+        que les audiences et l'émetteur Odoo."""
+        import hashlib
+
+        from apps.adsengine import audiences, capi_odoo
+        attendu = [hashlib.sha256(b'212612345678').hexdigest()]
+        for i, saisie in enumerate(
+                ('0612345678', '06 12 34 56 78', '+212 6 12 34 56 78')):
+            with self.subTest(saisie=saisie):
+                lead = self._meta_lead(external_id=f'78945612{i}',
+                                       telephone=saisie)
+                stage = capi_crm.build_stage_event(
+                    self.company, lead.pk, CONTACTED, old_stage=NEW)
+                self.assertEqual(stage['event']['user_data']['ph'], attendu)
+                visite = capi_crm.build_appointment_event(
+                    self.company, lead.pk, 1, 'effectue')
+                if visite.get('event'):
+                    self.assertEqual(
+                        visite['event']['user_data']['ph'], attendu)
+        self.assertEqual(capi_crm.phone_hash_list('0612345678'), attendu)
+        self.assertEqual(
+            [hashlib.sha256(
+                audiences._normalize_phone('0612345678').encode()).hexdigest()],
+            attendu)
+        odoo = capi_odoo.build_signed_event(self.company, {
+            'phone_norm': '612345678', 'amount_mad': '1',
+            'date': '2026-07-16 10:00:00', 'source_name': 'FORM',
+            'origin': 'sale_order', 'lead_id': None})
+        self.assertEqual(odoo['event']['user_data']['ph'], attendu)
+        illisible = self._meta_lead(external_id='789456199',
+                                    telephone='pas un numero')
+        ev = capi_crm.build_stage_event(
+            self.company, illisible.pk, CONTACTED, old_stage=NEW)['event']
+        self.assertNotIn('ph', ev['user_data'])
+        self.assertIsNone(capi_crm.phone_hash_list('pas un numero'))
+
     def test_deterministic_event_id_dedup(self):
         lead = self._meta_lead()
         a = capi_crm.build_stage_event(
@@ -164,7 +202,9 @@ class SignalTriggerTests(TestCase):
         # déclencheur atteigne l'émetteur (mocké ici).
         with mock.patch.dict(
                 os.environ, {'META_CRM_STAGE_CAPI_ENABLED': '1'}), \
-                mock.patch.object(capi_crm, 'emit_lead_stage_event', _recorder):
+                mock.patch.object(capi_crm, 'emit_lead_stage_event', _recorder), \
+                self.captureOnCommitCallbacks(execute=True):
+            # AACQ19 — l'émission part APRÈS le commit (callbacks exécutés).
             lead = Lead.objects.create(
                 company=self.company, nom='P',
                 source=Lead.Source.META_LEAD_ADS, canal=Lead.Canal.META_ADS,
@@ -176,6 +216,69 @@ class SignalTriggerTests(TestCase):
         transitions = [(new, old) for (_lid, new, old) in calls]
         # la création (→ NEW) puis la transition (NEW → CONTACTED) sont émises.
         self.assertIn((CONTACTED, NEW), transitions)
+
+    def _meta_lead(self, external_id, stage):
+        return Lead.objects.create(
+            company=self.company, nom='P',
+            source=Lead.Source.META_LEAD_ADS, canal=Lead.Canal.META_ADS,
+            external_system='meta_lead_ads', external_id=external_id,
+            telephone='0612345678', stage=stage)
+
+    def _envois(self):
+        envois = []
+
+        def _transport(url, payload, **kw):
+            envois.append(payload)
+            return {'events_received': 1}
+        return envois, _transport
+
+    def test_rollback_aucun_envoi(self):
+        """AACQ19 — une transition annulée (rollback) n'envoie RIEN."""
+        from django.db import transaction
+        lead = self._meta_lead('444', NEW)
+        envois, transport = self._envois()
+        with mock.patch.dict(os.environ, _ENV_ON), \
+                mock.patch.object(capi_crm, '_default_transport', transport), \
+                self.captureOnCommitCallbacks(execute=True):
+            try:
+                with transaction.atomic():
+                    lead.stage = CONTACTED
+                    lead.save()
+                    raise RuntimeError('écriture annulée')
+            except RuntimeError:
+                pass
+        self.assertEqual(envois, [])
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, NEW)
+
+    def test_accept_devis_annule_aucun_signed(self):
+        """AACQ19 — passage en SIGNED dans une transaction qui échoue ensuite
+        (abonné ``devis_accepted`` en erreur simulé) : aucun SIGNED envoyé ;
+        la même transition validée : 1 SIGNED, envoyé seulement au commit."""
+        from django.db import transaction
+        lead = self._meta_lead('555', QUOTE_SENT)
+        envois, transport = self._envois()
+        with mock.patch.dict(os.environ, _ENV_ON), \
+                mock.patch.object(capi_crm, '_default_transport', transport):
+            with self.captureOnCommitCallbacks(execute=True):
+                try:
+                    with transaction.atomic():
+                        lead.stage = SIGNED
+                        lead.save()
+                        raise RuntimeError('abonné devis_accepted en erreur')
+                except RuntimeError:
+                    pass
+            self.assertEqual(envois, [])
+            lead.refresh_from_db()
+            self.assertEqual(lead.stage, QUOTE_SENT)
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                with transaction.atomic():
+                    lead.stage = SIGNED
+                    lead.save()
+                    # Rien n'est parti SOUS le bloc atomique.
+                    self.assertEqual(envois, [])
+            self.assertGreaterEqual(len(callbacks), 1)
+        self.assertEqual(len(envois), 1)
 
     def test_no_stage_change_does_not_fire(self):
         lead = Lead.objects.create(

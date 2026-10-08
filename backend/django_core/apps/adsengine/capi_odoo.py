@@ -42,7 +42,7 @@ from decimal import Decimal, InvalidOperation
 from .api_version import GRAPH_BASE_URL
 # Réutilise les helpers d'ADSENG32 (hachage SHA-256, lecture de réglage,
 # transport HTTP réel) — jamais dupliqués (instruction ADSDEEP).
-from .capi_crm import _default_transport, _setting, _sha256
+from .capi_crm import _default_transport, _setting, phone_hash_list
 from .odoo_selectors import signed_deals as odoo_signed_deals
 
 logger = logging.getLogger(__name__)
@@ -155,8 +155,9 @@ def build_signed_event(company, deal, *, now=None):
         user_data['lead_id'] = lead_id
     else:
         e164 = _e164_digits(phone_norm)
-        if e164:
-            user_data['ph'] = [_sha256(e164)]
+        ph = phone_hash_list('+' + e164) if e164 else None  # AACQ18
+        if ph:
+            user_data['ph'] = ph
 
     if not user_data:
         return {'eligible': False, 'reason': 'no_match_key',
@@ -325,8 +326,9 @@ def build_received_event(company, mirror, *, now=None):
 
     user_data = {'lead_id': leadgen_id}
     e164 = _e164_digits(getattr(mirror, 'phone_key', '') or '')
-    if e164:
-        user_data['ph'] = [_sha256(e164)]
+    ph = phone_hash_list('+' + e164) if e164 else None  # AACQ18
+    if ph:
+        user_data['ph'] = ph
 
     event_key = f'lead_received:{leadgen_id}'
     event = {

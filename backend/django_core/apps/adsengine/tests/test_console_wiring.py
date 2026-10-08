@@ -54,6 +54,12 @@ class ConsoleWiringTests(TestCase):
         cls.manager = make_user(
             cls.company, 'cw-manager',
             ['adsengine_view', 'adsengine_manage'])
+        # AACQ12 — plafonds (approve) et bascules d'autonomie (autonomy_toggle)
+        # exigent désormais leur permission dédiée.
+        cls.gf_admin = make_user(
+            cls.company, 'cw-gf-admin',
+            ['adsengine_view', 'adsengine_manage', 'adsengine_approve',
+             'adsengine_autonomy_toggle'])
         cls.nobody = make_user(cls.company, 'cw-nobody', [])
 
         # Autre société (isolation).
@@ -172,7 +178,7 @@ class ConsoleWiringTests(TestCase):
 
     # ── ENG22 — Garde-fous singleton ─────────────────────────────────────────
     def test_guardrail_get_and_patch_mapping(self):
-        api = auth(self.manager)
+        api = auth(self.gf_admin)
         get1 = api.get(f'{BASE}/guardrail/')
         self.assertEqual(get1.status_code, 200, get1.data)
         self.assertIn('max_daily_budget_mad', get1.data)
@@ -199,7 +205,7 @@ class ConsoleWiringTests(TestCase):
         pacing/exploration ADSENG4, poids santé SIG1) était sérialisé côté
         ``garde-fous/`` (ViewSet) mais invisible ici, donc jamais réellement
         éditable depuis l'écran."""
-        api = auth(self.manager)
+        api = auth(self.gf_admin)
         get1 = api.get(f'{BASE}/guardrail/')
         self.assertEqual(get1.status_code, 200, get1.data)
         for key in (

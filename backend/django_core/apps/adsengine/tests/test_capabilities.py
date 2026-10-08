@@ -13,6 +13,7 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.adsengine import services
+from apps.adsengine.meta_client import MetaClient  # AACQ4 — spec réelle
 from apps.adsengine.models import EngineAction, GuardrailConfig
 
 
@@ -51,7 +52,7 @@ class ExecuteAutoActionTests(TestCase):
     def test_capability_off_falls_back_to_proposal(self):
         GuardrailConfig.objects.create(
             company=self.company, auto_rotate_creative=False)
-        client = Mock()
+        client = Mock(spec=MetaClient)
         action = services.execute_auto_action(
             self.company, kind=EngineAction.Kind.ROTATE_CREATIVE,
             reason_fr="Roter le créatif fatigué de l'ad set A.",
@@ -63,7 +64,7 @@ class ExecuteAutoActionTests(TestCase):
     def test_capability_on_auto_applies_with_audit_row(self):
         GuardrailConfig.objects.create(
             company=self.company, auto_rotate_creative=True)
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.create_ad.return_value = {'id': 'ad-77'}
         action = services.execute_auto_action(
             self.company, kind=EngineAction.Kind.ROTATE_CREATIVE,
@@ -89,7 +90,7 @@ class ExecuteAutoActionTests(TestCase):
         # < plafond 100 MAD → les deux garde-fous passent, l'action s'applique.
         GuardrailConfig.objects.create(
             company=self.company, auto_rebalance_within_band=True)
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.update_adset_budget.return_value = {'success': True}
         action = services.execute_auto_action(
             self.company, kind=EngineAction.Kind.REBALANCE_BUDGET,
@@ -105,7 +106,7 @@ class ExecuteAutoActionTests(TestCase):
         GuardrailConfig.objects.create(
             company=self.company, auto_rotate_creative=True,
             auto_rebalance_within_band=True)
-        client = Mock()
+        client = Mock(spec=MetaClient)
         action = services.execute_auto_action(
             self.company, kind=EngineAction.Kind.CREATE_CAMPAIGN,
             reason_fr="Nouvelle campagne leads à Casablanca.",

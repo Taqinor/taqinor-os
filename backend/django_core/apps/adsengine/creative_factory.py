@@ -305,6 +305,38 @@ def _active_photo_consent(company, client_id, *, now=None):
     return None
 
 
+PUISSANCE_KWC_ILLISIBLE = (
+    "Puissance illisible : saisissez un nombre de kWc (ex. 6 ou 6,5).")
+
+
+def parse_puissance_kwc(value):
+    """AACQ15 — Puissance kWc telle que l'écran l'envoie (nombre, chaîne,
+    virgule décimale) → ``Decimal`` ; vide → ``None`` ; illisible, négative,
+    nulle ou non finie → ``ValueError`` (message FR ``PUISSANCE_KWC_ILLISIBLE``)."""
+    from decimal import Decimal, InvalidOperation
+    if value is None or isinstance(value, bool):
+        if isinstance(value, bool):
+            raise ValueError(PUISSANCE_KWC_ILLISIBLE)
+        return None
+    text = str(value).strip().replace('\u00a0', '').replace(' ', '')
+    if not text:
+        return None
+    try:
+        number = Decimal(text.replace(',', '.'))
+    except InvalidOperation:
+        raise ValueError(PUISSANCE_KWC_ILLISIBLE) from None
+    if not number.is_finite() or number <= 0:
+        raise ValueError(PUISSANCE_KWC_ILLISIBLE)
+    return number
+
+
+def format_puissance_kwc(number):
+    """AACQ15 — Format français du chiffre SAISI (``6`` → « 6 », ``6.5`` →
+    « 6,5 ») : jamais d'arrondi ni de zéro de traîne inventé."""
+    text = format(number.normalize(), 'f')
+    return text.replace('.', ',')
+
+
 def import_chantier_photo(company, *, chantier_id, attachment_id, client_id,
                           puissance_kwc=None, ville=None, note='',
                           auto_flagged=False, now=None):
@@ -344,8 +376,9 @@ def import_chantier_photo(company, *, chantier_id, attachment_id, client_id,
     # Métadonnées ville/kWc portées en clair sur l'accroche (provenance lisible)
     # — la provenance MACHINE reste ``source_lane='chantier'``.
     meta_bits = []
-    if puissance_kwc:
-        meta_bits.append(f'{puissance_kwc:g} kWc')
+    puissance = parse_puissance_kwc(puissance_kwc)  # AACQ15
+    if puissance is not None:
+        meta_bits.append(f'{format_puissance_kwc(puissance)} kWc')
     if resolved_ville:
         meta_bits.append(f'à {resolved_ville}')
     hook = 'Chantier' + (' — ' + ' '.join(meta_bits) if meta_bits else '')

@@ -11,6 +11,8 @@ côté serveur), pas le registre stateless ``apps/agent``.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
 import logging
 
@@ -203,6 +205,26 @@ def _merge_warnings(payload, warns):
     return payload
 
 
+# AACQ14 — proposeur HUMAIN relayé à toute proposition née dans le bloc (les
+# producteurs curés appellent ``propose_action`` sans connaître l'appelant) :
+# le garde-fou quatre-yeux voit ainsi le proposeur quel que soit le chemin.
+_HUMAN_PROPOSER = contextvars.ContextVar('adsengine_human_proposer', default=None)
+
+
+@contextlib.contextmanager
+def human_proposer(user):
+    """AACQ14 — Toute ``EngineAction`` proposée dans ce bloc porte
+    ``proposed_by=user`` (sauf ``proposed_by`` explicite). ``None`` = no-op."""
+    if user is None or not getattr(user, 'pk', None):
+        yield
+        return
+    token = _HUMAN_PROPOSER.set(user)
+    try:
+        yield
+    finally:
+        _HUMAN_PROPOSER.reset(token)
+
+
 def propose_action(company, *, kind, reason_fr, payload=None, auto=False,
                    proposed_by=None):
     """Crée une action PROPOSÉE. ``reason_fr`` (une phrase FR) est obligatoire.
@@ -221,6 +243,8 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False,
     validate_manual_payload(kind, payload)
     payload = dict(payload or {})
     _merge_warnings(payload, edit_warnings(kind, payload))
+    if proposed_by is None and not auto:
+        proposed_by = _HUMAN_PROPOSER.get()
     return EngineAction.objects.create(
         company=company, kind=kind, payload=payload,
         reason_fr=str(reason_fr).strip(),
@@ -362,12 +386,17 @@ def propose_duplicate(company, *, adset, name_suffix=' (copie)', reason_fr=None)
         raise ValueError(
             "Aucun créatif LIVE (AdCreativeMirror) trouvé pour cet ad set : "
             "dupliquer sans créatif est impossible — resynchroniser d'abord.")
+    # AACQ16 — un budget À VIE n'est jamais recopié en budget quotidien.
+    if getattr(adset, 'budget_type', '') == adset.BUDGET_TYPE_LIFETIME:
+        raise ValueError(
+            "Budget à vie : dupliquez dans Meta (le moteur ne recopie qu'un "
+            "budget quotidien).")
     creative_id = source_ad.creative_mirror.creative_meta_id
 
     new_adset_name = f'{adset.name}{name_suffix}'
     new_ad_name = f'{source_ad.name}{name_suffix}'
     adset_extra_fields = {}
-    if adset.budget is not None:
+    if adset.budget is not None and adset.budget > 0:
         adset_extra_fields['daily_budget'] = int(adset.budget)
 
     reason_fr = reason_fr or f"Dupliquer l'ad set « {adset.name} » ({new_adset_name})."
@@ -1101,7 +1130,14 @@ def _resolve_post(company, meta_id):
     return post
 
 
-def propose_manual_curated(company, *, kind, params, reason_fr=None):
+def propose_manual_curated(company, *, kind, params, reason_fr=None,
+                           proposed_by=None):
+    """AACQ14 — relaie le proposeur humain (quatre-yeux) au producteur."""
+    with human_proposer(proposed_by):
+        return _propose_manual_curated(company, kind=kind, params=params, reason_fr=reason_fr)
+
+
+def _propose_manual_curated(company, *, kind, params, reason_fr=None):
     """PUB22 — Route une proposition d'action CURÉE (``duplicate`` /
     ``set_schedule`` / ``create_ad_study`` / PACT164 : ``pause_for_month`` /
     ``dayparting_pause_interne`` / ``edit_post`` / ``create_post`` /
@@ -1221,7 +1257,13 @@ _NOT_INVERTIBLE_REASONS = {
 }
 
 
-def propose_inverse_action(action, *, reason_fr=None):
+def propose_inverse_action(action, *, reason_fr=None, proposed_by=None):
+    """AACQ14 — relaie le proposeur humain (quatre-yeux) au producteur."""
+    with human_proposer(proposed_by):
+        return _propose_inverse_action(action, reason_fr=reason_fr)
+
+
+def _propose_inverse_action(action, *, reason_fr=None):
     """PUB45 — Propose l'action INVERSE d'une action APPLIQUÉE, via le circuit
     propose→approuve normal (jamais un write direct). Rétablit la valeur
     MÉMORISÉE sur l'action d'origine (budget précédent ``current_budget``, texte
@@ -1422,7 +1464,8 @@ WARN_COMMENT_HIDE_READBACK = (
     "re-contrôle confirme l'état.")
 
 
-def propose_hide_comment(company, *, comment, hidden=True, reason_fr=None):
+def propose_hide_comment(company, *, comment, hidden=True, reason_fr=None,
+                         proposed_by=None):
     """ADSDEEP53 — Propose de masquer (``hidden=True``) ou démasquer un
     commentaire. L'application fera un READ-BACK obligatoire (dossier §3) : elle
     re-GET le commentaire et ne pose ``hidden_verified`` que si l'état observé
@@ -1433,29 +1476,35 @@ def propose_hide_comment(company, *, comment, hidden=True, reason_fr=None):
         'comment_id': comment.meta_id, 'hidden': bool(hidden),
         'warnings': [WARN_COMMENT_HIDE_READBACK]}
     return propose_action(
-        company, kind=KIND_HIDE_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_HIDE_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_reply_comment(company, *, comment, message, reason_fr=None):
+def propose_reply_comment(company, *, comment, message, reason_fr=None,
+                          proposed_by=None):
     """ADSDEEP53 — Propose une réponse PUBLIQUE à un commentaire."""
     if not (message and str(message).strip()):
         raise ValueError("Une réponse ne peut pas être vide.")
     reason_fr = reason_fr or f"Répondre au commentaire {comment.meta_id}."
     payload = {'comment_id': comment.meta_id, 'message': str(message)}
     return propose_action(
-        company, kind=KIND_REPLY_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_REPLY_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_delete_comment(company, *, comment, reason_fr=None):
+def propose_delete_comment(company, *, comment, reason_fr=None,
+                           proposed_by=None):
     """ADSDEEP53 — Propose la SUPPRESSION d'un commentaire (irréversible côté
     Meta — passe donc, comme tout, par l'approbation humaine)."""
     reason_fr = reason_fr or f"Supprimer le commentaire {comment.meta_id}."
     payload = {'comment_id': comment.meta_id}
     return propose_action(
-        company, kind=KIND_DELETE_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_DELETE_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_private_reply(company, *, comment, message, reason_fr=None):
+def propose_private_reply(company, *, comment, message, reason_fr=None,
+                          proposed_by=None):
     """ADSDEEP53 — Propose une RÉPONSE PRIVÉE (DM) à un commentaire.
 
     GARDE-FOU (dossier §3, fail-fast — AUCUNE action créée si violé) : Meta
@@ -1481,7 +1530,8 @@ def propose_private_reply(company, *, comment, message, reason_fr=None):
         f"Répondre en privé (DM) au commentaire {comment.meta_id}.")
     payload = {'comment_id': comment.meta_id, 'message': str(message)}
     return propose_action(
-        company, kind=KIND_PRIVATE_REPLY, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_PRIVATE_REPLY, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
 def propose_keyword_hides(company, *, rules=None, auto_only=False):
@@ -1609,7 +1659,8 @@ IG_MEDIA_TYPES = ('IMAGE', 'VIDEO', 'REELS', 'STORIES', 'CAROUSEL')
 
 def propose_publish_ig(company, *, media_type, image_url='', video_url='',
                        caption='', alt_text='', scheduled_at=None,
-                       reason_fr=None):
+                       reason_fr=None,
+                       proposed_by=None):
     """ADSDEEP55 — Propose la PUBLICATION d'un média Instagram (kind PUBLISH_IG).
 
     L'application passe par le flux CONTAINER (create → poll FINISHED → publish)
@@ -1634,37 +1685,45 @@ def propose_publish_ig(company, *, media_type, image_url='', video_url='',
         'scheduled_at': scheduled_at,
         'warnings': [WARN_IG_CAPTION_IMMUTABLE]}
     return propose_action(
-        company, kind=KIND_PUBLISH_IG, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_PUBLISH_IG, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_hide_ig_comment(company, *, comment, hidden=True, reason_fr=None):
+def propose_hide_ig_comment(company, *, comment, hidden=True, reason_fr=None,
+                            proposed_by=None):
     """ADSDEEP55 — Propose de masquer/démasquer un commentaire Instagram."""
     verb = 'Masquer' if hidden else 'Démasquer'
     reason_fr = reason_fr or f"{verb} le commentaire Instagram {comment.meta_id}."
     payload = {'comment_id': comment.meta_id, 'hidden': bool(hidden)}
     return propose_action(
-        company, kind=KIND_HIDE_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_HIDE_IG_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_reply_ig_comment(company, *, comment, message, reason_fr=None):
+def propose_reply_ig_comment(company, *, comment, message, reason_fr=None,
+                             proposed_by=None):
     """ADSDEEP55 — Propose une réponse à un commentaire Instagram."""
     if not (message and str(message).strip()):
         raise ValueError("Une réponse ne peut pas être vide.")
     reason_fr = reason_fr or f"Répondre au commentaire Instagram {comment.meta_id}."
     payload = {'comment_id': comment.meta_id, 'message': str(message)}
     return propose_action(
-        company, kind=KIND_REPLY_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_REPLY_IG_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_delete_ig_comment(company, *, comment, reason_fr=None):
+def propose_delete_ig_comment(company, *, comment, reason_fr=None,
+                              proposed_by=None):
     """ADSDEEP55 — Propose la suppression d'un commentaire Instagram."""
     reason_fr = reason_fr or f"Supprimer le commentaire Instagram {comment.meta_id}."
     payload = {'comment_id': comment.meta_id}
     return propose_action(
-        company, kind=KIND_DELETE_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_DELETE_IG_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_toggle_ig_comments(company, *, media, enabled, reason_fr=None):
+def propose_toggle_ig_comments(company, *, media, enabled, reason_fr=None,
+                               proposed_by=None):
     """ADSDEEP55 — Propose de couper / rouvrir les commentaires d'un média IG
     (``comment_enabled`` — SEUL champ écrivable d'un média ; la légende reste
     immuable)."""
@@ -1673,7 +1732,8 @@ def propose_toggle_ig_comments(company, *, media, enabled, reason_fr=None):
         f"{verb} les commentaires du média Instagram {media.meta_id}.")
     payload = {'media_id': media.meta_id, 'enabled': bool(enabled)}
     return propose_action(
-        company, kind=KIND_TOGGLE_IG_COMMENTS, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_TOGGLE_IG_COMMENTS, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
 def _dispatch_publish_ig(client, action):
@@ -1941,10 +2001,8 @@ def _dispatch(client, action):
             adset_id=payload.get('adset_id', ''),
             extra_fields=extra)
     if kind == EngineAction.Kind.REBALANCE_BUDGET:
-        # Rééquilibrage de budget dans la bande. La méthode concrète de mise à
-        # jour de budget du client atterrit avec le groupe budget (ADSENG) ; ici
-        # on route déjà l'appel. Un client réel qui ne l'expose pas encore lève
-        # (→ action « echouee », jamais d'application silencieuse ni d'activation).
+        # Rééquilibrage de budget dans la bande → ``MetaClient.update_adset_
+        # budget`` (AACQ4 : POST /<adset_id> {daily_budget}, jamais de status).
         return client.update_adset_budget(
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
@@ -1994,8 +2052,8 @@ def _dispatch(client, action):
         # Les garde-fous budget ont été appliqués AVANT par
         # ``_guard_before_dispatch`` (plafond + variation hebdo + pas ≤15% + G4
         # + propriété miroir) ; on route vers la même méthode budget que
-        # REBALANCE_BUDGET (un client réel qui ne l'expose pas encore lève →
-        # « echouee », jamais d'activation ni d'application silencieuse).
+        # REBALANCE_BUDGET (AACQ4 — ``MetaClient.update_adset_budget``, jamais
+        # de status : aucune activation possible).
         return client.update_adset_budget(
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
@@ -2090,6 +2148,18 @@ def _dispatch(client, action):
     raise ValueError(f"Type d'action non routable : {kind}")
 
 
+def _payload_daily_budget(kind, payload):
+    """AACQ16 — ``daily_budget`` (centimes) posé par une action de CRÉATION
+    (duplication → ``adset_extra_fields`` ; création d'ad set → ``extra_fields``
+    ou racine), ou ``None``."""
+    if kind == KIND_DUPLICATE:
+        return (payload.get('adset_extra_fields') or {}).get('daily_budget')
+    if kind == EngineAction.Kind.CREATE_ADSET:
+        extra = payload.get('extra_fields') or {}
+        return extra.get('daily_budget', payload.get('daily_budget'))
+    return None
+
+
 def _centimes_to_mad(value):
     """ENGFIX1/G2 — Centimes (unités mineures Meta) → MAD (unités majeures).
 
@@ -2180,11 +2250,65 @@ def _guard_before_dispatch(action):
                     message=msg)
                 raise guardrails.GuardrailViolation(msg)
 
+    # AACQ16 — toute action qui POSE un ``daily_budget`` (duplication,
+    # création d'ad set) passe AUSSI le plafond quotidien, avant tout POST.
+    new_daily = _payload_daily_budget(action.kind, payload)
+    if new_daily is not None:
+        guardrails.check_daily_ceiling(
+            config, _centimes_to_mad(new_daily), company=action.company)
+
     # Toute transition de statut demandée reste PAUSED-only (jamais d'activation).
     target_status = payload.get('target_status')
     if target_status:
         guardrails.enforce_paused_only(target_status, company=action.company)
         guardrails.enforce_never_activate(target_status, company=action.company)
+
+
+ACTION_CONTENU_MODIFIE_FR = (
+    "Contenu modifié depuis l'approbation : nouvelle approbation requise.")
+
+
+def _empreinte_action(action):
+    """AACQ76 — Empreinte (SHA-256) du ``kind`` + ``payload`` d'une action."""
+    return EngineAction.fingerprint_of(action.kind, action.payload)
+
+
+def _claim_approved_version(action):
+    """AACQ76 — Compare-and-swap ``approuvee → appliquee`` SOUS verrou de
+    ligne, seulement si le contenu en base est la version APPROUVÉE (empreinte).
+
+    * réclamée → ``True`` ; l'objet en mémoire est réaligné sur le contenu
+      approuvé lu en base (c'est lui qui part chez Meta) ;
+    * plus ``approuvee`` (déjà réclamée…) → ``False`` ;
+    * contenu modifié depuis l'approbation (ou empreinte absente) → l'action
+      repasse ``proposee`` (``approved_by`` vidé, raison dans ``error``) et
+      ``ActionNotApproved`` est levée — le client Meta n'est jamais appelé."""
+    from django.db import transaction
+
+    modifie = False
+    with transaction.atomic():
+        locked = (EngineAction.objects.select_for_update()
+                  .filter(pk=action.pk).first())
+        if locked is None or locked.status != EngineAction.Statut.APPROUVEE:
+            return False
+        if (not locked.approved_fingerprint
+                or locked.approved_fingerprint != _empreinte_action(locked)):
+            EngineAction.objects.filter(pk=locked.pk).update(
+                status=EngineAction.Statut.PROPOSEE, approved_by=None,
+                approved_fingerprint='', error=ACTION_CONTENU_MODIFIE_FR)
+            modifie = True
+        else:
+            EngineAction.objects.filter(pk=locked.pk).update(
+                status=EngineAction.Statut.APPLIQUEE)
+            action.kind = locked.kind
+            action.payload = locked.payload
+    if modifie:
+        action.status = EngineAction.Statut.PROPOSEE
+        action.approved_by = None
+        action.approved_fingerprint = ''
+        action.error = ACTION_CONTENU_MODIFIE_FR
+        raise ActionNotApproved(ACTION_CONTENU_MODIFIE_FR)
+    return True
 
 
 def apply_action(action, *, connection=None, client=None):
@@ -2204,8 +2328,6 @@ def apply_action(action, *, connection=None, client=None):
     faussement ``appliquee``) et l'exception relancée ; en cas de succès elle
     reste ``appliquee`` (``applied_at`` + ``result`` posés côté serveur).
     """
-    from django.db import transaction
-
     # Garde de sécurité rapide (non atomique) : une action non approuvée est
     # refusée d'emblée, avant toute construction de client. Le compare-and-swap
     # ci-dessous reste l'AUTORITÉ anti-double-apply (l'objet en mémoire peut être
@@ -2228,11 +2350,8 @@ def apply_action(action, *, connection=None, client=None):
 
     # ENGFIX3 — Réclamation atomique : SEULE une ligne encore ``approuvee`` en
     # base peut être réclamée (elle passe ``appliquee`` dans le même UPDATE).
-    with transaction.atomic():
-        claimed = (EngineAction.objects
-                   .filter(pk=action.pk,
-                           status=EngineAction.Statut.APPROUVEE)
-                   .update(status=EngineAction.Statut.APPLIQUEE))
+    # AACQ76 — ET dont le contenu est EXACTEMENT la version approuvée.
+    claimed = 1 if _claim_approved_version(action) else 0
     if claimed != 1:
         raise ActionNotApproved(
             "Action déjà réclamée ou non approuvée : refus d'appliquer (aucun "
@@ -2334,17 +2453,13 @@ def apply_batch(actions, *, connection=None, client=None):
                 "Aucune connexion Meta active : application impossible.")
         client = MetaClient.from_connection(connection)
 
-    from django.db import transaction
-
     # Réclamation atomique de CHAQUE action AVANT tout appel réseau — le journal
     # (statut déjà passé APPLIQUEE en base) est l'unique dédup si le lot entier
     # doit être rejoué après une panne (Graph n'a aucune clé d'idempotence).
     claimed_actions = []
     for action in actions:
-        with transaction.atomic():
-            claimed = (EngineAction.objects
-                       .filter(pk=action.pk, status=EngineAction.Statut.APPROUVEE)
-                       .update(status=EngineAction.Statut.APPLIQUEE))
+        # AACQ76 — même réclamation que ``apply_action`` (version approuvée).
+        claimed = 1 if _claim_approved_version(action) else 0
         if claimed != 1:
             raise ActionNotApproved(
                 "Action déjà réclamée ou non approuvée : refus d'appliquer en "

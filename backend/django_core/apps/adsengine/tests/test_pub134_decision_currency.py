@@ -93,7 +93,10 @@ class UsdAccountDecisionTextTests(TestCase):
         MetaConnection.objects.create(
             company=self.company, ad_account_id='act_1', currency='USD')
 
-    def test_budget_scale_up_proposal_names_usd(self):
+    def test_budget_scale_up_on_usd_account_is_not_applicable(self):
+        # AACQ2 — un budget du compte (USD) n'est jamais borné par le plafond
+        # MAD : aucune proposition, la raison NOMME la devise du compte
+        # (aucun taux inventé, D-AACQ-1 en attente).
         adset = AdSetMirror.objects.create(
             company=self.company, meta_id='as1', name='WINNER',
             status='ACTIVE', budget='10000')
@@ -102,15 +105,18 @@ class UsdAccountDecisionTextTests(TestCase):
             _snap(self.company, adset, day=d, spend=10, results=10)
         for d in (3, 4, 5, 6):
             _snap(self.company, adset, day=d, spend=30, results=5)
-        RulePolicy.objects.create(
+        policy = RulePolicy.objects.create(
             company=self.company, template_key='surf_scale_budget',
             enabled=True, dry_run=False, mode=RulePolicy.Mode.PROPOSE)
 
         rules_engine.evaluate_company(self.company, now=TODAY)
-        act = EngineAction.objects.filter(company=self.company).first()
-        self.assertIsNotNone(act)
-        self.assertIn('USD', act.reason_fr)
-        self.assertNotIn('MAD', act.reason_fr)
+        self.assertFalse(
+            EngineAction.objects.filter(company=self.company).exists())
+        policy.refresh_from_db()
+        blocked = [f.get('blocked_fr') for f in policy.last_result['findings']
+                   if f.get('blocked_fr')]
+        self.assertTrue(blocked, policy.last_result)
+        self.assertIn('USD', blocked[0])
 
     def test_cpl_band_anomaly_message_names_usd(self):
         camp = AdCampaignMirror.objects.create(
@@ -119,9 +125,10 @@ class UsdAccountDecisionTextTests(TestCase):
         for d in range(1, 6):
             _snap(self.company, camp, day=d, spend=10, results=1, cpl=10)
         _snap(self.company, camp, day=0, spend=95, results=1, cpl=95)
+        # AACQ8 — une simulation n'écrit plus d'AnomalyEvent : règle armée.
         RulePolicy.objects.create(
             company=self.company, template_key='cpl_band',
-            enabled=True, dry_run=True, mode=RulePolicy.Mode.PROPOSE)
+            enabled=True, dry_run=False, mode=RulePolicy.Mode.PROPOSE)
 
         rules_engine.evaluate_company(self.company, now=TODAY)
         event = AnomalyEvent.objects.filter(company=self.company).first()

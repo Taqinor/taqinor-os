@@ -211,6 +211,9 @@ def _propose_budget_change(company, *, kind, adset_meta_id,
     if config is None:
         from .models import GuardrailConfig
         config = GuardrailConfig.objects.filter(company=company).first()
+    # AACQ2 — le budget reçu est en devise du compte : sur un compte non-MAD,
+    # aucune comparaison au plafond MAD ni proposition (fail-closed).
+    guardrails.assert_mad_comparable(company, alert_company=company)
     new_mad = cap_daily_step(current_daily_budget_mad, target_daily_budget_mad)
     # Plafond quotidien INVIOLABLE dès la proposition (borne aussi au plafond).
     if config is not None and config.daily_budget_ceiling_mad is not None:

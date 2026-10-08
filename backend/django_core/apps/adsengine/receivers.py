@@ -97,8 +97,12 @@ def on_appointment_effectue(sender, **kwargs):
         return
     try:
         from . import capi_crm
-        capi_crm.emit_appointment_effectue_event(
-            company, lead_id, appointment.pk)
+        appointment_pk = appointment.pk
+        # AACQ19 — après COMMIT seulement (une transition annulée n'envoie
+        # rien ; aucun appel réseau sous verrou).
+        capi_crm.on_commit_best_effort(
+            lambda: capi_crm.emit_appointment_effectue_event(
+                company, lead_id, appointment_pk))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'adsengine.on_appointment_effectue: émission échouée '
