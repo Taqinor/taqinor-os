@@ -84,8 +84,14 @@ def sync_odoo_leads_task():
     ``ODOO_SYNC_COMPANY_SLUG`` est vide — jamais un slug en dur. Verrou cache
     contre deux passes simultanées. Odoo reste en LECTURE SEULE (JSON-2).
 
-    ``ODOO_SYNC_ALIGN=0`` transmet ``--no-align`` : on rapatrie les leads sans
-    aligner le pipeline ERP sur Odoo (le jour où Meryem travaille dans l'ERP).
+    JAMAIS d'alignement des étapes (décision fondateur 08/10/2026) : les
+    leads se traitent dans l'ERP, seule une action humaine y change l'étape.
+    La passe planifiée transmet TOUJOURS ``--no-align`` (elle ne fait que
+    rapatrier/importer) ; l'alignement sur le pipeline Odoo ne se fait qu'à
+    la main, sur demande de Reda :
+    ``manage.py sync_odoo_leads --company <slug>``.
+    Incident : la passe ramenait en « Nouveau » tout lead mis en « Froid »
+    (Froid est classé sous Nouveau → pris pour une avance), 27 leads touchés.
     """
     import io
     import logging
@@ -110,9 +116,7 @@ def sync_odoo_leads_task():
         return {'skipped': 'lock'}
     sortie = io.StringIO()
     try:
-        options = {'company': slug, 'stdout': sortie}
-        if (os.environ.get('ODOO_SYNC_ALIGN', '1') or '1').strip() == '0':
-            options['no_align'] = True
+        options = {'company': slug, 'stdout': sortie, 'no_align': True}
         call_command('sync_odoo_leads', **options)
     finally:
         cache.delete(_ODOO_SYNC_LOCK)
