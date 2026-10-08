@@ -2045,3 +2045,25 @@ def releves_portail(company, equipement_ids):
                   type__in=('heures', 'm3'))
           .order_by('-date', '-id'))
     return [releve_portail(r) for r in qs]
+
+
+def blocage_annulation_acceptation(devis_id, company):
+    """Décision fondateur (08/10/2026) — le contrat de maintenance créé à
+    l'acceptation du devis ``devis_id`` (marqueur ``[devis:<id>]``, XCTR1 /
+    CIQ640) empêche-t-il d'annuler cette acceptation ?
+
+    Rend la raison en français quand le contrat est déjà ENGAGÉ (facturation
+    récurrente activée, une facturation ou une visite déjà passées), sinon
+    ``None`` — un contrat encore dans son état auto-créé est simplement
+    désactivé par l'annulation. Lecture seule, bornée à ``company``."""
+    from .models import ContratMaintenance
+    qs = ContratMaintenance.objects.filter(
+        notes__contains=f'[devis:{devis_id}]', actif=True)
+    if company is not None:
+        qs = qs.filter(company=company)
+    for contrat in qs.order_by('pk'):
+        if (contrat.facturation_active or contrat.derniere_facturation
+                or contrat.derniere_visite):
+            return (f'le contrat de maintenance n° {contrat.pk} est déjà '
+                    'engagé (facturation ou visite). Désactivez-le d’abord.')
+    return None

@@ -160,6 +160,49 @@ def appliquer_stage_lead(lead, nouveau_stage, *, user=None):
     return True
 
 
+class SortieSigneBloquee(Exception):
+    """Décision fondateur (08/10/2026) — le lead ne peut pas sortir de
+    « Signé » : son devis accepté a déjà une suite RÉELLE (facture, bon de
+    commande, chantier avancé…). ``message`` est la phrase française à
+    montrer telle quelle (HTTP 409 à l'unité, motif de saut en masse)."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def desaccepter_devis_du_lead(lead, user, *, motif=''):
+    """Décision fondateur (08/10/2026) — un lead qui SORT de « Signé » par
+    une action utilisateur dés-accepte ses devis acceptés (actifs) : chacun
+    repasse « envoyé » par la porte de ``ventes``
+    (``services.annuler_acceptation``), qui défait ce que l'acceptation avait
+    créé automatiquement (événement ``devis_acceptation_annulee``).
+
+    À appeler DANS la transaction de l'écriture d'étape, AVANT elle : si un
+    devis est bloqué, ``SortieSigneBloquee`` est levée — l'appelant laisse la
+    transaction s'annuler (aucun devis dés-accepté, étape inchangée). Les
+    chemins AUTOMATIQUES (recyclage système) n'appellent jamais cette
+    fonction. Rend le nombre de devis dés-acceptés (0 = comportement
+    inchangé pour un lead « Signé » sans devis accepté)."""
+    from apps.ventes.selectors import devis_acceptes_actifs
+    from apps.ventes.services import (
+        AnnulationAcceptationBloquee, annuler_acceptation,
+    )
+    libelle = stages.STAGE_LABELS[stages.SIGNED]
+    nb = 0
+    for devis in devis_acceptes_actifs(lead.company, lead_id=lead.pk):
+        try:
+            annuler_acceptation(
+                devis=devis, user=user,
+                motif=motif or f'lead sorti de « {libelle} »')
+        except AnnulationAcceptationBloquee as exc:
+            raise SortieSigneBloquee(
+                f'Impossible de sortir ce lead de « {libelle} » : '
+                f'{exc.message}') from exc
+        nb += 1
+    return nb
+
+
 def _playbook_correspond_au_lead(playbook, lead):
     """NTCRM26 — ``playbook.condition`` matche-t-il ce lead ? ``None``/vide =
     playbook universel (comportement historique) — toujours ``True``.
@@ -8301,11 +8344,25 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                     skip(lead, "étape déjà atteinte ou recul non autorisé")
                     continue
                 old = lead.stage
-                # CRX20 — chemin canonique : le bulk émet enfin
-                # ``lead_stage_changed`` (playbooks NTCRM12 + séquences compta
-                # XMKT1 partaient pour un PATCH unitaire, jamais pour un bulk).
-                appliquer_stage_lead(lead, target_stage, user=user)
-                activity.log_bulk_change(lead, user, 'stage', old, target_stage)
+                # Décision fondateur 08/10/2026 — sortir de « Signé » en
+                # masse dés-accepte le devis, PAR LEAD, dans son propre point
+                # de sauvegarde : un lead bloqué (facture émise, chantier
+                # avancé…) est sauté avec la raison, les autres passent.
+                try:
+                    with transaction.atomic():
+                        if old == stages.SIGNED:
+                            desaccepter_devis_du_lead(lead, user)
+                        # CRX20 — chemin canonique : le bulk émet enfin
+                        # ``lead_stage_changed`` (playbooks NTCRM12 +
+                        # séquences compta XMKT1 partaient pour un PATCH
+                        # unitaire, jamais pour un bulk).
+                        appliquer_stage_lead(lead, target_stage, user=user)
+                        activity.log_bulk_change(
+                            lead, user, 'stage', old, target_stage)
+                except SortieSigneBloquee as exc:
+                    lead.stage = old
+                    skip(lead, exc.message)
+                    continue
                 # QJ9 — entrée manuelle en masse dans SIGNED : pas de CAPI ici
                 # (pas de devis accepté associé ni d'attribution UTM disponible).
                 updated += 1

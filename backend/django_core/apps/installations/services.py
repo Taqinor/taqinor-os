@@ -614,6 +614,71 @@ def _realigner_nomenclature_revision(chantier, devis):
     return True
 
 
+#: Décision fondateur (08/10/2026) — motif posé sur un chantier annulé parce
+#: que l'acceptation de son devis a été annulée (lead sorti de « Signé »).
+#: C'est le MARQUEUR qui autorise sa réactivation à la ré-acceptation.
+MOTIF_ANNULATION_DESACCEPTATION = (
+    'Acceptation du devis annulée (lead sorti de « Signé »)')
+
+
+def annuler_chantiers_desaccepte(devis, user, company):
+    """Décision fondateur (08/10/2026) — défait le chantier auto-créé par
+    l'acceptation de ``devis`` quand cette acceptation est annulée.
+
+    Le chantier n'est JAMAIS supprimé : il reçoit le drapeau d'annulation
+    (comme l'action « Annuler ») avec le motif-marqueur
+    ``MOTIF_ANNULATION_DESACCEPTATION``, ses réservations non consommées sont
+    libérées et une note est posée au chatter. Le contrôle de blocage
+    (``selectors.blocage_annulation_acceptation``) a déjà garanti qu'il était
+    dans son état initial. N'attrape rien : appelé dans la transaction de
+    dés-acceptation, une erreur annule tout. Rend le nombre de chantiers
+    annulés."""
+    from . import activity
+    qs = (Installation.objects
+          .select_for_update()
+          .filter(devis_id=devis.pk, company=company, annule=False)
+          .order_by('pk'))
+    nb = 0
+    for inst in qs:
+        inst.annule = True
+        inst.motif_annulation = MOTIF_ANNULATION_DESACCEPTATION[:255]
+        inst.save(update_fields=['annule', 'motif_annulation'])
+        activity.log_note(
+            inst, user,
+            f"Chantier annulé automatiquement : l'acceptation du devis "
+            f'{devis.reference} a été annulée (lead sorti de « Signé »).')
+        liberees = release_reservations(inst)
+        if liberees:
+            activity.log_note(
+                inst, user,
+                f'Réservation de stock libérée — {liberees} référence(s) '
+                '(acceptation annulée).')
+        nb += 1
+    return nb
+
+
+def _reactiver_chantier_reaccepte(inst, devis, user):
+    """Ré-acceptation d'un devis dés-accepté : le chantier annulé par la
+    dés-acceptation redevient actif (jamais un second chantier), sa date de
+    signature suit la nouvelle acceptation et ses réservations sont
+    réamorcées s'il en portait (même règle que l'action « Réactiver »)."""
+    from . import activity
+    inst.annule = False
+    inst.motif_annulation = None
+    champs = ['annule', 'motif_annulation']
+    date_acc = getattr(devis, 'date_acceptation', None)
+    if date_acc and inst.date_signature != date_acc:
+        inst.date_signature = date_acc
+        champs.append('date_signature')
+    inst.save(update_fields=champs)
+    activity.log_note(
+        inst, user,
+        f'Chantier réactivé : le devis {devis.reference} a été accepté de '
+        'nouveau.')
+    if inst.reservations.exists():
+        seed_reservations(inst)
+
+
 def create_installation_from_devis(devis, user, company):
     """Retourne (installation, created).
 
@@ -634,6 +699,12 @@ def create_installation_from_devis(devis, user, company):
     existing = Installation.objects.filter(
         devis=devis, company=company).first()
     if existing is not None:
+        # Décision fondateur 08/10/2026 — un chantier annulé PAR une
+        # dés-acceptation (lead sorti de « Signé ») est RÉACTIVÉ à la
+        # ré-acceptation : il n'existe jamais qu'un seul chantier par devis.
+        if (existing.annule and existing.motif_annulation
+                == MOTIF_ANNULATION_DESACCEPTATION):
+            _reactiver_chantier_reaccepte(existing, devis, user)
         return existing, False
     # QJR559 — V2 d'un devis signé (D-QJR5-2) : le chantier de la version
     # remplacée est RATTACHÉ à la révision acceptée, jamais dupliqué.
