@@ -1,0 +1,29 @@
+{
+  "endpoint": "GET /api/django/ventes/factures/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AFAC2 (C-AFAC-003) — seule une facture ÉMISE ou EN RETARD s'encaisse. La règle vit au SERVEUR (porte unique `exiger_facture_encaissable`, AFAC9) ; l'écran (ligne facture, encaissement groupé, « Payer en ligne », « Demander un paiement carte » — AFAC10) LIT `encaissable` au lieu de décider seul (`montant_du > 0 && statut !== 'annulee'`, brouillon compris). Chaque facture de la liste (et du détail) porte deux clés additives : `encaissable` (booléen) et `motif_non_encaissable` (phrase française prête à afficher, ou null quand la facture est encaissable). Le libellé du motif lié au délai légal CAD122 suit la décision AFAC86.",
+  "exemple": {
+    "id": 118,
+    "reference": "FAC-2026-10-0007",
+    "statut": "emise",
+    "montant_du": "15000.00",
+    "encaissable": true,
+    "motif_non_encaissable": null
+  },
+  "exemple_brouillon": {
+    "id": 119,
+    "reference": "BROUILLON-119",
+    "statut": "brouillon",
+    "montant_du": "8000.00",
+    "encaissable": false,
+    "motif_non_encaissable": "Facture non émise : émettez-la avant d'encaisser."
+  },
+  "exemple_soldee": {
+    "id": 120,
+    "reference": "FAC-2026-10-0008",
+    "statut": "payee",
+    "montant_du": "0.00",
+    "encaissable": false,
+    "motif_non_encaissable": "Facture soldée : plus rien à encaisser."
+  }
+}
