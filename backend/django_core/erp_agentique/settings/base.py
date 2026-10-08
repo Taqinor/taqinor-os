@@ -912,6 +912,13 @@ SPECTACULAR_SETTINGS = {
         # seul jeu de valeurs (« multiple names for the same choice set »).
         'StatutComposantPublicEnum':
             'apps.statuspage.models.ComponentStatus.Statut',
+        # Vague 6 (08/10/2026) — sav.ReponseType.nouveau_statut (ASAV13) reprend
+        # Ticket.Statut ; statuspage.ComponentStatusLog.nouveau_statut porte un
+        # autre jeu sous le MÊME nom de champ : sans ré-épinglage, le générateur
+        # émet « multiple names » + « non-optimally resolvable collision »
+        # (NouveauStatutB32Enum / StatutB32Enum). On garde le nom historique
+        # TicketStatutEnum. Nommage de schéma uniquement — aucun choix ne change.
+        'TicketStatutEnum': 'apps.sav.models.Ticket.Statut',
         # SOLMVP-sweep (2026-09-21) — `MouvementEntreeSortieEnum`
         # (compta.MouvementCaisse.Sens) est retiré : apps.compta est sorti du
         # MVP solaire (Groupe SOLMVP, en cours de mise en coquille par la lane
