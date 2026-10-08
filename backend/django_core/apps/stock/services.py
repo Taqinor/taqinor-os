@@ -1096,12 +1096,20 @@ def figer_inventaire_annuel(company, exercice, user):
     import datetime
     import json
     from django.core.serializers.json import DjangoJSONEncoder
+    from django.utils import timezone
+    from rest_framework.exceptions import ValidationError
     from .models import InventaireAnnuel
+    date_fin = datetime.date(exercice, 12, 31)
+    # ASTK203 (C-ASTK-051) — un exercice NON CLOS (31/12 ≥ aujourd'hui) ne
+    # se fige pas : le snapshot « immuable » serait faux (mouvements à venir).
+    if date_fin >= timezone.localdate():
+        raise ValidationError({'exercice': [
+            f"L'exercice {exercice} n'est pas clos ({date_fin:%d/%m/%Y}) : "
+            f'figez-le à partir du 01/01/{exercice + 1}.']})
     if InventaireAnnuel.objects.filter(
             company=company, exercice=exercice).exists():
         raise ValueError(
             f"L'exercice {exercice} est déjà figé pour cette société.")
-    date_fin = datetime.date(exercice, 12, 31)
     data = valorisation_a_date(company, date_fin)
     total_valeur = data['total']
     nb_lignes = len(data['lignes'])
