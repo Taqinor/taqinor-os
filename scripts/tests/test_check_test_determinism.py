@@ -64,9 +64,18 @@ class DeterminismeTests(unittest.TestCase):
     def test_depot_reel_vert(self):
         self.assertEqual(ctd.scan(ROOT), [])
 
-    def test_cles_mortes_retirees(self):
-        for rel, _ligne in ctd.WHITELISTED_LIVE_NOW:
-            self.assertTrue((ROOT / "backend" / "django_core" / rel).exists(), rel)
+    def test_cles_vivantes_par_contenu(self):
+        for cle in ctd.WHITELISTED_LIVE_NOW:
+            rel, _, ligne = cle.partition(" :: ")
+            fichier = ROOT / "backend" / "django_core" / rel
+            self.assertTrue(fichier.exists(), rel)
+            self.assertIn(ligne, [x.strip() for x in fichier.read_text(encoding="utf-8").splitlines()])
+
+    def test_cle_orpheline_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = _arbre(tmp, {"backend/django_core/apps/x/tests/test_a.py": "x = 1\n"})
+            f = ctd.scan(r, set(), {"apps/x/tests/test_a.py :: self.assertEqual(a, timezone.now())"})
+            self.assertTrue(any("orpheline" in x and "apps/x/tests/test_a.py" in x for x in f), f)
 
 
 if __name__ == "__main__":

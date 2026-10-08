@@ -58,6 +58,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Tests check_naive_datetime : cles d exception par contenu (ADEP25)',
+         'python -m unittest scripts.tests.test_check_naive_datetime -v',
+         '.'),
+        ('Tests check_money_fields : cles d exception par contenu (ADEP25)',
+         'python -m unittest scripts.tests.test_check_money_fields -v',
+         '.'),
         ('Tests de la garde determinisme des tests (ADEP24)',
          'python -m unittest scripts.tests.test_check_test_determinism -v',
          '.'),

@@ -43,10 +43,12 @@ LIVE_NOW_IN_ASSERTION_RE = re.compile(
 # owning apps' test files belong to other in-flight lanes. Each is a real
 # (low-severity) flakiness risk near a clock boundary; fix by wrapping the
 # assertion window in ``with testkit.time.frozen(...):``.
-WHITELISTED_LIVE_NOW: set[tuple[str, int]] = {
-    ("apps/ventes/tests/test_acceptation.py", 97),  # PV86 — +8 lignes au-dessus (déclaration du scénario), MÊME assertion
-    ("apps/ventes/tests/test_qg8_devis_whatsapp.py", 159),
-    ("apps/ventes/tests/test_refus.py", 67),
+# ADEP25 : identites de CONTENU `fichier :: ligne normalisee` (plus `(fichier, numero)`, qui
+# se decalait et PRE-AUTORISAIT une ligne vide) ; une cle orpheline fait echouer la garde.
+WHITELISTED_LIVE_NOW: set[str] = {
+    "apps/ventes/tests/test_acceptation.py :: self.assertEqual(devis.date_acceptation, timezone.now().date())",
+    "apps/ventes/tests/test_qg8_devis_whatsapp.py :: self.assertGreater(share.expires_at, timezone.now())",
+    "apps/ventes/tests/test_refus.py :: self.assertEqual(devis.date_refus, timezone.now().date())",
 }
 
 
@@ -94,14 +96,17 @@ def _iter_e2e_spec_files(e2e_root: Path):
         yield path
 
 
-def scan(root: Path, allow: set[str] | None = None) -> list[str]:
+def scan(root: Path, allow: set[str] | None = None, live_now: set[str] | None = None) -> list[str]:
     """Violations sur l'arbre `root` ; `allow` = base decroissante (defaut : le fichier du depot)."""
     backend_root = root / "backend" / "django_core"
     e2e_root = root / "frontend" / "e2e"
     if allow is None:
         allow = _lire_allow(root / "scripts" / "test_determinism_allow.txt")
+    if live_now is None:
+        live_now = WHITELISTED_LIVE_NOW if root == ROOT else set()
     failures: list[str] = []
     utilises: set[str] = set()
+    cles_now: set[str] = set()
 
     def autorise(cle: str) -> bool:
         if cle in allow:
@@ -124,7 +129,9 @@ def scan(root: Path, allow: set[str] | None = None) -> list[str]:
                     f"freeze time instead (testkit.time.frozen)."
                 )
             if LIVE_NOW_IN_ASSERTION_RE.search(line):
-                if (rel, lineno) in WHITELISTED_LIVE_NOW:
+                cle = f"{rel} :: {line.strip()}"
+                if cle in live_now:
+                    cles_now.add(cle)
                     continue
                 failures.append(
                     f"{rel}:{lineno}: assertion compares against a live "
@@ -147,6 +154,11 @@ def scan(root: Path, allow: set[str] | None = None) -> list[str]:
                     f"wait-for-condition/assertion instead of a fixed sleep."
                 )
 
+    for cle in sorted(live_now - cles_now):
+        failures.append(
+            f"WHITELISTED_LIVE_NOW: entree orpheline « {cle} » — l'assertion a "
+            f"disparu, retirez la ligne (base decroissante)."
+        )
     for cle in sorted(allow - utilises):
         failures.append(
             f"scripts/test_determinism_allow.txt: entree orpheline « {cle} » — "
