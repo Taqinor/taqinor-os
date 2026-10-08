@@ -1056,7 +1056,7 @@ def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
     """
     from django.db import transaction
 
-    from .models import OutboxEvent
+    from core.models import OutboxEvent
 
     signal = globals().get(event)
     if not isinstance(signal, django.dispatch.Signal):
