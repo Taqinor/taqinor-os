@@ -59,8 +59,11 @@
         <th>Date</th>
         <th>Statut</th>
         <th class="text-right">Total TTC</th>
+        <th class="text-right">Notes de débit</th>
         <th class="text-right">Payé</th>
+        <th class="text-right">Retenues</th>
         <th class="text-right">Avoirs</th>
+        <th class="text-right">Abandons</th>
         <th class="text-right">Dû</th>
       </tr>
     </thead>
@@ -71,8 +74,11 @@
         <td>{{ l.date }}</td>
         <td>{{ l.statut }}</td>
         <td class="text-right">{{ l.total_ttc }} MAD</td>
+        <td class="text-right">{{ l.notes_debit }} MAD</td>
         <td class="text-right">{{ l.paye }} MAD</td>
+        <td class="text-right">{{ l.retenues }} MAD</td>
         <td class="text-right">{{ l.avoirs }} MAD</td>
+        <td class="text-right">{{ l.abandons }} MAD</td>
         <td class="text-right"><strong>{{ l.du }} MAD</strong></td>
       </tr>
       {% endfor %}
@@ -83,9 +89,14 @@
   </table>
 
   <div class="totaux">
+    {# AFAC31 — les six termes de la décomposition : Facturé + Notes de débit
+       − Payé − Retenues − Avoirs − Abandons = Solde dû, au centime. #}
     <div class="totaux-row"><span>Total facturé</span><span>{{ releve.totaux.facture }} MAD</span></div>
-    <div class="totaux-row"><span>Total payé</span><span>{{ releve.totaux.paye }} MAD</span></div>
-    <div class="totaux-row"><span>Total avoirs</span><span>{{ releve.totaux.avoirs }} MAD</span></div>
+    <div class="totaux-row"><span>Notes de débit</span><span>+{{ releve.totaux.notes_debit }} MAD</span></div>
+    <div class="totaux-row"><span>Total payé</span><span>−{{ releve.totaux.paye }} MAD</span></div>
+    <div class="totaux-row"><span>Retenues à la source</span><span>−{{ releve.totaux.retenues }} MAD</span></div>
+    <div class="totaux-row"><span>Total avoirs</span><span>−{{ releve.totaux.avoirs }} MAD</span></div>
+    <div class="totaux-row"><span>Abandons de créance</span><span>−{{ releve.totaux.abandons }} MAD</span></div>
     <div class="totaux-row du"><span>Solde dû</span><span>{{ releve.totaux.du }} MAD</span></div>
   </div>
 

@@ -170,15 +170,28 @@ def pay_page(request, token):
     if link is None:
         return _not_found()
     facture = link.facture
+    # AFAC23 (C-AFAC-018) — une facture ANNULÉE ne réclame jamais rien, même
+    # par un lien resté ouvert : la page répond « annulé », montant 0.00. Un
+    # lien fermé (annulé ou payé) ne réclame rien non plus.
+    statut = link.statut
+    if facture.statut == 'annulee':
+        statut = PaymentLink.Statut.ANNULE
+    if statut in (PaymentLink.Statut.ANNULE, PaymentLink.Statut.PAYE):
+        montant = '0.00'
+    else:
+        montant = str(link.montant_a_payer)
     return _noindex(Response({
         'reference': facture.reference,
         'client_name': str(facture.client) if facture.client_id else '',
-        'montant': str(link.montant_a_payer),
+        'montant': montant,
         'montant_initial': str(link.montant),
         'devise': 'MAD',
-        'statut': link.statut,
+        'statut': statut,
         'paye': link.statut == PaymentLink.Statut.PAYE,
         'expire': not link.is_valid and link.statut != PaymentLink.Statut.PAYE,
+        # AFAC21 — forme EXACTE de `facturation/contract_samples/
+        # paiement_public.json` : coordonnées de virement (null si aucune).
+        'rib': _company_rib() or None,
     }))
 
 

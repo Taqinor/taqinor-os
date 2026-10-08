@@ -542,15 +542,22 @@ def _releve_data(client, user=None):
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, user, ['created_by'])
     factures = list(
-        qs.prefetch_related('lignes', 'paiements', 'avoirs')
+        qs.prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
+                            'retenues_subies')
         .order_by('date_emission'))
     lignes = []
     paiements = []
     avoirs = []
     total_facture = total_paye = total_avoir = total_du = Decimal('0')
+    # AFAC31 (C-AFAC-031) — les SIX termes de `decomposition_du` : le relevé
+    # se rapproche à la main (facture + ND − payé − RAS − avoirs − abandons
+    # = dû) ; il taisait les notes de débit, les RAS et les abandons.
+    from apps.facturation.models import decomposition_du
+    total_nd = total_ras = total_abandon = Decimal('0')
     for f in factures:
-        paye = f.montant_paye
-        avo = f.avoirs_total
+        dec = decomposition_du(f)
+        paye = dec['paye']
+        avo = dec['avoirs']
         # XFAC25 — une facture déjà soldée (payée) ne compte jamais dans
         # l'encours du relevé, même si son solde brut n'est pas nul (ex.
         # statut forcé sans paiement enregistré) : le statut fait foi, comme
@@ -560,12 +567,20 @@ def _releve_data(client, user=None):
         total_paye += paye
         total_avoir += avo
         total_du += du
+        total_nd += dec['notes_debit']
+        total_ras += dec['retenues']
+        total_abandon += dec['abandons']
         lignes.append({
             'reference': f.reference,
             'date': f.date_emission.isoformat(),
             'statut': f.get_statut_display(),
             'total_ttc': _s(f.total_ttc),
-            'paye': _s(paye), 'avoirs': _s(avo), 'du': _s(du),
+            'notes_debit': _s(dec['notes_debit']),
+            'paye': _s(paye),
+            'retenues': _s(dec['retenues']),
+            'avoirs': _s(avo),
+            'abandons': _s(dec['abandons']),
+            'du': _s(du),
         })
         # ── AUD132 (PAY-11) — UN SEUL propriétaire du détail ──────────────
         # Le détail était construit par `for p in f.paiements.all()` SANS aucun
@@ -638,8 +653,13 @@ def _releve_data(client, user=None):
         'paiements': paiements,
         'avoirs': avoirs,
         'totaux': {
-            'facture': _s(total_facture), 'paye': _s(total_paye),
-            'avoirs': _s(total_avoir), 'du': _s(total_du),
+            'facture': _s(total_facture),
+            'notes_debit': _s(total_nd),
+            'paye': _s(total_paye),
+            'retenues': _s(total_ras),
+            'avoirs': _s(total_avoir),
+            'abandons': _s(total_abandon),
+            'du': _s(total_du),
         },
     }
 
@@ -700,6 +720,12 @@ def lettre_relance_pdf(request, facture_id):
     if facture is None:
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
+    # AFAC24 (C-AFAC-019) — même garde que `relancer` : une facture payée,
+    # annulée, brouillon ou sans exigible ne reçoit pas de lettre de relance.
+    ok, motif = facture_relancable(facture)
+    if not ok:
+        return Response({'detail': motif},
+                        status=status.HTTP_400_BAD_REQUEST)
     levels = _levels(facture.company)
     niveau = _current_level(
         facture.jours_retard, levels, montant_du=montant_exigible(facture))

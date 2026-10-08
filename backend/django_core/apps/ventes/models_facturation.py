@@ -357,14 +357,14 @@ class BonCommande(models.Model):
                 .values_list('ligne_devis_id')
                 .annotate(total=Sum('quantite_livree'))
             )
-        # ERR-QAC-MULTIVILLA-MATERIEL-XN — un devis « ×N villas identiques »
-        # porte les lignes d'UNE villa mais commande (et facture) N kits :
-        # sans ×N, livrer le kit d'une villa marquait le BC « livré ». Lu à
-        # la volée (aucune donnée stockée) ; N=1 → chiffres inchangés.
+        # ERR-QAC-MULTIVILLA-MATERIEL-XN — devis « ×N villas » : N kits (N=1
+        # inchangé). AFAC15 — SEUL le panier VENDU (`option_lines`, même panier
+        # que la facture et la sortie) est livrable : jamais l'option écartée.
+        from .utils.options import option_lines
         from .multivilla import nombre_proprietes
         n_prop = nombre_proprietes(self.devis)
         out = []
-        for ligne in self.devis.lignes.all():
+        for ligne in option_lines(self.devis):
             if not ligne.compte_dans_totaux or ligne.quantite is None:
                 continue
             livre = livre_par_ligne.get(ligne.id) or 0
@@ -727,11 +727,16 @@ class PaymentLink(models.Model):
         ``montant`` est la trace de ce qui était dû à la création ; l'afficher
         au client (page publique) après un règlement partiel lui réclamait un
         chiffre périmé. Le webhook borne déjà l'encaissement à ce reste dû —
-        c'est la même valeur, exposée au même endroit."""
+        c'est la même valeur, exposée au même endroit.
+
+        AFAC24 (C-AFAC-019) — « à payer maintenant » = ``montant_exigible``
+        (CIQ214 : ``montant_du`` − retenue de garantie non libérée), le même
+        chiffre que la lettre de relance et l'e-mail. Le webhook, lui, reste
+        borné à ``montant_du`` (une retenue payée volontairement est acceptée)."""
         from decimal import Decimal
 
         facture = self.facture
-        reste = getattr(facture, 'montant_du', None)
+        reste = getattr(facture, 'montant_exigible', None)
         return reste if reste is not None else Decimal('0')
 
 

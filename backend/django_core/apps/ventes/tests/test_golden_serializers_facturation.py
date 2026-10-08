@@ -38,6 +38,8 @@ SERIALISEURS = [
     'RelanceLogSerializer', 'FactureActivitySerializer',
     'LigneRemiseEncaissementSerializer', 'RemiseEncaissementSerializer',
     'MandatPaiementSerializer',
+    # AFAC30 — sérialiseur d'ENTRÉE de `paiement-avec-retenue`.
+    'PaiementAvecRetenueEntreeSerializer',
 ]
 
 MODULE_CIBLE = 'apps.ventes.serializers_facturation'
@@ -80,7 +82,7 @@ class GoldenSerializersFacturationTests(SimpleTestCase):
         cls.capture = _capturer()
 
     def test_non_vacuite(self):
-        self.assertEqual(len(self.capture['serializers']), 20)
+        self.assertEqual(len(self.capture['serializers']), 21)
         for nom, d in self.capture['serializers'].items():
             self.assertTrue(d['fields'], nom)
 
