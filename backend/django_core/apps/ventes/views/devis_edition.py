@@ -46,7 +46,8 @@ def _garde_kwh_declare(devis):
     (facture au barème ÷ facture déclarée hors [0,5 ; 2]) REFUSE
     l'enregistrement : 400 ``{detail, code}``, jamais un chiffrage
     silencieux. Partagée par ``/atomic`` (sous sa transaction, rien n'est
-    créé) et ``replace-lines`` (avant toute écriture)."""
+    créé) et ``replace-lines`` (ADEV27 : sous sa transaction aussi, après
+    l'écriture de l'en-tête et de l'étude entrants — rien n'est écrit)."""
     from rest_framework.exceptions import ValidationError
     from ..etude_horaire import controle_kwh_declare_du_devis
     from ..horaire.conso import CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT
@@ -379,8 +380,10 @@ class DevisEditionActionsMixin:
             _gardes_mise_a_jour(devis, entete_ser.validated_data,
                                 request.user, t17=False)
         _valider_etude_ecran(etude_in)
-        # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — avant toute écriture.
-        _garde_kwh_declare(devis)
+        # ADEV27 (C-ADEV-038) — la garde kWh n'est PLUS jugée ici, sur l'état
+        # d'AVANT : elle l'est dans la transaction, APRÈS l'écriture de
+        # l'en-tête et des choix d'écran entrants (comme ``/atomic``). Même
+        # corps ⇒ même verdict sur les deux chemins ; un refus annule tout.
         from ..services import (
             RemiseNonApprouvee, reverifier_remise_apres_correction)
         from ..domain.tarification import profondeur_remise_effective
@@ -401,6 +404,10 @@ class DevisEditionActionsMixin:
                 if etude_in:
                     from ..domain.etude_schema import ECRAN, ecrire
                     ecrire(devis, proprietaire=ECRAN, **etude_in)
+                # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES / ADEV27 — jugée sur
+                # la saisie ENTRANTE, sous la transaction : un kWh déclaré
+                # contredit n'écrit RIEN (rollback de l'en-tête et de l'étude).
+                _garde_kwh_declare(devis)
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
                 # qu'hier : un échec préserve les lignes d'origine.
                 # QJR518 — ``user`` : l'auteur d'une correction après envoi
