@@ -226,6 +226,12 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        # ASAV7 — horloges figées : on ne recalcule la garantie que si la
+        # pose ou le produit CHANGENT réellement, et jamais au rebut (sinon
+        # éditer une note réalignait la fin sur la durée COURANTE du
+        # catalogue et deux jumeaux divergeaient).
+        avant = serializer.instance
+        pose_avant, produit_avant = avant.date_pose, avant.produit_id
         try:
             super().perform_update(serializer)
         except IntegrityError:
@@ -233,14 +239,20 @@ class EquipementViewSet(CompanyScopedModelViewSet):
                 {'numero_serie':
                  'Ce numéro de série existe déjà dans votre société.'})
         inst = serializer.instance
-        inst.recompute_garanties()
+        update_fields = []
+        if not inst.mis_au_rebut and (
+                inst.date_pose != pose_avant
+                or inst.produit_id != produit_avant):
+            inst.recompute_garanties()
+            update_fields = [
+                'date_fin_garantie', 'date_fin_garantie_production']
         # FG85 — assure que le jeton est toujours présent (migration d'équipements existants).
         token = f'EQUIP:{inst.pk}'
-        update_fields = ['date_fin_garantie', 'date_fin_garantie_production']
         if inst.equipement_token != token:
             inst.equipement_token = token
             update_fields.append('equipement_token')
-        inst.save(update_fields=update_fields)
+        if update_fields:
+            inst.save(update_fields=update_fields)
 
     @action(detail=True, methods=['post'], url_path='mettre-au-rebut',
             permission_classes=[IsResponsableOrAdmin])
