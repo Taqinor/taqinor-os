@@ -408,11 +408,12 @@ def resolve_recipients(company, event_type):
             company=company, event_type=event_type, enabled=True
         ).select_related('target_user'))
 
+        from .selectors import utilisateurs_internes_actifs
+        internes = utilisateurs_internes_actifs(company)
         if not rules:
-            # Comportement historique : managers actifs de la société.
-            return User.objects.filter(
-                company=company, is_active=True,
-                role_legacy__in=['admin', 'responsable'])
+            # Comportement historique : managers actifs de la société
+            # (APAR20 — internes seulement, jamais un compte portail).
+            return internes.filter(role_legacy__in=['admin', 'responsable'])
 
         # Construire l'ensemble des PKs destinataires depuis les règles actives.
         user_pks = set()
@@ -426,7 +427,9 @@ def resolve_recipients(company, event_type):
         from django.db.models import Q
         q = Q(pk__in=user_pks)
         if role_targets:
-            q |= Q(company=company, is_active=True, role_legacy__in=role_targets)
+            # APAR20 — la branche RÔLE ne vise que les comptes internes.
+            q |= Q(pk__in=internes.filter(
+                role_legacy__in=role_targets).values('pk'))
         return User.objects.filter(q, company=company, is_active=True)
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('resolve_recipients échoué : %s', exc)
@@ -1014,9 +1017,11 @@ def annonce_recipients(annonce):
     Best-effort : renvoie toujours un QuerySet/liste (jamais d'exception)."""
     from .models import Annonce
     try:
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        base = User.objects.filter(company=annonce.company, is_active=True)
+        from .selectors import utilisateurs_internes_actifs
+        # APAR20 — « Toute la société » = les comptes INTERNES actifs ; un
+        # compte portail ne lit jamais une annonce interne (sinon le rapport
+        # de conformité ne peut jamais atteindre 100 %).
+        base = utilisateurs_internes_actifs(annonce.company)
         if annonce.cible_type == Annonce.Cible.ROLE:
             if not annonce.cible_role:
                 return base.none()

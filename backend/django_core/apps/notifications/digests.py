@@ -45,8 +45,9 @@ def _recipients(company):
     défaut, tous les utilisateurs actifs de la société. Toujours borné à la
     société (multi-tenant), jamais d'utilisateur d'une autre société."""
     try:
-        from authentication.models import CustomUser
-        base = CustomUser.objects.filter(company=company, is_active=True)
+        from .selectors import utilisateurs_internes_actifs
+        # APAR20 — internes seulement (jamais un compte portail).
+        base = utilisateurs_internes_actifs(company)
         managers = [u for u in base if _is_manager(u)]
         if managers:
             return managers

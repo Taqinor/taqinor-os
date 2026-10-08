@@ -45,8 +45,9 @@ def _companies():
 def _managers(company):
     """Gérants/staff de la société (même logique que digests._recipients)."""
     try:
-        from authentication.models import CustomUser
-        base = CustomUser.objects.filter(company=company, is_active=True)
+        from .selectors import utilisateurs_internes_actifs
+        # APAR20 — internes seulement (jamais un compte portail).
+        base = utilisateurs_internes_actifs(company)
         mgrs = [u for u in base if _is_manager(u)]
         return mgrs if mgrs else list(base)
     except Exception:  # pragma: no cover
