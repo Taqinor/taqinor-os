@@ -148,10 +148,9 @@ def build(ctx):
 </style>
 """
 
-    # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
-    from ..clauses_cgv import bloc_clauses_html
-    clauses_html = bloc_clauses_html(
-        d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
+    # AMOT38 (C-AMOT-047) — les clauses/CGV gelées (QJR668) sont imprimées
+    # UNE fois, sur la page équipements (``commercial/equip``, partagée par
+    # l'industriel) ; plus de second bloc ici.
 
     html = f"""{css}
 <div class="i3-root">
@@ -171,7 +170,7 @@ def build(ctx):
     </div></td>
   </tr></table>
 
-  {warranties_html}{services_html}{clauses_html}
+  {warranties_html}{services_html}
 
   {conditions_html}
 
