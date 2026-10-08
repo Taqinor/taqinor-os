@@ -2,13 +2,14 @@
 
 AUCUN SECOND MÉCANISME DE VALIDATION
 ---------------------------------------
-Le feu vert existe déjà comme geste de visite technique : quand
-``apps.visites.services.valider_visite`` l'accorde, ``core.events.
-visite_validee`` (VTA5) est émis et ``apps.crm.receivers`` pose
-``Lead.visite_effectuee`` sur la fiche du lead (+ le récap et une note de
-chatter). Ce module ne recrée RIEN de tout ça : il se contente de LIRE
-``Lead.visite_effectuee`` (via ``apps.crm.selectors.get_company_lead``, jamais
-``apps.crm.models``) au moment où une variante serait retenue.
+Le feu vert existe déjà comme geste de visite technique : il est accordé
+quand la visite LA PLUS RÉCENTE du lead est au statut « validée »
+(``apps.visites.services.valider_visite``) et se referme au renvoi
+(``renvoyer_visite``). Ce module ne recrée RIEN de tout ça : il se contente
+de LIRE ``apps.visites.selectors.visite_feu_vert`` (ALEA5/ALEA37) au moment où
+une variante serait retenue — il ne lit PLUS ``Lead.visite_effectuee``, qui
+garde le sens « visite réalisée » côté CRM (posé dès « terminer », jamais
+retiré au renvoi).
 
 QUEL LEAD DÉBLOQUE
 --------------------
@@ -127,14 +128,14 @@ def verifier_avant_publication(calepinage, *, geste=GESTE_RETENUE,
     """
     from rest_framework.exceptions import ValidationError
 
-    from apps.crm.selectors import get_company_lead
+    from apps.visites.selectors import visite_feu_vert
 
     company = getattr(calepinage, 'company', None) if calepinage else None
     if option_active(company):
         lead_id = lead_id_de_reference(calepinage)
         if lead_id:
-            lead = get_company_lead(company, lead_id, avec_corbeille=True)
-            if lead is None or not getattr(lead, 'visite_effectuee', False):
+            if visite_feu_vert(getattr(company, 'id', None),
+                               lead_id) is None:
                 raise ValidationError({
                     'feu_vert': [MESSAGES_FEU_VERT.get(
                         geste, MESSAGES_FEU_VERT[GESTE_RETENUE])],
