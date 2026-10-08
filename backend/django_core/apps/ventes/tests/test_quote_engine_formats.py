@@ -2768,7 +2768,13 @@ class AcalResidentielEtudeSansPlancheAuto(TestCase):
         from apps.ventes.quote_engine import generate_devis_premium as G
         from apps.ventes.quote_engine.builder import (
             build_quote_data, clean_pdf_options)
-        data = build_quote_data(self.devis, clean_pdf_options(options))
+        # Le drapeau SERVEUR que ``generate_premium_devis_pdf`` pose sur le
+        # chemin de rendu (hors whitelist ``clean_pdf_options``) — sans lui
+        # la planche n'est jamais composée (CAL182) et la précondition
+        # « sous l'AUTO la planche EXISTE » ne pourrait pas tenir.
+        opts = dict(clean_pdf_options(options),
+                    _embed_calepinage_planche=True)
+        data = build_quote_data(self.devis, opts)
         orig = G._render_pdf_weasyprint
         G._render_pdf_weasyprint = lambda html, out: None
         try:
