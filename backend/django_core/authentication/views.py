@@ -433,11 +433,32 @@ class CookieTokenRefreshView(APIView):
             )
         access, new_refresh, refus = _rafraichir(refresh_raw)
         if refus is not None:
-            _clear_auth_cookies(refus)
+            # ASEC49 — un refresh DÉJÀ TOURNÉ (liste noire) rejoué ne doit pas
+            # effacer les cookies : dans une course entre deux onglets, le
+            # navigateur porte déjà le NOUVEAU couple posé par l'onglet gagnant
+            # — l'effacer déconnecterait tous les onglets. Le 401 suffit.
+            if not _refresh_deja_tourne(refresh_raw):
+                _clear_auth_cookies(refus)
             return refus
         response = Response({'detail': 'Token rafraichi.'})
         _set_auth_cookies(response, access, new_refresh)
         return response
+
+
+def _refresh_deja_tourne(refresh_raw):
+    """Vrai si ce refresh est en liste noire (déjà tourné / révoqué).
+
+    Décodage SANS vérification : ne sert qu'à décider de NE PAS effacer les
+    cookies (geste d'ergonomie), jamais à autoriser quoi que ce soit."""
+    try:
+        from rest_framework_simplejwt.token_blacklist.models import (
+            BlacklistedToken,
+        )
+        jti = RefreshToken(refresh_raw, verify=False).get('jti')
+        return bool(jti) and BlacklistedToken.objects.filter(
+            token__jti=jti).exists()
+    except Exception:
+        return False
 
 
 def _rafraichir(refresh_raw):

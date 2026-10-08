@@ -85,6 +85,15 @@ class RefreshRotationTests(TestCase):
         r = APIClient().post(_CORPS_URL, {'refresh': ancien}, format='json')
         self.assertEqual(r.status_code, 401)
 
+    def test_rejeu_n_efface_pas_les_cookies_de_l_onglet_gagnant(self):
+        api, ancien = self._login()
+        self.assertEqual(api.post(_COOKIE_URL).status_code, 200)
+        autre_onglet = APIClient()
+        autre_onglet.cookies['refresh_token'] = ancien
+        r = autre_onglet.post(_COOKIE_URL)
+        self.assertEqual(r.status_code, 401)
+        self.assertNotIn('refresh_token', r.cookies)
+
     def test_route_corps_tourne(self):
         _, ancien = self._login()
         r = APIClient().post(_CORPS_URL, {'refresh': ancien}, format='json')
