@@ -610,6 +610,25 @@ def options_affichees(quote: dict) -> tuple[str, ...]:
     return ("avec",) if quote.get("avec_ok", True) else ("sans",)
 
 
+def option_recommandee(d: dict):
+    """AMOT33 (C-AMOT-043) — l'option que le document RECOMMANDE, lue sur le
+    choix du serveur (``d['recommended']``, valeur stockée du vendeur) :
+    ``'sans'`` / ``'avec'`` sur un document à deux options, ``None`` quand
+    aucune recommandation n'est portée (ou document mono-option). Un devis
+    aux règles d'origine garde le comportement d'hier (l'option 2)."""
+    if not d.get("deux_options", True):
+        return None
+    if d.get("regles_calcul_origine") or "recommended" not in d:
+        # Règles d'origine, ou dict d'avant la clé : l'option 2, comme hier.
+        return "avec"
+    reco = d.get("recommended")
+    if reco == "Sans batterie":
+        return "sans"
+    if reco == "Avec batterie":
+        return "avec"
+    return None
+
+
 def option_economique(quote: dict) -> str:
     """L'option que décrit la synthèse −N % / donut
     (``renderer.synthese_economies`` : ``_avec``)."""

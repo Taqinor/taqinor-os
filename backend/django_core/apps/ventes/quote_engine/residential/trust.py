@@ -430,13 +430,18 @@ def build(ctx) -> str:
         fmt_mad = ctx.get("fmt_mad") or theme.fmt
         accord_opt_html = ("Offre valable jusqu'au " + _valid_until
                            if _valid_until else "")
+        # AMOT33 — la pastille suit l'option recommandée par le serveur.
+        from ..figures import option_recommandee as _reco_de
+        _reco = _reco_de(d)
+        _mini = '<span class="p3-reco-mini">recommandé</span>'
         accord_pick_html = (
             '<div class="p3-accord-pick">Cochez votre option :'
             f'<span class="p3-box"></span> Sans batterie — '
             f'<b>{fmt_mad(_ts)} MAD TTC</b>'
-            f'<span class="p3-box"></span> {_libelle_avec} — '
+            + (_mini if _reco == "sans" else "")
+            + f'<span class="p3-box"></span> {_libelle_avec} — '
             f'<b>{fmt_mad(_ta)} MAD TTC</b>'
-            '<span class="p3-reco-mini">recommandé</span></div>')
+            + (_mini if _reco == "avec" else "") + '</div>')
     else:
         accord_opt_html = (_libelle_avec if _avec_ok else "Sans batterie")
         accord_pick_html = ""
