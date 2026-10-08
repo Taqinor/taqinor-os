@@ -131,6 +131,8 @@ CATALOG = {
     # configuré pour la ``source``. WIR165 en a posé le premier émetteur réel
     # (``ventes.utils.pdf`` → source='ventes_facture'), d'où l'alignement de
     # ces clés sur les kwargs réellement envoyés.
+    # ADOC74 — mêmes kwargs pour 'ventes_avoir', 'ventes_note_debit' et
+    # 'ventes_remise' (helper unique ``ventes.utils.pdf._emettre_document_produit``).
     'document_produit': _e(
         "Une app émettrice a produit un fichier à centraliser en GED "
         "(routé par ``source`` via RoutageDocumentaire).",

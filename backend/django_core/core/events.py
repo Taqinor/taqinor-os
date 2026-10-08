@@ -318,10 +318,15 @@ importe ``apps.audit``.
     (comportement actuel inchangé). WIR165 — premier ÉMETTEUR RÉEL :
     ``apps/ventes/utils/pdf.py`` ``generate_facture_pdf`` (``source=
     'ventes_facture'``), best-effort, juste après le stockage du PDF de
-    facture. Arguments du signal :
+    facture. ADOC74 — trois émetteurs de plus dans le même module, même
+    helper ``_emettre_document_produit`` : ``generate_avoir_pdf`` (``source=
+    'ventes_avoir'``), ``generate_note_debit_pdf`` (``'ventes_note_debit'``) et
+    ``generate_bordereau_remise_pdf`` (``'ventes_remise'``). Arguments du
+    signal :
 
     * ``source`` — code de module (ex. ``paie_bulletin``, ``rh_document``,
-      ``sav_piece_jointe``, ``ventes_facture``) — doit correspondre à la
+      ``sav_piece_jointe``, ``ventes_facture``, ``ventes_avoir``,
+      ``ventes_note_debit``, ``ventes_remise``) — doit correspondre à la
       ``source`` d'un ``RoutageDocumentaire.company`` ;
     * ``company`` — la société (posée côté serveur) ;
     * ``file`` — le fichier (objet file-like, passé à

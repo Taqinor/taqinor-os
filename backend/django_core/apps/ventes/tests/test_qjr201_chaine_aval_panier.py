@@ -99,9 +99,11 @@ class ProformaCommissionEtTotalTtc(_BaseHuaweiDeye):
     def test_proforma_lit_le_panier_corrige(self):
         """L'argent ET les lignes de la pro-forma sortent du même panier que le
         PDF client — on teste la SOURCE, pas le rendu WeasyPrint."""
-        from apps.ventes.utils.pdf import _proforma_option
+        # ATOT10 — ``_proforma_option`` supprimé : le pro-forma suit
+        # ``option_effective`` (même règle que le BC).
+        from apps.ventes.utils.options import option_effective
 
-        option = _proforma_option(self.devis)
+        option = option_effective(self.devis)
         self.assertEqual(option, AVEC_BATTERIE)
         lignes = option_lines(self.devis, option)
         designations = [li.designation for li in lignes]
