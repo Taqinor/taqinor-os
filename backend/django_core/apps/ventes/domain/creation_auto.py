@@ -229,7 +229,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
         refus_devis_auto_ci)
     from apps.ventes.domain.lignes import creer_ligne
     from apps.ventes.models import Devis
-    from apps.ventes.utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
 
     taille = target_kwc if target_kwc not in (None, '') else getattr(
         lead, 'taille_souhaitee_kwc', None)
@@ -263,7 +263,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
             taux_tva=taux_tva, mode_installation=lead.type_installation,
             etude_params=entrees)
 
-    devis = create_with_reference(Devis, 'DEV', company, _create)
+    devis = create_numbered(Devis, company, 'devis', _create)
     for ordre, ligne in enumerate(lignes):
         creer_ligne(devis, produit_id=ligne['produit_id'],
                     designation=ligne['designation'], quantite=ligne['quantite'],
@@ -312,7 +312,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
     from apps.ventes.domain.pompage import (
         etudier_pompage, lignes_kit_auto, saisies_economie_pompage_du_lead)
     from apps.ventes.models import Devis
-    from apps.ventes.utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
 
     manquants = champs_devis_auto_manquants(lead)
     if manquants:
@@ -373,7 +373,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=Decimal('20'),
             taux_tva=taux_tva, mode_installation='agricole',
             etude_params=etude)
 
-    devis = create_with_reference(Devis, 'DEV', company, _create)
+    devis = create_numbered(Devis, company, 'devis', _create)
     for ordre, ligne in enumerate(lignes):
         creer_ligne(devis, produit_id=ligne['produit_id'],
                     designation=ligne['designation'],
