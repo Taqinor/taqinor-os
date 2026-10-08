@@ -167,12 +167,14 @@ export function useLignesEcran(ctx) {
       setProduits(ps => [...ps, clone])
       setLines(ls => ls.map(l =>
         l._key === renameDialog.key
+          // AGNR32 — relier la ligne au clone SANS toucher au prix tapé ni à
+          // la TVA de la ligne : seuls `produit` et `designation` changent ;
+          // le prix négocié reste verrouillé (`prixManuel`).
           ? {
               ...l,
               produit: String(clone.id),
               designation: clone.nom,
-              prix_unit_ttc: String(ttcFromHt(clone.prix_vente, tauxTvaOf(clone))),
-              taux_tva: String(tauxTvaOf(clone)),
+              prixManuel: true,
             }
           : l))
       setRenameDialog(null)
