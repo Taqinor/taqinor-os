@@ -64,12 +64,14 @@ class PartageMotDePasseTests(TestCase):
         self.assertTrue(r.content.startswith(b'%PDF'))
 
     def test_gel_par_partage_multi_ip(self):
+        debut = timezone.now()
         for i in range(PARTAGE_ECHECS_MAX):
             r = self._get('faux', ip=f'10.1.0.{i + 1}')
             self.assertEqual(r.status_code, 403, r.content)
         self.partage.refresh_from_db()
         self.assertIsNotNone(self.partage.gele_jusqua)
-        self.assertGreater(self.partage.gele_jusqua, timezone.now())
+        # Gel posé APRÈS le début du test et pour une durée positive.
+        self.assertGreater(self.partage.gele_jusqua, debut)
         # Le BON mot de passe, depuis une IP neuve : refusé pendant le gel.
         r = self._get(MDP, ip='10.9.9.9')
         self.assertEqual(r.status_code, 403, r.content)

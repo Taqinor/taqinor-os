@@ -88,7 +88,6 @@ backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.de
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.entite
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.lead
 backend/django_core/apps/ventes/serializers_facturation.py::LigneAvoirSerializer.produit
-backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.produit
 backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.produit
 backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.source_devis
 backend/django_core/apps/ventes/serializers_facturation.py::LigneNoteDebitSerializer.produit
@@ -100,7 +99,6 @@ backend/django_core/apps/ventes/serializers_facturation.py::NoteDebitSerializer.
 backend/django_core/apps/ventes/serializers_facturation.py::PaiementSerializer.client
 backend/django_core/apps/ventes/serializers_facturation.py::ParametrageRelanceClientSerializer.client
 backend/django_core/apps/ventes/serializers_facturation.py::PromessePaiementSerializer.facture
-backend/django_core/apps/ventes/serializers.py::RegleListePrixSerializer.produit
 # SPL72 — 95 sites PRÉEXISTANTS que la garde ne voyait pas (découverte étendue à
 # serializers*.py / *_serializers.py / models*.py et héritage résolu à l'échelle de l'app) :
 # installations 66, stock 17, ventes 8, sav 4 (72 dans des serializers.py d'autres apps,
@@ -182,8 +180,6 @@ backend/django_core/apps/ventes/serializers_commissioning.py::AttestationConform
 backend/django_core/apps/ventes/serializers_commissioning.py::AttestationRESerializer.chantier
 backend/django_core/apps/ventes/serializers_commissioning.py::CommissioningTestSerializer.chantier
 backend/django_core/apps/ventes/serializers_commissioning.py::TestPerformanceReceptionSerializer.chantier
-backend/django_core/apps/ventes/serializers_regulatory.py::Regularisation8221Serializer.chantier
-backend/django_core/apps/ventes/serializers_regulatory.py::RegulatoryDossierSerializer.chantier
 
 # AANA47 - sites PRE-EXISTANTS releves le 2026-10-07 (M2M, FK utilisateur/role, serialiseurs hors serializers*.py). CONSTATES, pas approuves : chaque ligne retiree = une fuite fermee ; correction par proprietaire.
 backend/django_core/apps/accessreview/serializers.py::AccessReviewItemSerializer.user
@@ -344,7 +340,6 @@ backend/django_core/apps/stock/views/catalogue_achat.py::CatalogueAchatSerialize
 backend/django_core/apps/ventes/serializers.py::DevisActivitySerializer.devis
 backend/django_core/apps/ventes/serializers.py::EmailLogSerializer.devis
 backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.devis
-backend/django_core/apps/ventes/serializers.py::LigneDevisSerializer.lot
 backend/django_core/apps/ventes/serializers.py::LignePrixListeSerializer.liste
 backend/django_core/apps/ventes/serializers.py::RegleListePrixSerializer.liste
 backend/django_core/apps/ventes/serializers_commissioning.py::AsBuiltPackSerializer.devis

@@ -16,9 +16,9 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/achats/models.py:672` | LigneFactureFournisseur.taux_tva | 5 | 2 |
 | `backend/django_core/apps/achats/models.py:723` | PaiementFournisseur.montant | 14 | 2 |
 | `backend/django_core/apps/achats/models.py:733` | PaiementFournisseur.montant_ras_tva | 14 | 2 |
-| `backend/django_core/apps/adminops/models.py:321` | FactureLicence.montant_ht | 12 | 2 |
-| `backend/django_core/apps/adminops/models.py:323` | FactureLicence.tva | 12 | 2 |
-| `backend/django_core/apps/adminops/models.py:325` | FactureLicence.montant_ttc | 12 | 2 |
+| `backend/django_core/apps/adminops/models.py:322` | FactureLicence.montant_ht | 12 | 2 |
+| `backend/django_core/apps/adminops/models.py:324` | FactureLicence.tva | 12 | 2 |
+| `backend/django_core/apps/adminops/models.py:326` | FactureLicence.montant_ttc | 12 | 2 |
 | `backend/django_core/apps/crm/models.py:1178` | Lead.montant_estime | 12 | 2 |
 | `backend/django_core/apps/crm/models.py:1441` | Lead.carburant_prix_unitaire_mad | 8 | 2 |
 | `backend/django_core/apps/crm/models.py:3089` | ConcurrentPerte.concurrent_prix | 12 | 2 |
