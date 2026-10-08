@@ -561,6 +561,20 @@ export function computeROI({
       factureSans = tbSans.factureSans
       factureAvecSans = tbSans.factureAvec
       factureAvecAvec = tbAvec.factureAvec
+      // AGNR23 — la série mensuelle est RÉPARTIE depuis l'annuel FINAL (clé
+      // de répartition = la forme de production de la série estimée, comme
+      // la clé solaire mensuelle du serveur) : Σ des 12 points = la carte.
+      const repartir = (serie, cible) => {
+        const somme = serie.reduce((s, v) => s + v, 0)
+        if (!(somme > 0)) return
+        for (let i = 0; i < 12; i++) serie[i] = serie[i] * (cible / somme)
+      }
+      repartir(ecoSansMonthly, ecoAnnuelleSans)
+      repartir(ecoAvecMonthly, ecoAnnuelleAvec)
+      for (let i = 0; i < 12; i++) {
+        monthlyDetail[i].eco_sans = ecoSansMonthly[i]
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
     }
   }
 

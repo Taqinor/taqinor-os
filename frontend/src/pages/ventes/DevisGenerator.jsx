@@ -1457,6 +1457,19 @@ export default function DevisGenerator({
   const signerEcoOuRoi = (v) => (apercuEstimationExemple ? apercu(v) : moteur(v))
 
   const chartData = useMemo(() => {
+    // AGNR23 — le graphe sort du MODÈLE QUI PORTE LES CARTES : quand l'étude
+    // horaire serveur répond, ses 12 mois (Σ = la carte) ; sinon `roi`.
+    const moisServeur = etudeHoraireDonnees?.etude?.mois
+    if (etudeHoraireSourceServeur && Array.isArray(moisServeur) && moisServeur.length === 12) {
+      const moisAvec = etudeHoraireDonneesPourAvec?.etude?.mois
+      const avec = Array.isArray(moisAvec) && moisAvec.length === 12 ? moisAvec : moisServeur
+      return moisServeur.map((m, i) => ({
+        month: CHART_MONTHS[i],
+        facture: Math.round(Number(m.facture_avant_mad) || 0),
+        ecoSans: Math.round(Number(m.economie_sans_mad) || 0),
+        ecoAvec: Math.round(Number(avec[i]?.economie_avec_mad) || 0),
+      }))
+    }
     if (!roi) return []
     // L-2OPT — la courbe « avec batterie » suit le kWc de SA branche quand les
     // deux optimiseurs divergent (`roiAvec`), sinon `roi` (identique).
@@ -1467,7 +1480,7 @@ export default function DevisGenerator({
       ecoSans: Math.round(d.eco_sans),
       ecoAvec: Math.round((detailAvec[i] ?? d).eco_avec),
     }))
-  }, [roi, roiAvec])
+  }, [roi, roiAvec, etudeHoraireSourceServeur, etudeHoraireDonnees, etudeHoraireDonneesPourAvec])
 
   // ── QJR641 — Marché → autoconsommation diurne par défaut (simulateur) ──
   const appliquerPartDiurneDuMarche = (mode) => {
@@ -3133,7 +3146,21 @@ export default function DevisGenerator({
                     (QF4), l'écran affiche le MÊME calcul « deux factures » par
                     tranche que le PDF (facture sans vs avec solaire) au lieu
                     d'une estimation moyenne. */}
-                {roi.savings_model === 'factures' ? (
+                {etudeHoraireSourceServeur ? (
+                  // AGNR23 — le bandeau dit le modèle DES CARTES : l'étude
+                  // horaire du moteur quand elle répond.
+                  <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+                       data-testid="bandeau-modele-cartes">
+                    Moteur horaire : facture ≈ <strong>{fmtNum(Math.round(etudeHoraireAnnuel.facture_avant_mad))} MAD/an</strong>
+                    {' '}sans solaire → avec solaire ≈{' '}
+                    <strong>
+                      {fmtNum(Math.round(sansRec || !showAvec
+                        ? etudeHoraireAnnuel.facture_apres_sans_mad
+                        : (etudeHoraireAnnuelAvec || etudeHoraireAnnuel).facture_apres_avec_mad))} MAD/an
+                    </strong>
+                    {' '}— chiffres des cartes (production horaire × consommation du client).
+                  </div>
+                ) : roi.savings_model === 'factures' ? (
                   <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
                     Facture réelle {distributeur.toUpperCase()} ≈ <strong>{fmtNum(roi.facture_sans)} MAD/an</strong>
                     {' '}sans solaire → avec solaire ≈{' '}
