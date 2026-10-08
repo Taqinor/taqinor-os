@@ -74,6 +74,9 @@ ASSET_DIR = BASE_DIR / "assets"
 _RENDER_LOCK = threading.RLock()
 
 
+from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402
+
+
 def _esc(value):
     """HTML-escape a user-controlled scalar (ERR37). Byte-identical for text
     without &<>"' so legitimate names/PDFs are unchanged."""
@@ -388,11 +391,17 @@ ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
 ENT_LEGAL_LINE = ("Taqinor Solutions SARLAU &middot; RC 691213 &middot; "
                   "ICE 003799642000067 &middot; Capital 100&#8239;000 MAD "
                   "&middot; Siège : 5 Rue Ennoussour RDC, Casablanca")
-# Ligne RIB (bénéficiaire · banque · RIB · BIC) — littéral historique exact.
-ENT_RIB_LINE = ('<strong style="color:{cg7}">TAQINOR SOLUTION</strong> '
-                '· Saham Bank · '
-                'RIB 022 780 0002720029379418 74 '
-                '· BIC SGMBMAMCXXX')
+# Ligne RIB (bénéficiaire · banque · RIB · BIC) — APDF2 : LA règle unique de
+# ``quote_engine.identite`` (un seul littéral, partagé avec le résidentiel).
+
+
+def _gras_rib_legacy(texte):
+    """APDF2 — balise du bénéficiaire propre au moteur legacy (``{cg7}`` est
+    substitué au rendu, jamais par ``.format()``, QJR146)."""
+    return f'<strong style="color:{{cg7}}">{texte}</strong>'
+
+
+ENT_RIB_LINE = _ligne_rib_identite(None, gras=_gras_rib_legacy)
 
 # Snapshot des DÉFAUTS Taqinor : les ENT_* actifs sont réinitialisés depuis eux
 # au début de chaque rendu (sous _RENDER_LOCK) avant surcharge par le profil,
@@ -479,15 +488,10 @@ def _apply_entreprise(ent):
     if legal_bits:
         ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
 
-    # Ligne RIB : reconstruite dès qu'un RIB ou une banque est fourni.
-    if rib or banque:
-        benef = _esc(nom) if nom else "Virement"
-        rib_bits = [f'<strong style="color:{{cg7}}">{benef}</strong>']
-        if banque:
-            rib_bits.append(_esc(banque))
-        if rib:
-            rib_bits.append("RIB " + _esc(rib))
-        ENT_RIB_LINE = " · ".join(rib_bits)
+    # APDF2 (C-APDF-001) — ligne RIB par LA règle unique (identite.py) :
+    # RIB/banque du profil → sa ligne ; société identifiée SANS RIB → AUCUNE
+    # ligne (plus jamais le RIB Taqinor sous le nom d'un autre tenant).
+    ENT_RIB_LINE = _ligne_rib_identite(ent, gras=_gras_rib_legacy)
 
     # Couleur de charte (accent) — surcharge CA quand un hex valide est fourni.
     couleur = (ent.get("couleur_principale") or "").strip()
@@ -2653,9 +2657,7 @@ def page3():
             f'<div style="font-size:7pt;color:{CG4};font-style:italic;margin-bottom:3px;">'
             f'* La r\u00e9ception du mat\u00e9riel et le solde s\u2019appliquent m\u00eame si r\u00e9alis\u00e9s le m\u00eame jour.'
             f'</div>'
-            # RIB bar
-            f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
-            f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
+            # RIB bar — APDF2 : omise quand la société n'a pas de RIB.
             # QJR146 (e) — SUBSTITUTION LITTÉRALE, JAMAIS ``.format()``.
             # ``ENT_RIB_LINE`` est RECONSTRUITE à l'ingestion avec la raison
             # sociale, la banque et le RIB du tenant (échappés HTML, ce qui ne
@@ -2663,9 +2665,11 @@ def page3():
             # « } » faisait lever ``.format()`` (KeyError/ValueError) ICI, hors
             # de tout try — le PDF entier échouait sur un caractère du nom de
             # la société. ``str.replace`` ne lit aucun champ de format.
-            f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
-            f'</div>'
-            f'</div>'
+            + (f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
+               f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
+               f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
+               f'</div>' if ENT_RIB_LINE else '')
+            + f'</div>'
         )
 
     return f"""

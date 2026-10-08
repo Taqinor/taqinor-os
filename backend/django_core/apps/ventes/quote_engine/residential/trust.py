@@ -102,34 +102,13 @@ def _compact_css() -> str:
 """
 
 
-#: QJR666 — ligne de virement HISTORIQUE (Taqinor), la même que le moteur
-#: legacy (``generate_devis_premium.ENT_RIB_LINE``) : servie seulement quand
-#: aucun profil société ne porte d'identité (repli byte-identique DC1).
-_RIB_TAQINOR = ('<b>TAQINOR SOLUTION</b> · Saham Bank · '
-                'RIB 022 780 0002720029379418 74 · BIC SGMBMAMCXXX')
-
-
 def _ligne_rib(d) -> str:
-    """QJR666 — la ligne de virement du « Devis final ». RIB ou banque du
-    profil société → SA ligne (échappée) ; société identifiée SANS RIB →
-    aucune ligne (jamais le RIB d'un autre tenant) ; aucun profil → la ligne
-    historique Taqinor, comme le moteur legacy."""
-    from html import escape as _e
-    ent = d.get("entreprise") or {}
-    nom = (ent.get("nom") or "").strip()
-    rib = (ent.get("rib") or "").strip()
-    banque = (ent.get("banque") or "").strip()
-    if rib or banque:
-        bits = [f"<b>{_e(nom) if nom else 'Virement'}</b>"]
-        if banque:
-            bits.append(_e(banque))
-        if rib:
-            bits.append("RIB " + _e(rib))
-        return " · ".join(bits)
-    identite = any((ent.get(k) or "").strip() for k in (
-        "nom", "adresse", "email", "telephone", "ice", "rc",
-        "identifiant_fiscal", "patente"))
-    return "" if identite else _RIB_TAQINOR
+    """QJR666 / APDF2 — la ligne de virement du « Devis final », par LA règle
+    unique ``quote_engine.identite.ligne_rib`` (partagée avec le moteur
+    legacy) : RIB/banque du profil → sa ligne ; société identifiée SANS RIB
+    → aucune ligne ; aucun profil → la ligne historique Taqinor."""
+    from ..identite import ligne_rib
+    return ligne_rib(d.get("entreprise") or {})
 
 
 def _bloc_paiement(d, ctx, ident) -> str:
