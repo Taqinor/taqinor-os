@@ -23,9 +23,13 @@ test('sans ligne panneau → repli sur la cible kwp', () => {
 
 test('branche SANS seulement : une ligne panneau variante « avec » ne compte pas', () => {
   const lignes = [panneau(10), panneau(4, { variante: 'avec' }), onduleur]
-  assert.equal(kwcFactureDesLignes(lignes, 500, 99), 5)
+  // AGNR18 — le watt LU de la ligne (550 W) prime sur panelW (500) : 5,5 kWc.
+  assert.equal(kwcFactureDesLignes(lignes, 500, 99), 5.5)
 })
 
 test('wattage illisible → repli (jamais un kWc à 0 inventé)', () => {
-  assert.equal(kwcFactureDesLignes([panneau(10)], 0, 3.3), 3.3)
+  // AGNR18 — illisible = ni désignation ni produit ne portent de watt.
+  const sansWatt = panneau(10, { designation: 'Panneau Longi' })
+  assert.equal(kwcFactureDesLignes([sansWatt], 0, 3.3), 3.3)
+  assert.equal(kwcFactureDesLignes([sansWatt], 500, 3.3), 5)
 })

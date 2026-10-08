@@ -1600,13 +1600,52 @@ export function batteryCapaciteInconnue(lines) {
 // `fusionnerVariantes`) compte dans les DEUX. Sert à dériver le kWc PROPRE à
 // chaque option depuis les lignes — sans quoi l'écran chiffre l'économie
 // d'une composition avec le kWc de l'autre.
-export function comptePanneauxOption(lines, option) {
+export function comptePanneauxOption(lines, option, produits = []) {
   const exclu = option === 'avec' ? 'sans' : 'avec'
   return (lines || []).reduce((sum, l) => {
-    if (!/panneau/i.test(l?.designation || '')) return sum
+    // AGNR18 — `isPanel` (désignation + nom du produit lié, comme
+    // `builder.panneaux_et_watt_lu`), jamais le seul `/panneau/i` qui
+    // ignorait « JA Solar 550 Wc ».
+    if (!isPanel(l?.designation || '', _produitDeLigne(l, produits)?.nom || '')) return sum
     if (l.variante === exclu) return sum
     return sum + (parseFloat(l.quantite) || 0)
   }, 0)
+}
+
+// AGNR18 — le produit lié d'une ligne d'écran (catalogue chargé), sinon null.
+function _produitDeLigne(l, produits) {
+  if (!l?.produit || !Array.isArray(produits) || !produits.length) return null
+  return produits.find(p => String(p.id) === String(l.produit)) || null
+}
+
+// AGNR18 — watt UNITAIRE LU d'une ligne panneau, même ordre que le serveur
+// (`lignes_classement.panneaux_et_watt_lu`) : fiche technique du produit
+// (Pmax) puis désignation puis nom du produit. `null` si illisible.
+function _wattLigne(l, produits) {
+  const p = _produitDeLigne(l, produits)
+  const fiche = parseFloat(p?.fiche_technique?.pmax_wc ?? p?.pmax_wc ?? p?.puissance_wc)
+  if (fiche > 0) return fiche
+  return parseWatt(l?.designation || '') || parseWatt(p?.nom || '') || null
+}
+
+// AGNR18 — kWc des lignes panneau d'une option : somme quantité × watt LU de
+// CHAQUE ligne ; `panelW` n'est que le repli d'une ligne au watt illisible.
+// `null` sans ligne panneau ou sans aucun watt (lu ou repli).
+export function kwcPanneauxOption(lines, option, panelW, produits = []) {
+  const exclu = option === 'avec' ? 'sans' : 'avec'
+  const repliW = parseFloat(panelW) || 0
+  let n = 0
+  let watts = 0
+  for (const l of lines || []) {
+    if (!isPanel(l?.designation || '', _produitDeLigne(l, produits)?.nom || '')) continue
+    if (l.variante === exclu) continue
+    const q = parseFloat(l.quantite) || 0
+    const w = _wattLigne(l, produits) || repliW
+    if (!(q > 0) || !(w > 0)) continue
+    n += q
+    watts += q * w
+  }
+  return n > 0 ? watts / 1000 : null
 }
 
 // QJR568 — le kWc réellement FACTURÉ par les lignes (branche SANS : commun +
@@ -1614,11 +1653,11 @@ export function comptePanneauxOption(lines, option) {
 // panneaux » reste la CIBLE du dimensionnement (dry-run) ; ce kWc-ci alimente
 // prix/kWc, prix cible, études C&I et l'aperçu horaire. `repli` (la cible)
 // quand aucune ligne panneau ou aucun wattage lisible — jamais un 0 inventé.
-export function kwcFactureDesLignes(lines, panelW, repli) {
-  const n = comptePanneauxOption(lines, 'sans')
-  const w = parseFloat(panelW) || 0
-  if (!(n > 0) || !(w > 0)) return repli
-  return n * w / 1000
+// AGNR18 — le watt de CHAQUE ligne (fiche / désignation / produit), `panelW`
+// seulement pour une ligne au watt illisible.
+export function kwcFactureDesLignes(lines, panelW, repli, produits = []) {
+  const kwc = kwcPanneauxOption(lines, 'sans', panelW, produits)
+  return kwc != null && kwc > 0 ? kwc : repli
 }
 
 // ── QJR402 — QF9 (Smart Meter / clé Wi-Fi Huawei-only) MIROIR DU NOYAU ──────

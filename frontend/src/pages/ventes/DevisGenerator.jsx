@@ -94,7 +94,7 @@ import {
   DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, htFromTtc,
   comptePanneauxOption,
-  kwcFactureDesLignes, kwcPourPanneaux,
+  kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
   optionTotalsTTC, defaultProductLines,
   prixParKwc, discountForTarget,
   computeBuyCostDetail, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
@@ -772,8 +772,10 @@ export default function DevisGenerator({
   // réellement FACTURÉ par les lignes (celui que le PDF dérive) alimente
   // prix/kWc, prix cible, études C&I et l'aperçu horaire. Repli sur la cible
   // sans ligne panneau.
-  const kwpLignes = kwcFactureDesLignes(lines, panelW, kwp)
-  const panneauxLignes = comptePanneauxOption(lines, 'sans')
+  // AGNR18 — watt de CHAQUE ligne panneau (fiche / désignation / produit lié),
+  // `panelW` seulement en repli d'une ligne au watt illisible.
+  const kwpLignes = kwcFactureDesLignes(lines, panelW, kwp, produits)
+  const panneauxLignes = comptePanneauxOption(lines, 'sans', produits)
 
   // L-2OPT — kWc PROPRE à l'option « Avec batterie ». `kwp` ci-dessus est le
   // compte de la branche SANS (le rechargement d'un brouillon exclut
@@ -787,11 +789,12 @@ export default function DevisGenerator({
   // nombre de panneaux) ⇒ `kwp` est renvoyé TEL QUEL : aucune re-dérivation
   // flottante, comportement byte-identique à l'historique.
   const kwpAvec = (() => {
-    const nSans = comptePanneauxOption(lines, 'sans')
-    const nAvec = comptePanneauxOption(lines, 'avec')
+    const nSans = comptePanneauxOption(lines, 'sans', produits)
+    const nAvec = comptePanneauxOption(lines, 'avec', produits)
     // QJR568 — non divergent : le kWc FACTURÉ des lignes (repli : la cible).
     if (nSans <= 0 || nAvec === nSans) return kwpLignes
-    return nAvec * (parseFloat(panelW) || 0) / 1000
+    // AGNR18 — même dérivation au watt de chaque ligne que la branche SANS.
+    return kwcPanneauxOption(lines, 'avec', panelW, produits) ?? 0
   })()
 
   // EZ5 — dimensionner en kWc. Les deux champs sont BIDIRECTIONNELS : taper une
