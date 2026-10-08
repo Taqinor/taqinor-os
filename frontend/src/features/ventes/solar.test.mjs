@@ -204,6 +204,9 @@ const SURFACES_SAISIE = [
   '../../pages/ventes/generator/CarteEcheancier.jsx',
   // QJR667 — le formulaire « Lots / multi-sites » (champ ordre).
   './LotsMultiSites.jsx',
+  // SPL55 — la carte « Paramètres Techniques » (puissance cible, panneaux,
+  // puissance panneau) a quitté la coquille : ses 3 champs nombre restent sous garde.
+  '../../pages/ventes/generator/CarteParametresTechniques.jsx',
 ]
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
