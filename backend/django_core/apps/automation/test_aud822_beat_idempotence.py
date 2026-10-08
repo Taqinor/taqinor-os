@@ -89,9 +89,10 @@ class FactureOverdueIdempotenceTests(_Base):
                     action_config={'subject': 'Relance', 'body': 'Bonjour'})
         self._facture()
         mail.outbox = []
-        _trigger_facture_overdue(self.co)
-        _trigger_facture_overdue(self.co)
-        _trigger_facture_overdue(self.co)
+        # APAR10 — l'e-mail part au COMMIT de chaque passage.
+        for _ in range(3):
+            with self.captureOnCommitCallbacks(execute=True):
+                _trigger_facture_overdue(self.co)
         self.assertEqual(len(mail.outbox), 1)
 
     def test_le_marqueur_porte_lecheance_et_lobjet(self):

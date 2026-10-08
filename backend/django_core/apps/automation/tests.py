@@ -48,6 +48,15 @@ def auth(user):
     return api
 
 
+def _run_au_commit(test, rule, instance, company):
+    """APAR10 — exécute ``run_action`` puis le COMMIT (les envois e-mail sont
+    différés en ``on_commit``) ; rend le statut/message du run JOURNALISÉ."""
+    with test.captureOnCommitCallbacks(execute=True):
+        engine.run_action(rule, instance, company)
+    run = AutomationRun.objects.filter(rule=rule).order_by('-id').first()
+    return run.status, run.message
+
+
 def rows(resp):
     data = resp.data
     if isinstance(data, dict) and 'results' in data:
@@ -123,8 +132,11 @@ class RuleMatchingTests(TestCase):
             client=client)
         devis.statut = 'accepte'
         devis.save()
-        devis_accepted.send(
-            sender=Devis, devis=devis, user=None, ancien_statut='brouillon')
+        # APAR10 — l'e-mail part (et se journalise) au COMMIT.
+        with self.captureOnCommitCallbacks(execute=True):
+            devis_accepted.send(
+                sender=Devis, devis=devis, user=None,
+                ancien_statut='brouillon')
         run = AutomationRun.objects.filter(
             rule__trigger_type=TriggerType.DEVIS_ACCEPTED).first()
         self.assertIsNotNone(run)
@@ -531,7 +543,7 @@ class SendEmailHonestyTests(TestCase):
             client=client)
         # send_mail renvoie 0 (aucun message remis) → FAILED honnête.
         with mock.patch('django.core.mail.send_mail', return_value=0):
-            status, _ = engine.run_action(rule, devis, self.co)
+            status, _ = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.FAILED)
 
     def test_send_error_is_reported_failed(self):
@@ -546,7 +558,7 @@ class SendEmailHonestyTests(TestCase):
             client=client)
         with mock.patch('django.core.mail.send_mail',
                         side_effect=RuntimeError('SMTP down')):
-            status, msg = engine.run_action(rule, devis, self.co)
+            status, msg = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.FAILED)
         self.assertIn('SMTP down', msg)
 
@@ -561,7 +573,7 @@ class SendEmailHonestyTests(TestCase):
             company=self.co, reference='DEV-MAIL3', statut='brouillon',
             client=client)
         mail.outbox = []
-        status, _ = engine.run_action(rule, devis, self.co)
+        status, _ = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.SUCCESS)
 
 
@@ -677,7 +689,7 @@ class ModeleMessageTests(TestCase):
         rule = self._send_rule()
         devis = self._devis_with_email('DEV-MM-DEF')
         mail.outbox = []
-        status, _ = engine.run_action(rule, devis, self.co)
+        status, _ = _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.SUCCESS)
         self.assertEqual(mail.outbox[-1].subject, 'Notification Auto MM')
 
@@ -688,7 +700,7 @@ class ModeleMessageTests(TestCase):
         rule = self._send_rule()
         devis = self._devis_with_email('DEV-MM-SUB')
         mail.outbox = []
-        engine.run_action(rule, devis, self.co)
+        _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(mail.outbox[-1].subject, 'Sujet personnalisé')
 
     def test_action_config_subject_overrides_template(self):
@@ -702,7 +714,7 @@ class ModeleMessageTests(TestCase):
             action_config={'body': 'salut', 'subject': 'Sujet explicite'})
         devis = self._devis_with_email('DEV-MM-OVR')
         mail.outbox = []
-        engine.run_action(rule, devis, self.co)
+        _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(mail.outbox[-1].subject, 'Sujet explicite')
 
     def test_send_email_body_falls_back_to_template_corps(self):
@@ -716,7 +728,7 @@ class ModeleMessageTests(TestCase):
             action_type=ActionType.SEND_EMAIL, action_config={})
         devis = self._devis_with_email('DEV-MM-BODY')
         mail.outbox = []
-        engine.run_action(rule, devis, self.co)
+        _run_au_commit(self, rule, devis, self.co)
         self.assertEqual(mail.outbox[-1].body, 'Corps du modèle')
 
 

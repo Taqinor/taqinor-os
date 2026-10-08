@@ -427,11 +427,15 @@ def _set_field(rule, instance, company, context, user):
             'assignables (machine à états / champ financier / non déclaré) : '
             'refusé.')
     value = cfg.get('value')
+    ancienne = getattr(instance, field, None)
     try:
         setattr(instance, field, value)
         instance.save(update_fields=[field])
         return Status.SUCCESS, f'Champ « {field} » mis à jour.'
     except Exception as exc:
+        # APAR10 — l'écriture est annulée (point de sauvegarde du moteur) :
+        # l'instance de l'émetteur ne garde pas la valeur refusée en mémoire.
+        setattr(instance, field, ancienne)
         return Status.FAILED, f'Mise à jour échouée : {exc}'
 
 

@@ -16,6 +16,8 @@ comportement par défaut).
 import logging
 import threading
 
+from django.db import transaction
+
 from .models import (
     ActionType, AutomationApproval, AutomationRule, AutomationRun,
     AutomationStep, TriggerType,
@@ -370,8 +372,33 @@ def _rule_steps(rule):
         return []
 
 
-def _execute(action_source, rule, instance, company, context, user):
-    """Exécute UNE action (règle mono-action ou étape) et journalise son run."""
+# ── APAR10 — frontière transactionnelle du moteur ──────────────────────────
+#
+# 1) Chaque action tourne dans son POINT DE SAUVEGARDE (``transaction.atomic``):
+#    une erreur SQL d'une action (valeur trop longue…) annule l'action seule ;
+#    sans lui, la transaction de l'ÉMETTEUR (la requête qui a changé l'étape du
+#    lead) était avortée et sa requête suivante levait
+#    ``TransactionManagementError``.
+# 2) Les actions d'ENVOI (e-mail, futurs canaux) partent en
+#    ``transaction.on_commit`` et sont journalisées AU COMMIT : un fait annulé
+#    (rollback de l'émetteur) n'envoie rien et ne journalise rien. Hors bloc
+#    atomique (beat, autocommit), ``on_commit`` exécute immédiatement : le
+#    statut rendu est alors le statut réel.
+
+#: Actions dont l'effet SORT de l'application (jamais rattrapable par un
+#: rollback) : exécutées au commit de la transaction de l'émetteur.
+ACTIONS_ENVOI = frozenset({ActionType.SEND_EMAIL})
+
+#: Statut rendu quand l'envoi attend le commit de l'émetteur (le run réel est
+#: journalisé à l'exécution, au commit).
+MESSAGE_ENVOI_DIFFERE = (
+    "Envoi programmé : il partira à la validation de l'opération.")
+
+
+def _run_isole(action_source, instance, company, context, user):
+    """Exécute ``actions.run`` sous la garde anti-récursion ET dans un point
+    de sauvegarde. Une erreur SQL annule l'action seule ; le message du
+    handler (s'il a déjà conclu FAILED) est conservé. Ne lève jamais."""
     from . import actions
     # Marque la fenêtre d'exécution : tout ``instance.save()` déclenché par
     # l'action (SET_FIELD / ASSIGN_RECORD) ré-émet le post_save, mais
@@ -379,13 +406,51 @@ def _execute(action_source, rule, instance, company, context, user):
     # récursion.
     previous = _in_automation()
     _GUARD.active = True
+    resultat = None
     try:
-        status, message = actions.run(
-            action_source, instance, company, context, user)
+        with transaction.atomic():
+            resultat = actions.run(
+                action_source, instance, company, context, user)
+    except Exception as exc:
+        # Le point de sauvegarde est annulé : la transaction de l'émetteur
+        # reste UTILISABLE. On garde le message du handler s'il a déjà
+        # conclu à l'échec (ex. « value too long »), sinon celui de l'erreur.
+        if not (resultat and resultat[0] == AutomationRun.Status.FAILED):
+            resultat = (AutomationRun.Status.FAILED, str(exc))
     finally:
         _GUARD.active = previous
+    return resultat
+
+
+def _execute(action_source, rule, instance, company, context, user):
+    """Exécute UNE action (règle mono-action ou étape) et journalise son run.
+
+    APAR10 — une action d'envoi est différée au commit (et journalisée là) ;
+    les autres s'exécutent tout de suite, isolées dans un point de sauvegarde.
+    """
+    if action_source.action_type in ACTIONS_ENVOI:
+        return _execute_au_commit(
+            action_source, rule, instance, company, context, user)
+    status, message = _run_isole(
+        action_source, instance, company, context, user)
     _log_run(rule, company, instance, status, message)
     return status, message
+
+
+def _execute_au_commit(action_source, rule, instance, company, context, user):
+    """APAR10 — programme l'envoi au commit de la transaction en cours."""
+    resultat = {}
+
+    def _envoyer():
+        status, message = _run_isole(
+            action_source, instance, company, context, user)
+        _log_run(rule, company, instance, status, message)
+        resultat['run'] = (status, message)
+
+    transaction.on_commit(_envoyer)
+    if 'run' in resultat:  # autocommit : exécuté immédiatement
+        return resultat['run']
+    return AutomationRun.Status.NOOP, MESSAGE_ENVOI_DIFFERE
 
 
 def run_action(rule, instance, company, *, context=None, user=None):

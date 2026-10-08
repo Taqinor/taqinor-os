@@ -110,8 +110,9 @@ class VariablesRecettesTests(TestCase):
             action_type=ActionType.SEND_EMAIL,
             action_config=preset['action_config'])
         mail.outbox = []
-        status, _ = engine.run_action(regle, facture, self.co)
-        self.assertEqual(status, AutomationRun.Status.SUCCESS)
+        # APAR10 — l'e-mail part (et se journalise) au COMMIT.
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.run_action(regle, facture, self.co)
         self.assertEqual(len(mail.outbox), 1)
         envoi = mail.outbox[0]
         self.assertEqual(envoi.subject, 'Facture en retard – FAC-APAR6')
@@ -119,7 +120,7 @@ class VariablesRecettesTests(TestCase):
         self.assertIn('Votre facture FAC-APAR6', envoi.body)
         self.assertIn("L'équipe APAR6 SARL", envoi.body)
         self.assertNotIn('{', envoi.subject + envoi.body)
-        run = AutomationRun.objects.filter(rule=regle).last()
+        run = AutomationRun.objects.get(rule=regle)
         self.assertEqual(run.status, AutomationRun.Status.SUCCESS)
 
     def test_variable_inconnue_skipped(self):
@@ -131,9 +132,9 @@ class VariablesRecettesTests(TestCase):
             action_config={'subject': 'Devis {reference}',
                            'body': 'Bonjour {inconnue}'})
         mail.outbox = []
-        status, message = engine.run_action(regle, devis, self.co)
-        self.assertEqual(status, AutomationRun.Status.SKIPPED)
-        self.assertIn('{inconnue}', message)
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.run_action(regle, devis, self.co)
         self.assertEqual(len(mail.outbox), 0)
         run = AutomationRun.objects.get(rule=regle)
         self.assertEqual(run.status, AutomationRun.Status.SKIPPED)
+        self.assertIn('{inconnue}', run.message)
