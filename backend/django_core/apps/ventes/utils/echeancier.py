@@ -33,7 +33,7 @@ sans déclaration et ≤ 100, la valeur reste un pourcentage, mot pour mot.
 """
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP
 
 from apps.ventes.models import Facture
 
@@ -619,24 +619,13 @@ def blended_tva_pct(devis) -> Decimal:
 def _repartir_au_centime(total, poids):
     """CIQ215 — répartit ``total`` (MAD) entre les clés de ``poids`` au
     prorata, méthode du plus fort reste au centime : la somme des parts vaut
-    EXACTEMENT ``total``. Poids nuls ⇒ tout sur la dernière clé."""
-    cles = list(poids)
-    centimes = int((Decimal(str(total)) * 100).to_integral_value())
-    somme = sum((Decimal(str(poids[c])) for c in cles), Decimal('0'))
-    if somme == 0:
-        parts = {c: 0 for c in cles}
-        parts[cles[-1]] = centimes
-    else:
-        exactes = {c: Decimal(centimes) * Decimal(str(poids[c])) / somme
-                   for c in cles}
-        parts = {c: int(exactes[c].to_integral_value(rounding=ROUND_FLOOR))
-                 for c in cles}
-        reste = centimes - sum(parts.values())
-        ordre = sorted(cles, key=lambda c: (exactes[c] - parts[c], -cles.index(c)),
-                       reverse=True)
-        for c in ordre[:reste]:
-            parts[c] += 1
-    return {c: Decimal(parts[c]) / 100 for c in cles}
+    EXACTEMENT ``total``. Poids nuls ⇒ tout sur la dernière clé.
+
+    ATOT6 — le corps vit dans ``apps.facturation.totaux`` (module SANS
+    modèle, LE service de ventilation des documents figés) : ce nom reste
+    la porte historique de ses appelants."""
+    from apps.facturation.totaux import repartir_au_centime
+    return repartir_au_centime(total, poids)
 
 
 def ventilation_tva_tranche(devis, tranche, existantes=None):

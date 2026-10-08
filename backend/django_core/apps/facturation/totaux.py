@@ -10,6 +10,34 @@ n'importe ``apps.facturation.models`` qu'en BAS de fichier, à dessein).
 """
 
 
+def repartir_au_centime(total, poids):
+    """CIQ215/ATOT6 — répartit ``total`` (MAD) entre les clés de ``poids``
+    au prorata, méthode du plus fort reste au centime : la somme des parts
+    vaut EXACTEMENT ``total``. Poids nuls ⇒ tout sur la dernière clé.
+    (Déplacé d'``echeancier._repartir_au_centime``, qui y délègue : ce
+    module n'importe aucune app — contrat import-linter M1.)"""
+    from decimal import ROUND_FLOOR, Decimal
+
+    cles = list(poids)
+    centimes = int((Decimal(str(total)) * 100).to_integral_value())
+    somme = sum((Decimal(str(poids[c])) for c in cles), Decimal('0'))
+    if somme == 0:
+        parts = {c: 0 for c in cles}
+        parts[cles[-1]] = centimes
+    else:
+        exactes = {c: Decimal(centimes) * Decimal(str(poids[c])) / somme
+                   for c in cles}
+        parts = {c: int(exactes[c].to_integral_value(rounding=ROUND_FLOOR))
+                 for c in cles}
+        reste = centimes - sum(parts.values())
+        ordre = sorted(cles,
+                       key=lambda c: (exactes[c] - parts[c], -cles.index(c)),
+                       reverse=True)
+        for c in ordre[:reste]:
+            parts[c] += 1
+    return {c: Decimal(parts[c]) / 100 for c in cles}
+
+
 def ventilation_document_fige(bases_par_taux, ttc, *, ht=None, tva=None):
     """ATOT6 (C-ATOT-004) — LE service unique de ventilation TVA d'un
     document FIGÉ (tranche, avoir, note de débit) : répartit ``ttc`` (et son
@@ -25,7 +53,6 @@ def ventilation_document_fige(bases_par_taux, ttc, *, ht=None, tva=None):
     a moins de deux paniers (document mono-taux : rien à ventiler)."""
     from decimal import ROUND_HALF_UP, Decimal
 
-    from apps.ventes.utils.echeancier import _repartir_au_centime
     from core.money import quantize_mad
 
     paniers = list(bases_par_taux or [])
@@ -42,8 +69,8 @@ def ventilation_document_fige(bases_par_taux, ttc, *, ht=None, tva=None):
             Decimal('0')
         tva = tva.quantize(cent, rounding=ROUND_HALF_UP)
         ht = ttc - tva
-    bases = _repartir_au_centime(ht, bases_src)
-    tvas = _repartir_au_centime(tva, tva_src)
+    bases = repartir_au_centime(ht, bases_src)
+    tvas = repartir_au_centime(tva, tva_src)
     return [{'taux': str(t),
              'base_ht': str(quantize_mad(bases[t])),
              'montant': str(quantize_mad(tvas[t]))} for t in taux]
