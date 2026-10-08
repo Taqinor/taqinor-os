@@ -665,6 +665,15 @@ def estampiller_provenance(devis, intention):
                 lead, 'pk', None)):
         if lead_values_changed_since(ancienne, company=intention.company):
             return None
+        # CAD177 — MÊME lead, AUCUNE dérive, MÊMES champs estampillés :
+        # l'estampille en place dit déjà exactement ce que le devis a repris.
+        # La réécrire ne changeait que `captured_at` — donc etude_params et
+        # l'empreinte de l'étude C&I — à CHAQUE enregistrement sans
+        # changement (CIQ334/CIQ346, nocturne 37803204581).
+        if (ancienne.get('source_lead_id') == stamp.get('source_lead_id')
+                and set(ancienne.get('valeurs') or {})
+                == set(stamp.get('valeurs') or {})):
+            return None
     return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
 
 
