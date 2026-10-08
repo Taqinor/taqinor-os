@@ -28,6 +28,31 @@ from ..services import (
 
 READ_ACTIONS = ['list', 'retrieve']
 
+#: ACHT19 (C-ACHT-017) — table de transitions des livraisons, lue par
+#: `expedier`, `livrer` et `annuler` : planifiée → en transit → livrée ;
+#: annulation seulement avant livraison.
+_LS = Livraison.Statut
+TRANSITIONS_LIVRAISON = {
+    _LS.PLANIFIEE: {_LS.EN_TRANSIT, _LS.ANNULEE},
+    _LS.EN_TRANSIT: {_LS.LIVREE, _LS.ANNULEE},
+}
+_VERBES_LIVRAISON = {
+    _LS.EN_TRANSIT: "l'expédier", _LS.LIVREE: 'la livrer',
+    _LS.ANNULEE: "l'annuler",
+}
+
+
+def _exiger_transition_livraison(liv, cible):
+    """ACHT19 — 400 en français nommant la transition refusée, AVANT tout
+    effet (stock, notification, webhook)."""
+    if cible in TRANSITIONS_LIVRAISON.get(liv.statut, set()):
+        return
+    if liv.statut == _LS.PLANIFIEE and cible == _LS.LIVREE:
+        raise ValidationError({'statut': "Expédiez d'abord la livraison."})
+    raise ValidationError({'statut': (
+        f"Livraison {liv.get_statut_display().lower()} : impossible de "
+        f"{_VERBES_LIVRAISON.get(cible, 'changer son statut')}.")})
+
 
 class LivraisonViewSet(CompanyScopedModelViewSet):
     """FG329 — livraisons planifiées. Lecture tout rôle, écriture
@@ -111,6 +136,9 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             liv.notifie_transit_le = timezone.now()
             liv.save(update_fields=['notifie_transit_le'])
         elif statut == Livraison.Statut.LIVREE:
+            # ACHT19 — une seule fois (horodatage persisté).
+            if liv.notifie_livree_le is not None:
+                return
             livraison_client_notify.notify_livraison_transition(
                 liv, 'livree', request=request)
 
@@ -120,6 +148,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         dépôt → van (idempotent, best-effort). XSTK22 : notifie le client
         (best-effort, une seule fois)."""
         liv = self.get_object()
+        _exiger_transition_livraison(liv, Livraison.Statut.EN_TRANSIT)
         liv.statut = Livraison.Statut.EN_TRANSIT
         liv.save(update_fields=['statut', 'date_modification'])
         try:
@@ -136,20 +165,25 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         (best-effort, jamais bloquant, via le SERVICE publicapi — jamais son
         modèle)."""
         liv = self.get_object()
+        _exiger_transition_livraison(liv, Livraison.Statut.LIVREE)
         liv.statut = Livraison.Statut.LIVREE
         liv.save(update_fields=['statut', 'date_modification'])
-        self._notify_client(liv, Livraison.Statut.LIVREE, request)
-        try:
-            from apps.publicapi.services import notify_livraison_livree
-            notify_livraison_livree(
-                company_id=liv.company_id,
-                livraison_id=liv.id,
-                reference=liv.reference,
-                installation_id=liv.installation_id,
-                numero_suivi=liv.numero_suivi,
-            )
-        except Exception:  # pragma: no cover - défensif, best-effort
-            pass
+        if liv.notifie_livree_le is None:
+            self._notify_client(liv, Livraison.Statut.LIVREE, request)
+            try:
+                from apps.publicapi.services import notify_livraison_livree
+                notify_livraison_livree(
+                    company_id=liv.company_id,
+                    livraison_id=liv.id,
+                    reference=liv.reference,
+                    installation_id=liv.installation_id,
+                    numero_suivi=liv.numero_suivi,
+                )
+            except Exception:  # pragma: no cover - défensif, best-effort
+                pass
+            # ACHT19 — notification + webhook « livrée » : une seule fois.
+            liv.notifie_livree_le = timezone.now()
+            liv.save(update_fields=['notifie_livree_le'])
         return Response(self.get_serializer(liv).data)
 
     @action(detail=True, methods=['post'])
@@ -157,6 +191,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         """FG329 — annule la livraison. YSTCK5 : contre-transfert van → dépôt
         si le stock avait été ventilé (idempotent, best-effort)."""
         liv = self.get_object()
+        _exiger_transition_livraison(liv, Livraison.Statut.ANNULEE)
         try:
             contre_transferer_stock_livraison(liv, request.user)
         except Exception:  # pragma: no cover - défensif, best-effort
