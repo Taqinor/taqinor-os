@@ -1348,6 +1348,15 @@ class MouvementStock(models.Model):
     unite_logistique = models.ForeignKey(
         'stock.UniteLogistique', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='mouvements_stock')
+    # ASTK44 — coût unitaire PORTÉ par une entrée de PRODUCTION (découpe,
+    # assemblage, démontage) : valeur des sorties qui la produisent ÷
+    # quantité produite. Lu par le coût moyen comme une couche de coût, pour
+    # qu'une transformation ne crée ni ne détruise de valeur. NULL pour tous
+    # les autres mouvements (et tous les mouvements historiques) =
+    # comportement inchangé. INTERNE — donnée de coût, jamais client-facing
+    # (exclue du sérialiseur des mouvements).
+    cout_unitaire = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

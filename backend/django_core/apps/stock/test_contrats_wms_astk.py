@@ -937,7 +937,11 @@ class ContratFournisseurJetonsTests(WmsBase):
                     'fournisseur_revoquer_acces')
         base = f'{self.BASE}fournisseurs/{self.fournisseur.id}/'
 
-        rep = self.api.post(f'{base}revoquer-acces/')
+        # ASTK179 — revoquer-acces coupe aussi les jetons publics : le 404
+        # « aucun accès » ne vaut que pour un fournisseur SANS compte NI jeton
+        # (self.fournisseur porte un jeton actif depuis setUp → 200).
+        rep = self.api.post(
+            f'{self.BASE}fournisseurs/{self.autre.id}/revoquer-acces/')
         self.assertEqual(rep.status_code, 404)
         self.assertEqual(rep.json(), rev['exemple_erreur_404'])
 
@@ -952,8 +956,10 @@ class ContratFournisseurJetonsTests(WmsBase):
 
         rep = self.api.post(f'{base}revoquer-acces/')
         self.assertEqual(rep.status_code, 200, rep.content)
-        self.assertMemesCles(rep.json(), rev['exemple'], 'révocation')
-        # `jetons_revoques` (ASTK179) : sur-ensemble déclaré, pas encore servi.
+        # ASTK179 — `jetons_revoques` est désormais SERVI : la réponse réelle
+        # porte exactement les clés de `exemple_nouveau_astk179`.
+        self.assertMemesCles(
+            rep.json(), rev['exemple_nouveau_astk179'], 'révocation')
         self.assertEqual(
             set(rev['exemple_nouveau_astk179']) - set(rev['exemple']),
             set(rev['cles_nouvelles_astk179']))

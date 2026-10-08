@@ -601,6 +601,31 @@ ALL_PERMISSIONS = [
     # Consommé par ``apps.parametres.localisation`` (garde serveur) et par le
     # masquage de l'onglet côté interface (``state.auth.permissions``).
     'localisation_gerer',
+    # ── ASTK16 — gestes achats / réception / paiement / prix catalogue ──────
+    # Constat C-ASTK-003 : commander, réceptionner, payer un fournisseur et
+    # modifier un prix catalogue n'avaient aucun code octroyable, DISJOINT de
+    # ``stock_modifier``/``stock_mouvement``. Libellés FR (grille des rôles) :
+    #   * ``achats_commander``        — « Commander auprès des fournisseurs »
+    #     (créer/envoyer un bon de commande fournisseur) ;
+    #   * ``achats_receptionner``     — « Réceptionner les livraisons
+    #     fournisseur » (valider une réception) ;
+    #   * ``achats_payer``            — « Payer les fournisseurs » (régler une
+    #     facture fournisseur) ;
+    #   * ``catalogue_prix_modifier`` — « Modifier les prix du catalogue »
+    #     (prix de vente/achat d'un produit, tarifs fournisseur).
+    # Titulaires par défaut : Directeur + Administrateur (héritage de ce
+    # catalogue), ``achats_receptionner`` aussi Technicien responsable
+    # (D-ASTK-3). Aucun autre rôle ; un rôle personnalisé existant n'en reçoit
+    # aucun (migration roles 0006 : zéro titulaire, retour arrière = retrait).
+    # Codes d'ÉCRITURE (non ``_voir``) : ``CustomUser._role_grants_write`` rend
+    # donc « responsable » le rôle qui en porte un — voulu, ce sont des gestes
+    # d'écriture. NON élevés : aucune exposition de donnée sensible (le prix
+    # d'achat reste gardé par ``prix_achat_voir``, élevé). Garde côté vue :
+    # ASTK17-ASTK20 (apps/stock), hors du présent périmètre roles-only.
+    'achats_commander',
+    'achats_receptionner',
+    'achats_payer',
+    'catalogue_prix_modifier',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -679,6 +704,14 @@ PERMISSION_MODULE = {
     'valider_dossier_fournisseur': 'stock',
     'emettre_carte_achat': 'stock',
     'approuver_note_frais_direction': 'frais',
+    # ASTK16 — gestes achats/prix catalogue : module ``stock`` (bons de
+    # commande fournisseur, réceptions, paiements fournisseur et catalogue
+    # vivent dans ``apps.stock``) — un préfixe ``achats_``/``catalogue_`` ne
+    # le dirait pas.
+    'achats_commander': 'stock',
+    'achats_receptionner': 'stock',
+    'achats_payer': 'stock',
+    'catalogue_prix_modifier': 'stock',
     # NTOBS22 — ``fiabilite_voir``/``fiabilite_administration`` sont
     # VOLONTAIREMENT absents d'ici : les écrans Fiabilité vivent sous
     # ``apps.parametres`` (``module_manifest.installable = False`` — jamais
@@ -1053,6 +1086,9 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # arbitre, il ne relève pas les mesures.
     'visites_voir', 'visites_valider',
     SCOPE_SUBTREE,
+    # ASTK16 / D-ASTK-3 — le responsable technique réceptionne les livraisons
+    # fournisseur (chantier) ; il ne commande, ne paie ni ne modifie de prix.
+    'achats_receptionner',
 ]
 
 # Technicien : Chantiers/Installations et SAV pour le travail assigné, Stock en

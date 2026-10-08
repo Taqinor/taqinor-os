@@ -355,5 +355,159 @@ export const calepinages = {
         self.assertNotIn(cle, base)
 
 
+# ===========================================================================
+# ASTK232 — la meme garde, parametree par module (stock / achats)
+# ===========================================================================
+
+class FauxDepotStock(FauxDepot):
+    """Depot jetable avec un module ``stock`` (ressources + @action)."""
+
+    def __init__(self):
+        super().__init__()
+        self.baseline_stock = self.racine / "scripts" / "stock_actions_allow.txt"
+        write(self.django / "erp_agentique" / "urls.py", """
+from django.urls import include, path
+urlpatterns = [
+    path('api/django/', include([
+        path('calepinage/', include('apps.calepinage.urls')),
+        path('stock/', include('apps.stock.urls')),
+    ])),
+]
+""")
+        write(self.django / "apps" / "stock" / "urls.py", """
+from rest_framework.routers import DefaultRouter
+from .views import OrphelinViewSet
+
+router = DefaultRouter()
+router.register(r'orphelins', OrphelinViewSet, basename='orphelin')
+urlpatterns = router.urls
+""")
+        self.views_stock = self.django / "apps" / "stock" / "views"
+        write(self.views_stock / "__init__.py", "")
+        self._sauve_stock = cac.STOCK_BASELINE_PATH
+        cac.STOCK_BASELINE_PATH = self.baseline_stock
+
+    def ressource(self, avant_classe: str = "", decorateur: str = "") -> Path:
+        return write(self.views_stock / "orphelins.py", f"""
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
+{avant_classe}
+class OrphelinViewSet(viewsets.ModelViewSet):
+    {decorateur}
+    pass
+""")
+
+    def close(self):
+        cac.STOCK_BASELINE_PATH = self._sauve_stock
+        super().close()
+
+
+class BaseDepotStock(unittest.TestCase):
+    def setUp(self):
+        self.depot = FauxDepotStock()
+        self.addCleanup(self.depot.close)
+        # Une @action calepinage CONSOMMEE : la garde exige au moins une
+        # @action calepinage lue (sinon elle a cesse de garder).
+        self.depot.vue("sorties.py", """
+from rest_framework.decorators import action
+from . import CalepinageViewSet
+
+@action(detail=False, url_path='rapport-ok')
+def rapport_ok(self, request):
+    pass
+
+CalepinageViewSet.rapport_ok = rapport_ok
+""")
+        self.depot.frontend("api/calepinageApi.js", """
+export const rapport = () => api.get('/calepinage/calepinages/rapport-ok/')
+""")
+
+
+class ModulesStockTests(BaseDepotStock):
+    def test_ressource_stock_neuve_sans_ecran_rougit(self):
+        self.depot.ressource()
+        code = cac.main([])
+        self.assertEqual(code, 1)
+        constats, _ = cac.analyse()
+        stock = [c for c in constats if c["domaine"] == "stock"]
+        self.assertEqual([c["url_path"] for c in stock], ["ressource/orphelins"])
+        self.assertTrue(stock[0]["fichier"].endswith("views/orphelins.py"))
+        self.assertGreater(stock[0]["ligne"], 0)
+
+    def test_ressource_consommee_par_le_front_ne_rougit_pas(self):
+        self.depot.ressource()
+        self.depot.frontend("features/stock/api.js", """
+export const orphelins = () => api.get('/stock/orphelins/')
+""")
+        self.assertEqual(cac.main([]), 0)
+
+    def test_action_stock_neuve_sans_ecran_rougit(self):
+        self.depot.ressource(decorateur=(
+            "@action(detail=False, url_path='exporter-orphelins')\n"
+            "    def exporter(self, request):\n"
+            "        pass\n"))
+        self.depot.frontend("features/stock/api.js", """
+export const orphelins = () => api.get('/stock/orphelins/')
+""")
+        constats, _ = cac.analyse()
+        self.assertEqual(
+            [c["url_path"] for c in constats if c["domaine"] == "stock"],
+            ["exporter-orphelins"])
+
+    def test_headless_avec_raison_passe(self):
+        self.depot.ressource(
+            avant_classe="# headless: portail public ouvert par lien signe, "
+                         "aucun ecran ERP en face")
+        self.assertEqual(cac.main([]), 0)
+        constats, _ = cac.analyse()
+        self.assertEqual([c for c in constats if c["domaine"] == "stock"], [])
+
+    def test_headless_sans_raison_refuse(self):
+        self.depot.ressource(avant_classe="# headless:")
+        self.assertEqual(cac.main([]), 1)
+        _, stats = cac.analyse()
+        self.assertEqual(len(stats["invalides"]), 1)
+
+    def test_passif_ne_fait_que_retrecir(self):
+        self.depot.ressource()
+        # Passif stock deja amorce (fichier present) : toute dette nouvelle est
+        # refusee par --write-baseline sans l'autorisation du fondateur.
+        write(self.depot.baseline_stock, cac.ENTETE_BASE_STOCK)
+        self.assertEqual(cac.main(["--write-baseline"]), 1)
+        lignes = [ligne for ligne in self.depot.baseline_stock.read_text(
+            encoding="utf-8").splitlines() if not ligne.startswith("#")]
+        self.assertEqual(lignes, [])
+        # Avec l'autorisation : la dette entre, puis elle est couverte.
+        self.assertEqual(
+            cac.main(["--write-baseline", "--autoriser-croissance"]), 0)
+        self.assertEqual(cac.main([]), 0)
+        # Branchee cote front : la ligne quitte le passif.
+        self.depot.frontend("features/stock/api.js", """
+export const orphelins = () => api.get('/stock/orphelins/')
+""")
+        self.assertEqual(cac.main(["--write-baseline"]), 0)
+        self.assertEqual(cac.charger_base(self.depot.baseline_stock), {})
+
+    def test_calepinage_inchange(self):
+        # Une @action calepinage orpheline est toujours detectee, rattachee au
+        # domaine calepinage, et reste couverte par SON passif.
+        self.depot.vue("sorties.py", """
+from rest_framework.decorators import action
+from . import CalepinageViewSet
+
+@action(detail=False, url_path='rapport-orphelin')
+def rapport_orphelin(self, request):
+    pass
+
+CalepinageViewSet.rapport_orphelin = rapport_orphelin
+""")
+        constats, stats = cac.analyse()
+        cal = [c for c in constats if c["domaine"] == "calepinage"]
+        self.assertEqual([c["url_path"] for c in cal], ["rapport-orphelin"])
+        self.assertEqual(stats["par_module"]["calepinage"]["actions"], 1)
+        self.assertEqual(cac.main([]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

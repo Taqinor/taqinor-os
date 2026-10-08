@@ -210,6 +210,20 @@ IDENTITY_NAME_RE = re.compile(
     r'whatsapp|fax|adresse|address|rue|cin|ice|iban|rib|rc|if|siret|patente|'
     r'cnss|passeport|societe|contact|signataire)($|_)', re.I)
 GPS_NAME_RE = re.compile(r'(^|_)(gps|lat|lng|lon|latitude|longitude)($|_)', re.I)
+# ERR-ANON-ROOF-POLYGONES — clés JSON GÉOMÉTRIQUES : leurs nombres sont des
+# coordonnées (``Devis.roof_layout.outline`` en [[lat, lng], …],
+# ``zones[].vertices`` en [[lng, lat], …], obstacles…). Un contour de toit à
+# pleine précision désigne le domicile : tout nombre à plus de 3 décimales
+# sous ces clés est arrondi comme un GPS (entiers et cotes courtes gardés).
+# Les métriques locales (``contourM``, en mètres) ne sont pas des positions
+# et ne sont pas visées.
+GEO_JSON_KEY_RE = re.compile(
+    r'^(vertices|outline|polygon|polygone|polygons|points|contour|coordinates|'
+    r'coords|ring|rings|sommets|path|geometry|geometrie)$', re.I)
+# Filet générique : une paire nue [x, y] dont les deux nombres sont à plus de
+# 3 décimales et dans la plage lat/lng est une coordonnée, quelle que soit sa
+# clé (aucune coordonnée à plus de 3 décimales ne survit à l'export).
+_GEO_DECIMALES_MAX = 3
 
 # Types dont la valeur est GARDÉE telle quelle (liste blanche — un type absent
 # d'ici et non texte/JSON est VIDÉ : fail-closed).
@@ -604,11 +618,16 @@ class Scrambler:
                 forced=forced or _json_identity_key(str(k)))
                 for k, v in value.items()}
         if isinstance(value, list):
+            if _is_geo_pair(value):
+                return [coarsen_gps(v) for v in value]
             return [self.scrub_json(v, key=key, forced=forced) for v in value]
         if isinstance(value, bool) or value is None:
             return value
         if isinstance(value, (int, float)):
             if key and GPS_NAME_RE.search(key):
+                return coarsen_gps(value)
+            if key and GEO_JSON_KEY_RE.search(key) and (
+                    _decimales(value) > _GEO_DECIMALES_MAX):
                 return coarsen_gps(value)
             if forced and key and IDENTITY_NAME_RE.search(key):
                 return None
@@ -628,6 +647,27 @@ class Scrambler:
                 return None
             return value
         return None  # type inattendu : vidé (fail-closed)
+
+
+def _decimales(value):
+    texte = repr(float(value))
+    if 'e' in texte or 'E' in texte or '.' not in texte:
+        return 0
+    return len(texte.split('.', 1)[1].rstrip('0'))
+
+
+def _is_geo_pair(value):
+    """ERR-ANON-ROOF-POLYGONES — ``[x, y]`` ressemble à une coordonnée :
+    deux nombres (jamais des booléens) dans la plage lat/lng, tous deux à
+    plus de 3 décimales."""
+    if len(value) != 2:
+        return False
+    for v in value:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return False
+        if abs(v) > 180 or _decimales(v) <= _GEO_DECIMALES_MAX:
+            return False
+    return True
 
 
 def _json_identity_key(key):

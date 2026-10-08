@@ -88,20 +88,30 @@ def generer_avoir_rfa(accord, user):
     from apps.ventes.utils.references import create_with_reference
 
     from .models import AvoirFournisseur
-
-    if accord.avoir_deja_genere:
-        raise ValueError(
-            'Un avoir a déjà été généré pour cet accord et cette période.')
-
-    calcul = calculer_rfa_fournisseur(accord)
-    if not calcul['seuil_atteint']:
-        raise ValueError(
-            "Le seuil de CA d'achat de cet accord n'est pas atteint.")
-    montant = _dec(calcul['montant_du'])
-    if montant <= 0:
-        raise ValueError('Le montant de remise calculé est nul.')
+    from .models_rfa import AccordRFAFournisseur
 
     with transaction.atomic():
+        # ASTK50 — l'accord est RELU SOUS VERROU avant de tester
+        # ``avoir_genere`` : deux instances périmées (double clic, deux
+        # onglets) se sérialisent ici et la seconde voit l'avoir de la
+        # première — jamais un second avoir (sonde WMS-5 : avoirs 21 et 22,
+        # avoir_genere final 22, le 21 orphelin).
+        verrou = (AccordRFAFournisseur.objects.select_for_update()
+                  .get(pk=accord.pk))
+        if verrou.avoir_deja_genere:
+            accord.avoir_genere_id = verrou.avoir_genere_id
+            raise ValueError(
+                'Un avoir a déjà été généré pour cet accord et cette période.')
+        appelant, accord = accord, verrou
+
+        calcul = calculer_rfa_fournisseur(accord)
+        if not calcul['seuil_atteint']:
+            raise ValueError(
+                "Le seuil de CA d'achat de cet accord n'est pas atteint.")
+        montant = _dec(calcul['montant_du'])
+        if montant <= 0:
+            raise ValueError('Le montant de remise calculé est nul.')
+
         def _creer(reference):
             return AvoirFournisseur.objects.create(
                 company=accord.company, reference=reference,
@@ -117,6 +127,7 @@ def generer_avoir_rfa(accord, user):
             AvoirFournisseur, 'AVF', accord.company, _creer)
         accord.avoir_genere = avoir
         accord.save(update_fields=['avoir_genere'])
+        appelant.avoir_genere = avoir
 
     logger.info('NTDST5 avoir RFA %s genere pour accord=%s',
                 avoir.reference, accord.id)

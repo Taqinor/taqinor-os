@@ -233,19 +233,31 @@ class TestConsommation(_Base):
         self.assertTrue(r.data['hors_nomenclature'])
 
     def test_fractional_consumption_not_lost(self):
-        # ERR41 — une consommation fractionnaire (0,5) ne doit plus être tronquée
-        # à 0 et perdue : le stock est bien décrémenté (≠ avant le correctif).
+        # ERR41 — une consommation fractionnaire (0,5) n'est jamais tronquée à 0
+        # et perdue EN SILENCE. ASTK45 (le stock se compte en unités entières,
+        # record_stock_movement refuse toute quantité non entière pour TOUS ses
+        # appelants) : la validation est REFUSÉE avec un message lisible qui
+        # nomme le produit, et rien n'est écrit (ligne non appliquée, stock
+        # inchangé, aucun mouvement).
+        from rest_framework.exceptions import ValidationError
+        from apps.stock.models import MouvementStock
         cons = field_capture.ensure_consommation(self.interv)
         ligne = cons.lignes.get(designation='Onduleur 5kW')  # prévu 1
         ligne.quantite_utilisee = Decimal('0.5')
         ligne.justification = 'Demi-unité posée'
         ligne.save()
         before = self.onduleur.quantite_stock  # 10
-        field_capture.validate_consommation(cons, self.user)
+        with self.assertRaises(ValidationError) as ctx:
+            field_capture.validate_consommation(cons, self.user)
+        self.assertIn('Quantité non entière (0,5)', str(ctx.exception.detail))
+        self.assertIn('Onduleur 5kW', str(ctx.exception.detail))
         self.onduleur.refresh_from_db()
-        # Avant le correctif : int(0.5)=0 → stock inchangé (consommation perdue).
-        # Après : le stock baisse (la consommation n'est plus perdue).
-        self.assertLess(self.onduleur.quantite_stock, before)
+        self.assertEqual(self.onduleur.quantite_stock, before)
+        ligne.refresh_from_db()
+        self.assertFalse(ligne.stock_applique)
+        self.assertFalse(MouvementStock.objects.filter(
+            produit=self.onduleur,
+            type_mouvement=MouvementStock.TypeMouvement.SORTIE).exists())
 
     def test_consumption_floor_never_negative(self):
         # ERR80 — consommer plus que le stock en main ne pilote jamais le stock

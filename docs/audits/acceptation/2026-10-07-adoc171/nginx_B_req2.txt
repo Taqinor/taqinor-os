@@ -1,0 +1,2 @@
+{"reference":"DEV-202610-0002","generated_at":"2026-10-07T15:57:11.411596+00:00","mis_a_jour_le":"2026-10-07","milestones":[{"key":"accepte","label":"Proposition acceptée","done":true,"date":"2026-10-07"},{"key":"acompte","label":"Acompte reçu","done":false,"date":null},{"key":"materiel","label":"Matériel commandé","done":false,"date":null},{"key":"installation","label":"Installation","done":false,"date":null},{"key":"facture","label":"Facturé","done":false,"date":null}]}
+HTTP 200

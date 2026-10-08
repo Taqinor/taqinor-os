@@ -1,0 +1,116 @@
+{
+  "step": "A_09a_avant_revocation_horloge_reelle",
+  "url": "/api/django/ventes/suivi/<jeton-masqué>/",
+  "clock_now": "real",
+  "request_1": {
+    "status": 200,
+    "json": {
+      "reference": "DEV-202610-0001",
+      "generated_at": "2026-10-07T15:55:58.775565+00:00",
+      "mis_a_jour_le": "2026-10-17",
+      "milestones": [
+        {
+          "key": "accepte",
+          "label": "Proposition acceptée",
+          "done": true,
+          "date": "2026-10-07"
+        },
+        {
+          "key": "acompte",
+          "label": "Acompte reçu",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "materiel",
+          "label": "Matériel commandé",
+          "done": true,
+          "date": "2026-10-10"
+        },
+        {
+          "key": "installation",
+          "label": "Installation",
+          "done": true,
+          "date": "2026-10-17"
+        },
+        {
+          "key": "facture",
+          "label": "Facturé",
+          "done": true,
+          "date": "2026-10-07"
+        }
+      ]
+    }
+  },
+  "request_2": {
+    "status": 200,
+    "json": {
+      "reference": "DEV-202610-0001",
+      "generated_at": "2026-10-07T15:55:58.823197+00:00",
+      "mis_a_jour_le": "2026-10-17",
+      "milestones": [
+        {
+          "key": "accepte",
+          "label": "Proposition acceptée",
+          "done": true,
+          "date": "2026-10-07"
+        },
+        {
+          "key": "acompte",
+          "label": "Acompte reçu",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "materiel",
+          "label": "Matériel commandé",
+          "done": true,
+          "date": "2026-10-10"
+        },
+        {
+          "key": "installation",
+          "label": "Installation",
+          "done": true,
+          "date": "2026-10-17"
+        },
+        {
+          "key": "facture",
+          "label": "Facturé",
+          "done": true,
+          "date": "2026-10-07"
+        }
+      ]
+    }
+  },
+  "sharelink": {
+    "expires_at": "2027-02-15T00:00:00+00:00",
+    "suivi_prolonge_le": null,
+    "revoque_le": null
+  },
+  "portail_meme_chantier": {
+    "chantier_id": 55,
+    "chantier_reference": "CHT-202610-0001",
+    "statut": "receptionne",
+    "annule": false,
+    "jalons_portail": [
+      {
+        "cle_phase": "appro",
+        "libelle": "Approvisionnement",
+        "atteint": true,
+        "date_jalon": "2026-10-10"
+      },
+      {
+        "cle_phase": "pose",
+        "libelle": "Pose",
+        "atteint": true,
+        "date_jalon": "2026-10-17"
+      },
+      {
+        "cle_phase": "reception",
+        "libelle": "Réception",
+        "atteint": true,
+        "date_jalon": null
+      }
+    ]
+  }
+}

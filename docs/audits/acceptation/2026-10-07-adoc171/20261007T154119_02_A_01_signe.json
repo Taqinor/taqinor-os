@@ -1,0 +1,91 @@
+{
+  "step": "A_01_signe",
+  "url": "/api/django/ventes/suivi/<jeton-masqué>/",
+  "clock_now": "real",
+  "request_1": {
+    "status": 200,
+    "json": {
+      "reference": "DEV-202610-0001",
+      "generated_at": "2026-10-07T15:41:54.151020+00:00",
+      "mis_a_jour_le": null,
+      "milestones": [
+        {
+          "key": "accepte",
+          "label": "Proposition acceptée",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "acompte",
+          "label": "Acompte reçu",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "materiel",
+          "label": "Matériel commandé",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "installation",
+          "label": "Installation",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "facture",
+          "label": "Facturé",
+          "done": false,
+          "date": null
+        }
+      ]
+    }
+  },
+  "request_2": {
+    "status": 200,
+    "json": {
+      "reference": "DEV-202610-0001",
+      "generated_at": "2026-10-07T15:41:54.195562+00:00",
+      "mis_a_jour_le": null,
+      "milestones": [
+        {
+          "key": "accepte",
+          "label": "Proposition acceptée",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "acompte",
+          "label": "Acompte reçu",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "materiel",
+          "label": "Matériel commandé",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "installation",
+          "label": "Installation",
+          "done": false,
+          "date": null
+        },
+        {
+          "key": "facture",
+          "label": "Facturé",
+          "done": false,
+          "date": null
+        }
+      ]
+    }
+  },
+  "sharelink": {
+    "expires_at": "2026-11-06T15:41:53.564431+00:00",
+    "suivi_prolonge_le": null,
+    "revoque_le": null
+  },
+  "portail_meme_chantier": null
+}

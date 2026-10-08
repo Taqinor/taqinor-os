@@ -148,10 +148,15 @@ describe('CJ1 — la silhouette est MISE À L’ÉCHELLE du kWh/jour réel', () 
   });
 
   it('le mode non résidentiel est mis à l’échelle de la même façon', () => {
-    for (const mode of ['industriel', 'commercial', 'agricole'] as const) {
-      const hours = consumptionKwhShape(31.7, { mode });
+    // CIW302 — en C&I la forme vient du moteur (`servedShape`) ; sans elle, 24 zéros.
+    const servie = Array.from({ length: 24 }, (_, h) => 1 + (h % 4));
+    for (const mode of ['industriel', 'commercial'] as const) {
+      const hours = consumptionKwhShape(31.7, { mode, servedShape: servie });
       expect(hours.reduce((a, b) => a + b, 0)).toBeCloseTo(31.7, 9);
+      expect(consumptionKwhShape(31.7, { mode })).toEqual(new Array(24).fill(0));
     }
+    const hours = consumptionKwhShape(31.7, { mode: 'agricole' });
+    expect(hours.reduce((a, b) => a + b, 0)).toBeCloseTo(31.7, 9);
   });
 
   it('kWh/jour absent ou ≤ 0 → 24 zéros (aucun niveau inventé)', () => {

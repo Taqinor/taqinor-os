@@ -76,6 +76,11 @@ DECIMAL_PLACES_ALLOWLIST = {
     # stock/models.py ; MÊME champ prix_par_panneau_ht, déclaration relue
     # identique). Bug-class #34.
     "backend/django_core/apps/stock/models.py:847",
+    # ASTK44 (07/10/2026) — MouvementStock.cout_unitaire : coût UNITAIRE
+    # interne d'une entrée de production (valeur consommée ÷ quantité
+    # produite), une couche du coût moyen, jamais un montant facturé : 4
+    # décimales pour ne pas créer/détruire de valeur à l'arrondi.
+    "backend/django_core/apps/stock/models.py:1358",
     "backend/django_core/apps/btp_chantier/models.py:831",
     "backend/django_core/apps/btp_chantier/models.py:1169",
     "backend/django_core/apps/contrats/models.py:4268",

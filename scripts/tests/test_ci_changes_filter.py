@@ -38,7 +38,7 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 _RULE_RE = re.compile(
     r"""^\s*grep\s+-qE\s+'(?P<regex>[^']+)'\s*<<<\s*"\$changed"\s*&&\s*(?P<assign>.+?)\s*(?:\|\|\s*true)?\s*$"""
 )
-_ASSIGN_RE = re.compile(r"\b(backend|frontend|web)\s*=\s*true\b")
+_ASSIGN_RE = re.compile(r"\b(backend|frontend|web|yanbow)\s*=\s*true\b")
 
 
 def _detect_step_script() -> str:
@@ -78,7 +78,7 @@ def _parse_rules(script: str):
 
 def _resolve(rules, changed_files):
     """Rejoue la resolution du job sur une liste de chemins modifies."""
-    out = {"backend": False, "frontend": False, "web": False}
+    out = {"backend": False, "frontend": False, "web": False, "yanbow": False}
     for regex, surfaces in rules:
         rx = re.compile(regex)
         if any(rx.search(path) for path in changed_files):
@@ -142,6 +142,29 @@ class CiChangesFilterTest(unittest.TestCase):
                         f"ci.yml : {path} ne met plus {surface}=true.",
                     )
 
+    def test_yanbow_only_diff_runs_the_site_job(self):
+        """YBW1 — un diff limite a apps/yanbow-web doit poser yanbow=true.
+
+        Sans cette regle, un diff YanBow seul passait TOUS les controles requis
+        sans rien construire (le motif `^apps/web/` ne couvre pas
+        `apps/yanbow-web/`). Il ne doit PAS non plus reconstruire le site
+        TAQINOR ni lancer les jobs ERP.
+        """
+        resolved = _resolve(self.rules, ["apps/yanbow-web/src/pages/_bonjour.astro"])
+        self.assertTrue(
+            resolved["yanbow"],
+            "ci.yml : un diff limite a apps/yanbow-web rend yanbow=false — le "
+            "job requis web-build-test ne construirait pas le site YanBow (YBW1).",
+        )
+        self.assertFalse(
+            resolved["web"] or resolved["backend"] or resolved["frontend"],
+            "ci.yml : un diff apps/yanbow-web declenche aussi apps/web ou l'ERP.",
+        )
+        self.assertFalse(
+            _resolve(self.rules, ["apps/web/src/pages/index.astro"])["yanbow"],
+            "ci.yml : un diff apps/web pose yanbow=true (regle trop large).",
+        )
+
     def test_docs_only_diff_stays_cheap(self):
         """Cas negatif : docs/**.md ne doit declencher aucun job lourd.
 
@@ -150,7 +173,8 @@ class CiChangesFilterTest(unittest.TestCase):
         """
         resolved = _resolve(self.rules, ["docs/PLAN.md", "README.md", ".gitignore"])
         self.assertFalse(
-            resolved["backend"] or resolved["frontend"] or resolved["web"],
+            resolved["backend"] or resolved["frontend"] or resolved["web"]
+            or resolved["yanbow"],
             "ci.yml : un diff docs-only declenche un job lourd — la regle "
             "ajoutee pour scripts/ est trop large.",
         )

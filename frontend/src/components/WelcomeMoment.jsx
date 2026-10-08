@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import TaqinorMark from '../ui/TaqinorMark'
 import { voice } from '../lib/voice'
+import { isPortalUser } from '../features/portail/portalScope'
 
 /* VX156 — LE MOMENT D'ACCUEIL : à la toute première connexion, un panneau
    one-shot (mot-symbole animé + phrase de mission + « Commencer »), affiché
@@ -36,8 +37,10 @@ export default function WelcomeMoment() {
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
+    // ADOC120 — jamais « Bienvenue chez Taqinor » à un compte PORTAIL : un client
+    // verrait la marque ERP par défaut à la place de celle de son prestataire.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot welcome on first login
-    if (user && !seenAlready()) setOpen(true)
+    if (user && !isPortalUser(user) && !seenAlready()) setOpen(true)
   }, [user])
 
   const dismiss = () => {
@@ -45,7 +48,7 @@ export default function WelcomeMoment() {
     setOpen(false)
   }
 
-  if (!open) return null
+  if (!open || isPortalUser(user)) return null
 
   return (
     <div

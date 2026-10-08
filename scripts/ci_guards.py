@@ -109,6 +109,24 @@ GARDES = {
         ('Test the reachable-screens checker itself',
          'python -m unittest scripts.tests.test_check_ecrans_atteignables -v',
          '.'),
+        # ADOC38 — classe « liste lue sur la page 1 » (fetchAllPages obligatoire).
+        ('Check listes paginées lues en entier (aucune lecture de la page 1, ADOC38)',
+         'python scripts/check_liste_page1.py',
+         '.'),
+        ('Test the page-1-list checker itself (ADOC38)',
+         'python -m unittest scripts.tests.test_check_liste_page1 -v',
+         '.'),
+        # ADOC147 — aucune route portail self-service sans ecran (porte bloquante).
+        ('Check surfaces portail sans écran (route mes-*/mon-*/ma-*/client/* sans appelant, ADOC147)',
+         'python scripts/check_portail_surfaces.py',
+         '.'),
+        ('Test the portal-surfaces checker itself (ADOC147)',
+         'python -m unittest scripts.tests.test_check_portail_surfaces -v',
+         '.'),
+        # AANA30 — le role Postgres de l'agent SQL reste restreint (liste blanche).
+        ('Test the SQL-agent Postgres role provisioning (AANA30)',
+         'python -m unittest scripts.tests.test_agent_sql_role -v',
+         '.'),
         # CALX56/57 (lots CALX merges le 21/09/2026 pendant la construction de ce
         # runner — PR #706/#708) : chemins parametres atteignables, et services
         # backend livres sans appelant (passif fige dans
@@ -387,6 +405,13 @@ GARDES = {
          '.'),
         ('Check for naive datetime / DateField timestamps (YDATA10/11)',
          'python scripts/check_naive_datetime.py',
+         '.'),
+        # ADOC79 — une seule primitive de lecture d'IP (core.throttling.ip_de_requete).
+        ('Check lecture d IP hors primitive (ip_de_requete, ADOC79)',
+         'python scripts/check_ip_primitive.py',
+         '.'),
+        ('Test the IP-primitive checker itself (ADOC79)',
+         'python -m unittest scripts.tests.test_check_ip_primitive -v',
          '.'),
         ('Check Celery task signatures (YDATA14, advisory)',
          'python scripts/check_celery_tasks.py',

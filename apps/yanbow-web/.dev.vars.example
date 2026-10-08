@@ -1,0 +1,12 @@
+# Copier en .dev.vars pour le développement local (lu par wrangler / astro dev).
+# Aucune valeur réelle ici. En production, chaque variable d'exécution est posée
+# par Reda au tableau de bord Cloudflare — jamais dans wrangler.jsonc.
+#
+# ── Variables d'EXÉCUTION (lues par le Worker à chaque requête) ──────────────
+# Porte de lancement (YBW12, worker/launchGate.mjs) : le site n'est OUVERT que
+# si la valeur est exactement « 1 ». Toute autre valeur (ou absence) = FERMÉ
+# (noindex, robots Disallow, aucun sitemap). Laisser vide en local.
+SITE_PUBLIC=
+#
+# ── Variables de BUILD ───────────────────────────────────────────────────────
+# (aucune — le domaine canonique est une constante de src/lib/site.ts)

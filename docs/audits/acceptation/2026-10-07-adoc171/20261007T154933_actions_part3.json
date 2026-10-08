@@ -1,0 +1,540 @@
+[
+  {
+    "action": "CHT11 synchroniser_jalon_portail(appro)",
+    "jalon_projet_id": 1,
+    "date_reelle": "2026-10-10"
+  },
+  {
+    "action": "A J+8: chantier statut -> planifie",
+    "method": "PATCH",
+    "url": "/api/django/installations/chantiers/55/",
+    "payload": {
+      "statut": "planifie"
+    },
+    "status": 200,
+    "body": {
+      "id": 55,
+      "statut_display": "Planifié",
+      "raccordement_display": null,
+      "type_installation_display": "Résidentiel",
+      "niveau_tension_display": null,
+      "statut_ordre": 2,
+      "statut_canonique": "planifie",
+      "est_parc": false,
+      "checklist_completion": null,
+      "client_nom": "Alaoui Karim",
+      "technicien_nom": "demo_admin",
+      "devis_reference": "DEV-202610-0001",
+      "lead_nom": null,
+      "interventions": [],
+      "nb_interventions": 0,
+      "regime_suggere": {
+        "code": "declaration_bt",
+        "label": "Déclaration"
+      },
+      "parc_garantie_etat": null,
+      "calepinage": null,
+      "dossier_8221_resume": {
+        "source": "saisie_chantier",
+        "statut": "non_concerne",
+        "reference": null,
+        "operateur": null,
+        "date_depot": null,
+        "date_decision": null
+      },
+      "reference": "CHT-202610-0001",
+      "site_adresse": null,
+      "site_ville": null,
+      "gps_lat": null,
+      "gps_lng": null,
+      "contact_site_nom": null,
+      "contact_site_telephone": null,
+      "acces_instructions": null,
+      "horaires_acces": null,
+      "puissance_installee_kwc": "7.10",
+      "raccordement": null,
+      "type_installation": "residentiel",
+      "niveau_tension": null,
+      "niveau_tension_source": null,
+      "puissance_souscrite_kva": null,
+      "statut": "planifie",
+      "labour_jours_estimes": null,
+      "labour_jours_reels": null,
+      "parc_actif": true,
+      "bom": [
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 132,
+          "designation": "Onduleur réseau Huawei 10kW Triphasé"
+        },
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 152,
+          "designation": "Smart Meter"
+        },
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 153,
+          "designation": "Wifi Dongle"
+        },
+        {
+          "marque": "Canadien Solar",
+          "quantite": 10.0,
+          "produit_id": 145,
+          "designation": "Panneau Canadien Solar 710W"
+        },
+        {
+          "marque": null,
+          "quantite": 10.0,
+          "produit_id": 10,
+          "designation": "Structures acier"
+        },
+        {
+          "marque": null,
+          "quantite": 20.0,
+          "produit_id": 11,
+          "designation": "Socles"
+        },
+        {
+          "marque": null,
+          "quantite": 60.0,
+          "produit_id": 163,
+          "designation": "Câble solaire Nexans 6mm² (au mètre)"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 12,
+          "designation": "Accessoires"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 13,
+          "designation": "Tableau De Protection AC/DC"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 14,
+          "designation": "Installation"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 15,
+          "designation": "Transport"
+        }
+      ],
+      "regime_8221": "declaration_bt",
+      "raccordement_reseau": null,
+      "dossier_statut": "non_concerne",
+      "dossier_reference": null,
+      "dossier_operateur": null,
+      "dossier_date_depot": null,
+      "dossier_date_approbation": null,
+      "art33_regularisation": false,
+      "annule": false,
+      "motif_annulation": null,
+      "date_signature": "2026-10-07",
+      "date_materiel_commande": "2026-10-10",
+      "date_pose_prevue": "2026-10-15",
+      "date_pose_fin_prevue": null,
+      "duree_pose_jours": null,
+      "date_pose_reelle": null,
+      "date_mise_en_service": null,
+      "date_reception": null,
+      "date_reception_definitive": null,
+      "date_cloture": null,
+      "series_non_relevees": {},
+      "garantie_installation_mois": null,
+      "garantie_installation_perimetre": "",
+      "garantie_etancheite_mois": null,
+      "garantie_etancheite_perimetre": "",
+      "cloture_verrouillee": false,
+      "mes_pv_notes": null,
+      "mes_production_test": null,
+      "mes_tension": null,
+      "notes": null,
+      "date_creation": "2026-10-07T15:43:40.262471Z",
+      "date_modification": "2026-10-15T15:46:19.991849Z",
+      "custom_data": null,
+      "signature_client": null,
+      "signataire_nom": null,
+      "signe_le": null,
+      "signataire_fonction": null,
+      "signataire_societe": null,
+      "cosignataire_nom": null,
+      "cosignataire_fonction": null,
+      "cosignataire_organisme": null,
+      "company": 1,
+      "client": 1,
+      "devis": 176,
+      "bon_commande": null,
+      "lead": null,
+      "technicien_responsable": 1,
+      "etape": null,
+      "created_by": 1
+    }
+  },
+  {
+    "action": "A J+8: chantier statut -> en_cours",
+    "method": "PATCH",
+    "url": "/api/django/installations/chantiers/55/",
+    "payload": {
+      "statut": "en_cours"
+    },
+    "status": 200,
+    "body": {
+      "id": 55,
+      "statut_display": "En cours",
+      "raccordement_display": null,
+      "type_installation_display": "Résidentiel",
+      "niveau_tension_display": null,
+      "statut_ordre": 3,
+      "statut_canonique": "en_cours",
+      "est_parc": false,
+      "checklist_completion": null,
+      "client_nom": "Alaoui Karim",
+      "technicien_nom": "demo_admin",
+      "devis_reference": "DEV-202610-0001",
+      "lead_nom": null,
+      "interventions": [],
+      "nb_interventions": 0,
+      "regime_suggere": {
+        "code": "declaration_bt",
+        "label": "Déclaration"
+      },
+      "parc_garantie_etat": null,
+      "calepinage": null,
+      "dossier_8221_resume": {
+        "source": "saisie_chantier",
+        "statut": "non_concerne",
+        "reference": null,
+        "operateur": null,
+        "date_depot": null,
+        "date_decision": null
+      },
+      "reference": "CHT-202610-0001",
+      "site_adresse": null,
+      "site_ville": null,
+      "gps_lat": null,
+      "gps_lng": null,
+      "contact_site_nom": null,
+      "contact_site_telephone": null,
+      "acces_instructions": null,
+      "horaires_acces": null,
+      "puissance_installee_kwc": "7.10",
+      "raccordement": null,
+      "type_installation": "residentiel",
+      "niveau_tension": null,
+      "niveau_tension_source": null,
+      "puissance_souscrite_kva": null,
+      "statut": "en_cours",
+      "labour_jours_estimes": null,
+      "labour_jours_reels": null,
+      "parc_actif": true,
+      "bom": [
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 132,
+          "designation": "Onduleur réseau Huawei 10kW Triphasé"
+        },
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 152,
+          "designation": "Smart Meter"
+        },
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 153,
+          "designation": "Wifi Dongle"
+        },
+        {
+          "marque": "Canadien Solar",
+          "quantite": 10.0,
+          "produit_id": 145,
+          "designation": "Panneau Canadien Solar 710W"
+        },
+        {
+          "marque": null,
+          "quantite": 10.0,
+          "produit_id": 10,
+          "designation": "Structures acier"
+        },
+        {
+          "marque": null,
+          "quantite": 20.0,
+          "produit_id": 11,
+          "designation": "Socles"
+        },
+        {
+          "marque": null,
+          "quantite": 60.0,
+          "produit_id": 163,
+          "designation": "Câble solaire Nexans 6mm² (au mètre)"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 12,
+          "designation": "Accessoires"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 13,
+          "designation": "Tableau De Protection AC/DC"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 14,
+          "designation": "Installation"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 15,
+          "designation": "Transport"
+        }
+      ],
+      "regime_8221": "declaration_bt",
+      "raccordement_reseau": null,
+      "dossier_statut": "non_concerne",
+      "dossier_reference": null,
+      "dossier_operateur": null,
+      "dossier_date_depot": null,
+      "dossier_date_approbation": null,
+      "art33_regularisation": false,
+      "annule": false,
+      "motif_annulation": null,
+      "date_signature": "2026-10-07",
+      "date_materiel_commande": "2026-10-10",
+      "date_pose_prevue": "2026-10-15",
+      "date_pose_fin_prevue": null,
+      "duree_pose_jours": null,
+      "date_pose_reelle": null,
+      "date_mise_en_service": null,
+      "date_reception": null,
+      "date_reception_definitive": null,
+      "date_cloture": null,
+      "series_non_relevees": {},
+      "garantie_installation_mois": null,
+      "garantie_installation_perimetre": "",
+      "garantie_etancheite_mois": null,
+      "garantie_etancheite_perimetre": "",
+      "cloture_verrouillee": false,
+      "mes_pv_notes": null,
+      "mes_production_test": null,
+      "mes_tension": null,
+      "notes": null,
+      "date_creation": "2026-10-07T15:43:40.262471Z",
+      "date_modification": "2026-10-15T15:46:19.991849Z",
+      "custom_data": null,
+      "signature_client": null,
+      "signataire_nom": null,
+      "signe_le": null,
+      "signataire_fonction": null,
+      "signataire_societe": null,
+      "cosignataire_nom": null,
+      "cosignataire_fonction": null,
+      "cosignataire_organisme": null,
+      "company": 1,
+      "client": 1,
+      "devis": 176,
+      "bon_commande": null,
+      "lead": null,
+      "technicien_responsable": 1,
+      "etape": null,
+      "created_by": 1
+    }
+  },
+  {
+    "action": "A J+10: chantier statut -> installe (pose reelle)",
+    "method": "PATCH",
+    "url": "/api/django/installations/chantiers/55/",
+    "payload": {
+      "statut": "installe"
+    },
+    "status": 200,
+    "body": {
+      "id": 55,
+      "statut_display": "Installé",
+      "raccordement_display": null,
+      "type_installation_display": "Résidentiel",
+      "niveau_tension_display": null,
+      "statut_ordre": 4,
+      "statut_canonique": "installe",
+      "est_parc": false,
+      "checklist_completion": null,
+      "client_nom": "Alaoui Karim",
+      "technicien_nom": "demo_admin",
+      "devis_reference": "DEV-202610-0001",
+      "lead_nom": null,
+      "interventions": [],
+      "nb_interventions": 0,
+      "regime_suggere": {
+        "code": "declaration_bt",
+        "label": "Déclaration"
+      },
+      "parc_garantie_etat": null,
+      "calepinage": null,
+      "dossier_8221_resume": {
+        "source": "saisie_chantier",
+        "statut": "non_concerne",
+        "reference": null,
+        "operateur": null,
+        "date_depot": null,
+        "date_decision": null
+      },
+      "reference": "CHT-202610-0001",
+      "site_adresse": null,
+      "site_ville": null,
+      "gps_lat": null,
+      "gps_lng": null,
+      "contact_site_nom": null,
+      "contact_site_telephone": null,
+      "acces_instructions": null,
+      "horaires_acces": null,
+      "puissance_installee_kwc": "7.10",
+      "raccordement": null,
+      "type_installation": "residentiel",
+      "niveau_tension": null,
+      "niveau_tension_source": null,
+      "puissance_souscrite_kva": null,
+      "statut": "installe",
+      "labour_jours_estimes": null,
+      "labour_jours_reels": null,
+      "parc_actif": true,
+      "bom": [
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 132,
+          "designation": "Onduleur réseau Huawei 10kW Triphasé"
+        },
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 152,
+          "designation": "Smart Meter"
+        },
+        {
+          "marque": "Huawei",
+          "quantite": 1.0,
+          "produit_id": 153,
+          "designation": "Wifi Dongle"
+        },
+        {
+          "marque": "Canadien Solar",
+          "quantite": 10.0,
+          "produit_id": 145,
+          "designation": "Panneau Canadien Solar 710W"
+        },
+        {
+          "marque": null,
+          "quantite": 10.0,
+          "produit_id": 10,
+          "designation": "Structures acier"
+        },
+        {
+          "marque": null,
+          "quantite": 20.0,
+          "produit_id": 11,
+          "designation": "Socles"
+        },
+        {
+          "marque": null,
+          "quantite": 60.0,
+          "produit_id": 163,
+          "designation": "Câble solaire Nexans 6mm² (au mètre)"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 12,
+          "designation": "Accessoires"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 13,
+          "designation": "Tableau De Protection AC/DC"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 14,
+          "designation": "Installation"
+        },
+        {
+          "marque": null,
+          "quantite": 1.0,
+          "produit_id": 15,
+          "designation": "Transport"
+        }
+      ],
+      "regime_8221": "declaration_bt",
+      "raccordement_reseau": null,
+      "dossier_statut": "non_concerne",
+      "dossier_reference": null,
+      "dossier_operateur": null,
+      "dossier_date_depot": null,
+      "dossier_date_approbation": null,
+      "art33_regularisation": false,
+      "annule": false,
+      "motif_annulation": null,
+      "date_signature": "2026-10-07",
+      "date_materiel_commande": "2026-10-10",
+      "date_pose_prevue": "2026-10-15",
+      "date_pose_fin_prevue": null,
+      "duree_pose_jours": null,
+      "date_pose_reelle": "2026-10-17",
+      "date_mise_en_service": null,
+      "date_reception": null,
+      "date_reception_definitive": null,
+      "date_cloture": null,
+      "series_non_relevees": {},
+      "garantie_installation_mois": null,
+      "garantie_installation_perimetre": "",
+      "garantie_etancheite_mois": null,
+      "garantie_etancheite_perimetre": "",
+      "cloture_verrouillee": false,
+      "mes_pv_notes": null,
+      "mes_production_test": null,
+      "mes_tension": null,
+      "notes": null,
+      "date_creation": "2026-10-07T15:43:40.262471Z",
+      "date_modification": "2026-10-17T15:46:19.991849Z",
+      "custom_data": null,
+      "signature_client": null,
+      "signataire_nom": null,
+      "signe_le": null,
+      "signataire_fonction": null,
+      "signataire_societe": null,
+      "cosignataire_nom": null,
+      "cosignataire_fonction": null,
+      "cosignataire_organisme": null,
+      "company": 1,
+      "client": 1,
+      "devis": 176,
+      "bon_commande": null,
+      "lead": null,
+      "technicien_responsable": 1,
+      "etape": null,
+      "created_by": 1
+    }
+  },
+  {
+    "action": "CHT11 synchroniser_jalon_portail(pose)",
+    "jalon_projet_id": 2,
+    "date_reelle": "2026-10-17"
+  }
+]

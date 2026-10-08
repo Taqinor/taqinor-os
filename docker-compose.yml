@@ -91,16 +91,12 @@ services:
     # LECTURE SEULE (SELECT uniquement, AUCUN INSERT/UPDATE/DELETE/DDL), JAMAIS le
     # role owner (${DB_USER}). Definir ces variables dans .env active le role :
     #   SQL_AGENT_DB_USER / SQL_AGENT_DB_PASSWORD
-    # Si elles sont absentes, le service retombe sans rien casser sur DATABASE_URL.
-    # Provisionnement du role (a executer UNE fois, manuellement, par le founder —
-    # ne pas inventer de secret ici ; choisir un mot de passe robuste) :
-    #   CREATE ROLE sql_agent_ro LOGIN PASSWORD '<choisir>';
-    #   GRANT CONNECT ON DATABASE erp_db TO sql_agent_ro;
-    #   GRANT USAGE ON SCHEMA public TO sql_agent_ro;
-    #   GRANT SELECT ON ALL TABLES IN SCHEMA public TO sql_agent_ro;
-    #   ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    #       GRANT SELECT ON TABLES TO sql_agent_ro;
-    #   -- (volontairement AUCUN INSERT/UPDATE/DELETE/TRUNCATE/DDL accorde)
+    # AANA30 — Sans ces variables, l'agent est DESACTIVE en production (AANA6) et
+    # ne retombe sur DATABASE_URL (proprietaire de la base) qu'en DEVELOPPEMENT.
+    # Provisionnement du role (a executer UNE fois, manuellement, par le founder,
+    # mot de passe robuste, jamais committe) : section 4 de backend/db/rls_roles.sql
+    # (LOGIN NOSUPERUSER NOBYPASSRLS, SELECT sur les SEULES tables de la liste
+    # blanche de l'agent — jamais « ALL TABLES » —, aucun droit d'ecriture/DDL).
     environment:
       SQL_AGENT_DB_USER: ${SQL_AGENT_DB_USER:-}
       SQL_AGENT_DB_PASSWORD: ${SQL_AGENT_DB_PASSWORD:-}

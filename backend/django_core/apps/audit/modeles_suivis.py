@@ -63,6 +63,21 @@ TRACKED_MODELS = [
     # approbation, refus… doivent laisser une ligne au Journal comme le reste
     # des pièces réglementaires déjà suivies ici.
     ('ventes', 'RegulatoryDossier'),
+    # ASTK145 — données MAÎTRES catalogue et tarif fournisseur (constat
+    # C-ASTK-024, sondes PRIX-4 / CAT-6) : un PATCH du prix d'achat négocié
+    # d'un tarif fournisseur, la suppression d'une catégorie, le renommage
+    # d'une marque ou la recomposition d'un kit ne laissaient AUCUNE ligne.
+    # L'app_label suit ``_meta`` de chaque modèle (``PrixFournisseur`` vit
+    # dans ``achats`` depuis ODX19 ; ``PalierPrixFournisseur`` est resté dans
+    # ``stock``). L'import xlsx du tarif garde sa ligne dédiée « Import … »
+    # (``apps.dataimport.services.appliquer_maj_import``) : le diff générique
+    # n'en ajoute pas une seconde (``signals._on_post_save``).
+    ('stock', 'Categorie'),
+    ('stock', 'Marque'),
+    ('stock', 'KitProduit'),
+    ('stock', 'KitComposant'),
+    ('achats', 'PrixFournisseur'),
+    ('stock', 'PalierPrixFournisseur'),
 ]
 
 # ── UN SEUL ÉCRIVAIN PAR LIGNE D'AUDIT ─────────────────────────────────────
