@@ -1077,6 +1077,15 @@ class LignePrixListeSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class SaisiePrixListeSerializer(serializers.Serializer):
+    """ADEV39 (C-ADEV-056) — le prix saisi par ``POST /listes-prix/<id>/
+    lignes/`` : fini (NaN/Infini refusés par ``DecimalField``), ≥ 0 et dans
+    la plage de ``LignePrixListe.prix_unitaire`` (10 chiffres, 2 décimales).
+    Un refus est un 400 nommant ``prix_unitaire``, jamais un 500."""
+    prix_unitaire = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=0)
+
+
 class RegleListePrixSerializer(SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
     """XSAL2 — règle de prix / palier de quantité.

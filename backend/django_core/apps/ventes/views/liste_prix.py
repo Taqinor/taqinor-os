@@ -75,10 +75,13 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         prix_unitaire = request.data.get('prix_unitaire')
         if not produit_id or prix_unitaire is None:
             raise ValidationError('produit et prix_unitaire sont requis.')
-        try:
-            prix_unitaire = Decimal(str(prix_unitaire))
-        except InvalidOperation:
-            raise ValidationError('prix_unitaire invalide.')
+        # ADEV39 — prix validé par sérialiseur (fini, ≥ 0, plage du modèle) :
+        # 400 {prix_unitaire: [...]} au lieu d'un 500 ou d'un prix négatif.
+        from ..serializers import SaisiePrixListeSerializer
+        saisie = SaisiePrixListeSerializer(
+            data={'prix_unitaire': prix_unitaire})
+        saisie.is_valid(raise_exception=True)
+        prix_unitaire = saisie.validated_data['prix_unitaire']
 
         try:
             produit = get_produit_scoped(liste.company_id, produit_id)
