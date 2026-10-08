@@ -10,10 +10,10 @@ import {
 import {
   // QJR101 — `Sprout` est parti avec le panneau agricole (`PanneauAgricole`),
   // qui l'importe désormais lui-même.
-  ArrowLeft, Target, ClipboardList, User, Zap, BarChart3,
+  ArrowLeft, Target, ClipboardList, Zap, BarChart3,
   // QJR100 — `ShoppingCart` et `Trash2` sont partis avec la table de lignes
   // (`generator/LigneTable.jsx`), qui les importe désormais elle-même.
-  FileText, Sun, Plus,
+  FileText, Sun,
   // EZ3 — actions du panneau de succès (envoyer / aperçu).
   Send, Eye,
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ».
@@ -23,7 +23,7 @@ import {
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
-  createAutoQuote, LEAD_TYPE_TO_MODE,
+  LEAD_TYPE_TO_MODE,
   // QJR665 — conso de l'étude C&I = celle du balayage (barème national).
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
@@ -60,7 +60,6 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 // autonome (se masque lui-même hors résidentiel/devis non enregistré) pour ne
 // pas alourdir ce fichier déjà volumineux.
 import DevisOffresTailles from './DevisOffresTailles'
-import { Combobox } from '../../ui/Combobox'
 // APX17 — confirmation maison + toasts (jamais une popup du système).
 import { useConfirmDialog, toast } from '../../ui/confirm'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
@@ -192,6 +191,7 @@ import IndicationRegistre from './generator/IndicationRegistre'
 import PanneauSurcharges from './generator/PanneauSurcharges'
 import CarteCreation from './generator/CarteCreation'
 import BlocsEditionComplete from './generator/BlocsEditionComplete'
+import CarteLeadClient from './generator/CarteLeadClient'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
 // SON marché et lit la clé de son module de stratégie (QJR89) pour se retirer
 // ailleurs. Cet écran garde l'en-tête, le sélecteur de marché, le lead/client,
@@ -211,6 +211,7 @@ import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeu
 import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
 import { useLignesEcran } from './generator/hooks/useLignesEcran'
 import { useCompositionEcran } from './generator/hooks/useCompositionEcran'
+import { useLeadClientEcran } from './generator/hooks/useLeadClientEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
 import { withKeys } from '../../features/ventes/quote/ligneFabrique.js'
 import {
@@ -1605,161 +1606,15 @@ export default function DevisGenerator({
     setProvenancesLead(res.provenances)
   }
 
-  const applyLead = (id) => {
-    setLeadId(id)
-    if (!id) return
-    setClientId('') // le client est résolu côté serveur depuis le lead
-    const lead = leads.find(l => String(l.id) === String(id))
-    if (!lead) return
-    // QJR99 — les SEPT écritures gardées (mode, scénario, structure, tension,
-    // alimentation pompe, taille souhaitée, dimensionnement par facture) sont
-    // devenues UNE transition `LEAD_APPLIQUE`. Chaque garde-fou « intact » y
-    // est écrit une fois, testé, et le bug QJR38 (« brancher sur le mode du
-    // rendu PRÉCÉDENT ») ne peut plus revenir : le mode visé EST dans l'état
-    // que la transition produit.
-    //
-    // Ce qui reste ICI est tout ce que le reducer ne modélise PAS : le type
-    // d'installation (autoconsommation par défaut), les champs pompe, la
-    // consommation, les factures affichées, et la RÉSOLUTION du balayage local
-    // — un reducer pur ne va jamais chercher un chiffre au catalogue.
-    const modeLead = !sizing.touche.mode && lead.type_installation
-      ? LEAD_TYPE_TO_MODE[lead.type_installation] : null
-    // Mode RÉELLEMENT visé par ce pré-remplissage (miroir EXACT du calcul que
-    // fait le reducer) : il décide du type d'installation et du dimensionneur.
-    if (modeLead && modeLead !== modeInstallation) {
-      appliquerPartDiurneDuMarche(modeLead)
-    }
-    // Lead agricole : les ENTRÉES de pompage déclarées ou mesurées
-    // (`entrees_pompage`, AGR404) — l'alimentation, elle, suit le
-    // raccordement DANS la transition ci-dessous. Rien n'est inventé.
-    if (LEAD_TYPE_TO_MODE[lead.type_installation] === 'agricole') {
-      // La liste des leads ne porte pas `entrees_pompage` (détail seulement) :
-      // on relit le lead ; une panne reste silencieuse (états laissés vides).
-      Promise.resolve().then(() => crmApi.getLead(lead.id))
-        .then((rep) => appliquerEntreesPompage(rep?.data))
-        .catch(() => { /* lead illisible : aucune entrée reprise */ })
-    }
-    if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
-    const hiver = parseFloat(lead.facture_hiver) || 0
-    // bascule OFF → la valeur unique vaut hiver ET été
-    const ete = (lead.ete_differente && lead.facture_ete)
-      ? parseFloat(lead.facture_ete) : hiver
-    // CIQ126 — plus aucun balayage local : le résidentiel attend le moteur
-    // horaire, le C&I le moteur C&I serveur, l'agricole son kit serveur.
-    const sizingLocal = null
-    // STKCAT10 — la liste des structures RÉELLEMENT sélectionnables voyage
-    // avec l'action : le reducer valide contre ELLE l'id épinglé sur le lead
-    // (`lead.structure_produit`, STKCAT9) et n'applique jamais un produit
-    // archivé, dépricé, détypé ou d'une autre société. Un module pur ne va
-    // chercher aucun catalogue lui-même — c'est l'appelant qui l'apporte.
-    dispatchSizing({
-      type: 'LEAD_APPLIQUE',
-      lead,
-      sizingLocal,
-      structuresEligibles: structuresCatalogue.map((p) => p.id),
-    })
-    // OFFGRID — défaut dérivé du raccordement du lead : « aucun » (site
-    // isolé) bascule le devis en hors réseau tant que le vendeur n'a pas
-    // choisi lui-même (même garde « touché » que pompeAlim/structure/tension
-    // ci-dessus dans le reducer — ici en état simple, voir sa déclaration).
-    if (!horsReseauTouched) setHorsReseau(lead.raccordement === 'aucun')
-    if (hiver > 0) {
-      setFHiver(String(lead.facture_hiver))
-      setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
-      setMonthly(estimerMois(hiver, ete))
-    }
-  }
-
-  // ── WIR99/DC12 — Pré-remplissage d'un devis SANS LEAD depuis le profil
-  // site/énergie réutilisable du client (`crm.SiteProfile`, résolu côté
-  // serveur par `/ventes/devis/prefill-site/`). Miroir EXACT d'`applyLead` :
-  // mêmes champs, mêmes garde-fous « touched » — un champ que l'utilisateur a
-  // déjà réglé n'est JAMAIS écrasé. Aucun profil (ou aucun client) → no-op
-  // strict : le comportement historique est inchangé.
-  const applySiteProfile = (p) => {
-    if (!p) return
-    // QJR99 — miroir d'`applyLead` : une SEULE transition
-    // (`PROFIL_SITE_APPLIQUE`) porte le mode, l'alimentation pompe et le
-    // dimensionnement par facture. QJR38 — le mode RÉELLEMENT visé est calculé
-    // ici comme dans le reducer (et non lu sur le rendu précédent) : c'est ce
-    // bug-là qui faisait armer au résidentiel une attente que le moteur
-    // résidentiel-only ne satisferait jamais pour un profil industriel.
-    const modeLead = !sizing.touche.mode
-        && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]
-      ? LEAD_TYPE_TO_MODE[p.type_installation] : null
-    if (modeLead && modeLead !== modeInstallation) {
-      appliquerPartDiurneDuMarche(modeLead)
-    }
-    if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
-      // AGR420 — la pompe du profil est la pompe ACTUELLE (information).
-      if (p.pompe_actuelle_cv != null && p.pompe_actuelle_cv !== '') setPompeCv(String(p.pompe_actuelle_cv))
-      if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
-      if (p.pompe_debit_m3h != null && p.pompe_debit_m3h !== '') setPompeDebit(String(p.pompe_debit_m3h))
-    }
-    if (p.conso_mensuelle_kwh) setConsoMensuelle(String(p.conso_mensuelle_kwh))
-    const hiver = parseFloat(p.facture_hiver) || 0
-    const ete = (p.ete_differente && p.facture_ete) ? parseFloat(p.facture_ete) : hiver
-    // CIQ126 — plus aucun balayage local (voir applyLead) : le résidentiel
-    // attend le moteur horaire SERVEUR (U3-900), le C&I le moteur C&I serveur.
-    const sizingLocal = null
-    dispatchSizing({ type: 'PROFIL_SITE_APPLIQUE', profil: p, sizingLocal })
-    if (hiver > 0) {
-      setFHiver(String(p.facture_hiver))
-      setFEte(p.ete_differente && p.facture_ete ? String(p.facture_ete) : '')
-      setMonthly(estimerMois(hiver, ete))
-    }
-  }
-
-  // Sélection d'un client (chemin SANS lead) : pose l'id puis va chercher son
-  // profil site. Best-effort — une absence de profil ou une erreur réseau ne
-  // doit jamais empêcher de sélectionner le client.
-  const applyClient = (v) => {
-    const id = v ? String(v) : ''
-    setClientId(id)
-    if (!id || leadId) return
-    ventesApi.getPrefillSite(id)
-      .then((res) => applySiteProfile(res?.data?.profil))
-      .catch(() => {})
-  }
-
-  // Client pré-sélectionné par ?client=<id> : même pré-remplissage, une seule
-  // fois au montage (jamais rejoué ensuite).
-  const sitePrefillDone = useRef(false)
-  useEffect(() => {
-    if (sitePrefillDone.current || !clientId || leadId) return
-    sitePrefillDone.current = true
-    ventesApi.getPrefillSite(clientId)
-      .then((res) => applySiteProfile(res?.data?.profil))
-      .catch(() => {})
-    // Pré-remplissage au montage uniquement (garde `sitePrefillDone`) ;
-    // rejouer à chaque changement d'état écraserait la saisie en cours.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- montage seul
-  }, [clientId, leadId])
-
-  // ── Devis automatique (bouton « ⚡ Devis auto » du lead) ──
-  // Sensible au marché du lead : résidentiel (comportement historique),
-  // agricole (pompage, mêmes appels que le flux manuel) ou industriel
-  // (dimensionnement factures + étude d'autoconsommation comme en manuel).
-  // On lit le lead DIRECTEMENT (l'état posé par applyLead est asynchrone).
-  const runAutoQuote = async (lead, discountStr) => {
-    setSaving(true)
-    // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
-    // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
-    try {
-      // Chemin partagé avec le panneau devis inline (autoQuote.js). CIQ127 —
-      // les quatre marchés sont créés par le SERVEUR, qui lit lui-même le
-      // catalogue, les marques épinglées (PVMRQ) et l'ordre des lignes de la
-      // société (PVORD) : rien de cela ne part d'ici.
-      const devisId = await createAutoQuote({ lead, discountStr })
-      finish(devisId)
-    } catch (err) {
-      const msg = typeof err?.detail === 'string'
-        ? err.detail
-        : 'Le devis automatique a échoué — vérifiez le lead et réessayez.'
-      setErrors(prev => ({ ...prev, submit: msg }))
-      setSaving(false)
-    }
-  }
+  // SPL50 — lien lead/client du devis (déplacé tel quel dans le hook ; l'effet d'arrivée du lead reste plus bas).
+  const {
+    applyLead, applyClient, runAutoQuote,
+  } = useLeadClientEcran({
+    leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
+    setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly, modeInstallation,
+    setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
+    appliquerPartDiurneDuMarche, appliquerEntreesPompage,
+  })
 
   // SPL45 — chargeur `?edit=` (déplacé tel quel dans le hook, même position : l'ordre des effets est inchangé).
   const {
@@ -1854,12 +1709,14 @@ export default function DevisGenerator({
     const lead = leads.find(l => String(l.id) === leadParam)
     if (!lead) return
     // Initialisation unique (garde autoRan) — pas de cascade.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     applyLead(leadParam)
     const wantAuto = embedded ? autoProp : (searchParams.get('auto') === '1')
     const discount = embedded ? (discountProp || '0') : (searchParams.get('discount') || '0')
     if (wantAuto) {
       runAutoQuote(lead, discount)
+      // SPL50 — `applyLead` vient désormais d'un hook (opaque pour la règle) :
+      // la directive suit le premier setState synchrone visible.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (discount) setDiscountPct(discount)
     }
   }, [leads, produits]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -2522,141 +2379,15 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
 
-        {/* ── Lead / Client (lead prioritaire) ── */}
-        <Card>
-          <GenCardHeader icon={User} title="Lead & Client" />
-          <CardContent className="pt-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                {editId ? (
-                  /* QJR580 — Édition complète : lead / client en LECTURE
-                     SEULE. L'enregistrement d'édition ne porte ni lead ni
-                     client : un sélecteur actif laissait croire à une
-                     réaffectation jetée, tout en ré-semant les factures du
-                     nouveau lead (applyLead) sur ce devis. Réaffecter n'est
-                     pas une correction (D-QJR5-1). */
-                  <>
-                    <Label>Lead / client du devis</Label>
-                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
-                         data-testid="gen-lead-lecture-seule">
-                      <strong>{editDevis?.lead_nom || editDevis?.client_nom || '…'}</strong>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Changer de client = créer un nouveau devis.
-                      </p>
-                    </div>
-                  </>
-                ) : (<>
-                <Label htmlFor="gen-lead" required>Lead (point de départ)</Label>
-                {/* CI #752 — aucune option n'a la valeur '' : un '' ne vient que
-                    du <select> natif caché du Select quand la valeur posée
-                    n'est pas ENCORE dans ses options (lead d'un devis rouvert
-                    relu après coup, hors première page de `leads`). Il vidait
-                    le lead ; il est ignoré. */}
-                <Select value={leadId ? String(leadId) : undefined}
-                        onValueChange={(v) => { if (v) applyLead(v) }}>
-                  <SelectTrigger id="gen-lead" invalid={!!errors.client}>
-                    <SelectValue placeholder="— Sélectionner un lead —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {leadsListe.map(l => (
-                      <SelectItem key={l.id} value={String(l.id)}>
-                        {l.nom}{l.prenom ? ` ${l.prenom}` : ''}
-                        {l.societe ? ` (${l.societe})` : ''}
-                        {l.facture_hiver ? ` — ${Math.round(parseFloat(l.facture_hiver))} MAD/mois` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                </>)}
-                {errors.client && <p className="text-xs text-destructive">{errors.client}</p>}
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-tel">Téléphone</Label>
-                <Input id="gen-tel" disabled placeholder="—"
-                       value={selectedLead?.telephone ?? selectedClient?.telephone ?? ''} />
-              </div>
-            </div>
-
-            {selectedLead && (
-              <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-                ✓ Client du devis : <strong>{resolvedClientLabel}</strong>
-                {selectedLead.facture_hiver
-                  ? ` · factures remplies depuis le lead (${selectedLead.facture_hiver}${selectedLead.ete_differente && selectedLead.facture_ete ? ` hiver / ${selectedLead.facture_ete} été` : ' MAD/mois'})`
-                  : ' · aucune facture enregistrée sur ce lead'}
-              </div>
-            )}
-
-            {/* QX28 — raccourci vers la conception 3D. PV23bis (fondateur
-                20/08, remplace PV23 ci-dessous) : visible dès qu'un lead OU
-                un client est choisi — plus seulement quand le lead porte un
-                repère toit (GPS) — parce que le bouton n'ouvre plus jamais un
-                lead déconnecté du devis : il enregistre D'ABORD le formulaire
-                (création ou édition, `ouvrirConception3D`) puis ouvre
-                l'outil SUR ce devis. Le repère GPS du lead, quand il existe,
-                reste simplement annoncé dans le libellé. */}
-            {(selectedLead || clientId) && (
-              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-brass-400/40 bg-brass-400/10 p-3 text-sm">
-                {/* L-DESSIN (fondateur 25/08) — le libellé ne testait QUE
-                    `roof_point` : un lead dont le client a DESSINÉ son toit
-                    (`roof_outline`, la donnée la plus riche, chargée telle
-                    quelle dans l'outil) s'annonçait « pas de repère ». Les
-                    deux états sont désormais nommés, le tracé d'abord. */}
-                <span>
-                  {Array.isArray(selectedLead?.roof_outline) && selectedLead.roof_outline.length >= 3
-                    ? '🛰️ Contour de toit tracé par le client sur ce lead — il est chargé dans l\'outil 3D.'
-                    : selectedLead?.roof_point
-                      ? '🛰️ Repère toit disponible sur ce lead (GPS).'
-                      : '🛰️ Concevez la toiture en 3D — le devis est d\'abord enregistré en brouillon.'}
-                </span>
-                {/* PV23bis — remplace PV23 : édition COMME création passent
-                    désormais par `ouvrirConception3D` (enregistrement
-                    d'abord, puis ouverture SUR le devis) — une édition non
-                    enregistrée n'est plus perdue en repartant du lead. */}
-                <Button type="button" variant="outline" size="sm"
-                        disabled={saving} onClick={ouvrirConception3D}>
-                  Concevoir en 3D
-                </Button>
-              </div>
-            )}
-
-            {!leadId && !editId && (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-client">…ou choisir un client directement (sans lead)</Label>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      {/* QC1 — sélecteur client en Combobox recherché sur les
-                          données propres (endpoint /search/, filtré aux clients
-                          — un devis a besoin d'un id client réel). Les options
-                          déjà chargées servent de repli/affichage immédiat. */}
-                      <Combobox
-                        id="gen-client"
-                        options={clients.map(c => ({
-                          value: String(c.id),
-                          label: `${c.nom}${c.prenom ? ` ${c.prenom}` : ''}`,
-                        }))}
-                        value={clientId ? String(clientId) : null}
-                        onSearch={onSearchClient}
-                        onChange={(v) => applyClient(v)}
-                        placeholder="— Sélectionner un client —"
-                        searchPlaceholder="Nom ou ICE…"
-                        emptyText="Aucun client dans vos données"
-                      />
-                    </div>
-                    {/* QG3 — création rapide, sans quitter le devis */}
-                    <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
-                      <Plus /> Nouveau client
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-adresse">Adresse</Label>
-                  <Input id="gen-adresse" value={selectedClient?.adresse ?? ''} disabled placeholder="—" />
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* SPL50 — carte Lead & Client (déplacée telle quelle). */}
+        <CarteLeadClient
+          clients={clients} saving={saving} errors={errors} editId={editId} editDevis={editDevis}
+          leadId={leadId} clientId={clientId} setClientQuickCreateOpen={setClientQuickCreateOpen}
+          leadsListe={leadsListe} selectedLead={selectedLead}
+          resolvedClientLabel={resolvedClientLabel} applyLead={applyLead} applyClient={applyClient}
+          selectedClient={selectedClient} onSearchClient={onSearchClient}
+          ouvrirConception3D={ouvrirConception3D}
+        />
 
         {/* ── Le panneau du marché choisi (QJR101) ──────────────────────
             Quatre panneaux, un par marché : chacun porte SES champs et se

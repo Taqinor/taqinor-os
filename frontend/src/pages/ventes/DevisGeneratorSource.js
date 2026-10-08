@@ -31,6 +31,8 @@ export const FILES = [
   'pages/ventes/generator/hooks/useCompositionEcran.js',
   'pages/ventes/generator/BlocsEditionComplete.jsx',
   'pages/ventes/generator/CarteCreation.jsx',
+  'pages/ventes/generator/hooks/useLeadClientEcran.js',
+  'pages/ventes/generator/CarteLeadClient.jsx',
 ]
 
 //: Le marqueur posé avant le contenu de chaque fichier concaténé.
