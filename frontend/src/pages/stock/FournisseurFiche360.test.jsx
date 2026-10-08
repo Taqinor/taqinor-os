@@ -33,6 +33,12 @@ vi.mock('../../api/stockApi', () => ({
     getIncidentsQualiteFournisseurDe: vi.fn(),
     createIncidentQualiteFournisseur: vi.fn(),
     updateIncidentQualiteFournisseur: vi.fn(),
+    // ASTK227 — accès fournisseur (compte portail + liens à jeton).
+    getPortailTokensFournisseur: vi.fn(),
+    genererPortailTokenFournisseur: vi.fn(),
+    revoquerPortailTokenFournisseur: vi.fn(),
+    provisionnerAccesFournisseur: vi.fn(),
+    revoquerAccesFournisseur: vi.fn(),
     // WIR108 — acomptes/avoirs/contacts.
     getAcomptesFournisseurDe: vi.fn(),
     createAcompteFournisseur: vi.fn(),
@@ -700,5 +706,95 @@ describe('ASTK226 — onglet Incidents qualité', () => {
     await userEvent.click(await screen.findByRole('tab', { name: /Incidents qualité/ }))
     const panel = await screen.findByTestId('f360-tab-incidents')
     expect(await within(panel).findByText(/pas la permission/)).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ASTK227 (C-ASTK-045 / C-ASTK-040) — onglet « Accès » : provisionner /
+   révoquer le compte portail, générer / lister / révoquer les liens à jeton
+   (URL ABSOLUE copiable /fournisseur/lien/<token>) ; « N lien(s) révoqué(s) »
+   (ASTK179) affiché ; onglet absent hors administrateur. Réponses = le
+   contrat `fournisseur_portail_jetons.json`.
+   ========================================================================== */
+describe('ASTK227 — onglet Accès fournisseur', () => {
+  const routes = documentContrat('stock', 'fournisseur_portail_jetons').routes
+  const neutres = () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+  }
+  const ouvrirAcces = async () => {
+    await userEvent.click(await screen.findByRole('tab', { name: /^Accès/ }))
+    return screen.findByTestId('f360-tab-acces')
+  }
+
+  it('générer puis révoquer un lien', async () => {
+    neutres()
+    const jeton = routes.portail_tokens_liste.exemple_element
+    const revoque = routes.portail_token_revoquer.exemple
+    // Corps RÉEL = tableau nu ; le contrat l'enveloppe sous `jetons`.
+    stockApi.getPortailTokensFournisseur
+      .mockResolvedValueOnce({ data: routes.portail_tokens_liste.exemple_vide.jetons })
+      .mockResolvedValueOnce({ data: routes.portail_tokens_liste.exemple.jetons })
+      .mockResolvedValue({ data: [revoque] })
+    stockApi.genererPortailTokenFournisseur.mockResolvedValue({ data: jeton })
+    stockApi.revoquerPortailTokenFournisseur.mockResolvedValue({ data: revoque })
+
+    renderPage({ fournisseurId: '5' })
+    const panel = await ouvrirAcces()
+    expect(await within(panel).findByText('Aucun lien généré.')).toBeInTheDocument()
+    await userEvent.click(within(panel).getByRole('button', { name: /Générer un lien/ }))
+    await waitFor(() => expect(stockApi.genererPortailTokenFournisseur).toHaveBeenCalledWith('5'))
+    const ligne = await within(panel).findByTestId(`jeton-${jeton.id}`)
+    expect(within(ligne).getByText(`${window.location.origin}/fournisseur/lien/${jeton.token}`)).toBeInTheDocument()
+
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Révoquer le lien' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Révoquer' }))
+    await waitFor(() => expect(stockApi.revoquerPortailTokenFournisseur).toHaveBeenCalledWith('5', jeton.id))
+    expect(await within(panel).findByText('Révoqué')).toBeInTheDocument()
+  })
+
+  it("révoquer l'accès affiche jetons_revoques", async () => {
+    neutres()
+    stockApi.getPortailTokensFournisseur.mockResolvedValue({ data: routes.portail_tokens_liste.exemple.jetons })
+    stockApi.revoquerAccesFournisseur.mockResolvedValue({
+      data: routes.fournisseur_revoquer_acces.exemple_nouveau_astk179,
+    })
+    renderPage({ fournisseurId: '5' })
+    const panel = await ouvrirAcces()
+    await userEvent.click(await within(panel).findByRole('button', { name: /Révoquer l'accès/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Révoquer' }))
+    await waitFor(() => expect(stockApi.revoquerAccesFournisseur).toHaveBeenCalledWith('5'))
+    const n = routes.fournisseur_revoquer_acces.exemple_nouveau_astk179.jetons_revoques
+    expect(await within(panel).findByTestId('acces-info')).toHaveTextContent(`${n} lien(s) révoqué(s)`)
+  })
+
+  it('provisionner affiche le message du serveur ; un 403 est affiché tel quel', async () => {
+    neutres()
+    stockApi.getPortailTokensFournisseur.mockResolvedValue({ data: [] })
+    stockApi.provisionnerAccesFournisseur
+      .mockResolvedValueOnce({ data: routes.fournisseur_provisionner_acces.exemple })
+      .mockRejectedValueOnce({ response: { status: 403, data: { detail: 'Réservé aux administrateurs.' } } })
+    renderPage({ fournisseurId: '5' })
+    const panel = await ouvrirAcces()
+    const bouton = await within(panel).findByRole('button', { name: /Ouvrir l'accès portail/ })
+    await userEvent.click(bouton)
+    expect(await within(panel).findByTestId('acces-info'))
+      .toHaveTextContent(routes.fournisseur_provisionner_acces.exemple.detail)
+    await userEvent.click(bouton)
+    expect(await within(panel).findByText('Réservé aux administrateurs.')).toBeInTheDocument()
+  })
+
+  it("un non-administrateur ne voit pas l'onglet Accès", async () => {
+    neutres()
+    renderPage({ authState: { role: 'responsable', permissions: [] } })
+    await screen.findByRole('tab', { name: /Conformité/ })
+    expect(screen.queryByRole('tab', { name: /^Accès/ })).toBeNull()
+    expect(stockApi.getPortailTokensFournisseur).not.toHaveBeenCalled()
   })
 })

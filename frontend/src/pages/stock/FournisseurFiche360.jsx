@@ -1165,6 +1165,142 @@ function OngletIncidents({ fournisseurId, canWrite, onConformiteChange }) {
   )
 }
 
+// ── Onglet Accès (XPUR22 + NTPRT3) — ASTK227 ────────────────────────────────
+// Compte portail du fournisseur (provisionner / révoquer — Admin) et liens à
+// jeton (générer / lister / révoquer — URL ABSOLUE copiable vers la page
+// publique /fournisseur/lien/<token>, ASTK228). L'onglet n'est monté que pour
+// un administrateur ; le SERVEUR reste la garde (un 403 s'affiche tel quel).
+// Révoquer l'accès coupe AUSSI les liens publics (ASTK179) : le nombre de
+// jetons révoqués renvoyé par le serveur est affiché.
+const urlLienFournisseur = (token) => `${window.location.origin}/fournisseur/lien/${token}`
+
+function OngletAcces({ fournisseurId }) {
+  const [jetons, setJetons] = useState(null)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(null) // 'provisionner' | 'generer' | 'revoquer' | id jeton
+  const [info, setInfo] = useState(null)
+  const [actionError, setActionError] = useState(null)
+  const [confirmation, setConfirmation] = useState(null) // { kind: 'acces' } | { kind: 'jeton', jeton }
+  const [copie, setCopie] = useState(null)
+
+  const reload = () => {
+    stockApi.getPortailTokensFournisseur(fournisseurId)
+      .then((r) => setJetons(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+      .catch((e) => setError(frErr(e, 'Liens du portail indisponibles.')))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [fournisseurId])
+
+  const agir = async (cle, appel, succes) => {
+    setBusy(cle); setActionError(null); setInfo(null)
+    try {
+      const r = await appel()
+      setInfo(succes(r?.data ?? {}))
+      reload()
+    } catch (err) {
+      setActionError(frErr(err, 'Action impossible.'))
+    } finally { setBusy(null) }
+  }
+  const provisionner = () => agir('provisionner',
+    () => stockApi.provisionnerAccesFournisseur(fournisseurId),
+    (d) => d.detail || 'Accès portail ouvert.')
+  const generer = () => agir('generer',
+    () => stockApi.genererPortailTokenFournisseur(fournisseurId),
+    () => 'Nouveau lien généré.')
+  const revoquerAcces = () => agir('revoquer',
+    () => stockApi.revoquerAccesFournisseur(fournisseurId),
+    (d) => `${d.detail || "L'accès portail de ce fournisseur est fermé."} `
+      + `${d.jetons_revoques ?? 0} lien(s) révoqué(s).`)
+  const revoquerJeton = (j) => agir(j.id,
+    () => stockApi.revoquerPortailTokenFournisseur(fournisseurId, j.id),
+    () => 'Lien révoqué.')
+  const copier = async (j) => {
+    try {
+      await navigator.clipboard.writeText(urlLienFournisseur(j.token))
+      setCopie(j.id)
+    } catch {
+      setActionError('Copie impossible : sélectionnez le lien à la main.')
+    }
+  }
+
+  if (error) return <Indisponible message={error} />
+  if (jetons === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">Compte portail</h3>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" loading={busy === 'provisionner'} onClick={provisionner}>
+            <Check className="size-4" /> Ouvrir l&apos;accès portail
+          </Button>
+          <Button type="button" size="sm" variant="destructive" loading={busy === 'revoquer'}
+                  onClick={() => setConfirmation({ kind: 'acces' })}>
+            <X className="size-4" /> Révoquer l&apos;accès
+          </Button>
+        </div>
+      </section>
+      {info && <p role="status" data-testid="acces-info" className="text-sm text-emerald-600">{info}</p>}
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Liens à jeton</h3>
+          <Button type="button" size="sm" loading={busy === 'generer'} onClick={generer}>
+            <Plus className="size-4" /> Générer un lien
+          </Button>
+        </div>
+        {jetons.length === 0 ? (
+          <Indisponible message="Aucun lien généré." />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {jetons.map((j) => (
+              <li key={j.id} data-testid={`jeton-${j.id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <code className="truncate text-xs">{urlLienFournisseur(j.token)}</code>
+                  <span className="text-xs text-muted-foreground">
+                    Créé le {formatDate(j.created_at)}
+                    {j.expires_at ? ` · expire le ${formatDate(j.expires_at)}` : ''}
+                  </span>
+                </span>
+                {j.est_valide ? (
+                  <span className="flex items-center gap-1">
+                    <Badge tone="success">Actif</Badge>
+                    <Button type="button" size="sm" variant="outline" onClick={() => copier(j)}>
+                      {copie === j.id ? 'Copié' : 'Copier le lien'}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" loading={busy === j.id}
+                            onClick={() => setConfirmation({ kind: 'jeton', jeton: j })}>
+                      Révoquer le lien
+                    </Button>
+                  </span>
+                ) : (
+                  <Badge tone={j.revoked ? 'danger' : 'neutral'}>{j.revoked ? 'Révoqué' : 'Expiré'}</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <ConfirmDialog
+        open={!!confirmation}
+        onOpenChange={(o) => { if (!o) setConfirmation(null) }}
+        title={confirmation?.kind === 'acces' ? "Révoquer l'accès du fournisseur ?" : 'Révoquer ce lien ?'}
+        description={confirmation?.kind === 'acces'
+          ? 'Le compte portail est fermé et TOUS les liens à jeton cessent de fonctionner immédiatement.'
+          : 'Le lien cesse de fonctionner immédiatement.'}
+        confirmLabel="Révoquer"
+        onConfirm={() => {
+          const c = confirmation
+          setConfirmation(null)
+          if (c?.kind === 'acces') revoquerAcces()
+          else if (c?.jeton) revoquerJeton(c.jeton)
+        }}
+      />
+    </div>
+  )
+}
+
 // ── Onglet Tarif (WIR268/XPUR14) — export/import xlsx du tarif fournisseur ──
 // Garde-fou « écrasement » côté écran : l'import passe TOUJOURS par un aperçu
 // (apercu=true, aucune écriture) avant que « Écraser » (décoché par défaut)
@@ -1423,13 +1559,15 @@ export default function FournisseurFiche360({
     { value: 'documents', label: 'Conformité', icon: ShieldCheck, Comp: OngletDocuments },
     // ASTK226 — incidents qualité (NTSCM9), jusqu'ici sans écran.
     { value: 'incidents', label: 'Incidents qualité', icon: FileWarning, Comp: OngletIncidents },
+    // ASTK227 — accès fournisseur (compte portail + liens à jeton), Admin seul.
+    { value: 'acces', label: 'Accès', icon: Users, Comp: OngletAcces, admin: true },
     // NTP2P29 — wizard d'onboarding (dossier NTP2P7). Contextuelle : atteinte
     // par la fiche fournisseur, jamais une route autonome.
     { value: 'onboarding', label: 'Onboarding', icon: ShieldCheck, Comp: OngletOnboarding },
     { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix, prix: true },
     // WIR268/XPUR14 — export/import xlsx du tarif fournisseur.
     { value: 'tarif', label: 'Tarif', icon: Wallet, Comp: OngletTarif, prix: true },
-  ].filter((t) => voitPrix || !t.prix)), [voitPrix])
+  ].filter((t) => (voitPrix || !t.prix) && (isAdmin || !t.admin))), [voitPrix, isAdmin])
 
   if (!fournisseurId) {
     return (

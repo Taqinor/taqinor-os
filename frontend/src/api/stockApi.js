@@ -385,6 +385,19 @@ const stockApi = {
     api.post('/stock/incidents-qualite-fournisseur/', data),
   updateIncidentQualiteFournisseur: (id, data) =>
     api.patch(`/stock/incidents-qualite-fournisseur/${id}/`, data),
+  // ASTK227 — accès fournisseur : compte portail (Admin) + liens à jeton
+  // (stock_modifier). Corps de la liste = TABLEAU NU (contrat
+  // fournisseur_portail_jetons.json).
+  getPortailTokensFournisseur: (id) =>
+    api.get(`/stock/fournisseurs/${id}/portail-tokens/`),
+  genererPortailTokenFournisseur: (id) =>
+    api.post(`/stock/fournisseurs/${id}/portail-tokens/`, {}),
+  revoquerPortailTokenFournisseur: (id, tokenId) =>
+    api.post(`/stock/fournisseurs/${id}/portail-tokens/${tokenId}/revoquer/`, {}),
+  provisionnerAccesFournisseur: (id) =>
+    api.post(`/stock/fournisseurs/${id}/provisionner-acces/`, {}),
+  revoquerAccesFournisseur: (id) =>
+    api.post(`/stock/fournisseurs/${id}/revoquer-acces/`, {}),
   // WIR26 — Paramètres → Achats (singleton par société). GET crée le réglage
   // si besoin (`AchatsParametres.for_company`) ; PATCH exige un `id` (route
   // détail du ViewSet), obtenu via le GET précédent.
