@@ -7,8 +7,8 @@ Ce qui est prouvé ici :
   toujours, feu vert ou pas ;
 * option ACTIVÉE, lead SANS feu vert : retenir refuse, 400, champ
   ``feu_vert`` nommé ;
-* option ACTIVÉE, lead AVEC feu vert (``Lead.visite_effectuee``) : retenir
-  marche ;
+* option ACTIVÉE, lead AVEC feu vert (visite VALIDÉE par le vrai parcours
+  HTTP des visites, ALEA37) : retenir marche ;
 * la visite qui débloque est celle du LEAD du calepinage, à défaut celle du
   lead de son DEVIS lié ;
 * sans lead ni devis, la règle ne s'applique JAMAIS, même option activée.
@@ -16,15 +16,17 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_cal206_feu_vert -v2
 """
-from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.parametres import enregistrer_parametres
 from apps.calepinage.services.variantes import retenir_variante
 from apps.crm.models import Client, Lead
+from apps.calepinage.tests.test_alea_feu_vert_couture import (
+    ParcoursVisiteMixin,
+)
 from apps.ventes.models import Devis
-from authentication.models import Company
+from apps.visites.tests.test_visite_terrain import VisiteTerrainBase
 
 
 def _active(company):
@@ -32,15 +34,16 @@ def _active(company):
         company, {'presets': {'feu_vert_bureau_etudes': True}})
 
 
-class RetenirAvecFeuVertTest(TestCase):
+class RetenirAvecFeuVertTest(ParcoursVisiteMixin, VisiteTerrainBase):
     def setUp(self):
-        self.company = Company.objects.create(nom='Feu Vert Co',
-                                              slug='feu-vert-co-206')
-        self.lead = Lead.objects.create(company=self.company,
-                                        nom='Lead sans feu vert')
+        super().setUp()
+        # self.lead : sans feu vert ; lead_ok : visite VALIDÉE par le vrai
+        # parcours HTTP des visites (ALEA37), jamais posée à la main.
         self.lead_ok = Lead.objects.create(
             company=self.company, nom='Lead avec feu vert',
-            visite_effectuee=True)
+            telephone='+212600000002')
+        visite_id = self.visite_creer_terminer(self.lead_ok)
+        self.visite_valider(visite_id)
 
     def _variante(self, calepinage, *, retenue=False):
         return CalepinageVariante.objects.create(
