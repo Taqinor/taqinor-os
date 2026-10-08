@@ -894,8 +894,13 @@ def _notifier_chantier_assigne(inst, technicien):
 def _bom_quantities(installation):
     """Quantités requises par produit (entier ≥ 1) depuis la nomenclature gelée
     du chantier (`Installation.bom`). Ignore les lignes sans produit catalogue
-    et les quantités nulles/illisibles. Renvoie {produit_id: quantite}."""
-    return _quantites_depuis_bom(installation.bom)
+    et les quantités nulles/illisibles. Renvoie {produit_id: quantite}.
+
+    ACHT8 — alias : délègue au sélecteur unique
+    ``selectors.quantites_nomenclature_chantier`` (repli sur le gel du devis
+    quand la nomenclature est vide)."""
+    from .selectors import quantites_nomenclature_chantier
+    return quantites_nomenclature_chantier(installation)
 
 
 def _quantites_depuis_bom(bom):

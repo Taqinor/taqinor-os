@@ -3270,3 +3270,43 @@ def chantiers_utilisant_produit(company, produit_id, limit=20, *, user=None):
                      if chantier.date_creation else ''),
         })
     return lignes
+
+
+def quantites_nomenclature_chantier(installation, plafond=False):
+    """ACHT8 (C-ACHT-007) — LA lecture unique des quantités de la nomenclature
+    gelée d'un chantier : ``{produit_id: quantité entière}``.
+
+    * source : ``Installation.bom`` (gelée à l'acceptation : option retenue
+      × N villas, ``services._freeze_bom``) — jamais les lignes courantes du
+      devis ; nomenclature vide et devis lié → repli sur le gel du devis ;
+    * arrondi par ligne : HALF_UP (``services.lignes_bom_entieres``, celui de
+      la réservation N14 et de la sortie de vente) ; ``plafond=True`` = arrondi
+      au plafond (ERR54 : commande prudente du besoin matériel du stock).
+    Lecture pure ; ``services._bom_quantities`` lui délègue. Lisible par une
+    autre app (stock) sans importer les services installations."""
+    import math
+    from decimal import Decimal, InvalidOperation
+    from .services import _freeze_bom, lignes_bom_entieres
+
+    bom = installation.bom or []
+    if not bom and getattr(installation, 'devis_id', None):
+        bom = _freeze_bom(installation.devis)
+    besoins = {}
+    if plafond:
+        for ligne in bom:
+            if not isinstance(ligne, dict) or not ligne.get('produit_id'):
+                continue
+            try:
+                qte = math.ceil(Decimal(str(ligne.get('quantite') or 0)))
+            except (InvalidOperation, TypeError, ValueError):
+                continue
+            if qte <= 0:
+                continue
+            pid = ligne['produit_id']
+            besoins[pid] = besoins.get(pid, 0) + int(qte)
+        return besoins
+    for produit_id, _designation, qte in lignes_bom_entieres(bom):
+        if not produit_id:
+            continue
+        besoins[produit_id] = besoins.get(produit_id, 0) + qte
+    return besoins
