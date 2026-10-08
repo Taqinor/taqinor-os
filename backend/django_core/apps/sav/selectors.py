@@ -981,7 +981,7 @@ def tickets_ouverts_client(company, client_id):
     if company is None or not client_id:
         return 0
     return Ticket.objects.filter(
-        company=company, client_id=client_id,
+        company=company, client_id=client_id, annule=False,
         statut__in=Ticket.OPEN_STATUTS).count()
 
 

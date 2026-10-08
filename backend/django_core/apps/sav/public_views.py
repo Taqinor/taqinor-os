@@ -25,6 +25,8 @@ from .models import Equipement, Ticket, TicketSatisfaction
 MAX_PIECES_JOINTES_PORTAIL = 5
 # ASAV24 — fenêtre de rejeu d'un signalement public identique (5 min).
 FENETRE_REJEU_SIGNALEMENT_S = 300
+# ASAV30 — motif posé par la fusion (``TicketViewSet.fusionner``).
+PREFIXE_MOTIF_DOUBLON = 'Doublon de '
 
 
 # ── Throttle ─────────────────────────────────────────────────────────────────
@@ -130,7 +132,8 @@ def ticket_public_status(request, token):
         ticket = Ticket.objects.only(
             # ``company`` : NTSRV23 lit le drapeau d'affichage de la société ;
             # sans lui, l'accès déclencherait une requête différée par appel.
-            'share_token', 'company', *_PUBLIC_FIELDS,
+            'share_token', 'company', 'annule', 'motif_annulation',
+            *_PUBLIC_FIELDS,
         ).get(share_token=token)
     except Ticket.DoesNotExist:
         return _not_found()
@@ -138,6 +141,17 @@ def ticket_public_status(request, token):
     payload = {field: getattr(ticket, field) for field in _PUBLIC_FIELDS}
     # Statut human-readable (label FR) en complément du code machine.
     payload['statut_display'] = ticket.get_statut_display()
+    # ASAV30 — un ticket ANNULÉ (drapeau, jamais une valeur de ``statut``) ne
+    # s'affiche plus « Nouveau » : « Annulé », avec la référence du ticket
+    # principal quand il a été fusionné (motif « Doublon de <référence> »).
+    payload['annule'] = bool(ticket.annule)
+    payload['fusionne_dans_reference'] = None
+    if ticket.annule:
+        payload['statut_display'] = 'Annulé'
+        motif = (ticket.motif_annulation or '').strip()
+        if motif.startswith(PREFIXE_MOTIF_DOUBLON):
+            payload['fusionne_dans_reference'] = (
+                motif[len(PREFIXE_MOTIF_DOUBLON):].strip() or None)
     # NTSRV23 — INDICATION D'AFFICHAGE (pas une donnée du ticket) : dit à la
     # page publique si elle doit proposer les trois sous-notes optionnelles.
     # False tant que la société ne l'a pas activé → formulaire inchangé.
@@ -166,9 +180,16 @@ def ticket_public_satisfaction(request, token):
         return _not_found()
     try:
         ticket = Ticket.objects.only(
-            'id', 'company_id', 'statut', 'share_token').get(share_token=token)
+            'id', 'company_id', 'statut', 'share_token', 'annule',
+        ).get(share_token=token)
     except Ticket.DoesNotExist:
         return _not_found()
+
+    # ASAV30 — pas de note de satisfaction sur un ticket annulé / fusionné.
+    if ticket.annule:
+        return _noindex(Response(
+            {'detail': 'Ce ticket a été annulé.'},
+            status=status.HTTP_409_CONFLICT))
 
     if ticket.statut not in _CLOTURE_STATUTS:
         return _noindex(Response(
