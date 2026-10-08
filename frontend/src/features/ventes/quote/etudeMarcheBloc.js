@@ -105,9 +105,38 @@ export const ECO_POMPAGE_VIDE = Object.freeze({
   confirme: false, factureMontant: '', facturePeriodicite: '',
   facturePartFixe: '', entretien: '', coherenceConfirmee: false,
   interne: Object.freeze({ taux_actualisation: null, pret: null }),
+  // AGNR38 — la date de CHAQUE donnée relue (`?edit=`) et sa signature :
+  // une donnée inchangée garde SA date, une donnée corrigée prend celle du
+  // jour de la correction. `null` = rien de relu.
+  datesRelues: null,
 })
 
 const CARBURANTS = ['butane', 'diesel']
+
+/** AGNR38 — la date du jour à Casablanca (AAAA-MM-JJ). */
+export function aujourdhuiCasablanca(maintenant = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(maintenant)
+  } catch {
+    return maintenant.toISOString().slice(0, 10)
+  }
+}
+
+// AGNR38 — la signature de chaque donnée déclarée (forme NORMALISÉE, la même
+// à la saisie et à la relecture) : deux signatures égales = donnée inchangée.
+function signaturesEco(e) {
+  return {
+    energie: e.energie || '',
+    consommation: JSON.stringify([nombre(e.quantite), e.unite || null, e.periode || null,
+      e.periode === 'jour_irrigation' ? nombre(e.joursSemaine) : null]),
+    prix: JSON.stringify(nombre(e.prix)),
+    facture: JSON.stringify([nombre(e.factureMontant), e.facturePeriodicite || null, nombre(e.facturePartFixe)]),
+    entretien: JSON.stringify(nombre(e.entretien)),
+    mois: JSON.stringify(Array.isArray(e.mois) ? [...e.mois].map(Number).sort((a, b) => a - b) : null),
+  }
+}
 
 const vide = (v) => v === '' || v === null || v === undefined
 
@@ -145,14 +174,21 @@ export function pretInterne(saisie) {
  */
 export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui = '' } = {}) {
   const e = { ...ECO_POMPAGE_VIDE, ...(eco || {}) }
-  const date = e.dateDeclaration || aujourdhui || null
+  // AGNR38 — une donnée NOUVELLE ou CORRIGÉE est datée du jour (la date tapée
+  // dans le champ, sinon aujourd'hui à Casablanca) ; une donnée relue et
+  // inchangée garde la date de SA saisie.
+  const date = e.dateDeclaration || aujourdhui || aujourdhuiCasablanca()
+  const relues = e.datesRelues || {}
+  const sigs = signaturesEco(e)
+  const dater = (cle) => (relues[cle] && relues[cle].sig === sigs[cle] && relues[cle].date
+    ? relues[cle].date : date)
   const carburant = CARBURANTS.includes(e.energie)
   let mois = null
   if (Array.isArray(e.mois)) {
     mois = {
       mois: [...e.mois].map(Number).sort((a, b) => a - b),
       provenance: e.moisProvenance
-        || { origine: 'saisie', detail: null, date },
+        || { origine: 'saisie', detail: null, date: dater('mois') },
     }
   } else if (Array.isArray(moisCalendrier) && moisCalendrier.length) {
     mois = {
@@ -167,7 +203,7 @@ export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui 
     out.energie_actuelle = {
       valeur: e.energie,
       // AGR420 — une énergie reprise du lead garde sa provenance `lead`.
-      provenance: e.energieProvenance || { origine: 'saisie', detail: null, date },
+      provenance: e.energieProvenance || { origine: 'saisie', detail: null, date: dater('energie') },
     }
   }
   out.consommation = carburant && !vide(e.quantite) ? {
@@ -176,19 +212,19 @@ export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui 
     periode: e.periode || null,
     jours_irrigation_par_semaine: e.periode === 'jour_irrigation'
       ? nombre(e.joursSemaine) : null,
-    saisi_le: date,
+    saisi_le: dater('consommation'),
   } : null
   out.depense_unitaire_payee = carburant && !vide(e.prix)
-    ? { valeur: nombre(e.prix), saisi_le: date } : null
+    ? { valeur: nombre(e.prix), saisi_le: dater('prix') } : null
   out.facture_reseau = e.energie === 'electrique' && !vide(e.factureMontant) ? {
     montant_mad: nombre(e.factureMontant),
     periodicite: e.facturePeriodicite || null,
     part_fixe_mad_mois: nombre(e.facturePartFixe),
-    saisi_le: date,
+    saisi_le: dater('facture'),
   } : null
   out.mois_irrigation = mois
   out.entretien_paye_mad_an = !vide(e.entretien)
-    ? { valeur: nombre(e.entretien), saisi_le: date } : null
+    ? { valeur: nombre(e.entretien), saisi_le: dater('entretien') } : null
   out.coherence_confirmee = Boolean(e.coherenceConfirmee)
   // AGR214 — saisies INTERNES (volet jamais imprimé) : texte tapé → nombres,
   // rien de rempli ⇒ `null` ; aucun taux par défaut.
@@ -211,7 +247,7 @@ export function ecoDepuisSaisies(saisies) {
   if (!s) return { ...ECO_POMPAGE_VIDE }
   const c = s.consommation || {}
   const f = s.facture_reseau || {}
-  return {
+  const eco = {
     ...ECO_POMPAGE_VIDE,
     energie: s.energie_actuelle?.valeur || '',
     energieProvenance: provenanceNonSaisie(s.energie_actuelle?.provenance),
@@ -220,9 +256,10 @@ export function ecoDepuisSaisies(saisies) {
     periode: c.periode || '',
     joursSemaine: texte(c.jours_irrigation_par_semaine),
     prix: texte(s.depense_unitaire_payee?.valeur),
-    dateDeclaration: s.energie_actuelle?.provenance?.date || c.saisi_le
-      || s.depense_unitaire_payee?.saisi_le || f.saisi_le
-      || s.entretien_paye_mad_an?.saisi_le || s.mois_irrigation?.provenance?.date || '',
+    // AGNR38 — plus UNE date pour tout : chaque donnée garde la sienne
+    // (`datesRelues`) ; le champ « date » n'affiche que la date tapée dans
+    // la session (vide sinon, jamais « aujourd'hui » présenté comme saisi).
+    dateDeclaration: '',
     mois: Array.isArray(s.mois_irrigation?.mois) ? [...s.mois_irrigation.mois] : null,
     moisProvenance: s.mois_irrigation?.provenance || null,
     factureMontant: texte(f.montant_mad),
@@ -232,6 +269,17 @@ export function ecoDepuisSaisies(saisies) {
     coherenceConfirmee: Boolean(s.coherence_confirmee),
     interne: { taux_actualisation: s.taux_actualisation ?? null, pret: s.pret ?? null },
   }
+  const sigs = signaturesEco(eco)
+  const relue = (cle, date) => (date ? { sig: sigs[cle], date } : null)
+  eco.datesRelues = {
+    energie: relue('energie', s.energie_actuelle?.provenance?.date),
+    consommation: relue('consommation', c.saisi_le),
+    prix: relue('prix', s.depense_unitaire_payee?.saisi_le),
+    facture: relue('facture', f.saisi_le),
+    entretien: relue('entretien', s.entretien_paye_mad_an?.saisi_le),
+    mois: relue('mois', s.mois_irrigation?.provenance?.date),
+  }
+  return eco
 }
 
 // ── AGR218 — attestation d'usage exclusivement agricole (contrat AGR200) ──

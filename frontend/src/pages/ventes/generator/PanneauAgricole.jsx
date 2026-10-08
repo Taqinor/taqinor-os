@@ -264,7 +264,6 @@ function EconomieDeclaree({ eco, majEco, reperes, moisCalendrier, coherenceAvert
     majEco?.('mois', [...suivant].sort((x, y) => x - y))
     majEco?.('moisProvenance', null)
   }
-  const aujourdhui = new Date().toISOString().slice(0, 10)
   return (
     <div className="mt-4 grid gap-3 rounded-lg border p-3" data-testid="bloc-economie-declaree">
       <span className="font-display text-sm font-semibold">Énergie actuelle et dépense déclarée</span>
@@ -281,8 +280,10 @@ function EconomieDeclaree({ eco, majEco, reperes, moisCalendrier, coherenceAvert
             <option value="electrique">Réseau électrique</option>
           </select>
         </div>
-        <ChampTexte id="gen-eco-date" label="Date de déclaration" type="date"
-                    valeur={e.dateDeclaration || aujourdhui} onChange={maj('dateDeclaration')} />
+        {/* AGNR38 — vide tant que rien n'est daté dans la session : « aujourd'hui »
+            n'est plus présenté comme une saisie (chaque donnée garde sa date). */}
+        <ChampTexte id="gen-eco-date" label="Date de déclaration (vide = aujourd'hui)" type="date"
+                    valeur={e.dateDeclaration} onChange={maj('dateDeclaration')} />
         <ChampNombre id="gen-eco-entretien" label="Entretien et réparations payés (MAD / an)"
                      valeur={e.entretien} onChange={maj('entretien')} />
       </div>

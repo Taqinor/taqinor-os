@@ -134,7 +134,7 @@ Aucune (nouveau forage)
 Butane
 Gasoil
 Réseau électrique
-Date de déclaration
+Date de déclaration (vide = aujourd'hui)
 Entretien et réparations payés (MAD / an)
 Mois d'irrigation
 Jan
@@ -351,7 +351,7 @@ gen-farm-surface=
 gen-farm-static=
 gen-farm-drawdown=
 gen-farm-fuel=
-gen-eco-date=2026-10-08
+gen-eco-date=
 gen-eco-entretien=
 mois-irr-1=on [ ]
 mois-irr-2=on [ ]
