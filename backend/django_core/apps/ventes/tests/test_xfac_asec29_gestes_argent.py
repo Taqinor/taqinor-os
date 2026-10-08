@@ -87,8 +87,9 @@ class GestesArgentTests(TestCase):
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
             taux_tva=Decimal('20.00'), created_by=user)
         LigneDevis.objects.create(
-            devis=devis, designation='Centrale', quantite=Decimal('1'),
-            prix_unitaire=Decimal('1000'), taux_tva=Decimal('20.00'))
+            devis=devis, produit=self.produit, designation='Centrale',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            taux_tva=Decimal('20.00'))
         return devis
 
     def _geste(self, geste, user):
