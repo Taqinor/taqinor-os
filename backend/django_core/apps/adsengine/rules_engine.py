@@ -1090,6 +1090,20 @@ def _recently_acted(company, template_key, target_meta_id, *, since):
 
 
 # ── Émission d'alerte (ADSENG15 : basique ; ADSENG18 enrichit ce point) ───────
+def _resolve_finding_alert(company, template_key, finding):
+    """AACQ23 — Résout l'alerte gardée (gabarit WhatsApp mappé) d'une cible
+    dont la condition est redevenue fausse. Seul appelant de production de
+    ``alerts.resolve_alert``."""
+    from . import alerts as alerts_mod
+    wa_key = alerts_mod.wa_template_for_catalogue(template_key)
+    if not wa_key:
+        return None
+    return alerts_mod.resolve_alert(
+        company, template_key=wa_key,
+        target_type=finding.get('target_type', '') or '',
+        target_id=finding.get('target_meta_id', '') or '')
+
+
 _MIRROR_FOR_TARGET = {
     'campaign': 'AdCampaignMirror', 'adset': 'AdSetMirror', 'ad': 'AdMirror'}
 
@@ -1512,6 +1526,12 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
             # l'anomalie rendue par un évaluateur pur.
             if finding.get('fired'):
                 _record_finding_anomaly(company, policy, finding)
+            elif (not finding.get('insufficient_data')
+                    and not policy.dry_run):
+                # AACQ23 — condition redevenue FAUSSE (données suffisantes) :
+                # l'alerte gardée ouverte est résolue ; une ré-occurrence
+                # repartira d'une alerte neuve (compteur et sévérité initiaux).
+                _resolve_finding_alert(company, policy.template_key, finding)
             # ADSDEEP43 — entrée de journal ENRICHIE : entité évaluée, verdict de
             # condition avec ses valeurs (``condition_fr``), et — si déclenchée —
             # le delta de l'action proposée (``action``).
