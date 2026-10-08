@@ -154,10 +154,32 @@ def _est_mesure(p):
 
 # ── blocs ───────────────────────────────────────────────────────────────────
 
+#: AMOT43 — LISTE BLANCHE d'affichage de la provenance (bloc page 1, borné :
+#: aucun débordement) : le point d'eau, la HMT saisie, le volume, l'énergie.
+PROVENANCE_AFFICHEE = ENTREES_POINT_D_EAU + (
+    "hmt_m", "volume_m3_jour", "energie_actuelle")
+#: AMOT43 — clé de la HMT SAISIE dans ``entrees_resolues`` (producteur
+#: ``domain/pompage.CHEMINS`` : ``hmt.saisie_m``) → clé d'affichage ``hmt_m``.
+CLE_HMT_SAISIE = "hmt_saisie_m"
+
+
+def _entrees_provenance(etude):
+    """AMOT43 — les provenances RÉELLES du producteur
+    (``domain.pompage.derivees_de_l_etude`` : ``provenance_pompage =
+    {'entrees': {clé: provenance}, '_empreinte': …}``) ; les clés internes
+    (``_empreinte``) ne sont jamais des entrées. La HMT saisie est lue sous
+    sa clé d'affichage ``hmt_m``."""
+    entrees = dict(_dict(_dict(etude.get("provenance_pompage")).get("entrees")))
+    if CLE_HMT_SAISIE in entrees and "hmt_m" not in entrees:
+        entrees["hmt_m"] = entrees[CLE_HMT_SAISIE]
+    return entrees
+
+
 def _bloc_provenance(etude):
+    entrees = _entrees_provenance(etude)
     sortie = {}
-    for cle, p in _dict(etude.get("provenance_pompage")).items():
-        prov = _provenance(p)
+    for cle in PROVENANCE_AFFICHEE:
+        prov = _provenance(entrees.get(cle))
         if prov is not None:
             sortie[cle] = prov
     return sortie
