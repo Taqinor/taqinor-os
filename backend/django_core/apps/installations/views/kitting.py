@@ -450,9 +450,24 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         activity.log_creation(serializer.instance, self.request.user)
 
     def perform_update(self, serializer):
+        from ..services import (
+            CHAMPS_FIGES_ORDRE_ASSEMBLAGE, MESSAGE_ORDRE_FIGE,
+            champs_entete_ordre_modifies,
+            recreer_nomenclature_ordre_assemblage,
+        )
         self._check_tenant(serializer)
         old = copy.copy(serializer.instance)
+        # ACHT17 — en-tête figé hors « planifié » ; tant qu'il est planifié,
+        # un changement de kit/quantité recrée lignes et réservations.
+        modifies = champs_entete_ordre_modifies(
+            old, serializer.validated_data, CHAMPS_FIGES_ORDRE_ASSEMBLAGE)
+        if modifies and old.statut != OrdreAssemblage.Statut.PLANIFIE:
+            raise ValidationError(
+                {nom: MESSAGE_ORDRE_FIGE for nom in modifies})
         serializer.save(company=self.request.user.company)
+        if {'kit', 'quantite'} & set(modifies):
+            recreer_nomenclature_ordre_assemblage(
+                serializer.instance, user=self.request.user)
         activity.log_changes(old, serializer.instance, self.request.user)
 
     @action(detail=False, methods=['post'], url_path='depuis-devis')
@@ -1030,8 +1045,21 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
         seed_lignes_demontage(serializer.instance)
 
     def perform_update(self, serializer):
+        from ..services import (
+            CHAMPS_FIGES_ORDRE_DEMONTAGE, MESSAGE_ORDRE_FIGE,
+            champs_entete_ordre_modifies, recreer_lignes_ordre_demontage,
+        )
         self._check_tenant(serializer)
+        ordre = serializer.instance
+        # ACHT17 — même garde que l'assemblage (jumeau démontage).
+        modifies = champs_entete_ordre_modifies(
+            ordre, serializer.validated_data, CHAMPS_FIGES_ORDRE_DEMONTAGE)
+        if modifies and ordre.statut != OrdreDemontage.Statut.PLANIFIE:
+            raise ValidationError(
+                {nom: MESSAGE_ORDRE_FIGE for nom in modifies})
         serializer.save(company=self.request.user.company)
+        if {'kit', 'quantite'} & set(modifies):
+            recreer_lignes_ordre_demontage(serializer.instance)
 
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):

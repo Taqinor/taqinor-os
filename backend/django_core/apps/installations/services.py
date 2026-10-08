@@ -3771,6 +3771,60 @@ def etiquette_items_assemblage(ordre):
 
 # ── XMFG12 — Ordre de démontage (unbuild) ─────────────────────────────────────
 
+#: ACHT17 — message unique d'un en-tête d'ordre figé.
+MESSAGE_ORDRE_FIGE = "Ordre figé : annulez-le et recréez-le."
+
+#: ACHT17 — champs d'en-tête figés hors « planifié » (assemblage / démontage).
+CHAMPS_FIGES_ORDRE_ASSEMBLAGE = (
+    'kit', 'quantite', 'quantite_produite', 'emplacement_source',
+    'emplacement_destination', 'devis', 'chantier')
+CHAMPS_FIGES_ORDRE_DEMONTAGE = (
+    'kit', 'quantite', 'emplacement_source', 'emplacement_destination')
+
+
+def champs_entete_ordre_modifies(ordre, donnees, champs):
+    """ACHT17 — champs d'en-tête de ``champs`` dont ``donnees`` (corps
+    validé) change réellement la valeur sur ``ordre``."""
+    modifies = []
+    for nom in champs:
+        if nom not in donnees:
+            continue
+        nouveau = donnees[nom]
+        nouveau = getattr(nouveau, 'pk', nouveau)
+        actuel = getattr(ordre, f'{nom}_id', None) if hasattr(
+            ordre, f'{nom}_id') else getattr(ordre, nom, None)
+        if nouveau != actuel:
+            modifies.append(nom)
+    return modifies
+
+
+def recreer_nomenclature_ordre_assemblage(ordre, user=None):
+    """ACHT17 (C-ACHT-016) — un ordre d'assemblage PLANIFIÉ dont le kit ou la
+    quantité change : ses lignes sont recopiées depuis la BOM du kit courant
+    × la quantité courante, la révision de nomenclature est re-figée, et ses
+    réservations composant sont re-semées (les non consommées des composants
+    disparus sont libérées). La clôture consomme donc toujours la
+    nomenclature du kit produit × la quantité produite."""
+    from .models import ReservationAssemblage
+    ordre.lignes.all().delete()
+    (ReservationAssemblage.objects
+     .filter(ordre=ordre, active=True, consomme=False)
+     .update(active=False))
+    revision, _created = snapshot_revision_kit(ordre.kit, user=user)
+    if ordre.revision_kit_numero != revision.numero:
+        ordre.revision_kit_numero = revision.numero
+        ordre.save(update_fields=['revision_kit_numero'])
+    seed_lignes_assemblage(ordre)
+    seed_reservations_assemblage(ordre)
+
+
+def recreer_lignes_ordre_demontage(ordre_demontage):
+    """ACHT17 — jumeau démontage : lignes recopiées depuis la BOM du kit
+    courant × la quantité courante (ordre planifié)."""
+    ordre_demontage.lignes.all().delete()
+    seed_lignes_demontage(ordre_demontage)
+
+
 def seed_lignes_demontage(ordre_demontage):
     """XMFG12 — copie la BOM du kit en lignes de démontage éditables (quantité
     ATTENDUE = BOM × ordre.quantite ; RÉCUPÉRÉE par défaut = attendue, éditable
