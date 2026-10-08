@@ -187,6 +187,13 @@ class _DevisModifie(APIException):
     default_code = 'devis_modifie'
 
 
+#: ATOT21 — le refus générique d'une écriture rejetée par la base : jamais
+#: le texte de l'exception (``violates check constraint``, ``Failing row``…).
+MSG_ECRITURE_REFUSEE = ('Enregistrement refusé : une quantité, un prix ou une '
+                        'remise est hors bornes (0 à 100 % pour une remise, '
+                        'positif ou nul et au plus 2 décimales pour un montant).')
+
+
 class DevisEditionActionsMixin:
     """SPL135 — actions d'édition de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -293,8 +300,13 @@ class DevisEditionActionsMixin:
                 create_numbered(Devis, company, 'devis', _save)
         except ValidationError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except ValueError as exc:
+            # Messages FRANÇAIS de l'écrivain unique (produit inconnu…).
             return Response({'detail': f'Enregistrement échoué : {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except Exception:  # noqa: BLE001
+            # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
+            return Response({'detail': MSG_ECRITURE_REFUSEE},
                             status=status.HTTP_400_BAD_REQUEST)
 
         devis = serializer.instance
@@ -444,8 +456,13 @@ class DevisEditionActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         except ValidationError:
             raise
-        except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
+        except ValueError as exc:  # rollback : lignes d'origine
+            # Messages FRANÇAIS de l'écrivain unique (produit inconnu…).
             return Response({'detail': f'Remplacement échoué : {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except Exception:  # noqa: BLE001 — rollback : lignes d'origine
+            # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
+            return Response({'detail': MSG_ECRITURE_REFUSEE},
                             status=status.HTTP_400_BAD_REQUEST)
         # CJ2b — C'EST LE CHEMIN D'ENREGISTREMENT DU GÉNÉRATEUR. L'écran de
         # devis sauvegarde une édition en deux appels : ``PATCH /devis/<id>/``
