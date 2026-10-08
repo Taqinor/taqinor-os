@@ -2764,8 +2764,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 signed_count = signed.count()
                 # Somme des devis TTC des leads signés
                 signed_value = 0
+                from .selectors import _devis_compte_comme_signe
                 for lead in signed.prefetch_related('devis'):
-                    for d in lead.devis.filter(statut='accepte'):
+                    # ACRM10 — la V2 seule d'une révision acceptée.
+                    for d in lead.devis.all():
+                        if not _devis_compte_comme_signe(d):
+                            continue
                         try:
                             signed_value += float(d.total_ttc)
                         except Exception:

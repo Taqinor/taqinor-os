@@ -1043,6 +1043,18 @@ def _activites_en_retard(company, membre_ids, today=None):
     ).count()
 
 
+def _devis_compte_comme_signe(devis):
+    """ACRM10 (C-ACRM-006) — LE prédicat local du CA « signé » côté crm :
+    ``statut='accepte'`` ET ``is_active=True`` — aligné sur
+    ``reporting.pipeline._devis_signes`` (AANA19 / D-AANA-5). Réviser un devis
+    accepté laisse la V1 acceptée mais INACTIVE : la compter en plus de la V2
+    doublait le CA (53 500 + 72 500 au lieu de 72 500). Lit l'instance (la
+    relation ``lead.devis`` préchargée) — jamais un import de
+    ``apps.ventes.models``."""
+    return (getattr(devis, 'statut', None) == 'accepte'
+            and getattr(devis, 'is_active', True))
+
+
 def _ca_signe_mois(company, membre_ids, today=None):
     """CA TTC signé (Devis acceptés) ce mois-ci, par owner du lead source,
     pour les membres donnés. Lecture seule — traverse Lead.devis (reverse FK
@@ -1060,7 +1072,7 @@ def _ca_signe_mois(company, membre_ids, today=None):
     total = Decimal('0')
     for lead in leads:
         for devis in lead.devis.all():
-            if devis.statut != 'accepte':
+            if not _devis_compte_comme_signe(devis):  # ACRM10
                 continue
             d = devis.date_acceptation
             if d is None or d < debut_mois or d > today:
@@ -1162,7 +1174,7 @@ def attribution_leads(company, debut=None, fin=None):
     def _ca_signe_lead(lead):
         total = Decimal('0')
         for devis in lead.devis.all():
-            if devis.statut == 'accepte':
+            if _devis_compte_comme_signe(devis):  # ACRM10
                 try:
                     total += Decimal(str(devis.total_ttc or 0))
                 except Exception:
@@ -3574,7 +3586,7 @@ def revenu_attribue_campagne(company, nom_campagne):
     for lead in leads:
         signe_pour_ce_lead = False
         for devis in lead.devis.all():
-            if devis.statut == 'accepte':
+            if _devis_compte_comme_signe(devis):  # ACRM10
                 signe_pour_ce_lead = True
                 try:
                     revenu += Decimal(str(devis.total_ttc or 0))
