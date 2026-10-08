@@ -54,14 +54,19 @@ export default function AlertCenter() {
   const [snoozingId, setSnoozingId] = useState(null)
   const [snoozeDate, setSnoozeDate] = useState(defaultSnoozeDate)
   const [err, setErr] = useState('')
+  const [loadError, setLoadError] = useState(false)
   const [lastSeen, setLastSeen] = useState(readLastSeen)
   const ref = useRef(null)
 
   const load = useCallback(() => {
     setLoading(true)
     adsengineApi.alerts.history()
-      .then(r => setItems(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setItems([]))
+      .then(r => {
+        setItems(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      // AACQ74 — une panne n'est JAMAIS « Aucune alerte » (état d'erreur distinct).
+      .catch(() => { setItems([]); setLoadError(true) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -143,7 +148,15 @@ export default function AlertCenter() {
 
           {loading
             ? <p style={{ padding: '0.5rem' }}>Chargement…</p>
-            : items.length === 0
+            : loadError
+              ? (
+                <p data-testid="ae-alert-center-load-error" role="alert"
+                  style={{ color: '#dc2626', padding: '0.5rem' }}>
+                  Alertes indisponibles —{' '}
+                  <button type="button" className="btn btn-light" onClick={load}>réessayer</button>
+                </p>
+              )
+              : items.length === 0
               ? <p data-testid="ae-alert-center-empty" style={{ color: '#64748b', padding: '0.5rem' }}>
                   Aucune alerte.</p>
               : (

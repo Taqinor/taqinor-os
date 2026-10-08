@@ -170,6 +170,9 @@ export default function DashboardScreen() {
   // ADSDEEP61 — tuiles Dashboard v2 (conversations + MER mixte), optionnelles.
   const [v2, setV2] = useState(null)
   const [alerts, setAlerts] = useState([])
+  // AACQ74 — états d'erreur distincts (jamais « aucune alerte » / tuiles muettes sur une panne).
+  const [alertsError, setAlertsError] = useState(false)
+  const [metricsError, setMetricsError] = useState(false)
   const [drill, setDrill] = useState(null) // { metric, label }
   const [leads, setLeads] = useState([])
   const [leadsLoading, setLeadsLoading] = useState(false)
@@ -211,11 +214,11 @@ export default function DashboardScreen() {
       debut: range.debut || undefined, fin: range.fin || undefined,
       compare: (range.compare && range.debut && range.fin) ? 1 : undefined,
     })
-      .then(r => setMetrics(r.data || {}))
-      .catch(() => setMetrics({}))
+      .then(r => { setMetrics(r.data || {}); setMetricsError(false) })
+      .catch(() => { setMetrics({}); setMetricsError(true) })
     adsengineApi.alerts.list()
-      .then(r => setAlerts(normalizeAlerts(r.data)))
-      .catch(() => setAlerts([]))
+      .then(r => { setAlerts(normalizeAlerts(r.data)); setAlertsError(false) })
+      .catch(() => { setAlerts([]); setAlertsError(true) })
     // ADSDEEP61 — Dashboard v2 (endpoint optionnel : garde `?.` pour ne pas
     // casser les écrans/tests qui mockent une API `metrics` réduite).
     const dashboardV2Fn = adsengineApi.metrics?.dashboardV2
@@ -335,6 +338,19 @@ export default function DashboardScreen() {
       {/* PUB40 — sélecteur de période + comparaison (spend/CPL/fréquence,
           jamais le héro coût-par-signature — voir doctrine backend). */}
       <DateRangeBar value={range} onChange={setRange} />
+
+      {alertsError && (
+        <p data-testid="ae-alerts-load-error" role="alert"
+          style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Alertes indisponibles — <button type="button" className="btn btn-light" onClick={load}>réessayer</button>
+        </p>
+      )}
+      {metricsError && (
+        <p data-testid="ae-metrics-load-error" role="alert"
+          style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Métriques indisponibles — <button type="button" className="btn btn-light" onClick={load}>réessayer</button>
+        </p>
+      )}
 
       {/* Bandeau d'alertes ENG13 (global, toutes vues) */}
       {alerts.length > 0 && (

@@ -100,13 +100,13 @@ unites:
     I: 5
     score: 20
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: AFAC
     plan: docs/plans/PLAN_AUDIT_FACTURATION.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 862
+    date: 2026-10-08
+    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-facturation.md) : 63 constats (7 S1), 89 tâches AFAC dont 10 décisions fondateur M1 (AFAC80-89) ; lien « Payer en ligne » relatif vers une API JSON constaté en direct ; portes de facture SAV / intervention ajoutées aux deux chemins connus."
 
   - id: D3
     rang: 3
@@ -163,13 +163,13 @@ unites:
     I: 4
     score: 16
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: AACQ
     plan: docs/plans/PLAN_AUDIT_ACQUISITION.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    pr: 865
+    date: 2026-10-08
+    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-acquisition.md) : 53 constats reproduits (0 S1 confirmé), 65 tâches AACQ dont 3 décisions fondateur M1 ; action moteur modifiable après approbation, budget Meta jamais appliqué (méthode absente), seuils MAD comparés à de l'USD."
 
   - id: J1a
     rang: 5
@@ -224,13 +224,13 @@ unites:
     I: 4
     score: 16
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ACRM
     plan: docs/plans/PLAN_AUDIT_CRM.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Tailles (wc -l, 02/10) : services.py 13 547, selectors.py 5 889, views.py 5 817. Une lane partagée par les précisions v1 pour éviter le triple rapport."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CRM.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    pr: 863
+    date: 2026-10-08
+    notes: "Tailles (wc -l, 02/10) : services.py 13 547, selectors.py 5 889, views.py 5 817. Une lane partagée par les précisions v1 pour éviter le triple rapport. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-crm.md) : 45 constats (0 S1, 13 S2, 32 S3), 61 tâches ACRM (TRANSVERSE 49, LEAD 6, DEPLOY 5, CRM 1 — PLAN_AUDIT_CRM.md créé) ; 500 sur clients/segments?segment=dormants rejoué en direct ; société 43 non sondée."
 
   - id: X1
     rang: 7
@@ -292,13 +292,13 @@ unites:
     I: 5
     score: 15
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: APDF
     plan: null
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Monte à L3 dès qu'un chiffre client imprimé est contesté (go-deep : checked-facts)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 867
+    date: 2026-10-08
+    notes: "Monte à L3 dès qu'un chiffre client imprimé est contesté (go-deep : checked-facts). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-pdf.md) : 18 constats sur PDF rendus (1 S1 latent : identité TAQINOR imprimée pour toute société), 61 tâches APDF routées chez 10 propriétaires ; PDF EN/AR majoritairement en français."
 
   - id: D2
     rang: 9
