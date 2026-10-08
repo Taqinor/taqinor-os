@@ -56,6 +56,18 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     'type_facture',
 ])
 
+# ATOT9 (C-ATOT-007, D-ATOT-1) — les champs d'ARGENT d'une facture sont FIGÉS
+# dès qu'elle quitte le brouillon, QUEL QUE SOIT `factures_immuables` : une
+# facture émise se corrige par avoir (ou `remettre-brouillon`), jamais en
+# place. Le flag ne gouverne plus que le reste de FACTURE_CHAMPS_FINANCIERS.
+FACTURE_CHAMPS_ARGENT = frozenset([
+    'montant_ht', 'montant_tva', 'montant_ttc', 'remise_globale', 'taux_tva',
+    'pourcentage', 'arrondi_pas', 'arrondi_unites',
+])
+MESSAGE_MONTANT_FIGE = (
+    'Montant figé après émission : corrigez par un avoir '
+    '(ou remettez la facture en brouillon).')
+
 
 # ZFAC11 — `arrondir_au_pas` / `proposer_arrondi_caisse` vivent désormais dans
 # le service d'encaissement (`domain/encaissements.py`) ; ré-exportés ici
@@ -293,6 +305,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # non financiers (conditions, notes, dates de livraison…) restent
         # modifiables.
         facture = self.get_object()
+        argent_touche = (set(serializer.validated_data.keys())
+                         & FACTURE_CHAMPS_ARGENT)
+        if facture.statut != Facture.Statut.BROUILLON and argent_touche:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({
+                'detail': MESSAGE_MONTANT_FIGE,
+                'champs_refuses': sorted(argent_touche),
+            })
         if facture.statut != Facture.Statut.BROUILLON:
             from apps.parametres.models import CompanyProfile
             profile = CompanyProfile.get(company=facture.company)
@@ -311,9 +331,29 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         ),
                         'champs_refuses': sorted(champs_touches),
                     })
+        # ATOT9 — toute modification d'argent ACCEPTÉE (brouillon) laisse une
+        # trace avant/après dans le chatter de la facture.
+        avant = {champ: getattr(facture, champ) for champ in argent_touche}
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern created_by.
         serializer.save(updated_by=self.request.user)
+        if argent_touche:
+            from ..models import FactureActivity
+            instance = serializer.instance
+            for champ in sorted(argent_touche):
+                apres = getattr(instance, champ)
+                if apres == avant[champ]:
+                    continue
+                FactureActivity.objects.create(
+                    company=instance.company, facture=instance,
+                    user=self.request.user,
+                    kind=FactureActivity.Kind.MODIFICATION,
+                    field=champ, field_label=champ,
+                    old_value='' if avant[champ] is None else str(avant[champ]),
+                    new_value='' if apres is None else str(apres),
+                    body=(f'Montant modifié sur le brouillon : {champ} '
+                          f'{avant[champ]} -> {apres}.'),
+                )
 
     @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
