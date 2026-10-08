@@ -1587,7 +1587,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     from .pricing import calculate_savings_roi
 
     client = devis.client
-    taux_tva = devis.taux_tva or Decimal(20)
+    # AMOT11 (C-AMOT-006) — un taux de devis à 0 % est un VRAI taux : même
+    # règle que ``LigneDevis.taux_tva_effectif`` (``is not None``) ; seul
+    # ``None`` retombe sur 20 %.
+    taux_tva = (devis.taux_tva if devis.taux_tva is not None
+                else Decimal(20))
     # APRF3 (C-APRF-001) — chemin des TOTAUX de liste (``display_totals``) :
     # rien n'est lu hors préchargement — ni pièce jointe (affiche de toiture),
     # ni révision remplacée, ni lien de partage. Le mode DOCUMENT est
@@ -2320,7 +2324,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # Déjà au palier (ou au centime sous 100 MAD) : aucun arrondi de plus.
         ttc_avant = float(_noyau_brut(
             [_LigneArgentPdf(r, tva_pct) for r in rows],
-            remise_globale_pct=0, fallback_taux=devis.taux_tva,
+            remise_globale_pct=0, fallback_taux=taux_tva,
             arrondi_pas=_PAS)["ttc"])
         # ``ttc`` et ``ttc_exact`` sont désormais LA MÊME valeur, au centime :
         # la clé historique est conservée pour ses lecteurs, plus jamais pour
