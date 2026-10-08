@@ -52,6 +52,33 @@ READ_ACTIONS = ['list', 'retrieve']
 _ScaledLigne = namedtuple('_ScaledLigne', ['produit', 'quantite'])
 
 
+#: ACHT18 (C-ACHT-017) — table de transitions des ordres d'atelier, lue par
+#: `demarrer`, `terminer` et `annuler` (assemblage) et `terminer` (démontage).
+#: Planifié → terminé direct reste accepté (règle actuelle conservée).
+_PL, _EC = OrdreAssemblage.Statut.PLANIFIE, OrdreAssemblage.Statut.EN_COURS
+_TE, _AN = OrdreAssemblage.Statut.TERMINE, OrdreAssemblage.Statut.ANNULE
+TRANSITIONS_ORDRE_ASSEMBLAGE = {
+    _PL: {_EC, _TE, _AN},
+    _EC: {_TE, _AN},
+}
+TRANSITIONS_ORDRE_DEMONTAGE = {
+    OrdreDemontage.Statut.PLANIFIE: {OrdreDemontage.Statut.TERMINE},
+}
+_VERBES_ORDRE = {
+    _EC: 'le démarrer', _TE: 'le terminer', _AN: "l'annuler",
+}
+
+
+def _exiger_transition_ordre(ordre, cible, table):
+    """ACHT18 — 400 en français nommant la transition refusée (aucune
+    écriture : appelée AVANT tout effet)."""
+    if cible in table.get(ordre.statut, set()):
+        return
+    raise ValidationError({'statut': (
+        f"Ordre {ordre.get_statut_display().lower()} : impossible de "
+        f"{_VERBES_ORDRE.get(cible, 'changer son statut')}.")})
+
+
 def _quantite_entiere_composant(ligne, quantite_produite, quantite_ordre):
     """ASTK46 — quantité d'une ligne d'ordre remise à l'échelle de la
     quantité produite, calculée EXACTEMENT (Fraction) : entière → int ;
@@ -555,6 +582,9 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         from ..services import confier_composants_soustraitance
 
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreAssemblage.Statut.EN_COURS,
+            TRANSITIONS_ORDRE_ASSEMBLAGE)
         old = copy.copy(ordre)
         ordre.statut = OrdreAssemblage.Statut.EN_COURS
         ordre.save(update_fields=['statut', 'date_modification'])
@@ -571,6 +601,9 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         mouvementé (XMFG1) — la traçabilité stock ne peut pas être défaite par
         une simple annulation. Libère les réservations non consommées."""
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreAssemblage.Statut.ANNULE,
+            TRANSITIONS_ORDRE_ASSEMBLAGE)
         if ordre.stock_mouvemente:
             raise ValidationError({
                 'statut': "Ordre déjà mouvementé en stock : annulation "
@@ -747,6 +780,9 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         from apps.stock.services import consommer_et_produire_assemblage
 
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreAssemblage.Statut.TERMINE,
+            TRANSITIONS_ORDRE_ASSEMBLAGE)
         if ordre.kit.produit_compose_id is None:
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
@@ -792,6 +828,10 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
 
         with transaction.atomic():
             ordre = OrdreAssemblage.objects.select_for_update().get(pk=ordre.pk)
+            # ACHT18 — relu sous verrou : deux clôtures concurrentes.
+            _exiger_transition_ordre(
+                ordre, OrdreAssemblage.Statut.TERMINE,
+                TRANSITIONS_ORDRE_ASSEMBLAGE)
             old = copy.copy(ordre)
             ordre.quantite_produite = quantite_produite
             if emplacement_source is not None:
@@ -1070,6 +1110,9 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
         from apps.stock.services import demonter_composite
 
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreDemontage.Statut.TERMINE,
+            TRANSITIONS_ORDRE_DEMONTAGE)
         if ordre.kit.produit_compose_id is None:
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
@@ -1080,6 +1123,10 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
 
         with transaction.atomic():
             ordre = OrdreDemontage.objects.select_for_update().get(pk=ordre.pk)
+            # ACHT18 — relu sous verrou : deux clôtures concurrentes.
+            _exiger_transition_ordre(
+                ordre, OrdreDemontage.Statut.TERMINE,
+                TRANSITIONS_ORDRE_DEMONTAGE)
             already_moved = ordre.stock_mouvemente
             ordre.statut = OrdreDemontage.Statut.TERMINE
             ordre.date_terminaison = timezone.now()
