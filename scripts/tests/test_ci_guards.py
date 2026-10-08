@@ -160,5 +160,85 @@ class RunnerTests(unittest.TestCase):
         self.assertNotEqual(echecs[0]["code"], 0)
 
 
+# ADEP12 - une garde de `backend-lint-fast` ne doit lire AUCUN fichier sous `frontend/` ni
+# `apps/web/` : ce job est gate sur `backend == true`, donc une PR frontend seule ne la
+# lancerait pas et une regression frontend qu'elle detecte passerait au vert.
+_SONDE = r"""
+import json, os, runpy, shlex, sys
+out, repo, cmd = sys.argv[1], sys.argv[2], sys.argv[3]
+vus = set()
+def hook(ev, args):
+    if ev in ('open', 'os.listdir', 'os.scandir') and args and isinstance(args[0], (str, bytes, os.PathLike)):
+        try:
+            vus.add(os.path.abspath(os.fsdecode(args[0])))
+        except Exception:
+            pass
+sys.addaudithook(hook)
+argv = shlex.split(cmd)[1:]
+sys.path.insert(0, os.path.join(repo, 'scripts'))
+try:
+    if argv[0] == '-m':
+        sys.argv = [argv[1]] + argv[2:]
+        runpy.run_module(argv[1], run_name='__main__', alter_sys=True)
+    else:
+        sys.argv = argv
+        runpy.run_path(argv[0], run_name='__main__')
+except SystemExit:
+    pass
+except BaseException:
+    pass
+finally:
+    with open(out, 'w', encoding='utf-8') as fh:
+        json.dump(sorted(vus), fh)
+"""
+
+
+def _fichiers_ouverts(commande, wd, tmpdir, idx):
+    import json
+    import subprocess
+    import shlex
+    sonde = os.path.join(tmpdir, "sonde.py")
+    if not os.path.exists(sonde):
+        with open(sonde, "w", encoding="utf-8") as fh:
+            fh.write(_SONDE)
+    sortie = os.path.join(tmpdir, f"vus{idx}.json")
+    subprocess.run([sys.executable, sonde, sortie, REPO_ROOT, commande],
+                   cwd=os.path.join(REPO_ROOT, wd), capture_output=True, timeout=600)
+    with open(sortie, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _sous_surface_frontend(chemin):
+    rel = os.path.relpath(chemin, REPO_ROOT).replace(os.sep, "/")
+    return rel.startswith("frontend/") or rel.startswith("apps/web/") \
+        or rel in ("frontend", "apps/web")
+
+
+class GardeBackendNeLitPasLeFrontendTests(unittest.TestCase):
+    def test_garde_backend_lint_fast_ne_lit_pas_le_frontend(self):
+        import tempfile
+        from concurrent.futures import ThreadPoolExecutor
+        import shlex
+        candidates = []
+        for nom, commande, wd in ci_guards.GARDES["backend-lint-fast"]:
+            mots = shlex.split(commande)
+            if mots[0] != "python" or mots[1] in ("-m",) and mots[2] == "compileall":
+                continue
+            candidates.append((nom, commande, wd))
+        self.assertGreaterEqual(len(candidates), 20)
+        fautives = []
+        with tempfile.TemporaryDirectory() as tmp:
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                futs = [(nom, commande, pool.submit(_fichiers_ouverts, commande, wd, tmp, i))
+                        for i, (nom, commande, wd) in enumerate(candidates)]
+                for nom, commande, fut in futs:
+                    lus = [c for c in fut.result() if _sous_surface_frontend(c)]
+                    if lus:
+                        fautives.append(f"{commande} lit {os.path.relpath(lus[0], REPO_ROOT)}")
+        self.assertEqual(fautives, [],
+                         "gardes de `backend-lint-fast` qui lisent le frontend — a deplacer "
+                         "dans GARDES['stage-names'] : " + "; ".join(fautives))
+
+
 if __name__ == "__main__":
     unittest.main()
