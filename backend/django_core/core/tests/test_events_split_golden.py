@@ -86,6 +86,14 @@ OWNER_MODULE = {
         'devis_accepted', 'devis_sent', 'layout_finalise', 'devis_revise',
         'devis_refused', 'devis_expired', 'document_pdf_generated',
     ],
+    # SPL288 — stock / achats. ``reception_fournisseur_annulee`` (ASTK55,
+    # postérieur au plan) suit son émetteur stock/services.py.
+    'stock': [
+        'reception_fournisseur_confirmee', 'reception_fournisseur_annulee',
+        'facture_fournisseur_creee', 'paiement_fournisseur_enregistre',
+        'mouvement_stock_enregistre', 'produit_modifie',
+        'demande_achat_approuvee', 'rfq_attribuee',
+    ],
 }
 
 INIT_EVENTS = Path(__file__).resolve().parents[1] / 'events' / '__init__.py'
