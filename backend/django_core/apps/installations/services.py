@@ -5644,7 +5644,8 @@ def verifier_securite_avant_demarrage(intervention, nouveau_statut):
             "avant démarrage »)." + detail)
 
 
-def changer_statut_intervention(intervention, nouveau_statut, user):
+def changer_statut_intervention(intervention, nouveau_statut, user, *,
+                                etat_avant=None):
     """AUD317 — LE point d'écriture de `Intervention.statut`.
 
     Applique la garde F5/F8/ZFSM1 (`field_services.transition_block_reason`)
@@ -5655,7 +5656,12 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
 
     Lève `TransitionRefusee` quand la garde refuse. Renvoie un reçu
     `{'ancien', 'nouveau', 'effets': {...}}`. No-op (reçu sans effet) quand le
-    statut demandé est déjà celui de l'intervention."""
+    statut demandé est déjà celui de l'intervention.
+
+    ACHT35 — `etat_avant` (optionnel) : l'instance capturée AVANT la sauvegarde
+    des autres champs d'un PATCH ; le chatter journalise alors TOUS les champs
+    suivis modifiés (pas seulement le statut), patron de
+    `changer_statut_chantier`."""
     from . import activity, field_services, intervention_activity
     from .models_intervention import Intervention as _Intervention
 
@@ -5671,7 +5677,8 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
     if raison_securite:
         raise TransitionRefusee([raison_securite])
 
-    old = _Intervention.objects.get(pk=intervention.pk)
+    old = etat_avant if etat_avant is not None else (
+        _Intervention.objects.get(pk=intervention.pk))
     intervention.statut = nouveau_statut
     intervention.save(update_fields=['statut'])
 

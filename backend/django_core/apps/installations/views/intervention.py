@@ -440,6 +440,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         )
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
+        intervention_activity.capturer_equipe(old)  # ACHT35
         nouveau_statut = serializer.validated_data.pop('statut', None)
         # Notification CHT9 : seulement quand le technicien CHANGE (pas de
         # bruit sur une simple modification d'une intervention déjà
@@ -470,7 +471,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 return
             try:
                 changer_statut_intervention(
-                    interv, nouveau_statut, self.request.user)
+                    interv, nouveau_statut, self.request.user,
+                    etat_avant=old)
             except TransitionRefusee as exc:
                 raise ValidationError({'statut': exc.raisons})
 
