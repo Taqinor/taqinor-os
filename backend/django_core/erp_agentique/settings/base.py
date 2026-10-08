@@ -1768,6 +1768,13 @@ AUTH_COOKIE_SECURE = (
     else False if _auth_cookie_secure in ('0', 'false', 'no')
     else None)
 
+# AFAC22 — origine publique de l'ERP pour les liens CLIENT absolus (lien de
+# paiement, QR du PDF facture, partages WhatsApp, liens de signature GED).
+# Lue par `getattr(settings, 'PUBLIC_BASE_URL', '')` dans ventes/ged : avant
+# AFAC22 elle n'était déclarée nulle part, donc poser la variable dans le
+# `.env` restait SANS effet. Vide (défaut) = comportement inchangé.
+PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').strip()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fondation IA (core.ai) — sélection des fournisseurs par capacité.
 # Dict {capacité: clé_fournisseur}. Le DÉFAUT de chaque capacité est 'noop' :
