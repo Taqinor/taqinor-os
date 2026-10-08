@@ -60,17 +60,29 @@ def _ids_existants(model, ids_bruts):
     return {convertibles[pk] for pk in vivants if pk in convertibles}
 
 
-def _orphelines_de_la_societe(company):
+def _orphelines_de_la_societe(company, compteurs=None):
     """Pks des ``ContentTranslation`` de ``company`` dont la cible a disparu.
 
     Un seul parcours par content type (jamais une requête par ligne) : les
-    ids distincts du content type sont testés en UN filtre d'existence. Un
-    content type dont le MODÈLE n'existe plus dans le code (app retirée) rend
-    toutes ses lignes orphelines.
+    ids distincts du content type sont testés en UN filtre d'existence.
+
+    APAR35 — un content type dont le modèle est INTROUVABLE
+    (``model_class() is None``) n'est plus jamais purgé : une app PARQUÉE
+    (``core.parked.APPS_PARQUEES``) garde ses modèles hors du registre mais
+    ses objets EXISTENT encore en base (dé-parquage réversible) ; toute autre
+    cause est seulement comptée (``compteurs['modele_absent']``) et
+    journalisée, jamais supprimée. ``compteurs['ignorees_parquees']`` compte
+    les lignes ignorées pour app parquée.
     """
     from django.contrib.contenttypes.models import ContentType
 
     from core.models import ContentTranslation
+    from core.parked import est_parquee
+
+    if compteurs is None:
+        compteurs = {}
+    compteurs.setdefault('ignorees_parquees', 0)
+    compteurs.setdefault('modele_absent', 0)
 
     lignes = ContentTranslation.objects.filter(company=company).values_list(
         'id', 'content_type_id', 'object_id')
@@ -82,12 +94,21 @@ def _orphelines_de_la_societe(company):
     orphelines = []
     for ct_id, par_objet in par_content_type.items():
         try:
-            modele = ContentType.objects.get_for_id(ct_id).model_class()
+            content_type = ContentType.objects.get_for_id(ct_id)
+            modele = content_type.model_class()
         except Exception:  # noqa: BLE001 — content type introuvable
-            modele = None
+            content_type, modele = None, None
         if modele is None:
-            for pks in par_objet.values():
-                orphelines.extend(pks)
+            nombre = sum(len(pks) for pks in par_objet.values())
+            if content_type is not None and est_parquee(
+                    content_type.app_label):
+                compteurs['ignorees_parquees'] += nombre
+            else:
+                compteurs['modele_absent'] += nombre
+                logger.warning(
+                    'purger_traductions_orphelines: %s traduction(s) au '
+                    'content type %s sans modèle conservée(s) (société %s)',
+                    nombre, ct_id, getattr(company, 'id', None))
             continue
         try:
             vivants = _ids_existants(modele, par_objet.keys())
@@ -127,7 +148,8 @@ def _journaliser(company, supprimees):
 def purger_traductions_orphelines():
     """NTI18N38 — supprime les ``ContentTranslation`` sans objet source.
 
-    Renvoie ``{'societes': n, 'supprimees': m}``. Aucune société n'est
+    Renvoie ``{'societes': n, 'supprimees': m, 'ignorees_parquees': p,
+    'modele_absent': q}`` (APAR35). Aucune société n'est
     journalisée quand elle n'avait rien à purger (pas de ligne d'audit vide
     chaque mois).
     """
@@ -137,10 +159,11 @@ def purger_traductions_orphelines():
 
     societes = 0
     total = 0
+    compteurs = {'ignorees_parquees': 0, 'modele_absent': 0}
     for company in active_companies():
         societes += 1
         try:
-            pks = _orphelines_de_la_societe(company)
+            pks = _orphelines_de_la_societe(company, compteurs)
         except Exception:  # noqa: BLE001 — une société en échec n'arrête rien
             logger.warning(
                 'purger_traductions_orphelines: société %s ignorée',
@@ -152,7 +175,12 @@ def purger_traductions_orphelines():
         total += supprimees
         if supprimees:
             _journaliser(company, supprimees)
-    return {'societes': societes, 'supprimees': total}
+    if compteurs['ignorees_parquees'] or compteurs['modele_absent']:
+        logger.info(
+            'purger_traductions_orphelines: ignorées (app parquée) : %s ; '
+            'modèle introuvable (conservées) : %s',
+            compteurs['ignorees_parquees'], compteurs['modele_absent'])
+    return {'societes': societes, 'supprimees': total, **compteurs}
 
 
 # ───────────────────────────────────────────────────────────────────────────
