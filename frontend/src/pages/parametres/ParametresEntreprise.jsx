@@ -26,7 +26,7 @@ import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
   formReglagesPompage, payloadReglagesPompage, formReperes, payloadReperes,
-  CHAMP_ECART_RECETTE, nombreOuNull, payloadTermes,
+  CHAMP_ECART_RECETTE, nombreOuNull, payloadTermes, diffProfilePayload,
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
@@ -744,100 +744,108 @@ export default function ParametresEntreprise() {
 
   const handleSave = (e) => {
     e.preventDefault()
-    // L769 — taux de TVA : on PRÉSERVE la valeur tapée (y compris un 0
-    // délibéré) et on transmet le vide tel quel (le serveur le rejette avec
-    // une erreur claire au lieu d'un re-snap silencieux à 20/10).
-    const keepNum = (v) => (v === '' || v == null ? v : Number(v))
-    // Coercition douce : pourcentages en nombres ; FK '' → null.
-    const pt = {}
-    for (const mode of Object.keys(form.payment_terms || {})) {
-      const t = form.payment_terms[mode]
-      pt[mode] = payloadTermes(t)
-    }
-    // Coercition de la numérotation (D3) : largeur en nombre, période valide.
-    const dn = {}
-    for (const k of Object.keys(form.doc_numbering || {})) {
-      const e = form.doc_numbering[k] || {}
-      dn[k] = {
-        padding: Math.max(1, Number(e.padding) || 4),
-        reset: ['monthly', 'yearly', 'none'].includes(e.reset) ? e.reset : 'monthly',
+    // APAR16 — le payload est construit par la MÊME coercition pour l'état
+    // chargé (`initialSnapshot`) et pour la saisie : seuls les champs dont la
+    // valeur envoyée diffère partent, avec l'`updated_at` lu au chargement
+    // (verrou optimiste serveur → 409 si quelqu'un a écrit entre-temps).
+    const construire = (f) => {
+      // L769 — taux de TVA : on PRÉSERVE la valeur tapée (y compris un 0
+      // délibéré) et on transmet le vide tel quel (le serveur le rejette avec
+      // une erreur claire au lieu d'un re-snap silencieux à 20/10).
+      const keepNum = (v) => (v === '' || v == null ? v : Number(v))
+      // Coercition douce : pourcentages en nombres ; FK '' → null.
+      const pt = {}
+      for (const mode of Object.keys(f.payment_terms || {})) {
+        const t = f.payment_terms[mode]
+        pt[mode] = payloadTermes(t)
       }
+      // Coercition de la numérotation (D3) : largeur en nombre, période valide.
+      const dn = {}
+      for (const k of Object.keys(f.doc_numbering || {})) {
+        const e = f.doc_numbering[k] || {}
+        dn[k] = {
+          padding: Math.max(1, Number(e.padding) || 4),
+          reset: ['monthly', 'yearly', 'none'].includes(e.reset) ? e.reset : 'monthly',
+        }
+      }
+      const payload = {
+        ...f,
+        responsable_defaut_leads: f.responsable_defaut_leads === ''
+          ? null : f.responsable_defaut_leads,
+        default_installer: f.default_installer === ''
+          ? null : f.default_installer,
+        payment_terms: pt,
+        doc_numbering: dn,
+        quote_validity_days: Number(f.quote_validity_days) || 30,
+        agricole_pump_hours: Number(f.agricole_pump_hours) || 7,
+        // AGR108 — un champ pompage vidé part `null`, jamais un chiffre.
+        ...payloadReglagesPompage(f),
+        // AGR209 — un repère vidé part vide (null), jamais 50 / 128.
+        reperes_energie_agricole: payloadReperes(f.reperes_energie_agricole),
+        // AGR607 — vide = null (écart affiché sans verdict) ; tapé = tel quel.
+        [CHAMP_ECART_RECETTE]: nombreOuNull(f[CHAMP_ECART_RECETTE]),
+        // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE
+        // « ne pas afficher ce delai », ce n'est pas une valeur manquante.
+        delai_visite_technique: (f.delai_visite_technique ?? '').trim(),
+        delai_installation: (f.delai_installation ?? '').trim(),
+        tva_standard: keepNum(f.tva_standard),
+        tva_panneaux: keepNum(f.tva_panneaux),
+        onee_tarif_kwh: Number(f.onee_tarif_kwh) || 1.75,
+        productible_kwh_kwc: Number(f.productible_kwh_kwc) || 1600,
+        discount_approval_threshold: f.discount_approval_threshold === '' ? null : Number(f.discount_approval_threshold),
+        // CIQ639 — vide = null (seuil des textes / non engagé), tapé = tel quel.
+        ...payloadReglagesCi(f),
+        rendement_global: Number(f.rendement_global) || 0.8,
+        prix_cible_kwc_defaut: f.prix_cible_kwc_defaut === '' ? null : Number(f.prix_cible_kwc_defaut),
+        remise_max_pct: f.remise_max_pct === '' ? null : Number(f.remise_max_pct),
+        commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(f.commission_mode) ? f.commission_mode : 'off',
+        commission_valeur: f.commission_valeur === '' ? null : Number(f.commission_valeur),
+        referral_enabled: !!f.referral_enabled,
+        referral_reward: f.referral_reward === '' ? null : Number(f.referral_reward),
+        // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
+        lead_sla_hours: Math.max(0, Math.trunc(Number(f.lead_sla_hours) || 0)),
+        // MRY28/MRY8 — fenêtres de contact : dates Ramadan vides = null (jamais
+        // une période devinée), heures conservées telles quelles (« HH:MM »).
+        message_heure_debut: f.message_heure_debut || '08:30',
+        appel_heure_debut: f.appel_heure_debut || '09:00',
+        appel_heure_fin: f.appel_heure_fin || '20:00',
+        vendredi_pause_debut: f.vendredi_pause_debut || '11:30',
+        vendredi_pause_fin: f.vendredi_pause_fin || '15:00',
+        ramadan_debut: f.ramadan_debut || null,
+        ramadan_fin: f.ramadan_fin || null,
+        ramadan_appel_debut: f.ramadan_appel_debut || '10:00',
+        ramadan_appel_fin: f.ramadan_appel_fin || '14:00',
+        premier_contact_objectif_min: Math.max(
+          1, Math.trunc(Number(f.premier_contact_objectif_min) || 5)),
+        // XSAL11 — round-robin équilibré des leads entrants.
+        round_robin_leads_actif: !!f.round_robin_leads_actif,
+        round_robin_plafond_leads_ouverts: Math.max(
+          1, Math.trunc(Number(f.round_robin_plafond_leads_ouverts) || 20)),
+        // ZSTK13 — capacités stock (booléens simples, jamais désactivées
+        // silencieusement).
+        stock_lots_series_actif: f.stock_lots_series_actif !== false,
+        stock_colisage_actif: f.stock_colisage_actif !== false,
+        stock_scan_actif: f.stock_scan_actif !== false,
+      }
+      // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
+      // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc
+      // pas les modifier ; on les retire du payload par sécurité (défense en
+      // profondeur — le backend reste l'autorité).
+      if (canManageSensitive) {
+        payload.commission_mode = ['off', 'pct_devis', 'par_kwc']
+          .includes(f.commission_mode) ? f.commission_mode : 'off'
+        payload.commission_valeur = f.commission_valeur === ''
+          ? null : Number(f.commission_valeur)
+        payload.dgi_export_actif = !!f.dgi_export_actif
+      } else {
+        delete payload.commission_mode
+        delete payload.commission_valeur
+        delete payload.dgi_export_actif
+      }
+      return payload
     }
-    const payload = {
-      ...form,
-      responsable_defaut_leads: form.responsable_defaut_leads === ''
-        ? null : form.responsable_defaut_leads,
-      default_installer: form.default_installer === ''
-        ? null : form.default_installer,
-      payment_terms: pt,
-      doc_numbering: dn,
-      quote_validity_days: Number(form.quote_validity_days) || 30,
-      agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
-      // AGR108 — un champ pompage vidé part `null`, jamais un chiffre.
-      ...payloadReglagesPompage(form),
-      // AGR209 — un repère vidé part vide (null), jamais 50 / 128.
-      reperes_energie_agricole: payloadReperes(form.reperes_energie_agricole),
-      // AGR607 — vide = null (écart affiché sans verdict) ; tapé = tel quel.
-      [CHAMP_ECART_RECETTE]: nombreOuNull(form[CHAMP_ECART_RECETTE]),
-      // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE
-      // « ne pas afficher ce delai », ce n'est pas une valeur manquante.
-      delai_visite_technique: (form.delai_visite_technique ?? '').trim(),
-      delai_installation: (form.delai_installation ?? '').trim(),
-      tva_standard: keepNum(form.tva_standard),
-      tva_panneaux: keepNum(form.tva_panneaux),
-      onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
-      productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
-      discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
-      // CIQ639 — vide = null (seuil des textes / non engagé), tapé = tel quel.
-      ...payloadReglagesCi(form),
-      rendement_global: Number(form.rendement_global) || 0.8,
-      prix_cible_kwc_defaut: form.prix_cible_kwc_defaut === '' ? null : Number(form.prix_cible_kwc_defaut),
-      remise_max_pct: form.remise_max_pct === '' ? null : Number(form.remise_max_pct),
-      commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(form.commission_mode) ? form.commission_mode : 'off',
-      commission_valeur: form.commission_valeur === '' ? null : Number(form.commission_valeur),
-      referral_enabled: !!form.referral_enabled,
-      referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
-      // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
-      lead_sla_hours: Math.max(0, Math.trunc(Number(form.lead_sla_hours) || 0)),
-      // MRY28/MRY8 — fenêtres de contact : dates Ramadan vides = null (jamais
-      // une période devinée), heures conservées telles quelles (« HH:MM »).
-      message_heure_debut: form.message_heure_debut || '08:30',
-      appel_heure_debut: form.appel_heure_debut || '09:00',
-      appel_heure_fin: form.appel_heure_fin || '20:00',
-      vendredi_pause_debut: form.vendredi_pause_debut || '11:30',
-      vendredi_pause_fin: form.vendredi_pause_fin || '15:00',
-      ramadan_debut: form.ramadan_debut || null,
-      ramadan_fin: form.ramadan_fin || null,
-      ramadan_appel_debut: form.ramadan_appel_debut || '10:00',
-      ramadan_appel_fin: form.ramadan_appel_fin || '14:00',
-      premier_contact_objectif_min: Math.max(
-        1, Math.trunc(Number(form.premier_contact_objectif_min) || 5)),
-      // XSAL11 — round-robin équilibré des leads entrants.
-      round_robin_leads_actif: !!form.round_robin_leads_actif,
-      round_robin_plafond_leads_ouverts: Math.max(
-        1, Math.trunc(Number(form.round_robin_plafond_leads_ouverts) || 20)),
-      // ZSTK13 — capacités stock (booléens simples, jamais désactivées
-      // silencieusement).
-      stock_lots_series_actif: form.stock_lots_series_actif !== false,
-      stock_colisage_actif: form.stock_colisage_actif !== false,
-      stock_scan_actif: form.stock_scan_actif !== false,
-    }
-    // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
-    // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc
-    // pas les modifier ; on les retire du payload par sécurité (défense en
-    // profondeur — le backend reste l'autorité).
-    if (canManageSensitive) {
-      payload.commission_mode = ['off', 'pct_devis', 'par_kwc']
-        .includes(form.commission_mode) ? form.commission_mode : 'off'
-      payload.commission_valeur = form.commission_valeur === ''
-        ? null : Number(form.commission_valeur)
-      payload.dgi_export_actif = !!form.dgi_export_actif
-    } else {
-      delete payload.commission_mode
-      delete payload.commission_valeur
-      delete payload.dgi_export_actif
-    }
-    dispatch(saveProfile(payload))
+    dispatch(saveProfile(diffProfilePayload(
+      construire(initialSnapshot ?? form), construire(form), profile?.updated_at)))
   }
 
   const accent = form.couleur_principale || '#1d4ed8'

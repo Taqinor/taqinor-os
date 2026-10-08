@@ -181,6 +181,9 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             # NTDMO20 — assignation réservée au founder (admin Django /
             # gestion technique) : jamais éditable par le tenant via ce PATCH.
             'essai_expire_le',
+            # APAR16 — horodatage du verrou optimiste : posé par le serveur
+            # (auto_now), renvoyé par l'écran pour comparaison, jamais écrit.
+            'updated_at',
         ]
 
     def validate_responsable_defaut_leads(self, value):
