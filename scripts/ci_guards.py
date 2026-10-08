@@ -346,6 +346,12 @@ GARDES = {
          '.'),
     ],
     'backend-lint-fast': [
+        ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
+         'python scripts/check_binaires_image.py',
+         '.'),
+        ('Tests de la garde binaires/image (ADEP1)',
+         'python -m unittest scripts.tests.test_check_binaires_image -v',
+         '.'),
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',
          'python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia',
          '.'),
