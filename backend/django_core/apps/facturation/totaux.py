@@ -10,6 +10,72 @@ n'importe ``apps.facturation.models`` qu'en BAS de fichier, à dessein).
 """
 
 
+def repartir_au_centime(total, poids):
+    """CIQ215/ATOT6 — répartit ``total`` (MAD) entre les clés de ``poids``
+    au prorata, méthode du plus fort reste au centime : la somme des parts
+    vaut EXACTEMENT ``total``. Poids nuls ⇒ tout sur la dernière clé.
+    (Déplacé d'``echeancier._repartir_au_centime``, qui y délègue : ce
+    module n'importe aucune app — contrat import-linter M1.)"""
+    from decimal import ROUND_FLOOR, Decimal
+
+    cles = list(poids)
+    centimes = int((Decimal(str(total)) * 100).to_integral_value())
+    somme = sum((Decimal(str(poids[c])) for c in cles), Decimal('0'))
+    if somme == 0:
+        parts = {c: 0 for c in cles}
+        parts[cles[-1]] = centimes
+    else:
+        exactes = {c: Decimal(centimes) * Decimal(str(poids[c])) / somme
+                   for c in cles}
+        parts = {c: int(exactes[c].to_integral_value(rounding=ROUND_FLOOR))
+                 for c in cles}
+        reste = centimes - sum(parts.values())
+        ordre = sorted(cles,
+                       key=lambda c: (exactes[c] - parts[c], -cles.index(c)),
+                       reverse=True)
+        for c in ordre[:reste]:
+            parts[c] += 1
+    return {c: Decimal(parts[c]) / 100 for c in cles}
+
+
+def ventilation_document_fige(bases_par_taux, ttc, *, ht=None, tva=None):
+    """ATOT6 (C-ATOT-004) — LE service unique de ventilation TVA d'un
+    document FIGÉ (tranche, avoir, note de débit) : répartit ``ttc`` (et son
+    HT/TVA) entre les paniers ``bases_par_taux`` d'un document source
+    (``[{taux, base_ht, montant}]``) au prorata, au centime par le plus fort
+    reste (``echeancier._repartir_au_centime``) : Σ bases = HT et Σ TVA =
+    TVA exactement.
+
+    ``ht``/``tva`` absents ⇒ la TVA est le prorata de la TVA source sur le
+    TTC source (au centime), le HT son complément (HT + TVA = TTC). Un
+    document de même TTC que sa source en reprend les paniers à l'identique.
+    Renvoie ``[{taux, base_ht, montant}]`` (chaînes), ou None si la source
+    a moins de deux paniers (document mono-taux : rien à ventiler)."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    from core.money import quantize_mad
+
+    paniers = list(bases_par_taux or [])
+    if len(paniers) < 2:
+        return None
+    cent = Decimal('0.01')
+    taux = [Decimal(str(b['taux'])) for b in paniers]
+    bases_src = {t: Decimal(str(b['base_ht'])) for t, b in zip(taux, paniers)}
+    tva_src = {t: Decimal(str(b['montant'])) for t, b in zip(taux, paniers)}
+    ttc = Decimal(str(ttc)).quantize(cent, rounding=ROUND_HALF_UP)
+    if tva is None or ht is None:
+        ttc_src = sum(bases_src.values()) + sum(tva_src.values())
+        tva = (ttc * sum(tva_src.values()) / ttc_src) if ttc_src else \
+            Decimal('0')
+        tva = tva.quantize(cent, rounding=ROUND_HALF_UP)
+        ht = ttc - tva
+    bases = repartir_au_centime(ht, bases_src)
+    tvas = repartir_au_centime(tva, tva_src)
+    return [{'taux': str(t),
+             'base_ht': str(quantize_mad(bases[t])),
+             'montant': str(quantize_mad(tvas[t]))} for t in taux]
+
+
 class TotauxDocumentMixin:
     """LE SEUL PROPRIÉTAIRE de la chaîne HT → remise globale → TVA par taux →
     TTC, partagé par ``Facture``, ``Avoir`` et ``NoteDebit``.

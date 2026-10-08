@@ -88,5 +88,3 @@ backend/django_core/apps/stock/views/paiement_fournisseur.py::PaiementFournisseu
 backend/django_core/apps/stock/views/produit.py::ProduitViewSet
 # actions non nommees par le branchement : approuver_remise, composition
 backend/django_core/apps/ventes/views/devis.py::DevisViewSet
-# actions non nommees par le branchement : historique
-backend/django_core/apps/ventes/views/facture.py::FactureViewSet

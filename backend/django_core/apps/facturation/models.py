@@ -166,6 +166,15 @@ class Facture(TotauxDocumentMixin, models.Model):
     # historiques, factures à lignes) = comportement d'hier, octet-identique.
     ventilation_tva = models.JSONField(
         null=True, blank=True, verbose_name='Ventilation TVA par taux')
+    # ATOT5 (C-ATOT-003) — CLÉ de la tranche d'échéancier facturée
+    # (``echeancier.cles_tranches`` : la clé normalisée, suffixée ``#n`` quand
+    # elle se répète). La tranche suivante est la première clé non couverte
+    # par une facture active de même clé — plus jamais la position (annuler
+    # l'acompte puis régénérer refacturait « matériel » une seconde fois).
+    # Vide = facture historique ou hors échéancier (repli positionnel).
+    cle_tranche = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name="Clé de tranche d'échéancier")
     # CIQ216 — numéro de commande du client, hérité du devis (facture de BC,
     # facture de tranche) ; imprimé sous « Facturé à » quand il est rempli.
     reference_commande_client = models.CharField(
@@ -1003,6 +1012,13 @@ class Avoir(TotauxDocumentMixin, models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='avoirs_crees')
     fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+    # ATOT6 (C-ATOT-004) — ventilation TVA par taux ``[{taux, base_ht,
+    # montant}]`` (chaînes) recopiée AU PRORATA de la facture d'origine
+    # (``totaux.ventilation_document_fige``) quand celle-ci est ventilée
+    # (tranche à taux mixtes, CIQ215) : le document porte autant de paniers
+    # que sa facture, jamais le « taux mélangé ». Vide = comportement d'hier.
+    ventilation_tva = models.JSONField(
+        null=True, blank=True, verbose_name='Ventilation TVA par taux')
     # ── XPOS7 — Retour client avec re-stockage (additif) ──
     # Un avoir « normal » (correction de facturation) laisse ces deux champs
     # à leur valeur par défaut (False/'') — comportement historique intact.

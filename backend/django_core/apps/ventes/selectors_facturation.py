@@ -718,16 +718,19 @@ def factures_via_bon_commande(devis, *, inclure_annulees=False):
 
 
 def factures_du_devis(devis, *, inclure_annulees=False):
-    """TOUTES les factures d'un devis, LES DEUX VOIES CONFONDUES (queryset).
+    """TOUTES les factures d'un devis, LES QUATRE PORTES CONFONDUES (queryset).
 
-    ``Q(devis=devis) | Q(bon_commande__devis=devis)`` : l'échéancier ET le bon
-    de commande. Les factures ANNULÉES sont exclues par défaut (elles ne
-    consomment plus rien)."""
+    ``Q(devis=devis) | Q(bon_commande__devis=devis) | Q(sources__devis=devis)``
+    : l'échéancier et la facture complète (``devis``), le bon de commande ET
+    la facture consolidée (ATOT2 — ``FactureSource`` : une consolidée porte
+    ``devis=None``, elle était invisible). Les factures ANNULÉES sont exclues
+    par défaut (elles ne consomment plus rien)."""
     from django.db.models import Q
 
     from .models import Facture
     qs = Facture.objects.filter(
-        Q(devis=devis) | Q(bon_commande__devis=devis))
+        Q(devis=devis) | Q(bon_commande__devis=devis)
+        | Q(sources__devis=devis))
     if not inclure_annulees:
         qs = qs.exclude(statut=Facture.Statut.ANNULEE)
     return qs.distinct()
@@ -744,6 +747,64 @@ def devis_deja_facture(devis):
     if devis is None:
         return False
     return factures_du_devis(devis).exists()
+
+
+class DevisDejaFacture(ValueError):
+    """ATOT2 — refus d'une porte de facturation (message FR prêt pour un 400)."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+#: ATOT2 — les quatre portes de facturation d'un devis.
+PORTES_FACTURATION = ('tranche', 'bc', 'complete', 'consolidee')
+
+
+def est_facture_de_tranche(facture, devis=None):
+    """ATOT2 — ``facture`` est-elle une facture de TRANCHE d'échéancier ?
+
+    Une tranche porte son devis (``Facture.devis``), aucun bon de commande et
+    n'est pas la facture COMPLÈTE (``facturer-complet``). La facture de BC
+    porte aussi ``devis`` (AUD112) mais garde son ``bon_commande`` ; la
+    consolidée ne porte pas de devis (``FactureSource``)."""
+    from .models import Facture
+    if facture.devis_id is None or facture.bon_commande_id is not None:
+        return False
+    if devis is not None and facture.devis_id != devis.id:
+        return False
+    return facture.type_facture != Facture.TypeFacture.COMPLETE
+
+
+def exiger_devis_facturable(devis, porte):
+    """ATOT2 (C-ATOT-001) — LA garde unique des quatre portes de facturation.
+
+    « Une vente ne se facture qu'une fois » : ``porte`` ∈
+    ``PORTES_FACTURATION``. La porte ``tranche`` reste ouverte tant que les
+    seules factures actives du devis sont ses propres tranches (l'échéancier
+    continue) ; toute autre porte exige un devis sans AUCUNE facture active
+    (``factures_du_devis``, consolidée comprise). Lève ``DevisDejaFacture``
+    en nommant la ou les factures existantes ; ne renvoie rien sinon."""
+    if porte not in PORTES_FACTURATION:
+        raise ValueError(f'Porte de facturation inconnue : {porte!r}.')
+    if devis is None:
+        return
+    actives = list(factures_du_devis(devis).order_by('id'))
+    if porte == 'tranche':
+        bloquantes = [f for f in actives
+                      if not est_facture_de_tranche(f, devis)]
+    else:
+        bloquantes = actives
+    if not bloquantes:
+        return
+    refs = ', '.join(f.reference for f in bloquantes)
+    if len(bloquantes) > 1:
+        motif = (f'Ce devis est déjà facturé par {refs} : '
+                 'corrigez-les par un avoir.')
+    else:
+        motif = (f'Ce devis est déjà facturé par {refs} : '
+                 'corrigez-la par un avoir.')
+    raise DevisDejaFacture(motif)
 
 
 def kpis_factures(qs):

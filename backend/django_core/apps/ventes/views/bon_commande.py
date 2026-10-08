@@ -245,10 +245,14 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     # consommait les DEUX kits — le stock physique divergeait
                     # du stock ERP du montant d'une batterie.
                     from ..utils.options import option_lines
-                    from ..domain.facturation_ops import decompter_stock_lignes
+                    from ..domain.facturation_ops import (
+                        decompter_stock_lignes,
+                        solder_reservations_chantier_vente,
+                    )
                     # ERR-QAC-MULTIVILLA-MATERIEL-XN — ×N villas : livrer
                     # le BC sort le matériel des N villas facturées.
                     from ..multivilla import nombre_proprietes
+                    sorties = {}
                     decompter_stock_lignes(
                         lignes=option_lines(bc.devis),
                         company=bc.company,
@@ -256,7 +260,14 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                         reference=bc.reference,
                         note=f'Livraison BC {bc.reference}',
                         multiplicateur=nombre_proprietes(bc.devis),
+                        sorties=sorties,
                     )
+                    # ASTK135 — la sortie du BC solde la réservation du
+                    # chantier (même transaction) : « Installé » ne ressort
+                    # que le reliquat.
+                    solder_reservations_chantier_vente(
+                        devis=bc.devis, company=bc.company, sorties=sorties,
+                        reference=bc.reference, user=request.user)
                 bc.statut = BonCommande.Statut.LIVRE
                 from django.utils import timezone as _tz2
                 bc.date_livraison_reelle = _tz2.now().date()
@@ -464,16 +475,17 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         # (acompte/tranche) passait ici sans obstacle, et le client recevait
         # deux fois la même vente. Prédicat partagé, une seule définition de
         # « déjà facturé » pour les deux portes.
-        from ..selectors import devis_deja_facture
-        if bc.devis_id and devis_deja_facture(bc.devis):
-            return Response(
-                {'detail': (
-                    f'Le devis {bc.devis.reference} est déjà (partiellement) '
-                    'facturé par son échéancier : facturer ce bon de commande '
-                    'facturerait la même vente une seconde fois.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # ATOT2 — LA garde unique des quatre portes (échéancier, complète,
+        # consolidée) : le refus nomme la facture existante.
+        from ..selectors_facturation import (
+            DevisDejaFacture, exiger_devis_facturable,
+        )
+        if bc.devis_id:
+            try:
+                exiger_devis_facturable(bc.devis, 'bc')
+            except DevisDejaFacture as exc:
+                return Response({'detail': exc.motif},
+                                status=status.HTTP_400_BAD_REQUEST)
         # AUD117 — LA SOCIÉTÉ VIENT DU BON DE COMMANDE, PAS DE L'UTILISATEUR.
         # La règle maison est « company forcée côté serveur, jamais issue de la
         # requête » : elle venait bien du serveur, mais du MAUVAIS objet
@@ -514,10 +526,9 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 statut=Facture.Statut.BROUILLON,
                 created_by=request.user,
                 company=company,
-                # CIQ216 — la référence de commande du client suit le devis.
-                reference_commande_client=(
-                    bc.devis.reference_commande_client or ''
-                    if bc.devis_id else ''),
+                # CIQ216/ATOT4 — référence de commande du client et retenue
+                # de garantie du devis : portées par `entete` (geste partagé
+                # des quatre portes).
                 **entete,
             )
             if bc.devis:

@@ -132,6 +132,8 @@ creer_facture_contrat = _facturation_ops.creer_facture_contrat
 creer_facture_regie = _facturation_ops.creer_facture_regie
 creer_facture_acompte_situation = _facturation_ops.creer_facture_acompte_situation
 creer_facture_classique = _facturation_ops.creer_facture_classique
+# ASTK197 — facture brouillon d'une consommation de consignation (stock).
+creer_facture_consignation = _facturation_ops.creer_facture_consignation
 ajouter_lignes_frais_refactures = _facturation_ops.ajouter_lignes_frais_refactures
 calculer_date_echeance = _facturation_ops.calculer_date_echeance
 get_facture_or_none = _facturation_ops.get_facture_or_none
@@ -586,6 +588,7 @@ __all__ = [
     'creer_devis_import',
     'creer_facture_acompte_situation',
     'creer_facture_classique',
+    'creer_facture_consignation',
     'creer_facture_contrat',
     'creer_facture_import',
     'creer_facture_regie',

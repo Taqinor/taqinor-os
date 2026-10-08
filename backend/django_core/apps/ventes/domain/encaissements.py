@@ -110,6 +110,47 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     return True
 
 
+def recalculer_statut_paiement(facture, *, user=None, source=''):
+    """ATOT8 (C-ATOT-006) — LE service unique qui DÉRIVE le statut de
+    paiement d'une facture de son reste dû (D-ATOT-4) : « payée » si et
+    seulement si ``montant_du`` ≤ 0 (au centime).
+
+      * reste dû nul → bascule PAYÉE par ``marquer_facture_soldee`` (verrou,
+        idempotent, ``facture_payee`` émis UNE fois) ;
+      * reste EXIGIBLE > 0 (CIQ214 : une retenue de garantie non libérée ne
+        rouvre pas) → ÉMISE, ou EN_RETARD si l'échéance est dépassée — une
+        facture PAYÉE dont un avoir est annulé revient au recouvrement ;
+      * brouillon et annulée : jamais touchées.
+
+    Appelé après création ET annulation d'avoir, et au rejet d'un paiement
+    (réouverture extraite de ``recouvrement._rouvrir_facture_apres_rejet``).
+    Idempotent. Renvoie le statut résultant."""
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from apps.ventes.models import Facture
+
+    facture.refresh_from_db()
+    if facture.statut in (Facture.Statut.ANNULEE, Facture.Statut.BROUILLON):
+        return facture.statut
+    if facture.montant_du <= Decimal('0.01'):
+        marquer_facture_soldee(facture, user=user,
+                               source=source or 'recalcul_statut')
+        facture.refresh_from_db()
+        return facture.statut
+    if facture.montant_exigible <= 0:
+        return facture.statut
+    today = timezone.now().date()
+    nouveau = (Facture.Statut.EN_RETARD
+               if facture.date_echeance and facture.date_echeance < today
+               else Facture.Statut.EMISE)
+    if facture.statut != nouveau:
+        facture.statut = nouveau
+        facture.save(update_fields=['statut'])
+    return facture.statut
+
+
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
                          reference='', note=''):
     """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.
@@ -895,6 +936,71 @@ def enregistrer_paiement_avec_retenue(
 
 # ── XFAC11 — Facture consolidée multi-devis/BC d'un même client ────────────
 
+def _composer_remise_et_palier(facture, devis_qs):
+    """ATOT3 — pose sur la consolidée la remise globale et le palier
+    d'arrondi qui lui font valoir Σ TTC des devis (``option_totaux``) AU
+    CENTIME, ou refuse (400) : jamais un total faux.
+
+    Une remise globale n'est composable que si TOUS les devis portent la
+    même ; le palier ARRONDI-100 du devis (appliqué par devis) n'est gardé
+    que s'il redonne la somme, sinon le total brut des lignes est essayé."""
+    from rest_framework.exceptions import ValidationError
+
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.utils.options import option_totaux
+
+    noms = ', '.join(d.reference for d in devis_qs)
+    remises = {Decimal(str(d.remise_globale or 0)) for d in devis_qs}
+    if len(remises) > 1:
+        raise ValidationError({'devis_ids': (
+            f'Les devis {noms} portent des remises globales différentes : '
+            'une seule facture ne peut pas les reproduire au centime. '
+            'Facturez-les séparément.')})
+    attendu = sum((Decimal(str(option_totaux(d)['ttc'])) for d in devis_qs),
+                  Decimal('0'))
+    facture.remise_globale = remises.pop()
+    facture.arrondi_unites = 1
+    for pas in (int(PAS_ARRONDI_DEVIS), 0):
+        facture.arrondi_pas = pas
+        facture.save(update_fields=[
+            'remise_globale', 'arrondi_pas', 'arrondi_unites'])
+        if Decimal(str(facture.total_ttc)) == attendu:
+            return
+    raise ValidationError({'devis_ids': (
+        f'Les devis {noms} ne se regroupent pas en une facture au centime '
+        f'(total attendu {attendu:.2f} MAD : remises ou arrondis non '
+        'composables). Facturez-les séparément.')})
+
+
+def _entete_consolidee(facture, devis_qs):
+    """ATOT4 — l'en-tête de la consolidée par LE geste partagé
+    ``entete_facture_depuis_devis``, appelé devis par devis : retenue de
+    garantie = Σ des retenues de chaque devis sur SON TTC (prorata), phrases
+    AUD180 conservées, références de commande client distinctes jointes. Le
+    taux de tête n'est pas repris (chaque ligne porte son taux effectif)."""
+    from apps.ventes.domain.facturation_ops import entete_facture_depuis_devis
+    retenue = Decimal('0')
+    phrases, refs = [], []
+    for d in devis_qs:
+        entete = entete_facture_depuis_devis(d)
+        if entete.get('retenue_garantie_mad') is not None:
+            retenue += Decimal(str(entete['retenue_garantie_mad']))
+            phrases.append(f'{d.reference} : {entete["conditions_paiement"]}')
+        ref = entete.get('reference_commande_client') or ''
+        if ref and ref not in refs:
+            refs.append(ref)
+    champs = []
+    if phrases:
+        facture.retenue_garantie_mad = retenue
+        facture.conditions_paiement = '\n'.join(phrases)
+        champs += ['retenue_garantie_mad', 'conditions_paiement']
+    if refs:
+        facture.reference_commande_client = ', '.join(refs)[:60]
+        champs.append('reference_commande_client')
+    if champs:
+        facture.save(update_fields=champs)
+
+
 def consolider_factures(*, company, devis_ids, user, created_by=None):
     """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
     client (ex. projet multi-sites : ferme à N forages, tranches). Chaque
@@ -916,6 +1022,9 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
     from django.db import transaction
     from rest_framework.exceptions import ValidationError
     from ..models import Devis, Facture, FactureSource, LigneFacture
+    from ..selectors_facturation import (
+        DevisDejaFacture, exiger_devis_facturable,
+    )
     from ..utils.company_settings import create_numbered
 
     if not devis_ids or len(devis_ids) < 2:
@@ -939,12 +1048,14 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
                     f'Le devis {d.reference} doit être accepté pour être '
                     f'consolidé.'),
             })
-        deja_facture = Facture.objects.filter(
-            devis=d).exclude(statut=Facture.Statut.ANNULEE).exists() or \
-            FactureSource.objects.filter(devis=d).exists()
-        if deja_facture:
+        # ATOT2 — LA garde unique des quatre portes (``factures_du_devis`` :
+        # échéancier, complète, BC ET consolidée active) ; une consolidée
+        # ANNULÉE ne bloque plus (elle bloquait à vie via FactureSource).
+        try:
+            exiger_devis_facturable(d, 'consolidee')
+        except DevisDejaFacture as exc:
             raise ValidationError({
-                'devis_ids': f'Le devis {d.reference} est déjà facturé.',
+                'devis_ids': f'{d.reference} — {exc.motif}',
             })
 
     client = devis_qs[0].client
@@ -958,27 +1069,28 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
 
         facture = create_numbered(Facture, company, 'facture', _create)
 
-        from ..selectors import nombre_proprietes
+        # ATOT3 (C-ATOT-002) — chaque devis apporte EXACTEMENT le panier de
+        # `copier_devis_sur_facture` (`lignes_facture_du_devis` : option
+        # effective, lignes comptées seulement, ×N villas, taux par ligne —
+        # effectif, le repli de la consolidée n'étant pas le taux du devis).
+        # La boucle `d.lignes.all()` recopiait les sections (500), les
+        # options non activées et les deux options, et perdait la remise.
+        from apps.ventes.domain.facturation_ops import lignes_facture_du_devis
         for d in devis_qs:
             sous_total = Decimal('0')
-            # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis « ×N villas identiques »
-            # se facture au total ×N (décision fondateur 30/09/2026), comme la
-            # facture de BC : chaque quantité ×N. N=1 → inchangé.
-            n_prop = nombre_proprietes(d)
-            for ligne in d.lignes.all():
-                LigneFacture.objects.create(
-                    facture=facture, produit=ligne.produit,
-                    designation=f'{d.reference} — {ligne.designation}',
-                    quantite=ligne.quantite * n_prop,
-                    prix_unitaire=ligne.prix_unitaire,
-                    remise=ligne.remise, taux_tva=ligne.taux_tva,
-                    source_devis=d,
+            for champs in lignes_facture_du_devis(d, taux_effectif=True):
+                ligne = LigneFacture.objects.create(
+                    facture=facture, source_devis=d,
+                    **{**champs, 'designation':
+                       f'{d.reference} — {champs["designation"]}'},
                 )
-                sous_total += ligne.total_ht * n_prop
+                sous_total += Decimal(str(ligne.total_ht))
             FactureSource.objects.create(
                 company=company, facture=facture, devis=d,
                 sous_total_ht=sous_total,
             )
+        _composer_remise_et_palier(facture, devis_qs)
+        _entete_consolidee(facture, devis_qs)
 
         # AUD101 — l'émission passe par LE service unique, APRÈS la recopie
         # des lignes (émettre une facture consolidée encore vide écrirait une
@@ -1000,9 +1112,14 @@ def mandat_actif_pour_client(client):
     ``debiter_mandat_pour_facture`` — un client sans mandat actif (le cas
     par défaut) fait strictement l'encaissement manuel actuel."""
     from apps.ventes.models import MandatPaiement
+    if client is None:
+        return None
+    # ASEC28 — borné à la SOCIÉTÉ du client : un mandat d'une autre société
+    # ne peut jamais servir au prélèvement (signature inchangée).
     return (
         MandatPaiement.objects
-        .filter(client=client, statut=MandatPaiement.Statut.ACTIF)
+        .filter(client=client, company_id=client.company_id,
+                statut=MandatPaiement.Statut.ACTIF)
         .exclude(token='')
         .order_by('-created_at')
         .first()
