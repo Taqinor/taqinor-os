@@ -19,6 +19,8 @@ jamais fait planter un rendu, il reste visible pour être corrigé.
 ⚠ RÈGLE #4 — la cible « devis » est refusée par le modèle lui-même : aucun
 devis client ne sort d'ici, il passe uniquement par ``/proposal``.
 """
+import json
+
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers, status
@@ -29,7 +31,7 @@ from authentication.permissions import IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
 from .gabarits import rendre_pdf, variables_du_gabarit
-from .gabarits_contexte import construire_contexte, contexte_demonstration
+from .gabarits_contexte import apercu_contexte, construire_contexte
 from .models import GabaritDocumentCustom
 
 
@@ -111,13 +113,15 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
         servir du gabarit. Rien n'est écrit — c'est un rendu, pas un document
         archivé.
 
-        L'aperçu force ``strict=False`` : contrairement au rendu réel, un
-        placeholder absent doit apparaître REMPLI (c'est une maquette), et
-        ``contexte_demonstration`` fournit précisément une valeur pour chaque
-        variable du corps.
+        L'aperçu force ``strict=False`` : un placeholder inconnu apparaît vide,
+        comme au rendu réel d'une cible à schéma fixe, et il est signalé dans
+        l'en-tête ``X-Apercu-Avertissements`` (APAR33).
         """
         gabarit = self.get_object()
-        contexte = contexte_demonstration(
+        # APAR33 — même enveloppe que le rendu réel ; une variable que le
+        # rendu ne servira jamais est SIGNALÉE (en-tête additif
+        # ``X-Apercu-Avertissements``, liste JSON), jamais inventée.
+        contexte, avertissements = apercu_contexte(
             gabarit.cible, variables_du_gabarit(gabarit))
 
         try:
@@ -130,4 +134,5 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
         reponse = HttpResponse(pdf, content_type='application/pdf')
         reponse['Content-Disposition'] = (
             f'inline; filename="{gabarit.code}-apercu.pdf"')
+        reponse['X-Apercu-Avertissements'] = json.dumps(avertissements)
         return reponse

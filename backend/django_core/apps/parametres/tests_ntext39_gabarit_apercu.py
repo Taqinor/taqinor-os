@@ -45,9 +45,12 @@ class ContexteDemonstrationTests(TestCase):
         self.assertEqual(contexte['reference'], 'CH-2026-0042')
         self.assertEqual(contexte['client_nom'], 'Société Exemple SARL')
 
-    def test_placeholder_inconnu_recoit_une_valeur_generique(self):
+    def test_placeholder_inconnu_nest_plus_invente(self):
+        # APAR33 — l'ancienne assertion (« Exemple numero compteur ») figeait
+        # C-APAR-046 : l'aperçu montrait rempli ce que le rendu réel laisse
+        # vide. Une variable inconnue d'une cible à schéma fixe reste absente.
         contexte = contexte_demonstration('chantier', ['numero_compteur'])
-        self.assertEqual(contexte['numero_compteur'], 'Exemple numero compteur')
+        self.assertNotIn('numero_compteur', contexte)
 
     def test_aucune_cle_de_prix_dachat_meme_en_exemple(self):
         contexte = contexte_demonstration(
@@ -80,9 +83,11 @@ class ApercuGabaritTests(TestCase):
         self.assertIn('CH-2026-0042', html)
         self.assertIn('Société Exemple SARL', html)
         self.assertIn('Casablanca', html)
-        # Le placeholder « maison » est REMPLI (jamais laissé littéral).
-        self.assertIn('Exemple numero compteur', html)
+        # APAR33 — le placeholder « maison » (inconnu du rendu réel) n'est
+        # plus inventé : vide dans l'aperçu (jamais littéral) ET signalé.
+        self.assertNotIn('Exemple numero compteur', html)
         self.assertNotIn('{{', html)
+        self.assertIn('numero_compteur', res['X-Apercu-Avertissements'])
 
     def test_apercu_ne_touche_aucune_donnee_reelle(self):
         objet = CustomObjectDef.objects.create(
