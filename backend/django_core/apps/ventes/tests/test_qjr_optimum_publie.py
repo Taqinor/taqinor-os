@@ -294,7 +294,7 @@ class _DevisBase(TestCase):
         n = next(_seq)
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-QJR104-{n:04d}',
-            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
             taux_tva=Decimal('20.00'), remise_globale=Decimal('0'),
             created_by=self.user, mode_installation='residentiel',
             etude_params=({'dimensionnement': dimensionnement}
@@ -310,7 +310,7 @@ class _DevisBase(TestCase):
         n = next(_seq)
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-QJR104-{n:04d}',
-            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
             taux_tva=Decimal('20.00'), remise_globale=Decimal('0'),
             created_by=self.user, mode_installation='residentiel',
             etude_params={'dimensionnement': dimensionnement})

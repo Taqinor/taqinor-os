@@ -45,6 +45,7 @@ class MontageDevisElectrique:
         self.devis = Devis.objects.create(
             company=self.company, reference="DV-PV81-1",
             client=self.crm_client,
+            statut=Devis.Statut.ENVOYE,
             roof_layout={"_pans_geometry": [
                 {"label": "Sud", "nb_panneaux": 14, "azimut_deg": 180,
                  "inclinaison_deg": 20}]})
@@ -174,6 +175,7 @@ class SchemaRefuseUneConfigurationNonConformeTest(TestCase):
         self.devis = Devis.objects.create(
             company=self.company, reference="DV-DEV16-1",
             client=self.crm_client,
+            statut=Devis.Statut.ENVOYE,
             roof_layout={"_pans_geometry": [
                 {"label": "Sud", "nb_panneaux": 25, "azimut_deg": 180,
                  "inclinaison_deg": 20}]})
