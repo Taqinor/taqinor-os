@@ -269,6 +269,20 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
     def validate_consent(self, value):
         return _same_company(self, value)
 
+    def validate_parent(self, value):
+        # ASEC41 — jamais une variante rattachée à l'asset d'une autre société.
+        return _same_company(self, value)
+
+    def update(self, instance, validated_data):
+        """ASEC41 — provenance posée par le serveur : ``parent`` ne change
+        plus par PATCH (champ ignoré) ; ``depicts_real_client`` ne peut que
+        MONTER à vrai (déclarer un client réel ajoute l'exigence de
+        consentement) — jamais être rabattu à faux pour la contourner."""
+        validated_data.pop('parent', None)
+        if instance.depicts_real_client:
+            validated_data.pop('depicts_real_client', None)
+        return super().update(instance, validated_data)
+
     class Meta:
         model = CreativeAsset
         fields = [
@@ -290,6 +304,9 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         # read_only_fields).
         read_only_fields = [
             'file_key', 'policy_stamp', 'perf',
+            # ASEC41 — lane de fabrique posée par le serveur (upload, fabrique,
+            # import chantier…), jamais par le corps d'une requête.
+            'source_lane',
             # PUB76 — posés par le job de fraîcheur, jamais par le client.
             'facts_version', 'needs_review', 'review_reason',
             'created_at', 'updated_at',
@@ -526,7 +543,11 @@ class CreativeBacklogItemSerializer(serializers.ModelSerializer):
 
 
 class FlightPlanSerializer(serializers.ModelSerializer):
-    """ADSENG5 — Plan de vol. ``company`` posée côté serveur."""
+    """ADSENG5 — Plan de vol. ``company`` posée côté serveur.
+
+    ASEC41 — ``status`` en lecture seule : un plan ne devient « actif » que
+    par le chemin serveur ``flightplan.materialize`` (préflight compris),
+    « terminé » par le runner — jamais par un PATCH."""
 
     class Meta:
         model = FlightPlan
@@ -534,7 +555,7 @@ class FlightPlanSerializer(serializers.ModelSerializer):
             'id', 'name', 'objective', 'status', 'start_date', 'end_date',
             'notes', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['status', 'created_at', 'updated_at']
 
 
 class FlightPhaseSerializer(serializers.ModelSerializer):

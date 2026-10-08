@@ -115,6 +115,9 @@ export default function CasiersPage() {
   const supprimerSeuil = (id) => geste(`del-${id}`, () => entrepotCasiersApi.deleteSeuil(id),
     'Suppression impossible.').then(() => setConfirmeSeuil(null))
 
+  const executer = (id) => geste(`exec-${id}`, () => entrepotCasiersApi.executerTache(id),
+    "L'exécution a échoué.", () => 'Tâche exécutée.')
+
   const generer = () => geste('gen', () => entrepotCasiersApi.genererTaches(),
     'Génération impossible.', (res) => {
       const n = res.data?.taches_creees ?? 0
@@ -216,8 +219,8 @@ export default function CasiersPage() {
                     <TD>{t.quantite}</TD><TD>{STATUTS_TACHE[t.statut] ?? t.statut}</TD>
                     <TD>
                       {t.statut === 'a_faire' && (
-                        <Button size="sm" disabled
-                          title="Bientôt disponible : l'action serveur d'exécution (ASTK213) n'est pas encore livrée.">
+                        <Button size="sm" disabled={enCours === `exec-${t.id}`}
+                          onClick={() => executer(t.id)}>
                           Exécuter
                         </Button>
                       )}

@@ -6,7 +6,9 @@ comportement."""
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 from .models import CompanyProfile, SettingsAuditLog
 from .serializers import CompanyProfileSerializer
 from .views_common import _audit_company, _profile
@@ -152,7 +154,11 @@ def get_profile(request):
 
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsAdminOrResponsableTier])
+# ASEC31 — écriture des réglages société : palier ET droit
+# `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
+# n'y touchent plus).
+@permission_classes([IsAdminOrResponsableTier,
+                     HasPermissionOrLegacy('parametres_modifier')])
 def update_profile(request):
     profile = _profile(request)
     partial = request.method == 'PATCH'

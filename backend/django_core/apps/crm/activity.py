@@ -201,6 +201,71 @@ TRACKED_FIELDS = {
     'contact_secondaire_fonction': 'Contact secondaire (fonction)',
     'contact_secondaire_email': 'Contact secondaire (e-mail)',
     'facture_tranche_declaree': 'Tranche de facture déclarée',
+    # ALEA19 — champs que la FICHE écrit et qui échappaient au chatter : une
+    # note réécrite, un second contact changé ou une entité réaffectée ne
+    # laissaient aucune trace (sonde V3 LFICHE-3 : 0 entrée).
+    'note': 'Note',
+    'contact_secondaire_nom': 'Contact secondaire (nom)',
+    'contact_secondaire_telephone': 'Contact secondaire (téléphone)',
+    'contact_preference': 'Préférence de contact',
+    'structure_produit': 'Structure (produit)',
+    'lien_maps': 'Lien Google Maps',
+    'entite': 'Entité',
+}
+
+#: ALEA19/ALEA23 — champs INSCRIPTIBLES de ``LeadSerializer`` volontairement
+#: HORS du chatter, chacun avec sa RAISON (obligatoire). La garde
+#: ``tests_alea_garde_chatter_complet.py`` échoue si un champ inscriptible
+#: n'est ni dans ``TRACKED_FIELDS`` ni ici : un nouveau champ doit choisir.
+_RAISON_ACQUISITION = ('Attribution / acquisition captée par le site ou les '
+                       'webhooks publicitaires : bruit système (LW27), jamais '
+                       'saisi dans la fiche.')
+_RAISON_SITE = ('Capté par le questionnaire du site, affiché en lecture seule '
+                'sur la fiche (WEB_QUESTIONNAIRE_STRUCTURED_FIELDS).')
+CHAMPS_NON_SUIVIS = {
+    'custom_data': ('Champs personnalisés (T11) : dictionnaire système validé '
+                    'contre ses définitions, bruit système (LW27).'),
+    'utm_source': _RAISON_ACQUISITION,
+    'utm_medium': _RAISON_ACQUISITION,
+    'utm_campaign': _RAISON_ACQUISITION,
+    'utm_content': _RAISON_ACQUISITION,
+    'utm_term': _RAISON_ACQUISITION,
+    'meta_ad_id': _RAISON_ACQUISITION,
+    'meta_adset_id': _RAISON_ACQUISITION,
+    'meta_campaign_id': _RAISON_ACQUISITION,
+    'meta_form_id': _RAISON_ACQUISITION,
+    'fbclid': _RAISON_ACQUISITION,
+    'gclid': _RAISON_ACQUISITION,
+    'source': _RAISON_ACQUISITION,
+    'page': _RAISON_ACQUISITION,
+    'appareil_id': ("Identifiant d'appareil du traçage T-TRACE : technique, "
+                    'jamais saisi dans la fiche.'),
+    'web_questionnaire': ('Instantané verbatim du questionnaire du site : '
+                          'promesse vue par le prospect, jamais réécrite.'),
+    'web_estimate': ("Instantané verbatim de l'estimation affichée par le "
+                     'site : promesse vue par le prospect, jamais réécrite.'),
+    'bill_range_bucket': _RAISON_SITE,
+    'roi_band': _RAISON_SITE,
+    'futures_charges': _RAISON_SITE,
+    'client_ref': _RAISON_SITE,
+    'client_ref_provisoire': _RAISON_SITE,
+    'phone_is_foreign': _RAISON_SITE,
+    'whatsapp_opt_in': _RAISON_SITE,
+    'consent_timestamp': _RAISON_SITE,
+    'roof_type': ('LEGACY (QJR657) : plus écrit, `type_toiture` (suivi) est '
+                  'la seule source.'),
+    'phone_normalise': ('Forme normalisée DÉRIVÉE du téléphone (suivi) : '
+                        'calculée serveur, la tracer doublerait la ligne.'),
+    'email_normalise': ("Forme normalisée DÉRIVÉE de l'e-mail (suivi) : "
+                        'calculée serveur, la tracer doublerait la ligne.'),
+    'contact_preference_set_at': ('Horodatage technique de la pose de '
+                                  '`contact_preference` (suivie).'),
+    'mql_assigned_at': ("Marqueur d'idempotence de l'assignation MQL : "
+                        'posé par le serveur, jamais saisi.'),
+    'date_creation_origine': ("Date d'origine importée (CAD119) : posée à "
+                              "l'import, jamais saisie dans la fiche."),
+    'score_ajustement': ('Delta de score CRX22 : aucun écran ne l’écrit, '
+                         'réglage technique du calcul de score.'),
 }
 
 #: AGR401 — CLÉ D'HISTORIQUE DOCUMENTÉE : des lignes de chatter écrites avant
@@ -248,6 +313,8 @@ _CHOICE_FIELDS = {
     'categorie_commerciale', 'export_ue_declare', 'regime_equipes',
     'type_surface', 'surface_source', 'groupe_electrogene', 'cos_phi_source',
     'tva_recuperable',
+    # ALEA19 — préférence de contact (vocabulaire fermé).
+    'contact_preference',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}

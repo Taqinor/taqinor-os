@@ -427,6 +427,12 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         'mettre_en_corbeille', 'tagger', 'detagger', 'classer', 'restaurer',
         'cycle_vie', 'check_out', 'check_in', 'office_sauvegarder',
         'scinder', 'caviarder', 'ocr_piece', 'nouvelle_version',
+        # ASEC38 — corbeille (restaurer / purger), fusion (cible ou dossier
+        # de destination) et opérations par lot : écriture ACL exigée. Les
+        # deux premières résolvent leur document hors `get_object()` et
+        # appellent `check_object_permissions` explicitement ; `fusionner`
+        # et `operations_lot` (liste de documents) vérifient chaque cible.
+        'restaurer_corbeille', 'purger', 'fusionner', 'operations_lot',
     })
 
     def check_object_permissions(self, request, obj):
@@ -668,7 +674,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # ADOC23 — empreinte SHA-256 et taille RÉELLES des octets déposés.
         contenu = file.read()
         file.seek(0)
-        meta, err = store_attachment(file)
+        # ASEC37 — clé produite par le serveur sous le préfixe de la société.
+        meta, err = store_attachment(file, company=company)
         if err:
             return Response({'file': err},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -754,7 +761,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         a_deposer = []
         erreurs = []
         for f in files:
-            meta, err = store_attachment(f)
+            # ASEC37 — clé serveur sous le préfixe de la société.
+            meta, err = store_attachment(f, company=company)
             if err:
                 erreurs.append({'filename': getattr(f, 'name', ''),
                                 'detail': err})
@@ -977,6 +985,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                            '(idempotence par objet SAV source).'},
                 status=status.HTTP_400_BAD_REQUEST)
         file_key = (request.data.get('file_key') or '').strip()
+        # ASEC37 — une clé d'un autre locataire (préfixe étranger ou clé plate
+        # jamais enregistrée chez nous) est refusée : on ne classe jamais le
+        # fichier d'une autre société.
+        if not services.cle_stockage_autorisee(request.user.company, file_key):
+            return Response(
+                {'file_key': 'Fichier inconnu pour votre société.'},
+                status=status.HTTP_400_BAD_REQUEST)
         document, created = services.classer_document_apres_vente(
             company=request.user.company,
             file_key=file_key,
@@ -1101,7 +1116,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         file_bytes = None
         mime = ''
         if version and version.file_key:
-            file_bytes, _err = fetch_attachment(version.file_key)
+            file_bytes, _err = _lire_version(version)
             mime = version.mime or ''
         meta, en_validation = services.ocr_extraction_avec_validation(
             document, file_bytes=file_bytes, mime=mime, type_piece=type_piece)
@@ -1393,6 +1408,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
                 status=status.HTTP_404_NOT_FOUND)
+        self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.restaurer_de_corbeille(document, user=request.user)
         except ArchivageLegalError as exc:  # ADOC22 — 403, jamais 500.
@@ -1417,6 +1433,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
                 status=status.HTTP_404_NOT_FOUND)
+        self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.purger_definitivement(document)
         except (ArchivageLegalError, LegalHoldError) as exc:
@@ -1857,6 +1874,16 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             except services.SignatureEnCoursError as exc:
                 return Response(
                     {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        # ASEC38 — la fusion ÉCRIT la cible (nouvelle version) ou crée un
+        # document dans le dossier du premier : écriture ACL exigée sur la
+        # cible, sinon sur ce dossier de destination.
+        try:
+            selectors.assert_acl_niveau(
+                cible if cible is not None else documents_ordonnes[0].folder,
+                request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         try:
             resultat = services.fusionner_pdf(
                 documents_ordonnes, cible=cible,
@@ -1996,6 +2023,20 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'lignes': lignes})
 
 
+def _lire_version(version):
+    """ASEC37 — octets d'une version, sauf si sa clé de stockage désigne une
+    AUTRE société que celle de la version : alors ``(None, message)`` — aucun
+    octet d'autrui n'est jamais servi (aperçu, pages, OCR, partage public,
+    signature). Les clés plates historiques restent lisibles."""
+    if services.cle_d_une_autre_societe(version.company_id, version.file_key):
+        import logging
+        logging.getLogger(__name__).warning(
+            'ASEC37 : version %s — clé de stockage hors société refusée.',
+            version.pk)
+        return None, 'Fichier indisponible.'
+    return fetch_attachment(version.file_key)
+
+
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
     côté serveur via `services.add_version` ; `checksum` permet la dédup.
@@ -2006,6 +2047,8 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = DocumentVersion.objects.select_related(
         'document', 'uploaded_by').all()
     serializer_class = DocumentVersionSerializer
+    # ASEC37 — la version arrive comme FICHIER (multipart `file`).
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['version', 'created_at']
 
@@ -2048,7 +2091,22 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
                 request.user).filter(pk=document.pk).exists():
             from rest_framework.exceptions import NotFound
             raise NotFound('Document inconnu.')
-        checksum = serializer.validated_data.get('checksum', '')
+        # ASEC37 — seul un fichier TÉLÉVERSÉ dans la requête fait une version :
+        # une `file_key`/`checksum` du corps est ignorée (lecture seule), la
+        # clé est produite par le serveur sous le préfixe de la société et
+        # l'empreinte calculée sur les octets reçus.
+        fichier = request.FILES.get('file')
+        if fichier is None:
+            return Response(
+                {'file': "Téléversez le fichier de la version (champ "
+                         "« file ») : une clé de stockage n'est jamais "
+                         "acceptée."},
+                status=status.HTTP_400_BAD_REQUEST)
+        contenu = fichier.read()
+        fichier.seek(0)
+        self._fichier_version = (fichier, len(contenu))
+        checksum = services.compute_checksum(contenu)
+        self._checksum_version = checksum
         if checksum:
             existing = services.find_duplicate(
                 request.user.company, checksum, document=document)
@@ -2110,17 +2168,28 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             services.assert_aucune_signature_en_attente(document)
         except services.SignatureEnCoursError as exc:
             raise _conflit(str(exc))
-        v = serializer.validated_data
+        # ASEC37 — stockage serveur (préfixe société) APRÈS toutes les gardes.
+        from rest_framework.exceptions import ValidationError
+        company = self.request.user.company
+        fichier, taille = self._fichier_version
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=taille)
+        except QuotaDepasseError as exc:  # ADOC23
+            raise PermissionDenied(str(exc))
+        meta, err = store_attachment(fichier, company=company)
+        if err:
+            raise ValidationError({'file': err})
         # GED16/ADOC17 — le check-out d'autrui est gardé par add_version(user=).
         try:
             instance = services.add_version(
                 document,
-                file_key=v['file_key'],
-                company=self.request.user.company,
-                filename=v.get('filename', ''),
-                size=v.get('size', 0),
-                mime=v.get('mime', ''),
-                checksum=v.get('checksum', ''),
+                file_key=meta['file_key'],
+                company=company,
+                filename=meta['filename'],
+                size=taille,
+                mime=meta['mime'],
+                checksum=self._checksum_version,
                 uploaded_by=self.request.user,
                 user=self.request.user,
             )
@@ -2136,7 +2205,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         que l'écran Caviarder propose les pages 1..N (jamais une saisie
         libre). Version bornée aux documents visibles (get_queryset)."""
         version = self.get_object()
-        data, err = fetch_attachment(version.file_key)
+        data, err = _lire_version(version)  # ASEC37
         if err:
             return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
         try:
@@ -2173,7 +2242,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         d'aperçu inline, téléchargement direct sécurisé).
         """
         version = self.get_object()  # borné à la société par get_queryset (TenantMixin)
-        data, err = fetch_attachment(version.file_key)
+        data, err = _lire_version(version)  # ASEC37
         if err:
             return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2268,11 +2337,18 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
         if not doc_id:
             return Response({'document': 'Document requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        document = Document.objects.filter(
-            company=company, pk=doc_id).first()
+        # ASEC38 — document VISIBLE de l'appelant (ACL coffre + GED19) et
+        # écriture ACL exigée : lier modifie le document.
+        document = selectors.documents_visible_to_user(
+            request.user).filter(pk=doc_id).first()
         if document is None:
             return Response({'document': 'Document inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
+        try:
+            selectors.assert_acl_niveau(document, request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         # 3) lien idempotent (un doc ne se lie qu'une fois à un objet donné).
         lien, created = DocumentLien.objects.get_or_create(
             document=document, content_type=ct,
@@ -4286,14 +4362,51 @@ def _ged_noindex(response):
     return response
 
 
-@api_view(['GET'])
+#: ASEC39 — un partage protégé est GELÉ après ce nombre d'échecs de mot de
+#: passe consécutifs (toutes IP confondues), pendant ``PARTAGE_GEL_MINUTES``.
+PARTAGE_ECHECS_MAX = 10
+PARTAGE_GEL_MINUTES = 15
+_PARTAGE_GELE = "Trop d'essais, réessayez plus tard."
+
+
+def _partage_gele(partage):
+    from django.utils import timezone
+    gele = partage.gele_jusqua
+    return gele is not None and gele > timezone.now()
+
+
+def _partage_echec_mdp(partage):
+    """ASEC39 — compte un échec en base (atomique) ; au seuil, gèle le
+    partage et remet le compteur à zéro."""
+    from datetime import timedelta
+
+    from django.db.models import F
+    from django.utils import timezone
+
+    from .models import PartageGed
+    PartageGed.objects.filter(pk=partage.pk).update(
+        echecs_mdp=F('echecs_mdp') + 1)
+    partage.refresh_from_db(fields=['echecs_mdp'])
+    if partage.echecs_mdp >= PARTAGE_ECHECS_MAX:
+        PartageGed.objects.filter(pk=partage.pk).update(
+            echecs_mdp=0,
+            gele_jusqua=timezone.now() + timedelta(
+                minutes=PARTAGE_GEL_MINUTES))
+
+
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicPartageRateThrottle])
 def public_partage(request, token):
     """GED20 — Sert le document d'un partage tokenisé (PUBLIC, sans login).
 
-    `GET /api/django/ged/public/<token>/[?password=…]` (ou en-tête
-    `X-Partage-Password`). Le jeton est l'UNIQUE secret d'accès : aucune
+    `GET /api/django/ged/public/<token>/` avec l'en-tête
+    `X-Partage-Password`, ou `POST` avec `password` dans le corps (ASEC39 :
+    JAMAIS en query string — 400 `mot_de_passe_en_en_tete`, la valeur n'est
+    pas vérifiée, elle finirait dans les journaux). Après
+    ``PARTAGE_ECHECS_MAX`` échecs (toutes IP) le partage est gelé
+    ``PARTAGE_GEL_MINUTES`` minutes, même le bon mot de passe est refusé.
+    Le jeton est l'UNIQUE secret d'accès : aucune
     identité/société n'est lue de la requête. Le partage est résolu DEPUIS le
     jeton via `services.resolve_partage_public` (qui ne référence qu'un seul
     document d'une seule société — pas de fuite cross-locataire).
@@ -4309,8 +4422,16 @@ def public_partage(request, token):
 
     Aucun prix d'achat ni document d'un autre locataire n'est jamais exposé.
     """
-    password = (request.query_params.get('password')
-                or request.META.get('HTTP_X_PARTAGE_PASSWORD')
+    if 'password' in request.query_params:
+        return _ged_noindex(Response(
+            {'code': 'mot_de_passe_en_en_tete',
+             'detail': "Le mot de passe ne passe jamais dans l'adresse : "
+                       "envoyez-le dans l'en-tête X-Partage-Password ou "
+                       "dans le corps d'un POST."},
+            status=status.HTTP_400_BAD_REQUEST))
+    corps = request.data if request.method == 'POST' else {}
+    password = (request.META.get('HTTP_X_PARTAGE_PASSWORD')
+                or (corps.get('password') if hasattr(corps, 'get') else '')
                 or '')
     statut, partage = services.resolve_partage_public(token, password=password)
 
@@ -4322,6 +4443,16 @@ def public_partage(request, token):
         return _ged_noindex(Response(
             {'detail': "Ce lien de partage a expiré ou n'est plus disponible."},
             status=status.HTTP_410_GONE))
+    if partage is not None and partage.has_password:
+        # ASEC39 — gel par partage : refuse même le bon mot de passe.
+        if _partage_gele(partage):
+            return _ged_noindex(Response(
+                {'detail': _PARTAGE_GELE},
+                status=status.HTTP_403_FORBIDDEN))
+        if statut == services.PARTAGE_MDP_REQUIS and password:
+            _partage_echec_mdp(partage)
+        elif statut == services.PARTAGE_OK and partage.echecs_mdp:
+            type(partage).objects.filter(pk=partage.pk).update(echecs_mdp=0)
     if statut == services.PARTAGE_MDP_REQUIS:
         return _ged_noindex(Response(
             {'detail': "Mot de passe requis ou incorrect pour ce document."},
@@ -4342,7 +4473,7 @@ def public_partage(request, token):
             {'detail': "Ce lien de partage a expiré ou n'est plus disponible."},
             status=status.HTTP_410_GONE))
 
-    data, err = fetch_attachment(version.file_key)
+    data, err = _lire_version(version)  # ASEC37
     if err:
         return _ged_noindex(Response(
             {'detail': "Document indisponible pour le moment."},
@@ -4902,7 +5033,7 @@ def _servir_document_a_signer(request, demande):
         return _ged_noindex(Response(
             {'detail': _SIGNATURE_DOC_INTROUVABLE},
             status=status.HTTP_404_NOT_FOUND))
-    data, err = fetch_attachment(version.file_key)
+    data, err = _lire_version(version)  # ASEC37
     if err or data is None:
         return _ged_noindex(Response(
             {'detail': _SIGNATURE_DOC_INTROUVABLE},

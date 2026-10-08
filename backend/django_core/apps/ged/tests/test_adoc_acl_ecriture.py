@@ -72,9 +72,13 @@ class AclEcritureTests(TestCase):
         resp = api.post(f'{BASE}documents/{self.doc.pk}/deplacer/',
                         {'folder': self.autre.pk}, format='json')
         self.assertEqual(resp.status_code, 403, resp.content)
+        # ASEC37 — la version arrive comme fichier téléversé (multipart).
+        from django.core.files.uploadedfile import SimpleUploadedFile
         resp = api.post(f'{BASE}versions/', {
-            'document': self.doc.pk, 'file_key': 'attachments/v2.pdf',
-            'filename': 'v2.pdf'}, format='json')
+            'document': self.doc.pk,
+            'file': SimpleUploadedFile(
+                'v2.pdf', b'%PDF-1.4 v2', content_type='application/pdf')},
+            format='multipart')
         self.assertEqual(resp.status_code, 403, resp.content)
         resp = api.post(f'{BASE}documents/operations-lot/', {
             'documents': [self.doc.pk], 'operation': 'corbeille'},

@@ -79,7 +79,7 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/marketing/intake/",
     # Auth publiques (JWT obtention/refresh, inscription société onboarding) :
     "api/django/auth/token",                  # obtention/refresh/verify JWT (auth.urls)
-    "api/django/auth/register-company",       # inscription société (onboarding)
+    "api/django/auth/register-company",       # inscription société (onboarding) — ASEC13 : parquée (TENANT_SIGNUP_ENABLED off → 404)
     # Sondes/metrics montées sous core/ (déplacées depuis /health) :
     "api/django/core/health",                 # sondes liveness/readiness
     "api/django/core/metrics",                # métriques (probe monitoring)

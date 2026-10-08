@@ -10,7 +10,9 @@ from django.db.models import F
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 from .models import SettingsAuditLog
 from .models_documents import DEVIS_TEXT_KEYS, DocumentTemplates
 from .serializers_documents import DocumentTemplatesSerializer
@@ -47,7 +49,11 @@ def get_document_templates(request):
 
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsAdminOrResponsableTier])
+# ASEC31 — écriture des réglages société : palier ET droit
+# `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
+# n'y touchent plus).
+@permission_classes([IsAdminOrResponsableTier,
+                     HasPermissionOrLegacy('parametres_modifier')])
 def update_document_templates(request):
     obj = _templates(request)
     partial = request.method == 'PATCH'

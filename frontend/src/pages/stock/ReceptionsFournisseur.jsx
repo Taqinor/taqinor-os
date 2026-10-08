@@ -5,6 +5,7 @@ import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import useStockFlags from '../../features/parametres/useStockFlags'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import {
   Button, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -248,7 +249,10 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 
 // ── Modal : consultation d'une réception + confirmation d'un brouillon ───────
 // Export nommé : testé directement (WR4 — « facturer cette réception »).
-export function ReceptionDetail({ reception, onClose, onSaved }) {
+// ASTK21 (D-ASTK-3) — `peutReceptionner` / `peutPayer` sont des PROPS
+// (calculées par la page, qui a le store) : les tests montent ce détail sans
+// Provider. Un geste que le serveur refuserait n'est jamais affiché.
+export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner = true, peutPayer = true }) {
   const { stock_lots_series_actif: lotsSeriesActif } = useStockFlags()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -373,12 +377,12 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
         )}
 
         <DialogFooter className="flex-wrap">
-          {isBrouillon && (
+          {peutReceptionner && isBrouillon && (
             <Button type="button" variant="destructive" loading={busy} onClick={annuler}>
               Annuler la réception
             </Button>
           )}
-          {isConfirme && (
+          {peutPayer && isConfirme && (
             <Button type="button" variant="outline" loading={busy} onClick={facturer}
                     title="Créer une facture fournisseur à partir de cette réception (interne)">
               <ReceiptText /> Facturer cette réception
@@ -394,7 +398,7 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
-          {isBrouillon && (
+          {peutReceptionner && isBrouillon && (
             <Button type="button" variant="success" loading={busy} onClick={confirmer}>
               {busy ? '…' : 'Confirmer (incrémente le stock)'}
             </Button>
@@ -406,6 +410,9 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
 }
 
 export default function ReceptionsFournisseur() {
+  // ASTK21 — réceptionner (créer/confirmer/annuler) et facturer (payer).
+  const peutReceptionner = usePermissionAchats('achats_receptionner')
+  const peutPayer = usePermissionAchats('achats_payer')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -472,12 +479,14 @@ export default function ReceptionsFournisseur() {
         subtitle={`${items.length} réception(s)`}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
-                    title={bonsRecevables.length === 0
-                      ? 'Aucun bon de commande envoyé à réceptionner'
-                      : undefined}>
-              <Plus /> Nouvelle réception
-            </Button>
+            {peutReceptionner && (
+              <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
+                      title={bonsRecevables.length === 0
+                        ? 'Aucun bon de commande envoyé à réceptionner'
+                        : undefined}>
+                <Plus /> Nouvelle réception
+              </Button>
+            )}
           </div>
         )}
       />
@@ -507,7 +516,7 @@ export default function ReceptionsFournisseur() {
         onRowClick={openReception}
         emptyTitle="Aucune réception fournisseur"
         emptyDescription="Créez-en une depuis un bon de commande fournisseur envoyé."
-        emptyAction={bonsRecevables.length > 0
+        emptyAction={peutReceptionner && bonsRecevables.length > 0
           ? <Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" /> Nouvelle réception</Button>
           : undefined}
         aria-label="Réceptions fournisseur"
@@ -519,6 +528,7 @@ export default function ReceptionsFournisseur() {
       )}
       {selected && (
         <ReceptionDetail reception={selected}
+                         peutReceptionner={peutReceptionner} peutPayer={peutPayer}
                          onClose={() => setSelected(null)} onSaved={onSaved} />
       )}
     </div>

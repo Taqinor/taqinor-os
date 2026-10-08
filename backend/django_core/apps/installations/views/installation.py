@@ -6,7 +6,7 @@ from rest_framework.response import Response  # noqa: F401
 
 from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
-    IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+    IsAnyRole, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone  # noqa: F401
@@ -182,6 +182,18 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return qs
 
     def get_permissions(self):
+        # ASEC11-revue — passage devis → chantier : « Créer le chantier »
+        # (DevisList, onglet Devis du CRM) et la liste « à facturer » relèvent
+        # du geste COMMERCIAL. Depuis ASEC11, IsResponsableOrAdmin est résolu
+        # au module `installations`, que Commercial / Commercial responsable /
+        # Admin Ventes ne portent pas → 403. On garde ces deux actions par le
+        # code ventes que ces rôles détiennent (`ventes_creer`), sans leur
+        # ouvrir les autres écritures du chantier.
+        if self.action == 'creer_depuis_devis':
+            return [(IsResponsableOrAdmin
+                     | HasPermissionOrLegacy('ventes_creer'))()]
+        if self.action == 'a_facturer':
+            return [(IsAdminRole | HasPermissionOrLegacy('ventes_creer'))()]
         if self.action in READ_ACTIONS + [
             'historique', 'besoin_materiel', 'checklist', 'regime_suggestion',
             'rapport_energie',
@@ -206,7 +218,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'creer_depuis_devis', 'noter', 'mise_en_service',
+            'noter', 'mise_en_service',
             'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
             # NTMOB11 — métadonnées (géoloc/horodatage) d'une photo de checklist.
             'checklist_photo',

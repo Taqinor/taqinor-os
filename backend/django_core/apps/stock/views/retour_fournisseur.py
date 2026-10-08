@@ -63,15 +63,27 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     ordering_fields = ['date_creation', 'statut', 'reference']
     ordering = ['-date_creation']
 
+    def get_queryset(self):
+        """ASTK178 — liste filtrable par `?fournisseur=<id>` (fiche 360)."""
+        from ..selectors import filtrer_par_fournisseur
+        fournisseur = self.request.query_params.get('fournisseur')
+        return filtrer_par_fournisseur(super().get_queryset(), fournisseur)
+
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'valider', 'annuler', 'generer_avoir',
+            'valider', 'annuler',
             # NTWMS41 — validation depuis le poste scanner : ÉCRITURE.
             'valider_scanne',
         ]:
-            return [IsResponsableOrAdmin()]
+            # ASTK18 (D-ASTK-3) — retours fournisseur créer/valider/
+            # valider-scanne = « réceptionner » : ``achats_receptionner``
+            # (repli légacy responsable/admin sans rôle fin).
+            return [HasPermissionOrLegacy('achats_receptionner')()]
+        elif self.action == 'generer_avoir':
+            # ASTK19 (D-ASTK-3) — créer l'avoir d'un retour = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]

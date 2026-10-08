@@ -37,6 +37,13 @@ class Ntapi7UsagePlanTests(TestCase):
         self.co_b = _company('ntapi7-b', 'NTAPI7 B')
         self.admin_a = _admin(self.co_a, 'admin-a-ntapi7')
         self.admin_b = _admin(self.co_b, 'admin-b-ntapi7')
+        # ASEC44 — le plan est modifié par la PLATEFORME (superuser) ;
+        # l'admin du tenant le lit seulement (tests_asec44_quotas_openapi).
+        self.staff_a = _admin(self.co_a, 'staff-a-ntapi7')
+        self.staff_b = _admin(self.co_b, 'staff-b-ntapi7')
+        for staff in (self.staff_a, self.staff_b):
+            staff.is_superuser = True
+            staff.save(update_fields=['is_superuser'])
 
     def test_get_creates_default_free_plan(self):
         self.assertFalse(ApiUsagePlan.objects.filter(company=self.co_a).exists())
@@ -46,7 +53,7 @@ class Ntapi7UsagePlanTests(TestCase):
         self.assertTrue(ApiUsagePlan.objects.filter(company=self.co_a).exists())
 
     def test_patch_updates_named_plan_and_quotas(self):
-        client = _session_client(self.admin_a)
+        client = _session_client(self.staff_a)
         resp = client.patch(
             '/api/django/publicapi/plan/',
             {'code': 'entreprise', 'quota_par_mois': 5_000_000,
@@ -61,7 +68,7 @@ class Ntapi7UsagePlanTests(TestCase):
 
     def test_patch_never_leaks_across_tenants(self):
         # Société B change son plan ; la société A garde ses défauts.
-        _session_client(self.admin_b).patch(
+        _session_client(self.staff_b).patch(
             '/api/django/publicapi/plan/',
             {'code': 'pro', 'quota_par_mois': 999}, format='json')
         resp_a = _session_client(self.admin_a).get('/api/django/publicapi/plan/')
@@ -74,7 +81,7 @@ class Ntapi7UsagePlanTests(TestCase):
         # Une tentative de forcer `company` depuis le corps est ignorée (le
         # champ n'existe même pas dans le serializer) — la société reste
         # celle de l'utilisateur connecté.
-        resp = _session_client(self.admin_a).patch(
+        resp = _session_client(self.staff_a).patch(
             '/api/django/publicapi/plan/',
             {'company': self.co_b.id, 'code': 'pro'}, format='json')
         self.assertEqual(resp.status_code, 200)

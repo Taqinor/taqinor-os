@@ -1754,6 +1754,77 @@ def extraire_message_whatsapp(payload):
     return (None, None, None)
 
 
+def _reglage_sav(nom, defaut=''):
+    """Réglage lu à l'APPEL : ``settings`` d'abord (``override_settings``
+    en test), puis la variable d'environnement du même nom."""
+    import os
+
+    from django.conf import settings
+
+    valeur = getattr(settings, nom, None)
+    if valeur is None:
+        valeur = os.environ.get(nom, defaut)
+    return valeur
+
+
+def whatsapp_app_secret():
+    """ASEC36 — secret d'application Meta qui signe le webhook SAV entrant
+    (``SAV_WHATSAPP_APP_SECRET``), ou chaîne vide. Vide = le webhook REFUSE
+    tout (fail-closed) : aucun message non signé n'écrit jamais en base."""
+    return str(_reglage_sav('SAV_WHATSAPP_APP_SECRET') or '').strip()
+
+
+def extraire_destinataire_whatsapp(payload):
+    """ASEC36 — identifiant du NUMÉRO DESTINATAIRE (le numéro WhatsApp
+    Business de la société qui reçoit) : ``value.metadata.phone_number_id``
+    de la forme Meta, ou ``phone_number_id`` de la forme plate. Chaîne vide
+    si absent. Jamais d'exception sur une charge inattendue."""
+    if not isinstance(payload, dict):
+        return ''
+    for entry in (payload.get('entry') or []):
+        if not isinstance(entry, dict):
+            continue
+        for change in (entry.get('changes') or []):
+            valeur = (change or {}).get('value') if isinstance(
+                change, dict) else None
+            if not isinstance(valeur, dict):
+                continue
+            meta = valeur.get('metadata')
+            if isinstance(meta, dict) and meta.get('phone_number_id'):
+                return str(meta.get('phone_number_id')).strip()
+    return str(payload.get('phone_number_id') or '').strip()
+
+
+def societe_pour_numero_whatsapp(phone_number_id):
+    """ASEC36 — société rattachée au numéro destinataire, ou ``None``.
+
+    ``SAV_WHATSAPP_NUMEROS`` déclare le rattachement ``numéro → société`` :
+    un dict ``{phone_number_id: company_id}`` (settings) ou la chaîne
+    ``"<phone_number_id>=<company_id>,..."`` (environnement). Un numéro non
+    déclaré ne se rattache à RIEN — jamais de repli sur « la première
+    société » (C-ASEC-012)."""
+    from authentication.models import Company
+
+    cle = str(phone_number_id or '').strip()
+    if not cle:
+        return None
+    brut = _reglage_sav('SAV_WHATSAPP_NUMEROS') or {}
+    table = {}
+    if isinstance(brut, dict):
+        table = {str(k).strip(): v for k, v in brut.items()}
+    else:
+        for paire in str(brut).split(','):
+            if '=' in paire:
+                numero, _, cid = paire.partition('=')
+                table[numero.strip()] = cid.strip()
+    company_id = table.get(cle)
+    try:
+        company_id = int(str(company_id).strip())
+    except (TypeError, ValueError):
+        return None
+    return Company.objects.filter(pk=company_id).first()
+
+
 def ticket_whatsapp_ouvert(company, client):
     """NTSRV3 — ticket OUVERT le plus récent de ce client déjà ouvert par
     WhatsApp, ou ``None`` (on ne rattache jamais un message WhatsApp à un

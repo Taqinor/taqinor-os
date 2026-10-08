@@ -1,7 +1,7 @@
 """NTWMS40 — casiers picking dus, seuils, et tâches de réappro interne."""
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import serializers, status
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -40,7 +40,9 @@ class TacheReapproInterneSerializer(CompanyScopedRelationsMixin,
         fields = ['id', 'produit', 'bin_cible', 'bin_cible_code',
                   'bin_source', 'bin_source_code', 'quantite', 'statut',
                   'note', 'created_at']
-        read_only_fields = ['note', 'created_at']
+        # ASTK213 — le statut ne change QUE par l'action `executer` (jamais
+        # un PATCH qui fermerait la tâche sans aucun mouvement).
+        read_only_fields = ['statut', 'note', 'created_at']
 
 
 class SeuilReapproCasierViewSet(CompanyScopedModelViewSet):
@@ -81,7 +83,7 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        if self.action in WRITE_ACTIONS:
+        if self.action in WRITE_ACTIONS + ['executer']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
@@ -91,6 +93,37 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+    @extend_schema(request=None, responses={
+        200: inline_serializer('StockTacheReapproExecutee', {
+            'id': serializers.IntegerField(),
+            'statut': serializers.CharField(),
+            'mouvement_id': serializers.IntegerField(),
+            'bin_source': serializers.IntegerField(),
+            'bin_cible': serializers.IntegerField(),
+            'quantite': serializers.IntegerField(),
+        }),
+    })
+    @action(detail=True, methods=['post'], url_path='executer')
+    def executer(self, request, pk=None):
+        """ASTK213 — exécute la tâche UNE fois : transfert casier source →
+        casier cible (chemin du poste scanner) puis statut ``faite``. Second
+        appel → 409 « Tâche déjà exécutée. », sans second mouvement."""
+        from ..services_reappro_casier import (
+            TacheDejaExecutee, executer_tache_reappro_interne,
+        )
+        tache = self.get_object()  # 404 hors société
+        try:
+            resultat = executer_tache_reappro_interne(
+                company=request.user.company, tache_id=tache.pk,
+                user=request.user)
+        except TacheDejaExecutee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
 
 
 @extend_schema(request=None, responses={

@@ -34,7 +34,8 @@ THROTTLE_EXEMPT = {
     # plus, donc les endpoints ne sont plus servis. Le ratchet ne garde AUCUNE
     # exemption pour une surface absente ; au retour d'un module, l'exemption se
     # redéclare avec lui — ou mieux, sa dette de throttle est résorbée.)
-    "reporting/calendar.py::calendar_ics",
+    # (ASEC45 — ``reporting/calendar.py::calendar_ics`` a quitté cette liste :
+    # il porte désormais ``@throttle_classes([CalendrierIcsThrottle])``.)
 }
 
 

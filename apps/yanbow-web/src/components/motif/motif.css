@@ -1,0 +1,42 @@
+/*
+ * Motif « trajectoire de flèche » (YBW40). Couleurs : jetons seulement
+ * (orange = graphique, `--accent-graphique`). Le dessin STATIQUE est le rendu
+ * de base ; l'animation n'est qu'un ajout, coupée sous prefers-reduced-motion,
+ * et ne doit jamais être posée sur l'élément LCP (prop `anime` à false par défaut).
+ */
+.motif {
+  display: block;
+  color: var(--accent-graphique);
+  pointer-events: none;
+}
+
+.motif-trait,
+.motif-arc {
+  fill: none;
+  stroke: currentColor;
+}
+
+.motif-pointe {
+  fill: currentColor;
+}
+
+.motif-anime .motif-trait,
+.motif-anime .motif-arc {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: motif-tracer 1.2s ease-out forwards;
+}
+
+@keyframes motif-tracer {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motif-anime .motif-trait,
+  .motif-anime .motif-arc {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

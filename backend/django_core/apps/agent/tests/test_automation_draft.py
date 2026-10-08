@@ -45,8 +45,12 @@ class AutomationDraftEndpointTest(TestCase):
         self.company = Company.objects.create(nom='Draft Co', slug='draft-co')
         self.other_company = Company.objects.create(
             nom='Other Co', slug='other-co')
+        # ASEC43 — le brouillon exige le droit du viewset canonique des
+        # automatisations (IsAdminRole : `roles_gerer`) ; le refus d'un rôle
+        # sans ce droit est couvert par tests_asec43_automation_draft.
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_creer'])
+            company=self.company, nom='Administrateur',
+            permissions=['crm_creer', 'roles_gerer'])
         self.user = User.objects.create_user(
             username='drafter', password='x', role=self.role,
             company=self.company)

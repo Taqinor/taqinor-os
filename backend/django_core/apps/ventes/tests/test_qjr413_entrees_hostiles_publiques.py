@@ -205,6 +205,8 @@ class GardeStructurelleCompareDigestTests(SimpleTestCase):
         'apps/notifications/views_whatsapp_bsp.py',
         'apps/publicapi/delivery.py',
         'apps/ventes/domain/cycle_vie.py',
+        # ASEC36-revue : la vérification HMAC Meta vit désormais ici.
+        'core/webhook_signature.py',
     )
 
     @staticmethod

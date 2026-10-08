@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 
 def _quantite_en_casier(company, bin_id, produit_id):
     """Quantité indicative du produit dans ce casier (FG319
-    ``BinAffectation``) — lue, jamais écrite depuis ``stock``."""
+    ``BinAffectation``). Lue ici ; tenue à jour à chaque mouvement portant
+    un casier par ``record_stock_movement`` → service installations
+    ``appliquer_mouvement_casier`` (ASTK195) — aucun second écrivain."""
     from apps.installations.models import BinAffectation
     aff = BinAffectation.objects.filter(
         company=company, bin_id=bin_id, produit_id=produit_id).first()
@@ -110,3 +112,50 @@ def generer_taches_reappro_interne(company, user=None):
     logger.info('NTWMS40 taches de reappro creees=%d (company=%s)',
                 len(creees), getattr(company, 'id', None))
     return creees
+
+
+class TacheDejaExecutee(Exception):
+    """ASTK213 — la tâche n'est plus « à faire » : 409, aucun mouvement."""
+
+
+def executer_tache_reappro_interne(*, company, tache_id, user=None):
+    """ASTK213 — exécute UNE fois une tâche de réappro interne : pose le
+    TRANSFERT casier source → casier cible par le même chemin que le poste
+    scanner (``enregistrer_mouvement_scanne`` → ``record_stock_movement`` →
+    quantité par casier, ASTK195 ; aucun second écrivain), puis ferme la
+    tâche (statut ``faite``). Verrou de ligne sur la tâche : un second appel
+    (ou un appel concurrent) lève ``TacheDejaExecutee``. Une tâche sans
+    casier source lève ``ValueError``."""
+    from django.db import transaction
+
+    from .models import TacheReapproInterne
+    from .services_wms import enregistrer_mouvement_scanne
+
+    with transaction.atomic():
+        tache = (TacheReapproInterne.objects.select_for_update()
+                 .filter(company=company, pk=tache_id).first())
+        if tache is None:
+            raise TacheReapproInterne.DoesNotExist
+        if tache.statut != TacheReapproInterne.Statut.A_FAIRE:
+            raise TacheDejaExecutee('Tâche déjà exécutée.')
+        if not tache.bin_source_id:
+            raise ValueError(
+                'Aucun casier source sur cette tâche : impossible de '
+                "l'exécuter.")
+        mouvement = enregistrer_mouvement_scanne(
+            company=company, user=user, produit_id=tache.produit_id,
+            type_mouvement='transfert', quantite=tache.quantite,
+            bin_source_id=tache.bin_source_id,
+            bin_destination_id=tache.bin_cible_id,
+            reference=f'REAPPRO-{tache.pk}',
+            note=f'Réappro interne — tâche {tache.pk}')
+        tache.statut = TacheReapproInterne.Statut.FAITE
+        tache.save(update_fields=['statut'])
+    return {
+        'id': tache.pk,
+        'statut': tache.statut,
+        'mouvement_id': mouvement.pk,
+        'bin_source': tache.bin_source_id,
+        'bin_cible': tache.bin_cible_id,
+        'quantite': tache.quantite,
+    }

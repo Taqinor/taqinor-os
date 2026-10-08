@@ -10,6 +10,7 @@ import { formatMAD } from '../../lib/format'
 import BcfProduitPicker from './BcfProduitPicker'
 import ProduitQuickCreateModal from '../../components/ProduitQuickCreateModal'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import { usePermissionAchats, useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import { filenameFromResponse } from '../../utils/downloadBlob'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import {
@@ -43,6 +44,20 @@ import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // data-line-key/pendingFocusKey de VX90 côté achats.
 let _bcfLineKeyCounter = 0
 const newBcfLineKey = () => `bcf-new-${++_bcfLineKeyCounter}`
+
+// ASTK15 (D-ASTK-2) — sans `prix_achat_voir`, le serveur RETIRE les prix des
+// lignes : l'état local ne porte alors AUCUNE clé `prix_achat_unitaire`
+// (jamais '' ni 0), pour que l'enregistrement n'écrase jamais un prix réel.
+const sansPrixAchat = (l) => {
+  const copie = { ...l }
+  delete copie.prix_achat_unitaire
+  return copie
+}
+// Clé de prix d'une ligne SEULEMENT si l'écran la connaît (absente = masquée).
+const champPrixAchat = (l) => (l.prix_achat_unitaire === undefined ? {} : {
+  prix_achat_unitaire: l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+    ? 0 : Number(l.prix_achat_unitaire),
+})
 
 // Traduit une erreur serveur DRF en phrase FR lisible (jamais de JSON brut).
 function frBcfError(err, fallback = 'Une erreur est survenue. Réessayez.') {
@@ -222,13 +237,22 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   // QS2 — « + Nouveau produit » : réservé à Directeur + Commercial responsable
   // (hook QG5 ; backend QG4 est la garde qui compte). Réutilise la modale QG6.
   const canCreateProduit = useCanCreateProduit()
+  // ASTK15 — prix d'achat visibles ? (sinon « — », aucun prix envoyé).
+  const voitPrix = useVoitPrixAchat()
+  const ligneInitiale = (l) => (voitPrix ? { ...l } : sansPrixAchat(l))
+  // ASTK21 (D-ASTK-3) — un geste que le serveur refuserait (403) n'est
+  // jamais affiché : commander (créer/envoyer/réviser/annuler…),
+  // réceptionner (recevoir, retour) et payer (facturer) ont leurs codes.
+  const peutCommander = usePermissionAchats('achats_commander')
+  const peutReceptionner = usePermissionAchats('achats_receptionner')
+  const peutPayer = usePermissionAchats('achats_payer')
 
   const [fournisseur, setFournisseur] = useState(bcf?.fournisseur ?? '')
   const [dateCommande, setDateCommande] = useState(bcf?.date_commande ?? '')
   const [dateLivraisonPrevue, setDateLivraisonPrevue] = useState(bcf?.date_livraison_prevue ?? '')
   const [note, setNote] = useState(bcf?.note ?? '')
   const [lignes, setLignes] = useState(
-    (bcf?.lignes ?? []).map((l) => ({ ...l })))
+    (bcf?.lignes ?? []).map(ligneInitiale))
   // WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/reçu :
   // le mode « Réviser » déverrouille lignes/dates/note SANS jamais passer par
   // le save()/update() standard (le backend le refuse à ces statuts).
@@ -323,7 +347,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setLignes((ls) => {
       const _key = newBcfLineKey()
       setPendingFocusKey(_key)
-      return [...ls, { produit: '', quantite: 1, prix_achat_unitaire: '', _key }]
+      return [...ls, ligneInitiale({ produit: '', quantite: 1, prix_achat_unitaire: '', _key })]
     })
   // XPUR16 — ligne libre/service (transport, prestation, frais) : pas de
   // produit catalogue, désignation libre. Compte dans le total/l'approbation/
@@ -334,7 +358,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       setPendingFocusKey(_key)
       return [
         ...ls,
-        { produit: '', designation: '', quantite: 1, prix_achat_unitaire: '', sans_stock: true, _key },
+        ligneInitiale({ produit: '', designation: '', quantite: 1, prix_achat_unitaire: '', sans_stock: true, _key }),
       ]
     })
   const removeLigne = (idx) =>
@@ -348,7 +372,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       if (i !== idx) return l
       const next = { ...l, produit: produitId }
       const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
-      if (sansPrix) {
+      if (voitPrix && sansPrix) {
         const prod = allProduits.find((p) => String(p.id) === String(produitId))
         const cat = prod ? Number(prod.prix_achat) : 0
         if (cat > 0) next.prix_achat_unitaire = String(cat)
@@ -359,7 +383,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     // (quantité prise en compte) : par-dessus le repli catalogue ci-dessus
     // dès qu'il répond. Best-effort, jamais bloquant (pas de fournisseur
     // choisi, pas de tarif, ou requête en échec → le repli catalogue reste).
-    if (fournisseur && produitId) {
+    // ASTK15 — l'endpoint de prix EST un prix d'achat : jamais appelé (403)
+    // par un compte sans `prix_achat_voir`.
+    if (voitPrix && fournisseur && produitId) {
       stockApi.prixEffectifFournisseur({
         produit: produitId, fournisseur, quantite: ligneQuantite,
       }).then((r) => {
@@ -389,7 +415,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
         const next = { ...l, produit: String(produit.id) }
         const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
         const cat = Number(produit.prix_achat) || 0
-        if (sansPrix && cat > 0) next.prix_achat_unitaire = String(cat)
+        if (voitPrix && sansPrix && cat > 0) next.prix_achat_unitaire = String(cat)
         return next
       }))
     }
@@ -430,11 +456,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     lignes: lignes
       .filter((l) => l.produit || (l.designation ?? '').trim())
       .map((l) => ({
+        // ASTK68 (C-ASTK-016) — une ligne EXISTANTE part avec son `id` : le
+        // serveur la met à jour par identifiant (ASTK67, frais annexes et
+        // champs non transmis conservés) ; une ligne neuve part sans id.
+        ...(l.id != null ? { id: l.id } : {}),
         produit: l.produit || null,
         designation: l.produit ? '' : (l.designation ?? '').trim(),
         quantite: Number(l.quantite) || 0,
-        prix_achat_unitaire: l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
-          ? 0 : Number(l.prix_achat_unitaire),
+        ...champPrixAchat(l),
       })),
   })
 
@@ -456,7 +485,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   const envoyer = async () => {
     // Confirme l'envoi si une ligne a un prix d'achat à 0 (pompes/placeholder).
-    if (aLignePrixZero(buildPayload().lignes)
+    if (voitPrix && aLignePrixZero(buildPayload().lignes)
         && !window.confirm('Une ou plusieurs lignes ont un prix d\'achat à 0. Envoyer quand même ?')) {
       return
     }
@@ -581,8 +610,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
         lignes: lignes.filter((l) => l.id).map((l) => ({
           id: l.id,
           quantite: Number(l.quantite) || 0,
-          prix_achat_unitaire: l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
-            ? 0 : Number(l.prix_achat_unitaire),
+          ...champPrixAchat(l),
           designation: l.designation ?? '',
         })),
       })
@@ -634,7 +662,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setDateCommande(bcf?.date_commande ?? '')
     setDateLivraisonPrevue(bcf?.date_livraison_prevue ?? '')
     setNote(bcf?.note ?? '')
-    setLignes((bcf?.lignes ?? []).map((l) => ({ ...l })))
+    setLignes((bcf?.lignes ?? []).map(ligneInitiale))
     setError(null)
   }
 
@@ -847,7 +875,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                   </span>
                 </span>
               )}
-              {!isNew && statut === 'envoye' && (
+              {peutReceptionner && !isNew && statut === 'envoye' && (
                 <Button type="button" variant="outline" size="sm" onClick={toutRecevoir}>
                   Tout recevoir
                 </Button>
@@ -940,13 +968,15 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
-                          {lignesEditable ? (
+                          {!voitPrix ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : lignesEditable ? (
                             <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
                                    value={l.prix_achat_unitaire ?? ''}
                                    onChange={(e) => setLigne(idx, { prix_achat_unitaire: e.target.value })} />
                           ) : fmtMad(l.prix_achat_unitaire)}
                           {/* WIR220/XPUR13 — popover historique des prix (lecture seule). */}
-                          {l.produit && (
+                          {voitPrix && l.produit && (
                             <IconButton type="button" label="Historique des prix" size="sm"
                                         className="size-8 text-muted-foreground"
                                         onClick={() => voirHistoriquePrix(idx, l)}>
@@ -954,13 +984,15 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                             </IconButton>
                           )}
                         </div>
-                        {lignesEditable && l.produit && !(Number(l.prix_achat_unitaire) > 0) && (
+                        {voitPrix && lignesEditable && l.produit && !(Number(l.prix_achat_unitaire) > 0) && (
                           <p className="mt-1 text-xs text-warning">
                             Sans prix d&apos;achat — commande possible (BCF interne).
                           </p>
                         )}
                       </td>
-                      <td className="px-3 py-2 tabular-nums">{fmtMad(lineTotal)}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        {voitPrix && l.prix_achat_unitaire !== undefined ? fmtMad(lineTotal) : '—'}
+                      </td>
                       {!isNew && <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>}
                       {!isNew && statut === 'envoye' && (
                         <td className="px-3 py-2">
@@ -987,7 +1019,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             </table>
           </div>
           <div className="text-right text-sm font-bold">
-            Total achat HT (interne) : {fmtMad(total)}
+            Total achat HT (interne) : {voitPrix ? fmtMad(total) : '—'}
           </div>
         </div>
 
@@ -1014,25 +1046,25 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
         )}
 
         <DialogFooter className="flex-wrap">
-          {!isNew && statut !== 'annule' && (
+          {voitPrix && !isNew && statut !== 'annule' && (
             <Button type="button" variant="outline" onClick={telechargerPdf}>
               <FileText /> PDF (interne)
             </Button>
           )}
-          {!isNew && (statut === 'brouillon' || statut === 'envoye') && (
+          {peutCommander && !isNew && (statut === 'brouillon' || statut === 'envoye') && (
             <Button type="button" variant="destructive" loading={busy} onClick={() => setShowAnnuler(true)}>
               Annuler le BC
             </Button>
           )}
           {/* ZPUR11 — un BCF ANNULE peut être réouvert en brouillon (refusé
               côté serveur si des réceptions confirmées existent). */}
-          {!isNew && statut === 'annule' && (
+          {peutCommander && !isNew && statut === 'annule' && (
             <Button type="button" variant="outline" loading={busy} onClick={rouvrir}>
               <RotateCcw /> Réouvrir
             </Button>
           )}
           {/* ZPUR4 — clone en nouveau brouillon (jamais sur un BCF neuf). */}
-          {!isNew && (
+          {peutCommander && !isNew && (
             <Button type="button" variant="outline" loading={busy} onClick={dupliquer}>
               <Copy /> Dupliquer
             </Button>
@@ -1040,7 +1072,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           {/* WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/
               reçu. Le bouton Enregistrer/Envoyer standard n'apparaît jamais à
               ces statuts (gardé par `editableLignes`, inchangé). */}
-          {revisable && !revising && (
+          {peutCommander && revisable && !revising && (
             <Button type="button" variant="outline" onClick={() => setRevising(true)}>
               <Pencil /> Réviser
             </Button>
@@ -1055,7 +1087,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           )}
           {/* ZPUR1 — facture directement les lignes « sur commande », sans
               exiger de réception préalable. */}
-          {peutFacturerDirect && (
+          {peutPayer && peutFacturerDirect && (
             <Button type="button" variant="outline" loading={busy} onClick={facturer}
                     title="Facture directement les lignes en politique « sur commande »">
               <Receipt /> Facturer (sur commande)
@@ -1064,7 +1096,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           {/* QS4 — envois directs au fournisseur (BCF déjà enregistré, non
               annulé). Grisés + tooltip explicite quand le contact manque. */}
-          {!isNew && statut !== 'annule' && (
+          {peutCommander && !isNew && statut !== 'annule' && (
             <>
               <Button type="button" variant="outline" loading={busy}
                       disabled={busy || !fournisseurTel}
@@ -1084,7 +1116,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
               </Button>
             </>
           )}
-          {editableLignes && (
+          {peutCommander && editableLignes && (
             <>
               <Button type="button" variant="outline" loading={busy} onClick={save}>
                 {busy ? '…' : 'Enregistrer'}
@@ -1095,12 +1127,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
               </Button>
             </>
           )}
-          {!isNew && statut === 'envoye' && (
+          {peutReceptionner && !isNew && statut === 'envoye' && (
             <Button type="button" variant="success" loading={busy} onClick={recevoir}>
               {busy ? '…' : 'Recevoir les quantités'}
             </Button>
           )}
-          {!isNew && (statut === 'recu' || statut === 'envoye') && (
+          {peutReceptionner && !isNew && (statut === 'recu' || statut === 'envoye') && (
             <Button type="button" variant="outline" onClick={() => setShowRetour(true)}
                     title="Retourner des articles défectueux/erronés (décrémente le stock)">
               <Undo2 /> Retour fournisseur
@@ -1268,6 +1300,10 @@ function AchatsHorsContratModal({ fournisseurs, onClose }) {
 }
 
 export default function BonsCommandeFournisseur() {
+  // ASTK21 — « Nouveau bon de commande » / fusion = commander ; rapport
+  // « hors contrat » = prix d'achat (ASTK10).
+  const peutCommanderListe = usePermissionAchats('achats_commander')
+  const voitPrixListe = useVoitPrixAchat()
   const location = useLocation()
   const navigate = useNavigate()
   const [items, setItems] = useState([])
@@ -1428,12 +1464,16 @@ export default function BonsCommandeFournisseur() {
             <LayoutTemplate /> Modèles
           </Button>
           {/* WIR220/XPUR13 — rapport « achats hors contrat » (prix hors seuil). */}
-          <Button variant="outline" onClick={() => setShowHorsContrat(true)}>
-            <BarChart3 /> Achats hors contrat
-          </Button>
-          <Button onClick={() => setSelected({})}>
-            <Plus /> Nouveau bon de commande
-          </Button>
+          {voitPrixListe && (
+            <Button variant="outline" onClick={() => setShowHorsContrat(true)}>
+              <BarChart3 /> Achats hors contrat
+            </Button>
+          )}
+          {peutCommanderListe && (
+            <Button onClick={() => setSelected({})}>
+              <Plus /> Nouveau bon de commande
+            </Button>
+          )}
           </>
         )}
       />
@@ -1464,9 +1504,11 @@ export default function BonsCommandeFournisseur() {
                   <> Économie estimée : {Number(s.economie_estimee).toFixed(2)} MAD.</>
                 )}
               </span>
-              <Button variant="outline" size="sm" onClick={() => fusionnerSuggestion(s)}>
-                Fusionner
-              </Button>
+              {peutCommanderListe && (
+                <Button variant="outline" size="sm" onClick={() => fusionnerSuggestion(s)}>
+                  Fusionner
+                </Button>
+              )}
             </div>
           ))}
         </div>
@@ -1520,7 +1562,7 @@ export default function BonsCommandeFournisseur() {
           // (≥2 BCF BROUILLON du même fournisseur) — le backend re-vérifie
           // de toute façon, mais autant ne pas proposer une action vouée à
           // échouer.
-          ...(selRows.length >= 2
+          ...(peutCommanderListe && selRows.length >= 2
           && selRows.every((b) => b.statut === 'brouillon')
           && new Set(selRows.map((b) => b.fournisseur)).size === 1
             ? [{
@@ -1531,7 +1573,9 @@ export default function BonsCommandeFournisseur() {
         ]}
         emptyTitle="Aucun bon de commande fournisseur"
         emptyDescription="Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."
-        emptyAction={<Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau bon de commande</Button>}
+        emptyAction={peutCommanderListe
+          ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau bon de commande</Button>
+          : undefined}
         aria-label="Bons de commande fournisseur"
       />
 

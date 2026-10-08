@@ -1,0 +1,81 @@
+/*
+ * Jetons de style PROVISOIRES (YBW38) — SEUL fichier où une couleur hexadécimale
+ * est écrite (hors pack logo src/brand/). Figés au tour design (YBW44).
+ * Garde : tests/styleTokens.test.ts CALCULE chaque contraste (WCAG 2.x) :
+ *   texte normal < 4,5:1 = rouge ; graphique ou grand texte (>= 24 px) < 3:1 = rouge.
+ *
+ * Règles d'usage de l'orange de la marque :
+ *   - `--couleur-orange` (#C8762B) : GRAPHIQUES et titres >= 24 px seulement ;
+ *     jamais en texte < 24 px sur fond clair (3,23:1 sur papier, 3,45:1 sur blanc) ;
+ *     jamais de texte blanc sur fond orange (3,45:1) — bouton = encre sur orange (4,99:1).
+ *   - `--couleur-orange-texte` (#A6591A) : l'orange des TEXTES sur fond clair (5,17:1 sur blanc).
+ */
+:root {
+  /* Palette brute (croquis du logo, pas une charte validée) */
+  --couleur-encre: #1B1B1B;
+  --couleur-orange: #C8762B;
+  --couleur-orange-texte: #A6591A;
+  --couleur-papier: #FAF7F2;
+  --couleur-blanc: #FFFFFF;
+  /* Gris : le plus CLAIR autorisé pour du texte sur clair, le plus SOMBRE sur sombre */
+  --couleur-gris-texte: #6B6B6B;
+  --couleur-gris-sur-sombre: #A3A3A3;
+
+  /* Schéma clair (défaut) */
+  --fond: var(--couleur-papier);
+  --fond-surface: var(--couleur-blanc);
+  --texte: var(--couleur-encre);
+  --texte-attenue: var(--couleur-gris-texte);
+  --accent-texte: var(--couleur-orange-texte);
+  --accent-graphique: var(--couleur-orange);
+  --bouton-fond: var(--couleur-orange);
+  --bouton-texte: var(--couleur-encre);
+  --logo-ink: var(--couleur-encre);
+  --logo-arrow: var(--couleur-orange);
+
+  /* Espacements (échelle 4 px) */
+  --espace-1: 0.25rem;
+  --espace-2: 0.5rem;
+  --espace-3: 0.75rem;
+  --espace-4: 1rem;
+  --espace-6: 1.5rem;
+  --espace-8: 2rem;
+  --espace-12: 3rem;
+  --espace-16: 4rem;
+  --espace-24: 6rem;
+
+  /* Rayons */
+  --rayon-1: 0.25rem;
+  --rayon-2: 0.5rem;
+  --rayon-3: 1rem;
+  --rayon-plein: 999px;
+
+  /* Typographie (familles posées par YBW39 / YBW44) */
+  --texte-xs: 0.8125rem;
+  --texte-sm: 0.9375rem;
+  --texte-base: 1.0625rem;
+  --texte-lg: 1.25rem;
+  --texte-xl: 1.5rem;
+  --texte-2xl: 2rem;
+  --texte-3xl: 2.75rem;
+  --texte-4xl: 3.75rem;
+  --interligne-serre: 1.15;
+  --interligne-texte: 1.6;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: var(--couleur-encre);
+    --fond-surface: var(--couleur-encre);
+    --texte: var(--couleur-papier);
+    --texte-attenue: var(--couleur-gris-sur-sombre);
+    --accent-texte: var(--couleur-orange);
+    --accent-graphique: var(--couleur-orange);
+    --bouton-fond: var(--couleur-orange);
+    --bouton-texte: var(--couleur-encre);
+    --logo-ink: var(--couleur-blanc);
+    --logo-arrow: var(--couleur-orange);
+  }
+}

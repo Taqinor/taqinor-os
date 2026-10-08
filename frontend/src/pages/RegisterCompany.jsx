@@ -84,6 +84,11 @@ export default function RegisterCompany() {
       navigate('/login?inscription=ok', { replace: true })
     } catch (err) {
       const donnees = err?.response?.data
+      // ASEC13 / D-ASEC-2 — inscription parquée côté serveur : 404.
+      if (err?.response?.status === 404) {
+        setErreurGlobale('Les inscriptions sont fermées.')
+        return
+      }
       if (donnees && typeof donnees === 'object' && !Array.isArray(donnees)) {
         const parChamp = {}
         let global = null

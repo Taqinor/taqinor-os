@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     Equipe,
     Installation, Intervention, InstallationActivity, InterventionActivity,
@@ -231,7 +233,11 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InterventionSerializer(serializers.ModelSerializer):
+class InterventionSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    # ASEC32 — un technicien / une équipe d'une autre société reçoit la
+    # réponse d'un id absent (400), à la création comme au PATCH.
+    same_company_fields = ('technicien', 'equipe', 'equipe_ref')
     type_intervention_display = serializers.CharField(
         source='get_type_intervention_display', read_only=True)
     statut_display = serializers.CharField(
@@ -296,6 +302,10 @@ class InterventionSerializer(serializers.ModelSerializer):
             # YSERV6 — posés uniquement par le chemin d'annulation chantier
             # (annuler/reactiver), jamais par un PATCH générique.
             'annulee', 'motif_annulation',
+            # ASEC32 — signature client posée UNIQUEMENT par l'action
+            # `signer-client` (et la synchro terrain field_sync, qui écrit
+            # le modèle directement) : jamais par un PATCH générique.
+            'signature_client', 'signataire_nom', 'signe_le',
         ]
 
     def get_statut_ordre(self, obj):
@@ -448,7 +458,10 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InstallationSerializer(serializers.ModelSerializer):
+class InstallationSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    # ASEC32 — technicien responsable d'une autre société = id absent (400).
+    same_company_fields = ('technicien_responsable',)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     raccordement_display = serializers.CharField(
@@ -516,6 +529,9 @@ class InstallationSerializer(serializers.ModelSerializer):
             'date_reception_definitive',
             # CIQ633 — « non relevé + motif » : action `series-lot` seule.
             'series_non_relevees',
+            # ASEC32 — l'étape configurable n'avance QUE par ses transitions
+            # gardées (`avancer-etape`, gates CH2) : jamais par un PATCH.
+            'etape',
         ]
 
     def validate(self, attrs):

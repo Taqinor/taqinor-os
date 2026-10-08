@@ -1,0 +1,80 @@
+---
+// Mentions légales (YBW28) — UN gabarit FR + EN (`en/legal.astro` l'importe).
+// Chaque bloc n'est rendu que si ses champs sont COMPLETS (src/lib/legal.ts) :
+// rien pour une entité qui n'existe pas. Tant que la page n'est pas complète
+// (mentionsLegalesCompletes), la route est retirée du build et le Worker la
+// sert en 404 (porte YBW12). La version française fait foi.
+import '../styles/global.css';
+import { POLICES_PRECHARGEES } from '../lib/typo';
+import { DEFAULT_LOCALE, LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
+import { PAGES } from '../i18n/pages';
+import { alternates, selecteurLangue, t } from '../i18n/utils';
+import { fr } from '../i18n/pages/mentions-legales.fr';
+import { en } from '../i18n/pages/mentions-legales.en';
+import { LEGAL, type Legal, lignesCommunes, lignesEditeur, lignesMaroc, routesJuridiquesCompletes } from '../lib/legal';
+import LegalLinks from '../components/LegalLinks.astro';
+
+interface Props {
+  locale?: Locale;
+  /** Surcharge des langues actives — réservée aux tests (fixture). */
+  locales?: readonly Locale[];
+  /** Surcharge des identités — réservée aux tests (fixture). */
+  legal?: Legal;
+}
+const { locale = DEFAULT_LOCALE, locales = LOCALES_ACTIVES, legal = LEGAL } = Astro.props;
+const dict = locale === 'en' ? en : fr;
+const chemins = PAGES.mentionsLegales;
+const liens = alternates(chemins, locales);
+const autres = selecteurLangue(chemins, locale, locales);
+
+const blocs = [
+  { id: 'editeur', lignes: lignesEditeur(legal, locale) },
+  { id: 'maroc', lignes: lignesMaroc(legal, locale) },
+  { id: 'commun', lignes: lignesCommunes(legal) },
+].filter((b) => b.lignes.length > 0);
+---
+<!doctype html>
+<html lang={LANG_HTML[locale]}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{t(dict, 'titre', locale)}</title>
+    <meta name="description" content={t(dict, 'description', locale)} />
+    {POLICES_PRECHARGEES.map((p) => <link rel="preload" href={p} as="font" type="font/woff2" crossorigin />)}
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    {liens.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
+  </head>
+  <body>
+    <main>
+      <h1>{t(dict, 'h1', locale)}</h1>
+      {blocs.map((b) => (
+        <section data-bloc={b.id} aria-labelledby={`titre-${b.id}`}>
+          <h2 id={`titre-${b.id}`}>{t(dict, `${b.id}.titre`, locale)}</h2>
+          <dl>
+            {b.lignes.map((l) => (
+              <div data-cle={l.cle}>
+                <dt>{t(dict, `${b.id}.${l.cle}`, locale)}</dt>
+                <dd>{l.valeur}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
+      {blocs.length > 0 && <p data-foi>{t(dict, 'foi', locale)}</p>}
+      {autres.length > 0 && (
+        <nav aria-label={t(dict, 'langue', locale)}>
+          {autres.map((l) => <a href={l.href} hreflang={l.locale} lang={LANG_HTML[l.locale]}>{NOM_LANGUE[l.locale]}</a>)}
+        </nav>
+      )}
+    </main>
+    <footer>
+      <LegalLinks locale={locale} completes={routesJuridiquesCompletes(legal)} />
+    </footer>
+    <script>
+      import '../scripts/client-error';
+    </script>
+  </body>
+</html>

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7622, components: 2212}
+counts: {paths: 4812, operations: 7594, components: 2213}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1158,24 +1158,6 @@ operations:
 - get /api/django/crm/visites-externes/ -> django_crm_visites_externes_list
 - get /api/django/crm/visites-externes/appareils/ -> django_crm_visites_externes_appareils_retrieve
 - get /api/django/crm/visites-externes/{id}/ -> django_crm_visites_externes_retrieve
-- get /api/django/crm/visites/ -> django_crm_visites_list
-- post /api/django/crm/visites/ -> django_crm_visites_create
-- delete /api/django/crm/visites/{id}/ -> django_crm_visites_destroy
-- get /api/django/crm/visites/{id}/ -> django_crm_visites_retrieve
-- patch /api/django/crm/visites/{id}/ -> django_crm_visites_partial_update
-- put /api/django/crm/visites/{id}/ -> django_crm_visites_update
-- post /api/django/crm/visites/{id}/arriver/ -> django_crm_visites_arriver_create
-- post /api/django/crm/visites/{id}/assembler-photos/ -> django_crm_visites_assembler_photos_create
-- patch /api/django/crm/visites/{id}/calage/ -> django_crm_visites_calage_partial_update
-- post /api/django/crm/visites/{id}/demarrer-route/ -> django_crm_visites_demarrer_route_create
-- patch /api/django/crm/visites/{id}/mesures/ -> django_crm_visites_mesures_partial_update
-- get /api/django/crm/visites/{id}/photo-toit/ -> django_crm_visites_photo_toit_retrieve
-- post /api/django/crm/visites/{id}/photos/ -> django_crm_visites_photos_create
-- delete /api/django/crm/visites/{id}/photos/{media_id}/ -> django_crm_visites_photos_destroy
-- post /api/django/crm/visites/{id}/qualification/ -> django_crm_visites_qualification_create
-- post /api/django/crm/visites/{id}/renvoyer/ -> django_crm_visites_renvoyer_create
-- post /api/django/crm/visites/{id}/terminer/ -> django_crm_visites_terminer_create
-- post /api/django/crm/visites/{id}/valider/ -> django_crm_visites_valider_create
 - get /api/django/crm/vues-enregistrees/ -> django_crm_vues_enregistrees_list
 - post /api/django/crm/vues-enregistrees/ -> django_crm_vues_enregistrees_create
 - post /api/django/crm/vues-enregistrees/reorder/ -> django_crm_vues_enregistrees_reorder_create
@@ -1500,6 +1482,7 @@ operations:
 - patch /api/django/ged/politiques-retention/{id}/ -> django_ged_politiques_retention_partial_update
 - put /api/django/ged/politiques-retention/{id}/ -> django_ged_politiques_retention_update
 - get /api/django/ged/public/{token}/ -> django_ged_public_retrieve
+- post /api/django/ged/public/{token}/ -> django_ged_public_create
 - get /api/django/ged/quotas-stockage/ -> django_ged_quotas_stockage_list
 - post /api/django/ged/quotas-stockage/ -> django_ged_quotas_stockage_create
 - get /api/django/ged/quotas-stockage/etat/ -> django_ged_quotas_stockage_etat_retrieve
@@ -2672,6 +2655,7 @@ operations:
 - get /api/django/reporting/calendar/ -> django_reporting_calendar_retrieve
 - post /api/django/reporting/calendar/reschedule/ -> django_reporting_calendar_reschedule_create
 - get /api/django/reporting/calendar/subscription/ -> django_reporting_calendar_subscription_retrieve
+- post /api/django/reporting/calendar/subscription/ -> django_reporting_calendar_subscription_create
 - get /api/django/reporting/classeurs/ -> django_reporting_classeurs_list
 - post /api/django/reporting/classeurs/ -> django_reporting_classeurs_create
 - delete /api/django/reporting/classeurs/{id}/ -> django_reporting_classeurs_destroy
@@ -3407,6 +3391,7 @@ operations:
 - get /api/django/stock/taches-reappro-interne/{id}/ -> django_stock_taches_reappro_interne_retrieve
 - patch /api/django/stock/taches-reappro-interne/{id}/ -> django_stock_taches_reappro_interne_partial_update
 - put /api/django/stock/taches-reappro-interne/{id}/ -> django_stock_taches_reappro_interne_update
+- post /api/django/stock/taches-reappro-interne/{id}/executer/ -> django_stock_taches_reappro_interne_executer_create
 - get /api/django/stock/tolerances-rapprochement-categorie/ -> django_stock_tolerances_rapprochement_categorie_list
 - post /api/django/stock/tolerances-rapprochement-categorie/ -> django_stock_tolerances_rapprochement_categorie_create
 - delete /api/django/stock/tolerances-rapprochement-categorie/{id}/ -> django_stock_tolerances_rapprochement_categorie_destroy
@@ -3466,6 +3451,7 @@ operations:
 - patch /api/django/users/{id}/ -> django_users_partial_update
 - put /api/django/users/{id}/ -> django_users_update
 - post /api/django/users/{id}/avatar/ -> django_users_avatar_create
+- post /api/django/users/{id}/reinitialiser-mot-de-passe/ -> django_users_reinitialiser_mot_de_passe_create
 - get /api/django/uxviews/favoris/ -> django_uxviews_favoris_list
 - post /api/django/uxviews/favoris/ -> django_uxviews_favoris_create
 - get /api/django/uxviews/favoris/export-csv/ -> django_uxviews_favoris_export_csv_retrieve
@@ -5007,24 +4993,6 @@ operations:
 - get /api/v1/crm/visites-externes/ -> v1_crm_visites_externes_list
 - get /api/v1/crm/visites-externes/appareils/ -> v1_crm_visites_externes_appareils_retrieve
 - get /api/v1/crm/visites-externes/{id}/ -> v1_crm_visites_externes_retrieve
-- get /api/v1/crm/visites/ -> v1_crm_visites_list
-- post /api/v1/crm/visites/ -> v1_crm_visites_create
-- delete /api/v1/crm/visites/{id}/ -> v1_crm_visites_destroy
-- get /api/v1/crm/visites/{id}/ -> v1_crm_visites_retrieve
-- patch /api/v1/crm/visites/{id}/ -> v1_crm_visites_partial_update
-- put /api/v1/crm/visites/{id}/ -> v1_crm_visites_update
-- post /api/v1/crm/visites/{id}/arriver/ -> v1_crm_visites_arriver_create
-- post /api/v1/crm/visites/{id}/assembler-photos/ -> v1_crm_visites_assembler_photos_create
-- patch /api/v1/crm/visites/{id}/calage/ -> v1_crm_visites_calage_partial_update
-- post /api/v1/crm/visites/{id}/demarrer-route/ -> v1_crm_visites_demarrer_route_create
-- patch /api/v1/crm/visites/{id}/mesures/ -> v1_crm_visites_mesures_partial_update
-- get /api/v1/crm/visites/{id}/photo-toit/ -> v1_crm_visites_photo_toit_retrieve
-- post /api/v1/crm/visites/{id}/photos/ -> v1_crm_visites_photos_create
-- delete /api/v1/crm/visites/{id}/photos/{media_id}/ -> v1_crm_visites_photos_destroy
-- post /api/v1/crm/visites/{id}/qualification/ -> v1_crm_visites_qualification_create
-- post /api/v1/crm/visites/{id}/renvoyer/ -> v1_crm_visites_renvoyer_create
-- post /api/v1/crm/visites/{id}/terminer/ -> v1_crm_visites_terminer_create
-- post /api/v1/crm/visites/{id}/valider/ -> v1_crm_visites_valider_create
 - get /api/v1/crm/vues-enregistrees/ -> v1_crm_vues_enregistrees_list
 - post /api/v1/crm/vues-enregistrees/ -> v1_crm_vues_enregistrees_create
 - post /api/v1/crm/vues-enregistrees/reorder/ -> v1_crm_vues_enregistrees_reorder_create
@@ -5349,6 +5317,7 @@ operations:
 - patch /api/v1/ged/politiques-retention/{id}/ -> v1_ged_politiques_retention_partial_update
 - put /api/v1/ged/politiques-retention/{id}/ -> v1_ged_politiques_retention_update
 - get /api/v1/ged/public/{token}/ -> v1_ged_public_retrieve
+- post /api/v1/ged/public/{token}/ -> v1_ged_public_create
 - get /api/v1/ged/quotas-stockage/ -> v1_ged_quotas_stockage_list
 - post /api/v1/ged/quotas-stockage/ -> v1_ged_quotas_stockage_create
 - get /api/v1/ged/quotas-stockage/etat/ -> v1_ged_quotas_stockage_etat_retrieve
@@ -6490,6 +6459,7 @@ operations:
 - get /api/v1/reporting/calendar/ -> v1_reporting_calendar_retrieve
 - post /api/v1/reporting/calendar/reschedule/ -> v1_reporting_calendar_reschedule_create
 - get /api/v1/reporting/calendar/subscription/ -> v1_reporting_calendar_subscription_retrieve
+- post /api/v1/reporting/calendar/subscription/ -> v1_reporting_calendar_subscription_create
 - get /api/v1/reporting/classeurs/ -> v1_reporting_classeurs_list
 - post /api/v1/reporting/classeurs/ -> v1_reporting_classeurs_create
 - delete /api/v1/reporting/classeurs/{id}/ -> v1_reporting_classeurs_destroy
@@ -7225,6 +7195,7 @@ operations:
 - get /api/v1/stock/taches-reappro-interne/{id}/ -> v1_stock_taches_reappro_interne_retrieve
 - patch /api/v1/stock/taches-reappro-interne/{id}/ -> v1_stock_taches_reappro_interne_partial_update
 - put /api/v1/stock/taches-reappro-interne/{id}/ -> v1_stock_taches_reappro_interne_update
+- post /api/v1/stock/taches-reappro-interne/{id}/executer/ -> v1_stock_taches_reappro_interne_executer_create
 - get /api/v1/stock/tolerances-rapprochement-categorie/ -> v1_stock_tolerances_rapprochement_categorie_list
 - post /api/v1/stock/tolerances-rapprochement-categorie/ -> v1_stock_tolerances_rapprochement_categorie_create
 - delete /api/v1/stock/tolerances-rapprochement-categorie/{id}/ -> v1_stock_tolerances_rapprochement_categorie_destroy
@@ -7281,6 +7252,7 @@ operations:
 - patch /api/v1/users/{id}/ -> v1_users_partial_update
 - put /api/v1/users/{id}/ -> v1_users_update
 - post /api/v1/users/{id}/avatar/ -> v1_users_avatar_create
+- post /api/v1/users/{id}/reinitialiser-mot-de-passe/ -> v1_users_reinitialiser_mot_de_passe_create
 - get /api/v1/uxviews/favoris/ -> v1_uxviews_favoris_list
 - post /api/v1/uxviews/favoris/ -> v1_uxviews_favoris_create
 - get /api/v1/uxviews/favoris/export-csv/ -> v1_uxviews_favoris_export_csv_retrieve
@@ -9681,6 +9653,7 @@ components:
 - StockScannerRetourErreur
 - StockScannerRetourFournisseurLigne
 - StockSimulationCapacite
+- StockTacheReapproExecutee
 - StockTacheRetour
 - StockTracabiliteChaine
 - StockTracabiliteInconnue

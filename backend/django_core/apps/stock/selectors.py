@@ -1062,7 +1062,8 @@ MOUVEMENTS_AGREGES_GROUP_BY = ('produit', 'type', 'mois', 'emplacement')
 def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
     """ZSTK7 — « Reporting ▸ Moves History » : agrège `MouvementStock` par
     ``group_by`` (produit/type/mois/emplacement) sur la période optionnelle,
-    en quantités ENTRÉES/SORTIES/NETTES. LECTURE SEULE, INTERNE.
+    en quantités ENTRÉES/SORTIES/REBUTS/AJUSTEMENTS/NETTES (net = variation
+    réelle Σ(après − avant), ASTK208). LECTURE SEULE, INTERNE.
 
     ``group_by='emplacement'`` réutilise `stock_breakdown_map` (ventilation
     ACTUELLE par emplacement — le modèle `MouvementStock` ne trace pas
@@ -1097,18 +1098,34 @@ def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
             return (key, key)
         return None  # 'emplacement' traité séparément ci-dessous.
 
+    REBUT = MouvementStock.TypeMouvement.REBUT
+    AJUSTEMENT = MouvementStock.TypeMouvement.AJUSTEMENT
+
+    def _vide(cle, libelle):
+        return {'cle': cle, 'libelle': libelle, 'entrees': 0, 'sorties': 0,
+                'rebuts': 0, 'ajustements': 0, 'net': 0}
+
+    def _cumuler(entry, m, part=1):
+        """ASTK208 (C-ASTK-053) — le net est la VARIATION réelle
+        Σ(après − avant) : il réconcilie avec le stock (rebuts, ajustements
+        signés compris ; un transfert vaut 0)."""
+        variation = (m.quantite_apres or 0) - (m.quantite_avant or 0)
+        if m.type_mouvement == ENTREE:
+            entry['entrees'] += m.quantite * part
+        elif m.type_mouvement == SORTIE:
+            entry['sorties'] += m.quantite * part
+        elif m.type_mouvement == REBUT:
+            entry['rebuts'] += m.quantite * part
+        elif m.type_mouvement == AJUSTEMENT:
+            entry['ajustements'] += variation * part
+        entry['net'] += variation * part
+
     buckets = {}
     for m in qs:
         if group_by == 'emplacement':
             continue
         cle, libelle = _cle(m)
-        entry = buckets.setdefault(
-            cle, {'cle': cle, 'libelle': libelle,
-                  'entrees': 0, 'sorties': 0})
-        if m.type_mouvement == ENTREE:
-            entry['entrees'] += m.quantite
-        elif m.type_mouvement == SORTIE:
-            entry['sorties'] += m.quantite
+        _cumuler(buckets.setdefault(cle, _vide(cle, libelle)), m)
 
     if group_by == 'emplacement':
         from .services import stock_breakdown_map
@@ -1119,13 +1136,8 @@ def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
             for r in rows:
                 part = r['quantite'] / total
                 cle = (r['emplacement_id'], r['emplacement_nom'])
-                entry = buckets.setdefault(
-                    cle, {'cle': cle, 'libelle': r['emplacement_nom'],
-                          'entrees': 0, 'sorties': 0})
-                if m.type_mouvement == ENTREE:
-                    entry['entrees'] += m.quantite * part
-                elif m.type_mouvement == SORTIE:
-                    entry['sorties'] += m.quantite * part
+                _cumuler(buckets.setdefault(
+                    cle, _vide(cle, r['emplacement_nom'])), m, part)
 
     out = []
     for entry in buckets.values():
@@ -1133,7 +1145,9 @@ def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
             'libelle': entry['libelle'],
             'entrees': entry['entrees'],
             'sorties': entry['sorties'],
-            'net': entry['entrees'] - entry['sorties'],
+            'rebuts': entry['rebuts'],
+            'ajustements': entry['ajustements'],
+            'net': entry['net'],
         })
     out.sort(key=lambda e: e['libelle'] or '')
     return out
@@ -2614,27 +2628,68 @@ def _dernier_retard_otd(company, fournisseur_id, *, debut=None, fin=None):
     return dernier.date_livraison_prevue, jours
 
 
-def _montant_achete(company, fournisseur_id, *, debut=None, fin=None):
-    """Σ des lignes de BCF (HT interne) du fournisseur sur la période."""
-    from decimal import Decimal
-    from django.db.models import DecimalField, F, Sum
-    from django.db.models.functions import Coalesce
+def _lignes_achats_effectifs(company, *, debut=None, fin=None):
+    """ASTK189 — lignes de BCF qui comptent comme ACHAT : ni brouillon (pas
+    encore commandé) ni annulé. Période bornée sur ``date_commande``."""
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
 
-    from .models import LigneBonCommandeFournisseur
-
-    qs = LigneBonCommandeFournisseur.objects.filter(
-        bon_commande__company=company,
-        bon_commande__fournisseur_id=fournisseur_id)
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut__in=[
+              BonCommandeFournisseur.Statut.BROUILLON,
+              BonCommandeFournisseur.Statut.ANNULE]))
     if debut:
         qs = qs.filter(bon_commande__date_commande__gte=debut)
     if fin:
         qs = qs.filter(bon_commande__date_commande__lte=fin)
-    total = qs.aggregate(total=Coalesce(
+    return qs
+
+
+def _somme_lignes_achat():
+    """Σ quantité × prix d'achat unitaire (HT interne), 0 si vide."""
+    from decimal import Decimal
+    from django.db.models import DecimalField, F, Sum
+    from django.db.models.functions import Coalesce
+
+    return Coalesce(
         Sum(F('quantite') * F('prix_achat_unitaire'),
             output_field=DecimalField(max_digits=18, decimal_places=2)),
         Decimal('0'),
-        output_field=DecimalField(max_digits=18, decimal_places=2)))['total']
+        output_field=DecimalField(max_digits=18, decimal_places=2))
+
+
+def filtrer_par_fournisseur(qs, valeur):
+    """ASTK178 (C-ASTK-039) — filtre `?fournisseur=<id>` partagé par les
+    listes de BCF et de retours (même règle que les factures fournisseur).
+    Le queryset est déjà borné à la société : un id étranger ou inexistant
+    rend une liste vide ; une valeur non numérique aussi (jamais un 500).
+    Sans valeur : le queryset inchangé."""
+    if valeur in (None, ''):
+        return qs
+    if not str(valeur).isdigit():
+        return qs.none()
+    return qs.filter(fournisseur_id=int(valeur))
+
+
+def achats_effectifs_fournisseur(company, fournisseur_id, debut=None,
+                                 fin=None):
+    """ASTK189 (C-ASTK-043, FOUR-17) — montant acheté (HT interne) à UN
+    fournisseur : Σ des lignes de BCF ni brouillon ni annulés. SEULE source
+    de l'export conformité, du top fournisseurs et de la performance
+    fournisseur (les trois rendent le même chiffre). INTERNE."""
+    from decimal import Decimal
+
+    total = (_lignes_achats_effectifs(company, debut=debut, fin=fin)
+             .filter(bon_commande__fournisseur_id=fournisseur_id)
+             .aggregate(total=_somme_lignes_achat())['total'])
     return total or Decimal('0')
+
+
+def _montant_achete(company, fournisseur_id, *, debut=None, fin=None):
+    """Σ des lignes de BCF (HT interne) du fournisseur sur la période —
+    ASTK189 : délègue à ``achats_effectifs_fournisseur``."""
+    return achats_effectifs_fournisseur(
+        company, fournisseur_id, debut=debut, fin=fin)
 
 
 def conformite_fournisseurs(company, *, debut=None, fin=None):
@@ -2707,26 +2762,15 @@ def _budgets_departement_du_mois(company, aujourdhui):
 def _top_fournisseurs_par_volume(company, *, debut=None, fin=None, limite=5):
     """Fournisseurs classés par volume d'achat (Σ lignes BCF HT interne) sur
     la période — jamais de ``prix_achat`` exposé côté client, cette agrégation
-    reste un rapport INTERNE (achats)."""
-    from decimal import Decimal
-    from django.db.models import DecimalField, F, Sum
-    from django.db.models.functions import Coalesce
-    from .models import LigneBonCommandeFournisseur
+    reste un rapport INTERNE (achats).
 
-    qs = LigneBonCommandeFournisseur.objects.filter(
-        bon_commande__company=company)
-    if debut:
-        qs = qs.filter(bon_commande__date_commande__gte=debut)
-    if fin:
-        qs = qs.filter(bon_commande__date_commande__lte=fin)
+    ASTK189 — mêmes lignes que ``achats_effectifs_fournisseur`` (ni
+    brouillon ni annulé) : le top concorde avec l'export et la performance."""
+    qs = _lignes_achats_effectifs(company, debut=debut, fin=fin)
     agreges = (
         qs.values('bon_commande__fournisseur_id',
                   'bon_commande__fournisseur__nom')
-        .annotate(volume=Coalesce(
-            Sum(F('quantite') * F('prix_achat_unitaire'),
-                output_field=DecimalField(max_digits=18, decimal_places=2)),
-            Decimal('0'),
-            output_field=DecimalField(max_digits=18, decimal_places=2)))
+        .annotate(volume=_somme_lignes_achat())
         .order_by('-volume')[:limite])
     return [
         {'fournisseur_id': row['bon_commande__fournisseur_id'],

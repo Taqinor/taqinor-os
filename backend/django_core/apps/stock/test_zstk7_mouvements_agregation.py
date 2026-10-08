@@ -50,7 +50,10 @@ class Zstk7Base(TestCase):
         self.company = _company('zstk7-co')
         self.user = _user(
             self.company, 'zstk7-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.api = _api(self.user)
         self.produit = Produit.objects.create(
             company=self.company, nom='Panneau ZSTK7', sku='PAN-ZSTK7',
@@ -58,10 +61,15 @@ class Zstk7Base(TestCase):
             quantite_stock=100)
 
     def _mouvement(self, type_mouvement, quantite):
+        # ASTK208 — le net = Σ(après − avant) : une SORTIE fait BAISSER le
+        # stock (avant = quantité, après = 0), jamais l'inverse.
+        sortante = type_mouvement in (MouvementStock.TypeMouvement.SORTIE,
+                                      MouvementStock.TypeMouvement.REBUT)
         return MouvementStock.objects.create(
             company=self.company, produit=self.produit,
             type_mouvement=type_mouvement, quantite=quantite,
-            quantite_avant=0, quantite_apres=quantite)
+            quantite_avant=quantite if sortante else 0,
+            quantite_apres=0 if sortante else quantite)
 
 
 class TestAgregationParProduit(Zstk7Base):

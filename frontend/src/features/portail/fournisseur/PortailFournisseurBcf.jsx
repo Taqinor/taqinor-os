@@ -77,7 +77,8 @@ export default function PortailFournisseurBcf() {
       const data = err?.response?.data
       // Le serveur NOMME le champ fautif : on l'affiche sous ce champ-là
       // plutôt qu'un « non enregistré » générique.
-      setChampErreur(data?.date_confirmee || data?.detail
+      setChampErreur(data?.date_confirmee_fournisseur?.[0]
+        || data?.numero_confirmation_fournisseur?.[0] || data?.detail
         || "La confirmation n'a pas abouti.")
     } finally {
       setBusy(false)

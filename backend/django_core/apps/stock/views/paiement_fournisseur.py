@@ -4,6 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from rest_framework.permissions import BasePermission
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -42,6 +43,29 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+class PeutLirePaiementsFournisseur(BasePermission):
+    """ASTK19 — lecture des règlements fournisseur (survivant unique d'AUD419
+    et d'ASTK11) : rôle fin → ``achats_payer`` OU ``prix_achat_voir`` ;
+    compte légacy sans rôle fin → responsable/admin ET can_view_buy_prices
+    (comportement historique inchangé). Superuser toujours."""
+
+    message = ("Permission « achats_payer » ou « prix_achat_voir » requise "
+               "(règlements fournisseur).")
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_superuser:
+            return True
+        if getattr(user, 'portee', 'interne') != 'interne':
+            return False
+        if getattr(user, 'role', None):
+            return (user.has_erp_permission('achats_payer')
+                    or user.has_erp_permission('prix_achat_voir'))
+        return bool(user.is_responsable and user.can_view_buy_prices)
+
+
 class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
     """G5 — Paiements fournisseur (règlements). Lecture + création/suppression ;
     chaque écriture recalcule le statut de la facture. company posée serveur."""
@@ -76,11 +100,16 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action == 'destroy':
             return [IsAdminRole()]
         if self.action in ('list', 'retrieve'):
-            # ASTK11 (D-ASTK-2) — même palier que la clé `paiements` imbriquée
-            # dans la facture : responsable/admin ET `prix_achat_voir`.
-            from ..permissions import PeutVoirPrixAchat
-            return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
-        return [IsResponsableOrAdmin()]
+            # ASTK19 — survivant unique de la lecture (AUD419 + ASTK11) : un
+            # rôle fin lit les règlements s'il porte ``achats_payer`` OU
+            # ``prix_achat_voir`` (montants d'achat, D-ASTK-2) ; un compte
+            # légacy garde responsable/admin ET can_view_buy_prices.
+            return [PeutLirePaiementsFournisseur()]
+        if self.action == 'export_ras_tva':
+            return [IsResponsableOrAdmin()]
+        # ASTK19 (D-ASTK-3) — enregistrer/modifier un règlement = « payer » :
+        # ``achats_payer`` (Directeur + Administrateur ; repli légacy).
+        return [HasPermissionOrLegacy('achats_payer')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

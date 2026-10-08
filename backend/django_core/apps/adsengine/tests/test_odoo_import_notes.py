@@ -59,7 +59,9 @@ class OdooImportNotesCommandTests(TestCase):
         with mock.patch(
                 'apps.adsengine.odoo_client.OdooClient.from_env',
                 return_value=_FakeOdooClient()):
-            call_command('odoo_import_notes', *args, stdout=out)
+            # ASEC40 — la société est explicite (plus de « première société »).
+            call_command('odoo_import_notes', '--company', self.company.slug,
+                         *args, stdout=out)
         return out.getvalue()
 
     def test_notes_and_description_land_in_matching_lead_chatter(self):

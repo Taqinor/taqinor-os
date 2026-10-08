@@ -159,3 +159,40 @@ def sieges_utilises(company):
         return 0
     from authentication.models import CustomUser
     return CustomUser.objects.filter(company=company, is_active=True).count()
+
+
+# ── ASEC3 — Réinitialisation du mot de passe par un gérant ───────────────────
+def reinitialiser_mot_de_passe(acteur, cible, nouveau):
+    """SEULE voie d'écriture du hash d'un AUTRE compte par l'API.
+
+    Applique la politique (``validate_new_password``), pose le hash, force la
+    rotation à la prochaine connexion, révoque TOUTES les sessions de la cible
+    et journalise (acteur, cible — jamais la valeur). La garde de rang
+    (``role_tiers.peut_gerer``) est appliquée par l'appelant.
+
+    Retourne la liste des erreurs de politique (vide = réinitialisé)."""
+    from authentication.password_policy import validate_new_password
+    from authentication.selectors import revoke_user_sessions
+
+    errors = validate_new_password(
+        nouveau, getattr(cible, 'company', None), user=cible)
+    if errors:
+        return errors
+    cible.set_password(nouveau)
+    cible.must_change_password = True
+    cible.password_changed_at = timezone.now()
+    cible.save(update_fields=[
+        'password', 'must_change_password', 'password_changed_at'])
+    revoke_user_sessions(cible)
+    try:
+        from apps.parametres.models import SettingsAuditLog
+        SettingsAuditLog.log_change(
+            company=getattr(acteur, 'company', None), user=acteur,
+            section='utilisateurs',
+            field=f'user:{cible.username}:mot_de_passe',
+            field_label='Mot de passe réinitialisé',
+            old=None, new='réinitialisé',
+        )
+    except Exception:
+        logger.exception('ASEC3 : journal de réinitialisation non écrit')
+    return []

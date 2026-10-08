@@ -77,11 +77,18 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS + ['suggestions_bcf']:
             return [IsAnyRole()]
+        if self.action == 'paiements' and self.request.method == 'GET':
+            # Lister les règlements d'une facture reste une LECTURE (palier
+            # historique inchangé) ; seul le POST « payer » exige le code.
+            return [IsResponsableOrAdmin()]
         elif self.action in WRITE_ACTIONS + [
             'paiements', 'echeancier', 'resoudre_exception',
             'depuis_ocr', 'depuis_ubl',
         ]:
-            return [IsResponsableOrAdmin()]
+            # ASTK19 (D-ASTK-3) — saisir/modifier une facture fournisseur, la
+            # régler, son échéancier, résoudre une exception, l'importer
+            # (OCR/UBL) = « payer » : ``achats_payer`` (repli légacy).
+            return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'releve_deductions_tva':
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -189,7 +196,14 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                     'MAD) : suppression refusée.'
                 ),
             })
-        instance.delete()
+        # ASTK86 — dé-lettrer AVANT delete() les provisions GR/IR que cette
+        # facture avait lettrées (le FK SET_NULL laissait lettre=True,
+        # facture=None : dette latente fermée à tort). Service UNIQUE du
+        # propriétaire chantiers (ASTK126), dans la même transaction.
+        from apps.installations.services import delettrer_gr_ir_facture
+        with transaction.atomic():
+            delettrer_gr_ir_facture(instance)
+            instance.delete()
 
     def create(self, request, *args, **kwargs):
         # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
