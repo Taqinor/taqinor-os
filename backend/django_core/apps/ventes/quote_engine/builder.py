@@ -868,7 +868,7 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     pu_ttc = pu_ht * (Decimal(1) + Decimal(ligne_taux) / Decimal(100))
     produit = getattr(ligne, "produit", None)
     produit_nom = getattr(produit, "nom", "") or ""
-    return {
+    item = {
         "designation": ligne.designation,
         "marque": (getattr(produit, "marque", "") or ""),
         "description": (getattr(produit, "description", "") or ""),
@@ -914,6 +914,13 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "courbe_pompe": (getattr(produit, "courbe_pompe", None) or None),
         "_produit_nom": produit_nom,
     }
+    # AMOT12 — une ligne SANS quantité (``None``) reste IMPRIMÉE à 0,00 avec
+    # sa désignation (une quantité 0 SAISIE reste, elle, omise de la liste
+    # comme avant). Clé interne posée SEULEMENT dans ce cas : toute autre
+    # ligne garde un item octet-identique.
+    if getattr(ligne, "quantite", None) is None:
+        item["_sans_quantite"] = True
+    return item
 
 
 def lignes_sans_montant(lignes) -> list:
@@ -3431,11 +3438,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     all_items = [
         {
-            **{k: v for k, v in it.items() if k != "_produit_nom"},
+            **{k: v for k, v in it.items()
+               if k not in ("_produit_nom", "_sans_quantite")},
             "marque": it["marque"] or _parse_marque(
                 it["designation"], it.get("_produit_nom", "")),
         }
-        for it in onepage_source if it["quantite"] > 0
+        for it in onepage_source
+        if it["quantite"] > 0 or it.get("_sans_quantite")
     ]
 
     # ── QJRREM — CHAQUE LIGNE PORTE LA REMISE GLOBALE ───────────────────────
@@ -3563,6 +3572,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     for rows in (sans_items, avec_items):
         for r in rows:
             r.pop("_produit_nom", None)
+            r.pop("_sans_quantite", None)
 
     inst_type = {
         "residentiel": "Résidentielle",
@@ -4339,6 +4349,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         for li in option_lignes:
             it = _line_to_item(li, taux_tva)
             it.pop("_produit_nom", None)
+            it.pop("_sans_quantite", None)
             qte = float(li.quantite or 0)
             _avec_opt = _totaux_opt(
                 devis, vue=_VueOpt.AFFICHAGE,
