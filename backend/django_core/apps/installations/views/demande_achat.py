@@ -25,7 +25,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
+)
 from core.documents import TransitionRefusee
 from core.numbering import create_with_reference
 from core.viewsets import CompanyScopedModelViewSet
@@ -134,8 +136,14 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         # branché sur `self.action` : un `permission_classes=` posé sur le
         # décorateur `@action` serait écrasé par ce branchement, d'où la garde
         # DEDANS plutôt que sur `@action`).
-        if self.action == 'approuver_etape':
+        # ACHT54 — `approuver` (décision directe) relève du même code fin que
+        # `approuver-etape` ; `generer-bcf` CRÉE un BCF : `achats_commander`
+        # (patron ASTK17 du viewset BCF stock).
+        if self.action in ('approuver_etape', 'approuver'):
             return [IsResponsableOrAdmin(), PeutApprouverDemandeAchat()]
+        if self.action == 'generer_bcf':
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('achats_commander')()]
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]

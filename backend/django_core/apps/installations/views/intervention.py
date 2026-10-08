@@ -4,7 +4,7 @@ from rest_framework.response import Response  # noqa: F401
 
 from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
-    IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from django.db.models import F  # noqa: F401
@@ -249,6 +249,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def get_permissions(self):
+        if self.action == 'commander_manques':
+            # ACHT54 — crée un BCF : `achats_commander` en plus du module.
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('achats_commander')()]
         if self.action in READ_ACTIONS + [
             'historique', 'preparation', 'photos',
             # Lectures du module de capture F9–F19 + F23.

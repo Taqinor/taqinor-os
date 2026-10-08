@@ -189,6 +189,10 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         # Admin Ventes ne portent pas → 403. On garde ces deux actions par le
         # code ventes que ces rôles détiennent (`ventes_creer`), sans leur
         # ouvrir les autres écritures du chantier.
+        if self.action == 'commander_besoin':
+            # ACHT54 — crée un BCF : `achats_commander` en plus du module.
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('achats_commander')()]
         if self.action == 'creer_depuis_devis':
             return [(IsResponsableOrAdmin
                      | HasPermissionOrLegacy('ventes_creer'))()]
