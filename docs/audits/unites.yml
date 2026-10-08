@@ -325,13 +325,13 @@ unites:
     I: 5
     score: 15
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: AMOT
     plan: docs/plans/PLAN_AUDIT_MOTEUR.md
-    plans_alimentes: []
+    plans_alimentes: [docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_GENERATEUR.md]
     pr: null
-    date: null
-    notes: "Lanes de jugement en opus/high (règle #4). Manifeste de couverture obligatoire (lane QJR79 : constats dans des fichiers jamais lus avant ; chiffre 149 non re-vérifié)."
+    date: 2026-10-08
+    notes: "Lanes de jugement en opus/high (règle #4). Manifeste de couverture obligatoire (lane QJR79 : constats dans des fichiers jamais lus avant ; chiffre 149 non re-vérifié). Audit L3 du 08/10/2026 (dossier docs/audits/2026-10-08-moteur.md) : 61 constats (14 S1), 75 tâches AMOT déposées + 1 tâche web (AMOT76, apps/web) gardée au dossier §7 en attente d'accord ; PDF public réel 3 pages, sans prix_achat."
 
   - id: J2
     rang: 10
