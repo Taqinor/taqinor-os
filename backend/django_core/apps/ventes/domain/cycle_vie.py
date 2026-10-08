@@ -181,8 +181,24 @@ def activate_optional_line(*, devis, ligne_id, user=None):
         if not ligne.optionnelle:
             return ligne
 
+        # ADEV19 (C-ADEV-012) — l'activation par le client est un GESTE DE
+        # LIGNE comme un autre : état vu par le client capturé AVANT
+        # l'écriture (instantané « avant correction », envoyé seulement).
+        from apps.ventes.domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis,
+        )
+        avant_geste = debut_de_geste_devis(ligne.devis, user)
+
         ligne.optionnelle = False
         ligne.save(update_fields=['optionnelle'])
+
+    # ADEV19 — après la transaction (best-effort, comme ``LigneDevisViewSet``) :
+    # rafraîchissement (MODE_RAFRAICHIR : études, kWc, marge), instantané du
+    # geste, trace « corrigé après envoi — option client » et AVANCE du jeton
+    # d'édition (``updated_at``) — un écran interne ouvert avant l'activation
+    # reçoit alors 409 ``devis_modifie`` au lieu d'effacer le choix du client.
+    _geste_option_client(devis, user=user, avant=avant_geste,
+                         fin_de_geste=fin_de_geste_devis)
 
     # Chatter (hors transaction — miroir de accept_devis).
     try:
@@ -193,6 +209,31 @@ def activate_optional_line(*, devis, ligne_id, user=None):
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         pass
     return ligne
+
+
+def _geste_option_client(devis, *, user, avant, fin_de_geste):
+    """ADEV19 — la moitié « après écriture » du geste d'option client, dans
+    l'ordre du jumeau interne (``views/ligne_devis.py``) : rafraîchir, puis
+    instantané, puis trace d'envoi, puis jeton. Chaque étape est best-effort :
+    l'option est déjà activée, rien ne doit l'annuler."""
+    try:
+        from apps.ventes.domain.pipeline import (
+            MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
+        )
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
+            company=devis.company))
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception('ADEV19 : rafraîchissement ignoré (devis %s)',
+                         devis.pk)
+    try:
+        from apps.ventes.domain.historique_config import instantane_de_geste
+        instantane_de_geste(devis, user=user)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception('ADEV19 : instantané ignoré (devis %s)', devis.pk)
+    fin_de_geste(devis, user, avant=avant, objet='option client')
+    from apps.ventes.domain.verrou_devis import toucher
+    toucher(devis)
 
 
 # ── QJ11 — OTP e-signature (toggle) ─────────────────────────────────────────

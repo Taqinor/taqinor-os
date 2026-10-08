@@ -197,6 +197,8 @@ _LIBELLES = {
 _OBJETS_NOMMES = {
     'calepinage': 'calepinage',
     'taille': "taille d'offre",
+    # ADEV19 — l'option activée par le CLIENT sur sa page publique.
+    'option client': 'option client',
 }
 
 
