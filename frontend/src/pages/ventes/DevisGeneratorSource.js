@@ -27,6 +27,7 @@ export const FILES = [
   'features/ventes/quote/hooks/useRegistreOverrides.js',
   'pages/ventes/generator/IndicationRegistre.jsx',
   'pages/ventes/generator/PanneauSurcharges.jsx',
+  'pages/ventes/generator/hooks/useLignesEcran.js',
 ]
 
 //: Le marqueur posé avant le contenu de chaque fichier concaténé.

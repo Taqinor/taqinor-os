@@ -54,9 +54,11 @@ const LT = read('generator/LigneTable.jsx')
 test('DevisGenerator : importe deriveRoleOrderFromLines de solar.js', () => {
   // QJR546 a ajouté `_hasPrix` APRÈS lui dans le même import : la garde lit
   // le bloc d'import de solar.js entier au lieu d'exiger la dernière place.
-  const bloc = /import\s*\{([^}]*)\}\s*from\s*'\.\.\/\.\.\/features\/ventes\/solar'/.exec(DG)
-  assert.ok(bloc, 'import depuis features/ventes/solar introuvable')
-  assert.match(bloc[1], /\bderiveRoleOrderFromLines,/)
+  // SPL47 — le générateur est réparti (lecteur unique) : un des imports de
+  // solar.js, quelle que soit la profondeur du fichier, porte le nom.
+  const blocs = [...DG.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(?:\.\.\/)+features\/ventes\/solar'/g)]
+  assert.ok(blocs.length, 'import depuis features/ventes/solar introuvable')
+  assert.ok(blocs.some((b) => /\bderiveRoleOrderFromLines\b/.test(b[1])), 'deriveRoleOrderFromLines non importé')
 })
 
 test('DevisGenerator : handleSaveOrdreLignes dérive lines puis PATCH ordre_lignes', () => {
