@@ -8,7 +8,6 @@
 Tout est scopé à la société (TenantMixin) ; la société et l'acteur sont posés
 côté serveur, jamais lus du corps de requête.
 """
-from django.utils import timezone
 
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers as drf_serializers, status, viewsets
@@ -276,37 +275,26 @@ class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """Approuve une approbation en attente et relance l'action différée."""
+        return self._decider(approve=True)
+
+    def _decider(self, *, approve):
+        """APAR17 — approve/reject passent par LE service de décision
+        (verrou ``select_for_update``, palier + SOD YEVNT11/APAR46,
+        ``run_approved`` après commit) : plus de copie divergente ici."""
         approval = self.get_object()
-        if approval.status != AutomationApproval.Status.PENDING:
-            return Response(
-                {'detail': 'Décision déjà prise.'}, status=400)
-        # YEVNT11 — SOD : le demandeur ne peut pas approuver sa propre
-        # demande (override admin audité).
         try:
-            engine.enforce_requester_not_approver(
-                requester=approval.requested_by, approver=request.user,
-                company=approval.company, label=f'approval#{approval.pk}')
-        except engine.SodViolation as exc:
+            services.decider_approval(
+                approval, approve=approve, user=self.request.user)
+        except services.DecisionError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        except services.DecisionInterdite as exc:
             return Response({'detail': str(exc)}, status=403)
-        approval.status = AutomationApproval.Status.APPROVED
-        approval.decided_by = request.user
-        approval.decided_at = timezone.now()
-        approval.save(update_fields=['status', 'decided_by', 'decided_at'])
-        engine.run_approved(approval, user=request.user)
         return Response(self.get_serializer(approval).data)
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Rejette une approbation en attente : l'action n'est jamais lancée."""
-        approval = self.get_object()
-        if approval.status != AutomationApproval.Status.PENDING:
-            return Response(
-                {'detail': 'Décision déjà prise.'}, status=400)
-        approval.status = AutomationApproval.Status.REJECTED
-        approval.decided_by = request.user
-        approval.decided_at = timezone.now()
-        approval.save(update_fields=['status', 'decided_by', 'decided_at'])
-        return Response(self.get_serializer(approval).data)
+        return self._decider(approve=False)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

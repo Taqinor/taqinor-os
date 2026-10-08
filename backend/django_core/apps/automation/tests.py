@@ -253,8 +253,10 @@ class ApprovalGatingTests(TestCase):
         approval = AutomationApproval.objects.get(rule=rule)
 
         api = auth(self.owner)
-        resp = api.post(
-            f'/api/django/automation/approvals/{approval.pk}/approve/')
+        # APAR17 — l'action différée part APRÈS le commit de la décision.
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = api.post(
+                f'/api/django/automation/approvals/{approval.pk}/approve/')
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
         self.assertEqual(approval.status, AutomationApproval.Status.APPROVED)

@@ -399,21 +399,38 @@ def decider_approval(approval, *, approve, user):
     APAR46 — lève ``DecisionInterdite`` (403) si ``user`` n'a pas le palier
     approbateur ou s'il est le demandeur, QUEL QUE SOIT le chemin (boîte
     unifiée, décision en masse, jeton push)."""
+    from django.db import transaction
+
     from . import engine
     from .models import AutomationApproval
 
     if approval.status != AutomationApproval.Status.PENDING:
         raise DecisionError('Décision déjà prise.')
-    verifier_decideur_approval(approval, user)
-
-    approval.status = (
-        AutomationApproval.Status.APPROVED if approve
-        else AutomationApproval.Status.REJECTED)
-    approval.decided_by = user
-    approval.decided_at = timezone.now()
-    approval.save(update_fields=['status', 'decided_by', 'decided_at'])
-    if approve:
-        engine.run_approved(approval, user=user)
+    # APAR17 — la décision est VERROUILLÉE : la ligne est relue PENDING sous
+    # ``select_for_update`` dans une transaction. Deux décisions concurrentes
+    # (approuver + refuser lues avant la première) ne donnent plus qu'UNE
+    # exécution et UN statut ; la seconde lève « Décision déjà prise. ».
+    with transaction.atomic():
+        verrou = (AutomationApproval.objects.select_for_update()
+                  .filter(pk=approval.pk,
+                          status=AutomationApproval.Status.PENDING)
+                  .first())
+        if verrou is None:
+            raise DecisionError('Décision déjà prise.')
+        verifier_decideur_approval(verrou, user)
+        verrou.status = (
+            AutomationApproval.Status.APPROVED if approve
+            else AutomationApproval.Status.REJECTED)
+        verrou.decided_by = user
+        verrou.decided_at = timezone.now()
+        verrou.save(update_fields=['status', 'decided_by', 'decided_at'])
+        if approve:
+            # L'action différée part APRÈS le commit de la décision.
+            transaction.on_commit(
+                lambda: engine.run_approved(verrou, user=user))
+    approval.status = verrou.status
+    approval.decided_by = verrou.decided_by
+    approval.decided_at = verrou.decided_at
     return approval
 
 
