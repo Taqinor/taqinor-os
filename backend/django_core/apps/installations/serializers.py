@@ -722,8 +722,9 @@ class ConsommationLigneSerializer(serializers.ModelSerializer):
         fields = ['id', 'produit', 'produit_nom', 'designation',
                   'quantite_prevue', 'quantite_utilisee', 'hors_nomenclature',
                   'justification', 'justification_memo', 'stock_applique',
-                  'variance', 'justification_requise', 'ordre']
-        read_only_fields = ['stock_applique', 'ordre']
+                  'variance', 'justification_requise', 'ordre',
+                  'date_modification']
+        read_only_fields = ['stock_applique', 'ordre', 'date_modification']
 
     def get_variance(self, obj):
         return obj.variance

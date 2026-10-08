@@ -1123,7 +1123,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             ligne.justification_memo = memo
             fields.append('justification_memo')
         if fields:
-            ligne.save(update_fields=fields)
+            # ACHT32 — `auto_now` ne joue qu'avec le champ dans update_fields.
+            ligne.save(update_fields=fields + ['date_modification'])
         return Response(ConsommationLigneSerializer(ligne).data)
 
     @action(detail=True, methods=['post'],

@@ -49,6 +49,41 @@ class FieldOpError(Exception):
     la rejouer après correction (elle n'est jamais mémorisée comme succès)."""
 
 
+class FieldOpConflit(Exception):
+    """ACHT32 — l'enregistrement visé a été modifié EN LIGNE après la lecture
+    du terminal (`base_updated_at` périmé) : l'op n'est PAS appliquée, elle
+    revient `conflit` avec la valeur serveur et reste en file côté terminal."""
+
+    def __init__(self, detail, valeur_serveur):
+        super().__init__(detail)
+        self.detail = detail
+        self.valeur_serveur = valeur_serveur
+
+
+def _lire_horodatage(brut):
+    """ISO 8601 → datetime aware, ou None si absent/illisible."""
+    if not brut or not isinstance(brut, str):
+        return None
+    from django.utils.dateparse import parse_datetime
+    try:
+        dt = parse_datetime(brut)
+    except ValueError:
+        return None
+    if dt is not None and timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_default_timezone())
+    return dt
+
+
+def _instant_saisie(payload):
+    """ACHT32 — instant de SAISIE de l'op (`client_ts`), borné au présent ;
+    sans `client_ts` valide, l'instant de synchro (rétrocompatible)."""
+    maintenant = timezone.now()
+    saisie = payload.get('_client_ts') if isinstance(payload, dict) else None
+    if saisie is None:
+        return maintenant
+    return min(saisie, maintenant)
+
+
 # ── Résolution scopée société des cibles ─────────────────────────────────────
 #
 # ACHT27 (C-ACHT-025) — la cible est résolue par le MÊME sélecteur que le
@@ -82,7 +117,7 @@ def _chantier(company, payload, user=None):
 # ── Handlers — un par op_type. Chacun POSE un état (last-write-wins). ─────────
 def _h_depart_depot(company, user, payload):
     iv = _intervention(company, payload, user)
-    iv.depart_depot_le = timezone.now()
+    iv.depart_depot_le = _instant_saisie(payload)
     iv.save(update_fields=['depart_depot_le'])
     intervention_activity.log_note(iv, user, 'Départ dépôt enregistré (synchro hors-ligne).')
     return {'intervention': iv.id, 'depart_depot_le': iv.depart_depot_le.isoformat()}
@@ -90,7 +125,7 @@ def _h_depart_depot(company, user, payload):
 
 def _h_checkin(company, user, payload):
     iv = _intervention(company, payload, user)
-    iv.arrivee_site_le = timezone.now()
+    iv.arrivee_site_le = _instant_saisie(payload)
     fields = ['arrivee_site_le']
     lat, lng = payload.get('lat'), payload.get('lng')
     if lat not in (None, '') and lng not in (None, ''):
@@ -107,7 +142,7 @@ def _h_checkin(company, user, payload):
 
 def _h_retour(company, user, payload):
     iv = _intervention(company, payload, user)
-    iv.retour_depot_le = timezone.now()
+    iv.retour_depot_le = _instant_saisie(payload)
     iv.save(update_fields=['retour_depot_le'])
     intervention_activity.log_note(iv, user, 'Retour dépôt enregistré (synchro hors-ligne).')
     return {'intervention': iv.id, 'retour_depot_le': iv.retour_depot_le.isoformat()}
@@ -176,6 +211,16 @@ def _h_consommation_ligne(company, user, payload):
     ligne = cons.lignes.filter(id=payload.get('ligne')).first()
     if ligne is None:
         raise FieldOpError('Ligne de consommation inconnue.')
+    # ACHT32 — option (a) d'ACHT91 : la détection de conflit est celle de
+    # `offlinesync/conflicts.py` (version lue par le terminal vs serveur).
+    from apps.offlinesync import conflicts
+    if conflicts.detecter(ligne, payload):
+        raise FieldOpConflit(conflicts.MESSAGE, {
+            'ligne': ligne.id,
+            'quantite_utilisee': str(ligne.quantite_utilisee),
+            'justification': ligne.justification,
+            'date_modification': ligne.date_modification.isoformat(),
+        })
     from decimal import Decimal, InvalidOperation
     if 'quantite_utilisee' in payload:
         try:
@@ -184,7 +229,8 @@ def _h_consommation_ligne(company, user, payload):
             raise FieldOpError('Quantité invalide.')
     if 'justification' in payload:
         ligne.justification = (payload.get('justification') or '').strip()
-    ligne.save(update_fields=['quantite_utilisee', 'justification'])
+    ligne.save(update_fields=[
+        'quantite_utilisee', 'justification', 'date_modification'])
     return {'ligne': ligne.id,
             'quantite_utilisee': str(ligne.quantite_utilisee)}
 
@@ -211,7 +257,7 @@ def _h_cocher_safety(company, user, payload):
     coche = bool(payload.get('coche', True))
     item.coche = coche
     item.coche_par = user if coche else None
-    item.coche_le = timezone.now() if coche else None
+    item.coche_le = _instant_saisie(payload) if coche else None
     item.save(update_fields=['coche', 'coche_par', 'coche_le'])
     return {'cle': item.cle, 'coche': item.coche}
 
@@ -233,6 +279,10 @@ def _h_signer_client(company, user, payload):
             iv, user, payload.get('signature_client'), nom=nom)
     except SignatureRefusee as exc:
         raise FieldOpError(exc.message)
+    # ACHT32 — `signe_le` = instant de saisie (borné au présent).
+    if payload.get('_client_ts') is not None:
+        iv.signe_le = _instant_saisie(payload)
+        iv.save(update_fields=['signe_le'])
     intervention_activity.log_note(
         iv, user, f"Signature client enregistrée ({nom or 'anonyme'}, synchro hors-ligne).")
     return {'intervention': iv.id, 'signe_le': iv.signe_le.isoformat()}
@@ -282,7 +332,7 @@ def _h_cocher_checklist(company, user, payload):
     fait = bool(payload.get('fait', True))
     item.fait = fait
     item.fait_par = user if fait else None
-    item.fait_le = timezone.now() if fait else None
+    item.fait_le = _instant_saisie(payload) if fait else None
     item.save(update_fields=['fait', 'fait_par', 'fait_le'])
     return {'cle': item.cle, 'fait': item.fait}
 
@@ -341,6 +391,17 @@ def _apply_one(company, user, op):
 
     handler, target_type, target_key = FIELD_OP_HANDLERS[op_type]
     payload = op.get('payload') or {}
+    if isinstance(payload, dict):
+        # ACHT32 — `client_ts` (instant de saisie) et `base_updated_at`
+        # (version lue) voyagent au niveau de l'op ; le payload les reçoit
+        # pour les handlers (copie : le corps reçu n'est pas muté).
+        payload = dict(payload)
+        saisie = _lire_horodatage(
+            op.get('client_ts') or payload.get('client_ts'))
+        if saisie is not None:
+            payload['_client_ts'] = saisie
+        if op.get('base_updated_at') and not payload.get('base_updated_at'):
+            payload['base_updated_at'] = op.get('base_updated_at')
     try:
         with transaction.atomic():
             result = handler(company, user, payload)
@@ -352,6 +413,12 @@ def _apply_one(company, user, op):
                 result=result, ok=True, created_by=user)
         return {'client_op_id': op_id, 'op_type': op_type,
                 'status': 'applied', 'result': result}
+    except FieldOpConflit as exc:
+        # ACHT32 — enregistrement modifié en ligne depuis la lecture du
+        # terminal : op NON appliquée ni mémorisée, le terminal arbitre.
+        return {'client_op_id': op_id, 'op_type': op_type,
+                'status': 'conflit', 'detail': exc.detail,
+                'valeur_serveur': exc.valeur_serveur}
     except FieldOpError as exc:
         # Erreur applicative attendue (cible inconnue, corps invalide) : l'op
         # n'est pas mémorisée → rejouable. Le lot CONTINUE.
