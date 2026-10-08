@@ -17,6 +17,7 @@ export default function DevisPdfDialog({
   showMonthly, setShowMonthly,
   targetHasEtude, targetIsCi, targetMode, includeEtude, setIncludeEtude,
   includeCalepinage, setIncludeCalepinage,
+  includeNoteCalcul, setIncludeNoteCalcul,
   devisFinal, setDevisFinal,
   paymentMode, setPaymentMode,
   customAcompte, setCustomAcompte,
@@ -127,6 +128,22 @@ export default function DevisPdfDialog({
                 </label>
               </RadioGroup>
             </div>
+          )}
+
+          {/* AMOT68 — annexe « Note de calcul » (AGR319) : la pièce du dossier
+              FDA, demandable depuis l'écran (+1 page, agricole seul). */}
+          {pdfMode === 'full' && !batchPdf && targetIsAgricole && setIncludeNoteCalcul && (
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox
+                checked={!!includeNoteCalcul}
+                onCheckedChange={v => setIncludeNoteCalcul(!!v)}
+                className="mt-0.5"
+                aria-label="Joindre la note de calcul"
+              />
+              <span>
+                Joindre la note de calcul <span className="text-muted-foreground">(annexe technique — une page en plus)</span>
+              </span>
+            </label>
           )}
 
           <label className="flex items-start gap-2 text-sm">
