@@ -978,6 +978,17 @@ class Ticket(models.Model):
         return self.reference
 
     @property
+    def date_reference_couverture(self):
+        """ASAV4 (D-ASAV-6) — date à laquelle se juge la couverture d'un
+        ticket (garantie ET contrat) : la date d'ouverture, à défaut la date
+        de création, à défaut aujourd'hui (ticket pas encore enregistré)."""
+        if self.date_ouverture:
+            return self.date_ouverture
+        if self.date_creation:
+            return timezone.localtime(self.date_creation).date()
+        return timezone.localdate()
+
+    @property
     def sous_garantie_calcule(self):
         """Garantie effective du ticket.
 
@@ -991,7 +1002,9 @@ class Ticket(models.Model):
         constructeur reste sous garantie (légale, impérative)."""
         eq = self.equipement
         if eq is not None and eq.date_fin_garantie_effective:
-            today = timezone.localdate()
+            # ASAV4 (D-ASAV-6) — jugée à l'OUVERTURE du ticket, jamais au jour
+            # de la lecture ou de la facturation.
+            today = self.date_reference_couverture
             return (self.SousGarantie.OUI
                     if today < eq.date_fin_garantie_effective
                     else self.SousGarantie.NON)
@@ -1015,15 +1028,17 @@ class Ticket(models.Model):
         pour tout appel hors contexte de liste (fiche détail unique, etc.)."""
         if self.sous_garantie_calcule == self.SousGarantie.OUI:
             return self.Couverture.GARANTIE
+        ref = self.date_reference_couverture
         if contrat_cache is not None:
-            if self.client_id not in contrat_cache:
-                contrat_cache[self.client_id] = self._contrat_couvrant()
-            contrat = contrat_cache[self.client_id]
+            cle = (self.client_id, ref)
+            if cle not in contrat_cache:
+                contrat_cache[cle] = self._contrat_couvrant(ref)
+            contrat = contrat_cache[cle]
         else:
-            contrat = self._contrat_couvrant()
+            contrat = self._contrat_couvrant(ref)
         if contrat is not None and contrat.couvre_equipement(self.equipement):
             from .selectors import droits_restants
-            annee = (self.date_ouverture or timezone.localdate()).year
+            annee = ref.year
             droits = droits_restants(contrat, annee)
             if self.type == self.Type.PREVENTIF:
                 restant = droits['visites_restantes']
@@ -1035,7 +1050,7 @@ class Ticket(models.Model):
 
     def _contrat_couvrant(self, today=None):
         """AUD502 — contrat de maintenance du client qui COUVRE réellement à
-        la date du jour : le plus récent parmi les contrats actifs ET non
+        la date de référence (ASAV4 : l'ouverture du ticket ; défaut : jour) : le plus récent parmi les contrats actifs ET non
         expirés au-delà de la grâce (``ContratMaintenance.est_actif``).
 
         Avant AUD502, seul le drapeau ``actif`` était testé : un contrat mort
