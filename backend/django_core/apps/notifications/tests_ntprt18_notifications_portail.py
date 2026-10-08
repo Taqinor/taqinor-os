@@ -106,7 +106,8 @@ class PortailClientNotifyTests(TestCase):
         for event_type in PORTAIL_EVENT_TYPES:
             with self.subTest(event_type=event_type):
                 mail.outbox = []
-                notify(self.compte_client, event_type, 'Titre', body='x')
+                with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                    notify(self.compte_client, event_type, 'Titre', body='x')
                 self.assertEqual(len(mail.outbox), 1)
 
 
