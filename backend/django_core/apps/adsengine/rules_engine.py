@@ -388,8 +388,12 @@ def _eval_frequency_high(company, policy, template, *, now, config):
 def _eval_cpl_band(company, policy, template, *, now, config):
     """Bande CPL (ADSENG16) : coût par lead d'une campagne hors de sa bande
     trainante ±2× (détecteur pur ``anomaly.detect_cpl_band``). Sous le plancher
-    de leads → ``insufficient_data`` (ALERTE toujours). Une anomalie déclenchée
-    matérialise une ``AnomalyEvent``."""
+    de leads → ``insufficient_data`` (ALERTE toujours).
+
+    AACQ8 — évaluateur SANS effet de bord : la détection est RENDUE dans le
+    finding (clé ``detection``) ; seul ``evaluate_company`` l'enregistre en
+    ``AnomalyEvent`` (hors simulation, une fois par (règle, cible) et par
+    fenêtre de cooldown) — un backtest GET n'écrit jamais rien."""
     from django.contrib.contenttypes.models import ContentType
 
     from . import anomaly
@@ -424,16 +428,42 @@ def _eval_cpl_band(company, policy, template, *, now, config):
             min_samples=min_samples,
             # PUB134 — devise RÉELLE du compte (jamais « MAD » en dur).
             currency=currency)
-        if det.fired:
-            anomaly.record_anomaly(
-                company, det, entity_type='campaign',
-                entity_meta_id=camp.meta_id, rule_policy=policy)
         findings.append({
             'target_type': 'campaign', 'target_meta_id': camp.meta_id,
             'target_object_id': camp.pk, 'fired': det.fired,
             'insufficient_data': det.insufficient_data,
-            'computed': det.computed, 'severity': det.severity})
+            'computed': det.computed, 'severity': det.severity,
+            'detection': det if det.fired else None})
     return findings
+
+
+# AACQ8 — fenêtre de dédup des anomalies quand la règle n'a pas de cooldown.
+ANOMALY_RECORD_DEFAULT_COOLDOWN_HOURS = 24
+
+
+def _record_finding_anomaly(company, policy, finding):
+    """AACQ8 — Enregistre l'``AnomalyEvent`` d'un finding (détection rendue
+    par l'évaluateur) au plus UNE fois par (règle, cible) et par fenêtre de
+    cooldown (``policy.cooldown_hours``, sinon 24 h). Appelé par
+    ``evaluate_company`` seulement, et jamais en simulation."""
+    from django.utils import timezone
+
+    from . import anomaly
+    from .models import AnomalyEvent
+
+    det = finding.get('detection')
+    if det is None or policy.dry_run:
+        return None
+    hours = policy.cooldown_hours or ANOMALY_RECORD_DEFAULT_COOLDOWN_HOURS
+    since = timezone.now() - datetime.timedelta(hours=hours)
+    target = finding.get('target_meta_id', '')
+    if AnomalyEvent.objects.filter(
+            company=company, rule_policy=policy, entity_meta_id=target,
+            created_at__gte=since).exists():
+        return None
+    return anomaly.record_anomaly(
+        company, det, entity_type=finding.get('target_type', ''),
+        entity_meta_id=target, rule_policy=policy)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1379,6 +1409,10 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
         fired_any = False
         summaries = []
         for finding in findings:
+            # AACQ8 — seul le moteur (hors simulation, dédupliqué) écrit
+            # l'anomalie rendue par un évaluateur pur.
+            if finding.get('fired'):
+                _record_finding_anomaly(company, policy, finding)
             # ADSDEEP43 — entrée de journal ENRICHIE : entité évaluée, verdict de
             # condition avec ses valeurs (``condition_fr``), et — si déclenchée —
             # le delta de l'action proposée (``action``).

@@ -125,9 +125,10 @@ class UsdAccountDecisionTextTests(TestCase):
         for d in range(1, 6):
             _snap(self.company, camp, day=d, spend=10, results=1, cpl=10)
         _snap(self.company, camp, day=0, spend=95, results=1, cpl=95)
+        # AACQ8 — une simulation n'écrit plus d'AnomalyEvent : règle armée.
         RulePolicy.objects.create(
             company=self.company, template_key='cpl_band',
-            enabled=True, dry_run=True, mode=RulePolicy.Mode.PROPOSE)
+            enabled=True, dry_run=False, mode=RulePolicy.Mode.PROPOSE)
 
         rules_engine.evaluate_company(self.company, now=TODAY)
         event = AnomalyEvent.objects.filter(company=self.company).first()
