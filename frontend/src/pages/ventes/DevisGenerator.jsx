@@ -1527,6 +1527,7 @@ export default function DevisGenerator({
     conditionsServies, monthly, distributeur, realBillMode, realBillSaisi, distributeurChoisi,
     consoStockee, nbPanneaux, scenario, modeInstallation, pompeAlim, lines, setLines, tauxTva,
     discountPct, setDiscountPct, multiMode, nombreProprietes, profilCi, tarifSaisie, ecoCi,
+    setMultiMode, setNombreProprietes,
     categorieCommerciale, commercialAnswers, prixCible, accessoiresOnly, pompeCv, pompeType,
     pompeHmt, pompeDebit, pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,

@@ -53,6 +53,7 @@ export function usePersistanceDevis(ctx) {
     conditionsServies, monthly, distributeur, realBillMode, realBillSaisi, distributeurChoisi,
     consoStockee, nbPanneaux, scenario, modeInstallation, pompeAlim, lines, setLines, tauxTva,
     discountPct, setDiscountPct, multiMode, nombreProprietes, profilCi, tarifSaisie, ecoCi,
+    setMultiMode, setNombreProprietes,
     categorieCommerciale, commercialAnswers, prixCible, accessoiresOnly, pompeCv, pompeType,
     pompeHmt, pompeDebit, pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
@@ -428,7 +429,10 @@ export function usePersistanceDevis(ctx) {
         // par `etatVersEcritures` quand il est propre au devis ou touché.
         const extra = {
           entete: surcharge?.entete ? { ...payload, ...surcharge.entete } : payload,
-          etude_params: surcharge?.etude_params ?? choixEcran(),
+          // AGNR22 — une version restaurée rejoue SON étude, telle que servie
+          // (clés écran absentes à null, AGNR9) ; jamais `choixEcran()` de
+          // l'écran d'avant (le ×4 posé depuis survivait à la restauration).
+          etude_params: surcharge ? surcharge.etude_params : choixEcran(),
         }
         // QJR549 — le jeton part avec l'édition ; « Enregistrer quand même »
         // (après un 409) renvoie UNE fois sans jeton.
@@ -613,6 +617,12 @@ export function usePersistanceDevis(ctx) {
       return copie
     })
     if (!lignesSnap.length) return
+    // AGNR22 — un instantané ancien SANS étude n'est jamais fusionné avec
+    // l'état d'écran courant : la restauration est refusée, rien n'est écrit.
+    if (!contenu.etude || typeof contenu.etude !== 'object') {
+      toast.error('Version sans étude — restauration impossible.')
+      return
+    }
     const ok = await confirm({
       title: 'Revenir à cette version ?',
       description: 'Le devis reprend les lignes, la remise et l\'échéancier de cette '
@@ -627,9 +637,21 @@ export function usePersistanceDevis(ctx) {
     const entete = {}
     if (contenu.remise_globale != null) entete.remise_globale = contenu.remise_globale
     if (Array.isArray(contenu.echeancier)) entete.echeancier = contenu.echeancier
-    const etude = contenu.etude && Object.keys(contenu.etude).length ? contenu.etude : undefined
+    const etude = contenu.etude
     const res = await persisterDevis({ lignes: lignesSnap, entete, etude_params: etude })
     if (res && !res.reserve) {
+      // AGNR22 — l'écran suit l'étude de la version : le rechargement `?edit=`
+      // ne repose le mode multi-propriétés que si la clé existe ; une version
+      // mono (`nombre_proprietes` null) ramène l'écran à « Une seule ».
+      if (!lignesSnap.some((l) => l.groupe_index != null)) {
+        const n = parseInt(etude.nombre_proprietes, 10)
+        if (Number.isFinite(n) && n > 1) {
+          setMultiMode('multiplier')
+          setNombreProprietes(String(n))
+        } else {
+          setMultiMode('none')
+        }
+      }
       toast.success('Version restaurée et enregistrée.')
       clear()
       setVersionHistorique(n => n + 1)
