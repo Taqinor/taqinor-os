@@ -73,6 +73,13 @@ OWNER_MODULE = {
         'dossier_juridique_clos', 'btp_reserve_levee', 'btp_rfi_repondu',
         'btp_visa_approuve', 'btp_dgd_finalise',
     ],
+    # SPL286 — chaîne facture → compta/chantier (propriétaire facturation).
+    'facturation': [
+        'payment_captured', 'document_produit', 'facture_paid',
+        'paiement_rejete', 'facture_emise', 'facture_payee',
+        'facture_annulee', 'bon_commande_cree', 'paiement_enregistre',
+        'avoir_cree', 'avoir_annule',
+    ],
 }
 
 INIT_EVENTS = Path(__file__).resolve().parents[1] / 'events' / '__init__.py'
