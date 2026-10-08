@@ -158,6 +158,7 @@ import { GenCardHeader } from './generator/CarteMetrique'
 import { CONDITIONS_VIDES } from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
+import MargeIndicative from './generator/MargeIndicative'
 import IndicationRegistre from './generator/IndicationRegistre'
 import PanneauSurcharges from './generator/PanneauSurcharges'
 import CarteCreation from './generator/CarteCreation'
@@ -2122,17 +2123,10 @@ export default function DevisGenerator({
         )}
         <Card>
           <CardContent className="pt-4 flex flex-col gap-3">
-            {marge != null && (
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Marge indicative (interne)
-                </div>
-                <div className={`text-sm font-semibold ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-                  {formatMoney(marge)}
-                  {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
-                </div>
-              </div>
-            )}
+            {/* AGNR29 — même composant que le Rail : jamais un % sur un coût
+                partiel (« marge partielle : N ligne(s) sans prix d'achat »). */}
+            <MargeIndicative marge={marge} kpiTotal={kpiTotal}
+                             lignesSansAchat={buyDetail.sansAchat} variante="lateral" />
             <div className="border-t border-border pt-3">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
               <div className="text-sm text-foreground">
