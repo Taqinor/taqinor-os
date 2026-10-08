@@ -13,7 +13,7 @@ import {
   ArrowLeft, Target, ClipboardList, User, Zap, BarChart3,
   // QJR100 — `ShoppingCart` et `Trash2` sont partis avec la table de lignes
   // (`generator/LigneTable.jsx`), qui les importe désormais elle-même.
-  StickyNote, FileText, RotateCcw, Sun, Plus,
+  FileText, Sun, Plus,
   // EZ3 — actions du panneau de succès (envoyer / aperçu).
   Send, Eye,
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ».
@@ -54,7 +54,6 @@ import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
-import DevisPresetPanel from './DevisPresetPanel'
 // QJR100 — `DevisLineRow` n'est plus importé ici : c'est `LigneTable` qui
 // l'enrobe désormais (un seul endroit monte une ligne de devis).
 // TAILLES (fondateur 26/08/2026) — écran vendeur Éco/Recommandé/Max, composant
@@ -74,7 +73,7 @@ import {
   Button, Card, CardContent,
   // APX12 — le langage UNIQUE des KPI d'argent (le total du rail).
   Stat,
-  Input, Textarea, Label, Segmented, Switch,
+  Input, Label, Segmented, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
@@ -86,13 +85,7 @@ import {
 // QJR540 — blocs issus de l'ancien modal DevisForm (supprimé) : le calepinage qui
 // pilote ce devis (CAL40), son badge « périmé » (CAL188) et les pièces jointes
 // du devis (seule UI de pièces jointes devis).
-import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'
-import BadgePerime from '../../features/calepinage/BadgePerime'
-import AttachmentsPanel from '../../components/AttachmentsPanel'
 // QJR553 (D-QJR5-7) — historique des versions + « Revenir à cette version ».
-import HistoriqueConfiguration from '../../features/ventes/HistoriqueConfiguration'
-import LotsMultiSites from '../../features/ventes/LotsMultiSites'
-import AjouterBoqElectrique from '../../features/ventes/AjouterBoqElectrique'
 // QJR589 — bannière de dérive lead → devis à deux gestes (partagée cockpit).
 import BandeauDeriveLead from '../../features/ventes/quote/BandeauDeriveLead'
 // STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
@@ -145,7 +138,6 @@ import {
   MESSAGE_KWH_INCOHERENT,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
-import { peutEditerDevis } from '../../features/ventes/devisStatuts'
 // CJ2b — aperçu du moteur horaire résidentiel (PVGIS réel × consommation
 // réelle du client, mois par mois) : source UNIQUE des chiffres d'économie à
 // l'écran, à la place du miroir local `computeROI` dès que le serveur a
@@ -193,12 +185,13 @@ import {
 // d'argent (totaux, remise, TVA, prix cible, marge interne).
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
-import CarteEcheancier from './generator/CarteEcheancier'
-import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
+import { CONDITIONS_VIDES } from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
 import IndicationRegistre from './generator/IndicationRegistre'
 import PanneauSurcharges from './generator/PanneauSurcharges'
+import CarteCreation from './generator/CarteCreation'
+import BlocsEditionComplete from './generator/BlocsEditionComplete'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
 // SON marché et lit la clé de son module de stratégie (QJR89) pour se retirer
 // ailleurs. Cet écran garde l'en-tête, le sélecteur de marché, le lead/client,
@@ -3562,45 +3555,12 @@ export default function DevisGenerator({
           />
         </LigneTable>
 
-        {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
-            APX16 — le panneau n'apparaissait QU'EN ÉDITION : on ne pouvait pas
-            partir d'un modèle pour créer un devis, ce qui est pourtant le
-            besoin le plus fréquent. Il est désormais là DÈS LA CRÉATION
-            (replié) ; sans devisId, l'application se fait localement depuis
-            l'instantané de lignes du modèle (aucun endpoint nouveau) et la
-            section « Enregistrer comme modèle » dit honnêtement qu'elle
-            attend que le devis existe. */}
-        <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied}
-                          avantEnregistrement={enregistrerAvantModele} />
-
-        {/* QJR553 (D-QJR5-7) — historique des versions, avec « Revenir à
-            cette version » seulement si le devis est modifiable (QJR516). */}
-        {editDevis?.id && (
-          <HistoriqueConfiguration devisId={editDevis.id}
-                                   peutRevenir={peutEditerDevis(editDevis)}
-                                   onRevenir={revenirAVersion}
-                                   rafraichir={versionHistorique} />
-        )}
-
-        {/* QJR540 — blocs repris du modal DevisForm (supprimé) : badge
-            « calepinage périmé » (CAL188, lu de `layout_stale`), le calepinage
-            qui pilote ce devis (CAL40, silencieux sans calepinage) et les
-            pièces jointes du devis. N'existent que sur un devis enregistré. */}
-        {editDevis?.id && (
-          <Card data-testid="devis-edition-blocs">
-            <CardContent className="pt-4 space-y-3">
-              <BadgePerime layoutStale={editDevis.layout_stale}
-                layoutNbPanneaux={editDevis.layout_nb_panneaux} />
-              <BlocCalepinageDevis devisId={editDevis.id} />
-              <AjouterBoqElectrique devisId={editDevis.id} modifiable={peutEditerDevis(editDevis)} onAjoute={rechargerDevisRecompose} />
-              <LotsMultiSites devisId={editDevis.id} modifiable={peutEditerDevis(editDevis)} onChange={rechargerDevisRecompose} />
-              <div>
-                <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
-                <AttachmentsPanel model="ventes.devis" id={editDevis.id} />
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* SPL49 — modèles, historique et blocs de l'Édition complète (déplacés tels quels). */}
+        <BlocsEditionComplete
+          editDevis={editDevis} rechargerDevisRecompose={rechargerDevisRecompose}
+          handlePresetApplied={handlePresetApplied} enregistrerAvantModele={enregistrerAvantModele}
+          versionHistorique={versionHistorique} revenirAVersion={revenirAVersion}
+        />
 
         {/* SPL46 — le panneau brut du registre (admin, devis enregistré) : sa
             condition d'affichage vit avec lui dans PanneauSurcharges. */}
@@ -3611,106 +3571,16 @@ export default function DevisGenerator({
                            overridesErreur={overridesErreur} overridesReg={overridesReg}
                            regenererOverride={regenererOverride} />
 
-        {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
-        {editDevis && (
-          <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
-                           mode={modeInstallation} effectifs={termesEffectifs}
-                           conditions={conditions} setCondition={setCondition}
-                           erreursConditions={erreursConditions(conditions)} clients={clients} />
-        )}
-        {errors.conditions && (
-          <p role="alert" className="text-xs text-destructive" data-testid="erreur-conditions">{errors.conditions}</p>
-        )}
-
-        {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}
-        <Card>
-          <GenCardHeader icon={StickyNote} title="Texte pour le client (imprimé sur le devis)" />
-          <CardContent className="pt-4">
-            <Textarea rows={3} value={note}
-                      onChange={e => setNote(e.target.value)}
-                      placeholder="Conditions particulières, précisions pour le client…" />
-          </CardContent>
-        </Card>
-
-        {/* Avertissements NON bloquants (lead perdu/archivé, chiffres d'étude
-            auto) — informatifs, n'empêchent jamais l'enregistrement. */}
-        {Object.values(warnings).filter(Boolean).length > 0 && (
-          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-            {Object.values(warnings).filter(Boolean).map((w, i) => (
-              <p key={i}>{w}</p>
-            ))}
-          </div>
-        )}
-        {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de
-            clic silencieux sans effet. */}
-        {(errors.submit || errors.lines || errors.client || errors.conso || errors.factures) && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" data-testid="erreur-enregistrement">
-            {errors.submit || errors.lines || errors.client || errors.conso || errors.factures}
-          </div>
-        )}
-
-        {/* ── Création ── */}
-        <Card>
-          <GenCardHeader icon={FileText}
-                         title={editDevis ? `Modification du devis ${editDevis.reference}` : 'Création du Devis'} />
-          <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">
-              {embedded
-                ? "Vérifiez puis enregistrez. Le devis s'affiche ensuite ici même "
-                  + 'avec son PDF, sans quitter la fiche du lead.'
-                : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
-                  + 'premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).'}
-            </p>
-            {modeInstallation === 'agricole' && (apercuPompage?.donnees?.prix_a_renseigner || []).length > 0 && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-                   data-testid="pompage-prix-a-renseigner">
-                Attention : seules des pompes <strong>sans prix renseigné</strong> conviennent
-                ({apercuPompage.donnees.prix_a_renseigner.join(', ')}). Aucune pompe ne sera chiffrée
-                au devis tant que leur prix n'est pas saisi dans Stock.
-              </div>
-            )}
-            {superieurMsg && (
-              <div className={`mt-3 rounded-lg border p-3 text-sm ${superieurMsg.ok
-                ? 'border-success/30 bg-success/10 text-success'
-                : 'border-destructive/30 bg-destructive/10 text-destructive'}`}>
-                {superieurMsg.text}
-              </div>
-            )}
-            <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
-              {/* VX138(d) — bandeau sticky au scroll (plus seulement mobile) :
-                  TTC courant condensé, dérivé de `totals`/`kpiTotal` déjà en
-                  mémoire (même valeur que le rail latéral VX16) ; masqué en
-                  lg+ où le rail latéral l'affiche déjà. */}
-              <div className="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
-                <span className="text-muted-foreground">Total TTC</span>
-                <strong className="tabular-nums text-base font-semibold text-foreground">
-                  {formatMoney(kpiTotal)}
-                </strong>
-              </div>
-              {/* QJ28 — notification manuelle au supérieur (devis déjà enregistré) */}
-              {editDevis && (
-                <Button type="button" variant="outline" loading={superieurBusy}
-                        onClick={contacterSuperieur}
-                        title="Envoyer une notification à mon supérieur avec le lien de ce devis">
-                  Contacter mon supérieur
-                </Button>
-              )}
-              {!embedded && (
-                <Button type="button" variant="outline" onClick={handleReset}>
-                  <RotateCcw /> Réinitialiser
-                </Button>
-              )}
-              <Button type="button" variant="ghost" onClick={cancel}>
-                Annuler
-              </Button>
-              <Button type="submit" loading={saving}>
-                {saving
-                  ? 'Enregistrement...'
-                  : (editDevis ? <><Sun /> Enregistrer les modifications</> : <><Sun /> Créer le devis</>)}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* SPL49 — échéancier, notes client, avertissements et carte Création (déplacés tels quels). */}
+        <CarteCreation
+          embedded={embedded} clients={clients} saving={saving} errors={errors} warnings={warnings}
+          cancel={cancel} editDevis={editDevis} superieurBusy={superieurBusy}
+          superieurMsg={superieurMsg} contacterSuperieur={contacterSuperieur} note={note}
+          setNote={setNote} echeancierSaisie={echeancierSaisie} termesEffectifs={termesEffectifs}
+          conditions={conditions} setCondition={setCondition}
+          setEcheancierSaisie={setEcheancierSaisie} modeInstallation={modeInstallation}
+          apercuPompage={apercuPompage} kpiTotal={kpiTotal} handleReset={handleReset}
+        />
       </form>
 
       {/* VX16 — rail récapitulatif STICKY (lg+ uniquement, jamais sur mobile).
