@@ -191,6 +191,28 @@ def _document_pdf(document):
     # juridique (loi 43-20) — le re-rendre le falsifierait. Les factures gardent
     # aussi leur chemin propre (règle #4 : seul le PDF de DEVIS a changé de
     # moteur).
+    # AFAC42 — une FACTURE passe, elle aussi, par sa clé GARANTIE à jour
+    # (``cle_facture_pdf_a_jour`` : empreinte comparée, re-rendu si les
+    # données — dont les paiements, donc le « Reste à payer » — ont bougé, et
+    # rendu initial si la facture n'a jamais été rendue). Sans ça, la pièce
+    # jointe imprimait le reste d'un rendu antérieur, ou manquait tout court
+    # alors que le corps promet « ci-joint ». Règle #4 : moteur LÉGATAIRE de
+    # la facture, jamais le moteur devis. Échec → (None, None) : l'appelant
+    # facture refuse alors l'envoi (``_pdf_facture_indisponible``).
+    from apps.ventes.models import Facture
+    if isinstance(document, Facture):
+        try:
+            from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
+            cle = cle_facture_pdf_a_jour(document)
+            data = download_pdf(cle) if cle else None
+        except Exception as exc:  # noqa: BLE001 — l'appelant refuse l'envoi
+            logger.warning(
+                'AFAC42: PDF facture indisponible pour %s (%s) — envoi refusé',
+                ref, exc)
+            return None, None
+        if not data:
+            return None, None
+        return data, f'{ref}.pdf'
     if not signed_key and key:
         try:
             from apps.ventes.models import Devis
@@ -214,6 +236,22 @@ def _document_pdf(document):
     except Exception as exc:
         logger.warning('PDF indisponible pour pièce jointe (%s) : %s', ref, exc)
         return None, None
+
+
+PDF_FACTURE_INDISPONIBLE = (
+    "PDF indisponible : la facture promise « ci-joint » n'a pas pu être "
+    'produite — aucun e-mail envoyé.')
+
+
+def _refuser_sans_pdf_facture(log):
+    """AFAC42 — un e-mail de FACTURE qui promet le PDF « ci-joint » ne part
+    jamais sans lui : on consigne l'échec (EmailLog ``echec``, aucun message
+    envoyé) et on rend le log à l'appelant (400 / ``ok: false``)."""
+    log.statut = EmailLog.Statut.ECHEC
+    log.erreur = PDF_FACTURE_INDISPONIBLE
+    log.piece_jointe = ''
+    log.save()
+    return log
 
 
 def _chatter_note(devis, body, user):
@@ -284,6 +322,9 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
         log.erreur = 'Aucune adresse email destinataire.'
         log.save()
         return log
+
+    if attach_pdf and est_facture and not attachment:
+        return _refuser_sans_pdf_facture(log)
 
     ok, err = _send(
         dest, sujet, corps, attachment, attachment_name,
@@ -364,6 +405,9 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
         log.erreur = 'Aucune adresse email destinataire.'
         log.save()
         return log
+
+    if attach_pdf and not attachment:
+        return _refuser_sans_pdf_facture(log)
 
     ok, err = _send(
         dest, sujet, corps, attachment, attachment_name,
