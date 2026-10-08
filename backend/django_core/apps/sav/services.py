@@ -1730,7 +1730,12 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
                 notes__contains=f'[devis:{pred_id}]').exists():
             return None
 
-    lignes = list(devis.lignes.select_related('produit').all())
+    # ADEV55 — seules les lignes de l'OPTION ACCEPTÉE (comme le gel de
+    # nomenclature du chantier) ; les lignes optionnelles non activées sont
+    # exclues : le client n'est pas engagé sur la maintenance d'un équipement
+    # qu'il n'a pas acheté.
+    from apps.ventes.utils.options import option_lines
+    lignes = list(option_lines(devis))
     lignes_recurrentes = [
         ligne for ligne in lignes
         if getattr(ligne.produit, 'est_recurrent', False)
