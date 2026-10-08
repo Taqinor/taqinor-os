@@ -1182,6 +1182,25 @@ def _empreinte(entrees_stockees, kwc, onduleurs):
                           .encode('utf-8')).hexdigest()[:16]
 
 
+def _kwc_option_servie(devis, kwc_avec, kwc_sans):
+    """AMOT62 (C-AMOT-052) — le kWc de l'option que le document C&I SERT.
+
+    ``etudes.puissances_etude_horaire`` rend ``(kWc AVEC, kWc SANS)`` sur un
+    devis à panneaux variantés (``kwc_sans`` ``None`` sinon : une seule
+    puissance). Un C&I à deux options titre l'offre RÉSEAU seule (CIQ302,
+    ``utils.options.option_mise_en_avant`` → SANS), sauf option AVEC acceptée
+    (QJR401) — même règle que ``builder`` (``option_servie``). L'étude décrit
+    donc CETTE option : kWc, production, taux et économies imprimés parlent
+    de la même installation (sonde VC lci8 : étude 49,7 kWc imprimée à côté
+    de 35,5 kWc servis)."""
+    if not kwc_sans:
+        return kwc_avec
+    from apps.ventes.utils.options import AVEC_BATTERIE
+    if (getattr(devis, 'option_acceptee', '') or '') == AVEC_BATTERIE:
+        return kwc_avec or kwc_sans
+    return kwc_sans
+
+
 def rafraichir_etude_ci_devis(devis, *, force=False):
     """CIQ119 — (re)pose ``etude_ci`` / ``production_figee`` d'un devis C&I.
 
@@ -1201,7 +1220,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         if mode not in MODES:
             return None
         params = dict(getattr(devis, 'etude_params', None) or {})
-        kwc, _kwc_sans = puissances_etude_horaire(devis)
+        kwc = _kwc_option_servie(devis, *puissances_etude_horaire(devis))
         if not kwc:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,
