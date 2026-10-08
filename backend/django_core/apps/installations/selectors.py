@@ -3270,3 +3270,35 @@ def chantiers_utilisant_produit(company, produit_id, limit=20, *, user=None):
                      if chantier.date_creation else ''),
         })
     return lignes
+
+
+def blocage_annulation_acceptation(devis_id, company):
+    """Décision fondateur (08/10/2026) — le chantier né de l'acceptation du
+    devis ``devis_id`` empêche-t-il d'annuler cette acceptation ?
+
+    Rend la raison en français, ou ``None`` quand chaque chantier non annulé
+    du devis est encore dans son état INITIAL auto-créé : étape « Signé »,
+    aucune pose planifiée, aucune intervention (non annulée), aucun stock
+    déjà SORTI (réservation consommée). Une réservation non consommée posée
+    à la création n'est pas un blocage : elle est libérée par l'annulation.
+    Lecture seule, bornée à ``company`` (jamais de fuite cross-tenant)."""
+    from .models import Installation
+    qs = Installation.objects.filter(devis_id=devis_id, annule=False)
+    if company is not None:
+        qs = qs.filter(company=company)
+    for inst in qs.order_by('pk'):
+        if (Installation.canonical_statut(inst.statut)
+                != Installation.Statut.SIGNE):
+            return (f'le chantier {inst.reference} est déjà à l’étape '
+                    f'« {inst.get_statut_display()} ».')
+        if inst.date_pose_prevue is not None:
+            return (f'la pose du chantier {inst.reference} est déjà '
+                    'planifiée.')
+        nb = inst.interventions.filter(annulee=False).count()
+        if nb:
+            return (f'le chantier {inst.reference} a déjà {nb} '
+                    "intervention(s) planifiée(s). Annulez-les d'abord.")
+        if inst.reservations.filter(consomme=True).exists():
+            return (f'du stock a déjà été sorti pour le chantier '
+                    f'{inst.reference}.')
+    return None

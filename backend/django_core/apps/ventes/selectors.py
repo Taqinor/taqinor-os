@@ -1885,3 +1885,25 @@ from .selectors_stock import (  # noqa: E402,F401 — ré-export (SPL147)
     classer_produit_nom,
     devis_utilisant_produit,
 )
+
+
+def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
+                          exclure_id=None):
+    """Décision fondateur (08/10/2026) — les devis ACCEPTÉS et actifs d'un
+    lead (ou d'un client), du plus ancien au plus récent. Lecture cross-app
+    pour ``apps.crm`` (dés-acceptation à la sortie de « Signé », retour de la
+    commission / du parrainage) sans importer ``apps.ventes.models``.
+    ``exclure_id`` écarte un devis (celui qu'on vient de dés-accepter).
+    Sans ``lead_id`` ni ``client_id`` : liste vide (jamais toute la société)."""
+    from .models import Devis
+    if company is None or (lead_id is None and client_id is None):
+        return []
+    qs = Devis.objects.filter(
+        company=company, statut=Devis.Statut.ACCEPTE, is_active=True)
+    if lead_id is not None:
+        qs = qs.filter(lead_id=lead_id)
+    if client_id is not None:
+        qs = qs.filter(client_id=client_id)
+    if exclure_id is not None:
+        qs = qs.exclude(pk=exclure_id)
+    return list(qs.order_by('pk'))

@@ -17,7 +17,8 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from core.events import (
-    chantier_receptionne, devis_accepted, intervention_completed,
+    chantier_receptionne, devis_acceptation_annulee, devis_accepted,
+    intervention_completed,
 )
 from .models import Ticket
 
@@ -134,6 +135,20 @@ def _creer_contrat_maintenance_on_devis_accepted(sender, devis, user,
         logger.warning(
             'sav: échec création contrat de maintenance sur devis accepté '
             '#%s', getattr(devis, 'pk', None), exc_info=True)
+
+
+@receiver(devis_acceptation_annulee,
+          dispatch_uid="sav_desactiver_contrat_on_acceptation_annulee")
+def _desactiver_contrat_on_acceptation_annulee(sender, devis, user,
+                                               **kwargs):
+    """Décision fondateur (08/10/2026) — l'acceptation du devis est annulée
+    (lead sorti de « Signé ») : le contrat de maintenance auto-créé par XCTR1
+    est désactivé (jamais supprimé ; réactivé à la ré-acceptation). SANS
+    filet, à l'inverse de la création : on est dans la transaction de
+    dés-acceptation, une erreur doit l'annuler en bloc."""
+    from .services import desactiver_contrat_desaccepte
+
+    desactiver_contrat_desaccepte(devis=devis, user=user)
 
 
 @receiver(chantier_receptionne, dispatch_uid="sav_proposer_contrat_on_chantier_receptionne")

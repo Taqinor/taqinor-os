@@ -1193,6 +1193,64 @@ def abonner_suiveurs_globaux(ticket):
 
 # ── XCTR1 — Devis accepté (ligne récurrente) → contrat de maintenance ───────
 
+def _marqueur_desaccepte(devis_id):
+    """Marqueur porté par un contrat désactivé par une dés-acceptation."""
+    return f'[devis-desaccepte:{devis_id}]'
+
+
+def desactiver_contrat_desaccepte(*, devis, user=None):
+    """Décision fondateur (08/10/2026) — l'acceptation de ``devis`` est
+    annulée (lead sorti de « Signé ») : le contrat de maintenance qu'elle
+    avait créé (marqueur ``[devis:<id>]``) est DÉSACTIVÉ (jamais supprimé) et
+    son marqueur devient ``[devis-desaccepte:<id>]`` — ce qui permet à la
+    ré-acceptation de le réactiver au lieu d'en créer un second. Le contrôle
+    de blocage (``selectors.blocage_annulation_acceptation``) a déjà garanti
+    qu'il n'était pas engagé. Rend le nombre de contrats désactivés."""
+    from .models import ContratMaintenance
+
+    marqueur = f'[devis:{devis.pk}]'
+    nb = 0
+    for contrat in (ContratMaintenance.objects
+                    .select_for_update()
+                    .filter(company=devis.company, actif=True,
+                            notes__contains=marqueur)
+                    .order_by('pk')):
+        contrat.actif = False
+        contrat.notes = (contrat.notes or '').replace(
+            marqueur, _marqueur_desaccepte(devis.pk))
+        contrat.notes += (
+            f"\nDésactivé : l'acceptation du devis {devis.reference} a été "
+            'annulée (lead sorti de « Signé »).')
+        contrat.save(update_fields=['actif', 'notes'])
+        nb += 1
+    return nb
+
+
+def _reactiver_contrat_reaccepte(devis):
+    """Ré-acceptation : réactive le contrat désactivé par la dés-acceptation
+    de ce devis (marqueur restauré), ou rend ``None`` s'il n'y en a pas."""
+    from .models import ContratMaintenance
+
+    contrat = (ContratMaintenance.objects
+               .select_for_update()
+               .filter(company=devis.company,
+                       notes__contains=_marqueur_desaccepte(devis.pk))
+               .order_by('pk').first())
+    if contrat is None:
+        return None
+    contrat.actif = True
+    contrat.notes = contrat.notes.replace(
+        _marqueur_desaccepte(devis.pk), f'[devis:{devis.pk}]')
+    contrat.notes += (
+        f'\nRéactivé : le devis {devis.reference} a été accepté de nouveau.')
+    champs = ['actif', 'notes']
+    if devis.date_acceptation:
+        contrat.date_debut = devis.date_acceptation
+        champs.append('date_debut')
+    contrat.save(update_fields=champs)
+    return contrat
+
+
 def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     """XCTR1 — quand un ``ventes.Devis`` contenant AU MOINS UNE ligne dont le
     produit est marqué ``est_recurrent`` passe à accepté, crée IDEMPOTENT un
@@ -1216,6 +1274,11 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     from .models import ContratMaintenance
 
     marqueur = f'[devis:{devis.pk}]'
+    # Décision fondateur 08/10/2026 — ré-acceptation d'un devis dés-accepté :
+    # le contrat désactivé par la dés-acceptation est RÉACTIVÉ, jamais doublé.
+    reactive = _reactiver_contrat_reaccepte(devis)
+    if reactive is not None:
+        return reactive
     if ContratMaintenance.objects.filter(
             company=devis.company, notes__contains=marqueur).exists():
         return None
