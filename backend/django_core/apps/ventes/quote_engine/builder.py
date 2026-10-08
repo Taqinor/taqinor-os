@@ -2743,6 +2743,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
     # drapeau ``puissance_inconnue`` fait OMETTRE ces vignettes au rendu, au
     # lieu d'imprimer « 0 kWh » / « 0 MAD/an » / « Retour en 0 ans ».
+    # ── AMOT15 (C-AMOT-013) — LES FIGURES D'ÉTUDE ENTRENT DANS LA CHAÎNE ────
+    # (1) une production POSÉE par le calepinage (base 720 W) n'est plus
+    # recopiée : la production imprimée est celle du moteur devis (D-ACAL-6) ;
+    # (2) une économie SAISIE (étude humaine) alimente le cashflow option par
+    # option (``economie_imposee``) au lieu d'un payback linéaire collé après
+    # coup. Devis aux règles d'origine : chemin d'hier, intact.
+    from apps.ventes.domain.etude_schema import (
+        PRODUCTION_CALEPINAGE as _PROD_CAL)
+    _prod_du_calepinage = bool(
+        _corrige and (devis.etude_params or {}).get("production_source")
+        == _PROD_CAL)
+    _economie_saisie = None
+    if (_corrige and not _mode_ci and not _prod_du_calepinage
+            and etude.get("production_annuelle")
+            and etude.get("economies_annuelles")):
+        try:
+            _economie_saisie = int(etude["economies_annuelles"]) or None
+        except (TypeError, ValueError):
+            _economie_saisie = None
+    if _economie_saisie:
+        roi_kwargs["economie_imposee"] = _economie_saisie
     roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
                                 **roi_kwargs)
     # ── F1/L-2OPT (26/08/2026) — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION ──
@@ -2811,7 +2832,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                      bool(_roi_a.get("savings_estimated"))),
         }
     if etude.get("production_annuelle"):
-        roi["prod_kwh"] = int(etude["production_annuelle"])
+        if not _prod_du_calepinage:
+            roi["prod_kwh"] = int(etude["production_annuelle"])
         # Une production SAISIE par un humain est UN chiffre, pas deux : elle
         # vaut pour les deux options (comme les économies d'étude juste en
         # dessous). Sans ce réalignement, le une-page aurait pu servir une
@@ -2835,7 +2857,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # mensuelles RÉSIDENTIELLES ``_sf``) ne s'applique PLUS au C&I : ses
         # économies viendront du moteur C&I (``synthese_ci.argent``, CIQ307),
         # jamais d'une clé d'étude reprise ni d'une saisonnalité résidentielle.
-        if etude.get("economies_annuelles") and not _mode_ci:
+        if (etude.get("economies_annuelles") and not _mode_ci
+                and not _corrige):
             eco = int(etude["economies_annuelles"])
             roi["eco_s_ann"] = eco
             roi["eco_a_ann"] = eco
@@ -2938,7 +2961,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     #   'estimation' — ancienne approximation production × autoconso × prix,
     #                  toujours étiquetée comme estimation (aucun chiffre inventé).
     savings_model = roi.get("savings_model", "estimation")
-    if (etude.get("production_annuelle") and etude.get("economies_annuelles")
+    if _corrige:
+        # AMOT15 — « étude » seulement quand une économie SAISIE a réellement
+        # alimenté le calcul (une figure de calepinage n'est pas une étude).
+        if _economie_saisie:
+            savings_model = "etude"
+    elif (etude.get("production_annuelle") and etude.get("economies_annuelles")
             and not _mode_ci):
         savings_model = "etude"
     # QJR28 — la DÉCLARATION par colonne. Une étude saisie par un humain
@@ -3078,6 +3106,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 "calcul par tranche exact."),
             "exemple": None,
         }
+
+    if _corrige:
+        # AMOT15 — la SOURCE réelle de l'économie (saisie humaine ou calcul).
+        savings_method["source"] = "saisie" if _economie_saisie else "calculee"
 
     # ── QK4 — « Nos hypothèses » : transparence des hypothèses d'économies ────
     # Surface côté client les hypothèses derrière les économies : tarif MAD/kWh

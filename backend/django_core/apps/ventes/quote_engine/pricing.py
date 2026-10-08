@@ -1387,6 +1387,11 @@ def calculate_savings_roi(
     # sortie byte-identique. C'est le seul chemin par lequel la note « douze
     # mois » devient atteignable depuis l'ERP.
     repartition_mensuelle=None,
+    # AMOT15 — économie annuelle SAISIE par un humain (étude stockée). Elle
+    # REMPLACE l'économie dérivée des deux options AVANT le cashflow : payback,
+    # courbe 25 ans, gain net et répartition mensuelle en découlent, chaque
+    # option sur SON prix. ``None`` (défaut) ⇒ sortie byte-identique.
+    economie_imposee: float | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1589,6 +1594,19 @@ def calculate_savings_roi(
             # Même invariant que ``autoconso_avec`` ci-dessus : avec ≥ sans.
             couverture_avec_h = max(couverture_avec_h, couverture_sans_h)
 
+    # ── AMOT15 — UNE économie saisie entre dans LA chaîne de calcul ─────────
+    # Plus de payback linéaire ni d'économie collée après coup par l'appelant :
+    # elle alimente ici le même cashflow que toute économie calculée.
+    economie_saisie = False
+    try:
+        _eco_imposee = float(economie_imposee) if economie_imposee else 0.0
+    except (TypeError, ValueError):
+        _eco_imposee = 0.0
+    if _eco_imposee > 0:
+        economie_saisie = True
+        economie_opt1 = economie_opt2 = int(_eco_imposee)
+        eco_monthly_reel = None
+
     # ── QX39 — retour sur investissement par CASHFLOW 25 ans (honnête) ────────
     # Le payback n'est plus un simple ratio année-1 (ni conservateur, ni
     # optimiste) : on cumule le cashflow réel avec dégradation panneau 0,5 %/an,
@@ -1606,7 +1624,7 @@ def calculate_savings_roi(
     # payait une perte de batterie qu'elle ne subit pas, ce qui ALLONGEAIT
     # artificiellement le payback de l'option « avec batterie ».
     _batt_part = 0.0
-    if autoconso_avec > 0:
+    if autoconso_avec > 0 and not economie_saisie:
         _batt_part = max(0.0, (autoconso_avec - autoconso_sans_eff)) / autoconso_avec
     # M9 (audit du 19/08/2026) — l'abattement ne s'applique QU'À une option qui
     # porte RÉELLEMENT du stockage : ``battery=True`` était codé en dur, donc un
@@ -1662,7 +1680,7 @@ def calculate_savings_roi(
         eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
         eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
 
-    return {
+    _sortie = {
         "prod_kwh":         production_annuelle,
         "eco_s_ann":        economie_opt1,
         "eco_a_ann":        economie_opt2,
@@ -1728,3 +1746,8 @@ def calculate_savings_roi(
             # QJR158 (c) — LES MÊMES valeurs que les deux cashflows ci-dessus.
             **_cf_params),
     }
+    if economie_saisie:
+        # AMOT15 — clé posée seulement quand elle est vraie (sortie inchangée
+        # sinon).
+        _sortie["economie_saisie"] = True
+    return _sortie
