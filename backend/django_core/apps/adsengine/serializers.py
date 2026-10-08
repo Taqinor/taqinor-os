@@ -149,6 +149,9 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             # SIG1 — poids fixes des deux scores de santé (créatif/opérations).
             'health_creative_weight_ctr', 'health_creative_weight_freshness',
             'health_ops_weight_cpl', 'health_ops_weight_delivery',
+            # AACQ14 — garde-fou quatre yeux (écriture réservée à
+            # ``adsengine_autonomy_toggle``, contrôlée par la vue).
+            'require_four_eyes',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']

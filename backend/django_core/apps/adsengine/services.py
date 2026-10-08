@@ -11,6 +11,8 @@ côté serveur), pas le registre stateless ``apps/agent``.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
 import logging
 
@@ -203,6 +205,26 @@ def _merge_warnings(payload, warns):
     return payload
 
 
+# AACQ14 — proposeur HUMAIN relayé à toute proposition née dans le bloc (les
+# producteurs curés appellent ``propose_action`` sans connaître l'appelant) :
+# le garde-fou quatre-yeux voit ainsi le proposeur quel que soit le chemin.
+_HUMAN_PROPOSER = contextvars.ContextVar('adsengine_human_proposer', default=None)
+
+
+@contextlib.contextmanager
+def human_proposer(user):
+    """AACQ14 — Toute ``EngineAction`` proposée dans ce bloc porte
+    ``proposed_by=user`` (sauf ``proposed_by`` explicite). ``None`` = no-op."""
+    if user is None or not getattr(user, 'pk', None):
+        yield
+        return
+    token = _HUMAN_PROPOSER.set(user)
+    try:
+        yield
+    finally:
+        _HUMAN_PROPOSER.reset(token)
+
+
 def propose_action(company, *, kind, reason_fr, payload=None, auto=False,
                    proposed_by=None):
     """Crée une action PROPOSÉE. ``reason_fr`` (une phrase FR) est obligatoire.
@@ -221,6 +243,8 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False,
     validate_manual_payload(kind, payload)
     payload = dict(payload or {})
     _merge_warnings(payload, edit_warnings(kind, payload))
+    if proposed_by is None and not auto:
+        proposed_by = _HUMAN_PROPOSER.get()
     return EngineAction.objects.create(
         company=company, kind=kind, payload=payload,
         reason_fr=str(reason_fr).strip(),
@@ -1101,7 +1125,14 @@ def _resolve_post(company, meta_id):
     return post
 
 
-def propose_manual_curated(company, *, kind, params, reason_fr=None):
+def propose_manual_curated(company, *, kind, params, reason_fr=None,
+                           proposed_by=None):
+    """AACQ14 — relaie le proposeur humain (quatre-yeux) au producteur."""
+    with human_proposer(proposed_by):
+        return _propose_manual_curated(company, kind=kind, params=params, reason_fr=reason_fr)
+
+
+def _propose_manual_curated(company, *, kind, params, reason_fr=None):
     """PUB22 — Route une proposition d'action CURÉE (``duplicate`` /
     ``set_schedule`` / ``create_ad_study`` / PACT164 : ``pause_for_month`` /
     ``dayparting_pause_interne`` / ``edit_post`` / ``create_post`` /
@@ -1221,7 +1252,13 @@ _NOT_INVERTIBLE_REASONS = {
 }
 
 
-def propose_inverse_action(action, *, reason_fr=None):
+def propose_inverse_action(action, *, reason_fr=None, proposed_by=None):
+    """AACQ14 — relaie le proposeur humain (quatre-yeux) au producteur."""
+    with human_proposer(proposed_by):
+        return _propose_inverse_action(action, reason_fr=reason_fr)
+
+
+def _propose_inverse_action(action, *, reason_fr=None):
     """PUB45 — Propose l'action INVERSE d'une action APPLIQUÉE, via le circuit
     propose→approuve normal (jamais un write direct). Rétablit la valeur
     MÉMORISÉE sur l'action d'origine (budget précédent ``current_budget``, texte
@@ -1422,7 +1459,8 @@ WARN_COMMENT_HIDE_READBACK = (
     "re-contrôle confirme l'état.")
 
 
-def propose_hide_comment(company, *, comment, hidden=True, reason_fr=None):
+def propose_hide_comment(company, *, comment, hidden=True, reason_fr=None,
+                         proposed_by=None):
     """ADSDEEP53 — Propose de masquer (``hidden=True``) ou démasquer un
     commentaire. L'application fera un READ-BACK obligatoire (dossier §3) : elle
     re-GET le commentaire et ne pose ``hidden_verified`` que si l'état observé
@@ -1433,29 +1471,35 @@ def propose_hide_comment(company, *, comment, hidden=True, reason_fr=None):
         'comment_id': comment.meta_id, 'hidden': bool(hidden),
         'warnings': [WARN_COMMENT_HIDE_READBACK]}
     return propose_action(
-        company, kind=KIND_HIDE_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_HIDE_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_reply_comment(company, *, comment, message, reason_fr=None):
+def propose_reply_comment(company, *, comment, message, reason_fr=None,
+                          proposed_by=None):
     """ADSDEEP53 — Propose une réponse PUBLIQUE à un commentaire."""
     if not (message and str(message).strip()):
         raise ValueError("Une réponse ne peut pas être vide.")
     reason_fr = reason_fr or f"Répondre au commentaire {comment.meta_id}."
     payload = {'comment_id': comment.meta_id, 'message': str(message)}
     return propose_action(
-        company, kind=KIND_REPLY_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_REPLY_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_delete_comment(company, *, comment, reason_fr=None):
+def propose_delete_comment(company, *, comment, reason_fr=None,
+                           proposed_by=None):
     """ADSDEEP53 — Propose la SUPPRESSION d'un commentaire (irréversible côté
     Meta — passe donc, comme tout, par l'approbation humaine)."""
     reason_fr = reason_fr or f"Supprimer le commentaire {comment.meta_id}."
     payload = {'comment_id': comment.meta_id}
     return propose_action(
-        company, kind=KIND_DELETE_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_DELETE_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_private_reply(company, *, comment, message, reason_fr=None):
+def propose_private_reply(company, *, comment, message, reason_fr=None,
+                          proposed_by=None):
     """ADSDEEP53 — Propose une RÉPONSE PRIVÉE (DM) à un commentaire.
 
     GARDE-FOU (dossier §3, fail-fast — AUCUNE action créée si violé) : Meta
@@ -1481,7 +1525,8 @@ def propose_private_reply(company, *, comment, message, reason_fr=None):
         f"Répondre en privé (DM) au commentaire {comment.meta_id}.")
     payload = {'comment_id': comment.meta_id, 'message': str(message)}
     return propose_action(
-        company, kind=KIND_PRIVATE_REPLY, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_PRIVATE_REPLY, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
 def propose_keyword_hides(company, *, rules=None, auto_only=False):
@@ -1609,7 +1654,8 @@ IG_MEDIA_TYPES = ('IMAGE', 'VIDEO', 'REELS', 'STORIES', 'CAROUSEL')
 
 def propose_publish_ig(company, *, media_type, image_url='', video_url='',
                        caption='', alt_text='', scheduled_at=None,
-                       reason_fr=None):
+                       reason_fr=None,
+                       proposed_by=None):
     """ADSDEEP55 — Propose la PUBLICATION d'un média Instagram (kind PUBLISH_IG).
 
     L'application passe par le flux CONTAINER (create → poll FINISHED → publish)
@@ -1634,37 +1680,45 @@ def propose_publish_ig(company, *, media_type, image_url='', video_url='',
         'scheduled_at': scheduled_at,
         'warnings': [WARN_IG_CAPTION_IMMUTABLE]}
     return propose_action(
-        company, kind=KIND_PUBLISH_IG, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_PUBLISH_IG, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_hide_ig_comment(company, *, comment, hidden=True, reason_fr=None):
+def propose_hide_ig_comment(company, *, comment, hidden=True, reason_fr=None,
+                            proposed_by=None):
     """ADSDEEP55 — Propose de masquer/démasquer un commentaire Instagram."""
     verb = 'Masquer' if hidden else 'Démasquer'
     reason_fr = reason_fr or f"{verb} le commentaire Instagram {comment.meta_id}."
     payload = {'comment_id': comment.meta_id, 'hidden': bool(hidden)}
     return propose_action(
-        company, kind=KIND_HIDE_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_HIDE_IG_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_reply_ig_comment(company, *, comment, message, reason_fr=None):
+def propose_reply_ig_comment(company, *, comment, message, reason_fr=None,
+                             proposed_by=None):
     """ADSDEEP55 — Propose une réponse à un commentaire Instagram."""
     if not (message and str(message).strip()):
         raise ValueError("Une réponse ne peut pas être vide.")
     reason_fr = reason_fr or f"Répondre au commentaire Instagram {comment.meta_id}."
     payload = {'comment_id': comment.meta_id, 'message': str(message)}
     return propose_action(
-        company, kind=KIND_REPLY_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_REPLY_IG_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_delete_ig_comment(company, *, comment, reason_fr=None):
+def propose_delete_ig_comment(company, *, comment, reason_fr=None,
+                              proposed_by=None):
     """ADSDEEP55 — Propose la suppression d'un commentaire Instagram."""
     reason_fr = reason_fr or f"Supprimer le commentaire Instagram {comment.meta_id}."
     payload = {'comment_id': comment.meta_id}
     return propose_action(
-        company, kind=KIND_DELETE_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_DELETE_IG_COMMENT, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
-def propose_toggle_ig_comments(company, *, media, enabled, reason_fr=None):
+def propose_toggle_ig_comments(company, *, media, enabled, reason_fr=None,
+                               proposed_by=None):
     """ADSDEEP55 — Propose de couper / rouvrir les commentaires d'un média IG
     (``comment_enabled`` — SEUL champ écrivable d'un média ; la légende reste
     immuable)."""
@@ -1673,7 +1727,8 @@ def propose_toggle_ig_comments(company, *, media, enabled, reason_fr=None):
         f"{verb} les commentaires du média Instagram {media.meta_id}.")
     payload = {'media_id': media.meta_id, 'enabled': bool(enabled)}
     return propose_action(
-        company, kind=KIND_TOGGLE_IG_COMMENTS, reason_fr=reason_fr, payload=payload)
+        company, kind=KIND_TOGGLE_IG_COMMENTS, reason_fr=reason_fr, payload=payload,
+        proposed_by=proposed_by)
 
 
 def _dispatch_publish_ig(client, action):

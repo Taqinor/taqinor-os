@@ -446,6 +446,11 @@ def _assert_guardrail_fields_allowed(user, instance, validated_data):
            for f in _GUARDRAIL_AUTONOMY_FIELDS):
         if not _user_has_or_legacy(user, 'adsengine_autonomy_toggle'):
             raise PermissionDenied(_MSG_RESERVE_AUTONOMIE)
+    # AACQ14 — le garde-fou quatre yeux (dans les deux sens) relève de la
+    # même autorité que l'autonomie.
+    if _guardrail_changed(instance, validated_data, 'require_four_eyes'):
+        if not _user_has_or_legacy(user, 'adsengine_autonomy_toggle'):
+            raise PermissionDenied(_MSG_RESERVE_AUTONOMIE)
     if any(_guardrail_changed(instance, validated_data, f)
            for f in _GUARDRAIL_CEILING_FIELDS):
         if not _user_has_or_legacy(user, 'adsengine_approve'):
@@ -1894,7 +1899,7 @@ class EngineActionViewSet(AdsengineViewSet):
         instance = self.get_object()
         try:
             inverse = propose_inverse_action(
-                instance, reason_fr=request.data.get('reason_fr'))
+                instance, proposed_by=request.user, reason_fr=request.data.get('reason_fr'))
         except ActionNotInvertible:
             logger.warning('PUB45: annulation refusée — action %s non '
                            'inversible', instance.pk, exc_info=True)
@@ -1935,7 +1940,7 @@ class ProposeCuratedActionView(APIView):
         params = {k: v for k, v in body.items() if k != 'reason_fr'}
         try:
             action = propose_manual_curated(
-                company, kind=kind, params=params, reason_fr=reason_fr)
+                company, proposed_by=request.user, kind=kind, params=params, reason_fr=reason_fr)
         except ValueError:
             logger.warning('PUB22: proposition curée refusée (kind=%s)', kind,
                            exc_info=True)
@@ -3833,7 +3838,7 @@ class CommentHideView(APIView):
         hidden = request.data.get('hidden', True)
         try:
             action = propose_hide_comment(
-                company, comment=comment, hidden=bool(hidden))
+                company, proposed_by=request.user, comment=comment, hidden=bool(hidden))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -3856,7 +3861,7 @@ class CommentReplyView(APIView):
         from .services import propose_reply_comment
         try:
             action = propose_reply_comment(
-                company, comment=comment,
+                company, proposed_by=request.user, comment=comment,
                 message=request.data.get('message', ''))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
@@ -3879,7 +3884,8 @@ class CommentDeleteView(APIView):
             return Response({'detail': 'Commentaire introuvable.'}, status=404)
         from .services import propose_delete_comment
         try:
-            action = propose_delete_comment(company, comment=comment)
+            action = propose_delete_comment(
+                company, comment=comment, proposed_by=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -3902,7 +3908,7 @@ class CommentPrivateReplyView(APIView):
         from .services import propose_private_reply
         try:
             action = propose_private_reply(
-                company, comment=comment,
+                company, proposed_by=request.user, comment=comment,
                 message=request.data.get('message', ''))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
@@ -3997,7 +4003,7 @@ class InstagramPublishView(APIView):
         data = request.data if isinstance(request.data, dict) else {}
         try:
             action = propose_publish_ig(
-                company,
+                company, proposed_by=request.user,
                 media_type=data.get('media_type', ''),
                 image_url=data.get('image_url', '') or '',
                 video_url=data.get('video_url', '') or '',
@@ -4049,7 +4055,7 @@ class InstagramCommentHideView(APIView):
         hidden = request.data.get('hidden', True)
         try:
             action = propose_hide_ig_comment(
-                company, comment=comment, hidden=bool(hidden))
+                company, proposed_by=request.user, comment=comment, hidden=bool(hidden))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -4072,7 +4078,7 @@ class InstagramCommentReplyView(APIView):
         from .services import propose_reply_ig_comment
         try:
             action = propose_reply_ig_comment(
-                company, comment=comment,
+                company, proposed_by=request.user, comment=comment,
                 message=request.data.get('message', ''))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
@@ -4095,7 +4101,8 @@ class InstagramCommentDeleteView(APIView):
             return Response({'detail': 'Commentaire introuvable.'}, status=404)
         from .services import propose_delete_ig_comment
         try:
-            action = propose_delete_ig_comment(company, comment=comment)
+            action = propose_delete_ig_comment(
+                company, comment=comment, proposed_by=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -4124,7 +4131,7 @@ class InstagramMediaToggleCommentsView(APIView):
         enabled = request.data.get('enabled', True)
         try:
             action = propose_toggle_ig_comments(
-                company, media=media, enabled=bool(enabled))
+                company, proposed_by=request.user, media=media, enabled=bool(enabled))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
