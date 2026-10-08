@@ -9176,10 +9176,53 @@ def reserver_creneau_public(token, *, scheduled_at, notes=None):
         appointment = book_appointment(
             lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
         BookingLink.objects.filter(pk=link.pk).update(appointment=appointment)
+        # ACRM41 — une note LISIBLE au chatter, dans la même transaction.
+        LeadActivity.objects.create(
+            company=link.lead.company, lead=link.lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Le client a réservé sa visite le '
+                  f'{_quand_local(scheduled_at)} via le lien de '
+                  'réservation.'))
+        # ACRM41 (C-ACRM-036) — le responsable (repli : managers) est
+        # prévenu APRÈS validation : une réservation annulée ne notifie rien.
+        transaction.on_commit(
+            lambda: _notifier_reservation_publique(appointment))
 
     link.used_at = maintenant
     link.appointment = appointment
     return appointment
+
+
+def _quand_local(instant):
+    """« JJ/MM/AAAA à HH:MM », heure de Casablanca."""
+    from . import horaires
+    return instant.astimezone(horaires.CASABLANCA).strftime(
+        '%d/%m/%Y à %H:%M')
+
+
+def _notifier_reservation_publique(appointment):
+    """ACRM41 — une visite réservée par le PROSPECT lui-même (lien public)
+    prévient son responsable et le supérieur de celui-ci
+    (``lead_notification_recipients`` : repli managers quand l'un manque).
+    Best-effort : la réservation est déjà validée."""
+    try:
+        lead = appointment.lead
+        destinataires = lead_notification_recipients(lead)
+        if not destinataires:
+            return
+        from apps.notifications.services import notify_many
+        notify_many(
+            destinataires, 'appointment_reminder',
+            f'Visite réservée — {lead.nom}',
+            body=(f'Le client a réservé sa visite le '
+                  f'{_quand_local(appointment.scheduled_at)} via le lien '
+                  f'de réservation (RDV #{appointment.pk}).'),
+            link=f'/crm/leads/{lead.pk}',
+            company=appointment.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        _appt_logger.warning(
+            'ACRM41 : notification de réservation échouée (RDV #%s)',
+            getattr(appointment, 'pk', '?'), exc_info=True)
 
 
 def dispatch_appointment_reminder(appointment) -> bool:
