@@ -204,6 +204,11 @@ def build(ctx) -> str:
     _delai_install = (_delais.get("installation") or "").strip()
     site_url = d.get("site_url", "taqinor.ma")
     links = d.get("links", {}) or {}
+    # AMOT18 — société identifiée sans site : ``site_url`` vide ⇒ aucun lien
+    # dérivé (``_lien_site`` rend '').
+
+    def _lien_site(chemin):
+        return f"{site_url}{chemin}" if site_url else ""
     pay = d.get("payment_terms", {}) or {}
     acompte = pay.get("acompte", 30)
     materiel = pay.get("materiel", 60)
@@ -215,9 +220,9 @@ def build(ctx) -> str:
     if low.startswith("tva"):
         tva_note = tva_note[3:].lstrip(" :·-").strip()
 
-    l_real = links.get("realisations", site_url + "/realisations")
-    l_gar = links.get("garanties", site_url + "/garanties")
-    l_sign = links.get("signer", site_url + "/signer")
+    l_real = links.get("realisations", _lien_site("/realisations"))
+    l_gar = links.get("garanties", _lien_site("/garanties"))
+    l_sign = links.get("signer", _lien_site("/signer"))
 
     # QRES57 — la rangée de puces PAR DÉFAUT disparaît (elle répétait mot pour
     # mot le ruban de crédibilité de la page 1) au profit de la bande fine des
@@ -264,12 +269,12 @@ def build(ctx) -> str:
     # QRES5 — les badges de garantie vivent en page 2 (à côté de l'équipement) ;
     # QRES8 — trois liens DISTINCTS (les deux premiers pointaient tous deux sur
     # /realisations : une carte dupliquée sur un PDF client).
-    l_prod = links.get("produits", site_url + "/produits")
-    trust_items = [
+    l_prod = links.get("produits", _lien_site("/produits"))
+    trust_items = [(titre, url) for titre, url in (
         ("Réalisations et avis clients", l_real),
         ("Fiches techniques produits", l_prod),
         ("Garanties et certifications", l_gar),
-    ]
+    ) if url]
     trust_html = "".join(
         f'<a class="p3-trust-item" href="{_link(url)}">'
         f'<span class="p3-trust-t">{title}</span>'
@@ -665,7 +670,7 @@ def build(ctx) -> str:
     <div class="p3-cta-l">
       <div class="p3-cta-t">Prêt à passer au solaire ?</div>
       <div class="p3-cta-s">Validez votre devis en quelques clics, sans vous déplacer.{cta_deadline}</div>
-      <a class="p3-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>&rarr;</span> {_disp_short(l_sign)}</a>
+      {f'<a class="p3-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>&rarr;</span> {_disp_short(l_sign)}</a>' if l_sign else ''}
     </div>
     {qr_html}
   </div>

@@ -1318,10 +1318,12 @@ def build_pages(ctx) -> list:
 
     # QRES57 — la ligne « fiches techniques » fusionne avec la légende TVA
     # (une seule ligne de légende sous les totaux, ~5 mm rendus à la courbe).
+    # AMOT18 — société identifiée sans site : aucun lien de fiches.
     fiche_inline = (
         ' &middot; fiches techniques&nbsp;: <a class="p2-fiche-btn" '
         f'href="{_produits_href(produits_link)}">{produits_link}'
-        '<span class="p2-fiche-i"> &rsaquo;</span></a>')
+        '<span class="p2-fiche-i"> &rsaquo;</span></a>'
+        if produits_link else "")
 
     # QRES30/48 — mono-option : carte de totaux PLEINE LARGEUR (les montants
     # internes s'alignent déjà à droite, donc le TOTAL TTC retombe sur le rail

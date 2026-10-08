@@ -702,6 +702,10 @@ def fiche_href(designation, marque="", produits_base="taqinor.ma/produits") -> s
     slug = fiche_slug(designation, marque)
     if not slug:
         return ""
+    # AMOT18 — base VIDE explicite (société identifiée sans site) : aucun
+    # lien de fiche ; ``None`` garde la base fondateur historique.
+    if produits_base is not None and not str(produits_base).strip():
+        return ""
     base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
     if _FICHE_HOST not in base.lower():
         return ""
@@ -843,16 +847,24 @@ def company_identity(data: dict) -> dict:
     email = (ent.get("email") or "").strip()
     tel = (ent.get("telephone") or "").strip()
     adresse = (ent.get("adresse") or "").strip()
+    # AMOT18 (C-AMOT-016) — MÊME règle que ``bande_legale`` et le legacy
+    # (AMOT17) : dès qu'une société est IDENTIFIÉE, un champ vide est OMIS,
+    # jamais remplacé par le littéral TAQINOR. Repli fondateur seulement
+    # sans AUCUNE identité (byte-identique DC1).
+    identifiee = societe_identifiee(data)
     # Site : le builder a déjà résolu ``data['site_url']`` depuis le champ
     # CANONIQUE ``site_web`` (SCA27, normalisé) ; repli Taqinor si vide.
-    site = (data.get("site_url") or "").strip().rstrip("/") or _DEFAULT_SITE
+    site = (data.get("site_url") or "").strip().rstrip("/") or (
+        "" if identifiee else _DEFAULT_SITE)
 
     return {
         # Marque courte (footer, « Pourquoi … », signature TAQINOR).
         "brand": _esc(nom.upper()) if nom else _DEFAULT_BRAND,
         "brand_name": _esc(nom) if nom else _DEFAULT_BRAND,
-        "email": _esc(email) if email else _DEFAULT_EMAIL,
-        "phone": _esc(tel) if tel else _DEFAULT_PHONE,
+        "email": _esc(email) if email else (
+            "" if identifiee else _DEFAULT_EMAIL),
+        "phone": _esc(tel) if tel else (
+            "" if identifiee else _DEFAULT_PHONE),
         "site": _esc(site),
         "adresse": _esc(adresse),
         # A-t-on une vraie identité société (au moins un champ renseigné) ?
@@ -861,11 +873,21 @@ def company_identity(data: dict) -> dict:
     }
 
 
+def societe_identifiee(data) -> bool:
+    """AMOT18 — la société du document porte-t-elle UN champ d'identité ?
+    (même liste que ``quote_engine.identite.CHAMPS_IDENTITE`` + le site)."""
+    from ..identite import CHAMPS_IDENTITE
+    ent = (data or {}).get("entreprise") or {}
+    return bool(any((ent.get(k) or "").strip() for k in CHAMPS_IDENTITE)
+                or (ent.get("site_web") or "").strip())
+
+
 def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3,
                 traduire: bool = False) -> str:
     # QX6 — le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
     ident = ident or company_identity(data)
-    site = ident.get("site") or _DEFAULT_SITE
+    # AMOT18 — société identifiée : un champ vide est omis (jamais TAQINOR).
+    site = ident.get("site") if "site" in ident else _DEFAULT_SITE
     # L-NIV (24/08/2026) — filigrane PDF DISCRET niveau standard (nom + tél.
     # du prospect). Posé par le générateur (jamais côté client — voir
     # generate_devis_premium.apply_quote_data / builder.generate_premium_devis_pdf)
@@ -880,8 +902,8 @@ def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3,
     _ref_lbl = libelle_doc(data, 'reference', 'Réf.') if traduire else 'Réf.'
     return f"""
 <div class="foot">
-  <div><b>{ident['brand_name']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
-  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; {_ref_lbl} {data['ref']} &nbsp;·&nbsp; <a>{site}</a>{suffixe}</div>
+  <div>{" &nbsp;·&nbsp; ".join(x for x in (f"<b>{ident['brand_name']}</b>", ident.get('email') or "", ident.get('phone') or "") if x)}</div>
+  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; {_ref_lbl} {data['ref']}{f" &nbsp;·&nbsp; <a>{site}</a>" if site else ""}{suffixe}</div>
 </div>
 """
 
