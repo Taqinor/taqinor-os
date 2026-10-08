@@ -168,6 +168,9 @@ class TestStatusAndMES(TestCase):
             {'devis': devis.id}, format='json').data['id'])
 
     def test_status_change_logs_chatter(self):
+        # ACHT2 — un pas à la fois : le chantier part de « Matériel commandé ».
+        Installation.objects.filter(pk=self.inst.pk).update(
+            statut='materiel_commande')
         r = self.api.patch(f'/api/django/installations/chantiers/{self.inst.id}/',
                            {'statut': 'planifie'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
@@ -184,6 +187,8 @@ class TestStatusAndMES(TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_mise_en_service_sets_status(self):
+        # ACHT2 — la mise en service suit « Installé » (un pas à la fois).
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
         r = self.api.post(
             f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
             {'date_mise_en_service': '2026-06-20',
@@ -270,6 +275,8 @@ class TestChantierFunnelParcChecklist(TestCase):
         self.assertIsInstance(self.inst.bom, list)
 
     def test_reception_stamps_date_and_enters_parc(self):
+        # ACHT2 — un pas à la fois : le chantier part d'« Installé ».
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
         r = self.api.patch(
             f'/api/django/installations/chantiers/{self.inst.id}/',
             {'statut': 'receptionne'}, format='json')

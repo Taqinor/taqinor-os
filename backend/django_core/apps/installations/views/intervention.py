@@ -179,8 +179,9 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             default=2, output_field=IntegerField()))
         # Portée de visibilité (Feature F) — interventions du technicien / de
         # son équipe. 'all' → inchangé.
-        from authentication.scoping import scope_queryset
-        qs = scope_queryset(qs, self.request.user, ['technicien', 'created_by'])
+        # ACHT27 — même sélecteur que la synchro terrain (`field_sync`).
+        from ..selectors import scoper_interventions
+        qs = scoper_interventions(qs, self.request.user)
         params = self.request.query_params
         installation = params.get('installation')
         ticket = params.get('ticket')
@@ -1058,9 +1059,12 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         designation, quantite_utilisee, [produit], [justification]."""
         from apps.stock.selectors import get_produit_scoped
         interv = self.get_object()
-        if getattr(interv, 'consommation', None) and interv.consommation.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # ACHT30 — garde commune avec la synchro terrain.
+        if not field_capture.consommation_modifiable(
+                getattr(interv, 'consommation', None)):
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         cons = field_capture.ensure_consommation(interv)
         designation = (request.data.get('designation') or '').strip()
         if not designation:
@@ -1093,9 +1097,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from decimal import Decimal, InvalidOperation
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
-        if cons.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not field_capture.consommation_modifiable(cons):  # ACHT30
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
@@ -1128,9 +1133,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         """F11 — supprime une ligne HORS-nomenclature. Corps : {"ligne": <id>}."""
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
-        if cons.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not field_capture.consommation_modifiable(cons):  # ACHT30
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         ligne = cons.lignes.filter(
             id=request.data.get('ligne'), hors_nomenclature=True).first()
         if ligne is None:
@@ -1148,9 +1154,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         n'est pas justifiée (texte ou mémo vocal)."""
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
-        if cons.valide:
-            return Response({'detail': 'Réconciliation déjà validée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not field_capture.consommation_modifiable(cons):  # ACHT30
+            return Response(
+                {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
+                status=status.HTTP_400_BAD_REQUEST)
         # Pré-contrôle des justifications manquantes : on construit le message
         # utilisateur (libellés des lignes en écart) à partir des DONNÉES, sans
         # le faire transiter par un objet exception (évite toute fuite
@@ -1928,24 +1935,28 @@ class InterventionViewSet(CompanyScopedModelViewSet):
     def signer_client(self, request, pk=None):
         """FG69 — enregistre la signature client sur une intervention.
         Corps : {"signature_client": <data_url_ou_vecteur>, "signataire_nom": <str>}.
-        Pose `signe_le` côté serveur."""
-        from ..signature_validation import erreur_signature_client
+        Pose `signe_le` côté serveur.
+
+        ACHT28 — délègue au service unique `enregistrer_signature_intervention`
+        (validation ADOC78, re-signature refusée en 409 sans
+        `motif_override_signature`, champs suivis au chatter)."""
+        from ..signature_validation import (
+            SignatureRefusee, enregistrer_signature_intervention,
+        )
         interv = self.get_object()
-        brut = request.data.get('signature_client')
-        sig = brut.strip() if isinstance(brut, str) else ''
         nom = (request.data.get('signataire_nom') or '').strip()
-        # ADOC78 — même validateur que le chantier : la signature
-        # d'intervention est injectée dans <img src> de la fiche SAV.
-        erreur = erreur_signature_client(sig)
-        if erreur:
-            return Response({'signature_client': erreur},
+        motif = (request.data.get('motif_override_signature')
+                 or request.data.get('motif_override') or '')
+        try:
+            enregistrer_signature_intervention(
+                interv, request.user, request.data.get('signature_client'),
+                nom=nom, motif=motif)
+        except SignatureRefusee as exc:
+            if exc.code == 'deja_signee':
+                return Response({'detail': exc.message},
+                                status=status.HTTP_409_CONFLICT)
+            return Response({'signature_client': exc.message},
                             status=status.HTTP_400_BAD_REQUEST)
-        interv.signature_client = sig
-        if nom:
-            interv.signataire_nom = nom
-        interv.signe_le = timezone.now()
-        fields = ['signature_client', 'signataire_nom', 'signe_le']
-        interv.save(update_fields=fields)
         intervention_activity.log_note(
             interv, request.user,
             f"Signature client enregistrée ({nom or 'anonyme'}).")

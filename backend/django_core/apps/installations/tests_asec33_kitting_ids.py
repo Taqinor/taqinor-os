@@ -12,7 +12,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.installations.models import Kit, OrdreAssemblage
+from apps.installations.models import Kit, KitComposant, OrdreAssemblage
 from apps.installations.models_kitting import OrdreDemontage
 from apps.stock.models import EmplacementStock, MouvementStock, Produit
 from authentication.models import Company
@@ -40,6 +40,12 @@ class KittingIdsSocieteTests(TestCase):
             prix_achat=0)
         self.kit = Kit.objects.create(
             company=self.a, nom='Coffret', produit_compose=composite)
+        # ACHT25 — un kit sans composant exploitable ne s'assemble plus.
+        composant = Produit.objects.create(
+            company=self.a, nom='Disjoncteur ASEC33', prix_vente=20,
+            prix_achat=0, quantite_stock=100)
+        KitComposant.objects.create(kit=self.kit, produit=composant,
+                                    quantite=1)
         self.emp_a = EmplacementStock.objects.create(
             company=self.a, nom='Dépôt A')
         self.emp_b = EmplacementStock.objects.create(

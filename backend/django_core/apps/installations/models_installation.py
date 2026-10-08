@@ -342,6 +342,14 @@ class Installation(models.Model):
         indexes = [
             models.Index(fields=['company', 'statut']),
         ]
+        constraints = [
+            # ACHT4 — un seul chantier par devis (l'affaire et sa chaîne de
+            # révisions sont gardées par `create_installation_from_devis`).
+            models.UniqueConstraint(
+                fields=['company', 'devis'],
+                condition=models.Q(devis__isnull=False),
+                name='installation_unique_devis_par_societe'),
+        ]
 
     def __str__(self):
         return self.reference
