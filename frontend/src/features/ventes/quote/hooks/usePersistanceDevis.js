@@ -18,6 +18,7 @@ import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
 import { ecartsAuRegistre } from '../overrides'
 import crmApi from '../../../../api/crmApi'
+import { fetchAllPages } from '../../../../utils/fetchAllPages'
 import { erreursBaseLegaleServeur, lignesServeurVersEcran } from '../lignesEcran'
 import { useState } from 'react'
 import { withKeys } from '../ligneFabrique.js'
@@ -488,12 +489,14 @@ export function usePersistanceDevis(ctx) {
         msg = 'Ce lead n\'existe plus (supprimé entre-temps ?). '
           + 'La liste des leads a été rechargée — choisissez-en un autre.'
         setLeadId('')
-        crmApi.getLeads()
-          .then(r => setLeads(r.data.results ?? r.data)).catch(() => {})
+        // ALEA40 — rechargée EN ENTIER (pagination DRF), jamais la page 1.
+        fetchAllPages((page) => crmApi.getLeads({ page }).then((r) => r.data))
+          .then((d) => setLeads(d?.results ?? d)).catch(() => {})
       } else if (raw?.client) {
         msg = 'Ce client n\'existe plus. Choisissez un autre client ou un lead.'
         setClientId('')
-        crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
+        fetchAllPages((page) => crmApi.getClients({ page }).then((r) => r.data))
+          .then((d) => setClients(d?.results ?? d)).catch(() => {})
       } else if (raw?.code === 'kwh_incoherent_factures') {
         // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — refus serveur : sous le champ.
         msg = typeof raw.detail === 'string' ? raw.detail : MESSAGE_KWH_INCOHERENT

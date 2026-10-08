@@ -882,8 +882,12 @@ export default function DevisGenerator({
     // absente du stock. `fetchAllPages` (VX54, déjà le chemin de
     // stockSlice.js) lit le catalogue ENTIER.
     Promise.allSettled([
-      crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => { fail('clients'); throw 0 }),
-      crmApi.getLeads().then(r => setLeads(r.data.results ?? r.data)).catch(() => { fail('leads'); throw 0 }),
+      // ALEA40 — clients et leads lus EN ENTIER (pagination DRF 50) : un
+      // client ou un lead hors des 50 plus récents reste sélectionnable.
+      fetchAllPages((page) => crmApi.getClients({ page }).then((r) => r.data))
+        .then((d) => setClients(d?.results ?? d)).catch(() => { fail('clients'); throw 0 }),
+      fetchAllPages((page) => crmApi.getLeads({ page }).then((r) => r.data))
+        .then((d) => setLeads(d?.results ?? d)).catch(() => { fail('leads'); throw 0 }),
       fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
         .then(setProduits).catch(() => { fail('produits'); throw 0 }),
     ]).finally(() => setRefsLoading(false))
