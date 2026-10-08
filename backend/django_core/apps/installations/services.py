@@ -4409,30 +4409,76 @@ def confier_composants_soustraitance(ordre):
     if ordre.emplacement_source_id == emplacement.id:
         return ordre  # déjà confié — idempotent.
 
+    from django.db import transaction
+
     depot_principal = ensure_emplacements(ordre.company)
+    # ACHT24 (C-ACHT-022) — tout ou rien : un composant qui ne peut pas être
+    # confié REFUSE le démarrage (ConfiageImpossible nomme le composant) ;
+    # aucun transfert partiel ne reste (transaction annulée).
+    with transaction.atomic():
+        for produit, quantite in _composants_ordre_assemblage(ordre):
+            try:
+                transfer_stock(
+                    company=ordre.company, user=ordre.created_by,
+                    produit_id=produit.id, source_id=depot_principal.id,
+                    destination_id=emplacement.id, quantite=quantite,
+                    note=f'Confié sous-traitant — ordre {ordre.reference}')
+            except ValueError as exc:
+                raise ConfiageImpossible(
+                    f"Composant « {produit.nom} » impossible à confier au "
+                    f"sous-traitant : {exc}") from exc
+        ordre.emplacement_source = emplacement
+        ordre.save(update_fields=['emplacement_source'])
+    return ordre
+
+
+class ConfiageImpossible(Exception):
+    """ACHT24 — un composant ne peut pas être confié au sous-traitant."""
+
+
+def _composants_ordre_assemblage(ordre):
+    """(produit, quantité) des composants d'un ordre : lignes XMFG6, repli
+    BOM du kit × quantité. Quantités nulles et produits absents ignorés."""
     lignes = list(ordre.lignes.select_related('produit').all())
     composants = (
         [(ligne.produit, ligne.quantite) for ligne in lignes] if lignes
         else [(c.produit, (c.quantite or 0) * ordre.quantite)
               for c in ordre.kit.composants.select_related('produit').all()])
-    for produit, quantite in composants:
-        if produit is None or not quantite:
-            continue
-        try:
-            transfer_stock(
-                company=ordre.company, user=ordre.created_by,
-                produit_id=produit.id, source_id=depot_principal.id,
-                destination_id=emplacement.id, quantite=quantite,
-                note=f'Confié sous-traitant — ordre {ordre.reference}')
-        except ValueError:
-            # Stock insuffisant au dépôt principal : best-effort, le rapport
-            # de reliquat (ci-dessous) restera visible à l'appelant — on ne
-            # bloque jamais la confirmation d'ordre pour cette raison.
-            continue
+    return [(p, q) for p, q in composants if p is not None and q]
 
-    ordre.emplacement_source = emplacement
-    ordre.save(update_fields=['emplacement_source'])
-    return ordre
+
+def rapatrier_composants_soustraitance(ordre, user=None):
+    """ACHT24 (C-ACHT-022) — à l'annulation d'un ordre sous-traité DÉMARRÉ
+    (composants confiés, jamais backflushés), contre-transfère vers le dépôt
+    principal ce qui reste de SES composants à l'emplacement du
+    sous-traitant (borné au solde réel), par le même `transfer_stock` que le
+    confiage. No-op sans sous-traitant, sans confiage ou après backflush.
+    Renvoie le nombre de produits rapatriés."""
+    from apps.stock.services import ensure_emplacements, transfer_stock
+
+    if (ordre.sous_traitant_id is None or ordre.emplacement_source_id is None
+            or ordre.stock_mouvemente):
+        return 0
+    emplacement = ordre.emplacement_source
+    if emplacement.is_principal:
+        return 0
+    depot_principal = ensure_emplacements(ordre.company)
+    soldes = {se.produit_id: se.quantite
+              for se in emplacement.stocks.all()}
+    rapatries = 0
+    for produit, quantite in _composants_ordre_assemblage(ordre):
+        a_rendre = min(quantite, soldes.get(produit.id, 0) or 0)
+        if a_rendre <= 0:
+            continue
+        transfer_stock(
+            company=ordre.company, user=user or ordre.created_by,
+            produit_id=produit.id, source_id=emplacement.id,
+            destination_id=depot_principal.id, quantite=a_rendre,
+            note=f'Rapatrié du sous-traitant — ordre {ordre.reference} '
+                 'annulé')
+        soldes[produit.id] = soldes.get(produit.id, 0) - a_rendre
+        rapatries += 1
+    return rapatries
 
 
 def cout_composite_soustraite(ordre):
@@ -4458,28 +4504,32 @@ def rapport_composants_chez_soustraitants(company):
     lignes: [{produit_id, produit_nom, quantite}]}]. Lecture seule."""
     from .models import OrdreAssemblage
 
+    # ACHT24 — calculé sur le SOLDE RÉEL des emplacements sous-traitants :
+    # tant qu'un emplacement n'est pas soldé, il figure au rapport quel que
+    # soit le statut de l'ordre qui l'a alimenté (annulé compris).
     ordres = (OrdreAssemblage.objects
               .filter(company=company, sous_traitant__isnull=False,
                       emplacement_source__isnull=False,
-                      stock_mouvemente=False)
-              .exclude(statut=OrdreAssemblage.Statut.ANNULE)
-              .select_related('sous_traitant', 'emplacement_source'))
+                      emplacement_source__is_principal=False)
+              .select_related('sous_traitant', 'emplacement_source')
+              .order_by('pk'))
     par_emplacement = {}
     for ordre in ordres:
         emp = ordre.emplacement_source
-        entry = par_emplacement.setdefault(emp.id, {
+        if emp.id in par_emplacement:
+            continue
+        lignes = [
+            {'produit_id': se.produit_id, 'produit_nom': se.produit.nom,
+             'quantite': se.quantite}
+            for se in emp.stocks.select_related('produit').all()
+            if (se.quantite or 0) > 0]
+        par_emplacement[emp.id] = {
             'sous_traitant_id': ordre.sous_traitant_id,
             'sous_traitant_nom': ordre.sous_traitant.nom,
             'emplacement_id': emp.id,
-            'lignes': [],
-        })
-        for se in emp.stocks.select_related('produit').all():
-            entry['lignes'].append({
-                'produit_id': se.produit_id,
-                'produit_nom': se.produit.nom,
-                'quantite': se.quantite,
-            })
-    return list(par_emplacement.values())
+            'lignes': lignes,
+        }
+    return [e for e in par_emplacement.values() if e['lignes']]
 
 
 def marquer_serie_entrepot_sortie(*, company, produit_id, numero_serie):

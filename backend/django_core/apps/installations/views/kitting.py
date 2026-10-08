@@ -598,20 +598,30 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         confie les composants (transfert vers l'emplacement dédié « chez
         {sous-traitant} », idempotent) : le backflush à la clôture consommera
         depuis cet emplacement."""
-        from ..services import confier_composants_soustraitance
+        from django.db import transaction
+
+        from ..services import (
+            ConfiageImpossible, confier_composants_soustraitance,
+        )
 
         ordre = self.get_object()
         _exiger_transition_ordre(  # ACHT18
             ordre, OrdreAssemblage.Statut.EN_COURS,
             TRANSITIONS_ORDRE_ASSEMBLAGE)
         old = copy.copy(ordre)
-        ordre.statut = OrdreAssemblage.Statut.EN_COURS
-        ordre.save(update_fields=['statut', 'date_modification'])
+        try:
+            with transaction.atomic():
+                ordre.statut = OrdreAssemblage.Statut.EN_COURS
+                ordre.save(update_fields=['statut', 'date_modification'])
+                if ordre.sous_traitant_id is not None:
+                    # ACHT24 — un composant non confiable refuse le
+                    # démarrage (rien n'est confié, statut inchangé).
+                    confier_composants_soustraitance(ordre)
+        except ConfiageImpossible as exc:
+            raise ValidationError({'composants': str(exc)})
+        ordre.refresh_from_db()
         activity.log_changes(old, ordre, request.user)
         alerter_penurie_assemblage(ordre)
-        if ordre.sous_traitant_id is not None:
-            confier_composants_soustraitance(ordre)
-            ordre.refresh_from_db()
         return Response(self.get_serializer(ordre).data)
 
     @action(detail=True, methods=['post'])
@@ -631,11 +641,17 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         if not motif:
             raise ValidationError({
                 'motif_annulation': "Le motif d'annulation est requis."})
+        from django.db import transaction
+
+        from ..services import rapatrier_composants_soustraitance
         old = copy.copy(ordre)
-        ordre.statut = OrdreAssemblage.Statut.ANNULE
-        ordre.motif_annulation = motif
-        ordre.save(update_fields=[
-            'statut', 'motif_annulation', 'date_modification'])
+        with transaction.atomic():
+            ordre.statut = OrdreAssemblage.Statut.ANNULE
+            ordre.motif_annulation = motif
+            ordre.save(update_fields=[
+                'statut', 'motif_annulation', 'date_modification'])
+            # ACHT24 — composants confiés au sous-traitant rapatriés au dépôt.
+            rapatrier_composants_soustraitance(ordre, user=request.user)
         activity.log_changes(old, ordre, request.user)
         release_reservations_assemblage(ordre)
         return Response(self.get_serializer(ordre).data)
