@@ -7367,8 +7367,34 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
 # HYPOTHÈSE tant que CAD87 ne l'a pas mesuré. Rien ici ne classe, ne priorise
 # ni ne réordonne quoi que ce soit : on rend un fait visible, c'est tout.
 
+def noter_version_remplacee_ouverte(devis_reference: str, lead, *,
+                                    remplacee_par: str = '') -> bool:
+    """ACRM11 (C-ACRM-006, volet signaux) — le client a ouvert le lien d'une
+    version REMPLACÉE par une révision : UNE note système au chatter du lead
+    (« ancienne version <V1> (remplacée par <V2>) ouverte »), et RIEN
+    d'autre — ni touche « Proposition rouverte — appeler », ni report de la
+    prochaine touche, ni recalcul de score, ni notification : la relance
+    porte sur la version en vigueur. Idempotente (une seule note par
+    version remplacée, quel que soit le nombre d'ouvertures). Renvoie
+    ``True`` si la note vient d'être écrite. Best-effort côté appelant."""
+    if lead is None or getattr(lead, 'company_id', None) is None:
+        return False
+    corps = f'Ancienne version {devis_reference}'
+    if remplacee_par:
+        corps += f' (remplacée par {remplacee_par})'
+    corps += ' ouverte par le client — la relance porte sur la version en ' \
+             'vigueur.'
+    if LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE, body=corps).exists():
+        return False
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=corps)
+    return True
+
+
 def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
-                            resume='') -> None:
+                            resume='', remplacee_par=None) -> None:
     """CAD135 — « il relit le prix » / « il lit en détail » arrivent au lead.
 
     ``friction_section`` non vide ⇒ signal de FRICTION (relecture répétée
@@ -7380,7 +7406,20 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
     règle du 07/09/2026) puis notifie par le chemin commun. Best-effort
     intégral : un signal de lecture ne fait jamais retomber une requête
     publique.
+
+    ACRM11 — ``remplacee_par`` (non ``None``) : le signal vient d'une version
+    REMPLACÉE ; seule la note « ancienne version » est écrite
+    (``noter_version_remplacee_ouverte``), aucune notification.
     """
+    if remplacee_par is not None:
+        try:
+            noter_version_remplacee_ouverte(
+                devis_reference, lead, remplacee_par=remplacee_par)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'ACRM11 : note de version remplacée non écrite (lead #%s)',
+                getattr(lead, 'pk', None), exc_info=True)
+        return
     try:
         if lead is None or getattr(lead, 'company_id', None) is None:
             return

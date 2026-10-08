@@ -619,6 +619,9 @@ def engagement_followup_engine():
              .filter(devis__isnull=False,
                      devis__statut=Devis.Statut.ENVOYE,
                      devis__in=devis_en_jeu(Devis.objects.all()),
+                     # ACRM11 — explicite : jamais un signal sur une V1
+                     # remplacée (même règle que ``devis_en_jeu``).
+                     devis__is_active=True,
                      expires_at__gt=now)
              .select_related('devis', 'devis__created_by', 'company'))
 
