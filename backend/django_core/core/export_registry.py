@@ -31,7 +31,8 @@ from django.http import Http404, HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
-from rest_framework import generics, serializers, status
+from rest_framework import generics, serializers, status
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -225,7 +226,7 @@ class ExportReversibiliteThrottle(UserRateThrottle):
     rate = '3/hour'
 
 
-class ExportReversibiliteRunSerializer(serializers.ModelSerializer):
+class ExportReversibiliteRunSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model = ExportReversibiliteRun
         fields = [

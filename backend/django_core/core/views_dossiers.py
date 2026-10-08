@@ -23,7 +23,8 @@ résolution passe par ``ContentType``, qui est de la fondation Django.
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field, inline_serializer
-from rest_framework import serializers, status
+from rest_framework import serializers, status
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -44,7 +45,7 @@ CHAMPS_SUIVIS = [
 ]
 
 
-class DossierActivitySerializer(serializers.ModelSerializer):
+class DossierActivitySerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     kind_label = serializers.CharField(
         source='get_kind_display', read_only=True)
     user_username = serializers.CharField(
@@ -58,7 +59,7 @@ class DossierActivitySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class DossierLienSerializer(serializers.ModelSerializer):
+class DossierLienSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     cle_modele = serializers.CharField(read_only=True)
 
     class Meta:
@@ -72,7 +73,7 @@ class DossierLienSerializer(serializers.ModelSerializer):
 # distinct (FG268, un AUTRE modèle ``DossierChecklistItem``) ; deux classes de
 # même nom auraient produit le même composant OpenAPI "DossierChecklistItem"
 # pour deux formes différentes — collision de nom, jamais de comportement.
-class DossierWorkflowChecklistItemSerializer(serializers.ModelSerializer):
+class DossierWorkflowChecklistItemSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     fait_par_username = serializers.CharField(
         source='fait_par.username', read_only=True, default='')
 
