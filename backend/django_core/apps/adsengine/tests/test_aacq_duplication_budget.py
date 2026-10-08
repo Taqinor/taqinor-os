@@ -50,6 +50,9 @@ class DuplicationBudgetTests(TestCase):
 
     def _approuver(self, action):
         EngineAction.objects.filter(pk=action.pk).update(
+            # AACQ76 — empreinte de la version approuvée (update() court-circuite save()).
+            approved_fingerprint=EngineAction.fingerprint_of(
+                action.kind, action.payload),
             status=EngineAction.Statut.APPROUVEE)
         action.refresh_from_db()
         return action

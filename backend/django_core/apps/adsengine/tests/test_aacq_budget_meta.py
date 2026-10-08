@@ -60,11 +60,11 @@ class BudgetMetaTests(TestCase):
             http_client=httpx.Client(transport=httpx.MockTransport(handler)),
             max_retries=0, backoff_base=0)
 
-    def _action(self, kind, *, daily, current):
+    def _action(self, kind, *, daily, current, adset_id='as-aacq4'):
         return EngineAction.objects.create(
             company=self.company, kind=kind, reason_fr='Budget.',
             status=EngineAction.Statut.APPROUVEE, approved_by=self.admin,
-            payload={'adset_id': 'as-aacq4', 'daily_budget': daily,
+            payload={'adset_id': adset_id, 'daily_budget': daily,
                      'current_budget': current})
 
     def _apply(self, action):
@@ -120,9 +120,8 @@ class BudgetMetaTests(TestCase):
         self.assertEqual(action.status, EngineAction.Statut.ECHOUEE)
 
     def test_adset_hors_miroirs_refuse(self):
-        action = self._action(KIND_INCREASE_PACE, daily=11000, current=10000)
-        action.payload = {**action.payload, 'adset_id': 'as-etranger'}
-        action.save(update_fields=['payload'])
+        action = self._action(KIND_INCREASE_PACE, daily=11000, current=10000,
+                              adset_id='as-etranger')
         resp = self._apply(action)
         self.assertNotEqual(resp.status_code, 200)
         self.assertEqual(self.requests, [])

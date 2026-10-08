@@ -309,6 +309,9 @@ class ChainBase(TestCase):
     def _approve(self, action):
         """Approbation HUMAINE de l'action (le geste de l'écran Approbations)."""
         EngineAction.objects.filter(pk=action.pk).update(
+            # AACQ76 — empreinte de la version approuvée (update() court-circuite save()).
+            approved_fingerprint=EngineAction.fingerprint_of(
+                action.kind, action.payload),
             status=EngineAction.Statut.APPROUVEE, approved_by=self.user)
         action.refresh_from_db()
         return action

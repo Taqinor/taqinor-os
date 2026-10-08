@@ -796,6 +796,13 @@ class EngineAction(TenantModel):
         default=dict, blank=True, verbose_name='Résultat')
     error = models.TextField(
         blank=True, default='', verbose_name='Erreur')
+    # AACQ76 — empreinte (SHA-256 de ``kind`` + ``payload``) de la version
+    # APPROUVÉE, posée à chaque passage en ``approuvee`` (humain ou auto, voir
+    # ``save``) ; ``apply_action`` refuse une action dont le contenu ne
+    # correspond plus (retour ``proposee`` sans appel Meta). Serveur seul.
+    approved_fingerprint = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name="Empreinte de la version approuvée")
 
     class Meta:
         verbose_name = 'Action du moteur'
@@ -809,6 +816,31 @@ class EngineAction(TenantModel):
 
     def __str__(self):
         return f'{self.get_kind_display()} — {self.get_status_display()}'
+
+    @staticmethod
+    def fingerprint_of(kind, payload):
+        """AACQ76 — Empreinte stable (clés triées) de ``kind`` + ``payload``."""
+        import hashlib
+        import json
+        blob = json.dumps({'kind': kind or '', 'payload': payload or {}},
+                          sort_keys=True, default=str, ensure_ascii=False)
+        return hashlib.sha256(blob.encode('utf-8')).hexdigest()
+
+    def content_fingerprint(self):
+        return self.fingerprint_of(self.kind, self.payload)
+
+    def save(self, *args, **kwargs):
+        # AACQ76 — toute action qui devient ``approuvee`` (approbation humaine,
+        # création directe auto/blast-radius/génération) porte l'empreinte de
+        # SA version approuvée dès cet instant.
+        if (self.status == self.Statut.APPROUVEE
+                and not self.approved_fingerprint):
+            self.approved_fingerprint = self.content_fingerprint()
+            update_fields = kwargs.get('update_fields')
+            if update_fields is not None:
+                kwargs['update_fields'] = list(
+                    set(update_fields) | {'approved_fingerprint'})
+        super().save(*args, **kwargs)
 
 
 class WeeklyBrief(TenantModel):

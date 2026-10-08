@@ -2264,6 +2264,53 @@ def _guard_before_dispatch(action):
         guardrails.enforce_never_activate(target_status, company=action.company)
 
 
+ACTION_CONTENU_MODIFIE_FR = (
+    "Contenu modifié depuis l'approbation : nouvelle approbation requise.")
+
+
+def _empreinte_action(action):
+    """AACQ76 — Empreinte (SHA-256) du ``kind`` + ``payload`` d'une action."""
+    return EngineAction.fingerprint_of(action.kind, action.payload)
+
+
+def _claim_approved_version(action):
+    """AACQ76 — Compare-and-swap ``approuvee → appliquee`` SOUS verrou de
+    ligne, seulement si le contenu en base est la version APPROUVÉE (empreinte).
+
+    * réclamée → ``True`` ; l'objet en mémoire est réaligné sur le contenu
+      approuvé lu en base (c'est lui qui part chez Meta) ;
+    * plus ``approuvee`` (déjà réclamée…) → ``False`` ;
+    * contenu modifié depuis l'approbation (ou empreinte absente) → l'action
+      repasse ``proposee`` (``approved_by`` vidé, raison dans ``error``) et
+      ``ActionNotApproved`` est levée — le client Meta n'est jamais appelé."""
+    from django.db import transaction
+
+    modifie = False
+    with transaction.atomic():
+        locked = (EngineAction.objects.select_for_update()
+                  .filter(pk=action.pk).first())
+        if locked is None or locked.status != EngineAction.Statut.APPROUVEE:
+            return False
+        if (not locked.approved_fingerprint
+                or locked.approved_fingerprint != _empreinte_action(locked)):
+            EngineAction.objects.filter(pk=locked.pk).update(
+                status=EngineAction.Statut.PROPOSEE, approved_by=None,
+                approved_fingerprint='', error=ACTION_CONTENU_MODIFIE_FR)
+            modifie = True
+        else:
+            EngineAction.objects.filter(pk=locked.pk).update(
+                status=EngineAction.Statut.APPLIQUEE)
+            action.kind = locked.kind
+            action.payload = locked.payload
+    if modifie:
+        action.status = EngineAction.Statut.PROPOSEE
+        action.approved_by = None
+        action.approved_fingerprint = ''
+        action.error = ACTION_CONTENU_MODIFIE_FR
+        raise ActionNotApproved(ACTION_CONTENU_MODIFIE_FR)
+    return True
+
+
 def apply_action(action, *, connection=None, client=None):
     """Applique une action **UNIQUEMENT si elle est approuvée**.
 
@@ -2281,8 +2328,6 @@ def apply_action(action, *, connection=None, client=None):
     faussement ``appliquee``) et l'exception relancée ; en cas de succès elle
     reste ``appliquee`` (``applied_at`` + ``result`` posés côté serveur).
     """
-    from django.db import transaction
-
     # Garde de sécurité rapide (non atomique) : une action non approuvée est
     # refusée d'emblée, avant toute construction de client. Le compare-and-swap
     # ci-dessous reste l'AUTORITÉ anti-double-apply (l'objet en mémoire peut être
@@ -2305,11 +2350,8 @@ def apply_action(action, *, connection=None, client=None):
 
     # ENGFIX3 — Réclamation atomique : SEULE une ligne encore ``approuvee`` en
     # base peut être réclamée (elle passe ``appliquee`` dans le même UPDATE).
-    with transaction.atomic():
-        claimed = (EngineAction.objects
-                   .filter(pk=action.pk,
-                           status=EngineAction.Statut.APPROUVEE)
-                   .update(status=EngineAction.Statut.APPLIQUEE))
+    # AACQ76 — ET dont le contenu est EXACTEMENT la version approuvée.
+    claimed = 1 if _claim_approved_version(action) else 0
     if claimed != 1:
         raise ActionNotApproved(
             "Action déjà réclamée ou non approuvée : refus d'appliquer (aucun "
@@ -2411,17 +2453,13 @@ def apply_batch(actions, *, connection=None, client=None):
                 "Aucune connexion Meta active : application impossible.")
         client = MetaClient.from_connection(connection)
 
-    from django.db import transaction
-
     # Réclamation atomique de CHAQUE action AVANT tout appel réseau — le journal
     # (statut déjà passé APPLIQUEE en base) est l'unique dédup si le lot entier
     # doit être rejoué après une panne (Graph n'a aucune clé d'idempotence).
     claimed_actions = []
     for action in actions:
-        with transaction.atomic():
-            claimed = (EngineAction.objects
-                       .filter(pk=action.pk, status=EngineAction.Statut.APPROUVEE)
-                       .update(status=EngineAction.Statut.APPLIQUEE))
+        # AACQ76 — même réclamation que ``apply_action`` (version approuvée).
+        claimed = 1 if _claim_approved_version(action) else 0
         if claimed != 1:
             raise ActionNotApproved(
                 "Action déjà réclamée ou non approuvée : refus d'appliquer en "
