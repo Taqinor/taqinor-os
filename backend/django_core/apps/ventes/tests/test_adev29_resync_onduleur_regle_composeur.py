@@ -9,6 +9,7 @@ Monophasé », sans avertissement.
 Test-du-test : remettre ``_pick_product`` (« moins cher ») dans
 ``_permuter_onduleur`` ⇒ ``test_phase_conservee`` échoue.
 """
+import hashlib
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -40,7 +41,12 @@ class ResyncOnduleurTests(TestCase):
 
     def _produit(self, nom, prix):
         return Produit.objects.create(
-            company=self.company, nom=nom, sku=nom[:20] + str(len(nom)),
+            # SKU dérivé du NOM ENTIER : « Onduleur hybride Deye 5kW
+            # Triphasé » et « … 8kW Triphasé » partagent leurs 20 premiers
+            # caractères ET leur longueur — l'ancien ``nom[:20] + len(nom)``
+            # les faisait entrer en collision (unique company+sku).
+            company=self.company, nom=nom,
+            sku='ADEV29-%s' % hashlib.sha1(nom.encode('utf-8')).hexdigest()[:12],
             prix_vente=Decimal(prix), prix_achat=Decimal('1'),
             quantite_stock=10)
 
