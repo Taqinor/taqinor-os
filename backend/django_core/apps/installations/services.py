@@ -6082,10 +6082,18 @@ def generer_retour_livraison(livraison, user, motif=''):
     Renvoie le retour créé."""
     from .models_retour_livraison import RetourLivraison, RetourLivraisonLigne
 
+    # ACHT21 — rien à retourner quand chaque produit livré est déjà couvert
+    # par des retours (brouillon + validés).
+    lignes_livrees = list(livraison.lignes.select_related('produit').all())
+    if lignes_livrees and not any(
+            _reliquat_retour_livraison(livraison, li.produit_id) > 0
+            for li in lignes_livrees if li.produit_id):
+        raise ValueError('Rien à retourner : la livraison est déjà '
+                         'entièrement couverte par des retours.')
     retour = RetourLivraison.objects.create(
         company=livraison.company, livraison=livraison, motif=motif or '',
         created_by=user)
-    for ligne in livraison.lignes.select_related('produit').all():
+    for ligne in lignes_livrees:
         RetourLivraisonLigne.objects.create(
             retour=retour, produit_id=ligne.produit_id,
             designation=ligne.designation or (
@@ -6094,17 +6102,48 @@ def generer_retour_livraison(livraison, user, motif=''):
     return retour
 
 
+def _reliquat_retour_livraison(livraison, produit_id, exclure_ligne_id=None):
+    """ACHT21 — Σ livré du produit sur la livraison − Σ des retours
+    (brouillon + validés) de ce produit, hors ``exclure_ligne_id`` ; ≥ 0."""
+    from django.db.models import Sum
+    from .models_retour_livraison import RetourLivraisonLigne
+
+    livre = (livraison.lignes.filter(produit_id=produit_id)
+             .aggregate(t=Sum('quantite'))['t']) or 0
+    retours = RetourLivraisonLigne.objects.filter(
+        retour__livraison=livraison, produit_id=produit_id)
+    if exclure_ligne_id is not None:
+        retours = retours.exclude(pk=exclure_ligne_id)
+    deja = retours.aggregate(t=Sum('quantite_retournee'))['t'] or 0
+    return max(0, int(livre) - int(deja))
+
+
+def quantite_retournable_livraison(ligne):
+    """ACHT21 (C-ACHT-019) — LA fonction unique : quantité qu'une ligne de
+    retour peut encore porter = cumul livré du produit sur la livraison −
+    les AUTRES retours (brouillon + validés) de ce produit. Une ligne sans
+    produit catalogue reste plafonnée à sa quantité livrée."""
+    if ligne.produit_id is None:
+        return ligne.quantite_livree
+    return _reliquat_retour_livraison(
+        ligne.retour.livraison, ligne.produit_id, exclure_ligne_id=ligne.pk)
+
+
 def valider_retour_livraison(retour, user):
-    """ZSTK8 — valide le retour : pour chaque ligne dont
-    `quantite_retournee > 0`, poste UN `MouvementStock` ENTREE au dépôt
-    SOURCE de la livraison (idempotent via `stock_applique`). Refuse (lève
-    ValueError) si une ligne dépasse la quantité livrée, ou si la livraison
-    source n'a pas de dépôt. Renvoie le nombre de lignes appliquées."""
+    """ZSTK8 — valide le retour (idempotent via `stock_applique`). Renvoie le
+    nombre de lignes appliquées.
+
+    ACHT21 (C-ACHT-019) — un retour est un TRANSFERT de l'emplacement de
+    destination de la livraison (camionnette/site, où l'expédition l'a
+    ventilé) vers son dépôt d'origine, JAMAIS une entrée : le stock global
+    ne bouge pas. Chaque ligne est plafonnée, sous verrou de la livraison,
+    par ``quantite_retournable_livraison`` (cumul livré − autres retours) ;
+    une destination qui n'a plus la quantité (consommée par le chantier)
+    refuse lisiblement. Lève ValueError (message français) sinon."""
     from django.db import transaction
-    from apps.stock.selectors import lock_produit
-    from apps.stock.services import (
-        mouvement_type_entree, record_stock_movement,
-    )
+    from django.utils import timezone
+    from apps.stock.services import transfer_stock
+    from .models_livraison import Livraison
     from .models_retour_livraison import RetourLivraison
 
     if retour.statut == RetourLivraison.Statut.VALIDE:
@@ -6113,41 +6152,52 @@ def valider_retour_livraison(retour, user):
     if livraison.depot_id is None:
         raise ValueError('Cette livraison n\'a pas de dépôt source.')
 
-    lignes = list(retour.lignes.select_related('produit').all())
-    for ligne in lignes:
-        if ligne.quantite_retournee > ligne.quantite_livree:
-            raise ValueError(
-                f'Quantité retournée ({ligne.quantite_retournee}) '
-                f'supérieure à la quantité livrée ({ligne.quantite_livree}) '
-                f'pour « {ligne.designation or ligne.produit_id} ».')
-
     applied = 0
     with transaction.atomic():
+        livraison = Livraison.objects.select_for_update().get(
+            pk=livraison.pk)
+        lignes = list(retour.lignes.select_related('produit').all())
         for ligne in lignes:
-            if (ligne.stock_applique or ligne.produit_id is None
-                    or ligne.quantite_retournee <= 0):
+            plafond = quantite_retournable_livraison(ligne)
+            if ligne.quantite_retournee > plafond:
+                raise ValueError(
+                    f'Quantité retournée ({ligne.quantite_retournee}) '
+                    f'supérieure au reliquat retournable ({plafond}) '
+                    f'pour « {ligne.designation or ligne.produit_id} ».')
+        a_transferer = [
+            li for li in lignes
+            if not li.stock_applique and li.produit_id is not None
+            and li.quantite_retournee > 0]
+        if a_transferer and not livraison.stock_mouvemente:
+            raise ValueError(
+                'Livraison jamais ventilée depuis le dépôt : aucun '
+                'transfert à reprendre.')
+        van = _emplacement_van(livraison.company) if a_transferer else None
+        for ligne in lignes:
+            if ligne not in a_transferer:
                 if not ligne.stock_applique:
                     ligne.stock_applique = True
                     ligne.save(update_fields=['stock_applique'])
                 continue
-            produit = lock_produit(ligne.produit_id)
-            qte_avant = produit.quantite_stock
-            qte_apres = qte_avant + ligne.quantite_retournee
-            record_stock_movement(
-                company=livraison.company, produit=produit,
-                type_mouvement=mouvement_type_entree(),
-                quantite=ligne.quantite_retournee,
-                quantite_avant=qte_avant, quantite_apres=qte_apres,
-                reference=f'RETOUR-LIV-{livraison.reference}',
-                note=f'Retour livraison {livraison.reference}',
-                created_by=user)
+            try:
+                transfer_stock(
+                    company=livraison.company, user=user,
+                    produit_id=ligne.produit_id, source_id=van.id,
+                    destination_id=livraison.depot_id,
+                    quantite=ligne.quantite_retournee,
+                    note=f'Retour livraison {livraison.reference}')
+            except ValueError as exc:
+                nom = ligne.designation or ligne.produit_id
+                raise ValueError(
+                    f'Retour impossible pour « {nom} » : la destination de '
+                    f'la livraison n\'a plus cette quantité ({exc}).'
+                ) from exc
             ligne.stock_applique = True
             ligne.save(update_fields=['stock_applique'])
             applied += 1
         retour.statut = RetourLivraison.Statut.VALIDE
         retour.valide_par = user
-        from django.utils import timezone as _tz
-        retour.valide_le = _tz.now()
+        retour.valide_le = timezone.now()
         retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
     return applied
 

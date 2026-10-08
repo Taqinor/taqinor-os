@@ -2438,6 +2438,15 @@ class RetourLivraisonLigneSerializer(serializers.ModelSerializer):
                 {'quantite_retournee':
                  'La quantité retournée ne peut pas dépasser la quantité '
                  'livrée.'})
+        # ACHT21 — plafond CUMULÉ : livré − les autres retours (brouillon +
+        # validés) du même produit sur la livraison.
+        if instance is not None and 'quantite_retournee' in attrs:
+            from .services import quantite_retournable_livraison
+            reliquat = quantite_retournable_livraison(instance)
+            if qte_retournee > reliquat:
+                raise serializers.ValidationError({'quantite_retournee': (
+                    f'Au plus {reliquat} à retourner (cumul déjà couvert '
+                    'par d\'autres retours de cette livraison).')})
         return attrs
 
 

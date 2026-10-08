@@ -246,7 +246,11 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
                  'retour.'},
                 status=status.HTTP_400_BAD_REQUEST)
         motif = (request.data.get('motif') or '').strip()
-        retour = generer_retour_livraison(liv, request.user, motif=motif)
+        try:
+            retour = generer_retour_livraison(liv, request.user, motif=motif)
+        except ValueError as exc:  # ACHT21 — « Rien à retourner »
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(
             RetourLivraisonSerializer(retour).data,
             status=status.HTTP_201_CREATED)

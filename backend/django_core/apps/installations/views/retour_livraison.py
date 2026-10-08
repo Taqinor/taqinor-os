@@ -65,9 +65,9 @@ class RetourLivraisonViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
-        """ZSTK8 — valide le retour : poste les mouvements ENTREE au dépôt
-        source (plafonnés à la quantité livrée). Refuse (400) si une ligne
-        dépasse la quantité livrée."""
+        """ZSTK8 — valide le retour. ACHT21 : TRANSFERT de la destination de
+        la livraison vers son dépôt d'origine (jamais une entrée), plafonné
+        au cumul livré − autres retours ; refus (400) lisible sinon."""
         retour = self.get_object()
         try:
             valider_retour_livraison(retour, request.user)
