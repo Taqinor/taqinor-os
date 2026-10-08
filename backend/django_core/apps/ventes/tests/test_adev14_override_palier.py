@@ -60,12 +60,16 @@ class OverridePalierTests(TestCase):
         self.assertEqual(user.menu_tier, palier_attendu)
         return user
 
-    def _devis(self):
+    def _devis(self, auteur):
+        # Auteur = l'utilisateur qui accepte : les rôles commerciaux ont une
+        # portée de visibilité restreinte (``visible_user_ids`` → devis
+        # qu'ils ont créés) ; sans ``created_by`` le devis leur répond 404
+        # avant même la garde d'avertissement que ce test exerce.
         self.n += 1
         return Devis.objects.create(
             company=self.company, reference=f'DEV-ADEV14-{self.n:03d}',
             client=self.client_obj, statut=Devis.Statut.ENVOYE,
-            taux_tva=Decimal('20'))
+            taux_tva=Decimal('20'), created_by=auteur)
 
     def _accepter(self, user, devis, **drapeaux):
         api = APIClient()
@@ -78,7 +82,7 @@ class OverridePalierTests(TestCase):
         commercial = self._user('Commercial', 'normal')
         for drapeaux in ({}, {'override_avertissement': True}):
             with self.subTest(drapeaux=drapeaux):
-                devis = self._devis()
+                devis = self._devis(commercial)
                 reponse = self._accepter(commercial, devis, **drapeaux)
                 self.assertEqual(reponse.status_code, 403, reponse.content)
                 self.assertTrue(reponse.data.get('sale_warning'))
@@ -91,7 +95,7 @@ class OverridePalierTests(TestCase):
 
     def test_responsable_passe_outre(self):
         responsable = self._user('Commercial responsable', 'responsable')
-        devis = self._devis()
+        devis = self._devis(responsable)
         self.assertEqual(self._accepter(responsable, devis).status_code, 403)
         reponse = self._accepter(responsable, devis,
                                  override_avertissement=True)
@@ -101,7 +105,7 @@ class OverridePalierTests(TestCase):
 
     def test_admin_passe_outre(self):
         admin = self._user('Administrateur', 'admin')
-        devis = self._devis()
+        devis = self._devis(admin)
         reponse = self._accepter(admin, devis, override_avertissement=True)
         self.assertEqual(reponse.status_code, 200, reponse.content)
         devis.refresh_from_db()
