@@ -75,6 +75,25 @@ def company_identity(company) -> dict:
     }
 
 
+def nom_intervenant(user, company) -> str:
+    """APDF24 — nom affichable d'un intervenant sur un document client.
+
+    Nom complet si renseigné ; sinon la raison sociale du profil société ;
+    sinon chaîne vide. Jamais l'identifiant de connexion ni une adresse e-mail
+    (un nom contenant « @ » est écarté). ``user`` None → chaîne vide.
+    """
+    if user is None:
+        return ""
+    try:
+        nom = (user.get_full_name() or "").strip()
+    except Exception:  # noqa: BLE001 — un document ne casse jamais ici
+        nom = ""
+    if nom and "@" not in nom and nom != (getattr(user, "username", "") or ""):
+        return nom
+    raison = (company_identity(company).get("nom") or "").strip()
+    return "" if "@" in raison else raison
+
+
 def adresse_affichage(company) -> str:
     """NTI18N22 — adresse « effective » d'une société pour un document (PDF).
 
