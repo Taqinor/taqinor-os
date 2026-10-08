@@ -34,9 +34,9 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
 # paquets premium ; même double chemin d'import.
 try:
-    from .montants import fmt_centimes, fmt_centimes_mad
+    from .montants import fmt_centimes, fmt_centimes_mad, pct_fr
 except ImportError:  # exécution directe du moteur depuis son dossier
-    from montants import fmt_centimes, fmt_centimes_mad
+    from montants import fmt_centimes, fmt_centimes_mad, pct_fr
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -906,7 +906,7 @@ def _pct_nul(valeur):
 
 def _tva_note_par_defaut(tva_pct):
     """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
-    tva_lbl = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
+    tva_lbl = pct_fr(tva_pct)  # AMOT24
     return (f"TVA {tva_lbl} % appliquée sur l'ensemble des équipements et "
             f"travaux.")
 
@@ -1583,7 +1583,7 @@ def _note_remise_par_ligne():
     """
     if DISCOUNT_PCT <= 0:
         return ""
-    pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+    pct = pct_fr(DISCOUNT_PCT)  # AMOT24
     return (f"Remise de {pct} % appliquée sur chaque ligne "
             f"— prix catalogue barrés, totaux après remise.")
 
@@ -1635,7 +1635,7 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     arrondi = totaux.get("arrondi") or 0
     rows = row("Sous-total HT", _fmt2(total_ht), fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        pct = pct_fr(DISCOUNT_PCT)  # AMOT24
         rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True,
                     fig="remise")
     if arrondi > 0:
@@ -1648,12 +1648,12 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     buckets = totaux.get("tva_par_taux") or []
     if len(buckets) > 1:
         for b in buckets:
-            r = int(b["taux"]) if b["taux"] == int(b["taux"]) else b["taux"]
+            r = pct_fr(b["taux"])  # AMOT24
             rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]),
                         fig="tva_taux", taux=b["taux"])
     else:
         rate = buckets[0]["taux"] if buckets else TVA_PCT
-        tva_pct = int(rate) if rate == int(rate) else rate
+        tva_pct = pct_fr(rate)  # AMOT24
         rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva), fig="tva")
     # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
     # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
@@ -1848,7 +1848,7 @@ def equip_rows(items, totaux, hi_bat=False, ancres=None):
         tot_ht_s = (_cellule_prix_remise(qty * pu_ht, _item_total_ht_remise(it))
                     if pu_ht else dash)
         taux = it.get("taux_tva", TVA_PCT)
-        taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
+        taux_s = f"{pct_fr(taux)}%"  # AMOT24
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
                  f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
                  f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
@@ -1990,7 +1990,7 @@ def page1():
         # d'arrondi que le total qu'il barre.
         _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
-        _disc_str = f"\u2212{int(DISCOUNT_PCT)}\u202f%"
+        _disc_str = f"\u2212{pct_fr(DISCOUNT_PCT)}\u202f%"  # AMOT24
         _ts_price = (
             f'<div style="font-size:10pt;color:{CG4};text-decoration:line-through;'
             f'opacity:0.75;margin-bottom:1px;white-space:nowrap;">{_s_before}</div>'
@@ -4280,7 +4280,7 @@ def page_onepage(items, tronquees=0):
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
                 f'padding-left:6px;">&#10003; {gar}</div>')
         _taux = it.get("taux_tva", TVA_PCT)
-        _taux_s = f"{int(_taux)}&#37;" if _taux == int(_taux) else f"{_taux}&#37;"
+        _taux_s = f"{pct_fr(_taux)}&#37;"  # AMOT24
         rows_html += (
             f'<tr style="background:{bg};">'
             f'<td style="padding:{pad_px}px 10px;word-break:break-word;">'
@@ -4334,7 +4334,7 @@ def page_onepage(items, tronquees=0):
     totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
                             fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        _pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        _pct = pct_fr(DISCOUNT_PCT)  # AMOT24
         totals_html += _tot_line(
             f"{_L('remise')} ({_pct}&#8201;%)",
             "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True, fig="remise")
@@ -4352,13 +4352,13 @@ def page_onepage(items, tronquees=0):
     _buckets = totaux.get("tva_par_taux") or []
     if len(_buckets) > 1:
         for _b in _buckets:
-            _r = int(_b["taux"]) if _b["taux"] == int(_b["taux"]) else _b["taux"]
+            _r = pct_fr(_b["taux"])  # AMOT24
             totals_html += _tot_line(
                 f"{_L('tva')} ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD",
                 fig="tva_taux", taux=_b["taux"])
     else:
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
-        _tva_pct = int(_rate) if _rate == int(_rate) else _rate
+        _tva_pct = pct_fr(_rate)  # AMOT24
         totals_html += _tot_line(f"{_L('tva')} ({_tva_pct}&#8201;%)",
                                  _fmt2(tva_amt) + "&nbsp;MAD", fig="tva")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page

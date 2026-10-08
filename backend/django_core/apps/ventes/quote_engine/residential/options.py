@@ -628,8 +628,8 @@ def build_pages(ctx) -> list:
     _remise_pct = float(d.get("discount_pct") or 0)
     note_remise = ""
     if _remise_pct > 0:
-        _pct_txt = (int(_remise_pct) if _remise_pct == int(_remise_pct)
-                    else _remise_pct)
+        from ..montants import pct_fr  # AMOT24 — le formateur UNIQUE
+        _pct_txt = pct_fr(_remise_pct)
         note_remise = (
             f' &middot; Remise de {_pct_txt} % appliquée sur chaque ligne '
             '— prix catalogue barrés, totaux après remise.')
