@@ -1305,6 +1305,18 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "n'est pas lisible statiquement — la garde s'abstient, les deux "
         "moities (DevisSerializer, BlocCalepinageDevis.jsx) s'appuient sur "
         "CET exemple (CALX45/CALX46)",
+    "installations/installation_divergence_devis.json":
+        "cle ADDITIVE `divergence_devis` du detail d'un chantier (GET "
+        "installations/chantiers/<pk>/), calculee par le serveur : servie "
+        "par un ModelViewSet (forme non lisible statiquement) et pas encore "
+        "produite — ACHT66 (calcul serveur) et ACHT67 (ecran) s'appuient "
+        "sur CET exemple (ACHT40)",
+    "installations/field_sync_cocher_checklist.json":
+        "op hors-ligne `chantier.cocher_checklist` de POST installations/"
+        "sync/ portant `equipements` (meme forme que le corps en ligne de "
+        "`cocher-checklist`) : le handler de synchro n'est pas une vue "
+        "lisible statiquement — ACHT70 (handler) et ACHT71 (ecran) "
+        "s'appuient sur CET exemple (ACHT40)",
 }
 
 
