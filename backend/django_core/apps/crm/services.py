@@ -44,6 +44,7 @@ from .cadence_config import (
     cle_de, est_etape, q_etape,
 )
 from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtape
+
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
 # (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
@@ -528,8 +529,50 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     return True
 
 
+# ── ACRM35 — un geste de cadence à la fois par lead ─────────────────────────
+
+def verrouiller_lead(lead):
+    """ACRM35 (C-ACRM-030) — pose un verrou de LIGNE sur ``lead``
+    (``SELECT … FOR UPDATE``) dans la transaction en cours : deux gestes de
+    cadence sur le MÊME lead (double clic, deux onglets, récepteur + clic)
+    s'exécutent l'un APRÈS l'autre, et le second lit l'état écrit par le
+    premier. À appeler sous ``transaction.atomic()``."""
+    if lead is None or getattr(lead, 'pk', None) is None:
+        return
+    list(Lead._base_manager.select_for_update()
+         .filter(pk=lead.pk).values_list('pk', flat=True))
+
+
+def _sous_verrou_du_lead(lead_de):
+    """ACRM35 — décorateur : exécute la fonction dans ``transaction.atomic()``
+    APRÈS ``verrouiller_lead`` sur le lead que ``lead_de(*args, **kwargs)``
+    désigne. Les lectures d'idempotence de la fonction (touches ouvertes,
+    cadences actives, ordres déjà pris) se font donc APRÈS le verrou : deux
+    initialisations concurrentes ne créent qu'un plan."""
+    import functools
+
+    def decorer(fonction):
+        @functools.wraps(fonction)
+        def enveloppe(*args, **kwargs):
+            from django.db import transaction
+            with transaction.atomic():
+                verrouiller_lead(lead_de(*args, **kwargs))
+                return fonction(*args, **kwargs)
+        return enveloppe
+    return decorer
+
+
+def _lead_premier_argument(lead, *args, **kwargs):
+    return lead
+
+
+def _lead_de_l_etape(etape, *args, **kwargs):
+    return getattr(etape, 'lead', None)
+
+
 # ── CAD-B ── CAD107 ─────────────────────────────────────────────────────────
 
+@_sous_verrou_du_lead(_lead_premier_argument)
 def reprendre_cadence_apres_reouverture(lead, user, *, origine=''):
     """CAD107 — UN seul comportement pour les trois chemins de réouverture.
 
@@ -1207,6 +1250,7 @@ def choix_devis_relance(devis_liste):
         for d in devis_liste]
 
 
+@_sous_verrou_du_lead(_lead_premier_argument)
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None, exiger_confirmation=False,
                              motif_remplacement=''):
@@ -1532,8 +1576,17 @@ class RaisonSuite:
 
 def materialiser_touche_suivante(etape_close, user=None, *, avec_raison=False):
     """ACRM12 — ``avec_raison=True`` rend ``(etape | None, RaisonSuite.*)``
-    au lieu de la seule étape (les appelants historiques sont inchangés)."""
-    etape, raison = _materialiser_touche_suivante(etape_close, user)
+    au lieu de la seule étape (les appelants historiques sont inchangés).
+
+    ACRM35 — sous ``transaction.atomic()`` + verrou du lead : la lecture
+    d'idempotence (ordres déjà pris) se fait APRÈS le verrou, donc deux
+    clôtures concurrentes ne font naître qu'UNE touche suivante. Appelée
+    depuis une transaction, l'``atomic`` est un point de sauvegarde : une
+    panne ici n'empoisonne pas la transaction de l'appelant."""
+    from django.db import transaction
+    with transaction.atomic():
+        verrouiller_lead(getattr(etape_close, 'lead', None))
+        etape, raison = _materialiser_touche_suivante(etape_close, user)
     return (etape, raison) if avec_raison else etape
 
 
@@ -1790,6 +1843,7 @@ def est_note_de_report(activite):
             or corps.startswith(PREFIXE_NOTE_VEILLE))
 
 
+@_sous_verrou_du_lead(_lead_de_l_etape)
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
                           body='', suite=True, canal_reel=None):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
@@ -2718,6 +2772,7 @@ def _poser_releve_point_eau(lead, user):
     return etape
 
 
+@_sous_verrou_du_lead(_lead_premier_argument)
 def assurer_prochaine_etape_apres_succes(lead, user,
                                          libelle=None,
                                          avec_plan_devis=True,
