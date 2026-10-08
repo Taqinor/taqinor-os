@@ -278,3 +278,107 @@ def verifier_secrets_publies():
                  '").',
             id=identifiant))
     return erreurs
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP30 — ``core.E_RLS`` : RLS allumé SANS garantie = fausse sécurité.
+# ─────────────────────────────────────────────────────────────────────────────
+#: Le middleware qui fait tenir le GUC ``app.current_company`` (execute_wrapper).
+MIDDLEWARE_TENANT = 'core.tenant_context.TenantContextMiddleware'
+
+ID_RLS = 'core.E_RLS'
+#: Le rôle runtime n'a pas pu être lu (base injoignable) — jamais bloquant.
+ID_RLS_INVERIFIABLE = 'core.W_RLS_INVERIFIABLE'
+
+
+def role_runtime_rls(environ=None):
+    """Le rôle Postgres sous lequel le process WEB lit les données, flag ON.
+
+    ``DB_APP_USER`` s'il est posé (bascule NTPLT3), sinon le rôle de
+    ``DATABASES['default']`` — qui est alors le rôle owner.
+    """
+    environ = os.environ if environ is None else environ
+    role = (environ.get('DB_APP_USER') or '').strip()
+    if role:
+        return role
+    return (settings.DATABASES.get('default', {}).get('USER') or '').strip()
+
+
+def lire_attributs_role(role):
+    """``(rolsuper, rolbypassrls)`` du rôle, ou ``None`` s'il n'existe pas."""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = %s',
+            [role])
+        ligne = cursor.fetchone()
+    return None if ligne is None else (bool(ligne[0]), bool(ligne[1]))
+
+
+@register(Tags.security)
+def verifier_garantie_rls(app_configs=None, **kwargs):
+    """ADEP30 — refuse ``POSTGRES_RLS_ENABLED=1`` sans garantie réelle.
+
+    Deux états contradictoires deviennent des ERREURS (flag ON seulement ;
+    flag OFF, défaut → no-op total, aucune requête) :
+
+      * le middleware ``TenantContextMiddleware`` est absent de MIDDLEWARE :
+        la pose du GUC ne tient pas pendant les requêtes HTTP ;
+      * le rôle runtime (``DB_APP_USER``, sinon le rôle de connexion) est
+        superuser ou ``BYPASSRLS`` : les policies sont contournées, RLS n'est
+        qu'un affichage.
+
+    Sous ``manage.py test`` (``settings.TESTING``) le contrôle du RÔLE est
+    sauté : la suite RLS tourne délibérément sous le rôle propriétaire et
+    bascule par ``SET ROLE`` sur un rôle NOBYPASSRLS qu'elle crée elle-même.
+    Base injoignable → avertissement, jamais une erreur.
+    """
+    from django.core.checks import Warning as CheckWarning
+
+    from .tenant_context import rls_enabled
+
+    if not rls_enabled():
+        return []
+
+    messages = []
+    if MIDDLEWARE_TENANT not in list(getattr(settings, 'MIDDLEWARE', []) or []):
+        messages.append(Error(
+            'POSTGRES_RLS_ENABLED=1 mais TenantContextMiddleware est absent de '
+            'MIDDLEWARE : le GUC app.current_company n\'est jamais posé pendant '
+            'les requêtes HTTP — RLS allumé sans garantie.',
+            hint=f'Ajoutez « {MIDDLEWARE_TENANT} » à MIDDLEWARE (après '
+                 'l\'authentification), ou coupez POSTGRES_RLS_ENABLED.',
+            id=ID_RLS))
+
+    if getattr(settings, 'TESTING', False):
+        return messages
+
+    role = role_runtime_rls()
+    try:
+        attributs = lire_attributs_role(role)
+    except Exception as exc:  # noqa: BLE001 — base injoignable : signaler, pas bloquer
+        messages.append(CheckWarning(
+            f'POSTGRES_RLS_ENABLED=1 : impossible de vérifier les attributs du '
+            f'rôle runtime « {role} » ({type(exc).__name__}).',
+            hint='Relancez `manage.py check` avec la base joignable.',
+            id=ID_RLS_INVERIFIABLE))
+        return messages
+
+    if attributs is None:
+        messages.append(Error(
+            f'POSTGRES_RLS_ENABLED=1 mais le rôle runtime « {role} » n\'existe '
+            f'pas dans la base.',
+            hint='Provisionnez-le avec backend/db/rls_roles.sql, ou corrigez '
+                 'DB_APP_USER.',
+            id=ID_RLS))
+    elif attributs[0] or attributs[1]:
+        nature = 'superuser' if attributs[0] else 'BYPASSRLS'
+        messages.append(Error(
+            f'POSTGRES_RLS_ENABLED=1 mais le rôle runtime « {role} » est '
+            f'{nature} : il contourne les policies RLS, la défense est '
+            f'inopérante.',
+            hint='Posez DB_APP_USER=<rôle NOSUPERUSER NOBYPASSRLS> '
+                 '(backend/db/rls_roles.sql), ou coupez POSTGRES_RLS_ENABLED.',
+            id=ID_RLS))
+    return messages
