@@ -159,8 +159,7 @@ Total AVEC batterie ⭐
 0 MAD
 Réduction
 %
-TVA
-%
+TVA : par ligne (voir la table)
 Prix cible / kWc
 Appliquer via remise
 Marge indicative (interne)
@@ -297,9 +296,8 @@ line-qty=1
 #104=20
 Ligne optionnelle (add-on hors total)=on [ ]
 #106=0
-#107=20.00
-#108=
-#109=Pose sous quinzaine.
+#107=
+#108=Pose sous quinzaine.
 == APPELS ==
 {
   "crmApi.getClients": [

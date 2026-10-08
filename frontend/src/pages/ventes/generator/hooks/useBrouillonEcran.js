@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from '../../../../ui/confirm'
 import { useDirtyGuard } from '../../../../ui/useDirtyGuard'
 import { useDraftAutosave } from '../../../../ui/useDraftAutosave'
-import { DEFAULT_MONTHLY_BILLS, TVA_STANDARD_DEFAUT } from '../../../../features/ventes/solar'
+import { DEFAULT_MONTHLY_BILLS } from '../../../../features/ventes/solar'
 import { withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
 import { profilCiVide } from '../../../../features/ventes/quote/profilCi'
 
@@ -90,14 +90,15 @@ export function useBrouillonEcran(ctx) {
     (l) => l.produit || (l.designation || '').trim() || parseFloat(l.prix_unit_ttc) > 0,
   )
   const remiseSaisie = parseFloat(discountPct) > 0
-  const tvaModifiee = String(tauxTva ?? '') !== '' && parseFloat(tauxTva) !== TVA_STANDARD_DEFAUT
+  // AGNR28 — le taux d'EN-TÊTE n'est plus saisissable (aucun total ne le lit) :
+  // il ne rend plus le formulaire « non vierge ».
   // `villaGroups` a des libellés PAR DÉFAUT : le signal utile est le mode
   // multi-propriétés lui-même (défaut 'none'), pas la présence de libellés.
   const villasSaisies = multiMode !== 'none'
   const formulaireNonVierge = Boolean(
     leadId || clientId || note || fHiver || fEte || nbPanneaux
     || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa
-    || lignesSaisies || remiseSaisie || tvaModifiee || villasSaisies,
+    || lignesSaisies || remiseSaisie || villasSaisies,
   )
   // QJR581 — « dirty » veut dire « DIFFÉRENT de la référence » : l'état que le
   // mappeur `?edit=` vient de poser (édition) ou le dernier enregistrement

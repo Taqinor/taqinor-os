@@ -175,8 +175,7 @@ Total SANS batterie ⭐
 46 800 MAD
 Réduction
 %
-TVA
-%
+TVA : par ligne (voir la table)
 Prix / kWc
 3 636 MAD/kWc
 Prix cible / kWc
@@ -293,8 +292,7 @@ line-qty=1
 #60=20
 Ligne optionnelle (add-on hors total)=on [ ]
 #62=0
-#63=20.00
-#64=
+#63=
 :id0:=
 gen-cond-retenue=on [ ]
 gen-cond-penaliteTaux=
@@ -305,7 +303,7 @@ gen-cond-cautionPlafond=
 gen-cond-referenceCommande=
 gen-cond-tiersPayeur=
 gen-cond-acompte-financeur=
-#75=
+#74=
 == APPELS ==
 {
   "crmApi.getClients": [

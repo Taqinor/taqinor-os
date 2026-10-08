@@ -292,8 +292,7 @@ Total AVEC batterie ⭐
 0 MAD
 Réduction
 %
-TVA
-%
+TVA : par ligne (voir la table)
 Prix cible / kWc
 Appliquer via remise
 <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
@@ -414,9 +413,8 @@ line-qty=1
 #93=20
 Ligne optionnelle (add-on hors total)=on [ ]
 #95=0
-#96=20.00
+#96=
 #97=
-#98=
 == APPELS ==
 {
   "crmApi.getClients": [

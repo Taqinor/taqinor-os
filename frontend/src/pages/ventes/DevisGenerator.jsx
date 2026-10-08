@@ -2016,8 +2016,6 @@ export default function DevisGenerator({
             discountPct={discountPct}
             setDiscountPct={setDiscountPct}
             remiseMax={remiseMax}
-            tauxTva={tauxTva}
-            setTauxTva={setTauxTva}
             pkwc={pkwc}
             prixCible={prixCible}
             setPrixCible={setPrixCible}

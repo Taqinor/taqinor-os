@@ -19,7 +19,6 @@ import { formatMoney } from '../../../features/ventes/solar'
 export default function RailArgent({
   showSans, showAvec, sansRec, avecRec, totals,
   discountPct, setDiscountPct, remiseMax,
-  tauxTva, setTauxTva,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
   marge, kpiTotal, margeLignesSansAchat = 0,
   // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
@@ -77,11 +76,12 @@ export default function RailArgent({
             </span>
           )}
         </div>
-        <div className="gen-total-item gen-total-inline gen-tier-2">
-          <span className="gen-total-label">TVA</span>
-          <input type="number" min="0" max="100" step="any" className="gen-discount-input"
-                 value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
-          <span style={{ fontWeight: 700 }}>%</span>
+        {/* AGNR28 — plus de champ « TVA % » ici : il ne changeait AUCUN total
+            (chaque ligne porte son taux, lu par les totaux et le serveur).
+            L'en-tête `taux_tva` garde la valeur chargée / le défaut société,
+            simple repli serveur. Un refus serveur sur ce champ reste affiché. */}
+        <div className="gen-total-item gen-total-inline gen-tier-2" data-testid="rail-tva-par-ligne">
+          <span className="gen-total-label">TVA : par ligne (voir la table)</span>
           {sousChamp('taux_tva')}
         </div>
         {parseFloat(discountPct) > 0 && showSans && (
