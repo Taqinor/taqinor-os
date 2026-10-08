@@ -10,7 +10,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -587,6 +587,13 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         return Response(payload, status=201)
 
 
+class TicketEnDoubleError(APIException):
+    """ASAV23 — création d'un ticket identique dans la fenêtre anti-doublon."""
+    status_code = 409
+    default_detail = 'Ticket en double.'
+    default_code = 'ticket_en_double'
+
+
 class TicketViewSet(CompanyScopedModelViewSet):
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
     en ordre d'entonnoir), indépendant des étapes lead / statuts de document.
@@ -775,6 +782,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # XSAV7 — le client résolu alimente l'override contrat éventuel.
         priorite = serializer.validated_data.get('priorite', 'normale')
         client = serializer.validated_data.get('client')
+        # ASAV23 — un double clic ne crée qu'un ticket.
+        self._refuser_doublon_recent(company, serializer.validated_data)
         sla_due_at = self._compute_sla_due_at(
             company, client, priorite, date_ouverture)
         # ASAV19 — échéance de PREMIÈRE RÉPONSE, même service.
@@ -873,6 +882,39 @@ class TicketViewSet(CompanyScopedModelViewSet):
     # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
     # compte comme une réouverture.
     _CLOTURE_STATUTS = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
+
+    #: ASAV23 — fenêtre (secondes) dans laquelle un ticket identique est un
+    #: double envoi (double clic, retry réseau), pas une nouvelle demande.
+    FENETRE_DOUBLON_SECONDES = 60
+
+    @classmethod
+    def _refuser_doublon_recent(cls, company, data):
+        """ASAV23 — 409 si un ticket OUVERT identique (même société, client,
+        chantier, équipement, description normalisée) a été créé il y a
+        moins de 60 s ; le corps nomme la référence existante."""
+        def _normaliser(texte):
+            return ' '.join((texte or '').split()).casefold()
+
+        client = data.get('client')
+        installation = data.get('installation')
+        equipement = data.get('equipement')
+        description = _normaliser(data.get('description'))
+        depuis = timezone.now() - timedelta(
+            seconds=cls.FENETRE_DOUBLON_SECONDES)
+        candidats = Ticket.objects.filter(
+            company=company, client=client,
+            installation_id=getattr(installation, 'pk', None),
+            equipement_id=getattr(equipement, 'pk', None),
+            statut__in=Ticket.OPEN_STATUTS, annule=False,
+            date_creation__gte=depuis,
+        ).only('reference', 'description').order_by('-date_creation')
+        for existant in candidats:
+            if _normaliser(existant.description) == description:
+                raise TicketEnDoubleError({
+                    'detail': (f"Ce ticket vient déjà d'être créé "
+                               f'({existant.reference}).'),
+                    'reference_existante': existant.reference,
+                })
 
     @staticmethod
     def _cle_sla(ticket):
