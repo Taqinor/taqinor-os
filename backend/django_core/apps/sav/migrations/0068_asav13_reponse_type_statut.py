@@ -7,15 +7,20 @@ usage légitime.
 """
 from django.db import migrations, models
 
+BATCH_SIZE = 500
 STATUTS_VALIDES = ('nouveau', 'planifie', 'en_cours', 'resolu', 'cloture')
 
 
 def vider_statuts_invalides(apps, schema_editor):
     ReponseType = apps.get_model('sav', 'ReponseType')
-    (ReponseType.objects
-     .exclude(nouveau_statut='')
-     .exclude(nouveau_statut__in=STATUTS_VALIDES)
-     .update(nouveau_statut=''))
+    ids = list(ReponseType.objects
+               .exclude(nouveau_statut='')
+               .exclude(nouveau_statut__in=STATUTS_VALIDES)
+               .values_list('pk', flat=True))
+    # Mise à jour par lots (BATCH_SIZE) : jamais un UPDATE global verrouillant.
+    for i in range(0, len(ids), BATCH_SIZE):
+        batch = ids[i:i + BATCH_SIZE]
+        ReponseType.objects.filter(pk__in=batch).update(nouveau_statut='')
 
 
 class Migration(migrations.Migration):
