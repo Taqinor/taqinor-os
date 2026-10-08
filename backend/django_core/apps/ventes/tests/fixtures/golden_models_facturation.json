@@ -1195,6 +1195,18 @@
        "null": true
       }
      ]
+    ],
+    [
+     "ventilation_tva",
+     [
+      "django.db.models.JSONField",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "verbose_name": "Ventilation TVA par taux"
+      }
+     ]
     ]
    ],
    "indexes": [],

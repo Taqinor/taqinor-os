@@ -470,6 +470,13 @@ class NoteDebit(TotauxDocumentMixin, models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='notes_debit_creees')
     fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+    # ATOT6 (C-ATOT-004) — ventilation TVA par taux ``[{taux, base_ht,
+    # montant}]`` (chaînes) recopiée AU PRORATA de la facture d'origine
+    # (``totaux.ventilation_document_fige``) quand celle-ci est ventilée
+    # (tranche à taux mixtes, CIQ215) : le document porte autant de paniers
+    # que sa facture, jamais le « taux mélangé ». Vide = comportement d'hier.
+    ventilation_tva = models.JSONField(
+        null=True, blank=True, verbose_name='Ventilation TVA par taux')
 
     class Meta:
         verbose_name = 'Note de débit'

@@ -675,8 +675,11 @@ def ventilation_tva_tranche(devis, tranche, existantes=None):
             if sum(bases.values()) != ht or sum(tvas.values()) != tva:
                 bases = tvas = None
     if bases is None:
-        bases = _repartir_au_centime(ht, bases_devis)
-        tvas = _repartir_au_centime(tva, tva_devis)
+        # ATOT6 — LE service unique de ventilation d'un document figé.
+        from apps.facturation.totaux import ventilation_document_fige
+        return ventilation_document_fige(
+            [{'taux': t, 'base_ht': bases_devis[t], 'montant': tva_devis[t]}
+             for t in taux], ttc=ht + tva, ht=ht, tva=tva)
     return [{'taux': str(t), 'base_ht': str(_q(bases[t])),
              'montant': str(_q(tvas[t]))} for t in taux]
 

@@ -452,6 +452,50 @@ def lignes_facture_du_devis(devis, *, taux_effectif=False):
     } for ligne in option_lines(devis)]
 
 
+def ventiler_document_depuis_facture(document, facture, *, partiel=False,
+                                     lignes_saisies=None):
+    """ATOT6 (C-ATOT-004) — un avoir / une note de débit d'une facture
+    VENTILÉE (tranche à taux mixtes, CIQ215) porte autant de paniers TVA que
+    sa facture, au prorata exact au centime (``ventilation_document_fige``).
+
+    * document TOTAL (lignes de la facture recopiées, ou montants figés) :
+      la ventilation de la facture, à l'identique ;
+    * document PARTIEL dont les lignes saisies ne déclarent AUCUN taux (elles
+      héritaient du « taux mélangé » de tête, qui n'existe pas) : son TTC est
+      réparti au prorata des paniers de la facture et ses montants FIGÉS ;
+      une ligne qui déclare son taux garde la chaîne de ses lignes.
+
+    Facture non ventilée (mono-taux, à lignes) : no-op, document d'hier.
+    Renvoie True si une ventilation a été posée."""
+    from apps.facturation.totaux import ventilation_document_fige
+
+    ventilation = getattr(facture, 'ventilation_tva', None)
+    if not ventilation or len(ventilation) < 2:
+        return False
+    if partiel and any(li.get('taux_tva') is not None
+                       for li in (lignes_saisies or [])):
+        return False
+    if partiel:
+        ttc = Decimal(str(document.total_ttc))
+        vent = ventilation_document_fige(ventilation, ttc)
+    else:
+        ttc = Decimal(str(facture.total_ttc))
+        vent = ventilation_document_fige(
+            ventilation, ttc, ht=Decimal(str(facture.total_ht)),
+            tva=Decimal(str(facture.total_tva)))
+    if not vent:
+        return False
+    ht = sum((Decimal(b['base_ht']) for b in vent), Decimal('0'))
+    tva = sum((Decimal(b['montant']) for b in vent), Decimal('0'))
+    document.montant_ht = ht
+    document.montant_tva = tva
+    document.montant_ttc = ht + tva
+    document.ventilation_tva = vent
+    document.save(update_fields=[
+        'montant_ht', 'montant_tva', 'montant_ttc', 'ventilation_tva'])
+    return True
+
+
 class FacturationRefusee(Exception):
     """Refus métier de « Facturer » un devis (message FR, prêt pour un 400)."""
 

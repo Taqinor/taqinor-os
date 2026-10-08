@@ -372,7 +372,9 @@ class AvoirSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
                             'date_emission', 'company',
                             # ARRONDI-100 — repris de la facture côté serveur.
-                            'arrondi_pas', 'arrondi_unites']
+                            'arrondi_pas', 'arrondi_unites',
+                            # ATOT6 — ventilation recopiée par le serveur.
+                            'ventilation_tva']
 
     def get_tva_par_taux(self, obj):
         return [
@@ -416,7 +418,9 @@ class NoteDebitSerializer(serializers.ModelSerializer):
         model = NoteDebit
         fields = '__all__'
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
-                            'date_emission', 'company']
+                            'date_emission', 'company',
+                            # ATOT6 — ventilation recopiée par le serveur.
+                            'ventilation_tva']
 
     def get_client_nom(self, obj):
         c = obj.client

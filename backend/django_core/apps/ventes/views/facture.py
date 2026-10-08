@@ -1257,6 +1257,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     avoir.montant_ttc = source.total_ttc
                     avoir.save(update_fields=[
                         'montant_ht', 'montant_tva', 'montant_ttc'])
+            # ATOT6 — autant de paniers TVA que la facture d'origine.
+            from ..domain.facturation_ops import (
+                ventiler_document_depuis_facture,
+            )
+            ventiler_document_depuis_facture(
+                avoir, source, partiel=bool(clean_lignes),
+                lignes_saisies=clean_lignes)
             return avoir
 
         # AUD126 — LECTURE DU PLAFOND ET CRÉATION SÉRIALISÉES. `creer_avoir`
@@ -1426,6 +1433,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     note_debit.montant_ttc = facture.total_ttc
                     note_debit.save(update_fields=[
                         'montant_ht', 'montant_tva', 'montant_ttc'])
+            # ATOT6 — même règle que l'avoir : paniers de la facture.
+            from ..domain.facturation_ops import (
+                ventiler_document_depuis_facture,
+            )
+            ventiler_document_depuis_facture(
+                note_debit, facture, partiel=bool(clean_lignes),
+                lignes_saisies=clean_lignes)
             return note_debit
 
         note_debit = create_numbered(

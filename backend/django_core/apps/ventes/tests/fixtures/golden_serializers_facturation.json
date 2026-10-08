@@ -243,6 +243,13 @@
      false,
      "*",
      false
+    ],
+    "ventilation_tva": [
+     "JSONField",
+     true,
+     false,
+     null,
+     false
     ]
    }
   },
@@ -1935,6 +1942,13 @@
     ],
     "total_tva": [
      "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "ventilation_tva": [
+     "JSONField",
      true,
      false,
      null,
