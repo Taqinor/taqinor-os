@@ -103,8 +103,11 @@ class TotauxEnLotTests(TestCase):
 
     def test_selecteurs_constants(self):
         self._peupler(5)
+        # Les ids sont lus HORS mesure (comme à 15 devis) : sinon la requête
+        # ``_ids()`` gonfle la mesure à 5 d'une unité (8 ≠ 7).
+        ids5 = self._ids()
         with CaptureQueriesContext(connection) as c5:
-            montants5 = selectors.montants_devis(self._ids(), self.company)
+            montants5 = selectors.montants_devis(ids5, self.company)
             ca5 = selectors.ca_par_entite(self.company, [self.entite.id])
         self._peupler(15)
         ids = self._ids()
