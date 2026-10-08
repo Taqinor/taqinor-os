@@ -250,7 +250,7 @@ Ligne optionnelle (add-on hors total)=on [ ]
 #39=0
 #40=20.00
 #41=
-_r_os_=
+:id0:=
 overrides-chemin=scenario
 overrides-valeur=
 gen-cond-retenue=on [ ]
@@ -289,14 +289,27 @@ gen-cond-acompte-financeur=
   "parametresApi.getProfile": [
     []
   ],
+  "ventesApi.getDevisById": [
+    [
+      "36"
+    ],
+    [
+      36
+    ]
+  ],
+  "ventesApi.getHistoriqueConfigurationDevis": [
+    [
+      36
+    ]
+  ],
   "ventesApi.getOffresTaillesDevis": [
     [
       "36"
     ]
   ],
-  "ventesApi.lireOverrides": [
+  "ventesApi.getPrefillSite": [
     [
-      36
+      "9"
     ]
   ],
   "ventesApi.getPrixApplicable": [
@@ -315,9 +328,19 @@ gen-cond-acompte-financeur=
       }
     ]
   ],
-  "ventesApi.getHistoriqueConfigurationDevis": [
+  "ventesApi.lireOverrides": [
     [
       36
+    ]
+  ],
+  "ventesApi.poserOverrides": [
+    [
+      36,
+      {
+        "scenario": {
+          "valeur": "Avec batterie"
+        }
+      }
     ]
   ],
   "ventesApi.postEtudeHorairePreview": [
@@ -341,33 +364,10 @@ gen-cond-acompte-financeur=
       }
     ]
   ],
-  "ventesApi.poserOverrides": [
-    [
-      36,
-      {
-        "scenario": {
-          "valeur": "Avec batterie"
-        }
-      }
-    ]
-  ],
   "ventesApi.regenererOverride": [
     [
       36,
       "scenario"
-    ]
-  ],
-  "ventesApi.getDevisById": [
-    [
-      "36"
-    ],
-    [
-      36
-    ]
-  ],
-  "ventesApi.getPrefillSite": [
-    [
-      "9"
     ]
   ]
 }

@@ -295,7 +295,7 @@ Ligne optionnelle (add-on hors total)=on [ ]
 #62=0
 #63=20.00
 #64=
-_r_ap_=
+:id0:=
 gen-cond-retenue=on [ ]
 gen-cond-penaliteTaux=
 gen-cond-penalitePlafond=
@@ -332,14 +332,27 @@ gen-cond-acompte-financeur=
   "parametresApi.getProfile": [
     []
   ],
+  "ventesApi.getDevisById": [
+    [
+      "35"
+    ],
+    [
+      35
+    ]
+  ],
+  "ventesApi.getHistoriqueConfigurationDevis": [
+    [
+      35
+    ]
+  ],
   "ventesApi.getOffresTaillesDevis": [
     [
       "35"
     ]
   ],
-  "ventesApi.lireOverrides": [
+  "ventesApi.getPrefillSite": [
     [
-      35
+      "9"
     ]
   ],
   "ventesApi.getPrixApplicable": [
@@ -379,7 +392,7 @@ gen-cond-acompte-financeur=
       }
     ]
   ],
-  "ventesApi.getHistoriqueConfigurationDevis": [
+  "ventesApi.lireOverrides": [
     [
       35
     ]
@@ -403,19 +416,6 @@ gen-cond-acompte-financeur=
       {
         "signal": {}
       }
-    ]
-  ],
-  "ventesApi.getDevisById": [
-    [
-      "35"
-    ],
-    [
-      35
-    ]
-  ],
-  "ventesApi.getPrefillSite": [
-    [
-      "9"
     ]
   ]
 }

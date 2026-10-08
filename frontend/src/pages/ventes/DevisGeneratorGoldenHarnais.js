@@ -330,10 +330,14 @@ export function instantaneGeste(container, apis) {
   for (const [module, api] of Object.entries({
     crmApi: apis.crmApi, stockApi: apis.stockApi, parametresApi: apis.parametresApi, ventesApi: apis.ventesApi,
   })) {
-    for (const [nom, fn] of Object.entries(api)) {
+    // Ordre ALPHABÉTIQUE : l'ordre d'insertion du mock dépend des scénarios
+    // déjà joués dans le fichier (le module mocké leur survit).
+    for (const [nom, fn] of Object.entries(api).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
       if (fn?.mock?.calls?.length) appels[`${module}.${nom}`] = fn.mock.calls
     }
   }
   const json = sansCr(JSON.stringify(appels, null, 2)).replace(/\\r\\n/g, '\\n')
-  return `== TEXTE ==\n${sansCr(texte.join('\n'))}\n== CHAMPS ==\n${champs.join('\n')}\n== APPELS ==\n${json}\n`
+  // Les `id` générés par `useId` (React 19 : `_r_N_`) dépendent des rendus
+  // précédents du fichier : normalisés comme dans le DOM.
+  return `== TEXTE ==\n${sansCr(texte.join('\n'))}\n== CHAMPS ==\n${normalise(champs.join('\n'))}\n== APPELS ==\n${json}\n`
 }

@@ -342,6 +342,16 @@ Ligne optionnelle (add-on hors total)=on [ ]
   "parametresApi.getProfile": [
     []
   ],
+  "ventesApi.composerDevis": [
+    [
+      {
+        "kwc": 5.68,
+        "panel_watt": 710,
+        "structure_type": "acier",
+        "lead": 77
+      }
+    ]
+  ],
   "ventesApi.getPrixApplicable": [
     [
       {
@@ -463,16 +473,6 @@ Ligne optionnelle (add-on hors total)=on [ ]
       },
       {
         "signal": {}
-      }
-    ]
-  ],
-  "ventesApi.composerDevis": [
-    [
-      {
-        "kwc": 5.68,
-        "panel_watt": 710,
-        "structure_type": "acier",
-        "lead": 77
       }
     ]
   ]
